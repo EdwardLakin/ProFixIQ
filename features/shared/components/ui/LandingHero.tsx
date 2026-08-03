@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   Wrench,
 } from "lucide-react";
+import { ProFixIQMark, ProFixIQWordmark } from "@shared/components/brand/ProFixIQBrand";
 
 const workflow = [
   { label: "Inspect", icon: Mic },
@@ -22,11 +23,23 @@ const workflow = [
 
 export default function LandingHero() {
   return (
-    <section className="relative overflow-hidden border-b border-[color:var(--marketing-border)]">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_82%_14%,rgba(193,102,59,0.12),transparent_30%),radial-gradient(circle_at_10%_30%,rgba(53,91,117,0.08),transparent_28%)]" />
+    <section className="relative overflow-hidden border-b border-[color:var(--marketing-border)] bg-white">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_82%_14%,rgba(11,183,255,0.16),transparent_31%),radial-gradient(circle_at_12%_28%,rgba(23,71,255,0.10),transparent_30%)]" />
 
-      <div className="relative mx-auto grid w-full max-w-[1400px] gap-14 px-5 pb-20 pt-16 sm:px-8 sm:pt-20 lg:grid-cols-[0.92fr_1.08fr] lg:items-center lg:pb-28 lg:pt-24">
+      <div className="relative mx-auto grid w-full max-w-[1400px] gap-14 px-5 pb-20 pt-14 sm:px-8 sm:pt-20 lg:grid-cols-[0.92fr_1.08fr] lg:items-center lg:pb-28 lg:pt-24">
         <div>
+          <div className="mb-8 flex items-center gap-4">
+            <div className="grid h-16 w-16 place-items-center rounded-2xl bg-[#07111f] shadow-[0_18px_45px_rgba(7,17,31,0.16)]">
+              <ProFixIQMark className="h-12 w-12" />
+            </div>
+            <div>
+              <ProFixIQWordmark className="text-4xl text-[color:var(--marketing-ink)] sm:text-5xl" />
+              <div className="mt-1 text-[11px] font-bold uppercase tracking-[0.18em] text-[color:var(--marketing-muted)]">
+                The AI operating system for repair shops
+              </div>
+            </div>
+          </div>
+
           <div className="inline-flex items-center gap-2 rounded-full border border-[color:var(--marketing-border)] bg-white px-3.5 py-2 text-[11px] font-bold uppercase tracking-[0.2em] text-[color:var(--marketing-copper-dark)] shadow-sm">
             <span className="h-1.5 w-1.5 rounded-full bg-[color:var(--marketing-copper)]" />
             Heavy-Duty • Automotive • Fleet
@@ -45,7 +58,7 @@ export default function LandingHero() {
           <div className="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
             <Link
               href="/compare-plans"
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-[color:var(--marketing-copper)] px-5 py-3.5 text-sm font-bold text-white shadow-[0_12px_30px_rgba(143,69,40,0.2)] transition hover:-translate-y-0.5 hover:bg-[color:var(--marketing-copper-dark)]"
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-[color:var(--marketing-copper)] px-5 py-3.5 text-sm font-bold text-white shadow-[0_12px_30px_rgba(23,71,255,0.24)] transition hover:-translate-y-0.5 hover:bg-[color:var(--marketing-copper-dark)]"
             >
               Start 14-day free trial
               <ArrowRight size={16} />
@@ -70,19 +83,19 @@ export default function LandingHero() {
         </div>
 
         <div className="relative lg:pl-4">
-          <div className="absolute -inset-8 -z-10 rounded-full bg-[radial-gradient(circle,rgba(193,102,59,0.11),transparent_67%)]" />
-          <div className="overflow-hidden rounded-[1.75rem] border border-[color:var(--marketing-border-strong)] bg-white shadow-[0_32px_80px_rgba(23,32,42,0.14)]">
+          <div className="absolute -inset-8 -z-10 rounded-full bg-[radial-gradient(circle,rgba(23,71,255,0.13),transparent_67%)]" />
+          <div className="overflow-hidden rounded-[1.75rem] border border-[color:var(--marketing-border-strong)] bg-white shadow-[0_32px_80px_rgba(7,17,31,0.14)]">
             <div className="flex items-center justify-between border-b border-[color:var(--marketing-border)] bg-[color:var(--marketing-stone)] px-5 py-4">
               <div className="flex items-center gap-3">
-                <div className="grid h-9 w-9 place-items-center rounded-lg bg-[color:var(--marketing-ink)] text-[10px] font-blackops tracking-widest text-white">
-                  PFQ
+                <div className="grid h-10 w-10 place-items-center rounded-xl bg-[#07111f]">
+                  <ProFixIQMark className="h-8 w-8" />
                 </div>
                 <div>
                   <div className="text-sm font-bold text-[color:var(--marketing-ink)]">Work order EL000284</div>
                   <div className="text-xs text-[color:var(--marketing-muted)]">2019 Ford F-550 • Unit 47</div>
                 </div>
               </div>
-              <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-800">In progress</span>
+              <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-bold text-blue-800">In progress</span>
             </div>
 
             <div className="grid md:grid-cols-[0.9fr_1.1fr]">

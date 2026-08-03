@@ -6,6 +6,7 @@ import {
 } from "@/features/shared/lib/server/owner-pin";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import { hashOwnerPin, isValidOwnerPin, normalizeOwnerPin } from "@/features/shared/lib/server/owner-pin-crypto";
+import { resolveAuthenticatedStaffProfile } from "@/features/shared/lib/server/admin-access";
 
 
 type Body = {
@@ -41,12 +42,8 @@ export async function POST(req: Request) {
       );
     }
 
-    const { data: profile, error: profileErr } = await supabase
-      .from("profiles")
-      .select("id, role, shop_id")
-      .eq("id", user.id)
-      .single();
-
+    const { profile, error: profileErr } =
+      await resolveAuthenticatedStaffProfile(supabase, user.id);
     if (profileErr || !profile) {
       return NextResponse.json({ error: "Profile not found" }, { status: 400 });
     }

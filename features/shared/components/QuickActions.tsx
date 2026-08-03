@@ -12,7 +12,7 @@ type Props = {
 };
 
 const OWNER_ROLE_LINKS: { label: string; href: string }[] = [
-  { label: "Admin Dashboard",   href: "/dashboard/admin" },
+  { label: "Workforce Command", href: "/dashboard/workforce" },
   { label: "Advisor Dashboard", href: "/dashboard/advisor" },
   { label: "Manager Dashboard", href: "/dashboard/manager" },
   { label: "Tech Dashboard",    href: "/dashboard/tech" },

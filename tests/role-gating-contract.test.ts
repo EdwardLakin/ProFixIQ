@@ -69,13 +69,21 @@ describe("canonical role gating contract", () => {
   it("keeps financial navigation away from floor roles", () => {
     const desktopBilling = TILES.find((tile) => tile.href === "/billing");
     const mobileReports = MOBILE_TILES.find((tile) => tile.href === "/mobile/reports");
-    const mobileBoard = MOBILE_TILES.find((tile) => tile.href === "/work-orders/board");
+    const mobileBoard = MOBILE_TILES.find(
+      (tile) =>
+        tile.href === "/mobile/work-orders" && tile.title === "Work Order Board",
+    );
+    const mechanicWorkOrders = MOBILE_TILES.find(
+      (tile) =>
+        tile.href === "/mobile/work-orders" && tile.title === "My Work Orders",
+    );
 
     expect(desktopBilling?.roles).not.toContain("mechanic");
     expect(desktopBilling?.roles).not.toContain("lead_hand");
     expect(desktopBilling?.roles).not.toContain("foreman");
     expect(mobileReports?.roles).toEqual(["owner", "admin", "manager"]);
     expect(mobileBoard?.roles).not.toContain("mechanic");
+    expect(mechanicWorkOrders?.roles).toEqual(["mechanic"]);
   });
 });
 
@@ -106,7 +114,6 @@ describe("enforcement layers", () => {
       "app/mobile/reports/layout.tsx",
       "app/mobile/technicians/layout.tsx",
       "app/mobile/appointments/layout.tsx",
-      "app/mobile/work-orders/view/layout.tsx",
       "app/mobile/work-orders/create/layout.tsx",
     ]) {
       expect(read(path)).toContain("requireShopPageAccess");

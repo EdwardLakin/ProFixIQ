@@ -9,6 +9,10 @@ import {
   INVOICE_IMPORT_BATCH_SIZE,
   processInvoiceImportJobBatch,
 } from "@/features/billing/server/invoice-import-job";
+import {
+  INSPECTION_FORM_IMPORT_BATCH_SIZE,
+  processInspectionFormImportJobBatch,
+} from "@/features/inspections/server/inspection-form-import-job";
 
 type ImportJobApiRow = {
   id: string;
@@ -85,6 +89,14 @@ export async function GET(
         createAdminSupabase(),
         jobId,
         INVOICE_IMPORT_BATCH_SIZE,
+      );
+      const refreshed = await loadJob();
+      data = refreshed.data ?? data;
+    } else if (data.import_type === "inspection_form") {
+      await processInspectionFormImportJobBatch(
+        createAdminSupabase(),
+        jobId,
+        INSPECTION_FORM_IMPORT_BATCH_SIZE,
       );
       const refreshed = await loadJob();
       data = refreshed.data ?? data;

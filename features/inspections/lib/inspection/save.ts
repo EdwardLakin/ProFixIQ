@@ -2,7 +2,10 @@
 "use client";
 
 import type { InspectionSession } from "@inspections/lib/inspection/types";
-import { runMutationWithOfflineQueue } from "@/features/shared/lib/offline/mutations";
+import {
+  dismissOfflineMutation,
+  runMutationWithOfflineQueue,
+} from "@/features/shared/lib/offline/mutations";
 import { replayAllOfflineMutations } from "@/features/shared/lib/offline/replay";
 
 const ACTION_SAVE_INSPECTION = "inspection:save-session";
@@ -13,7 +16,23 @@ type InspectionSavePayload = {
   operationKey: string;
 };
 
-async function postInspectionSave(payload: InspectionSavePayload) {
+type SaveInspectionOptions = {
+  operationKey?: string;
+  requireServer?: boolean;
+  supersedesOperationKey?: string;
+};
+
+type InspectionSaveResponse = {
+  inspection_id?: string;
+  sync_revision?: number;
+  saved_at?: string;
+  superseded?: boolean;
+  session?: InspectionSession;
+};
+
+async function postInspectionSave(
+  payload: InspectionSavePayload,
+): Promise<InspectionSaveResponse> {
   const res = await fetch("/api/inspections/save", {
     method: "POST",
     headers: {
@@ -21,22 +40,24 @@ async function postInspectionSave(payload: InspectionSavePayload) {
       "Idempotency-Key": payload.operationKey,
     },
     credentials: "include",
+    keepalive: true,
     body: JSON.stringify({
       ...payload,
       idempotencyKey: payload.operationKey,
     }),
   });
 
+  const json = (await res.json().catch(() => null)) as
+    | (InspectionSaveResponse & { error?: string })
+    | null;
   if (!res.ok) {
-    const json = (await res.json().catch(() => null)) as {
-      error?: string;
-    } | null;
     const error = new Error(json?.error || "Save failed") as Error & {
       status?: number;
     };
     error.status = res.status;
     throw error;
   }
+  return json ?? {};
 }
 
 export async function replayQueuedInspectionSaves(): Promise<void> {
@@ -46,32 +67,89 @@ export async function replayQueuedInspectionSaves(): Promise<void> {
 export async function saveInspectionSession(
   session: InspectionSession,
   workOrderLineId: string,
-): Promise<{ queued: boolean; conflicted: boolean; operationKey: string }> {
+  options: SaveInspectionOptions = {},
+): Promise<{
+  queued: boolean;
+  conflicted: boolean;
+  operationKey: string;
+  inspectionId?: string;
+  syncRevision?: number;
+  savedAt?: string;
+  superseded: boolean;
+  serverSession?: InspectionSession;
+}> {
   if (!workOrderLineId) {
     throw new Error("Missing workOrderLineId");
   }
 
   const operationKey =
-    typeof crypto !== "undefined" && "randomUUID" in crypto
+    options.operationKey?.trim() ||
+    (typeof crypto !== "undefined" && "randomUUID" in crypto
       ? crypto.randomUUID()
-      : `${workOrderLineId}:${Date.now()}`;
+      : `${workOrderLineId}:${Date.now()}`);
   const payload: InspectionSavePayload = {
     workOrderLineId,
     session,
     operationKey,
   };
 
+  const supersededKey = options.supersedesOperationKey?.trim();
+
+  const serverResponse: { current: InspectionSaveResponse | null } = {
+    current: null,
+  };
   const result = await runMutationWithOfflineQueue({
     clientMutationId: operationKey,
     actionType: ACTION_SAVE_INSPECTION,
     payload,
-    orderKey: `${workOrderLineId}:inspection-progress:${operationKey}`,
-    runner: () => postInspectionSave(payload),
+    orderKey: `${workOrderLineId}:inspection-progress`,
+    queueOnOffline: options.requireServer !== true,
+    runner: async () => {
+      serverResponse.current = await postInspectionSave(payload);
+    },
   });
+
+  // A recovered operation may already be marked synced in IndexedDB even
+  // though the page that originally sent it never captured the server's new
+  // revision. Re-read that idempotent result online before treating the local
+  // snapshot as durable; otherwise its next edit would reuse a stale revision
+  // and conflict with the very save that just succeeded.
+  if (!result.queued && !result.conflicted && !serverResponse.current) {
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      return {
+        queued: true,
+        conflicted: false,
+        operationKey,
+        superseded: false,
+      };
+    }
+    serverResponse.current = await postInspectionSave(payload);
+  }
+
+  if (
+    supersededKey &&
+    supersededKey !== operationKey &&
+    !result.queued &&
+    !result.conflicted &&
+    serverResponse.current
+  ) {
+    // Keep the previous device payload until its replacement is acknowledged.
+    // A failed or conflicted replacement must never destroy the last known
+    // recoverable inspection snapshot.
+    await dismissOfflineMutation(supersededKey);
+  }
 
   if (typeof navigator !== "undefined" && navigator.onLine) {
     await replayQueuedInspectionSaves();
   }
 
-  return { ...result, operationKey };
+  return {
+    ...result,
+    operationKey,
+    inspectionId: serverResponse.current?.inspection_id,
+    syncRevision: serverResponse.current?.sync_revision,
+    savedAt: serverResponse.current?.saved_at,
+    superseded: serverResponse.current?.superseded === true,
+    serverSession: serverResponse.current?.session,
+  };
 }

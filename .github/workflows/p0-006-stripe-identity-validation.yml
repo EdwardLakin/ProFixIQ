@@ -1,0 +1,60 @@
+name: P0-006 Stripe Identity Validation
+
+on:
+  pull_request:
+    paths:
+      - "app/api/stripe/**"
+      - "app/auth/callback/**"
+      - "app/compare-plans/**"
+      - "features/auth/components/SignIn.tsx"
+      - "features/dashboard/app/dashboard/owner/settings/page.tsx"
+      - "features/shared/components/ProFixIQLanding.tsx"
+      - "features/shared/components/ui/PricingSection.tsx"
+      - "features/shared/types/types/supabase.ts"
+      - "features/stripe/**"
+      - "tests/p0-006-stripe-identity.test.ts"
+      - "tests/stripe-base-plus-seats-contract.test.ts"
+      - "tsconfig.p0-006.json"
+      - ".github/workflows/p0-006-stripe-identity-validation.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec tsc --noEmit -p tsconfig.p0-006.json
+      - run: >-
+          pnpm exec eslint
+          app/api/stripe/checkout/route.ts
+          app/api/stripe/portal/route.ts
+          app/api/stripe/session/route.ts
+          app/api/stripe/subscription/route.ts
+          app/auth/callback/page.tsx
+          app/compare-plans/page.tsx
+          features/auth/components/SignIn.tsx
+          features/dashboard/app/dashboard/owner/settings/page.tsx
+          features/shared/components/ProFixIQLanding.tsx
+          features/shared/components/ui/PricingSection.tsx
+          features/stripe/api/stripe/checkout/link-user/route.ts
+          features/stripe/api/stripe/webhook/route.ts
+          features/stripe/lib/client/claim-acquisition.ts
+          features/stripe/lib/server/canonical-shop-billing.ts
+          features/stripe/lib/server/stripe-acquisition-intent.ts
+          features/stripe/lib/server/stripe-price-contract.ts
+          features/stripe/lib/stripe/billing-model.ts
+          tests/p0-006-stripe-identity.test.ts
+          tests/stripe-base-plus-seats-contract.test.ts
+      - run: pnpm exec vitest run tests/p0-006-stripe-identity.test.ts
+      - run: pnpm exec vitest run tests/stripe-base-plus-seats-contract.test.ts

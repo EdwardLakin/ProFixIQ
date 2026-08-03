@@ -78,6 +78,13 @@ export const MOBILE_TILES: MobileTile[] = [
     scopes: ["dashboard", "home", "jobs", "work_orders", "all"],
   },
   {
+    href: "/mobile/work-orders",
+    title: "My Work Orders",
+    subtitle: "Work assigned to you",
+    roles: ["mechanic"],
+    scopes: ["home", "jobs", "work_orders", "all"],
+  },
+  {
     href: "/mobile/workforce/attendance",
     title: "Attendance & Activity",
     subtitle: "Live staff and job time",
@@ -110,7 +117,8 @@ export const MOBILE_TILES: MobileTile[] = [
     title: "Inspections",
     subtitle: "Run checklists on vehicles",
     roles: [
-      "mechanic",
+      "owner",
+      "admin",
       "advisor",
       "service",
       "manager",
@@ -118,6 +126,13 @@ export const MOBILE_TILES: MobileTile[] = [
       "foreman",
     ],
     scopes: ["home", "inspect", "inspections", "work_orders", "all"],
+  },
+  {
+    href: "/mobile/inspections/import",
+    title: "Import Inspection Form",
+    subtitle: "Photograph a customer checklist",
+    roles: ["owner", "admin", "manager", "advisor", "service"],
+    scopes: ["home", "inspect", "inspections", "all"],
   },
   {
     href: "/mobile/appointments",

@@ -48,6 +48,7 @@ export default function MobileAdvisorHome({ advisorName, stats }: Props) {
         { title: "Appointments", detail: "Review arrivals and add bookings.", href: "/mobile/appointments" },
         { title: "Work orders", detail: "Open the live work-order queue.", href: "/mobile/work-orders" },
         { title: "Inspections", detail: "Review inspection progress.", href: "/mobile/inspections" },
+        { title: "Import customer form", detail: "Photograph a customer checklist for a reusable template.", href: "/mobile/inspections/import" },
         { title: "Team chat", detail: "Coordinate with the shop.", href: "/mobile/messages" },
       ]} />
     </MobileDashboardPage>

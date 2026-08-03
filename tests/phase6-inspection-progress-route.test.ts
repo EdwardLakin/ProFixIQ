@@ -17,12 +17,21 @@ describe("Phase 6 inspection progress route", () => {
     expect(route).toContain("A stable Idempotency-Key is required.");
     expect(client).toContain('"Idempotency-Key": payload.operationKey');
     expect(client).toContain("clientMutationId: operationKey");
+    expect(client).toContain("operationKey?: string");
+    expect(client).toContain(
+      'orderKey: `${workOrderLineId}:inspection-progress`',
+    );
   });
 
   it("uses only the canonical atomic RPC for critical writes", () => {
-    expect(route).toContain('rpc("save_inspection_progress_atomic"');
+    expect(route).toContain("const { data, error } = await rpc.rpc(");
+    expect(route).toContain('"save_inspection_progress_v3_atomic"');
     expect(route).not.toContain('.from("inspection_sessions")');
-    expect(route).not.toContain('.from("inspections")');
+    expect(route).toContain('.select("id, sync_revision, updated_at")');
+    expect(route).not.toContain(".insert(");
+    expect(route).not.toContain(".upsert(");
+    expect(route).not.toContain(".update(");
+    expect(route).not.toContain(".delete(");
   });
 
   it("preserves the operation key in queued replay payloads", () => {
@@ -32,7 +41,14 @@ describe("Phase 6 inspection progress route", () => {
     expect(replay).toContain("operationKey,");
   });
 
-  it("preserves HTTP status for permanent-error classification", () => {
+  it("preserves HTTP status and server revision acknowledgements", () => {
     expect(client).toContain("error.status = res.status");
+    expect(client).toContain(
+      "syncRevision: serverResponse.current?.sync_revision",
+    );
+    expect(route).toContain("isInspectionRevisionConflict(message)");
+    expect(route).toContain("? 409");
+    expect(route).toContain("INSPECTION_WRITER_UNAVAILABLE");
+    expect(route).toContain("{ status: 503 }");
   });
 });

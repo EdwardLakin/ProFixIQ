@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "incremental": false
+  },
+  "include": [
+    "next-env.d.ts",
+    "app/api/ai/interpret/route.ts",
+    "app/api/dtc-suggest/route.ts",
+    "app/api/work-orders/dtc-suggest/route.ts",
+    "features/shared/lib/server/ai-ops-guard.ts",
+    "features/shared/lib/server/ai-policy.ts",
+    "features/shared/lib/server/bounded-json.ts",
+    "features/shared/lib/server/durable-ai-guard.ts",
+    "features/shared/lib/server/provider-timeout.ts",
+    "tests/p0-005-ai-route-security.test.ts"
+  ]
+}

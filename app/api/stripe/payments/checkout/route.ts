@@ -2,10 +2,10 @@ import { NextResponse } from "next/server";
 import { createStripeClient } from "@/features/stripe/lib/stripe/client";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { getActiveInvoiceVersion } from "@/features/invoices/server/financialLifecycle";
+import { createConnectedAccountInvoiceCheckout } from "@/features/stripe/lib/server/connected-account-checkout";
 
 const stripe = createStripeClient(process.env.STRIPE_SECRET_KEY ?? "");
 const ADMIN_ROLES = new Set(["owner", "admin", "manager", "advisor"]);
-const PLATFORM_FEE_BPS = 300;
 
 type Payload = {
   workOrderId?: string;
@@ -22,6 +22,19 @@ function getBaseUrl(): string {
   const vercel = process.env.VERCEL_URL?.trim();
   if (vercel) return `https://${vercel.replace(/\/$/, "")}`;
   return "http://localhost:3000";
+}
+
+function statusForError(message: string): number {
+  if (
+    message.includes("not connected") ||
+    message.includes("not complete") ||
+    message.includes("disabled") ||
+    message.includes("upgraded") ||
+    message.includes("no payable")
+  ) {
+    return 409;
+  }
+  return 500;
 }
 
 export async function POST(req: Request) {
@@ -50,7 +63,9 @@ export async function POST(req: Request) {
       .select("role,shop_id")
       .eq("id", user.id)
       .maybeSingle<ProfileScope>();
-    if (profileError) return NextResponse.json({ error: profileError.message }, { status: 500 });
+    if (profileError) {
+      return NextResponse.json({ error: profileError.message }, { status: 500 });
+    }
     if (!profile?.shop_id || !ADMIN_ROLES.has(String(profile.role ?? "").toLowerCase())) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
@@ -64,7 +79,9 @@ export async function POST(req: Request) {
     if (workOrderError) {
       return NextResponse.json({ error: workOrderError.message }, { status: 500 });
     }
-    if (!workOrder) return NextResponse.json({ error: "Work order not found" }, { status: 404 });
+    if (!workOrder) {
+      return NextResponse.json({ error: "Work order not found" }, { status: 404 });
+    }
 
     const invoiceVersion = await getActiveInvoiceVersion({
       supabase,
@@ -78,30 +95,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "This invoice is not payable" }, { status: 409 });
     }
 
-    const amountCents = Math.round(Number(invoiceVersion.outstanding_total) * 100);
-    if (!Number.isFinite(amountCents) || amountCents < 50) {
-      return NextResponse.json({ error: "This invoice has no outstanding balance" }, { status: 409 });
-    }
-
-    const { data: shop, error: shopError } = await supabase
-      .from("shops")
-      .select("stripe_account_id,stripe_charges_enabled,stripe_payouts_enabled")
-      .eq("id", profile.shop_id)
-      .maybeSingle<{
-        stripe_account_id: string | null;
-        stripe_charges_enabled: boolean | null;
-        stripe_payouts_enabled: boolean | null;
-      }>();
-    if (shopError) return NextResponse.json({ error: shopError.message }, { status: 500 });
-
-    const accountId = shop?.stripe_account_id?.trim() ?? "";
-    if (!accountId.startsWith("acct_")) {
-      return NextResponse.json({ error: "Shop is not connected to Stripe yet" }, { status: 409 });
-    }
-    if (!shop?.stripe_charges_enabled || !shop.stripe_payouts_enabled) {
-      return NextResponse.json({ error: "Stripe onboarding not complete for this shop" }, { status: 409 });
-    }
-
     const base = getBaseUrl();
     const successPath =
       typeof body?.successPath === "string" && body.successPath.startsWith("/")
@@ -111,53 +104,26 @@ export async function POST(req: Request) {
       typeof body?.cancelPath === "string" && body.cancelPath.startsWith("/")
         ? body.cancelPath
         : `/work-orders/${workOrderId}`;
-    const currency = invoiceVersion.currency.toLowerCase() as "cad" | "usd";
-    const applicationFee = Math.floor((amountCents * PLATFORM_FEE_BPS) / 10_000);
-    const operationKey = `staff-checkout:${invoiceVersion.id}:${invoiceVersion.outstanding_total}`;
 
-    const session = await stripe.checkout.sessions.create({
-      mode: "payment",
-      payment_method_types: ["card"],
-      customer_email: body?.customerEmail ?? undefined,
-      client_reference_id: invoiceVersion.id,
-      line_items: [
-        {
-          quantity: 1,
-          price_data: {
-            currency,
-            unit_amount: amountCents,
-            product_data: { name: `Invoice payment — work order ${workOrderId.slice(0, 8)}` },
-          },
-        },
-      ],
-      payment_intent_data: {
-        application_fee_amount: applicationFee,
-        transfer_data: { destination: accountId },
-        metadata: {
-          shop_id: profile.shop_id,
-          work_order_id: workOrderId,
-          invoice_version_id: invoiceVersion.id,
-          operation_key: operationKey,
-          created_by: user.id,
-          purpose: "staff_invoice_payment",
-          platform_fee_bps: String(PLATFORM_FEE_BPS),
-        },
-      },
-      metadata: {
-        shop_id: profile.shop_id,
-        work_order_id: workOrderId,
-        invoice_version_id: invoiceVersion.id,
-        operation_key: operationKey,
-        created_by: user.id,
-        purpose: "staff_invoice_payment",
-      },
-      success_url: `${base}${successPath}`,
-      cancel_url: `${base}${cancelPath}`,
+    const session = await createConnectedAccountInvoiceCheckout({
+      stripe,
+      supabase,
+      shopId: profile.shop_id,
+      workOrderId,
+      invoiceVersionId: invoiceVersion.id,
+      invoiceVersionNumber: invoiceVersion.version_number,
+      outstandingAmount: Number(invoiceVersion.outstanding_total),
+      currency: invoiceVersion.currency,
+      customerEmail: body?.customerEmail ?? null,
+      createdBy: user.id,
+      purpose: "staff_invoice_payment",
+      successUrl: `${base}${successPath}`,
+      cancelUrl: `${base}${cancelPath}`,
     });
 
     return NextResponse.json({ url: session.url }, { status: 200 });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Server error";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: message }, { status: statusForError(message) });
   }
 }

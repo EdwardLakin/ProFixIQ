@@ -37,7 +37,6 @@ type VehicleForm = {
   color: string;
 };
 
-
 function cardClass() {
   return "rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 shadow-card backdrop-blur-xl";
 }
@@ -133,14 +132,32 @@ export default function PortalVehiclesPage() {
       if (cust) {
         const { data: inviteRows, error: inviteErr } = await supabase
           .from("customer_portal_invites")
-          .select("id, customer_id, email")
+          .select(
+            "id,customer_id,email,accepted_at,accepted_by_user_id,revoked_at",
+          )
           .eq("customer_id", cust.id)
+          .eq("accepted_by_user_id", user.id)
+          .not("accepted_at", "is", null)
+          .is("revoked_at", null)
           .limit(20);
 
-        const hasInviteEvidence = !inviteErr && Array.isArray(inviteRows) && inviteRows.some((row) => {
-          const inviteEmail = String((row as { email?: string | null }).email ?? "").trim().toLowerCase();
-          return normalizedEmail.length > 0 && inviteEmail === normalizedEmail;
-        });
+        const hasInviteEvidence =
+          !inviteErr &&
+          Array.isArray(inviteRows) &&
+          inviteRows.some((row) => {
+            const inviteEmail = String(
+              (row as { email?: string | null }).email ?? "",
+            )
+              .trim()
+              .toLowerCase();
+            return (
+              normalizedEmail.length > 0 &&
+              inviteEmail === normalizedEmail &&
+              row.accepted_by_user_id === user.id &&
+              Boolean(row.accepted_at) &&
+              !row.revoked_at
+            );
+          });
 
         if (!hasInviteEvidence) {
           setInviteRequired(true);
@@ -170,8 +187,7 @@ export default function PortalVehiclesPage() {
       setLoading(false);
     })();
 
-
-  return () => {
+    return () => {
       mounted = false;
     };
   }, [supabase]);
@@ -205,7 +221,8 @@ export default function PortalVehiclesPage() {
     }
   };
 
-  const toNull = (s: string): string | null => (s.trim() === "" ? null : s.trim());
+  const toNull = (s: string): string | null =>
+    s.trim() === "" ? null : s.trim();
 
   const toYear = (s: string): number | null => {
     const n = Number(s);
@@ -245,14 +262,20 @@ export default function PortalVehiclesPage() {
       (match) => match.match_type === "vin" && match.same_customer === false,
     );
     if (differentCustomerVin) {
-      setError("This VIN is already assigned to another customer. Contact shop/admin to move vehicle.");
+      setError(
+        "This VIN is already assigned to another customer. Contact shop/admin to move vehicle.",
+      );
       setSaving(false);
       return;
     }
 
-    const sameCustomerMatch = duplicateCheck.matches.find((match) => match.same_customer === true);
+    const sameCustomerMatch = duplicateCheck.matches.find(
+      (match) => match.same_customer === true,
+    );
     if (sameCustomerMatch) {
-      setError("Vehicle already exists. Use existing vehicle or contact shop to update it.");
+      setError(
+        "Vehicle already exists. Use existing vehicle or contact shop to update it.",
+      );
       setSaving(false);
       return;
     }
@@ -302,9 +325,16 @@ export default function PortalVehiclesPage() {
   };
 
   const onDelete = async (id: string) => {
-    if (typeof window !== "undefined" && !window.confirm("Delete this vehicle?")) return;
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm("Delete this vehicle?")
+    )
+      return;
 
-    const { error: delErr } = await supabase.from("vehicles").delete().eq("id", id);
+    const { error: delErr } = await supabase
+      .from("vehicles")
+      .delete()
+      .eq("id", id);
 
     if (delErr) {
       setError(delErr.message);
@@ -315,10 +345,13 @@ export default function PortalVehiclesPage() {
   };
 
   if (loading) {
-
-  return (
+    return (
       <div className="mx-auto max-w-3xl">
-        <div className={cardClass() + " text-sm text-[color:var(--theme-text-primary)]"}>
+        <div
+          className={
+            cardClass() + " text-sm text-[color:var(--theme-text-primary)]"
+          }
+        >
           Loading your vehicles…
         </div>
       </div>
@@ -326,7 +359,21 @@ export default function PortalVehiclesPage() {
   }
 
   if (inviteRequired) {
-    return <div className="mx-auto max-w-3xl"><div className={cardClass() + " text-sm text-[color:var(--theme-text-primary)]"}><div className="font-semibold">Portal invite required</div><div className="mt-1">Open the invite link sent by the shop, or ask the shop to resend your portal invite.</div></div></div>;
+    return (
+      <div className="mx-auto max-w-3xl">
+        <div
+          className={
+            cardClass() + " text-sm text-[color:var(--theme-text-primary)]"
+          }
+        >
+          <div className="font-semibold">Portal invite required</div>
+          <div className="mt-1">
+            Open the invite link sent by the shop, or ask the shop to resend
+            your portal invite.
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -353,7 +400,8 @@ export default function PortalVehiclesPage() {
           </h2>
           {isEdit && (
             <span className="text-xs text-[color:var(--theme-text-muted)]">
-              Editing <span className="font-mono">{editingId?.slice(0, 8)}…</span>
+              Editing{" "}
+              <span className="font-mono">{editingId?.slice(0, 8)}…</span>
             </span>
           )}
         </div>
@@ -390,7 +438,9 @@ export default function PortalVehiclesPage() {
             className={inputClass()}
             placeholder="License plate"
             value={form.license_plate}
-            onChange={(e) => setForm({ ...form, license_plate: e.target.value })}
+            onChange={(e) =>
+              setForm({ ...form, license_plate: e.target.value })
+            }
           />
           <input
             className={inputClass()}
@@ -413,8 +463,12 @@ export default function PortalVehiclesPage() {
             disabled={saving}
             className="inline-flex items-center justify-center rounded-lg border px-4 py-2 text-sm font-semibold transition disabled:opacity-60"
             style={copperButtonStyle()}
-            onMouseEnter={(e) => Object.assign(e.currentTarget.style, copperButtonHoverStyle())}
-            onMouseLeave={(e) => Object.assign(e.currentTarget.style, copperButtonStyle())}
+            onMouseEnter={(e) =>
+              Object.assign(e.currentTarget.style, copperButtonHoverStyle())
+            }
+            onMouseLeave={(e) =>
+              Object.assign(e.currentTarget.style, copperButtonStyle())
+            }
           >
             {saving ? "Saving…" : isEdit ? "Save changes" : "Add vehicle"}
           </button>
@@ -431,44 +485,63 @@ export default function PortalVehiclesPage() {
           )}
         </div>
 
-        <p className="text-xs text-[color:var(--theme-text-muted)]">Fields marked with * are required.</p>
+        <p className="text-xs text-[color:var(--theme-text-muted)]">
+          Fields marked with * are required.
+        </p>
       </section>
 
       <section className="space-y-3">
         {vehicles.length === 0 ? (
-          <div className={cardClass() + " border-dashed text-sm text-[color:var(--theme-text-secondary)]"}>
-            No vehicles yet. Add your first vehicle above so you can book appointments faster and
-            see service history.
+          <div
+            className={
+              cardClass() +
+              " border-dashed text-sm text-[color:var(--theme-text-secondary)]"
+            }
+          >
+            No vehicles yet. Add your first vehicle above so you can book
+            appointments faster and see service history.
           </div>
         ) : (
           vehicles.map((v) => {
             const title =
-              [v.year ?? "", v.make ?? "", v.model ?? ""].filter(Boolean).join(" ").trim() ||
-              "Vehicle";
+              [v.year ?? "", v.make ?? "", v.model ?? ""]
+                .filter(Boolean)
+                .join(" ")
+                .trim() || "Vehicle";
 
-                    if (inviteRequired) {
+            if (inviteRequired) {
               return (
                 <div key={v.id} className="mx-auto max-w-3xl">
-                  <div className={cardClass() + " text-sm text-[color:var(--theme-text-primary)]"}>
+                  <div
+                    className={
+                      cardClass() +
+                      " text-sm text-[color:var(--theme-text-primary)]"
+                    }
+                  >
                     <div className="font-semibold">Portal invite required</div>
                     <div className="mt-1">
-                      Open the invite link sent by the shop, or ask the shop to resend your portal invite.
+                      Open the invite link sent by the shop, or ask the shop to
+                      resend your portal invite.
                     </div>
                   </div>
                 </div>
               );
             }
 
-  return (
+            return (
               <div
                 key={v.id}
                 className="flex flex-col justify-between gap-3 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 backdrop-blur-md shadow-card sm:flex-row sm:items-center"
               >
                 <div className="min-w-0">
-                  <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">{title}</div>
+                  <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                    {title}
+                  </div>
                   <div className="mt-0.5 text-xs text-[color:var(--theme-text-secondary)]">
-                    VIN <span className="font-mono">{v.vin || "—"}</span> • Plate{" "}
-                    <span className="font-mono">{v.license_plate || "—"}</span> • Mileage{" "}
+                    VIN <span className="font-mono">{v.vin || "—"}</span> •
+                    Plate{" "}
+                    <span className="font-mono">{v.license_plate || "—"}</span>{" "}
+                    • Mileage{" "}
                     <span className="font-mono">{v.mileage || "—"}</span>
                     {v.color && (
                       <>

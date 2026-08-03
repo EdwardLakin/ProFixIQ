@@ -109,6 +109,28 @@ function parseApprovalHintFromPreview(preview: AiActionPreviewRecord): { require
   return { requiresApproval: false };
 }
 
+async function findPendingApproval(
+  supabase: AiServerClient,
+  shopId: string,
+  previewId: string,
+): Promise<AiActionApprovalRecord | null> {
+  const { data, error } = await fromTable(supabase, "ai_action_approvals")
+    .select("*")
+    .eq("shop_id", shopId)
+    .eq("action_preview_id", previewId)
+    .eq("status", "pending")
+    .order("requested_at", { ascending: false })
+    .limit(1)
+    .maybeSingle<AiActionApprovalRecord>();
+
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+function isUniqueViolation(error: { code?: string | null } | null): boolean {
+  return error?.code === "23505";
+}
+
 export type RequestAiActionPreviewApprovalResult = {
   approval: AiActionApprovalRecord;
   preview: AiActionPreviewRecord;
@@ -177,16 +199,7 @@ export async function requestAiActionPreviewApproval(
     throw new Error("owner PIN proof is required before requesting approval");
   }
 
-  const { data: existingPending, error: existingPendingError } = await fromTable(supabase, "ai_action_approvals")
-    .select("*")
-    .eq("shop_id", ctx.shopId)
-    .eq("action_preview_id", preview.id)
-    .eq("status", "pending")
-    .order("requested_at", { ascending: false })
-    .limit(1)
-    .maybeSingle<AiActionApprovalRecord>();
-
-  if (existingPendingError) throw new Error(existingPendingError.message);
+  const existingPending = await findPendingApproval(supabase, ctx.shopId, preview.id);
   if (existingPending) {
     return {
       approval: existingPending,
@@ -232,7 +245,22 @@ export async function requestAiActionPreviewApproval(
     .select("*")
     .single<AiActionApprovalRecord>();
 
-  if (insertError) throw new Error(insertError.message);
+  if (insertError) {
+    if (isUniqueViolation(insertError)) {
+      const concurrentPending = await findPendingApproval(supabase, ctx.shopId, preview.id);
+      if (concurrentPending) {
+        return {
+          approval: concurrentPending,
+          preview,
+          created: false,
+          executionBlocked: true,
+          warnings: [],
+        };
+      }
+    }
+
+    throw new Error(insertError.message);
+  }
 
   if (ownerPinProofRef) {
     await logAiActionEvent(supabase, ctx, {
@@ -295,6 +323,9 @@ export async function requestAiActionApproval(
       })
     : null;
 
+  const existingPending = await findPendingApproval(supabase, ctx.shopId, preview.id);
+  if (existingPending) return existingPending;
+
   const insertPayload = {
     shop_id: ctx.shopId,
     action_preview_id: preview.id,
@@ -318,7 +349,14 @@ export async function requestAiActionApproval(
     .select("*")
     .single<AiActionApprovalRecord>();
 
-  if (error) throw new Error(error.message);
+  if (error) {
+    if (isUniqueViolation(error)) {
+      const concurrentPending = await findPendingApproval(supabase, ctx.shopId, preview.id);
+      if (concurrentPending) return concurrentPending;
+    }
+
+    throw new Error(error.message);
+  }
 
   if (preview.status !== "approval_required") {
     await setPreviewStatus(supabase, preview, "approval_required");
@@ -422,10 +460,14 @@ async function decideAiActionApproval(
     })
     .eq("shop_id", ctx.shopId)
     .eq("id", input.approvalId)
+    .eq("status", existing.status)
     .select("*")
-    .single<AiActionApprovalRecord>();
+    .maybeSingle<AiActionApprovalRecord>();
 
   if (error) throw new Error(error.message);
+  if (!data) {
+    throw new Error(`invalid approval status transition ${existing.status} -> ${input.status}`);
+  }
 
   const preview = await getAiActionPreview(supabase, ctx, data.action_preview_id);
   if (!preview) throw new Error("linked action preview not found");

@@ -54,11 +54,10 @@ describe("owner sidebar IA", () => {
     }
   });
 
-
   it("does not remove expected primary routes for tech/admin/parts roles", () => {
     const roleToHrefs: Record<Role, string[]> = {
       mechanic: ["/dashboard", "/tech/queue"],
-      admin: ["/dashboard/admin", "/compare-plans"],
+      admin: ["/dashboard/workforce", "/compare-plans"],
       parts: ["/parts", "/parts/requests"],
       advisor: [],
       dispatcher: [],
@@ -68,10 +67,13 @@ describe("owner sidebar IA", () => {
       foreman: [],
       manager: [],
       owner: [],
+      service: [],
     };
 
     for (const [role, hrefs] of Object.entries(roleToHrefs)) {
-      const roleTiles = TILES.filter((tile) => tile.roles.includes(role as Role));
+      const roleTiles = TILES.filter((tile) =>
+        tile.roles.includes(role as Role),
+      );
       for (const href of hrefs) {
         expect(roleTiles.some((tile) => tile.href === href)).toBe(true);
       }

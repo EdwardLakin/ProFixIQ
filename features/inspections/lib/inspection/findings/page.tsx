@@ -19,13 +19,22 @@ import { Button } from "@shared/components/ui/Button";
 import StatusBadge from "@/features/shared/components/ui/StatusBadge";
 import DecisionEventFeed from "@/features/shared/components/ui/DecisionEventFeed";
 import { PANEL_VARIANTS } from "@/features/shared/components/ui/panelHierarchy";
-import PhotoThumbnail from "@inspections/components/inspection/PhotoThumbnail";
+import InspectionPhotoGallery from "@inspections/components/inspection/InspectionPhotoGallery";
 import { formatDecisionStatus } from "@/features/shared/lib/decisionStatus";
 import { deriveEventsFromFindings } from "@/features/shared/lib/decisionEvents";
 import { requestQuoteSuggestion } from "@inspections/lib/inspection/aiQuote";
 import { cn } from "@shared/lib/utils";
-import { getPendingInspectionPhotoCount } from "@inspections/lib/inspection/inspectionPhotoStaging";
-import { removeInspectionOfflineDraft } from "@inspections/lib/inspection/offlineDrafts";
+import {
+  createInspectionPhotoOperationId,
+  getPendingInspectionPhotoCount,
+} from "@inspections/lib/inspection/inspectionPhotoStaging";
+import { uniqueEvidenceUrls } from "@/features/work-orders/lib/evidence/workOrderEvidence";
+import {
+  getInspectionOfflineDraft,
+  removeInspectionOfflineDraft,
+  saveInspectionOfflineDraft,
+} from "@inspections/lib/inspection/offlineDrafts";
+import { useInspectionAutosave } from "@inspections/hooks/useInspectionAutosave";
 
 type FindingRow = {
   sectionIndex: number;
@@ -69,26 +78,6 @@ function inspectionDraftKey(args: {
 function isFindingStatus(status: unknown): status is "fail" | "recommend" {
   const s = norm(String(status ?? ""));
   return s === "fail" || s === "recommend";
-}
-
-function readDraftSession(key: string): InspectionSession | null {
-  try {
-    if (typeof window === "undefined") return null;
-    const raw = localStorage.getItem(key);
-    if (!raw) return null;
-    return JSON.parse(raw) as InspectionSession;
-  } catch {
-    return null;
-  }
-}
-
-function writeDraftSession(key: string, session: InspectionSession): void {
-  try {
-    if (typeof window === "undefined") return;
-    localStorage.setItem(key, JSON.stringify(session));
-  } catch {
-    // ignore
-  }
 }
 
 function summarizeFromSections(session: InspectionSession): {
@@ -187,6 +176,13 @@ function laborHoursToText(value: number | null | undefined): string {
   return String(value);
 }
 
+function sessionSyncRevision(session: InspectionSession | null): number {
+  const value = session?.syncRevision;
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.max(0, Math.trunc(value))
+    : 0;
+}
+
 function updateQuoteLineInSession(
   session: InspectionSession,
   id: string,
@@ -221,7 +217,23 @@ export default function InspectionFindingsPage(): JSX.Element {
   );
 
   const [session, setSession] = useState<InspectionSession | null>(null);
+  const [draftBootstrappedKey, setDraftBootstrappedKey] = useState<
+    string | null
+  >(null);
+  const draftBootLoaded = draftBootstrappedKey === draftKey;
+  const [hasRecoveredLocalDraft, setHasRecoveredLocalDraft] = useState(false);
+  const [recoveryOperationKey, setRecoveryOperationKey] = useState<
+    string | undefined
+  >(undefined);
   const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
+  const latestSessionRef = useRef<InspectionSession | null>(session);
+  latestSessionRef.current = session;
+  const activeDraftKeyRef = useRef(draftKey);
+  activeDraftKeyRef.current = draftKey;
+  const [isLocked, setIsLocked] = useState(false);
+  const isLockedRef = useRef(isLocked);
+  isLockedRef.current = isLocked;
   const [draftUi, setDraftUi] = useState<DraftUiState>({});
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
@@ -245,155 +257,77 @@ export default function InspectionFindingsPage(): JSX.Element {
       : "") ||
     "";
 
-  const syncFromDraft = useCallback(async () => {
-    const loaded = readDraftSession(draftKey);
-
-    const loadedWorkOrderId =
-      loaded && typeof loaded.workOrderId === "string"
-        ? loaded.workOrderId.trim()
-        : "";
-
-    const loadedWorkOrderLineId =
-      loaded &&
-      typeof (loaded as InspectionSession & { workOrderLineId?: string | null })
-        .workOrderLineId === "string"
-        ? String(
-            (loaded as InspectionSession & { workOrderLineId?: string | null })
-              .workOrderLineId ?? "",
-          ).trim()
-        : "";
-
-    if (loaded) {
-      setSession(loaded);
-    }
-
-    const needsBackfill =
-      !loaded || !loadedWorkOrderId || !loadedWorkOrderLineId;
-
-    if (!needsBackfill) {
-      return;
-    }
-
-    if (!inspectionId && !workOrderLineId && !resolvedWorkOrderLineId) {
-      return;
-    }
-
-    try {
-      const params = new URLSearchParams();
-      if (inspectionId) params.set("inspectionId", inspectionId);
-      if (resolvedWorkOrderLineId) {
-        params.set("workOrderLineId", resolvedWorkOrderLineId);
-      }
-
-      const res = await fetch(`/api/inspections/load?${params.toString()}`, {
-        method: "GET",
-        credentials: "include",
-        cache: "no-store",
-      });
-
-      const data = (await res.json().catch(() => null)) as
-        | { session?: InspectionSession | null }
-        | null;
-
-      const serverSession = data?.session ?? null;
-      if (serverSession) {
-        const mergedSession = {
-          ...(loaded ?? {}),
-          ...serverSession,
-          workOrderId:
-            (typeof serverSession.workOrderId === "string" &&
-            serverSession.workOrderId.trim().length > 0
-              ? serverSession.workOrderId.trim()
-              : "") ||
-            loadedWorkOrderId ||
-            workOrderId ||
-            resolvedWorkOrderId ||
-            null,
-          workOrderLineId:
-            ((typeof (
-              serverSession as InspectionSession & {
-                workOrderLineId?: string | null;
-              }
-            ).workOrderLineId === "string" &&
-            String(
-              (
-                serverSession as InspectionSession & {
-                  workOrderLineId?: string | null;
-                }
-              ).workOrderLineId ?? "",
-            ).trim().length > 0
-              ? String(
-                  (
-                    serverSession as InspectionSession & {
-                      workOrderLineId?: string | null;
-                    }
-                  ).workOrderLineId ?? "",
-                ).trim()
-              : "") ||
-              loadedWorkOrderLineId ||
-              workOrderLineId ||
-              resolvedWorkOrderLineId ||
-              null),
-        } as InspectionSession;
-
-        writeDraftSession(draftKey, mergedSession);
-        setSession(mergedSession);
-      }
-    } catch (err) {
-      console.error("[inspection-findings] failed to load saved session", err);
-    }
-  }, [
+  const {
+    flush: flushAutosave,
+    flushToServer: flushAutosaveToServer,
+    label: autosaveLabel,
+    lastError: autosaveError,
+  } = useInspectionAutosave({
+    session,
+    inspectionId: resolvedInspectionId,
+    workOrderLineId: resolvedWorkOrderLineId,
+    enabled:
+      draftBootLoaded &&
+      Boolean(resolvedInspectionId || resolvedWorkOrderLineId),
+    locked: isLocked,
     draftKey,
-    inspectionId,
-    workOrderId,
-    workOrderLineId,
-    resolvedWorkOrderId,
-    resolvedWorkOrderLineId,
-  ]);
+    recoveryOperationKey,
+    hasRecoveredLocalDraft,
+    onRemoteSession: (remote) => {
+      latestSessionRef.current = remote;
+      setSession(remote);
+      void saveInspectionOfflineDraft({ draftKey, session: remote });
+    },
+    onRemoteMeta: (meta) => {
+      isLockedRef.current = meta.locked;
+      setIsLocked(meta.locked);
+    },
+    onRecoveryState: (_state, operationKey) => {
+      setRecoveryOperationKey(operationKey);
+    },
+  });
+
+  const syncFromDraft = useCallback(async () => {
+    setHasRecoveredLocalDraft(false);
+    setRecoveryOperationKey(undefined);
+    try {
+      const recovered = await getInspectionOfflineDraft({
+        draftKey,
+        sessionHint: {
+          id: inspectionId,
+          workOrderId: workOrderId || null,
+          workOrderLineId: workOrderLineId || null,
+          templateitem: templateName,
+        },
+      });
+      if (activeDraftKeyRef.current !== draftKey) return;
+      if (recovered) {
+        latestSessionRef.current = recovered.session;
+        setSession(recovered.session);
+        setHasRecoveredLocalDraft(true);
+        setRecoveryOperationKey(recovered.operationKey);
+      } else {
+        latestSessionRef.current = null;
+        setSession(null);
+      }
+    } catch (error) {
+      // IndexedDB recovery is a safety net. If it is unavailable, continue to
+      // the canonical HTTP load instead of leaving this screen unbootstrapped.
+      console.warn("[inspection findings] offline recovery unavailable", error);
+      if (activeDraftKeyRef.current === draftKey) {
+        latestSessionRef.current = null;
+        setSession(null);
+      }
+    } finally {
+      if (activeDraftKeyRef.current === draftKey) {
+        setDraftBootstrappedKey(draftKey);
+      }
+    }
+  }, [draftKey, inspectionId, templateName, workOrderId, workOrderLineId]);
 
   useEffect(() => {
     void syncFromDraft();
   }, [syncFromDraft]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const handleFocus = () => {
-      void syncFromDraft();
-    };
-    const handlePageShow = () => {
-      void syncFromDraft();
-    };
-
-    const handleStorage = (e: StorageEvent) => {
-      if (e.key === draftKey) void syncFromDraft();
-    };
-
-    const handleInspectionDraftUpdated = (e: Event) => {
-      const custom = e as CustomEvent<{ draftKey?: string }>;
-      if (!custom.detail?.draftKey || custom.detail.draftKey === draftKey) {
-        void syncFromDraft();
-      }
-    };
-
-    window.addEventListener("focus", handleFocus);
-    window.addEventListener("pageshow", handlePageShow);
-    window.addEventListener("storage", handleStorage);
-    window.addEventListener(
-      "inspection:draft-updated",
-      handleInspectionDraftUpdated as EventListener,
-    );
-
-    return () => {
-      window.removeEventListener("focus", handleFocus);
-      window.removeEventListener("pageshow", handlePageShow);
-      window.removeEventListener("storage", handleStorage);
-      window.removeEventListener(
-        "inspection:draft-updated",
-        handleInspectionDraftUpdated as EventListener,
-      );
-    };
-  }, [draftKey, syncFromDraft]);
 
   const findings = useMemo(
     () => (session ? collectFindings(session) : []),
@@ -433,11 +367,13 @@ export default function InspectionFindingsPage(): JSX.Element {
     itemIndex: number,
     patch: Partial<InspectionItem>,
   ): void => {
+    if (isLockedRef.current || busyRef.current) return;
     setSession((prev) => {
-      if (!prev) return prev;
+      if (isLockedRef.current || busyRef.current || !prev) return prev;
 
       const next: InspectionSession = {
         ...prev,
+        lastUpdated: new Date().toISOString(),
         sections: prev.sections.map((sec, sIdx) => {
           if (sIdx !== sectionIndex) return sec;
           return {
@@ -449,15 +385,8 @@ export default function InspectionFindingsPage(): JSX.Element {
         }),
       };
 
-      writeDraftSession(draftKey, next);
-
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(
-          new CustomEvent("inspection:draft-updated", {
-            detail: { draftKey },
-          }),
-        );
-      }
+      void saveInspectionOfflineDraft({ draftKey, session: next });
+      latestSessionRef.current = next;
 
       return next;
     });
@@ -468,15 +397,20 @@ export default function InspectionFindingsPage(): JSX.Element {
     itemIndex: number,
     patch: Partial<{ laborHoursText: string; partsText: string }>,
   ): void => {
+    if (isLockedRef.current || busyRef.current) return;
     const key = findingKey(sectionIndex, itemIndex);
-    setDraftUi((prev) => ({
-      ...prev,
+    setDraftUi((prev) =>
+      isLockedRef.current || busyRef.current
+        ? prev
+        : ({
+            ...prev,
       [key]: {
         laborHoursText: prev[key]?.laborHoursText ?? "",
         partsText: prev[key]?.partsText ?? "",
-        ...patch,
-      },
-    }));
+            ...patch,
+          },
+        }),
+    );
   };
 
   const markReviewed = (row: FindingRow): void => {
@@ -491,6 +425,14 @@ export default function InspectionFindingsPage(): JSX.Element {
     row: FindingRow,
     file: File,
   ): Promise<void> => {
+    if (busyRef.current) {
+      toast.error("Wait for the current findings submission to finish.");
+      return;
+    }
+    if (isLockedRef.current) {
+      toast.error("This signed inspection is locked.");
+      return;
+    }
     if (!resolvedInspectionId) {
       toast.error("Missing inspection id.");
       return;
@@ -514,6 +456,7 @@ export default function InspectionFindingsPage(): JSX.Element {
 
       const res = await fetch("/api/inspections/photos/upload", {
         method: "POST",
+        headers: { "Idempotency-Key": createInspectionPhotoOperationId() },
         body: form,
       });
 
@@ -525,9 +468,18 @@ export default function InspectionFindingsPage(): JSX.Element {
         throw new Error(json?.error || "Failed to upload photo");
       }
 
+      if (isLockedRef.current) {
+        toast.error(
+          "This inspection was signed while the photo was uploading; it was not attached.",
+        );
+        return;
+      }
+
       const nextUrl = json?.url ?? null;
       const current = row.item.photoUrls ?? [];
-      const nextPhotoUrls = nextUrl ? [...current, nextUrl] : current;
+      const nextPhotoUrls = nextUrl
+        ? uniqueEvidenceUrls([...current, nextUrl])
+        : current;
 
       updateFinding(row.sectionIndex, row.itemIndex, {
         photoUrls: nextPhotoUrls,
@@ -547,75 +499,107 @@ export default function InspectionFindingsPage(): JSX.Element {
   };
 
   const handleSubmitReviewed = async (): Promise<void> => {
-    if (!session) return;
+    if (!session || isLockedRef.current || busyRef.current) return;
+    busyRef.current = true;
+    setBusy(true);
+    const submissionDraftKey = draftKey;
+    let submissionRevision = sessionSyncRevision(session);
+    let submissionInspectionId = String(session.id ?? resolvedInspectionId);
 
-    let pendingPhotoCount: number;
-    try {
-      pendingPhotoCount = await getPendingInspectionPhotoCount(draftKey);
-    } catch {
-      toast.error(
-        "Unable to verify staged inspection photos. Open Sync Center and try again.",
-      );
-      return;
-    }
-    if (pendingPhotoCount > 0) {
-      toast.error(
-        `${pendingPhotoCount} inspection photo${pendingPhotoCount === 1 ? " is" : "s are"} still waiting to sync. Upload or remove them before submitting.`,
-      );
-      return;
-    }
-
-    if (!resolvedWorkOrderId) {
-      toast.error("Missing work order id.");
-      return;
-    }
-
-    if (!resolvedWorkOrderLineId) {
-      toast.error("Missing work order line id.");
-      return;
-    }
-
-    const pending = collectFindings(session).filter(
-      (row) => row.item.findingReviewed !== true,
-    );
-
-    if (pending.length > 0) {
-      toast.error("Review every finding before submitting.");
-      return;
-    }
-
-    const actionable = findings.filter((row) => {
-      const item = row.item as InspectionItem & {
-        estimateSubmitted?: boolean;
-        estimateQuoteLineId?: string | null;
-      };
-
-      const status = String(item.status ?? "").toLowerCase();
-      if (status !== "fail" && status !== "recommend") return false;
-
-      const note = String(item.notes ?? "").trim();
-      if (!note) return false;
-
+    const assertSubmissionCurrent = (): void => {
+      if (isLockedRef.current) {
+        throw new Error(
+          "This inspection was signed on another device while findings were being prepared.",
+        );
+      }
+      if (activeDraftKeyRef.current !== submissionDraftKey) {
+        throw new Error("The active inspection changed before submission finished.");
+      }
+      const latest = latestSessionRef.current;
       if (
-        item.estimateSubmitted === true &&
-        typeof item.estimateQuoteLineId === "string" &&
-        item.estimateQuoteLineId.trim().length > 0
+        latest &&
+        submissionInspectionId &&
+        latest.id &&
+        latest.id !== submissionInspectionId
       ) {
-        return true;
+        throw new Error("The active inspection changed before submission finished.");
+      }
+      if (latest && sessionSyncRevision(latest) > submissionRevision) {
+        throw new Error(
+          "This inspection changed on another device. Review the latest changes and submit again.",
+        );
+      }
+    };
+
+    try {
+      let pendingPhotoCount: number;
+      try {
+        pendingPhotoCount = await getPendingInspectionPhotoCount(draftKey);
+      } catch {
+        toast.error(
+          "Unable to verify staged inspection photos. Open Sync Center and try again.",
+        );
+        return;
+      }
+      assertSubmissionCurrent();
+      if (pendingPhotoCount > 0) {
+        toast.error(
+          `${pendingPhotoCount} inspection photo${pendingPhotoCount === 1 ? " is" : "s are"} still waiting to sync. Upload or remove them before submitting.`,
+        );
+        return;
       }
 
-      return true;
-    });
+      if (!resolvedWorkOrderId) {
+        toast.error("Missing work order id.");
+        return;
+      }
 
-    if (actionable.length === 0) {
-      toast.error("No reviewed findings are ready to submit.");
-      return;
-    }
+      if (!resolvedWorkOrderLineId) {
+        toast.error("Missing work order line id.");
+        return;
+      }
 
-    setBusy(true);
+      const durableSession = await flushAutosaveToServer(session);
+      if (!durableSession) {
+        throw new Error("Inspection did not finish saving to the server.");
+      }
+      latestSessionRef.current = durableSession;
+      submissionRevision = sessionSyncRevision(durableSession);
+      submissionInspectionId = String(
+        durableSession.id ?? submissionInspectionId,
+      );
+      assertSubmissionCurrent();
 
-    try {
-      let nextSession: InspectionSession = { ...session };
+      const submissionFindings = collectFindings(durableSession);
+      const pending = submissionFindings.filter(
+        (row) => row.item.findingReviewed !== true,
+      );
+
+      if (pending.length > 0) {
+        toast.error("Review every finding before submitting.");
+        return;
+      }
+
+      const actionable = submissionFindings.filter((row) => {
+        const item = row.item as InspectionItem & {
+          estimateSubmitted?: boolean;
+          estimateQuoteLineId?: string | null;
+        };
+        const status = String(item.status ?? "").toLowerCase();
+        const note = String(item.notes ?? "").trim();
+        return (
+          (status === "fail" || status === "recommend") && note.length > 0
+        );
+      });
+
+      // A clean inspection has no quote findings, but still needs a durable
+      // finalization path. Only block when findings exist but are incomplete.
+      if (submissionFindings.length > 0 && actionable.length === 0) {
+        toast.error("No reviewed findings are ready to submit.");
+        return;
+      }
+
+      let nextSession: InspectionSession = { ...durableSession };
       const nowIso = new Date().toISOString();
       const quotePayloadItems: Array<{
         id: string;
@@ -687,6 +671,7 @@ export default function InspectionFindingsPage(): JSX.Element {
             pricingValidUntil?: string | null;
             confidence?: number | null;
           } | null;
+          noPartsRequired?: boolean;
         };
 
         const manualParts = Array.isArray(itemExt.parts) ? itemExt.parts : [];
@@ -772,9 +757,13 @@ export default function InspectionFindingsPage(): JSX.Element {
           status,
           vehicle: nextSession.vehicle ?? undefined,
         });
+        assertSubmissionCurrent();
 
+        const noPartsRequired = itemExt.noPartsRequired === true;
         const verifiedParts: Array<{ name: string; qty: number }> =
-          manualParts.length > 0
+          noPartsRequired
+            ? []
+            : manualParts.length > 0
             ? manualParts.map((part) => ({
                 name: part.description,
                 qty: part.qty,
@@ -851,6 +840,7 @@ export default function InspectionFindingsPage(): JSX.Element {
             inspection_status: status,
             technician_notes: note,
             manual_parts: manualParts,
+            no_parts_required: noPartsRequired,
             source_value: itemExt.value ?? null,
             ai_enrichment_state: suggestion ? "available" : "unavailable",
             menu_match: acceptedMatch
@@ -872,6 +862,7 @@ export default function InspectionFindingsPage(): JSX.Element {
       }
 
       if (quotePayloadItems.length > 0) {
+        assertSubmissionCurrent();
         const quoteRes = await fetch("/api/work-orders/quotes/add", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -896,6 +887,7 @@ export default function InspectionFindingsPage(): JSX.Element {
               }>;
             }
           | null;
+        assertSubmissionCurrent();
 
         if (!quoteRes.ok) {
           throw new Error(quoteJson?.error || "Failed to send findings to quote review");
@@ -929,25 +921,33 @@ export default function InspectionFindingsPage(): JSX.Element {
         };
       }
 
+      assertSubmissionCurrent();
+      nextSession = { ...nextSession, lastUpdated: nowIso };
+      latestSessionRef.current = nextSession;
       setSession(nextSession);
-      writeDraftSession(draftKey, nextSession);
-
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(
-          new CustomEvent("inspection:draft-updated", {
-            detail: { draftKey },
-          }),
-        );
+      await saveInspectionOfflineDraft({ draftKey, session: nextSession });
+      const persistedSession = await flushAutosaveToServer(nextSession);
+      if (!persistedSession) {
+        throw new Error("Inspection did not finish saving to the server.");
       }
+      nextSession = persistedSession;
+      latestSessionRef.current = persistedSession;
+      submissionRevision = sessionSyncRevision(persistedSession);
+      submissionInspectionId = String(
+        persistedSession.id ?? submissionInspectionId,
+      );
+      assertSubmissionCurrent();
 
       const payload = summarizeFromSections(nextSession);
 
-      let bestEffortWarning: string | null = null;
-
+      assertSubmissionCurrent();
       const pdfRes = await fetch(`/api/inspections/finalize/pdf`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workOrderLineId: resolvedWorkOrderLineId }),
+        body: JSON.stringify({
+          workOrderLineId: resolvedWorkOrderLineId,
+          expectedSyncRevision: nextSession.syncRevision ?? 0,
+        }),
       });
 
       const pdfJson = (await pdfRes.json().catch(() => null)) as
@@ -955,21 +955,16 @@ export default function InspectionFindingsPage(): JSX.Element {
         | null;
 
       if (!pdfRes.ok || !pdfJson?.ok) {
-        bestEffortWarning =
-          bestEffortWarning ??
-          (pdfJson?.error || "Findings submitted, but PDF finalize failed.");
+        throw new Error(
+          pdfJson?.error ||
+            "Inspection could not be finalized. Your draft is still saved.",
+        );
       }
 
       await removeInspectionOfflineDraft({
         draftKey,
         session: nextSession,
       });
-      try {
-        localStorage.removeItem(draftKey);
-        localStorage.removeItem(`${draftKey}:locked`);
-      } catch {
-        // IndexedDB is authoritative; localStorage cleanup is best effort.
-      }
 
       window.dispatchEvent(
         new CustomEvent("inspection:completed", {
@@ -983,17 +978,14 @@ export default function InspectionFindingsPage(): JSX.Element {
       );
 
       window.dispatchEvent(new CustomEvent("inspection:close"));
-      if (bestEffortWarning) {
-        toast.warning(bestEffortWarning);
-      } else {
-        toast.success("Findings sent to quote review.");
-      }
+      toast.success("Findings sent to quote review.");
       router.push(`/quote-review/${resolvedWorkOrderId}`);
     } catch (error: unknown) {
       const message =
         error instanceof Error ? error.message : "Unable to submit findings";
       toast.error(message);
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   };
@@ -1017,6 +1009,11 @@ export default function InspectionFindingsPage(): JSX.Element {
       description="Review failed and recommended findings before sending them to advisor quote review."
     >
       <div className="mx-auto max-w-5xl space-y-4">
+        {isLocked && (
+          <div className="rounded-xl border border-amber-500/60 bg-amber-500/10 p-3 text-sm text-amber-100">
+            This inspection is signed and locked. Reopen it before changing findings.
+          </div>
+        )}
         <DecisionEventFeed events={decisionEvents} compact maxVisible={5} />
         {findings.length === 0 ? (
           <div className={cn(PANEL_VARIANTS.passive, "p-4 text-sm text-[color:var(--theme-text-secondary)]")}>
@@ -1074,6 +1071,7 @@ export default function InspectionFindingsPage(): JSX.Element {
                       <textarea
                         className="min-h-[110px] w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-sm text-[color:var(--theme-text-primary)] outline-none"
                         value={String(row.item.notes ?? "")}
+                        disabled={isLocked || busy}
                         onChange={(e) =>
                           updateFinding(row.sectionIndex, row.itemIndex, {
                             notes: e.target.value,
@@ -1093,6 +1091,7 @@ export default function InspectionFindingsPage(): JSX.Element {
                           }}
                           type="file"
                           accept="image/*"
+                          disabled={isLocked || busy}
                           className="hidden"
                           onChange={(e) => {
                             const file = e.target.files?.[0];
@@ -1105,17 +1104,21 @@ export default function InspectionFindingsPage(): JSX.Element {
                           type="button"
                           className="rounded-full border border-[color:var(--theme-border-soft)] px-3 py-1 hover:bg-[color:var(--theme-surface-subtle)] disabled:opacity-60"
                           onClick={() => fileInputRefs.current[key]?.click()}
-                          disabled={isUploading}
+                          disabled={isUploading || isLocked || busy}
                         >
                           {isUploading ? "Uploading photo..." : "Add photo evidence"}
                         </button>
                       </div>
                       {photos.length > 0 ? (
-                        <div className="flex gap-2 overflow-x-auto pb-1">
-                          {photos.map((url, i) => (
-                            <PhotoThumbnail key={`${url}-${i}`} url={url} />
-                          ))}
-                        </div>
+                        <InspectionPhotoGallery
+                          workOrderId={resolvedWorkOrderId}
+                          workOrderLineId={resolvedWorkOrderLineId}
+                          photos={photos.map((url, index) => ({
+                            id: `finding-${key}-${index}`,
+                            url,
+                            label: `${itemLabel} evidence ${index + 1}`,
+                          }))}
+                        />
                       ) : (
                         <div className="rounded-xl border border-dashed border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-xs text-[color:var(--theme-text-muted)]">
                           Add at least one photo for stronger customer approval confidence.
@@ -1137,6 +1140,7 @@ export default function InspectionFindingsPage(): JSX.Element {
                         inputMode="decimal"
                         className="w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-sm text-[color:var(--theme-text-primary)] outline-none"
                         value={laborHoursText}
+                        disabled={isLocked || busy}
                         onChange={(e) => {
                           const raw = e.target.value;
                           if (/^\d*\.?\d*$/.test(raw)) {
@@ -1185,6 +1189,7 @@ export default function InspectionFindingsPage(): JSX.Element {
                       <textarea
                         className="min-h-[110px] w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-sm text-[color:var(--theme-text-primary)] outline-none"
                         value={partsText}
+                        disabled={isLocked || busy}
                         onChange={(e) => {
                           updateUiDraft(row.sectionIndex, row.itemIndex, {
                             partsText: e.target.value,
@@ -1204,6 +1209,7 @@ export default function InspectionFindingsPage(): JSX.Element {
                   <button
                     type="button"
                     className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-emerald-200 hover:bg-emerald-500/20"
+                    disabled={isLocked || busy}
                     onClick={() => markReviewed(row)}
                   >
                     {reviewed ? "Reviewed" : "Mark reviewed"}
@@ -1212,6 +1218,7 @@ export default function InspectionFindingsPage(): JSX.Element {
                   <button
                     type="button"
                     className="rounded-full border border-[color:var(--theme-border-soft)] px-3 py-1 hover:bg-[color:var(--theme-surface-subtle)]"
+                    disabled={isLocked || busy}
                     onClick={() =>
                       updateFinding(row.sectionIndex, row.itemIndex, {
                         photoRequested: true,
@@ -1224,6 +1231,7 @@ export default function InspectionFindingsPage(): JSX.Element {
                   <button
                     type="button"
                     className="rounded-full border border-[color:var(--theme-border-soft)] px-3 py-1 hover:bg-[color:var(--theme-surface-subtle)]"
+                    disabled={isLocked || busy}
                     onClick={() =>
                       updateFinding(row.sectionIndex, row.itemIndex, {
                         photoReviewed: true,
@@ -1243,7 +1251,8 @@ export default function InspectionFindingsPage(): JSX.Element {
 
         <div className={cn(PANEL_VARIANTS.secondary, "flex flex-wrap items-center justify-between gap-3 p-4")}>
           <div className="text-sm text-[color:var(--theme-text-secondary)]">
-            Reviewed findings:{" "}
+            <div>
+              Reviewed findings:{" "}
             <span className="font-semibold text-[color:var(--theme-text-primary)]">
               {
                 findings.filter((row) => row.item.findingReviewed === true)
@@ -1252,13 +1261,41 @@ export default function InspectionFindingsPage(): JSX.Element {
             </span>
             {" / "}
             <span className="font-semibold text-[color:var(--theme-text-primary)]">{findings.length}</span>
+            </div>
+            <div className="mt-1 text-xs">
+              {autosaveLabel}
+              {autosaveError && (
+                <span className="ml-2 text-red-400">{autosaveError}</span>
+              )}
+            </div>
           </div>
 
           <div className="flex gap-2">
-            <Button type="button" variant="outline" onClick={() => router.back()}>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={busy}
+              onClick={async () => {
+                try {
+                  await flushAutosave();
+                  router.back();
+                } catch (error) {
+                  toast.error(
+                    error instanceof Error
+                      ? error.message
+                      : "Wait for the inspection to finish saving.",
+                  );
+                }
+              }}
+            >
               Back
             </Button>
-            <Button type="button" onClick={handleSubmitReviewed} isLoading={busy}>
+            <Button
+              type="button"
+              onClick={handleSubmitReviewed}
+              isLoading={busy}
+              disabled={isLocked || busy}
+            >
               {busy ? "Sending…" : "Send to Quote Review"}
             </Button>
           </div>

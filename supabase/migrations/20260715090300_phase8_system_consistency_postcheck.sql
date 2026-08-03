@@ -20,12 +20,16 @@ begin
     raise exception 'Phase 8 postcheck failed: AI suggested quote command is missing.';
   end if;
 
+  -- PostgreSQL truncates generated identifiers to 63 bytes, so checking the
+  -- auto-generated unique-constraint name is not portable. Validate the actual
+  -- unique index contract instead.
   if not exists (
     select 1
     from pg_indexes
     where schemaname = 'public'
       and tablename = 'system_lifecycle_operation_keys'
-      and indexname = 'system_lifecycle_operation_keys_shop_id_operation_name_operation_key_key'
+      and indexdef ilike 'create unique index%'
+      and replace(indexdef, '"', '') ilike '%(shop_id, operation_name, operation_key)%'
   ) then
     raise exception 'Phase 8 postcheck failed: system operation key uniqueness is missing.';
   end if;

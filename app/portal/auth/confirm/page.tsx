@@ -39,7 +39,9 @@ export default function PortalConfirmPage() {
         } = await supabase.auth.getSession();
         if (cancelled) return;
         if (!session?.user) {
-          router.replace("/portal/auth/sign-in");
+          router.replace(
+            "/portal/auth/sign-in?portal=customer&activation=invalid",
+          );
           return;
         }
         if (!inviteId) {

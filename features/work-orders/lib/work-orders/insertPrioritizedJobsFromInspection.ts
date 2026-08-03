@@ -233,6 +233,7 @@ export async function insertPrioritizedJobsFromInspection(
     .from("inspections")
     .select("*")
     .eq("id", inspectionId)
+    .eq("is_canonical", true)
     .maybeSingle<InspectionRow>();
   if (inspectionError) {
     return { ok: false, error: `Failed to fetch inspection: ${inspectionError.message}` };
@@ -241,9 +242,7 @@ export async function insertPrioritizedJobsFromInspection(
     return { ok: false, error: "Inspection not found or missing shop scope." };
   }
 
-  const rawResult = (inspection as unknown as { result?: unknown }).result as
-    | InspectionResult
-    | undefined;
+  const rawResult = inspection.summary as unknown as InspectionResult | undefined;
   if (!rawResult?.sections || !Array.isArray(rawResult.sections)) {
     return { ok: false, error: "Invalid inspection format: missing sections." };
   }

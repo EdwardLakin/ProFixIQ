@@ -19,7 +19,7 @@ const BILLING_STRIPE_SURFACES = [
 
 describe("stripe api version unification", () => {
   it("uses one canonical Stripe API version string", () => {
-    expect(STRIPE_API_VERSION).toBe("2024-04-10");
+    expect(STRIPE_API_VERSION).toBe("2025-04-30.basil");
   });
 
   it("keeps billing checkout/portal/session/webhook paths on the shared Stripe client", async () => {

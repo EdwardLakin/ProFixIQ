@@ -25,6 +25,7 @@ import type {
   WorkOrderBoardStage,
   WorkOrderBoardVariant,
 } from "../../lib/workboard/types";
+import { getWorkOrderBoardStageSurface } from "../../lib/workboard/presentation";
 import { buildBlockers, timeAgoLabel } from "../../lib/workboard/utils";
 
 type FilterKey = WorkOrderBoardFilterKey;
@@ -36,12 +37,12 @@ const stages: Array<{
   icon: typeof Clock3;
   tone: string;
 }> = [
-  { key: "awaiting", label: "Awaiting", icon: Clock3, tone: "text-blue-600" },
+  { key: "intake", label: "Intake", icon: Clock3, tone: "text-blue-600" },
   {
-    key: "in_progress",
-    label: "In progress",
-    icon: Wrench,
-    tone: "text-violet-600",
+    key: "estimate",
+    label: "Estimate",
+    icon: ClipboardCheck,
+    tone: "text-cyan-600",
   },
   {
     key: "awaiting_approval",
@@ -50,16 +51,40 @@ const stages: Array<{
     tone: "text-amber-600",
   },
   {
-    key: "waiting_parts",
-    label: "Waiting parts",
+    key: "authorized",
+    label: "Authorized",
+    icon: CheckCircle2,
+    tone: "text-emerald-600",
+  },
+  {
+    key: "waiting",
+    label: "Waiting",
     icon: Package,
     tone: "text-orange-600",
   },
   {
-    key: "completed",
-    label: "Ready to invoice",
+    key: "in_progress",
+    label: "In progress",
+    icon: Wrench,
+    tone: "text-violet-600",
+  },
+  {
+    key: "quality_check",
+    label: "Quality check",
+    icon: ClipboardCheck,
+    tone: "text-teal-600",
+  },
+  {
+    key: "ready",
+    label: "Ready",
     icon: CheckCircle2,
-    tone: "text-emerald-600",
+    tone: "text-lime-600",
+  },
+  {
+    key: "closed",
+    label: "Closed",
+    icon: Clock3,
+    tone: "text-slate-600",
   },
 ];
 
@@ -100,8 +125,11 @@ function BoardCard({
     row.first_tech_name ||
     row.assigned_summary ||
     "Unassigned";
+  const stageSurface = getWorkOrderBoardStageSurface(row.overall_stage);
   const card = (
-    <article className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 shadow-sm transition hover:border-[var(--brand-accent,#E39A6E)]/60 hover:shadow-md">
+    <article
+      className={`rounded-xl border p-3 shadow-sm transition hover:border-[var(--brand-accent,#E39A6E)]/60 hover:shadow-md ${stageSurface.card}`}
+    >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="font-extrabold text-[color:var(--theme-text-primary)]">
@@ -138,9 +166,9 @@ function BoardCard({
             Customer waiting
           </span>
         ) : null}
-        {row.overall_stage === "completed" ? (
+        {row.overall_stage === "ready" ? (
           <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 font-semibold text-emerald-700 dark:text-emerald-200">
-            Ready to invoice
+            Ready
           </span>
         ) : null}
       </div>
@@ -166,18 +194,22 @@ function BoardCard({
       </dl>
       <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[color:var(--theme-surface-subtle)]">
         <div
-          className={`h-full rounded-full ${row.overall_stage === "completed" ? "bg-emerald-500" : "bg-[var(--brand-primary,#C1663B)]"}`}
+          className={`h-full rounded-full ${row.overall_stage === "ready" || row.overall_stage === "closed" ? "bg-emerald-500" : "bg-[var(--brand-primary,#C1663B)]"}`}
           style={{ width: `${Math.min(100, Math.max(0, row.progress_pct))}%` }}
         />
       </div>
       <div className="mt-3 flex min-h-9 items-center justify-center gap-2 rounded-lg border border-[var(--brand-primary,#C1663B)]/45 text-xs font-semibold text-[var(--brand-primary,#C1663B)]">
-        {row.overall_stage === "completed"
-          ? "Review invoice"
-          : row.overall_stage === "waiting_parts"
-            ? "Open parts"
-            : row.overall_stage === "awaiting"
-              ? "Assign"
-              : "Open work order"}
+        {row.overall_stage === "closed"
+          ? "View history"
+          : row.overall_stage === "ready"
+            ? "Review invoice"
+            : row.overall_stage === "waiting"
+              ? "Open blocker"
+              : row.overall_stage === "authorized"
+                ? "Dispatch"
+                : row.overall_stage === "intake"
+                  ? "Continue intake"
+                  : "Open work order"}
         <ChevronRight className="h-3.5 w-3.5" />
       </div>
     </article>
@@ -225,16 +257,17 @@ export default function WorkOrderBoard(props: {
   const [stageFilter, setStageFilter] = useState<FilterKey>(
     props.initialStage ?? "all",
   );
+  const [riskOnly, setRiskOnly] = useState(false);
   const [query, setQuery] = useState("");
   const [advisor, setAdvisor] = useState("all");
   const [technician, setTechnician] = useState("all");
   const [priority, setPriority] = useState("all");
   const [waiter, setWaiter] = useState("all");
 
-  useEffect(
-    () => setStageFilter(props.initialStage ?? "all"),
-    [props.initialStage],
-  );
+  useEffect(() => {
+    setStageFilter(props.initialStage ?? "all");
+    setRiskOnly(false);
+  }, [props.initialStage]);
 
   const advisorOptions = useMemo(
     () =>
@@ -279,6 +312,9 @@ export default function WorkOrderBoard(props: {
         .toLowerCase();
       return (
         (stageFilter === "all" || row.overall_stage === stageFilter) &&
+        (!riskOnly ||
+          row.risk_level === "warn" ||
+          row.risk_level === "danger") &&
         (!q || searchable.includes(q)) &&
         (advisor === "all" || row.advisor_name === advisor) &&
         (technician === "all" ||
@@ -288,7 +324,16 @@ export default function WorkOrderBoard(props: {
         (waiter === "all" || (waiter === "yes") === Boolean(row.is_waiter))
       );
     });
-  }, [advisor, priority, query, rows, stageFilter, technician, waiter]);
+  }, [
+    advisor,
+    priority,
+    query,
+    riskOnly,
+    rows,
+    stageFilter,
+    technician,
+    waiter,
+  ]);
 
   const count = (stage: WorkOrderBoardStage) =>
     rows.filter((row) => row.overall_stage === stage).length;
@@ -301,38 +346,41 @@ export default function WorkOrderBoard(props: {
   const visibleStages =
     stageFilter === "all"
       ? stages
-      : stageFilter === "on_hold"
-        ? stages.filter((stage) => stage.key === "waiting_parts")
-        : stages.filter((stage) => stage.key === stageFilter);
+      : stages.filter((stage) => stage.key === stageFilter);
   const summaryCards: Array<{
     label: string;
     value: number;
     icon: LucideIcon;
     tone: string;
+    filter: "risk" | WorkOrderBoardStage;
   }> = [
     {
       label: "At risk",
       value: atRisk,
       icon: AlertTriangle,
       tone: "text-orange-600",
+      filter: "risk",
     },
     {
-      label: "Ready to work",
-      value: count("awaiting"),
+      label: "Authorized",
+      value: count("authorized"),
       icon: CheckCircle2,
-      tone: "text-blue-600",
+      tone: "text-emerald-600",
+      filter: "authorized",
     },
     {
-      label: "Waiting parts",
-      value: count("waiting_parts"),
+      label: "Waiting",
+      value: count("waiting"),
       icon: Clock3,
       tone: "text-amber-600",
+      filter: "waiting",
     },
     {
-      label: "Ready to invoice",
-      value: count("completed"),
+      label: "Ready",
+      value: count("ready"),
       icon: ClipboardCheck,
       tone: "text-emerald-600",
+      filter: "ready",
     },
   ];
 
@@ -414,42 +462,35 @@ export default function WorkOrderBoard(props: {
       </header>
 
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-        {summaryCards.map(({ label, value, icon: Icon, tone }) => (
-          <div
-            key={String(label)}
-            className="flex items-center gap-3 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3"
-          >
-            <Icon className={`h-5 w-5 ${tone}`} />
-            <span className="flex-1 text-sm font-semibold">{label}</span>
-            <strong className={`text-xl ${tone}`}>{value}</strong>
-          </div>
-        ))}
-      </div>
-
-      <div
-        className="flex gap-1 overflow-x-auto"
-        aria-label="Board stage views"
-      >
-        {(
-          [
-            ["all", "All"],
-            ["awaiting", "Awaiting"],
-            ["in_progress", "In progress"],
-            ["awaiting_approval", "Awaiting approval"],
-            ["waiting_parts", "Waiting parts"],
-            ["on_hold", "On hold"],
-            ["completed", "Ready to invoice"],
-          ] as Array<[FilterKey, string]>
-        ).map(([key, label]) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => setStageFilter(key)}
-            className={`whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-semibold ${stageFilter === key ? "border-[var(--brand-primary,#C1663B)] bg-[var(--brand-primary,#C1663B)]/10 text-[var(--brand-primary,#C1663B)]" : "border-[color:var(--theme-border-soft)] text-[color:var(--theme-text-secondary)]"}`}
-          >
-            {label}
-          </button>
-        ))}
+        {summaryCards.map(({ label, value, icon: Icon, tone, filter }) => {
+          const selected =
+            filter === "risk" ? riskOnly : !riskOnly && stageFilter === filter;
+          return (
+            <button
+              key={String(label)}
+              type="button"
+              aria-pressed={selected}
+              onClick={() => {
+                if (filter === "risk") {
+                  setRiskOnly((current) => !current);
+                  setStageFilter("all");
+                  return;
+                }
+                setRiskOnly(false);
+                setStageFilter(selected ? "all" : filter);
+              }}
+              className={`flex items-center gap-3 rounded-xl border bg-[color:var(--theme-surface-inset)] px-4 py-3 text-left transition hover:border-[var(--brand-primary,#C1663B)]/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary,#C1663B)]/60 ${
+                selected
+                  ? "border-[var(--brand-primary,#C1663B)] shadow-[0_0_0_1px_color-mix(in_srgb,var(--brand-primary,#C1663B)_35%,transparent)]"
+                  : "border-[color:var(--theme-border-soft)]"
+              }`}
+            >
+              <Icon className={`h-5 w-5 ${tone}`} />
+              <span className="flex-1 text-sm font-semibold">{label}</span>
+              <strong className={`text-xl ${tone}`}>{value}</strong>
+            </button>
+          );
+        })}
       </div>
 
       {loading ? (
@@ -463,27 +504,29 @@ export default function WorkOrderBoard(props: {
       ) : (
         <div className="overflow-x-auto pb-2">
           <div
-            className={`grid min-w-[1280px] gap-3 ${visibleStages.length === 1 ? "grid-cols-1" : "grid-cols-5"}`}
+            className="grid gap-3"
+            style={{
+              gridTemplateColumns: `repeat(${visibleStages.length}, minmax(240px, 1fr))`,
+              minWidth: `${Math.max(1, visibleStages.length) * 252}px`,
+            }}
           >
             {visibleStages.map((stage) => {
               const Icon = stage.icon;
-              const stageRows = filteredRows.filter((row) =>
-                stageFilter === "on_hold"
-                  ? row.overall_stage === "on_hold"
-                  : row.overall_stage === stage.key ||
-                    (stageFilter === "all" &&
-                      stage.key === "waiting_parts" &&
-                      row.overall_stage === "on_hold"),
+              const stageSurface = getWorkOrderBoardStageSurface(stage.key);
+              const stageRows = filteredRows.filter(
+                (row) => row.overall_stage === stage.key,
               );
               return (
                 <section
                   key={stage.key}
-                  className="min-h-[560px] rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-3"
+                  className={`min-h-[560px] rounded-xl border p-3 ${stageSurface.column}`}
                 >
                   <header className="mb-3 flex items-center gap-2">
                     <Icon className={`h-4 w-4 ${stage.tone}`} />
                     <h2 className="text-sm font-bold">{stage.label}</h2>
-                    <span className="rounded-full bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-xs font-bold">
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-xs font-bold ${stageSurface.count}`}
+                    >
                       {stageRows.length}
                     </span>
                   </header>
@@ -511,13 +554,13 @@ export default function WorkOrderBoard(props: {
       <button
         type="button"
         onClick={() =>
-          setStageFilter(stageFilter === "completed" ? "all" : "completed")
+          setStageFilter(stageFilter === "closed" ? "all" : "closed")
         }
         className="flex w-full items-center gap-2 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3 text-sm"
       >
         <Clock3 className="h-4 w-4" />
-        <span>Completed today</span>
-        <strong>{count("completed")}</strong>
+        <span>Closed work orders</span>
+        <strong>{count("closed")}</strong>
         <span className="text-[color:var(--theme-text-muted)]">
           · View history
         </span>

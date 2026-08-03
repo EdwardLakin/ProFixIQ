@@ -35,7 +35,11 @@ interface SectionDisplayProps {
     status: InspectionItemStatus,
   ) => void;
   onUpdateNote: (sectionIndex: number, itemIndex: number, note: string) => void;
-  onUpload: (photoUrl: string, sectionIndex: number, itemIndex: number) => void;
+  onUpdatePhotos: (
+    sectionIndex: number,
+    itemIndex: number,
+    photoUrls: string[],
+  ) => void;
 
   requireNoteForAI?: boolean;
   onSubmitAI?: (sectionIndex: number, itemIndex: number) => void;
@@ -59,9 +63,18 @@ interface SectionDisplayProps {
     hours: number | null,
   ) => void;
 
+  onUpdateNoPartsRequired?: (
+    sectionIndex: number,
+    itemIndex: number,
+    noPartsRequired: boolean,
+  ) => void;
+
   /** Optional external collapse control (used by sticky header). */
   isCollapsed?: boolean;
   onToggleCollapse?: (sectionIndex: number) => void;
+
+  /** Render canonical status, notes, photos, parts and labor below a compact grid. */
+  showGridFindings?: boolean;
 }
 
 type PartRow = { description: string; qty: number };
@@ -92,6 +105,7 @@ type ItemExtended = InspectionSection["items"][number] & {
   // parts + labor
   parts?: PartRow[];
   laborHours?: number | null;
+  noPartsRequired?: boolean;
 };
 
 function isGridSection(title: string): boolean {
@@ -130,6 +144,22 @@ function getLaborHours(item: ItemExtended): number | null {
 
 function isSubmittedItem(item: ItemExtended): boolean {
   return item.estimateSubmitted === true;
+}
+
+function hasGridFindingEvidence(item: ItemExtended): boolean {
+  const status = String(item.status ?? "").trim().toLowerCase();
+  const photoUrls = Array.isArray(item.photoUrls) ? item.photoUrls : [];
+
+  return (
+    status === "fail" ||
+    status === "recommend" ||
+    getNote(item).trim().length > 0 ||
+    photoUrls.length > 0 ||
+    getParts(item).length > 0 ||
+    getLaborHours(item) !== null ||
+    item.noPartsRequired === true ||
+    item.estimateSubmitted === true
+  );
 }
 
 function submittedAt(item: ItemExtended): string | null {
@@ -171,7 +201,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
     draftKey,
     onUpdateStatus,
     onUpdateNote,
-    onUpload,
+    onUpdatePhotos,
     requireNoteForAI,
     onSubmitAI,
     isSubmittingAI,
@@ -181,8 +211,10 @@ export default function SectionDisplay(props: SectionDisplayProps) {
     onDismissSmartMatch,
     onUpdateParts,
     onUpdateLaborHours,
+    onUpdateNoPartsRequired,
     isCollapsed,
     onToggleCollapse,
+    showGridFindings = false,
   } = props;
 
   const items = (section.items ?? []) as ItemExtended[];
@@ -227,7 +259,8 @@ export default function SectionDisplay(props: SectionDisplayProps) {
 
   const canEditPartsLabor =
     typeof onUpdateParts === "function" ||
-    typeof onUpdateLaborHours === "function";
+    typeof onUpdateLaborHours === "function" ||
+    typeof onUpdateNoPartsRequired === "function";
 
   // ✅ per-item UI state: collapse + edit
   const [partsOpenByKey, setPartsOpenByKey] = useState<Record<string, boolean>>(
@@ -258,93 +291,125 @@ export default function SectionDisplay(props: SectionDisplayProps) {
     });
   };
 
+  const displayEntries = items
+    .map((item, itemIndex) => ({ item, itemIndex }))
+    .filter(({ item }) => !showGridFindings || hasGridFindingEvidence(item));
+
+  if (showGridFindings && displayEntries.length === 0) {
+    return null;
+  }
+
   return (
-    <div>
+    <div
+      className={
+        showGridFindings
+          ? "mt-4 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3"
+          : undefined
+      }
+    >
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--theme-card-border,var(--theme-border-soft))] pb-4">
-        {gridSection ? (
-          <div className="text-left text-lg font-semibold tracking-[-0.02em] text-[var(--theme-text-primary,var(--theme-text-primary))] md:text-xl">
-            {resolvedTitle}
-          </div>
-        ) : (
-          <button
-            onClick={toggleOpen}
-            className="text-left text-lg font-semibold tracking-[-0.02em] text-[var(--theme-text-primary,var(--theme-text-primary))] transition-opacity hover:opacity-80 md:text-xl"
-            aria-expanded={open}
-            type="button"
-          >
-            {resolvedTitle}
-          </button>
-        )}
+      <div className="grid gap-4 border-b border-[var(--theme-card-border,var(--theme-border-soft))] pb-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+        <div className="min-w-0">
+          {gridSection ? (
+            <div>
+              <div className="text-left text-lg font-semibold tracking-[-0.02em] text-[var(--theme-text-primary,var(--theme-text-primary))] md:text-xl">
+                {showGridFindings ? "Finding details" : resolvedTitle}
+              </div>
+              {showGridFindings ? (
+                <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+                  Notes, photos, parts and labor for items marked Fail or Recommend above.
+                </p>
+              ) : null}
+            </div>
+          ) : (
+            <button
+              onClick={toggleOpen}
+              className="text-left text-lg font-semibold tracking-[-0.02em] text-[var(--theme-text-primary,var(--theme-text-primary))] transition-opacity hover:opacity-80 md:text-xl"
+              aria-expanded={open}
+              type="button"
+            >
+              {resolvedTitle}
+            </button>
+          )}
 
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="hidden items-center gap-1.5 md:flex">
-            <StatusBadge variant="success">{stats.ok} OK</StatusBadge>
-            <StatusBadge variant="danger">{stats.fail} FAIL</StatusBadge>
-            <StatusBadge variant="info">{stats.na} NA</StatusBadge>
-            <StatusBadge variant="warning">{stats.recommend} REC</StatusBadge>
-            <StatusBadge variant="neutral">{stats.unset} Open</StatusBadge>
-          </div>
-
-          {showBulkButtons ? (
-            <div className="flex flex-wrap items-center gap-1">
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 border-emerald-500/35 bg-emerald-50 px-2 text-[11px] text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/25 dark:text-emerald-200"
-                onClick={() => markAll("ok")}
-                type="button"
-              >
-                All OK
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 border-red-500/30 px-2 text-[11px] text-red-700 hover:bg-red-50 dark:text-red-200 dark:hover:bg-red-950/25"
-                onClick={() => markAll("fail")}
-                type="button"
-              >
-                All FAIL
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 border-sky-500/30 px-2 text-[11px] text-sky-700 hover:bg-sky-50 dark:text-sky-200 dark:hover:bg-sky-950/25"
-                onClick={() => markAll("na")}
-                type="button"
-              >
-                All NA
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 border-amber-500/35 px-2 text-[11px] text-amber-800 hover:bg-amber-50 dark:text-amber-200 dark:hover:bg-amber-950/25"
-                onClick={() => markAll("recommend")}
-                type="button"
-              >
-                All REC
-              </Button>
-
-              <Button
-                variant="ghost"
-                size="sm"
-                className="ml-1 h-7 px-2 text-[11px]"
-                onClick={toggleOpen}
-                aria-expanded={open}
-                type="button"
-              >
-                {open ? "Collapse" : "Expand"}
-              </Button>
+          {!showGridFindings ? (
+            <div
+              className="mt-3 flex flex-wrap items-center gap-1.5"
+              aria-label="Section item counts"
+            >
+              <StatusBadge variant="success">{stats.ok} OK</StatusBadge>
+              <StatusBadge variant="danger">{stats.fail} FAIL</StatusBadge>
+              <StatusBadge variant="info">{stats.na} NA</StatusBadge>
+              <StatusBadge variant="warning">{stats.recommend} REC</StatusBadge>
+              <StatusBadge variant="neutral">{stats.unset} Open</StatusBadge>
             </div>
           ) : null}
         </div>
+
+        {showBulkButtons ? (
+          <div
+            className="flex flex-wrap items-center gap-1.5 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-1.5 shadow-sm"
+            aria-label="Bulk section actions"
+          >
+            <span className="px-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">
+              Set section
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 rounded-xl border-emerald-500/35 bg-emerald-50 px-3 text-[11px] text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/25 dark:text-emerald-200"
+              onClick={() => markAll("ok")}
+              type="button"
+            >
+              All OK
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 rounded-xl border-red-500/30 px-3 text-[11px] text-red-700 hover:bg-red-50 dark:text-red-200 dark:hover:bg-red-950/25"
+              onClick={() => markAll("fail")}
+              type="button"
+            >
+              All FAIL
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 rounded-xl border-sky-500/30 px-3 text-[11px] text-sky-700 hover:bg-sky-50 dark:text-sky-200 dark:hover:bg-sky-950/25"
+              onClick={() => markAll("na")}
+              type="button"
+            >
+              All NA
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 rounded-xl border-amber-500/35 px-3 text-[11px] text-amber-800 hover:bg-amber-50 dark:text-amber-200 dark:hover:bg-amber-950/25"
+              onClick={() => markAll("recommend")}
+              type="button"
+            >
+              All REC
+            </Button>
+            <span className="mx-0.5 hidden h-5 w-px bg-[color:var(--theme-border-soft)] sm:block" />
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 rounded-xl px-3 text-[11px]"
+              onClick={toggleOpen}
+              aria-expanded={open}
+              type="button"
+            >
+              {open ? "Collapse" : "Expand"}
+            </Button>
+          </div>
+        ) : null}
       </div>
 
       {/* Body */}
       {open && (
         <div className="pt-3">
           {/* Grid sections render their own UI elsewhere */}
-          {gridSection ? (
+          {gridSection && !showGridFindings ? (
             <div />
           ) : (
             <div className="overflow-hidden rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel-strong)]">
@@ -352,10 +417,10 @@ export default function SectionDisplay(props: SectionDisplayProps) {
               <div className="hidden border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-2.5 lg:block">
                 <div className="grid grid-cols-2 gap-3">
                   <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-                    Item · Status · Notes
+                    {showGridFindings ? "Item · Evidence" : "Item · Status · Notes"}
                   </div>
                   <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-                    Item · Status · Notes
+                    {showGridFindings ? "Item · Evidence" : "Item · Status · Notes"}
                   </div>
                 </div>
               </div>
@@ -373,7 +438,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                   "[&>*]:hover:border-[color:var(--theme-border-strong)]",
                 ].join(" ")}
               >
-                {items.map((item, itemIndex) => {
+                {displayEntries.map(({ item, itemIndex }) => {
                   const keyBase =
                     (item.item ??
                       item.name ??
@@ -438,7 +503,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                         }}
                         sectionIndex={sectionIndex}
                         itemIndex={itemIndex}
-                        showNotes={showNotes && isFailOrRec}
+                        showNotes={showNotes && (isFailOrRec || showGridFindings)}
                         showPhotos={showPhotos}
                         inspectionId={inspectionId}
                         workOrderId={workOrderId}
@@ -446,8 +511,10 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                         draftKey={draftKey}
                         onUpdateStatus={onUpdateStatus}
                         onUpdateNote={onUpdateNote}
-                        onUpload={onUpload}
+                        onUpdatePhotos={onUpdatePhotos}
                         variant="row"
+                        showStatusControls={!showGridFindings}
+                        showEvidenceFields={showGridFindings}
                       />
 
                       {(() => {
@@ -554,9 +621,34 @@ export default function SectionDisplay(props: SectionDisplayProps) {
 
                         const currentParts = getParts(item);
                         const currentLabor = getLaborHours(item);
+                        const noPartsRequired = item.noPartsRequired === true;
 
                         const handlePartsChange = (parts: PartRow[]) => {
                           onUpdateParts?.(sectionIndex, itemIndex, parts);
+                          if (
+                            parts.some(
+                              (part) =>
+                                part.description.trim().length > 0 || part.qty > 0,
+                            )
+                          ) {
+                            onUpdateNoPartsRequired?.(
+                              sectionIndex,
+                              itemIndex,
+                              false,
+                            );
+                          }
+                        };
+
+                        const handleNoPartsRequiredChange = (checked: boolean) => {
+                          if (checked) {
+                            clearQtyDraftPrefix(`${k}:part:`);
+                            onUpdateParts?.(sectionIndex, itemIndex, []);
+                          }
+                          onUpdateNoPartsRequired?.(
+                            sectionIndex,
+                            itemIndex,
+                            checked,
+                          );
                         };
 
                         const handleLaborChange = (hours: number | null) => {
@@ -653,6 +745,26 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                                 )}
                               </div>
                             </div>
+
+                            <label className="mb-2 flex min-h-10 cursor-pointer items-center gap-2 rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-2 text-[11px] font-semibold text-[color:var(--theme-text-primary)]">
+                              <input
+                                type="checkbox"
+                                checked={noPartsRequired}
+                                disabled={lockInputs}
+                                onChange={(event) =>
+                                  handleNoPartsRequiredChange(
+                                    event.currentTarget.checked,
+                                  )
+                                }
+                                className="h-4 w-4 rounded border-[color:var(--theme-border-soft)] accent-[var(--brand-primary,#C1663B)]"
+                              />
+                              <span>
+                                No parts required
+                                <span className="ml-2 font-normal text-[color:var(--theme-text-muted)]">
+                                  Blank parts also skip Parts workflow.
+                                </span>
+                              </span>
+                            </label>
 
                             {partsOpen && (
                               <>
@@ -763,12 +875,12 @@ export default function SectionDisplay(props: SectionDisplayProps) {
 
                                   <button
                                     type="button"
-                                    disabled={lockInputs}
+                                    disabled={lockInputs || noPartsRequired}
                                     onClick={addEmptyPart}
                                     className={[
                                       "mt-1 inline-flex items-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)]",
                                       "hover:border-accent/80 hover:text-accent",
-                                      lockInputs
+                                      lockInputs || noPartsRequired
                                         ? "opacity-50 cursor-not-allowed hover:border-[color:var(--theme-border-soft)] hover:text-[color:var(--theme-text-primary)]"
                                         : "",
                                     ].join(" ")}

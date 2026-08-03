@@ -5,25 +5,20 @@ import React from "react";
 import {
   OperationsPortalShell,
   fleetOperationsRoutes,
-  fleetOperationsTerminology,
   type OperationsPortalNavItem,
 } from "@/features/operations";
 
 const NAV: OperationsPortalNavItem[] = [
-  { href: fleetOperationsRoutes.portalHome, label: "Dashboard" },
-  {
-    href: fleetOperationsRoutes.portalRequests,
-    label: fleetOperationsTerminology.requestPluralLabel,
-  },
-  {
-    href: fleetOperationsRoutes.portalInspections,
-    label: fleetOperationsTerminology.inspectionPluralLabel,
-  },
+  { href: fleetOperationsRoutes.portalHome, label: "Overview" },
+  { href: fleetOperationsRoutes.assetDetailBase, label: "Units" },
+  { href: "/portal/fleet/maintenance", label: "Maintenance" },
+  { href: fleetOperationsRoutes.portalRequests, label: "Requests" },
+  { href: "/portal/fleet/billing", label: "Billing" },
 ];
 
 export default function FleetShell({
-  title = fleetOperationsTerminology.portalLabel,
-  subtitle = `Dispatch view for pre-trips, ${fleetOperationsTerminology.requestPluralLabel.toLowerCase()}, and fleet history`,
+  title = "Fleet Portal",
+  subtitle = "Units, maintenance, requests, approvals, and invoices in one place",
   children,
 }: {
   title?: string;

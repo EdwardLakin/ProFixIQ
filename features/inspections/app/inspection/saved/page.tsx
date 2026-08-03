@@ -215,6 +215,7 @@ export default function SavedInspectionsPage(): JSX.Element {
         `,
       )
       .eq("shop_id", shopId)
+      .eq("is_canonical", true)
       .order("created_at", { ascending: false })
       .limit(400);
 

@@ -14,6 +14,7 @@ import {
   getActorCapabilities,
 } from "@/features/shared/lib/rbac";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import { useTabs } from "@/features/shared/components/tabs/TabsProvider";
 
 type NavItem = {
   href: string;
@@ -102,6 +103,7 @@ export function MobileBottomNav({ open, onClose }: Props) {
   const pathname = usePathname();
   const router = useRouter();
   const supabase = useMemo(() => createBrowserSupabase(), []);
+  const { tabs, activateTab, closeTab } = useTabs();
   const [userId, setUserId] = useState<string | null>(null);
   const [role, setRole] = useState<MobileRole | null>(null);
   const [signingOut, setSigningOut] = useState(false);
@@ -206,6 +208,15 @@ export function MobileBottomNav({ open, onClose }: Props) {
     ];
   }, [role]);
 
+  const openWorkItems = useMemo(
+    () =>
+      tabs
+        .filter((item) => !item.pinned)
+        .sort((a, b) => b.lastOpenedAt - a.lastOpenedAt)
+        .slice(0, 6),
+    [tabs],
+  );
+
   const handleSignOut = async () => {
     if (signingOut) return;
     setSigningOut(true);
@@ -259,6 +270,73 @@ export function MobileBottomNav({ open, onClose }: Props) {
 
         <div className="flex-1 space-y-5 overflow-y-auto px-3 py-3">
           {userId ? <MobileShiftTracker userId={userId} /> : null}
+
+          <section className="space-y-2">
+            <div className="flex items-end justify-between gap-3 px-1">
+              <div>
+                <h2 className="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-[color:var(--theme-text-muted)]">
+                  Open work
+                </h2>
+                <p className="mt-0.5 text-[0.66rem] text-[color:var(--theme-text-muted)]">
+                  Continue a working record
+                </p>
+              </div>
+              <span className="rounded-full border border-[color:var(--theme-border-soft)] px-2 py-0.5 text-[0.65rem] text-[color:var(--theme-text-secondary)]">
+                {tabs.filter((item) => !item.pinned).length}
+              </span>
+            </div>
+
+            {openWorkItems.length ? (
+              <div className="space-y-1.5">
+                {openWorkItems.map((item) => (
+                  <div
+                    key={item.key}
+                    className="flex items-center gap-1 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-1"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        activateTab(
+                          item.key,
+                          item.mobileHref ?? item.href,
+                        );
+                        onClose();
+                      }}
+                      className="min-w-0 flex-1 rounded-lg px-2 py-2 text-left active:bg-[color:var(--theme-surface-overlay)]"
+                    >
+                      <span className="flex items-center gap-2">
+                        <span className="truncate text-sm font-medium text-[color:var(--theme-text-primary)]">
+                          {item.title}
+                        </span>
+                        {item.dirty ? (
+                          <span
+                            aria-label="Unsaved changes"
+                            className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400"
+                          />
+                        ) : null}
+                      </span>
+                      <span className="mt-0.5 block truncate text-[0.68rem] text-[color:var(--theme-text-muted)]">
+                        {item.status || item.subtitle || "Ready to resume"}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => closeTab(item.key)}
+                      aria-label={`Close ${item.title}`}
+                      className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-lg text-[color:var(--theme-text-muted)] active:bg-[color:var(--theme-surface-overlay)]"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-xl border border-dashed border-[color:var(--theme-border-soft)] px-3 py-3 text-[0.7rem] leading-4 text-[color:var(--theme-text-muted)]">
+                Work orders, inspections, invoices, and customer files you open
+                will stay here.
+              </div>
+            )}
+          </section>
 
           <MenuSection
             title="Navigation"

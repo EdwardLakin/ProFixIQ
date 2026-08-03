@@ -221,7 +221,9 @@ export default function MobileHome() {
               line.complaint ||
               String(line.job_type ?? "Job"),
             status: String(line.status ?? "awaiting"),
-            href: `/mobile/jobs/${line.id}`,
+            href: line.work_order_id
+              ? `/mobile/work-orders/${line.work_order_id}`
+              : "/mobile/tech/queue",
           })),
         );
       } finally {

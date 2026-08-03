@@ -76,6 +76,19 @@ const FEATURE_POLICY: Record<AIFeature, AIOpsPolicy> = {
     anomalyHighCostUsd: envNum("AI_ANOMALY_COST_SUMMARIZE_STATS", 0.15),
     anomalyHardDenialThreshold: envNum("AI_ANOMALY_DENIAL_SUMMARIZE_STATS", 4),
   },
+  fleet_operations_summary: {
+    budgetSoftUsd: envNum("AI_BUDGET_SOFT_USD_FLEET_SUMMARY", 20),
+    budgetHardUsd: envNum("AI_BUDGET_HARD_USD_FLEET_SUMMARY", 35),
+    rateLimitMax: envNum("AI_RATE_LIMIT_FLEET_SUMMARY_MAX", 30),
+    rateLimitWindowMs: envNum(
+      "AI_RATE_LIMIT_FLEET_SUMMARY_WINDOW_MS",
+      5 * 60 * 1000,
+    ),
+    anomalySpikeThreshold: envNum("AI_ANOMALY_SPIKE_FLEET_SUMMARY", 20),
+    anomalyFailureThreshold: envNum("AI_ANOMALY_FAIL_FLEET_SUMMARY", 6),
+    anomalyHighCostUsd: envNum("AI_ANOMALY_COST_FLEET_SUMMARY", 0.1),
+    anomalyHardDenialThreshold: envNum("AI_ANOMALY_DENIAL_FLEET_SUMMARY", 4),
+  },
   openai_realtime_token: {
     budgetSoftUsd: envNum("AI_BUDGET_SOFT_USD_REALTIME_TOKEN", 15),
     budgetHardUsd: envNum("AI_BUDGET_HARD_USD_REALTIME_TOKEN", 30),
@@ -105,6 +118,26 @@ const FEATURE_POLICY: Record<AIFeature, AIOpsPolicy> = {
     anomalyFailureThreshold: envNum("AI_ANOMALY_FAIL_BRANDING", 4),
     anomalyHighCostUsd: envNum("AI_ANOMALY_COST_BRANDING", 1.5),
     anomalyHardDenialThreshold: envNum("AI_ANOMALY_DENIAL_BRANDING", 3),
+  },
+  dtc_suggest: {
+    budgetSoftUsd: 50,
+    budgetHardUsd: 75,
+    rateLimitMax: 20,
+    rateLimitWindowMs: 5 * 60 * 1000,
+    anomalySpikeThreshold: 15,
+    anomalyFailureThreshold: 6,
+    anomalyHighCostUsd: 0.2,
+    anomalyHardDenialThreshold: 4,
+  },
+  inspection_interpret: {
+    budgetSoftUsd: 35,
+    budgetHardUsd: 50,
+    rateLimitMax: 60,
+    rateLimitWindowMs: 5 * 60 * 1000,
+    anomalySpikeThreshold: 45,
+    anomalyFailureThreshold: 8,
+    anomalyHighCostUsd: 0.08,
+    anomalyHardDenialThreshold: 8,
   },
 };
 

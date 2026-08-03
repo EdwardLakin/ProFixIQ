@@ -69,7 +69,7 @@ describe("guided onboarding v2 foundation", () => {
       title: "Guided Setup",
       href: "/dashboard/onboarding-v2",
       roles: ["owner", "admin"],
-      section: "Admin & Oversight",
+      section: "Settings",
     });
     expect(guidedTile?.title).not.toBe("Onboarding Agent");
   });
@@ -96,8 +96,9 @@ describe("guided onboarding v2 foundation", () => {
     expect(appShellSource).toContain("Agent Request");
     expect(appShellSource).toContain("Agent Console");
     expect(appShellSource).toContain("Sign out");
-    expect(assistantEntrySource).toContain("<span>Assistant</span>");
+    expect(assistantEntrySource).toContain("Assistant");
     expect(assistantEntrySource).not.toContain("<span>Planner</span>");
+    expect(appShellSource).not.toContain("Open Planner");
   });
 
   it("uses the new guided onboarding tables in server code", () => {

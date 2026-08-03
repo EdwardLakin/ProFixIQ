@@ -1,47 +1,20 @@
 // app/api/scheduling/assigned-work-order-lines/route.ts
 import { NextResponse, type NextRequest } from "next/server";
-import {
-  createServerSupabaseRoute,
-  createAdminSupabase,
-} from "@/features/shared/lib/supabase/server";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
-
-type Caller = {
-  id: string;
-  role: string | null;
-  shop_id: string | null;
-};
+import { WORKFORCE_STAFF_ROLES } from "@/features/workforce/lib/roster";
 
 async function authz() {
-  const supabase = createServerSupabaseRoute();
-  const {
-    data: { user },
-    error: userErr,
-  } = await supabase.auth.getUser();
-
-  if (userErr || !user) {
-    return {
-      ok: false as const,
-      res: NextResponse.json({ error: "Not authenticated" }, { status: 401 }),
-    };
+  const access = await requireShopScopedApiAccess({
+    allowRoles: [...WORKFORCE_STAFF_ROLES],
+  });
+  if (!access.ok) {
+    return { ok: false as const, res: access.response };
   }
-
-  const { data: me, error: meErr } = await supabase
-    .from("profiles")
-    .select("id, role, shop_id")
-    .eq("id", user.id)
-    .maybeSingle<Caller>();
-
-  if (meErr || !me || !me.shop_id) {
-    return {
-      ok: false as const,
-      res: NextResponse.json({ error: "Missing shop" }, { status: 403 }),
-    };
-  }
-
-  const actor = getActorCapabilities({ role: me.role });
+  const actor = getActorCapabilities({ role: access.profile.role });
   const isAdmin = actor.isKnownRole && actor.canManageScheduling;
-  return { ok: true as const, me, isAdmin };
+  return { ok: true as const, me: access.profile, isAdmin };
 }
 
 export async function GET(req: NextRequest) {

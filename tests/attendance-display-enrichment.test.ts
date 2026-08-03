@@ -17,13 +17,13 @@ describe("Attendance display enrichment", () => {
     expect(getEmployeeDisplayName({ employeeName: "   ", employeeEmail: "edward@example.com", employee: null })).toBe("edward@example.com");
   });
 
-  it("uses Unknown employee when no profile identity is resolvable", () => {
-    expect(getEmployeeDisplayName({ employeeName: null, employeeEmail: null, employee: null })).toBe("Unknown employee");
+  it("uses a readable unavailable label when no profile identity is resolvable", () => {
+    expect(getEmployeeDisplayName({ employeeName: null, employeeEmail: null, employee: null })).toBe("Employee profile unavailable");
   });
 
   it("does not fall back to a user UUID as the operator-facing employee name", () => {
     const label = getEmployeeDisplayName({ employeeName: null, employeeEmail: null, employee: { id: UUID, name: "", email: null } });
-    expect(label).toBe("Unknown employee");
+    expect(label).toBe("Employee profile unavailable");
     expect(label).not.toContain(UUID);
   });
 
@@ -47,14 +47,16 @@ describe("Attendance display enrichment", () => {
 describe("Attendance API profile enrichment contract", () => {
   const route = readFileSync("app/api/scheduling/shifts/route.ts", "utf8");
 
-  it("batch loads profiles for returned shift user IDs", () => {
-    expect(route).toContain("shiftUserIds");
+  it("batch loads the shop roster before enriching shifts", () => {
+    expect(route).toContain("allProfiles");
     expect(route).toContain('.from("profiles")');
-    expect(route).toContain('.in("id", shiftUserIds)');
+    expect(route).toContain("const profileById");
+    expect(route).toContain("profileById.get(shiftUserId)");
   });
 
   it("keeps profile enrichment scoped to the caller shop", () => {
-    expect(route).toContain('.eq("shop_id", a.me.shop_id)');
+    expect(route).toContain('.eq("shop_id", shopId)');
+    expect(route).toContain('requiredCapability: "canManageScheduling"');
   });
 
   it("returns employee identity fields in the attendance shift DTO", () => {

@@ -4,41 +4,53 @@ import {
   isUnsupportedCompletePlanForCheckout,
   normalizeCanonicalPlan,
 } from "../features/stripe/lib/stripe/plan-normalization";
-import { getPlanDisplayLabel, resolveSeatLimitForPlan } from "../features/stripe/lib/stripe/constants";
+import {
+  getPlanDisplayLabel,
+  resolveSeatLimitForPlan,
+} from "../features/stripe/lib/stripe/constants";
+import {
+  calculateMonthlySubscriptionPrice,
+  getAdditionalSeatQuantity,
+  shouldUseUnlimitedPrice,
+} from "../features/stripe/lib/stripe/billing-model";
 
-describe("plan normalization complete aliases", () => {
-  it("keeps legacy plans normalized to legacy canonical keys", () => {
+describe("base plus seats plan normalization", () => {
+  it("normalizes legacy capped plans to the base subscription", () => {
     expect(normalizeCanonicalPlan("starter")).toBe("starter");
-    expect(normalizeCanonicalPlan("pro")).toBe("pro");
+    expect(normalizeCanonicalPlan("pro")).toBe("starter");
+    expect(normalizeCanonicalPlan("complete_50")).toBe("starter");
+    expect(normalizeCanonicalPlan("complete_100")).toBe("starter");
     expect(normalizeCanonicalPlan("unlimited")).toBe("unlimited");
   });
 
-  it("normalizes complete_10/50/unlimited into storage-compatible legacy keys", () => {
-    expect(normalizeCanonicalPlan("complete_10")).toBe("starter");
-    expect(normalizeCanonicalPlan("complete_50")).toBe("pro");
-    expect(normalizeCanonicalPlan("complete_unlimited")).toBe("unlimited");
-  });
-
-  it("recognizes complete_100 but does not normalize it to a storage/checkout key", () => {
+  it("recognizes legacy inputs but excludes them from new checkout", () => {
     expect(isKnownPlanInput("complete_100")).toBe(true);
-    expect(normalizeCanonicalPlan("complete_100")).toBeNull();
     expect(isUnsupportedCompletePlanForCheckout("complete_100")).toBe(true);
+    expect(isUnsupportedCompletePlanForCheckout("pro")).toBe(true);
+    expect(isUnsupportedCompletePlanForCheckout("starter")).toBe(false);
   });
 
-  it("maps legacy and complete keys to Complete display labels", () => {
-    expect(getPlanDisplayLabel("starter")).toBe("Complete 10");
-    expect(getPlanDisplayLabel("pro")).toBe("Complete 50");
-    expect(getPlanDisplayLabel("unlimited")).toBe("Complete Unlimited");
-    expect(getPlanDisplayLabel("complete_10")).toBe("Complete 10");
-    expect(getPlanDisplayLabel("complete_50")).toBe("Complete 50");
-    expect(getPlanDisplayLabel("complete_100")).toBe("Complete 100");
-    expect(getPlanDisplayLabel("complete_unlimited")).toBe("Complete Unlimited");
+  it("uses two customer-facing plan labels", () => {
+    expect(getPlanDisplayLabel("starter")).toBe("ProFixIQ Complete");
+    expect(getPlanDisplayLabel("pro")).toBe("ProFixIQ Complete");
+    expect(getPlanDisplayLabel("complete_100")).toBe("ProFixIQ Complete");
+    expect(getPlanDisplayLabel("unlimited")).toBe("ProFixIQ Unlimited");
   });
 
-  it("resolves seat limits for complete aliases", () => {
-    expect(resolveSeatLimitForPlan("complete_10")).toBe(10);
-    expect(resolveSeatLimitForPlan("complete_50")).toBe(50);
-    expect(resolveSeatLimitForPlan("complete_100")).toBe(100);
-    expect(resolveSeatLimitForPlan("complete_unlimited")).toBe(Number.MAX_SAFE_INTEGER);
+  it("does not hard-cap active subscriptions by plan", () => {
+    expect(resolveSeatLimitForPlan("starter")).toBe(Number.MAX_SAFE_INTEGER);
+    expect(resolveSeatLimitForPlan("pro")).toBe(Number.MAX_SAFE_INTEGER);
+    expect(resolveSeatLimitForPlan("unlimited")).toBe(Number.MAX_SAFE_INTEGER);
+  });
+
+  it("calculates included seats, additional seats, and the automatic cap", () => {
+    expect(getAdditionalSeatQuantity(10)).toBe(0);
+    expect(getAdditionalSeatQuantity(11)).toBe(1);
+    expect(calculateMonthlySubscriptionPrice(10)).toBe(299);
+    expect(calculateMonthlySubscriptionPrice(11)).toBe(349);
+    expect(calculateMonthlySubscriptionPrice(16)).toBe(599);
+    expect(shouldUseUnlimitedPrice(16)).toBe(false);
+    expect(shouldUseUnlimitedPrice(17)).toBe(true);
+    expect(calculateMonthlySubscriptionPrice(17)).toBe(600);
   });
 });

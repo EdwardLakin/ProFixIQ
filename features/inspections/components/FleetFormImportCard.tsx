@@ -1,22 +1,33 @@
-
 "use client";
 
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
+
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { Button } from "@shared/components/ui/Button";
 
-type DutyClass = "light" | "medium" | "heavy";
-
-type UploadStatus = "parsed" | "failed" | "processing" | string;
-
-type UploadResponse = {
+type Option = { id: string; label: string };
+type SignedUpload = {
+  path: string;
+  token: string;
+  originalName: string;
+  mime: string;
+  size: number;
+};
+type ImportListItem = {
   id: string;
-  status: UploadStatus;
-  storage_path?: string | null;
-  error?: string | null;
+  state: "queued" | "processing" | "ready_for_review" | "failed" | "approved";
+  title: string;
+  customerName: string | null;
+  fleetName: string | null;
+  totalPages: number;
+  processedPages: number;
+  errorMessage: string | null;
+  templateId: string | null;
 };
 
-const ALLOWED_IMAGE_MIME_TYPES = new Set<string>([
+const ACCEPTED = new Set([
   "image/jpeg",
   "image/png",
   "image/heic",
@@ -25,701 +36,534 @@ const ALLOWED_IMAGE_MIME_TYPES = new Set<string>([
   "image/tiff",
 ]);
 
-type QualityResult = {
-  ok: boolean;
-  reasons: string[];
-  metrics: {
-    width: number;
-    height: number;
-    brightness: number; // 0..255
-    sharpness: number; // variance-ish
-  };
+const STATE_COPY: Record<ImportListItem["state"], string> = {
+  queued: "Uploading complete",
+  processing: "Reading form",
+  ready_for_review: "Ready for review",
+  failed: "Needs another photo",
+  approved: "Template saved",
 };
 
-function clamp(n: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, n));
+function normalizeOptionLabel(value: string) {
+  return value.trim().toLocaleLowerCase();
 }
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  const kb = bytes / 1024;
-  if (kb < 1024) return `${kb.toFixed(1)} KB`;
-  const mb = kb / 1024;
-  return `${mb.toFixed(1)} MB`;
+function matchingOptions(options: Option[], query: string) {
+  const normalizedQuery = normalizeOptionLabel(query);
+  if (!normalizedQuery) return options.slice(0, 8);
+  return options
+    .filter((option) =>
+      normalizeOptionLabel(option.label).includes(normalizedQuery),
+    )
+    .slice(0, 8);
 }
 
-/**
- * Simple low-quality detection:
- * - minimum resolution
- * - too dark / too bright (avg brightness)
- * - blur-ish score (variance of a Laplacian approximation)
- */
-async function assessImageQuality(file: File): Promise<QualityResult> {
-  const url = URL.createObjectURL(file);
-  try {
-    const img = new Image();
-    img.decoding = "async";
-
-    await new Promise<void>((resolve, reject) => {
-      img.onload = () => resolve();
-      img.onerror = () => reject(new Error("Image decode failed"));
-      img.src = url;
-    });
-
-    const width = img.naturalWidth || img.width;
-    const height = img.naturalHeight || img.height;
-
-    // Downscale for analysis speed (keep aspect)
-    const maxSide = 900;
-    const scale = Math.min(1, maxSide / Math.max(width, height));
-    const w = Math.max(1, Math.floor(width * scale));
-    const h = Math.max(1, Math.floor(height * scale));
-
-    const canvas = document.createElement("canvas");
-    canvas.width = w;
-    canvas.height = h;
-    const ctx = canvas.getContext("2d", { willReadFrequently: true });
-    if (!ctx) {
-      return {
-        ok: true, // fail open
-        reasons: [],
-        metrics: { width, height, brightness: 128, sharpness: 0 },
-      };
-    }
-
-    ctx.drawImage(img, 0, 0, w, h);
-    const imageData = ctx.getImageData(0, 0, w, h);
-    const data = imageData.data;
-
-    // Brightness avg (simple luma)
-    let sum = 0;
-    for (let i = 0; i < data.length; i += 4) {
-      const r = data[i] ?? 0;
-      const g = data[i + 1] ?? 0;
-      const b = data[i + 2] ?? 0;
-      // Rec. 601 luma
-      sum += 0.299 * r + 0.587 * g + 0.114 * b;
-    }
-    const pixels = w * h;
-    const brightness = pixels > 0 ? sum / pixels : 128;
-
-    // Blur-ish: Laplacian variance approximation on grayscale
-    // Convert to gray array
-    const gray = new Float32Array(pixels);
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        const idx = (y * w + x) * 4;
-        const r = data[idx] ?? 0;
-        const g = data[idx + 1] ?? 0;
-        const b = data[idx + 2] ?? 0;
-        gray[y * w + x] = 0.299 * r + 0.587 * g + 0.114 * b;
-      }
-    }
-
-    // Laplacian: center*4 - (up+down+left+right)
-    let lapSum = 0;
-    let lapSumSq = 0;
-    let count = 0;
-
-    for (let y = 1; y < h - 1; y++) {
-      for (let x = 1; x < w - 1; x++) {
-        const c = gray[y * w + x] ?? 0;
-        const up = gray[(y - 1) * w + x] ?? 0;
-        const dn = gray[(y + 1) * w + x] ?? 0;
-        const lf = gray[y * w + (x - 1)] ?? 0;
-        const rt = gray[y * w + (x + 1)] ?? 0;
-        const lap = 4 * c - up - dn - lf - rt;
-        lapSum += lap;
-        lapSumSq += lap * lap;
-        count++;
-      }
-    }
-
-    const mean = count > 0 ? lapSum / count : 0;
-    const variance = count > 0 ? lapSumSq / count - mean * mean : 0;
-    const sharpness = Math.max(0, variance);
-
-    const reasons: string[] = [];
-
-    // Hard minimum size (original resolution, not scaled)
-    const minWidth = 900;
-    const minHeight = 900;
-    if (width < minWidth || height < minHeight) {
-      reasons.push(
-        `Low resolution (${width}×${height}). Try a closer photo or higher quality scan.`,
-      );
-    }
-
-    // Brightness thresholds (tunable)
-    if (brightness < 55) reasons.push("Image looks too dark. Add light or use flash.");
-    if (brightness > 215) reasons.push("Image looks overexposed. Reduce glare/brightness.");
-
-    // Sharpness threshold (tunable; depends on downscale)
-    // Smaller number = more forgiving
-    if (sharpness < 65) {
-      reasons.push("Image looks blurry. Hold steady, tap to focus, or re-scan.");
-    }
-
-    const ok = reasons.length === 0;
-
-    return {
-      ok,
-      reasons,
-      metrics: {
-        width,
-        height,
-        brightness: clamp(brightness, 0, 255),
-        sharpness,
-      },
-    };
-  } finally {
-    URL.revokeObjectURL(url);
-  }
-}
-
-async function fileFromCanvas(
-  canvas: HTMLCanvasElement,
-  filename: string,
-): Promise<File> {
-  const blob: Blob = await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob(
-      (b) => {
-        if (!b) reject(new Error("Failed to create image blob"));
-        else resolve(b);
-      },
-      "image/jpeg",
-      0.92,
-    );
-  });
-
-  return new File([blob], filename, { type: blob.type || "image/jpeg" });
-}
-
-export default function FleetFormImportCard() {
-  const router = useRouter();
-
-  const [files, setFiles] = useState<File[]>([]);
-  const [vehicleType, setVehicleType] = useState<string>("");
-  const [dutyClass, setDutyClass] = useState<DutyClass | "">("");
-  const [titleHint, setTitleHint] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [progress, setProgress] = useState<{ current: number; total: number } | null>(null);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-
-  // Camera capture UI
-  const [cameraOpen, setCameraOpen] = useState(false);
-  const [cameraError, setCameraError] = useState<string | null>(null);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-
-  const canSubmit = files.length > 0 && !loading;
-
-  const acceptAttr = useMemo(() => {
-    // Image-only UX (route can still reject if wrong)
-    return "image/*";
-  }, []);
-
-  const stopCamera = useCallback(() => {
-    const stream = streamRef.current;
-    if (stream) {
-      for (const track of stream.getTracks()) track.stop();
-      streamRef.current = null;
-    }
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
-  }, []);
-
-  const openCamera = useCallback(async () => {
-    setCameraError(null);
-    setCameraOpen(true);
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: "environment" } },
-        audio: false,
-      });
-
-      streamRef.current = stream;
-
-      const video = videoRef.current;
-      if (!video) return;
-
-      video.srcObject = stream;
-      await video.play();
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Camera permission denied";
-      setCameraError(msg);
-      stopCamera();
-    }
-  }, [stopCamera]);
-
-  const closeCamera = useCallback(() => {
-    stopCamera();
-    setCameraOpen(false);
-  }, [stopCamera]);
-
-  const addValidatedFiles = useCallback(async (incoming: File[]) => {
-    setErrorMsg(null);
-
-    const next: File[] = [];
-
-    for (const f of incoming) {
-      // eslint-disable-next-line no-console
-      console.log("[fleet forms] selected file:", {
-        name: f.name,
-        type: f.type,
-        size: f.size,
-      });
-
-      if (f.size === 0) {
-        setErrorMsg("One of the selected files is empty. Please choose another.");
-        return;
-      }
-
-      if (!ALLOWED_IMAGE_MIME_TYPES.has(f.type)) {
-        setErrorMsg(
-          "Unsupported file type. Upload images only (JPEG, PNG, HEIC, HEIF, WEBP, or TIFF).",
-        );
-        return;
-      }
-
-      // Low-quality detection
-      try {
-        const quality = await assessImageQuality(f);
-        // eslint-disable-next-line no-console
-        console.log("[fleet forms] quality:", { name: f.name, ...quality });
-
-        if (!quality.ok) {
-          setErrorMsg(
-            `Low quality image detected (${f.name}).\n` + quality.reasons.join(" "),
-          );
-          return;
-        }
-      } catch (err) {
-        // If quality check fails, do not block upload (fail open)
-        // eslint-disable-next-line no-console
-        console.warn("[fleet forms] quality check failed (fail-open):", err);
-      }
-
-      next.push(f);
-    }
-
-    setFiles((prev) => {
-      // Keep order: existing then new
-      return [...prev, ...next];
-    });
-  }, []);
-
-  const handleFileChange = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const list = e.target.files ? Array.from(e.target.files) : [];
-      // reset the input so selecting same file again still triggers onChange
-      e.target.value = "";
-      if (list.length === 0) return;
-      await addValidatedFiles(list);
-    },
-    [addValidatedFiles],
+function ImportDirectoryField({
+  label,
+  placeholder,
+  options,
+  value,
+  selectedId,
+  onChange,
+  onSelect,
+}: {
+  label: string;
+  placeholder: string;
+  options: Option[];
+  value: string;
+  selectedId: string;
+  onChange: (value: string, matchingId: string) => void;
+  onSelect: (option: Option) => void;
+}) {
+  const inputId = useId();
+  const listId = useId();
+  const [open, setOpen] = useState(false);
+  const matches = useMemo(
+    () => matchingOptions(options, value),
+    [options, value],
   );
-
-  const handleRemove = useCallback((idx: number) => {
-    setFiles((prev) => prev.filter((_, i) => i !== idx));
-  }, []);
-
-  const handleCapture = useCallback(async () => {
-    setErrorMsg(null);
-
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    if (!video || !canvas) {
-      setErrorMsg("Camera not ready.");
-      return;
-    }
-
-    const vw = video.videoWidth;
-    const vh = video.videoHeight;
-    if (!vw || !vh) {
-      setErrorMsg("Camera not ready yet—try again in a second.");
-      return;
-    }
-
-    // Capture frame
-    canvas.width = vw;
-    canvas.height = vh;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) {
-      setErrorMsg("Camera capture failed.");
-      return;
-    }
-
-    ctx.drawImage(video, 0, 0, vw, vh);
-
-    const timestamp = Date.now();
-    const filename = `fleet-form-${timestamp}.jpg`;
-
-    try {
-      const file = await fileFromCanvas(canvas, filename);
-      await addValidatedFiles([file]);
-      closeCamera();
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error("Capture error:", err);
-      setErrorMsg("Failed to capture photo.");
-    }
-  }, [addValidatedFiles, closeCamera]);
-
-  const handleSubmit = useCallback(
-    async (e: React.FormEvent) => {
-      e.preventDefault();
-
-      if (files.length === 0) {
-        setErrorMsg("Upload clear images of the form (photos or scans).");
-        return;
-      }
-
-      setLoading(true);
-      setProgress({ current: 0, total: files.length });
-      setErrorMsg(null);
-
-      const uploadIds: string[] = [];
-
-      try {
-        for (let i = 0; i < files.length; i++) {
-          const f = files[i] as File;
-
-          setProgress({ current: i + 1, total: files.length });
-
-          const formData = new FormData();
-          formData.append("file", f); // existing route expects "file"
-          if (vehicleType) formData.append("vehicleType", vehicleType);
-          if (dutyClass) formData.append("dutyClass", dutyClass);
-          if (titleHint) formData.append("titleHint", titleHint);
-
-          const res = await fetch("/api/fleet/forms/upload", {
-            method: "POST",
-            body: formData,
-          });
-
-          const data = (await res.json().catch(() => null)) as
-            | UploadResponse
-            | { error?: string }
-            | null;
-
-          if (!res.ok) {
-            const err =
-              (data && "error" in data && typeof data.error === "string"
-                ? data.error
-                : null) || `Upload failed (${res.status})`;
-            setErrorMsg(err);
-            return;
-          }
-
-          if (!data || !("id" in data)) {
-            setErrorMsg("Upload succeeded but response was incomplete.");
-            return;
-          }
-
-          const uploadData = data as UploadResponse;
-
-          if (!uploadData.id) {
-            setErrorMsg("Upload succeeded but no upload id was returned.");
-            return;
-          }
-
-          if (uploadData.status !== "parsed") {
-            const detailedError =
-              (uploadData.error && uploadData.error.trim().length > 0
-                ? uploadData.error
-                : null) ??
-              `Form uploaded but scan did not complete successfully (status: ${uploadData.status}).`;
-
-            // eslint-disable-next-line no-console
-            console.error("Fleet form scan failed:", uploadData);
-
-            setErrorMsg(detailedError);
-            return;
-          }
-
-          uploadIds.push(uploadData.id);
-        }
-
-        if (uploadIds.length === 0) {
-          setErrorMsg("No uploads completed.");
-          return;
-        }
-
-        // Forward user into Review & Map
-        const qs = new URLSearchParams();
-        qs.set("uploadId", uploadIds[0] ?? "");
-        qs.set("uploadIds", uploadIds.join(","));
-        if (vehicleType) qs.set("vehicleType", vehicleType);
-        if (dutyClass) qs.set("dutyClass", dutyClass);
-        if (titleHint) qs.set("titleHint", titleHint);
-
-        router.push(`/inspections/fleet-review?${qs.toString()}`);
-      } catch (err) {
-        // eslint-disable-next-line no-console
-        console.error("Fleet import error:", err);
-        setErrorMsg("Unexpected error uploading fleet form.");
-      } finally {
-        setLoading(false);
-        setProgress(null);
-      }
-    },
-    [dutyClass, files, router, titleHint, vehicleType],
-  );
+  const selected = options.find((option) => option.id === selectedId) ?? null;
 
   return (
-    <div className="space-y-3">
-      <form
-        onSubmit={handleSubmit}
-        className="
-          relative rounded-2xl border border-[rgba(100,116,139,0.34)]
-          bg-[linear-gradient(180deg,var(--theme-surface-inset),var(--theme-surface-inset))]
-          shadow-[var(--theme-shadow-medium)] backdrop-blur-xl p-5
-        "
-      >
-        {/* Copper glow wash */}
+    <div className="relative text-xs text-[color:var(--theme-text-secondary)]">
+      <label htmlFor={inputId}>{label}</label>
+      <input
+        id={inputId}
+        role="combobox"
+        aria-autocomplete="list"
+        aria-controls={listId}
+        aria-expanded={open}
+        value={value}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+        onChange={(event) => {
+          const nextValue = event.target.value;
+          const exactMatch = options.find(
+            (option) =>
+              normalizeOptionLabel(option.label) ===
+              normalizeOptionLabel(nextValue),
+          );
+          onChange(nextValue, exactMatch?.id ?? "");
+          setOpen(true);
+        }}
+        placeholder={placeholder}
+        autoComplete="off"
+        className="mt-1 w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3 text-sm text-[color:var(--theme-text-primary)]"
+      />
+
+      {open && matches.length ? (
         <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_16%_10%,rgba(59,130,246,0.14),transparent_48%),radial-gradient(circle_at_84%_8%,rgba(64,84,120,0.14),transparent_42%)]"
-        />
+          id={listId}
+          role="listbox"
+          className="absolute left-0 right-0 z-30 mt-1 max-h-64 overflow-y-auto rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-1 shadow-[var(--theme-shadow-large)]"
+        >
+          {matches.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              role="option"
+              aria-selected={option.id === selectedId}
+              onPointerDown={(event) => event.preventDefault()}
+              onClick={() => {
+                onSelect(option);
+                setOpen(false);
+              }}
+              className="block w-full rounded-lg px-3 py-3 text-left text-sm text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)] active:bg-[color:var(--theme-surface-subtle)]"
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
 
-        <div className="mb-3 flex items-center justify-between">
-          <div>
-            <div className="text-[11px] font-blackops uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-              Fleet Form Import
-            </div>
-            <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
-              Convert a fleet’s current inspection sheet into a ProFixIQ template.
-            </p>
+      {selected ? (
+        <div className="mt-1 text-[0.7rem] font-medium text-emerald-400">
+          Selected: {selected.label}
+        </div>
+      ) : value.trim() ? (
+        <div className="mt-1 text-[0.7rem] text-[color:var(--theme-text-muted)]">
+          Select a match to link the record, or keep this as a typed name.
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export default function FleetFormImportCard({
+  mobile = false,
+}: {
+  mobile?: boolean;
+}) {
+  const router = useRouter();
+  const supabase = useMemo(() => createBrowserSupabase(), []);
+  const [files, setFiles] = useState<File[]>([]);
+  const [title, setTitle] = useState("");
+  const [vehicleType, setVehicleType] = useState("");
+  const [dutyClass, setDutyClass] = useState("");
+  const [customerId, setCustomerId] = useState("");
+  const [fleetId, setFleetId] = useState("");
+  const [customerName, setCustomerName] = useState("");
+  const [fleetName, setFleetName] = useState("");
+  const [customers, setCustomers] = useState<Option[]>([]);
+  const [fleets, setFleets] = useState<Option[]>([]);
+  const [imports, setImports] = useState<ImportListItem[]>([]);
+  const [importReady, setImportReady] = useState<boolean | null>(null);
+  const [setupError, setSetupError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadImports = useCallback(async () => {
+    const response = await fetch("/api/inspection-form-imports", {
+      cache: "no-store",
+    });
+    const body = (await response.json().catch(() => null)) as {
+      imports?: ImportListItem[];
+      customers?: Option[];
+      fleets?: Option[];
+      importReady?: boolean;
+      setupError?: string | null;
+      error?: string;
+    } | null;
+    if (response.ok) {
+      setImports(body?.imports ?? []);
+      setCustomers(body?.customers ?? []);
+      setFleets(body?.fleets ?? []);
+      setImportReady(body?.importReady ?? true);
+      setSetupError(body?.setupError ?? null);
+    } else {
+      setImportReady(false);
+      setSetupError(body?.error || "Unable to load customers and fleets.");
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadImports();
+  }, [loadImports]);
+
+  useEffect(() => {
+    if (
+      !imports.some(
+        (item) => item.state === "queued" || item.state === "processing",
+      )
+    ) {
+      return;
+    }
+    const interval = window.setInterval(() => {
+      void loadImports();
+    }, 5000);
+    return () => window.clearInterval(interval);
+  }, [imports, loadImports]);
+
+  const addFiles = (incoming: File[]) => {
+    setError(null);
+    const invalid = incoming.find(
+      (file) => !ACCEPTED.has(file.type) || !file.size,
+    );
+    if (invalid) {
+      setError(`${invalid.name || "That file"} is not a supported form image.`);
+      return;
+    }
+    setFiles((current) => [...current, ...incoming].slice(0, 12));
+  };
+
+  const move = (index: number, direction: -1 | 1) => {
+    setFiles((current) => {
+      const target = index + direction;
+      if (target < 0 || target >= current.length) return current;
+      const next = [...current];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+  };
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!files.length) {
+      setError("Photograph or select at least one page.");
+      return;
+    }
+    if (importReady === false) {
+      setError(setupError || "Form importing is temporarily unavailable.");
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    try {
+      const prepareResponse = await fetch("/api/inspection-form-imports", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "prepare",
+          files: files.map((file) => ({
+            name: file.name,
+            size: file.size,
+            type: file.type,
+          })),
+        }),
+      });
+      const prepareBody = (await prepareResponse.json().catch(() => null)) as {
+        uploadId?: string;
+        uploads?: SignedUpload[];
+        error?: string;
+      } | null;
+      if (
+        !prepareResponse.ok ||
+        !prepareBody?.uploadId ||
+        !prepareBody.uploads
+      ) {
+        throw new Error(
+          prepareBody?.error || "Unable to prepare the form upload.",
+        );
+      }
+
+      for (let index = 0; index < prepareBody.uploads.length; index += 1) {
+        const upload = prepareBody.uploads[index];
+        const file = files[index];
+        const { error: uploadError } = await supabase.storage
+          .from("fleet-forms")
+          .uploadToSignedUrl(upload.path, upload.token, file, {
+            contentType: upload.mime,
+            upsert: false,
+          });
+        if (uploadError) {
+          throw new Error(
+            `Unable to upload page ${index + 1}. ${uploadError.message}`,
+          );
+        }
+      }
+
+      const response = await fetch("/api/inspection-form-imports", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "finalize",
+          uploadId: prepareBody.uploadId,
+          uploads: prepareBody.uploads.map((upload) => ({
+            path: upload.path,
+            originalName: upload.originalName,
+            mime: upload.mime,
+            size: upload.size,
+          })),
+          title,
+          vehicleType,
+          dutyClass,
+          customerId,
+          customerName,
+          fleetId,
+          fleetName,
+        }),
+      });
+      const body = (await response.json().catch(() => null)) as {
+        jobId?: string;
+        error?: string;
+      } | null;
+      if (!response.ok || !body?.jobId) {
+        throw new Error(body?.error || "Unable to finish the form upload.");
+      }
+      router.push(
+        mobile
+          ? `/mobile/inspections/import/${body.jobId}`
+          : `/inspections/fleet-review?jobId=${body.jobId}`,
+      );
+    } catch (caught) {
+      setError(
+        caught instanceof Error ? caught.message : "Unable to upload the form.",
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="space-y-5">
+      <form
+        onSubmit={submit}
+        className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4 shadow-[var(--theme-shadow-medium)] md:p-5"
+      >
+        <div className="mb-4">
+          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--accent-copper)]">
+            Import customer form
           </div>
-
-          <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
-            Beta
-          </span>
+          <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
+            Photograph every page. You can leave while ProFixIQ reads it and
+            review it on any signed-in device.
+          </p>
         </div>
 
-        {/* FILE + TITLE */}
-        <div className="mb-4 grid gap-4 md:grid-cols-2">
-          {/* File input */}
-          <label className="flex flex-col gap-1 text-xs text-[color:var(--theme-text-secondary)]">
-            Form images (page 1–n)
+        <div className="grid gap-3 md:grid-cols-2">
+          <ImportDirectoryField
+            label="Customer (optional)"
+            placeholder="Search or type a customer name"
+            options={customers}
+            value={customerName}
+            selectedId={customerId}
+            onChange={(value, matchingId) => {
+              setCustomerName(value);
+              setCustomerId(matchingId);
+            }}
+            onSelect={(option) => {
+              setCustomerName(option.label);
+              setCustomerId(option.id);
+            }}
+          />
+          <ImportDirectoryField
+            label="Fleet account (optional)"
+            placeholder="Search or type a fleet name"
+            options={fleets}
+            value={fleetName}
+            selectedId={fleetId}
+            onChange={(value, matchingId) => {
+              setFleetName(value);
+              setFleetId(matchingId);
+            }}
+            onSelect={(option) => {
+              setFleetName(option.label);
+              setFleetId(option.id);
+            }}
+          />
+          <label className="text-xs text-[color:var(--theme-text-secondary)] md:col-span-2">
+            Template name (optional)
             <input
-              type="file"
-              accept={acceptAttr}
-              multiple
-              onChange={handleFileChange}
-              className="
-                rounded-xl border border-[rgba(125,134,153,0.56)]
-                bg-[var(--theme-surface-inset)] px-3 py-2 text-xs text-[color:var(--theme-text-primary)]
-                file:mr-2 file:rounded-lg file:border file:border-[rgba(100,116,139,0.5)]
-                file:bg-[var(--theme-surface-inset)] file:px-3 file:py-1.5 file:text-[10px] file:uppercase
-                file:tracking-[0.18em] file:text-[color:var(--theme-text-secondary)]
-                hover:file:bg-[var(--theme-surface-inset)]
-              "
-            />
-            <span className="mt-1 text-[10px] text-[color:var(--theme-text-muted)]">
-              Upload clear photos/scans (JPEG, PNG, HEIC, WEBP, or TIFF). One image per page.
-            </span>
-          </label>
-
-          {/* Title hint */}
-          <label className="flex flex-col gap-1 text-xs text-[color:var(--theme-text-secondary)]">
-            Optional title
-            <input
-              value={titleHint}
-              onChange={(e) => setTitleHint(e.target.value)}
-              placeholder="ABC Logistics – Daily Truck Inspection"
-              className="
-                rounded-xl border border-[rgba(125,134,153,0.56)]
-                bg-[var(--theme-surface-inset)] px-3 py-2 text-xs text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)]
-              "
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="ABC Logistics annual inspection"
+              className="mt-1 w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3 text-sm text-[color:var(--theme-text-primary)]"
             />
           </label>
-        </div>
-
-        {/* Selected files list */}
-        {files.length > 0 && (
-          <div className="mb-4 rounded-xl border border-[rgba(84,96,122,0.5)] bg-[var(--theme-surface-inset)] p-3">
-            <div className="mb-2 text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
-              Selected pages ({files.length})
-            </div>
-            <ul className="space-y-2">
-              {files.map((f, idx) => (
-                <li
-                  key={`${f.name}-${idx}`}
-                  className="flex items-center justify-between gap-2 rounded-lg border border-[rgba(72,84,110,0.52)] bg-[var(--theme-surface-inset)] px-3 py-2"
-                >
-                  <div className="min-w-0">
-                    <div className="truncate text-xs text-[color:var(--theme-text-primary)]">
-                      {idx + 1}. {f.name}
-                    </div>
-                    <div className="text-[10px] text-[color:var(--theme-text-muted)]">
-                      {f.type} • {formatBytes(f.size)}
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => handleRemove(idx)}
-                    className="rounded-full border border-[rgba(100,116,139,0.42)] bg-[var(--theme-surface-inset)] px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)] hover:bg-[var(--theme-surface-inset)]"
-                    aria-label={`Remove ${f.name}`}
-                  >
-                    Remove
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {/* VEHICLE TYPE + DUTY + ACTIONS */}
-        <div className="mb-4 grid gap-4 md:grid-cols-[1fr,1fr,auto,auto]">
-          <label className="flex flex-col gap-1 text-xs text-[color:var(--theme-text-secondary)]">
+          <label className="text-xs text-[color:var(--theme-text-secondary)]">
             Vehicle type
             <select
               value={vehicleType}
               onChange={(e) => setVehicleType(e.target.value)}
-              className="
-                rounded-xl border border-[rgba(125,134,153,0.56)]
-                bg-[var(--theme-surface-inset)] px-3 py-2 text-xs text-[color:var(--theme-text-primary)]
-              "
+              className="mt-1 w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3 text-sm text-[color:var(--theme-text-primary)]"
             >
               <option value="">Not specified</option>
               <option value="car">Car / SUV</option>
-              <option value="truck">Truck / Tractor</option>
-              <option value="bus">Bus / Coach</option>
+              <option value="truck">Truck / tractor</option>
+              <option value="bus">Bus / coach</option>
               <option value="trailer">Trailer</option>
-              <option value="mixed">Mixed Fleet</option>
+              <option value="mixed">Mixed fleet</option>
             </select>
           </label>
-
-          <label className="flex flex-col gap-1 text-xs text-[color:var(--theme-text-secondary)]">
+          <label className="text-xs text-[color:var(--theme-text-secondary)]">
             Duty class
             <select
               value={dutyClass}
-              onChange={(e) => setDutyClass(e.target.value as DutyClass | "")}
-              className="
-                rounded-xl border border-[rgba(125,134,153,0.56)]
-                bg-[var(--theme-surface-inset)] px-3 py-2 text-xs text-[color:var(--theme-text-primary)]
-              "
+              onChange={(e) => setDutyClass(e.target.value)}
+              className="mt-1 w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3 text-sm text-[color:var(--theme-text-primary)]"
             >
               <option value="">Not specified</option>
-              <option value="light">Light</option>
-              <option value="medium">Medium</option>
-              <option value="heavy">Heavy</option>
+              <option value="light">Light duty</option>
+              <option value="medium">Medium duty</option>
+              <option value="heavy">Heavy duty</option>
             </select>
-            <span className="mt-1 text-[10px] text-[color:var(--theme-text-muted)]">
-              Helps auto-select hydraulic or air brake grids.
-            </span>
           </label>
-
-          <div className="flex flex-col justify-end">
-            <Button
-              type="button"
-              disabled={loading}
-              onClick={openCamera}
-              className="
-                w-full rounded-xl border border-[rgba(100,116,139,0.45)]
-                bg-[var(--theme-surface-inset)] px-4 py-2 text-[11px] uppercase tracking-[0.16em]
-                text-[color:var(--theme-text-primary)] hover:bg-[var(--theme-surface-inset)] hover:border-[rgba(148,163,184,0.62)]
-                disabled:opacity-50
-              "
-            >
-              Camera
-            </Button>
-          </div>
-
-          <div className="flex flex-col justify-end">
-            <Button
-              type="submit"
-              disabled={!canSubmit}
-              className="
-                w-full rounded-xl border border-[rgba(100,116,139,0.45)]
-                bg-[var(--theme-surface-inset)] px-4 py-2 text-[11px] uppercase tracking-[0.16em]
-                text-[color:var(--theme-text-primary)] hover:bg-[var(--theme-surface-inset)] hover:border-[rgba(148,163,184,0.62)]
-                disabled:opacity-50
-              "
-            >
-              {loading
-                ? progress
-                  ? `Uploading ${progress.current}/${progress.total}…`
-                  : "Uploading…"
-                : "Upload & Scan"}
-            </Button>
-          </div>
         </div>
 
-        {errorMsg && (
-          <div className="whitespace-pre-line rounded-lg border border-red-700 bg-red-900/30 px-3 py-2 text-xs text-red-200">
-            {errorMsg}
-          </div>
-        )}
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <label className="flex min-h-16 cursor-pointer items-center justify-center rounded-2xl border border-[var(--accent-copper)] bg-[color:var(--theme-surface-subtle)] px-3 text-center text-sm font-semibold text-[color:var(--theme-text-primary)]">
+            Take photo
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="sr-only"
+              onChange={(e) => {
+                addFiles(Array.from(e.target.files ?? []));
+                e.target.value = "";
+              }}
+            />
+          </label>
+          <label className="flex min-h-16 cursor-pointer items-center justify-center rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 text-center text-sm font-semibold text-[color:var(--theme-text-primary)]">
+            Choose photos
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              className="sr-only"
+              onChange={(e) => {
+                addFiles(Array.from(e.target.files ?? []));
+                e.target.value = "";
+              }}
+            />
+          </label>
+        </div>
 
-        {!errorMsg && (
-          <p className="mt-2 text-[10px] text-[color:var(--theme-text-muted)]">
-            Upload images → AI reads each page → Review & map sections → Save as template.
-          </p>
-        )}
+        {files.length ? (
+          <div className="mt-4 space-y-2">
+            <div className="text-xs uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
+              Pages in reading order
+            </div>
+            {files.map((file, index) => (
+              <div
+                key={`${file.name}-${file.lastModified}-${index}`}
+                className="flex items-center gap-2 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-sm"
+              >
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[color:var(--theme-surface-subtle)] font-semibold">
+                  {index + 1}
+                </span>
+                <span className="min-w-0 flex-1 truncate">{file.name}</span>
+                <button
+                  type="button"
+                  aria-label={`Move page ${index + 1} up`}
+                  onClick={() => move(index, -1)}
+                  disabled={index === 0}
+                  className="px-2 py-1 disabled:opacity-30"
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  aria-label={`Move page ${index + 1} down`}
+                  onClick={() => move(index, 1)}
+                  disabled={index === files.length - 1}
+                  className="px-2 py-1 disabled:opacity-30"
+                >
+                  ↓
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setFiles((current) =>
+                      current.filter((_, fileIndex) => fileIndex !== index),
+                    )
+                  }
+                  className="px-2 py-1 text-red-300"
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        {setupError ? (
+          <div className="mt-4 rounded-xl border border-amber-500/50 bg-amber-950/30 p-3 text-sm text-amber-100">
+            {setupError}
+          </div>
+        ) : null}
+        {error ? (
+          <div className="mt-4 rounded-xl border border-red-500/50 bg-red-950/30 p-3 text-sm text-red-200">
+            {error}
+          </div>
+        ) : null}
+        <Button
+          type="submit"
+          variant="copper"
+          size="lg"
+          isLoading={submitting}
+          disabled={!files.length || importReady === false}
+          className="mt-4 w-full"
+        >
+          Upload and process
+        </Button>
       </form>
 
-      {/* Camera modal (simple, dependency-free) */}
-      {cameraOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[color:var(--theme-surface-overlay)] p-4">
-          <div className="w-full max-w-xl overflow-hidden rounded-2xl border border-[rgba(110,119,138,0.55)] bg-[var(--theme-gradient-panel)] shadow-[var(--theme-shadow-medium)]">
-            <div className="flex items-center justify-between border-b border-[rgba(110,119,138,0.45)] px-4 py-3">
-              <div className="text-[11px] font-blackops uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-                Camera Capture
-              </div>
-              <button
-                type="button"
-                onClick={closeCamera}
-                className="rounded-full border border-[rgba(100,116,139,0.45)] bg-[var(--theme-surface-inset)] px-3 py-1 text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)] hover:bg-[var(--theme-surface-inset)]"
-              >
-                Close
-              </button>
-            </div>
-
-            <div className="p-4">
-              {cameraError ? (
-                <div className="rounded-lg border border-red-700 bg-red-900/30 px-3 py-2 text-xs text-red-200">
-                  {cameraError}
-                </div>
-              ) : (
-                <>
-                  <video
-                    ref={videoRef}
-                    className="aspect-video w-full rounded-xl border border-[rgba(110,119,138,0.45)] bg-[color:var(--theme-surface-page)]"
-                    playsInline
-                    muted
-                  />
-                  <canvas ref={canvasRef} className="hidden" />
-
-                  <div className="mt-3 flex items-center justify-end gap-2">
-                    <button
-                      type="button"
-                      onClick={handleCapture}
-                      className="
-                        rounded-xl border border-[rgba(100,116,139,0.45)]
-                        bg-[var(--theme-surface-inset)] px-4 py-2 text-[11px] uppercase tracking-[0.16em]
-                        text-[color:var(--theme-text-primary)] hover:bg-[var(--theme-surface-inset)] hover:border-[rgba(148,163,184,0.62)]
-                      "
-                    >
-                      Capture
-                    </button>
+      {imports.length ? (
+        <section>
+          <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)]">
+            Recent form imports
+          </h2>
+          <div className="mt-2 space-y-2">
+            {imports.map((item) => {
+              const href = mobile
+                ? `/mobile/inspections/import/${item.id}`
+                : `/inspections/fleet-review?jobId=${item.id}`;
+              return (
+                <Link
+                  key={item.id}
+                  href={href}
+                  className="block rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-3"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-semibold">
+                        {item.title}
+                      </div>
+                      <div className="mt-1 truncate text-xs text-[color:var(--theme-text-secondary)]">
+                        {item.customerName || item.fleetName || "Shop template"}
+                      </div>
+                    </div>
+                    <span className="shrink-0 rounded-full border border-[color:var(--theme-border-soft)] px-2 py-1 text-[10px] uppercase tracking-[0.12em]">
+                      {STATE_COPY[item.state]}
+                    </span>
                   </div>
-
-                  <p className="mt-2 text-[10px] text-[color:var(--theme-text-muted)]">
-                    Tip: Fill the frame, avoid glare, and tap-to-focus before capturing.
-                  </p>
-                </>
-              )}
-            </div>
+                  {item.state === "queued" || item.state === "processing" ? (
+                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[color:var(--theme-surface-inset)]">
+                      <div
+                        className="h-full bg-[var(--accent-copper)]"
+                        style={{
+                          width: `${Math.max(8, Math.round((item.processedPages / Math.max(1, item.totalPages)) * 100))}%`,
+                        }}
+                      />
+                    </div>
+                  ) : null}
+                </Link>
+              );
+            })}
           </div>
-        </div>
-      )}
+        </section>
+      ) : null}
     </div>
   );
 }

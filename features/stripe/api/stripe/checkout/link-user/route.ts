@@ -1,121 +1,148 @@
 import { NextResponse } from "next/server";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
-import type { Database } from "@shared/types/types/supabase";
+import { z } from "zod";
+
+import { readBoundedJson } from "@/features/shared/lib/server/bounded-json";
+import {
+  createAdminSupabase,
+  createServerSupabaseRoute,
+} from "@/features/shared/lib/supabase/server";
 import { createStripeClient } from "@/features/stripe/lib/stripe/client";
 import { reconcileShopBillingFromUser } from "@/features/stripe/lib/server/canonical-shop-billing";
+import {
+  claimStripeAcquisitionIntent,
+  getStripeCheckoutEmail,
+  getStripeCheckoutPriceId,
+  isCompletedStripeAcquisitionSession,
+  readStripeAcquisitionMetadata,
+  toStripeId,
+} from "@/features/stripe/lib/server/stripe-acquisition-intent";
 
-type DB = Database;
+const REQUEST_MAX_BYTES = 2 * 1024;
+const requestSchema = z.object({ sessionId: z.string().regex(/^cs_[A-Za-z0-9_]+$/) }).strict();
 
-function toStripeId(v: unknown, prefix: string): string | null {
-  if (typeof v === "string" && v.startsWith(prefix)) return v;
-  if (v && typeof v === "object") {
-    const maybeId = (v as { id?: unknown }).id;
-    if (typeof maybeId === "string" && maybeId.startsWith(prefix)) return maybeId;
+function noStoreJson(body: unknown, status = 200) {
+  return NextResponse.json(body, {
+    status,
+    headers: { "Cache-Control": "no-store" },
+  });
+}
+
+function claimFailureStatus(reason: string): number {
+  if (reason === "email_mismatch" || reason === "billing_role_required") return 403;
+  if (reason.includes("conflict") || reason.includes("linked") || reason === "intent_consumed") {
+    return 409;
   }
-  return null;
+  return 400;
 }
 
 export async function handleStripeCheckoutLinkUser(req: Request) {
   try {
-    if (!process.env.STRIPE_SECRET_KEY?.trim()) {
-      return NextResponse.json({ error: "Stripe is not configured" }, { status: 500 });
-    }
+    const secretKey = String(process.env.STRIPE_SECRET_KEY ?? "").trim();
+    if (!secretKey) return noStoreJson({ error: "Billing unavailable" }, 503);
 
     const supabase = createServerSupabaseRoute();
     const {
       data: { user },
     } = await supabase.auth.getUser();
+    if (!user) return noStoreJson({ error: "Unauthorized" }, 401);
 
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const bounded = await readBoundedJson(req, REQUEST_MAX_BYTES);
+    if (!bounded.ok) {
+      return noStoreJson(
+        { error: bounded.reason === "too_large" ? "Request too large" : "Invalid request" },
+        bounded.reason === "too_large" ? 413 : 400,
+      );
     }
+    const parsed = requestSchema.safeParse(bounded.value);
+    if (!parsed.success) return noStoreJson({ error: "Invalid checkout session" }, 400);
 
-    const body = (await req.json().catch(() => null)) as { sessionId?: string } | null;
-    const sessionId = String(body?.sessionId ?? "").trim();
-
-    if (!sessionId) {
-      return NextResponse.json({ error: "Missing sessionId" }, { status: 400 });
-    }
-
-    const stripe = createStripeClient(process.env.STRIPE_SECRET_KEY);
-    const session = await stripe.checkout.sessions.retrieve(sessionId, {
-      expand: ["subscription"],
+    const stripe = createStripeClient(secretKey);
+    const session = await stripe.checkout.sessions.retrieve(parsed.data.sessionId, {
+      expand: ["subscription", "customer"],
     });
+    const metadata = readStripeAcquisitionMetadata(session.metadata);
+    if (!metadata || !isCompletedStripeAcquisitionSession(session)) {
+      return noStoreJson({ error: "Checkout is not eligible for account linking" }, 400);
+    }
 
+    const [priceId, checkoutEmail] = await Promise.all([
+      getStripeCheckoutPriceId(stripe, session.id),
+      getStripeCheckoutEmail(stripe, session),
+    ]);
     const customerId = toStripeId(session.customer, "cus_");
     const subscriptionId = toStripeId(session.subscription, "sub_");
+    if (
+      !priceId ||
+      priceId !== metadata.priceId ||
+      !checkoutEmail ||
+      !customerId ||
+      !subscriptionId
+    ) {
+      return noStoreJson({ error: "Checkout identity could not be verified" }, 400);
+    }
 
-    if (!customerId && !subscriptionId) {
-      return NextResponse.json(
-        { error: "No Stripe billing artifacts found in checkout session" },
-        { status: 404 },
+    const admin = createAdminSupabase();
+    const claim = await claimStripeAcquisitionIntent({
+      admin,
+      metadata,
+      checkoutSessionId: session.id,
+      customerId,
+      subscriptionId,
+      checkoutEmail,
+      userId: user.id,
+    });
+    if (!claim.claimed) {
+      console.warn("stripe_acquisition_claim_rejected", {
+        reason: claim.reason,
+        userId: user.id,
+      });
+      return noStoreJson(
+        { error: "Checkout cannot be linked to this account" },
+        claimFailureStatus(claim.reason),
       );
     }
 
-    if (customerId) {
-      await stripe.customers.update(customerId, {
-        metadata: {
-          supabase_user_id: user.id,
-          supabaseUserId: user.id,
-          source: "profixiq",
-        },
-      });
-    }
+    const identityMetadata = {
+      acquisition_intent_id: metadata.intentId,
+      shop_id: claim.shopId ?? "",
+      source: "profixiq",
+      supabase_user_id: user.id,
+    };
+    await stripe.customers.update(
+      customerId,
+      { metadata: identityMetadata },
+      { idempotencyKey: `profixiq:acquisition-customer-link:${metadata.intentId}:${user.id}` },
+    );
 
-    if (subscriptionId) {
-      const currentSub =
-        typeof session.subscription === "object" && session.subscription
-          ? session.subscription
-          : await stripe.subscriptions.retrieve(subscriptionId);
+    const currentSubscription =
+      typeof session.subscription === "object" && session.subscription
+        ? session.subscription
+        : await stripe.subscriptions.retrieve(subscriptionId);
+    await stripe.subscriptions.update(
+      subscriptionId,
+      { metadata: { ...(currentSubscription.metadata ?? {}), ...identityMetadata } },
+      { idempotencyKey: `profixiq:acquisition-subscription-link:${metadata.intentId}:${user.id}` },
+    );
 
-      await stripe.subscriptions.update(subscriptionId, {
-        metadata: {
-          ...(currentSub.metadata ?? {}),
-          supabase_user_id: user.id,
-          source: "profixiq",
-        },
-      });
-    }
-
-    const { error: profileError } = await supabase
-      .from("profiles")
-      .update({
-        stripe_checkout_complete: true,
-        stripe_checkout_session_id: sessionId,
-        stripe_customer_id: customerId,
-        stripe_subscription_id: subscriptionId,
-      } as unknown as DB["public"]["Tables"]["profiles"]["Update"])
-      .eq("id", user.id);
-
-    if (profileError) {
-      return NextResponse.json({ error: profileError.message }, { status: 500 });
-    }
-
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("shop_id")
-      .eq("id", user.id)
-      .maybeSingle<{ shop_id: string | null }>();
-
-    if (profile?.shop_id) {
+    if (claim.shopId) {
       await reconcileShopBillingFromUser({
         stripe,
-        supabase,
+        supabase: admin,
         userId: user.id,
-        shopId: profile.shop_id,
+        shopId: claim.shopId,
       });
     }
 
-    return NextResponse.json({
+    return noStoreJson({
       success: true,
-      customerId,
-      subscriptionId,
-      shopLinked: Boolean(profile?.shop_id),
+      shopLinked: Boolean(claim.shopId),
+      repeated: claim.repeated,
     });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    console.error("[stripe/checkout/link-user] error", err);
-    return NextResponse.json({ error: message }, { status: 500 });
+  } catch (error) {
+    console.error("stripe_acquisition_link_failed", {
+      message: error instanceof Error ? error.message : "unknown",
+    });
+    return noStoreJson({ error: "Checkout linking unavailable" }, 503);
   }
 }
 

@@ -70,24 +70,9 @@ export default function InspectionMenuClient() {
       title: "Saved Drafts",
       subtitle: "Resume in-progress inspections",
     },
-    {
-      href: "/inspections/summary",
-      title: "Summaries",
-      subtitle: "Review inspection results",
-    },
   ];
 
   const NAV_UTIL: Tile[] = [
-    {
-      href: "/inspections/maintenance50",
-      title: "Maintenance 50-Point",
-      subtitle: "Quick multi-point preset",
-    },
-    {
-      href: "/inspections/maintenance50-air",
-      title: "Maintenance 50 – Air",
-      subtitle: "CVIP-style (air brakes)",
-    },
     {
       href: "/inspections/saved",
       title: "Saved Inspections",

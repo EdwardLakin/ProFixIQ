@@ -40,7 +40,7 @@ export type StagedInspectionPhoto = {
   status: OfflineMutationStatus;
 };
 
-function operationId(): string {
+export function createInspectionPhotoOperationId(): string {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
     : `inspection-photo:${Date.now()}:${Math.random().toString(16).slice(2)}`;
@@ -150,7 +150,7 @@ export async function stageInspectionPhoto(args: {
     );
   }
 
-  const clientMutationId = operationId();
+  const clientMutationId = createInspectionPhotoOperationId();
   const payload: InspectionPhotoPayload = {
     blobId: clientMutationId,
     draftKey: args.draftKey,

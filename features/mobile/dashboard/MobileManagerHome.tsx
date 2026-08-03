@@ -64,6 +64,7 @@ export default function MobileManagerHome({ managerName, role, stats }: Props) {
         { title: "Work order board", detail: "Review live work and status flow.", href: "/mobile/work-orders" },
         { title: "Attendance", detail: "See who is clocked in and active.", href: "/mobile/workforce/attendance" },
         { title: "Appointments", detail: "Review today’s arrivals.", href: "/mobile/appointments" },
+        ...(["owner", "admin", "manager"].includes(role) ? [{ title: "Import inspection form", detail: "Photograph a customer checklist and build a template.", href: "/mobile/inspections/import" }] : []),
         { title: "Reports", detail: "Open revenue and efficiency views.", href: "/mobile/reports" },
       ]} />
     </MobileDashboardPage>

@@ -5,12 +5,24 @@
       "schedule": "17 3 * * *"
     },
     {
+      "path": "/api/internal/observability/health",
+      "schedule": "7 * * * *"
+    },
+    {
       "path": "/api/internal/import-jobs/tick",
       "schedule": "* * * * *"
     },
     {
       "path": "/api/internal/financial-outbox/tick",
       "schedule": "*/2 * * * *"
+    },
+    {
+      "path": "/api/internal/workforce/auto-punch-out",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/internal/stripe/reconcile-pending-billing",
+      "schedule": "*/5 * * * *"
     }
   ],
   "git": {

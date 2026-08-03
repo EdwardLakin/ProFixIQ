@@ -1,15 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
-import type { Database, Json } from "@shared/types/types/supabase";
+import { useEffect, useMemo, useState } from "react";
 import {
   AdminBadge,
   AdminEmptyState,
   AdminField,
   AdminPageHeader,
-  AdminPageShell,
   AdminPanel,
   AdminPanelTitle,
   AdminStatCard,
@@ -17,203 +14,229 @@ import {
   AdminToolbar,
 } from "@/features/dashboard/app/dashboard/admin/AdminSurface";
 
-type AuditRow = Pick<
-  Database["public"]["Tables"]["audit_logs"]["Row"],
-  "id" | "created_at" | "actor_id" | "action" | "target" | "metadata"
->;
-
-function classifySeverity(action: string | null): "high" | "normal" {
-  const value = (action ?? "").toLowerCase();
-  return value.includes("delete") || value.includes("remove") || value.includes("role") ? "high" : "normal";
-}
-
-function stringifyMetadata(metadata: Json | null): string {
-  if (!metadata) return "";
-  try {
-    return JSON.stringify(metadata);
-  } catch {
-    return "";
-  }
-}
+type ActivityEvent = {
+  id: string;
+  occurredAt: string;
+  actionKey: string;
+  actionLabel: string;
+  category:
+    | "People"
+    | "Attendance"
+    | "Scheduling"
+    | "Payroll"
+    | "Compliance"
+    | "Operations";
+  severity: "high" | "normal";
+  actorName: string;
+  targetLabel: string;
+  summary: string;
+};
 
 export default function AdminAuditClient() {
-  const supabase = useMemo(() => createBrowserSupabase(), []);
-
-  const [rows, setRows] = useState<AuditRow[] | null>(null);
+  const [rows, setRows] = useState<ActivityEvent[] | null>(null);
+  const [timezone, setTimezone] = useState("UTC");
   const [err, setErr] = useState<string | null>(null);
-  const [actionFilter, setActionFilter] = useState("");
-  const [actorFilter, setActorFilter] = useState("");
-  const [severityFilter, setSeverityFilter] = useState<"all" | "high" | "normal">("all");
+  const [query, setQuery] = useState("");
+  const [category, setCategory] = useState("all");
+  const [severity, setSeverity] = useState<"all" | "high" | "normal">("all");
 
   useEffect(() => {
-    (async () => {
-      const { data, error } = await supabase
-        .from("audit_logs")
-        .select("id, created_at, actor_id, action, target, metadata")
-        .order("created_at", { ascending: false })
-        .limit(150);
-
-      if (error) setErr(error.message);
-      setRows((data as AuditRow[]) ?? []);
+    let active = true;
+    void (async () => {
+      const response = await fetch("/api/workforce/activity", {
+        cache: "no-store",
+      });
+      const body = await response.json().catch(() => null);
+      if (!active) return;
+      if (!response.ok) {
+        setErr(body?.error ?? "Unable to load workforce activity.");
+        setRows([]);
+        return;
+      }
+      setRows(Array.isArray(body?.events) ? body.events : []);
+      setTimezone(
+        typeof body?.timezone === "string" && body.timezone
+          ? body.timezone
+          : "UTC",
+      );
     })();
-  }, [supabase]);
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const filteredRows = useMemo(() => {
-    const actionQuery = actionFilter.trim().toLowerCase();
-    const actorQuery = actorFilter.trim().toLowerCase();
-
+    const normalized = query.trim().toLowerCase();
     return (rows ?? []).filter((row) => {
-      const severity = classifySeverity(row.action);
-      const matchesSeverity = severityFilter === "all" ? true : severity === severityFilter;
-      const matchesAction = !actionQuery || (row.action ?? "").toLowerCase().includes(actionQuery);
-      const matchesActor = !actorQuery || (row.actor_id ?? "").toLowerCase().includes(actorQuery);
-      return Boolean(matchesSeverity && matchesAction && matchesActor);
+      if (category !== "all" && row.category !== category) return false;
+      if (severity !== "all" && row.severity !== severity) return false;
+      if (!normalized) return true;
+      return [
+        row.actionLabel,
+        row.actorName,
+        row.targetLabel,
+        row.summary,
+      ].some((value) => value.toLowerCase().includes(normalized));
     });
-  }, [actionFilter, actorFilter, rows, severityFilter]);
+  }, [category, query, rows, severity]);
 
   const summary = useMemo(() => {
-    const allRows = rows ?? [];
-    const highSeverity = allRows.filter((row) => classifySeverity(row.action) === "high").length;
-    const last24h = allRows.filter((row) => {
-      const diff = Date.now() - new Date(row.created_at).getTime();
-      return diff <= 1000 * 60 * 60 * 24;
-    }).length;
+    const current = rows ?? [];
     return {
-      total: allRows.length,
-      highSeverity,
-      last24h,
-      visible: filteredRows.length,
+      total: current.length,
+      high: current.filter((row) => row.severity === "high").length,
+      last24h: current.filter(
+        (row) =>
+          Date.now() - new Date(row.occurredAt).getTime() <=
+          24 * 60 * 60 * 1000,
+      ).length,
+      people: new Set(current.map((row) => row.actorName)).size,
     };
-  }, [filteredRows.length, rows]);
+  }, [rows]);
 
   return (
-    <AdminPageShell>
+    <div className="space-y-4">
       <AdminPageHeader
-        eyebrow="Governance Trail"
-        title="Audit"
-        subtitle="Audit supports daily review of sensitive actions, with enough context to triage and follow up quickly."
+        eyebrow="Workforce trail"
+        title="Activity"
+        subtitle="A shop-scoped history of people, attendance, scheduling, payroll, and compliance changes."
       />
 
       <AdminPanel>
-        <AdminPanelTitle title="Audit Review Summary" description="Use these counts to prioritize what needs review first." />
+        <AdminPanelTitle
+          title="Activity health"
+          description="Every entry is resolved to an employee name and kept inside the current shop."
+        />
         <AdminStatGrid>
-          <AdminStatCard label="Recent events" value={summary.total} hint="Current timeline window" />
-          <AdminStatCard label="High-severity" value={summary.highSeverity} hint="Delete/remove/role actions" />
+          <AdminStatCard label="Recent events" value={summary.total} />
+          <AdminStatCard label="Important events" value={summary.high} />
           <AdminStatCard label="Last 24 hours" value={summary.last24h} />
-          <AdminStatCard label="Visible rows" value={summary.visible} />
+          <AdminStatCard label="People involved" value={summary.people} />
         </AdminStatGrid>
       </AdminPanel>
 
       <AdminPanel>
         <AdminPanelTitle
-          title="Follow-up Paths"
-          description="Move from suspicious events into the right operational surface without losing context."
-        />
-        <div className="grid gap-3 p-4 md:grid-cols-3">
-          <Link href="/dashboard/admin/people" className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 transition hover:border-orange-400/70">
-            <p className="text-sm font-medium text-[color:var(--theme-text-primary)]">Identity follow-up</p>
-            <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">Use People when actions involve person identity, workforce status, or credential readiness.</p>
-          </Link>
-          <Link href="/dashboard/admin/shops" className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 transition hover:border-orange-400/70">
-            <p className="text-sm font-medium text-[color:var(--theme-text-primary)]">Tenant follow-up</p>
-            <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">Use Shops when actions indicate shop ownership or profile risk.</p>
-          </Link>
-          <Link href="/dashboard/admin/payroll-time" className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 transition hover:border-orange-400/70">
-            <p className="text-sm font-medium text-[color:var(--theme-text-primary)]">Payroll follow-up</p>
-            <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">Use Payroll Time when edits affect employee time review or approvals.</p>
-          </Link>
-        </div>
-      </AdminPanel>
-
-      <AdminPanel>
-        <AdminPanelTitle
-          title="Filter Timeline"
-          description="Narrow by action, actor, and severity to investigate events with less noise."
+          title="Review activity"
+          description="Search by employee name, action, or readable context."
         />
         <AdminToolbar>
-          <AdminField label="Action contains" className="flex-1">
+          <AdminField label="Search names and actions" className="flex-1">
             <input
-              className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none placeholder:text-[color:var(--theme-text-muted)] focus:border-orange-400/70"
-              placeholder="e.g. user.update, shop.delete"
-              value={actionFilter}
-              onChange={(event) => setActionFilter(event.target.value)}
+              className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none placeholder:text-[color:var(--theme-text-muted)] focus:border-[color:var(--brand-accent)]"
+              placeholder="Employee name, payroll, schedule…"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
             />
           </AdminField>
-          <AdminField label="Actor ID contains" className="flex-1">
-            <input
-              className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none placeholder:text-[color:var(--theme-text-muted)] focus:border-orange-400/70"
-              placeholder="Filter by actor id"
-              value={actorFilter}
-              onChange={(event) => setActorFilter(event.target.value)}
-            />
-          </AdminField>
-          <AdminField label="Severity" className="w-full md:w-44">
+          <AdminField label="Area" className="w-full md:w-48">
             <select
-              className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none focus:border-orange-400/70"
-              value={severityFilter}
-              onChange={(event) => setSeverityFilter(event.target.value as "all" | "high" | "normal")}
+              className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)]"
+              value={category}
+              onChange={(event) => setCategory(event.target.value)}
             >
-              <option value="all">All</option>
-              <option value="high">High</option>
-              <option value="normal">Normal</option>
+              <option value="all">All areas</option>
+              <option value="People">People</option>
+              <option value="Attendance">Attendance</option>
+              <option value="Scheduling">Scheduling</option>
+              <option value="Payroll">Payroll</option>
+              <option value="Compliance">Compliance</option>
+              <option value="Operations">Operations</option>
+            </select>
+          </AdminField>
+          <AdminField label="Importance" className="w-full md:w-44">
+            <select
+              className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)]"
+              value={severity}
+              onChange={(event) =>
+                setSeverity(
+                  event.target.value as "all" | "high" | "normal",
+                )
+              }
+            >
+              <option value="all">All events</option>
+              <option value="high">Important</option>
+              <option value="normal">Routine</option>
             </select>
           </AdminField>
         </AdminToolbar>
-
-        {err ? <p className="px-4 pb-3 text-xs text-red-300">Audit query failed: {err}</p> : null}
+        {err ? (
+          <p className="px-4 pb-3 text-sm text-[color:var(--theme-danger-text)]">
+            {err}
+          </p>
+        ) : null}
       </AdminPanel>
 
       <AdminPanel>
         <AdminPanelTitle
-          title="Recent Audit Events"
-          description="Review time, actor, and target together so follow-up actions are immediately clear."
+          title="Recent workforce events"
+          description="Names and plain-language context replace raw database identifiers."
         />
-
         {!rows ? (
-          <AdminEmptyState title="Loading audit entries" body="Gathering latest governance events." />
+          <AdminEmptyState
+            title="Loading activity"
+            body="Gathering the latest workforce events."
+          />
         ) : filteredRows.length === 0 ? (
-          <AdminEmptyState title="No audit entries" body="No entries match current filters." />
+          <AdminEmptyState
+            title="No matching activity"
+            body="No events match the current filters."
+          />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead className="bg-[color:var(--theme-surface-inset)] text-xs uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">
-                <tr>
-                  <th className="px-4 py-2.5 text-left">Time</th>
-                  <th className="px-4 py-2.5 text-left">Action</th>
-                  <th className="px-4 py-2.5 text-left">Actor</th>
-                  <th className="px-4 py-2.5 text-left">Target</th>
-                  <th className="px-4 py-2.5 text-left">Context</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[color:var(--theme-border-soft)]">
-                {filteredRows.map((r) => {
-                  const severity = classifySeverity(r.action);
-                  const metadataPreview = stringifyMetadata(r.metadata);
-
-                  return (
-                    <tr key={r.id} className="text-[color:var(--theme-text-primary)]">
-                      <td className="whitespace-nowrap px-4 py-2.5 text-[color:var(--theme-text-secondary)]">
-                        {r.created_at ? new Date(r.created_at).toLocaleString() : "—"}
-                      </td>
-                      <td className="px-4 py-2.5 font-medium text-[color:var(--theme-text-primary)]">
-                        <div className="flex items-center gap-2">
-                          <span>{r.action ?? "—"}</span>
-                          <AdminBadge>{severity}</AdminBadge>
-                        </div>
-                      </td>
-                      <td className="px-4 py-2.5">{r.actor_id ?? "—"}</td>
-                      <td className="px-4 py-2.5">{r.target ?? "—"}</td>
-                      <td className="max-w-sm px-4 py-2.5 text-xs text-[color:var(--theme-text-secondary)]">
-                        {metadataPreview ? metadataPreview.slice(0, 140) : "No metadata"}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div className="divide-y divide-[color:var(--theme-border-soft)]">
+            {filteredRows.map((row) => (
+              <article
+                key={row.id}
+                className="grid gap-3 px-4 py-4 md:grid-cols-[minmax(0,1fr)_minmax(180px,0.45fr)]"
+              >
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <AdminBadge>{row.category}</AdminBadge>
+                    {row.severity === "high" ? (
+                      <AdminBadge>Important</AdminBadge>
+                    ) : null}
+                    <p className="font-semibold text-[color:var(--theme-text-primary)]">
+                      {row.actionLabel}
+                    </p>
+                  </div>
+                  <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">
+                    <span className="font-medium text-[color:var(--theme-text-primary)]">
+                      {row.actorName}
+                    </span>{" "}
+                    · {row.summary}
+                  </p>
+                  <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
+                    Target: {row.targetLabel}
+                  </p>
+                </div>
+                <time
+                  className="text-sm text-[color:var(--theme-text-secondary)] md:text-right"
+                  dateTime={row.occurredAt}
+                >
+                  {new Date(row.occurredAt).toLocaleString([], {
+                    timeZone: timezone,
+                  })}
+                </time>
+              </article>
+            ))}
           </div>
         )}
       </AdminPanel>
-    </AdminPageShell>
+
+      <div className="flex flex-wrap gap-3 text-sm">
+        <Link
+          href="/dashboard/workforce/attendance"
+          className="text-[color:var(--theme-accent-text)] underline"
+        >
+          Review attendance
+        </Link>
+        <Link
+          href="/dashboard/workforce/payroll-review"
+          className="text-[color:var(--theme-accent-text)] underline"
+        >
+          Review payroll
+        </Link>
+      </div>
+    </div>
   );
 }

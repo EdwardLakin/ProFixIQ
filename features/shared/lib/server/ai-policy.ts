@@ -13,9 +13,12 @@ export type AIPolicy = {
 export type AIFeature =
   | "work_orders_suggest_lines"
   | "ai_summarize_stats"
+  | "fleet_operations_summary"
   | "openai_realtime_token"
   | "work_order_documentation_rewrite"
-  | "branding_generate_logo";
+  | "branding_generate_logo"
+  | "dtc_suggest"
+  | "inspection_interpret";
 
 const AI_POLICIES: Record<AIFeature, AIPolicy> = {
   work_orders_suggest_lines: {
@@ -30,6 +33,13 @@ const AI_POLICIES: Record<AIFeature, AIPolicy> = {
     modelPurpose: "fast",
     timeoutMs: 12000,
     maxTokens: 300,
+    fallbackMode: "graceful_empty",
+  },
+  fleet_operations_summary: {
+    feature: "fleet_operations_summary",
+    modelPurpose: "fast",
+    timeoutMs: 10000,
+    maxTokens: 80,
     fallbackMode: "graceful_empty",
   },
   openai_realtime_token: {
@@ -52,6 +62,20 @@ const AI_POLICIES: Record<AIFeature, AIPolicy> = {
     timeoutMs: 30000,
     maxTokens: 0,
     fallbackMode: "hard_fail",
+  },
+  dtc_suggest: {
+    feature: "dtc_suggest",
+    modelPurpose: "reasoning",
+    timeoutMs: 20000,
+    maxTokens: 900,
+    fallbackMode: "graceful_empty",
+  },
+  inspection_interpret: {
+    feature: "inspection_interpret",
+    modelPurpose: "extraction",
+    timeoutMs: 12000,
+    maxTokens: 700,
+    fallbackMode: "graceful_empty",
   },
 };
 

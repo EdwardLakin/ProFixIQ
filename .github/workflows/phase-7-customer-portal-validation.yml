@@ -6,8 +6,10 @@ on:
       - "app/api/portal/**"
       - "app/api/work-orders/lines/**"
       - "app/portal/auth/confirm/page.tsx"
+      - "app/portal/auth/fleet-invite/page.tsx"
       - "features/portal/server/**"
       - "supabase/migrations/20260715080*.sql"
+      - "tests/auth-portal-hardening.test.ts"
       - "tests/phase7-*.test.ts"
       - ".github/workflows/phase-7-customer-portal-validation.yml"
 
@@ -31,6 +33,8 @@ jobs:
           app/api/portal/bookings/[id]/route.ts
           app/api/portal/bookings/route.ts
           app/api/portal/customer-bookings/[id]/route.ts
+          app/api/portal/fleet/invites/accept/route.ts
+          app/api/portal/fleet/invites/route.ts
           app/api/portal/invites/accept/route.ts
           app/api/portal/qr/setup/route.ts
           app/api/portal/request/start/route.ts
@@ -39,12 +43,15 @@ jobs:
           app/api/portal/request/add-inspection-line/route.ts
           app/api/work-orders/lines/[id]/approval-decision/route.ts
           app/portal/auth/confirm/page.tsx
+          app/portal/auth/fleet-invite/page.tsx
           features/portal/server/addPortalRequestLine.ts
           features/portal/server/createPortalBooking.ts
           features/portal/server/customerBookings.ts
+          tests/auth-portal-hardening.test.ts
           tests/phase7-portal-invite-booking-contract.test.ts
           tests/phase7-portal-request-approval-contract.test.ts
       - run: >-
           pnpm exec vitest run
+          tests/auth-portal-hardening.test.ts
           tests/phase7-portal-invite-booking-contract.test.ts
           tests/phase7-portal-request-approval-contract.test.ts

@@ -12,6 +12,7 @@ import CauseCorrectionModal from "@work-orders/components/workorders/CauseCorrec
 import PartsRequestModal from "@/features/work-orders/components/workorders/PartsRequestModal";
 import HoldModal from "@/features/work-orders/components/workorders/HoldModal";
 import PhotoCaptureModal from "@/features/work-orders/components/workorders/extras/PhotoCaptureModal";
+import WorkOrderMediaGallery from "@/features/work-orders/components/workorders/extras/WorkOrderMediaGallery";
 import AddJobModal from "@work-orders/components/workorders/AddJobModal";
 import AIAssistantModal from "@work-orders/components/workorders/AiAssistantModal";
 import NewChatModal from "@/features/ai/components/chat/NewChatModal";
@@ -91,7 +92,6 @@ type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"];
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
 type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
 type Customer = DB["public"]["Tables"]["customers"]["Row"];
-type Shop = DB["public"]["Tables"]["shops"]["Row"];
 
 type AllocationRow = DB["public"]["Tables"]["work_order_part_allocations"]["Row"] & {
   parts?: { name: string | null } | null;
@@ -110,11 +110,6 @@ type RequiredPartRow = DB["public"]["Tables"]["work_order_parts"]["Row"] & {
 
 function money(value: number): string {
   return new Intl.NumberFormat("en-CA", { style: "currency", currency: "CAD" }).format(value);
-}
-
-function numberOrNull(value: unknown): number | null {
-  const parsed = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
 }
 
 type WorkflowStatus =
@@ -195,9 +190,9 @@ export default function FocusedJobModal(props: {
   const [busy, setBusy] = useState(false);
   const [line, setLine] = useState<WorkOrderLine | null>(null);
   const [workOrder, setWorkOrder] = useState<WorkOrder | null>(null);
+  const [shopLaborRate, setShopLaborRate] = useState<number | null>(null);
   const [vehicle, setVehicle] = useState<Vehicle | null>(null);
   const [customer, setCustomer] = useState<Customer | null>(null);
-  const [shopLaborRate, setShopLaborRate] = useState<number | null>(null);
 
   const [techNotes, setTechNotes] = useState("");
   const [savingNotes, setSavingNotes] = useState(false);
@@ -206,6 +201,7 @@ export default function FocusedJobModal(props: {
   const [openParts, setOpenParts] = useState(false);
   const [openHold, setOpenHold] = useState(false);
   const [openPhoto, setOpenPhoto] = useState(false);
+  const [mediaRefreshKey, setMediaRefreshKey] = useState(0);
   const [openChat, setOpenChat] = useState(false);
   const [openAddJob, setOpenAddJob] = useState(false);
   const [openAi, setOpenAi] = useState(false);
@@ -312,12 +308,15 @@ export default function FocusedJobModal(props: {
               console.warn("[FocusedJob] set_current_shop_id failed:", e);
             }
 
-            const { data: shop } = await supabase
+            const { data: shopRow, error: shopError } = await supabase
               .from("shops")
               .select("labor_rate")
               .eq("id", sid)
-              .maybeSingle<Pick<Shop, "labor_rate">>();
-            if (!cancelled) setShopLaborRate(numberOrNull(shop?.labor_rate));
+              .maybeSingle<{ labor_rate: number | null }>();
+            if (shopError) throw shopError;
+            if (cancelled) return;
+            const parsedRate = Number(shopRow?.labor_rate);
+            setShopLaborRate(Number.isFinite(parsedRate) ? parsedRate : null);
           } else {
             setShopLaborRate(null);
           }
@@ -349,9 +348,9 @@ export default function FocusedJobModal(props: {
           }
         } else {
           setWorkOrder(null);
+          setShopLaborRate(null);
           setVehicle(null);
           setCustomer(null);
-          setShopLaborRate(null);
         }
       } catch (e) {
         const err = e as { message?: string };
@@ -576,13 +575,16 @@ export default function FocusedJobModal(props: {
       return;
     }
 
+    const isVideo = file.type.startsWith("video/") || /\.(mov|m4v|mp4|webm)$/i.test(file.name);
+    const contentType = file.type || (isVideo ? "video/mp4" : "image/jpeg");
     const path = `wo/${workOrder.id}/lines/${workOrderLineId}/${uuidv4()}_${file.name}`;
     const { error } = await supabase.storage.from("job-photos").upload(path, file, {
-      contentType: file.type || "image/jpeg",
+      contentType,
       upsert: true,
     });
-    if (error) return showErr("Photo upload failed", error);
-    toast.success("Photo attached");
+    if (error) return showErr(isVideo ? "Video upload failed" : "Photo upload failed", error);
+    setMediaRefreshKey((key) => key + 1);
+    toast.success(isVideo ? "Video attached" : "Photo attached");
   };
 
   const saveNotes = async () => {
@@ -634,15 +636,7 @@ export default function FocusedJobModal(props: {
   const isPanelVariant = variant === "panel";
   const isExpandedPanel = isPanelVariant;
   const pricing = line
-    ? resolveWorkOrderLinePricing({
-        line,
-        shopLaborRate,
-        allocatedParts: filterAllocationsNotBackedByCanonicalParts(
-          allocs,
-          requiredParts,
-        ),
-        stagedParts: requiredParts,
-      })
+    ? resolveWorkOrderLinePricing({ line, shopLaborRate, allocatedParts: filterAllocationsNotBackedByCanonicalParts(allocs, requiredParts), stagedParts: requiredParts })
     : null;
   const laborDisplay = formatLaborSummary(pricing?.laborHours, Number(pricing?.laborTotal ?? 0));
   const lineTotal = Number(pricing?.lineTotal ?? 0);
@@ -1000,6 +994,16 @@ export default function FocusedJobModal(props: {
                 />
               </SectionCard>
 
+              {workOrder?.id ? (
+                <SectionCard>
+                  <WorkOrderMediaGallery
+                    workOrderId={workOrder.id}
+                    workOrderLineId={workOrderLineId}
+                    refreshKey={mediaRefreshKey}
+                  />
+                </SectionCard>
+              ) : null}
+
               <SectionCard title={partsBottleneckDisplay?.heading ?? "Parts used"}>
                 {allocsLoading ? (
                   <div className="text-sm text-[color:var(--theme-text-secondary)]">Loading…</div>
@@ -1153,12 +1157,12 @@ export default function FocusedJobModal(props: {
     <>
       {Shell}
 
-      {openVehicleHistory && vehicle?.id ? (
+      {openVehicleHistory && vehicle?.id && workOrder?.id && line?.id ? (
         <VehicleHistoryModal
           isOpen={openVehicleHistory}
           onClose={() => setOpenVehicleHistory(false)}
-          vehicleId={vehicle.id}
-          shopId={(workOrder?.shop_id as string | null) ?? null}
+          workOrderId={workOrder.id}
+          workOrderLineId={line.id}
         />
       ) : null}
 

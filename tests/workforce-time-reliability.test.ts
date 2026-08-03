@@ -1,23 +1,31 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { shopLocalDateTimeToUtc } from "../features/shared/lib/utils/shopDayWindow";
+import { sumPairedOverlapDurations } from "../features/workforce/lib/activityMetrics";
 
 const payroll = readFileSync("features/payroll-time/server/payrollTime.ts", "utf8");
 const attendanceApi = readFileSync("app/api/scheduling/shifts/route.ts", "utf8");
 const activity = readFileSync("features/workforce/server/buildWorkforceActivity.ts", "utf8");
 const payrollUi = readFileSync("features/dashboard/app/dashboard/admin/payroll-time/PayrollTimeClient.tsx", "utf8");
 const shiftUi = readFileSync("features/shared/components/AppShell.tsx", "utf8");
-const migration = readFileSync("supabase/migrations/20260717010000_workforce_time_reliability.sql", "utf8");
+const migration = readFileSync(
+  "supabase/migrations/20260717010050_workforce_time_reliability.sql",
+  "utf8",
+);
 
 describe("workforce time reliability", () => {
   it("uses overlap semantics for attendance, activity, and payroll", () => {
-    expect(attendanceApi).toContain('.or(`end_time.is.null,end_time.gt.${from}`)');
+    expect(attendanceApi).toContain(
+      '.or(`end_time.is.null,end_time.gt.${fromIso}`)',
+    );
+    expect(attendanceApi).toContain('.lt("start_time", toIso)');
     expect(activity).toContain('.or(`end_time.is.null,end_time.gt.${from}`)');
     expect(payroll).toContain('.or(`end_time.is.null,end_time.gt.${rangeStart}`)');
   });
 
   it("uses canonical labor segments for productive time", () => {
-    expect(attendanceApi).toContain("activity.summary.jobMinutesToday");
+    expect(attendanceApi).toContain("activity.today.jobMinutes");
+    expect(attendanceApi).toContain("activitySummary");
     expect(attendanceApi).not.toContain('.from("work_order_lines")');
   });
 
@@ -42,5 +50,33 @@ describe("workforce time reliability", () => {
     expect(migration).toContain("pg_advisory_xact_lock");
     expect(migration).toContain("enforce_single_active_tech_shift_trigger");
     expect(migration).toContain("tech_shifts_valid_time_range");
+  });
+
+  it("keeps break pairs inside their source shift", () => {
+    const minutes = sumPairedOverlapDurations({
+      events: [
+        {
+          shift_id: "shift-a",
+          event_type: "break_start",
+          timestamp: "2026-07-28T14:00:00.000Z",
+        },
+        {
+          shift_id: "shift-b",
+          event_type: "break_end",
+          timestamp: "2026-07-28T14:15:00.000Z",
+        },
+        {
+          shift_id: "shift-a",
+          event_type: "break_end",
+          timestamp: "2026-07-28T14:30:00.000Z",
+        },
+      ],
+      startType: "break_start",
+      endType: "break_end",
+      windowStart: "2026-07-28T13:00:00.000Z",
+      windowEnd: "2026-07-28T16:00:00.000Z",
+    });
+
+    expect(minutes).toBe(30);
   });
 });

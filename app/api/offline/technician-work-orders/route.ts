@@ -11,6 +11,12 @@ import type {
   TechnicianOfflineBundle,
   TechnicianOfflineWorkOrder,
 } from "@/features/work-orders/mobile/technicianOfflineTypes";
+import {
+  collectTechnicianIdsForLineContexts,
+  emptyCanonicalWorkOrderLineContext,
+  loadCanonicalWorkOrderLineContexts,
+  loadRowsForIdChunks,
+} from "@/features/work-orders/lib/data/loadCanonicalWorkOrderLineContext";
 
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -64,28 +70,42 @@ export async function GET() {
   }
 
   const admin = createAdminSupabase();
-  const [
-    { data: directlyAssigned, error: directError },
-    { data: sharedAssigned, error: sharedError },
-  ] = await Promise.all([
-    admin
-      .from("work_order_lines")
-      .select("id, work_order_id")
-      .eq("shop_id", profile.shop_id)
-      .eq("line_type", "job")
-      .or(`assigned_tech_id.eq.${user.id},assigned_to.eq.${user.id}`),
-    admin
-      .from("work_order_line_technicians")
-      .select("work_order_line_id")
-      .eq("technician_id", user.id),
-  ]);
-  if (directError || sharedError) {
+  let directlyAssigned: Array<{ id: string; work_order_id: string }>;
+  let sharedAssigned: Array<{ work_order_line_id: string }>;
+  try {
+    [directlyAssigned, sharedAssigned] = await Promise.all([
+      loadRowsForIdChunks<{ id: string; work_order_id: string }>(
+        [user.id],
+        ([technicianId], from, to) =>
+          admin
+            .from("work_order_lines")
+            .select("id, work_order_id")
+            .eq("shop_id", profile.shop_id)
+            .eq("line_type", "job")
+            .or(
+              `assigned_tech_id.eq.${technicianId},assigned_to.eq.${technicianId},user_id.eq.${technicianId}`,
+            )
+            .order("id", { ascending: true })
+            .range(from, to),
+      ),
+      loadRowsForIdChunks<{ work_order_line_id: string }>(
+        [user.id],
+        (technicianIds, from, to) =>
+          admin
+            .from("work_order_line_technicians")
+            .select("work_order_line_id")
+            .in("technician_id", technicianIds)
+            .order("work_order_line_id", { ascending: true })
+            .range(from, to),
+      ),
+    ]);
+  } catch (error) {
     return NextResponse.json(
       {
         error:
-          directError?.message ??
-          sharedError?.message ??
-          "Assignments could not be loaded.",
+          error instanceof Error
+            ? error.message
+            : "Assignments could not be loaded.",
       },
       { status: 500 },
     );
@@ -94,22 +114,31 @@ export async function GET() {
   const sharedLineIds = (sharedAssigned ?? []).map(
     (row) => row.work_order_line_id,
   );
-  const { data: sharedLines, error: sharedLinesError } = sharedLineIds.length
-    ? await admin
+  let sharedLines: Array<{ id: string; work_order_id: string }>;
+  try {
+    sharedLines = await loadRowsForIdChunks(sharedLineIds, (ids, from, to) =>
+      admin
         .from("work_order_lines")
         .select("id, work_order_id")
         .eq("shop_id", profile.shop_id)
         .eq("line_type", "job")
-        .in("id", sharedLineIds)
-    : { data: [], error: null };
-  if (sharedLinesError) {
+        .in("id", ids)
+        .order("id", { ascending: true })
+        .range(from, to),
+    );
+  } catch (error) {
     return NextResponse.json(
-      { error: sharedLinesError.message },
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Shared assignments could not be loaded.",
+      },
       { status: 500 },
     );
   }
 
-  const assignedRows = [...(directlyAssigned ?? []), ...(sharedLines ?? [])];
+  const assignedRows = [...directlyAssigned, ...sharedLines];
   const assignedLineIds = new Set(assignedRows.map((row) => row.id));
   const workOrderIds = [
     ...new Set(assignedRows.map((row) => row.work_order_id).filter(Boolean)),
@@ -134,7 +163,7 @@ export async function GET() {
         .select("*")
         .eq("shop_id", profile.shop_id)
         .in("id", ids)
-        .neq("type", "historical_import"),
+        .or("type.neq.historical_import,type.is.null"),
     ),
   );
   const workOrdersError = workOrderResults.find(
@@ -171,72 +200,139 @@ export async function GET() {
   const customerIds = [
     ...new Set(workOrders.map((row) => row.customer_id).filter(Boolean)),
   ] as string[];
-  const [linesResult, quotesResult, vehiclesResult, customersResult] =
-    await Promise.all([
-      authClient
-        .from("work_order_lines")
-        .select("*")
-        .eq("shop_id", profile.shop_id)
-        .in("work_order_id", allowedWorkOrderIds)
-        .order("created_at"),
-      authClient
-        .from("work_order_quote_lines")
-        .select("*")
-        .in("work_order_id", allowedWorkOrderIds)
-        .order("created_at"),
-      vehicleIds.length
-        ? authClient
-            .from("vehicles")
-            .select("*")
-            .eq("shop_id", profile.shop_id)
-            .in("id", vehicleIds)
-        : Promise.resolve({ data: [], error: null }),
-      customerIds.length
-        ? authClient
-            .from("customers")
-            .select("*")
-            .eq("shop_id", profile.shop_id)
-            .in("id", customerIds)
-        : Promise.resolve({ data: [], error: null }),
+  const shopResultPromise = authClient
+    .from("shops")
+    .select("labor_rate")
+    .eq("id", profile.shop_id)
+    .maybeSingle<{ labor_rate: number | null }>();
+  let lines: WorkOrderLine[];
+  let quoteLines: QuoteLine[];
+  let vehicles: Vehicle[];
+  let customers: Customer[];
+  try {
+    [lines, quoteLines, vehicles, customers] = await Promise.all([
+      loadRowsForIdChunks<WorkOrderLine>(allowedWorkOrderIds, (ids, from, to) =>
+        authClient
+          .from("work_order_lines")
+          .select("*")
+          .eq("shop_id", profile.shop_id)
+          .in("work_order_id", ids)
+          .order("created_at", { ascending: true })
+          .order("id", { ascending: true })
+          .range(from, to),
+      ),
+      loadRowsForIdChunks<QuoteLine>(allowedWorkOrderIds, (ids, from, to) =>
+        authClient
+          .from("work_order_quote_lines")
+          .select("*")
+          .in("work_order_id", ids)
+          .order("created_at", { ascending: true })
+          .order("id", { ascending: true })
+          .range(from, to),
+      ),
+      loadRowsForIdChunks<Vehicle>(vehicleIds, (ids, from, to) =>
+        authClient
+          .from("vehicles")
+          .select("*")
+          .eq("shop_id", profile.shop_id)
+          .in("id", ids)
+          .order("id", { ascending: true })
+          .range(from, to),
+      ),
+      loadRowsForIdChunks<Customer>(customerIds, (ids, from, to) =>
+        authClient
+          .from("customers")
+          .select("*")
+          .eq("shop_id", profile.shop_id)
+          .in("id", ids)
+          .order("id", { ascending: true })
+          .range(from, to),
+      ),
     ]);
-  const supportingReadError =
-    linesResult.error ??
-    quotesResult.error ??
-    vehiclesResult.error ??
-    customersResult.error;
-  if (supportingReadError) {
+  } catch (error) {
     return NextResponse.json(
-      { error: supportingReadError.message },
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Offline supporting records could not be loaded.",
+      },
       { status: 500 },
     );
   }
 
-  const lines = (linesResult.data ?? []) as WorkOrderLine[];
-  const quoteLines = (quotesResult.data ?? []) as QuoteLine[];
-  const vehicles = (vehiclesResult.data ?? []) as Vehicle[];
-  const customers = (customersResult.data ?? []) as Customer[];
-  const techIds = [
-    ...new Set(lines.map((line) => line.assigned_tech_id).filter(Boolean)),
-  ] as string[];
-  const { data: technicians, error: techniciansError } = techIds.length
-    ? await authClient
+  const shopResult = await shopResultPromise;
+  if (shopResult.error) {
+    return NextResponse.json(
+      { error: shopResult.error.message },
+      { status: 500 },
+    );
+  }
+
+  let lineContextsByWorkOrder = new Map<
+    string,
+    ReturnType<typeof emptyCanonicalWorkOrderLineContext>
+  >();
+  try {
+    lineContextsByWorkOrder = await loadCanonicalWorkOrderLineContexts({
+      supabase: authClient,
+      shopId: profile.shop_id,
+      workOrders: workOrders.map((workOrder) => ({
+        workOrderId: workOrder.id,
+        lineIds: lines
+          .filter((line) => line.work_order_id === workOrder.id)
+          .map((line) => line.id),
+      })),
+    });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Canonical work-order context could not be loaded.",
+      },
+      { status: 500 },
+    );
+  }
+
+  const techIds = collectTechnicianIdsForLineContexts(
+    lineContextsByWorkOrder.values(),
+    lines.map((line) => line.assigned_tech_id),
+  );
+  let technicians: Array<{ id: string; full_name: string | null }>;
+  try {
+    technicians = await loadRowsForIdChunks(techIds, (ids, from, to) =>
+      authClient
         .from("profiles")
         .select("id, full_name")
         .eq("shop_id", profile.shop_id)
-        .in("id", techIds)
-    : { data: [], error: null };
-  if (techniciansError) {
+        .in("id", ids)
+        .order("id", { ascending: true })
+        .range(from, to),
+    );
+  } catch (error) {
     return NextResponse.json(
-      { error: techniciansError.message },
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Technician names could not be loaded.",
+      },
       { status: 500 },
     );
   }
   const techNamesById = Object.fromEntries(
-    (technicians ?? []).map((technician) => [
+    technicians.map((technician) => [
       technician.id,
       technician.full_name ?? "Technician",
     ]),
   );
+
+  const shopLaborRate =
+    typeof shopResult.data?.labor_rate === "number"
+      ? shopResult.data.labor_rate
+      : null;
 
   const bundle: TechnicianOfflineBundle = {
     scope: { userId: user.id, shopId: profile.shop_id },
@@ -253,6 +349,10 @@ export async function GET() {
         customers.find((customer) => customer.id === workOrder.customer_id) ??
         null,
       techNamesById,
+      lineContext:
+        lineContextsByWorkOrder.get(workOrder.id) ??
+        emptyCanonicalWorkOrderLineContext(),
+      shopLaborRate,
       assignedLineIds: lines
         .filter(
           (line) =>

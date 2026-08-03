@@ -1,9 +1,29 @@
 export type PayrollCadence = "weekly" | "biweekly" | "semimonthly" | "monthly";
 
+export const DEFAULT_BIWEEKLY_ANCHOR_DATE = "2024-01-01";
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+export function isValidPayrollDateKey(value: string): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+  );
+}
+
 function atUtcDay(value: Date | string): Date {
-  const date = value instanceof Date ? value : new Date(`${value}T00:00:00.000Z`);
+  if (typeof value === "string" && !isValidPayrollDateKey(value)) {
+    throw new Error("Invalid payroll date");
+  }
+  const date =
+    value instanceof Date ? value : new Date(`${value}T00:00:00.000Z`);
   if (!Number.isFinite(date.getTime())) throw new Error("Invalid payroll date");
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
 }
@@ -30,7 +50,9 @@ export function calculatePayPeriodBounds(params: {
   }
 
   if (params.cadence === "biweekly") {
-    const anchor = atUtcDay(params.anchorDate || "2024-01-01");
+    const anchor = atUtcDay(
+      params.anchorDate || DEFAULT_BIWEEKLY_ANCHOR_DATE,
+    );
     const daysSinceAnchor = Math.floor((today.getTime() - anchor.getTime()) / DAY_MS);
     const cycle = Math.floor(daysSinceAnchor / 14);
     const start = addUtcDays(anchor, cycle * 14);
@@ -56,4 +78,54 @@ export function calculatePayPeriodBounds(params: {
     start: new Date(Date.UTC(year, month, 1)),
     end: new Date(Date.UTC(year, month + 1, 0)),
   };
+}
+
+export type PayrollPeriodRange = {
+  periodStart: string;
+  periodEnd: string;
+};
+
+export function buildPayrollPeriodRanges(params: {
+  firstWorkDate: string;
+  currentWorkDate: string;
+  cadence: PayrollCadence;
+  weekStartsOn: number;
+  anchorDate?: string | null;
+}): PayrollPeriodRange[] {
+  const firstWorkDate = atUtcDay(params.firstWorkDate);
+  const currentWorkDate = atUtcDay(params.currentWorkDate);
+  if (firstWorkDate > currentWorkDate) return [];
+
+  const ranges: PayrollPeriodRange[] = [];
+  const seen = new Set<string>();
+  let cursor = firstWorkDate;
+  let iterationCount = 0;
+
+  while (cursor <= currentWorkDate) {
+    const bounds = calculatePayPeriodBounds({
+      shopDate: cursor,
+      cadence: params.cadence,
+      weekStartsOn: params.weekStartsOn,
+      anchorDate: params.anchorDate,
+    });
+    const periodStart = bounds.start.toISOString().slice(0, 10);
+    const periodEnd = bounds.end.toISOString().slice(0, 10);
+    const key = `${periodStart}:${periodEnd}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      ranges.push({ periodStart, periodEnd });
+    }
+
+    const nextCursor = addUtcDays(bounds.end, 1);
+    if (nextCursor <= cursor) {
+      throw new Error("Payroll period calculation did not advance");
+    }
+    cursor = nextCursor;
+    iterationCount += 1;
+    if (iterationCount > 1200) {
+      throw new Error("Payroll period history exceeds the supported range");
+    }
+  }
+
+  return ranges;
 }

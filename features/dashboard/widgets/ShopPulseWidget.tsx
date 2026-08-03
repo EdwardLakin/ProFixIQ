@@ -6,6 +6,10 @@ import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import DashboardWidgetShell from "@/features/dashboard/components/DashboardWidgetShell";
 import { toDashboardFallbackMessage } from "@/features/dashboard/lib/widget-fallback";
+import {
+  isGenericWaitingWorkOrder,
+  isWaitingPartsOperationalBlocker,
+} from "@/features/shared/lib/workboard/utils";
 import StatusBadge from "@shared/components/ui/StatusBadge";
 import { cn } from "@shared/lib/utils";
 
@@ -99,24 +103,24 @@ export default function ShopPulseWidget({
   }, [shopId, supabase]);
 
   const pulse = useMemo(() => {
-    const active = rows.filter((r) => r.overall_stage !== "completed");
+    const active = rows.filter((r) => r.overall_stage !== "closed");
     const approvals = active.filter((r) => r.overall_stage === "awaiting_approval");
-    const parts = active.filter((r) => r.overall_stage === "waiting_parts");
-    const onHold = active.filter((r) => r.overall_stage === "on_hold");
+    const parts = active.filter(isWaitingPartsOperationalBlocker);
+    const waiting = active.filter(isGenericWaitingWorkOrder);
     const urgent = active.filter((r) => r.priority === 1);
     const waiters = active.filter((r) => !!r.is_waiter);
     const danger = active.filter((r) => r.risk_level === "danger");
-    const ready = rows.filter((r) => r.overall_stage === "completed");
+    const ready = rows.filter((r) => r.overall_stage === "ready");
 
     const messages: string[] = [];
 
     if (danger.length > 0) messages.push(`${danger.length} high-risk job${danger.length === 1 ? "" : "s"}`);
     if (approvals.length > 0) messages.push(`${approvals.length} waiting approval`);
     if (parts.length > 0) messages.push(`${parts.length} waiting parts`);
-    if (onHold.length > 0) messages.push(`${onHold.length} on hold`);
+    if (waiting.length > 0) messages.push(`${waiting.length} waiting on another dependency`);
     if (urgent.length > 0) messages.push(`${urgent.length} urgent`);
     if (waiters.length > 0) messages.push(`${waiters.length} waiter job${waiters.length === 1 ? "" : "s"}`);
-    if (ready.length > 0) messages.push(`${ready.length} completed`);
+    if (ready.length > 0) messages.push(`${ready.length} ready`);
 
     return {
       active: active.length,

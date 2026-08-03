@@ -16,6 +16,18 @@ type SendDynamicTemplateEmailInput = {
   metadata?: Json;
 };
 
+export type EmailDeliveryResult =
+  | {
+      status: "accepted";
+      acceptedAt: string;
+      emailLogId: string;
+    }
+  | {
+      status: "suppressed";
+      reason: string;
+      emailLogId: string;
+    };
+
 function requiredEnv(name: string): string {
   const value = process.env[name]?.trim();
   if (!value) {
@@ -41,7 +53,7 @@ function ensureSendGridConfigured() {
 
 export async function sendDynamicTemplateEmail(
   input: SendDynamicTemplateEmailInput,
-): Promise<void> {
+): Promise<EmailDeliveryResult> {
   ensureSendGridConfigured();
 
   const supabase = getAdminClient();
@@ -57,7 +69,9 @@ export async function sendDynamicTemplateEmail(
     .maybeSingle<{ reason: string | null }>();
 
   if (suppressionError) {
-    throw new Error(`Failed to verify email suppression: ${suppressionError.message}`);
+    throw new Error(
+      `Failed to verify email suppression: ${suppressionError.message}`,
+    );
   }
 
   const { data: logRow, error: insertError } = await supabase
@@ -83,15 +97,16 @@ export async function sendDynamicTemplateEmail(
   }
 
   if (suppression) {
+    const reason = suppression.reason ?? "Recipient is suppressed";
     const { error: suppressedLogError } = await supabase
       .from("email_logs")
       .update({
         status: "suppressed",
-        error_text: suppression.reason ?? "Recipient is suppressed",
+        error_text: reason,
       })
       .eq("id", logRow.id);
     if (suppressedLogError) throw new Error(suppressedLogError.message);
-    return;
+    return { status: "suppressed", reason, emailLogId: logRow.id };
   }
 
   try {
@@ -107,18 +122,21 @@ export async function sendDynamicTemplateEmail(
     });
 
     const headerValue =
-      response.headers["x-message-id"] ?? response.headers["X-Message-Id"] ?? null;
+      response.headers["x-message-id"] ??
+      response.headers["X-Message-Id"] ??
+      null;
 
     const providerMessageId = Array.isArray(headerValue)
       ? headerValue[0]
       : headerValue;
 
+    const acceptedAt = new Date().toISOString();
     const { error: updateError } = await supabase
       .from("email_logs")
       .update({
         status: "accepted",
         provider_message_id: providerMessageId,
-        sent_at: new Date().toISOString(),
+        sent_at: acceptedAt,
       })
       .eq("id", logRow.id);
 
@@ -133,6 +151,8 @@ export async function sendDynamicTemplateEmail(
         },
       );
     }
+
+    return { status: "accepted", acceptedAt, emailLogId: logRow.id };
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Unknown SendGrid error";

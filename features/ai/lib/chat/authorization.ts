@@ -1,10 +1,28 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
+import { canonicalizeRole, type CanonicalRole } from "@/features/shared/lib/rbac";
 
 type ConversationRow = Database["public"]["Tables"]["conversations"]["Row"];
 type MessagingChannel = "internal" | "customer";
 type ParticipantKind = "staff" | "customer";
-const CUSTOMER_MESSAGING_ROLES = new Set(["owner", "admin", "manager", "advisor"]);
+
+export const CUSTOMER_MESSAGING_ROLE_LIST = [
+  "owner",
+  "admin",
+  "manager",
+  "advisor",
+  "service",
+  "lead_hand",
+  "foreman",
+] as const satisfies readonly CanonicalRole[];
+
+export const CUSTOMER_MESSAGING_ROLES = new Set<CanonicalRole>(
+  CUSTOMER_MESSAGING_ROLE_LIST,
+);
+
+export function isCustomerMessagingRole(role: string | null | undefined): boolean {
+  return CUSTOMER_MESSAGING_ROLES.has(canonicalizeRole(role));
+}
 
 export type MessagingActor =
   | {
@@ -44,18 +62,57 @@ type LifecycleAction = "delete" | "manage_participants" | "read_participants";
 export async function resolveMessagingActor({
   supabase,
   actorUserId,
+  preferredKind,
 }: {
   supabase: SupabaseClient<Database>;
   actorUserId: string;
+  preferredKind?: MessagingActor["kind"];
 }): Promise<{ ok: true; actor: MessagingActor } | AccessFailure> {
-  const { data: profile, error: profileError } = await supabase
-    .from("profiles")
-    .select("id, user_id, shop_id, role")
-    .or(`user_id.eq.${actorUserId},id.eq.${actorUserId}`)
-    .maybeSingle();
+  const [
+    { data: profile, error: profileError },
+    { data: customer, error: customerError },
+  ] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("id, user_id, shop_id, role")
+      .or(`user_id.eq.${actorUserId},id.eq.${actorUserId}`)
+      .maybeSingle(),
+    supabase
+      .from("customers")
+      .select("id, user_id, shop_id")
+      .eq("user_id", actorUserId)
+      .maybeSingle(),
+  ]);
 
-  if (profileError) {
-    return { ok: false, status: 500, error: profileError.message };
+  const actorError = profileError ?? customerError;
+  if (actorError) {
+    return { ok: false, status: 500, error: actorError.message };
+  }
+
+  const profileRole = (profile?.role ?? "").trim().toLowerCase();
+  if (
+    customer?.shop_id &&
+    (preferredKind === "customer" || profileRole === "customer")
+  ) {
+    return {
+      ok: true,
+      actor: {
+        kind: "customer",
+        userId: actorUserId,
+        customerId: customer.id,
+        shopId: customer.shop_id,
+        role: null,
+        profileId: null,
+      },
+    };
+  }
+
+  if (preferredKind === "customer") {
+    return {
+      ok: false,
+      status: 403,
+      error: "Messaging requires a customer record linked to this portal account",
+    };
   }
 
   if (profile?.shop_id) {
@@ -70,16 +127,6 @@ export async function resolveMessagingActor({
         customerId: null,
       },
     };
-  }
-
-  const { data: customer, error: customerError } = await supabase
-    .from("customers")
-    .select("id, user_id, shop_id")
-    .eq("user_id", actorUserId)
-    .maybeSingle();
-
-  if (customerError) {
-    return { ok: false, status: 500, error: customerError.message };
   }
 
   if (customer?.shop_id) {
@@ -233,12 +280,14 @@ export async function authorizeConversationCreate({
   participantUserIds,
   channel = "internal",
   customerId = null,
+  preferredActorKind,
 }: {
   supabase: SupabaseClient<Database>;
   actorUserId: string;
   participantUserIds: string[];
   channel?: MessagingChannel;
   customerId?: string | null;
+  preferredActorKind?: MessagingActor["kind"];
 }): Promise<
   | {
       ok: true;
@@ -251,7 +300,11 @@ export async function authorizeConversationCreate({
     }
   | AccessFailure
 > {
-  const actorResult = await resolveMessagingActor({ supabase, actorUserId });
+  const actorResult = await resolveMessagingActor({
+    supabase,
+    actorUserId,
+    preferredKind: preferredActorKind,
+  });
   if (!actorResult.ok) return actorResult;
 
   const actor = actorResult.actor;
@@ -302,10 +355,7 @@ export async function authorizeConversationCreate({
     };
   }
 
-  if (
-    actor.kind === "staff" &&
-    !CUSTOMER_MESSAGING_ROLES.has((actor.role ?? "").toLowerCase())
-  ) {
+  if (actor.kind === "staff" && !isCustomerMessagingRole(actor.role)) {
     return {
       ok: false,
       status: 403,
@@ -342,10 +392,9 @@ export async function authorizeConversationCreate({
   if (actor.kind === "customer" && staffUserIds.length === 0) {
     const { data: serviceTeam, error: serviceTeamError } = await supabase
       .from("profiles")
-      .select("id, user_id")
+      .select("id, user_id, role")
       .eq("shop_id", actor.shopId)
-      .in("role", ["advisor", "manager", "owner", "admin"])
-      .limit(50);
+      .limit(100);
 
     if (serviceTeamError) {
       return { ok: false, status: 500, error: serviceTeamError.message };
@@ -353,6 +402,7 @@ export async function authorizeConversationCreate({
     staffUserIds = Array.from(
       new Set(
         (serviceTeam ?? [])
+          .filter((row) => isCustomerMessagingRole(row.role))
           .map((row) => row.user_id ?? row.id)
           .filter((id): id is string => Boolean(id) && id !== actorUserId),
       ),

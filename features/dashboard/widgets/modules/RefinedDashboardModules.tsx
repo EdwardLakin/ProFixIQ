@@ -18,7 +18,7 @@ import { useSuggestedActions } from "@/features/assistant/hooks/useSuggestedActi
 import { useTechnicianLoadMetrics } from "@/features/dashboard/hooks/useTechnicianLoadMetrics";
 import { toDashboardFallbackMessage } from "@/features/dashboard/lib/widget-fallback";
 import { useWorkOrderBoard } from "@/features/shared/hooks/useWorkOrderBoard";
-import { getShopStats } from "@/features/shared/lib/stats/getShopStats";
+import type { OwnerIntelligenceReport } from "@/features/owner/reports/ownerIntelligenceTypes";
 import { useEffect, useState } from "react";
 
 function actionBtn() {
@@ -143,8 +143,8 @@ export function ShopPulseModule({ shopId, mode }: { shopId: string | null; mode:
         const { data, error: queryError } = await supabase.from("v_work_order_board_cards_shop").select("overall_stage,risk_level,priority").eq("shop_id", shopId).limit(80);
         if (queryError) throw queryError;
         const rows = data ?? [];
-        const active = rows.filter((row) => row.overall_stage !== "completed").length;
-        const blocked = rows.filter((row) => row.overall_stage === "waiting_parts" || row.overall_stage === "on_hold").length;
+        const active = rows.filter((row) => row.overall_stage !== "closed").length;
+        const blocked = rows.filter((row) => row.overall_stage === "waiting").length;
         const danger = rows.filter((row) => row.risk_level === "danger").length;
         const urgent = rows.filter((row) => row.priority === 1).length;
         if (!cancelled) {
@@ -177,7 +177,7 @@ function money(n: number) { return `$${n.toFixed(0)}`; }
 export function RevenueWatchModule({ shopId, mode }: { shopId: string | null; mode: DashboardModuleMode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [totals, setTotals] = useState({ revenue: 0, profit: 0, jobs: 0 });
+  const [totals, setTotals] = useState({ revenue: 0, knownContribution: 0, issuedInvoices: 0 });
 
   useEffect(() => {
     if (!shopId) return;
@@ -185,8 +185,16 @@ export function RevenueWatchModule({ shopId, mode }: { shopId: string | null; mo
     (async () => {
       setLoading(true);
       try {
-        const stats = await getShopStats(shopId, "monthly");
-        if (!cancelled) setTotals({ revenue: stats.total.revenue, profit: stats.total.profit, jobs: stats.total.jobs });
+        const response = await fetch("/api/reports/owner?range=monthly", { cache: "no-store" });
+        const stats = (await response.json().catch(() => null)) as OwnerIntelligenceReport | { error?: string } | null;
+        if (!response.ok || !stats || !("metricVersion" in stats)) {
+          throw new Error(stats && "error" in stats && stats.error ? stats.error : "Owner intelligence is unavailable.");
+        }
+        if (!cancelled) setTotals({
+          revenue: stats.financial.issuedRevenue.current,
+          knownContribution: stats.financial.knownContribution.current,
+          issuedInvoices: stats.financial.issuedInvoices.current,
+        });
       } catch (e) {
         if (!cancelled) setError(toDashboardFallbackMessage(e, "Data unavailable. Try refresh."));
       } finally {
@@ -201,9 +209,9 @@ export function RevenueWatchModule({ shopId, mode }: { shopId: string | null; mo
       <DashboardModuleHeader eyebrow="Finance" title="Revenue Watch" action={<Link href="/dashboard/owner/reports" className={actionBtn()}>Reports</Link>} />
       {loading ? <div className="text-sm text-[color:var(--theme-text-secondary)]">Loading revenue…</div> : error ? <div className="text-sm text-[color:var(--brand-accent)]">{error}</div> : (
         <DashboardMetricRow>
-          <DashboardMetric label="Revenue" value={money(totals.revenue)} tone="primary" />
-          <DashboardMetric label="Profit" value={money(totals.profit)} tone="accent" />
-          <DashboardMetric label="Jobs" value={String(totals.jobs)} />
+          <DashboardMetric label="Issued revenue" value={money(totals.revenue)} tone="primary" />
+          <DashboardMetric label="Known contribution" value={money(totals.knownContribution)} tone="accent" />
+          <DashboardMetric label="Issued invoices" value={String(totals.issuedInvoices)} />
         </DashboardMetricRow>
       )}
     </DashboardModuleShell>
@@ -234,7 +242,7 @@ export function PerformanceModule({ shopId, mode }: { shopId: string | null; mod
 
 export function WorkOrderBoardModule({ mode }: { mode: DashboardModuleMode }) {
   const { rows, loading, error, refetch } = useWorkOrderBoard("shop", { limit: 10 });
-  const active = rows.filter((row) => row.overall_stage !== "completed").length;
+  const active = rows.filter((row) => row.overall_stage !== "closed").length;
 
   return (
     <DashboardModuleShell mode={mode}>
@@ -243,7 +251,7 @@ export function WorkOrderBoardModule({ mode }: { mode: DashboardModuleMode }) {
         <>
           <DashboardMetricRow columns={2}>
             <DashboardMetric label="Active" value={String(active)} tone="primary" />
-            <DashboardMetric label="Completed" value={String(rows.length - active)} />
+            <DashboardMetric label="Closed" value={String(rows.length - active)} />
           </DashboardMetricRow>
           <DashboardSignalList items={rows.slice(0, 5).map((row) => ({ label: row.custom_id ?? row.display_name ?? row.work_order_id.slice(0, 8), value: row.overall_stage?.replaceAll("_", " ") ?? "active" }))} />
           <DashboardActionBar>

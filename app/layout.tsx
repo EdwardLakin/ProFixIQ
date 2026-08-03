@@ -1,4 +1,5 @@
 import "./globals.css";
+import "./light-mode-contrast.css";
 import { Inter, Black_Ops_One } from "next/font/google";
 import Script from "next/script";
 import Providers from "./providers";
@@ -36,10 +37,10 @@ export const metadata: Metadata = {
   appleWebApp: { capable: true, title: "ProFixIQ", statusBarStyle: "black-translucent" },
   icons: {
     icon: [
-      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
-      { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+      { url: "/pwa-icons/icon-192", sizes: "192x192", type: "image/png" },
+      { url: "/pwa-icons/icon-512", sizes: "512x512", type: "image/png" },
     ],
-    apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+    apple: [{ url: "/pwa-icons/apple-touch-icon", sizes: "180x180", type: "image/png" }],
   },
 };
 
@@ -47,7 +48,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#0b1729",
+  themeColor: "#0D172A",
 };
 
 export default async function RootLayout({

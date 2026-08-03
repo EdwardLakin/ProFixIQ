@@ -97,7 +97,6 @@ describe("canonical tech_shifts write routing", () => {
   it("keeps technician shift controls routed through /api/mobile/shifts", () => {
     for (const path of [
       "features/shared/components/ShiftTracker.tsx",
-      "features/mobile/components/MobileShiftTracker.tsx",
       "features/shared/components/ui/PunchController.tsx",
     ]) {
       const source = read(path);
@@ -105,6 +104,14 @@ describe("canonical tech_shifts write routing", () => {
       expect(source).not.toContain('.from("tech_shifts")');
       expect(source).not.toContain(".from('tech_shifts')");
     }
+    const mobileTracker = read(
+      "features/mobile/components/MobileShiftTracker.tsx",
+    );
+    const mobileOffline = read("features/mobile/shifts/offline.ts");
+    expect(mobileTracker).toContain("runMobileShiftAction");
+    expect(mobileOffline).toContain('fetch("/api/mobile/shifts"');
+    expect(mobileTracker).not.toContain('.from("tech_shifts")');
+    expect(mobileOffline).not.toContain('.from("tech_shifts")');
   });
 
   it("prevents admin scheduling shift endpoints from writing tech_shifts directly", () => {

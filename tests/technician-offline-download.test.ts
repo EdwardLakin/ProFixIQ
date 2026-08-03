@@ -6,16 +6,17 @@ const route = read("app/api/offline/technician-work-orders/route.ts");
 const download = read(
   "features/work-orders/mobile/technicianOfflineDownload.ts",
 );
-const queue = read("app/mobile/tech/queue/page.tsx");
+const queuePage = read("app/mobile/tech/queue/page.tsx");
+const queue = read("features/mobile/technician/MobileTechnicianQueue.tsx");
 
 describe("technician assigned-work offline download", () => {
   it("authenticates the actor and resolves only their shop assignments", () => {
     expect(route).toContain("auth.getUser()");
     expect(route).toContain("canPerformAssignedWork");
-    expect(route).toContain("assigned_tech_id.eq.${user.id}");
-    expect(route).toContain("assigned_to.eq.${user.id}");
+    expect(route).toContain("assigned_tech_id.eq.${technicianId}");
+    expect(route).toContain("assigned_to.eq.${technicianId}");
     expect(route).toContain('from("work_order_line_technicians")');
-    expect(route).toContain('.eq("technician_id", user.id)');
+    expect(route).toContain('.in("technician_id", technicianIds)');
     expect(route).toContain('.eq("shop_id", profile.shop_id)');
   });
 
@@ -29,10 +30,12 @@ describe("technician assigned-work offline download", () => {
     );
     expect(route).toContain("chunks(workOrderIds)");
     expect(route).not.toContain(".limit(50)");
-    expect(route).toContain("await authClient");
+    expect(route).toContain("loadRowsForIdChunks");
+    expect(route).toContain(".range(from, to)");
     expect(route).toMatch(/authClient\s*\.from\("work_order_lines"\)/);
     expect(route).toMatch(/authClient\s*\.from\("work_order_quote_lines"\)/);
-    expect(route).toContain("quotesResult.error");
+    expect(route).toContain("collectTechnicianIdsForLineContexts");
+    expect(route).toContain("lineContextsByWorkOrder.values()");
     expect(route).toContain('"Cache-Control": "private, no-store"');
   });
 
@@ -50,6 +53,7 @@ describe("technician assigned-work offline download", () => {
   });
 
   it("loads the assigned queue from IndexedDB and exposes an explicit download", () => {
+    expect(queuePage).toContain("MobileTechnicianQueue");
     expect(queue).toContain("getCachedTechnicianWork");
     expect(queue).toContain("applyOfflineBundle(cached.data)");
     expect(queue).toContain("Download assigned work");

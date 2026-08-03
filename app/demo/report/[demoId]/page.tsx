@@ -1,5 +1,9 @@
+import type { Metadata } from "next";
+import { unstable_noStore as noStore } from "next/cache";
+import { notFound } from "next/navigation";
 import Link from "next/link";
 import { loadShadowPreviewContext } from "@/features/integrations/shopBoost/shadowShop";
+import { verifyShopBoostPreviewToken } from "@/features/integrations/shopBoost/shareAccess";
 import {
   buildConsequenceItems,
   buildDecisionSummary,
@@ -8,30 +12,34 @@ import {
   formatUsd,
 } from "@/features/integrations/shopBoost/conversionPolish";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+  referrer: "no-referrer",
+};
+
 type PageProps = {
   params: Promise<{ demoId: string }>;
-  searchParams: Promise<{ intakeId?: string; sender?: string }>;
+  searchParams: Promise<{ token?: string }>;
 };
 
 export default async function DemoReportPage({ params, searchParams }: PageProps) {
-  const { demoId } = await params;
-  const sp = await searchParams;
-  const intakeId = typeof sp.intakeId === "string" ? sp.intakeId : "";
-  const sender = typeof sp.sender === "string" ? sp.sender : null;
+  noStore();
 
-  const context = intakeId ? await loadShadowPreviewContext({ demoId, intakeId }) : null;
-  if (!context) {
-    return (
-      <div className="grid min-h-screen place-items-center bg-[color:var(--theme-surface-page)] px-4 text-[color:var(--theme-text-primary)]">
-        <div className="max-w-xl rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-6 text-center">
-          <p className="text-lg font-semibold">Report unavailable</p>
-          <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">This report link is missing context or has expired.</p>
-        </div>
-      </div>
-    );
-  }
+  const [{ demoId: routeDemoId }, sp] = await Promise.all([params, searchParams]);
+  const token = typeof sp.token === "string" ? sp.token : "";
+  const access = token ? verifyShopBoostPreviewToken(token) : null;
+  if (!access || access.demoId !== routeDemoId) notFound();
+
+  const context = await loadShadowPreviewContext({
+    demoId: access.demoId,
+    intakeId: access.intakeId,
+  });
+  if (!context) notFound();
 
   const { snapshot } = context;
+  const sender = access.senderName ?? null;
   const decisionSummary = buildDecisionSummary(context);
   const consequences = buildConsequenceItems(snapshot).slice(0, 4);
   const objectionHandling = buildObjectionHandlingContent(snapshot);
@@ -114,7 +122,7 @@ export default async function DemoReportPage({ params, searchParams }: PageProps
           <p className="font-semibold text-[color:var(--theme-text-primary)]">Recommended next step</p>
           <p className="mt-1">{decisionSummary.primaryActionHelper}</p>
           <div className="mt-3">
-            <Link href={`/demo/preview/${context.demoId}?intakeId=${context.intakeId}&mode=sales`} className="inline-flex rounded-md bg-[var(--accent-copper)] px-3 py-2 text-xs font-semibold text-[color:var(--theme-text-on-accent)]">
+            <Link href={`/demo/preview/${context.demoId}?${new URLSearchParams({ token, mode: "sales" }).toString()}`} className="inline-flex rounded-md bg-[var(--accent-copper)] px-3 py-2 text-xs font-semibold text-[color:var(--theme-text-on-accent)]">
               {decisionSummary.primaryActionLabel}
             </Link>
           </div>

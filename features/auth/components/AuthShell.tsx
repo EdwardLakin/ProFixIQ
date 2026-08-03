@@ -1,10 +1,14 @@
 "use client";
 
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import Link from "next/link";
 import { CheckCircle2, ShieldCheck } from "lucide-react";
 import { cn } from "@/features/shared/lib/utils";
 import ThemeToggleButton from "@/features/shared/components/ThemeToggleButton";
+import {
+  ProFixIQMark,
+  ProFixIQWordmark,
+} from "@/features/shared/components/brand/ProFixIQBrand";
 
 type AuthShellProps = {
   children: ReactNode;
@@ -16,6 +20,15 @@ type AuthShellProps = {
   highlights?: string[];
   backHref?: string;
 };
+
+const authBrandStyle = {
+  "--accent-copper": "#2563EB",
+  "--accent-copper-soft": "#1747FF",
+  "--accent-copper-light": "#60A5FA",
+  "--theme-text-on-accent": "#FFFFFF",
+  "--theme-gradient-page":
+    "radial-gradient(circle at 14% 20%, rgba(37,99,235,0.20), transparent 34%), radial-gradient(circle at 86% 82%, rgba(11,183,255,0.12), transparent 30%), linear-gradient(180deg, var(--theme-surface-page), var(--theme-surface-page))",
+} as CSSProperties;
 
 export default function AuthShell({
   children,
@@ -29,19 +42,20 @@ export default function AuthShell({
 }: AuthShellProps) {
   return (
     <div
+      style={authBrandStyle}
       className={cn(
         "relative min-h-screen min-h-[100dvh] overflow-hidden bg-[color:var(--theme-surface-page)] text-[color:var(--theme-text-primary)]",
         viewportClassName,
       )}
     >
       <div className="pointer-events-none absolute inset-0 bg-[var(--theme-gradient-page)]" />
-      <div className="pointer-events-none absolute -left-24 top-1/3 h-72 w-72 rounded-full bg-[color:color-mix(in_srgb,var(--accent-copper)_11%,transparent)] blur-3xl" />
+      <div className="pointer-events-none absolute -left-24 top-1/3 h-72 w-72 rounded-full bg-[color:color-mix(in_srgb,var(--accent-copper)_13%,transparent)] blur-3xl" />
+      <div className="pointer-events-none absolute -right-28 bottom-10 h-80 w-80 rounded-full bg-[rgba(11,183,255,0.09)] blur-3xl" />
 
       <header className="relative z-10 flex h-16 items-center justify-between border-b border-[color:var(--theme-border-soft)] bg-[color:color-mix(in_srgb,var(--theme-surface-overlay)_82%,transparent)] px-4 backdrop-blur-xl sm:px-7">
         <Link href={backHref} className="inline-flex items-center gap-3" aria-label="ProFixIQ home">
-          <span className="text-xl tracking-[0.08em] text-[color:var(--theme-text-primary)] sm:text-2xl" style={{ fontFamily: "var(--font-blackops), system-ui" }}>
-            PRO<span className="text-[var(--accent-copper)]">FIX</span>IQ
-          </span>
+          <ProFixIQMark className="h-9 w-9" />
+          <ProFixIQWordmark className="text-xl text-[color:var(--theme-text-primary)] sm:text-2xl" />
           <span className="hidden h-5 w-px bg-[color:var(--theme-border-strong)] sm:block" />
           <span className="hidden text-xs text-[color:var(--theme-text-muted)] sm:block">{productLabel}</span>
         </Link>
@@ -73,14 +87,14 @@ export default function AuthShell({
         <section className="mx-auto w-full max-w-[520px]">
           <div
             className={cn(
-              "rounded-[1.75rem] border border-[color:var(--theme-border-soft)] bg-[color:color-mix(in_srgb,var(--theme-surface-overlay)_92%,transparent)] p-5 shadow-[var(--theme-shadow-strong)] backdrop-blur-2xl sm:p-8",
+              "rounded-[1.75rem] border border-[color:color-mix(in_srgb,var(--accent-copper)_16%,var(--theme-border-soft))] bg-[color:color-mix(in_srgb,var(--theme-surface-overlay)_92%,transparent)] p-5 shadow-[0_28px_80px_color-mix(in_srgb,var(--accent-copper)_12%,transparent)] backdrop-blur-2xl sm:p-8",
               cardClassName,
             )}
           >
             {children}
           </div>
           <div className="mt-4 flex items-center justify-center gap-2 text-[11px] text-[color:var(--theme-text-muted)]">
-            <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
+            <ShieldCheck className="h-3.5 w-3.5 text-[var(--accent-copper)]" aria-hidden />
             Encrypted sessions · Tenant-scoped access
           </div>
         </section>

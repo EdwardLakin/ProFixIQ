@@ -1,0 +1,367 @@
+name: Supabase Clean Replay Validation
+
+on:
+  push:
+    branches:
+      - fix/supabase-clean-replay
+  pull_request:
+    paths:
+      - "supabase/migrations/**"
+      - "tests/parts/*.runtime.sql"
+      - "tests/security/*.runtime.sql"
+      - "db/sql/schema.sql"
+      - "features/shared/types/types/supabase.ts"
+      - "package.json"
+      - "scripts/generate-supabase-public-baseline.py"
+      - "docs/supabase-recovery-and-schema-contract.md"
+      - ".github/workflows/supabase-clean-replay-audit.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v2
+        with:
+          version: 2.101.0
+          github-token: ${{ github.token }}
+
+      - name: Reject duplicate migration versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from collections import defaultdict
+          from pathlib import Path
+          import re
+
+          versions: dict[str, list[str]] = defaultdict(list)
+          invalid: list[str] = []
+
+          for path in sorted(Path("supabase/migrations").glob("*.sql")):
+              match = re.match(r"^(\d+)_", path.name)
+              if match is None:
+                  invalid.append(path.name)
+                  continue
+              versions[match.group(1)].append(path.name)
+
+          duplicates = {
+              version: names
+              for version, names in versions.items()
+              if len(names) > 1
+          }
+
+          if invalid or duplicates:
+              if invalid:
+                  print("Migration filenames without a numeric version prefix:")
+                  for name in invalid:
+                      print(f"  - {name}")
+              if duplicates:
+                  print("Duplicate Supabase migration versions:")
+                  for version, names in sorted(duplicates.items()):
+                      print(f"  {version}:")
+                      for name in names:
+                          print(f"    - {name}")
+              raise SystemExit(1)
+          PY
+
+      - name: Verify the generated baseline is deterministic
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/generate-supabase-public-baseline.py
+          git diff --exit-code -- \
+            supabase/migrations/20260705000000_public_schema_baseline.sql
+
+      - name: Initialize ephemeral Supabase configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -f supabase/config.toml ]]; then
+            supabase init
+          fi
+          supabase --version
+
+      - name: Start a fresh local database and apply migrations
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase db start 2>&1 | tee supabase-db-start.log
+
+      - name: Reset and replay the full migration chain
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase db reset --local --no-seed --debug \
+            2>&1 | tee supabase-db-reset.log
+
+      - name: Execute parts lifecycle runtime integration
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+            -f tests/parts/use-part-handoff.runtime.sql \
+            2>&1 | tee parts-use-handoff-runtime.log
+
+      - name: Execute P0 relation-boundary runtime integration
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+            -f tests/security/p0-001-relation-boundaries.runtime.sql \
+            2>&1 | tee p0-001-relation-boundaries-runtime.log
+
+      - name: Execute P0 RPC privilege runtime integration
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+            -f tests/security/p0-002-rpc-privileges.runtime.sql \
+            2>&1 | tee p0-002-rpc-privileges-runtime.log
+
+      - name: Execute P0 production-signature compatibility integration
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+            -f tests/security/p0-002-stock-move-signature-compat.runtime.sql \
+            2>&1 | tee p0-002-stock-move-signature-compat-runtime.log
+
+      - name: Execute P0 vehicle recall tenant-boundary integration
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+            -f tests/security/p0-004-vehicle-recall-fetch.runtime.sql \
+            2>&1 | tee p0-004-vehicle-recall-fetch-runtime.log
+
+      - name: Execute P0 AI route governance integration
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+            -f tests/security/p0-005-ai-route-governance.runtime.sql \
+            2>&1 | tee p0-005-ai-route-governance-runtime.log
+
+      - name: Execute P0 Stripe identity integration
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+            -f tests/security/p0-006-stripe-identity.runtime.sql \
+            2>&1 | tee p0-006-stripe-identity-runtime.log
+
+      - name: Execute P0 financial outbox idempotency integration
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+            -f tests/security/p0-007-financial-outbox.runtime.sql \
+            2>&1 | tee p0-007-financial-outbox-runtime.log
+
+      - name: Execute P0 financial outbox concurrent-worker integration
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          bash tests/security/p0-007-financial-outbox-concurrency.sh \
+            2>&1 | tee p0-007-financial-outbox-concurrency.log
+
+      - name: Execute P1 Stripe webhook receipt integration
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+            -f tests/security/p1-012-stripe-webhook-receipts.runtime.sql \
+            2>&1 | tee p1-012-stripe-webhook-receipts-runtime.log
+
+      - name: Execute P1 Stripe webhook concurrent-delivery integration
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          bash tests/security/p1-012-stripe-webhook-concurrency.sh \
+            2>&1 | tee p1-012-stripe-webhook-concurrency.log
+
+      - name: Execute customer portal work-order parts policy integration
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+            -f tests/security/work-order-parts-portal-policy.runtime.sql \
+            2>&1 | tee work-order-parts-portal-policy-runtime.log
+
+      - name: Execute P0 schema reconciliation integration
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+            -f tests/security/p0-008-schema-reconciliation.runtime.sql \
+            2>&1 | tee p0-008-schema-reconciliation-runtime.log
+
+      - name: Verify generated types match the clean migration replay
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase gen types typescript --local --schema public \
+            > generated-supabase-types.ts
+          diff -u \
+            features/shared/types/types/supabase.ts \
+            generated-supabase-types.ts \
+            2>&1 | tee p0-008-generated-types.diff
+
+      - name: Verify bootstrap and existing-database baseline paths
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+
+          core_count="$(psql "$DB_URL" -Atv ON_ERROR_STOP=1 -c "
+            select count(*)
+            from (values
+              ('shops'),
+              ('profiles'),
+              ('customers'),
+              ('vehicles'),
+              ('work_orders'),
+              ('work_order_lines')
+            ) as core(table_name)
+            where to_regclass('public.' || table_name) is not null;
+          ")"
+          test "$core_count" = "6"
+
+          bootstrap_mode="$(psql "$DB_URL" -Atv ON_ERROR_STOP=1 -c "
+            select mode
+            from public.profixiq_schema_baselines
+            where version = '20260705000000';
+          ")"
+          test "$bootstrap_mode" = "bootstrap"
+
+          history_count="$(psql "$DB_URL" -Atv ON_ERROR_STOP=1 -c "
+            select count(*)
+            from supabase_migrations.schema_migrations
+            where version = '20260705000000';
+          ")"
+          test "$history_count" = "1"
+
+          psql "$DB_URL" -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/20260705000000_public_schema_baseline.sql \
+            2>&1 | tee supabase-existing-baseline.log
+
+          existing_mode="$(psql "$DB_URL" -Atv ON_ERROR_STOP=1 -c "
+            select mode
+            from public.profixiq_schema_baselines
+            where version = '20260705000000';
+          ")"
+          test "$existing_mode" = "existing"
+
+      - name: Upload replay diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: supabase-clean-replay-${{ github.run_id }}
+          path: |
+            supabase-db-start.log
+            supabase-db-reset.log
+            supabase-existing-baseline.log
+            parts-use-handoff-runtime.log
+            p0-001-relation-boundaries-runtime.log
+            p0-002-rpc-privileges-runtime.log
+            p0-002-stock-move-signature-compat-runtime.log
+            p0-004-vehicle-recall-fetch-runtime.log
+            p0-005-ai-route-governance-runtime.log
+            p0-006-stripe-identity-runtime.log
+            p0-007-financial-outbox-runtime.log
+            p0-007-financial-outbox-concurrency.log
+            p1-012-stripe-webhook-receipts-runtime.log
+            p1-012-stripe-webhook-concurrency.log
+            work-order-parts-portal-policy-runtime.log
+            p0-008-schema-reconciliation-runtime.log
+            p0-008-generated-types.diff
+            generated-supabase-types.ts
+            supabase/config.toml
+          if-no-files-found: warn
+
+      - name: Stop local Supabase
+        if: always()
+        shell: bash
+        run: supabase stop --no-backup || true

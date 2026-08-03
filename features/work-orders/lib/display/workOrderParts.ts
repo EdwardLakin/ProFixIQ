@@ -2,7 +2,6 @@ import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
 type WorkOrderPart = DB["public"]["Tables"]["work_order_parts"]["Row"];
-type WorkOrderPartAllocation = DB["public"]["Tables"]["work_order_part_allocations"]["Row"];
 
 export type CanonicalWorkOrderPart = WorkOrderPart & {
   id: string;
@@ -61,18 +60,30 @@ export function activeCanonicalWorkOrderParts(parts: CanonicalWorkOrderPart[]): 
   return parts.filter((part) => part.is_active !== false);
 }
 
-export function filterAllocationsNotBackedByCanonicalParts<T extends Pick<WorkOrderPartAllocation, "source_request_item_id">>(
+export function filterAllocationsNotBackedByCanonicalParts<T extends {
+  source_request_item_id?: string | null;
+  work_order_part_id?: string | null;
+}>(
   allocations: T[],
-  canonicalParts: Array<{ source_parts_request_item_id?: string | null }>,
+  canonicalParts: Array<{ id?: string | null; source_parts_request_item_id?: string | null }>,
 ): T[] {
+  const canonicalPartIds = new Set(
+    canonicalParts
+      .map((part) => part.id ?? null)
+      .filter((id): id is string => typeof id === "string" && id.length > 0),
+  );
   const canonicalSourceItemIds = new Set(
     canonicalParts
       .map((part) => part.source_parts_request_item_id ?? null)
       .filter((id): id is string => typeof id === "string" && id.length > 0),
   );
-  if (canonicalSourceItemIds.size === 0) return allocations;
+  if (canonicalPartIds.size === 0 && canonicalSourceItemIds.size === 0) return allocations;
   return allocations.filter((allocation) => {
+    const workOrderPartId = allocation.work_order_part_id ?? null;
     const sourceItemId = allocation.source_request_item_id ?? null;
-    return !sourceItemId || !canonicalSourceItemIds.has(sourceItemId);
+    return !(
+      (workOrderPartId && canonicalPartIds.has(workOrderPartId)) ||
+      (sourceItemId && canonicalSourceItemIds.has(sourceItemId))
+    );
   });
 }

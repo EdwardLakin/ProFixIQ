@@ -35,7 +35,7 @@ const GROUP_ORDER = [
 
 function normalizeRole(raw: string | null | undefined): Role | null {
   const canonical = canonicalizeRole(raw);
-  if (canonical === "unknown" || canonical === "customer" || canonical === "service") {
+  if (canonical === "unknown" || canonical === "customer") {
     return null;
   }
   return canonical;
@@ -84,7 +84,7 @@ export default function RoleSidebar({
         .eq("id", uid)
         .single();
 
-      setRole(normalizeRole(profile?.role ?? null));
+      if (profile?.role) setRole(normalizeRole(profile.role));
     })();
   }, [supabase]);
 
@@ -161,8 +161,7 @@ export default function RoleSidebar({
     <nav
       className="flex-1 overflow-y-auto space-y-3 py-3"
       style={{
-        background:
-          "var(--theme-gradient-panel)",
+        background: "var(--theme-gradient-panel)",
       }}
     >
       {sortedGroups.map(([group, groupTiles]) => {
@@ -208,7 +207,8 @@ export default function RoleSidebar({
                   <span
                     className="inline-block h-1.5 w-1.5 rounded-full opacity-40"
                     style={{
-                      background: "var(--theme-text-secondary,var(--theme-text-muted))",
+                      background:
+                        "var(--theme-text-secondary,var(--theme-text-muted))",
                     }}
                   />
                 )}

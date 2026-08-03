@@ -1,0 +1,26 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "incremental": false
+  },
+  "include": [
+    "next-env.d.ts",
+    "app/api/stripe/checkout/route.ts",
+    "app/api/stripe/portal/route.ts",
+    "app/api/stripe/session/route.ts",
+    "app/api/stripe/subscription/route.ts",
+    "app/auth/callback/page.tsx",
+    "app/compare-plans/page.tsx",
+    "features/auth/components/SignIn.tsx",
+    "features/dashboard/app/dashboard/owner/settings/page.tsx",
+    "features/shared/components/ProFixIQLanding.tsx",
+    "features/shared/components/ui/PricingSection.tsx",
+    "features/shared/types/types/supabase.ts",
+    "features/stripe/api/stripe/checkout/link-user/route.ts",
+    "features/stripe/api/stripe/webhook/route.ts",
+    "features/stripe/lib/client/claim-acquisition.ts",
+    "features/stripe/lib/server/canonical-shop-billing.ts",
+    "features/stripe/lib/server/stripe-acquisition-intent.ts",
+    "tests/p0-006-stripe-identity.test.ts"
+  ]
+}

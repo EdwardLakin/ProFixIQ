@@ -48,33 +48,25 @@ describe("Phase D3 dashboard operational navigation", () => {
     expect(dashboard).toEqual(expect.arrayContaining([
       "Shop Overview",
       "Work Order Board",
-      "Attendance & Activity",
       "Shop Health",
       "Performance",
     ]));
   });
 
-  it("keeps Work Order Board out of Operations and Attendance & Activity out of Workforce", () => {
+  it("keeps Work Order Board out of Operations and Time & Attendance in Workforce", () => {
     const ownerTiles = tilesFor("owner");
     const operations = ownerTiles.filter((tile) => tile.section === "Operations");
     const workforce = ownerTiles.filter((tile) => tile.section === "Workforce");
 
     expect(operations.map((tile) => tile.href)).not.toContain("/work-orders/board");
-    expect(workforce.map((tile) => tile.href)).not.toContain("/dashboard/workforce/attendance");
+    expect(workforce.map((tile) => tile.href)).toContain("/dashboard/workforce");
     expect(duplicateCount(ownerTiles.map((tile) => tile.href), "/work-orders/board")).toBe(1);
-    expect(duplicateCount(ownerTiles.map((tile) => tile.href), "/dashboard/workforce/attendance")).toBe(1);
+    expect(duplicateCount(ownerTiles.map((tile) => tile.href), "/dashboard/workforce")).toBe(1);
   });
 
   it("keeps Workforce navigation management-only", () => {
     expect(sectionTitles("owner", "Workforce")).toEqual([
-      "Workforce Overview",
-      "People",
-      "Scheduling",
-      "Time Off",
-      "Payroll Review",
-      "Employee Documents",
-      "Certifications",
-      "Insights",
+      "Workforce Command",
     ]);
   });
 
@@ -92,11 +84,37 @@ describe("Phase D3 dashboard operational navigation", () => {
     expect(activeNavigation).not.toContain("/dashboard/manager/dispatch");
   });
 
+  it("keeps the technician sidebar focused on assigned work only", () => {
+    const mechanicTiles = tilesFor("mechanic");
+    const mechanicTitles = mechanicTiles.map((tile) => tile.title);
+    const mechanicHrefs = mechanicTiles.map((tile) => tile.href);
+
+    expect(mechanicTitles).toEqual(expect.arrayContaining([
+      "Tech Job Queue",
+      "Team Chat",
+      "Tech Settings",
+      "My Performance",
+    ]));
+    expect(mechanicTitles).not.toContain("Shop Overview");
+    expect(mechanicTitles).not.toContain("My Parts Requests");
+    expect(mechanicTitles).not.toContain("History");
+    expect(mechanicHrefs).not.toContain("/parts/requests?mine=1");
+    expect(mechanicHrefs).not.toContain("/work-orders/history");
+    expect(ROUTE_META["/work-orders/history"].roles).not.toContain("mechanic");
+    expect(ROUTE_META["/parts/requests"].roles).not.toContain("mechanic");
+    expect(read("app/work-orders/history/page.tsx")).toContain("requireShopPageAccess");
+    expect(read("app/work-orders/history/page.tsx")).toContain("HISTORY_ACCESS_ROLES");
+    expect(read("app/parts/requests/layout.tsx")).toContain("requireShopPageAccess");
+    expect(read("app/parts/requests/layout.tsx")).toContain("PARTS_REQUEST_ACCESS_ROLES");
+    expect(read("app/dashboard/_components/OperationsDashboardView.tsx")).toContain(
+      'isTechnicianView && item.href === "/parts/requests"',
+    );
+  });
+
   it("preserves role visibility for Dashboard links", () => {
     expect(sectionTitles("manager", "Dashboard")).toEqual(expect.arrayContaining([
       "Shop Overview",
       "Work Order Board",
-      "Attendance & Activity",
       "Performance",
     ]));
 
@@ -115,8 +133,8 @@ describe("Phase D3 dashboard operational navigation", () => {
       "Work Order Board",
       "Attendance & Activity",
     ]);
-    expect(duplicateCount(MOBILE_TILES.map((tile) => tile.href), "/work-orders/board")).toBe(1);
-    expect(duplicateCount(MOBILE_TILES.map((tile) => tile.href), "/dashboard/workforce/attendance")).toBe(1);
+    expect(duplicateCount(MOBILE_TILES.map((tile) => tile.href), "/mobile/work-orders")).toBe(1);
+    expect(duplicateCount(MOBILE_TILES.map((tile) => tile.href), "/mobile/workforce/attendance")).toBe(1);
   });
 
   it("updates route metadata for the three operational views", () => {
@@ -153,5 +171,24 @@ describe("Phase D3 dashboard operational navigation", () => {
 
   it("keeps legacy dispatch redirect unchanged", () => {
     expect(read("app/dashboard/manager/dispatch/page.tsx")).toContain('redirect("/work-orders/board")');
+  });
+});
+
+
+describe("mechanic shop dashboard removal", () => {
+  it("routes dashboard entry to the tech queue and keeps the rest of tech navigation", () => {
+    const dashboardEntry = read("app/dashboard/page.tsx");
+    const navTiles = read("features/shared/config/tiles.ts");
+    const routeMeta = read("features/shared/lib/routeMeta.ts");
+
+    expect(dashboardEntry).toContain('if (role === "mechanic")');
+    expect(dashboardEntry).toContain('router.replace("/tech/queue")');
+    expect(navTiles).toContain('title: "Shop Overview"');
+    expect(navTiles).toContain('title: "Tech Job Queue"');
+    expect(navTiles).toContain('title: "Team Chat"');
+    expect(navTiles).toContain('title: "My Performance"');
+    expect(navTiles).toContain('roles: ["manager", "owner", "admin", "advisor", "parts", "fleet_manager", "dispatcher", "driver", "lead_hand", "foreman"]');
+    expect(routeMeta).toContain('"/dashboard":');
+    expect(routeMeta).not.toContain('roles: ALL_ROLES },');
   });
 });

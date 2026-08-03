@@ -1,8 +1,5 @@
-import WorkforceRelocationNotice from "@/features/dashboard/app/dashboard/workforce/WorkforceRelocationNotice";
-import EmployeeDocsClient from "@/features/dashboard/app/dashboard/admin/EmployeeDocsClient";
-import { requireAdminPageAccess } from "@/features/shared/lib/server/admin-access";
+import { redirect } from "next/navigation";
 
-export default async function Page() {
-  await requireAdminPageAccess({ allow: ["owner", "admin"] });
-  return <><WorkforceRelocationNotice href="/dashboard/workforce/documents" /><EmployeeDocsClient /></>;
+export default function Page() {
+  redirect("/dashboard/workforce/documents");
 }

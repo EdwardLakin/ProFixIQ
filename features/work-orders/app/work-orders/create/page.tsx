@@ -1,4 +1,3 @@
-
 // /features/work-orders/app/work-orders/create/page.tsx (FULL FILE REPLACEMENT)
 "use client";
 
@@ -9,6 +8,14 @@ import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import { useTabState } from "@/features/shared/hooks/useTabState";
 import { toast } from "sonner";
+import {
+  ArrowLeft,
+  Check,
+  ChevronDown,
+  ClipboardPlus,
+  Paperclip,
+  Settings2,
+} from "lucide-react";
 
 import VinCaptureModal from "app/vehicle/VinCaptureModal";
 import { useWorkOrderDraft } from "app/work-orders/state/useWorkOrderDraft";
@@ -29,6 +36,8 @@ import type {
 import { normalizeCustomerForIntake } from "@/features/inspections/lib/customerNormalization";
 import { normalizeVinInput } from "@/features/shared/lib/vin/normalizeVin";
 import { checkVehicleDuplicates } from "@/features/shared/lib/vehicles/duplicateCheck";
+import { requestVehicleRecallEnrichment } from "@/features/vehicles/lib/requestRecallEnrichment";
+import { desktopPrimitives as ui } from "@/features/shared/components/ui/desktopPrimitives";
 
 // 👇 inspection modal, client-only
 const InspectionModal = dynamic(
@@ -46,12 +55,15 @@ const card =
 const divider = "border-[color:var(--desktop-border)]";
 const sectionPanel =
   "rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] p-4 shadow-[var(--theme-shadow-medium)] sm:p-5";
+const collapsiblePanel =
+  "rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] shadow-[var(--theme-shadow-medium)]";
 const childPanel =
   "rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]";
 const subtlePanel =
   "rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)]";
 const softButton =
   "rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-overlay)]";
+const formControlClass = `${ui.input} min-h-11 rounded-xl`;
 
 /* =============================================================================
    Types & helpers
@@ -135,7 +147,10 @@ type CustomerVehicleDraftHook = {
   ) => void;
 
   // ✅ allow extra vehicle fields to persist in the draft
-  setVehicleField: (field: keyof VehicleWithExtra, value: string | null) => void;
+  setVehicleField: (
+    field: keyof VehicleWithExtra,
+    value: string | null,
+  ) => void;
 
   bulkSet: (data: {
     customer?: Partial<CustomerWithBusiness>;
@@ -161,14 +176,12 @@ type WorkOrderLineWithInspectionMeta = LineRow & {
   inspectionTemplate?: string | null;
   template?: string | null;
   inspection_template_id?: string | null;
-  metadata?:
-    | {
-        inspection_template_id?: string | null;
-        inspection_template?: string | null;
-        template?: string | null;
-        [key: string]: unknown;
-      }
-    | null;
+  metadata?: {
+    inspection_template_id?: string | null;
+    inspection_template?: string | null;
+    template?: string | null;
+    [key: string]: unknown;
+  } | null;
 };
 
 const getStrField = (obj: unknown, key: string): string | null => {
@@ -200,7 +213,8 @@ function buildIntakeNotesBlock(input: {
   lines.push("PORTAL INTAKE"); // keep marker consistent across portal + app
   lines.push(`Concern: ${input.concern.trim()}`);
   if (input.details.trim()) lines.push(`Details: ${input.details.trim()}`);
-  if (input.contactPref.trim()) lines.push(`Contact: ${input.contactPref.trim()}`);
+  if (input.contactPref.trim())
+    lines.push(`Contact: ${input.contactPref.trim()}`);
   if (input.mileage.trim()) lines.push(`Mileage: ${input.mileage.trim()}`);
   return lines.join("\n");
 }
@@ -278,7 +292,10 @@ function validateVehicleSaveInput(vehicle: VehicleWithExtra): void {
   const maximumYear = new Date().getFullYear() + 2;
   if (
     yearText &&
-    (year === null || !Number.isInteger(year) || year < 1886 || year > maximumYear)
+    (year === null ||
+      !Number.isInteger(year) ||
+      year < 1886 ||
+      year > maximumYear)
   ) {
     throw new Error(`Year must be between 1886 and ${maximumYear}.`);
   }
@@ -337,7 +354,8 @@ function buildBookingNotesBlock(booking: BookingConversionRow): string {
   const lines = ["APPOINTMENT HANDOFF"];
   const windowLabel = formatBookingWindow(booking.starts_at, booking.ends_at);
   if (windowLabel) lines.push(`Scheduled: ${windowLabel}`);
-  if (booking.notes?.trim()) lines.push(`Appointment notes: ${booking.notes.trim()}`);
+  if (booking.notes?.trim())
+    lines.push(`Appointment notes: ${booking.notes.trim()}`);
   return lines.join("\n");
 }
 
@@ -492,7 +510,7 @@ export default function CreateWorkOrderPage() {
         ...prev,
         business_name:
           (prev.business_name ?? "") !== ""
-            ? prev.business_name ?? null
+            ? (prev.business_name ?? null)
             : (dc.business_name ?? prev.business_name ?? null),
         first_name:
           prev.first_name == null || prev.first_name === ""
@@ -550,7 +568,8 @@ export default function CreateWorkOrderPage() {
         engine_family: dv.engine_family ?? prev.engine_family ?? null,
         engine_type: dv.engine_type ?? prev.engine_type ?? null,
         transmission: dv.transmission ?? prev.transmission ?? null,
-        transmission_type: dv.transmission_type ?? prev.transmission_type ?? null,
+        transmission_type:
+          dv.transmission_type ?? prev.transmission_type ?? null,
         fuel_type: dv.fuel_type ?? prev.fuel_type ?? null,
         drivetrain: dv.drivetrain ?? prev.drivetrain ?? null,
       }));
@@ -615,24 +634,29 @@ export default function CreateWorkOrderPage() {
   const [priority, setPriority] = useTabState<number>("priority", 3);
   // 👇 waiter flag (customer waiting on-site)
   const [isWaiter, setIsWaiter] = useTabState<boolean>("is_waiter", false);
-  const [expectedCompletionInput, setExpectedCompletionInput] = useTabState<string>(
-    "expected_completion_input",
-    "",
-  );
+  const [expectedCompletionInput, setExpectedCompletionInput] =
+    useTabState<string>("expected_completion_input", "");
 
   // Uploads
   const [photoFiles, setPhotoFiles] = useState<File[]>([]);
   const [docFiles, setDocFiles] = useState<File[]>([]);
-  const [uploadSummary, setUploadSummary] = useState<UploadSummary | null>(null);
+  const [uploadSummary, setUploadSummary] = useState<UploadSummary | null>(
+    null,
+  );
 
   // UI state
   const [loading, setLoading] = useTabState("loading", false);
   const [error, setError] = useTabState("error", "");
-  const [inviteNotice, setInviteNotice] =
-    useTabState<string>("inviteNotice", "");
-  const [bookingPrefill, setBookingPrefill] = useState<BookingConversionRow | null>(null);
+  const [inviteNotice, setInviteNotice] = useTabState<string>(
+    "inviteNotice",
+    "",
+  );
+  const [bookingPrefill, setBookingPrefill] =
+    useState<BookingConversionRow | null>(null);
   const [sendInvite, setSendInvite] = useTabState<boolean>("sendInvite", true);
-  const [selectedMaintenanceCodes, setSelectedMaintenanceCodes] = useState<string[]>([]);
+  const [selectedMaintenanceCodes, setSelectedMaintenanceCodes] = useState<
+    string[]
+  >([]);
 
   // Current user id (for VIN modal)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -695,7 +719,8 @@ export default function CreateWorkOrderPage() {
         // ✅ extra fields from VIN draft
         engine: draft.vehicle?.engine ?? prev.engine ?? null,
         submodel: draft.vehicle?.submodel ?? prev.submodel ?? null,
-        engine_family: draft.vehicle?.engine_family ?? prev.engine_family ?? null,
+        engine_family:
+          draft.vehicle?.engine_family ?? prev.engine_family ?? null,
         engine_type: draft.vehicle?.engine_type ?? prev.engine_type ?? null,
         fuel_type: draft.vehicle?.fuel_type ?? prev.fuel_type ?? null,
         drivetrain: draft.vehicle?.drivetrain ?? prev.drivetrain ?? null,
@@ -726,30 +751,30 @@ export default function CreateWorkOrderPage() {
   }, []); // one-time hydration is intentional
 
   // keep waiter state in sync with an existing WO (editing case)
-    const getCurrentProfileId = useCallback(
+  const getCurrentProfileId = useCallback(
     async (userId: string): Promise<string | null> => {
-    const byUserId = await supabase
-      .from("profiles")
-      .select("id")
-      .eq("user_id", userId)
-      .maybeSingle<Pick<ProfileRow, "id">>();
+      const byUserId = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("user_id", userId)
+        .maybeSingle<Pick<ProfileRow, "id">>();
 
-    if (byUserId.error) throw byUserId.error;
-    if (byUserId.data?.id) return byUserId.data.id;
+      if (byUserId.error) throw byUserId.error;
+      if (byUserId.data?.id) return byUserId.data.id;
 
-    const byId = await supabase
-      .from("profiles")
-      .select("id")
-      .eq("id", userId)
-      .maybeSingle<Pick<ProfileRow, "id">>();
+      const byId = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("id", userId)
+        .maybeSingle<Pick<ProfileRow, "id">>();
 
-    if (byId.error) throw byId.error;
-    return byId.data?.id ?? null;
+      if (byId.error) throw byId.error;
+      return byId.data?.id ?? null;
     },
     [supabase],
   );
 
-useEffect(() => {
+  useEffect(() => {
     if (!wo) return;
     const flag = (wo as WorkOrderWaiterRow).is_waiter ?? false;
     setIsWaiter(Boolean(flag));
@@ -779,53 +804,55 @@ useEffect(() => {
     })();
   }, [supabase, getCurrentProfileId]);
 
-  const getOrLinkShopId = useCallback(async (userId: string): Promise<string | null> => {
-    const byUserId = await supabase
-      .from("profiles")
-      .select("shop_id")
-      .eq("user_id", userId)
-      .maybeSingle();
+  const getOrLinkShopId = useCallback(
+    async (userId: string): Promise<string | null> => {
+      const byUserId = await supabase
+        .from("profiles")
+        .select("shop_id")
+        .eq("user_id", userId)
+        .maybeSingle();
 
-    if (byUserId.error) throw byUserId.error;
-    if (byUserId.data?.shop_id) return byUserId.data.shop_id;
+      if (byUserId.error) throw byUserId.error;
+      if (byUserId.data?.shop_id) return byUserId.data.shop_id;
 
-    const byId = await supabase
-      .from("profiles")
-      .select("shop_id")
-      .eq("id", userId)
-      .maybeSingle();
+      const byId = await supabase
+        .from("profiles")
+        .select("shop_id")
+        .eq("id", userId)
+        .maybeSingle();
 
-    if (byId.error) throw byId.error;
-    if (byId.data?.shop_id) return byId.data.shop_id;
+      if (byId.error) throw byId.error;
+      if (byId.data?.shop_id) return byId.data.shop_id;
 
-    const ownedShop = await supabase
-      .from("shops")
-      .select("id")
-      .eq("owner_id", userId)
-      .maybeSingle();
+      const ownedShop = await supabase
+        .from("shops")
+        .select("id")
+        .eq("owner_id", userId)
+        .maybeSingle();
 
-    if (ownedShop.error) throw ownedShop.error;
-    if (!ownedShop.data?.id) return null;
+      if (ownedShop.error) throw ownedShop.error;
+      if (!ownedShop.data?.id) return null;
 
-    const updByUserId = await supabase
-      .from("profiles")
-      .update({ shop_id: ownedShop.data.id })
-      .eq("user_id", userId);
-
-    if (updByUserId.error) {
-      const updById = await supabase
+      const updByUserId = await supabase
         .from("profiles")
         .update({ shop_id: ownedShop.data.id })
-        .eq("id", userId);
+        .eq("user_id", userId);
 
-      if (updById.error) throw updById.error;
-    }
+      if (updByUserId.error) {
+        const updById = await supabase
+          .from("profiles")
+          .update({ shop_id: ownedShop.data.id })
+          .eq("id", userId);
 
-    return ownedShop.data.id;
-  }, [supabase]);
+        if (updById.error) throw updById.error;
+      }
+
+      return ownedShop.data.id;
+    },
+    [supabase],
+  );
 
   // ✅ advisor ownership helper
-
 
   const buildCustomerInsert = (c: CustomerWithBusiness, shopId: string) => ({
     business_name: strOrNull(c.business_name ?? null),
@@ -899,7 +926,9 @@ useEffect(() => {
     patch: Omit<ReturnType<typeof buildCustomerInsert>, "shop_id">,
   ) =>
     Object.fromEntries(
-      Object.entries(patch).filter(([, value]) => value !== null && value !== undefined && value !== ""),
+      Object.entries(patch).filter(
+        ([, value]) => value !== null && value !== undefined && value !== "",
+      ),
     ) as Partial<CustomerRow>;
 
   const buildImplicitVehiclePatch = (
@@ -909,7 +938,8 @@ useEffect(() => {
     Object.fromEntries(
       Object.entries(buildVehiclePatch(v, customerIdIn)).filter(
         ([key, value]) =>
-          key === "customer_id" || (value !== null && value !== undefined && value !== ""),
+          key === "customer_id" ||
+          (value !== null && value !== undefined && value !== ""),
       ),
     ) as Partial<VehicleRow>;
 
@@ -946,7 +976,13 @@ useEffect(() => {
       setPrefillCustomerId(queryCustomerId);
       setSourceFlags((s) => ({ ...s, queryCustomer: true }));
     }
-  }, [queryCustomerId, queryVehicleId, setPrefillVehicleId, setPrefillCustomerId, setSourceFlags]);
+  }, [
+    queryCustomerId,
+    queryVehicleId,
+    setPrefillVehicleId,
+    setPrefillCustomerId,
+    setSourceFlags,
+  ]);
 
   // Load appointment handoff context from bookingId and scope it to the user's shop.
   useEffect(() => {
@@ -966,7 +1002,8 @@ useEffect(() => {
         if (!user?.id) throw new Error("Not signed in.");
 
         const shopId = await getOrLinkShopId(user.id);
-        if (!shopId) throw new Error("Your profile isn’t linked to a shop yet.");
+        if (!shopId)
+          throw new Error("Your profile isn’t linked to a shop yet.");
 
         const { data: booking, error: bookingErr } = await supabase
           .from("bookings")
@@ -982,7 +1019,9 @@ useEffect(() => {
           throw new Error("This appointment belongs to a different shop.");
         }
         if ((booking.status ?? "").toLowerCase() === "cancelled") {
-          throw new Error("Cancelled appointments cannot be converted to work orders.");
+          throw new Error(
+            "Cancelled appointments cannot be converted to work orders.",
+          );
         }
 
         if (cancelled) return;
@@ -1001,7 +1040,9 @@ useEffect(() => {
         }
 
         if (booking.work_order_id) {
-          setInviteNotice("This appointment is already linked to a work order.");
+          setInviteNotice(
+            "This appointment is already linked to a work order.",
+          );
           return;
         }
 
@@ -1010,10 +1051,13 @@ useEffect(() => {
           const block = buildBookingNotesBlock(booking);
           return existing?.trim() ? `${existing.trim()}\n\n${block}` : block;
         });
-        setInviteNotice("Appointment loaded. Review the customer and vehicle, then create the work order.");
+        setInviteNotice(
+          "Appointment loaded. Review the customer and vehicle, then create the work order.",
+        );
       } catch (err) {
         if (cancelled) return;
-        const message = err instanceof Error ? err.message : "Failed to load appointment.";
+        const message =
+          err instanceof Error ? err.message : "Failed to load appointment.";
         setBookingPrefill(null);
         setError(message);
         toast.error(message);
@@ -1062,7 +1106,9 @@ useEffect(() => {
             .eq("shop_id", shopId)
             .maybeSingle();
           if (!cancelled && data) {
-            setCustomer(hydrateCustomerFromRow(data as CustomerRowWithBusiness));
+            setCustomer(
+              hydrateCustomerFromRow(data as CustomerRowWithBusiness),
+            );
             setCustomerId(data.id);
             effectiveCustomerId = data.id;
           }
@@ -1093,7 +1139,9 @@ useEffect(() => {
                 .eq("shop_id", shopId)
                 .maybeSingle();
               if (cust) {
-                setCustomer(hydrateCustomerFromRow(cust as CustomerRowWithBusiness));
+                setCustomer(
+                  hydrateCustomerFromRow(cust as CustomerRowWithBusiness),
+                );
                 setCustomerId(cust.id);
                 effectiveCustomerId = cust.id;
               }
@@ -1137,8 +1185,9 @@ useEffect(() => {
     getOrLinkShopId,
   ]);
 
-
-  async function ensureCustomer(shopId: string): Promise<CustomerRowWithBusiness> {
+  async function ensureCustomer(
+    shopId: string,
+  ): Promise<CustomerRowWithBusiness> {
     const normalizedEmail = normalizeEmail(customer.email);
     const normalizedPhone = normalizePhone(customer.phone);
     const customerWrite = buildCustomerInsert(customer, shopId);
@@ -1258,9 +1307,17 @@ useEffect(() => {
       (match) => match.same_customer === true,
     );
     if (!vehicleId && sameCustomerMatch) {
-      const label = [sameCustomerMatch.year, sameCustomerMatch.make, sameCustomerMatch.model]
-        .filter(Boolean)
-        .join(" ") || sameCustomerMatch.vin || sameCustomerMatch.license_plate || "vehicle";
+      const label =
+        [
+          sameCustomerMatch.year,
+          sameCustomerMatch.make,
+          sameCustomerMatch.model,
+        ]
+          .filter(Boolean)
+          .join(" ") ||
+        sameCustomerMatch.vin ||
+        sameCustomerMatch.license_plate ||
+        "vehicle";
       const useExisting = window.confirm(
         `Vehicle already exists: ${label}. Use existing vehicle?`,
       );
@@ -1276,7 +1333,9 @@ useEffect(() => {
         .select("*")
         .single();
       if (existingErr || !existing) {
-        throw new Error(existingErr?.message ?? "Failed to update existing vehicle.");
+        throw new Error(
+          existingErr?.message ?? "Failed to update existing vehicle.",
+        );
       }
       setVehicleId(existing.id);
       return existing as VehicleRow;
@@ -1292,7 +1351,10 @@ useEffect(() => {
         .single();
 
       if (currentErr) throw currentErr;
-      if (currentVehicle?.customer_id && currentVehicle.customer_id !== cust.id) {
+      if (
+        currentVehicle?.customer_id &&
+        currentVehicle.customer_id !== cust.id
+      ) {
         throw new Error(
           "Use existing vehicle is selected, but it belongs to another customer. Contact shop/admin to move vehicle.",
         );
@@ -1321,7 +1383,9 @@ useEffect(() => {
     }
 
     const orParts = [
-      validVinOrNull(vehicle.vin) ? `vin.eq.${validVinOrNull(vehicle.vin)}` : "",
+      validVinOrNull(vehicle.vin)
+        ? `vin.eq.${validVinOrNull(vehicle.vin)}`
+        : "",
       vehicle.license_plate ? `license_plate.eq.${vehicle.license_plate}` : "",
     ].filter(Boolean);
 
@@ -1414,6 +1478,7 @@ useEffect(() => {
       const hadExplicitVehicleId = Boolean(vehicleId);
       const cust = await ensureCustomer(shopId);
       const veh = await ensureVehicleRow(cust, shopId);
+      void requestVehicleRecallEnrichment(veh.id);
       const persistedCustomer = hydrateCustomerFromRow(cust);
       const persistedVehicle = hydrateVehicleFromRow(veh);
 
@@ -1432,7 +1497,10 @@ useEffect(() => {
         "vehicle",
         (hadExplicitVehicleId
           ? buildVehiclePatch(vehicle, cust.id)
-          : buildImplicitVehiclePatch(vehicle, cust.id)) as Record<string, unknown>,
+          : buildImplicitVehiclePatch(vehicle, cust.id)) as Record<
+          string,
+          unknown
+        >,
         veh as unknown as Record<string, unknown>,
       );
 
@@ -1466,7 +1534,9 @@ useEffect(() => {
             .update({
               customer_id: cust.id,
               vehicle_id: veh.id,
-              expected_completion_at: fromDatetimeLocalInput(expectedCompletionInput),
+              expected_completion_at: fromDatetimeLocalInput(
+                expectedCompletionInput,
+              ),
               ...(waiter !== undefined ? { is_waiter: waiter } : {}),
             })
             .eq("id", wo.id)
@@ -1485,15 +1555,16 @@ useEffect(() => {
       const advisorProfileId =
         currentProfileId ?? (await getCurrentProfileId(user.id));
 
-      const rpcArgs: DB["public"]["Functions"]["create_work_order_with_custom_id"]["Args"] = {
-        p_shop_id: shopId,
-        p_customer_id: cust.id,
-        p_vehicle_id: veh.id,
-        p_notes: strOrNull(notes) ?? "",
-        p_priority: priority,
-        p_is_waiter: isWaiter,
-        ...(advisorProfileId ? { p_advisor_id: advisorProfileId } : {}),
-      };
+      const rpcArgs: DB["public"]["Functions"]["create_work_order_with_custom_id"]["Args"] =
+        {
+          p_shop_id: shopId,
+          p_customer_id: cust.id,
+          p_vehicle_id: veh.id,
+          p_notes: strOrNull(notes) ?? "",
+          p_priority: priority,
+          p_is_waiter: isWaiter,
+          ...(advisorProfileId ? { p_advisor_id: advisorProfileId } : {}),
+        };
 
       const { data: created, error: rpcErr } = await supabase.rpc(
         "create_work_order_with_custom_id",
@@ -1510,7 +1581,9 @@ useEffect(() => {
       }
 
       setWo(createdRow as unknown as WorkOrderRow);
-      const expectedCompletionAt = fromDatetimeLocalInput(expectedCompletionInput);
+      const expectedCompletionAt = fromDatetimeLocalInput(
+        expectedCompletionInput,
+      );
       if (expectedCompletionAt) {
         const { data: woWithExpected } = await supabase
           .from("work_orders")
@@ -1594,8 +1667,12 @@ useEffect(() => {
           vehicle_id: vehicleIdProp ?? "",
           contact_id: null,
           unit_number: vehicle.unit_number ?? null,
-          odometer_km: intakeMileage.trim() ? Number(intakeMileage.replace(/,/g, "")) || null : null,
-          engine_hours: vehicle.engine_hours ? Number(vehicle.engine_hours) || null : null,
+          odometer_km: intakeMileage.trim()
+            ? Number(intakeMileage.replace(/,/g, "")) || null
+            : null,
+          engine_hours: vehicle.engine_hours
+            ? Number(vehicle.engine_hours) || null
+            : null,
         },
         concern: {
           primary_text: concern,
@@ -1649,9 +1726,11 @@ useEffect(() => {
         }),
       });
 
-      const json = (await res.json().catch(() => null)) as
-        | { ok?: boolean; createdLines?: number; error?: string }
-        | null;
+      const json = (await res.json().catch(() => null)) as {
+        ok?: boolean;
+        createdLines?: number;
+        error?: string;
+      } | null;
 
       if (!res.ok || !json?.ok) {
         throw new Error(json?.error || "Failed to save intake");
@@ -1863,23 +1942,37 @@ useEffect(() => {
     [wo?.id],
   );
 
-  async function linkBookingToWorkOrder(bookingIdToLink: string, workOrder: Pick<WorkOrderRow, "id" | "shop_id">) {
+  async function linkBookingToWorkOrder(
+    bookingIdToLink: string,
+    workOrder: Pick<WorkOrderRow, "id" | "shop_id">,
+  ) {
     const { data: booking, error: bookingErr } = await supabase
       .from("bookings")
       .select("id, shop_id, work_order_id, status")
       .eq("id", bookingIdToLink)
-      .maybeSingle<Pick<BookingConversionRow, "id" | "shop_id" | "work_order_id" | "status">>();
+      .maybeSingle<
+        Pick<
+          BookingConversionRow,
+          "id" | "shop_id" | "work_order_id" | "status"
+        >
+      >();
 
     if (bookingErr) throw bookingErr;
     if (!booking) throw new Error("Appointment not found for work order link.");
     if (booking.shop_id !== workOrder.shop_id) {
-      throw new Error("Cannot link a work order to an appointment from another shop.");
+      throw new Error(
+        "Cannot link a work order to an appointment from another shop.",
+      );
     }
     if ((booking.status ?? "").toLowerCase() === "cancelled") {
-      throw new Error("Cancelled appointments cannot be linked to work orders.");
+      throw new Error(
+        "Cancelled appointments cannot be linked to work orders.",
+      );
     }
     if (booking.work_order_id && booking.work_order_id !== workOrder.id) {
-      throw new Error("This appointment is already linked to another work order.");
+      throw new Error(
+        "This appointment is already linked to another work order.",
+      );
     }
     if (booking.work_order_id === workOrder.id) return;
 
@@ -1920,26 +2013,29 @@ useEffect(() => {
       }
 
       if (selectedMaintenanceCodes.length > 0) {
-        const maintRes = await fetch("/api/work-orders/maintenance-suggestions/add-bundle", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            workOrderId: latest.id,
-            serviceCodes: selectedMaintenanceCodes,
-          }),
-        });
+        const maintRes = await fetch(
+          "/api/work-orders/maintenance-suggestions/add-bundle",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              workOrderId: latest.id,
+              serviceCodes: selectedMaintenanceCodes,
+            }),
+          },
+        );
 
-        const maintJson = (await maintRes.json().catch(() => null)) as
-          | {
-              ok?: boolean;
-              added?: Array<{ serviceCode: string }>;
-              skipped?: Array<{ serviceCode: string; error: string }>;
-              error?: string;
-            }
-          | null;
+        const maintJson = (await maintRes.json().catch(() => null)) as {
+          ok?: boolean;
+          added?: Array<{ serviceCode: string }>;
+          skipped?: Array<{ serviceCode: string; error: string }>;
+          error?: string;
+        } | null;
 
         if (!maintRes.ok || !maintJson?.ok) {
-          throw new Error(maintJson?.error || "Failed to attach maintenance suggestions.");
+          throw new Error(
+            maintJson?.error || "Failed to attach maintenance suggestions.",
+          );
         }
 
         if (Array.isArray(maintJson.skipped) && maintJson.skipped.length > 0) {
@@ -1969,9 +2065,10 @@ useEffect(() => {
             }),
           });
 
-          const j = (await res.json().catch(() => null)) as
-            | { ok?: boolean; error?: string }
-            | null;
+          const j = (await res.json().catch(() => null)) as {
+            ok?: boolean;
+            error?: string;
+          } | null;
 
           if (!res.ok || !j?.ok) {
             setInviteNotice(
@@ -1980,10 +2077,14 @@ useEffect(() => {
               }.`,
             );
           } else {
-            setInviteNotice("Work order created. Invite email sent to the customer.");
+            setInviteNotice(
+              "Work order created. Invite email sent to the customer.",
+            );
           }
         } catch {
-          setInviteNotice("Work order created. Failed to send invite email (caught).");
+          setInviteNotice(
+            "Work order created. Failed to send invite email (caught).",
+          );
         }
       }
 
@@ -2045,31 +2146,41 @@ useEffect(() => {
       : vehicle.license_plate
         ? `Plate ${vehicle.license_plate}`
         : null;
+  const customerLabel =
+    customer.business_name?.trim() ||
+    [customer.first_name, customer.last_name]
+      .filter(Boolean)
+      .join(" ")
+      .trim() ||
+    customer.phone?.trim() ||
+    customer.email?.trim() ||
+    null;
 
   // ✅ never undefined
   const vehicleIdProp: string | null = vehicleId ?? wo?.vehicle_id ?? null;
 
   return (
     <div
-      className="
-        min-h-screen bg-[var(--theme-surface-2,var(--theme-surface-page))] px-4 py-6 text-foreground
-      "
+      className="min-h-screen bg-[var(--theme-gradient-page)] px-3 py-4 text-foreground sm:px-4 sm:py-6"
       style={{ ["--copper" as never]: COPPER }}
     >
-      <div className="mx-auto max-w-7xl space-y-6">
+      <div className="mx-auto max-w-7xl space-y-4">
         {/* Header */}
-        <div className={cx(card, "px-5 py-4")}>
-          <div className="flex items-start justify-between gap-4">
+        <div className="overflow-hidden rounded-2xl border border-[color:var(--brand-primary)]/25 bg-[color:var(--theme-surface-panel)] shadow-[var(--theme-shadow-medium)]">
+          <div className="h-1 bg-gradient-to-r from-[color:var(--brand-primary)] via-[color:var(--brand-accent)] to-transparent" />
+          <div className="flex items-start justify-between gap-4 px-4 py-4 sm:px-5">
             <div className="min-w-0">
-              <div className="text-xs uppercase tracking-[0.25em] text-[color:var(--theme-text-secondary)]">
-                Work Orders
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-accent-text)]">
+                <ClipboardPlus className="h-4 w-4" aria-hidden="true" />
+                Work order intake
               </div>
-                <h1 className="mt-1 text-2xl font-semibold text-[color:var(--theme-text-primary)]">
-                  Create Work Order
-                </h1>
-                <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
-                  Intake and plan the visit, then continue to approvals once the order is ready.
-                </p>
+              <h1 className="mt-1 text-2xl font-semibold tracking-tight text-[color:var(--theme-text-primary)] sm:text-3xl">
+                Create Work Order
+              </h1>
+              <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
+                Find the customer, confirm the vehicle, and create. Everything
+                else is optional.
+              </p>
 
               {wo?.custom_id && (
                 <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
@@ -2090,15 +2201,42 @@ useEffect(() => {
                   router.back();
                 }
               }}
-              className={cx("shrink-0 px-4 py-2 text-sm font-semibold", softButton)}
+              className={cx(
+                "shrink-0 px-4 py-2 text-sm font-semibold",
+                softButton,
+              )}
             >
-              {returnTo ? "Back to appointments" : "Back to list"}
+              <span className="inline-flex items-center gap-2">
+                <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+                <span className="hidden sm:inline">
+                  {returnTo ? "Appointments" : "Work orders"}
+                </span>
+              </span>
             </button>
           </div>
         </div>
 
+        <div className="grid grid-cols-4 overflow-hidden rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] text-center text-[11px] font-semibold text-[color:var(--theme-text-muted)] shadow-[var(--theme-shadow-soft)] sm:text-xs">
+          {["Customer", "Vehicle", "Visit", "Create"].map((label, index) => (
+            <div
+              key={label}
+              className={cx(
+                "flex items-center justify-center gap-1.5 border-r border-[color:var(--theme-border-soft)] px-2 py-2.5 last:border-r-0",
+                (index === 0 && customerLabel) || (index === 1 && vehicleLabel)
+                  ? "text-[color:var(--theme-accent-text)]"
+                  : null,
+              )}
+            >
+              <span className="grid h-5 w-5 place-items-center rounded-full bg-[color:var(--theme-surface-subtle)] text-[10px]">
+                {index + 1}
+              </span>
+              <span>{label}</span>
+            </div>
+          ))}
+        </div>
+
         {/* Body */}
-        <section className={cx(card, "px-4 py-5 sm:px-6 sm:py-6")}>
+        <section className={cx(card, "px-3 py-4 sm:px-5 sm:py-5")}>
           {error && (
             <div className="mb-4 rounded-xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
               {error}
@@ -2106,35 +2244,71 @@ useEffect(() => {
           )}
 
           {uploadSummary && (
-            <div className={cx("mb-4 px-4 py-3 text-sm text-[color:var(--theme-text-primary)]", subtlePanel)}>
+            <div
+              className={cx(
+                "mb-4 px-4 py-3 text-sm text-[color:var(--theme-text-primary)]",
+                subtlePanel,
+              )}
+            >
               Uploaded {uploadSummary.uploaded} file(s)
               {uploadSummary.failed ? `, ${uploadSummary.failed} failed` : ""}.
             </div>
           )}
 
           {inviteNotice && (
-            <div className={cx("mb-4 px-4 py-3 text-sm text-[color:var(--theme-text-primary)]", subtlePanel)}>
+            <div
+              className={cx(
+                "mb-4 px-4 py-3 text-sm text-[color:var(--theme-text-primary)]",
+                subtlePanel,
+              )}
+            >
               <div>{inviteNotice}</div>
               {bookingPrefill ? (
                 <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
-                  Appointment: {formatBookingWindow(bookingPrefill.starts_at, bookingPrefill.ends_at)}
-                  {bookingPrefill.vehicle_id ? " · vehicle preselected" : " · vehicle can be selected or created below"}
+                  Appointment:{" "}
+                  {formatBookingWindow(
+                    bookingPrefill.starts_at,
+                    bookingPrefill.ends_at,
+                  )}
+                  {bookingPrefill.vehicle_id
+                    ? " · vehicle preselected"
+                    : " · vehicle can be selected or created below"}
                 </div>
               ) : null}
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-4">
             {/* Visit setup */}
-            <section className={sectionPanel}>
-              <div className={cx("mb-3 flex items-center justify-between border-b pb-3", divider)}>
-                <h2 className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">
-                  Visit Setup
-                </h2>
-                <span className="text-[11px] text-[color:var(--theme-text-muted)]">Planning controls</span>
-              </div>
+            <details className={cx(collapsiblePanel, "group")}>
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 marker:content-none sm:px-5">
+                <span className="flex items-center gap-2 text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                  <Settings2
+                    className="h-4 w-4 text-[color:var(--theme-accent-text)]"
+                    aria-hidden="true"
+                  />
+                  Visit settings
+                  <span className="font-normal text-[color:var(--theme-text-muted)]">
+                    · {isWaiter ? "Waiter" : "Drop-off"} ·{" "}
+                    {priority === 3
+                      ? "Normal"
+                      : priority === 1
+                        ? "Urgent"
+                        : priority === 2
+                          ? "High"
+                          : "Low"}
+                  </span>
+                </span>
+                <span className="flex items-center gap-2 text-xs font-medium text-[color:var(--theme-accent-text)]">
+                  Optional
+                  <ChevronDown
+                    className="h-4 w-4 transition group-open:rotate-180"
+                    aria-hidden="true"
+                  />
+                </span>
+              </summary>
 
-              <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
+              <div className="grid gap-3 border-t border-[color:var(--theme-border-soft)] p-4 lg:grid-cols-2 xl:grid-cols-4 sm:p-5">
                 <div className={cx("p-4", childPanel)}>
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -2142,7 +2316,8 @@ useEffect(() => {
                         Customer waiting
                       </div>
                       <p className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">
-                        Marks this work order as a waiter across queues and boards.
+                        Marks this work order as a waiter across queues and
+                        boards.
                       </p>
                     </div>
 
@@ -2157,7 +2332,9 @@ useEffect(() => {
                         isWaiter
                           ? "border-[color:var(--copper)]/70 bg-[color:var(--copper)]/20"
                           : "border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)]",
-                        loading ? "opacity-60" : "hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_82%,_var(--theme-surface-page))]",
+                        loading
+                          ? "opacity-60"
+                          : "hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_82%,_var(--theme-surface-page))]",
                       ].join(" ")}
                     >
                       <span
@@ -2192,7 +2369,7 @@ useEffect(() => {
                   <select
                     value={priority}
                     onChange={(e) => setPriority(Number(e.target.value))}
-                    className="input"
+                    className={formControlClass}
                     disabled={loading}
                   >
                     <option value={1}>Urgent</option>
@@ -2212,7 +2389,7 @@ useEffect(() => {
                   <select
                     value={type}
                     onChange={(e) => setType(e.target.value as WOType)}
-                    className="input"
+                    className={formControlClass}
                     disabled={loading}
                   >
                     <option value="maintenance">Maintenance</option>
@@ -2232,24 +2409,35 @@ useEffect(() => {
                     type="datetime-local"
                     value={expectedCompletionInput}
                     onChange={(e) => setExpectedCompletionInput(e.target.value)}
-                    className="input"
+                    className={formControlClass}
                     disabled={loading}
                   />
                   <p className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">
-                    Internal advisor planning target in create flow (read-only on technician work-order surfaces).
+                    Internal advisor planning target in create flow (read-only
+                    on technician work-order surfaces).
                   </p>
                 </div>
               </div>
-            </section>
+            </details>
 
             {/* Customer & Vehicle */}
-            <section className={sectionPanel}>
-              <div className={cx("mb-3 flex items-center justify-between border-b pb-3", divider)}>
-                <h2 className="text-sm font-semibold tracking-[0.08em] text-[color:var(--theme-text-primary)]">
-                  Customer &amp; Vehicle
+            <section
+              className={cx(
+                sectionPanel,
+                "border-[color:var(--brand-primary)]/20 p-3 sm:p-4",
+              )}
+            >
+              <div
+                className={cx(
+                  "mb-3 flex items-center justify-between border-b pb-3",
+                  divider,
+                )}
+              >
+                <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)] sm:text-base">
+                  Customer &amp; vehicle
                 </h2>
                 <span className="text-[11px] text-[color:var(--theme-text-muted)]">
-                  Primary intake section
+                  Fast path
                 </span>
               </div>
 
@@ -2272,7 +2460,7 @@ useEffect(() => {
                 }}
               />
 
-              <div className="mt-3 flex flex-wrap items-center gap-2">
+              <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[color:var(--theme-border-soft)] pt-4">
                 <button
                   type="button"
                   onClick={async () => {
@@ -2280,19 +2468,22 @@ useEffect(() => {
                     if (id) await maybeOpenIntakeAfterSave(id);
                   }}
                   disabled={savingCv || loading}
-                  className="
-                    rounded-full border border-[color:var(--copper)]/70
-                    bg-[color:var(--copper)]/12 px-4 py-2 text-sm font-semibold
-                    text-[color:var(--copper)] hover:bg-[color:var(--copper)]/18 disabled:opacity-60
-                  "
+                  className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-[color:var(--brand-primary)] px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(23,71,255,0.2)] transition hover:brightness-110 disabled:opacity-60"
                 >
-                  {savingCv ? "Saving…" : "Save & Continue"}
+                  {savingCv
+                    ? "Saving…"
+                    : wo?.id
+                      ? "Update customer & vehicle"
+                      : "Save & add work"}
                 </button>
 
                 <button
                   type="button"
                   onClick={handleClearForm}
-                  className={cx("px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)]", softButton)}
+                  className={cx(
+                    "px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)]",
+                    softButton,
+                  )}
                 >
                   Clear form
                 </button>
@@ -2307,9 +2498,12 @@ useEffect(() => {
                     };
 
                     if (y) decodedVehicle.year = y;
-                    if (strOrNull(d.make)) decodedVehicle.make = strOrNull(d.make);
-                    if (strOrNull(d.model)) decodedVehicle.model = strOrNull(d.model);
-                    if (strOrNull(d.engine)) decodedVehicle.engine = strOrNull(d.engine);
+                    if (strOrNull(d.make))
+                      decodedVehicle.make = strOrNull(d.make);
+                    if (strOrNull(d.model))
+                      decodedVehicle.model = strOrNull(d.model);
+                    if (strOrNull(d.engine))
+                      decodedVehicle.engine = strOrNull(d.engine);
                     if (strOrNull(d.submodel ?? d.trim)) {
                       decodedVehicle.submodel = strOrNull(d.submodel ?? d.trim);
                     }
@@ -2319,13 +2513,17 @@ useEffect(() => {
                     if (strOrNull(d.engineType)) {
                       decodedVehicle.engine_type = strOrNull(d.engineType);
                     }
-                    if (strOrNull(d.fuelType)) decodedVehicle.fuel_type = strOrNull(d.fuelType);
-                    if (strOrNull(d.driveType)) decodedVehicle.drivetrain = strOrNull(d.driveType);
+                    if (strOrNull(d.fuelType))
+                      decodedVehicle.fuel_type = strOrNull(d.fuelType);
+                    if (strOrNull(d.driveType))
+                      decodedVehicle.drivetrain = strOrNull(d.driveType);
                     if (strOrNull(d.transmission)) {
                       decodedVehicle.transmission = strOrNull(d.transmission);
                     }
                     if (strOrNull(d.transmissionType)) {
-                      decodedVehicle.transmission_type = strOrNull(d.transmissionType);
+                      decodedVehicle.transmission_type = strOrNull(
+                        d.transmissionType,
+                      );
                     }
 
                     draft.setVehicle(decodedVehicle);
@@ -2337,15 +2535,22 @@ useEffect(() => {
                       make: decodedVehicle.make ?? prev.make,
                       model: decodedVehicle.model ?? prev.model,
                       engine: decodedVehicle.engine ?? prev.engine ?? null,
-                      submodel: decodedVehicle.submodel ?? prev.submodel ?? null,
+                      submodel:
+                        decodedVehicle.submodel ?? prev.submodel ?? null,
                       engine_family:
-                        decodedVehicle.engine_family ?? prev.engine_family ?? null,
+                        decodedVehicle.engine_family ??
+                        prev.engine_family ??
+                        null,
                       engine_type:
                         decodedVehicle.engine_type ?? prev.engine_type ?? null,
-                      fuel_type: decodedVehicle.fuel_type ?? prev.fuel_type ?? null,
-                      drivetrain: decodedVehicle.drivetrain ?? prev.drivetrain ?? null,
+                      fuel_type:
+                        decodedVehicle.fuel_type ?? prev.fuel_type ?? null,
+                      drivetrain:
+                        decodedVehicle.drivetrain ?? prev.drivetrain ?? null,
                       transmission:
-                        decodedVehicle.transmission ?? prev.transmission ?? null,
+                        decodedVehicle.transmission ??
+                        prev.transmission ??
+                        null,
                       transmission_type:
                         decodedVehicle.transmission_type ??
                         prev.transmission_type ??
@@ -2359,11 +2564,11 @@ useEffect(() => {
                 >
                   <span
                     className={cx(
-                      "cursor-pointer px-4 py-2 text-sm font-semibold hover:border-[color:var(--copper)]/55 hover:text-[color:var(--copper)]",
+                      "cursor-pointer px-4 py-2 text-sm font-semibold hover:border-[color:var(--brand-primary)]/55 hover:text-[color:var(--theme-accent-text)]",
                       softButton,
                     )}
                   >
-                    Add by VIN / Scan
+                    Scan VIN
                   </span>
                 </VinCaptureModal>
               </div>
@@ -2377,7 +2582,7 @@ useEffect(() => {
                   className="h-4 w-4 rounded border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)]"
                   disabled={loading}
                 />
-                Email a customer portal sign-up link
+                Send customer portal invite when an email is available
               </label>
             </section>
 
@@ -2391,76 +2596,99 @@ useEffect(() => {
               onAdded={fetchLines}
             />
 
-            {/* Uploads */}
-            <section className={sectionPanel}>
-              <div className={cx("mb-3 flex items-center justify-between border-b pb-3", divider)}>
-                <h2 className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">
-                  Uploads
-                </h2>
-                <span className="text-[11px] text-[color:var(--theme-text-muted)]">Editable before save</span>
-              </div>
+            {/* Optional attachments and notes */}
+            <details className={cx(collapsiblePanel, "group")}>
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 marker:content-none sm:px-5">
+                <span className="flex items-center gap-2 text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                  <Paperclip
+                    className="h-4 w-4 text-[color:var(--theme-accent-text)]"
+                    aria-hidden="true"
+                  />
+                  Attachments &amp; internal notes
+                  {photoFiles.length > 0 ||
+                  docFiles.length > 0 ||
+                  Boolean(notes.trim()) ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-[color:var(--brand-primary)]/10 px-2 py-0.5 text-[11px] text-[color:var(--theme-accent-text)]">
+                      <Check className="h-3 w-3" aria-hidden="true" /> Added
+                    </span>
+                  ) : null}
+                </span>
+                <span className="flex items-center gap-2 text-xs font-medium text-[color:var(--theme-accent-text)]">
+                  Optional
+                  <ChevronDown
+                    className="h-4 w-4 transition group-open:rotate-180"
+                    aria-hidden="true"
+                  />
+                </span>
+              </summary>
 
-              <div className="grid gap-3 md:grid-cols-2">
+              <div className="grid gap-4 border-t border-[color:var(--theme-border-soft)] p-4 lg:grid-cols-2 sm:p-5">
+                <div className="space-y-3">
+                  <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
+                    Attachments
+                  </h3>
+                  <div>
+                    <label className="mb-1 block text-xs text-[color:var(--theme-text-secondary)]">
+                      Vehicle photos
+                    </label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      onChange={(e) =>
+                        setPhotoFiles(Array.from(e.target.files ?? []))
+                      }
+                      className={formControlClass}
+                      disabled={loading}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs text-[color:var(--theme-text-secondary)]">
+                      Documents (PDF/JPG/PNG)
+                    </label>
+                    <input
+                      type="file"
+                      accept="application/pdf,image/*"
+                      multiple
+                      onChange={(e) =>
+                        setDocFiles(Array.from(e.target.files ?? []))
+                      }
+                      className={formControlClass}
+                      disabled={loading}
+                    />
+                  </div>
+                </div>
                 <div>
-                  <label className="mb-1 block text-xs uppercase tracking-wide text-[color:var(--theme-text-secondary)]">
-                    Vehicle Photos
+                  <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
+                    Internal notes
                   </label>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    onChange={(e) => setPhotoFiles(Array.from(e.target.files ?? []))}
-                    className="input"
+                  <textarea
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    className={`${formControlClass} min-h-32`}
+                    rows={4}
+                    placeholder="Optional note for the technician"
                     disabled={loading}
                   />
                 </div>
-                <div>
-                  <label className="mb-1 block text-xs uppercase tracking-wide text-[color:var(--theme-text-secondary)]">
-                    Documents (PDF/JPG/PNG)
-                  </label>
-                  <input
-                    type="file"
-                    accept="application/pdf,image/*"
-                    multiple
-                    onChange={(e) => setDocFiles(Array.from(e.target.files ?? []))}
-                    className="input"
-                    disabled={loading}
-                  />
-                </div>
               </div>
-            </section>
-
-            {/* Internal notes */}
-            <section className={sectionPanel}>
-              <div className={cx("mb-3 flex items-center justify-between border-b pb-3", divider)}>
-                <h2 className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">
-                  Internal Notes
-                </h2>
-                <span className="text-[11px] text-[color:var(--theme-text-muted)]">Saved with the work order</span>
-              </div>
-
-              <label className="mb-1 block text-xs uppercase tracking-wide text-[color:var(--theme-text-secondary)]">
-                Notes
-              </label>
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                className="input"
-                rows={3}
-                placeholder="Optional notes for technician"
-                disabled={loading}
-              />
-            </section>
+            </details>
 
             {/* Menu quick add */}
             {wo?.id && (
               <section className={sectionPanel}>
-                <div className={cx("mb-3 flex items-center justify-between border-b pb-3", divider)}>
+                <div
+                  className={cx(
+                    "mb-3 flex items-center justify-between border-b pb-3",
+                    divider,
+                  )}
+                >
                   <h2 className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">
                     Reusable adds: menu items & inspection templates
                   </h2>
                   <span className="text-[11px] text-[color:var(--theme-text-muted)]">
-                    Catalog lane: menu_items • Template lane: inspection_templates
+                    Catalog lane: menu_items • Template lane:
+                    inspection_templates
                   </span>
                 </div>
                 <MenuQuickAdd workOrderId={wo.id} />
@@ -2470,7 +2698,12 @@ useEffect(() => {
             {/* Add line */}
             {wo?.id && (
               <section className={sectionPanel}>
-                <div className={cx("mb-3 flex items-center justify-between border-b pb-3", divider)}>
+                <div
+                  className={cx(
+                    "mb-3 flex items-center justify-between border-b pb-3",
+                    divider,
+                  )}
+                >
                   <h2 className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">
                     Manual entry line
                   </h2>
@@ -2490,7 +2723,12 @@ useEffect(() => {
 
             {/* Current lines */}
             <section className={sectionPanel}>
-              <div className={cx("mb-3 flex flex-col gap-2 border-b pb-3 sm:flex-row sm:items-center sm:justify-between", divider)}>
+              <div
+                className={cx(
+                  "mb-3 flex flex-col gap-2 border-b pb-3 sm:flex-row sm:items-center sm:justify-between",
+                  divider,
+                )}
+              >
                 <h2 className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">
                   Current lines
                 </h2>
@@ -2511,7 +2749,12 @@ useEffect(() => {
               </div>
 
               {!wo?.id || lines.length === 0 ? (
-                <div className={cx("px-4 py-5 text-sm text-[color:var(--theme-text-secondary)]", subtlePanel)}>
+                <div
+                  className={cx(
+                    "px-4 py-5 text-sm text-[color:var(--theme-text-secondary)]",
+                    subtlePanel,
+                  )}
+                >
                   No lines yet.
                 </div>
               ) : (
@@ -2524,58 +2767,71 @@ useEffect(() => {
                       {lines
                         .filter((ln) => (ln.line_type ?? "job") !== "info")
                         .map((ln) => (
-                    <div
-                      key={ln.id}
-                      className={cx(
-                        "flex flex-col gap-3 p-3 sm:flex-row sm:items-start sm:justify-between",
-                        subtlePanel,
-                      )}
-                    >
-                      <div className="min-w-0">
-                        <div className="truncate font-medium text-[color:var(--theme-text-primary)]">
-                          {ln.description || ln.complaint || "Untitled job"}
-                        </div>
-                        <div className="text-xs text-[color:var(--theme-text-muted)]">
-                          {String(ln.job_type ?? "job").replaceAll("_", " ")} •{" "}
-                          {typeof ln.labor_time === "number" ? `${ln.labor_time}h` : "—"} •{" "}
-                          {(ln.status ?? "awaiting").replaceAll("_", " ")}
-                        </div>
-                        {(ln.complaint || ln.cause || ln.correction) && (
-                          <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
-                            {ln.complaint ? `Cmpl: ${ln.complaint}  ` : ""}
-                            {ln.cause ? `| Cause: ${ln.cause}  ` : ""}
-                            {ln.correction ? `| Corr: ${ln.correction}` : ""}
-                          </div>
-                        )}
-                      </div>
+                          <div
+                            key={ln.id}
+                            className={cx(
+                              "flex flex-col gap-3 p-3 sm:flex-row sm:items-start sm:justify-between",
+                              subtlePanel,
+                            )}
+                          >
+                            <div className="min-w-0">
+                              <div className="truncate font-medium text-[color:var(--theme-text-primary)]">
+                                {ln.description ||
+                                  ln.complaint ||
+                                  "Untitled job"}
+                              </div>
+                              <div className="text-xs text-[color:var(--theme-text-muted)]">
+                                {String(ln.job_type ?? "job").replaceAll(
+                                  "_",
+                                  " ",
+                                )}{" "}
+                                •{" "}
+                                {typeof ln.labor_time === "number"
+                                  ? `${ln.labor_time}h`
+                                  : "—"}{" "}
+                                •{" "}
+                                {(ln.status ?? "awaiting").replaceAll("_", " ")}
+                              </div>
+                              {(ln.complaint || ln.cause || ln.correction) && (
+                                <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
+                                  {ln.complaint
+                                    ? `Cmpl: ${ln.complaint}  `
+                                    : ""}
+                                  {ln.cause ? `| Cause: ${ln.cause}  ` : ""}
+                                  {ln.correction
+                                    ? `| Corr: ${ln.correction}`
+                                    : ""}
+                                </div>
+                              )}
+                            </div>
 
-                      <div className="flex gap-2">
-                        {ln.job_type === "inspection" && (
-                          <button
-                            type="button"
-                            onClick={() => void openInspectionForLine(ln)}
-                            className="
+                            <div className="flex gap-2">
+                              {ln.job_type === "inspection" && (
+                                <button
+                                  type="button"
+                                  onClick={() => void openInspectionForLine(ln)}
+                                  className="
                               rounded-full border px-3 py-2 text-sm font-semibold
                               border-[color:var(--copper)]/70 bg-[color:var(--copper)]/10 text-[color:var(--copper)]
                               hover:bg-[color:var(--copper)]/15
                             "
-                          >
-                            Open inspection
-                          </button>
-                        )}
+                                >
+                                  Open inspection
+                                </button>
+                              )}
 
-                        <button
-                          type="button"
-                          onClick={() => void handleDeleteLine(ln.id)}
-                          className={cx(
-                            "rounded-full border border-red-400/25 bg-[color:color-mix(in_srgb,var(--theme-card-bg,var(--theme-surface-page))_62%,transparent)] px-3 py-2 text-sm font-semibold text-red-200 hover:bg-red-500/10",
-                          )}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                              <button
+                                type="button"
+                                onClick={() => void handleDeleteLine(ln.id)}
+                                className={cx(
+                                  "rounded-full border border-red-400/25 bg-[color:color-mix(in_srgb,var(--theme-card-bg,var(--theme-surface-page))_62%,transparent)] px-3 py-2 text-sm font-semibold text-red-200 hover:bg-red-500/10",
+                                )}
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+                        ))}
                     </div>
                   </div>
 
@@ -2589,7 +2845,10 @@ useEffect(() => {
                         .map((ln) => (
                           <div
                             key={ln.id}
-                            className={cx("p-3 text-sm text-[color:var(--theme-text-secondary)]", subtlePanel)}
+                            className={cx(
+                              "p-3 text-sm text-[color:var(--theme-text-secondary)]",
+                              subtlePanel,
+                            )}
                           >
                             <div className="font-medium text-[color:var(--theme-text-primary)]">
                               {ln.description || ln.complaint || "Context line"}
@@ -2601,8 +2860,12 @@ useEffect(() => {
                             )}
                           </div>
                         ))}
-                      {lines.every((ln) => (ln.line_type ?? "job") !== "info") && (
-                        <p className="text-xs text-[color:var(--theme-text-muted)]">No info/context lines.</p>
+                      {lines.every(
+                        (ln) => (ln.line_type ?? "job") !== "info",
+                      ) && (
+                        <p className="text-xs text-[color:var(--theme-text-muted)]">
+                          No info/context lines.
+                        </p>
                       )}
                     </div>
                   </div>
@@ -2611,29 +2874,24 @@ useEffect(() => {
             </section>
 
             {/* Footer actions */}
-            <div className="sticky bottom-3 z-10 rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] p-3 backdrop-blur-xl">
-              <div className="flex flex-wrap items-center gap-3">
-              <button
-                type="submit"
-                disabled={loading}
-                className="
-                  rounded-full border border-[color:var(--copper)]/70
-                  bg-[color:var(--copper)]/12 px-6 py-2 text-sm font-semibold
-                  text-[color:var(--copper)] hover:bg-[color:var(--copper)]/15
-                  disabled:opacity-60
-                "
-              >
-                {loading ? "Creating..." : "Create & Continue to Approval"}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => router.push("/work-orders")}
-                className="text-sm text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)]"
-                disabled={loading}
-              >
-                Cancel
-              </button>
+            <div className="sticky bottom-[calc(0.75rem+var(--safe-bottom))] z-20 rounded-2xl border border-[color:var(--brand-primary)]/25 bg-[color:var(--theme-surface-panel)]/95 p-3 shadow-[0_16px_48px_rgba(15,23,42,0.18)] backdrop-blur-xl">
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <button
+                  type="button"
+                  onClick={() => router.push("/work-orders")}
+                  className="min-h-11 px-3 text-sm font-medium text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)]"
+                  disabled={loading}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[color:var(--brand-primary)] px-6 py-2.5 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(23,71,255,0.28)] transition hover:brightness-110 disabled:opacity-60 sm:w-auto"
+                >
+                  <Check className="h-4 w-4" aria-hidden="true" />
+                  {loading ? "Creating…" : "Create work order"}
+                </button>
               </div>
             </div>
           </form>
@@ -2680,7 +2938,8 @@ useEffect(() => {
                       What brought them in?
                     </h3>
                     <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
-                      Saves to WO notes and creates a diagnostic line for the tech.
+                      Saves to WO notes and creates a diagnostic line for the
+                      tech.
                     </p>
                   </div>
 
@@ -2701,7 +2960,7 @@ useEffect(() => {
                     <input
                       value={intakeConcern}
                       onChange={(e) => setIntakeConcern(e.target.value)}
-                      className="input"
+                      className={formControlClass}
                       placeholder="e.g. No start / rough idle / brake noise…"
                       disabled={intakeSaving}
                     />
@@ -2714,7 +2973,7 @@ useEffect(() => {
                     <textarea
                       value={intakeDetails}
                       onChange={(e) => setIntakeDetails(e.target.value)}
-                      className="input"
+                      className={formControlClass}
                       rows={3}
                       placeholder="Anything else they said?"
                       disabled={intakeSaving}
@@ -2729,7 +2988,7 @@ useEffect(() => {
                       <select
                         value={intakeContactPref}
                         onChange={(e) => setIntakeContactPref(e.target.value)}
-                        className="input"
+                        className={formControlClass}
                         disabled={intakeSaving}
                       >
                         <option>Text or call</option>
@@ -2746,7 +3005,7 @@ useEffect(() => {
                       <input
                         value={intakeMileage}
                         onChange={(e) => setIntakeMileage(e.target.value)}
-                        className="input"
+                        className={formControlClass}
                         placeholder="e.g. 245,000"
                         disabled={intakeSaving}
                       />

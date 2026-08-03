@@ -12,6 +12,7 @@ import {
   PlugZap,
   Search,
   SlidersHorizontal,
+  UsersRound,
 } from "lucide-react";
 import { cn } from "@/features/shared/lib/utils";
 
@@ -20,6 +21,7 @@ export type OwnerSettingsSectionId =
   | "business"
   | "operations"
   | "automation"
+  | "team"
   | "scheduling"
   | "communications"
   | "integrations"
@@ -54,6 +56,13 @@ export const OWNER_SETTINGS_SECTIONS = [
     description: "Readiness and execution policy",
     keywords: "assistant learning automatic actions",
     icon: Bot,
+  },
+  {
+    id: "team",
+    label: "Team access",
+    description: "Create users and manage accounts",
+    keywords: "create user staff employee people users password invite role profiles workforce",
+    icon: UsersRound,
   },
   {
     id: "scheduling",

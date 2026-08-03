@@ -19,6 +19,11 @@ const scheduling = read(
 const sidebar = read(
   "features/dashboard/components/owner-settings/OwnerSettingsSidebar.tsx",
 );
+const teamAccess = read(
+  "features/dashboard/components/owner-settings/OwnerSettingsUsersSection.tsx",
+);
+const usersList = read("features/admin/components/UsersList.tsx");
+const resendInviteRoute = read("app/api/admin/users/[id]/resend-invite/route.ts");
 
 describe("owner settings experience", () => {
   it("provides a responsive, searchable category navigation", () => {
@@ -26,6 +31,7 @@ describe("owner settings experience", () => {
     expect(navigation).toContain('placeholder="Find a setting"');
     expect(navigation).toContain('aria-current={active ? "page" : undefined}');
     expect(navigation).toContain('id: "communications"');
+    expect(navigation).toContain('id: "team"');
     expect(navigation).toContain('id: "billing"');
   });
 
@@ -34,8 +40,34 @@ describe("owner settings experience", () => {
     expect(page).toContain("#settings-${section}");
     expect(page).toContain("contextualSections");
     expect(page).toContain('activeSection === "communications"');
+    expect(page).toContain('activeSection === "team"');
     expect(page).toContain('activeSection === "billing"');
     expect(page).toContain("#billing-stripe");
+  });
+
+  it("keeps staff account creation available from owner settings", () => {
+    expect(navigation).toContain("Team access");
+    expect(navigation).toContain("create user staff employee people users password invite role profiles workforce");
+    expect(page).toContain('"settings-team": "team"');
+    expect(page).toContain("OwnerSettingsUsersSection");
+    expect(teamAccess).toContain('id="team-access-create-user"');
+    expect(teamAccess).toContain('fetch("/api/admin/create-user"');
+    expect(teamAccess).toContain('fetch("/api/admin/reset-user-password"');
+    expect(teamAccess).toContain("InviteCandidatesList");
+    expect(teamAccess).toContain("UsersList");
+    expect(teamAccess).toContain("profiles.email");
+    expect(teamAccess).toContain("People/workforce profile");
+  });
+
+  it("lets owners resend safe user invites from the account directory", () => {
+    expect(usersList).toContain("Resend invite");
+    expect(usersList).toContain("/resend-invite");
+    expect(usersList).toContain("Share any temporary password separately");
+    expect(usersList).toContain("Add a contact email before resending an invite");
+    expect(resendInviteRoute).toContain("requireShopScopedApiAccess");
+    expect(resendInviteRoute).toContain('requiredCapability: "canManageUsers"');
+    expect(resendInviteRoute).toContain("sendUserInviteEmail");
+    expect(resendInviteRoute).toContain("tempPassword: null");
   });
 
   it("shows the actual actor and protects unsaved changes", () => {
@@ -55,13 +87,13 @@ describe("owner settings experience", () => {
       "City",
       "Phone number",
       "Public email",
-      "Logo URL",
     ]) {
       expect(business).toContain(label);
     }
 
-    expect(business).toContain("AI logo maker · Coming soon");
-    expect(business).toContain("disabled");
+    expect(business).not.toContain("Logo URL");
+    expect(business).not.toContain("AI logo maker");
+    expect(page).toContain("BrandStudioSummaryCard");
   });
 
   it("makes scheduling changes and blackout dates clear", () => {

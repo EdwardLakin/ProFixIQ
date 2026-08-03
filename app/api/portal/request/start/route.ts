@@ -1,6 +1,9 @@
 // app/api/portal/request/start/route.ts
 import { NextResponse } from "next/server";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import {
+  createAdminSupabase,
+  createServerSupabaseRoute,
+} from "@/features/shared/lib/supabase/server";
 import { PortalAccessError } from "@/features/portal/server/portalAuth";
 import { requirePortalCustomerActor } from "@/features/portal/server/requirePortalActor";
 
@@ -13,6 +16,7 @@ type Body = {
   startsAt?: string | null;
   durationMins?: number | null;
   idempotencyKey?: string | null;
+  quoteLineId?: string | null;
 };
 
 type StartRpcRow = {
@@ -21,8 +25,32 @@ type StartRpcRow = {
   deduped: boolean;
 };
 
+type QuoteBookingRpcResult = {
+  ok?: boolean;
+  workOrderId?: string;
+  bookingId?: string;
+  idempotent?: boolean;
+};
+
+type DbError = {
+  code?: string | null;
+  message?: string | null;
+  details?: string | null;
+  hint?: string | null;
+};
+
 function bad(msg: string, status = 400) {
   return NextResponse.json({ error: msg }, { status });
+}
+
+function portalSetupUnavailable() {
+  return NextResponse.json(
+    {
+      error:
+        "Portal appointment requests are being updated. Please try again shortly.",
+    },
+    { status: 503, headers: { "Retry-After": "120" } },
+  );
 }
 
 function isIsoDateString(s: string) {
@@ -40,6 +68,39 @@ function normalizeIdempotencyKey(v: unknown): string {
   return v.trim().toLowerCase().slice(0, 120);
 }
 
+function serializeDbError(err: DbError | null | undefined) {
+  return {
+    code: err?.code ?? null,
+    message: err?.message ?? null,
+    details: err?.details ?? null,
+    hint: err?.hint ?? null,
+  };
+}
+
+function dbErrorText(err: DbError | null | undefined): string {
+  return [err?.code, err?.message, err?.details, err?.hint]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function isPortalStartCompatibilityError(
+  err: DbError | null | undefined,
+): boolean {
+  const text = dbErrorText(err);
+  return (
+    text.includes("source_row_id") ||
+    text.includes("scheduled_at") ||
+    text.includes("portal_request_start_atomic") ||
+    text.includes("schema cache") ||
+    text.includes("pgrst202") ||
+    text.includes("pgrst204") ||
+    text.includes("42703") ||
+    (text.includes("function") && text.includes("not found")) ||
+    (text.includes("column") && text.includes("not found"))
+  );
+}
+
 function isDuplicateKeyError(
   err: { code?: string | null; message?: string | null } | null,
 ): boolean {
@@ -49,10 +110,22 @@ function isDuplicateKeyError(
   );
 }
 
+function portalStartResponse(row: StartRpcRow) {
+  return NextResponse.json(
+    {
+      workOrderId: row.work_order_id,
+      bookingId: row.booking_id,
+      replayed: Boolean(row.deduped),
+    },
+    { status: row.deduped ? 200 : 201 },
+  );
+}
+
 export async function POST(req: Request) {
   try {
-    const supabase = createServerSupabaseRoute();
-    const actor = await requirePortalCustomerActor(supabase);
+    const userClient = createServerSupabaseRoute();
+    const actor = await requirePortalCustomerActor(userClient);
+    const admin = createAdminSupabase();
 
     let body: Body;
     try {
@@ -87,7 +160,7 @@ export async function POST(req: Request) {
     const startsAt = startsAtDate.toISOString();
     const endsAt = addMinsIso(startsAt, duration);
 
-    const { data: customer, error: custErr } = await supabase
+    const { data: customer, error: custErr } = await admin
       .from("customers")
       .select("id, shop_id")
       .eq("id", actor.customer.id)
@@ -109,7 +182,7 @@ export async function POST(req: Request) {
         ? body.vehicleId.trim()
         : null;
     if (vehicleId) {
-      const { data: vehicle, error: vehicleErr } = await supabase
+      const { data: vehicle, error: vehicleErr } = await admin
         .from("vehicles")
         .select("id")
         .eq("id", vehicleId)
@@ -120,9 +193,48 @@ export async function POST(req: Request) {
       if (!vehicle) return bad("Vehicle does not belong to this customer and shop", 403);
     }
 
+    const quoteLineId =
+      typeof body.quoteLineId === "string" && body.quoteLineId.trim()
+        ? body.quoteLineId.trim()
+        : null;
+    if (quoteLineId) {
+      const quotePayload = {
+        p_quote_line_id: quoteLineId,
+        p_customer_id: customer.id,
+        p_actor_user_id: actor.userId,
+        p_starts_at: startsAt,
+        p_ends_at: endsAt,
+        p_visit_type: visitType,
+        p_operation_key: `${customer.shop_id}:portal-repair-quote-booking:${normalizedKey}`,
+        p_at: new Date().toISOString(),
+      };
+      const { data, error } = await (
+        userClient as never as {
+          rpc: (
+            fn: "book_portal_repair_quote_atomic",
+            args: typeof quotePayload,
+          ) => Promise<{ data: QuoteBookingRpcResult | null; error: { message?: string } | null }>;
+        }
+      ).rpc("book_portal_repair_quote_atomic", quotePayload);
+
+      if (error || !data?.ok || !data.workOrderId || !data.bookingId) {
+        const message = error?.message || "Unable to book this repair quote.";
+        return bad(message, message.toLowerCase().includes("overlap") ? 409 : 400);
+      }
+      return NextResponse.json(
+        {
+          workOrderId: data.workOrderId,
+          bookingId: data.bookingId,
+          replayed: data.idempotent === true,
+          quoteBooking: true,
+        },
+        { status: data.idempotent ? 200 : 201 },
+      );
+    }
+
     const sourceRowId = `portal_start:${customer.id}:${normalizedKey}`;
 
-    const { data: existingWo, error: existingWoErr } = await supabase
+    const { data: existingWo, error: existingWoErr } = await admin
       .from("work_orders")
       .select("id")
       .eq("shop_id", customer.shop_id)
@@ -130,14 +242,27 @@ export async function POST(req: Request) {
       .eq("source_row_id", sourceRowId)
       .maybeSingle();
 
-    if (existingWoErr) return bad("Failed to verify request replay", 500);
+    if (existingWoErr) {
+      console.error("[portal/request/start] replay lookup failed", {
+        error: serializeDbError(existingWoErr),
+      });
+      if (isPortalStartCompatibilityError(existingWoErr)) {
+        return portalSetupUnavailable();
+      }
+      return bad("Failed to verify request replay", 500);
+    }
     if (existingWo?.id) {
-      const { data: existingBooking, error: existingBookingErr } = await supabase
+      const { data: existingBooking, error: existingBookingErr } = await admin
         .from("bookings")
         .select("id")
         .eq("work_order_id", existingWo.id)
         .maybeSingle();
-      if (existingBookingErr) return bad("Failed to verify existing booking", 500);
+      if (existingBookingErr) {
+        console.error("[portal/request/start] existing booking lookup failed", {
+          error: serializeDbError(existingBookingErr),
+        });
+        return bad("Failed to verify existing booking", 500);
+      }
       if (existingBooking?.id) {
         return NextResponse.json(
           {
@@ -162,20 +287,27 @@ export async function POST(req: Request) {
     };
 
     const { data: created, error: createErr } = await (
-      supabase as never as {
+      admin as never as {
         rpc: (
           fn: "portal_request_start_atomic",
           args: typeof rpcPayload,
         ) => Promise<{
           data: StartRpcRow[] | null;
-          error: { code?: string; message?: string } | null;
+          error: DbError | null;
         }>;
       }
     ).rpc("portal_request_start_atomic", rpcPayload);
 
     if (createErr) {
+      console.error("[portal/request/start] atomic create failed", {
+        error: serializeDbError(createErr),
+      });
+      if (isPortalStartCompatibilityError(createErr)) {
+        return portalSetupUnavailable();
+      }
+
       if (isDuplicateKeyError(createErr)) {
-        const { data: fallbackWo } = await supabase
+        const { data: fallbackWo } = await admin
           .from("work_orders")
           .select("id")
           .eq("shop_id", customer.shop_id)
@@ -184,7 +316,7 @@ export async function POST(req: Request) {
           .maybeSingle();
 
         if (fallbackWo?.id) {
-          const { data: fallbackBooking } = await supabase
+          const { data: fallbackBooking } = await admin
             .from("bookings")
             .select("id")
             .eq("work_order_id", fallbackWo.id)
@@ -213,14 +345,7 @@ export async function POST(req: Request) {
       return bad("Failed to create work order and booking", 500);
     }
 
-    return NextResponse.json(
-      {
-        workOrderId: row.work_order_id,
-        bookingId: row.booking_id,
-        replayed: Boolean(row.deduped),
-      },
-      { status: row.deduped ? 200 : 201 },
-    );
+    return portalStartResponse(row);
   } catch (e: unknown) {
     if (e instanceof PortalAccessError) return bad(e.message, e.status);
     const msg = e instanceof Error ? e.message : String(e);

@@ -172,7 +172,7 @@ export default function CornerGrid(props: CornerGridProps) {
     <div className="grid w-full gap-3">
       <div className="flex items-center justify-between gap-3 px-1">
         <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
-          Corner Grid – Hydraulic Brakes (sketch layout)
+          Hydraulic brake measurements
         </div>
 
         <button
@@ -199,12 +199,8 @@ export default function CornerGrid(props: CornerGridProps) {
                 Front
               </div>
 
-              {/* LF | spacer(body) | RF */}
-              <div className="grid grid-cols-1 items-start gap-3 md:grid-cols-[minmax(170px,1fr)_64px_minmax(170px,1fr)]">
+              <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
                 {Stack("LF")}
-                <div className="flex h-full items-center justify-center">
-                  <div className="h-[110px] w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]" />
-                </div>
                 {Stack("RF")}
               </div>
             </div>
@@ -218,20 +214,12 @@ export default function CornerGrid(props: CornerGridProps) {
                 Rear
               </div>
 
-              {/* LR | spacer(body) | RR */}
-              <div className="grid grid-cols-1 items-start gap-3 md:grid-cols-[minmax(170px,1fr)_64px_minmax(170px,1fr)]">
+              <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
                 {Stack("LR")}
-                <div className="flex h-full items-center justify-center">
-                  <div className="h-[110px] w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]" />
-                </div>
                 {Stack("RR")}
               </div>
             </div>
 
-            {/* Labels legend */}
-            <div className="pt-1 text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
-              Pads/Shoes + Rotor/Drum are stacked per corner (matches sketch)
-            </div>
           </div>
         </div>
       ) : null}

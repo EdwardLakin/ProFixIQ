@@ -93,6 +93,7 @@ export async function POST(req: Request) {
       .select("id, shop_id, work_order_id, work_order_line_id")
       .eq("id", inspectionId)
       .eq("shop_id", profile.shop_id)
+      .eq("is_canonical", true)
       .maybeSingle<{
         id: string;
         shop_id: string | null;

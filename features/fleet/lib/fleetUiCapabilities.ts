@@ -34,14 +34,17 @@ function resolveActorLabel(actor: FleetActorContext): string {
   return "Unknown Fleet Actor";
 }
 
-function resolveExperience(actor: FleetActorContext): FleetUiContext["experience"] {
+function resolveExperience(
+  actor: FleetActorContext,
+): FleetUiContext["experience"] {
   if (actor.actorType === "internal_staff") return "internal_ops";
   if (actor.actorType === "fleet_manager") return "external_manager";
   return "external_driver";
 }
 
 export function getFleetUiContext(actor: FleetActorContext): FleetUiContext {
-  const canManageUnits = actor.isInternal || actor.actorType === "fleet_manager";
+  const canManageUnits =
+    actor.isInternal || actor.actorType === "fleet_manager";
   const canViewDispatch = actor.capabilities.canRunFleetDispatchActions;
   const canConvertRequests =
     actor.capabilities.canConvertPretripToServiceRequest ||
@@ -58,9 +61,11 @@ export function getFleetUiContext(actor: FleetActorContext): FleetUiContext {
       canSubmitPretrip: actor.capabilities.canCreatePretripReports,
       canReviewPretripHistory: actor.actorType !== "none",
       canConvertRequests,
-      canCreateFleetWorkOrders: actor.capabilities.canAccessFleetIntake,
+      canCreateFleetWorkOrders:
+        actor.isInternal || actor.actorType === "fleet_manager",
       canViewBroadFleetOperations: actor.capabilities.canSeeFleetWideUnits,
-      canAccessPortalFleetWrappers: actor.capabilities.canAccessPortalFleetWrappers,
+      canAccessPortalFleetWrappers:
+        actor.capabilities.canAccessPortalFleetWrappers,
       canViewServiceRequests:
         actor.capabilities.canSeeFleetWideUnits || actor.isFleetActor,
     },

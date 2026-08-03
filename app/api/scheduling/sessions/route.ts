@@ -1,59 +1,18 @@
 import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@shared/types/types/supabase";
-import {
-  createServerSupabaseRoute,
-  createAdminSupabase,
-} from "@/features/shared/lib/supabase/server";
-import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
 type DB = Database;
-
-type Caller = {
-  id: string;
-  role: string | null;
-  shop_id: string | null;
-};
-
-async function authz() {
-  const supabase = createServerSupabaseRoute();
-
-  const {
-    data: { user },
-    error: userErr,
-  } = await supabase.auth.getUser();
-
-  if (userErr || !user) {
-    return {
-      ok: false as const,
-      res: NextResponse.json({ error: "Not authenticated" }, { status: 401 }),
-    };
-  }
-
-  const { data: me, error: meErr } = await supabase
-    .from("profiles")
-    .select("id, role, shop_id")
-    .eq("id", user.id)
-    .maybeSingle<Caller>();
-
-  if (meErr || !me || !me.shop_id) {
-    return {
-      ok: false as const,
-      res: NextResponse.json({ error: "Missing shop" }, { status: 403 }),
-    };
-  }
-
-  const actor = getActorCapabilities({ role: me.role });
-  const isAdmin = actor.isKnownRole && actor.canManageScheduling;
-  return { ok: true as const, me, isAdmin };
-}
 
 /* --------------------------------------------------------- */
 /* GET /api/scheduling/sessions                              */
 /* --------------------------------------------------------- */
 export async function GET(req: NextRequest) {
-  const a = await authz();
-  if (!a.ok) return a.res;
-  if (!a.isAdmin) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const access = await requireShopScopedApiAccess({
+    requiredCapability: "canManageScheduling",
+  });
+  if (!access.ok) return access.response;
 
   const url = new URL(req.url);
   const from = url.searchParams.get("from");
@@ -73,7 +32,7 @@ export async function GET(req: NextRequest) {
     const { data: staff, error: staffErr } = await admin
       .from("profiles")
       .select("id")
-      .eq("shop_id", a.me.shop_id)
+      .eq("shop_id", access.profile.shop_id)
       .eq("role", role);
 
     if (staffErr) return NextResponse.json({ error: staffErr.message }, { status: 500 });
@@ -87,7 +46,7 @@ export async function GET(req: NextRequest) {
   let q = admin
     .from("tech_sessions")
     .select("*")
-    .eq("shop_id", a.me.shop_id)
+    .eq("shop_id", access.profile.shop_id)
     .gte("started_at", from)
     .lt("started_at", to)
     .order("started_at", { ascending: false });
@@ -124,34 +83,17 @@ export async function GET(req: NextRequest) {
 /* --------------------------------------------------------- */
 /* POST /api/scheduling/sessions                             */
 /* --------------------------------------------------------- */
-export async function POST(req: NextRequest) {
-  const a = await authz();
-  if (!a.ok) return a.res;
-  if (!a.isAdmin) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+export async function POST(_req: NextRequest) {
+  const access = await requireShopScopedApiAccess({
+    requiredCapability: "canManageScheduling",
+  });
+  if (!access.ok) return access.response;
 
-  const admin = createAdminSupabase();
-
-  const body = (await req.json().catch(() => null)) as
-    | DB["public"]["Tables"]["tech_sessions"]["Insert"]
-    | null;
-
-  if (!body) return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
-
-  if (!body.user_id || !body.started_at || !body.work_order_id) {
-    return NextResponse.json(
-      { error: "Missing required fields" },
-      { status: 400 },
-    );
-  }
-
-  // Force shop scope to caller shop
-  const insert: DB["public"]["Tables"]["tech_sessions"]["Insert"] = {
-    ...body,
-    shop_id: a.me.shop_id,
-  };
-
-  const { error } = await admin.from("tech_sessions").insert(insert);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  return NextResponse.json({ ok: true });
+  return NextResponse.json(
+    {
+      error:
+        "Legacy job sessions are read-only. Correct canonical labor segments from Workforce time review.",
+    },
+    { status: 410 },
+  );
 }

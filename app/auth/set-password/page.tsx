@@ -26,6 +26,7 @@ export default function SetPasswordPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = useMemo(() => createBrowserSupabase(), []);
+  const isPortalActivation = searchParams.get("mode") === "portal";
 
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -35,7 +36,9 @@ export default function SetPasswordPage() {
 
   const [statusTone, setStatusTone] = useState<StatusTone>("neutral");
   const [statusMessage, setStatusMessage] = useState(
-    "Checking your reset session...",
+    isPortalActivation
+      ? "Checking your portal activation..."
+      : "Checking your reset session...",
   );
 
   useEffect(() => {
@@ -61,7 +64,9 @@ export default function SetPasswordPage() {
         setHasSession(false);
         setStatusTone("error");
         setStatusMessage(
-          "No active reset session found. Request a new password reset link and try again.",
+          isPortalActivation
+            ? "This portal activation is no longer valid. Ask your shop to resend the invitation."
+            : "No active reset session found. Request a new password reset link and try again.",
         );
         setCheckingSession(false);
         return;
@@ -78,7 +83,7 @@ export default function SetPasswordPage() {
     return () => {
       cancelled = true;
     };
-  }, [supabase]);
+  }, [isPortalActivation, supabase]);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -139,7 +144,11 @@ export default function SetPasswordPage() {
       }
 
       setStatusTone("success");
-      setStatusMessage("Password updated. Redirecting...");
+      setStatusMessage(
+        isPortalActivation
+          ? "Portal password created. Opening your portal..."
+          : "Password updated. Redirecting...",
+      );
 
       const redirect = safeInternalRedirect(
         searchParams.get("redirect"),
@@ -171,7 +180,9 @@ export default function SetPasswordPage() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-[color:var(--theme-surface-page)] px-6 py-10 text-[color:var(--theme-text-primary)]">
       <div className="w-full max-w-md rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-6 shadow-2xl">
-        <h1 className="text-2xl font-semibold text-[color:var(--theme-text-primary)]">Set new password</h1>
+        <h1 className="text-2xl font-semibold text-[color:var(--theme-text-primary)]">
+          {isPortalActivation ? "Create your portal password" : "Set new password"}
+        </h1>
         <p className={`mt-3 text-sm ${statusClass}`}>{statusMessage}</p>
 
         <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
@@ -202,7 +213,11 @@ export default function SetPasswordPage() {
             className="w-full"
             disabled={checkingSession || submitting || !hasSession}
           >
-            {submitting ? "Saving..." : "Update password"}
+            {submitting
+              ? "Saving..."
+              : isPortalActivation
+                ? "Create password"
+                : "Update password"}
           </Button>
         </form>
       </div>

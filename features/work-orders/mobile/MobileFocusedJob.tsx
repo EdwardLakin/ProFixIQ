@@ -29,6 +29,7 @@ import CauseCorrectionModal from "@work-orders/components/workorders/CauseCorrec
 import PartsRequestModal from "@/features/work-orders/components/workorders/PartsRequestModal";
 import HoldModal from "@/features/work-orders/components/workorders/HoldModal";
 import PhotoCaptureModal from "@/features/work-orders/components/workorders/extras/PhotoCaptureModal";
+import WorkOrderMediaGallery from "@/features/work-orders/components/workorders/extras/WorkOrderMediaGallery";
 import AddJobModal from "@work-orders/components/workorders/AddJobModal";
 import AIAssistantModal from "@work-orders/components/workorders/AiAssistantModal";
 
@@ -113,6 +114,7 @@ type StagedPhoto = {
   file: File;
   previewUrl: string;
   fileName: string;
+  isVideo: boolean;
 };
 
 function canPunch(line: WorkOrderLine | null): boolean {
@@ -163,6 +165,7 @@ export default function MobileFocusedJob(props: {
   const [syncSummary, setSyncSummary] = useState<SyncSummary>(() => getOfflineSyncSummary());
   const [elapsedNow, setElapsedNow] = useState<number>(() => Date.now());
   const [stagedPhotos, setStagedPhotos] = useState<StagedPhoto[]>([]);
+  const [mediaRefreshKey, setMediaRefreshKey] = useState(0);
 
   // sub-modals
   const [openComplete, setOpenComplete] = useState(false);
@@ -319,6 +322,12 @@ export default function MobileFocusedJob(props: {
       setWorkOrder(cached.snapshot.workOrder);
       setVehicle(cached.snapshot.vehicle);
       setCustomer(cached.snapshot.customer);
+      setAllocs(
+        (cached.snapshot.lineContext?.allocationsByLine[id] ?? []) as AllocationRow[],
+      );
+      setRequiredParts(
+        (cached.snapshot.lineContext?.canonicalPartsByLine[id] ?? []) as RequiredPartRow[],
+      );
       const editorDraft = await getTechnicianJobEditorDraft({
         scope,
         lineId: id,
@@ -372,8 +381,16 @@ export default function MobileFocusedJob(props: {
   const loadAllocations = useCallback(async () => {
     if (!workOrderLineId) return;
     if (!navigator.onLine) {
-      setAllocs([]);
-      setRequiredParts([]);
+      const scope = getOfflineMutationScope();
+      const cached = scope
+        ? await findProjectedTechnicianJob({ scope, lineId: workOrderLineId })
+        : null;
+      setAllocs(
+        (cached?.snapshot.lineContext?.allocationsByLine[workOrderLineId] ?? []) as AllocationRow[],
+      );
+      setRequiredParts(
+        (cached?.snapshot.lineContext?.canonicalPartsByLine[workOrderLineId] ?? []) as RequiredPartRow[],
+      );
       return;
     }
     setAllocsLoading(true);
@@ -701,6 +718,8 @@ export default function MobileFocusedJob(props: {
     if (!workOrderLineId || !workOrder?.id) return;
 
     const clientMutationId = uuidv4();
+    const isVideo = file.type.startsWith("video/") || /\.(mov|m4v|mp4|webm)$/i.test(file.name);
+    const contentType = file.type || (isVideo ? "video/mp4" : "image/jpeg");
     const path = `wo/${workOrder.id}/lines/${workOrderLineId}/${clientMutationId}_${file.name}`;
     const previewUrl = URL.createObjectURL(file);
     const scope = getOfflineMutationScope();
@@ -711,7 +730,7 @@ export default function MobileFocusedJob(props: {
       shopId: scope.shopId,
       createdAt: new Date().toISOString(),
       fileName: file.name,
-      mimeType: file.type || "image/jpeg",
+      mimeType: contentType,
       blob: file,
     });
 
@@ -724,13 +743,13 @@ export default function MobileFocusedJob(props: {
           workOrderLineId,
           path,
           fileName: file.name,
-          mimeType: file.type || "image/jpeg",
+          mimeType: contentType,
           blobId: clientMutationId,
         },
-        orderKey: `${workOrderLineId}:photo:${clientMutationId}`,
+        orderKey: `${workOrderLineId}:media:${clientMutationId}`,
         runner: async () => {
           const { error } = await supabase.storage.from("job-photos").upload(path, file, {
-            contentType: file.type || "image/jpeg",
+            contentType,
             upsert: true,
           });
           if (error) throw error;
@@ -741,7 +760,7 @@ export default function MobileFocusedJob(props: {
               workOrderLineId,
               path,
               fileName: file.name,
-              mimeType: file.type || "image/jpeg",
+              mimeType: contentType,
               blobId: clientMutationId,
             },
           });
@@ -757,15 +776,16 @@ export default function MobileFocusedJob(props: {
     if (result.queued) {
       setStagedPhotos((prev) => [
         ...prev,
-        { clientMutationId, file, previewUrl, fileName: file.name },
+        { clientMutationId, file, previewUrl, fileName: file.name, isVideo },
       ]);
-      toast.warning("Photo queued. Retry when connection is restored.");
+      toast.warning(`${isVideo ? "Video" : "Photo"} queued. Retry when connection is restored.`);
       return;
     }
 
     URL.revokeObjectURL(previewUrl);
     await removeOfflineBlob(clientMutationId);
-    toast.success("Photo attached");
+    setMediaRefreshKey((key) => key + 1);
+    toast.success(isVideo ? "Video attached" : "Photo attached");
     window.dispatchEvent(new CustomEvent("wol:refresh"));
   };
 
@@ -1078,7 +1098,7 @@ export default function MobileFocusedJob(props: {
                       >
                         {primaryActionLabel}
                       </button>
-                      {isActive ? (
+                      {!isOnHold && !isCompleted && canStartOrResume ? (
                         <button
                           type="button"
                           className={btnWarn}
@@ -1090,7 +1110,8 @@ export default function MobileFocusedJob(props: {
                         >
                           Put on Hold
                         </button>
-                      ) : (
+                      ) : null}
+                      {!isCompleted ? (
                         <button
                           type="button"
                           className={btnNeutral}
@@ -1102,7 +1123,7 @@ export default function MobileFocusedJob(props: {
                         >
                           Request Parts
                         </button>
-                      )}
+                      ) : null}
                     </div>
                     {needsApprovalGate && (
                       <div className="mt-2 text-[11px] text-amber-300">
@@ -1267,7 +1288,17 @@ export default function MobileFocusedJob(props: {
                   </div>
                 </div>
 
-                {/* parts used */}
+                {workOrder?.id ? (
+                  <div className={`${panel} px-4 py-4`}>
+                    <WorkOrderMediaGallery
+                      workOrderId={workOrder.id}
+                      workOrderLineId={workOrderLineId}
+                      refreshKey={mediaRefreshKey}
+                    />
+                  </div>
+                ) : null}
+
+                {/* offline sync queue */}
                 {(stagedPhotos.length > 0 || offlineMutations.length > 0) && (
                   <div className={`${panel} px-4 py-4`}>
                     <div className="mb-2 text-sm font-medium text-[color:var(--theme-text-primary)]">Offline sync queue</div>
@@ -1276,7 +1307,11 @@ export default function MobileFocusedJob(props: {
                         key={photo.clientMutationId}
                         className="mb-2 flex items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-2"
                       >
-                        <img src={photo.previewUrl} alt={photo.fileName} className="h-10 w-10 rounded-md object-cover" />
+                        {photo.isVideo ? (
+                          <video src={photo.previewUrl} className="h-10 w-10 rounded-md object-cover" muted preload="metadata" />
+                        ) : (
+                          <img src={photo.previewUrl} alt={photo.fileName} className="h-10 w-10 rounded-md object-cover" />
+                        )}
                         <div className="min-w-0 flex-1">
                           <div className="truncate text-xs text-amber-100">{photo.fileName}</div>
                           <div className="text-[11px] text-amber-200">Staged locally • waiting for upload</div>
@@ -1453,12 +1488,12 @@ export default function MobileFocusedJob(props: {
       </div>
 
       {/* ✅ Vehicle history modal */}
-      {openVehicleHistory && vehicle?.id ? (
+      {openVehicleHistory && vehicle?.id && workOrder?.id && line?.id ? (
         <VehicleHistoryModal
           isOpen={openVehicleHistory}
           onClose={() => setOpenVehicleHistory(false)}
-          vehicleId={vehicle.id}
-          shopId={(workOrder?.shop_id as string | null) ?? null}
+          workOrderId={workOrder.id}
+          workOrderLineId={line.id}
         />
       ) : null}
 

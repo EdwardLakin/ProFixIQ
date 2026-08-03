@@ -5,7 +5,6 @@ import { seedWorkOrderIntelligenceFromReview } from "@/features/ai/server/workOr
 import { isReviewableQuoteLine } from "@/features/work-orders/lib/quotes/reviewableQuoteLines";
 
 type DB = Database;
-
 export type ReviewIssue = { kind: string; lineId?: string; message: string };
 export type ReviewKind = "ai_review" | "invoice_review";
 
@@ -38,66 +37,10 @@ function numericValue(value: unknown): number | null {
   return null;
 }
 
-function hasMeaningfulJson(value: unknown): boolean {
-  if (value == null) return false;
-  if (Array.isArray(value)) return value.length > 0;
-  if (typeof value === "object") {
-    return Object.keys(value as Record<string, unknown>).length > 0;
-  }
-  if (typeof value === "string") return value.trim().length > 0;
-  return Boolean(value);
-}
-
 function isInfoLine(line: Record<string, unknown>): boolean {
   const lineType = String(line.line_type ?? "").trim().toLowerCase();
   const jobType = String(line.job_type ?? "").trim().toLowerCase();
   return lineType === "info" || lineType === "note" || jobType === "info";
-}
-
-function lineRequiresParts(line: Record<string, unknown>): boolean {
-  if (line.no_parts_required === true || isInfoLine(line)) return false;
-  const jobType = String(line.job_type ?? "").trim().toLowerCase();
-  const lineType = String(line.line_type ?? "").trim().toLowerCase();
-  if (
-    jobType === "inspection" ||
-    jobType === "diagnosis" ||
-    lineType === "inspection" ||
-    lineType === "diagnostic"
-  ) {
-    return (
-      line.parts_required === true ||
-      hasMeaningfulJson(line.parts_required) ||
-      hasMeaningfulJson(line.parts_needed)
-    );
-  }
-  if (line.parts_required === true) return true;
-  if (hasMeaningfulJson(line.parts_required)) return true;
-  if (hasMeaningfulJson(line.parts_needed)) return true;
-  if (typeof line.parts === "string" && line.parts.trim()) return true;
-  if (line.parts_verification_required === true) return true;
-
-  const text = [
-    line.description,
-    line.complaint,
-    line.cause,
-    line.correction,
-    line.notes,
-    line.job_type,
-    line.service_code,
-  ]
-    .map((value) => String(value ?? "").toLowerCase())
-    .join(" ");
-
-  if (
-    /\b(oil|filter|air filter|cabin filter|fuel filter|brake|pads?|rotors?|battery|tire|spark plug|belt|hose|coolant|transmission fluid|differential fluid|wiper)\b/.test(
-      text,
-    )
-  ) {
-    return true;
-  }
-
-  const status = String(line.status ?? "").trim().toLowerCase();
-  return status === "pending_parts" || status === "awaiting_parts";
 }
 
 function partRequestItemHasBillablePrice(row: Record<string, unknown>): boolean {
@@ -124,6 +67,8 @@ export async function reviewWorkOrder({
   kind,
 }: Args): Promise<{ ok: boolean; issues: ReviewIssue[] }> {
   const hasBillablePartsByLine = new Map<string, boolean>();
+  const hasCanonicalPartsByLine = new Map<string, boolean>();
+  const invoicePartIssues: ReviewIssue[] = [];
 
   const { data: allocationRows } = await supabase
     .from("work_order_part_allocations")
@@ -141,24 +86,50 @@ export async function reviewWorkOrder({
     }
   }
 
-  const { data: stagedPartRows } = await supabase
+  const { data: stagedPartRows, error: stagedPartsError } = await supabase
     .from("work_order_parts")
-    .select("work_order_line_id, quantity, unit_price, total_price")
+    .select(
+      "work_order_line_id, quantity_requested, quantity_returned, quantity_cancelled, unit_price, unit_sell_price_snapshot, total_price, is_active",
+    )
     .eq("work_order_id", workOrderId)
     .eq("shop_id", shopId);
+  if (stagedPartsError) throw stagedPartsError;
   for (const row of stagedPartRows ?? []) {
     const record = row as Record<string, unknown>;
     const lineId = typeof row.work_order_line_id === "string" ? row.work_order_line_id : "";
-    const quantity = numericValue(record.quantity) ?? 0;
-    const unitPrice = numericValue(record.unit_price);
+    const requested = numericValue(record.quantity_requested) ?? 0;
+    const quantity = Math.max(
+      0,
+      requested -
+        (numericValue(record.quantity_returned) ?? 0) -
+        (numericValue(record.quantity_cancelled) ?? 0),
+    );
+    const unitPrice =
+      numericValue(record.unit_sell_price_snapshot) ??
+      numericValue(record.unit_price);
     const totalPrice = numericValue(record.total_price);
     if (
       lineId &&
+      record.is_active !== false &&
       quantity > 0 &&
       ((unitPrice != null && unitPrice > 0) ||
         (totalPrice != null && totalPrice > 0))
     ) {
       hasBillablePartsByLine.set(lineId, true);
+    }
+    if (lineId && record.is_active !== false && quantity > 0) {
+      hasCanonicalPartsByLine.set(lineId, true);
+      if (
+        kind === "invoice_review" &&
+        !((unitPrice != null && unitPrice > 0) ||
+          (totalPrice != null && totalPrice > 0))
+      ) {
+        invoicePartIssues.push({
+          kind: "missing_part_sell_price",
+          lineId,
+          message: "An attached part is missing its customer sell price.",
+        });
+      }
     }
   }
 
@@ -182,6 +153,13 @@ export async function reviewWorkOrder({
       partRequestItemQuantity(record) > 0 &&
       partRequestItemHasBillablePrice(record)
     ) {
+      hasBillablePartsByLine.set(lineId, true);
+    }
+  }
+
+  if (kind === "invoice_review") {
+    hasBillablePartsByLine.clear();
+    for (const lineId of hasCanonicalPartsByLine.keys()) {
       hasBillablePartsByLine.set(lineId, true);
     }
   }
@@ -214,7 +192,7 @@ export async function reviewWorkOrder({
     .eq("shop_id", shopId);
   if (lineError) throw lineError;
 
-  const issues: ReviewIssue[] = [];
+  const issues: ReviewIssue[] = [...invoicePartIssues];
   const { data: quoteLines, error: quoteError } = await supabase
     .from("work_order_quote_lines")
     .select("id,status,stage,approved_at,declined_at,work_order_line_id")
@@ -281,14 +259,6 @@ export async function reviewWorkOrder({
     const noCharge = record.no_charge === true;
     const laborNA = record.labor_marked_na === true;
     const hasBillableParts = hasBillablePartsByLine.get(String(line.id)) === true;
-    if (lineRequiresParts(record) && !hasBillableParts) {
-      issues.push({
-        kind: "missing_required_parts",
-        lineId: line.id,
-        message: `Required parts are missing from line: ${line.description ?? line.complaint ?? "job"}`,
-      });
-    }
-
     const laborHours = numericValue(line.labor_time) ?? 0;
     const lineLaborRate = numericValue(record.labor_rate);
     const effectiveLaborRate =

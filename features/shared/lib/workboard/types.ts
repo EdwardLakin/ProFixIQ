@@ -1,11 +1,6 @@
-export type WorkOrderBoardStage =
-  | "awaiting"
-  | "in_progress"
-  | "awaiting_approval"
-  | "waiting_parts"
-  | "on_hold"
-  | "completed"
-  | "empty";
+import type { WorkOrderOperationalStage } from "@/features/work-orders/lib/operational-stage";
+
+export type WorkOrderBoardStage = WorkOrderOperationalStage;
 
 export type WorkOrderBoardRisk = "none" | "warn" | "danger";
 

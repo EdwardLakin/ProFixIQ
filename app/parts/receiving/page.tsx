@@ -20,6 +20,7 @@ import {
 } from "@/features/parts/lib/trust-signals";
 import { partIdentifierLabel, toPartDisplaySummary } from "@/features/parts/lib/part-display";
 import type { ReceiveDrawerItem } from "@/features/parts/components/ReceiveDrawer";
+import { isPartRequestItemAwaitingReceiving } from "@/features/parts/lib/open-parts-obligations";
 import PageShell from "@/features/shared/components/PageShell";
 import { desktopPrimitives as ui } from "@/features/shared/components/ui/desktopPrimitives";
 
@@ -149,7 +150,7 @@ export default function ReceivingInboxPage(): JSX.Element {
           work_order_id: null,
         };
       })
-      .filter((x) => x.po_id !== null && x.qty_ordered > 0 && x.qty_remaining > 0);
+      .filter((item) => isPartRequestItemAwaitingReceiving(item));
 
     setItems(normalized);
     setLastUpdated(new Date());

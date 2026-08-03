@@ -19,13 +19,13 @@ export async function GET(req: Request) {
 
   let query = admin
     .from("profiles")
-    .select("id, full_name, email, phone, role, created_at, shop_id")
+    .select("id, full_name, email, phone, role, created_at, shop_id, username")
     .eq("shop_id", access.profile.shop_id)
     .order("created_at", { ascending: false })
     .limit(MAX_ROWS);
 
   if (q) {
-    query = query.or(`full_name.ilike.%${q}%,email.ilike.%${q}%,phone.ilike.%${q}%`);
+    query = query.or(`full_name.ilike.%${q}%,email.ilike.%${q}%,phone.ilike.%${q}%,username.ilike.%${q}%`);
   }
 
   const { data: users, error: usersErr } = await query;
@@ -34,5 +34,15 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: usersErr.message || "Failed to load users" }, { status: 500 });
   }
 
-  return NextResponse.json({ users: users ?? [] });
+  const usersWithAuthEmails = await Promise.all(
+    (users ?? []).map(async (user) => {
+      const { data } = await admin.auth.admin.getUserById(user.id);
+      return {
+        ...user,
+        auth_email: data.user?.email ?? null,
+      };
+    }),
+  );
+
+  return NextResponse.json({ users: usersWithAuthEmails });
 }

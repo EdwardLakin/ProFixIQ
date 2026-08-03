@@ -2,11 +2,13 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
+import Stripe from "stripe";
 import { createStripeClient } from "@/features/stripe/lib/stripe/client";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
-
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import type { Database } from "@shared/types/types/supabase";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import { saveShopPaymentSettings } from "@/features/stripe/lib/server/shop-payment-settings";
 
 type DB = Database;
 
@@ -20,21 +22,21 @@ type ShopScope = Pick<
   "id" | "country" | "timezone" | "shop_name" | "name" | "stripe_account_id"
 >;
 
+type ConnectController = {
+  fees?: { payer?: string | null } | null;
+  losses?: { payments?: string | null } | null;
+  stripe_dashboard?: { type?: string | null } | null;
+  requirement_collection?: string | null;
+};
 
 function mustEnv(name: string): string {
   const value = process.env[name];
-  if (!value || !value.trim()) {
-    throw new Error(`Missing required env: ${name}`);
-  }
+  if (!value || !value.trim()) throw new Error(`Missing required env: ${name}`);
   return value;
 }
 
 function normalizeCountry(value: string | null | undefined): "US" | "CA" {
-  return String(value ?? "")
-    .trim()
-    .toUpperCase() === "CA"
-    ? "CA"
-    : "US";
+  return String(value ?? "").trim().toUpperCase() === "CA" ? "CA" : "US";
 }
 
 function getSiteUrl(): string {
@@ -49,12 +51,24 @@ function getShopDisplayName(shop: { shop_name?: string | null; name?: string | n
   return (shop.shop_name ?? shop.name ?? "").trim() || "ProFixIQ Shop";
 }
 
+function readController(account: Stripe.Account): ConnectController {
+  return ((account as Stripe.Account & { controller?: ConnectController }).controller ?? {});
+}
+
+function isDirectChargeAccount(account: Stripe.Account): boolean {
+  const controller = readController(account);
+  return (
+    controller.fees?.payer === "account" &&
+    controller.losses?.payments === "stripe" &&
+    controller.stripe_dashboard?.type === "full" &&
+    controller.requirement_collection === "stripe"
+  );
+}
+
 export async function POST() {
   try {
     const stripe = createStripeClient(mustEnv("STRIPE_SECRET_KEY"));
-
     const supabase = createServerSupabaseRoute();
-
     const {
       data: { user },
       error: authError,
@@ -69,11 +83,9 @@ export async function POST() {
       .select("id, role, shop_id")
       .eq("id", user.id)
       .maybeSingle<ProfileScope>();
-
     if (profileError) {
       return NextResponse.json({ error: profileError.message }, { status: 500 });
     }
-
     if (!profile?.shop_id) {
       return NextResponse.json({ error: "No shop found for this account." }, { status: 400 });
     }
@@ -88,50 +100,86 @@ export async function POST() {
       .select("id, country, timezone, shop_name, name, stripe_account_id")
       .eq("id", profile.shop_id)
       .maybeSingle<ShopScope>();
-
     if (shopError) {
       return NextResponse.json({ error: shopError.message }, { status: 500 });
     }
-
     if (!shop) {
       return NextResponse.json({ error: "Shop not found." }, { status: 404 });
     }
 
     const siteUrl = getSiteUrl();
-    const settingsUrl = `${siteUrl}/dashboard/owner/settings#billing`;
+    const settingsUrl = `${siteUrl}/dashboard/owner/settings#payments`;
     const country = normalizeCountry(shop.country);
     const displayName = getShopDisplayName(shop);
+    const admin = createAdminSupabase();
 
     let stripeAccountId = (shop.stripe_account_id ?? "").trim();
+    let account: Stripe.Account;
     let created = false;
 
-    if (!stripeAccountId) {
-      const account = await stripe.accounts.create({
-        type: "express",
+    if (stripeAccountId) {
+      account = await stripe.accounts.retrieve(stripeAccountId);
+      if (!isDirectChargeAccount(account)) {
+        return NextResponse.json(
+          {
+            error:
+              "This shop has a legacy Stripe connection. It must be migrated before portal payments can be enabled.",
+            migration_required: true,
+            stripeAccountId,
+          },
+          { status: 409 },
+        );
+      }
+    } else {
+      const accountParams = {
         country,
         business_type: "company",
-        business_profile: {
-          name: displayName,
+        business_profile: { name: displayName },
+        capabilities: {
+          card_payments: { requested: true },
+          transfers: { requested: true },
+          ...(country === "CA" ? { acss_debit_payments: { requested: true } } : {}),
+        },
+        controller: {
+          fees: { payer: "account" },
+          losses: { payments: "stripe" },
+          requirement_collection: "stripe",
+          stripe_dashboard: { type: "full" },
         },
         metadata: {
+          app: "profixiq",
           shop_id: shop.id,
           source: "profixiq",
+          charge_model: "direct",
         },
-      });
+      } as unknown as Stripe.AccountCreateParams;
 
+      account = await stripe.accounts.create(accountParams);
       stripeAccountId = account.id;
       created = true;
 
-      const { error: updateError } = await supabase
+      const { error: updateError } = await admin
         .from("shops")
         .update({
           stripe_account_id: stripeAccountId,
+          stripe_charges_enabled: Boolean(account.charges_enabled),
+          stripe_payouts_enabled: Boolean(account.payouts_enabled),
+          stripe_details_submitted: Boolean(account.details_submitted),
+          stripe_onboarding_completed: Boolean(
+            account.charges_enabled && account.payouts_enabled && account.details_submitted,
+          ),
+          stripe_connect_charge_model: "direct",
+          stripe_connect_dashboard_type: "full",
+          stripe_connect_fees_collector: "stripe",
+          stripe_connect_losses_collector: "stripe",
         } as DB["public"]["Tables"]["shops"]["Update"])
         .eq("id", shop.id);
+      if (updateError) throw new Error(updateError.message);
 
-      if (updateError) {
-        return NextResponse.json({ error: updateError.message }, { status: 500 });
-      }
+      await saveShopPaymentSettings(admin, shop.id, {
+        default_currency: country === "CA" ? "cad" : "usd",
+        portal_payments_enabled: false,
+      });
     }
 
     const accountLink = await stripe.accountLinks.create({
@@ -148,13 +196,15 @@ export async function POST() {
       onboardingUrl: accountLink.url,
       settingsUrl,
       country,
+      chargeModel: "direct",
+      dashboardType: "full",
+      feesCollector: "stripe",
+      lossesCollector: "stripe",
     });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to create Stripe onboarding link.";
-
     console.error("[stripe/connect/onboard] error", error);
-
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

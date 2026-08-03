@@ -26,6 +26,8 @@ export type MaintenanceControlTowerProps = {
   loading?: ReactNode;
   error?: ReactNode;
   isLoading?: boolean;
+  layout?: "board-first" | "dashboard-first";
+  renderContentWhenError?: boolean;
 };
 
 export function MaintenanceControlTower({
@@ -43,7 +45,11 @@ export function MaintenanceControlTower({
   loading,
   error,
   isLoading = false,
+  layout = "board-first",
+  renderContentWhenError = false,
 }: MaintenanceControlTowerProps) {
+  const showContent = !isLoading && (!error || renderContentWhenError);
+
   return (
     <section className="space-y-6">
       <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
@@ -98,17 +104,28 @@ export function MaintenanceControlTower({
         </div>
       </header>
 
-      {workOrderBoard}
+      {layout === "board-first" ? workOrderBoard : null}
 
       {error}
 
       {isLoading && loading}
 
-      {!isLoading && !error && (
+      {showContent && (
         <>
-          {aiSummary}
-          {summaryCards}
-          {issueTables}
+          {layout === "dashboard-first" ? (
+            <>
+              {summaryCards}
+              {aiSummary}
+              {issueTables}
+              {workOrderBoard}
+            </>
+          ) : (
+            <>
+              {aiSummary}
+              {summaryCards}
+              {issueTables}
+            </>
+          )}
         </>
       )}
     </section>

@@ -38,34 +38,117 @@ const PERSIST_DEFAULTS: PersistMeta = { scroll: true, inputs: true };
 const ALL_ROLES: UserRole[] | undefined = undefined;
 
 export const ROUTE_META: Record<string, RouteMeta> = {
-  "/dashboard": { title: () => "Shop Overview", icon: "🏠", roles: ALL_ROLES },
+  "/dashboard": {
+    title: () => "Shop Overview",
+    icon: "🏠",
+    roles: [
+      "owner",
+      "admin",
+      "manager",
+      "advisor",
+      "parts",
+      "dispatcher",
+      "driver",
+      "fleet_manager",
+      "lead_hand",
+      "foreman",
+    ],
+  },
   // ----------------------------------------------------------------
   // Work Orders
   // ----------------------------------------------------------------
   "/work-orders": {
     title: () => "Work Orders",
     icon: "📋",
-    roles: ["owner", "admin", "manager", "advisor", "service", "mechanic", "tech"],
+    roles: [
+      "owner",
+      "admin",
+      "manager",
+      "advisor",
+      "service",
+      "mechanic",
+      "tech",
+    ],
   },
   "/work-orders/view": {
     title: () => "View Work Orders",
     icon: "📋",
-    roles: ["owner", "admin", "manager", "advisor", "service", "lead_hand", "foreman"],
+    roles: [
+      "owner",
+      "admin",
+      "manager",
+      "advisor",
+      "service",
+      "lead_hand",
+      "foreman",
+    ],
   },
   "/work-orders/create": {
     title: () => "New Work Order",
     icon: "➕",
     roles: ["owner", "admin", "manager", "advisor", "service"],
   },
+  "/estimates": {
+    title: () => "Estimates",
+    icon: "🧾",
+    roles: [
+      "owner",
+      "admin",
+      "manager",
+      "advisor",
+      "service",
+      "foreman",
+      "parts",
+      "lead_hand",
+    ],
+  },
+  "/estimates/new": {
+    title: () => "New Estimate",
+    icon: "➕",
+    roles: ["owner", "admin", "manager", "advisor", "service", "foreman"],
+  },
+  "/estimates/[id]": {
+    title: (href) => `Estimate · ${href.split("/").pop()?.slice(0, 8) ?? "…"}`,
+    icon: "🧾",
+    persist: { keyParams: ["id"] },
+    roles: [
+      "owner",
+      "admin",
+      "manager",
+      "advisor",
+      "service",
+      "foreman",
+      "parts",
+      "lead_hand",
+    ],
+  },
   "/work-orders/board": {
     title: () => "Work Order Board",
     icon: "📊",
-    roles: ["owner", "admin", "manager", "advisor", "mechanic", "tech", "lead_hand", "foreman"],
+    roles: [
+      "owner",
+      "admin",
+      "manager",
+      "advisor",
+      "mechanic",
+      "tech",
+      "lead_hand",
+      "foreman",
+    ],
   },
   "/work-orders/queue": {
     title: () => "Job Queue",
     icon: "🧰",
-    roles: ["owner", "admin", "manager", "advisor", "mechanic", "tech", "lead_hand", "foreman"],
+    roles: [
+      "owner",
+      "admin",
+      "manager",
+      "advisor",
+      "mechanic",
+      "tech",
+      "lead_hand",
+      "foreman",
+    ],
   },
   "/work-orders/quote-review": {
     title: () => "Quote Review",
@@ -75,7 +158,7 @@ export const ROUTE_META: Record<string, RouteMeta> = {
   "/work-orders/history": {
     title: () => "History",
     icon: "📜",
-    roles: ["owner", "admin", "manager", "advisor", "mechanic", "lead_hand", "foreman"],
+    roles: ["owner", "admin", "manager", "advisor", "lead_hand", "foreman"],
   },
   "/billing": {
     title: () => "Billing",
@@ -115,12 +198,20 @@ export const ROUTE_META: Record<string, RouteMeta> = {
     title: (href) => `WO #${href.split("/").pop()?.slice(0, 8) ?? "…"}`,
     icon: "🔧",
     persist: { keyParams: ["id"] },
-    roles: ["owner", "admin", "manager", "advisor", "mechanic", "tech", "lead_hand", "foreman"],
+    roles: [
+      "owner",
+      "admin",
+      "manager",
+      "advisor",
+      "mechanic",
+      "tech",
+      "lead_hand",
+      "foreman",
+    ],
   },
 
   "/work-orders/view/[id]": {
-    title: (href) =>
-      `Work Order ${href.split("/").pop()?.slice(0, 8) ?? "…"}`,
+    title: (href) => `Work Order ${href.split("/").pop()?.slice(0, 8) ?? "…"}`,
     icon: "🔧",
     showInTabs: false,
     persist: { keyParams: ["id"] },
@@ -150,19 +241,46 @@ export const ROUTE_META: Record<string, RouteMeta> = {
   "/inspections": {
     title: () => "Inspections",
     icon: "📝",
-    roles: ["owner", "admin", "manager", "advisor", "mechanic", "tech", "lead_hand", "foreman"],
+    roles: [
+      "owner",
+      "admin",
+      "manager",
+      "advisor",
+      "mechanic",
+      "tech",
+      "lead_hand",
+      "foreman",
+    ],
   },
 
   // Runtime screens
   "/inspections/run": {
     title: () => "Run Inspection",
     icon: "📝",
-    roles: ["owner", "admin", "manager", "advisor", "mechanic", "tech", "lead_hand", "foreman"],
+    roles: [
+      "owner",
+      "admin",
+      "manager",
+      "advisor",
+      "mechanic",
+      "tech",
+      "lead_hand",
+      "foreman",
+    ],
   },
   "/inspections/fill": {
     title: () => "Inspection",
     icon: "📝",
-    roles: ["owner", "admin", "manager", "advisor", "mechanic", "tech", "lead_hand", "foreman"],
+    roles: [
+      "owner",
+      "admin",
+      "manager",
+      "advisor",
+      "mechanic",
+      "tech",
+      "lead_hand",
+      "foreman",
+    ],
   },
 
   // Inspection templates (tiles.ts uses /inspections/templates for this)
@@ -217,19 +335,16 @@ export const ROUTE_META: Record<string, RouteMeta> = {
       return `Inspection – ${nice}`;
     },
     icon: "📝",
-    roles: ["owner", "admin", "manager", "advisor", "mechanic", "tech", "lead_hand", "foreman"],
-  },
-
-  // Maintenance templates (if you still expose them directly)
-  "/maintenance50": {
-    title: () => "Maintenance 50",
-    icon: "🧰",
-    roles: ["owner", "admin", "manager", "advisor", "mechanic", "tech"],
-  },
-  "/maintenance50-air": {
-    title: () => "Maintenance 50 (Air)",
-    icon: "🧰",
-    roles: ["owner", "admin", "manager", "advisor", "mechanic", "tech"],
+    roles: [
+      "owner",
+      "admin",
+      "manager",
+      "advisor",
+      "mechanic",
+      "tech",
+      "lead_hand",
+      "foreman",
+    ],
   },
 
   // ----------------------------------------------------------------
@@ -256,8 +371,8 @@ export const ROUTE_META: Record<string, RouteMeta> = {
     roles: ["owner", "admin", "manager", "parts"],
   },
   "/parts/vendors": {
-    title: () => "Vendor Integrations",
-    icon: "🔑",
+    title: () => "Vendors",
+    icon: "🏪",
     roles: ["owner", "admin", "manager", "parts"],
   },
   "/parts/returns": {
@@ -329,12 +444,12 @@ export const ROUTE_META: Record<string, RouteMeta> = {
     roles: ["owner", "admin", "manager"],
   },
   "/dashboard/workforce": {
-    title: () => "Workforce",
+    title: () => "Workforce Command",
     icon: "👥",
     roles: ["owner", "admin", "manager"],
   },
   "/dashboard/workforce/overview": {
-    title: () => "Workforce Overview",
+    title: () => "Workforce Command",
     icon: "🧭",
     roles: ["owner", "admin", "manager"],
   },
@@ -351,7 +466,7 @@ export const ROUTE_META: Record<string, RouteMeta> = {
     roles: ["owner", "admin"],
   },
   "/dashboard/workforce/scheduling": {
-    title: () => "Scheduling",
+    title: () => "Schedule & Time Away",
     icon: "🗓️",
     roles: ["owner", "admin", "manager"],
   },
@@ -385,6 +500,11 @@ export const ROUTE_META: Record<string, RouteMeta> = {
     title: () => "Insights",
     icon: "📊",
     roles: ["owner", "admin", "manager"],
+  },
+  "/dashboard/workforce/activity": {
+    title: () => "Workforce Activity",
+    icon: "📜",
+    roles: ["owner", "admin"],
   },
   "/dashboard/admin": {
     title: () => "Admin",
@@ -455,12 +575,28 @@ export const ROUTE_META: Record<string, RouteMeta> = {
   "/chat": {
     title: () => "Team Chat",
     icon: "💬",
-    roles: ["owner", "admin", "manager", "advisor", "mechanic", "parts", "tech"],
+    roles: [
+      "owner",
+      "admin",
+      "manager",
+      "advisor",
+      "mechanic",
+      "parts",
+      "tech",
+    ],
   },
   "/tech/queue": {
     title: () => "Tech Job Queue",
     icon: "🧰",
-    roles: ["owner", "admin", "manager", "mechanic", "tech", "lead_hand", "foreman"],
+    roles: [
+      "owner",
+      "admin",
+      "manager",
+      "mechanic",
+      "tech",
+      "lead_hand",
+      "foreman",
+    ],
   },
   "/tech/performance": {
     title: () => "My Performance",
@@ -524,6 +660,20 @@ export const ROUTE_META: Record<string, RouteMeta> = {
   },
 };
 
+function routeMetaMatches(pattern: string, href: string): boolean {
+  const path = href.split(/[?#]/, 1)[0] || "/";
+  const patternSegments = pattern.split("/").filter(Boolean);
+  const pathSegments = path.split("/").filter(Boolean);
+  if (patternSegments.length !== pathSegments.length) return false;
+
+  return patternSegments.every((segment, index) => {
+    if (segment.startsWith("[") && segment.endsWith("]")) {
+      return pathSegments[index].length > 0;
+    }
+    return segment === pathSegments[index];
+  });
+}
+
 export function metaFor(
   href: string,
   _params?: Record<string, string>,
@@ -532,9 +682,7 @@ export function metaFor(
   const keys = Object.keys(ROUTE_META).sort((a, b) => b.length - a.length);
 
   for (const key of keys) {
-    const isDyn = key.includes("[");
-    const keyPrefix = key.replace(/\[.*?\]/g, "");
-    if ((isDyn && href.startsWith(keyPrefix)) || (!isDyn && href === key)) {
+    if (routeMetaMatches(key, href)) {
       const m = ROUTE_META[key];
 
       const allowed =
@@ -552,8 +700,7 @@ export function metaFor(
     }
   }
 
-  const last =
-    href.split("?")[0].split("/").filter(Boolean).pop() ?? href;
+  const last = href.split("?")[0].split("/").filter(Boolean).pop() ?? href;
   const nice = last
     .replace(/[-_]+/g, " ")
     .replace(/\b\w/g, (c) => c.toUpperCase());

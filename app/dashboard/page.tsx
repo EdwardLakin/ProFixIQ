@@ -43,6 +43,11 @@ export default function DashboardEntryPage() {
         return;
       }
 
+      if (role === "mechanic") {
+        router.replace("/tech/queue");
+        return;
+      }
+
       if (role === "lead_hand" || role === "foreman") {
         router.replace("/dashboard/operations");
         return;

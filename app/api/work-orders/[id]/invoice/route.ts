@@ -6,7 +6,8 @@ export const runtime = "nodejs";
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { reviewWorkOrder } from "../_lib/reviewWorkOrder";
-import { getInvoiceSnapshotForWorkOrder } from "@/features/invoices/server/getInvoiceSnapshot";
+import { getIssuableInvoiceSnapshot } from "@/features/invoices/server/getIssuableInvoiceSnapshot";
+import { getActiveInvoiceVersion } from "@/features/invoices/server/financialLifecycle";
 
 
 function isError(x: unknown): x is Error {
@@ -77,8 +78,32 @@ export async function GET(
   const woId = typeof params?.id === "string" ? params.id : "";
   if (!woId) return NextResponse.json({ error: "Missing work order id" }, { status: 400 });
   try {
-    const snapshot = await getInvoiceSnapshotForWorkOrder({ supabase, workOrderId: woId });
-    return NextResponse.json({ snapshot });
+    const { data: scopedWorkOrder, error: scopedWorkOrderError } = await supabase
+      .from("work_orders")
+      .select("shop_id")
+      .eq("id", woId)
+      .maybeSingle<{ shop_id: string | null }>();
+    if (scopedWorkOrderError) throw scopedWorkOrderError;
+    if (!scopedWorkOrder?.shop_id) {
+      return NextResponse.json({ error: "Work order not found" }, { status: 404 });
+    }
+
+    const activeInvoiceVersion = await getActiveInvoiceVersion({
+      supabase,
+      workOrderId: woId,
+      shopId: scopedWorkOrder.shop_id,
+    });
+    const snapshot =
+      activeInvoiceVersion?.snapshot ??
+      (await getIssuableInvoiceSnapshot({
+        supabase,
+        workOrderId: woId,
+        shopId: scopedWorkOrder.shop_id,
+      }));
+    return NextResponse.json(
+      { snapshot, activeInvoiceVersion },
+      { headers: { "Cache-Control": "private, no-store" } },
+    );
   } catch (e: unknown) {
     const msg = isError(e) ? e.message : "Snapshot failed";
     return NextResponse.json({ error: msg }, { status: 500 });

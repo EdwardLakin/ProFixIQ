@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import QuoteApprovalActions from "@/features/portal/components/QuoteApprovalActions";
+import PortalInvoicePayButton from "@/features/stripe/components/PortalInvoicePayButton";
 import StatusBadge from "@/features/shared/components/ui/StatusBadge";
 import { formatDecisionStatus } from "@/features/shared/lib/decisionStatus";
 import {
@@ -21,10 +22,32 @@ import {
   shopSuppliesSummaryText,
   shopSuppliesTaxableSubtotal,
 } from "@/features/work-orders/lib/shopSupplies";
+import EvidenceImage from "@/features/work-orders/components/evidence/EvidenceImage";
+import {
+  isVideoEvidence,
+  type WorkOrderEvidenceItem,
+} from "@/features/work-orders/lib/evidence/workOrderEvidence";
 
 const COPPER = "#C57A4A";
-const CUSTOMER_VISIBLE_QUOTE_STATUSES = new Set(["sent", "approved", "converted", "declined", "deferred"]);
-const CUSTOMER_VISIBLE_QUOTE_STAGES = new Set(["sent", "customer_review", "customer_approved", "customer_declined", "customer_deferred"]);
+const CUSTOMER_VISIBLE_QUOTE_STATUSES = new Set([
+  "sent",
+  "approved",
+  "converted",
+  "declined",
+  "deferred",
+]);
+const CUSTOMER_VISIBLE_QUOTE_STAGES = new Set([
+  "sent",
+  "customer_review",
+  "customer_approved",
+  "customer_declined",
+  "customer_deferred",
+]);
+const HIDDEN_QUOTE_REVISION_STATUSES = new Set([
+  "cancelled",
+  "rejected",
+  "superseded",
+]);
 
 type DB = Database;
 type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -64,7 +87,7 @@ type QuoteLineRow = Pick<
 type QuotePartView = {
   name: string;
   qty: number;
-  unitCost: number;
+  unitPrice: number;
   total: number;
   meta: string | null;
 };
@@ -93,12 +116,14 @@ type LineView = {
   createdAt: string | null;
   updatedAt: string | null;
   parts: QuotePartView[];
-  evidencePhotos: string[];
+  evidence: WorkOrderEvidenceItem[];
+  requestKind: "repair" | "parts_only" | null;
+  fulfillment: "appointment" | "pickup" | null;
 };
 
 function paramToString(value: string | string[] | undefined): string | null {
   if (!value) return null;
-  return Array.isArray(value) ? value[0] ?? null : value;
+  return Array.isArray(value) ? (value[0] ?? null) : value;
 }
 
 function safeTrim(x: unknown): string {
@@ -136,44 +161,90 @@ function formatDate(value: string | null | undefined): string {
 }
 
 function getShopProvinceCode(shop: ShopRow | null): ProvinceCode | null {
-  const s = shop as unknown as { province_code?: unknown; province?: unknown } | null;
+  const s = shop as unknown as {
+    province_code?: unknown;
+    province?: unknown;
+  } | null;
   const raw = safeTrim(s?.province_code ?? s?.province ?? "").toUpperCase();
   if (!raw) return null;
   return isProvinceCode(raw) ? raw : null;
 }
 
-function quoteMetadata(line: Pick<QuoteLineRow, "metadata">): Record<string, unknown> {
-  if (!line.metadata || typeof line.metadata !== "object" || Array.isArray(line.metadata)) return {};
+function quoteMetadata(
+  line: Pick<QuoteLineRow, "metadata">,
+): Record<string, unknown> {
+  if (
+    !line.metadata ||
+    typeof line.metadata !== "object" ||
+    Array.isArray(line.metadata)
+  )
+    return {};
   return line.metadata as Record<string, unknown>;
 }
 
-function metadataArray(metadata: Record<string, unknown>, key: string): unknown[] {
+function metadataArray(
+  metadata: Record<string, unknown>,
+  key: string,
+): unknown[] {
   const value = metadata[key];
   return Array.isArray(value) ? value : [];
 }
 
 function getPartName(part: Record<string, unknown>): string {
-  return safeTrim(part.name) || safeTrim(part.description) || safeTrim(part.part_number) || safeTrim(part.sku) || "Part";
+  return (
+    safeTrim(part.name) ||
+    safeTrim(part.selected_name) ||
+    safeTrim(part.description) ||
+    safeTrim(part.part_number) ||
+    safeTrim(part.requested_part_number) ||
+    safeTrim(part.sku) ||
+    "Part"
+  );
 }
 
 function getPartMeta(part: Record<string, unknown>): string | null {
-  const pn = safeTrim(part.part_number ?? part.partNumber);
+  const pn = safeTrim(
+    part.part_number ?? part.partNumber ?? part.requested_part_number,
+  );
   const sku = safeTrim(part.sku);
   return [pn, sku].filter(Boolean).join(" • ") || null;
 }
 
-function getQuoteParts(line: QuoteLineRow): QuotePartView[] {
+function getQuoteParts(
+  line: QuoteLineRow,
+  allowCanonicalPartsQuote: boolean,
+): QuotePartView[] {
   const metadata = quoteMetadata(line);
-  return metadataArray(metadata, "parts")
-    .filter((part): part is Record<string, unknown> => Boolean(part) && typeof part === "object" && !Array.isArray(part))
+  const directParts = metadataArray(metadata, "parts");
+  const partsQuote = metadata.parts_quote;
+  const quotedParts =
+    partsQuote && typeof partsQuote === "object" && !Array.isArray(partsQuote)
+      ? metadataArray(partsQuote as Record<string, unknown>, "items")
+      : [];
+  return (
+    directParts.length > 0
+      ? directParts
+      : allowCanonicalPartsQuote
+        ? quotedParts
+        : []
+  )
+    .filter(
+      (part): part is Record<string, unknown> =>
+        Boolean(part) && typeof part === "object" && !Array.isArray(part),
+    )
     .map((part) => {
       const qty = asNumber(part.qty ?? part.quantity ?? 1) || 1;
-      const unitCost = asNumber(part.unitCost ?? part.unit_cost ?? part.unitPrice ?? part.unit_price);
-      const total = nullableNumber(part.total ?? part.totalCost ?? part.total_cost ?? part.totalPrice ?? part.total_price) ?? qty * unitCost;
+      const unitPrice = asNumber(
+        part.unitPrice ?? part.unit_price ?? part.quoted_price ?? part.price,
+      );
+      const total =
+        nullableNumber(
+          part.totalPrice ?? part.total_price ?? part.line_total ?? part.total,
+        ) ?? qty * unitPrice;
       return {
         name: getPartName(part),
         qty,
-        unitCost,
+        unitPrice,
         total,
         meta: getPartMeta(part),
       };
@@ -192,7 +263,11 @@ function getEvidencePhotos(
   if (metadataPhotos.length > 0) return metadataPhotos.slice(0, 6);
   if (photos.length === 0) return [];
 
-  const text = [safeTrim(line.description), safeTrim(line.ai_complaint), safeTrim(line.notes)]
+  const text = [
+    safeTrim(line.description),
+    safeTrim(line.ai_complaint),
+    safeTrim(line.notes),
+  ]
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
@@ -201,7 +276,10 @@ function getEvidencePhotos(
   return photos
     .filter((photo) => {
       const itemName = safeTrim(photo.item_name).toLowerCase();
-      return itemName && (text.includes(itemName) || itemName.includes(text.slice(0, 20)));
+      return (
+        itemName &&
+        (text.includes(itemName) || itemName.includes(text.slice(0, 20)))
+      );
     })
     .map((photo) => safeTrim(photo.image_url))
     .filter(Boolean)
@@ -211,14 +289,31 @@ function getEvidencePhotos(
 function isCustomerVisibleQuoteLine(line: QuoteLineRow): boolean {
   const status = safeTrim(line.status).toLowerCase();
   const stage = safeTrim(line.stage).toLowerCase();
-  return Boolean(line.sent_to_customer_at) || CUSTOMER_VISIBLE_QUOTE_STATUSES.has(status) || CUSTOMER_VISIBLE_QUOTE_STAGES.has(stage);
+  if (HIDDEN_QUOTE_REVISION_STATUSES.has(status)) return false;
+  return (
+    Boolean(line.sent_to_customer_at) ||
+    CUSTOMER_VISIBLE_QUOTE_STATUSES.has(status) ||
+    CUSTOMER_VISIBLE_QUOTE_STAGES.has(stage)
+  );
 }
 
 function quoteApprovalState(line: QuoteLineRow): LineView["approvalState"] {
   const status = safeTrim(line.status).toLowerCase();
   const stage = safeTrim(line.stage).toLowerCase();
-  if (status === "approved" || status === "converted" || stage === "customer_approved" || line.approved_at || line.work_order_line_id) return "approved";
-  if (status === "declined" || stage === "customer_declined" || line.declined_at) return "declined";
+  if (
+    status === "approved" ||
+    status === "converted" ||
+    stage === "customer_approved" ||
+    line.approved_at ||
+    line.work_order_line_id
+  )
+    return "approved";
+  if (
+    status === "declined" ||
+    stage === "customer_declined" ||
+    line.declined_at
+  )
+    return "declined";
   if (status === "deferred" || stage === "customer_deferred") return "deferred";
   return "pending";
 }
@@ -226,7 +321,10 @@ function quoteApprovalState(line: QuoteLineRow): LineView["approvalState"] {
 export default function QuotePageClient(): JSX.Element {
   const router = useRouter();
   const params = useParams();
-  const workOrderId = useMemo(() => paramToString((params as ParamsShape).id), [params]);
+  const workOrderId = useMemo(
+    () => paramToString((params as ParamsShape).id),
+    [params],
+  );
   const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const [loading, setLoading] = useState(true);
@@ -280,9 +378,15 @@ export default function QuotePageClient(): JSX.Element {
     let shopRow: ShopRow | null = null;
     let laborRate = 0;
 
-    const { data: shopData } = await supabase.from("shops").select("*").eq("id", wo.shop_id).maybeSingle();
+    const { data: shopData } = await supabase
+      .from("shops")
+      .select("*")
+      .eq("id", wo.shop_id)
+      .maybeSingle();
     shopRow = (shopData ?? null) as ShopRow | null;
-    laborRate = asNumber((shopData as { labor_rate?: unknown } | null)?.labor_rate);
+    laborRate = asNumber(
+      (shopData as { labor_rate?: unknown } | null)?.labor_rate,
+    );
     setShop(shopRow);
 
     const { data: quoteRowsRaw, error: quoteErr } = await supabase
@@ -300,8 +404,12 @@ export default function QuotePageClient(): JSX.Element {
       return;
     }
 
-    let inspectionPhotos: Array<Pick<InspectionPhotoRow, "image_url" | "item_name">> = [];
-    const inspectionId = safeTrim((wo as { inspection_id?: unknown } | null)?.inspection_id);
+    let inspectionPhotos: Array<
+      Pick<InspectionPhotoRow, "image_url" | "item_name">
+    > = [];
+    const inspectionId = safeTrim(
+      (wo as { inspection_id?: unknown } | null)?.inspection_id,
+    );
     if (inspectionId) {
       const { data: photos } = await supabase
         .from("inspection_photos")
@@ -309,30 +417,86 @@ export default function QuotePageClient(): JSX.Element {
         .eq("inspection_id", inspectionId)
         .order("created_at", { ascending: false })
         .limit(100);
-      inspectionPhotos = (photos ?? []) as Array<Pick<InspectionPhotoRow, "image_url" | "item_name">>;
+      inspectionPhotos = (photos ?? []) as Array<
+        Pick<InspectionPhotoRow, "image_url" | "item_name">
+      >;
     }
+
+    const evidenceResponse = await fetch(
+      `/api/work-orders/${workOrderId}/media?scope=all`,
+      { cache: "no-store" },
+    );
+    const evidenceBody = (await evidenceResponse.json().catch(() => null)) as {
+      items?: WorkOrderEvidenceItem[];
+    } | null;
+    const canonicalEvidence = evidenceResponse.ok
+      ? (evidenceBody?.items ?? [])
+      : [];
 
     const mapped: LineView[] = ((quoteRowsRaw ?? []) as QuoteLineRow[])
       .filter(isCustomerVisibleQuoteLine)
       .map((line, index) => {
-        const parts = getQuoteParts(line);
+        const parts = getQuoteParts(line, Boolean(wo.estimate_number));
         const metadata = quoteMetadata(line);
-        const laborHours = nullableNumber(line.labor_hours) ?? nullableNumber(line.est_labor_hours) ?? 0;
-        const computedLabor = laborHours * (nullableNumber(metadata.labor_rate) ?? laborRate);
-        const partsAmount = nullableNumber(line.parts_total) ?? parts.reduce((sum, part) => sum + part.total, 0);
+        const customerLineNotes = wo.estimate_number
+          ? ""
+          : safeTrim(line.notes);
+        const requestKind = safeTrim(metadata.request_kind);
+        const fulfillment = safeTrim(metadata.fulfillment);
+        const laborHours =
+          nullableNumber(line.labor_hours) ??
+          nullableNumber(line.est_labor_hours) ??
+          0;
+        const computedLabor =
+          laborHours * (nullableNumber(metadata.labor_rate) ?? laborRate);
+        const partsAmount =
+          nullableNumber(line.parts_total) ??
+          parts.reduce((sum, part) => sum + part.total, 0);
         const laborAmount = nullableNumber(line.labor_total) ?? computedLabor;
-        const subtotalAmount = nullableNumber(line.subtotal) ?? laborAmount + partsAmount;
+        const subtotalAmount =
+          nullableNumber(line.subtotal) ?? laborAmount + partsAmount;
         const taxAmount = nullableNumber(line.tax_total) ?? 0;
-        const totalAmount = nullableNumber(line.grand_total) ?? subtotalAmount + taxAmount;
+        const totalAmount =
+          nullableNumber(line.grand_total) ?? subtotalAmount + taxAmount;
+
+        const linkedEvidence = canonicalEvidence.filter(
+          (item) =>
+            item.quoteLineId === line.id ||
+            (line.work_order_line_id != null &&
+              item.workOrderLineId === line.work_order_line_id),
+        );
+        const fallbackEvidence: WorkOrderEvidenceItem[] =
+          linkedEvidence.length > 0
+            ? []
+            : getEvidencePhotos(line, inspectionPhotos).map(
+                (url, photoIndex) => ({
+                  id: `${line.id}-legacy-${photoIndex}`,
+                  workOrderId,
+                  workOrderLineId: line.work_order_line_id,
+                  quoteLineId: line.id,
+                  kind: "photo",
+                  source: "inspection_finding",
+                  visibility: "customer",
+                  fileName: null,
+                  contentType: "image/jpeg",
+                  fileSize: null,
+                  createdAt: null,
+                  displayUrl: url,
+                  annotation: null,
+                }),
+              );
 
         return {
           id: line.id,
           lineNo: index + 1,
-          title: safeTrim(line.description) || safeTrim(line.ai_complaint) || "Quote line",
-          complaint: safeTrim(line.ai_complaint) || safeTrim(line.notes) || null,
+          title:
+            safeTrim(line.description) ||
+            safeTrim(line.ai_complaint) ||
+            "Quote line",
+          complaint: safeTrim(line.ai_complaint) || customerLineNotes || null,
           cause: safeTrim(line.ai_cause) || null,
           correction: safeTrim(line.ai_correction) || null,
-          notes: safeTrim(line.notes) || null,
+          notes: customerLineNotes || null,
           laborHours,
           laborAmount,
           partsAmount,
@@ -349,7 +513,20 @@ export default function QuotePageClient(): JSX.Element {
           createdAt: line.created_at ?? null,
           updatedAt: line.updated_at ?? null,
           parts,
-          evidencePhotos: getEvidencePhotos(line, inspectionPhotos),
+          evidence:
+            linkedEvidence.length > 0 ? linkedEvidence : fallbackEvidence,
+          requestKind:
+            requestKind === "parts_only"
+              ? "parts_only"
+              : requestKind === "repair"
+                ? "repair"
+                : null,
+          fulfillment:
+            fulfillment === "pickup"
+              ? "pickup"
+              : fulfillment === "appointment"
+                ? "appointment"
+                : null,
         };
       });
 
@@ -362,7 +539,11 @@ export default function QuotePageClient(): JSX.Element {
   }, [load]);
 
   if (!workOrderId) {
-    return <div className="min-h-screen px-4 py-10 text-center text-red-300">Missing quote id.</div>;
+    return (
+      <div className="min-h-screen px-4 py-10 text-center text-red-300">
+        Missing quote id.
+      </div>
+    );
   }
 
   if (loading || !workOrder) {
@@ -373,28 +554,59 @@ export default function QuotePageClient(): JSX.Element {
     );
   }
 
-  const titleLabel = workOrder.custom_id || `Work Order ${workOrder.id.slice(0, 8)}…`;
+  const titleLabel =
+    workOrder.estimate_number ||
+    workOrder.custom_id ||
+    `Work Order ${workOrder.id.slice(0, 8)}…`;
 
   const pendingLines = lines.filter((line) => line.approvalState === "pending");
-  const approvedLines = lines.filter((line) => line.approvalState === "approved");
-  const declinedDeferredLines = lines.filter((line) => line.approvalState === "declined" || line.approvalState === "deferred");
-  const pendingSubtotal = pendingLines.reduce((sum, line) => sum + line.totalAmount, 0);
-  const approvedSubtotal = approvedLines.reduce((sum, line) => sum + line.totalAmount, 0);
-  const declinedDeferredSubtotal = declinedDeferredLines.reduce((sum, line) => sum + line.totalAmount, 0);
+  const approvedLines = lines.filter(
+    (line) => line.approvalState === "approved",
+  );
+  const declinedDeferredLines = lines.filter(
+    (line) =>
+      line.approvalState === "declined" || line.approvalState === "deferred",
+  );
+  const pendingSubtotal = pendingLines.reduce(
+    (sum, line) => sum + line.totalAmount,
+    0,
+  );
+  const approvedSubtotal = approvedLines.reduce(
+    (sum, line) => sum + line.totalAmount,
+    0,
+  );
+  const declinedDeferredSubtotal = declinedDeferredLines.reduce(
+    (sum, line) => sum + line.totalAmount,
+    0,
+  );
   const lineSubtotal = lines.reduce((sum, line) => sum + line.totalAmount, 0);
   const laborSubtotal = lines.reduce((sum, line) => sum + line.laborAmount, 0);
   const partsSubtotal = lines.reduce((sum, line) => sum + line.partsAmount, 0);
   const shopSupplies = calculateShopSupplies({
     baseAmount: laborSubtotal + partsSubtotal,
-    settings: resolveShopSuppliesSettings(shop as Parameters<typeof resolveShopSuppliesSettings>[0]),
-    override: resolveShopSuppliesOverride(workOrder as Parameters<typeof resolveShopSuppliesOverride>[0]),
+    settings: resolveShopSuppliesSettings(
+      shop as Parameters<typeof resolveShopSuppliesSettings>[0],
+    ),
+    override: resolveShopSuppliesOverride(
+      workOrder as Parameters<typeof resolveShopSuppliesOverride>[0],
+    ),
   });
   const subtotal = lineSubtotal + shopSupplies.amount;
 
   const provinceCode = getShopProvinceCode(shop);
-  const taxRes = provinceCode ? calculateTax(lineSubtotal + shopSuppliesTaxableSubtotal(shopSupplies), provinceCode) : null;
-  const taxAmount = lines.some((line) => line.taxAmount > 0) ? lines.reduce((sum, line) => sum + line.taxAmount, 0) : taxRes ? getTaxAmount(taxRes) : 0;
-  const grandTotal = subtotal + (lines.some((line) => line.taxAmount > 0) ? 0 : taxAmount);
+  const taxRes = provinceCode
+    ? calculateTax(
+        lineSubtotal + shopSuppliesTaxableSubtotal(shopSupplies),
+        provinceCode,
+      )
+    : null;
+  const taxAmount = lines.some((line) => line.taxAmount > 0)
+    ? lines.reduce((sum, line) => sum + line.taxAmount, 0)
+    : taxRes
+      ? getTaxAmount(taxRes)
+      : 0;
+  const grandTotal =
+    subtotal + (lines.some((line) => line.taxAmount > 0) ? 0 : taxAmount);
   return (
     <div
       className="
@@ -418,7 +630,9 @@ export default function QuotePageClient(): JSX.Element {
               href="/portal"
               className="inline-flex items-center gap-2 rounded-full border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] px-3 py-1.5 text-[11px] uppercase tracking-[0.2em] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-overlay)] hover:text-[color:var(--theme-text-primary)]"
             >
-              <span aria-hidden className="text-base leading-none">←</span>
+              <span aria-hidden className="text-base leading-none">
+                ←
+              </span>
               Back
             </Link>
 
@@ -438,51 +652,89 @@ export default function QuotePageClient(): JSX.Element {
               {titleLabel}
             </h1>
             <p className="text-xs text-[color:var(--theme-text-secondary)] sm:text-sm">
-              Review sent recommendations and choose what you want the shop to perform. Only approved items become authorized work.
+              Review sent recommendations and choose what you want the shop to
+              perform. Only approved items become authorized work.
             </p>
           </div>
 
           <div className="mb-6 grid gap-4 sm:grid-cols-4">
             <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3">
-              <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">Pending authorization</div>
-              <div className="mt-1 text-lg font-semibold text-[color:var(--theme-text-primary)]">{formatCurrency(pendingSubtotal)}</div>
-              <div className="mt-0.5 text-[11px] text-[color:var(--theme-text-muted)]">{pendingLines.length} item(s)</div>
-            </div>
-
-            <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3">
-              <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">Approved</div>
-              <div className="mt-1 text-lg font-semibold text-emerald-100">{formatCurrency(approvedSubtotal)}</div>
-              <div className="mt-0.5 text-[11px] text-[color:var(--theme-text-muted)]">{approvedLines.length} item(s)</div>
-            </div>
-
-            <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3">
-              <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">Declined / Deferred</div>
-              <div className="mt-1 text-lg font-semibold text-[color:var(--theme-text-primary)]">{formatCurrency(declinedDeferredSubtotal)}</div>
-              <div className="mt-0.5 text-[11px] text-[color:var(--theme-text-muted)]">{declinedDeferredLines.length} item(s)</div>
-            </div>
-
-            <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3">
-              <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">Visible quote total</div>
-              <div className="mt-1 text-lg font-semibold text-[color:var(--theme-text-primary)]">{formatCurrency(grandTotal)}</div>
+              <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
+                Pending authorization
+              </div>
+              <div className="mt-1 text-lg font-semibold text-[color:var(--theme-text-primary)]">
+                {formatCurrency(pendingSubtotal)}
+              </div>
               <div className="mt-0.5 text-[11px] text-[color:var(--theme-text-muted)]">
-                Tax: {formatCurrency(taxAmount)} {provinceCode ? `(${provinceCode})` : ""}
+                {pendingLines.length} item(s)
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
+                Approved
+              </div>
+              <div className="mt-1 text-lg font-semibold text-emerald-100">
+                {formatCurrency(approvedSubtotal)}
+              </div>
+              <div className="mt-0.5 text-[11px] text-[color:var(--theme-text-muted)]">
+                {approvedLines.length} item(s)
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
+                Declined / Deferred
+              </div>
+              <div className="mt-1 text-lg font-semibold text-[color:var(--theme-text-primary)]">
+                {formatCurrency(declinedDeferredSubtotal)}
+              </div>
+              <div className="mt-0.5 text-[11px] text-[color:var(--theme-text-muted)]">
+                {declinedDeferredLines.length} item(s)
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
+                Visible quote total
+              </div>
+              <div className="mt-1 text-lg font-semibold text-[color:var(--theme-text-primary)]">
+                {formatCurrency(grandTotal)}
+              </div>
+              <div className="mt-0.5 text-[11px] text-[color:var(--theme-text-muted)]">
+                Tax: {formatCurrency(taxAmount)}{" "}
+                {provinceCode ? `(${provinceCode})` : ""}
               </div>
             </div>
           </div>
 
           <div className="mb-6 grid gap-4 sm:grid-cols-3">
             <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3">
-              <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">Labor total</div>
-              <div className="mt-1 text-lg font-semibold text-[color:var(--theme-text-primary)]">{formatCurrency(laborSubtotal)}</div>
+              <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
+                Labor total
+              </div>
+              <div className="mt-1 text-lg font-semibold text-[color:var(--theme-text-primary)]">
+                {formatCurrency(laborSubtotal)}
+              </div>
             </div>
             <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3">
-              <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">Parts total</div>
-              <div className="mt-1 text-lg font-semibold text-[color:var(--theme-text-primary)]">{formatCurrency(partsSubtotal)}</div>
+              <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
+                Parts total
+              </div>
+              <div className="mt-1 text-lg font-semibold text-[color:var(--theme-text-primary)]">
+                {formatCurrency(partsSubtotal)}
+              </div>
             </div>
             <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3">
-              <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">Shop supplies</div>
-              <div className="mt-1 text-lg font-semibold text-[color:var(--theme-text-primary)]">{formatCurrency(shopSupplies.amount)}</div>
-              <div className="mt-0.5 text-[11px] text-[color:var(--theme-text-muted)]">{shopSuppliesSummaryText(shopSupplies)}</div>
+              <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
+                Shop supplies
+              </div>
+              <div className="mt-1 text-lg font-semibold text-[color:var(--theme-text-primary)]">
+                {formatCurrency(shopSupplies.amount)}
+              </div>
+              <div className="mt-0.5 text-[11px] text-[color:var(--theme-text-muted)]">
+                {shopSuppliesSummaryText(shopSupplies)}
+              </div>
             </div>
           </div>
 
@@ -493,27 +745,41 @@ export default function QuotePageClient(): JSX.Element {
               </div>
             ) : (
               lines.map((line) => (
-                <div key={line.id} className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-4">
+                <div
+                  key={line.id}
+                  className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-4"
+                >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">Recommendation</div>
+                      <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">
+                        Recommendation
+                      </div>
                       <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
-                        {line.lineNo ? `#${line.lineNo} • ` : ""}{line.title}
+                        {line.lineNo ? `#${line.lineNo} • ` : ""}
+                        {line.title}
                       </div>
                       {line.complaint ? (
                         <div className="mt-1 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 py-1.5 text-xs text-[color:var(--theme-text-secondary)]">
-                          <span className="text-[color:var(--theme-text-muted)]">Issue observed:</span> {line.complaint}
+                          <span className="text-[color:var(--theme-text-muted)]">
+                            Issue observed:
+                          </span>{" "}
+                          {line.complaint}
                         </div>
                       ) : null}
                     </div>
 
                     <div className="text-right">
-                      <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">{formatCurrency(line.totalAmount)}</div>
+                      <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                        {formatCurrency(line.totalAmount)}
+                      </div>
                       <div className="mt-1 flex justify-end">
                         <StatusBadge
                           variant={
                             formatDecisionStatus({
-                              approvalState: line.approvalState === "deferred" ? "pending" : line.approvalState,
+                              approvalState:
+                                line.approvalState === "deferred"
+                                  ? "pending"
+                                  : line.approvalState,
                               workStatus: line.status,
                             }).variant
                           }
@@ -532,88 +798,151 @@ export default function QuotePageClient(): JSX.Element {
                   <div className="mt-4 grid gap-3 sm:grid-cols-2">
                     {line.cause ? (
                       <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3">
-                        <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">Cause</div>
-                        <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">{line.cause}</div>
+                        <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
+                          Cause
+                        </div>
+                        <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+                          {line.cause}
+                        </div>
                       </div>
                     ) : null}
                     {line.correction ? (
                       <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3">
-                        <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">Correction</div>
-                        <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">{line.correction}</div>
+                        <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
+                          Correction
+                        </div>
+                        <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+                          {line.correction}
+                        </div>
                       </div>
                     ) : null}
                     {line.notes ? (
                       <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3 sm:col-span-2">
-                        <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">Advisor / technician notes</div>
-                        <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">{line.notes}</div>
+                        <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
+                          Advisor / technician notes
+                        </div>
+                        <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+                          {line.notes}
+                        </div>
                       </div>
                     ) : null}
                   </div>
 
                   <div className="mt-4 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-3">
-                    <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">Evidence photo</div>
-                    {line.evidencePhotos.length > 0 ? (
+                    <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
+                      Repair evidence
+                    </div>
+                    {line.evidence.length > 0 ? (
                       <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
-                        {line.evidencePhotos.map((photo, idx) => (
-                          <a
-                            key={`${line.id}-photo-${idx}`}
-                            href={photo}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="overflow-hidden rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]"
-                          >
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img
-                              src={photo}
-                              alt={`Evidence ${idx + 1}`}
-                              className="h-24 w-full object-cover"
-                            />
-                          </a>
-                        ))}
+                        {line.evidence.map((item, idx) =>
+                          isVideoEvidence(item) && item.displayUrl ? (
+                            <div
+                              key={item.id}
+                              className="overflow-hidden rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]"
+                            >
+                              <video
+                                src={item.displayUrl}
+                                controls
+                                preload="metadata"
+                                className="h-24 w-full object-cover"
+                              />
+                            </div>
+                          ) : (
+                            <a
+                              key={item.id}
+                              href={item.displayUrl ?? "#"}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="overflow-hidden rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]"
+                            >
+                              <EvidenceImage
+                                item={item}
+                                alt={`Evidence ${idx + 1}`}
+                                className="h-24 [&_img]:h-full [&_img]:object-cover"
+                              />
+                            </a>
+                          ),
+                        )}
                       </div>
                     ) : (
-                      <div className="mt-2 text-xs text-[color:var(--theme-text-secondary)]">No photo evidence attached.</div>
+                      <div className="mt-2 text-xs text-[color:var(--theme-text-secondary)]">
+                        No customer-visible evidence attached.
+                      </div>
                     )}
                   </div>
 
                   <div className="mt-4 grid gap-3 sm:grid-cols-4">
                     <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3">
-                      <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">Labor</div>
-                      <div className="mt-1 text-sm font-medium text-[color:var(--theme-text-primary)]">{formatCurrency(line.laborAmount)}</div>
-                      <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">{line.laborHours.toFixed(1)} hr</div>
+                      <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
+                        Labor
+                      </div>
+                      <div className="mt-1 text-sm font-medium text-[color:var(--theme-text-primary)]">
+                        {formatCurrency(line.laborAmount)}
+                      </div>
+                      <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+                        {line.laborHours.toFixed(1)} hr
+                      </div>
                     </div>
 
                     <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3">
-                      <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">Parts</div>
-                      <div className="mt-1 text-sm font-medium text-[color:var(--theme-text-primary)]">{formatCurrency(line.partsAmount)}</div>
-                      <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">{line.parts.length} item(s)</div>
+                      <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
+                        Parts
+                      </div>
+                      <div className="mt-1 text-sm font-medium text-[color:var(--theme-text-primary)]">
+                        {formatCurrency(line.partsAmount)}
+                      </div>
+                      <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+                        {line.parts.length} item(s)
+                      </div>
                     </div>
 
                     <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3">
-                      <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">Tax</div>
-                      <div className="mt-1 text-sm font-medium text-[color:var(--theme-text-primary)]">{formatCurrency(line.taxAmount)}</div>
+                      <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
+                        Tax
+                      </div>
+                      <div className="mt-1 text-sm font-medium text-[color:var(--theme-text-primary)]">
+                        {formatCurrency(line.taxAmount)}
+                      </div>
                     </div>
 
                     <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3">
-                      <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">Decision total</div>
-                      <div className="mt-1 text-sm font-medium text-[color:var(--theme-text-primary)]">{formatCurrency(line.totalAmount)}</div>
+                      <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
+                        Decision total
+                      </div>
+                      <div className="mt-1 text-sm font-medium text-[color:var(--theme-text-primary)]">
+                        {formatCurrency(line.totalAmount)}
+                      </div>
                     </div>
                   </div>
 
                   {line.parts.length > 0 ? (
                     <div className="mt-4 space-y-2">
-                      <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">Parts breakdown</div>
+                      <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
+                        Parts breakdown
+                      </div>
                       {line.parts.map((part, idx) => (
-                        <div key={`${line.id}-${idx}`} className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3">
+                        <div
+                          key={`${line.id}-${idx}`}
+                          className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3"
+                        >
                           <div className="flex flex-wrap items-start justify-between gap-3">
                             <div>
-                              <div className="text-sm font-medium text-[color:var(--theme-text-primary)]">{part.name}</div>
-                              {part.meta ? <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">{part.meta}</div> : null}
+                              <div className="text-sm font-medium text-[color:var(--theme-text-primary)]">
+                                {part.name}
+                              </div>
+                              {part.meta ? (
+                                <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+                                  {part.meta}
+                                </div>
+                              ) : null}
                               <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
-                                Qty {part.qty} × {formatCurrency(part.unitCost)}
+                                Qty {part.qty} ×{" "}
+                                {formatCurrency(part.unitPrice)}
                               </div>
                             </div>
-                            <div className="text-sm font-medium text-[color:var(--theme-text-primary)]">{formatCurrency(part.total)}</div>
+                            <div className="text-sm font-medium text-[color:var(--theme-text-primary)]">
+                              {formatCurrency(part.total)}
+                            </div>
                           </div>
                         </div>
                       ))}
@@ -624,9 +953,15 @@ export default function QuotePageClient(): JSX.Element {
                     <div>Status: {line.status || "—"}</div>
                     <div>Stage: {line.stage || "—"}</div>
                     <div>Sent: {formatDate(line.sentAt)}</div>
-                    {line.approvedAt ? <div>Approved: {formatDate(line.approvedAt)}</div> : null}
-                    {line.declinedAt ? <div>Declined: {formatDate(line.declinedAt)}</div> : null}
-                    {line.convertedWorkOrderLineId ? <div>Authorized work created</div> : null}
+                    {line.approvedAt ? (
+                      <div>Approved: {formatDate(line.approvedAt)}</div>
+                    ) : null}
+                    {line.declinedAt ? (
+                      <div>Declined: {formatDate(line.declinedAt)}</div>
+                    ) : null}
+                    {line.convertedWorkOrderLineId ? (
+                      <div>Authorized work created</div>
+                    ) : null}
                   </div>
                 </div>
               ))
@@ -645,6 +980,46 @@ export default function QuotePageClient(): JSX.Element {
               void load();
             }}
           />
+
+          {approvedLines.some((line) => line.requestKind === "repair") ? (
+            <div className="mt-6 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
+              <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                Ready to schedule the approved repair?
+              </div>
+              <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+                Choose a time without creating another quote or work order.
+              </p>
+              <Link
+                href={`/portal/request/when?quote=${encodeURIComponent(approvedLines.find((line) => line.requestKind === "repair")?.id ?? "")}`}
+                className="mt-3 inline-flex min-h-11 items-center justify-center rounded-xl bg-[var(--accent-copper)] px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-on-accent)]"
+              >
+                Book appointment for this quote
+              </Link>
+            </div>
+          ) : null}
+
+          {approvedLines.some((line) => line.requestKind === "parts_only") ? (
+            <div className="mt-6 space-y-3">
+              <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
+                <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                  Parts pickup approved
+                </div>
+                <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+                  Parts can now order or reserve the approved items. The shop
+                  will send the invoice when the pickup order is ready for
+                  payment.
+                </p>
+              </div>
+              {workOrder.invoice_sent_at && shop?.id ? (
+                <PortalInvoicePayButton
+                  shopId={shop.id}
+                  workOrderId={workOrder.id}
+                  amountCents={Math.max(0, Math.round(grandTotal * 100))}
+                  currency="cad"
+                />
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

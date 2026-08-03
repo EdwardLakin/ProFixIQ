@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requestAiActionPreviewApproval, serializeAiApprovalRequestForUi } from "@/features/ai/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 type ApprovalRequestBody = {
   reason?: string;
@@ -79,7 +80,7 @@ export async function POST(
   };
 
   try {
-    const result = await requestAiActionPreviewApproval(access.supabase, actor, {
+    const result = await requestAiActionPreviewApproval(createAdminSupabase(), actor, {
       previewId,
       reason: parsedBody.reason,
       ownerPinProofRef: parsedBody.ownerPinProofRef as never,

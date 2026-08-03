@@ -5,6 +5,10 @@ const migration = readFileSync(
   "supabase/migrations/20260719090000_mobile_technician_stabilization.sql",
   "utf8",
 );
+const liveInspectionMigration = readFileSync(
+  "supabase/migrations/20260721160000_inspection_live_autosave_signature_hardening.sql",
+  "utf8",
+);
 const signRoute = readFileSync(
   "app/api/inspections/sign/route.ts",
   "utf8",
@@ -23,6 +27,10 @@ const mobilePartsPage = readFileSync(
 );
 const mobilePartsWorkflow = readFileSync(
   "features/parts/mobile/MobilePartsWorkflow.tsx",
+  "utf8",
+);
+const receiveDrawer = readFileSync(
+  "features/parts/components/ReceiveDrawer.tsx",
   "utf8",
 );
 
@@ -50,24 +58,30 @@ describe("mobile technician stabilization", () => {
     expect(migration).toContain("Inspection is finalized and locked");
   });
 
-  it("anchors a mobile inspection before signing instead of inserting a bare row", () => {
+  it("requires autosave and resolves technician evidence on the server before signing", () => {
     expect(signRoute).toContain("resolveInspectionForSigning");
-    expect(signRoute).toContain("work_order_line_id: canonicalLineId");
-    expect(signRoute).toContain("work_order_id: canonicalWorkOrderId");
-    expect(signRoute).not.toContain(
-      "Unable to auto-create inspection before signing",
-    );
+    expect(signRoute).toContain("Inspection has not finished autosaving");
+    expect(signRoute).toContain("tech_signature_path");
+    expect(signRoute).toContain("profileName(profile)");
     expect(signRoute).not.toContain(".upsert(");
     expect(signaturePanel).toContain(
       "workOrderLineId: resolvedWorkOrderLineId",
     );
     expect(signaturePanel).toContain(
-      'sessionStorage.getItem("inspection:params")',
+      "const prepared = await beforeSign()",
+    );
+    expect(signaturePanel).not.toContain("signatureImagePath");
+    expect(signaturePanel).not.toContain("/api/profile/signature");
+    expect(liveInspectionMigration).toContain(
+      "create or replace function public.sign_inspection",
+    );
+    expect(liveInspectionMigration).not.toContain(
+      "update public.inspection_signatures",
     );
   });
 
   it("exposes cause and correction independently from the finish button", () => {
-    expect(mobileJobPage).toContain("Cause / Correction");
+    expect(mobileJobPage).toContain("Cause & Correction");
     expect(mobileJobPage).toContain("save_story_draft");
     expect(mobileJobPage).toContain("CauseCorrectionModal");
   });
@@ -75,9 +89,10 @@ describe("mobile technician stabilization", () => {
   it("replaces the mobile parts placeholder with actionable parts commands", () => {
     expect(mobilePartsPage).toContain("MobilePartsWorkflow");
     expect(mobilePartsWorkflow).toContain("part_request_items");
-    expect(mobilePartsWorkflow).toContain("/receive");
+    expect(receiveDrawer).toContain("/receive");
     expect(mobilePartsWorkflow).toContain("/allocate");
     expect(mobilePartsWorkflow).toContain("Open parts workbench");
     expect(mobilePartsPage).not.toContain("Mobile parts rollout");
   });
 });
+

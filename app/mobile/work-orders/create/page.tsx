@@ -56,6 +56,7 @@ import {
   pruneDependentPartsRequestDrafts,
   resolveAndSubmitDependentPartsDrafts,
 } from "@/features/parts/offline/partsRequestDrafts";
+import { requestVehicleRecallEnrichment } from "@/features/vehicles/lib/requestRecallEnrichment";
 
 type DB = Database;
 type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -1061,6 +1062,7 @@ export default function MobileCreateWorkOrderPage() {
 
       const cust = await ensureCustomer();
       const veh = await ensureVehicle(cust);
+      void requestVehicleRecallEnrichment(veh.id);
 
       if (draftLines.length > 0) {
         const prepared = buildAdvisorDraft();

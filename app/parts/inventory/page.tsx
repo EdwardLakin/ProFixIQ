@@ -483,6 +483,9 @@ export default function InventoryPage(): JSX.Element {
   const [recvPart, setRecvPart] = useState<Part | null>(null);
   const [recvLoc, setRecvLoc] = useState<string>("");
   const [recvQty, setRecvQty] = useState<number | "">("");
+  const [recvOperationId, setRecvOperationId] = useState<string>("");
+  const [recvSaving, setRecvSaving] = useState<boolean>(false);
+  const recvSubmittingRef = useRef(false);
 
   // Import CSV
   const [csvRows, setCsvRows] = useState<ParsedPartCsvRow[]>([]);
@@ -745,8 +748,8 @@ export default function InventoryPage(): JSX.Element {
           p_loc: initLoc,
           p_qty: initQty,
           p_reason: "receive",
-          p_ref_kind: "manual_receive",
-          p_ref_id: null,
+          p_ref_kind: "parts_inventory_initial_stock",
+          p_ref_id: id,
         });
       } catch (err: unknown) {
         alert(`Part created, but stock receive failed: ${errMsg(err)}`);
@@ -797,12 +800,23 @@ export default function InventoryPage(): JSX.Element {
   const openReceive = (p: Part) => {
     setRecvPart(p);
     setRecvQty("");
+    setRecvOperationId(crypto.randomUUID());
     setRecvOpen(true);
   };
 
   const applyReceive = async () => {
-    if (!recvPart?.id || !recvLoc || typeof recvQty !== "number" || recvQty <= 0) return;
+    if (
+      recvSubmittingRef.current ||
+      !recvPart?.id ||
+      !recvLoc ||
+      typeof recvQty !== "number" ||
+      recvQty <= 0
+    ) return;
 
+    recvSubmittingRef.current = true;
+    setRecvSaving(true);
+    const operationId = recvOperationId || crypto.randomUUID();
+    if (!recvOperationId) setRecvOperationId(operationId);
     try {
       await applyStockMoveRPC(supabase, {
         p_part: recvPart.id,
@@ -810,12 +824,15 @@ export default function InventoryPage(): JSX.Element {
         p_qty: recvQty,
         p_reason: "receive",
         p_ref_kind: "manual_receive",
-        p_ref_id: null,
+        p_ref_id: operationId,
       });
       setRecvOpen(false);
       await load(shopId);
     } catch (err: unknown) {
       alert(errMsg(err));
+    } finally {
+      recvSubmittingRef.current = false;
+      setRecvSaving(false);
     }
   };
 
@@ -966,7 +983,7 @@ export default function InventoryPage(): JSX.Element {
           continue;
         }
         const delta = (row.quantity_on_hand as number) - (currentByPartLoc.get(`${partId}:${locId}`) ?? 0);
-        if (delta !== 0) await applyStockMoveRPC(supabase, { p_part: partId, p_loc: locId, p_qty: delta, p_reason: "adjust", p_ref_kind: "parts_inventory_csv_import", p_ref_id: null });
+        if (delta !== 0) await applyStockMoveRPC(supabase, { p_part: partId, p_loc: locId, p_qty: delta, p_reason: "adjust", p_ref_kind: "parts_inventory_csv_import", p_ref_id: crypto.randomUUID() });
         adjusted++;
         if (adjusted % 25 === 0 || adjusted === stockRows.length) setCsvProgress({ phase: "Applying stock adjustments", phaseKey: "importing", processed: adjusted, total: stockRows.length, percent: 84 + Math.round((adjusted / Math.max(1, stockRows.length)) * 10), imported: counts.created + counts.updated, skipped: counts.skipped, failed: counts.failed });
       }
@@ -1419,9 +1436,9 @@ export default function InventoryPage(): JSX.Element {
             <button
               className={btnBlue}
               onClick={applyReceive}
-              disabled={!recvPart?.id || !recvLoc || typeof recvQty !== "number" || recvQty <= 0}
+              disabled={recvSaving || !recvPart?.id || !recvLoc || typeof recvQty !== "number" || recvQty <= 0}
             >
-              Apply Receive
+              {recvSaving ? "Receiving..." : "Apply Receive"}
             </button>
           </div>
         }

@@ -4,6 +4,11 @@ import {
   createDashboardServerClient,
   getDashboardIdentity,
 } from "@/features/dashboard/server/dashboard-shell-data";
+import {
+  CANONICAL_WORK_ORDER_OPERATIONAL_STAGES,
+  WORK_ORDER_OPERATIONAL_STAGE_LABELS,
+} from "@/features/work-orders/lib/operational-stage";
+import { isGenericWaitingWorkOrder } from "@/features/shared/lib/workboard/utils";
 
 const OPEN_PART_STATUSES = [
   "requested",
@@ -199,7 +204,7 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
     supabase
       .from("v_work_order_board_cards_shop")
       .select(
-        "work_order_id,custom_id,display_name,overall_stage,risk_level,priority,is_waiter,time_in_stage_seconds",
+        "work_order_id,custom_id,display_name,overall_stage,risk_level,priority,is_waiter,has_waiting_parts,time_in_stage_seconds",
       )
       .eq("shop_id", identity.shopId)
       .order("activity_at", { ascending: false })
@@ -372,13 +377,11 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
     ? boardRows.filter((row) => scopedWorkOrderIds.has(row.work_order_id))
     : boardRows;
   const activeBoardRows = boardRowsForViewer.filter(
-    (row) => row.overall_stage !== "completed",
+    (row) => row.overall_stage !== "closed",
   );
   const mostRecentBlockedWorkOrderId =
     activeBoardRows.find(
-      (row) =>
-        row.overall_stage === "waiting_parts" ||
-        row.overall_stage === "on_hold",
+      (row) => row.overall_stage === "waiting",
     )?.work_order_id ?? null;
 
   if (boardResult.error) {
@@ -392,9 +395,7 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
     payload.topSummary.activeJobs = activeBoardRows.length;
     payload.topSummary.completedToday = completedTodayResult.error ? 0 : (completedTodayResult.count ?? 0);
     payload.topSummary.blockedJobs = activeBoardRows.filter(
-      (row) =>
-        row.overall_stage === "waiting_parts" ||
-        row.overall_stage === "on_hold",
+      (row) => row.overall_stage === "waiting",
     ).length;
 
     const stageCounts = new Map<string, number>();
@@ -411,7 +412,7 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
 
     const awaiting = stageCounts.get("awaiting approval") ?? 0;
     const inProgress = stageCounts.get("in progress") ?? 0;
-    const waitingParts = stageCounts.get("waiting parts") ?? 0;
+    const waiting = stageCounts.get("waiting") ?? 0;
     payload.activeJobSummary = [
       { label: "Awaiting", value: awaiting, pct: asPct(awaiting, total) },
       {
@@ -420,9 +421,9 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
         pct: asPct(inProgress, total),
       },
       {
-        label: "Waiting parts",
-        value: waitingParts,
-        pct: asPct(waitingParts, total),
+        label: "Waiting",
+        value: waiting,
+        pct: asPct(waiting, total),
       },
       {
         label: "Tech coverage",
@@ -442,9 +443,11 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
       priority: row.priority ?? 3,
     }));
 
-    payload.flowMix = payload.liveShopLoad.slice(0, 4).map((entry) => ({
-      label: entry.label,
-      value: entry.count,
+    payload.flowMix = CANONICAL_WORK_ORDER_OPERATIONAL_STAGES.filter(
+      (stage) => stage !== "closed",
+    ).map((stage) => ({
+      label: WORK_ORDER_OPERATIONAL_STAGE_LABELS[stage],
+      value: stageCounts.get(stageLabel(stage)) ?? 0,
     }));
   }
 
@@ -501,7 +504,7 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
 
   const blockedTargetHref = mostRecentBlockedWorkOrderId
     ? `/work-orders/${mostRecentBlockedWorkOrderId}`
-    : "/work-orders/board?stage=on_hold";
+    : "/work-orders/board?stage=waiting";
   const blockedTargetKind: "item" | "filtered" = mostRecentBlockedWorkOrderId
     ? "item"
     : "filtered";
@@ -643,8 +646,8 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
             ? "My blocked jobs need action"
             : "Blocked jobs climbing",
           detail: isTechnicianScoped
-            ? `${payload.topSummary.blockedJobs} of your assigned jobs are waiting parts or on hold.`
-            : `${payload.topSummary.blockedJobs} jobs are currently waiting parts or on hold.`,
+            ? `${payload.topSummary.blockedJobs} of your assigned jobs are waiting on an operational dependency.`
+            : `${payload.topSummary.blockedJobs} jobs are currently waiting on an operational dependency.`,
           tone: "critical",
           href: blockedTargetHref,
           targetKind: blockedTargetKind,
@@ -657,7 +660,7 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
             ? "None of your assigned jobs are currently blocked."
             : "No blocked stage spike detected.",
           tone: "info",
-          href: "/work-orders/board?stage=on_hold",
+          href: "/work-orders/board?stage=waiting",
           targetKind: "filtered",
         },
     payload.topSummary.waitingApprovals > 3
@@ -793,7 +796,7 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
     href: waitingPartsTargetHref,
     targetKind: waitingPartsTargetKind,
   };
-  const onHoldCount = activeBoardRows.filter((row) => row.overall_stage === "on_hold").length;
+  const waitingCount = activeBoardRows.filter(isGenericWaitingWorkOrder).length;
   const waiterCount = activeBoardRows.filter((row) => Boolean(row.is_waiter)).length;
   const longRunningCount = activeBoardRows.filter((row) => (row.time_in_stage_seconds ?? 0) >= 4 * 60 * 60).length;
   const idleTechCount = Math.max(0, payload.topSummary.techniciansClockedIn - activeLines.length);
@@ -801,7 +804,7 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
   payload.immediateAttention = [
     payload.topSummary.waitingApprovals > 0 ? waitingApprovalCard : null,
     payload.topSummary.waitingParts > 0 ? waitingPartsCard : null,
-    onHoldCount > 0 ? { label: "Jobs on hold", value: String(onHoldCount), tone: "accent" as const, href: "/work-orders/board?stage=on_hold", targetKind: "filtered" as const } : null,
+    waitingCount > 0 ? { label: "Jobs waiting", value: String(waitingCount), tone: "accent" as const, href: "/work-orders/board?stage=waiting", targetKind: "filtered" as const } : null,
     idleTechCount > 0 ? { label: "Technician with no active job", value: String(idleTechCount), tone: "accent" as const, href: "/dashboard/workforce/attendance", targetKind: "filtered" as const } : null,
     longRunningCount > 0 ? { label: "Long-running active jobs", value: String(longRunningCount), tone: "accent" as const, href: "/work-orders/board?stage=in_progress", targetKind: "filtered" as const } : null,
     waiterCount > 0 ? { label: "Customers currently waiting", value: String(waiterCount), tone: "accent" as const, href: "/work-orders/board", targetKind: "filtered" as const } : null,
@@ -813,7 +816,7 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
     { label: "Technicians clocked in", value: String(payload.topSummary.techniciansClockedIn), href: "/dashboard/workforce/attendance" },
     { label: "Jobs currently active", value: String(activeLines.length), href: "/work-orders/board?stage=in_progress" },
     { label: "Appointments today", value: String(payload.topSummary.appointmentsToday), href: "/dashboard/bookings" },
-    { label: "Completed today", value: String(payload.topSummary.completedToday), href: "/work-orders/board?stage=completed" },
+    { label: "Completed today", value: String(payload.topSummary.completedToday), href: "/work-orders/board?stage=closed" },
   ];
 
   payload.quickActions = [

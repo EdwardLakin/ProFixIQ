@@ -177,6 +177,7 @@ export async function authorizeConversationContext({
     .select("id, shop_id, vehicle_id, work_order_id")
     .eq("id", normalizedId)
     .eq("shop_id", shopId)
+    .eq("is_canonical", true)
     .maybeSingle();
   if (inspectionError) return { ok: false, status: 500, error: inspectionError.message };
   if (!inspection) return { ok: false, status: 404, error: "Inspection context not found in this shop" };

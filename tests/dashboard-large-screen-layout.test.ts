@@ -10,7 +10,7 @@ describe("large-screen dashboard layout", () => {
       "features/shared/components/RoleHubTiles/RoleHubTiles.tsx",
       "features/dashboard/app/dashboard/advisor/page.tsx",
       "features/dashboard/app/dashboard/admin/AdminSurface.tsx",
-      "features/dashboard/app/dashboard/admin/AdminDashboardClient.tsx",
+      "features/dashboard/app/dashboard/workforce/WorkforceShell.tsx",
       "features/dashboard/app/dashboard/admin/BillingClient.tsx",
       "features/dashboard/app/dashboard/owner/reports/page.tsx",
       "features/dashboard/app/dashboard/owner/settings/page.tsx",

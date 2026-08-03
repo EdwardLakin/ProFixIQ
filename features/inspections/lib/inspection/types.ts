@@ -329,6 +329,7 @@ export interface InspectionSession {
   customerId?: string | null;
   vehicleId?: string | null;
   workOrderId?: string | null;
+  workOrderLineId?: string | null;
   templateId?: string | null;
   templateName?: string | null;
   templateitem?: string | null;
@@ -345,6 +346,8 @@ export interface InspectionSession {
   completed: boolean;
   isPaused: boolean;
   lastUpdated?: string;
+  syncRevision?: number;
+  serverUpdatedAt?: string | null;
   customer?: SessionCustomer | null;
   vehicle?: SessionVehicle | null;
   sections: InspectionCategory[];

@@ -3,18 +3,20 @@ export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
-import type { Database } from "@shared/types/types/supabase";
+import { createAdminClient } from "@/features/integrations/shopreel/server/createAdminClient";
+import { publishInspectionPdf } from "@/features/inspections/server/publishInspectionPdf";
+import type { InspectionSession } from "@/features/inspections/lib/inspection/types";
+
+type Role = "technician" | "customer" | "advisor";
 
 type SignInspectionArgs = {
   p_inspection_id: string;
-  p_role: "technician" | "customer" | "advisor";
+  p_role: Role;
   p_signed_name: string;
   p_signature_image_path: string | null;
   p_signature_hash: string | null;
+  p_expected_sync_revision: number;
 };
-
-type Role = SignInspectionArgs["p_role"];
-type InspectionInsert = Database["public"]["Tables"]["inspections"]["Insert"];
 
 type SignRequestBody = {
   inspectionId?: string;
@@ -23,9 +25,37 @@ type SignRequestBody = {
   signedName: string;
   signatureImagePath?: string | null;
   signatureHash?: string | null;
+  expectedSyncRevision: number;
+};
+
+type ProfileRow = {
+  shop_id: string | null;
+  role: string | null;
+  full_name: string | null;
+  tech_signature_path: string | null;
+  tech_signature_hash: string | null;
 };
 
 const ALLOWED_ROLES: Role[] = ["technician", "customer", "advisor"];
+const ADVISOR_PROFILE_ROLES = new Set([
+  "advisor",
+  "service_advisor",
+  "service advisor",
+  "owner",
+  "admin",
+  "manager",
+]);
+const TECHNICIAN_PROFILE_ROLES = new Set([
+  "technician",
+  "tech",
+  "mechanic",
+  "owner",
+  "admin",
+  "manager",
+  "foreman",
+  "lead_hand",
+  "lead hand",
+]);
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -39,6 +69,14 @@ function cleanUuid(value: unknown): string | null {
   return UUID_RE.test(normalized) ? normalized : null;
 }
 
+function cleanText(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function profileName(profile: ProfileRow): string | null {
+  return cleanText(profile.full_name);
+}
+
 function isSignRequestBody(value: unknown): value is SignRequestBody {
   if (!isRecord(value)) return false;
   if (!cleanUuid(value.inspectionId) && !cleanUuid(value.workOrderLineId)) {
@@ -46,11 +84,26 @@ function isSignRequestBody(value: unknown): value is SignRequestBody {
   }
   if (typeof value.signedName !== "string") return false;
   if (typeof value.role !== "string") return false;
+  if (
+    !Number.isSafeInteger(value.expectedSyncRevision) ||
+    Number(value.expectedSyncRevision) < 1
+  ) {
+    return false;
+  }
   return ALLOWED_ROLES.includes(value.role as Role);
 }
 
 type Supabase = ReturnType<typeof createServerSupabaseRoute>;
 type RpcReturn = { data: unknown; error: { message: string } | null };
+type AttachSignedPdfArgs = {
+  p_inspection_id: string;
+  p_work_order_line_id: string;
+  p_actor_user_id: string;
+  p_expected_sync_revision: number;
+  p_pdf_storage_path: string;
+  p_pdf_sha256: string;
+  p_pdf_url: string;
+};
 type ResolveInspectionResult =
   | { ok: true; inspectionId: string }
   | { ok: false; error: string; status: number };
@@ -59,142 +112,106 @@ async function callSignInspectionRpc(
   client: Supabase,
   args: SignInspectionArgs,
 ): Promise<RpcReturn> {
-  return (client as unknown as {
-    rpc: (fn: string, args: SignInspectionArgs) => Promise<RpcReturn>;
-  }).rpc("sign_inspection", args);
+  return (
+    client as unknown as {
+      rpc: (fn: string, args: SignInspectionArgs) => Promise<RpcReturn>;
+    }
+  ).rpc("sign_inspection", args);
 }
 
-/**
- * Resolve the canonical, shop-scoped inspection row.
- *
- * Mobile inspections begin with a local UUID. Creating a bare row with only
- * that ID and shop violates `inspections_anchor_chk`, so a missing mobile row
- * is created only after its work-order line and work-order anchors have been
- * validated. Existing desktop callers that provide only an inspection ID must
- * already have a persisted row.
- */
+async function callAttachSignedPdfRpc(
+  args: AttachSignedPdfArgs,
+): Promise<RpcReturn> {
+  const admin = createAdminClient();
+  return (
+    admin as unknown as {
+      rpc: (
+        fn: "attach_signed_inspection_pdf_atomic",
+        values: AttachSignedPdfArgs,
+      ) => Promise<RpcReturn>;
+    }
+  ).rpc("attach_signed_inspection_pdf_atomic", args);
+}
+
 async function resolveInspectionForSigning(args: {
   supabase: Supabase;
   requestedInspectionId: string | null;
   workOrderLineId: string | null;
   shopId: string;
-  actorUserId: string;
 }): Promise<ResolveInspectionResult> {
-  const {
-    supabase,
-    requestedInspectionId,
-    workOrderLineId,
-    shopId,
-    actorUserId,
-  } = args;
+  const { supabase, requestedInspectionId, workOrderLineId, shopId } = args;
 
-  if (!workOrderLineId) {
-    if (!requestedInspectionId) {
-      return {
-        ok: false,
-        error: "A persisted inspection or work-order line is required.",
-        status: 400,
-      };
-    }
-
-    const existing = await supabase
-      .from("inspections")
+  if (workOrderLineId) {
+    const lineResult = await supabase
+      .from("work_order_lines")
       .select("id")
-      .eq("id", requestedInspectionId)
+      .eq("id", workOrderLineId)
       .eq("shop_id", shopId)
       .maybeSingle<{ id: string }>();
 
-    if (existing.error) {
-      return { ok: false, error: existing.error.message, status: 400 };
+    if (lineResult.error) {
+      return { ok: false, error: lineResult.error.message, status: 400 };
     }
-    if (!existing.data?.id) {
+    if (!lineResult.data?.id) {
       return {
         ok: false,
-        error: "Save the inspection before signing it.",
-        status: 409,
+        error: "Work-order line was not found for this shop.",
+        status: 404,
       };
     }
-    return { ok: true, inspectionId: existing.data.id };
-  }
 
-  const lineResult = await supabase
-    .from("work_order_lines")
-    .select("id, work_order_id")
-    .eq("id", workOrderLineId)
-    .eq("shop_id", shopId)
-    .maybeSingle<{ id: string; work_order_id: string | null }>();
+    const canonical = await supabase
+      .from("inspections")
+      .select("id")
+      .eq("shop_id", shopId)
+      .eq("work_order_line_id", lineResult.data.id)
+      .eq("is_canonical", true)
+      .maybeSingle<{ id: string }>();
 
-  if (lineResult.error) {
-    return { ok: false, error: lineResult.error.message, status: 400 };
-  }
+    if (canonical.error) {
+      return { ok: false, error: canonical.error.message, status: 400 };
+    }
+    if (canonical.data?.id) {
+      return { ok: true, inspectionId: canonical.data.id };
+    }
 
-  const line = lineResult.data;
-  if (!line?.id || !line.work_order_id) {
     return {
       ok: false,
-      error: "Work-order line was not found for this shop.",
-      status: 404,
+      error:
+        "Inspection has not finished autosaving. Wait a moment and sign again.",
+      status: 409,
     };
   }
 
-  const canonicalLineId = line.id;
-  const canonicalWorkOrderId = line.work_order_id;
-  const findCanonical = async () =>
-    supabase
-      .from("inspections")
-      .select("id")
-      .eq("shop_id", shopId)
-      .eq("work_order_line_id", canonicalLineId)
-      .order("updated_at", { ascending: false, nullsFirst: false })
-      .limit(1)
-      .maybeSingle<{ id: string }>();
+  if (!requestedInspectionId) {
+    return {
+      ok: false,
+      error: "A saved inspection is required before signing.",
+      status: 400,
+    };
+  }
 
-  const existing = await findCanonical();
+  const existing = await supabase
+    .from("inspections")
+    .select("id")
+    .eq("id", requestedInspectionId)
+    .eq("shop_id", shopId)
+    .eq("is_canonical", true)
+    .limit(1)
+    .maybeSingle<{ id: string }>();
+
   if (existing.error) {
     return { ok: false, error: existing.error.message, status: 400 };
   }
-  if (existing.data?.id) {
-    return { ok: true, inspectionId: existing.data.id };
+  if (!existing.data?.id) {
+    return {
+      ok: false,
+      error:
+        "Inspection has not finished autosaving. Wait a moment and sign again.",
+      status: 409,
+    };
   }
-
-  const insertPayload: InspectionInsert = {
-    ...(requestedInspectionId ? { id: requestedInspectionId } : {}),
-    work_order_id: canonicalWorkOrderId,
-    work_order_line_id: canonicalLineId,
-    shop_id: shopId,
-    user_id: actorUserId,
-    summary: {},
-    is_draft: true,
-    completed: false,
-    locked: false,
-    status: "draft",
-  };
-
-  const inserted = await supabase
-    .from("inspections")
-    .insert(insertPayload)
-    .select("id")
-    .maybeSingle<{ id: string }>();
-
-  if (!inserted.error && inserted.data?.id) {
-    return { ok: true, inspectionId: inserted.data.id };
-  }
-
-  // A concurrent first save/sign may have inserted the canonical row. Re-read
-  // before surfacing the insert error so retries remain harmless.
-  const raced = await findCanonical();
-  if (!raced.error && raced.data?.id) {
-    return { ok: true, inspectionId: raced.data.id };
-  }
-
-  return {
-    ok: false,
-    error:
-      inserted.error?.message ||
-      raced.error?.message ||
-      "Unable to create an anchored inspection.",
-    status: 400,
-  };
+  return { ok: true, inspectionId: existing.data.id };
 }
 
 export async function POST(req: NextRequest) {
@@ -210,40 +227,111 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         error:
-          "A valid inspectionId or workOrderLineId, role, and signedName are required.",
+          "A saved inspection revision, valid inspection context, role, and signedName are required.",
       },
       { status: 400 },
     );
   }
 
-  const {
-    role,
-    signedName,
-    signatureImagePath,
-    signatureHash,
-  } = bodyUnknown;
   const requestedInspectionId = cleanUuid(bodyUnknown.inspectionId);
   const workOrderLineId = cleanUuid(bodyUnknown.workOrderLineId);
 
-  let effectiveSignedName = signedName.trim();
-  if (!effectiveSignedName && role === "technician") {
-    const profileNameResult = await supabase
-      .from("profiles")
-      .select("full_name, first_name, last_name")
-      .eq("id", user.id)
-      .maybeSingle<{
-        full_name?: string | null;
-        first_name?: string | null;
-        last_name?: string | null;
-      }>();
+  const profileColumns =
+    "shop_id, full_name, tech_signature_path, tech_signature_hash, role";
+  let profileResult = await supabase
+    .from("profiles")
+    .select(profileColumns)
+    .eq("id", user.id)
+    .maybeSingle<ProfileRow>();
 
-    if (!profileNameResult.error) {
-      const full = (profileNameResult.data?.full_name ?? "").trim();
-      const joined = `${profileNameResult.data?.first_name ?? ""} ${
-        profileNameResult.data?.last_name ?? ""
-      }`.trim();
-      effectiveSignedName = full || joined;
+  // Older and imported staff profiles can keep the auth identity in user_id
+  // while id remains the employee/profile identity. Both are valid in ProFixIQ.
+  if (!profileResult.data && !profileResult.error) {
+    profileResult = await supabase
+      .from("profiles")
+      .select(profileColumns)
+      .eq("user_id", user.id)
+      .limit(1)
+      .maybeSingle<ProfileRow>();
+  }
+
+  const profile = profileResult.data;
+  const profileError = profileResult.error;
+  if (profileError) {
+    return NextResponse.json(
+      { error: `Unable to read profile: ${profileError.message}` },
+      { status: 400 },
+    );
+  }
+  if (!profile?.shop_id) {
+    return NextResponse.json(
+      { error: "Your profile is missing shop_id; cannot sign inspection." },
+      { status: 403 },
+    );
+  }
+
+  const authMetadataName =
+    typeof user.user_metadata?.full_name === "string"
+      ? cleanText(user.user_metadata.full_name)
+      : typeof user.user_metadata?.name === "string"
+        ? cleanText(user.user_metadata.name)
+        : null;
+
+  let effectiveSignedName = cleanText(bodyUnknown.signedName);
+  let effectiveSignaturePath = cleanText(bodyUnknown.signatureImagePath);
+  let effectiveSignatureHash = cleanText(bodyUnknown.signatureHash);
+
+  if (bodyUnknown.role === "technician") {
+    if (
+      !TECHNICIAN_PROFILE_ROLES.has(
+        String(profile.role ?? "")
+          .trim()
+          .toLowerCase(),
+      )
+    ) {
+      return NextResponse.json(
+        { error: "Your profile cannot sign as a technician." },
+        { status: 403 },
+      );
     }
+
+    // Technician identity and evidence are always server-owned; client-sent
+    // signature fields cannot replace the saved profile signature.
+    effectiveSignedName = profileName(profile) ?? authMetadataName;
+    effectiveSignaturePath = cleanText(profile.tech_signature_path);
+    effectiveSignatureHash = cleanText(profile.tech_signature_hash);
+
+    if (!effectiveSignedName) {
+      return NextResponse.json(
+        { error: "Add your full name to your profile before signing." },
+        { status: 409 },
+      );
+    }
+    if (!effectiveSignaturePath || !effectiveSignatureHash) {
+      return NextResponse.json(
+        {
+          error:
+            "No valid saved technician signature exists. Add one in Tech Settings.",
+        },
+        { status: 409 },
+      );
+    }
+  }
+
+  if (bodyUnknown.role === "advisor") {
+    if (
+      !ADVISOR_PROFILE_ROLES.has(
+        String(profile.role ?? "")
+          .trim()
+          .toLowerCase(),
+      )
+    ) {
+      return NextResponse.json(
+        { error: "Your profile cannot sign as a service advisor." },
+        { status: 403 },
+      );
+    }
+    effectiveSignedName = profileName(profile) ?? authMetadataName;
   }
 
   if (!effectiveSignedName) {
@@ -253,35 +341,13 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const profileResult = await supabase
-    .from("profiles")
-    .select("shop_id")
-    .eq("id", user.id)
-    .maybeSingle<{ shop_id: string | null }>();
-
-  if (profileResult.error) {
-    return NextResponse.json(
-      { error: `Unable to read profile: ${profileResult.error.message}` },
-      { status: 400 },
-    );
-  }
-
-  const shopId = profileResult.data?.shop_id ?? null;
-  if (!shopId) {
-    return NextResponse.json(
-      { error: "Your profile is missing shop_id; cannot sign inspection." },
-      { status: 403 },
-    );
-  }
-
   const resolved = await resolveInspectionForSigning({
     supabase,
     requestedInspectionId,
     workOrderLineId,
-    shopId,
-    actorUserId: user.id,
+    shopId: profile.shop_id,
   });
-  if (!resolved.ok) {
+  if (resolved.ok === false) {
     return NextResponse.json(
       { error: resolved.error },
       { status: resolved.status },
@@ -290,13 +356,106 @@ export async function POST(req: NextRequest) {
 
   const { data, error } = await callSignInspectionRpc(supabase, {
     p_inspection_id: resolved.inspectionId,
-    p_role: role,
+    p_role: bodyUnknown.role,
     p_signed_name: effectiveSignedName,
-    p_signature_image_path: signatureImagePath ?? null,
-    p_signature_hash: signatureHash ?? null,
+    p_signature_image_path: effectiveSignaturePath,
+    p_signature_hash: effectiveSignatureHash,
+    p_expected_sync_revision: bodyUnknown.expectedSyncRevision,
   });
+
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    const lower = error.message.toLowerCase();
+    const status =
+      lower.includes("not found") ||
+      lower.includes("no saved") ||
+      lower.includes("no valid saved") ||
+      lower.includes("does not belong") ||
+      lower.includes("changed on another device") ||
+      lower.includes("finalized") ||
+      lower.includes("locked") ||
+      lower.includes("already signed") ||
+      lower.includes("saved inspection revision")
+        ? 409
+        : 400;
+    return NextResponse.json({ error: error.message }, { status });
+  }
+
+  // Signing is a completion path, so it must not leave a locked inspection
+  // without its immutable report. An idempotent retry of sign_inspection is
+  // allowed to repair a prior upload/attachment interruption.
+  const admin = createAdminClient();
+  const { data: inspection, error: inspectionError } = await admin
+    .from("inspections")
+    .select(
+      "id,shop_id,work_order_id,work_order_line_id,summary,sync_revision,pdf_storage_path",
+    )
+    .eq("id", resolved.inspectionId)
+    .eq("shop_id", profile.shop_id)
+    .eq("is_canonical", true)
+    .maybeSingle<{
+      id: string;
+      shop_id: string;
+      work_order_id: string | null;
+      work_order_line_id: string | null;
+      summary: unknown;
+      sync_revision: number | null;
+      pdf_storage_path: string | null;
+    }>();
+  if (
+    inspectionError ||
+    !inspection?.work_order_id ||
+    !inspection.work_order_line_id ||
+    !inspection.summary ||
+    typeof inspection.summary !== "object"
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          inspectionError?.message ??
+          "Inspection was signed, but its report context could not be loaded. Sign again to retry report publication.",
+      },
+      { status: 500 },
+    );
+  }
+
+  let reportUrl = `/api/inspections/${inspection.id}/report/pdf`;
+  if (!inspection.pdf_storage_path) {
+    const syncRevision = Math.max(
+      0,
+      Math.trunc(inspection.sync_revision ?? 0),
+    );
+    try {
+      const published = await publishInspectionPdf({
+        admin,
+        shopId: inspection.shop_id,
+        workOrderId: inspection.work_order_id,
+        workOrderLineId: inspection.work_order_line_id,
+        inspectionId: inspection.id,
+        summary: inspection.summary as InspectionSession,
+        syncRevision,
+      });
+      const attached = await callAttachSignedPdfRpc({
+        p_inspection_id: inspection.id,
+        p_work_order_line_id: inspection.work_order_line_id,
+        p_actor_user_id: user.id,
+        p_expected_sync_revision: syncRevision,
+        p_pdf_storage_path: published.path,
+        p_pdf_sha256: published.sha256,
+        p_pdf_url: published.reportUrl,
+      });
+      if (attached.error) throw new Error(attached.error.message);
+      reportUrl = published.reportUrl;
+    } catch (publishError) {
+      return NextResponse.json(
+        {
+          error:
+            publishError instanceof Error
+              ? `Inspection was signed, but the report could not be published: ${publishError.message}. Sign again to retry.`
+              : "Inspection was signed, but the report could not be published. Sign again to retry.",
+        },
+        { status: 500 },
+      );
+    }
   }
 
   return NextResponse.json({
@@ -304,5 +463,6 @@ export async function POST(req: NextRequest) {
     data,
     inspectionId: resolved.inspectionId,
     signedName: effectiveSignedName,
+    reportUrl,
   });
 }

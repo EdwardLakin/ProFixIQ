@@ -1089,6 +1089,7 @@ async function answerFleetDomain(args: {
       .select("id, status, created_at, inspection_type, work_order_id")
       .eq("shop_id", args.shopId)
       .eq("vehicle_id", vehicleId)
+      .eq("is_canonical", true)
       .order("created_at", { ascending: false })
       .limit(8),
   ]);

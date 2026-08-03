@@ -61,7 +61,7 @@ export default function FleetIssueTables({
                 <tr key={issue.id} className="align-middle">
                   <td className="px-3 py-1.5 text-[11px] text-[color:var(--theme-text-primary)]">
                     <Link
-                      href={`/fleet/assets/${issue.unitId}`}
+                      href={`${routePrefix}/units/${encodeURIComponent(issue.unitId)}`}
                       className="hover:underline"
                     >
                       {issue.unitLabel}
@@ -125,7 +125,7 @@ export default function FleetIssueTables({
                   <div className="text-[11px] text-[color:var(--theme-text-secondary)]">
                     Assigned to{" "}
                     <Link
-                      href={`/fleet/assets/${a.unitId}`}
+                      href={`${routePrefix}/units/${encodeURIComponent(a.unitId)}`}
                       className="font-medium text-[color:var(--theme-text-primary)] hover:underline"
                     >
                       {a.unitLabel}

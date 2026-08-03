@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import {
+  COMPLETED_REPAIR_SOURCE,
+  COMPLETED_REPAIR_STATUSES,
+  matchesCompletedRepairVehicle,
+} from "@/features/menu-repair-items/lib/completedRepair";
 
 
 type Body = {
@@ -130,13 +135,37 @@ export async function POST(req: Request) {
         "parts",
         "usage_count",
         "price_estimate",
+        "source_work_order_line_id",
+        "last_pricing_source",
       ].join(","))
       .eq("shop_id", shopId)
       .eq("is_active", true)
+      .eq("last_pricing_source", COMPLETED_REPAIR_SOURCE)
       .limit(200);
 
     if (error) {
       return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    }
+
+    const sourceLineIds = [
+      ...new Set(
+        (rows ?? [])
+          .map((row) => (isRecord(row) ? s(row.source_work_order_line_id) : ""))
+          .filter(Boolean),
+      ),
+    ];
+    const completedSourceIds = new Set<string>();
+    if (sourceLineIds.length > 0) {
+      const { data: sourceLines, error: sourceError } = await supabase
+        .from("work_order_lines")
+        .select("id, status")
+        .eq("shop_id", shopId)
+        .in("id", sourceLineIds)
+        .in("status", [...COMPLETED_REPAIR_STATUSES]);
+      if (sourceError) {
+        return NextResponse.json({ ok: false, error: sourceError.message }, { status: 500 });
+      }
+      for (const line of sourceLines ?? []) completedSourceIds.add(line.id);
     }
 
     const tokens = tokenize(description, notes, section);
@@ -144,8 +173,25 @@ export async function POST(req: Request) {
     const ranked = (rows ?? [])
       .map((row) => {
         if (!isRecord(row)) return null;
+        if (s(row.last_pricing_source) !== COMPLETED_REPAIR_SOURCE) return null;
+        if (!completedSourceIds.has(s(row.source_work_order_line_id))) return null;
+        if (
+          !matchesCompletedRepairVehicle(
+            { year, make, model, engine, drivetrain, transmission },
+            {
+              year: n(row.vehicle_year),
+              make: s(row.vehicle_make),
+              model: s(row.vehicle_model),
+              engine: s(row.engine),
+              drivetrain: s(row.drivetrain),
+              transmission: s(row.transmission),
+            },
+          )
+        ) {
+          return null;
+        }
 
-        let score = scoreText(
+        const repairTextScore = scoreText(
           tokens,
           [
             s(row.name),
@@ -154,6 +200,9 @@ export async function POST(req: Request) {
             s(row.correction),
           ].join(" "),
         );
+        if (repairTextScore <= 0) return null;
+
+        let score = repairTextScore;
 
         if (year != null && n(row.vehicle_year) != null && year === n(row.vehicle_year)) {
           score += 20;
@@ -174,6 +223,14 @@ export async function POST(req: Request) {
           laborHours: n(row.labor_hours),
           parts: Array.isArray(row.parts) ? row.parts : [],
           priceEstimate: n(row.price_estimate),
+          usageCount: n(row.usage_count) ?? 0,
+          vehicle: {
+            year: n(row.vehicle_year),
+            make: s(row.vehicle_make),
+            model: s(row.vehicle_model),
+            engine: s(row.engine) || null,
+            drivetrain: s(row.drivetrain) || null,
+          },
           score,
         };
       })
@@ -185,6 +242,14 @@ export async function POST(req: Request) {
         laborHours: number | null;
         parts: unknown[];
         priceEstimate: number | null;
+        usageCount: number;
+        vehicle: {
+          year: number | null;
+          make: string;
+          model: string;
+          engine: string | null;
+          drivetrain: string | null;
+        };
         score: number;
       } => Boolean(x && x.id && x.label && x.score >= 20))
       .sort((a, b) => b.score - a.score)

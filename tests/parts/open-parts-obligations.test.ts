@@ -1,0 +1,168 @@
+import { describe, expect, it } from "vitest";
+import {
+  countOpenPartsObligationsByWorkOrder,
+  isOpenPartsObligation,
+  isPartRequestItemAwaitingReceiving,
+  reconcileBoardPartsState,
+} from "@/features/parts/lib/open-parts-obligations";
+import type { WorkOrderBoardRow } from "@/features/shared/lib/workboard/types";
+
+describe("canonical open parts obligations", () => {
+  it("matches the receiving inbox contract instead of counting un-ordered approvals", () => {
+    expect(
+      isPartRequestItemAwaitingReceiving({
+        request_id: "request-1",
+        status: "approved",
+        po_id: null,
+        qty_ordered: 0,
+        qty_received: 0,
+      }),
+    ).toBe(false);
+    expect(
+      isPartRequestItemAwaitingReceiving({
+        request_id: "request-1",
+        status: "ordered",
+        po_id: "po-1",
+        qty_ordered: 2,
+        qty_received: 1,
+      }),
+    ).toBe(true);
+    expect(
+      isPartRequestItemAwaitingReceiving({
+        request_id: "request-1",
+        status: "ordered",
+        po_id: "po-1",
+        qty_ordered: 2,
+        qty_received: 2,
+      }),
+    ).toBe(false);
+  });
+
+  it("stops treating handed-off and cancelled items as waiting parts", () => {
+    expect(
+      isOpenPartsObligation("approved", {
+        request_id: "request-1",
+        status: "consumed",
+        qty_approved: 2,
+        qty_consumed: 2,
+        qty_returned: 0,
+      }),
+    ).toBe(false);
+    expect(
+      isOpenPartsObligation("cancelled", {
+        request_id: "request-2",
+        status: "requested",
+        qty_requested: 1,
+      }),
+    ).toBe(false);
+    expect(
+      isOpenPartsObligation("approved", {
+        request_id: "request-3",
+        status: "received",
+        qty_approved: 1,
+        qty_received: 1,
+        qty_consumed: 0,
+      }),
+    ).toBe(true);
+  });
+
+  it("counts only canonical open obligations by work order", () => {
+    const counts = countOpenPartsObligationsByWorkOrder(
+      [
+        { id: "request-open", work_order_id: "wo-1", status: "approved" },
+        { id: "request-done", work_order_id: "wo-2", status: "fulfilled" },
+      ],
+      [
+        {
+          request_id: "request-open",
+          status: "ordered",
+          qty_approved: 1,
+          qty_ordered: 1,
+        },
+        {
+          request_id: "request-done",
+          status: "consumed",
+          qty_approved: 1,
+          qty_consumed: 1,
+        },
+      ],
+    );
+
+    expect(counts.get("wo-1")).toBe(1);
+    expect(counts.has("wo-2")).toBe(false);
+  });
+
+  it("clears a stale parts signal without inventing a new lifecycle stage", () => {
+    const row: WorkOrderBoardRow = {
+      work_order_id: "wo-handed-off",
+      custom_id: "EL000005",
+      display_name: "Test customer",
+      unit_label: null,
+      vehicle_label: null,
+      jobs_total: 1,
+      jobs_completed: 0,
+      progress_pct: 0,
+      overall_stage: "waiting",
+      risk_level: "none",
+      has_waiting_parts: true,
+      parts_blocker_count: 1,
+      jobs_waiting_parts: 1,
+    };
+
+    expect(reconcileBoardPartsState([row], new Map(), new Set())).toEqual([
+      expect.objectContaining({
+        overall_stage: "authorized",
+        has_waiting_parts: false,
+        parts_blocker_count: 0,
+        jobs_waiting_parts: 0,
+      }),
+    ]);
+  });
+
+  it("clears stale parts counters without reopening terminal or review stages", () => {
+    const baseRow: WorkOrderBoardRow = {
+      work_order_id: "wo-preserve",
+      custom_id: "EL000006",
+      display_name: "Test customer",
+      unit_label: null,
+      vehicle_label: null,
+      jobs_total: 1,
+      jobs_completed: 1,
+      progress_pct: 100,
+      overall_stage: "ready",
+      risk_level: "none",
+      has_waiting_parts: true,
+      parts_blocker_count: 1,
+      jobs_waiting_parts: 1,
+    };
+    const rows: WorkOrderBoardRow[] = [
+      baseRow,
+      { ...baseRow, work_order_id: "wo-closed", overall_stage: "closed" },
+      {
+        ...baseRow,
+        work_order_id: "wo-quality-check",
+        overall_stage: "quality_check",
+      },
+      { ...baseRow, work_order_id: "wo-estimate", overall_stage: "estimate" },
+    ];
+
+    expect(
+      reconcileBoardPartsState(
+        rows,
+        new Map(),
+        new Set(rows.map((row) => row.work_order_id)),
+      ),
+    ).toEqual([
+      expect.objectContaining({ overall_stage: "ready", has_waiting_parts: false }),
+      expect.objectContaining({ overall_stage: "closed", has_waiting_parts: false }),
+      expect.objectContaining({
+        overall_stage: "quality_check",
+        has_waiting_parts: false,
+      }),
+      expect.objectContaining({
+        overall_stage: "in_progress",
+        has_waiting_parts: false,
+      }),
+    ]);
+  });
+});

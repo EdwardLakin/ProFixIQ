@@ -30,25 +30,36 @@ describe("parts package commit quantity resolution", () => {
 
 describe("parts package commit route safeguards", () => {
   const commitRoute = readFileSync("app/api/parts/requests/[requestId]/commit-package/route.ts", "utf8");
+  const commitMigration = readFileSync(
+    "supabase/migrations/20260714040000_phase3_parts_atomic_commands.sql",
+    "utf8",
+  );
 
-  it("commits selected items through the request-level helper without allocation, PO, stock movement, or menu learning", () => {
-    expect(commitRoute).toContain("parts_ensure_work_order_part");
-    expect(commitRoute).toContain("source_parts_request_item_id");
+  it("commits the complete request through a shop-scoped atomic command", () => {
+    expect(commitRoute).toContain('requiredCapability: "canManageWorkOrders"');
+    expect(commitRoute).toContain('"parts_commit_request_package_atomic"');
+    expect(commitRoute).toContain("p_shop_id: access.profile.shop_id");
+    expect(commitMigration).toContain("public.parts_ensure_work_order_part(v_item.id)");
     expect(commitRoute).not.toContain("purchase_order");
     expect(commitRoute).not.toContain("stock_movements");
     expect(commitRoute).not.toContain("upsert_part_allocation_from_request_item");
     expect(commitRoute).not.toContain("upsertMenuRepairItem");
   });
 
-  it("checks existing source item linkage so repeated save remains idempotent", () => {
-    expect(commitRoute).toContain("existingByItemId");
-    expect(commitRoute).toContain('status: "already_committed"');
+  it("requires a stable key and replays completed operations idempotently", () => {
+    expect(commitRoute).toContain("A stable idempotency key is required.");
+    expect(commitRoute).toContain(":commit-package:");
+    expect(commitMigration).toContain("public.parts_begin_operation(");
+    expect(commitMigration).toContain("if v_operation.completed_at is not null then");
+    expect(commitMigration).toContain("'idempotent', true");
   });
 
-  it("allows multiple selected items on the same repair line to be processed together", () => {
-    expect(commitRoute).toContain("for (const item of items)");
-    expect(commitRoute).toContain("work_order_line_id");
-    expect(commitRoute).not.toContain("break;");
+  it("locks and validates every selected item before attaching the package", () => {
+    expect(commitMigration).toContain("Lock the complete package before validation or attachment.");
+    expect(commitMigration).toContain("Validate every item before creating any work-order part.");
+    expect(commitMigration.match(/for v_item in/g)).toHaveLength(2);
+    expect(commitMigration).toContain("for update");
+    expect(commitMigration).toContain("parts_assert_work_order_mutable");
   });
 });
 

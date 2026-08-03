@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { TILES } from "@/features/shared/config/tiles";
 import { composeWorkforceActivity } from "@/features/workforce/server/buildWorkforceActivity";
+import { getWorkforceNavigation } from "@/features/dashboard/app/dashboard/workforce/workforceNavigation";
 
 const shopId = "shop-a";
 const nowIso = "2026-07-10T18:00:00.000Z";
@@ -36,6 +37,7 @@ describe("workforce cleanup consolidation", () => {
         "/dashboard/admin/people",
         "/dashboard/admin/employees",
         "/dashboard/admin/payroll-time",
+        "/dashboard/admin",
         "/dashboard/owner/create-user",
       ]),
     );
@@ -45,22 +47,36 @@ describe("workforce cleanup consolidation", () => {
     expect(readFileSync("app/dashboard/admin/people/page.tsx", "utf8")).toContain('redirect("/dashboard/workforce/people")');
     expect(readFileSync("app/dashboard/admin/payroll-time/page.tsx", "utf8")).toContain('redirect("/dashboard/workforce/payroll-review")');
     expect(readFileSync("app/dashboard/admin/employees/page.tsx", "utf8")).toContain('redirect("/dashboard/workforce/people")');
+    expect(readFileSync("app/dashboard/admin/page.tsx", "utf8")).toContain('redirect("/dashboard/workforce/overview")');
+    expect(readFileSync("app/dashboard/admin/audit/page.tsx", "utf8")).toContain('redirect("/dashboard/workforce/activity")');
+    expect(readFileSync("app/dashboard/admin/scheduling/page.tsx", "utf8")).toContain('redirect("/dashboard/workforce/scheduling")');
+    expect(readFileSync("app/dashboard/admin/employee-docs/page.tsx", "utf8")).toContain('redirect("/dashboard/workforce/documents")');
   });
 
-  it("quick links include People for owner/admin and keep managers out of restricted links", () => {
-    const source = readFileSync("features/dashboard/app/dashboard/workforce/WorkforceQuickLinks.tsx", "utf8");
-    expect(source.indexOf('label: "People"')).toBeGreaterThan(source.indexOf('label: "Overview"'));
-    const managerBlock = source.slice(source.indexOf("const managerLinks"));
-    expect(managerBlock).not.toContain('"/dashboard/workforce/people"');
-    expect(managerBlock).not.toContain('"/dashboard/workforce/documents"');
-    expect(managerBlock).not.toContain('"/dashboard/workforce/certifications"');
+  it("uses one role-aware Workforce shell navigation source", () => {
+    expect(getWorkforceNavigation("owner").map((item) => item.label)).toEqual([
+      "Command",
+      "People",
+      "Attendance",
+      "Schedule",
+      "Payroll",
+      "Documents",
+      "Certifications",
+      "Activity",
+    ]);
+    expect(getWorkforceNavigation("manager").map((item) => item.label)).toEqual([
+      "Command",
+      "Attendance",
+      "Schedule",
+      "Payroll",
+    ]);
   });
 
   it("scopes punch events through same-shop shifts and ignores cross-shop shift punches", () => {
     const result = activity({
       shifts: [
-        { id: "shift-a", shop_id: shopId, user_id: "tech-a", start_time: "2026-07-10T17:00:00.000Z", end_time: null, status: "active", type: "shift", created_at: null },
-        { id: "shift-b", shop_id: "shop-b", user_id: "tech-b", start_time: "2026-07-10T17:00:00.000Z", end_time: null, status: "active", type: "shift", created_at: null },
+        { id: "shift-a", shop_id: shopId, user_id: "tech-a", start_time: "2026-07-10T17:00:00.000Z", end_time: null, status: "active", type: "shift", created_at: null, excluded_from_payroll: false },
+        { id: "shift-b", shop_id: "shop-b", user_id: "tech-b", start_time: "2026-07-10T17:00:00.000Z", end_time: null, status: "active", type: "shift", created_at: null, excluded_from_payroll: false },
       ],
       punches: [
         { id: "p-a", shift_id: "shift-a", user_id: "tech-a", profile_id: null, event_type: "start_shift", timestamp: "2026-07-10T17:00:00.000Z", note: null, created_at: null },

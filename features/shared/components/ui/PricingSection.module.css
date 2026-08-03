@@ -1,0 +1,134 @@
+.root {
+  --pricing-badge-bg: var(--brand-primary);
+  --pricing-badge-text: #ffffff;
+  --pricing-button-primary-bg: var(--brand-primary);
+  --pricing-button-primary-hover-bg: #1235c7;
+  --pricing-button-primary-text: #ffffff;
+  --pricing-focus-ring: var(--brand-accent);
+}
+
+.root[data-surface="light"] {
+  --pricing-card-bg: #ffffff;
+  --pricing-card-border: #dbe4ef;
+  --pricing-card-featured-border: var(--brand-primary);
+  --pricing-card-shadow: 0 4px 12px rgba(7, 17, 31, 0.08);
+  --pricing-card-featured-shadow: 0 22px 55px rgba(23, 71, 255, 0.14);
+  --pricing-primary-text: #07111f;
+  --pricing-muted-text: #5d6b7b;
+  --pricing-accent-text: #1235c7;
+  --pricing-divider: #dbe4ef;
+  --pricing-secondary-bg: #eef3f9;
+  --pricing-secondary-border: #bdcad9;
+  --pricing-secondary-hover-bg: #e8efff;
+  --pricing-secondary-hover-border: #2563eb;
+  --pricing-feature-icon-bg: #e8efff;
+  --pricing-feature-icon-text: #1235c7;
+  --pricing-notice-bg: #eef3f9;
+  --pricing-notice-border: #dbe4ef;
+  --pricing-notice-text: #5d6b7b;
+  color-scheme: light;
+}
+
+.root[data-surface="dark"] {
+  --pricing-card-bg: #0d172a;
+  --pricing-card-border: #243b61;
+  --pricing-card-featured-border: var(--brand-accent);
+  --pricing-card-shadow: 0 16px 36px rgba(0, 0, 0, 0.34);
+  --pricing-card-featured-shadow: 0 22px 55px rgba(11, 183, 255, 0.16);
+  --pricing-primary-text: #f8fbff;
+  --pricing-muted-text: #c3d2e8;
+  --pricing-accent-text: #7dd3fc;
+  --pricing-divider: #243b61;
+  --pricing-secondary-bg: #14243d;
+  --pricing-secondary-border: #36557f;
+  --pricing-secondary-hover-bg: #1b3152;
+  --pricing-secondary-hover-border: #60a5fa;
+  --pricing-feature-icon-bg: rgba(11, 183, 255, 0.14);
+  --pricing-feature-icon-text: #7dd3fc;
+  --pricing-notice-bg: #091426;
+  --pricing-notice-border: #243b61;
+  --pricing-notice-text: #c3d2e8;
+  color-scheme: dark;
+}
+
+.card {
+  border-color: var(--pricing-card-border);
+  background: var(--pricing-card-bg);
+  color: var(--pricing-primary-text);
+  box-shadow: var(--pricing-card-shadow);
+}
+
+.featuredCard {
+  border-color: var(--pricing-card-featured-border);
+  box-shadow: var(--pricing-card-featured-shadow);
+}
+
+.badge {
+  background: var(--pricing-badge-bg);
+  color: var(--pricing-badge-text);
+}
+
+.primaryText {
+  color: var(--pricing-primary-text);
+}
+
+.mutedText {
+  color: var(--pricing-muted-text);
+}
+
+.accentText {
+  color: var(--pricing-accent-text);
+}
+
+.button {
+  min-height: 44px;
+}
+
+.button:focus-visible {
+  outline: 3px solid var(--pricing-focus-ring);
+  outline-offset: 3px;
+}
+
+.button:disabled {
+  cursor: wait;
+  filter: saturate(0.7);
+  opacity: 0.6;
+}
+
+.primaryButton {
+  border-color: var(--pricing-button-primary-bg);
+  background: var(--pricing-button-primary-bg);
+  color: var(--pricing-button-primary-text);
+}
+
+.secondaryButton {
+  border-color: var(--pricing-secondary-border);
+  background: var(--pricing-secondary-bg);
+  color: var(--pricing-primary-text);
+}
+
+@media (hover: hover) {
+  .primaryButton:hover:not(:disabled) {
+    background: var(--pricing-button-primary-hover-bg);
+  }
+
+  .secondaryButton:hover:not(:disabled) {
+    border-color: var(--pricing-secondary-hover-border);
+    background: var(--pricing-secondary-hover-bg);
+  }
+}
+
+.divider {
+  background: var(--pricing-divider);
+}
+
+.featureIcon {
+  background: var(--pricing-feature-icon-bg);
+  color: var(--pricing-feature-icon-text);
+}
+
+.notice {
+  border-color: var(--pricing-notice-border);
+  background: var(--pricing-notice-bg);
+  color: var(--pricing-notice-text);
+}

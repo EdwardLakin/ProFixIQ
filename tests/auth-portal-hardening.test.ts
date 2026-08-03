@@ -1,6 +1,10 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
+  isPortalPathForSurface,
+  resolvePortalSurfaceRedirect,
+} from "../features/auth/lib/portalSurfaceRouting";
+import {
   isSafeInternalRedirect,
   safeInternalRedirect,
 } from "../features/auth/lib/safeRedirect";
@@ -25,6 +29,42 @@ describe("authentication and portal hardening", () => {
     );
     expect(isSafeInternalRedirect("/portal?tab=quotes", allowed)).toBe(true);
     expect(isSafeInternalRedirect("/portal\\evil", allowed)).toBe(false);
+  });
+
+  it("keeps customer and fleet sign-in routes on separate portal surfaces", () => {
+    expect(isPortalPathForSurface("/portal/fleet", "fleet")).toBe(true);
+    expect(isPortalPathForSurface("/portal/fleet/units", "customer")).toBe(false);
+    expect(isPortalPathForSurface("/portal/invoices", "customer")).toBe(true);
+    expect(
+      resolvePortalSurfaceRedirect("/portal", "/portal/fleet", "fleet"),
+    ).toBe("/portal/fleet");
+    expect(
+      resolvePortalSurfaceRedirect("/portal/fleet", "/portal", "customer"),
+    ).toBe("/portal");
+
+    const customerSignIn = read("app/portal/auth/sign-in/page.tsx");
+    const fleetSignIn = read("app/portal/auth/fleet-sign-in/page.tsx");
+    const signInForm = read("app/portal/auth/sign-in/PortalSignInForm.tsx");
+    const fleetActorResolver = read(
+      "features/fleet/lib/resolveFleetActorContext.ts",
+    );
+    const middleware = read("middleware.ts");
+
+    expect(customerSignIn).toContain('portalType="customer"');
+    expect(fleetSignIn).toContain('portalType="fleet"');
+    expect(signInForm).not.toContain('setPortalType');
+    expect(signInForm).toContain("resolvePortalSurfaceRedirect");
+    expect(fleetActorResolver).toContain(
+      'const hasFleetPortalMembership = fleetTier !== "none";',
+    );
+    expect(fleetActorResolver).toContain(
+      "canAccessPortalFleetWrappers: hasFleetPortalMembership",
+    );
+    expect(fleetActorResolver).not.toContain(
+      "canAccessPortalFleetWrappers: isFleetActor",
+    );
+    expect(middleware).toContain("isFleetPortalAuthPage");
+    expect(middleware).toContain("PORTAL_SIGN_IN[surface]");
   });
 
   it("keeps email identity resolution inside the server-owned sign-in exchange", () => {
@@ -72,6 +112,24 @@ describe("authentication and portal hardening", () => {
     expect(middleware).toContain("access.fleet");
     expect(middleware).toContain("profixiq_portal_only");
     expect(middleware).toContain("canUseMobile");
+  });
+
+  it("activates fleet invites without a consumable email magic link", () => {
+    const inviteRoute = read("app/api/portal/fleet/invites/route.ts");
+    const acceptRoute = read("app/api/portal/fleet/invites/accept/route.ts");
+    const activationPage = read("app/portal/auth/fleet-invite/page.tsx");
+
+    expect(inviteRoute).toContain("portalLink,");
+    expect(inviteRoute).not.toContain("properties?.action_link");
+    expect(acceptRoute).toContain("password?: string");
+    expect(acceptRoute).toContain("enforceAuthRateLimit");
+    expect(acceptRoute).toContain("updateUserById");
+    expect(acceptRoute).toContain("email_confirm: true");
+    expect(acceptRoute).toContain("accept_fleet_portal_invite_atomic");
+    expect(activationPage).toContain("signInWithPassword");
+    expect(activationPage).not.toContain(
+      "Open the one-time invitation email on this device",
+    );
   });
 
   it("keeps mobile as a separate premium surface with shared server validation", () => {

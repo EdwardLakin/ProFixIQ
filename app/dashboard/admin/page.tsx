@@ -1,13 +1,5 @@
-import AdminLandingClient from "@/features/dashboard/app/dashboard/admin/AdminLandingClient";
-import { AdminPageShell } from "@/features/dashboard/app/dashboard/admin/AdminSurface";
-import { requireAdminPageAccess } from "@/features/shared/lib/server/admin-access";
+import { redirect } from "next/navigation";
 
-export default async function AdminLandingPage() {
-  await requireAdminPageAccess({ allow: ["owner", "admin"] });
-
-  return (
-    <AdminPageShell>
-      <AdminLandingClient />
-    </AdminPageShell>
-  );
+export default function AdminLandingPage() {
+  redirect("/dashboard/workforce/overview");
 }

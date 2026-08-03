@@ -3,31 +3,44 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Building2, CarFront, Eye, EyeOff, Loader2 } from "lucide-react";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 import AuthShell from "@/features/auth/components/AuthShell";
 import AuthStatus from "@/features/auth/components/AuthStatus";
-import { safeInternalRedirect } from "@/features/auth/lib/safeRedirect";
+import {
+  PORTAL_SIGN_IN,
+  resolvePortalSurfaceRedirect,
+  type PortalSurface,
+} from "@/features/auth/lib/portalSurfaceRouting";
 import { signInWithIdentifier } from "@/features/auth/lib/signInClient";
 
-type PortalType = "customer" | "fleet";
+type PortalSignInFormProps = {
+  portalType: PortalSurface;
+};
 
 const inputClass =
   "w-full rounded-xl border border-[color:var(--theme-input-border)] bg-[color:var(--theme-input-bg)] px-3.5 py-3 text-sm text-[color:var(--theme-input-text)] outline-none transition placeholder:text-[color:var(--theme-text-muted)] focus:border-[var(--accent-copper)] focus:ring-4 focus:ring-[color:color-mix(in_srgb,var(--accent-copper)_16%,transparent)]";
 
-export default function PortalSignInForm() {
+export default function PortalSignInForm({
+  portalType,
+}: PortalSignInFormProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [portalType, setPortalType] = useState<PortalType>("customer");
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const isFleet = portalType === "fleet";
 
   useEffect(() => {
-    const requested = searchParams.get("portal");
-    if (requested === "fleet" || requested === "customer") setPortalType(requested);
-  }, [searchParams]);
+    if (searchParams.get("activation") === "invalid") {
+      setError(
+        isFleet
+          ? "This activation link is invalid or has expired. Ask your shop or fleet administrator to resend the fleet invitation."
+          : "This activation link is invalid or has expired. Ask your shop to resend your customer portal invitation.",
+      );
+    }
+  }, [isFleet, searchParams]);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -42,17 +55,17 @@ export default function PortalSignInForm() {
       });
       if (!result.ok) {
         setError(
-          portalType === "fleet"
+          isFleet
             ? "We couldn't verify an invited fleet account with those details."
             : "We couldn't verify an activated customer portal account with those details.",
         );
         return;
       }
-      const allowedPrefixes = portalType === "fleet" ? ["/portal/fleet"] : ["/portal"];
-      const destination = safeInternalRedirect(
+
+      const destination = resolvePortalSurfaceRedirect(
         searchParams.get("redirect"),
         result.destination,
-        allowedPrefixes,
+        portalType,
       );
       router.replace(destination);
       router.refresh();
@@ -60,8 +73,6 @@ export default function PortalSignInForm() {
       setLoading(false);
     }
   }
-
-  const isFleet = portalType === "fleet";
 
   return (
     <AuthShell
@@ -92,45 +103,24 @@ export default function PortalSignInForm() {
         </p>
       </div>
 
-      <div className="mb-6 grid grid-cols-2 gap-2">
-        {(["customer", "fleet"] as const).map((value) => {
-          const Icon = value === "customer" ? CarFront : Building2;
-          const active = portalType === value;
-          return (
-            <button
-              key={value}
-              type="button"
-              onClick={() => {
-                setPortalType(value);
-                setError("");
-              }}
-              aria-pressed={active}
-              className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-3 text-xs font-semibold transition ${
-                active
-                  ? "border-[var(--accent-copper)] bg-[color:color-mix(in_srgb,var(--accent-copper)_12%,transparent)] text-[color:var(--theme-text-primary)]"
-                  : "border-[color:var(--theme-border-soft)] text-[color:var(--theme-text-muted)] hover:text-[color:var(--theme-text-primary)]"
-              }`}
-            >
-              <Icon className="h-4 w-4" aria-hidden />
-              {value === "customer" ? "Customer" : "Fleet"}
-            </button>
-          );
-        })}
-      </div>
-
       {error ? <AuthStatus tone="error">{error}</AuthStatus> : null}
 
       <form className="mt-5 space-y-4" onSubmit={handleSubmit}>
         <div>
-          <label htmlFor="portal-identifier" className="mb-1.5 block text-xs font-semibold text-[color:var(--theme-text-secondary)]">
-            {isFleet ? "Email or fleet username" : "Email"}
+          <label
+            htmlFor="portal-identifier"
+            className="mb-1.5 block text-xs font-semibold text-[color:var(--theme-text-secondary)]"
+          >
+            {isFleet ? "Email or fleet username" : "Email or username"}
           </label>
           <input
             id="portal-identifier"
             className={inputClass}
-            type={isFleet ? "text" : "email"}
+            type="text"
             autoComplete="username"
-            placeholder={isFleet ? "dispatch@fleet.com or username" : "you@example.com"}
+            placeholder={
+              isFleet ? "dispatch@fleet.com or username" : "you@example.com or username"
+            }
             value={identifier}
             onChange={(event) => setIdentifier(event.target.value)}
             required
@@ -139,10 +129,16 @@ export default function PortalSignInForm() {
 
         <div>
           <div className="mb-1.5 flex items-center justify-between">
-            <label htmlFor="portal-password" className="text-xs font-semibold text-[color:var(--theme-text-secondary)]">
+            <label
+              htmlFor="portal-password"
+              className="text-xs font-semibold text-[color:var(--theme-text-secondary)]"
+            >
               Password
             </label>
-            <Link href="/forgot-password" className="text-xs font-semibold text-[var(--accent-copper)] hover:underline">
+            <Link
+              href="/forgot-password"
+              className="text-xs font-semibold text-[var(--accent-copper)] hover:underline"
+            >
               Forgot password?
             </Link>
           </div>
@@ -163,7 +159,11 @@ export default function PortalSignInForm() {
               aria-label={showPassword ? "Hide password" : "Show password"}
               className="absolute inset-y-0 right-0 grid w-11 place-items-center text-[color:var(--theme-text-muted)]"
             >
-              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              {showPassword ? (
+                <EyeOff className="h-4 w-4" />
+              ) : (
+                <Eye className="h-4 w-4" />
+              )}
             </button>
           </div>
         </div>
@@ -174,22 +174,42 @@ export default function PortalSignInForm() {
           className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent-copper)] px-4 py-3 text-sm font-bold text-[color:var(--theme-text-on-accent)] transition hover:brightness-105 disabled:opacity-60"
         >
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-          {loading ? "Verifying access…" : `Sign in to ${isFleet ? "fleet" : "customer"} portal`}
+          {loading
+            ? "Verifying access…"
+            : `Sign in to ${isFleet ? "fleet" : "customer"} portal`}
         </button>
       </form>
 
       <div className="mt-5 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3.5 py-3 text-xs leading-5 text-[color:var(--theme-text-secondary)]">
         {isFleet ? (
-          <>Fleet access is invitation-only. Contact your shop or fleet administrator if you need an invitation.</>
+          <>
+            Fleet access is invitation-only. Contact your shop or fleet administrator if
+            you need an invitation.
+          </>
         ) : (
           <>
-            Need access? Open the invitation from your shop or{" "}
-            <Link href="/portal/auth/sign-up" className="font-semibold text-[var(--accent-copper)] hover:underline">
-              learn how to enroll
+            Portal access is created from your shop invitation. There is no separate
+            account sign-up. If you need access, ask your shop to resend the invitation
+            or{" "}
+            <Link
+              href="/portal/auth/sign-up"
+              className="font-semibold text-[var(--accent-copper)] hover:underline"
+            >
+              view activation help
             </Link>
             .
           </>
         )}
+      </div>
+
+      <div className="mt-4 text-center text-xs text-[color:var(--theme-text-muted)]">
+        {isFleet ? "Looking for a customer service record?" : "Managing a fleet?"}{" "}
+        <Link
+          href={isFleet ? PORTAL_SIGN_IN.customer : PORTAL_SIGN_IN.fleet}
+          className="font-semibold text-[var(--accent-copper)] hover:underline"
+        >
+          Sign in to the {isFleet ? "customer" : "fleet"} portal
+        </Link>
       </div>
     </AuthShell>
   );

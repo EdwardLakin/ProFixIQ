@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
-import { getInvoiceSnapshotForWorkOrder } from "@/features/invoices/server/getInvoiceSnapshot";
+import { getIssuableInvoiceSnapshot } from "@/features/invoices/server/getIssuableInvoiceSnapshot";
+import { ROLE_GROUPS } from "@/features/shared/lib/rbac";
 
 const BILLING_STATUSES = ["completed", "ready_to_invoice", "invoiced"];
 
 export async function GET() {
   const access = await requireShopScopedApiAccess({
     requiredCapability: "canManageWorkOrders",
-    allowRoles: ["owner", "admin", "manager", "advisor", "lead_hand", "foreman"],
+    allowRoles: [...ROLE_GROUPS.billingOperators],
   });
 
   if (!access.ok) return access.response;
@@ -29,34 +30,43 @@ export async function GET() {
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   }
 
-  const snapshotResults = await Promise.all(
+  const rows = await Promise.all(
     (data ?? []).map(async (row) => {
-      const snapshot = await getInvoiceSnapshotForWorkOrder({
-        supabase: access.supabase,
-        workOrderId: row.id,
-      });
+      try {
+        const snapshot = await getIssuableInvoiceSnapshot({
+          supabase: access.supabase,
+          workOrderId: row.id,
+          shopId,
+        });
 
-      return {
-        ...row,
-        resolved_labor_total: snapshot.laborCost ?? 0,
-        resolved_parts_total: snapshot.partsCost ?? 0,
-        resolved_invoice_total: snapshot.total ?? 0,
-      };
+        return {
+          ...row,
+          resolved_labor_total: snapshot.laborCost ?? 0,
+          resolved_parts_total: snapshot.partsCost ?? 0,
+          resolved_shop_supplies_total: snapshot.shopSuppliesTotal ?? 0,
+          resolved_tax_total: snapshot.taxTotal ?? 0,
+          resolved_invoice_total: snapshot.total ?? 0,
+          pricing_error: null,
+        };
+      } catch (error: unknown) {
+        return {
+          ...row,
+          resolved_labor_total: null,
+          resolved_parts_total: null,
+          resolved_shop_supplies_total: null,
+          resolved_tax_total: null,
+          resolved_invoice_total: null,
+          pricing_error:
+            error instanceof Error
+              ? error.message
+              : "Invoice pricing is unavailable.",
+        };
+      }
     }),
-  ).catch((snapshotError: unknown) => {
-    const message =
-      snapshotError instanceof Error
-        ? snapshotError.message
-        : "Failed to resolve invoice totals";
-    return { error: message };
-  });
+  );
 
-  if (!Array.isArray(snapshotResults)) {
-    return NextResponse.json(
-      { ok: false, error: snapshotResults.error },
-      { status: 500 },
-    );
-  }
-
-  return NextResponse.json({ ok: true, rows: snapshotResults });
+  return NextResponse.json(
+    { ok: true, rows },
+    { headers: { "Cache-Control": "private, no-store" } },
+  );
 }

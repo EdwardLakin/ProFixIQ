@@ -9,8 +9,10 @@ const ROLE_DASHBOARDS = [
   "features/mobile/dashboard/MobileLeadHandHome.tsx",
   "features/mobile/dashboard/MobileOperationalRoleHome.tsx",
   "features/mobile/dashboard/MobileTechHome.tsx",
+  "features/mobile/technician/MobileTechnicianQueue.tsx",
   "features/mobile/config/mobile-tiles.ts",
   "components/layout/MobileBottomNav.tsx",
+  "features/work-orders/mobile/MobileWorkOrderClient.tsx",
 ];
 
 const FORBIDDEN_DESTINATIONS = [
@@ -22,6 +24,7 @@ const FORBIDDEN_DESTINATIONS = [
   'href: "/offline/sync"',
   'href: "/assistant"',
   'href: "/agent/planner"',
+  "href={`/quote-review/",
 ];
 
 describe("mobile-native navigation", () => {
@@ -67,29 +70,55 @@ describe("mobile-native navigation", () => {
       "Service requests",
     );
     expect(read("app/mobile/offline/page.tsx")).toContain("Offline &amp; sync");
-    expect(read("app/mobile/assistant/page.tsx")).toContain("Ask a question");
+    expect(read("app/mobile/assistant/page.tsx")).toContain("Shop conversation");
   });
 
   it("uses the existing shop-scoped operations payload", () => {
     for (const path of [
       "app/mobile/workforce/attendance/page.tsx",
       "app/mobile/dispatch/page.tsx",
-      "app/mobile/parts/page.tsx",
     ]) {
       expect(read(path)).toContain("getOperationsDashboardPayload");
       expect(read(path)).toContain('export const dynamic = "force-dynamic"');
     }
+    const parts = read("app/mobile/parts/page.tsx");
+    expect(parts).toContain("MobilePartsWorkflow");
+    expect(parts).toContain('export const dynamic = "force-dynamic"');
   });
 
   it("keeps mobile inspection entry points from exposing desktop links", () => {
     for (const path of [
       "app/mobile/inspections/page.tsx",
-      "app/mobile/inspections/maintenance-50/page.tsx",
-      "app/mobile/inspections/maintenance-50-air/page.tsx",
+      "app/mobile/inspections/[id]/page.tsx",
+      "app/mobile/inspections/import/page.tsx",
     ]) {
       const source = read(path);
       expect(source).not.toContain(">Desktop<");
       expect(source).not.toContain("Desktop view");
     }
+  });
+
+  it("limits the mechanic work-order list to the existing assignment RLS boundary", () => {
+    const source = read("app/mobile/work-orders/page.tsx");
+    expect(source).toContain("actor.canPerformAssignedWork");
+    expect(source).toContain("!actor.canViewShopWideData");
+    expect(source).toContain('.eq("shop_id", me.shop_id)');
+    expect(source).toContain("assignedOnly");
+    expect(source).not.toContain(
+      'requiredCapability: "canManageWorkOrders"',
+    );
+  });
+
+  it("redirects the duplicate legacy mobile work-order board to the canonical list", () => {
+    const source = read("app/mobile/work-orders/view/page.tsx");
+    expect(source).toContain('redirect("/mobile/work-orders")');
+    expect(source).not.toContain("createBrowserSupabase");
+    expect(existsSync("app/mobile/work-orders/view/layout.tsx")).toBe(false);
+  });
+
+  it("returns mobile password recovery users to mobile sign in", () => {
+    const source = read("app/forgot-password/page.tsx");
+    expect(source).toContain('redirect?.startsWith("/mobile")');
+    expect(source).toContain('"/mobile/sign-in"');
   });
 });

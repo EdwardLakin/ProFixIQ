@@ -26,6 +26,7 @@ import PricingSection from "@shared/components/ui/PricingSection";
 import Footer from "@shared/components/ui/Footer";
 import LandingChatbot from "@/features/landing/LandingChatbot";
 import type { PlanKey } from "@/features/stripe/lib/stripe/constants";
+import { ProFixIQMark, ProFixIQWordmark } from "@shared/components/brand/ProFixIQBrand";
 
 type Interval = "monthly" | "yearly";
 
@@ -129,7 +130,6 @@ function ProductVisual({ type }: { type: (typeof stories)[number]["visual"] }) {
     </div>
   );
 }
-
 export default function ProFixIQLanding() {
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const [sessionExists, setSessionExists] = useState(false);
@@ -148,11 +148,19 @@ export default function ProFixIQLanding() {
     window.location.href = "/";
   };
 
-  const startCheckout = async ({ planKey, interval }: { planKey: PlanKey; interval: Interval }) => {
+  const startCheckout = async ({
+    planKey,
+    interval,
+    checkoutAttemptId,
+  }: {
+    planKey: PlanKey;
+    interval: Interval;
+    checkoutAttemptId: string;
+  }) => {
     const response = await fetch("/api/stripe/checkout", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ source: "pricing_cta", planKey, interval, enableTrial: true, applyFoundingDiscount: true, cancelPath: "/compare-plans" }),
+      body: JSON.stringify({ flow: "acquisition", planKey, interval, checkoutAttemptId }),
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data?.url) throw new Error(String(data?.error ?? data?.details ?? "Unable to start checkout"));
@@ -161,11 +169,11 @@ export default function ProFixIQLanding() {
 
   return (
     <div className="pfq-marketing min-h-screen bg-[color:var(--marketing-bg)] text-[color:var(--marketing-ink)]">
-      <header className="sticky top-0 z-40 border-b border-[color:var(--marketing-border)] bg-[rgba(247,245,241,0.92)] backdrop-blur-xl">
+      <header className="sticky top-0 z-40 border-b border-[color:var(--marketing-border)] bg-[rgba(247,249,252,0.92)] backdrop-blur-xl">
         <div className="mx-auto flex h-[72px] max-w-[1400px] items-center justify-between px-5 sm:px-8">
           <Link href="/" className="flex items-center gap-3" aria-label="ProFixIQ home">
-            <span className="grid h-10 w-10 place-items-center rounded-xl bg-[color:var(--marketing-ink)] text-[10px] font-blackops tracking-[0.12em] text-white">PFQ</span>
-            <span><span className="block text-base font-bold tracking-[-0.02em]">ProFixIQ</span><span className="block text-[10px] font-bold uppercase tracking-[0.15em] text-[color:var(--marketing-muted)]">Shop operating system</span></span>
+            <span className="grid h-11 w-11 place-items-center rounded-xl bg-[#07111f] shadow-sm"><ProFixIQMark className="h-8 w-8" /></span>
+            <span><ProFixIQWordmark className="block text-xl text-[color:var(--marketing-ink)]" /><span className="block text-[10px] font-bold uppercase tracking-[0.15em] text-[color:var(--marketing-muted)]">AI operating system</span></span>
           </Link>
 
           <nav className="hidden items-center gap-7 lg:flex" aria-label="Primary navigation">
@@ -218,7 +226,7 @@ export default function ProFixIQLanding() {
           <div className="mx-auto max-w-[1400px] px-5 sm:px-8"><div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between"><div><div className="marketing-eyebrow">Complete platform</div><h2 className="marketing-heading mt-4 max-w-2xl">Everything included. No feature tax.</h2></div><p className="max-w-lg text-base leading-7 text-[color:var(--marketing-muted)]">Choose a plan by team size. The operating system stays complete at every level.</p></div><div className="mt-12 grid gap-4 md:grid-cols-2 xl:grid-cols-4">{modules.map(({ title, items, icon: Icon }) => <div key={title} className="rounded-2xl border border-[color:var(--marketing-border)] bg-white p-6 shadow-sm"><Icon size={21} className="text-[color:var(--marketing-copper-dark)]" /><h3 className="mt-8 text-lg font-bold">{title}</h3><p className="mt-3 text-sm leading-6 text-[color:var(--marketing-muted)]">{items}</p></div>)}</div></div>
         </section>
 
-        <section id="pricing" className="scroll-mt-24 bg-white py-20 sm:py-28"><div className="mx-auto max-w-[1400px] px-5 sm:px-8"><div className="mx-auto max-w-3xl text-center"><div className="marketing-eyebrow">Simple pricing</div><h2 className="marketing-heading mt-4">One complete product. Sized for your shop.</h2><p className="mt-5 text-lg leading-8 text-[color:var(--marketing-muted)]">All core features are included. Plans scale by the number of active users at each location.</p></div><div className="mt-12"><PricingSection onCheckout={startCheckout} onStartFree={() => { window.location.href = "/compare-plans"; }} /></div></div></section>
+        <section id="pricing" className="scroll-mt-24 bg-white py-20 sm:py-28"><div className="mx-auto max-w-[1400px] px-5 sm:px-8"><div className="mx-auto max-w-3xl text-center"><div className="marketing-eyebrow">Simple pricing</div><h2 className="marketing-heading mt-4">One complete product. Sized for your shop.</h2><p className="mt-5 text-lg leading-8 text-[color:var(--marketing-muted)]">All core features are included. Plans scale by the number of active users at each location.</p></div><div className="mt-12"><PricingSection surface="light" onCheckout={startCheckout} onStartFree={() => { window.location.href = "/compare-plans"; }} /></div></div></section>
       </main>
 
       <LandingChatbot />

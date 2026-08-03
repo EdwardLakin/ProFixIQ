@@ -17,6 +17,10 @@ const jobPunchTransition = readFileSync(
   "features/work-orders/server/applyJobPunchTransition.ts",
   "utf8",
 );
+const jobPunchMigration = readFileSync(
+  "supabase/migrations/20260714050000_phase4_atomic_technician_labor.sql",
+  "utf8",
+);
 
 describe("inspection review submission blockers", () => {
   it("submits reviewed findings to canonical quote review without finishing the originating line", () => {
@@ -29,10 +33,14 @@ describe("inspection review submission blockers", () => {
   });
 
   it("keeps explicit technician job completion in the punch transition flow", () => {
-    expect(jobPunchTransition).toContain('action === "finish"');
-    expect(jobPunchTransition).toContain('status: "completed"');
-    expect(jobPunchTransition).toContain('completed: true');
-    expect(jobPunchTransition).toContain('punched_out_at: nowIso');
+    expect(jobPunchTransition).toContain('"apply_job_punch_transition_atomic"');
+    expect(jobPunchTransition).toContain("p_action: action");
+    expect(jobPunchMigration).toContain("v_action not in ('start','resume','pause','finish')");
+    expect(jobPunchMigration).toContain("status = 'completed'");
+    expect(jobPunchMigration).toContain("completed = true");
+    expect(jobPunchMigration).toContain(
+      "punched_out_at = case when coalesce(v_has_open, false) then null else v_latest end",
+    );
   });
 
   it("allows technicians to apply expired smart matches as advisory pricing review", () => {

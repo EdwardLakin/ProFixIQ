@@ -8,6 +8,7 @@ import SignaturePad, {
 } from "@/features/shared/signaturePad/controller";
 import ProfileIdentityCard from "@/features/users/components/ProfileIdentityCard";
 import ProfileContactCard from "@/features/users/components/ProfileContactCard";
+import { MyWorkforceCard } from "@/features/workforce/components/MyWorkforceCard";
 
 const PREFS_KEY = "profixiq.tech.prefs.v1";
 
@@ -184,14 +185,19 @@ export default function TechSettingsPage() {
 
       const blob = dataUrlToBlob(dataUrl);
       const hash = await sha256Base64(dataUrl);
-      const path = `tech-signatures/${profileId}.png`;
+      const path = `tech-signatures/${profileId}/${hash}.png`;
 
       const up = await supabase.storage.from("signatures").upload(path, blob, {
-        upsert: true,
+        upsert: false,
         contentType: "image/png",
       });
 
-      if (up.error) throw up.error;
+      if (
+        up.error &&
+        !/already exists|resource exists|duplicate/i.test(up.error.message)
+      ) {
+        throw up.error;
+      }
 
       const { error: updErr } = await supabase
         .from("profiles")
@@ -230,6 +236,8 @@ export default function TechSettingsPage() {
           {shopId ? ` • Shop workspace` : ""}
         </div>
       </div>
+
+      <MyWorkforceCard />
 
       <div className="grid gap-6 lg:grid-cols-2">
         <ProfileIdentityCard
@@ -328,28 +336,6 @@ export default function TechSettingsPage() {
           >
             {sigBusy ? "Opening…" : sigPath ? "Update signature" : "Capture signature"}
           </button>
-          {sigPath ? <p className="text-[11px] text-[color:var(--theme-text-muted)] break-all">{sigPath}</p> : null}
-        </section>
-
-        <section className="space-y-4 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 shadow-card backdrop-blur-xl">
-          <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">Notifications</h2>
-          <p className="text-xs text-[color:var(--theme-text-secondary)]">Per-device queue behavior and prompt settings.</p>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={prefs.autoRefresh}
-              onChange={(e) => savePrefs({ ...prefs, autoRefresh: e.target.checked })}
-            />
-            Queue auto-refresh
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={prefs.showUnassigned}
-              onChange={(e) => savePrefs({ ...prefs, showUnassigned: e.target.checked })}
-            />
-            Include unassigned work
-          </label>
         </section>
 
         <section className="space-y-4 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 shadow-card backdrop-blur-xl">
@@ -383,3 +369,4 @@ export default function TechSettingsPage() {
     </div>
   );
 }
+

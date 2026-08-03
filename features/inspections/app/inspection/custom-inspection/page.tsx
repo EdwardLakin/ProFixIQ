@@ -3,6 +3,16 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import {
+  Check,
+  ChevronRight,
+  ClipboardCheck,
+  FileStack,
+  ListChecks,
+  Search,
+  Settings2,
+  Sparkles,
+} from "lucide-react";
 import { buildInspectionFromSelections } from "@inspections/lib/inspection/buildFromSelections";
 import {
   buildFromMaster,
@@ -11,10 +21,12 @@ import {
   type CvipGroup,
   type VehicleType,
 } from "@inspections/lib/inspection/masterInspectionList";
+import { buttonClasses } from "@/features/shared/components/ui/Button";
 
 type DutyClass = "light" | "medium" | "heavy";
 type GridMode = "hyd" | "air" | "none";
 type EngineType = "gas" | "diesel";
+type BuildMethod = "template" | "prompt" | "manual";
 
 /** ✅ Upgraded item shape so we don't lose CVIP/spec metadata */
 type SectionItem = {
@@ -457,10 +469,27 @@ function cx(...parts: Array<string | false | null | undefined>) {
   return parts.filter(Boolean).join(" ");
 }
 
+function selectionButtonClasses(active: boolean) {
+  return buttonClasses({
+    variant: active ? "default" : "secondary",
+    size: "sm",
+    className: cx(
+      "min-h-11 w-full justify-between px-3 text-left text-xs",
+      active && "bg-[color:var(--brand-primary)]",
+    ),
+  });
+}
+
 function compactGridLabel(mode: GridMode) {
   if (mode === "air") return "Air";
   if (mode === "hyd") return "Hydraulic";
   return "None";
+}
+
+function cleanNumericString(raw: string): string {
+  if (!raw) return "";
+  const cleaned = raw.replace(/[^\d.]/g, "");
+  return cleaned ? cleaned.replace(/^0+(?=\d)/, "") : "";
 }
 
 export default function CustomBuilderPage() {
@@ -486,10 +515,6 @@ export default function CustomBuilderPage() {
   const [includeTireGrid, setIncludeTireGrid] = useState(false);
   const [includeGreaseChassis, setIncludeGreaseChassis] = useState(false);
 
-  const [collapsedSections, setCollapsedSections] = useState<
-    Record<string, boolean>
-  >({});
-
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiPreset, setAiPreset] = useState<AiPresetKey | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
@@ -504,6 +529,12 @@ export default function CustomBuilderPage() {
   const [targetCount, setTargetCount] = useState<number>(80);
 
   const [quickTouched, setQuickTouched] = useState(false);
+  const [buildMethod, setBuildMethod] = useState<BuildMethod>("template");
+  const [activeSectionTitle, setActiveSectionTitle] = useState(
+    masterInspectionList[0]?.title ?? "",
+  );
+  const [sectionQuery, setSectionQuery] = useState("");
+  const [itemQuery, setItemQuery] = useState("");
 
   const triggerTimerRef = useRef<number | null>(null);
 
@@ -558,13 +589,6 @@ export default function CustomBuilderPage() {
   }
   function clearSection(sectionTitle: string) {
     setSelections((prev) => ({ ...prev, [sectionTitle]: [] }));
-  }
-
-  function toggleSectionCollapsed(sectionTitle: string) {
-    setCollapsedSections((prev) => ({
-      ...prev,
-      [sectionTitle]: !prev[sectionTitle],
-    }));
   }
 
   function buildOilSection(engine: EngineType): Section {
@@ -843,549 +867,674 @@ export default function CustomBuilderPage() {
     [],
   );
 
-  const topChips = useMemo(() => {
-    const chips: Array<{ k: string; v: string }> = [];
-    chips.push({ k: "Duty", v: dutyLabel });
-    chips.push({ k: "Corner Grid", v: compactGridLabel(gridMode) });
-    chips.push({ k: "Tires", v: includeTireGrid ? "On" : "Off" });
-    chips.push({ k: "Batteries", v: includeBatteryGrid ? "On" : "Off" });
-    chips.push({ k: "Grease", v: includeGreaseChassis ? "On" : "Off" });
-    chips.push({
-      k: "Oil",
-      v: includeOil ? oilEngineType.toUpperCase() : "Off",
-    });
-    chips.push({ k: "Selected", v: String(totalSelected) });
-    if (laborHours.trim()) chips.push({ k: "Hours", v: laborHours.trim() });
-    return chips;
-  }, [
-    dutyLabel,
-    gridMode,
+  const visibleSections = useMemo(() => {
+    const query = sectionQuery.trim().toLowerCase();
+    if (!query) return masterInspectionList;
+    return masterInspectionList.filter((section) =>
+      section.title.toLowerCase().includes(query),
+    );
+  }, [sectionQuery]);
+
+  const activeSection = useMemo(
+    () =>
+      masterInspectionList.find((section) => section.title === activeSectionTitle) ??
+      masterInspectionList[0],
+    [activeSectionTitle],
+  );
+
+  const visibleActiveItems = useMemo(() => {
+    const query = itemQuery.trim().toLowerCase();
+    if (!activeSection) return [];
+    if (!query) return activeSection.items;
+    return activeSection.items.filter((item) =>
+      item.item.toLowerCase().includes(query),
+    );
+  }, [activeSection, itemQuery]);
+
+  const selectedSectionCount = useMemo(
+    () => Object.values(selections).filter((items) => items.length > 0).length,
+    [selections],
+  );
+
+  const optionalFeatureCount = [
+    includeOil,
     includeTireGrid,
     includeBatteryGrid,
     includeGreaseChassis,
-    includeOil,
-    oilEngineType,
-    totalSelected,
-    laborHours,
-  ]);
+  ].filter(Boolean).length;
 
-  /* ------------------------------------------------------------------ */
-  /* Theme alignment with shared dashboard surfaces                      */
-  /* ------------------------------------------------------------------ */
+  const inputClass =
+    "w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3.5 py-2.5 text-sm text-[color:var(--theme-text-primary)] outline-none placeholder:text-[color:var(--theme-text-muted)] transition focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/20";
+  const panelClass =
+    "rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] shadow-[var(--theme-shadow-medium)]";
+  const quietButtonClass =
+    "inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 text-xs font-semibold text-[color:var(--theme-text-primary)] transition hover:border-blue-500/30 hover:bg-[color:var(--theme-surface-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30";
+  const primaryButtonClass =
+    "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-blue-500/70 bg-blue-600 px-5 text-sm font-semibold text-white shadow-[0_10px_30px_rgba(37,99,235,0.22)] transition hover:bg-blue-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/50 disabled:cursor-not-allowed disabled:opacity-60";
 
-  const COPPER_45 = "rgba(176,141,112,0.34)";
-  const COPPER_GLOW_16 = "rgba(176,141,112,0.16)";
-  const FOCUS_RING = "rgba(125,211,252,0.38)";
+  const methodOptions = [
+    {
+      id: "template" as const,
+      title: "Start from a template",
+      description: "Build a proven inspection for the vehicle and brake system.",
+      icon: FileStack,
+    },
+    {
+      id: "prompt" as const,
+      title: "Describe what you need",
+      description: "Turn a plain-language request into a structured inspection.",
+      icon: Sparkles,
+    },
+    {
+      id: "manual" as const,
+      title: "Build manually",
+      description: "Choose every section and check with full control.",
+      icon: ListChecks,
+    },
+  ];
 
-  const headerCard =
-    "rounded-2xl border border-[color:var(--desktop-border,var(--metal-border-soft,var(--theme-border-soft)))] " +
-    "bg-[color:var(--desktop-panel-bg-soft,var(--theme-surface-inset))] shadow-[var(--theme-shadow-medium)] backdrop-blur-xl";
-
-  const sectionCard =
-    "rounded-2xl border border-[color:var(--desktop-border,var(--metal-border-soft,var(--theme-border-soft)))] " +
-    "bg-[color:var(--desktop-panel-bg-soft,var(--theme-surface-inset))] shadow-[var(--theme-shadow-medium)] backdrop-blur-xl";
-
-  const pillBase =
-    "px-3 py-1 text-[10px] uppercase tracking-[0.16em] rounded-full border transition-colors";
-
-  const pillActive =
-    "border-[color:var(--desktop-border,var(--metal-border-soft,var(--theme-border-soft)))] bg-[color:var(--theme-surface-panel)] text-[color:var(--theme-text-primary)]";
-  const pillInactive =
-    "border-transparent bg-transparent text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-surface-panel)]";
-
-  const inputBase =
-    "w-full rounded-xl border border-[color:var(--desktop-border,var(--metal-border-soft,var(--theme-border-soft)))] bg-[color:var(--desktop-item-bg,var(--theme-surface-inset))] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 " +
-    `focus:ring-[${FOCUS_RING}]`;
-
-  const selectBase =
-    "w-full rounded-xl border border-[color:var(--desktop-border,var(--metal-border-soft,var(--theme-border-soft)))] bg-[color:var(--desktop-item-bg,var(--theme-surface-inset))] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] focus:outline-none focus:ring-2 " +
-    `focus:ring-[${FOCUS_RING}]`;
-
-  const actionBtn =
-    "rounded-full border border-[color:var(--desktop-border,var(--metal-border-soft,var(--theme-border-soft)))] " +
-    "bg-[color:var(--desktop-item-bg,var(--theme-surface-inset))] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] " +
-    "text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-panel)]";
-
-  const primaryBtn =
-    "rounded-full bg-[linear-gradient(to_right,rgba(191,141,99,0.72),rgba(160,116,82,0.66))] " +
-    "px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-on-accent)] " +
-    `shadow-[0_0_14px_${COPPER_GLOW_16}] hover:shadow-[0_0_18px_${COPPER_GLOW_16}] disabled:opacity-60`;
+  const methodTitle =
+    methodOptions.find((method) => method.id === buildMethod)?.title ??
+    "Build inspection";
+  const displayedCheckCount =
+    buildMethod === "manual" ? totalSelected : targetCount;
+  const reviewInspection =
+    buildMethod === "manual"
+      ? startManual
+      : buildMethod === "prompt"
+        ? buildFromPrompt
+        : startQuickFromMaster;
+  const reviewDisabled =
+    !title.trim() ||
+    (buildMethod === "prompt" && (!aiPrompt.trim() || aiLoading));
+  const readinessLabel = !title.trim()
+    ? "Inspection name required"
+    : buildMethod === "prompt" && !aiPrompt.trim()
+      ? "Description required"
+      : aiLoading
+        ? "Building inspection"
+        : "Ready to review";
 
   return (
-    <div className="px-4 py-6 text-[color:var(--theme-text-primary)]">
-      <div className="mx-auto w-full max-w-6xl space-y-5">
-        {/* Header */}
-        <div
-          className={
-            headerCard + " relative overflow-hidden px-4 py-4 md:px-6 md:py-5"
-          }
-        >
-          <div className="relative flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-            <div className="text-center md:text-left">
-              <p className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
-                Inspections
-              </p>
-              <h1
-                className="mt-1 text-2xl uppercase tracking-[0.2em] text-[color:var(--theme-text-primary)] md:text-3xl"
-                style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
-              >
-                Custom Inspection Builder
+    <div className="relative px-3 py-5 text-[color:var(--theme-text-primary)] sm:px-4 sm:py-6">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-80 bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.11),transparent_55%)]"
+      />
+      <div className="mx-auto w-full max-w-7xl space-y-5">
+        <header className={cx(panelClass, "p-5 sm:p-6")}>
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-blue-500">
+                <ClipboardCheck className="h-4 w-4" aria-hidden />
+                Custom Inspection
+              </div>
+              <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+                Build a focused inspection
               </h1>
-              <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
-                Quick build, prompt build, or manual selection — all from your
-                master list.
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-[color:var(--theme-text-secondary)]">
+                Set the basics, choose one build method, then review the technician experience.
               </p>
             </div>
+            <div className="flex items-center gap-2 self-start rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-2 text-xs text-[color:var(--theme-text-secondary)] lg:self-auto">
+              <span
+                className={cx(
+                  "h-2 w-2 rounded-full",
+                  reviewDisabled ? "bg-amber-500" : "bg-emerald-500",
+                )}
+              />
+              {readinessLabel}
+            </div>
+          </div>
+        </header>
 
-            {/* Summary chips -> same pill system, not white borders */}
-            <div className="flex flex-wrap items-center justify-center gap-2">
-              {topChips.map((c) => (
-                <span
-                  key={c.k}
-                  className={cx(
-                    "inline-flex items-center gap-2 rounded-full border border-[color:var(--desktop-border,var(--metal-border-soft,var(--theme-border-soft)))] bg-[color:var(--desktop-item-bg,var(--theme-surface-inset))] px-3 py-1 text-[11px]",
-                    "text-[color:var(--theme-text-primary)]",
-                  )}
-                >
-                  <span className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
-                    {c.k}
-                  </span>
-                  <span className="font-semibold text-[color:var(--theme-text-primary)]">{c.v}</span>
-                </span>
-              ))}
+        <section className={cx(panelClass, "overflow-hidden")} aria-labelledby="inspection-setup-heading">
+          <div className="border-b border-[color:var(--theme-border-soft)] px-5 py-4">
+            <div className="flex items-center gap-3">
+              <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-500/10 text-sm font-bold text-blue-500">
+                1
+              </span>
+              <div>
+                <h2 id="inspection-setup-heading" className="text-sm font-semibold">
+                  Inspection setup
+                </h2>
+                <p className="text-xs text-[color:var(--theme-text-secondary)]">
+                  The details technicians and advisors will recognize.
+                </p>
+              </div>
             </div>
           </div>
 
-          {/* Title + duty + hours */}
-          <div className="relative mt-4 grid gap-3 md:grid-cols-2">
-            <label className="flex flex-col gap-1">
-              <span className="text-sm text-[color:var(--theme-text-secondary)]">Template title</span>
+          <div className="grid gap-4 p-5 md:grid-cols-[minmax(0,1.5fr)_minmax(180px,0.7fr)_minmax(150px,0.5fr)]">
+            <label className="text-xs font-medium text-[color:var(--theme-text-secondary)]">
+              Inspection name
               <input
-                className={inputBase}
                 value={title}
-                onChange={(e) => setTitle(e.target.value)}
+                onChange={(event) => setTitle(event.target.value)}
+                placeholder="Custom inspection"
+                className={cx(inputClass, "mt-1.5")}
               />
             </label>
-
-            <div className="grid gap-3 md:grid-cols-2">
-              <label className="flex flex-col gap-1">
-                <span className="text-sm text-[color:var(--theme-text-secondary)]">Duty Class</span>
-                <select
-                  className={selectBase}
-                  value={dutyClass}
-                  onChange={(e) => setDutyClass(e.target.value as DutyClass)}
-                >
-                  <option value="light">Light</option>
-                  <option value="medium">Medium</option>
-                  <option value="heavy">Heavy</option>
-                </select>
-                <span className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">
-                  Influences defaults (vehicle/brake + corner grid). You can
-                  override below.
-                </span>
-              </label>
-
-              <label className="flex flex-col gap-1">
-                <span className="text-sm text-[color:var(--theme-text-secondary)]">Labor hours</span>
+            <label className="text-xs font-medium text-[color:var(--theme-text-secondary)]">
+              Duty class
+              <select
+                value={dutyClass}
+                onChange={(event) => setDutyClass(event.target.value as DutyClass)}
+                className={cx(inputClass, "mt-1.5")}
+              >
+                <option value="light">Light duty</option>
+                <option value="medium">Medium duty</option>
+                <option value="heavy">Heavy duty</option>
+              </select>
+            </label>
+            <label className="text-xs font-medium text-[color:var(--theme-text-secondary)]">
+              Estimated labor
+              <div className="relative mt-1.5">
                 <input
                   inputMode="decimal"
-                  className={inputBase}
                   value={laborHours}
-                  onChange={(e) => setLaborHours(e.target.value)}
-                  placeholder="e.g. 2.5"
+                  onChange={(event) => setLaborHours(cleanNumericString(event.target.value))}
+                  placeholder="0.8"
+                  className={cx(inputClass, "pr-12")}
                 />
-                <span className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">
-                  Optional. Stored in inspection params.
+                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[color:var(--theme-text-muted)]">
+                  hr
                 </span>
-              </label>
-            </div>
+              </div>
+            </label>
           </div>
 
-          {/* Toggles + corner grid (templates-style pill group) */}
-          <div className="relative mt-5 space-y-3">
-            <div className="flex flex-wrap items-center justify-center gap-2">
-              <div className="flex overflow-hidden rounded-full border border-[color:var(--desktop-border,var(--metal-border-soft,var(--theme-border-soft)))] bg-[color:var(--desktop-item-bg,var(--theme-surface-inset))]">
-                <button
-                  type="button"
-                  onClick={() => setIncludeOil((v) => !v)}
-                  className={
-                    pillBase + " " + (includeOil ? pillActive : pillInactive)
-                  }
-                >
-                  Oil{" "}
-                  {includeOil ? `• ${oilEngineType.toUpperCase()}` : "• Off"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIncludeTireGrid((v) => !v)}
-                  className={
-                    pillBase +
-                    " " +
-                    (includeTireGrid ? pillActive : pillInactive)
-                  }
-                >
-                  Tire Grid • {includeTireGrid ? "On" : "Off"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIncludeBatteryGrid((v) => !v)}
-                  className={
-                    pillBase +
-                    " " +
-                    (includeBatteryGrid ? pillActive : pillInactive)
-                  }
-                >
-                  Battery Grid • {includeBatteryGrid ? "On" : "Off"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIncludeGreaseChassis((v) => !v)}
-                  className={
-                    pillBase +
-                    " " +
-                    (includeGreaseChassis ? pillActive : pillInactive)
-                  }
-                >
-                  Grease • {includeGreaseChassis ? "On" : "Off"}
-                </button>
-              </div>
-
-              {includeOil && (
-                <div className="flex items-center gap-2 rounded-full border border-[color:var(--desktop-border,var(--metal-border-soft,var(--theme-border-soft)))] bg-[color:var(--desktop-item-bg,var(--theme-surface-inset))] px-3 py-1.5">
-                  <span className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
-                    Engine
-                  </span>
-                  <select
-                    className={cx(
-                      "rounded-full border border-[color:var(--desktop-border,var(--metal-border-soft,var(--theme-border-soft)))] bg-[color:var(--desktop-item-bg,var(--theme-surface-inset))] px-3 py-1 text-[12px] text-[color:var(--theme-text-primary)] focus:outline-none focus:ring-2",
-                      `focus:ring-[${FOCUS_RING}]`,
-                    )}
-                    value={oilEngineType}
-                    onChange={(e) =>
-                      setOilEngineType(e.target.value as EngineType)
-                    }
-                  >
-                    <option value="gas">Gas</option>
-                    <option value="diesel">Diesel</option>
-                  </select>
-                </div>
-              )}
-            </div>
-
-            <div className="flex flex-wrap items-center justify-center gap-2">
-              <span className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
-                Corner grid
+          <details className="border-t border-[color:var(--theme-border-soft)]">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-3.5 text-sm font-medium text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-surface-subtle)] [&::-webkit-details-marker]:hidden">
+              <span className="flex min-w-0 items-center gap-2">
+                <Settings2 className="h-4 w-4" aria-hidden />
+                <span className="truncate">Measurement grids and included services</span>
               </span>
-              <div className="flex overflow-hidden rounded-full border border-[color:var(--desktop-border,var(--metal-border-soft,var(--theme-border-soft)))] bg-[color:var(--desktop-item-bg,var(--theme-surface-inset))]">
-                {gridModeButtons.map((opt) => {
-                  const active = gridMode === opt.value;
-                  return (
+              <span className="hidden shrink-0 text-xs text-[color:var(--theme-text-muted)] sm:inline">
+                {compactGridLabel(gridMode)} brakes · {optionalFeatureCount} included
+              </span>
+            </summary>
+            <div className="grid gap-5 border-t border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-5 lg:grid-cols-2">
+              <div>
+                <div className="text-xs font-semibold text-[color:var(--theme-text-primary)]">
+                  Corner measurement grid
+                </div>
+                <div className="mt-2 grid grid-cols-3 rounded-xl bg-[color:var(--theme-surface-page)] p-1">
+                  {gridModeButtons.map((option) => (
                     <button
-                      key={opt.value}
+                      key={option.value}
                       type="button"
+                      aria-pressed={gridMode === option.value}
                       onClick={() => {
                         setGridTouched(true);
-                        setGridMode(opt.value);
+                        setGridMode(option.value);
                       }}
-                      className={
-                        pillBase + " " + (active ? pillActive : pillInactive)
-                      }
+                      className={cx(
+                        "min-h-9 rounded-lg text-xs font-medium transition",
+                        gridMode === option.value
+                          ? "bg-blue-500/10 text-blue-500 shadow-sm ring-1 ring-blue-500/25"
+                          : "text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)]",
+                      )}
                     >
-                      {opt.label}
+                      {option.label}
                     </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Quick build */}
-        <div
-          className={
-            sectionCard + " relative overflow-hidden px-4 py-4 md:px-6 md:py-5"
-          }
-        >
-          <div className="relative">
-            <div className="mb-1 text-center text-sm font-semibold text-[color:var(--theme-text-primary)]">
-              Quick Build
-            </div>
-            <p className="mb-4 text-center text-sm text-[color:var(--theme-text-secondary)]">
-              Deterministic build from your master list (keeps CVIP/spec codes).
-            </p>
-
-            <div className="grid gap-3 md:grid-cols-4">
-              <label className="flex flex-col gap-1">
-                <span className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
-                  Vehicle
-                </span>
-                <select
-                  className={selectBase}
-                  value={vehicleType}
-                  onChange={(e) => {
-                    setQuickTouched(true);
-                    setVehicleType(e.target.value as VehicleType);
-                  }}
-                >
-                  <option value="car">Car</option>
-                  <option value="truck">Truck</option>
-                  <option value="bus">Bus</option>
-                  <option value="trailer">Trailer</option>
-                </select>
-              </label>
-
-              <label className="flex flex-col gap-1">
-                <span className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
-                  Brake system
-                </span>
-                <select
-                  className={selectBase}
-                  value={brakeSystem}
-                  onChange={(e) => {
-                    setQuickTouched(true);
-                    setBrakeSystem(e.target.value as BrakeSystem);
-                  }}
-                >
-                  <option value="hyd_brake">Hydraulic</option>
-                  <option value="air_brake">Air</option>
-                </select>
-              </label>
-
-              <label className="flex flex-col gap-1">
-                <span className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
-                  Target count
-                </span>
-                <input
-                  type="number"
-                  min={10}
-                  max={250}
-                  className={inputBase}
-                  value={String(targetCount)}
-                  onChange={(e) => {
-                    setQuickTouched(true);
-                    setTargetCount(Number(e.target.value) || 80);
-                  }}
-                />
-              </label>
-
-              <div className="flex flex-col justify-end gap-2">
-                <div className="text-[11px] text-[color:var(--theme-text-muted)]">
-                  CVIP group:{" "}
-                  <span className="font-semibold text-[color:var(--theme-text-primary)]">
-                    {cvipGroup ?? "—"}
-                  </span>
+                  ))}
                 </div>
-                <button
-                  type="button"
-                  onClick={startQuickFromMaster}
-                  className={primaryBtn}
-                >
-                  Start (Quick Build)
-                </button>
+              </div>
+
+              <div>
+                <div className="text-xs font-semibold text-[color:var(--theme-text-primary)]">
+                  Included services
+                </div>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    aria-pressed={includeOil}
+                    onClick={() => setIncludeOil((current) => !current)}
+                    className={selectionButtonClasses(includeOil)}
+                  >
+                    Oil service
+                    {includeOil ? <Check className="h-4 w-4 text-current" aria-hidden /> : null}
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={includeTireGrid}
+                    onClick={() => setIncludeTireGrid((current) => !current)}
+                    className={selectionButtonClasses(includeTireGrid)}
+                  >
+                    Tire measurements
+                    {includeTireGrid ? <Check className="h-4 w-4 text-current" aria-hidden /> : null}
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={includeBatteryGrid}
+                    onClick={() => setIncludeBatteryGrid((current) => !current)}
+                    className={selectionButtonClasses(includeBatteryGrid)}
+                  >
+                    Battery measurements
+                    {includeBatteryGrid ? <Check className="h-4 w-4 text-current" aria-hidden /> : null}
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={includeGreaseChassis}
+                    onClick={() => setIncludeGreaseChassis((current) => !current)}
+                    className={selectionButtonClasses(includeGreaseChassis)}
+                  >
+                    Grease chassis
+                    {includeGreaseChassis ? <Check className="h-4 w-4 text-current" aria-hidden /> : null}
+                  </button>
+                </div>
+                {includeOil ? (
+                  <label className="mt-3 block text-xs font-medium text-[color:var(--theme-text-secondary)]">
+                    Oil service engine
+                    <select
+                      value={oilEngineType}
+                      onChange={(event) => setOilEngineType(event.target.value as EngineType)}
+                      className={cx(inputClass, "mt-1.5")}
+                    >
+                      <option value="gas">Gas</option>
+                      <option value="diesel">Diesel</option>
+                    </select>
+                  </label>
+                ) : null}
+              </div>
+            </div>
+          </details>
+        </section>
+
+        <section className={cx(panelClass, "overflow-hidden")} aria-labelledby="build-method-heading">
+          <div className="border-b border-[color:var(--theme-border-soft)] px-5 py-4">
+            <div className="flex items-center gap-3">
+              <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-500/10 text-sm font-bold text-blue-500">
+                2
+              </span>
+              <div>
+                <h2 id="build-method-heading" className="text-sm font-semibold">
+                  Choose how to build
+                </h2>
+                <p className="text-xs text-[color:var(--theme-text-secondary)]">
+                  Only the active workspace is shown.
+                </p>
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Prompt build */}
-        <div
-          className={
-            sectionCard + " relative overflow-hidden px-4 py-4 md:px-6 md:py-5"
-          }
-        >
-          <div className="relative">
-            <div className="mb-1 text-center text-sm font-semibold text-[color:var(--theme-text-primary)]">
-              Prompt Build
-            </div>
-            <p className="mb-4 text-center text-sm text-[color:var(--theme-text-secondary)]">
-              Triggers auto-apply while typing (air/hydraulic, tires, batteries,
-              grease, oil, “60 point”, etc).
-            </p>
-
-            <div className="mb-3 flex flex-wrap items-center justify-center gap-2">
-              {samplePrompts.map((s) => (
+          <div className="grid gap-2 border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-3 md:grid-cols-3">
+            {methodOptions.map((method) => {
+              const Icon = method.icon;
+              const active = method.id === buildMethod;
+              return (
                 <button
-                  key={s.label}
+                  key={method.id}
                   type="button"
-                  onClick={() => {
-                    setAiPreset(null);
-                    setAiPrompt(s.prompt);
-                    applyPromptToControls(s.prompt);
-                  }}
-                  className={actionBtn + " px-3 py-1"}
+                  aria-pressed={active}
+                  onClick={() => setBuildMethod(method.id)}
+                  className={cx(
+                    "flex min-h-[86px] items-start gap-3 rounded-xl border p-3 text-left transition",
+                    active
+                      ? "border-blue-500/30 bg-[color:var(--theme-surface-page)] shadow-sm ring-1 ring-blue-500/20"
+                      : "border-transparent text-[color:var(--theme-text-secondary)] hover:border-[color:var(--theme-border-soft)] hover:bg-[color:var(--theme-surface-page)]",
+                  )}
                 >
-                  {s.label}
+                  <span className={cx(
+                    "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
+                    active ? "bg-blue-500/10 text-blue-500" : "bg-[color:var(--theme-surface-subtle)]",
+                  )}>
+                    <Icon className="h-4 w-4" aria-hidden />
+                  </span>
+                  <span>
+                    <span className="block text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                      {method.title}
+                    </span>
+                    <span className="mt-1 block text-xs leading-5">
+                      {method.description}
+                    </span>
+                  </span>
                 </button>
-              ))}
-            </div>
+              );
+            })}
+          </div>
 
-            <div className="mb-3 flex flex-wrap items-center justify-center gap-2">
-              {(Object.keys(CVIP_PRESETS) as AiPresetKey[]).map((key) => {
-                const active = aiPreset === key;
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => applyAiPreset(key)}
-                    className={cx(
-                      actionBtn,
-                      "px-3 py-1",
-                      active && `border-[${COPPER_45}] text-[color:var(--theme-text-primary)]`,
-                    )}
-                  >
-                    {CVIP_PRESETS[key].label}
-                  </button>
-                );
-              })}
-            </div>
+          <div className="grid items-start gap-5 p-4 sm:p-5 xl:grid-cols-[minmax(0,1fr)_280px]">
+            <div className="min-w-0">
+              {buildMethod === "template" ? (
+                <div className="space-y-5">
+                  <div>
+                    <h3 className="text-base font-semibold">Configure the starting template</h3>
+                    <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
+                      ProFixIQ selects the right checks from the master inspection library.
+                    </p>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <label className="text-xs font-medium text-[color:var(--theme-text-secondary)]">
+                      Vehicle
+                      <select
+                        value={vehicleType}
+                        onChange={(event) => {
+                          setQuickTouched(true);
+                          setVehicleType(event.target.value as VehicleType);
+                        }}
+                        className={cx(inputClass, "mt-1.5")}
+                      >
+                        <option value="car">Car</option>
+                        <option value="truck">Truck</option>
+                        <option value="bus">Bus</option>
+                        <option value="trailer">Trailer</option>
+                      </select>
+                    </label>
+                    <label className="text-xs font-medium text-[color:var(--theme-text-secondary)]">
+                      Brake system
+                      <select
+                        value={brakeSystem}
+                        onChange={(event) => {
+                          setQuickTouched(true);
+                          setBrakeSystem(event.target.value as BrakeSystem);
+                        }}
+                        className={cx(inputClass, "mt-1.5")}
+                      >
+                        <option value="hyd_brake">Hydraulic</option>
+                        <option value="air_brake">Air</option>
+                      </select>
+                    </label>
+                    <label className="text-xs font-medium text-[color:var(--theme-text-secondary)]">
+                      Inspection size
+                      <select
+                        value={String(targetCount)}
+                        onChange={(event) => {
+                          setQuickTouched(true);
+                          setTargetCount(Number(event.target.value));
+                        }}
+                        className={cx(inputClass, "mt-1.5")}
+                      >
+                        <option value="30">Focused · 30 checks</option>
+                        <option value="60">Standard · 60 checks</option>
+                        <option value="80">Detailed · 80 checks</option>
+                        <option value="120">Comprehensive · 120 checks</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div className="grid gap-3 rounded-xl border border-blue-500/20 bg-blue-500/10 p-4 sm:grid-cols-3">
+                    <div>
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[color:var(--theme-text-muted)]">
+                        Vehicle profile
+                      </div>
+                      <div className="mt-1 text-sm font-medium capitalize">{vehicleType}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[color:var(--theme-text-muted)]">
+                        Brake checks
+                      </div>
+                      <div className="mt-1 text-sm font-medium">
+                        {brakeSystem === "air_brake" ? "Air brake" : "Hydraulic"}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[color:var(--theme-text-muted)]">
+                        Commercial coverage
+                      </div>
+                      <div className="mt-1 text-sm font-medium">
+                        {cvipGroup ? "Included" : "Not required"}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
 
-            <textarea
-              className={cx(
-                "mb-3 min-h-[90px] w-full rounded-xl border border-[color:var(--desktop-border,var(--metal-border-soft,var(--theme-border-soft)))] bg-[color:var(--desktop-item-bg,var(--theme-surface-inset))] p-3 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2",
-                `focus:ring-[${FOCUS_RING}]`,
-              )}
-              placeholder="e.g. brake inspection, hydraulic, include tires, 30 point"
-              value={aiPrompt}
-              onChange={(e) => {
-                const next = e.target.value;
-                setAiPrompt(next);
-                setAiPreset(null);
-                scheduleAutoTriggerApply(next);
-              }}
-              onBlur={() => {
-                if (aiPrompt.trim()) applyPromptToControls(aiPrompt);
-              }}
-            />
+              {buildMethod === "prompt" ? (
+                <div className="space-y-4">
+                  <div>
+                    <h3 className="text-base font-semibold">Describe the inspection</h3>
+                    <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
+                      Include the vehicle, brake system, desired size, and any measurements.
+                    </p>
+                  </div>
+                  <textarea
+                    value={aiPrompt}
+                    onChange={(event) => {
+                      const next = event.target.value;
+                      setAiPrompt(next);
+                      setAiPreset(null);
+                      scheduleAutoTriggerApply(next);
+                    }}
+                    onBlur={() => {
+                      if (aiPrompt.trim()) applyPromptToControls(aiPrompt);
+                    }}
+                    placeholder="Example: Heavy-duty pre-trip inspection with air brakes, tire measurements, batteries, and 60 checks."
+                    className={cx(inputClass, "min-h-32 resize-y")}
+                  />
+                  <div>
+                    <div className="mb-2 text-xs font-semibold text-[color:var(--theme-text-secondary)]">
+                      Common starting points
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {samplePrompts.slice(0, 3).map((sample) => (
+                        <button
+                          key={sample.label}
+                          type="button"
+                          onClick={() => {
+                            setAiPreset(null);
+                            setAiPrompt(sample.prompt);
+                            applyPromptToControls(sample.prompt);
+                          }}
+                          className={quietButtonClass}
+                        >
+                          {sample.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="mb-2 text-xs font-semibold text-[color:var(--theme-text-secondary)]">
+                      Commercial presets
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {(Object.keys(CVIP_PRESETS) as AiPresetKey[]).map((key) => (
+                        <button
+                          key={key}
+                          type="button"
+                          aria-pressed={aiPreset === key}
+                          onClick={() => applyAiPreset(key)}
+                          className={cx(
+                            quietButtonClass,
+                            aiPreset === key && "border-blue-500/30 bg-blue-500/10 text-blue-500",
+                          )}
+                        >
+                          {CVIP_PRESETS[key].label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {aiError ? (
+                    <div className="rounded-xl border border-red-500/25 bg-red-500/10 px-3 py-2 text-xs text-red-500">
+                      {aiError}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
 
-            <div className="flex flex-wrap items-center justify-center gap-3">
-              <button
-                onClick={buildFromPrompt}
-                disabled={aiLoading || !aiPrompt.trim()}
-                className={primaryBtn}
-              >
-                {aiLoading ? "Generating…" : "Build from Prompt"}
-              </button>
+              {buildMethod === "manual" ? (
+                <div className="grid min-h-[480px] overflow-hidden rounded-xl border border-[color:var(--theme-border-soft)] lg:grid-cols-[240px_minmax(0,1fr)]">
+                  <aside className="border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-3 lg:border-b-0 lg:border-r">
+                    <div className="relative">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[color:var(--theme-text-muted)]" aria-hidden />
+                      <input
+                        value={sectionQuery}
+                        onChange={(event) => setSectionQuery(event.target.value)}
+                        placeholder="Find a section…"
+                        aria-label="Find inspection section"
+                        className={cx(inputClass, "pl-9")}
+                      />
+                    </div>
+                    <div className="mt-3 max-h-56 space-y-1 overflow-y-auto pr-1 lg:max-h-[410px]">
+                      {visibleSections.map((section) => {
+                        const count = selections[section.title]?.length ?? 0;
+                        const active = section.title === activeSection?.title;
+                        return (
+                          <button
+                            key={section.title}
+                            type="button"
+                            onClick={() => {
+                              setActiveSectionTitle(section.title);
+                              setItemQuery("");
+                            }}
+                            className={cx(
+                              "flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2.5 text-left text-xs transition",
+                              active
+                                ? "bg-[color:var(--theme-surface-page)] font-semibold text-[color:var(--theme-text-primary)] shadow-sm"
+                                : "text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-surface-page)] hover:text-[color:var(--theme-text-primary)]",
+                            )}
+                          >
+                            <span className="truncate">{section.title}</span>
+                            <span className={cx(
+                              "rounded-full px-2 py-0.5 text-[10px]",
+                              count > 0
+                                ? "bg-blue-500/10 text-blue-500"
+                                : "bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-muted)]",
+                            )}>
+                              {count}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </aside>
 
-              {aiError ? (
-                <span className="text-xs text-red-400">{aiError}</span>
+                  <div className="min-w-0 p-4">
+                    <div className="flex flex-col gap-3 border-b border-[color:var(--theme-border-soft)] pb-4 sm:flex-row sm:items-end sm:justify-between">
+                      <div>
+                        <h3 className="text-base font-semibold">
+                          {activeSection?.title ?? "Inspection checks"}
+                        </h3>
+                        <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+                          {selections[activeSection?.title ?? ""]?.length ?? 0} of {activeSection?.items.length ?? 0} selected
+                        </p>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => activeSection && selectAllInSection(activeSection.title, activeSection.items)}
+                          className={quietButtonClass}
+                        >
+                          Select all
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => activeSection && clearSection(activeSection.title)}
+                          className={quietButtonClass}
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+                    <div className="relative mt-4">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[color:var(--theme-text-muted)]" aria-hidden />
+                      <input
+                        value={itemQuery}
+                        onChange={(event) => setItemQuery(event.target.value)}
+                        placeholder="Search checks in this section…"
+                        aria-label="Search inspection checks"
+                        className={cx(inputClass, "pl-9")}
+                      />
+                    </div>
+                    <div className="mt-3 grid max-h-[350px] gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
+                      {visibleActiveItems.map((item) => {
+                        const checked = (selections[activeSection?.title ?? ""] ?? []).includes(item.item);
+                        return (
+                          <label
+                            key={item.item}
+                            className={cx(
+                              "group flex min-h-12 cursor-pointer items-center gap-3 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] transition hover:bg-[color:var(--theme-surface-subtle)]",
+                              checked &&
+                                "border-[color:var(--brand-primary)] bg-[color:var(--theme-surface-panel)] ring-1 ring-[color:var(--brand-primary)]",
+                            )}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => activeSection && toggle(activeSection.title, item.item)}
+                              className="h-4 w-4 accent-[color:var(--brand-primary)]"
+                            />
+                            <span className="leading-snug">{item.item}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                    {visibleActiveItems.length === 0 ? (
+                      <div className="py-10 text-center text-sm text-[color:var(--theme-text-secondary)]">
+                        No checks match this search.
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
               ) : null}
             </div>
 
-            <div className="mt-3 text-center text-[11px] text-[color:var(--theme-text-muted)]">
-              Tip: include <span className="text-[color:var(--theme-text-primary)]">air brake</span>,{" "}
-              <span className="text-[color:var(--theme-text-primary)]">hydraulic</span>,{" "}
-              <span className="text-[color:var(--theme-text-primary)]">tire grid</span>,{" "}
-              <span className="text-[color:var(--theme-text-primary)]">battery grid</span>,{" "}
-              <span className="text-[color:var(--theme-text-primary)]">grease chassis</span>,{" "}
-              <span className="text-[color:var(--theme-text-primary)]">oil change diesel</span>,{" "}
-              <span className="text-[color:var(--theme-text-primary)]">60 point</span>.
-            </div>
-          </div>
-        </div>
-
-        {/* Manual pick list */}
-        <div className="space-y-4">
-          {masterInspectionList.map((sec) => {
-            const selectedCount = selections[sec.title]?.length ?? 0;
-            const collapsed = collapsedSections[sec.title] ?? false;
-
-            return (
-              <div
-                key={sec.title}
-                className={sectionCard + " px-4 py-4 md:px-6 md:py-5"}
-              >
-                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <div className="font-semibold text-[color:var(--theme-text-primary)]">
-                      {sec.title}
-                    </div>
-                    <span className="rounded-full border border-[color:var(--desktop-border,var(--metal-border-soft,var(--theme-border-soft)))] bg-[color:var(--desktop-item-bg,var(--theme-surface-inset))] px-2 py-0.5 text-[11px] text-[color:var(--theme-text-secondary)]">
-                      {selectedCount}/{sec.items.length} selected
-                    </span>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => selectAllInSection(sec.title, sec.items)}
-                      className={actionBtn + " px-3 py-1"}
-                    >
-                      Select all
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => clearSection(sec.title)}
-                      className={actionBtn + " px-3 py-1"}
-                    >
-                      Clear
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => toggleSectionCollapsed(sec.title)}
-                      className={actionBtn + " px-3 py-1"}
-                    >
-                      {collapsed ? "Expand" : "Collapse"}
-                    </button>
-                  </div>
-                </div>
-
-                {!collapsed && (
-                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                    {sec.items.map((i) => {
-                      const label = i.item;
-                      const checked = (selections[sec.title] ?? []).includes(
-                        label,
-                      );
-
-                      return (
-                        <label
-                          key={label}
-                          className={cx(
-                            "group flex min-h-10 items-center gap-3 rounded-xl border border-[color:var(--desktop-border,var(--metal-border-soft,var(--theme-border-soft)))] bg-[color:var(--desktop-item-bg,var(--theme-surface-inset))] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] transition-colors hover:bg-[color:var(--theme-surface-panel)]",
-                            checked && `border-[${COPPER_45}]`,
-                          )}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => toggle(sec.title, label)}
-                            className="h-4 w-4 accent-[rgba(200,122,67,0.85)]"
-                          />
-                          <span className="text-sm leading-snug text-[color:var(--theme-text-primary)]">
-                            {label}
-                          </span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {collapsed && (
-                  <p className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">
-                    Collapsed. Expand to adjust individual checks.
-                  </p>
-                )}
+            <aside className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-4 xl:sticky xl:top-4">
+              <div className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-500">
+                Inspection summary
               </div>
-            );
-          })}
-        </div>
+              <h3 className="mt-2 truncate text-base font-semibold">
+                {title || "Untitled inspection"}
+              </h3>
+              <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+                {methodTitle}
+              </p>
+              <dl className="mt-4 divide-y divide-[color:var(--theme-border-soft)] text-xs">
+                <div className="flex items-center justify-between py-2.5">
+                  <dt className="text-[color:var(--theme-text-secondary)]">Checks</dt>
+                  <dd className="font-semibold">{displayedCheckCount}</dd>
+                </div>
+                <div className="flex items-center justify-between py-2.5">
+                  <dt className="text-[color:var(--theme-text-secondary)]">Duty class</dt>
+                  <dd className="font-semibold">{dutyLabel}</dd>
+                </div>
+                <div className="flex items-center justify-between py-2.5">
+                  <dt className="text-[color:var(--theme-text-secondary)]">Corner grid</dt>
+                  <dd className="font-semibold">{compactGridLabel(gridMode)}</dd>
+                </div>
+                <div className="flex items-center justify-between py-2.5">
+                  <dt className="text-[color:var(--theme-text-secondary)]">Included services</dt>
+                  <dd className="font-semibold">{optionalFeatureCount}</dd>
+                </div>
+                {buildMethod === "manual" ? (
+                  <div className="flex items-center justify-between py-2.5">
+                    <dt className="text-[color:var(--theme-text-secondary)]">Sections</dt>
+                    <dd className="font-semibold">{selectedSectionCount}</dd>
+                  </div>
+                ) : null}
+                <div className="flex items-center justify-between py-2.5">
+                  <dt className="text-[color:var(--theme-text-secondary)]">Estimated labor</dt>
+                  <dd className="font-semibold">{laborHours.trim() ? laborHours + " hr" : "Not set"}</dd>
+                </div>
+              </dl>
+              <div className="mt-4 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-[11px] leading-5 text-emerald-700 dark:text-emerald-300">
+                Review opens the technician-facing draft before anything is saved.
+              </div>
+            </aside>
+          </div>
+        </section>
 
-        {/* Footer actions */}
-        <div className="flex flex-wrap justify-center gap-3">
-          <button onClick={startManual} className={primaryBtn}>
-            Start (Manual)
-          </button>
-
-          <button onClick={startQuickFromMaster} className={actionBtn}>
-            Start (Quick Build)
-          </button>
-
+        <div className="sticky bottom-3 z-20 flex flex-col gap-3 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)]/95 p-3 shadow-[0_16px_50px_rgba(15,23,42,0.18)] backdrop-blur-xl sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-1 text-xs text-[color:var(--theme-text-secondary)]">
+            <span>
+              <strong className="text-[color:var(--theme-text-primary)]">{displayedCheckCount}</strong> checks
+            </span>
+            {buildMethod === "manual" ? (
+              <span>
+                <strong className="text-[color:var(--theme-text-primary)]">{selectedSectionCount}</strong> sections
+              </span>
+            ) : null}
+            <span>{optionalFeatureCount} included services</span>
+            <span>{laborHours.trim() ? laborHours + " hr estimated" : "Labor estimate optional"}</span>
+          </div>
           <button
-            onClick={buildFromPrompt}
-            disabled={aiLoading || !aiPrompt.trim()}
-            className={actionBtn}
+            type="button"
+            onClick={reviewInspection}
+            disabled={reviewDisabled}
+            className={cx(primaryButtonClass, "w-full shrink-0 sm:w-auto")}
           >
-            {aiLoading ? "Generating…" : "Start (Prompt)"}
+            {aiLoading ? "Building inspection…" : "Review inspection"}
+            {!aiLoading ? <ChevronRight className="h-4 w-4" aria-hidden /> : null}
           </button>
         </div>
       </div>

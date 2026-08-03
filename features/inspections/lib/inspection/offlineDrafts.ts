@@ -10,17 +10,20 @@ import {
   hydrateOfflineMutationQueue,
   listOfflineMutations,
   resolveOfflineMutationScope,
+  retryOfflineMutation,
   type OfflineMutationScope,
 } from "@/features/shared/lib/offline/mutations";
 
 const KIND = "inspection-draft";
 const MAX_AGE_MS = 1000 * 60 * 60 * 24 * 14;
 
-function sessionTimestamp(session: Partial<InspectionSession> | null): number {
-  const parsed = session?.lastUpdated
-    ? new Date(session.lastUpdated).getTime()
-    : 0;
-  return Number.isFinite(parsed) ? parsed : 0;
+function isLegacyInspectionWriterFailure(value: unknown): boolean {
+  return (
+    typeof value === "string" &&
+    value
+      .toLowerCase()
+      .includes("no unique or exclusion constraint matching the on conflict")
+  );
 }
 
 export type InspectionDraftRecoveryState = "editing" | "queued" | "conflicted";
@@ -88,7 +91,7 @@ export async function getInspectionOfflineDraft(args: {
     const queued = listOfflineMutations(scope).find(
       (mutation) => mutation.clientMutationId === draft.operationKey,
     );
-    if (!queued || queued.status === "synced") {
+    if (!queued) {
       const reconciled = {
         ...draft,
         state: "editing" as const,
@@ -97,21 +100,50 @@ export async function getInspectionOfflineDraft(args: {
       await saveInspectionOfflineDraft(reconciled);
       return reconciled;
     }
-    const queuedSession =
+    if (queued.status === "synced") {
+      // Keep the key until the autosave client retrieves the server's
+      // idempotent acknowledgement and its canonical sync revision.
+      const awaitingAcknowledgement = {
+        ...draft,
+        state: "queued" as const,
+      };
+      await saveInspectionOfflineDraft(awaitingAcknowledgement);
+      return awaitingAcknowledgement;
+    }
+    const queuedSessionCandidate =
       (queued.payload && typeof queued.payload === "object"
         ? (queued.payload as { session?: Partial<InspectionSession> }).session
         : null) ?? null;
-    if (sessionTimestamp(draft.session) > sessionTimestamp(queuedSession)) {
-      const reconciled = {
-        ...draft,
-        state: "editing" as const,
-        operationKey: undefined,
-      };
-      await saveInspectionOfflineDraft(reconciled);
-      return reconciled;
-    }
+    const queuedSession =
+      queuedSessionCandidate &&
+      Array.isArray(queuedSessionCandidate.sections) &&
+      queuedSessionCandidate.sections.length > 0
+        ? (queuedSessionCandidate as InspectionSession)
+        : null;
     if (queued.status === "conflicted") {
-      return { ...draft, state: "conflicted" };
+      if (isLegacyInspectionWriterFailure(queued.lastError)) {
+        // Older clients mistook PostgreSQL's `ON CONFLICT` schema wording for
+        // an inspection revision conflict. Revive only that known-safe failure
+        // with the same payload and idempotency key; real revision conflicts
+        // remain protected and require a canonical reconciliation path.
+        await retryOfflineMutation(draft.operationKey);
+        const retrying = {
+          ...draft,
+          session: queuedSession ?? draft.session,
+          state: "queued" as const,
+        };
+        await saveInspectionOfflineDraft(retrying);
+        return retrying;
+      }
+      // The queued payload is the exact device snapshot rejected by the
+      // server. It is safer than a later screen/localStorage copy, which may
+      // already have been replaced by a canonical load. Never dismiss or
+      // rewrite this operation while it is conflicted.
+      return {
+        ...draft,
+        session: queuedSession ?? draft.session,
+        state: "conflicted",
+      };
     }
   }
   return draft;

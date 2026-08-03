@@ -7,6 +7,11 @@ const billingPage = readFileSync("app/billing/page.tsx", "utf8");
 const previewClient = readFileSync("features/work-orders/components/InvoicePreviewPageClient.tsx", "utf8");
 const sendRoute = readFileSync("app/api/invoices/send/route.ts", "utf8");
 const snapshotSource = readFileSync("features/invoices/server/getInvoiceSnapshot.ts", "utf8");
+const billingRoute = readFileSync("app/api/billing/work-orders/route.ts", "utf8");
+const invoiceRoute = readFileSync("app/api/work-orders/[id]/invoice/route.ts", "utf8");
+const invoicePdfRoute = readFileSync("app/api/work-orders/[id]/invoice-pdf/route.ts", "utf8");
+const workOrderView = readFileSync("features/work-orders/app/work-orders/view/page.tsx", "utf8");
+const manualPayment = readFileSync("features/invoices/components/RecordManualPayment.tsx", "utf8");
 
 describe("regular live invoice flow safety", () => {
   it("prices 1.0 labor hour from explicit total or labor rate, never as $1.00", () => {
@@ -21,12 +26,19 @@ describe("regular live invoice flow safety", () => {
     }).laborTotal).toBe(125);
   });
 
-  it("blocks AI/invoice review when parts are required but no billable parts are attached", () => {
-    expect(reviewSource).toContain("function lineRequiresParts");
-    expect(reviewSource).toContain("missing_required_parts");
+  it("keeps AI advisory and never infers an invoice blocker from repair text", () => {
+    expect(previewClient).not.toContain("WorkOrderCloseoutGatePreview");
+    expect(reviewSource).not.toContain("function lineRequiresParts");
+    expect(reviewSource).not.toContain("missing_required_parts");
+    expect(reviewSource).not.toContain("Required approved parts are not attached");
+  });
+
+  it("loads attached work-order parts from the durable approved quantity", () => {
     expect(reviewSource).toContain("work_order_parts");
-    expect(reviewSource).toContain("work_order_part_allocations");
-    expect(reviewSource).toContain("part_request_items");
+    expect(reviewSource).toContain("quantity_requested");
+    expect(reviewSource).toContain("stagedPartsError");
+    expect(reviewSource).toContain("hasCanonicalPartsByLine");
+    expect(reviewSource).not.toContain("record.quantity)");
   });
 
   it("flags invalid or suspicious labor totals before invoice readiness passes", () => {
@@ -42,8 +54,30 @@ describe("regular live invoice flow safety", () => {
     expect(snapshotSource).toContain("work_order_parts");
     expect(snapshotSource).toContain("quote_line_part_request");
     expect(previewClient).toContain("/api/work-orders/${workOrderId}/invoice");
-    expect(previewClient).toContain("snapshotJson?.snapshot?.parts");
+    expect(previewClient).toContain("loadedSnapshot?.parts");
     expect(previewClient).toContain("canonicalInvoiceTotal");
+  });
+
+  it("uses the canonical approved-parts snapshot for billing, review, and draft PDF surfaces", () => {
+    expect(billingPage).toContain('fetch("/api/billing/work-orders"');
+    expect(billingPage).toContain("pricing_error");
+    expect(billingRoute).toContain("getIssuableInvoiceSnapshot");
+    expect(invoiceRoute).toContain("getIssuableInvoiceSnapshot");
+    expect(invoicePdfRoute).toContain("getIssuableInvoiceSnapshot");
+    expect(billingRoute).toContain("pricing_error");
+    expect(billingRoute).not.toContain("catch {");
+  });
+
+  it("never turns allocation acquisition cost into a customer invoice price", () => {
+    expect(snapshotSource).toContain(
+      "Allocation cost is an internal valuation",
+    );
+    expect(snapshotSource).not.toContain("safeNumber(a.unit_cost) ||");
+  });
+
+  it("advances completed work orders through the protected mark-ready route", () => {
+    expect(workOrderView).toContain("/api/work-orders/${woId}/mark-ready");
+    expect(workOrderView).not.toContain('.update({\n                status: "ready_to_invoice"');
   });
 
   it("billing Invoice button navigates to preview instead of sending", () => {
@@ -55,6 +89,37 @@ describe("regular live invoice flow safety", () => {
   it("invoice send remains only behind preview confirmation", () => {
     expect(previewClient).toContain("Send invoice");
     expect(previewClient).toContain('fetch("/api/invoices/send"');
-    expect(sendRoute).toContain("Invoice review failed. Resolve blocking issues before sending.");
+    expect(sendRoute).toContain("getIssuableInvoiceSnapshot");
+    expect(sendRoute).toContain("draftParts");
+    expect(sendRoute).toContain("approved parts were not materialized");
+  });
+
+  it("shows completed readiness as state instead of a disabled action", () => {
+    expect(billingPage).toContain("Ready ✓");
+    expect(billingPage).toContain(
+      "Review passed. This work order is already ready to invoice.",
+    );
+    expect(billingPage).toContain("statusLower === \"ready_to_invoice\"");
+    expect(billingPage).not.toContain(
+      'disabled={\n                        r.status === "invoiced" ||',
+    );
+  });
+
+  it("renders each invoice blocker only once", () => {
+    expect(previewClient).toContain("generalReviewIssues");
+    expect(previewClient).toContain(
+      "reviewIssues.filter((issue) => !issue.lineId)",
+    );
+    expect(previewClient).toContain("Required line updates");
+    expect(previewClient).not.toContain(
+      "(reviewIssues ?? []).slice(0, 12)",
+    );
+  });
+
+  it("keeps post-issue accounting and manual POS actions reachable", () => {
+    expect(billingPage).toContain("Open Invoice");
+    expect(previewClient).toContain("SyncInvoiceToQuickBooksButton");
+    expect(previewClient).toContain("RecordManualPayment");
+    expect(manualPayment).toContain('fetch("/api/payments/manual"');
   });
 });

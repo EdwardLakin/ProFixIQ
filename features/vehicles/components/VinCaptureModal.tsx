@@ -61,7 +61,7 @@ export default function VinCaptureModalContent({
               onClick={onClearError}
               className="rounded-full border border-red-300/50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-red-50 hover:bg-red-400/10"
             >
-              Try again
+              Dismiss
             </button>
             <button
               type="button"
@@ -75,13 +75,31 @@ export default function VinCaptureModalContent({
       ) : null}
 
       <div className="grid gap-6 sm:grid-cols-2">
-        {/* Manual Entry */}
-        <section className="rounded-2xl border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 shadow-[var(--theme-shadow-medium)]">
+        <section className="order-1 rounded-2xl border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 shadow-[var(--theme-shadow-medium)] sm:order-2">
+          <h3 className="font-blackops text-[0.75rem] tracking-[0.18em] text-orange-300">
+            INTAKE SCAN
+          </h3>
+          <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+            Aim at the driver-door VIN barcode. Capture completes automatically.
+          </p>
+
+          <div className="mt-3 min-h-[220px] rounded-xl border border-dashed border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-3">
+            {scanSlot ? (
+              scanSlot
+            ) : (
+              <div className="flex h-full items-center justify-center text-sm text-[color:var(--theme-text-muted)]">
+                Scanner not loaded
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section className="order-2 rounded-2xl border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 shadow-[var(--theme-shadow-medium)] sm:order-1">
           <h3 className="font-blackops text-[0.75rem] tracking-[0.18em] text-orange-300">
             MANUAL ENTRY
           </h3>
           <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
-            Enter a valid 17-character VIN. No I, O, or Q.
+            Existing manual entry stays available at all times.
           </p>
 
           <form
@@ -118,37 +136,17 @@ export default function VinCaptureModalContent({
 
             <div className="flex flex-wrap items-center justify-between gap-3">
               <span className="text-[11px] text-[color:var(--theme-text-muted)]">
-                Decoded via NHTSA vPIC
+                VIN fills instantly; details enrich online in the background
               </span>
               <button
                 type="submit"
                 disabled={isDecoding}
                 className="rounded-full border border-orange-500 bg-[color:var(--theme-surface-overlay)] px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.2em] text-orange-100 hover:bg-orange-500/10 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {isDecoding ? "Decoding…" : "Decode VIN"}
+                {isDecoding ? "Adding…" : "Use VIN"}
               </button>
             </div>
           </form>
-        </section>
-
-        {/* Scanner card */}
-        <section className="rounded-2xl border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 shadow-[var(--theme-shadow-medium)]">
-          <h3 className="font-blackops text-[0.75rem] tracking-[0.18em] text-orange-300">
-            SCAN VIN
-          </h3>
-          <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
-            Use the camera or upload a photo of the VIN label.
-          </p>
-
-          <div className="mt-3 min-h-[220px] rounded-xl border border-dashed border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-3">
-            {scanSlot ? (
-              scanSlot
-            ) : (
-              <div className="flex h-full items-center justify-center text-sm text-[color:var(--theme-text-muted)]">
-                Scanner not loaded
-              </div>
-            )}
-          </div>
         </section>
       </div>
     </div>

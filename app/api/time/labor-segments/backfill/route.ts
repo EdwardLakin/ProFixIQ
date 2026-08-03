@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
-import { createClient } from "@supabase/supabase-js";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import type { Database } from "@shared/types/types/supabase";
-import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
 type DB = Database;
 
@@ -11,48 +10,19 @@ type LegacyPunchLine = Pick<
   "id" | "shop_id" | "work_order_id" | "assigned_tech_id" | "punched_in_at" | "punched_out_at"
 >;
 
-function mustEnv(name: string) {
-  const value = process.env[name];
-  if (!value || !value.trim()) throw new Error(`Missing env ${name}`);
-  return value;
-}
-
 export async function POST() {
-  const supabase = createServerSupabaseRoute();
-
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-
-  if (userError || !user) {
-    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-  }
-
-  const { data: profile, error: profileError } = await supabase
-    .from("profiles")
-    .select("id, shop_id, role")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (profileError || !profile?.shop_id) {
-    return NextResponse.json(
-      { ok: false, error: profileError?.message ?? "Unable to resolve profile" },
-      { status: 400 },
-    );
-  }
-
-  const actor = getActorCapabilities({ role: profile.role });
-  if (!actor.isKnownRole || !actor.canManageScheduling) {
-    return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
-  }
-
-  const admin = createClient<DB>(mustEnv("NEXT_PUBLIC_SUPABASE_URL"), mustEnv("SUPABASE_SERVICE_ROLE_KEY"));
+  const access = await requireShopScopedApiAccess({
+    requiredCapability: "canManageScheduling",
+  });
+  if (!access.ok) return access.response;
+  const shopId = access.profile.shop_id;
+  const actorProfileId = access.profile.id;
+  const admin = createAdminSupabase();
 
   const { data: legacyLines, error: linesError } = await admin
     .from("work_order_lines")
     .select("id, shop_id, work_order_id, assigned_tech_id, punched_in_at, punched_out_at")
-    .eq("shop_id", profile.shop_id)
+    .eq("shop_id", shopId)
     .not("assigned_tech_id", "is", null)
     .not("punched_in_at", "is", null)
     .not("punched_out_at", "is", null);
@@ -112,7 +82,7 @@ export async function POST() {
       started_at: line.punched_in_at as string,
       ended_at: line.punched_out_at as string,
       source: "legacy_line_backfill",
-      created_by: user.id,
+      created_by: actorProfileId,
     });
   }
 

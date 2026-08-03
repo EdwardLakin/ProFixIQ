@@ -1,31 +1,60 @@
-// /app/menu/page.tsx (FULL FILE REPLACEMENT)
-// Menu list routes to: /menu/item/[id]
-// NO `any` casts.
-// IMPORTANT: labor rate is pulled from shops table (no manual labor rate input).
-// Menu totals are stored as: parts subtotal + (labor_time * shops.labor_rate)
-// Tax is NOT applied on Menu Items (tax belongs at quote/invoice time).
-
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
-import type { Database } from "@shared/types/types/supabase";
-import { useUser } from "@auth/hooks/useUser";
+import {
+  ChevronRight,
+  ClipboardCheck,
+  History,
+  Package,
+  Plus,
+  Search,
+  Sparkles,
+  Wrench,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 
+import { useUser } from "@auth/hooks/useUser";
 import { PartPicker, type PickedPart } from "@parts/components/PartPicker";
 import { masterServicesList } from "@inspections/lib/inspection/masterServicesList";
 import GuidedPageStepPanel from "@/features/onboarding-v2/components/GuidedPageStepPanel";
+import {
+  COMPLETED_REPAIR_SOURCE,
+  COMPLETED_REPAIR_STATUSES,
+} from "@/features/menu-repair-items/lib/completedRepair";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import type { Database, Json } from "@shared/types/types/supabase";
 
 type DB = Database;
-
 type MenuItemRow = DB["public"]["Tables"]["menu_items"]["Row"] & {
   inspection_template?: { template_name: string | null } | null;
 };
 type TemplateRow = DB["public"]["Tables"]["inspection_templates"]["Row"] & {
   labor_hours?: number | null;
 };
+type LearnedRepairRow = Pick<
+  DB["public"]["Tables"]["menu_repair_items"]["Row"],
+  | "id"
+  | "name"
+  | "complaint"
+  | "cause"
+  | "correction"
+  | "vehicle_year"
+  | "vehicle_make"
+  | "vehicle_model"
+  | "engine"
+  | "drivetrain"
+  | "labor_hours"
+  | "price_estimate"
+  | "pricing_status"
+  | "usage_count"
+  | "parts"
+  | "is_active"
+  | "source_work_order_line_id"
+  | "last_pricing_source"
+  | "updated_at"
+>;
 
 type PartFormRow = {
   name: string;
@@ -47,1061 +76,940 @@ type ShopDefaults = {
   labor_rate: number | null;
 };
 
-function toNum(s: string): number {
-  const n = Number.parseFloat(s);
-  return Number.isFinite(n) ? n : 0;
+type LibraryTab = "shop" | "learned";
+type StatusFilter = "active" | "inactive";
+
+const EMPTY_PART: PartFormRow = {
+  name: "",
+  quantityStr: "",
+  unitCostStr: "",
+  part_id: null,
+};
+
+const EMPTY_FORM: FormState = {
+  source: "master",
+  name: "",
+  description: "",
+  laborTimeStr: "",
+  inspectionTemplateId: "",
+};
+
+const INPUT =
+  "w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3.5 py-2.5 text-sm text-[color:var(--theme-text-primary)] outline-none placeholder:text-[color:var(--theme-text-muted)] transition focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/20";
+const CARD =
+  "rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] shadow-[var(--theme-shadow-medium)]";
+const QUIET_BUTTON =
+  "inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3.5 text-sm font-medium text-[color:var(--theme-text-primary)] transition hover:border-blue-500/30 hover:bg-[color:var(--theme-surface-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30";
+const PRIMARY_BUTTON =
+  "inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-blue-500/70 bg-blue-600 px-4 text-sm font-semibold text-white shadow-[0_10px_30px_rgba(37,99,235,0.22)] transition hover:bg-blue-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/50 disabled:cursor-not-allowed disabled:opacity-60";
+
+function toNum(value: string): number {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function cleanNumericString(raw: string): string {
-  if (raw === "") return "";
-  const v = raw.replace(/[^\d.]/g, "");
-  return v === "" ? "" : v.replace(/^0+(?=\d)/, "");
+  if (!raw) return "";
+  const cleaned = raw.replace(/[^\d.]/g, "");
+  return cleaned ? cleaned.replace(/^0+(?=\d)/, "") : "";
 }
 
-function money(currency: "CAD" | "USD", n: number | null | undefined): string {
-  const x = typeof n === "number" && Number.isFinite(n) ? n : 0;
-  return `${currency} $${x.toFixed(2)}`;
+function money(currency: "CAD" | "USD", value: number | null | undefined): string {
+  const safeValue = typeof value === "number" && Number.isFinite(value) ? value : 0;
+  return new Intl.NumberFormat(currency === "CAD" ? "en-CA" : "en-US", {
+    style: "currency",
+    currency,
+  }).format(safeValue);
 }
 
 function getShopIdFromUser(user: unknown): string | null {
   if (!user || typeof user !== "object") return null;
-  const rec = user as Record<string, unknown>;
-  const v = rec["shop_id"];
-  return typeof v === "string" && v.length ? v : null;
+  const value = (user as Record<string, unknown>).shop_id;
+  return typeof value === "string" && value ? value : null;
 }
 
-function normalize(s: string): string {
-  return s.trim().toLowerCase();
+function normalized(value: unknown): string {
+  return typeof value === "string" ? value.trim().toLowerCase() : "";
 }
 
-function includesText(haystack: string, needle: string): boolean {
-  if (!needle) return true;
-  return normalize(haystack).includes(needle);
+function jsonArrayLength(value: Json): number {
+  return Array.isArray(value) ? value.length : 0;
 }
 
-type PartsRequestBodyItem = {
-  description: string;
-  qty: number;
-};
-
-type PartsRequestBody = {
-  workOrderId: string;
-  jobId?: string | null;
-  items: PartsRequestBodyItem[];
-  notes?: string | null;
-};
+function vehicleLabel(item: LearnedRepairRow): string {
+  return [item.vehicle_year, item.vehicle_make, item.vehicle_model]
+    .filter((value) => value !== null && value !== "")
+    .join(" ");
+}
 
 export default function MenuItemsPage() {
-  const supabase = createBrowserSupabase();
+  const supabase = useMemo(() => createBrowserSupabase(), []);
   const router = useRouter();
   const { user, isLoading } = useUser();
-
-  const [menuItems, setMenuItems] = useState<MenuItemRow[]>([]);
-  const [saving, setSaving] = useState(false);
-
-  const [shopDefaults, setShopDefaults] = useState<ShopDefaults | null>(null);
-
-  // create form
-  const [pickerOpenForRow, setPickerOpenForRow] = useState<number | null>(null);
-  const [parts, setParts] = useState<PartFormRow[]>([
-    { name: "", quantityStr: "", unitCostStr: "", part_id: null },
-  ]);
-
-  const [templates, setTemplates] = useState<TemplateRow[]>([]);
-  const [form, setForm] = useState<FormState>({
-    source: "master",
-    name: "",
-    description: "",
-    laborTimeStr: "",
-    inspectionTemplateId: "",
-  });
-
-  // saved items search (MUST be above any return)
-  const [savedQuery, setSavedQuery] = useState<string>("");
-
-  // manual parts request (MUST be above any return)
-  const [requesting, setRequesting] = useState(false);
-  const [requestWorkOrderId, setRequestWorkOrderId] = useState<string>("");
-  const [requestNotes, setRequestNotes] = useState<string>("");
-  const [requestIncludeUnlinkedOnly, setRequestIncludeUnlinkedOnly] =
-    useState<boolean>(true);
-
   const shopId = useMemo(() => getShopIdFromUser(user), [user]);
 
-  const currency: "CAD" | "USD" = useMemo(
-    () => (shopDefaults?.country === "CA" ? "CAD" : "USD"),
-    [shopDefaults],
+  const [menuItems, setMenuItems] = useState<MenuItemRow[]>([]);
+  const [learnedRepairs, setLearnedRepairs] = useState<LearnedRepairRow[]>([]);
+  const [templates, setTemplates] = useState<TemplateRow[]>([]);
+  const [shopDefaults, setShopDefaults] = useState<ShopDefaults | null>(null);
+  const [loadingLibrary, setLoadingLibrary] = useState(true);
+  const [shopServicesLoadFailed, setShopServicesLoadFailed] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [libraryTab, setLibraryTab] = useState<LibraryTab>("shop");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("active");
+  const [savedQuery, setSavedQuery] = useState("");
+  const [pickerOpenForRow, setPickerOpenForRow] = useState<number | null>(null);
+  const [parts, setParts] = useState<PartFormRow[]>([{ ...EMPTY_PART }]);
+  const [form, setForm] = useState<FormState>({ ...EMPTY_FORM });
+  const creationRequestIdRef = useRef<string | null>(null);
+
+  const currency: "CAD" | "USD" = shopDefaults?.country === "CA" ? "CAD" : "USD";
+  const laborRate =
+    typeof shopDefaults?.labor_rate === "number" && Number.isFinite(shopDefaults.labor_rate)
+      ? shopDefaults.labor_rate
+      : 0;
+
+  const selectedTemplate = useMemo(
+    () => templates.find((template) => template.id === form.inspectionTemplateId) ?? null,
+    [form.inspectionTemplateId, templates],
   );
+  const effectiveLaborHours = useMemo(() => {
+    if (form.laborTimeStr.trim()) return toNum(form.laborTimeStr);
+    return typeof selectedTemplate?.labor_hours === "number" ? selectedTemplate.labor_hours : 0;
+  }, [form.laborTimeStr, selectedTemplate]);
+  const partsTotal = useMemo(
+    () =>
+      parts.reduce(
+        (total, part) => total + toNum(part.quantityStr) * toNum(part.unitCostStr),
+        0,
+      ),
+    [parts],
+  );
+  const laborTotal = effectiveLaborHours * laborRate;
+  const serviceTotal = partsTotal + laborTotal;
 
-  const laborRate = useMemo(() => {
-    const r = shopDefaults?.labor_rate;
-    return typeof r === "number" && Number.isFinite(r) ? r : 0;
-  }, [shopDefaults]);
+  useEffect(() => {
+    if (!selectedTemplate || form.laborTimeStr.trim()) return;
+    if (typeof selectedTemplate.labor_hours === "number" && selectedTemplate.labor_hours > 0) {
+      setForm((current) => ({
+        ...current,
+        laborTimeStr: String(selectedTemplate.labor_hours),
+      }));
+    }
+  }, [form.laborTimeStr, selectedTemplate]);
 
-  // ---------------------------
-  // THEME (copper, matching inspections pages)
-  // ---------------------------
-  const COPPER = "rgba(224,174,130,0.92)";
-  const COPPER_SOFT = "rgba(224,174,130,0.58)";
-  const COPPER_RING = "rgba(224,174,130,0.46)";
+  const setShopContext = useCallback(async () => {
+    if (!shopId) return;
+    const { error } = await supabase.rpc("set_current_shop_id", { p_shop_id: shopId });
+    if (error) console.warn("[menu] set_current_shop_id failed", error.message);
+  }, [shopId, supabase]);
 
-  // ---------------------------
-  // SHOP DEFAULTS (use shops table)
-  // ---------------------------
   const fetchShopDefaults = useCallback(async () => {
-    if (!shopId) {
-      setShopDefaults(null);
-      return;
-    }
-
-    const { error: ctxErr } = await supabase.rpc("set_current_shop_id", {
-      p_shop_id: shopId,
-    });
-    if (ctxErr) {
-      console.warn("[menu] set_current_shop_id failed:", ctxErr.message);
-    }
-
+    if (!shopId) return setShopDefaults(null);
     const { data, error } = await supabase
       .from("shops")
       .select("country, labor_rate")
       .eq("id", shopId)
       .maybeSingle();
-
     if (error) {
-      toast.message(error.message);
-      setShopDefaults(null);
-      return;
+      toast.error("Could not load shop pricing defaults.");
+      return setShopDefaults(null);
     }
-
-    const countrySafe: "US" | "CA" = data?.country === "CA" ? "CA" : "US";
-
     setShopDefaults({
-      country: countrySafe,
+      country: data?.country === "CA" ? "CA" : "US",
       labor_rate: typeof data?.labor_rate === "number" ? data.labor_rate : null,
     });
-  }, [supabase, shopId]);
+  }, [shopId, supabase]);
 
-  // ---------------------------
-  // CREATE FORM TOTALS (no tax here)
-  // ---------------------------
-  const partsTotal = useMemo(
-    () =>
-      parts.reduce((sum, p) => {
-        const q = toNum(p.quantityStr);
-        const u = toNum(p.unitCostStr);
-        return sum + q * u;
-      }, 0),
-    [parts],
-  );
-
-  const selectedTemplate = useMemo(() => {
-    if (!form.inspectionTemplateId) return null;
-    return templates.find((t) => t.id === form.inspectionTemplateId) ?? null;
-  }, [templates, form.inspectionTemplateId]);
-
-  const effectiveLaborHours = useMemo(() => {
-    // Option A: manual labor overrides; otherwise use template labor_hours
-    const manual = form.laborTimeStr.trim();
-    if (manual) return toNum(manual);
-
-    const t = selectedTemplate?.labor_hours;
-    return typeof t === "number" && Number.isFinite(t) ? t : 0;
-  }, [form.laborTimeStr, selectedTemplate]);
-
-  const laborTotal = useMemo(
-    () => effectiveLaborHours * laborRate,
-    [effectiveLaborHours, laborRate],
-  );
-
-  const subtotal = useMemo(() => partsTotal + laborTotal, [partsTotal, laborTotal]);
-
-  // Auto-fill labor when template selected and labor box is empty
-  useEffect(() => {
-    if (!form.inspectionTemplateId) return;
-    if (form.laborTimeStr.trim()) return;
-
-    const t = templates.find((x) => x.id === form.inspectionTemplateId);
-    const lh = t?.labor_hours;
-
-    if (typeof lh === "number" && Number.isFinite(lh) && lh > 0) {
-      setForm((f) => ({ ...f, laborTimeStr: String(lh) }));
-    }
-  }, [form.inspectionTemplateId, form.laborTimeStr, templates]);
-
-  // ---------------------------
-  // LIST + REALTIME
-  // ---------------------------
-  const fetchItems = useCallback(async () => {
+  const fetchMenuItems = useCallback(async () => {
     if (!shopId) {
       setMenuItems([]);
+      setShopServicesLoadFailed(false);
       return;
     }
-
-    const { error: ctxErr } = await supabase.rpc("set_current_shop_id", {
-      p_shop_id: shopId,
-    });
-    if (ctxErr) {
-      console.warn("[menu] set_current_shop_id failed:", ctxErr.message);
-    }
-
     const { data, error } = await supabase
       .from("menu_items")
       .select("*, inspection_template:inspection_templates(template_name)")
       .eq("shop_id", shopId)
       .order("created_at", { ascending: false })
-      .limit(200);
-
+      .limit(1000);
     if (error) {
-      console.error("Failed to fetch menu items:", error);
-      toast.error("Could not load menu items");
+      console.error("[menu] shop services load failed", error);
+      setShopServicesLoadFailed(true);
+      toast.error("Could not load shop services.");
+      return;
+    }
+    setShopServicesLoadFailed(false);
+    setMenuItems((data ?? []) as MenuItemRow[]);
+  }, [shopId, supabase]);
+
+  const fetchLearnedRepairs = useCallback(async () => {
+    if (!shopId) return setLearnedRepairs([]);
+    const { data, error } = await supabase
+      .from("menu_repair_items")
+      .select(
+        "id, name, complaint, cause, correction, vehicle_year, vehicle_make, vehicle_model, engine, drivetrain, labor_hours, price_estimate, pricing_status, usage_count, parts, is_active, source_work_order_line_id, last_pricing_source, updated_at",
+      )
+      .eq("shop_id", shopId)
+      .eq("last_pricing_source", COMPLETED_REPAIR_SOURCE)
+      .order("updated_at", { ascending: false })
+      .limit(200)
+      .returns<LearnedRepairRow[]>();
+    if (error) {
+      toast.error("Could not load completed repair history.");
       return;
     }
 
-    setMenuItems(data ?? []);
-  }, [supabase, shopId]);
+    const sourceIds = [
+      ...new Set(
+        (data ?? [])
+          .map((item) => item.source_work_order_line_id)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ];
+    if (sourceIds.length === 0) return setLearnedRepairs([]);
+
+    const { data: completedLines, error: sourceError } = await supabase
+      .from("work_order_lines")
+      .select("id, status")
+      .eq("shop_id", shopId)
+      .in("id", sourceIds)
+      .in("status", [...COMPLETED_REPAIR_STATUSES]);
+    if (sourceError) {
+      toast.error("Could not verify completed repair history.");
+      return setLearnedRepairs([]);
+    }
+    const completedIds = new Set((completedLines ?? []).map((line) => line.id));
+    setLearnedRepairs(
+      (data ?? []).filter(
+        (item) =>
+          Boolean(item.source_work_order_line_id) &&
+          completedIds.has(item.source_work_order_line_id as string),
+      ),
+    );
+  }, [shopId, supabase]);
 
   const fetchTemplates = useCallback(async () => {
-    const { data: me } = await supabase.auth.getUser();
-    const uid = me?.user?.id ?? null;
-
-    const minePromise = uid
+    const { data: auth } = await supabase.auth.getUser();
+    const userId = auth.user?.id ?? null;
+    const mine = userId
       ? supabase
           .from("inspection_templates")
           .select("*")
-          .eq("user_id", uid)
-          .order("created_at", { ascending: false })
+          .eq("user_id", userId)
+          .order("updated_at", { ascending: false })
       : Promise.resolve({ data: [] as TemplateRow[], error: null });
-
-    const sharedPromise = supabase
+    const shared = supabase
       .from("inspection_templates")
       .select("*")
       .eq("is_public", true)
-      .order("created_at", { ascending: false });
-
-    const [{ data: mineRaw }, { data: sharedRaw }] = await Promise.all([
-      minePromise,
-      sharedPromise,
-    ]);
-
-    setTemplates([
-      ...(Array.isArray(mineRaw) ? (mineRaw as TemplateRow[]) : []),
-      ...(Array.isArray(sharedRaw) ? (sharedRaw as TemplateRow[]) : []),
-    ]);
+      .order("updated_at", { ascending: false });
+    const [{ data: mineRows }, { data: sharedRows }] = await Promise.all([mine, shared]);
+    const unique = new Map<string, TemplateRow>();
+    for (const template of [...(mineRows ?? []), ...(sharedRows ?? [])] as TemplateRow[]) {
+      unique.set(template.id, template);
+    }
+    setTemplates([...unique.values()]);
   }, [supabase]);
 
-  useEffect(() => {
-    if (!shopId) return;
+  const refreshLibrary = useCallback(async () => {
+    await Promise.all([fetchMenuItems(), fetchLearnedRepairs()]);
+  }, [fetchLearnedRepairs, fetchMenuItems]);
 
-    void fetchShopDefaults();
-    void fetchItems();
-    void fetchTemplates();
+  useEffect(() => {
+    if (!shopId) {
+      setLoadingLibrary(false);
+      return;
+    }
+
+    let cancelled = false;
+    const load = async () => {
+      setLoadingLibrary(true);
+      await setShopContext();
+      await Promise.all([fetchShopDefaults(), fetchTemplates(), refreshLibrary()]);
+      if (!cancelled) setLoadingLibrary(false);
+    };
+    void load();
 
     const channel = supabase
-      .channel("menu-items-sync")
+      .channel(`service-menu-${shopId}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "menu_items" },
-        () => void fetchItems(),
+        { event: "*", schema: "public", table: "menu_items", filter: `shop_id=eq.${shopId}` },
+        () => void fetchMenuItems(),
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "menu_repair_items",
+          filter: `shop_id=eq.${shopId}`,
+        },
+        () => void fetchLearnedRepairs(),
       )
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      cancelled = true;
+      void supabase.removeChannel(channel);
     };
-  }, [supabase, shopId, fetchShopDefaults, fetchItems, fetchTemplates]);
+  }, [
+    fetchLearnedRepairs,
+    fetchMenuItems,
+    fetchShopDefaults,
+    fetchTemplates,
+    refreshLibrary,
+    setShopContext,
+    shopId,
+    supabase,
+  ]);
 
-  // ---------------------------
-  // PARTS EDITOR HELPERS
-  // ---------------------------
   const setPartField = useCallback(
-    (idx: number, field: "name" | "quantityStr" | "unitCostStr", value: string) => {
+    (index: number, field: "name" | "quantityStr" | "unitCostStr", value: string) => {
       setParts((rows) =>
-        rows.map((r, i) =>
-          i === idx
-            ? { ...r, [field]: field === "name" ? value : cleanNumericString(value) }
-            : r,
+        rows.map((row, rowIndex) =>
+          rowIndex === index
+            ? { ...row, [field]: field === "name" ? value : cleanNumericString(value) }
+            : row,
         ),
       );
     },
     [],
   );
 
-  const addPartRow = useCallback(() => {
-    setParts((rows) => [
-      ...rows,
-      { name: "", quantityStr: "", unitCostStr: "", part_id: null },
-    ]);
-  }, []);
-
-  const removePartRow = useCallback((idx: number) => {
-    setParts((rows) => rows.filter((_, i) => i !== idx));
-  }, []);
-
   const handlePickPart = useCallback(
-    (rowIdx: number) =>
-      (sel: PickedPart): void => {
-        (async () => {
-          const { data } = await supabase
-            .from("parts")
-            .select("name, unit_cost")
-            .eq("id", sel.part_id)
-            .maybeSingle();
-
-          const label = data?.name ?? "Part";
-          const qtyFromSel = sel.qty && sel.qty > 0 ? String(sel.qty) : "";
-          const unitCostFromSel =
-            sel.unit_cost != null && !Number.isNaN(sel.unit_cost)
-              ? String(sel.unit_cost)
-              : data?.unit_cost != null
-                ? String(data.unit_cost)
-                : "";
-
-          setParts((rows) =>
-            rows.map((r, i) =>
-              i === rowIdx
-                ? {
-                    ...r,
-                    part_id: sel.part_id,
-                    name: label,
-                    quantityStr: r.quantityStr || qtyFromSel,
-                    unitCostStr: r.unitCostStr || unitCostFromSel,
-                  }
-                : r,
-            ),
-          );
-
-          toast.success(`Picked ${label}`);
-        })().catch(() => {
-          setParts((rows) => rows.map((r, i) => (i === rowIdx ? { ...r, part_id: sel.part_id } : r)));
-        });
-      },
+    (rowIndex: number) => async (selection: PickedPart) => {
+      const { data } = await supabase
+        .from("parts")
+        .select("name, unit_cost")
+        .eq("id", selection.part_id)
+        .maybeSingle();
+      const label = data?.name ?? "Part";
+      setParts((rows) =>
+        rows.map((row, index) =>
+          index === rowIndex
+            ? {
+                ...row,
+                part_id: selection.part_id,
+                name: label,
+                quantityStr: row.quantityStr || (selection.qty ? String(selection.qty) : ""),
+                unitCostStr:
+                  row.unitCostStr ||
+                  (selection.unit_cost != null
+                    ? String(selection.unit_cost)
+                    : data?.unit_cost != null
+                      ? String(data.unit_cost)
+                      : ""),
+              }
+            : row,
+        ),
+      );
+      toast.success(`Added ${label}`);
+    },
     [supabase],
   );
 
-  // ---------------------------
-  // MANUAL PARTS REQUEST DERIVED
-  // ---------------------------
-  const requestItemsPreview = useMemo(() => {
-    const rows = parts
-      .map((p) => {
-        const desc = p.name.trim();
-        const qty = Math.max(1, Math.floor(toNum(p.quantityStr) || 1));
-        const linked = typeof p.part_id === "string" && p.part_id.length > 0;
-        return { desc, qty, linked };
-      })
-      .filter((x) => x.desc.length > 0);
+  const resetEditor = useCallback(() => {
+    setForm({ ...EMPTY_FORM });
+    setParts([{ ...EMPTY_PART }]);
+    creationRequestIdRef.current = null;
+  }, []);
 
-    return requestIncludeUnlinkedOnly ? rows.filter((r) => !r.linked) : rows;
-  }, [parts, requestIncludeUnlinkedOnly]);
-
-  const canRequestParts = useMemo(() => {
-    return (
-      requestItemsPreview.length > 0 &&
-      requestWorkOrderId.trim().length > 0 &&
-      !requesting
-    );
-  }, [requestItemsPreview.length, requestWorkOrderId, requesting]);
-
-  const createPartsRequest = useCallback(async () => {
-    if (!canRequestParts) return;
-
-    const workOrderId = requestWorkOrderId.trim();
-    if (!workOrderId) return;
-
-    const items: PartsRequestBodyItem[] = requestItemsPreview.map((r) => ({
-      description: r.desc,
-      qty: r.qty,
-    }));
-
-    const body: PartsRequestBody = {
-      workOrderId,
-      items,
-      notes: requestNotes.trim().length > 0 ? requestNotes.trim() : null,
-    };
-
-    setRequesting(true);
-    try {
-      const res = await fetch("/api/parts/requests/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-
-      const json = (await res.json().catch(() => null)) as
-        | { requestId?: string; error?: string }
-        | null;
-
-      if (!res.ok) {
-        toast.error(
-          json?.error || `Failed to create parts request (HTTP ${res.status})`,
-        );
-        return;
-      }
-
-      if (!json?.requestId) {
-        toast.error("Parts request created, but no requestId returned.");
-        return;
-      }
-
-      toast.success("Parts request created (internal)");
-      setRequestNotes("");
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Failed to create parts request");
-    } finally {
-      setRequesting(false);
-    }
-  }, [canRequestParts, requestItemsPreview, requestWorkOrderId, requestNotes]);
-
-  // ---------------------------
-  // CREATE (POST /api/menu/save)
-  // ---------------------------
   const handleSubmit = useCallback(async () => {
-    if (!form.name.trim()) {
-      toast.error("Service name is required");
-      return;
-    }
+    if (!form.name.trim()) return toast.error("Service name is required.");
+    if (!shopId) return toast.error("Shop context is unavailable.");
 
-    if (!shopId) {
-      toast.error("Missing shop context (shop_id).");
-      return;
-    }
+    const cleanedParts = parts
+      .filter((part) => part.name.trim() && toNum(part.quantityStr) > 0)
+      .map((part) => ({
+        name: part.name.trim(),
+        quantity: toNum(part.quantityStr),
+        unit_cost: toNum(part.unitCostStr),
+        part_id: part.part_id ?? null,
+      }));
 
     setSaving(true);
     try {
-      const cleanedParts = parts
-        .filter((p) => p.name.trim().length > 0 && toNum(p.quantityStr) > 0)
-        .map((p) => ({
-          name: p.name.trim(),
-          quantity: toNum(p.quantityStr),
-          unit_cost: toNum(p.unitCostStr),
-          part_id: p.part_id ?? null,
-        }));
-
-      const itemLaborHours = effectiveLaborHours > 0 ? effectiveLaborHours : null;
-      const computedTotal = partsTotal + (itemLaborHours ?? 0) * laborRate;
-
-      const payload = {
-        item: {
-          name: form.name.trim(),
-          description: form.description.trim() || null,
-          labor_time: itemLaborHours,
-          part_cost: partsTotal,
-          total_price: computedTotal,
-          inspection_template_id: form.inspectionTemplateId || null,
-          shop_id: shopId,
-        },
-        parts: cleanedParts,
-      };
-
-      const res = await fetch("/api/menu/save", {
+      creationRequestIdRef.current ??= crypto.randomUUID();
+      const response = await fetch("/api/menu/save", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          idempotency_key: creationRequestIdRef.current,
+          item: {
+            name: form.name.trim(),
+            description: form.description.trim() || null,
+            labor_time: effectiveLaborHours > 0 ? effectiveLaborHours : null,
+            inspection_template_id: form.inspectionTemplateId || null,
+            shop_id: shopId,
+          },
+          parts: cleanedParts,
+        }),
       });
-
-      const json = (await res.json()) as {
+      const result = (await response.json()) as {
         ok?: boolean;
         error?: string;
         detail?: string;
+        partCount?: number;
       };
-
-      if (!res.ok || !json.ok) {
-        toast.error(json.detail || json.error || "Failed to save menu item.");
+      if (!response.ok || !result.ok) {
+        toast.error(result.detail || result.error || "Could not save service.");
         return;
       }
 
-      toast.success("Menu item created");
-
-      setForm((f) => ({
-        ...f,
-        source: "master",
-        name: "",
-        description: "",
-        laborTimeStr: "",
-        inspectionTemplateId: "",
-      }));
-      setParts([{ name: "", quantityStr: "", unitCostStr: "", part_id: null }]);
-
-      await fetchItems();
-    } catch (err) {
-      console.error("[menu] unexpected save error", err);
-      toast.error("Could not save menu item.");
+      toast.success(
+        cleanedParts.length > 0
+          ? "Service saved. Its parts will be requested when it is added to a work order."
+          : "Service saved.",
+      );
+      resetEditor();
+      setEditorOpen(false);
+      setLibraryTab("shop");
+      setStatusFilter("active");
+      await fetchMenuItems();
+    } catch (error) {
+      console.error("[menu] service save failed", error);
+      toast.error("Could not save service.");
     } finally {
       setSaving(false);
     }
-  }, [form, parts, partsTotal, laborRate, shopId, fetchItems, effectiveLaborHours]);
+  }, [effectiveLaborHours, fetchMenuItems, form, parts, resetEditor, shopId]);
 
-  // ---------------------------
-  // Saved menu items: collapsible + searchable
-  // ---------------------------
-  const savedNeedle = useMemo(() => normalize(savedQuery), [savedQuery]);
+  const query = normalized(savedQuery);
+  const filteredShopItems = useMemo(
+    () =>
+      menuItems.filter((item) => {
+        if (statusFilter === "active" ? !item.is_active : item.is_active) return false;
+        if (!query) return true;
+        return [item.name, item.description, item.category].some((value) =>
+          normalized(value).includes(query),
+        );
+      }),
+    [menuItems, query, statusFilter],
+  );
+  const filteredLearnedRepairs = useMemo(
+    () =>
+      learnedRepairs.filter((item) => {
+        if (statusFilter === "active" ? !item.is_active : item.is_active) return false;
+        if (!query) return true;
+        return [
+          item.name,
+          item.complaint,
+          item.cause,
+          item.correction,
+          vehicleLabel(item),
+        ].some((value) => normalized(value).includes(query));
+      }),
+    [learnedRepairs, query, statusFilter],
+  );
+  const statusCounts = useMemo(() => {
+    const items = libraryTab === "shop" ? menuItems : learnedRepairs;
+    return items.reduce(
+      (counts, item) => {
+        if (item.is_active) counts.active += 1;
+        else counts.inactive += 1;
+        return counts;
+      },
+      { active: 0, inactive: 0 },
+    );
+  }, [learnedRepairs, libraryTab, menuItems]);
 
-  const filteredMenuItems = useMemo(() => {
-    if (!savedNeedle) return menuItems;
-    return menuItems.filter((mi) => {
-      const name = typeof mi.name === "string" ? mi.name : String(mi.name ?? "");
-      const desc =
-        typeof mi.description === "string"
-          ? mi.description
-          : String(mi.description ?? "");
-      return includesText(name, savedNeedle) || includesText(desc, savedNeedle);
-    });
-  }, [menuItems, savedNeedle]);
-
-  const activeMenuItems = useMemo(() => filteredMenuItems.filter((x) => x.is_active), [filteredMenuItems]);
-  const inactiveMenuItems = useMemo(() => filteredMenuItems.filter((x) => !x.is_active), [filteredMenuItems]);
+  const flatMaster = useMemo(
+    () => masterServicesList.flatMap((category) => category.items.map((item) => item.item)),
+    [],
+  );
+  const currentCount =
+    libraryTab === "shop" ? filteredShopItems.length : filteredLearnedRepairs.length;
 
   if (isLoading) {
     return (
-      <div className="flex min-h-[200px] items-center justify-center text-sm text-[color:var(--theme-text-secondary)]">
-        Loading…
+      <div className="flex min-h-[320px] items-center justify-center text-sm text-[color:var(--theme-text-secondary)]">
+        Loading service menu…
       </div>
     );
   }
 
-  const flatMaster = masterServicesList.flatMap((cat) => cat.items.map((i) => i.item));
-
-  const inputBase =
-    "w-full rounded-xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm " +
-    "text-[color:var(--theme-text-primary)] shadow-[var(--theme-shadow-medium)] placeholder:text-[color:var(--theme-text-muted)] backdrop-blur-md " +
-    `focus:outline-none focus:ring-2 focus:ring-[${COPPER_RING}]`;
-
-  const pill =
-    "rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1 text-[11px] text-[color:var(--theme-text-secondary)]";
-
-  const btnGhost =
-    "rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-1.5 text-xs text-[color:var(--theme-text-primary)] " +
-    `hover:border-[${COPPER_SOFT}] hover:bg-[color:var(--theme-surface-panel)]`;
-
-  const btnOutline =
-    "inline-flex items-center justify-center rounded-full border bg-[color:var(--theme-surface-overlay)] px-4 py-2 text-xs font-semibold " +
-    "text-[color:var(--theme-text-primary)] disabled:cursor-not-allowed disabled:opacity-50 " +
-    `border-[${COPPER_SOFT}] hover:bg-[rgba(59,130,246,0.12)]`;
-
-  const btnPrimary =
-    "inline-flex items-center justify-center rounded-full border px-6 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] " +
-    "shadow-[var(--theme-shadow-medium)] backdrop-blur-md transition " +
-    `border-[${COPPER_SOFT}] hover:border-[rgba(224,174,130,0.78)] ` +
-    "bg-[var(--theme-gradient-panel)] " +
-    "hover:bg-[var(--theme-gradient-panel)] " +
-    "disabled:cursor-not-allowed disabled:opacity-60";
-
   return (
-    <div className="relative space-y-8 fade-in">
-      {/* Copper wash (was orange) */}
-      <div
-        aria-hidden
-        className={`
-          pointer-events-none absolute inset-0 -z-10
-          bg-[var(--theme-gradient-panel)]
-        `}
-      />
-
+    <div className="relative space-y-5 pb-10 fade-in">
+      <div aria-hidden className="pointer-events-none absolute inset-x-0 -top-8 -z-10 h-72 bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.11),transparent_55%)]" />
       <GuidedPageStepPanel />
 
-      {/* Header */}
-      <section className="var(--theme-gradient-panel)">
+      <header className="flex flex-col gap-4 rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-5 shadow-[var(--theme-shadow-medium)] sm:p-6 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h1
-            className={`text-2xl font-semibold text-[${COPPER}]`}
-            style={{ fontFamily: "var(--font-blackops), system-ui" }}
-          >
+          <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-blue-500">
+            <Wrench className="h-4 w-4" aria-hidden />
             Service Menu
+          </div>
+          <h1 className="text-2xl font-semibold tracking-tight text-[color:var(--theme-text-primary)] sm:text-3xl">
+            Build once. Quote consistently.
           </h1>
-          <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
-            Build reusable service packages with linked inspections, labor, and parts.
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-[color:var(--theme-text-secondary)]">
+            Manage shop-created services and the repairs ProFixIQ has learned from completed work.
           </p>
         </div>
-
-        <div className="hidden items-center gap-2 text-[11px] text-[color:var(--theme-text-secondary)] md:flex">
-          <span className={pill}>
-            Labor rate:{" "}
-            <span className="text-[color:var(--theme-text-primary)]">
-              {laborRate > 0 ? `${laborRate.toFixed(0)}/${currency}/hr` : "—"}
-            </span>
-          </span>
-        </div>
-      </section>
-
-      {/* Create */}
-      <section className="metal-card rounded-2xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] p-4 shadow-[var(--theme-shadow-medium)] backdrop-blur-xl md:p-6">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-[color:var(--theme-text-secondary)]">
-            Create menu item
-          </h2>
-          <div className={`rounded-full border bg-[color:var(--theme-surface-overlay)] px-3 py-1 text-[11px] text-[color:var(--theme-text-secondary)] border-[${COPPER_SOFT}]`}>
-            Parts + labor + inspection template
-          </div>
-        </div>
-
-        <div className="mb-8 grid max-w-3xl gap-4">
-          {/* name */}
-          <div className="grid gap-2">
-            <label className="text-xs font-medium uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-              Service name
-            </label>
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <select
-                value={form.source}
-                onChange={(e) =>
-                  setForm((f) => ({
-                    ...f,
-                    source: e.target.value === "manual" ? "manual" : "master",
-                  }))
-                }
-                className="w-full rounded-xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] shadow-[var(--theme-shadow-medium)] backdrop-blur-md sm:w-44 focus:outline-none"
-              >
-                <option value="master">From master list</option>
-                <option value="manual">Manual</option>
-              </select>
-
-              <div className="flex-1">
-                <input
-                  placeholder="e.g. Front brake pads & rotors"
-                  value={form.name}
-                  onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                  list={form.source === "master" ? "master-services" : undefined}
-                  autoComplete="off"
-                  className={inputBase}
-                />
-                {form.source === "master" ? (
-                  <datalist id="master-services">
-                    {flatMaster.map((s) => (
-                      <option key={s} value={s} />
-                    ))}
-                  </datalist>
-                ) : null}
-              </div>
-            </div>
-          </div>
-
-          {/* template */}
-          <div className="grid gap-2">
-            <label className="text-xs font-medium uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-              Inspection template (optional)
-            </label>
-            <select
-              value={form.inspectionTemplateId}
-              onChange={(e) => setForm((f) => ({ ...f, inspectionTemplateId: e.target.value }))}
-              className={inputBase}
-            >
-              <option value="">— none —</option>
-              {templates.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.template_name ?? "Untitled"}
-                  {typeof t.labor_hours === "number" ? ` (${t.labor_hours.toFixed(1)}h)` : ""}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* description */}
-          <div className="grid gap-2">
-            <label className="text-xs font-medium uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-              Description
-            </label>
-            <textarea
-              placeholder="Optional details visible to customer"
-              value={form.description}
-              onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-              className={inputBase + " min-h-[80px]"}
-            />
-          </div>
-
-          {/* labor */}
-          <div className="grid gap-2">
-            <label className="text-xs font-medium uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-              Labor time (hrs)
-            </label>
-            <input
-              type="text"
-              inputMode="decimal"
-              placeholder="e.g. 1.5"
-              value={form.laborTimeStr}
-              onChange={(e) =>
-                setForm((f) => ({
-                  ...f,
-                  laborTimeStr: cleanNumericString(e.target.value),
-                }))
-              }
-              className={inputBase}
-            />
-
-            <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-[color:var(--theme-text-secondary)]">
-              <span className={pill}>
-                Labor rate:{" "}
-                <span className="text-[color:var(--theme-text-primary)]">
-                  {laborRate > 0 ? `${laborRate.toFixed(0)}/${currency}/hr` : "—"}
-                </span>
-              </span>
-              <span className={pill}>
-                Labor total: <span className="text-[color:var(--theme-text-primary)]">{money(currency, laborTotal)}</span>
-              </span>
-              <span className={pill}>
-                Parts total: <span className="text-[color:var(--theme-text-primary)]">{money(currency, partsTotal)}</span>
-              </span>
-            </div>
-          </div>
-
-          {/* parts */}
-          <div className="rounded-2xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] shadow-[var(--theme-shadow-medium)] backdrop-blur-xl">
-            <div className="flex items-center justify-between border-b border-[color:var(--theme-border-soft)] bg-gradient-to-r from-[color:var(--theme-surface-page)] via-[color:var(--theme-surface-panel)] to-[color:var(--theme-surface-page)] px-4 py-2.5">
-              <h3 className="text-xs font-medium uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-                Parts
-              </h3>
-              <span className="text-[11px] text-[color:var(--theme-text-muted)]">Linked to parts catalog</span>
-            </div>
-
-            <div className="space-y-3 p-4">
-              {parts.map((p, idx) => (
-                <div
-                  key={idx}
-                  className="grid grid-cols-1 items-center gap-2 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] p-3 text-sm shadow-[var(--theme-shadow-medium)] backdrop-blur-md md:grid-cols-[2fr_0.8fr_0.8fr_auto_auto]"
-                >
-                  <input
-                    placeholder="Part name (or pick)"
-                    value={p.name}
-                    onChange={(e) => setPartField(idx, "name", e.target.value)}
-                    className={`
-                      w-full rounded-lg border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-transparent
-                      px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none
-                      focus:ring-2 focus:ring-[${COPPER_RING}]
-                    `}
-                  />
-                  <input
-                    placeholder="Qty"
-                    inputMode="numeric"
-                    value={p.quantityStr}
-                    onChange={(e) => setPartField(idx, "quantityStr", e.target.value)}
-                    className={`
-                      w-full rounded-lg border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-transparent
-                      px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none
-                      focus:ring-2 focus:ring-[${COPPER_RING}]
-                    `}
-                  />
-                  <input
-                    placeholder="Unit cost"
-                    inputMode="decimal"
-                    value={p.unitCostStr}
-                    onChange={(e) => setPartField(idx, "unitCostStr", e.target.value)}
-                    className={`
-                      w-full rounded-lg border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-transparent
-                      px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none
-                      focus:ring-2 focus:ring-[${COPPER_RING}]
-                    `}
-                  />
-
-                  <button
-                    type="button"
-                    onClick={() => setPickerOpenForRow(idx)}
-                    className={`
-                      rounded-lg border px-3 py-2 text-xs font-medium text-[color:var(--theme-text-primary)]
-                      border-[${COPPER_SOFT}] hover:bg-[rgba(59,130,246,0.12)]
-                    `}
-                  >
-                    Pick
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => removePartRow(idx)}
-                    className="text-xs text-red-400 hover:text-red-300"
-                  >
-                    ✕
-                  </button>
-                </div>
-              ))}
-
-              <button
-                onClick={addPartRow}
-                type="button"
-                className={`text-xs font-medium text-[${COPPER}] hover:text-[rgba(224,174,130,0.80)]`}
-              >
-                + Add part
-              </button>
-
-              {/* Manual parts request */}
-              <div className="mt-4 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 shadow-[var(--theme-shadow-medium)] backdrop-blur-md">
-                <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                  <div>
-                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-                      Manual parts request
-                    </div>
-                    <div className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">
-                      Internal (UI flag only). Creates a parts request from the current parts rows.
-                    </div>
-                  </div>
-
-                  <span className={pill}>
-                    Items:{" "}
-                    <span className="text-[color:var(--theme-text-primary)]">{requestItemsPreview.length}</span>
-                  </span>
-                </div>
-
-                <div className="mt-3 grid gap-2">
-                  <label className="text-[11px] font-medium uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-                    Work order ID (required)
-                  </label>
-                  <input
-                    value={requestWorkOrderId}
-                    onChange={(e) => setRequestWorkOrderId(e.target.value)}
-                    placeholder="Paste work_order_id"
-                    className={inputBase}
-                  />
-
-                  <div className="flex items-center gap-2 pt-1 text-[11px] text-[color:var(--theme-text-secondary)]">
-                    <input
-                      id="unlinked-only"
-                      type="checkbox"
-                      checked={requestIncludeUnlinkedOnly}
-                      onChange={(e) => setRequestIncludeUnlinkedOnly(e.target.checked)}
-                      className="h-4 w-4 accent-[rgba(224,174,130,0.9)]"
-                    />
-                    <label htmlFor="unlinked-only" className="select-none">
-                      Only include unlinked/manual parts
-                    </label>
-                  </div>
-
-                  <label className="mt-1 text-[11px] font-medium uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-                    Notes (optional)
-                  </label>
-                  <textarea
-                    value={requestNotes}
-                    onChange={(e) => setRequestNotes(e.target.value)}
-                    placeholder="e.g. Urgent, customer waiting…"
-                    className={inputBase + " min-h-[70px]"}
-                  />
-
-                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                    <div className="text-[11px] text-[color:var(--theme-text-muted)]">
-                      {requestItemsPreview.length ? (
-                        <span>
-                          Preview:{" "}
-                          <span className="text-[color:var(--theme-text-secondary)]">
-                            {requestItemsPreview
-                              .slice(0, 3)
-                              .map((r) => `${r.desc} ×${r.qty}`)
-                              .join(", ")}
-                            {requestItemsPreview.length > 3 ? "…" : ""}
-                          </span>
-                        </span>
-                      ) : (
-                        <span>No requestable items yet.</span>
-                      )}
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={createPartsRequest}
-                      disabled={!canRequestParts}
-                      className={btnOutline}
-                    >
-                      {requesting ? "Requesting…" : "Create parts request (internal)"}
-                    </button>
-                  </div>
-                </div>
-              </div>
-              {/* end manual parts request */}
-            </div>
-          </div>
-
-          {/* totals + save */}
-          <div className="flex flex-col items-end gap-3 pt-2 text-sm md:flex-row md:items-center md:justify-between">
-            <div className="flex flex-wrap items-center gap-4 text-xs md:text-sm">
-              <div className="text-[color:var(--theme-text-secondary)]">
-                Parts: <span className="text-[color:var(--theme-text-primary)]">{money(currency, partsTotal)}</span>
-              </div>
-              <div className="text-[color:var(--theme-text-secondary)]">
-                Labor: <span className="text-[color:var(--theme-text-primary)]">{money(currency, laborTotal)}</span>
-              </div>
-              <div className="text-[color:var(--theme-text-secondary)]">
-                Total:{" "}
-                <span className={`font-semibold text-[${COPPER}]`}>
-                  {money(currency, subtotal)}
-                </span>
-              </div>
-            </div>
-
-            <button onClick={handleSubmit} disabled={saving} className={btnPrimary}>
-              {saving ? "Saving…" : "Save menu item"}
-            </button>
-          </div>
-        </div>
-      </section>
-
-      {/* Saved items */}
-      <section className="space-y-3">
-        <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
-          <div>
-            <h2 className="text-xs font-medium uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-              Saved menu items
-            </h2>
-            <div className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">
-              Showing <span className="text-[color:var(--theme-text-primary)]">{filteredMenuItems.length}</span> of{" "}
-              <span className="text-[color:var(--theme-text-primary)]">{menuItems.length}</span>
-            </div>
-          </div>
-
-          <div className="w-full md:w-[420px]">
-            <input
-              value={savedQuery}
-              onChange={(e) => setSavedQuery(e.target.value)}
-              placeholder="Search saved menu items…"
-              className={inputBase}
-            />
-          </div>
-        </div>
-
-        <details
-          open
-          className="metal-card rounded-2xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] shadow-[var(--theme-shadow-medium)] backdrop-blur-xl"
+        <button
+          type="button"
+          onClick={() => setEditorOpen(true)}
+          className={PRIMARY_BUTTON}
         >
-          <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-[color:var(--theme-text-primary)]">
-            Active <span className="text-[color:var(--theme-text-muted)]">• {activeMenuItems.length}</span>
-          </summary>
-          <div className="space-y-2 p-3 pt-0">
-            {activeMenuItems.map((mi) => (
+          <Plus className="h-4 w-4" aria-hidden />
+          Create service
+        </button>
+      </header>
+
+      <div className={editorOpen ? "grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_440px]" : ""}>
+        <section className={`${CARD} min-w-0 overflow-hidden`} aria-label="Service library">
+          <div className="border-b border-[color:var(--theme-border-soft)] p-4 sm:p-5">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="inline-flex w-full rounded-xl bg-[color:var(--theme-surface-subtle)] p-1 sm:w-auto" role="tablist" aria-label="Service source">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={libraryTab === "shop"}
+                  onClick={() => setLibraryTab("shop")}
+                  className={`flex min-h-10 flex-1 items-center justify-center gap-2 rounded-lg px-3 text-sm font-medium transition sm:flex-none ${
+                    libraryTab === "shop"
+                      ? "bg-[color:var(--theme-surface-page)] text-[color:var(--theme-text-primary)] shadow-sm"
+                      : "text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)]"
+                  }`}
+                >
+                  <Sparkles className="h-4 w-4" aria-hidden />
+                  <span className="sm:hidden">Shop</span>
+                  <span className="hidden sm:inline">Shop services</span>
+                  <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-[11px] text-blue-500">
+                    {shopServicesLoadFailed ? "—" : menuItems.length}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={libraryTab === "learned"}
+                  onClick={() => setLibraryTab("learned")}
+                  className={`flex min-h-10 flex-1 items-center justify-center gap-2 rounded-lg px-3 text-sm font-medium transition sm:flex-none ${
+                    libraryTab === "learned"
+                      ? "bg-[color:var(--theme-surface-page)] text-[color:var(--theme-text-primary)] shadow-sm"
+                      : "text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)]"
+                  }`}
+                >
+                  <History className="h-4 w-4" aria-hidden />
+                  <span className="sm:hidden">Completed</span>
+                  <span className="hidden sm:inline">Learned from completed work</span>
+                  <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-[11px] text-blue-500">
+                    {learnedRepairs.length}
+                  </span>
+                </button>
+              </div>
+
+              <div className="flex gap-2">
+                {(["active", "inactive"] as const).map((status) => (
+                  <button
+                    key={status}
+                    type="button"
+                    onClick={() => setStatusFilter(status)}
+                    className={`inline-flex min-h-9 items-center gap-2 rounded-lg border px-3 text-xs font-semibold capitalize transition ${
+                      statusFilter === status
+                        ? "border-blue-500/40 bg-blue-500/10 text-blue-500"
+                        : "border-[color:var(--theme-border-soft)] text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)]"
+                    }`}
+                  >
+                    <span>{status}</span>
+                    <span className="rounded-full bg-[color:var(--theme-surface-subtle)] px-1.5 py-0.5 text-[10px] tabular-nums">
+                      {libraryTab === "shop" && shopServicesLoadFailed
+                        ? "—"
+                        : statusCounts[status]}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="relative mt-4">
+              <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[color:var(--theme-text-muted)]" aria-hidden />
+              <input
+                value={savedQuery}
+                onChange={(event) => setSavedQuery(event.target.value)}
+                placeholder={
+                  libraryTab === "shop"
+                    ? "Search service name, description, or category…"
+                    : "Search repair, concern, or vehicle…"
+                }
+                aria-label="Search service menu"
+                className={`${INPUT} pl-10`}
+              />
+            </div>
+          </div>
+
+          <div className="p-3 sm:p-4">
+            <div className="mb-3 flex items-center justify-between px-1 text-xs text-[color:var(--theme-text-muted)]">
+              <span>
+                {libraryTab === "shop" && shopServicesLoadFailed
+                  ? "Services unavailable"
+                  : `${currentCount} ${currentCount === 1 ? "result" : "results"}`}
+              </span>
+              {libraryTab === "learned" ? (
+                <span className="hidden sm:inline">Exact YMM suggestions only</span>
+              ) : null}
+            </div>
+
+            {loadingLibrary ? (
+              <div className="rounded-xl border border-dashed border-[color:var(--theme-border-soft)] px-4 py-12 text-center text-sm text-[color:var(--theme-text-secondary)]">
+                Loading services…
+              </div>
+            ) : libraryTab === "shop" && shopServicesLoadFailed ? (
               <div
-                key={mi.id}
-                className="metal-card rounded-2xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] p-3 shadow-[var(--theme-shadow-medium)] backdrop-blur-xl"
+                role="alert"
+                className="rounded-xl border border-red-500/35 bg-red-500/5 px-5 py-10 text-center"
               >
-                <div className="flex flex-col items-start justify-between gap-2 md:flex-row md:items-center">
-                  <div className="min-w-0">
-                    <div className={`text-sm font-semibold text-[${COPPER}]`}>
-                      {mi.name}
-                    </div>
-                    {mi.inspection_template_id ? (
-                      <div className="mt-1 inline-flex items-center rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.08em] text-emerald-200">
-                        Includes inspection
-                        {mi.inspection_template?.template_name ? ` • ${mi.inspection_template.template_name}` : ""}
-                      </div>
-                    ) : null}
-
-                    {mi.description ? (
-                      <span className="block line-clamp-2 text-xs text-[color:var(--theme-text-secondary)]">
-                        {mi.description}
-                      </span>
-                    ) : null}
-
-                    <div className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">
-                      {mi.is_active ? "Active" : "Inactive"}
-                      {mi.labor_time != null ? ` • ${mi.labor_time}h` : ""}
-                      {mi.part_cost != null ? ` • parts ${money(currency, mi.part_cost)}` : ""}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <div className="text-xs text-[color:var(--theme-text-secondary)] md:text-sm">
-                      {typeof mi.total_price === "number" ? (
-                        <span>
-                          Total{" "}
-                          <span className="font-semibold text-[color:var(--theme-text-primary)]">
-                            {money(currency, mi.total_price)}
+                <p className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                  Shop services could not be loaded.
+                </p>
+                <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+                  Your saved services have not been removed. Retry the request
+                  to load them.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void fetchMenuItems()}
+                  className={`${QUIET_BUTTON} mt-4`}
+                >
+                  Retry loading services
+                </button>
+              </div>
+            ) : libraryTab === "shop" ? (
+              <div className="space-y-2">
+                {filteredShopItems.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => router.push(`/menu/item/${item.id}`)}
+                    className="group grid w-full gap-3 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-4 text-left transition hover:border-blue-500/30 hover:bg-[color:var(--theme-surface-subtle)] sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+                  >
+                    <span className="min-w-0">
+                      <span className="flex flex-wrap items-center gap-2">
+                        <span className="truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                          {item.name}
+                        </span>
+                        {item.inspection_template_id ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-300">
+                            <ClipboardCheck className="h-3 w-3" aria-hidden />
+                            Inspection
                           </span>
+                        ) : null}
+                      </span>
+                      {item.description ? (
+                        <span className="mt-1 block line-clamp-2 text-xs leading-5 text-[color:var(--theme-text-secondary)]">
+                          {item.description}
                         </span>
                       ) : null}
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => router.push(`/menu/item/${mi.id}`)}
-                      className={btnGhost}
-                    >
-                      View / Edit
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
-
-            {activeMenuItems.length === 0 && (
-              <div className="text-sm text-[color:var(--theme-text-secondary)]">No active items match your search.</div>
-            )}
-          </div>
-        </details>
-
-        <details className="metal-card rounded-2xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] shadow-[var(--theme-shadow-medium)] backdrop-blur-xl">
-          <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-[color:var(--theme-text-primary)]">
-            Inactive <span className="text-[color:var(--theme-text-muted)]">• {inactiveMenuItems.length}</span>
-          </summary>
-          <div className="space-y-2 p-3 pt-0">
-            {inactiveMenuItems.map((mi) => (
-              <div
-                key={mi.id}
-                className="metal-card rounded-2xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] p-3 shadow-[var(--theme-shadow-medium)] backdrop-blur-xl"
-              >
-                <div className="flex flex-col items-start justify-between gap-2 md:flex-row md:items-center">
-                  <div className="min-w-0">
-                    <div className={`text-sm font-semibold text-[${COPPER}]`}>
-                      {mi.name}
-                    </div>
-                    {mi.inspection_template_id ? (
-                      <div className="mt-1 inline-flex items-center rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.08em] text-emerald-200">
-                        Includes inspection
-                        {mi.inspection_template?.template_name ? ` • ${mi.inspection_template.template_name}` : ""}
-                      </div>
-                    ) : null}
-
-                    {mi.description ? (
-                      <span className="block line-clamp-2 text-xs text-[color:var(--theme-text-secondary)]">
-                        {mi.description}
+                      <span className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-[color:var(--theme-text-muted)]">
+                        <span>{item.labor_time != null ? `${item.labor_time} hr labor` : "Labor not set"}</span>
+                        <span>{item.part_cost != null ? `${money(currency, item.part_cost)} parts` : "No parts"}</span>
+                        {item.inspection_template?.template_name ? (
+                          <span>{item.inspection_template.template_name}</span>
+                        ) : null}
                       </span>
-                    ) : null}
-
-                    <div className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">
-                      {mi.is_active ? "Active" : "Inactive"}
-                      {mi.labor_time != null ? ` • ${mi.labor_time}h` : ""}
-                      {mi.part_cost != null ? ` • parts ${money(currency, mi.part_cost)}` : ""}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <div className="text-xs text-[color:var(--theme-text-secondary)] md:text-sm">
-                      {typeof mi.total_price === "number" ? (
-                        <span>
-                          Total{" "}
-                          <span className="font-semibold text-[color:var(--theme-text-primary)]">
-                            {money(currency, mi.total_price)}
+                    </span>
+                    <span className="flex items-center justify-between gap-3 sm:justify-end">
+                      <span className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                        {typeof item.total_price === "number" ? money(currency, item.total_price) : "Review price"}
+                      </span>
+                      <ChevronRight className="h-4 w-4 text-[color:var(--theme-text-muted)] transition group-hover:translate-x-0.5 group-hover:text-blue-500" aria-hidden />
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {filteredLearnedRepairs.map((item) => (
+                  <details
+                    key={item.id}
+                    className="group rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] transition open:border-blue-500/25 open:bg-[color:var(--theme-surface-subtle)]"
+                  >
+                    <summary className="grid cursor-pointer list-none gap-3 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center [&::-webkit-details-marker]:hidden">
+                      <span className="min-w-0">
+                        <span className="flex flex-wrap items-center gap-2">
+                          <span className="truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                            {item.name}
+                          </span>
+                          <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-[10px] font-semibold text-blue-500">
+                            Completed work
                           </span>
                         </span>
-                      ) : null}
+                        <span className="mt-1 block text-xs font-medium text-[color:var(--theme-text-secondary)]">
+                          {vehicleLabel(item) || "Vehicle details unavailable"}
+                          {item.engine ? ` · ${item.engine}` : ""}
+                        </span>
+                        <span className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-[color:var(--theme-text-muted)]">
+                          <span>Used {item.usage_count} {item.usage_count === 1 ? "time" : "times"}</span>
+                          <span>{item.labor_hours != null ? `${item.labor_hours} hr` : "Labor not set"}</span>
+                          <span>{jsonArrayLength(item.parts)} {jsonArrayLength(item.parts) === 1 ? "part" : "parts"}</span>
+                        </span>
+                      </span>
+                      <span className="flex items-center justify-between gap-3 sm:justify-end">
+                        <span className="text-right">
+                          <span className="block text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                            {item.price_estimate != null ? money(currency, item.price_estimate) : "Review price"}
+                          </span>
+                          <span className="block text-[10px] text-amber-600 dark:text-amber-300">
+                            Confirm before quoting
+                          </span>
+                        </span>
+                        <ChevronRight className="h-4 w-4 text-[color:var(--theme-text-muted)] transition group-open:rotate-90" aria-hidden />
+                      </span>
+                    </summary>
+                    <div className="border-t border-[color:var(--theme-border-soft)] px-4 py-3 text-xs leading-5 text-[color:var(--theme-text-secondary)]">
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <div className="font-semibold text-[color:var(--theme-text-primary)]">Cause</div>
+                          <p className="mt-0.5">{item.cause || item.complaint || "Not recorded"}</p>
+                        </div>
+                        <div>
+                          <div className="font-semibold text-[color:var(--theme-text-primary)]">Correction</div>
+                          <p className="mt-0.5">{item.correction || "Not recorded"}</p>
+                        </div>
+                      </div>
+                      <p className="mt-3 rounded-lg bg-blue-500/10 px-3 py-2 text-[11px]">
+                        Suggested only for matching year, make, and model. Pricing and fitment still require confirmation.
+                      </p>
                     </div>
+                  </details>
+                ))}
+              </div>
+            )}
 
-                    <button
-                      type="button"
-                      onClick={() => router.push(`/menu/item/${mi.id}`)}
-                      className={btnGhost}
-                    >
-                      View / Edit
-                    </button>
+            {!loadingLibrary &&
+            !(libraryTab === "shop" && shopServicesLoadFailed) &&
+            currentCount === 0 ? (
+              <div className="rounded-xl border border-dashed border-[color:var(--theme-border-soft)] px-5 py-12 text-center">
+                <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-blue-500/10 text-blue-500">
+                  {libraryTab === "shop" ? <Sparkles className="h-5 w-5" /> : <History className="h-5 w-5" />}
+                </div>
+                <p className="mt-3 text-sm font-medium text-[color:var(--theme-text-primary)]">
+                  {savedQuery ? "No matching services" : libraryTab === "shop" ? "No shop services yet" : "No verified completed repairs yet"}
+                </p>
+                <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+                  {libraryTab === "shop"
+                    ? "Create a reusable service to keep quoting consistent."
+                    : "Repairs appear here after a technician completes the job with final labor and parts."}
+                </p>
+              </div>
+            ) : null}
+          </div>
+        </section>
+
+        {editorOpen ? (
+          <aside className={`${CARD} mt-5 overflow-hidden xl:sticky xl:top-4 xl:mt-0`} aria-label="Create service">
+            <div className="flex items-start justify-between border-b border-[color:var(--theme-border-soft)] px-5 py-4">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-500">New service</div>
+                <h2 className="mt-1 text-lg font-semibold text-[color:var(--theme-text-primary)]">Create menu item</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditorOpen(false)}
+                aria-label="Close service editor"
+                className="rounded-lg p-2 text-[color:var(--theme-text-muted)] transition hover:bg-[color:var(--theme-surface-subtle)] hover:text-[color:var(--theme-text-primary)]"
+              >
+                <X className="h-4 w-4" aria-hidden />
+              </button>
+            </div>
+
+            <div className="max-h-none space-y-5 overflow-y-auto p-5 xl:max-h-[calc(100vh-15rem)]">
+              <section className="space-y-3" aria-labelledby="service-details-heading">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-500/10 text-xs font-bold text-blue-500">1</span>
+                  <h3 id="service-details-heading" className="text-sm font-semibold text-[color:var(--theme-text-primary)]">Service details</h3>
+                </div>
+                <div className="grid grid-cols-2 rounded-xl bg-[color:var(--theme-surface-subtle)] p-1">
+                  <button
+                    type="button"
+                    onClick={() => setForm((current) => ({ ...current, source: "master" }))}
+                    className={`min-h-9 rounded-lg text-xs font-medium transition ${form.source === "master" ? "bg-[color:var(--theme-surface-page)] text-[color:var(--theme-text-primary)] shadow-sm" : "text-[color:var(--theme-text-secondary)]"}`}
+                  >
+                    Service library
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setForm((current) => ({ ...current, source: "manual" }))}
+                    className={`min-h-9 rounded-lg text-xs font-medium transition ${form.source === "manual" ? "bg-[color:var(--theme-surface-page)] text-[color:var(--theme-text-primary)] shadow-sm" : "text-[color:var(--theme-text-secondary)]"}`}
+                  >
+                    Custom service
+                  </button>
+                </div>
+                <label className="block text-xs font-medium text-[color:var(--theme-text-secondary)]">
+                  Service name
+                  <input
+                    value={form.name}
+                    onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+                    placeholder={form.source === "master" ? "Search or enter a service…" : "Enter service name…"}
+                    list={form.source === "master" ? "master-services" : undefined}
+                    className={`${INPUT} mt-1.5`}
+                  />
+                  {form.source === "master" ? (
+                    <datalist id="master-services">
+                      {flatMaster.map((service) => <option key={service} value={service} />)}
+                    </datalist>
+                  ) : null}
+                </label>
+                <label className="block text-xs font-medium text-[color:var(--theme-text-secondary)]">
+                  Customer-facing description
+                  <textarea
+                    value={form.description}
+                    onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
+                    placeholder="What is included in this service?"
+                    className={`${INPUT} mt-1.5 min-h-20 resize-y`}
+                  />
+                </label>
+              </section>
+
+              <section className="space-y-3 border-t border-[color:var(--theme-border-soft)] pt-5" aria-labelledby="labor-heading">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-500/10 text-xs font-bold text-blue-500">2</span>
+                  <h3 id="labor-heading" className="text-sm font-semibold text-[color:var(--theme-text-primary)]">Labor</h3>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="text-xs font-medium text-[color:var(--theme-text-secondary)]">
+                    Labor hours
+                    <input
+                      inputMode="decimal"
+                      value={form.laborTimeStr}
+                      onChange={(event) => setForm((current) => ({ ...current, laborTimeStr: cleanNumericString(event.target.value) }))}
+                      placeholder="1.5"
+                      className={`${INPUT} mt-1.5`}
+                    />
+                  </label>
+                  <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3.5 py-2.5">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[color:var(--theme-text-muted)]">Shop rate</div>
+                    <div className="mt-1 text-sm font-semibold text-[color:var(--theme-text-primary)]">{money(currency, laborRate)} / hr</div>
                   </div>
                 </div>
+              </section>
+
+              <section className="space-y-3 border-t border-[color:var(--theme-border-soft)] pt-5" aria-labelledby="inspection-heading">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-500/10 text-xs font-bold text-blue-500">3</span>
+                  <h3 id="inspection-heading" className="text-sm font-semibold text-[color:var(--theme-text-primary)]">Inspection</h3>
+                </div>
+                <label className="block text-xs font-medium text-[color:var(--theme-text-secondary)]">
+                  Linked template <span className="font-normal text-[color:var(--theme-text-muted)]">(optional)</span>
+                  <select
+                    value={form.inspectionTemplateId}
+                    onChange={(event) => setForm((current) => ({ ...current, inspectionTemplateId: event.target.value }))}
+                    className={`${INPUT} mt-1.5`}
+                  >
+                    <option value="">No inspection</option>
+                    {templates.map((template) => (
+                      <option key={template.id} value={template.id}>
+                        {template.template_name ?? "Untitled inspection"}
+                        {typeof template.labor_hours === "number" ? ` · ${template.labor_hours} hr` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <p className="text-[11px] leading-5 text-[color:var(--theme-text-muted)]">
+                  The selected inspection is added whenever this service is placed on a work order.
+                </p>
+              </section>
+
+              <section className="space-y-3 border-t border-[color:var(--theme-border-soft)] pt-5" aria-labelledby="parts-heading">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-500/10 text-xs font-bold text-blue-500">4</span>
+                    <h3 id="parts-heading" className="text-sm font-semibold text-[color:var(--theme-text-primary)]">Parts and pricing</h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setParts((rows) => [...rows, { ...EMPTY_PART }])}
+                    className="text-xs font-semibold text-blue-500 hover:text-blue-400"
+                  >
+                    + Add part
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {parts.map((part, index) => (
+                    <div key={index} className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-3">
+                      <div className="flex items-start gap-2">
+                        <input
+                          value={part.name}
+                          onChange={(event) => setPartField(index, "name", event.target.value)}
+                          placeholder="Part name"
+                          aria-label={`Part ${index + 1} name`}
+                          className={`${INPUT} min-w-0 flex-1 bg-[color:var(--theme-surface-page)]`}
+                        />
+                        <button type="button" onClick={() => setPickerOpenForRow(index)} className={`${QUIET_BUTTON} shrink-0 px-3`}>
+                          Pick
+                        </button>
+                        {parts.length > 1 ? (
+                          <button
+                            type="button"
+                            onClick={() => setParts((rows) => rows.filter((_, rowIndex) => rowIndex !== index))}
+                            aria-label={`Remove part ${index + 1}`}
+                            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-[color:var(--theme-text-muted)] hover:bg-red-500/10 hover:text-red-500"
+                          >
+                            <X className="h-4 w-4" aria-hidden />
+                          </button>
+                        ) : null}
+                      </div>
+                      <div className="mt-2 grid grid-cols-2 gap-2">
+                        <input
+                          inputMode="decimal"
+                          value={part.quantityStr}
+                          onChange={(event) => setPartField(index, "quantityStr", event.target.value)}
+                          placeholder="Quantity"
+                          aria-label={`Part ${index + 1} quantity`}
+                          className={`${INPUT} bg-[color:var(--theme-surface-page)]`}
+                        />
+                        <input
+                          inputMode="decimal"
+                          value={part.unitCostStr}
+                          onChange={(event) => setPartField(index, "unitCostStr", event.target.value)}
+                          placeholder="Unit cost"
+                          aria-label={`Part ${index + 1} unit cost`}
+                          className={`${INPUT} bg-[color:var(--theme-surface-page)]`}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <p className="flex gap-2 text-[11px] leading-5 text-[color:var(--theme-text-muted)]">
+                  <Package className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+                  These parts will be requested automatically whenever this service is added to a work order.
+                </p>
+              </section>
+            </div>
+
+            <div className="border-t border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-4">
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div>
+                  <div className="text-[10px] uppercase tracking-[0.1em] text-[color:var(--theme-text-muted)]">Labor</div>
+                  <div className="mt-1 text-xs font-semibold text-[color:var(--theme-text-primary)]">{money(currency, laborTotal)}</div>
+                </div>
+                <div className="border-x border-[color:var(--theme-border-soft)]">
+                  <div className="text-[10px] uppercase tracking-[0.1em] text-[color:var(--theme-text-muted)]">Parts</div>
+                  <div className="mt-1 text-xs font-semibold text-[color:var(--theme-text-primary)]">{money(currency, partsTotal)}</div>
+                </div>
+                <div>
+                  <div className="text-[10px] uppercase tracking-[0.1em] text-[color:var(--theme-text-muted)]">Service</div>
+                  <div className="mt-1 text-xs font-semibold text-blue-500">{money(currency, serviceTotal)}</div>
+                </div>
               </div>
-            ))}
+              <button type="button" onClick={handleSubmit} disabled={saving} className={`${PRIMARY_BUTTON} mt-4 w-full`}>
+                {saving ? "Saving service…" : "Save service"}
+              </button>
+            </div>
+          </aside>
+        ) : null}
+      </div>
 
-            {inactiveMenuItems.length === 0 && (
-              <div className="text-sm text-[color:var(--theme-text-secondary)]">No inactive items match your search.</div>
-            )}
-          </div>
-        </details>
-
-        {menuItems.length === 0 && (
-          <div className="text-sm text-[color:var(--theme-text-secondary)]">No menu items yet. Create your first service above.</div>
-        )}
-      </section>
-
-      {/* Part picker modal (create form only) */}
-      {pickerOpenForRow !== null && (
+      {pickerOpenForRow !== null ? (
         <PartPicker
-          open={true}
+          open
           onClose={() => setPickerOpenForRow(null)}
-          onPick={(sel) => {
-            const idx = pickerOpenForRow;
-            setPickerOpenForRow(null);
-            handlePickPart(idx)(sel);
-          }}
+          onPick={(selection) => handlePickPart(pickerOpenForRow)(selection)}
         />
-      )}
+      ) : null}
     </div>
   );
 }

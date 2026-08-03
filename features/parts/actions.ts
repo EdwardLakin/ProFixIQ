@@ -20,6 +20,7 @@ export type StockMoveReason =
   | "return_out";
 
 function extractStockMoveId(data: unknown): string | null {
+  if (typeof data === "string" && data.length > 0) return data;
   if (!data || typeof data !== "object") return null;
   const maybe = data as Partial<StockMoveRow>;
   return typeof maybe.id === "string" && maybe.id.length > 0 ? maybe.id : null;
@@ -55,7 +56,7 @@ export async function createPart(input: {
  *
  * SQL:
  *   apply_stock_move(p_part uuid, p_loc uuid, p_qty numeric, p_reason text, p_ref_kind text, p_ref_id uuid)
- *   RETURNS stock_moves
+ *   RETURNS uuid
  */
 export async function adjustStock(input: {
   part_id: string;
@@ -73,8 +74,8 @@ export async function adjustStock(input: {
     p_loc: input.location_id,
     p_qty: input.qty_change,
     p_reason: input.reason,
-    p_ref_kind: input.reference_kind ?? null,
-    p_ref_id: input.reference_id ?? null,
+    p_ref_kind: input.reference_kind ?? "manual_adjustment",
+    p_ref_id: input.reference_id ?? crypto.randomUUID(),
   };
 
   const { data, error } = await supabase.rpc(

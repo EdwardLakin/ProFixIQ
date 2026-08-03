@@ -1,0 +1,22 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "incremental": false
+  },
+  "include": [
+    "next-env.d.ts",
+    "app/api/demo/shop-boost/claim/route.ts",
+    "app/api/demo/shop-boost/run/route.ts",
+    "app/api/demo/shop-boost/share/route.ts",
+    "app/demo/instant-shop-analysis/page.tsx",
+    "app/demo/preview/[demoId]/_components/ShadowPreviewClient.tsx",
+    "app/demo/preview/[demoId]/not-found.tsx",
+    "app/demo/preview/[demoId]/page.tsx",
+    "app/demo/report/[demoId]/not-found.tsx",
+    "app/demo/report/[demoId]/page.tsx",
+    "features/integrations/shopBoost/ShopBoostAnalysisUnavailable.tsx",
+    "features/integrations/shopBoost/shareAccess.ts",
+    "tests/shop-boost-preview-access.test.ts",
+    "tests/shop-boost-preview-route-guards.test.ts"
+  ]
+}

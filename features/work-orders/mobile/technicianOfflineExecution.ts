@@ -13,6 +13,7 @@ import {
   type PendingMutation,
 } from "@/features/shared/lib/offline/mutations";
 import type { Database } from "@shared/types/types/supabase";
+import type { CanonicalWorkOrderLineContext } from "@/features/work-orders/lib/data/loadCanonicalWorkOrderLineContext";
 
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -28,6 +29,8 @@ export type MobileWorkOrderSnapshot = {
   vehicle: Vehicle | null;
   customer: Customer | null;
   techNamesById: Record<string, string>;
+  lineContext?: CanonicalWorkOrderLineContext;
+  shopLaborRate?: number | null;
 };
 
 export type TechnicianJobEditorDraft = {

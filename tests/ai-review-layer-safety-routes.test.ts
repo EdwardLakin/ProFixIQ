@@ -17,10 +17,22 @@ const rejectAiActionPreviewMock = vi.fn();
 const acknowledgeAiRecommendationMock = vi.fn();
 const dismissAiRecommendationMock = vi.fn();
 const resolveAiRecommendationMock = vi.fn();
+const adminSupabase = { trusted: "service-role" };
+const createAdminSupabaseMock = vi.fn(() => adminSupabase);
 
 vi.mock("@/features/shared/lib/server/admin-access", () => ({
   requireShopScopedApiAccess: requireShopScopedApiAccessMock,
 }));
+
+vi.mock("@/features/shared/lib/supabase/server", async () => {
+  const actual = await vi.importActual<typeof import("@/features/shared/lib/supabase/server")>(
+    "@/features/shared/lib/supabase/server",
+  );
+  return {
+    ...actual,
+    createAdminSupabase: createAdminSupabaseMock,
+  };
+});
 
 vi.mock("@/features/ai/server", async () => {
   const actual = await vi.importActual<typeof import("@/features/ai/server")>("@/features/ai/server");
@@ -305,6 +317,11 @@ describe("review-layer route safe contracts", () => {
     expect(serialized).toContain("approvalId");
     expect((json.approval as { executionBlocked?: boolean }).executionBlocked).toBe(true);
     expectNoBannedDtoKeys(json);
+    expect(requestAiActionPreviewApprovalMock).toHaveBeenCalledWith(
+      adminSupabase,
+      expect.objectContaining({ shopId: "shop_1", actorId: "actor_1" }),
+      expect.objectContaining({ previewId: "preview_1" }),
+    );
   });
 
   it("shop boost recommendations POST omits raw evidence snapshot payload", async () => {
@@ -396,6 +413,11 @@ describe("review-layer route safe contracts", () => {
     expect(response.status).toBe(200);
     expect(json.executionBlocked).toBe(true);
     expectNoBannedDtoKeys(json);
+    expect(approveAiActionPreviewMock).toHaveBeenCalledWith(
+      adminSupabase,
+      expect.objectContaining({ shopId: "shop_1", actorId: "actor_1" }),
+      expect.objectContaining({ approvalId: "approval_1" }),
+    );
   });
 
   it("work-order recommendation lifecycle PATCH returns serialized recommendation only", async () => {

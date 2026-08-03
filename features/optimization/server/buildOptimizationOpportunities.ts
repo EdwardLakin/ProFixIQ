@@ -43,7 +43,7 @@ type LineWithOrder = Pick<
   | "price_estimate"
   | "labor_time"
   | "inspection_template_id"
-  | "inspection_session_id"
+  | "job_type"
   | "created_at"
   | "status"
 > & {
@@ -590,7 +590,7 @@ function buildInspectionCoverageSignals(params: {
     cur.jobs += 1;
     const hasInspection =
       Boolean(line.inspection_template_id) ||
-      Boolean(line.inspection_session_id) ||
+      slugify(line.job_type ?? "") === "inspection" ||
       Boolean(line.work_orders?.inspection_id);
     if (hasInspection) cur.withInspection += 1;
 
@@ -878,7 +878,7 @@ export async function buildOptimizationOpportunities(
   const { data: lines, error: linesErr } = await supabase
     .from("work_order_lines")
     .select(
-      "id, work_order_id, menu_item_id, service_code, description, price_estimate, labor_time, inspection_template_id, inspection_session_id, created_at, status, work_orders!inner(id, created_at, inspection_id)",
+      "id, work_order_id, menu_item_id, service_code, description, price_estimate, labor_time, inspection_template_id, job_type, created_at, status, work_orders!inner(id, created_at, inspection_id)",
     )
     .eq("shop_id", shopId)
     .gte("created_at", startDate)

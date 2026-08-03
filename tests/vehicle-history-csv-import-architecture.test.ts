@@ -41,7 +41,8 @@ describe("vehicle history CSV import synchronous architecture", () => {
     expect(worker).toContain("VEHICLE_HISTORY_IMPORT_BATCH_SIZE = 1000");
     expect(worker).toContain(".limit(batchSize)");
     expect(worker).toContain('.from("import_job_rows")');
-    expect(worker).toContain('.from("history").insert');
+    expect(worker).toContain('.from("history")');
+    expect(worker).toContain(".insert(batch.map((entry) => entry.payload))");
     expect(worker).not.toContain('.from("work_orders")');
     expect(worker).not.toContain('.from("dispatch');
   });
@@ -53,7 +54,7 @@ describe("vehicle history CSV import synchronous architecture", () => {
     expect(worker).toContain("compactImportSummary");
     expect(worker).toContain("VEHICLE_HISTORY_IMPORT_SAMPLE_LIMIT");
     expect(worker).toContain("sampleLimit: VEHICLE_HISTORY_IMPORT_SAMPLE_LIMIT");
-    expect(worker).toContain("totalRows: rows.length");
+    expect(worker).toContain("totalRows: normalizedRows.length");
   });
 
   it("uses shop-scoped history duplicate detection without giant customer_id.in filters", () => {

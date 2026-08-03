@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 
@@ -66,6 +66,10 @@ type AppShellInitialIdentity = {
   role: string | null;
 };
 
+type InboxConversationSummary = {
+  unread_count?: number | null;
+};
+
 function daysUntil(iso: string | null): number | null {
   if (!iso) return null;
   const t = new Date(iso).getTime();
@@ -108,6 +112,7 @@ export default function AppShell({
   const [chatOpen, setChatOpen] = useState(false);
   const [agentDialogOpen, setAgentDialogOpen] = useState(false);
   const [incomingConvoId, setIncomingConvoId] = useState<string | null>(null);
+  const [inboxUnreadCount, setInboxUnreadCount] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const punchRef = useRef<HTMLDivElement | null>(null);
@@ -124,6 +129,27 @@ export default function AppShell({
   const showBillingBadge = isBillingAttentionStatus(subStatus);
 
   const billingHref = "/dashboard/owner/settings#billing";
+
+  const loadInboxUnreadCount = useCallback(async () => {
+    if (!userId || !isAppRoute) {
+      setInboxUnreadCount(0);
+      return;
+    }
+
+    const response = await fetch("/api/chat/my-conversations", {
+      credentials: "include",
+    }).catch(() => null);
+    if (!response?.ok) return;
+
+    const conversations = (await response.json().catch(() => [])) as InboxConversationSummary[];
+    const count = Array.isArray(conversations)
+      ? conversations.reduce(
+          (sum, row) => sum + Math.max(0, Number(row.unread_count ?? 0)),
+          0,
+        )
+      : 0;
+    setInboxUnreadCount(count);
+  }, [isAppRoute, userId]);
 
   useEffect(() => {
     if (!isAppRoute) return;
@@ -199,6 +225,12 @@ export default function AppShell({
               return;
 
             setIncomingConvoId(msg.conversation_id);
+            setInboxUnreadCount((count) => Math.max(count + 1, 1));
+            window.dispatchEvent(
+              new CustomEvent("profixiq:inbox-refresh", {
+                detail: { conversationId: msg.conversation_id },
+              }),
+            );
             setChatOpen(true);
           },
         )
@@ -211,6 +243,26 @@ export default function AppShell({
 
     return () => cleanup?.();
   }, [supabase, isAppRoute]);
+
+  useEffect(() => {
+    if (!isAppRoute || !userId) {
+      setInboxUnreadCount(0);
+      return;
+    }
+
+    void loadInboxUnreadCount();
+    const refresh = () => {
+      void loadInboxUnreadCount();
+    };
+    const interval = window.setInterval(refresh, 60_000);
+    window.addEventListener("profixiq:inbox-refresh", refresh);
+    window.addEventListener("profixiq:inbox-read", refresh);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("profixiq:inbox-refresh", refresh);
+      window.removeEventListener("profixiq:inbox-read", refresh);
+    };
+  }, [isAppRoute, loadInboxUnreadCount, userId]);
 
   useEffect(() => {
     if (!userId) {
@@ -460,6 +512,11 @@ export default function AppShell({
 
               <ActionButton onClick={() => setChatOpen(true)} title="Inbox">
                 <span>Inbox</span>
+                {inboxUnreadCount > 0 ? (
+                  <span className="ml-0.5 rounded-full bg-[var(--accent-copper-soft)] px-1.5 py-0.5 text-[10px] font-bold leading-none text-[color:var(--theme-text-on-accent)]">
+                    {inboxUnreadCount > 99 ? "99+" : inboxUnreadCount}
+                  </span>
+                ) : null}
               </ActionButton>
 
               {userId ? (

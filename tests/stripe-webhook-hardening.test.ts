@@ -31,7 +31,7 @@ describe("stripe webhook hardening", () => {
     const json = (await res.json()) as { error?: string };
 
     expect(res.status).toBe(500);
-    expect(json.error).toBe("Missing STRIPE_WEBHOOK_SECRET");
+    expect(json.error).toBe("Missing Stripe webhook configuration");
   });
 
   it("fails loudly when stripe signature header is missing", async () => {

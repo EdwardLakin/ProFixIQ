@@ -1,13 +1,11 @@
 import { NextResponse } from "next/server";
-import {
-  createAdminSupabase,
-  createServerSupabaseRoute,
-} from "@/features/shared/lib/supabase/server";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { SHIFT_STATUSES } from "@/features/workforce/lib/shift-status";
+import { WORKFORCE_STAFF_ROLES } from "@/features/workforce/lib/roster";
 import { closeAllActiveTechnicianJobLabor } from "@/features/work-orders/server/technicianJobLabor";
 import { getOrCreateCurrentPeriod, rebuildPeriod } from "@/features/payroll-time/server/payrollTime";
 
-type Caller = { id: string; shop_id: string | null };
 type ShiftRow = {
   id: string;
   shop_id: string | null;
@@ -21,33 +19,12 @@ type ShiftLifecycleRpcRow = ShiftRow & {
 };
 
 export async function POST() {
-  const supabase = createServerSupabaseRoute();
-  const {
-    data: { user },
-    error: userErr,
-  } = await supabase.auth.getUser();
+  const access = await requireShopScopedApiAccess({
+    allowRoles: [...WORKFORCE_STAFF_ROLES],
+  });
+  if (!access.ok) return access.response;
 
-  if (userErr)
-    return NextResponse.json({ error: userErr.message }, { status: 500 });
-  if (!user)
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  let { data: me } = await supabase
-    .from("profiles")
-    .select("id, shop_id")
-    .eq("id", user.id)
-    .maybeSingle<Caller>();
-  if (!me) {
-    const byUser = await supabase
-      .from("profiles")
-      .select("id, shop_id")
-      .eq("user_id", user.id)
-      .maybeSingle<Caller>();
-    me = byUser.data ?? null;
-  }
-
-  if (!me?.shop_id)
-    return NextResponse.json({ error: "Missing shop" }, { status: 403 });
+  const me = access.profile;
 
   const admin = createAdminSupabase();
 
@@ -125,7 +102,7 @@ export async function POST() {
   }
 
   try {
-    const { period } = await getOrCreateCurrentPeriod(me.shop_id, me.id);
+    const { period } = await getOrCreateCurrentPeriod(me.shop_id);
     if (period?.id && (period.status === "open" || period.status === "draft")) {
       await rebuildPeriod({ shopId: me.shop_id, actorId: me.id, periodId: period.id });
     }

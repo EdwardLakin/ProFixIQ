@@ -164,7 +164,7 @@ export default function AdminEmployeesClient() {
           title="Employee Records"
           description="Directory posture across role, profile setup, contact completeness, activity recency, and payroll exception linkage."
           action={
-            <Link href="/dashboard/admin/payroll-time" className="text-xs font-medium text-orange-300 hover:text-orange-200">
+            <Link href="/dashboard/workforce/payroll-review" className="text-xs font-medium text-[color:var(--theme-accent-text)]">
               Open Payroll Time →
             </Link>
           }

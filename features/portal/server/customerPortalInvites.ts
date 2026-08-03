@@ -80,18 +80,29 @@ export async function issueCustomerPortalInvite(input: {
     inviteId = createdInvite.id;
   }
 
-  const afterAccept = "/auth/set-password?redirect=%2Fportal";
-  const redirectTo = `${siteUrl()}/portal/auth/confirm?${new URLSearchParams({
-    invite: inviteId,
-    next: afterAccept,
+  const portalDestination = input.workOrderId
+    ? `/portal/work-orders/view/${input.workOrderId}`
+    : "/portal";
+  const afterAccept = `/auth/set-password?${new URLSearchParams({
+    mode: "portal",
+    redirect: portalDestination,
   }).toString()}`;
   const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
     type: "magiclink",
     email,
-    options: { redirectTo },
   });
-  const portalLink = linkData?.properties?.action_link;
-  if (linkError || !portalLink) throw new Error("Portal activation link could not be created.");
+  const tokenHash = linkData?.properties?.hashed_token?.trim();
+  const verificationType = linkData?.properties?.verification_type;
+  if (linkError || !tokenHash || verificationType !== "magiclink") {
+    throw new Error("Portal activation link could not be created.");
+  }
+
+  const portalLink = `${siteUrl()}/portal/auth/activate?${new URLSearchParams({
+    token_hash: tokenHash,
+    type: verificationType,
+    invite: inviteId,
+    next: afterAccept,
+  }).toString()}`;
 
   const [{ data: shop }, brand] = await Promise.all([
     supabaseAdmin
@@ -115,5 +126,5 @@ export async function issueCustomerPortalInvite(input: {
     portalType: "customer",
   });
 
-  return { inviteId, redirectTo };
+  return { inviteId, portalLink };
 }

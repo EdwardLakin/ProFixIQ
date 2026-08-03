@@ -70,7 +70,7 @@ export const TILES: Tile[] = [
     href: "/work-orders/history",
     title: "History",
     subtitle: "Completed Work Orders & Invoices",
-    roles: ["owner", "admin", "manager", "advisor", "mechanic", "lead_hand", "foreman"],
+    roles: ["owner", "admin", "manager", "advisor", "lead_hand", "foreman"],
     scopes: ["work_orders", "all"],
   },
   // NEW: Billing (Ready to invoice)
@@ -83,20 +83,6 @@ export const TILES: Tile[] = [
   },
 
   // --- Inspections ---
-  {
-    href: "/inspections/maintenance50",
-    title: "Maintenance 50",
-    subtitle: "Quick checklist",
-    roles: ["advisor", "manager", "owner", "admin", "mechanic"],
-    scopes: ["inspections", "all"],
-  },
-  {
-    href: "/inspections/maintenance50-air",
-    title: "Maintenance 50 – Air",
-    subtitle: "CVIP-style (air brakes)",
-    roles: ["advisor", "manager", "owner", "admin", "mechanic"],
-    scopes: ["inspections", "all"],
-  },
   {
     href: "/inspections/custom-inspection",
     title: "Custom Builder",
@@ -172,11 +158,10 @@ export const TILES: Tile[] = [
     roles: ["parts", "manager", "owner", "admin"],
     scopes: ["parts", "all"],
   },
-  // Optional: vendor API keys / integrations page
   {
     href: "/parts/vendors",
-    title: "Vendor Integrations",
-    subtitle: "API keys for suppliers",
+    title: "Vendors",
+    subtitle: "Supplier records & activity",
     roles: ["owner", "admin", "manager", "parts"],
     scopes: ["parts", "settings", "all"],
   },
@@ -211,9 +196,9 @@ export const TILES: Tile[] = [
     scopes: ["management", "all"],
   },
   {
-    href: "/dashboard/admin",
-    title: "Admin Dashboard",
-    subtitle: "Governance and workforce command hub",
+    href: "/dashboard/workforce",
+    title: "Workforce Command",
+    subtitle: "People, coverage, time, payroll, and readiness",
     roles: ["owner", "admin"],
     scopes: ["management", "all"],
   },
@@ -225,8 +210,8 @@ export const TILES: Tile[] = [
     scopes: ["management", "all"],
   },
   {
-    href: "/dashboard/admin/audit",
-    title: "Audit",
+    href: "/dashboard/workforce/activity",
+    title: "Workforce Activity",
     subtitle: "Sensitive action timeline and investigation",
     roles: ["owner", "admin"],
     scopes: ["management", "all"],

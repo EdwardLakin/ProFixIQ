@@ -3,10 +3,18 @@ export const runtime = "nodejs";
 
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import { createAdminClient } from "@/features/integrations/shopreel/server/createAdminClient";
+import {
+  hasAnyRole,
+  ROLE_GROUPS,
+} from "@/features/shared/lib/rbac";
 
 
-type SupportedInvoiceDocumentKind = "invoice_pdf";
-const SUPPORTED_KINDS: ReadonlySet<SupportedInvoiceDocumentKind> = new Set(["invoice_pdf"]);
+type SupportedInvoiceDocumentKind = "invoice_pdf" | "inspection_report";
+const SUPPORTED_KINDS: ReadonlySet<SupportedInvoiceDocumentKind> = new Set([
+  "invoice_pdf",
+  "inspection_report",
+]);
 
 function extract(req: NextRequest): { invoiceId: string | null; kind: string | null } {
   const m = req.nextUrl.pathname.match(/\/api\/invoices\/([^/]+)\/documents\/([^/]+)\/signed$/);
@@ -17,11 +25,20 @@ function isSupportedKind(kind: string): kind is SupportedInvoiceDocumentKind {
   return SUPPORTED_KINDS.has(kind as SupportedInvoiceDocumentKind);
 }
 
-function isSafeStoragePath(path: string): boolean {
-  if (!path || path.startsWith("/")) return false;
-  if (path.includes("..")) return false;
-  if (path.includes("//")) return false;
-  return true;
+function isExpectedDocumentStorage(args: {
+  kind: SupportedInvoiceDocumentKind;
+  bucket: string;
+  path: string;
+  shopId: string;
+  invoiceId: string;
+}): boolean {
+  if (args.bucket !== "inspection_pdfs") return false;
+  if (!args.path || args.path.startsWith("/")) return false;
+  if (args.path.includes("..") || args.path.includes("//")) return false;
+  if (!args.path.endsWith(".pdf")) return false;
+  return args.path.startsWith(
+    `shops/${args.shopId}/invoices/${args.invoiceId}/`,
+  );
 }
 
 export async function GET(req: NextRequest) {
@@ -48,24 +65,37 @@ export async function GET(req: NextRequest) {
     .maybeSingle();
 
   if (invErr) return NextResponse.json({ ok: false, error: invErr.message }, { status: 400 });
-  if (!invoice?.id || !invoice.customer_id) {
+  if (!invoice?.id) {
     return NextResponse.json({ ok: false, error: "Invoice not found" }, { status: 404 });
   }
 
-  const { data: customer, error: customerErr } = await supabase
-    .from("customers")
-    .select("id, shop_id")
-    .eq("id", invoice.customer_id)
-    .eq("user_id", user.id)
-    .maybeSingle();
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("shop_id,role")
+    .eq("id", user.id)
+    .maybeSingle<{ shop_id: string | null; role: string | null }>();
+  const isStaff =
+    profile?.shop_id === invoice.shop_id &&
+    hasAnyRole(profile?.role, ROLE_GROUPS.billingOperators);
 
-  if (customerErr) return NextResponse.json({ ok: false, error: customerErr.message }, { status: 400 });
-  if (!customer?.id) {
-    return NextResponse.json({ ok: false, error: "Invoice not found" }, { status: 404 });
-  }
-
-  if (invoice.shop_id !== customer.shop_id) {
-    return NextResponse.json({ ok: false, error: "Invoice not found" }, { status: 404 });
+  let customer: { id: string; shop_id: string } | null = null;
+  if (!isStaff) {
+    if (!invoice.customer_id) {
+      return NextResponse.json({ ok: false, error: "Invoice not found" }, { status: 404 });
+    }
+    const { data, error: customerErr } = await supabase
+      .from("customers")
+      .select("id, shop_id")
+      .eq("id", invoice.customer_id)
+      .eq("user_id", user.id)
+      .maybeSingle<{ id: string; shop_id: string }>();
+    if (customerErr) {
+      return NextResponse.json({ ok: false, error: customerErr.message }, { status: 400 });
+    }
+    customer = data ?? null;
+    if (!customer?.id || invoice.shop_id !== customer.shop_id) {
+      return NextResponse.json({ ok: false, error: "Invoice not found" }, { status: 404 });
+    }
   }
 
   if (invoice.work_order_id) {
@@ -82,15 +112,20 @@ export async function GET(req: NextRequest) {
 
     if (
       workOrder.customer_id !== invoice.customer_id ||
-      workOrder.customer_id !== customer.id ||
       workOrder.shop_id !== invoice.shop_id ||
-      workOrder.shop_id !== customer.shop_id
+      (!isStaff &&
+        (workOrder.customer_id !== customer?.id ||
+          workOrder.shop_id !== customer?.shop_id))
     ) {
       return NextResponse.json({ ok: false, error: "Invoice not found" }, { status: 404 });
     }
   }
 
-  const { data: doc, error } = await supabase
+  // invoice_documents is intentionally staff-RLS-only. Portal access is
+  // authorized above, then the admin client is limited to the exact verified
+  // invoice/shop/document tuple.
+  const admin = createAdminClient();
+  const { data: doc, error } = await admin
     .from("invoice_documents")
     .select("storage_bucket, storage_path, shop_id, invoice_id")
     .eq("invoice_id", invoiceId)
@@ -99,14 +134,26 @@ export async function GET(req: NextRequest) {
 
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
   if (!doc?.storage_bucket || !doc?.storage_path) return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
-  if (doc.invoice_id !== invoice.id || doc.shop_id !== invoice.shop_id || doc.shop_id !== customer.shop_id) {
+  if (
+    doc.invoice_id !== invoice.id ||
+    doc.shop_id !== invoice.shop_id ||
+    (!isStaff && doc.shop_id !== customer?.shop_id)
+  ) {
     return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
   }
-  if (!isSafeStoragePath(doc.storage_path)) {
+  if (
+    !isExpectedDocumentStorage({
+      kind,
+      bucket: doc.storage_bucket,
+      path: doc.storage_path,
+      shopId: invoice.shop_id,
+      invoiceId: invoice.id,
+    })
+  ) {
     return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
   }
 
-  const { data: signed, error: sErr } = await supabase.storage
+  const { data: signed, error: sErr } = await admin.storage
     .from(doc.storage_bucket)
     .createSignedUrl(doc.storage_path, 60 * 10); // 10 minutes
 
@@ -114,5 +161,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false, error: sErr?.message ?? "Signed URL failed" }, { status: 500 });
   }
 
+  if (req.nextUrl.searchParams.get("redirect") === "1") {
+    return NextResponse.redirect(signed.signedUrl);
+  }
   return NextResponse.json({ ok: true, url: signed.signedUrl });
 }

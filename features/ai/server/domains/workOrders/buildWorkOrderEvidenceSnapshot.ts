@@ -6,7 +6,7 @@ import { WORK_ORDER_RULES_VERSION, type WorkOrderEvidenceSnapshot } from "./type
 type DB = Database;
 type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
 type WorkOrderLineRow = DB["public"]["Tables"]["work_order_lines"]["Row"];
-type InspectionSessionRow = DB["public"]["Tables"]["inspection_sessions"]["Row"];
+type InspectionRow = DB["public"]["Tables"]["inspections"]["Row"];
 type WorkOrderApprovalRow = DB["public"]["Tables"]["work_order_approvals"]["Row"];
 type PartsRequestRow = DB["public"]["Tables"]["parts_requests"]["Row"];
 type AllocationRow = DB["public"]["Tables"]["work_order_part_allocations"]["Row"];
@@ -102,7 +102,12 @@ export async function buildWorkOrderEvidenceSnapshot(input: BuildInput): Promise
       .select("*")
       .eq("work_order_id", workOrderId)
       .eq("shop_id", actor.shopId),
-    supabase.from("inspection_sessions").select("*").eq("work_order_id", workOrderId),
+    supabase
+      .from("inspections")
+      .select("*")
+      .eq("work_order_id", workOrderId)
+      .eq("shop_id", actor.shopId)
+      .eq("is_canonical", true),
     supabase.from("work_order_approvals").select("*").eq("work_order_id", workOrderId),
     supabase.from("parts_requests").select("*").eq("work_order_id", workOrderId),
     supabase.from("work_order_part_allocations").select("*").eq("work_order_id", workOrderId),
@@ -117,7 +122,7 @@ export async function buildWorkOrderEvidenceSnapshot(input: BuildInput): Promise
   if (laborSegRes.error) throw new Error(laborSegRes.error.message);
 
   const lines = (linesRes.data ?? []) as WorkOrderLineRow[];
-  const inspections = (inspectionRes.data ?? []) as InspectionSessionRow[];
+  const inspections = (inspectionRes.data ?? []) as InspectionRow[];
   const approvals = (approvalsRes.data ?? []) as WorkOrderApprovalRow[];
   const partRequests = (partsReqRes.data ?? []) as PartsRequestRow[];
   const allocations = (allocationRes.data ?? []) as AllocationRow[];
@@ -173,9 +178,9 @@ export async function buildWorkOrderEvidenceSnapshot(input: BuildInput): Promise
 
   const newestInspection = inspections
     .slice()
-    .sort((a, b) => Date.parse(b.updated_at ?? b.completed_at ?? "") - Date.parse(a.updated_at ?? a.completed_at ?? ""))[0];
+    .sort((a, b) => Date.parse(b.updated_at ?? b.finalized_at ?? "") - Date.parse(a.updated_at ?? a.finalized_at ?? ""))[0];
 
-  const inspectionMetrics = getInspectionMetrics(newestInspection?.state ?? null);
+  const inspectionMetrics = getInspectionMetrics(newestInspection?.summary ?? null);
   const inspectionWarnings: string[] = [];
 
   if (newestInspection && normalize(newestInspection.status) !== "completed") {
@@ -230,7 +235,7 @@ export async function buildWorkOrderEvidenceSnapshot(input: BuildInput): Promise
   const inspectionFinalized =
     !!workOrder.inspection_pdf_url ||
     normalize(newestInspection?.status) === "completed" ||
-    !!newestInspection?.completed_at;
+    !!newestInspection?.finalized_at;
 
   const linesComplete = lines.length > 0 && completedCount === lines.length;
   const approvalResolved = !approvalRequired || approvalApproved || approvalDeclined;
@@ -348,7 +353,7 @@ export async function buildWorkOrderEvidenceSnapshot(input: BuildInput): Promise
       source_refs: [
         { table: "work_orders", id: workOrder.id },
         { table: "work_order_lines", id: workOrder.id },
-        { table: "inspection_sessions", id: workOrder.id },
+        { table: "inspections", id: workOrder.id },
         { table: "work_order_approvals", id: workOrder.id },
         { table: "parts_requests", id: workOrder.id },
         { table: "work_order_part_allocations", id: workOrder.id },

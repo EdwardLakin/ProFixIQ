@@ -36,7 +36,8 @@ const mockRows: WorkOrderBoardRow[] = [
     jobs_completed: 0,
     progress_pct: 0,
     assigned_summary: null,
-    overall_stage: "waiting_parts",
+    overall_stage: "waiting",
+    has_waiting_parts: true,
     risk_level: "warn",
     priority: 2,
     is_waiter: false,
@@ -83,7 +84,7 @@ describe("WorkOrderBoard Server Component boundary regression", () => {
       <WorkOrderBoard
         variant="shop"
         title="Board"
-        initialStage="waiting_parts"
+        initialStage="waiting"
       />,
     );
 

@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
 import type { ReactNode } from "react";
 import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
+import FleetWorkspaceNav from "@/features/fleet/components/FleetWorkspaceNav";
 
 export default async function FleetLayout({
   children,
@@ -22,5 +23,10 @@ export default async function FleetLayout({
     redirect("/dashboard");
   }
 
-  return <>{children}</>;
+  return (
+    <>
+      <FleetWorkspaceNav routePrefix="/fleet" />
+      {children}
+    </>
+  );
 }

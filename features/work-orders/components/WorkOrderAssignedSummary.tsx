@@ -4,7 +4,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
-
 type Props = {
   workOrderId: string;
 };
@@ -65,10 +64,7 @@ export function WorkOrderAssignedSummary({ workOrderId }: Props) {
 
   // ---------- derived values ----------
 
-  const hasActive = useMemo(
-    () => rows.some((r) => !!r.has_active),
-    [rows],
-  );
+  const hasActive = useMemo(() => rows.some((r) => !!r.has_active), [rows]);
 
   const firstTechLabel = useMemo(() => {
     if (!rows.length) return null;
@@ -101,9 +97,9 @@ export function WorkOrderAssignedSummary({ workOrderId }: Props) {
   const base =
     "inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[0.7rem] font-medium";
   const activeCls =
-    "border-emerald-400/80 bg-emerald-500/15 text-emerald-100 shadow-[0_0_18px_rgba(16,185,129,0.8)]";
+    "border-emerald-500/55 bg-emerald-500/15 text-emerald-800 shadow-[0_0_12px_rgba(16,185,129,0.12)] dark:border-emerald-400/80 dark:text-emerald-100 dark:shadow-[0_0_18px_rgba(16,185,129,0.45)]";
   const assignedCls =
-    "border-amber-400/80 bg-amber-500/15 text-amber-50";
+    "border-amber-500/55 bg-amber-500/15 text-amber-900 dark:border-amber-400/80 dark:text-amber-100";
 
   return (
     <span
@@ -122,7 +118,7 @@ export function WorkOrderAssignedSummary({ workOrderId }: Props) {
       )}
       <span>{firstTechLabel}</span>
       {extraCount > 0 && (
-        <span className="text-[0.65rem] text-[color:var(--theme-text-secondary)]">
+        <span className="text-[0.65rem] text-current opacity-75">
           +{extraCount} collaborators
         </span>
       )}

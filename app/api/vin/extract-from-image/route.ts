@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
-import { normalizeVinInput } from "@/features/shared/lib/vin/normalizeVin";
+
+import { pickBestOcrVin } from "@/features/shared/lib/vin/vinCapture";
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { getOpenAIClient } from "@/features/shared/lib/server/openai";
 import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
 
-const openai = getOpenAIClient();
+export const runtime = "nodejs";
 
+const openai = getOpenAIClient();
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const ALLOWED_IMAGE_TYPES = new Set([
   "image/jpeg",
@@ -15,41 +17,10 @@ const ALLOWED_IMAGE_TYPES = new Set([
   "image/heif",
 ]);
 
-function findVinLike(text: string): string | null {
-  const direct = normalizeVinInput(text);
-  if (direct.isValid) return direct.vin;
-
-  const candidates = text
-    .toUpperCase()
-    .match(/[A-Z0-9][A-Z0-9\s\-_.:/\\|]{15,}[A-Z0-9]/g);
-
-  for (const candidate of candidates ?? []) {
-    const normalized = normalizeVinInput(candidate);
-    if (normalized.isValid) return normalized.vin;
-  }
-
-  return null;
-}
-
 export async function POST(req: NextRequest) {
   try {
-    const supabase = await createServerSupabaseRSC();
-    const { data: userData, error: userError } = await supabase.auth.getUser();
-    const userId = userData.user?.id ?? null;
-
-    if (userError || !userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("shop_id")
-      .eq("id", userId)
-      .maybeSingle();
-
-    if (profileError || !profile?.shop_id) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    const access = await requireShopScopedApiAccess();
+    if (!access.ok) return access.response;
 
     const formData = await req.formData();
     const file = formData.get("image") as File | null;
@@ -74,23 +45,23 @@ export async function POST(req: NextRequest) {
 
     const bytes = Buffer.from(await file.arrayBuffer());
     const base64 = bytes.toString("base64");
-    const dataUrl = "data:" + file.type + ";base64," + base64;
+    const dataUrl = `data:${file.type};base64,${base64}`;
 
     const completion = await openai.chat.completions.create({
       model: getOpenAIModelForPurpose("vision"),
-      max_tokens: 50,
+      max_tokens: 80,
       messages: [
         {
           role: "system",
           content:
-            "You extract VINs from vehicle photos. A VIN is exactly 17 characters, using digits and capital letters except I, O, Q. If you cannot confidently see a VIN, respond with ONLY the word NONE.",
+            "Read the human-readable VIN printed on a vehicle compliance label. Prefer the 17-character text next to VIN: and do not try to describe or decode the barcode. A VIN uses digits and capital letters except I, O, and Q. Reply with only the VIN. If no complete VIN is confidently readable, reply with only NONE.",
         },
         {
           role: "user",
           content: [
             {
               type: "text",
-              text: "Read the VIN from this image. Reply ONLY with the VIN or NONE.",
+              text: "Extract the complete printed VIN from this vehicle label. Reply only with the VIN or NONE.",
             },
             {
               type: "image_url",
@@ -107,16 +78,26 @@ export async function POST(req: NextRequest) {
       completion.choices[0]?.message?.content?.toString().trim() ?? "";
 
     if (!raw || raw.toUpperCase() === "NONE") {
-      return NextResponse.json({ vin: null });
+      return NextResponse.json({ vin: null, confidence: "none" });
     }
 
-    const vin = findVinLike(raw);
-    return NextResponse.json({ vin: vin ?? null });
+    const candidate = pickBestOcrVin(raw);
+    if (!candidate) {
+      return NextResponse.json({ vin: null, confidence: "none" });
+    }
+
+    return NextResponse.json({
+      vin: candidate.vin,
+      checksumValid: candidate.checksumValid,
+      confidence: candidate.checksumValid
+        ? "checksum_confirmed"
+        : "exact_text",
+    });
   } catch (err) {
     console.error("VIN extract error", err);
     return NextResponse.json(
       { error: "Failed to extract VIN from image" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

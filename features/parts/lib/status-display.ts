@@ -61,6 +61,8 @@ export function partsRequestStageLabel(stage: PartsRequestStage): string {
 export type PartsRequestStageItem = {
   description?: string | null;
   partId?: string | null;
+  requestedPartNumber?: string | null;
+  requestedManufacturer?: string | null;
   quotedPrice?: unknown;
   unitPrice?: unknown;
   qty?: unknown;
@@ -87,9 +89,57 @@ function requestedQty(item: PartsRequestStageItem): number {
 
 export function isPartsRequestItemPriced(item: PartsRequestStageItem): boolean {
   const description = String(item.description ?? "").trim();
+  const hasIdentity = [
+    description,
+    item.partId,
+    item.requestedPartNumber,
+    item.requestedManufacturer,
+  ].some((value) => String(value ?? "").trim().length > 0);
+  const rawPrice = item.quotedPrice ?? item.unitPrice;
+  const price = rawPrice == null ? null : Number(rawPrice);
+  return (
+    hasIdentity &&
+    requestedQty(item) > 0 &&
+    price != null &&
+    Number.isFinite(price) &&
+    price >= 0
+  );
+}
+
+/**
+ * Service-menu intake is complete only when the catalog link, reusable
+ * quantity, and canonical unit price persisted by the intake RPC are present.
+ * A legacy quoted price alone must not make the recipe look reviewed.
+ */
+export function isMenuIntakeItemReviewed(
+  item: PartsRequestStageItem,
+): boolean {
   const hasPart = String(item.partId ?? "").trim().length > 0;
-  const hasPrice = item.quotedPrice != null || item.unitPrice != null;
-  return description.length > 0 && hasPart && requestedQty(item) > 0 && hasPrice;
+  return hasPart && requestedQty(item) > 0 && item.unitPrice != null;
+}
+
+export function toMenuIntakeStage(input: {
+  rawStatus?: string | null;
+  items?: PartsRequestStageItem[];
+}): PartsRequestStage {
+  const status = String(input.rawStatus ?? "")
+    .trim()
+    .toLowerCase();
+  const items = (input.items ?? []).filter(
+    (item) => String(item.rawStatus ?? "").toLowerCase() !== "cancelled",
+  );
+
+  if (
+    ["fulfilled", "rejected", "cancelled", "deferred", "returned"].includes(
+      status,
+    )
+  ) {
+    return "completed";
+  }
+
+  return items.length > 0 && items.every(isMenuIntakeItemReviewed)
+    ? "completed"
+    : "needs_quote";
 }
 
 export function isPartsRequestItemStaged(item: PartsRequestStageItem): boolean {

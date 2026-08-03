@@ -7,11 +7,11 @@ const logAiActionEventMock = vi.fn();
 const assertAiOwnerPinProofReferenceMock = vi.fn((value: unknown, _args?: unknown) => value);
 
 vi.mock("./actionPreviews", () => ({
-  getAiActionPreview: (...args: unknown[]) => getAiActionPreviewMock.apply(null, args),
+  getAiActionPreview: (...args: unknown[]) => getAiActionPreviewMock(...args),
 }));
 
 vi.mock("./actionEvents", () => ({
-  logAiActionEvent: (...args: unknown[]) => logAiActionEventMock.apply(null, args),
+  logAiActionEvent: (...args: unknown[]) => logAiActionEventMock(...args),
 }));
 
 vi.mock("./ownerPinProof", () => ({
@@ -55,8 +55,12 @@ function buildPreview(overrides: Record<string, unknown> = {}) {
 
 function mockFromTable(args: {
   pending?: Record<string, unknown> | null;
+  pendingSequence?: Array<Record<string, unknown> | null>;
   inserted?: Record<string, unknown>;
+  insertError?: { code: string; message: string } | null;
 }) {
+  let pendingLookupIndex = 0;
+
   return vi.spyOn(types, "fromTable").mockImplementation((_, table: string) => {
     if (table !== "ai_action_approvals") {
       throw new Error(`unexpected table ${table}`);
@@ -75,14 +79,20 @@ function mockFromTable(args: {
       limit() {
         return this;
       },
-      maybeSingle: async () => ({ data: (args.pending ?? null) as never, error: null }),
+      maybeSingle: async () => {
+        const pending = args.pendingSequence
+          ? args.pendingSequence[Math.min(pendingLookupIndex, args.pendingSequence.length - 1)]
+          : (args.pending ?? null);
+        pendingLookupIndex += 1;
+        return { data: pending as never, error: null };
+      },
       insert(payload: unknown) {
         return {
           select() {
             return this;
           },
           single: async () => ({
-            data: {
+            data: args.insertError ? null : {
               id: "appr_1",
               shop_id: "shop_1",
               action_preview_id: "pv_1",
@@ -99,7 +109,7 @@ function mockFromTable(args: {
               metadata: payload as never,
               ...args.inserted,
             } as never,
-            error: null,
+            error: args.insertError ?? null,
           }),
         };
       },
@@ -146,6 +156,27 @@ describe("requestAiActionPreviewApproval", () => {
 
     expect(result.created).toBe(false);
     expect(result.approval.id).toBe("appr_existing");
+    expect(logAiActionEventMock).not.toHaveBeenCalled();
+  });
+
+  it("returns the winning pending approval after a concurrent insert conflict", async () => {
+    getAiActionPreviewMock.mockResolvedValue(buildPreview());
+    mockFromTable({
+      pendingSequence: [
+        null,
+        {
+          id: "appr_concurrent",
+          action_preview_id: "pv_1",
+          status: "pending",
+        },
+      ],
+      insertError: { code: "23505", message: "duplicate key value violates unique constraint" },
+    });
+
+    const result = await requestAiActionPreviewApproval({} as never, BASE_ACTOR, { previewId: "pv_1" });
+
+    expect(result.created).toBe(false);
+    expect(result.approval.id).toBe("appr_concurrent");
     expect(logAiActionEventMock).not.toHaveBeenCalled();
   });
 

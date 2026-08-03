@@ -8,7 +8,14 @@ import type {
 } from "@inspections/lib/inspection/types";
 import { normalizeCustomerForIntake } from "@inspections/lib/customerNormalization";
 import { normalizeVinInput } from "@/features/shared/lib/vin/normalizeVin";
-import { checkVehicleDuplicates, type VehicleDuplicateMatch } from "@/features/shared/lib/vehicles/duplicateCheck";
+import {
+  checkVehicleDuplicates,
+  type VehicleDuplicateMatch,
+} from "@/features/shared/lib/vehicles/duplicateCheck";
+import { CarFront, CheckCircle2, ChevronDown, UserRound } from "lucide-react";
+import { desktopPrimitives as ui } from "@/features/shared/components/ui/desktopPrimitives";
+
+const intakeFieldClass = `${ui.input} min-h-11 rounded-xl`;
 
 type VehicleInfo = SessionVehicle & {
   submodel?: string | null;
@@ -81,10 +88,7 @@ interface Props {
 
 /** Internal view of handlers (kept private to this file) */
 type Handlers = {
-  onCustomerChange?: (
-    field: keyof CustomerInfo,
-    value: string | null,
-  ) => void;
+  onCustomerChange?: (field: keyof CustomerInfo, value: string | null) => void;
   onVehicleChange?: (field: keyof VehicleInfo, value: string | null) => void;
   onSave?: () => void | Promise<void>;
   onClear?: () => void;
@@ -265,7 +269,9 @@ function CustomerAutocomplete({
           "
         >
           {busy && (
-            <div className="px-3 py-2 text-xs text-[color:var(--theme-text-muted)]">Searching…</div>
+            <div className="px-3 py-2 text-xs text-[color:var(--theme-text-muted)]">
+              Searching…
+            </div>
           )}
           {rows.map(({ customer: c, vehicle: v }) => {
             const normalized = hydrateCustomerFields(c);
@@ -273,7 +279,10 @@ function CustomerAutocomplete({
               .filter(Boolean)
               .join(" ");
             const top =
-              normalized.business_name || contact || normalized.name || "Unnamed";
+              normalized.business_name ||
+              contact ||
+              normalized.name ||
+              "Unnamed";
             const vehicleLabel = v
               ? [
                   v.unit_number ? `Unit ${v.unit_number}` : null,
@@ -302,14 +311,22 @@ function CustomerAutocomplete({
                   setOpen(false);
                 }}
               >
-                <div className="truncate text-[color:var(--theme-text-primary)]">{top}</div>
-                <div className="truncate text-xs text-[color:var(--theme-text-secondary)]">{vehicleLabel}</div>
-                <div className="truncate text-[11px] text-[color:var(--theme-text-muted)]">{contactLabel || "—"}</div>
+                <div className="truncate text-[color:var(--theme-text-primary)]">
+                  {top}
+                </div>
+                <div className="truncate text-xs text-[color:var(--theme-text-secondary)]">
+                  {vehicleLabel}
+                </div>
+                <div className="truncate text-[11px] text-[color:var(--theme-text-muted)]">
+                  {contactLabel || "—"}
+                </div>
               </button>
             );
           })}
           {!busy && rows.length === 0 && (
-            <div className="px-3 py-2 text-xs text-[color:var(--theme-text-muted)]">No matches</div>
+            <div className="px-3 py-2 text-xs text-[color:var(--theme-text-muted)]">
+              No matches
+            </div>
           )}
         </div>
       )}
@@ -402,7 +419,9 @@ function UnitNumberAutocomplete({
           "
         >
           {busy && (
-            <div className="px-3 py-2 text-xs text-[color:var(--theme-text-muted)]">Searching…</div>
+            <div className="px-3 py-2 text-xs text-[color:var(--theme-text-muted)]">
+              Searching…
+            </div>
           )}
           {rows.map((v) => {
             const title =
@@ -434,13 +453,19 @@ function UnitNumberAutocomplete({
                   setOpen(false);
                 }}
               >
-                <div className="truncate text-[color:var(--theme-text-primary)]">{title}</div>
-                <div className="truncate text-xs text-[color:var(--theme-text-muted)]">{sub || "—"}</div>
+                <div className="truncate text-[color:var(--theme-text-primary)]">
+                  {title}
+                </div>
+                <div className="truncate text-xs text-[color:var(--theme-text-muted)]">
+                  {sub || "—"}
+                </div>
               </button>
             );
           })}
           {!busy && rows.length === 0 && (
-            <div className="px-3 py-2 text-xs text-[color:var(--theme-text-muted)]">No matches</div>
+            <div className="px-3 py-2 text-xs text-[color:var(--theme-text-muted)]">
+              No matches
+            </div>
           )}
         </div>
       )}
@@ -479,7 +504,9 @@ export default function CustomerVehicleForm({
   const [customerSearchSuspended, setCustomerSearchSuspended] = useState(
     Boolean(selectedCustomerId),
   );
-  const [duplicateMatches, setDuplicateMatches] = useState<VehicleDuplicateMatch[]>([]);
+  const [duplicateMatches, setDuplicateMatches] = useState<
+    VehicleDuplicateMatch[]
+  >([]);
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
 
   useEffect(() => {
@@ -496,7 +523,10 @@ export default function CustomerVehicleForm({
 
   const safeSetVehicle = useCallback(
     (field: keyof VehicleInfo, value: string | null | undefined) => {
-      const nextValue = field === "vin" ? normalizeVinInput(value).vin || null : value ?? null;
+      const nextValue =
+        field === "vin"
+          ? normalizeVinInput(value).vin || null
+          : (value ?? null);
       onVehicleChange(field, nextValue);
     },
     [onVehicleChange],
@@ -526,12 +556,19 @@ export default function CustomerVehicleForm({
         if (cancelled) return;
         setDuplicateMatches(result.matches);
         const differentCustomerVin = result.matches.find(
-          (match) => match.match_type === "vin" && match.same_customer === false,
+          (match) =>
+            match.match_type === "vin" && match.same_customer === false,
         );
         if (differentCustomerVin) {
-          setDuplicateWarning("This VIN is already assigned to another customer. Contact shop/admin to move vehicle.");
-        } else if (result.matches.some((match) => match.same_customer === true)) {
-          setDuplicateWarning("Vehicle already exists. Use existing vehicle instead of creating a duplicate.");
+          setDuplicateWarning(
+            "This VIN is already assigned to another customer. Contact shop/admin to move vehicle.",
+          );
+        } else if (
+          result.matches.some((match) => match.same_customer === true)
+        ) {
+          setDuplicateWarning(
+            "Vehicle already exists. Use existing vehicle instead of creating a duplicate.",
+          );
         } else {
           setDuplicateWarning(null);
         }
@@ -547,7 +584,14 @@ export default function CustomerVehicleForm({
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [currentCustomerId, selectedVehicleId, shopId, vehicle.license_plate, vehicle.unit_number, vehicle.vin]);
+  }, [
+    currentCustomerId,
+    selectedVehicleId,
+    shopId,
+    vehicle.license_plate,
+    vehicle.unit_number,
+    vehicle.vin,
+  ]);
 
   const applyPickedVehicle = useCallback(
     (picked: VehicleRow) => {
@@ -597,10 +641,7 @@ export default function CustomerVehicleForm({
     applyCustomer(c);
 
     try {
-      const query = supabase
-        .from("customers")
-        .select("*")
-        .eq("id", c.id);
+      const query = supabase.from("customers").select("*").eq("id", c.id);
       const { data } = shopId
         ? await query.eq("shop_id", shopId).maybeSingle()
         : await query.maybeSingle();
@@ -668,7 +709,9 @@ export default function CustomerVehicleForm({
         (match) => match.match_type === "vin" && match.same_customer === false,
       );
       if (differentCustomerVin) {
-        throw new Error("This VIN is already assigned to another customer. Contact shop/admin to move vehicle.");
+        throw new Error(
+          "This VIN is already assigned to another customer. Contact shop/admin to move vehicle.",
+        );
       }
 
       if (onSave) await onSave();
@@ -694,64 +737,69 @@ export default function CustomerVehicleForm({
   };
 
   const panelClass =
-    "rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] shadow-[var(--theme-shadow-medium)] backdrop-blur-xl";
-  const chipClass =
-    "rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1 text-[11px] text-[color:var(--theme-text-muted)]";
+    "rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] shadow-[var(--theme-shadow-soft)]";
   const labelClass = "text-xs text-[color:var(--theme-text-secondary)]";
 
+  const customerLabel =
+    customer.business_name?.trim() ||
+    [customer.first_name, customer.last_name]
+      .filter(Boolean)
+      .join(" ")
+      .trim() ||
+    customer.phone?.trim() ||
+    customer.email?.trim() ||
+    null;
+  const vehicleLabel =
+    [vehicle.year, vehicle.make, vehicle.model]
+      .filter(Boolean)
+      .join(" ")
+      .trim() ||
+    vehicle.unit_number?.trim() ||
+    vehicle.license_plate?.trim() ||
+    vehicle.vin?.trim() ||
+    null;
+
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-8 px-4 py-6 text-[color:var(--theme-text-primary)]">
-      {/* Header card */}
-      <section className={`${panelClass} px-4 py-4`}>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-lg font-blackops tracking-[0.16em] text-[var(--accent-copper-light)]">
-              Customer &amp; Vehicle
-            </h1>
-            <p className="mt-1 text-[0.75rem] text-[color:var(--theme-text-muted)]">
-              Search existing customers and units, or enter new details to attach
-              to this visit.
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {workOrderExists && (
-              <span className="rounded-full border border-emerald-500/45 bg-emerald-500/10 px-3 py-1 text-[11px] font-medium text-emerald-200 shadow-[0_0_18px_rgba(16,185,129,0.18)]">
-                Linked to existing work order
-              </span>
-            )}
-            {shopId && (
-              <span className={`${chipClass} font-mono`}>
-                Shop&nbsp;
-                <span className="text-[var(--accent-copper-soft)]">
-                  {shopId.slice(0, 8)}
-                </span>
-              </span>
-            )}
-          </div>
-        </div>
-      </section>
-
-      {/* Main grid: Customer / Vehicle */}
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr),minmax(0,1.1fr)]">
+    <div className="w-full space-y-4 text-[color:var(--theme-text-primary)]">
+      <div className="grid gap-4 xl:grid-cols-2">
         {/* Customer card */}
-        <section className={`${panelClass} space-y-4 px-4 py-4 sm:px-6 sm:py-6`}>
-          <div className="flex items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)] sm:text-base">
-              Customer Info
-            </h2>
-            <span className="text-[11px] text-[color:var(--theme-text-muted)]">
-              Start typing to search existing customers in this shop.
+        <section className={`${panelClass} space-y-4 p-4 sm:p-5`}>
+          <div className="flex items-start gap-3">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[color:var(--brand-primary)]/10 text-[color:var(--brand-primary)]">
+              <UserRound className="h-4 w-4" aria-hidden="true" />
             </span>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)] sm:text-base">
+                  Customer
+                </h2>
+                {selectedCustomerId && customerLabel ? (
+                  <span className="inline-flex min-w-0 items-center gap-1 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-[color:var(--theme-success-text)]">
+                    <CheckCircle2
+                      className="h-3 w-3 shrink-0"
+                      aria-hidden="true"
+                    />
+                    <span className="truncate">{customerLabel}</span>
+                  </span>
+                ) : null}
+              </div>
+              <p className="mt-0.5 text-xs text-[color:var(--theme-text-muted)]">
+                Start typing in any primary field to find an existing customer.
+              </p>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {/* Business name + autocomplete */}
             <div className="sm:col-span-2 space-y-1">
               <label className={labelClass}>
-                Business name <span className="text-[color:var(--theme-text-muted)]">(optional)</span>
+                Business name{" "}
+                <span className="text-[color:var(--theme-text-muted)]">
+                  (optional)
+                </span>
               </label>
               <input
-                className="input"
+                className={intakeFieldClass}
                 placeholder="Business name"
                 value={customer.business_name ?? ""}
                 onChange={(e) => {
@@ -763,7 +811,10 @@ export default function CustomerVehicleForm({
                 q={customer.business_name ?? ""}
                 shopId={shopId}
                 suspended={customerSearchSuspended}
-                onPick={({ customer: pickedCustomer, vehicle: pickedVehicle }) => {
+                onPick={({
+                  customer: pickedCustomer,
+                  vehicle: pickedVehicle,
+                }) => {
                   void handlePickedCustomer(pickedCustomer, pickedVehicle);
                 }}
               />
@@ -773,7 +824,7 @@ export default function CustomerVehicleForm({
             <div className="space-y-1">
               <label className={labelClass}>First name</label>
               <input
-                className="input"
+                className={intakeFieldClass}
                 placeholder="First name"
                 value={customer.first_name ?? ""}
                 onChange={(e) => {
@@ -785,7 +836,10 @@ export default function CustomerVehicleForm({
                 q={customer.first_name ?? ""}
                 shopId={shopId}
                 suspended={customerSearchSuspended}
-                onPick={({ customer: pickedCustomer, vehicle: pickedVehicle }) => {
+                onPick={({
+                  customer: pickedCustomer,
+                  vehicle: pickedVehicle,
+                }) => {
                   void handlePickedCustomer(pickedCustomer, pickedVehicle);
                 }}
               />
@@ -795,7 +849,7 @@ export default function CustomerVehicleForm({
             <div className="space-y-1">
               <label className={labelClass}>Last name</label>
               <input
-                className="input"
+                className={intakeFieldClass}
                 placeholder="Last name"
                 value={customer.last_name ?? ""}
                 onChange={(e) => {
@@ -807,7 +861,10 @@ export default function CustomerVehicleForm({
                 q={customer.last_name ?? ""}
                 shopId={shopId}
                 suspended={customerSearchSuspended}
-                onPick={({ customer: pickedCustomer, vehicle: pickedVehicle }) => {
+                onPick={({
+                  customer: pickedCustomer,
+                  vehicle: pickedVehicle,
+                }) => {
                   void handlePickedCustomer(pickedCustomer, pickedVehicle);
                 }}
               />
@@ -817,7 +874,7 @@ export default function CustomerVehicleForm({
             <div className="space-y-1">
               <label className={labelClass}>Phone</label>
               <input
-                className="input"
+                className={intakeFieldClass}
                 placeholder="Phone"
                 value={customer.phone ?? ""}
                 onChange={(e) => {
@@ -829,7 +886,10 @@ export default function CustomerVehicleForm({
                 q={customer.phone ?? ""}
                 shopId={shopId}
                 suspended={customerSearchSuspended}
-                onPick={({ customer: pickedCustomer, vehicle: pickedVehicle }) => {
+                onPick={({
+                  customer: pickedCustomer,
+                  vehicle: pickedVehicle,
+                }) => {
                   void handlePickedCustomer(pickedCustomer, pickedVehicle);
                 }}
               />
@@ -840,7 +900,7 @@ export default function CustomerVehicleForm({
               <label className={labelClass}>Email</label>
               <input
                 type="email"
-                className="input"
+                className={intakeFieldClass}
                 placeholder="Email"
                 value={customer.email ?? ""}
                 onChange={(e) => {
@@ -852,69 +912,99 @@ export default function CustomerVehicleForm({
                 q={customer.email ?? ""}
                 shopId={shopId}
                 suspended={customerSearchSuspended}
-                onPick={({ customer: pickedCustomer, vehicle: pickedVehicle }) => {
+                onPick={({
+                  customer: pickedCustomer,
+                  vehicle: pickedVehicle,
+                }) => {
                   void handlePickedCustomer(pickedCustomer, pickedVehicle);
                 }}
               />
             </div>
-
-            {/* Address */}
-            <div className="sm:col-span-2 space-y-1">
-              <label className={labelClass}>Address</label>
-              <input
-                className="input"
-                placeholder="Street address"
-                value={customer.address ?? ""}
-                onChange={(e) => safeSetCustomer("address", e.target.value || null)}
-              />
-            </div>
-
-            {/* City */}
-            <div className="space-y-1">
-              <label className={labelClass}>City</label>
-              <input
-                className="input"
-                placeholder="City"
-                value={customer.city ?? ""}
-                onChange={(e) => safeSetCustomer("city", e.target.value || null)}
-              />
-            </div>
-
-            {/* Province */}
-            <div className="space-y-1">
-              <label className={labelClass}>Province</label>
-              <input
-                className="input"
-                placeholder="Province / State"
-                value={customer.province ?? ""}
-                onChange={(e) => safeSetCustomer("province", e.target.value || null)}
-              />
-            </div>
-
-            {/* Postal code */}
-            <div className="space-y-1">
-              <label className={labelClass}>Postal code</label>
-              <input
-                className="input"
-                placeholder="Postal code"
-                value={customer.postal_code ?? ""}
-                onChange={(e) =>
-                  safeSetCustomer("postal_code", e.target.value || null)
-                }
-              />
-            </div>
           </div>
+
+          <details className="group border-t border-[color:var(--theme-border-soft)] pt-3">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-xs font-semibold text-[color:var(--theme-accent-text)] marker:content-none">
+              Address details
+              <ChevronDown
+                className="h-4 w-4 transition group-open:rotate-180"
+                aria-hidden="true"
+              />
+            </summary>
+            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="space-y-1 sm:col-span-2">
+                <label className={labelClass}>Address</label>
+                <input
+                  className={intakeFieldClass}
+                  placeholder="Street address"
+                  value={customer.address ?? ""}
+                  onChange={(e) =>
+                    safeSetCustomer("address", e.target.value || null)
+                  }
+                />
+              </div>
+              <div className="space-y-1">
+                <label className={labelClass}>City</label>
+                <input
+                  className={intakeFieldClass}
+                  placeholder="City"
+                  value={customer.city ?? ""}
+                  onChange={(e) =>
+                    safeSetCustomer("city", e.target.value || null)
+                  }
+                />
+              </div>
+              <div className="space-y-1">
+                <label className={labelClass}>Province</label>
+                <input
+                  className={intakeFieldClass}
+                  placeholder="Province / State"
+                  value={customer.province ?? ""}
+                  onChange={(e) =>
+                    safeSetCustomer("province", e.target.value || null)
+                  }
+                />
+              </div>
+              <div className="space-y-1">
+                <label className={labelClass}>Postal code</label>
+                <input
+                  className={intakeFieldClass}
+                  placeholder="Postal code"
+                  value={customer.postal_code ?? ""}
+                  onChange={(e) =>
+                    safeSetCustomer("postal_code", e.target.value || null)
+                  }
+                />
+              </div>
+            </div>
+          </details>
         </section>
 
         {/* Vehicle card */}
-        <section className={`${panelClass} space-y-4 px-4 py-4 sm:px-6 sm:py-6`}>
-          <div className="flex items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)] sm:text-base">
-              Vehicle Info
-            </h2>
-            <span className="text-[11px] text-[color:var(--theme-text-muted)]">
-              Use unit # or plate to pull an existing vehicle for this customer.
+        <section className={`${panelClass} space-y-4 p-4 sm:p-5`}>
+          <div className="flex items-start gap-3">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[color:var(--brand-accent)]/10 text-[color:var(--brand-primary)]">
+              <CarFront className="h-4 w-4" aria-hidden="true" />
             </span>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)] sm:text-base">
+                  Vehicle
+                </h2>
+                {selectedVehicleId && vehicleLabel ? (
+                  <span className="inline-flex min-w-0 items-center gap-1 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-[color:var(--theme-success-text)]">
+                    <CheckCircle2
+                      className="h-3 w-3 shrink-0"
+                      aria-hidden="true"
+                    />
+                    <span className="truncate">{vehicleLabel}</span>
+                  </span>
+                ) : null}
+              </div>
+              <p className="mt-0.5 text-xs text-[color:var(--theme-text-muted)]">
+                Search by unit or plate, or enter only the details available
+                now.
+              </p>
+            </div>
           </div>
 
           {duplicateWarning && (
@@ -930,8 +1020,17 @@ export default function CustomerVehicleForm({
                       className="block text-left text-[11px] text-amber-50 underline decoration-amber-300/50 underline-offset-2"
                       onClick={() => onVehicleSelected?.(match.id)}
                     >
-                      Use existing vehicle: {[match.year, match.make, match.model].filter(Boolean).join(" ") || match.vin || match.license_plate || match.unit_number || match.id}
-                      {match.customer_display_name ? ` · ${match.customer_display_name}` : ""}
+                      Use existing vehicle:{" "}
+                      {[match.year, match.make, match.model]
+                        .filter(Boolean)
+                        .join(" ") ||
+                        match.vin ||
+                        match.license_plate ||
+                        match.unit_number ||
+                        match.id}
+                      {match.customer_display_name
+                        ? ` · ${match.customer_display_name}`
+                        : ""}
                     </button>
                   ))}
                 </div>
@@ -939,12 +1038,12 @@ export default function CustomerVehicleForm({
             </div>
           )}
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {/* Unit # + autocomplete */}
             <div className="space-y-1">
               <label className={labelClass}>Unit #</label>
               <input
-                className="input"
+                className={intakeFieldClass}
                 placeholder="Unit #"
                 value={vehicle.unit_number ?? ""}
                 onChange={(e) =>
@@ -965,7 +1064,7 @@ export default function CustomerVehicleForm({
               <label className={labelClass}>Year</label>
               <input
                 inputMode="numeric"
-                className="input"
+                className={intakeFieldClass}
                 placeholder="Year"
                 value={vehicle.year ?? ""}
                 onChange={(e) => safeSetVehicle("year", e.target.value || null)}
@@ -976,7 +1075,7 @@ export default function CustomerVehicleForm({
             <div className="space-y-1">
               <label className={labelClass}>Make</label>
               <input
-                className="input"
+                className={intakeFieldClass}
                 placeholder="Make"
                 value={vehicle.make ?? ""}
                 onChange={(e) => safeSetVehicle("make", e.target.value || null)}
@@ -987,10 +1086,12 @@ export default function CustomerVehicleForm({
             <div className="space-y-1">
               <label className={labelClass}>Model</label>
               <input
-                className="input"
+                className={intakeFieldClass}
                 placeholder="Model"
                 value={vehicle.model ?? ""}
-                onChange={(e) => safeSetVehicle("model", e.target.value || null)}
+                onChange={(e) =>
+                  safeSetVehicle("model", e.target.value || null)
+                }
               />
             </div>
 
@@ -998,7 +1099,7 @@ export default function CustomerVehicleForm({
             <div className="space-y-1">
               <label className={labelClass}>VIN</label>
               <input
-                className="input"
+                className={intakeFieldClass}
                 placeholder="VIN"
                 value={vehicle.vin ?? ""}
                 onChange={(e) => safeSetVehicle("vin", e.target.value || null)}
@@ -1009,7 +1110,7 @@ export default function CustomerVehicleForm({
             <div className="space-y-1">
               <label className={labelClass}>License plate</label>
               <input
-                className="input"
+                className={intakeFieldClass}
                 placeholder="License plate"
                 value={vehicle.license_plate ?? ""}
                 onChange={(e) =>
@@ -1030,108 +1131,114 @@ export default function CustomerVehicleForm({
               <label className={labelClass}>Mileage</label>
               <input
                 inputMode="numeric"
-                className="input"
+                className={intakeFieldClass}
                 placeholder="Mileage"
                 value={vehicle.mileage ?? ""}
-                onChange={(e) => safeSetVehicle("mileage", e.target.value || null)}
-              />
-            </div>
-
-            {/* Color */}
-            <div className="space-y-1">
-              <label className={labelClass}>Color</label>
-              <input
-                className="input"
-                placeholder="Color"
-                value={vehicle.color ?? ""}
-                onChange={(e) => safeSetVehicle("color", e.target.value || null)}
-              />
-            </div>
-
-            {/* Engine hours */}
-            <div className="space-y-1">
-              <label className={labelClass}>Engine hours</label>
-              <input
-                inputMode="numeric"
-                className="input"
-                placeholder="Engine hours"
-                value={vehicle.engine_hours ?? ""}
                 onChange={(e) =>
-                  safeSetVehicle("engine_hours", e.target.value || null)
+                  safeSetVehicle("mileage", e.target.value || null)
                 }
               />
-            </div>
-
-            {/* Engine / trim */}
-            <div className="space-y-1">
-              <label className={labelClass}>Engine / Trim</label>
-              <input
-                className="input"
-                placeholder="e.g. 3.5L EcoBoost"
-                value={vehicle.engine ?? ""}
-                onChange={(e) => safeSetVehicle("engine", e.target.value || null)}
-              />
-            </div>
-
-            {/* Transmission */}
-            <div className="space-y-1">
-              <label className={labelClass}>Transmission</label>
-              <select
-                className="input"
-                value={vehicle.transmission ?? ""}
-                onChange={(e) =>
-                  safeSetVehicle("transmission", e.target.value || null)
-                }
-              >
-                <option value="">Select transmission</option>
-                <option value="automatic">Automatic</option>
-                <option value="manual">Manual</option>
-                <option value="cvt">CVT</option>
-                <option value="dct">Dual-clutch</option>
-                <option value="other">Other</option>
-              </select>
-            </div>
-
-            {/* Fuel type */}
-            <div className="space-y-1">
-              <label className={labelClass}>Fuel type</label>
-              <select
-                className="input"
-                value={vehicle.fuel_type ?? ""}
-                onChange={(e) =>
-                  safeSetVehicle("fuel_type", e.target.value || null)
-                }
-              >
-                <option value="">Select fuel type</option>
-                <option value="gasoline">Gasoline</option>
-                <option value="diesel">Diesel</option>
-                <option value="hybrid">Hybrid</option>
-                <option value="phev">Plug-in hybrid</option>
-                <option value="electric">Electric (BEV)</option>
-                <option value="ev">Electric (legacy)</option>
-                <option value="other">Other</option>
-              </select>
-            </div>
-
-            {/* Drivetrain */}
-            <div className="space-y-1">
-              <label className={labelClass}>Drivetrain</label>
-              <select
-                className="input"
-                value={vehicle.drivetrain ?? ""}
-                onChange={(e) =>
-                  safeSetVehicle("drivetrain", e.target.value || null)
-                }
-              >
-                <option value="">Select drivetrain</option>
-                <option value="fwd">FWD</option>
-                <option value="rwd">RWD</option>
-                <option value="awd">AWD</option>
-                <option value="4x4">4x4</option>
-                <option value="other">Other</option>
-              </select>
             </div>
           </div>
+
+          <details className="group border-t border-[color:var(--theme-border-soft)] pt-3">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-xs font-semibold text-[color:var(--theme-accent-text)] marker:content-none">
+              More vehicle details
+              <ChevronDown
+                className="h-4 w-4 transition group-open:rotate-180"
+                aria-hidden="true"
+              />
+            </summary>
+            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="space-y-1">
+                <label className={labelClass}>Color</label>
+                <input
+                  className={intakeFieldClass}
+                  placeholder="Color"
+                  value={vehicle.color ?? ""}
+                  onChange={(e) =>
+                    safeSetVehicle("color", e.target.value || null)
+                  }
+                />
+              </div>
+              <div className="space-y-1">
+                <label className={labelClass}>Engine hours</label>
+                <input
+                  inputMode="numeric"
+                  className={intakeFieldClass}
+                  placeholder="Engine hours"
+                  value={vehicle.engine_hours ?? ""}
+                  onChange={(e) =>
+                    safeSetVehicle("engine_hours", e.target.value || null)
+                  }
+                />
+              </div>
+              <div className="space-y-1">
+                <label className={labelClass}>Engine / Trim</label>
+                <input
+                  className={intakeFieldClass}
+                  placeholder="e.g. 3.5L EcoBoost"
+                  value={vehicle.engine ?? ""}
+                  onChange={(e) =>
+                    safeSetVehicle("engine", e.target.value || null)
+                  }
+                />
+              </div>
+              <div className="space-y-1">
+                <label className={labelClass}>Transmission</label>
+                <select
+                  className={intakeFieldClass}
+                  value={vehicle.transmission ?? ""}
+                  onChange={(e) =>
+                    safeSetVehicle("transmission", e.target.value || null)
+                  }
+                >
+                  <option value="">Select transmission</option>
+                  <option value="automatic">Automatic</option>
+                  <option value="manual">Manual</option>
+                  <option value="cvt">CVT</option>
+                  <option value="dct">Dual-clutch</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className={labelClass}>Fuel type</label>
+                <select
+                  className={intakeFieldClass}
+                  value={vehicle.fuel_type ?? ""}
+                  onChange={(e) =>
+                    safeSetVehicle("fuel_type", e.target.value || null)
+                  }
+                >
+                  <option value="">Select fuel type</option>
+                  <option value="gasoline">Gasoline</option>
+                  <option value="diesel">Diesel</option>
+                  <option value="hybrid">Hybrid</option>
+                  <option value="phev">Plug-in hybrid</option>
+                  <option value="electric">Electric (BEV)</option>
+                  <option value="ev">Electric (legacy)</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className={labelClass}>Drivetrain</label>
+                <select
+                  className={intakeFieldClass}
+                  value={vehicle.drivetrain ?? ""}
+                  onChange={(e) =>
+                    safeSetVehicle("drivetrain", e.target.value || null)
+                  }
+                >
+                  <option value="">Select drivetrain</option>
+                  <option value="fwd">FWD</option>
+                  <option value="rwd">RWD</option>
+                  <option value="awd">AWD</option>
+                  <option value="4x4">4x4</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+            </div>
+          </details>
         </section>
       </div>
 

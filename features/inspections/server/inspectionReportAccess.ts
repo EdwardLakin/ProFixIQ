@@ -1,0 +1,300 @@
+import "server-only";
+
+import type { InspectionSession } from "@/features/inspections/lib/inspection/types";
+import {
+  assembleInspectionReport,
+  type InspectionReport,
+} from "@/features/inspections/lib/inspection/report";
+import { createAdminClient } from "@/features/integrations/shopreel/server/createAdminClient";
+import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
+import { canonicalizeRole } from "@/features/shared/lib/rbac";
+
+export type InspectionReportRecord = {
+  inspectionId: string;
+  workOrderId: string;
+  workOrderReference: string | null;
+  vehicleId: string | null;
+  shopId: string;
+  storageBucket: string;
+  storagePath: string;
+  finalizedAt: string | null;
+  technicianName: string | null;
+  report: InspectionReport;
+};
+
+type RawInspection = {
+  id: string;
+  shop_id: string;
+  work_order_id: string | null;
+  summary: unknown;
+  pdf_storage_path: string | null;
+  finalized_at: string | null;
+  finalized_by: string | null;
+  signing_cycle: number | null;
+};
+
+async function actorCanRead(args: {
+  actorUserId: string;
+  shopId: string;
+  customerId: string | null;
+  vehicleId: string | null;
+}): Promise<boolean> {
+  const admin = createAdminClient();
+  const { data: profile } = await admin
+    .from("profiles")
+    .select("shop_id,role")
+    .or(`id.eq.${args.actorUserId},user_id.eq.${args.actorUserId}`)
+    .eq("shop_id", args.shopId)
+    .limit(1)
+    .maybeSingle<{ shop_id: string | null; role: string | null }>();
+  const role = canonicalizeRole(profile?.role);
+  if (
+    profile?.shop_id === args.shopId &&
+    ![
+      "customer",
+      "fleet_manager",
+      "dispatcher",
+      "driver",
+      "unknown",
+    ].includes(role)
+  ) {
+    return true;
+  }
+
+  if (args.customerId) {
+    const { data: customer } = await admin
+      .from("customers")
+      .select("id")
+      .eq("id", args.customerId)
+      .eq("shop_id", args.shopId)
+      .eq("user_id", args.actorUserId)
+      .maybeSingle<{ id: string }>();
+    if (customer?.id) return true;
+  }
+
+  if (!args.vehicleId) return false;
+  const actor = await resolveFleetActorContext(admin, {
+    userId: args.actorUserId,
+  });
+  if (!actor.isFleetActor || actor.shopId !== args.shopId) return false;
+  const { data: vehicle } = await admin
+    .from("vehicles")
+    .select("fleet_id")
+    .eq("id", args.vehicleId)
+    .eq("shop_id", args.shopId)
+    .maybeSingle<{ fleet_id: string | null }>();
+  return !!vehicle?.fleet_id && actor.fleetIds.includes(vehicle.fleet_id);
+}
+
+function storageObject(url: string): { bucket: string; path: string } | null {
+  const configuredUrl =
+    process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
+  if (!configuredUrl) return null;
+  try {
+    const parsed = new URL(url);
+    if (parsed.origin !== new URL(configuredUrl).origin) return null;
+    const match = parsed.pathname.match(
+      /\/storage\/v1\/object\/(?:sign|public)\/([^/]+)\/(.+)$/,
+    );
+    return match
+      ? {
+          bucket: decodeURIComponent(match[1]),
+          path: decodeURIComponent(match[2]),
+        }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+async function refreshEvidence(
+  report: InspectionReport,
+  scope: { shopId: string; workOrderId: string },
+): Promise<InspectionReport> {
+  const admin = createAdminClient();
+  const { data: media, error } = await admin
+    .from("work_order_media")
+    .select("storage_bucket,storage_path")
+    .eq("shop_id", scope.shopId)
+    .eq("work_order_id", scope.workOrderId)
+    .eq("storage_bucket", "job-photos")
+    .not("storage_path", "is", null);
+  if (error) throw new Error(error.message);
+
+  const canonicalObjects = new Set(
+    (media ?? [])
+      .filter(
+        (
+          row,
+        ): row is {
+          storage_bucket: string;
+          storage_path: string;
+        } =>
+          row.storage_bucket === "job-photos" &&
+          typeof row.storage_path === "string" &&
+          row.storage_path.startsWith(`wo/${scope.workOrderId}/`),
+      )
+      .map((row) => `${row.storage_bucket}/${row.storage_path}`),
+  );
+
+  const refreshed = await Promise.all(
+    report.sections.map(async (section) => ({
+      ...section,
+      items: await Promise.all(
+        section.items.map(async (item) => {
+          const photoUrls = await Promise.all(
+            item.photoUrls.map(async (url) => {
+              const object = storageObject(url);
+              if (
+                !object ||
+                object.bucket !== "job-photos" ||
+                !object.path.startsWith(`wo/${scope.workOrderId}/`) ||
+                !canonicalObjects.has(`${object.bucket}/${object.path}`)
+              ) {
+                return null;
+              }
+              const signed = await admin.storage
+                .from("job-photos")
+                .createSignedUrl(object.path, 60 * 10);
+              return signed.data?.signedUrl ?? null;
+            }),
+          );
+          return {
+            ...item,
+            photoUrls: photoUrls.filter(
+              (url): url is string => typeof url === "string",
+            ),
+          };
+        }),
+      ),
+    })),
+  );
+  return { ...report, sections: refreshed };
+}
+
+async function hydrate(
+  inspection: RawInspection,
+  actorUserId: string,
+  includeEvidencePhotos: boolean,
+): Promise<InspectionReportRecord | null> {
+  if (
+    !inspection.work_order_id ||
+    !inspection.pdf_storage_path ||
+    !inspection.summary ||
+    typeof inspection.summary !== "object"
+  ) {
+    return null;
+  }
+  const admin = createAdminClient();
+  const { data: workOrder } = await admin
+    .from("work_orders")
+    .select("id,custom_id,vehicle_id,customer_id,shop_id")
+    .eq("id", inspection.work_order_id)
+    .eq("shop_id", inspection.shop_id)
+    .maybeSingle<{
+      id: string;
+      custom_id: string | null;
+      vehicle_id: string | null;
+      customer_id: string | null;
+      shop_id: string;
+    }>();
+  if (
+    !workOrder ||
+    !(await actorCanRead({
+      actorUserId,
+      shopId: inspection.shop_id,
+      customerId: workOrder.customer_id,
+      vehicleId: workOrder.vehicle_id,
+    }))
+  ) {
+    return null;
+  }
+  const { data: technicianSignature } = await admin
+    .from("inspection_signatures")
+    .select("signed_name")
+    .eq("inspection_id", inspection.id)
+    .eq("signing_cycle", Math.max(0, inspection.signing_cycle ?? 0))
+    .eq("role", "technician")
+    .order("signed_at", { ascending: false })
+    .limit(1)
+    .maybeSingle<{ signed_name: string | null }>();
+  const technicianName = technicianSignature?.signed_name ?? null;
+  let report = assembleInspectionReport(
+    inspection.summary as InspectionSession,
+  );
+  if (includeEvidencePhotos) {
+    report = await refreshEvidence(report, {
+      shopId: inspection.shop_id,
+      workOrderId: workOrder.id,
+    });
+  }
+  return {
+    inspectionId: inspection.id,
+    workOrderId: workOrder.id,
+    workOrderReference: workOrder.custom_id,
+    vehicleId: workOrder.vehicle_id,
+    shopId: inspection.shop_id,
+    storageBucket: "inspection_pdfs",
+    storagePath: inspection.pdf_storage_path,
+    finalizedAt: inspection.finalized_at,
+    technicianName,
+    report,
+  };
+}
+
+export async function getInspectionReportForActor(args: {
+  actorUserId: string;
+  inspectionId: string;
+  includeEvidencePhotos?: boolean;
+}) {
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("inspections")
+    .select(
+      "id,shop_id,work_order_id,summary,pdf_storage_path,finalized_at,finalized_by,signing_cycle",
+    )
+    .eq("id", args.inspectionId)
+    .eq("is_canonical", true)
+    .not("pdf_storage_path", "is", null)
+    .maybeSingle<RawInspection>();
+  return data
+    ? hydrate(data, args.actorUserId, args.includeEvidencePhotos ?? true)
+    : null;
+}
+
+export async function listInspectionReportsForActor(args: {
+  actorUserId: string;
+  workOrderId?: string | null;
+  vehicleId?: string | null;
+}) {
+  const admin = createAdminClient();
+  let workOrderIds: string[] | null = args.workOrderId
+    ? [args.workOrderId]
+    : null;
+  if (args.vehicleId) {
+    const { data } = await admin
+      .from("work_orders")
+      .select("id")
+      .eq("vehicle_id", args.vehicleId);
+    workOrderIds = (data ?? []).map((row) => row.id);
+  }
+  if (!workOrderIds?.length) return [];
+  const { data, error } = await admin
+    .from("inspections")
+    .select(
+      "id,shop_id,work_order_id,summary,pdf_storage_path,finalized_at,finalized_by,signing_cycle",
+    )
+    .in("work_order_id", workOrderIds)
+    .eq("is_canonical", true)
+    .not("pdf_storage_path", "is", null)
+    .order("finalized_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  const records = await Promise.all(
+    ((data ?? []) as RawInspection[]).map((inspection) =>
+      hydrate(inspection, args.actorUserId, false),
+    ),
+  );
+  return records.filter(
+    (record): record is InspectionReportRecord => !!record,
+  );
+}

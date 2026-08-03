@@ -28,6 +28,10 @@ const dismissMigration = readFileSync(
   "utf8",
 );
 const receiving = readFileSync("app/parts/receiving/page.tsx", "utf8");
+const openPartsObligations = readFileSync(
+  "features/parts/lib/open-parts-obligations.ts",
+  "utf8",
+);
 const notifications = readFileSync(
   "features/agent/server/syncAssistantNotifications.ts",
   "utf8",
@@ -106,7 +110,8 @@ describe("work-order line parts release and Pick / Order flow", () => {
     expect(receiving).toContain('.not("po_id", "is", null)');
     expect(receiving).toContain('.gt("qty_ordered", 0)');
     expect(receiving).toContain("ordered - received");
-    expect(receiving).toContain("x.po_id !== null");
+    expect(receiving).toContain("isPartRequestItemAwaitingReceiving");
+    expect(openPartsObligations).toContain("Boolean(item.po_id)");
     expect(receiving).toContain("it.qty_received} / {it.qty_ordered} ordered");
   });
 

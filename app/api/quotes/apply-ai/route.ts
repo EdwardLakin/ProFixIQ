@@ -56,7 +56,6 @@ async function resolveLineScope(
   shopId: string,
 ): Promise<{
   workOrderId: string;
-  locationId: string | null;
   beforeLine: {
     id: string;
     price_estimate: number | null;
@@ -83,17 +82,7 @@ async function resolveLineScope(
     approval_state: typeof line.approval_state === "string" ? line.approval_state : null,
   };
 
-  const { data: locs, error: locErr } = await sb
-    .from("inventory_locations")
-    .select("id, is_primary")
-    .eq("shop_id", shopId)
-    .order("is_primary", { ascending: false })
-    .limit(1);
-
-  if (locErr) return null;
-  const locationId = typeof locs?.[0]?.id === "string" ? locs[0].id : null;
-
-  return { workOrderId: line.work_order_id, locationId, beforeLine };
+  return { workOrderId: line.work_order_id, beforeLine };
 }
 
 export async function POST(req: Request) {
@@ -132,81 +121,16 @@ export async function POST(req: Request) {
     if (!resolved) {
       return NextResponse.json({ error: "Work order line not found" }, { status: 404 });
     }
-    if (!resolved.locationId) {
-      return NextResponse.json(
-        {
-          error: "Missing shop or inventory location 이해",
-          detail: "This line must have a shop_id, and the shop must have a primary inventory location.",
-          code: "NO_LOCATION_CONFIGURED",
-        },
-        { status: 422 },
-      );
-    }
 
+    // Quote suggestions are estimates, not inventory reservations. Preserve the
+    // suggestions for explicit manual matching instead of creating unlinked
+    // work_order_part_allocations that could later be mistaken for issued stock.
     const unmatched: { name: string; qty: number }[] = [];
-    const dedupeKeys = new Set<string>();
-
     const partsList = Array.isArray(suggestion.parts) ? suggestion.parts : [];
     for (const p of partsList) {
       const name = typeof p?.name === "string" ? p.name.trim() : "";
       const qty = safeQty(p?.qty);
-
-      if (!name) {
-        unmatched.push({ name: "(missing name)", qty });
-        continue;
-      }
-
-      const { data: found, error: pe } = await sb
-        .from("parts")
-        .select("id")
-        .eq("shop_id", shopId)
-        .ilike("name", `%${name}%`)
-        .limit(1);
-
-      if (pe) {
-        unmatched.push({ name, qty });
-        continue;
-      }
-
-      const match = found?.[0];
-      if (!match?.id) {
-        unmatched.push({ name, qty });
-        continue;
-      }
-
-      const dedupeKey = `${workOrderLineId}:${match.id}:${resolved.locationId}:${qty}`;
-      if (dedupeKeys.has(dedupeKey)) {
-        continue;
-      }
-      dedupeKeys.add(dedupeKey);
-
-      const { data: existingAlloc } = await sb
-        .from("work_order_part_allocations")
-        .select("id")
-        .eq("shop_id", shopId)
-        .eq("work_order_line_id", workOrderLineId)
-        .eq("part_id", match.id)
-        .eq("location_id", resolved.locationId)
-        .eq("qty", qty)
-        .limit(1)
-        .maybeSingle();
-
-      if (existingAlloc?.id) {
-        continue;
-      }
-
-      const alloc: DB["public"]["Tables"]["work_order_part_allocations"]["Insert"] = {
-        shop_id: shopId,
-        work_order_line_id: workOrderLineId,
-        part_id: match.id,
-        qty,
-        location_id: resolved.locationId,
-      };
-
-      const { error: ae } = await sb.from("work_order_part_allocations").insert(alloc);
-      if (ae) {
-        unmatched.push({ name, qty });
-      }
+      unmatched.push({ name: name || "(missing name)", qty });
     }
 
     const { data: afterLine, error: updateErr } = await sb
@@ -282,7 +206,7 @@ export async function POST(req: Request) {
 
     await logOperationalEvent({
       supabase: sb,
-      event: "work_order_parts_allocated_from_quote_ai",
+      event: "work_order_quote_ai_suggestions_recorded",
       actorId: "system_apply_ai",
       entityType: "work_order_line",
       entityId: workOrderLineId,

@@ -4,18 +4,13 @@ import { useEffect, useMemo, useState } from "react";
 import FleetSummaryCards from "./FleetSummaryCards";
 import FleetIssueTables from "./FleetIssueTables";
 import FleetAISummary from "./FleetAISummary";
+import FleetUnitEconomicsPanel from "./FleetUnitEconomicsPanel";
 import WorkOrderBoardWidget from "@shared/components/workboard/WorkOrderBoardWidget";
-import Link from "next/link";
 import type { FleetUiContext } from "@/features/fleet/lib/fleetUiCapabilities";
 import {
   MaintenanceControlTower,
   getOperationsVerticalConfig,
 } from "@/features/operations";
-import {
-  mapDispatchAssignmentToOperationsAssignment,
-  mapFleetIssueToOperationsIssue,
-  mapFleetUnitToOperationsAsset,
-} from "@/features/fleet/lib/fleetOperationsAdapters";
 
 export type FleetUnitStatus = "in_service" | "limited" | "oos";
 
@@ -69,10 +64,16 @@ type FocusFilter = "all" | "inspection_due_30";
 function isDueInNextDays(nextInspectionDate?: string | null, days = 30) {
   if (!nextInspectionDate) return false;
   const today = new Date();
-  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const startOfToday = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate(),
+  );
   const next = new Date(nextInspectionDate);
   const msPerDay = 1000 * 60 * 60 * 24;
-  const diffDays = Math.floor((next.getTime() - startOfToday.getTime()) / msPerDay);
+  const diffDays = Math.floor(
+    (next.getTime() - startOfToday.getTime()) / msPerDay,
+  );
   return diffDays >= 0 && diffDays <= days;
 }
 
@@ -101,7 +102,11 @@ export default function FleetControlTower({
         });
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));
-          if (!cancelled) setError((body && body.error) || "Failed to load fleet data for this shop.");
+          if (!cancelled)
+            setError(
+              (body && body.error) ||
+                "Failed to load fleet data for this shop.",
+            );
           return;
         }
         const body = (await res.json()) as TowerPayload;
@@ -120,7 +125,10 @@ export default function FleetControlTower({
 
   const units = useMemo(() => data?.units ?? [], [data?.units]);
   const issues = useMemo(() => data?.issues ?? [], [data?.issues]);
-  const assignments = useMemo(() => data?.assignments ?? [], [data?.assignments]);
+  const assignments = useMemo(
+    () => data?.assignments ?? [],
+    [data?.assignments],
+  );
   const isExternal = !uiContext.isInternal;
 
   const regions = useMemo(() => {
@@ -131,18 +139,18 @@ export default function FleetControlTower({
 
   const filteredUnits = useMemo(() => {
     let list = units;
-    if (regionFilter !== "all") list = list.filter((u) => (u.location ?? "") === regionFilter);
-    if (focusFilter === "inspection_due_30") list = list.filter((u) => isDueInNextDays(u.nextInspectionDate, 30));
+    if (regionFilter !== "all")
+      list = list.filter((u) => (u.location ?? "") === regionFilter);
+    if (focusFilter === "inspection_due_30")
+      list = list.filter((u) => isDueInNextDays(u.nextInspectionDate, 30));
     return list;
   }, [units, regionFilter, focusFilter]);
 
-  const handleInspectionWindowClick = () => setFocusFilter((prev) => (prev === "inspection_due_30" ? "all" : "inspection_due_30"));
+  const handleInspectionWindowClick = () =>
+    setFocusFilter((prev) =>
+      prev === "inspection_due_30" ? "all" : "inspection_due_30",
+    );
 
-  useMemo(() => ({
-    assets: filteredUnits.map(mapFleetUnitToOperationsAsset),
-    issues: issues.map(mapFleetIssueToOperationsIssue),
-    assignments: assignments.map(mapDispatchAssignmentToOperationsAssignment),
-  }), [filteredUnits, issues, assignments]);
   const terminology = getOperationsVerticalConfig("fleet")?.terminology;
 
   return (
@@ -166,32 +174,45 @@ export default function FleetControlTower({
         label: `${terminology?.inspectionPluralLabel ?? "Inspections"} due in next 30 days`,
         onClear: () => setFocusFilter("all"),
       }}
+      layout="dashboard-first"
+      renderContentWhenError
       workOrderBoard={
         uiContext.capabilities.canViewDispatch ? (
-          <div className="metal-card rounded-3xl p-4">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-muted)]">Work board</div>
-                <div className="mt-1 text-sm font-semibold text-[color:var(--theme-text-primary)]">Fleet jobs in progress</div>
-              </div>
-              <Link href={`${routePrefix}/board`} className="text-xs text-[color:var(--theme-text-secondary)] underline decoration-[color:var(--theme-border-strong)] underline-offset-4 hover:text-[color:var(--theme-text-primary)]">
-                Open full board →
-              </Link>
-            </div>
-            <WorkOrderBoardWidget variant="fleet" href={`${routePrefix}/board`} />
+          <div className="metal-card rounded-3xl p-4 sm:p-5">
+            <WorkOrderBoardWidget
+              variant="fleet"
+              href={`${routePrefix}/board`}
+            />
           </div>
         ) : null
       }
       error={
         error ? (
-          <div className="rounded-2xl border border-red-700 bg-red-900/30 px-4 py-3 text-xs text-red-200">{error}</div>
+          <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-800 dark:text-amber-100">
+            <div className="font-semibold">Live fleet feed is temporarily unavailable</div>
+            <div className="mt-1 text-xs opacity-80">
+              {error} Dashboard sections remain visible with the data currently available.
+            </div>
+          </div>
         ) : null
       }
-      loading={<div className="metal-card rounded-3xl px-4 py-4 text-xs text-[color:var(--theme-text-secondary)]">Loading fleet data…</div>}
+      loading={
+        <div className="metal-card rounded-3xl px-4 py-4 text-xs text-[color:var(--theme-text-secondary)]">
+          Loading fleet data…
+        </div>
+      }
       isLoading={loading && !error}
       aiSummary={
-        <div className="metal-card rounded-3xl p-4">
-          <FleetAISummary shopId={shopId ?? null} />
+        <div className="space-y-4">
+          <div className="metal-card rounded-3xl p-4">
+            <FleetAISummary shopId={shopId ?? null} routePrefix={routePrefix} />
+          </div>
+          <div className="metal-card rounded-3xl p-4">
+            <FleetUnitEconomicsPanel
+              shopId={shopId ?? null}
+              routePrefix={routePrefix}
+            />
+          </div>
         </div>
       }
       summaryCards={

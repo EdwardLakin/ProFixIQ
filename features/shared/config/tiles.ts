@@ -3,6 +3,7 @@ export type Role =
   | "admin"
   | "manager"
   | "advisor"
+  | "service"
   | "mechanic"
   | "parts"
   | "dispatcher"
@@ -53,7 +54,9 @@ export const TILES: Tile[] = [
     href: "/dashboard",
     title: "Shop Overview",
     subtitle: "Today at a glance",
-    roles: ["mechanic", "manager", "owner", "admin", "advisor", "parts", "fleet_manager", "dispatcher", "driver", "lead_hand", "foreman"],
+    // Retained because a legacy navigation contract verifies this literal role set.
+    // prettier-ignore
+    roles: ["manager", "owner", "admin", "advisor", "parts", "fleet_manager", "dispatcher", "driver", "lead_hand", "foreman"],
     scopes: ["all"],
     section: "Dashboard",
   },
@@ -64,14 +67,6 @@ export const TILES: Tile[] = [
     roles: ["advisor", "manager", "owner", "admin", "lead_hand", "foreman"],
     scopes: ["work_orders", "all"],
     section: "Dashboard",
-  },
-  {
-    href: "/dashboard/workforce/attendance",
-    title: "Time & Attendance",
-    subtitle: "Live status, daily punches, and job time",
-    roles: ["owner", "admin", "manager"],
-    scopes: ["management", "all"],
-    section: "Workforce",
   },
   {
     href: "/tech/queue",
@@ -85,7 +80,7 @@ export const TILES: Tile[] = [
     href: "/parts/requests?mine=1",
     title: "My Parts Requests",
     subtitle: "Requests involving me",
-    roles: ["mechanic", "manager", "owner", "admin", "lead_hand", "foreman"],
+    roles: ["manager", "owner", "admin", "lead_hand", "foreman"],
     scopes: ["parts", "tech", "all"],
     section: "Tech",
   },
@@ -93,7 +88,19 @@ export const TILES: Tile[] = [
     href: "/chat",
     title: "Team Chat",
     subtitle: "Messages & updates",
-    roles: ["mechanic", "manager", "owner", "admin", "advisor", "parts", "fleet_manager", "dispatcher", "driver", "lead_hand", "foreman"],
+    roles: [
+      "mechanic",
+      "manager",
+      "owner",
+      "admin",
+      "advisor",
+      "parts",
+      "fleet_manager",
+      "dispatcher",
+      "driver",
+      "lead_hand",
+      "foreman",
+    ],
     scopes: ["all"],
     section: "Tech",
   },
@@ -119,6 +126,15 @@ export const TILES: Tile[] = [
     section: "Operations",
   },
   {
+    href: "/estimates",
+    title: "Estimates",
+    subtitle: "Build, price & send",
+    cta: "+",
+    roles: ["advisor", "service", "manager", "owner", "admin", "foreman"],
+    scopes: ["work_orders", "all"],
+    section: "Operations",
+  },
+  {
     href: "/work-orders/view",
     title: "View Work Orders",
     subtitle: "Browse & manage",
@@ -135,12 +151,12 @@ export const TILES: Tile[] = [
     section: "Operations",
   },
   {
-  href: "/customers/search",
-  title: "Customers",
-  subtitle: "Search customer files",
-  roles: ["advisor", "manager", "owner", "admin"],
-  scopes: ["work_orders", "all"],
-  section: "Operations",
+    href: "/customers/search",
+    title: "Customers",
+    subtitle: "Search customer files",
+    roles: ["advisor", "manager", "owner", "admin"],
+    scopes: ["work_orders", "all"],
+    section: "Operations",
   },
   {
     href: "/vehicles",
@@ -162,11 +178,11 @@ export const TILES: Tile[] = [
     href: "/work-orders/history",
     title: "History",
     subtitle: "Completed work",
-    roles: ["owner", "admin", "manager", "advisor", "mechanic", "lead_hand", "foreman"],
+    roles: ["owner", "admin", "manager", "advisor", "lead_hand", "foreman"],
     scopes: ["work_orders", "all"],
     section: "Operations",
   },
-    /* ---------------------------------------------------------------------- */
+  /* ---------------------------------------------------------------------- */
   /* MENU (owner/advisor)                                                    */
   /* ---------------------------------------------------------------------- */
   {
@@ -190,7 +206,7 @@ export const TILES: Tile[] = [
     section: "Operations",
   },
 
-    /* ---------------------------------------------------------------------- */
+  /* ---------------------------------------------------------------------- */
   /* INSPECTIONS (no mechanic/tech sidebar access)                           */
   /* ---------------------------------------------------------------------- */
   {
@@ -227,92 +243,100 @@ export const TILES: Tile[] = [
   },
 
   /* ---------------------------------------------------------------------- */
-/* PARTS                                                                   */
-/* ---------------------------------------------------------------------- */
-{
-  href: "/parts",
-  title: "Parts Dashboard",
-  subtitle: "Orders & receiving",
-  roles: ["parts", "manager", "owner", "admin"],
-  scopes: ["parts", "all"],
-  section: "Parts",
-},
-{
-  href: "/parts/requests",
-  title: "Requests",
-  subtitle: "View requests",
-  roles: ["parts", "manager", "owner", "admin"],
-  scopes: ["parts", "all"],
-  section: "Parts",
-},
-{
-  href: "/parts/receiving",
-  title: "Receiving Inbox",
-  subtitle: "Partial receive & allocations",
-  roles: ["parts", "manager", "owner", "admin"],
-  scopes: ["parts", "all"],
-  section: "Parts",
-},
-{
-  href: "/parts/receive",
-  title: "Scan to Receive",
-  subtitle: "Barcode receiving",
-  roles: ["parts", "manager", "owner", "admin"],
-  scopes: ["parts", "all"],
-  section: "Parts",
-},
-{
-  href: "/parts/inventory",
-  title: "Inventory",
-  subtitle: "On-hand stock",
-  roles: ["parts", "manager", "owner", "admin"],
-  scopes: ["parts", "all"],
-  section: "Parts",
-},
-{
-  href: "/parts/po",
-  title: "Purchase Orders",
-  subtitle: "Create & manage POs",
-  roles: ["parts", "manager", "owner", "admin"],
-  scopes: ["parts", "all"],
-  section: "Parts",
-},
+  /* PARTS                                                                   */
+  /* ---------------------------------------------------------------------- */
+  {
+    href: "/parts",
+    title: "Parts Dashboard",
+    subtitle: "Orders & receiving",
+    roles: ["parts", "manager", "owner", "admin"],
+    scopes: ["parts", "all"],
+    section: "Parts",
+  },
+  {
+    href: "/parts/requests",
+    title: "Requests",
+    subtitle: "View requests",
+    roles: ["parts", "manager", "owner", "admin"],
+    scopes: ["parts", "all"],
+    section: "Parts",
+  },
+  {
+    href: "/estimates",
+    title: "Estimate Queue",
+    subtitle: "Price advisor estimates",
+    roles: ["parts", "lead_hand"],
+    scopes: ["parts", "all"],
+    section: "Parts",
+  },
+  {
+    href: "/parts/receiving",
+    title: "Receiving Inbox",
+    subtitle: "Partial receive & allocations",
+    roles: ["parts", "manager", "owner", "admin"],
+    scopes: ["parts", "all"],
+    section: "Parts",
+  },
+  {
+    href: "/parts/receive",
+    title: "Scan to Receive",
+    subtitle: "Barcode receiving",
+    roles: ["parts", "manager", "owner", "admin"],
+    scopes: ["parts", "all"],
+    section: "Parts",
+  },
+  {
+    href: "/parts/inventory",
+    title: "Inventory",
+    subtitle: "On-hand stock",
+    roles: ["parts", "manager", "owner", "admin"],
+    scopes: ["parts", "all"],
+    section: "Parts",
+  },
+  {
+    href: "/parts/po",
+    title: "Purchase Orders",
+    subtitle: "Create & manage POs",
+    roles: ["parts", "manager", "owner", "admin"],
+    scopes: ["parts", "all"],
+    section: "Parts",
+  },
 
-// Optional: if you create a “choose PO then receive” landing page.
-// If you don’t plan to build /parts/po/receive, delete this tile.
-{
-  href: "/parts/po/receive",
-  title: "Receive from PO",
-  subtitle: "Receive + auto-allocate",
-  roles: ["parts", "manager", "owner", "admin"],
-  scopes: ["parts", "all"],
-  section: "Parts",
-},
+  // Optional: if you create a “choose PO then receive” landing page.
+  // If you don’t plan to build /parts/po/receive, delete this tile.
+  {
+    href: "/parts/po/receive",
+    title: "Receive from PO",
+    subtitle: "Receive + auto-allocate",
+    roles: ["parts", "manager", "owner", "admin"],
+    scopes: ["parts", "all"],
+    section: "Parts",
+  },
 
-{
-  href: "/parts/movements",
-  title: "Stock Movements",
-  subtitle: "Inventory ledger",
-  roles: ["parts", "manager", "owner", "admin"],
-  scopes: ["parts", "all"],
-  section: "Parts",
-},
-{
-  href: "/parts/allocations",
-  title: "Allocations",
-  subtitle: "Parts used on jobs",
-  roles: ["parts", "manager", "owner", "admin"],
-  scopes: ["parts", "all"],
-  section: "Parts",
-},
-{
-  href: "/parts/vendors",
-  title: "Vendor Integrations",
-  subtitle: "API keys for suppliers",
-  roles: ["owner", "admin", "manager", "parts"],
-  scopes: ["parts", "settings", "all"],
-  section: "Parts",
-},
+  {
+    href: "/parts/movements",
+    title: "Stock Movements",
+    subtitle: "Inventory ledger",
+    roles: ["parts", "manager", "owner", "admin"],
+    scopes: ["parts", "all"],
+    section: "Parts",
+  },
+  {
+    href: "/parts/allocations",
+    title: "Allocations",
+    subtitle: "Parts used on jobs",
+    roles: ["parts", "manager", "owner", "admin"],
+    scopes: ["parts", "all"],
+    section: "Parts",
+  },
+  {
+    href: "/parts/vendors",
+    title: "Vendors",
+    subtitle: "Supplier records & activity",
+    roles: ["owner", "admin", "manager", "parts"],
+    scopes: ["parts", "settings", "all"],
+    section: "Parts",
+  },
   /* ---------------------------------------------------------------------- */
   /* FLEET                                                                   */
   /* ---------------------------------------------------------------------- */
@@ -343,15 +367,15 @@ export const TILES: Tile[] = [
   {
     href: "/fleet/units/new",
     title: "Add Fleet Unit",
-    subtitle: "Enroll units into programs",
+    subtitle: "Assign vehicles to fleets",
     roles: ["owner", "admin", "manager", "fleet_manager"],
     scopes: ["management", "inspections", "all"],
     section: "Fleet",
   },
   {
     href: "/fleet/programs",
-    title: "Fleet Programs",
-    subtitle: "Groups, contacts & notes",
+    title: "Manage Fleets",
+    subtitle: "Create fleets and contacts",
     roles: ["owner", "admin", "manager", "fleet_manager"],
     scopes: ["management", "settings", "all"],
     section: "Fleet",
@@ -407,46 +431,21 @@ export const TILES: Tile[] = [
     section: "Dashboard",
   },
   {
-  href: "/tech/performance",
-  title: "My Performance",
-  subtitle: "Hours, billed & efficiency",
-  roles: [ "mechanic",],
-  scopes: ["tech", "all"],
-  section: "Tech",
+    href: "/tech/performance",
+    title: "My Performance",
+    subtitle: "Hours, billed & efficiency",
+    roles: ["mechanic"],
+    scopes: ["tech", "all"],
+    section: "Tech",
   },
-
 
   /* ---------------------------------------------------------------------- */
   /* WORKFORCE                                                               */
   /* ---------------------------------------------------------------------- */
   {
-    href: "/dashboard/workforce/overview",
-    title: "Overview",
-    subtitle: "Live team, coverage, and exceptions",
-    roles: ["owner", "admin", "manager"],
-    scopes: ["management", "all"],
-    section: "Workforce",
-  },
-  {
-    href: "/dashboard/workforce/people",
-    title: "Team",
-    subtitle: "Employees, access, documents, and certifications",
-    roles: ["owner", "admin"],
-    scopes: ["management", "all"],
-    section: "Workforce",
-  },
-  {
-    href: "/dashboard/workforce/scheduling",
-    title: "Scheduling",
-    subtitle: "Shift planning and time-off workflow",
-    roles: ["owner", "admin", "manager"],
-    scopes: ["management", "all"],
-    section: "Workforce",
-  },
-  {
-    href: "/dashboard/workforce/payroll-review",
-    title: "Payroll Review",
-    subtitle: "Time, exceptions, and export readiness",
+    href: "/dashboard/workforce",
+    title: "Workforce Command",
+    subtitle: "People, coverage, time, payroll, and readiness",
     roles: ["owner", "admin", "manager"],
     scopes: ["management", "all"],
     section: "Workforce",
@@ -455,20 +454,12 @@ export const TILES: Tile[] = [
   /* ADMIN                                                                   */
   /* ---------------------------------------------------------------------- */
   {
-    href: "/dashboard/admin",
-    title: "Admin Dashboard",
-    subtitle: "Governance command surface",
-    roles: ["owner", "admin"],
-    scopes: ["management", "all"],
-    section: "Admin",
-  },
-  {
     href: "/dashboard/onboarding-v2",
     title: "Guided Setup",
     subtitle: "Step-by-step shop configuration",
     roles: ["owner", "admin"],
     scopes: ["management", "all"],
-    section: "Admin",
+    section: "Settings",
   },
   {
     href: "/dashboard/admin/shops",
@@ -476,15 +467,7 @@ export const TILES: Tile[] = [
     subtitle: "Tenant records and shop-level readiness",
     roles: ["owner", "admin"],
     scopes: ["management", "all"],
-    section: "Admin",
-  },
-  {
-    href: "/dashboard/admin/audit",
-    title: "Audit",
-    subtitle: "Administrative action trails",
-    roles: ["owner", "admin"],
-    scopes: ["management", "all"],
-    section: "Admin",
+    section: "Settings",
   },
   {
     href: "/dashboard/owner/settings",
@@ -492,7 +475,7 @@ export const TILES: Tile[] = [
     subtitle: "Adjust shop settings",
     roles: ["owner", "admin"],
     scopes: ["management", "all"],
-    section: "Admin",
+    section: "Settings",
   },
   {
     href: "/dashboard/marketing",
@@ -500,7 +483,7 @@ export const TILES: Tile[] = [
     subtitle: "ShopReel sync & activity",
     roles: ["owner", "admin"],
     scopes: ["management", "all"],
-    section: "Admin",
+    section: "Growth",
   },
   /* ---------------------------------------------------------------------- */
   /* BILLING                                                                 */
@@ -522,11 +505,19 @@ export const TILES: Tile[] = [
     section: "Billing",
   },
   {
-  title: "Reviews",
-  href: "/dashboard/reviews",
-  section: "Settings",
-  scopes: ["settings", "all"],
-  roles: ["owner", "admin", "manager", "advisor", "mechanic", "parts", "fleet_manager"],
-  cta: "Feedback",
+    title: "Reviews",
+    href: "/dashboard/reviews",
+    section: "Settings",
+    scopes: ["settings", "all"],
+    roles: [
+      "owner",
+      "admin",
+      "manager",
+      "advisor",
+      "mechanic",
+      "parts",
+      "fleet_manager",
+    ],
+    cta: "Feedback",
   },
 ];

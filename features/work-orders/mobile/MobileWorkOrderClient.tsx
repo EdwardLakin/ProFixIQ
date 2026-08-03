@@ -29,6 +29,15 @@ import MobileFocusedJob from "@/features/work-orders/mobile/MobileFocusedJob";
 import AskAssistantEntry from "@/features/assistant/components/AskAssistantEntry";
 import { runJobPunchTransition } from "@/features/work-orders/lib/jobPunchTransitionsClient";
 import { isReviewableQuoteLine } from "@/features/work-orders/lib/quotes/reviewableQuoteLines";
+import { resolveWorkOrderLinePricing } from "@/features/work-orders/lib/pricing/resolveWorkOrderLinePricing";
+import { filterAllocationsNotBackedByCanonicalParts } from "@/features/work-orders/lib/display/workOrderParts";
+import {
+  collectTechnicianIdsForLineContexts,
+  emptyCanonicalWorkOrderLineContext,
+  getPartsRequestStatusLabel,
+  loadCanonicalWorkOrderLineContext,
+  type CanonicalWorkOrderLineContext,
+} from "@/features/work-orders/lib/data/loadCanonicalWorkOrderLineContext";
 import {
   applyFetchedMobileDetailSnapshot,
   deriveMobileDetailOperationalState,
@@ -44,6 +53,7 @@ import {
   loadProjectedWorkOrderSnapshot,
   type MobileWorkOrderSnapshot,
 } from "@/features/work-orders/mobile/technicianOfflineExecution";
+import { useTabs } from "@/features/shared/components/tabs/TabsProvider";
 
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -175,6 +185,7 @@ export default function MobileWorkOrderClient({
 }): JSX.Element {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { updateActiveTab } = useTabs();
 
   // ✅ handle ?focus=<workOrderLineId>
   const focusParam = searchParams?.get("focus") ?? null;
@@ -198,6 +209,15 @@ export default function MobileWorkOrderClient({
   );
   const [customer, setCustomer] = useTabState<Customer | null>(
     `${keyBase}:cust`,
+    null,
+  );
+  const [lineContext, setLineContext] =
+    useTabState<CanonicalWorkOrderLineContext>(
+      `${keyBase}:lineContext`,
+      emptyCanonicalWorkOrderLineContext(),
+    );
+  const [shopLaborRate, setShopLaborRate] = useTabState<number | null>(
+    `${keyBase}:shopLaborRate`,
     null,
   );
 
@@ -337,6 +357,10 @@ export default function MobileWorkOrderClient({
         setVehicle(cached.vehicle);
         setCustomer(cached.customer);
         setTechNamesById(cached.techNamesById);
+        setLineContext(
+          cached.lineContext ?? emptyCanonicalWorkOrderLineContext(),
+        );
+        setShopLaborRate(cached.shopLaborRate ?? null);
         setViewError("Offline copy · changes may be newer on the server.");
         return true;
       };
@@ -425,6 +449,8 @@ export default function MobileWorkOrderClient({
           setQuoteLines([]);
           setVehicle(null);
           setCustomer(null);
+          setLineContext(emptyCanonicalWorkOrderLineContext());
+          setShopLaborRate(null);
           setLoading(false);
           return;
         }
@@ -436,7 +462,7 @@ export default function MobileWorkOrderClient({
           setWarnedMissing(true);
         }
 
-        const [linesRes, vehRes, custRes, quotesRes] = await Promise.all([
+        const [linesRes, vehRes, custRes, quotesRes, shopRes] = await Promise.all([
           supabase
             .from("work_order_lines")
             .select("*")
@@ -461,6 +487,11 @@ export default function MobileWorkOrderClient({
             .select("*")
             .eq("work_order_id", woRow.id)
             .order("created_at", { ascending: true }),
+          supabase
+            .from("shops")
+            .select("labor_rate")
+            .eq("id", woRow.shop_id)
+            .maybeSingle<{ labor_rate: number | null }>(),
         ]);
 
         if (linesRes.error) throw linesRes.error;
@@ -474,13 +505,24 @@ export default function MobileWorkOrderClient({
         setWo(freshCore.workOrder);
         setLines(freshCore.lines);
 
-        // 🔹 populate tech names from assigned_tech_id
-        const techIds = Array.from(
-          new Set(
-            lineRows
-              .map((ln) => ln.assigned_tech_id)
-              .filter((id): id is string => Boolean(id)),
-          ),
+        const freshLineContext = await loadCanonicalWorkOrderLineContext({
+          supabase,
+          workOrderId: woRow.id,
+          shopId: woRow.shop_id,
+          lineIds: lineRows.map((line) => line.id),
+        });
+        setLineContext(freshLineContext);
+        if (shopRes.error) throw shopRes.error;
+        const freshShopLaborRate =
+          typeof shopRes.data?.labor_rate === "number"
+            ? shopRes.data.labor_rate
+            : null;
+        setShopLaborRate(freshShopLaborRate);
+
+        // Populate names for every visible primary or shared assignment.
+        const techIds = collectTechnicianIdsForLineContexts(
+          [freshLineContext],
+          lineRows.map((line) => line.assigned_tech_id),
         );
 
         const techMap: Record<string, string> = {};
@@ -536,6 +578,8 @@ export default function MobileWorkOrderClient({
             vehicle: freshVehicle,
             customer: freshCustomer,
             techNamesById: techMap,
+            lineContext: freshLineContext,
+            shopLaborRate: freshShopLaborRate,
           };
           await Promise.all([
             saveOfflineSnapshot({ scope, kind: "mobile-work-order-detail", entityId: routeId, data: snapshot }),
@@ -563,6 +607,8 @@ export default function MobileWorkOrderClient({
       setQuoteLines,
       setVehicle,
       setCustomer,
+      setLineContext,
+      setShopLaborRate,
     ],
   );
 
@@ -608,6 +654,55 @@ export default function MobileWorkOrderClient({
           event: "*",
           schema: "public",
           table: "work_order_quote_lines",
+          filter: `work_order_id=eq.${wo.id}`,
+        },
+        () => fetchAll(),
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "work_order_parts",
+          filter: `work_order_id=eq.${wo.id}`,
+        },
+        () => fetchAll(),
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "work_order_part_allocations",
+          filter: `work_order_id=eq.${wo.id}`,
+        },
+        () => fetchAll(),
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "part_requests",
+          filter: `work_order_id=eq.${wo.id}`,
+        },
+        () => fetchAll(),
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "work_order_line_technicians",
+        },
+        () => fetchAll(),
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "work_order_line_labor_segments",
           filter: `work_order_id=eq.${wo.id}`,
         },
         () => fetchAll(),
@@ -689,10 +784,68 @@ export default function MobileWorkOrderClient({
     return m;
   }, [quoteLines]);
 
+  const pricingByLine = useMemo(() => {
+    const result: Record<
+      string,
+      ReturnType<typeof resolveWorkOrderLinePricing>
+    > = {};
+    for (const line of lines) {
+      const canonicalParts =
+        lineContext.canonicalPartsByLine[line.id] ?? [];
+      const allocations = filterAllocationsNotBackedByCanonicalParts(
+        lineContext.allocationsByLine[line.id] ?? [],
+        canonicalParts,
+      );
+      const quotes = activeQuotesByLine[line.id] ?? [];
+      result[line.id] = resolveWorkOrderLinePricing({
+        line,
+        quote: quotes[quotes.length - 1],
+        shopLaborRate,
+        stagedParts: canonicalParts,
+        allocatedParts: allocations,
+      });
+    }
+    return result;
+  }, [activeQuotesByLine, lineContext, lines, shopLaborRate]);
+
   const mobileOperationalState = useMemo(
     () => deriveMobileDetailOperationalState(wo, lines),
     [wo, lines],
   );
+
+  useEffect(() => {
+    if (!wo) return;
+    const customerName =
+      customer?.business_name?.trim() ||
+      customer?.name?.trim() ||
+      [customer?.first_name ?? "", customer?.last_name ?? ""]
+        .filter(Boolean)
+        .join(" ")
+        .trim() ||
+      wo.customer_name?.trim() ||
+      "";
+    const vehicleLabel = vehicle
+      ? [vehicle.year, vehicle.make, vehicle.model]
+          .filter((value) => value != null && String(value).trim())
+          .join(" ")
+      : "";
+    const workOrderLabel = wo.custom_id?.trim() || `WO-${wo.id.slice(0, 8)}`;
+    const pendingOfflineChanges =
+      offlineSummary.queued +
+        offlineSummary.syncing +
+        offlineSummary.failed +
+        offlineSummary.conflicted >
+      0;
+
+    updateActiveTab({
+      title: customerName
+        ? `${workOrderLabel} · ${customerName}`
+        : workOrderLabel,
+      subtitle: vehicleLabel || undefined,
+      status: String(wo.status ?? "awaiting").replaceAll("_", " "),
+      offline: !navigator.onLine || pendingOfflineChanges,
+    });
+  }, [customer, offlineSummary, updateActiveTab, vehicle, wo]);
 
   const visibleLineState = useCallback(
     (line: WorkOrderLine) => mobileOperationalState.lineStates.get(line) ?? "awaiting",
@@ -757,6 +910,9 @@ export default function MobileWorkOrderClient({
     createdAt && !Number.isNaN(createdAt.getTime())
       ? format(createdAt, "PPpp")
       : "—";
+  const expectedCompletionText = wo?.expected_completion_at
+    ? format(new Date(wo.expected_completion_at), "PPpp")
+    : "—";
 
   const canAssign = false; // assignments handled in focused view / desktop
   const canApprove = currentUserRole
@@ -1071,7 +1227,7 @@ export default function MobileWorkOrderClient({
         <div className="metal-panel metal-panel--card rounded-2xl border border-amber-500/40 px-3 py-3 text-xs text-amber-100 shadow-[var(--theme-shadow-medium)]">
           You appear signed out on this tab. If actions fail, open{" "}
           <Link
-            href="/sign-in"
+            href="/mobile/sign-in"
             className="underline decoration-dotted underline-offset-2 hover:text-[color:var(--theme-text-primary)]"
           >
             Sign In
@@ -1123,6 +1279,7 @@ export default function MobileWorkOrderClient({
                   ) : null}
                 </div>
                 <p className="text-[11px] text-[color:var(--theme-text-secondary)]">Created {createdAtText}</p>
+                <p className="text-[11px] text-[color:var(--theme-text-secondary)]">Expected {expectedCompletionText}</p>
               </div>
             </div>
             <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1">
@@ -1197,9 +1354,12 @@ export default function MobileWorkOrderClient({
                         )}
                         <br />
                         Mileage:{" "}
-                        {vehicle.mileage ?? (
-                          <span className="text-[color:var(--theme-text-muted)]">—</span>
-                        )}
+                        {vehicle.mileage ??
+                          (wo.odometer_km != null ? (
+                            `${wo.odometer_km} km`
+                          ) : (
+                            <span className="text-[color:var(--theme-text-muted)]">—</span>
+                          ))}
                       </p>
                     </>
                   ) : (
@@ -1477,21 +1637,34 @@ export default function MobileWorkOrderClient({
             ) : (
               <div className="space-y-2">
                 {displayLines.map((ln, idx) => {
-                  const punchedIn = !!ln.punched_in_at && !ln.punched_out_at;
+                  const activeTechnicianIds =
+                    lineContext.activeTechnicianIdsByLine?.[ln.id] ?? [];
+                  const punchedIn =
+                    activeTechnicianIds.length > 0 ||
+                    (!!ln.punched_in_at && !ln.punched_out_at);
 
                   const openFocused = () => {
                     setFocusedJobId(ln.id);
                     setFocusedOpen(true);
                   };
 
-                  const lineTechnicians = ln.assigned_tech_id
-                    ? [
-                        {
-                          id: ln.assigned_tech_id,
-                          full_name: techNamesById[ln.assigned_tech_id] ?? "Assigned tech",
-                        },
-                      ]
-                    : [];
+                  const technicianIds = [
+                    ln.assigned_tech_id,
+                    ...(lineContext.technicianIdsByLine[ln.id] ?? []),
+                  ].filter(
+                    (id, index, ids): id is string =>
+                      Boolean(id) && ids.indexOf(id) === index,
+                  );
+                  const lineTechnicians = technicianIds.map((id) => ({
+                    id,
+                    full_name: techNamesById[id] ?? "Assigned tech",
+                  }));
+                  const pricing = pricingByLine[ln.id];
+                  const partRequests =
+                    lineContext.partRequestsByLine[ln.id] ?? [];
+                  const activeTechnicianNames = activeTechnicianIds
+                    .map((id) => techNamesById[id])
+                    .filter((name): name is string => Boolean(name));
 
                   return (
                     <div
@@ -1502,10 +1675,19 @@ export default function MobileWorkOrderClient({
                       <JobCard
                         index={idx}
                         line={ln}
-                        parts={[]} // stripped-down: no parts list on main mobile view
+                        parts={lineContext.allocationsByLine[ln.id] ?? []}
+                        partsCount={pricing?.partsCount ?? 0}
+                        partsStatusLabel={getPartsRequestStatusLabel(partRequests)}
+                        pricing={pricing}
                         technicians={lineTechnicians}
                         canAssign={canAssign}
                         isPunchedIn={punchedIn}
+                        isCurrentUserWorkingThisLine={Boolean(
+                          punchedIn &&
+                            currentUserId &&
+                            activeTechnicianIds.includes(currentUserId),
+                        )}
+                        activeTechnicianNames={activeTechnicianNames}
                         onOpen={openFocused}
                         onAssign={undefined}
                         onOpenInspection={() => openInspection(ln)}
@@ -1522,15 +1704,15 @@ export default function MobileWorkOrderClient({
 
 
           {quotePending.length > 0 && (
-            <section className="metal-panel metal-panel--card scroll-mt-20 rounded-2xl border border-sky-400/25 px-4 py-4 shadow-[var(--theme-shadow-medium)]">
+            <section id="pending-quote-items" className="metal-panel metal-panel--card scroll-mt-20 rounded-2xl border border-sky-400/25 px-4 py-4 shadow-[var(--theme-shadow-medium)]">
               <div className="mb-3 flex items-start justify-between gap-2">
                 <div>
                   <h2 className="text-sm font-semibold text-sky-100 sm:text-base">Pending quote items</h2>
                   <p className="text-[11px] text-[color:var(--theme-text-muted)]">Recommended repairs awaiting quote review or customer decision.</p>
                 </div>
-                <Link href={`/quote-review/${wo?.id ?? routeId}`} className="rounded-full border border-sky-400/40 px-3 py-1.5 text-[11px] font-semibold text-sky-100">
-                  Review
-                </Link>
+                <span className="rounded-full border border-sky-400/40 px-3 py-1.5 text-[11px] font-semibold text-sky-100">
+                  Review here
+                </span>
               </div>
               <div className="space-y-2">
                 {quotePending.map((q) => {

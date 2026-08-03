@@ -1,15 +1,7 @@
 "use client";
 
-import Image from "next/image";
 import { Input } from "@shared/components/ui/input";
-import { Button } from "@shared/components/ui/Button";
 import { OwnerSettingsPanel } from "@/features/dashboard/components/owner-settings/OwnerSettingsPanels";
-
-type FileInputChangeEvent = {
-  target: {
-    files: FileList | null;
-  };
-};
 
 type CountryCode = "US" | "CA";
 
@@ -36,7 +28,6 @@ type Props = {
   postalCode: string;
   phone: string;
   email: string;
-  logoUrl: string;
   provinceLabel: string;
   postalLabel: string;
   selectClass: string;
@@ -50,8 +41,6 @@ type Props = {
   onPostalCodeChange: (value: string) => void;
   onPhoneChange: (value: string) => void;
   onEmailChange: (value: string) => void;
-  onLogoUrlChange: (value: string) => void;
-  onLogoUpload: (e: FileInputChangeEvent) => void;
 };
 
 export default function OwnerSettingsBusinessSection({
@@ -65,7 +54,6 @@ export default function OwnerSettingsBusinessSection({
   postalCode,
   phone,
   email,
-  logoUrl,
   provinceLabel,
   postalLabel,
   selectClass,
@@ -79,8 +67,6 @@ export default function OwnerSettingsBusinessSection({
   onPostalCodeChange,
   onPhoneChange,
   onEmailChange,
-  onLogoUrlChange,
-  onLogoUpload,
 }: Props) {
   return (
     <OwnerSettingsPanel
@@ -191,44 +177,6 @@ export default function OwnerSettingsBusinessSection({
             />
           </label>
         </div>
-
-        <div className="grid gap-2 md:grid-cols-2">
-          <label className="block space-y-1.5">
-            <span className={labelClass}>Logo URL</span>
-            <Input
-              value={logoUrl}
-              onChange={(e) => onLogoUrlChange(e.target.value)}
-              placeholder="https://…"
-              disabled={!isUnlocked}
-            />
-          </label>
-          <label className="block space-y-1.5">
-            <span className={labelClass}>Upload logo</span>
-            <Input
-              type="file"
-              accept="image/*"
-              onChange={
-                onLogoUpload as unknown as React.ChangeEventHandler<HTMLInputElement>
-              }
-              disabled={!isUnlocked}
-            />
-          </label>
-        </div>
-
-        <Button variant="secondary" className="mt-1" disabled>
-          AI logo maker · Coming soon
-        </Button>
-
-        {logoUrl ? (
-          <Image
-            src={logoUrl}
-            alt="Logo"
-            width={128}
-            height={80}
-            unoptimized
-            className="mt-2 h-20 w-32 rounded bg-[color:var(--theme-surface-panel-strong)] p-1 object-contain"
-          />
-        ) : null}
       </div>
     </OwnerSettingsPanel>
   );

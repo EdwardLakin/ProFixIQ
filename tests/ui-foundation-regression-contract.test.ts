@@ -23,6 +23,7 @@ describe("premium UI foundation regressions", () => {
   it("keeps light-mode pill text readable without changing dark-mode tokens", () => {
     for (const color of [
       "red",
+      "rose",
       "amber",
       "yellow",
       "green",

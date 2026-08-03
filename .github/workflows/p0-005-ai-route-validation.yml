@@ -1,0 +1,48 @@
+name: P0-005 AI Route Validation
+
+on:
+  pull_request:
+    paths:
+      - "app/api/ai/interpret/**"
+      - "app/api/dtc-suggest/**"
+      - "app/api/work-orders/dtc-suggest/**"
+      - "features/shared/lib/server/ai-ops-guard.ts"
+      - "features/shared/lib/server/ai-policy.ts"
+      - "features/shared/lib/server/bounded-json.ts"
+      - "features/shared/lib/server/durable-ai-guard.ts"
+      - "features/shared/lib/server/provider-timeout.ts"
+      - "features/shared/types/types/supabase.ts"
+      - "tests/p0-005-ai-route-security.test.ts"
+      - "tsconfig.p0-005.json"
+      - ".github/workflows/p0-005-ai-route-validation.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec tsc --noEmit -p tsconfig.p0-005.json
+      - run: >-
+          pnpm exec eslint
+          app/api/ai/interpret/route.ts
+          app/api/dtc-suggest/route.ts
+          app/api/work-orders/dtc-suggest/route.ts
+          features/shared/lib/server/ai-ops-guard.ts
+          features/shared/lib/server/ai-policy.ts
+          features/shared/lib/server/bounded-json.ts
+          features/shared/lib/server/durable-ai-guard.ts
+          features/shared/lib/server/provider-timeout.ts
+          tests/p0-005-ai-route-security.test.ts
+      - run: pnpm exec vitest run tests/p0-005-ai-route-security.test.ts

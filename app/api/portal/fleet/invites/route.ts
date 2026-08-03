@@ -70,15 +70,7 @@ export async function POST(req: Request) {
   });
   if (insertError) return NextResponse.json({ error: insertError.message }, { status: 400 });
 
-  const redirectTo = `${siteUrl()}/portal/auth/fleet-invite?token=${encodeURIComponent(rawToken)}`;
-  const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
-    type: "magiclink",
-    email,
-    options: { redirectTo },
-  });
-  const actionLink = linkData?.properties?.action_link;
-  if (linkError || !actionLink) return NextResponse.json({ error: "Fleet invite link could not be created." }, { status: 500 });
-
+  const portalLink = `${siteUrl()}/portal/auth/fleet-invite?token=${encodeURIComponent(rawToken)}`;
   const [{ data: shop }, brand] = await Promise.all([
     supabaseAdmin.from("shops").select("name, shop_name").eq("id", access.profile.shop_id).maybeSingle(),
     getActiveBrandForRender(access.profile.shop_id),
@@ -87,7 +79,7 @@ export async function POST(req: Request) {
   await sendPortalInviteEmail({
     shopId: access.profile.shop_id,
     to: email,
-    portalLink: actionLink,
+    portalLink,
     shopName,
     brandLogoUrl: brand?.logoUrl ?? null,
     brandPrimaryColor: brand?.colors.primary ?? null,

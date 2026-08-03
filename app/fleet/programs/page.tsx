@@ -51,7 +51,7 @@ export default function FleetProgramsPage(): JSX.Element {
       } = await supabase.auth.getUser();
 
       if (userError || !user) {
-        setError("You must be signed in to manage fleet programs.");
+        setError("You must be signed in to manage fleets.");
         setLoading(false);
         return;
       }
@@ -146,11 +146,18 @@ export default function FleetProgramsPage(): JSX.Element {
           .single();
 
         if (insertError || !inserted) {
-          throw new Error("Failed to create fleet program.");
+          throw new Error("Failed to create fleet.");
         }
 
         setFleets((prev) => [...prev, inserted]);
-        setSuccess("Fleet program created.");
+        const returnTo = new URLSearchParams(window.location.search).get(
+          "returnTo",
+        );
+        if (returnTo === "/fleet/portal-access") {
+          router.push(`${returnTo}?fleetId=${encodeURIComponent(inserted.id)}`);
+          return;
+        }
+        setSuccess("Fleet created.");
         resetForm();
       } else {
         if (!form.id) {
@@ -171,13 +178,13 @@ export default function FleetProgramsPage(): JSX.Element {
           .single();
 
         if (updateError || !updated) {
-          throw new Error("Failed to update fleet program.");
+          throw new Error("Failed to update fleet.");
         }
 
         setFleets((prev) =>
           prev.map((f) => (f.id === updated.id ? updated : f)),
         );
-        setSuccess("Fleet program updated.");
+        setSuccess("Fleet updated.");
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unexpected error");
@@ -188,18 +195,18 @@ export default function FleetProgramsPage(): JSX.Element {
 
   return (
     <PageShell
-      title="Fleet programs"
-      description="Organize your units into fleets like Linehaul, Local P&D, and Trailers."
+      title="Manage fleets"
+      description="Create and manage the fleets used for units, service requests, and portal access."
     >
       <div className="space-y-6 text-[color:var(--theme-text-primary)]">
         {/* Top header card */}
         <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 shadow-card backdrop-blur-xl sm:p-6">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="text-lg font-semibold">Programs / groups</h2>
+              <h2 className="text-lg font-semibold">Fleet details</h2>
               <p className="text-xs text-[color:var(--theme-text-secondary)]">
-                Create fleets to group tractors, trailers, buses, or other units.
-                These fleets power the{" "}
+                Group tractors, trailers, buses, or other units into the fleets
+                your team already recognizes. Fleets power the{" "}
                 <span style={{ color: COPPER }}>Fleet Control Tower</span> and
                 unit list.
               </p>
@@ -210,7 +217,7 @@ export default function FleetProgramsPage(): JSX.Element {
               className="inline-flex items-center gap-2 rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1.5 text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-inset)]"
             >
               <span aria-hidden>←</span>
-              Back to fleet
+              Back to Fleet Control Tower
             </button>
           </div>
 
@@ -233,10 +240,14 @@ export default function FleetProgramsPage(): JSX.Element {
           <div className="grid gap-4 sm:grid-cols-[1.1fr_0.9fr]">
             <div className="space-y-3 text-sm">
               <div className="space-y-1">
-                <label className="text-xs font-medium uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
+                <label
+                  htmlFor="fleet-name"
+                  className="text-xs font-medium uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]"
+                >
                   Fleet name
                 </label>
                 <input
+                  id="fleet-name"
                   className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[var(--glass-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:border-sky-400/40"
                   placeholder="e.g. Linehaul, Local P&D, Trailers"
                   value={form.name}
@@ -248,10 +259,14 @@ export default function FleetProgramsPage(): JSX.Element {
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1">
-                  <label className="text-xs font-medium uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
+                  <label
+                    htmlFor="fleet-contact-name"
+                    className="text-xs font-medium uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]"
+                  >
                     Contact name
                   </label>
                   <input
+                    id="fleet-contact-name"
                     className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[var(--glass-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:border-sky-400/40"
                     placeholder="Dispatcher / supervisor"
                     value={form.contact_name}
@@ -264,10 +279,14 @@ export default function FleetProgramsPage(): JSX.Element {
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
+                  <label
+                    htmlFor="fleet-contact-email"
+                    className="text-xs font-medium uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]"
+                  >
                     Contact email
                   </label>
                   <input
+                    id="fleet-contact-email"
                     type="email"
                     className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[var(--glass-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:border-sky-400/40"
                     placeholder="contact@example.com"
@@ -283,13 +302,17 @@ export default function FleetProgramsPage(): JSX.Element {
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-medium uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
+                <label
+                  htmlFor="fleet-notes"
+                  className="text-xs font-medium uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]"
+                >
                   Notes
                 </label>
                 <textarea
+                  id="fleet-notes"
                   rows={3}
                   className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[var(--glass-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:border-sky-400/40"
-                  placeholder="Optional: program notes, maintenance rules, or contract details."
+                  placeholder="Optional: fleet notes, service expectations, or contract details."
                   value={form.notes}
                   onChange={(e) =>
                     setForm((prev) => ({ ...prev, notes: e.target.value }))
@@ -309,7 +332,7 @@ export default function FleetProgramsPage(): JSX.Element {
                       ? "Creating…"
                       : "Saving…"
                     : mode === "create"
-                      ? "Create program"
+                      ? "Create fleet"
                       : "Save changes"}
                 </button>
                 {mode === "edit" && (
@@ -328,20 +351,19 @@ export default function FleetProgramsPage(): JSX.Element {
             <div className="space-y-2 text-xs text-[color:var(--theme-text-secondary)]">
               <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
                 <h3 className="mb-1 text-sm font-semibold text-[color:var(--theme-text-primary)]">
-                  How programs are used
+                  How fleets are used
                 </h3>
                 <ul className="list-disc space-y-1 pl-4">
                   <li>
-                    Each fleet groups a set of units via{" "}
-                    <span style={{ color: COPPER }}>fleet_vehicles</span>.
+                    Each fleet keeps its vehicles and contacts together.
                   </li>
                   <li>
                     Units enrolled here show up in the Fleet Control Tower and
                     the fleet units list.
                   </li>
                   <li>
-                    You can have multiple fleets per shop: Linehaul, Local P&D,
-                    Trailers, etc.
+                    Create separate fleets when units have different contacts,
+                    operations, or portal access.
                   </li>
                 </ul>
               </div>
@@ -352,13 +374,13 @@ export default function FleetProgramsPage(): JSX.Element {
         {/* Existing fleets list */}
         <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 backdrop-blur-md shadow-[var(--theme-shadow-medium)] sm:p-6">
           <h2 className="mb-3 text-sm font-semibold text-[color:var(--theme-text-primary)]">
-            Existing programs
+            Existing fleets
           </h2>
           {loading ? (
             <p className="text-sm text-[color:var(--theme-text-secondary)]">Loading…</p>
           ) : fleets.length === 0 ? (
             <p className="text-sm text-[color:var(--theme-text-muted)]">
-              No fleet programs yet. Create your first one above.
+              No fleets yet. Create your first fleet above.
             </p>
           ) : (
             <div className="space-y-2 text-sm">
@@ -366,6 +388,7 @@ export default function FleetProgramsPage(): JSX.Element {
                 <button
                   key={f.id}
                   type="button"
+                  aria-label={`Edit ${f.name || "unnamed fleet"}`}
                   onClick={() => startEdit(f)}
                   className="flex w-full items-start justify-between gap-3 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-left hover:border-[color:var(--accent-copper-soft)] hover:bg-[color:var(--theme-surface-overlay)]"
                 >
@@ -375,7 +398,7 @@ export default function FleetProgramsPage(): JSX.Element {
                         {f.name || "Unnamed fleet"}
                       </span>
                       <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-                        Tap to edit
+                        Select to edit
                       </span>
                     </div>
                     {f.notes && (

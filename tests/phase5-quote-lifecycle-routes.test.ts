@@ -18,6 +18,13 @@ const importer = read(
 const readiness = read(
   "app/api/work-orders/[id]/_lib/reviewWorkOrder.ts",
 );
+const finishRoute = read(
+  "app/api/work-orders/lines/[id]/finish/route.ts",
+);
+const partsQuotingPage = read("app/parts/quoting/page.tsx");
+const legacyMenuCaptureRoute = read(
+  "app/api/menu-items/upsert-from-line/route.ts",
+);
 
 describe("Phase 5 route and helper contract", () => {
   it("requires stable public operation keys", () => {
@@ -44,15 +51,21 @@ describe("Phase 5 route and helper contract", () => {
     );
   });
 
-  it("keeps menu learning outside the customer-visible transaction", () => {
-    const decisionCall = approvalHelper.indexOf(
-      'rpc("apply_customer_quote_decision_atomic"',
+  it("learns repair memory only after successful job completion", () => {
+    expect(approvalHelper).not.toContain("upsertMenuRepairItemFromQuoteLine");
+    expect(partsQuotingPage).not.toContain('fetch("/api/menu-items/upsert-from-line"');
+    expect(partsQuotingPage).not.toContain('fetch("/api/menu-repair-items/upsert-from-line"');
+    expect(legacyMenuCaptureRoute).toContain(
+      "upsertMenuRepairItemFromCompletedLine",
     );
-    const learningCall = approvalHelper.indexOf(
-      "await upsertMenuRepairItemFromQuoteLine",
+    expect(legacyMenuCaptureRoute).not.toContain('.from("menu_items")');
+
+    const finishCall = finishRoute.indexOf("await applyJobPunchTransition");
+    const learningCall = finishRoute.indexOf(
+      "await upsertMenuRepairItemFromCompletedLine",
     );
-    expect(decisionCall).toBeGreaterThan(-1);
-    expect(learningCall).toBeGreaterThan(decisionCall);
+    expect(finishCall).toBeGreaterThan(-1);
+    expect(learningCall).toBeGreaterThan(finishCall);
   });
 
   it("routes legacy inspection import through the atomic anchored command", () => {

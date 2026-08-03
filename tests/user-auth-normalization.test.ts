@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   requireShopScopedApiAccess: vi.fn(),
   createAdminSupabase: vi.fn(),
   assertShopHasAvailableSeat: vi.fn(),
+  sendUserInviteEmail: vi.fn(),
 }));
 
 vi.mock("@/features/shared/lib/server/admin-access", () => ({
@@ -24,6 +25,10 @@ vi.mock("@/features/shared/lib/supabase/server", () => ({
 
 vi.mock("@/features/shared/lib/server/shop-seat-limit", () => ({
   assertShopHasAvailableSeat: mocks.assertShopHasAvailableSeat,
+}));
+
+vi.mock("@/features/email/server", () => ({
+  sendUserInviteEmail: mocks.sendUserInviteEmail,
 }));
 
 type CreateUserPayload = {
@@ -98,6 +103,15 @@ function buildCreateUserRouteMocks(options: MockAdminOptions = {}) {
         return {
           select: () => ({
             eq: () => ({
+              maybeSingle: async () => ({
+                data: {
+                  id: adminId,
+                  full_name: "Owner Admin",
+                  first_name: "Owner",
+                  last_name: "Admin",
+                },
+                error: null,
+              }),
               ilike: () => ({
                 limit: async () => ({ data: options.sameShopProfiles ?? [], error: null }),
               }),
@@ -119,9 +133,11 @@ function buildCreateUserRouteMocks(options: MockAdminOptions = {}) {
     ok: true,
     profile: { id: adminId, shop_id: shopId },
     canonicalRole: options.canonicalRole ?? "owner",
+    supabase: adminClient,
   });
   mocks.createAdminSupabase.mockReturnValue(adminClient);
   mocks.assertShopHasAvailableSeat.mockResolvedValue(undefined);
+  mocks.sendUserInviteEmail.mockResolvedValue(undefined);
 
   return { createUser, deleteUser, profileUpsert, workforceUpsert, shopId, adminId, createdUserId };
 }
@@ -352,4 +368,3 @@ describe("shop user auth normalization", () => {
   });
 
 });
-

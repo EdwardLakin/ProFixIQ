@@ -1,0 +1,52 @@
+name: P1-012 Stripe Webhook Validation
+
+on:
+  pull_request:
+    paths:
+      - "app/api/stripe/webhook/**"
+      - "app/api/stripe/checkout/webhook/**"
+      - "features/shared/types/types/supabase.ts"
+      - "features/stripe/api/stripe/webhook/**"
+      - "features/stripe/lib/server/canonical-shop-billing.ts"
+      - "features/stripe/lib/server/stripe-webhook-receipts.ts"
+      - "supabase/migrations/*p1_012_stripe_webhook_receipts.sql"
+      - "tests/p1-012-stripe-webhook-idempotency.test.ts"
+      - "tests/p1-012-stripe-subscription-ordering.test.ts"
+      - "tests/support/p1-012-next-server.ts"
+      - "tests/security/p1-012-stripe-webhook-*.runtime.sql"
+      - "tests/security/p1-012-stripe-webhook-*.sh"
+      - "tsconfig.p1-012.json"
+      - "vitest.p1-012.config.ts"
+      - ".github/workflows/p1-012-stripe-webhook-validation.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec tsc --noEmit -p tsconfig.p1-012.json
+      - run: >-
+          pnpm exec eslint
+          app/api/stripe/webhook/route.ts
+          app/api/stripe/checkout/webhook/route.ts
+          features/stripe/api/stripe/webhook/route.ts
+          features/stripe/lib/server/canonical-shop-billing.ts
+          features/stripe/lib/server/stripe-webhook-receipts.ts
+          tests/p1-012-stripe-webhook-idempotency.test.ts
+          tests/p1-012-stripe-subscription-ordering.test.ts
+          tests/support/p1-012-next-server.ts
+          vitest.p1-012.config.ts
+      - run: pnpm exec vitest run --config vitest.p1-012.config.ts
+      - run: bash -n tests/security/p1-012-stripe-webhook-concurrency.sh

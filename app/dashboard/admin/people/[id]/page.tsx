@@ -1,6 +1,4 @@
-import WorkforceRelocationNotice from "@/features/dashboard/app/dashboard/workforce/WorkforceRelocationNotice";
-import PersonDetailClient from "@/features/dashboard/app/dashboard/admin/PersonDetailClient";
-import { requireAdminPageAccess } from "@/features/shared/lib/server/admin-access";
+import { redirect } from "next/navigation";
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -8,8 +6,8 @@ type PageProps = {
 };
 
 export default async function Page({ params, searchParams }: PageProps) {
-  await requireAdminPageAccess({ allow: ["owner", "admin"] });
   const { id } = await params;
   const query = await searchParams;
-  return <><WorkforceRelocationNotice href="/dashboard/workforce/people" /><PersonDetailClient personId={id} from={query.from ?? null} /></>;
+  const suffix = query.from ? `?from=${encodeURIComponent(query.from)}` : "";
+  redirect(`/dashboard/workforce/people/${id}${suffix}`);
 }

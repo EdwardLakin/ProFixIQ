@@ -15,6 +15,10 @@ import {
   validateDemoUploadFileDescriptors,
 } from "@/features/integrations/shopBoost/demoUploadContract";
 import type { ShopBoostUploadDatasetKey } from "@/features/integrations/shopBoost/uploadDatasets";
+import {
+  assertShopBoostPreviewTokenConfigured,
+  generateShopBoostPreviewToken,
+} from "@/features/integrations/shopBoost/shareAccess";
 
 type DB = Database;
 
@@ -31,6 +35,7 @@ type DemoRunSuccessResponse = {
   ok: true;
   demoId: string;
   intakeId: string;
+  previewToken: string;
   analysis: ShadowShopSnapshot;
 };
 
@@ -135,6 +140,10 @@ export async function POST(
       return NextResponse.json(manifest, { status: 400 });
     }
 
+    // Fail before any service-role read or write if preview access cannot be
+    // secured. This avoids persisting an analysis that the caller cannot open.
+    assertShopBoostPreviewTokenConfigured();
+
     const supabase = createAdminSupabase();
     const { data: existingDemo, error: existingError } = await supabase
       .from("demo_shop_boosts")
@@ -154,12 +163,16 @@ export async function POST(
         ? existingDemo.snapshot
         : {};
       if (existingSnapshot.intakeId === intakeId) {
-        return NextResponse.json({
-          ok: true,
-          demoId,
-          intakeId,
-          analysis: existingSnapshot as unknown as ShadowShopSnapshot,
-        });
+        return NextResponse.json(
+          {
+            ok: true,
+            demoId,
+            intakeId,
+            previewToken: generateShopBoostPreviewToken({ demoId, intakeId }),
+            analysis: existingSnapshot as unknown as ShadowShopSnapshot,
+          },
+          { headers: { "Cache-Control": "no-store" } },
+        );
       }
       return NextResponse.json(
         { ok: false, error: "This analysis intake is already in use. Please start again." },
@@ -264,6 +277,10 @@ export async function POST(
         ok: true,
         demoId: demoRow.id as string,
         intakeId,
+        previewToken: generateShopBoostPreviewToken({
+          demoId: demoRow.id as string,
+          intakeId,
+        }),
         analysis: snapshotWithActivation,
       },
       {

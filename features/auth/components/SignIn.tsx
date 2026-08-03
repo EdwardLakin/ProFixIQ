@@ -10,6 +10,7 @@ import { resolvePostAuthDestination } from "@/features/auth/lib/postAuthRouting"
 import { safeInternalRedirect } from "@/features/auth/lib/safeRedirect";
 import { signInWithIdentifier } from "@/features/auth/lib/signInClient";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import { claimStripeAcquisitionAfterAuth } from "@/features/stripe/lib/client/claim-acquisition";
 
 type Mode = "sign-in" | "sign-up";
 
@@ -28,7 +29,11 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
   const [identifier, setIdentifier] = useState(() => searchParams.get("email")?.trim().toLowerCase() ?? "");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(() =>
+    searchParams.get("billing_link_error") === "1"
+      ? "We couldn't securely link that checkout. Retry from the same checkout confirmation link."
+      : "",
+  );
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -62,6 +67,12 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
     void (async () => {
       const { data } = await supabase.auth.getUser();
       if (cancelled || !data.user) return;
+      const claim = await claimStripeAcquisitionAfterAuth(searchParams);
+      if (cancelled) return;
+      if (!claim.linked) {
+        setError("We couldn't securely link that checkout to this account. Retry from the checkout confirmation link.");
+        return;
+      }
       const destination = await resolvePostAuthDestination({
         supabase,
         searchParams,
@@ -91,6 +102,11 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
           setError(result.error);
           return;
         }
+        const claim = await claimStripeAcquisitionAfterAuth(searchParams);
+        if (!claim.linked) {
+          setError("We couldn't securely link that checkout to this account. Retry from the checkout confirmation link.");
+          return;
+        }
         const requested = safeInternalRedirect(searchParams.get("redirect"), result.destination);
         router.replace(requested);
         router.refresh();
@@ -118,6 +134,11 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
       }
       if (!data.session) {
         setNotice("Check your email to verify the account, then continue into shop setup.");
+        return;
+      }
+      const claim = await claimStripeAcquisitionAfterAuth(searchParams);
+      if (!claim.linked) {
+        setError("Your account was created, but checkout could not be securely linked. Retry from the checkout confirmation link.");
         return;
       }
       const destination = await resolvePostAuthDestination({
@@ -241,12 +262,15 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
         </button>
       </form>
 
-      <div className="mt-6 grid gap-2 border-t border-[color:var(--theme-border-soft)] pt-5 sm:grid-cols-2">
+      <div className="mt-6 grid gap-2 border-t border-[color:var(--theme-border-soft)] pt-5 sm:grid-cols-3">
         <Link href="/mobile/sign-in" className="rounded-xl border border-[color:var(--theme-border-soft)] px-3 py-2.5 text-center text-xs font-semibold text-[color:var(--theme-text-secondary)] transition hover:border-[var(--accent-copper)] hover:text-[color:var(--theme-text-primary)]">
           Mobile companion
         </Link>
         <Link href="/portal/auth/sign-in" className="rounded-xl border border-[color:var(--theme-border-soft)] px-3 py-2.5 text-center text-xs font-semibold text-[color:var(--theme-text-secondary)] transition hover:border-[var(--accent-copper)] hover:text-[color:var(--theme-text-primary)]">
-          Customer & fleet portals
+          Customer portal
+        </Link>
+        <Link href="/portal/auth/fleet-sign-in" className="rounded-xl border border-[color:var(--theme-border-soft)] px-3 py-2.5 text-center text-xs font-semibold text-[color:var(--theme-text-secondary)] transition hover:border-[var(--accent-copper)] hover:text-[color:var(--theme-text-primary)]">
+          Fleet portal
         </Link>
       </div>
     </AuthShell>

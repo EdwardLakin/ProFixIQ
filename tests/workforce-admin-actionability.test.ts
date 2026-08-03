@@ -9,7 +9,7 @@ function isoDate(value: Date) {
 const attendanceUi = readFileSync("features/dashboard/app/dashboard/workforce/AttendanceOverviewClient.tsx", "utf8");
 const correctionRoute = readFileSync("app/api/workforce/attendance/corrections/route.ts", "utf8");
 const payrollUi = readFileSync("features/dashboard/app/dashboard/admin/payroll-time/PayrollTimeClient.tsx", "utf8");
-const adminUi = readFileSync("features/dashboard/app/dashboard/admin/AdminLandingClient.tsx", "utf8");
+const workforceNavigation = readFileSync("features/dashboard/app/dashboard/workforce/workforceNavigation.ts", "utf8");
 const migration = readFileSync("supabase/migrations/20260717020000_workforce_admin_actionability.sql", "utf8");
 
 describe("workforce admin actionability", () => {
@@ -71,8 +71,7 @@ describe("workforce admin actionability", () => {
     for (const cadence of ["weekly", "biweekly", "semimonthly", "monthly"]) {
       expect(payrollUi).toContain(`value="${cadence}"`);
     }
-    expect(adminUi).toContain('/dashboard/workforce/payroll-review?severity=blocking');
-    expect(adminUi).toContain('/dashboard/workforce/payroll-review?severity=warning');
-    expect(adminUi).toContain('/dashboard/admin/audit');
+    expect(workforceNavigation).toContain('href: "/dashboard/workforce/payroll-review"');
+    expect(workforceNavigation).toContain('href: "/dashboard/workforce/activity"');
   });
 });

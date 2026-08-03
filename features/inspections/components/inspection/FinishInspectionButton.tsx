@@ -13,6 +13,7 @@ type Props = {
   session: InspectionSession;
   workOrderLineId?: string | null;
   disabled?: boolean;
+  beforeNavigate?: () => Promise<unknown>;
 };
 
 type ItemLike = {
@@ -51,14 +52,30 @@ function countFindings(session: InspectionSession): number {
   return count;
 }
 
-export default function FinishInspectionButton({ session, workOrderLineId, disabled = false }: Props) {
+export default function FinishInspectionButton({
+  session,
+  workOrderLineId,
+  disabled = false,
+  beforeNavigate,
+}: Props) {
   const router = useRouter();
 
   const findingsCount = useMemo(() => countFindings(session), [session]);
 
-  const handleFinish = (): void => {
+  const handleFinish = async (): Promise<void> => {
     if (!workOrderLineId) {
       toast.error("Missing work order line id — can’t finish.");
+      return;
+    }
+
+    try {
+      await beforeNavigate?.();
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Wait for the inspection to finish saving.",
+      );
       return;
     }
 
@@ -87,7 +104,7 @@ export default function FinishInspectionButton({ session, workOrderLineId, disab
 
   return (
     <Button
-      onClick={handleFinish}
+      onClick={() => void handleFinish()}
       type="button"
       size="sm"
       disabled={disabled}
@@ -103,3 +120,4 @@ export default function FinishInspectionButton({ session, workOrderLineId, disab
     </Button>
   );
 }
+

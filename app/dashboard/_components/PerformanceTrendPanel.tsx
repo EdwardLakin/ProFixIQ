@@ -16,10 +16,16 @@ type TrendPoint = {
   label: string;
   revenue: number;
   jobs: number;
-  profit: number;
+  knownContribution: number;
 };
 
-export function MiniSparkline({ data, dataKey }: { data: TrendPoint[]; dataKey: "revenue" | "profit" | "jobs" }) {
+export function MiniSparkline({
+  data,
+  dataKey,
+}: {
+  data: TrendPoint[];
+  dataKey: "revenue" | "knownContribution" | "jobs";
+}) {
   return (
     <div className="h-14 w-full">
       <ResponsiveContainer width="100%" height="100%">
@@ -52,7 +58,7 @@ export default function PerformanceTrendPanel({
               borderRadius: "10px",
             }}
           />
-          <Area type="monotone" dataKey="profit" fill="rgba(227,154,110,0.16)" stroke="rgba(227,154,110,0.88)" strokeWidth={2} />
+          <Area type="monotone" dataKey="knownContribution" fill="rgba(227,154,110,0.16)" stroke="rgba(227,154,110,0.88)" strokeWidth={2} />
           <Bar dataKey="revenue" fill="rgba(193,102,59,0.72)" radius={[5, 5, 0, 0]} barSize={14} />
         </ComposedChart>
       </ResponsiveContainer>

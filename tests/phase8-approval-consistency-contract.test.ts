@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 const read = (path: string) => readFileSync(path, "utf8");
 const sql = read(
-  "supabase/migrations/20260715090000_phase8_atomic_approval_compatibility.sql",
+  "supabase/migrations/20260715090050_phase8_atomic_approval_compatibility.sql",
 );
 const route = read("app/api/quotes/approval-webhook/route.ts");
 

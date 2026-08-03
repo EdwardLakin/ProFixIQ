@@ -1,20 +1,50 @@
-// features/fleet/components/FleetUnitsPage.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
+import { Search, Truck, Wrench } from "lucide-react";
 import type { FleetUnitListItem } from "app/api/fleet/units/route";
 import type { FleetUiContext } from "@/features/fleet/lib/fleetUiCapabilities";
-import { desktopPrimitives as ui } from "@/features/shared/components/ui/desktopPrimitives";
 
 type Props = {
-  shopId?: string | null;
   uiContext: FleetUiContext;
   routePrefix?: "/fleet" | "/portal/fleet";
 };
 
+const panel =
+  "rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]";
+
+function meter(unit: FleetUnitListItem) {
+  const parts = [
+    unit.currentOdometerKm == null
+      ? null
+      : `${unit.currentOdometerKm.toLocaleString()} km`,
+    unit.currentEngineHours == null
+      ? null
+      : `${unit.currentEngineHours.toLocaleString()} hours`,
+  ].filter(Boolean);
+  return parts.join(" • ") || "No reading";
+}
+
+function StatusPill({ status }: { status: FleetUnitListItem["status"] }) {
+  const styles = {
+    in_service: "bg-emerald-400/10 text-emerald-200",
+    limited: "bg-amber-300/10 text-amber-100",
+    oos: "bg-red-400/10 text-red-200",
+  };
+  const labels = {
+    in_service: "In service",
+    limited: "Limited",
+    oos: "Out of service",
+  };
+  return (
+    <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${styles[status]}`}>
+      {labels[status]}
+    </span>
+  );
+}
+
 export default function FleetUnitsPage({
-  shopId,
   uiContext,
   routePrefix = "/fleet",
 }: Props) {
@@ -22,266 +52,178 @@ export default function FleetUnitsPage({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [fleetFilter, setFleetFilter] = useState<string>("all");
+  const [fleetFilter, setFleetFilter] = useState("all");
 
   useEffect(() => {
     let cancelled = false;
-
-    (async () => {
+    void (async () => {
       try {
-        setLoading(true);
-        setError(null);
-
-        const res = await fetch("/api/fleet/units", {
+        const response = await fetch("/api/fleet/units", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ shopId: shopId ?? null }),
+          body: JSON.stringify({}),
+          cache: "no-store",
         });
-
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({}));
-          if (!cancelled) {
-            setError(
-              (body && body.error) ||
-                "Failed to load fleet units for this shop.",
-            );
-          }
-          return;
-        }
-
-        const body = (await res.json()) as { units: FleetUnitListItem[] };
+        const body = (await response.json().catch(() => ({}))) as {
+          units?: FleetUnitListItem[];
+          error?: string;
+        };
+        if (!response.ok) throw new Error(body.error || "Unable to load fleet units");
+        if (!cancelled) setUnits(body.units ?? []);
+      } catch (cause) {
         if (!cancelled) {
-          setUnits(Array.isArray(body.units) ? body.units : []);
-        }
-      } catch (err) {
-        // eslint-disable-next-line no-console
-        console.error("[FleetUnitsPage] fetch error:", err);
-        if (!cancelled) {
-          setError("Failed to load fleet units.");
+          setError(cause instanceof Error ? cause.message : "Unable to load fleet units");
         }
       } finally {
         if (!cancelled) setLoading(false);
       }
     })();
-
     return () => {
       cancelled = true;
     };
-  }, [shopId]);
+  }, []);
 
-  const fleets = useMemo(() => {
-    const set = new Set<string>();
-    for (const u of units) {
-      if (u.fleetName && u.fleetName.trim().length > 0) {
-        set.add(u.fleetName.trim());
-      }
-    }
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [units]);
+  const fleets = useMemo(
+    () =>
+      Array.from(
+        new Set(units.map((unit) => unit.fleetName).filter((value): value is string => Boolean(value))),
+      ).sort(),
+    [units],
+  );
 
-  const filteredUnits = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return units.filter((u) => {
-      if (fleetFilter !== "all") {
-        if ((u.fleetName ?? "") !== fleetFilter) return false;
-      }
-
-      if (!q) return true;
-
-      const haystack = [
-        u.label,
-        u.fleetName,
-        u.plate,
-        u.vin,
-        u.location,
-      ]
+  const visible = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    return units.filter((unit) => {
+      if (fleetFilter !== "all" && unit.fleetName !== fleetFilter) return false;
+      if (!needle) return true;
+      return [unit.label, unit.fleetName, unit.plate, unit.vin]
         .filter(Boolean)
         .join(" ")
-        .toLowerCase();
-
-      return haystack.includes(q);
+        .toLowerCase()
+        .includes(needle);
     });
-  }, [units, search, fleetFilter]);
+  }, [fleetFilter, search, units]);
+
+  const attention = units.filter(
+    (unit) =>
+      unit.status !== "in_service" ||
+      unit.pmDueCount > 0 ||
+      unit.openRequestCount > 0,
+  ).length;
 
   return (
-    <div className={ui.page}>
-      <div className={ui.container}>
-        <div aria-hidden className={ui.backdrop} />
+    <main className="mx-auto w-full max-w-6xl space-y-5 px-4 py-6 text-[color:var(--theme-text-primary)]">
+      <header>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-300">
+          Fleet units
+        </p>
+        <h1 className="mt-2 text-2xl font-semibold">Every unit, one record</h1>
+        <p className="mt-1 max-w-2xl text-sm text-[color:var(--theme-text-secondary)]">
+          Open any unit for PM, service history, requests, approvals, invoices,
+          readings, pre-trips, and repair evidence.
+        </p>
+        <p className="mt-1 text-[10px] text-[color:var(--theme-text-muted)]">
+          {uiContext.actorLabel}
+        </p>
+        <Link
+          href={`${routePrefix}/pretrip-history`}
+          className="mt-3 inline-flex min-h-10 items-center rounded-xl border border-[color:var(--theme-border-soft)] px-3 py-2 text-xs font-semibold text-sky-300 hover:bg-sky-300/10"
+        >
+          Fleet-wide pre-trip history
+        </Link>
+      </header>
 
-        {/* Header */}
-        <div className={`${ui.panel} ${ui.panelPadding} relative overflow-hidden`}>
-          <div className={ui.headerTop}>
-            <div>
-              <h1 className={ui.title}>Fleet Units</h1>
-              <p className={ui.subtitle}>
-                Master list of tractors, trailers, buses and other HD assets
-                enrolled in fleet programs.
-              </p>
-              <p className={ui.note}>Actor surface: {uiContext.actorLabel}</p>
-            </div>
-
-            <div className="flex flex-col gap-2 md:items-end">
-              <label className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
-                Filter by fleet
-              </label>
-              <select
-                value={fleetFilter}
-                onChange={(e) => setFleetFilter(e.target.value)}
-                className={`${ui.input} min-w-[180px] text-xs`}
-              >
-                <option value="all">All fleets</option>
-                {fleets.map((f) => (
-                  <option key={f} value={f}>
-                    {f}
-                  </option>
-                ))}
-              </select>
-            </div>
+      <section className="grid gap-3 sm:grid-cols-3">
+        <div className={`${panel} p-4`}>
+          <Truck size={17} className="text-sky-300" />
+          <div className="mt-3 text-2xl font-semibold">{units.length}</div>
+          <div className="text-xs text-[color:var(--theme-text-muted)]">Active units</div>
+        </div>
+        <div className={`${panel} p-4`}>
+          <Wrench size={17} className="text-amber-200" />
+          <div className="mt-3 text-2xl font-semibold">{attention}</div>
+          <div className="text-xs text-[color:var(--theme-text-muted)]">Need attention</div>
+        </div>
+        <div className={`${panel} p-4`}>
+          <div className="text-xs uppercase tracking-wide text-[color:var(--theme-text-muted)]">
+            Navigation rule
           </div>
-
-          {/* Search */}
-          <div className={ui.toolbarRow}>
-            <div className="relative flex-1">
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search by unit, plate, VIN, location…"
-                className={ui.input}
-              />
-            </div>
-
-            <div className="text-[11px] text-[color:var(--theme-text-muted)] md:pl-3">
-              Units shown are linked from your fleet programs and vehicle list.
-            </div>
+          <div className="mt-2 text-sm font-semibold">Everything is inside the unit</div>
+          <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+            Select a unit once; its full record is one click away.
           </div>
         </div>
+      </section>
 
-        {/* Content */}
-        <div className={`${ui.panel} ${ui.panelPadding}`}>
-          {error && (
-            <div className="rounded-xl border border-red-700 bg-red-900/30 px-4 py-3 text-xs text-red-200">
-              {error}
-            </div>
-          )}
+      <section className={`${panel} overflow-hidden`}>
+        <div className="grid gap-3 border-b border-[color:var(--theme-border-soft)] p-3 sm:grid-cols-[1fr_220px]">
+          <label className="relative">
+            <Search
+              size={15}
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[color:var(--theme-text-muted)]"
+            />
+            <span className="sr-only">Search units</span>
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search unit, plate, or VIN"
+              className="h-10 w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] pl-9 pr-3 text-sm outline-none"
+            />
+          </label>
+          <label>
+            <span className="sr-only">Filter by fleet</span>
+            <select
+              value={fleetFilter}
+              onChange={(event) => setFleetFilter(event.target.value)}
+              className="h-10 w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 text-sm"
+            >
+              <option value="all">All fleets</option>
+              {fleets.map((fleet) => (
+                <option key={fleet} value={fleet}>
+                  {fleet}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
 
-          {loading && !error && (
-            <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-4 py-4 text-sm text-[color:var(--theme-text-secondary)]">
-              Loading fleet units…
-            </div>
-          )}
+        {error ? <p className="p-5 text-sm text-red-300">{error}</p> : null}
+        {loading ? (
+          <p className="p-5 text-sm text-[color:var(--theme-text-secondary)]">Loading units…</p>
+        ) : null}
+        {!loading && !error && visible.length === 0 ? (
+          <p className="p-8 text-center text-sm text-[color:var(--theme-text-secondary)]">
+            No units match this view.
+          </p>
+        ) : null}
 
-          {!loading && !error && filteredUnits.length === 0 && (
-            <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-4 py-6 text-center text-sm text-[color:var(--theme-text-secondary)]">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">
-                No fleet units found
+        <div className="divide-y divide-[color:var(--theme-border-soft)]">
+          {visible.map((unit) => (
+            <Link
+              key={unit.id}
+              href={`${routePrefix}/units/${encodeURIComponent(unit.id)}`}
+              className="grid gap-3 p-4 transition hover:bg-white/[0.03] md:grid-cols-[minmax(180px,1.1fr)_minmax(120px,.7fr)_minmax(160px,1fr)_minmax(150px,.8fr)_auto] md:items-center"
+            >
+              <div>
+                <div className="font-semibold text-sky-300">{unit.label}</div>
+                <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
+                  {unit.plate ?? "No plate"} • {unit.fleetName ?? "Fleet"}
+                </div>
               </div>
-              <p className="mt-2 text-xs text-[color:var(--theme-text-secondary)]">
-                Add vehicles to a fleet program to see them here.
-              </p>
-            </div>
-          )}
-
-          {!loading && !error && filteredUnits.length > 0 && (
-            <div className="overflow-x-auto">
-              <table className="min-w-full border-separate border-spacing-y-1 text-xs">
-                <thead className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
-                  <tr>
-                    <th className="px-3 py-1 text-left">Unit</th>
-                    <th className="px-3 py-1 text-left">Fleet</th>
-                    <th className="px-3 py-1 text-left">Plate</th>
-                    <th className="px-3 py-1 text-left">VIN</th>
-                    <th className="px-3 py-1 text-left">Status</th>
-                    <th className="px-3 py-1 text-left">Next Inspection</th>
-                    <th className="px-3 py-1 text-left">Location</th>
-                    <th className="px-3 py-1 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredUnits.map((u) => (
-                    <tr key={u.id} className="align-middle">
-                      <td className="px-3 py-1.5 text-[11px] text-[color:var(--theme-text-primary)]">
-                        {u.label}
-                      </td>
-                      <td className="px-3 py-1.5 text-[11px] text-[color:var(--theme-text-secondary)]">
-                        {u.fleetName ?? "—"}
-                      </td>
-                      <td className="px-3 py-1.5 text-[11px] text-[color:var(--theme-text-secondary)]">
-                        {u.plate ?? "—"}
-                      </td>
-                      <td className="px-3 py-1.5 text-[11px] text-[color:var(--theme-text-secondary)]">
-                        {u.vin ? u.vin.slice(0, 11) + "…" : "—"}
-                      </td>
-                      <td className="px-3 py-1.5">
-                        <StatusPill status={u.status} />
-                      </td>
-                      <td className="px-3 py-1.5 text-[11px] text-[color:var(--theme-text-secondary)]">
-                        {u.nextInspectionDate
-                          ? new Date(u.nextInspectionDate).toLocaleDateString()
-                          : "—"}
-                      </td>
-                      <td className="px-3 py-1.5 text-[11px] text-[color:var(--theme-text-secondary)]">
-                        {u.location ?? "—"}
-                      </td>
-                      <td className="px-3 py-1.5 text-right text-[11px]">
-                        <Link
-                          href={`${routePrefix}/units/${encodeURIComponent(u.id)}`}
-                          className="mr-2 text-[color:var(--accent-copper)] underline-offset-4 hover:underline"
-                        >
-                          Unit detail
-                        </Link>
-                        {uiContext.capabilities.canCreateFleetWorkOrders && (
-                          <Link
-                            href={`/work-orders/create?unitId=${encodeURIComponent(u.id)}`}
-                            className="rounded-full border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-panel)]"
-                          >
-                            New WO
-                          </Link>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+              <StatusPill status={unit.status} />
+              <div className="text-xs text-[color:var(--theme-text-secondary)]">
+                <div className="font-medium text-[color:var(--theme-text-primary)]">Latest reading</div>
+                <div className="mt-1">{meter(unit)}</div>
+              </div>
+              <div className="text-xs text-[color:var(--theme-text-secondary)]">
+                <div>{unit.pmDueCount} PM due</div>
+                <div className="mt-1">{unit.openRequestCount} open requests</div>
+              </div>
+              <span className="text-xs font-semibold text-sky-300">Open unit →</span>
+            </Link>
+          ))}
         </div>
-      </div>
-    </div>
-  );
-}
-
-function StatusPill({
-  status,
-}: {
-  status: "in_service" | "limited" | "oos";
-}) {
-  const map: Record<
-    "in_service" | "limited" | "oos",
-    { label: string; className: string }
-  > = {
-    in_service: {
-      label: "In Service",
-      className:
-        "border-emerald-500/60 bg-emerald-500/10 text-emerald-200",
-    },
-    limited: {
-      label: "Limited",
-      className:
-        "border-amber-400/60 bg-amber-500/10 text-amber-200",
-    },
-    oos: {
-      label: "OOS",
-      className: "border-red-500/60 bg-red-500/10 text-red-300",
-    },
-  };
-
-  const item = map[status];
-
-  return (
-    <span
-      className={`inline-flex rounded-full border px-2 py-[2px] text-[10px] font-semibold uppercase tracking-[0.16em] ${item.className}`}
-    >
-      {item.label}
-    </span>
+      </section>
+    </main>
   );
 }

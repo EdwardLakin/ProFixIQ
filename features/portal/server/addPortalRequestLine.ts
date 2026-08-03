@@ -24,10 +24,23 @@ export async function addPortalRequestLine(args: {
   notes?: string | null;
   lineType?: "job" | "info";
   operationKey: string;
+  diagnostic?: boolean;
 }): Promise<Record<string, unknown>> {
+  const diagnostic = args.kind === "custom" && args.diagnostic === true;
   const { data, error } = await (args.supabase as RpcClient).rpc(
-    "add_portal_request_line_atomic",
-    {
+    diagnostic ? "add_portal_diagnostic_line_atomic" : "add_portal_request_line_atomic",
+    diagnostic
+      ? {
+          p_shop_id: args.shopId,
+          p_customer_id: args.customerId,
+          p_work_order_id: args.workOrderId,
+          p_actor_user_id: args.actorUserId,
+          p_description: args.description ?? null,
+          p_notes: args.notes ?? null,
+          p_operation_key: args.operationKey,
+          p_at: new Date().toISOString(),
+        }
+      : {
       p_shop_id: args.shopId,
       p_customer_id: args.customerId,
       p_work_order_id: args.workOrderId,
@@ -39,7 +52,7 @@ export async function addPortalRequestLine(args: {
       p_line_type: args.lineType ?? null,
       p_operation_key: args.operationKey,
       p_at: new Date().toISOString(),
-    },
+        },
   );
 
   if (error) {

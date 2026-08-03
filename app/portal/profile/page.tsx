@@ -88,7 +88,9 @@ export default function PortalProfilePage() {
 
       const { data: customer, error: fetchErr } = await supabase
         .from("customers")
-        .select("first_name,last_name,phone,street,city,province,postal_code")
+        .select(
+          "id,shop_id,first_name,last_name,phone,street,city,province,postal_code",
+        )
         .eq("user_id", user.id)
         .maybeSingle<CustomerRow>();
 
@@ -109,14 +111,32 @@ export default function PortalProfilePage() {
 
       const { data: inviteRows, error: inviteErr } = await supabase
         .from("customer_portal_invites")
-        .select("id, customer_id, email")
+        .select(
+          "id,customer_id,email,accepted_at,accepted_by_user_id,revoked_at",
+        )
         .eq("customer_id", customerId)
+        .eq("accepted_by_user_id", user.id)
+        .not("accepted_at", "is", null)
+        .is("revoked_at", null)
         .limit(20);
 
-      const hasInviteEvidence = !inviteErr && Array.isArray(inviteRows) && inviteRows.some((row) => {
-        const inviteEmail = String((row as { email?: string | null }).email ?? "").trim().toLowerCase();
-        return normalizedEmail.length > 0 && inviteEmail === normalizedEmail;
-      });
+      const hasInviteEvidence =
+        !inviteErr &&
+        Array.isArray(inviteRows) &&
+        inviteRows.some((row) => {
+          const inviteEmail = String(
+            (row as { email?: string | null }).email ?? "",
+          )
+            .trim()
+            .toLowerCase();
+          return (
+            normalizedEmail.length > 0 &&
+            inviteEmail === normalizedEmail &&
+            row.accepted_by_user_id === user.id &&
+            Boolean(row.accepted_at) &&
+            !row.revoked_at
+          );
+        });
 
       if (!hasInviteEvidence) {
         setInviteRequired(true);
@@ -152,7 +172,10 @@ export default function PortalProfilePage() {
     setError(null);
     setSaved(false);
 
-    if (inviteRequired) return;
+    if (inviteRequired) {
+      setSaving(false);
+      return;
+    }
 
     const {
       data: { user },
@@ -167,21 +190,19 @@ export default function PortalProfilePage() {
 
     const toNull = (s: string) => (s.trim() === "" ? null : s.trim());
 
-    const { error: upsertErr } = await supabase
-      .from("customers")
-      .upsert(
-        {
-          user_id: user.id,
-          first_name: toNull(form.first_name),
-          last_name: toNull(form.last_name),
-          phone: toNull(form.phone),
-          street: toNull(form.street),
-          city: toNull(form.city),
-          province: toNull(form.province),
-          postal_code: toNull(form.postal_code),
-        },
-        { onConflict: "user_id" },
-      );
+    const { error: upsertErr } = await supabase.from("customers").upsert(
+      {
+        user_id: user.id,
+        first_name: toNull(form.first_name),
+        last_name: toNull(form.last_name),
+        phone: toNull(form.phone),
+        street: toNull(form.street),
+        city: toNull(form.city),
+        province: toNull(form.province),
+        postal_code: toNull(form.postal_code),
+      },
+      { onConflict: "user_id" },
+    );
 
     if (upsertErr) setError(upsertErr.message);
     else setSaved(true);
@@ -192,7 +213,11 @@ export default function PortalProfilePage() {
   if (loading) {
     return (
       <div className="mx-auto max-w-xl">
-        <div className={cardClass() + " text-sm text-[color:var(--theme-text-primary)]"}>
+        <div
+          className={
+            cardClass() + " text-sm text-[color:var(--theme-text-primary)]"
+          }
+        >
           Loading your profile…
         </div>
       </div>
@@ -200,7 +225,21 @@ export default function PortalProfilePage() {
   }
 
   if (inviteRequired) {
-    return <div className="mx-auto max-w-xl"><div className={cardClass() + " text-sm text-[color:var(--theme-text-primary)]"}><div className="font-semibold">Portal invite required</div><div className="mt-1">Open the invite link sent by the shop, or ask the shop to resend your portal invite.</div></div></div>;
+    return (
+      <div className="mx-auto max-w-xl">
+        <div
+          className={
+            cardClass() + " text-sm text-[color:var(--theme-text-primary)]"
+          }
+        >
+          <div className="font-semibold">Portal invite required</div>
+          <div className="mt-1">
+            Open the invite link sent by the shop, or ask the shop to resend
+            your portal invite.
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -210,7 +249,8 @@ export default function PortalProfilePage() {
           My profile
         </h1>
         <p className="text-xs text-[color:var(--theme-text-secondary)]">
-          Keep your contact details up to date so your shop can reach you easily.
+          Keep your contact details up to date so your shop can reach you
+          easily.
         </p>
 
         <div
@@ -240,13 +280,17 @@ export default function PortalProfilePage() {
             className={inputClass()}
             placeholder="First name"
             value={form.first_name}
-            onChange={(e) => setForm((p) => ({ ...p, first_name: e.target.value }))}
+            onChange={(e) =>
+              setForm((p) => ({ ...p, first_name: e.target.value }))
+            }
           />
           <input
             className={inputClass()}
             placeholder="Last name"
             value={form.last_name}
-            onChange={(e) => setForm((p) => ({ ...p, last_name: e.target.value }))}
+            onChange={(e) =>
+              setForm((p) => ({ ...p, last_name: e.target.value }))
+            }
           />
         </div>
 
@@ -259,8 +303,15 @@ export default function PortalProfilePage() {
           />
 
           <div className="space-y-1">
-            <input readOnly className={readOnlyClass()} placeholder="Email" value={form.email} />
-            <p className="text-[11px] text-[color:var(--theme-text-muted)]">Email is tied to your sign-in.</p>
+            <input
+              readOnly
+              className={readOnlyClass()}
+              placeholder="Email"
+              value={form.email}
+            />
+            <p className="text-[11px] text-[color:var(--theme-text-muted)]">
+              Email is tied to your sign-in.
+            </p>
           </div>
         </div>
 
@@ -283,19 +334,26 @@ export default function PortalProfilePage() {
               className={inputClass()}
               placeholder="Province/State"
               value={form.province}
-              onChange={(e) => setForm((p) => ({ ...p, province: e.target.value }))}
+              onChange={(e) =>
+                setForm((p) => ({ ...p, province: e.target.value }))
+              }
             />
             <input
               className={inputClass()}
               placeholder="Postal/ZIP code"
               value={form.postal_code}
-              onChange={(e) => setForm((p) => ({ ...p, postal_code: e.target.value }))}
+              onChange={(e) =>
+                setForm((p) => ({ ...p, postal_code: e.target.value }))
+              }
             />
           </div>
         </div>
 
         <button
-          className={subtleButtonClass() + " mt-1 border-[rgba(197,122,74,0.45)] bg-[rgba(197,122,74,0.10)] text-[color:var(--theme-text-primary)] hover:bg-[rgba(197,122,74,0.16)]"}
+          className={
+            subtleButtonClass() +
+            " mt-1 border-[rgba(197,122,74,0.45)] bg-[rgba(197,122,74,0.10)] text-[color:var(--theme-text-primary)] hover:bg-[rgba(197,122,74,0.16)]"
+          }
           onClick={onSave}
           disabled={saving}
         >

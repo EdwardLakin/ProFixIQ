@@ -291,7 +291,7 @@ export async function POST(_req: NextRequest, context: unknown) {
       ok: true,
       status: finalStatus,
       created_user_id: createdUser.user.id,
-      people_record_href: `/dashboard/admin/people/${createdUser.user.id}?from=create-user`,
+      people_record_href: `/dashboard/workforce/people/${createdUser.user.id}?from=create-user`,
       ...(sendErrMsg
         ? {
             warning: "User created but invite failed to send",

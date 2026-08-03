@@ -6,14 +6,34 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import { format } from "date-fns";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ChevronRight,
+  Clock3,
+  ClipboardCheck,
+  Plus,
+  RefreshCw,
+  Search,
+  UserRound,
+} from "lucide-react";
 import { toast } from "sonner";
 import { normalizeWorkOrderStatus } from "@/features/work-orders/lib/work-order-status";
+import {
+  countWorkOrdersBySummary,
+  filterWorkOrdersBySummary,
+  toggleWorkOrderSummaryFilter,
+  type WorkOrderSummaryFilter,
+} from "@/features/work-orders/lib/workOrderListFilters";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 
 import { WorkOrderAssignedSummary } from "@/features/work-orders/components/WorkOrderAssignedSummary";
-import StatusPickerModal, {
-  type WorkOrderStatus,
-} from "@/features/work-orders/components/workorders/extras/StatusPickerModal";
+import {
+  WORK_ORDER_OPERATIONAL_STAGE_LABELS,
+  normalizeWorkOrderOperationalStage,
+  workOrderOperationalStageProgress,
+  type WorkOrderOperationalStage,
+} from "@/features/work-orders/lib/operational-stage";
 
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -24,12 +44,11 @@ type Line = DB["public"]["Tables"]["work_order_lines"]["Row"];
 
 type Row = WorkOrder & {
   is_waiter?: boolean | null;
-  customers:
-    | Pick<Customer, "first_name" | "last_name" | "phone" | "email">
-    | null;
-  vehicles:
-    | Pick<Vehicle, "year" | "make" | "model" | "license_plate">
-    | null;
+  customers: Pick<
+    Customer,
+    "first_name" | "last_name" | "phone" | "email"
+  > | null;
+  vehicles: Pick<Vehicle, "year" | "make" | "model" | "license_plate"> | null;
 };
 
 type ReviewIssue = { kind: string; lineId?: string; message: string };
@@ -66,7 +85,10 @@ const ACTIVE_FLOW_STATUSES = [
   "ready_to_invoice",
 ] as const satisfies readonly StatusKey[];
 
-const LEGACY_ACTIVE_FLOW_STATUSES = ["queued", "planned"] as const satisfies readonly StatusKey[];
+const LEGACY_ACTIVE_FLOW_STATUSES = [
+  "queued",
+  "planned",
+] as const satisfies readonly StatusKey[];
 
 const ACTIVE_STATUS_FILTER = [
   ...ACTIVE_FLOW_STATUSES,
@@ -75,8 +97,17 @@ const ACTIVE_STATUS_FILTER = [
 
 const ACTIVE_STATUS_SET = new Set<string>(ACTIVE_STATUS_FILTER);
 
-const SEEDED_DEFAULT_STATUSES = [...ACTIVE_STATUS_FILTER, "completed"] as const satisfies readonly StatusKey[];
-const ACTIVE_LINE_EXCLUDED = new Set(["completed", "invoiced", "closed", "cancelled", "declined"]);
+const SEEDED_DEFAULT_STATUSES = [
+  ...ACTIVE_STATUS_FILTER,
+  "completed",
+] as const satisfies readonly StatusKey[];
+const ACTIVE_LINE_EXCLUDED = new Set([
+  "completed",
+  "invoiced",
+  "closed",
+  "cancelled",
+  "declined",
+]);
 
 const INPUT_DARK =
   "w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none placeholder:text-[color:var(--theme-text-muted)] focus:border-sky-400/70 focus:ring-2 focus:ring-sky-500/30";
@@ -104,37 +135,18 @@ function isStatusKey(x: string): x is StatusKey {
 }
 
 function normalizeStatusKey(value: unknown): string {
-  const key = String(value ?? "new").trim().toLowerCase().replaceAll(" ", "_");
+  const key = String(value ?? "new")
+    .trim()
+    .toLowerCase()
+    .replaceAll(" ", "_");
   return isStatusKey(key) ? key : normalizeWorkOrderStatus(key);
 }
 
-function workOrderDisplayId(workOrder: Pick<WorkOrder, "id" | "custom_id">): string {
+function workOrderDisplayId(
+  workOrder: Pick<WorkOrder, "id" | "custom_id">,
+): string {
   const customId = String(workOrder.custom_id ?? "").trim();
   return customId || `#${workOrder.id.slice(0, 8)}`;
-}
-
-function workOrderStatusLabel(value: unknown): string {
-  const key = normalizeWorkOrderStatus(value);
-  if (key === "waiting_parts") return "Waiting for parts";
-  if (key === "ready_to_invoice") return "Ready for invoice";
-  if (key === "awaiting_approval") return "Needs approval";
-  if (key === "awaiting_inspection") return "Needs inspection";
-  if (key === "in_progress") return "In progress";
-  return key.charAt(0).toUpperCase() + key.slice(1).replaceAll("_", " ");
-}
-
-function isStatusPickerStatus(x: string): x is WorkOrderStatus {
-  return (
-    x === "awaiting_approval" ||
-    x === "awaiting" ||
-    x === "queued" ||
-    x === "in_progress" ||
-    x === "on_hold" ||
-    x === "planned" ||
-    x === "completed" ||
-    x === "ready_to_invoice" ||
-    x === "invoiced"
-  );
 }
 
 function rollupTechStatus(lines: Array<Pick<Line, "status">>): TechRollup {
@@ -153,104 +165,86 @@ function rollupTechStatus(lines: Array<Pick<Line, "status">>): TechRollup {
   return "awaiting";
 }
 
-function stageAccent(status: string | null | undefined): {
+function stageAccent(status: WorkOrderOperationalStage): {
   badge: string;
   border: string;
   progress: string;
 } {
-  const key = String(status ?? "awaiting").toLowerCase().replaceAll(" ", "_");
-
-  if (key === "in_progress") {
+  if (status === "in_progress") {
     return {
-      badge:
-        "border-sky-400/60 bg-sky-500/10 text-sky-100",
+      badge: "border-sky-500/45 bg-sky-500/10 text-sky-700 dark:text-sky-100",
       border: "border-sky-500/30",
-      progress: "bg-[var(--theme-gradient-panel)]",
+      progress: "bg-sky-500",
     };
   }
 
-  if (key === "new" || key === "awaiting" || key === "awaiting_inspection" || key === "recommended") {
+  if (status === "intake" || status === "estimate") {
     return {
-      badge: "border-sky-400/60 bg-sky-500/10 text-sky-100",
+      badge: "border-sky-500/45 bg-sky-500/10 text-sky-700 dark:text-sky-100",
       border: "border-sky-500/25",
       progress: "bg-sky-400",
     };
   }
 
-  if (key === "awaiting_approval") {
+  if (status === "awaiting_approval") {
     return {
-      badge: "border-blue-400/60 bg-blue-500/10 text-blue-100",
+      badge:
+        "border-blue-500/45 bg-blue-500/10 text-blue-700 dark:text-blue-100",
       border: "border-blue-500/25",
       progress: "bg-blue-400",
     };
   }
 
-  if (key === "queued") {
+  if (status === "authorized") {
     return {
-      badge: "border-indigo-400/60 bg-indigo-500/10 text-indigo-100",
-      border: "border-indigo-500/25",
-      progress: "bg-indigo-400",
-    };
-  }
-
-  if (key === "approved") {
-    return {
-      badge: "border-emerald-400/60 bg-emerald-500/10 text-emerald-100",
+      badge:
+        "border-emerald-500/45 bg-emerald-500/10 text-emerald-700 dark:text-emerald-100",
       border: "border-emerald-500/25",
       progress: "bg-emerald-400",
     };
   }
 
-  if (key === "on_hold" || key === "waiting_parts") {
+  if (status === "waiting") {
     return {
-      badge: "border-sky-400/45 bg-sky-500/10 text-sky-100",
+      badge:
+        "border-amber-500/45 bg-amber-500/10 text-amber-700 dark:text-amber-100",
       border: "border-sky-500/25",
-      progress: "bg-sky-400",
+      progress: "bg-amber-400",
     };
   }
 
-  if (key === "planned") {
+  if (status === "quality_check") {
     return {
-      badge: "border-purple-400/70 bg-purple-500/10 text-purple-100",
-      border: "border-purple-500/30",
-      progress: "bg-purple-400",
+      badge:
+        "border-teal-500/45 bg-teal-500/10 text-teal-700 dark:text-teal-100",
+      border: "border-teal-500/30",
+      progress: "bg-teal-400",
     };
   }
 
-  if (key === "completed" || key === "ready_to_invoice") {
+  if (status === "ready") {
     return {
-      badge: "border-emerald-400/70 bg-emerald-500/10 text-emerald-100",
+      badge:
+        "border-emerald-500/45 bg-emerald-500/10 text-emerald-700 dark:text-emerald-100",
       border: "border-emerald-500/25",
       progress: "bg-emerald-400",
     };
   }
 
-  if (key === "invoiced") {
+  if (status === "closed") {
     return {
-      badge: "border-teal-400/70 bg-teal-500/10 text-teal-100",
+      badge:
+        "border-teal-500/45 bg-teal-500/10 text-teal-700 dark:text-teal-100",
       border: "border-teal-500/25",
       progress: "bg-teal-400",
     };
   }
 
   return {
-    badge: "border-sky-400/60 bg-sky-500/10 text-sky-100",
+    badge: "border-sky-500/45 bg-sky-500/10 text-sky-700 dark:text-sky-100",
     border: "border-sky-500/25",
     progress: "bg-sky-400",
   };
-}
-
-function techRollupChip(rollup: TechRollup): string {
-  if (rollup === "in_progress") {
-    return "border-sky-400/60 bg-sky-500/10 text-sky-100";
-  }
-  if (rollup === "on_hold") {
-    return "border-sky-400/45 bg-sky-500/10 text-sky-100";
-  }
-  if (rollup === "completed") {
-    return "border-emerald-400/70 bg-emerald-500/10 text-emerald-100";
-  }
-  return "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-primary)]";
 }
 
 function priorityLabel(priority: number | null | undefined): string | null {
@@ -263,10 +257,10 @@ function priorityLabel(priority: number | null | undefined): string | null {
 
 function priorityChip(priority: number | null | undefined): string {
   if (priority === 1) {
-    return "border-red-500/50 bg-red-500/15 text-red-200";
+    return "border-red-500/45 bg-red-500/10 text-red-700 dark:text-red-100";
   }
   if (priority === 2) {
-    return "border-sky-500/50 bg-sky-500/15 text-sky-100";
+    return "border-orange-500/45 bg-orange-500/10 text-orange-700 dark:text-orange-100";
   }
   if (priority === 4) {
     return "border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] text-[color:var(--theme-text-secondary)]";
@@ -283,6 +277,8 @@ export default function WorkOrdersView(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
   const [status, setStatus] = useState<string>("");
+  const [summaryFilter, setSummaryFilter] =
+    useState<WorkOrderSummaryFilter | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [isSeededShop, setIsSeededShop] = useState(false);
 
@@ -305,10 +301,9 @@ export default function WorkOrdersView(): JSX.Element {
   const [assignedByWo, setAssignedByWo] = useState<Record<string, boolean>>({});
   const [hasLinesByWo, setHasLinesByWo] = useState<Record<string, boolean>>({});
 
-  const [statusPickerOpen, setStatusPickerOpen] = useState(false);
-  const [statusPickerWoId, setStatusPickerWoId] = useState<string | null>(null);
-  const [statusPickerCurrent, setStatusPickerCurrent] =
-    useState<WorkOrderStatus>("awaiting");
+  const [operationalStageByWo, setOperationalStageByWo] = useState<
+    Record<string, WorkOrderOperationalStage>
+  >({});
   const workforceDrilldownActive = useMemo(
     () =>
       searchParams.get("assignment") === "unassigned" &&
@@ -317,50 +312,25 @@ export default function WorkOrdersView(): JSX.Element {
     [searchParams],
   );
 
-  const openStatusPicker = useCallback((wo: Row) => {
-    const raw = String(wo.status ?? "awaiting")
-      .toLowerCase()
-      .replaceAll(" ", "_");
-
-    const current = isStatusPickerStatus(raw) ? raw : "awaiting";
-
-    setStatusPickerWoId(wo.id);
-    setStatusPickerCurrent(current);
-    setStatusPickerOpen(true);
-  }, []);
-
-  const applyWorkOrderStatus = useCallback(
-    async (woId: string, next: WorkOrderStatus) => {
-      const { error } = await supabase
-        .from("work_orders")
-        .update({ status: next } as DB["public"]["Tables"]["work_orders"]["Update"])
-        .eq("id", woId);
-
-      if (error) {
-        toast.error(error.message);
-        return;
-      }
-
-      toast.success(`Status updated → ${next.replaceAll("_", " ")}`);
-    },
-    [supabase],
-  );
-
   const load = useCallback(async () => {
     setLoading(true);
     setErr(null);
 
     let query = supabase
       .from("work_orders")
-      .select(`
+      .select(
+        `
         *,
         vehicles:vehicles(year,make,model,license_plate)
-      `)
+      `,
+      )
       .order("created_at", { ascending: false })
       .limit(100);
 
     if (status === "") {
-      const defaultStatuses = isSeededShop ? SEEDED_DEFAULT_STATUSES : ACTIVE_STATUS_FILTER;
+      const defaultStatuses = isSeededShop
+        ? SEEDED_DEFAULT_STATUSES
+        : ACTIVE_STATUS_FILTER;
       query = query.in("status", [...defaultStatuses]);
     } else {
       query = query.eq("status", status);
@@ -372,7 +342,9 @@ export default function WorkOrdersView(): JSX.Element {
     if (workforceDrilldownActive) {
       const { data: activeLines, error: activeLinesErr } = await supabase
         .from("work_order_lines")
-        .select("id, work_order_id, assigned_tech_id, line_status, status, voided_at")
+        .select(
+          "id, work_order_id, assigned_tech_id, line_status, status, voided_at",
+        )
         .is("voided_at", null);
       if (activeLinesErr) {
         setErr(activeLinesErr.message);
@@ -385,7 +357,10 @@ export default function WorkOrdersView(): JSX.Element {
       }
 
       const scopedActiveLines = (activeLines ?? []).filter(
-        (line) => !ACTIVE_LINE_EXCLUDED.has(String(line.line_status ?? line.status ?? "").toLowerCase()),
+        (line) =>
+          !ACTIVE_LINE_EXCLUDED.has(
+            String(line.line_status ?? line.status ?? "").toLowerCase(),
+          ),
       );
       const lineIds = scopedActiveLines.map((line) => line.id);
       const { data: bridgeRows, error: bridgeErr } = lineIds.length
@@ -405,11 +380,16 @@ export default function WorkOrdersView(): JSX.Element {
         return;
       }
 
-      const hasBridgeAssignment = new Set((bridgeRows ?? []).map((row) => row.work_order_line_id));
+      const hasBridgeAssignment = new Set(
+        (bridgeRows ?? []).map((row) => row.work_order_line_id),
+      );
       const unassignedWorkOrderIds = Array.from(
         new Set(
           scopedActiveLines
-            .filter((line) => !line.assigned_tech_id && !hasBridgeAssignment.has(line.id))
+            .filter(
+              (line) =>
+                !line.assigned_tech_id && !hasBridgeAssignment.has(line.id),
+            )
             .map((line) => line.work_order_id)
             .filter(Boolean),
         ),
@@ -454,14 +434,19 @@ export default function WorkOrdersView(): JSX.Element {
         .in("id", customerIds);
 
       if (customerErr) {
-        console.warn("[WorkOrdersView] customer lookup failed; showing work orders without customer details:", customerErr.message);
+        console.warn(
+          "[WorkOrdersView] customer lookup failed; showing work orders without customer details:",
+          customerErr.message,
+        );
       } else {
         const customersById = new Map(
           (customerRows ?? []).map((customer) => [customer.id, customer]),
         );
 
         workOrders.forEach((row) => {
-          row.customers = row.customer_id ? customersById.get(row.customer_id) ?? null : null;
+          row.customers = row.customer_id
+            ? (customersById.get(row.customer_id) ?? null)
+            : null;
         });
       }
     }
@@ -472,7 +457,10 @@ export default function WorkOrdersView(): JSX.Element {
       qlc.length === 0
         ? workOrders
         : workOrders.filter((r) => {
-            const name = [r.customers?.first_name ?? "", r.customers?.last_name ?? ""]
+            const name = [
+              r.customers?.first_name ?? "",
+              r.customers?.last_name ?? "",
+            ]
               .filter(Boolean)
               .join(" ")
               .toLowerCase();
@@ -505,25 +493,53 @@ export default function WorkOrdersView(): JSX.Element {
       setTechRollupByWo({});
       setAssignedByWo({});
       setHasLinesByWo({});
+      setOperationalStageByWo({});
       setLoading(false);
       return;
     }
 
-    const { data: lines, error: lnErr } = await supabase
-      .from("work_order_lines")
-      .select("id,work_order_id,status,assigned_tech_id")
-      .in("work_order_id", ids);
+    const [linesResult, stagesResult] = await Promise.all([
+      supabase
+        .from("work_order_lines")
+        .select("id,work_order_id,status,assigned_tech_id")
+        .in("work_order_id", ids),
+      supabase
+        .from("v_work_order_board_cards_shop")
+        .select("work_order_id,overall_stage")
+        .in("work_order_id", ids),
+    ]);
+    const { data: lines, error: lnErr } = linesResult;
 
     if (lnErr) {
-      console.warn("[WorkOrdersView] failed to load lines for rollup:", lnErr.message);
+      console.warn(
+        "[WorkOrdersView] failed to load lines for rollup:",
+        lnErr.message,
+      );
       setTechRollupByWo({});
       setAssignedByWo({});
       setHasLinesByWo({});
+      setOperationalStageByWo({});
       setLoading(false);
       return;
     }
 
-    const lineRows = (lines ?? []) as Array<Pick<Line, "id" | "work_order_id" | "status" | "assigned_tech_id">>;
+    if (stagesResult.error) {
+      console.warn(
+        "[WorkOrdersView] failed to load canonical lifecycle stages:",
+        stagesResult.error.message,
+      );
+    }
+    const stageMap: Record<string, WorkOrderOperationalStage> = {};
+    for (const stageRow of stagesResult.data ?? []) {
+      stageMap[stageRow.work_order_id] = normalizeWorkOrderOperationalStage(
+        stageRow.overall_stage,
+      );
+    }
+    setOperationalStageByWo(stageMap);
+
+    const lineRows = (lines ?? []) as Array<
+      Pick<Line, "id" | "work_order_id" | "status" | "assigned_tech_id">
+    >;
     const lineIds = lineRows.map((line) => line.id).filter(Boolean);
     const { data: bridgeAssignments, error: bridgeAssignErr } = lineIds.length
       ? await supabase
@@ -533,11 +549,16 @@ export default function WorkOrdersView(): JSX.Element {
       : { data: [], error: null };
 
     if (bridgeAssignErr) {
-      console.warn("[WorkOrdersView] failed to load assignment bridge rows:", bridgeAssignErr.message);
+      console.warn(
+        "[WorkOrdersView] failed to load assignment bridge rows:",
+        bridgeAssignErr.message,
+      );
     }
 
     const bridgeAssignedLineIds = new Set(
-      (bridgeAssignments ?? []).map((row) => row.work_order_line_id).filter(Boolean),
+      (bridgeAssignments ?? [])
+        .map((row) => row.work_order_line_id)
+        .filter(Boolean),
     );
 
     const map: Record<string, Array<Pick<Line, "status">>> = {};
@@ -608,7 +629,9 @@ export default function WorkOrdersView(): JSX.Element {
         }
 
         const obj = parsed as Record<string, unknown>;
-        const issues = Array.isArray(obj.issues) ? (obj.issues as ReviewIssue[]) : [];
+        const issues = Array.isArray(obj.issues)
+          ? (obj.issues as ReviewIssue[])
+          : [];
 
         const safeResult: ReviewResponse = {
           ok: Boolean(obj.ok),
@@ -626,18 +649,30 @@ export default function WorkOrdersView(): JSX.Element {
             .replaceAll(" ", "_");
 
           if (statusLower === "completed") {
-            const { error } = await supabase
-              .from("work_orders")
-              .update({
-                status: "ready_to_invoice",
-              } as DB["public"]["Tables"]["work_orders"]["Update"])
-              .eq("id", woId)
-              .eq("status", "completed");
+            const operationKey = crypto.randomUUID();
+            const readyResponse = await fetch(
+              `/api/work-orders/${woId}/mark-ready`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "Idempotency-Key": operationKey,
+                },
+                body: JSON.stringify({ operationKey }),
+              },
+            );
+            const readyPayload = (await readyResponse
+              .json()
+              .catch(() => null)) as { error?: string } | null;
 
-            if (error) {
+            if (!readyResponse.ok) {
               console.warn(
                 "[invoice-review] could not advance status:",
-                error.message,
+                readyPayload?.error ?? readyResponse.statusText,
+              );
+              toast.error(
+                readyPayload?.error ??
+                  "Work order could not be marked ready to invoice.",
               );
             } else {
               toast.success("Moved to Ready to invoice");
@@ -659,7 +694,7 @@ export default function WorkOrdersView(): JSX.Element {
         setReviewLoadingId(null);
       }
     },
-    [load, rows, supabase],
+    [load, rows],
   );
 
   useEffect(() => {
@@ -686,7 +721,10 @@ export default function WorkOrdersView(): JSX.Element {
         .maybeSingle();
 
       if (seededErr) {
-        console.warn("[WorkOrdersView] failed to detect Shop Boost seed state:", seededErr.message);
+        console.warn(
+          "[WorkOrdersView] failed to detect Shop Boost seed state:",
+          seededErr.message,
+        );
       }
       setIsSeededShop(Boolean(seededRow?.id));
 
@@ -709,7 +747,6 @@ export default function WorkOrdersView(): JSX.Element {
 
   const currentActor = getActorCapabilities({ role: currentRole });
   const canAssign = currentActor.canAssignWork;
-  const canPickStatus = currentActor.canManageWorkOrders;
 
   useEffect(() => {
     void load();
@@ -743,23 +780,22 @@ export default function WorkOrdersView(): JSX.Element {
       const prev = rows;
       setRows((r) => r.filter((x) => x.id !== id));
 
-      const { error: lineErr } = await supabase
-        .from("work_order_lines")
-        .delete()
-        .eq("work_order_id", id);
+      const response = await fetch(`/api/work-orders/${id}/delete-draft`, {
+        method: "DELETE",
+      });
+      const result = (await response.json().catch(() => null)) as {
+        error?: string;
+      } | null;
 
-      if (lineErr) {
-        alert(`Failed to delete job lines: ${lineErr.message}`);
-        setRows(prev);
-        return;
-      }
-
-      const { error } = await supabase.from("work_orders").delete().eq("id", id);
-
-      if (error) {
-        alert(`Failed to delete: ${error.message}`);
+      if (!response.ok) {
+        const rawError = result?.error ?? "Failed to delete the work order.";
+        const message = rawError.includes("WORK_ORDER_DELETE_")
+          ? "This work order has financial, approval, labor, parts, or inspection history and cannot be deleted."
+          : rawError;
+        toast.error(message);
         setRows(prev);
       } else {
+        toast.success("Work order deleted.");
         setTechRollupByWo((m) => {
           const next = { ...m };
           delete next[id];
@@ -767,13 +803,13 @@ export default function WorkOrdersView(): JSX.Element {
         });
       }
     },
-    [rows, supabase],
+    [rows],
   );
 
   const handleAssignAll = useCallback(
     async (woId: string) => {
       if (!selectedTechId) {
-        alert("Choose a mechanic first.");
+        toast.error("Choose a technician first.");
         return;
       }
 
@@ -791,7 +827,7 @@ export default function WorkOrdersView(): JSX.Element {
         const json = (await res.json()) as { error?: string };
 
         if (!res.ok) {
-          alert(json.error || "Failed to assign.");
+          toast.error(json.error || "Failed to assign technician.");
           return;
         }
 
@@ -817,22 +853,12 @@ export default function WorkOrdersView(): JSX.Element {
   );
 
   const total = rows.length;
+  const summaryNow = useMemo(() => Date.now(), []);
 
   const activeCount = useMemo(
     () =>
-      rows.filter((r) =>
-        ACTIVE_STATUS_SET.has(normalizeStatusKey(r.status)),
-      ).length,
-    [rows],
-  );
-
-  const awaitingApprovalCount = useMemo(
-    () =>
-      rows.filter(
-        (r) =>
-          String(r.status ?? "").toLowerCase().replaceAll(" ", "_") ===
-          "awaiting_approval",
-      ).length,
+      rows.filter((r) => ACTIVE_STATUS_SET.has(normalizeStatusKey(r.status)))
+        .length,
     [rows],
   );
 
@@ -841,453 +867,581 @@ export default function WorkOrdersView(): JSX.Element {
     [rows],
   );
 
-  const urgentCount = useMemo(
-    () => rows.filter((r) => Number(r.priority ?? 3) === 1).length,
-    [rows],
+  const readyToWorkCount = useMemo(
+    () => countWorkOrdersBySummary(rows, "ready_to_work", summaryNow),
+    [rows, summaryNow],
   );
 
+  const waitingPartsCount = useMemo(
+    () => countWorkOrdersBySummary(rows, "waiting_parts", summaryNow),
+    [rows, summaryNow],
+  );
+
+  const readyToInvoiceCount = useMemo(
+    () => countWorkOrdersBySummary(rows, "ready_to_invoice", summaryNow),
+    [rows, summaryNow],
+  );
+
+  const atRiskCount = useMemo(
+    () => countWorkOrdersBySummary(rows, "at_risk", summaryNow),
+    [rows, summaryNow],
+  );
+
+  const needsAttentionCount = useMemo(
+    () =>
+      rows.filter((row) => {
+        const statusKey = normalizeStatusKey(row.status);
+        const updatedAt = new Date(
+          row.updated_at ?? row.created_at ?? summaryNow,
+        ).getTime();
+        return (
+          Number(row.priority ?? 3) === 1 ||
+          statusKey === "awaiting_approval" ||
+          statusKey === "waiting_parts" ||
+          summaryNow - updatedAt >= 3 * 86400000
+        );
+      }).length,
+    [rows, summaryNow],
+  );
+
+  const visibleRows = useMemo(
+    () => filterWorkOrdersBySummary(rows, summaryFilter, summaryNow),
+    [rows, summaryFilter, summaryNow],
+  );
+
+  const summaryCards = [
+    {
+      label: "At risk",
+      value: atRiskCount,
+      icon: AlertTriangle,
+      tone: "text-orange-600 dark:text-orange-300",
+      filter: "at_risk",
+    },
+    {
+      label: "Ready to work",
+      value: readyToWorkCount,
+      icon: CheckCircle2,
+      tone: "text-blue-600 dark:text-blue-300",
+      filter: "ready_to_work",
+    },
+    {
+      label: "Waiting parts",
+      value: waitingPartsCount,
+      icon: Clock3,
+      tone: "text-amber-600 dark:text-amber-300",
+      filter: "waiting_parts",
+    },
+    {
+      label: "Ready to invoice",
+      value: readyToInvoiceCount,
+      icon: ClipboardCheck,
+      tone: "text-emerald-600 dark:text-emerald-300",
+      filter: "ready_to_invoice",
+    },
+  ] as const;
+
   return (
-    <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 text-foreground">
-      <section className="overflow-hidden rounded-3xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] shadow-[var(--theme-shadow-medium)]">
-        <div className="bg-[var(--theme-gradient-panel)] p-4 md:p-5">
-        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+    <div
+      className="-mx-3 min-h-[calc(100vh-4.25rem)] bg-[color:var(--desktop-bg-secondary)] px-3 py-5 text-foreground md:-mx-4 md:px-4 lg:-mx-6 lg:px-6 xl:-mx-8 xl:px-8 2xl:-mx-10 2xl:px-10"
+      style={{ backgroundImage: "var(--app-shell-wash)" }}
+    >
+      <div className="mx-auto max-w-[1600px] space-y-4">
+        <header className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
           <div>
             <div className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-muted)]">
-              Board
+              Operations
             </div>
             <h1
-              className="mt-1 text-2xl text-[color:var(--theme-text-primary)] md:text-3xl"
+              className="mt-1 text-3xl text-[color:var(--theme-text-primary)]"
               style={{ fontFamily: "var(--font-blackops)" }}
             >
               Work Orders
             </h1>
-            <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">
-              Live repair jobs across inspection, approval, parts, technician work, and invoicing.
+            <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
+              {total} work orders · {activeCount} active ·{" "}
+              <span className="font-semibold text-[var(--brand-primary,#1747FF)]">
+                {needsAttentionCount} need attention
+              </span>
+              {waiterCount > 0 ? ` · ${waiterCount} waiters` : ""}
             </p>
-
-            {!loading && !err ? (
-              <div className="mt-3 flex flex-wrap gap-2">
-                <div className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1 text-[11px] font-semibold text-[color:var(--theme-text-primary)]">
-                  Active: <span className="text-[color:var(--theme-text-primary)]">{activeCount}</span>
-                </div>
-                <div className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1 text-[11px] font-semibold text-[color:var(--theme-text-primary)]">
-                  Awaiting approval:{" "}
-                  <span className="text-[color:var(--theme-text-primary)]">{awaitingApprovalCount}</span>
-                </div>
-                <div className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1 text-[11px] font-semibold text-[color:var(--theme-text-primary)]">
-                  Waiters: <span className="text-[color:var(--theme-text-primary)]">{waiterCount}</span>
-                </div>
-                <div className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1 text-[11px] font-semibold text-[color:var(--theme-text-primary)]">
-                  Urgent: <span className="text-[color:var(--theme-text-primary)]">{urgentCount}</span>
-                </div>
-                <div className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1 text-[11px] font-semibold text-[color:var(--theme-text-primary)]">
-                  Total: <span className="text-[color:var(--theme-text-primary)]">{total}</span>
-                </div>
-              </div>
-            ) : null}
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2">
             <Link
               href="/assistant?pageType=work_orders&pageTitle=Work%20Orders"
-              className="inline-flex items-center justify-center rounded-full border border-[var(--accent-copper-light)]/35 bg-[var(--accent-copper)]/15 px-3.5 py-1.5 text-sm font-semibold text-[var(--accent-copper-light)] transition hover:bg-[var(--accent-copper)]/22"
+              className="inline-flex h-11 items-center justify-center rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 text-sm font-semibold text-[color:var(--brand-primary,#1747FF)] transition hover:border-[color:var(--brand-primary,#1747FF)]/60"
             >
               Ask Assistant
             </Link>
-
             <Link
               href="/work-orders/create"
-              className="inline-flex items-center justify-center rounded-full border border-[color:var(--accent-copper,#C57A4A)]/45 bg-[linear-gradient(135deg,rgba(197,122,74,0.35),rgba(197,122,74,0.18))] px-3.5 py-1.5 text-sm font-semibold text-[color:var(--theme-text-primary,var(--theme-text-primary))] transition hover:border-[color:var(--accent-copper,#C57A4A)]/65"
+              className="inline-flex h-11 items-center gap-2 rounded-xl bg-[var(--brand-primary,#1747FF)] px-4 text-sm font-semibold text-white shadow-sm transition hover:brightness-110"
             >
-              <span className="mr-1.5 text-base leading-none">+</span>
-              New work order
+              <Plus className="h-4 w-4" />
+              Create work order
             </Link>
           </div>
-        </div>
-        </div>
-      </section>
+        </header>
 
-      <section className="rounded-3xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] p-4 backdrop-blur shadow-[var(--theme-shadow-medium)]">
-        {workforceDrilldownActive ? (
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-sky-500/35 bg-sky-500/10 px-3 py-2 text-sm text-sky-100">
-            <span>Filtered from Workforce Overview: Unassigned active jobs</span>
-            <Link href="/work-orders/view" className="underline underline-offset-2 hover:text-[color:var(--theme-text-primary)]">
-              Clear filter
-            </Link>
+        <section className="rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] p-3 shadow-[var(--desktop-shadow-card)]">
+          {workforceDrilldownActive ? (
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-sky-500/35 bg-sky-500/10 px-3 py-2 text-sm text-sky-700 dark:text-sky-100">
+              <span>
+                Filtered from Workforce Overview: Unassigned active jobs
+              </span>
+              <Link
+                href="/work-orders/view"
+                className="font-semibold underline underline-offset-2 hover:text-[color:var(--theme-text-primary)]"
+              >
+                Clear filter
+              </Link>
+            </div>
+          ) : null}
+
+          <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_230px_auto]">
+            <label className="relative">
+              <span className="sr-only">Search work orders</span>
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[color:var(--theme-text-muted)]" />
+              <input
+                value={q}
+                onChange={(event) => setQ(event.target.value)}
+                onKeyDown={(event) => event.key === "Enter" && void load()}
+                placeholder="Search work order, customer, plate, or vehicle…"
+                className={`${INPUT_DARK} h-11 pl-9`}
+              />
+            </label>
+
+            <select
+              value={status}
+              onChange={(event) => {
+                setStatus(event.target.value);
+                setSummaryFilter(null);
+              }}
+              className={`${SELECT_DARK} h-11`}
+              aria-label="Filter by status"
+            >
+              <option value="">Active</option>
+              <option value="new">New</option>
+              <option value="awaiting">Awaiting</option>
+              <option value="awaiting_inspection">Awaiting inspection</option>
+              <option value="recommended">Recommended</option>
+              <option value="awaiting_approval">Awaiting approval</option>
+              <option value="waiting_parts">Waiting parts</option>
+              <option value="approved">Approved</option>
+              <option value="queued">Queued (legacy)</option>
+              <option value="in_progress">In progress</option>
+              <option value="on_hold">On hold</option>
+              <option value="planned">Planned (legacy)</option>
+              <option value="completed">Completed (review)</option>
+              <option value="ready_to_invoice">Ready to invoice</option>
+              <option value="invoiced">Invoiced</option>
+            </select>
+
+            <button
+              type="button"
+              onClick={() => {
+                void load();
+                setAssignVersion((version) => version + 1);
+              }}
+              className="grid h-11 w-full place-items-center rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] text-[color:var(--theme-text-primary)] transition hover:border-[color:var(--brand-primary,#1747FF)]/60 lg:w-11"
+              aria-label="Refresh work orders"
+              title="Refresh work orders"
+            >
+              <RefreshCw className="h-4 w-4" />
+            </button>
+          </div>
+        </section>
+
+        {!loading && !err ? (
+          <section className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            {summaryCards.map(({ label, value, icon: Icon, tone, filter }) => {
+              const selected = summaryFilter === filter;
+              return (
+                <button
+                  key={label}
+                  type="button"
+                  aria-pressed={selected}
+                  onClick={() =>
+                    setSummaryFilter((current) =>
+                      toggleWorkOrderSummaryFilter(current, filter),
+                    )
+                  }
+                  className={`flex items-center gap-3 rounded-xl border bg-[color:var(--desktop-item-bg)] px-4 py-3 text-left shadow-sm transition hover:border-[color:var(--brand-primary,#1747FF)]/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-primary,#1747FF)]/50 ${
+                    selected
+                      ? "border-[color:var(--brand-primary,#1747FF)] shadow-[0_0_0_1px_color-mix(in_srgb,var(--brand-primary,#1747FF)_30%,transparent)]"
+                      : "border-[color:var(--desktop-border)]"
+                  }`}
+                >
+                  <Icon className={`h-5 w-5 ${tone}`} />
+                  <span className="flex-1 text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                    {label}
+                  </span>
+                  <strong className={`text-xl ${tone}`}>{value}</strong>
+                </button>
+              );
+            })}
+          </section>
+        ) : null}
+
+        {err ? (
+          <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-700 dark:text-red-100">
+            {err}
           </div>
         ) : null}
-        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px_auto]">
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && void load()}
-            placeholder="Search work order, custom id, customer, plate, YMM…"
-            className={INPUT_DARK}
-          />
 
-          <select
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
-            className={SELECT_DARK}
-            aria-label="Filter by status"
-          >
-            <option value="">Active</option>
-            <option value="new">New</option>
-            <option value="awaiting">Awaiting</option>
-            <option value="awaiting_inspection">Awaiting inspection</option>
-            <option value="recommended">Recommended</option>
-            <option value="awaiting_approval">Awaiting approval</option>
-            <option value="waiting_parts">Waiting parts</option>
-            <option value="approved">Approved</option>
-            <option value="queued">Queued (legacy)</option>
-            <option value="in_progress">In progress</option>
-            <option value="on_hold">On hold</option>
-            <option value="planned">Planned (legacy)</option>
-            <option value="completed">Completed (review)</option>
-            <option value="ready_to_invoice">Ready to invoice</option>
-            <option value="invoiced">Invoiced</option>
-          </select>
-
-          <button
-            onClick={() => {
-              void load();
-              setAssignVersion((v) => v + 1);
-            }}
-            className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] transition hover:border-sky-400/60 hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_80%,_var(--theme-surface-page))]"
-          >
-            Refresh
-          </button>
-        </div>
-      </section>
-
-      {err ? (
-        <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
-          {err}
-        </div>
-      ) : null}
-
-      {loading ? (
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div
-              key={i}
-              className="h-64 animate-pulse rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)]"
-            />
-          ))}
-        </div>
-      ) : rows.length === 0 ? (
-        <div className="rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-6 text-sm text-[color:var(--theme-text-secondary)]">
-          {workforceDrilldownActive ? "No unassigned active jobs right now." : "No work orders match your current filters."}
-        </div>
-      ) : (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {rows.map((r) => {
-            const displayId = workOrderDisplayId(r);
-            const href = `/work-orders/${r.custom_id ?? r.id}?mode=view`;
-            const isAssigning = assigningFor === r.id;
-
-            const customerName = r.customers
-              ? [r.customers.first_name ?? "", r.customers.last_name ?? ""]
-                  .filter(Boolean)
-                  .join(" ")
-              : "";
-
-            const vehicleLabel = r.vehicles
-              ? `${r.vehicles.year ?? ""} ${r.vehicles.make ?? ""} ${r.vehicles.model ?? ""}`
-                  .trim()
-              : "";
-
-            const plate = r.vehicles?.license_plate ?? "";
-            const statusLower = String(r.status ?? "")
-              .toLowerCase()
-              .replaceAll(" ", "_");
-
-            const isInvoiceStage =
-              statusLower === "ready_to_invoice" || statusLower === "completed";
-
-            const review = reviewByWo[r.id];
-            const reviewedOk = Boolean(review?.ok);
-            const issueCount = review?.issues?.length ?? 0;
-            const techRollup = techRollupByWo[r.id] ?? "awaiting";
-            const canonicalStatus = normalizeWorkOrderStatus(r.status);
-            const hasAssignedTech = Boolean(assignedByWo[r.id]);
-            const hasWorkLines = Boolean(hasLinesByWo[r.id]);
-            const shouldShowInspectionPending =
-              !r.inspection_id &&
-              !hasWorkLines &&
-              ["new", "awaiting", "awaiting_inspection"].includes(canonicalStatus);
-            const staleDays = Math.max(0, Math.floor((Date.now() - new Date(r.updated_at ?? r.created_at ?? Date.now()).getTime()) / 86400000));
-
-            const accent = stageAccent(r.status);
-            const priority = priorityLabel(r.priority);
-            const progressPct =
-              techRollup === "completed"
-                ? 100
-                : techRollup === "in_progress"
-                  ? 55
-                  : techRollup === "on_hold"
-                    ? 25
-                    : 8;
-
-            return (
+        {loading ? (
+          <section className="space-y-2 rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] p-2">
+            {Array.from({ length: 6 }).map((_, index) => (
               <div
-                key={r.id}
-                className={`rounded-2xl border bg-[color:var(--desktop-item-bg)] p-4 backdrop-blur transition hover:border-sky-400/45 hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_82%,_var(--theme-surface-page))] ${accent.border}`}
-                style={{
-                  boxShadow:
-                    "0 0 0 1px rgba(255,255,255,0.04) inset, 0 0 24px var(--theme-surface-inset)",
-                }}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-extrabold text-[color:var(--theme-text-primary)]">
-                        {displayId}
-                      </span>
+                key={index}
+                className="h-28 animate-pulse rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)]"
+              />
+            ))}
+          </section>
+        ) : visibleRows.length === 0 ? (
+          <div className="rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-6 text-sm text-[color:var(--theme-text-secondary)]">
+            {workforceDrilldownActive
+              ? "No unassigned active jobs right now."
+              : summaryFilter
+                ? "No work orders match the selected summary filter."
+                : "No work orders match your current filters."}
+          </div>
+        ) : (
+          <section className="overflow-hidden rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] shadow-[var(--desktop-shadow-card)]">
+            <div className="hidden grid-cols-[minmax(190px,1.25fr)_minmax(170px,1fr)_minmax(210px,1.25fr)_minmax(170px,.9fr)_90px] gap-3 border-b border-[color:var(--desktop-border)] px-5 py-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)] lg:grid">
+              <span>Work order</span>
+              <span>Vehicle</span>
+              <span>Operational state</span>
+              <span>Assigned</span>
+              <span className="text-right">Age</span>
+            </div>
 
-                      <span
-                        className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${accent.badge}`}
-                      >
-                        {workOrderStatusLabel(r.status)}
-                      </span>
+            <div className="space-y-2 p-2">
+              {visibleRows.map((row) => {
+                const displayId = workOrderDisplayId(row);
+                const href = `/work-orders/${row.custom_id ?? row.id}?mode=view`;
+                const isAssigning = assigningFor === row.id;
+                const customerName = row.customers
+                  ? [
+                      row.customers.first_name ?? "",
+                      row.customers.last_name ?? "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")
+                  : "";
+                const vehicleLabel = row.vehicles
+                  ? `${row.vehicles.year ?? ""} ${row.vehicles.make ?? ""} ${row.vehicles.model ?? ""}`.trim()
+                  : "";
+                const plate = row.vehicles?.license_plate ?? "";
+                const operationalStage =
+                  operationalStageByWo[row.id] ??
+                  normalizeWorkOrderOperationalStage(row.status);
+                const isInvoiceStage =
+                  operationalStage === "quality_check" ||
+                  operationalStage === "ready";
+                const review = reviewByWo[row.id];
+                const reviewedOk = Boolean(review?.ok);
+                const issueCount = review?.issues?.length ?? 0;
+                const techRollup = techRollupByWo[row.id] ?? "awaiting";
+                const canonicalStatus = normalizeWorkOrderStatus(row.status);
+                const hasAssignedTech = Boolean(assignedByWo[row.id]);
+                const hasWorkLines = Boolean(hasLinesByWo[row.id]);
+                const shouldShowInspectionPending =
+                  !row.inspection_id &&
+                  !hasWorkLines &&
+                  ["new", "awaiting", "awaiting_inspection"].includes(
+                    canonicalStatus,
+                  );
+                const staleDays = Math.max(
+                  0,
+                  Math.floor(
+                    (Date.now() -
+                      new Date(
+                        row.updated_at ?? row.created_at ?? Date.now(),
+                      ).getTime()) /
+                      86400000,
+                  ),
+                );
+                const accent = stageAccent(operationalStage);
+                const priority = priorityLabel(row.priority);
+                const progressPct =
+                  workOrderOperationalStageProgress(operationalStage);
+                const operationalNote =
+                  operationalStage === "awaiting_approval"
+                    ? "Needs customer approval"
+                    : operationalStage === "waiting"
+                      ? canonicalStatus === "waiting_parts"
+                        ? "Waiting for parts"
+                        : canonicalStatus === "awaiting_approval"
+                          ? "Needs customer approval"
+                          : shouldShowInspectionPending
+                            ? "Inspection needed"
+                            : !hasAssignedTech
+                              ? "Technician unassigned"
+                              : "Waiting for next step"
+                      : !hasAssignedTech
+                        ? "Technician unassigned"
+                        : shouldShowInspectionPending
+                          ? "Inspection pending"
+                          : operationalStage === "quality_check"
+                            ? "Final quality check"
+                            : operationalStage === "ready"
+                              ? "Invoice review ready"
+                            : `Technician ${techRollup.replaceAll("_", " ")}`;
 
-                      <span
-                        className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${techRollupChip(
-                          techRollup,
-                        )}`}
-                      >
-                        Tech: {techRollup.replaceAll("_", " ")}
-                      </span>
-
-                      {r.is_waiter ? (
-                        <span className="rounded-full border border-red-500/60 bg-red-500/15 px-2 py-0.5 text-[11px] font-bold text-red-200">
-                          Waiting
-                        </span>
-                      ) : null}
-
-                      {priority ? (
-                        <span
-                          className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${priorityChip(
-                            r.priority,
-                          )}`}
-                        >
-                          {priority}
-                        </span>
-                      ) : null}
-
-                      {review ? (
-                        reviewedOk ? (
-                          <span className="rounded-full border border-emerald-500/50 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-bold text-emerald-200">
-                            Reviewed ✓
-                          </span>
-                        ) : (
-                          <span className="rounded-full border border-sky-500/50 bg-sky-500/10 px-2 py-0.5 text-[11px] font-bold text-sky-100">
-                            Issues: {issueCount}
-                          </span>
-                        )
-                      ) : null}
-                    </div>
-
-                    <div className="mt-2 truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">
-                      {customerName || "No customer"}
-                    </div>
-
-                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[color:var(--theme-text-secondary)]">
-                      {vehicleLabel ? <span>{vehicleLabel}</span> : <span>No vehicle</span>}
-                      {plate ? <span>({plate})</span> : null}
-                    </div>
-                  </div>
-
-                  <div className="shrink-0 text-right">
-                    <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
-                      Created
-                    </div>
-                    <div className="mt-1 text-sm font-bold text-[color:var(--theme-text-primary)]">
-                      {r.created_at ? format(new Date(r.created_at), "PP") : "—"}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-4">
-                  <div className="flex items-center justify-between text-[11px] text-[color:var(--theme-text-secondary)]">
-                    <span>Workflow health</span>
-                    <span>{progressPct}%</span>
-                  </div>
-                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-[color:var(--theme-surface-subtle)]">
+                return (
+                  <article
+                    key={row.id}
+                    className={`relative overflow-hidden rounded-xl border bg-[color:var(--desktop-item-bg)] transition hover:border-[color:var(--brand-primary,#1747FF)]/55 hover:shadow-md ${accent.border}`}
+                  >
                     <div
-                      className={`h-full rounded-full ${accent.progress}`}
-                      style={{ width: `${progressPct}%` }}
+                      className={`absolute inset-y-0 left-0 w-1 ${accent.progress}`}
                     />
-                  </div>
-                </div>
 
-                <div className="mt-4 flex min-h-[30px] items-center">
-                  <WorkOrderAssignedSummary workOrderId={r.id} />
-                </div>
+                    <div className="grid gap-3 px-4 py-3 pl-5 lg:grid-cols-[minmax(190px,1.25fr)_minmax(170px,1fr)_minmax(210px,1.25fr)_minmax(170px,.9fr)_90px] lg:items-center">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Link
+                            href={href}
+                            className="font-extrabold text-[color:var(--theme-text-primary)] hover:text-[color:var(--brand-primary,#1747FF)]"
+                          >
+                            {displayId}
+                          </Link>
+                          {row.is_waiter ? (
+                            <span className="rounded-full border border-amber-500/35 bg-amber-500/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-100">
+                              Waiter
+                            </span>
+                          ) : null}
+                          {priority ? (
+                            <span
+                              className={`rounded-full border px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${priorityChip(
+                                row.priority,
+                              )}`}
+                            >
+                              {priority}
+                            </span>
+                          ) : null}
+                        </div>
+                        <div className="mt-1 truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                          {customerName || "No customer"}
+                        </div>
+                      </div>
 
-                <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
-                  {canonicalStatus === "awaiting_approval" ? <span className="rounded-full border border-blue-400/50 bg-blue-500/10 px-2 py-0.5 text-blue-100">Needs approval</span> : null}
-                  {canonicalStatus === "waiting_parts" || techRollup === "on_hold" ? <span className="rounded-full border border-sky-400/45 bg-sky-500/10 px-2 py-0.5 text-sky-100">Waiting parts</span> : null}
-                  {!hasAssignedTech ? <span className="rounded-full border border-amber-400/50 bg-amber-500/10 px-2 py-0.5 text-amber-100">No technician assigned</span> : null}
-                  {shouldShowInspectionPending ? <span className="rounded-full border border-indigo-400/45 bg-indigo-500/10 px-2 py-0.5 text-indigo-100">Inspection pending</span> : null}
-                  {canonicalStatus === "ready_to_invoice" ? <span className="rounded-full border border-emerald-400/60 bg-emerald-500/10 px-2 py-0.5 text-emerald-100">Ready to invoice</span> : null}
-                  {staleDays >= 3 ? <span className="rounded-full border border-red-400/45 bg-red-500/10 px-2 py-0.5 text-red-100">Stale {staleDays}d</span> : null}
-                </div>
+                      <div className="min-w-0">
+                        <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)] lg:hidden">
+                          Vehicle
+                        </div>
+                        <div className="truncate text-sm text-[color:var(--theme-text-primary)]">
+                          {vehicleLabel || "No vehicle"}
+                        </div>
+                        {plate ? (
+                          <div className="mt-0.5 truncate text-xs text-[color:var(--theme-text-muted)]">
+                            {plate}
+                          </div>
+                        ) : null}
+                      </div>
 
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <Link
-                    href={href}
-                    className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-xs font-semibold text-[color:var(--theme-text-primary)] transition hover:border-sky-400/60 hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_80%,_var(--theme-surface-page))]"
-                  >
-                    Open
-                  </Link>
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span
+                            className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] ${accent.badge}`}
+                          >
+                            {WORK_ORDER_OPERATIONAL_STAGE_LABELS[operationalStage]}
+                          </span>
+                          <span className="truncate text-xs font-medium text-[color:var(--theme-text-secondary)]">
+                            {operationalNote}
+                          </span>
+                        </div>
+                        <div className="mt-2 flex items-center gap-2">
+                          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[color:var(--theme-surface-subtle)]">
+                            <div
+                              className={`h-full rounded-full ${accent.progress}`}
+                              style={{ width: `${progressPct}%` }}
+                            />
+                          </div>
+                          <span className="shrink-0 text-[10px] text-[color:var(--theme-text-muted)]">
+                            {progressPct}%
+                          </span>
+                        </div>
+                      </div>
 
-                  {canPickStatus ? (
-                    <button
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        openStatusPicker(r);
-                      }}
-                      className="rounded-full border border-purple-500/60 bg-purple-500/10 px-3 py-1.5 text-xs font-semibold text-purple-100 transition hover:bg-purple-500/20"
-                      title="Change work order workflow stage"
-                    >
-                      Change stage
-                    </button>
-                  ) : null}
+                      <div className="min-w-0">
+                        <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)] lg:hidden">
+                          Assigned
+                        </div>
+                        <div className="min-h-[28px]">
+                          <WorkOrderAssignedSummary workOrderId={row.id} />
+                        </div>
+                        {!hasAssignedTech ? (
+                          <div className="mt-1 flex items-center gap-1 text-xs text-amber-700 dark:text-amber-100">
+                            <UserRound className="h-3.5 w-3.5" />
+                            Unassigned
+                          </div>
+                        ) : null}
+                      </div>
 
-                  {isInvoiceStage ? (
-                    <button
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void runInvoiceReview(r.id);
-                      }}
-                      disabled={reviewLoadingId === r.id || reviewedOk}
-                      className={
-                        reviewedOk
-                          ? "rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-100 opacity-70"
-                          : "rounded-full border border-emerald-500/60 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-100 transition hover:bg-emerald-500/20 disabled:opacity-50"
-                      }
-                    >
-                      {reviewedOk
-                        ? "Reviewed"
-                        : reviewLoadingId === r.id
-                          ? "Reviewing…"
-                          : "Invoice review"}
-                    </button>
-                  ) : null}
+                      <div className="flex items-center justify-between gap-3 lg:justify-end">
+                        <div className="text-left lg:text-right">
+                          <div
+                            className={
+                              staleDays >= 3
+                                ? "text-sm font-bold text-red-600 dark:text-red-300"
+                                : "text-sm font-semibold text-[color:var(--theme-text-primary)]"
+                            }
+                          >
+                            {staleDays === 0 ? "Today" : `${staleDays}d`}
+                          </div>
+                          <div
+                            className="mt-0.5 text-[10px] text-[color:var(--theme-text-muted)]"
+                            title={
+                              row.created_at
+                                ? format(new Date(row.created_at), "PP")
+                                : undefined
+                            }
+                          >
+                            since update
+                          </div>
+                        </div>
+                        <Link
+                          href={href}
+                          aria-label={`Open ${displayId}`}
+                          className="grid h-9 w-9 place-items-center rounded-lg text-[color:var(--theme-text-muted)] transition hover:bg-[color:var(--theme-surface-hover)] hover:text-[color:var(--brand-primary,#1747FF)]"
+                        >
+                          <ChevronRight className="h-4 w-4" />
+                        </Link>
+                      </div>
+                    </div>
 
-                  {statusLower === "ready_to_invoice" ? (
-                    <button
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        openInvoicePage(r.id);
-                      }}
-                      disabled={!reviewedOk}
-                      className={
-                        reviewedOk
-                          ? "rounded-full border border-sky-400/60 bg-sky-500/10 px-3 py-1.5 text-xs font-semibold text-sky-100 transition hover:bg-sky-500/20"
-                          : "rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-xs font-semibold text-[color:var(--theme-text-muted)] opacity-60"
-                      }
-                    >
-                      Invoice
-                    </button>
-                  ) : null}
+                    <div className="flex flex-wrap items-center gap-2 border-t border-[color:var(--desktop-border)] bg-[color:var(--theme-surface-subtle)] px-4 py-2 pl-5">
+                      <Link
+                        href={href}
+                        className="rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-xs font-semibold text-[color:var(--theme-text-primary)] transition hover:border-[color:var(--brand-primary,#1747FF)]/60"
+                      >
+                        Open
+                      </Link>
 
-                  <button
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      void handleDelete(r.id);
-                    }}
-                    className="rounded-full border border-red-500/60 bg-red-500/10 px-3 py-1.5 text-xs font-semibold text-red-200 transition hover:bg-red-500/20"
-                  >
-                    Delete
-                  </button>
-                </div>
+                      {isInvoiceStage ? (
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void runInvoiceReview(row.id);
+                          }}
+                          disabled={reviewLoadingId === row.id || reviewedOk}
+                          className="rounded-lg border border-emerald-500/45 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-500/15 disabled:opacity-55 dark:text-emerald-100"
+                        >
+                          {reviewedOk
+                            ? "Reviewed"
+                            : reviewLoadingId === row.id
+                              ? "Reviewing…"
+                              : "Invoice review"}
+                        </button>
+                      ) : null}
 
-                {canAssign ? (
-                  <div
-                    className="mt-4 rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] p-3"
-                    onClick={(event) => event.stopPropagation()}
-                    onKeyDown={(event) => event.stopPropagation()}
-                  >
-                    {!isAssigning ? (
+                      {operationalStage === "ready" ? (
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            openInvoicePage(row.id);
+                          }}
+                          disabled={!reviewedOk}
+                          className="rounded-lg border border-sky-500/45 bg-sky-500/10 px-3 py-1.5 text-xs font-semibold text-sky-700 transition hover:bg-sky-500/15 disabled:cursor-not-allowed disabled:opacity-50 dark:text-sky-100"
+                        >
+                          Invoice
+                        </button>
+                      ) : null}
+
+                      {canAssign && !isAssigning ? (
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setAssigningFor(row.id);
+                            setSelectedTechId("");
+                          }}
+                          className="rounded-lg border border-sky-500/45 bg-sky-500/10 px-3 py-1.5 text-xs font-semibold text-sky-700 transition hover:bg-sky-500/15 dark:text-sky-100"
+                        >
+                          Assign work order
+                        </button>
+                      ) : null}
+
                       <button
+                        type="button"
                         onClick={(event) => {
                           event.stopPropagation();
-                          setAssigningFor(r.id);
-                          setSelectedTechId("");
+                          void handleDelete(row.id);
                         }}
-                        className="rounded-full border border-sky-500/60 bg-sky-500/10 px-3 py-1.5 text-xs font-semibold text-sky-100 transition hover:bg-sky-500/25"
+                        className="ml-auto rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-1.5 text-xs font-semibold text-red-700 transition hover:bg-red-500/15 dark:text-red-100"
                       >
-                        Assign work order
+                        Delete
                       </button>
-                    ) : (
-                      <div className="space-y-2">
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
+
+                      {review && !reviewedOk ? (
+                        <span className="text-xs font-medium text-orange-700 dark:text-orange-200">
+                          {issueCount} invoice issue
+                          {issueCount === 1 ? "" : "s"}
+                        </span>
+                      ) : null}
+                    </div>
+
+                    {canAssign && isAssigning ? (
+                      <div
+                        className="border-t border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] px-4 py-3 pl-5"
+                        onClick={(event) => event.stopPropagation()}
+                        onKeyDown={(event) => event.stopPropagation()}
+                      >
+                        <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
                           Assign unassigned lines
                         </div>
-
-                        <div className="flex flex-wrap items-center gap-2">
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
                           <select
                             value={selectedTechId}
-                            onClick={(event) => event.stopPropagation()}
-                            onKeyDown={(event) => event.stopPropagation()}
-                            onChange={(e) => setSelectedTechId(e.target.value)}
-                            className={`${SELECT_DARK} min-w-[180px] px-3 py-2 text-xs`}
+                            onChange={(event) =>
+                              setSelectedTechId(event.target.value)
+                            }
+                            className={`${SELECT_DARK} min-w-[220px] px-3 py-2 text-xs`}
                           >
                             <option value="">Pick mechanic…</option>
-                            {techs.map((t) => (
-                              <option key={t.id} value={t.id}>
-                                {t.full_name ?? "(no name)"}{" "}
-                                {t.role ? `(${t.role})` : ""}
+                            {techs.map((tech) => (
+                              <option key={tech.id} value={tech.id}>
+                                {tech.full_name ?? "(no name)"}{" "}
+                                {tech.role ? `(${tech.role})` : ""}
                               </option>
                             ))}
                           </select>
-
                           <button
+                            type="button"
                             onClick={(event) => {
                               event.stopPropagation();
-                              void handleAssignAll(r.id);
+                              void handleAssignAll(row.id);
                             }}
-                            className="rounded-full border border-[color:var(--accent-copper,#C57A4A)]/45 bg-[linear-gradient(135deg,rgba(197,122,74,0.35),rgba(197,122,74,0.18))] px-3 py-1.5 text-xs font-semibold text-[color:var(--theme-text-primary,var(--theme-text-primary))] transition hover:border-[color:var(--accent-copper,#C57A4A)]/65"
+                            className="rounded-lg bg-[var(--brand-primary,#1747FF)] px-3 py-2 text-xs font-semibold text-white transition hover:brightness-110"
                           >
                             Apply
                           </button>
-
                           <button
+                            type="button"
                             onClick={(event) => {
                               event.stopPropagation();
                               setAssigningFor(null);
                               setSelectedTechId("");
                             }}
-                            className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-xs font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_80%,_var(--theme-surface-page))]"
+                            className="rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-xs font-semibold text-[color:var(--theme-text-primary)]"
                           >
                             Cancel
                           </button>
                         </div>
                       </div>
-                    )}
-                  </div>
-                ) : null}
-              </div>
-            );
-          })}
-        </div>
-      )}
+                    ) : null}
+                  </article>
+                );
+              })}
+            </div>
+          </section>
+        )}
 
-      {statusPickerOpen && statusPickerWoId ? (
-        <StatusPickerModal
-          isOpen={statusPickerOpen}
-          onClose={() => setStatusPickerOpen(false)}
-          current={statusPickerCurrent}
-          onChange={async (pick) => {
-            const woId = statusPickerWoId;
-            const next = pick.replace("status:", "") as WorkOrderStatus;
-            await applyWorkOrderStatus(woId, next);
-            await load();
-          }}
-        />
-      ) : null}
+      </div>
     </div>
   );
 }

@@ -2,7 +2,7 @@
 
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { toast } from "sonner";
@@ -25,6 +25,7 @@ import OwnerSettingsOperationsSection from "@/features/dashboard/components/owne
 import OwnerAiAutomationSection from "@/features/dashboard/components/owner-settings/OwnerAiAutomationSection";
 import OwnerSettingsSchedulingSection from "@/features/dashboard/components/owner-settings/OwnerSettingsSchedulingSection";
 import OwnerSettingsSidebar from "@/features/dashboard/components/owner-settings/OwnerSettingsSidebar";
+import OwnerSettingsUsersSection from "@/features/dashboard/components/owner-settings/OwnerSettingsUsersSection";
 import OwnerSettingsNavigation, {
   ownerSettingsSectionLabel,
   type OwnerSettingsSectionId,
@@ -34,6 +35,7 @@ import {
   OwnerSettingsStat,
 } from "@/features/dashboard/components/owner-settings/OwnerSettingsPanels";
 import BrandStudioSummaryCard from "@/features/branding/components/BrandStudioSummaryCard";
+import InvoiceDesignSettings from "@/features/dashboard/components/owner-settings/InvoiceDesignSettings";
 import QuickBooksConnectCard from "@/features/integrations/quickbooks/components/QuickBooksConnectCard";
 import ProfileIdentityCard from "@/features/users/components/ProfileIdentityCard";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
@@ -47,12 +49,6 @@ import {
 } from "@/features/stripe/lib/stripe/plan-normalization";
 import GuidedPageStepPanel from "@/features/onboarding-v2/components/GuidedPageStepPanel";
 import { applyThemePreference } from "@/features/shared/lib/theme";
-
-type FileInputChangeEvent = {
-  target: {
-    files: FileList | null;
-  };
-};
 
 type HourRow = {
   weekday: number;
@@ -205,6 +201,7 @@ const SETTINGS_HASH_MAP: Record<string, OwnerSettingsSectionId> = {
   "settings-business": "business",
   "settings-operations": "operations",
   "settings-automation": "automation",
+  "settings-team": "team",
   "settings-scheduling": "scheduling",
   "settings-communications": "communications",
   "settings-integrations": "integrations",
@@ -217,6 +214,9 @@ const SETTINGS_HASH_MAP: Record<string, OwnerSettingsSectionId> = {
   "appearance-mode": "operations",
   "pricing-validity": "operations",
   "ai-automation-controls": "automation",
+  "team-access": "team",
+  "team-access-create-user": "team",
+  "team-access-users": "team",
   "hours-settings": "scheduling",
   "timeoff-settings": "scheduling",
   "payroll-timekeeping": "scheduling",
@@ -267,6 +267,7 @@ export default function OwnerSettingsPage() {
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [cancelAtPeriodEnd, setCancelAtPeriodEnd] = useState(false);
   const [canManageBilling, setCanManageBilling] = useState(false);
+  const subscriptionCheckoutAttemptId = useRef(crypto.randomUUID());
 
   const trialDaysLeft = daysUntil(trialEndIso);
   const periodDaysLeft = daysUntil(periodEndIso);
@@ -295,7 +296,7 @@ export default function OwnerSettingsPage() {
   const [postalCode, setPostalCode] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
-  const [logoUrl, setLogoUrl] = useState("");
+  const [invoicePreviewRevision, setInvoicePreviewRevision] = useState(0);
 
   // Money / defaults
   const [laborRate, setLaborRate] = useState("");
@@ -471,7 +472,8 @@ export default function OwnerSettingsPage() {
     }
     setPayrollSettings((prev) => ({ ...prev, ...(body?.settings ?? {}) }));
     setPayrollDirty(false);
-    toast.success("Payroll & timekeeping settings saved.");
+    if (body?.warning) toast.warning(body.warning);
+    else toast.success("Payroll & timekeeping settings saved.");
   }
 
   const maybeToastSeatInfo = (
@@ -695,7 +697,6 @@ export default function OwnerSettingsPage() {
       setPostalCode((shop.postal_code as string | null) || "");
       setPhone((shop.phone_number as string | null) || "");
       setEmail((shop.email as string | null) || "");
-      setLogoUrl((shop.logo_url as string | null) || "");
 
       const c = (shop.country as string | null) || "US";
       setCountry(c === "CA" ? "CA" : "US");
@@ -934,7 +935,6 @@ export default function OwnerSettingsPage() {
         postal_code: postalCode,
         phone_number: phone,
         email,
-        logo_url: logoUrl,
 
         labor_rate: laborRate ? parseFloat(laborRate) : null,
         supplies_percent:
@@ -980,27 +980,8 @@ export default function OwnerSettingsPage() {
     }
 
     setCoreDirty(false);
+    setInvoicePreviewRevision((value) => value + 1);
     toast.success("Core shop settings saved.");
-  };
-
-  const handleLogoUpload = async (e: FileInputChangeEvent) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const filePath = `logos/${crypto.randomUUID()}-${file.name}`;
-    const { error } = await supabase.storage
-      .from("logos")
-      .upload(filePath, file, { upsert: true });
-
-    if (error) {
-      toast.error(error.message);
-      return;
-    }
-
-    const { data } = supabase.storage.from("logos").getPublicUrl(filePath);
-    setLogoUrl(data.publicUrl);
-    setCoreDirty(true);
-    toast.success("Logo uploaded.");
   };
 
   const savePricingValidDays = async () => {
@@ -1251,25 +1232,22 @@ export default function OwnerSettingsPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          flow: "owner",
           planKey: selectedPlan,
-          shopId,
-          successPath: "/dashboard/owner/settings#billing-stripe",
-          cancelPath: "/dashboard/owner/settings#billing-stripe",
-          enableTrial: subStatus !== "active" && subStatus !== "trialing",
+          interval: "monthly",
+          checkoutAttemptId: subscriptionCheckoutAttemptId.current,
         }),
       });
 
-      const j = await res
-        .json()
-        .catch(
-          () =>
-            ({}) as {
-              ok?: boolean;
-              error?: string;
-              details?: string;
-              url?: string;
-            },
-        );
+      const j = await res.json().catch(
+        () =>
+          ({}) as {
+            ok?: boolean;
+            error?: string;
+            details?: string;
+            url?: string;
+          },
+      );
 
       if (res.ok && j?.ok && j?.url) {
         window.location.href = j.url;
@@ -1844,7 +1822,6 @@ export default function OwnerSettingsPage() {
               postalCode={postalCode}
               phone={phone}
               email={email}
-              logoUrl={logoUrl}
               provinceLabel={provinceLabel}
               postalLabel={postalLabel}
               selectClass={selectClass}
@@ -1885,13 +1862,9 @@ export default function OwnerSettingsPage() {
                 setEmail(value);
                 setCoreDirty(true);
               }}
-              onLogoUrlChange={(value) => {
-                setLogoUrl(value);
-                setCoreDirty(true);
-              }}
-              onLogoUpload={handleLogoUpload}
             />
           ) : null}
+          {activeSection === "business" ? <BrandStudioSummaryCard /> : null}
           {activeSection === "operations" ? (
             <OwnerSettingsOperationsSection
               isUnlocked={isUnlocked}
@@ -1970,8 +1943,13 @@ export default function OwnerSettingsPage() {
           {activeSection === "automation" ? (
             <OwnerAiAutomationSection isUnlocked={isUnlocked} />
           ) : null}
-          {activeSection === "integrations" ? <BrandStudioSummaryCard /> : null}
-
+          {activeSection === "team" ? (
+            <OwnerSettingsUsersSection
+              creatorShopName={shopName}
+              creatorRole={ownerRole}
+              onUserCreated={() => setSeatsUsed((used) => used + 1)}
+            />
+          ) : null}
           {activeSection === "integrations" ? (
             <OwnerSettingsPanel
               id="quickbooks-integration"
@@ -2034,6 +2012,13 @@ export default function OwnerSettingsPage() {
                 </span>
               </label>
             </OwnerSettingsPanel>
+          ) : null}
+          {activeSection === "communications" ? (
+            <InvoiceDesignSettings
+              shopId={shopId}
+              isUnlocked={isUnlocked}
+              onSaved={() => setInvoicePreviewRevision((value) => value + 1)}
+            />
           ) : null}
 
           {activeSection === "scheduling" ? (
@@ -2117,16 +2102,7 @@ export default function OwnerSettingsPage() {
             orgId={orgId}
             orgName={orgName}
             locations={locations}
-            shopName={shopName}
-            address={address}
-            city={city}
-            province={province}
-            postalCode={postalCode}
-            phone={phone}
-            email={email}
-            logoUrl={logoUrl}
-            invoiceTerms={invoiceTerms}
-            invoiceFooter={invoiceFooter}
+            invoicePreviewRevision={invoicePreviewRevision}
             emailLogs={emailLogs}
             emailLogsLoading={emailLogsLoading}
             onOpenStripeConnect={openStripeConnect}

@@ -5,7 +5,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
-import { toast } from "sonner";
 
 import type { Database } from "@shared/types/types/supabase";
 import type { RepairLine } from "@ai/lib/parseRepairOutput";
@@ -13,7 +12,9 @@ import type { RepairLine } from "@ai/lib/parseRepairOutput";
 import CustomerPaymentButton from "@/features/stripe/components/CustomerPaymentButton";
 import { WorkOrderInvoiceDownloadButton } from "@work-orders/components/WorkOrderInvoiceDownloadButton";
 import SyncInvoiceToQuickBooksButton from "@/features/integrations/quickbooks/components/SyncInvoiceToQuickBooksButton";
-import WorkOrderCloseoutGatePreview from "@/features/work-orders/components/WorkOrderCloseoutGatePreview";
+import RecordManualPayment from "@/features/invoices/components/RecordManualPayment";
+import InvoicePricingEditor from "@/features/invoices/components/InvoicePricingEditor";
+import { useTabs } from "@/features/shared/components/tabs/TabsProvider";
 
 type DB = Database;
 
@@ -86,9 +87,27 @@ type InvoiceLinePayload = {
   lineId?: string;
 };
 
-type SendInvoiceResponse = { ok?: boolean; error?: string };
-type FinalizeInvoiceResponse = { ok?: boolean; invoiceId?: string; invoiceVersionId?: string; total?: number; error?: string; issues?: ReviewIssue[] };
-type MarkPaidResponse = { ok?: boolean; status?: string; outstandingTotal?: number; error?: string };
+type ActiveInvoiceVersionSummary = {
+  id: string;
+  invoice_id: string | null;
+  lifecycle_status: string;
+  currency: "CAD" | "USD";
+  subtotal: number;
+  discount_total: number;
+  tax_total: number;
+  total: number;
+  paid_total: number;
+  refunded_total: number;
+  outstanding_total: number;
+  snapshot?: InvoiceSnapshotView;
+};
+
+type SendInvoiceResponse = {
+  ok?: boolean;
+  error?: string;
+  invoiceId?: string;
+  invoiceVersion?: ActiveInvoiceVersionSummary;
+};
 
 function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === "object" && x !== null;
@@ -189,6 +208,9 @@ type PdfLinePart = {
 };
 
 type SnapshotPart = {
+  id: string;
+  pricingSourceId?: string;
+  source?: string;
   lineId?: string;
   name?: string;
   qty?: number;
@@ -196,6 +218,43 @@ type SnapshotPart = {
   totalPrice?: number;
   partNumber?: string;
 };
+
+type SnapshotLine = {
+  id: string;
+  line_no?: number | null;
+  description?: string | null;
+  complaint?: string | null;
+  labor_time?: number | null;
+  resolvedLaborHours?: number;
+  resolvedLaborRate?: number;
+  resolvedLaborTotal?: number;
+  resolvedPartsTotal?: number;
+  resolvedLineTotal?: number;
+};
+
+type InvoiceSnapshotView = {
+  currency?: "CAD" | "USD";
+  laborCost?: number | null;
+  partsCost?: number | null;
+  shopSuppliesTotal?: number | null;
+  subtotal?: number | null;
+  discountTotal?: number | null;
+  taxTotal?: number | null;
+  taxRate?: number | null;
+  total?: number | null;
+  parts?: SnapshotPart[];
+  lines?: SnapshotLine[];
+};
+
+function formatInvoiceMoney(
+  value: unknown,
+  invoiceCurrency: "CAD" | "USD",
+): string {
+  return new Intl.NumberFormat("en-CA", {
+    style: "currency",
+    currency: invoiceCurrency,
+  }).format(safeMoney(value));
+}
 
 type InspectionPdfInfo = {
   inspectionId: string;
@@ -216,6 +275,7 @@ export default function InvoicePreviewPageClient({
 }: Props) {
   const router = useRouter();
   const supabase = useMemo(() => createBrowserSupabase(), []);
+  const { updateActiveTab } = useTabs();
 
   const [loading, setLoading] = useState(false);
   const [shopId, setShopId] = useState<string | null>(null);
@@ -224,6 +284,11 @@ export default function InvoicePreviewPageClient({
 
   const [shopInfo, setShopInfo] = useState<ShopInfo | undefined>(undefined);
   const [invoiceId, setInvoiceId] = useState<string | null>(null);
+  const [workOrderLabel, setWorkOrderLabel] = useState<string | null>(null);
+  const [canonicalSnapshot, setCanonicalSnapshot] =
+    useState<InvoiceSnapshotView | null>(null);
+  const [activeInvoiceVersion, setActiveInvoiceVersion] =
+    useState<ActiveInvoiceVersionSummary | null>(null);
   const [canonicalInvoiceTotal, setCanonicalInvoiceTotal] = useState<number>(0);
   const [snapshotWarning, setSnapshotWarning] = useState<string | null>(null);
 
@@ -247,7 +312,6 @@ export default function InvoicePreviewPageClient({
   const [fSummary, setFSummary] = useState<string | undefined>(undefined);
   const [sending, setSending] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
-  const [markingPaid, setMarkingPaid] = useState(false);
 
   // ✅ inspection PDF (works even when no invoice exists yet)
   const [inspectionPdfLoading, setInspectionPdfLoading] = useState(false);
@@ -255,6 +319,29 @@ export default function InvoicePreviewPageClient({
 
   const effectiveVehicleInfo = vehicleInfo ?? fVehicleInfo;
   const effectiveCustomerInfo = customerInfo ?? fCustomerInfo;
+
+  useEffect(() => {
+    const label = workOrderLabel || workOrderId.slice(0, 8);
+    updateActiveTab({
+      title: `Invoice · ${label}`,
+      subtitle:
+        effectiveCustomerInfo?.name?.trim() ||
+        effectiveCustomerInfo?.business_name?.trim() ||
+        undefined,
+      status:
+        activeInvoiceVersion?.lifecycle_status?.replaceAll("_", " ") ||
+        (reviewLoading ? "Reviewing" : reviewOk ? "Ready" : "Draft"),
+    });
+  }, [
+    activeInvoiceVersion?.lifecycle_status,
+    effectiveCustomerInfo?.business_name,
+    effectiveCustomerInfo?.name,
+    reviewLoading,
+    reviewOk,
+    updateActiveTab,
+    workOrderId,
+    workOrderLabel,
+  ]);
 
   const effectiveLines = useMemo(() => {
     const provided = Array.isArray(lines) ? lines : undefined;
@@ -325,6 +412,7 @@ export default function InvoicePreviewPageClient({
         .from("inspections")
         .select("id, pdf_url, pdf_storage_path, finalized_at, created_at")
         .eq("work_order_id", workOrderId)
+        .eq("is_canonical", true)
         .not("pdf_storage_path", "is", null)
         .order("finalized_at", { ascending: false })
         .order("created_at", { ascending: false })
@@ -367,13 +455,14 @@ export default function InvoicePreviewPageClient({
       const { data: woRow, error: woErr } = await supabase
         .from("work_orders")
         .select(
-          "id, shop_id, customer_id, vehicle_id, labor_total, parts_total, invoice_total, customer_name",
+          "id, custom_id, shop_id, customer_id, vehicle_id, labor_total, parts_total, invoice_total, customer_name",
         )
         .eq("id", workOrderId)
         .maybeSingle<
           Pick<
             WorkOrderRow,
             | "id"
+            | "custom_id"
             | "shop_id"
             | "customer_id"
             | "vehicle_id"
@@ -396,6 +485,7 @@ export default function InvoicePreviewPageClient({
       }
 
       setShopId(woRow.shop_id);
+      setWorkOrderLabel(woRow.custom_id?.trim() || null);
 
       const { data: invoiceRow } = await supabase
         .from("invoices")
@@ -411,10 +501,18 @@ export default function InvoicePreviewPageClient({
       try {
         const snapshotRes = await fetch(`/api/work-orders/${workOrderId}/invoice`, { method: "GET" });
         const snapshotJson = (await snapshotRes.json().catch(() => null)) as
-          | { snapshot?: { total?: number | null; parts?: SnapshotPart[] } }
+          | {
+              snapshot?: InvoiceSnapshotView;
+              activeInvoiceVersion?: ActiveInvoiceVersionSummary | null;
+            }
           | null;
-        const snapshotTotal = snapshotJson?.snapshot?.total;
-        for (const part of snapshotJson?.snapshot?.parts ?? []) {
+        const loadedSnapshot = snapshotJson?.snapshot ?? null;
+        const loadedVersion = snapshotJson?.activeInvoiceVersion ?? null;
+        const snapshotTotal = loadedSnapshot?.total;
+        setCanonicalSnapshot(loadedSnapshot);
+        setActiveInvoiceVersion(loadedVersion);
+        if (loadedVersion?.invoice_id) setInvoiceId(loadedVersion.invoice_id);
+        for (const part of loadedSnapshot?.parts ?? []) {
           const lineId = typeof part.lineId === "string" ? part.lineId.trim() : "";
           if (!lineId) continue;
           const qty = numOrUndef(part.qty) ?? 1;
@@ -435,6 +533,8 @@ export default function InvoicePreviewPageClient({
         }
         if (!snapshotRes.ok) {
           setSnapshotWarning("Using locally derived totals; canonical invoice snapshot is unavailable.");
+          setCanonicalSnapshot(null);
+          setActiveInvoiceVersion(null);
           setCanonicalInvoiceTotal(0);
         } else {
           setCanonicalInvoiceTotal(
@@ -446,6 +546,8 @@ export default function InvoicePreviewPageClient({
         }
       } catch {
         setSnapshotWarning("Using locally derived totals; canonical invoice snapshot is unavailable.");
+        setCanonicalSnapshot(null);
+        setActiveInvoiceVersion(null);
         setCanonicalInvoiceTotal(0);
       }
 
@@ -697,9 +799,20 @@ export default function InvoicePreviewPageClient({
     return map;
   }, [reviewIssues]);
 
-  const canTakePayment = Boolean(shopId && stripeAccountId);
-  const canProceed = canTakePayment && reviewOk && !reviewLoading;
-  const displayedTotal = canonicalInvoiceTotal > 0 ? canonicalInvoiceTotal : derivedInvoiceTotal;
+  const generalReviewIssues = useMemo(
+    () => reviewIssues.filter((issue) => !issue.lineId),
+    [reviewIssues],
+  );
+
+  const canTakeStripePayment = Boolean(shopId && stripeAccountId);
+  const invoiceCurrency =
+    activeInvoiceVersion?.currency ??
+    canonicalSnapshot?.currency ??
+    (currency.toUpperCase() as "CAD" | "USD");
+  const outstandingTotal = Math.max(
+    0,
+    Number(activeInvoiceVersion?.outstanding_total ?? canonicalInvoiceTotal),
+  );
 
   const handleBack = useCallback(() => {
     router.back();
@@ -711,59 +824,9 @@ export default function InvoicePreviewPageClient({
     if (typeof window !== "undefined") window.open(url, "_blank", "noopener,noreferrer");
   }, [inspectionPdf?.pdfUrl]);
 
-  const finalizeInvoice = useCallback(async () => {
-    if (finalizing || !reviewOk || reviewLoading) return;
-    try {
-      setFinalizing(true);
-      const res = await fetch("/api/invoices/finalize", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workOrderId }),
-      });
-      const json = (await res.json().catch(() => null)) as FinalizeInvoiceResponse | null;
-      if (!res.ok || !json?.ok || !json.invoiceId) {
-        if (Array.isArray(json?.issues)) setReviewIssues(json.issues);
-        throw new Error(json?.error ?? "Failed to finalize invoice.");
-      }
-      setInvoiceId(json.invoiceId);
-      if (typeof json.total === "number" && Number.isFinite(json.total)) {
-        setCanonicalInvoiceTotal(Math.max(0, json.total));
-      }
-      toast.success("Invoice finalized.");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to finalize invoice.");
-    } finally {
-      setFinalizing(false);
-    }
-  }, [finalizing, reviewLoading, reviewOk, workOrderId]);
-
-  const markInvoicePaid = useCallback(async () => {
-    if (markingPaid || !reviewOk) return;
-    try {
-      if (!invoiceId) await finalizeInvoice();
-      setMarkingPaid(true);
-      const res = await fetch("/api/invoices/mark-paid", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workOrderId }),
-      });
-      const json = (await res.json().catch(() => null)) as MarkPaidResponse | null;
-      if (!res.ok || !json?.ok) throw new Error(json?.error ?? "Failed to mark invoice paid.");
-      toast.success(json.status === "paid" ? "Invoice marked paid." : "Payment recorded.");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to mark invoice paid.");
-    } finally {
-      setMarkingPaid(false);
-    }
-  }, [finalizeInvoice, invoiceId, markingPaid, reviewOk, workOrderId]);
-
-  const printInvoice = useCallback(() => {
-    window.print();
-  }, []);
-
   const sendInvoiceEmail = useCallback(async () => {
     if (sending) return;
-    if (!reviewOk) return;
+    if (!activeInvoiceVersion && !reviewOk) return;
 
     const email = effectiveCustomerInfo?.email;
     if (!email) {
@@ -818,8 +881,16 @@ export default function InvoicePreviewPageClient({
         throw new Error(msg);
       }
 
+      if (json.invoiceId) setInvoiceId(json.invoiceId);
+      if (json.invoiceVersion) {
+        setActiveInvoiceVersion(json.invoiceVersion);
+        setCanonicalInvoiceTotal(Math.max(0, Number(json.invoiceVersion.total)));
+        if (json.invoiceVersion.snapshot) {
+          setCanonicalSnapshot(json.invoiceVersion.snapshot);
+        }
+      }
       await onSent?.();
-      handleBack();
+      router.refresh();
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed to send invoice email";
       setReviewOk(false);
@@ -831,6 +902,7 @@ export default function InvoicePreviewPageClient({
   }, [
     sending,
     reviewOk,
+    activeInvoiceVersion,
     effectiveCustomerInfo?.email,
     effectiveCustomerInfo?.name,
     effectiveVehicleInfo,
@@ -839,10 +911,43 @@ export default function InvoicePreviewPageClient({
     derivedInvoiceTotal,
     canonicalInvoiceTotal,
     onSent,
-    handleBack,
+    router,
     signatureImage,
     effectiveShopName,
   ]);
+
+  const finalizeInvoice = useCallback(async () => {
+    if (finalizing || activeInvoiceVersion || !reviewOk) return;
+    try {
+      setFinalizing(true);
+      setReviewError(null);
+      const response = await fetch("/api/invoices/finalize", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": `invoice-finalize:${workOrderId}`,
+        },
+        body: JSON.stringify({ workOrderId }),
+      });
+      const result = (await response.json().catch(() => null)) as SendInvoiceResponse | null;
+      if (!response.ok || !result?.ok || !result.invoiceVersion) {
+        throw new Error(result?.error ?? "Invoice could not be finalized.");
+      }
+      setInvoiceId(result.invoiceId ?? result.invoiceVersion.invoice_id);
+      setActiveInvoiceVersion(result.invoiceVersion);
+      setCanonicalInvoiceTotal(Math.max(0, Number(result.invoiceVersion.total)));
+      if (result.invoiceVersion.snapshot) {
+        setCanonicalSnapshot(result.invoiceVersion.snapshot);
+      }
+      router.refresh();
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : "Invoice could not be finalized.";
+      setReviewError(message);
+      setReviewIssues([{ kind: "error", message }]);
+    } finally {
+      setFinalizing(false);
+    }
+  }, [activeInvoiceVersion, finalizing, reviewOk, router, workOrderId]);
 
   return (
     <div className="min-h-[calc(100vh-0px)] bg-[color:var(--theme-surface-page)] px-3 py-3 sm:px-4 sm:py-4">
@@ -867,17 +972,23 @@ export default function InvoicePreviewPageClient({
 
             {loading ? (
               <span className="text-[0.7rem] text-[color:var(--theme-text-secondary)]">Loading shop…</span>
-            ) : canTakePayment ? (
+            ) : canTakeStripePayment ? (
               <span className="text-[0.7rem] text-[color:var(--theme-text-secondary)]">
-                Payments enabled ({currency.toUpperCase()})
+                Online and manual payments enabled ({invoiceCurrency})
               </span>
             ) : (
               <span className="text-[0.7rem] text-[color:var(--theme-text-muted)]">
-                Payments unavailable (shop not connected)
+                Manual POS payments enabled
               </span>
             )}
 
-            {reviewLoading ? (
+            {activeInvoiceVersion ? (
+              <span className="text-[0.7rem] text-emerald-300">
+                {activeInvoiceVersion.lifecycle_status === "paid"
+                  ? "Paid in full"
+                  : "Invoice issued"}
+              </span>
+            ) : reviewLoading ? (
               <span className="text-[0.7rem] text-[color:var(--theme-text-secondary)]">Reviewing…</span>
             ) : reviewOk ? (
               <span className="text-[0.7rem] text-emerald-300">Invoice ready</span>
@@ -886,86 +997,241 @@ export default function InvoicePreviewPageClient({
             )}
           </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => void finalizeInvoice()}
-              disabled={!reviewOk || reviewLoading || finalizing}
-              className="rounded-full border border-emerald-400/50 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-100 transition hover:bg-emerald-500/20 disabled:opacity-50"
-              title={reviewOk ? "Approve and finalize this invoice" : "Blocked until required info is complete"}
-            >
-              {finalizing ? "Finalizing..." : invoiceId ? "Finalized" : "Approve & finalize"}
-            </button>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {!activeInvoiceVersion ? (
+              <InvoicePricingEditor
+                workOrderId={workOrderId}
+                snapshot={canonicalSnapshot ?? { lines: [], parts: [] }}
+                onSaved={(snapshot) => {
+                  setCanonicalSnapshot(snapshot);
+                  setCanonicalInvoiceTotal(Math.max(0, Number(snapshot.total ?? 0)));
+                }}
+              />
+            ) : null}
+
+            {!activeInvoiceVersion ? (
+              <button
+                type="button"
+                onClick={() => void finalizeInvoice()}
+                disabled={!reviewOk || reviewLoading || finalizing}
+                className="rounded-full border border-emerald-400/50 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-emerald-200 hover:bg-emerald-500/20 disabled:opacity-50"
+              >
+                {finalizing ? "Finalizing..." : "Approve & finalize"}
+              </button>
+            ) : null}
+
+            <WorkOrderInvoiceDownloadButton
+              workOrderId={workOrderId}
+              invoiceVersionId={activeInvoiceVersion?.id}
+              draft={!activeInvoiceVersion}
+              autoTrigger={false}
+              label={activeInvoiceVersion ? "Print invoice" : "Print draft"}
+              className="rounded-full border border-[color:var(--theme-border-soft)] px-3 py-1.5 text-xs font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-hover)]"
+            />
 
             <button
-              type="button"
-              onClick={printInvoice}
-              className="rounded-full border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]"
-            >
-              Print
-            </button>
-
-            <button
-              type="button"
-              onClick={() => void sendInvoiceEmail()}
-              disabled={!reviewOk || reviewLoading || sending}
-              className={
-                "rounded-full px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] shadow-[0_0_12px_rgba(212,118,49,0.35)] " +
-                (reviewOk && !reviewLoading
-                  ? "bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] text-[color:var(--theme-text-on-accent)] hover:brightness-110"
-                  : "border border-amber-500/40 bg-amber-500/10 text-amber-200 opacity-60")
-              }
-              title={reviewOk ? "Email invoice (SendGrid)" : "Blocked until required info is complete"}
-            >
-              {sending ? "Sending…" : "Send invoice"}
+                type="button"
+                onClick={() => void sendInvoiceEmail()}
+                disabled={(!activeInvoiceVersion && (!reviewOk || reviewLoading)) || sending}
+                className={
+                  "rounded-full px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] shadow-[0_0_12px_rgba(212,118,49,0.35)] " +
+                  ((activeInvoiceVersion || reviewOk) && !reviewLoading
+                    ? "bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] text-[color:var(--theme-text-on-accent)] hover:brightness-110"
+                    : "border border-amber-500/40 bg-amber-500/10 text-amber-200 opacity-60")
+                }
+                title={activeInvoiceVersion || reviewOk ? "Email invoice" : "Blocked until required info is complete"}
+              >
+                {sending ? "Sending…" : "Send invoice"}
             </button>
 
             {invoiceId ? (
               <SyncInvoiceToQuickBooksButton
                 invoiceId={invoiceId}
-                disabled={!reviewOk || reviewLoading}
-                className={!reviewOk || reviewLoading ? "opacity-60" : ""}
+                disabled={!activeInvoiceVersion}
+                className={!activeInvoiceVersion ? "opacity-60" : ""}
               />
-            ) : (
-              <button
-                type="button"
-                onClick={() => void finalizeInvoice()}
-                disabled={!reviewOk || reviewLoading || finalizing}
-                className="rounded-full border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1.5 text-xs font-semibold text-[color:var(--theme-text-primary)] opacity-80 disabled:opacity-50"
-                title="Finalize first to create the invoice record QuickBooks needs"
-              >
-                Sync to QuickBooks
-              </button>
-            )}
+            ) : null}
 
-            <button
-              type="button"
-              onClick={() => void markInvoicePaid()}
-              disabled={!reviewOk || reviewLoading || markingPaid}
-              className="rounded-full border border-sky-400/50 bg-sky-500/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-sky-100 transition hover:bg-sky-500/20 disabled:opacity-50"
-            >
-              {markingPaid ? "Recording..." : "Mark paid"}
-            </button>
+            {activeInvoiceVersion ? (
+              <RecordManualPayment
+                workOrderId={workOrderId}
+                currency={invoiceCurrency}
+                outstandingTotal={outstandingTotal}
+                onPosted={(invoiceVersion) =>
+                  setActiveInvoiceVersion((current) =>
+                    current ? { ...current, ...invoiceVersion } : current,
+                  )
+                }
+              />
+            ) : null}
 
-            {canTakePayment ? (
-              <div className={canProceed ? "" : "opacity-50 pointer-events-none"}>
+            {canTakeStripePayment && activeInvoiceVersion && outstandingTotal > 0 ? (
+              <div>
                 <CustomerPaymentButton
                   shopId={shopId as string}
                   stripeAccountId={stripeAccountId as string}
                   currency={currency}
                   workOrderId={workOrderId}
-                  defaultAmountCents={Math.round((canonicalInvoiceTotal > 0 ? canonicalInvoiceTotal : derivedInvoiceTotal) * 100)}
+                  defaultAmountCents={Math.round(outstandingTotal * 100)}
                 />
               </div>
             ) : null}
           </div>
         </div>
 
-        <WorkOrderCloseoutGatePreview workOrderId={workOrderId} />
-        <div className="rounded-lg border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-[0.75rem] text-[color:var(--theme-text-secondary)]">
-          Need a manual price override? Update the labor/parts on the work order, then return here and use Approve & finalize.
-          Current invoice total: <span className="font-semibold text-[color:var(--theme-text-primary)]">${displayedTotal.toFixed(2)}</span>
-        </div>
+        {canonicalSnapshot ? (
+          <section className="overflow-hidden rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] shadow-[var(--theme-shadow-soft)]">
+            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[color:var(--theme-border-soft)] px-4 py-4">
+              <div>
+                <div className="text-[0.7rem] uppercase tracking-[0.2em] text-[color:var(--theme-text-secondary)]">
+                  Invoice review
+                </div>
+                <div className="mt-1 text-lg font-semibold text-[color:var(--theme-text-primary)]">
+                  Customer charges
+                </div>
+                <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
+                  These are the values used by billing, the invoice PDF, and invoice issuance.
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-[0.7rem] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
+                  Total
+                </div>
+                <div className="mt-1 text-2xl font-semibold text-[var(--accent-copper-light)]">
+                  {formatInvoiceMoney(canonicalSnapshot.total, invoiceCurrency)}
+                </div>
+                {activeInvoiceVersion ? (
+                  <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+                    Outstanding {formatInvoiceMoney(outstandingTotal, invoiceCurrency)}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
+              <div className="space-y-3">
+                {(canonicalSnapshot.lines ?? []).map((line, index) => {
+                  const lineParts = (canonicalSnapshot.parts ?? []).filter(
+                    (part) => part.lineId === line.id,
+                  );
+                  const label =
+                    line.description?.trim() ||
+                    line.complaint?.trim() ||
+                    `Job ${line.line_no ?? index + 1}`;
+                  return (
+                    <div
+                      key={line.id}
+                      className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-3"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                            {label}
+                          </div>
+                          <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+                            {safeMoney(line.resolvedLaborHours)}h × {formatInvoiceMoney(line.resolvedLaborRate, invoiceCurrency)} labor
+                          </div>
+                        </div>
+                        <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                          {formatInvoiceMoney(line.resolvedLineTotal, invoiceCurrency)}
+                        </div>
+                      </div>
+
+                      <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-[color:var(--theme-text-secondary)]">
+                        <div>Labor</div>
+                        <div className="text-right">
+                          {formatInvoiceMoney(line.resolvedLaborTotal, invoiceCurrency)}
+                        </div>
+                        <div>Parts</div>
+                        <div className="text-right">
+                          {formatInvoiceMoney(line.resolvedPartsTotal, invoiceCurrency)}
+                        </div>
+                      </div>
+
+                      {lineParts.length > 0 ? (
+                        <div className="mt-3 overflow-hidden rounded-lg border border-[color:var(--theme-border-soft)]">
+                          {lineParts.map((part) => (
+                            <div
+                              key={part.name + String(part.partNumber ?? "") + String(part.qty ?? 0)}
+                              className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-3 border-b border-[color:var(--theme-border-soft)] px-3 py-2 text-xs last:border-b-0"
+                            >
+                              <div className="min-w-0 truncate text-[color:var(--theme-text-primary)]">
+                                {part.name ?? "Part"}
+                                {part.partNumber ? ` · ${part.partNumber}` : ""}
+                              </div>
+                              <div className="text-[color:var(--theme-text-secondary)]">
+                                {safeMoney(part.qty)} × {formatInvoiceMoney(part.unitPrice, invoiceCurrency)}
+                              </div>
+                              <div className="font-medium text-[color:var(--theme-text-primary)]">
+                                {formatInvoiceMoney(part.totalPrice, invoiceCurrency)}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="h-fit rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] p-4">
+                <div className="text-[0.7rem] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
+                  Totals
+                </div>
+                <div className="mt-3 space-y-2 text-sm">
+                  {[
+                    ["Labor", canonicalSnapshot.laborCost],
+                    ["Parts", canonicalSnapshot.partsCost],
+                    ["Shop supplies", canonicalSnapshot.shopSuppliesTotal],
+                    ["Subtotal", canonicalSnapshot.subtotal],
+                  ].map(([label, value]) => (
+                    <div key={String(label)} className="flex justify-between gap-3">
+                      <span className="text-[color:var(--theme-text-secondary)]">{label}</span>
+                      <span className="text-[color:var(--theme-text-primary)]">
+                        {formatInvoiceMoney(value, invoiceCurrency)}
+                      </span>
+                    </div>
+                  ))}
+                  {safeMoney(canonicalSnapshot.discountTotal) > 0 ? (
+                    <div className="flex justify-between gap-3">
+                      <span className="text-[color:var(--theme-text-secondary)]">Discount</span>
+                      <span className="text-[color:var(--theme-text-primary)]">
+                        −{formatInvoiceMoney(canonicalSnapshot.discountTotal, invoiceCurrency)}
+                      </span>
+                    </div>
+                  ) : null}
+                  <div className="flex justify-between gap-3">
+                    <span className="text-[color:var(--theme-text-secondary)]">
+                      Tax{canonicalSnapshot.taxRate ? ` (${safeMoney(canonicalSnapshot.taxRate)}%)` : ""}
+                    </span>
+                    <span className="text-[color:var(--theme-text-primary)]">
+                      {formatInvoiceMoney(canonicalSnapshot.taxTotal, invoiceCurrency)}
+                    </span>
+                  </div>
+                  <div className="mt-3 flex justify-between gap-3 border-t border-[color:var(--theme-border-soft)] pt-3 text-base font-semibold">
+                    <span className="text-[color:var(--theme-text-primary)]">Invoice total</span>
+                    <span className="text-[var(--accent-copper-light)]">
+                      {formatInvoiceMoney(canonicalSnapshot.total, invoiceCurrency)}
+                    </span>
+                  </div>
+                  {activeInvoiceVersion ? (
+                    <>
+                      <div className="flex justify-between gap-3 text-emerald-300">
+                        <span>Paid</span>
+                        <span>{formatInvoiceMoney(activeInvoiceVersion.paid_total, invoiceCurrency)}</span>
+                      </div>
+                      <div className="flex justify-between gap-3 font-semibold text-[color:var(--theme-text-primary)]">
+                        <span>Balance</span>
+                        <span>{formatInvoiceMoney(outstandingTotal, invoiceCurrency)}</span>
+                      </div>
+                    </>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          </section>
+        ) : null}
+
         {snapshotWarning ? (
           <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[0.75rem] text-amber-100">
             {snapshotWarning}
@@ -973,32 +1239,34 @@ export default function InvoicePreviewPageClient({
         ) : null}
 
         {/* Review issues panel */}
-        {!reviewOk ? (
+        {!activeInvoiceVersion && !reviewOk ? (
           <div className="rounded-xl border border-amber-500/30 bg-[color:var(--theme-surface-inset)] px-3 py-2">
             <div className="text-[0.7rem] uppercase tracking-[0.18em] text-amber-200">
-              Invoice blocked
+              Invoice needs attention
             </div>
             <div className="mt-1 text-[0.75rem] text-[color:var(--theme-text-secondary)]">
-              Fix the items below, then refresh this page.
+              Complete the required items below before sending the invoice.
             </div>
 
             {reviewError ? (
               <div className="mt-2 text-[0.75rem] text-red-200">{reviewError}</div>
             ) : null}
 
-            <ul className="mt-2 space-y-1 text-[0.8rem] text-[color:var(--theme-text-primary)]">
-              {(reviewIssues ?? []).slice(0, 12).map((i, idx) => (
-                <li key={`${i.kind}-${idx}`} className="flex gap-2">
-                  <span className="text-amber-300">•</span>
-                  <span>{i.message}</span>
-                </li>
-              ))}
-            </ul>
+            {generalReviewIssues.length > 0 ? (
+              <ul className="mt-2 space-y-1 text-[0.8rem] text-[color:var(--theme-text-primary)]">
+                {generalReviewIssues.slice(0, 12).map((issue, index) => (
+                  <li key={`${issue.kind}-${index}`} className="flex gap-2">
+                    <span className="text-amber-300">•</span>
+                    <span>{issue.message}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
 
             {issuesByLineId.size > 0 ? (
               <div className="mt-3 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2">
                 <div className="text-[0.7rem] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-                  Line issues
+                  Required line updates
                 </div>
                 <ul className="mt-2 space-y-2 text-[0.8rem] text-[color:var(--theme-text-primary)]">
                   {(effectiveLines ?? [])
@@ -1100,9 +1368,11 @@ export default function InvoicePreviewPageClient({
               </div>
             </div>
 
-            <div className={reviewOk ? "" : "opacity-60 pointer-events-none"}>
+            <div>
               <WorkOrderInvoiceDownloadButton
                 workOrderId={workOrderId}
+                invoiceVersionId={activeInvoiceVersion?.id}
+                draft={!activeInvoiceVersion}
                 lines={effectiveLines}
                 summary={effectiveSummary}
                 vehicleInfo={effectiveVehicleInfo}
@@ -1112,9 +1382,9 @@ export default function InvoicePreviewPageClient({
             </div>
           </div>
 
-          {!reviewOk ? (
-            <div className="mt-3 text-[0.75rem] text-amber-200">
-              PDF download is shown, but invoice is still blocked until required info is complete.
+          {!reviewOk && !activeInvoiceVersion ? (
+            <div className="mt-3 text-[0.75rem] text-[color:var(--theme-text-secondary)]">
+              Draft preview is available for review. Sending remains blocked until required information is complete.
             </div>
           ) : null}
         </div>

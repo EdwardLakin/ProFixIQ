@@ -178,13 +178,10 @@ export default function CauseCorrectionModal({
       isOpen={isOpen}
       onClose={onClose}
       title="COMPLETE JOB"
-      size="md"
+      size="lg"
       hideFooter
     >
-      <div
-        className="max-h-[70vh] space-y-4 overflow-y-auto pr-1"
-        style={{ WebkitOverflowScrolling: "touch" }}
-      >
+      <div className="space-y-4 pr-1">
         <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
           <div className="text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-[var(--accent-copper-light)]">
             Job completion story

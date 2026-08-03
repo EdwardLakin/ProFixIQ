@@ -7,6 +7,10 @@ const mobileClient = readFileSync("features/work-orders/mobile/MobileWorkOrderCl
 const findingsPage = readFileSync("features/inspections/lib/inspection/findings/page.tsx", "utf8");
 const reviewWorkOrder = readFileSync("app/api/work-orders/[id]/_lib/reviewWorkOrder.ts", "utf8");
 const markReady = readFileSync("app/api/work-orders/[id]/mark-ready/route.ts", "utf8");
+const markReadyMigration = readFileSync(
+  "supabase/migrations/20260715090100_phase8_atomic_mark_ready.sql",
+  "utf8",
+);
 const canonicalQuotes = readFileSync("features/work-orders/lib/work-orders/canonicalQuoteLines.ts", "utf8");
 
 describe("inspection to canonical quote review lifecycle", () => {
@@ -32,11 +36,14 @@ describe("inspection to canonical quote review lifecycle", () => {
     expect(findingsPage).not.toContain('punched_out_at');
   });
 
-  it("blocks invoice readiness on active pending quote lines and avoids inferred missing parts on inspection lines", () => {
+  it("blocks invoice readiness on active pending quote lines without a separate inspection-only readiness path", () => {
     expect(reviewWorkOrder).toContain('kind: "pending_quote_lines"');
     expect(reviewWorkOrder).toContain('isReviewableQuoteLine(line)');
-    expect(reviewWorkOrder).toContain('jobType === "inspection"');
-    expect(markReady).toContain('Active pending quote lines must be resolved before invoicing.');
+    expect(reviewWorkOrder).not.toContain('jobType === "inspection"');
+    expect(markReady).toContain('"mark_work_order_ready_atomic"');
+    expect(markReadyMigration).toContain(
+      "Active pending quote lines must be resolved before invoicing.",
+    );
   });
 
   it("preserves durable source and parts request quote_line_id linkage", () => {

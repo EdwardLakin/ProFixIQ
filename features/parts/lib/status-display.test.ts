@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   earliestPartsRequestStage,
+  isMenuIntakeItemReviewed,
+  toMenuIntakeStage,
   toPartsRequestStage,
   type PartsRequestStageItem,
 } from "./status-display";
@@ -22,13 +24,42 @@ const pricedItem: PartsRequestStageItem = {
 };
 
 describe("parts request operational stages", () => {
-  it("keeps incomplete pricing in Needs Quote even when the line is pre-approved", () => {
+  it("accepts a priced manual part without an inventory link", () => {
     expect(
       toPartsRequestStage({
-        rawStatus: "approved",
+        rawStatus: "quoted",
         items: [{ ...pricedItem, partId: null }],
       }),
-    ).toBe("needs_quote");
+    ).toBe("awaiting_approval");
+  });
+
+  it("keeps identity, quantity, or price gaps in Needs Quote", () => {
+    for (const item of [
+      { ...pricedItem, description: "", partId: null },
+      { ...pricedItem, qty: 0, qtyRequested: 0 },
+      { ...pricedItem, quotedPrice: null, unitPrice: null },
+      { ...pricedItem, quotedPrice: -1 },
+    ]) {
+      expect(
+        toPartsRequestStage({ rawStatus: "quoted", items: [item] }),
+      ).toBe("needs_quote");
+    }
+  });
+
+  it("accepts vendor identity when the description and catalog link are absent", () => {
+    expect(
+      toPartsRequestStage({
+        rawStatus: "quoted",
+        items: [
+          {
+            ...pricedItem,
+            description: "",
+            partId: null,
+            requestedPartNumber: "NAPA-123",
+          },
+        ],
+      }),
+    ).toBe("awaiting_approval");
   });
 
   it("moves a fully priced unapproved request to Awaiting Approval", () => {
@@ -118,5 +149,27 @@ describe("parts request operational stages", () => {
         "awaiting_approval",
       ]),
     ).toBe("awaiting_approval");
+  });
+
+  it("keeps service-menu intake aligned with its persisted review contract", () => {
+    expect(
+      isMenuIntakeItemReviewed({
+        ...pricedItem,
+        unitPrice: null,
+        quotedPrice: 18.5,
+      }),
+    ).toBe(false);
+    expect(
+      toMenuIntakeStage({
+        rawStatus: "requested",
+        items: [{ ...pricedItem, unitPrice: 18.5 }],
+      }),
+    ).toBe("completed");
+    expect(
+      toMenuIntakeStage({
+        rawStatus: "requested",
+        items: [{ ...pricedItem, unitPrice: null, quotedPrice: 18.5 }],
+      }),
+    ).toBe("needs_quote");
   });
 });

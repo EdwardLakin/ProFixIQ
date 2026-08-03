@@ -1,8 +1,9 @@
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 function source(path: string) {
-  return readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
+  return readFileSync(resolve(process.cwd(), path), "utf8");
 }
 
 describe("phase 1 financial foundation", () => {
@@ -66,6 +67,8 @@ describe("phase 1 financial foundation", () => {
     expect(source("app/api/payments/manual/reverse/route.ts")).toContain('eventKind: "manual_reversal"');
     expect(source("app/api/invoices/versions/[id]/void/route.ts")).toContain("void_invoice_version");
     expect(source("app/api/portal/payments/session/[id]/route.ts")).toContain("payment_receipts");
-    expect(source("features/invoices/server/processFinancialOutbox.ts")).toContain("financial_domain_outbox");
+    const outboxWorker = source("features/invoices/server/processFinancialOutbox.ts");
+    expect(outboxWorker).toContain('"claim_financial_outbox_batch"');
+    expect(outboxWorker).not.toContain('.from("financial_domain_outbox")');
   });
 });

@@ -8,7 +8,6 @@ export const OWNER_GROUP_ORDER = [
   "Property",
   "Inspections & Menu",
   "Workforce",
-  "Admin & Oversight",
   "Growth",
   "Billing & Plan",
   "Settings",
@@ -23,6 +22,7 @@ const OWNER_SECTION_OVERRIDES_BY_HREF: Record<string, string> = {
   "/work-orders/board": "Dashboard",
   "/dashboard/workforce/attendance": "Workforce",
   "/work-orders/create?autostart=1": "Operations",
+  "/estimates": "Operations",
   "/work-orders/view": "Operations",
   "/work-orders/quote-review": "Operations",
   "/customers/search": "Operations",
@@ -53,18 +53,8 @@ const OWNER_SECTION_OVERRIDES_BY_HREF: Record<string, string> = {
   "/inspections/fleet-import": "Inspections & Menu",
   "/inspections/saved": "Inspections & Menu",
   "/dashboard/workforce": "Workforce",
-  "/dashboard/workforce/overview": "Workforce",
-  "/dashboard/workforce/people": "Workforce",
-  "/dashboard/workforce/scheduling": "Workforce",
-  "/dashboard/workforce/time-off": "Workforce",
-  "/dashboard/workforce/payroll-review": "Workforce",
-  "/dashboard/workforce/documents": "Workforce",
-  "/dashboard/workforce/certifications": "Workforce",
-  "/dashboard/workforce/insights": "Workforce",
-  "/dashboard/admin": "Admin & Oversight",
-  "/dashboard/onboarding-v2": "Admin & Oversight",
-  "/dashboard/admin/shops": "Admin & Oversight",
-  "/dashboard/admin/audit": "Admin & Oversight",
+  "/dashboard/onboarding-v2": "Settings",
+  "/dashboard/admin/shops": "Settings",
   "/dashboard/marketing": "Growth",
   "/dashboard/reviews": "Growth",
   "/compare-plans": "Billing & Plan",
@@ -82,7 +72,9 @@ const OWNER_TITLE_OVERRIDES_BY_HREF: Record<string, string> = {
   "/parts/requests": "Parts Requests",
 };
 
-export function getOwnerTileOverrides(tile: Tile): Pick<Tile, "section" | "title"> {
+export function getOwnerTileOverrides(
+  tile: Tile,
+): Pick<Tile, "section" | "title"> {
   if (tile.href === "/dashboard/appointments" && tile.title === "Scheduling") {
     return { section: "People & Workforce", title: tile.title };
   }

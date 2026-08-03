@@ -3,7 +3,10 @@ import {
   createAdminSupabase,
   createServerSupabaseRoute,
 } from "@/features/shared/lib/supabase/server";
-import { resolveMessagingActor } from "@/features/ai/lib/chat/authorization";
+import {
+  isCustomerMessagingRole,
+  resolveMessagingActor,
+} from "@/features/ai/lib/chat/authorization";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +17,12 @@ type ContextOption = {
   secondary: string | null;
 };
 
-export async function GET(): Promise<NextResponse> {
+type RecipientOption = {
+  id: string;
+  label: string;
+};
+
+export async function GET(req: Request): Promise<NextResponse> {
   const userClient = createServerSupabaseRoute();
   const {
     data: { user },
@@ -22,7 +30,15 @@ export async function GET(): Promise<NextResponse> {
   if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
   const admin = createAdminSupabase();
-  const actorResult = await resolveMessagingActor({ supabase: admin, actorUserId: user.id });
+  const preferredKind =
+    new URL(req.url).searchParams.get("actor") === "customer"
+      ? "customer"
+      : undefined;
+  const actorResult = await resolveMessagingActor({
+    supabase: admin,
+    actorUserId: user.id,
+    preferredKind,
+  });
   if (!actorResult.ok) {
     return NextResponse.json({ error: actorResult.error }, { status: actorResult.status });
   }
@@ -32,7 +48,12 @@ export async function GET(): Promise<NextResponse> {
 
   const customerId = actorResult.actor.customerId;
   const shopId = actorResult.actor.shopId;
-  const [{ data: workOrders, error: workOrderError }, { data: bookings, error: bookingError }, { data: vehicles, error: vehicleError }] =
+  const [
+    { data: workOrders, error: workOrderError },
+    { data: bookings, error: bookingError },
+    { data: vehicles, error: vehicleError },
+    { data: staffRows, error: staffError },
+  ] =
     await Promise.all([
       admin
         .from("work_orders")
@@ -55,9 +76,16 @@ export async function GET(): Promise<NextResponse> {
         .eq("customer_id", customerId)
         .order("created_at", { ascending: false })
         .limit(25),
+      admin
+        .from("profiles")
+        .select("id, user_id, full_name, email, role")
+        .eq("shop_id", shopId)
+        .order("full_name", { ascending: true })
+        .limit(100),
     ]);
 
-  const queryError = workOrderError ?? bookingError ?? vehicleError;
+  const queryError =
+    workOrderError ?? bookingError ?? vehicleError ?? staffError;
   if (queryError) {
     return NextResponse.json({ error: queryError.message }, { status: 500 });
   }
@@ -85,5 +113,20 @@ export async function GET(): Promise<NextResponse> {
     })),
   ];
 
-  return NextResponse.json({ options });
+  const recipients: RecipientOption[] = (staffRows ?? [])
+    .filter((staff) => isCustomerMessagingRole(staff.role))
+    .map((staff) => ({
+      id: staff.user_id ?? staff.id,
+      label:
+        staff.full_name?.trim() ||
+        staff.email?.trim() ||
+        "Service advisor",
+    }))
+    .filter(
+      (staff, index, rows) =>
+        Boolean(staff.id) &&
+        rows.findIndex((candidate) => candidate.id === staff.id) === index,
+    );
+
+  return NextResponse.json({ options, recipients });
 }

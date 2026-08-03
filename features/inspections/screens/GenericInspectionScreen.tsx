@@ -11,6 +11,7 @@ import PauseResumeButton from "@inspections/lib/inspection/PauseResume";
 import StartListeningButton from "@inspections/lib/inspection/StartListeningButton";
 import ProgressTracker from "@inspections/lib/inspection/ProgressTracker";
 import useInspectionSession from "@inspections/hooks/useInspectionSession";
+import { useInspectionAutosave } from "@inspections/hooks/useInspectionAutosave";
 
 import { handleTranscriptFn } from "@inspections/lib/inspection/handleTranscript";
 import { interpretCommand } from "@inspections/components/inspection/interpretCommand";
@@ -43,7 +44,6 @@ import TireGridHydraulic from "@inspections/lib/inspection/ui/TireGridHydraulic"
 import BatteryGrid from "@inspections/lib/inspection/ui/BatteryGrid";
 
 import { InspectionFormCtx } from "@inspections/lib/inspection/ui/InspectionFormContext";
-import { SaveInspectionButton } from "@inspections/components/inspection/SaveInspectionButton";
 import FinishInspectionButton from "@inspections/components/inspection/FinishInspectionButton";
 import CustomerVehicleHeader from "@inspections/lib/inspection/ui/CustomerVehicleHeader";
 import InspectionSignaturePanel from "@inspections/components/inspection/InspectionSignaturePanel";
@@ -57,6 +57,7 @@ import {
   saveInspectionOfflineDraft,
   type InspectionDraftRecoveryState,
 } from "@inspections/lib/inspection/offlineDrafts";
+import { mergeInspectionRuntimeParams } from "@inspections/lib/inspection/runtimeParams";
 
 /* -------------------------- helpers -------------------------- */
 
@@ -327,14 +328,6 @@ function inspectionDraftKey(args: {
     return `inspection-draft:line:${args.workOrderLineId}`;
   if (args.workOrderId) return `inspection-draft:wo:${args.workOrderId}:${t}`;
   return `inspection-draft:template:${t}:${args.inspectionId}`;
-}
-
-function inspectionDraftTimestamp(
-  session: Partial<InspectionSession> | null,
-): number {
-  const value = session?.lastUpdated;
-  const parsed = value ? new Date(value).getTime() : 0;
-  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function buildCauseCorrectionFromSession(s: unknown): {
@@ -608,7 +601,7 @@ function buildInterpretCtxForSpeech(args: {
 /* -------------------------------------------------------------------- */
 
 export default function GenericInspectionScreen(
-  _props: GenericInspectionScreenProps,
+  props: GenericInspectionScreenProps,
 ): JSX.Element {
   const routeSp = useSearchParams();
   const router = useRouter();
@@ -637,42 +630,46 @@ type SmartMatchRow = {
 
   const sp = useMemo(() => {
     const staged = readStaged<Record<string, string>>("inspection:params");
+    const route: Record<string, string> = {};
+    routeSp.forEach((value, key) => {
+      route[key] = value;
+    });
 
-    if (staged && Object.keys(staged).length > 0) {
-      const merged = new URLSearchParams();
-
-      // URL first
-      routeSp.forEach((value, key) => merged.set(key, value));
-
-      // staged second (wins)
-      Object.entries(staged).forEach(([key, value]) => {
-        if (value != null) merged.set(key, String(value));
-      });
-
-      return merged;
-    }
-
-    return routeSp;
-  }, [routeSp]);
+    // Session storage carries the template payload, but it must never redirect
+    // a newly opened work-order line back to an older line. Route identity wins,
+    // and explicit host props remain the strongest source.
+    return new URLSearchParams(
+      mergeInspectionRuntimeParams({ staged, route, props: props.params }),
+    );
+  }, [props.params, routeSp]);
 
   const isEmbed = useMemo(
     () =>
+      props.embed === true ||
       ["1", "true", "yes"].includes(
         (sp.get("embed") || sp.get("compact") || "").toLowerCase(),
       ),
-    [sp],
+    [props.embed, sp],
   );
 
-  const workOrderId = sp.get("workOrderId") || null;
-  const workOrderLineId = sp.get("workOrderLineId") || "";
+  const workOrderId =
+    sp.get("workOrderId") || sp.get("work_order_id") || null;
+  const workOrderLineId =
+    sp.get("workOrderLineId") ||
+    sp.get("work_order_line_id") ||
+    sp.get("lineId") ||
+    "";
 
   const showMissingLineWarning = isEmbed && !workOrderLineId;
 
 
   const templateName =
+    sp.get("templateName") ||
+    sp.get("template_name") ||
     (typeof window !== "undefined"
       ? sessionStorage.getItem("inspection:title")
       : null) ||
+    props.template ||
     sp.get("template") ||
     "Inspection";
 
@@ -760,22 +757,8 @@ type SmartMatchRow = {
   const inspectionId = useMemo(() => {
     const fromUrl = sp.get("inspectionId");
     if (fromUrl) return fromUrl;
-
-    if (typeof window === "undefined") return uuidv4();
-
-    const storageKey = workOrderLineId
-      ? `inspection:activeId:line:${workOrderLineId}`
-      : workOrderId
-        ? `inspection:activeId:wo:${workOrderId}:${templateName}`
-        : `inspection:activeId:template:${templateName}`;
-
-    const existing = sessionStorage.getItem(storageKey);
-    if (existing) return existing;
-
-    const created = uuidv4();
-    sessionStorage.setItem(storageKey, created);
-    return created;
-  }, [sp, workOrderLineId, workOrderId, templateName]);
+    return uuidv4();
+  }, [sp]);
 
   const draftKey = useMemo(
     () =>
@@ -788,23 +771,18 @@ type SmartMatchRow = {
     [inspectionId, workOrderLineId, workOrderId, templateName],
   );
 
-  const lockKey = `${draftKey}:locked`;
-
-  const persistedSession = useMemo(() => {
-    if (typeof window === "undefined") return null;
-    const raw = localStorage.getItem(draftKey);
-    if (!raw) return null;
-    try {
-      return JSON.parse(raw) as InspectionSession;
-    } catch {
-      return null;
-    }
-  }, [draftKey]);
-
   const [unit, setUnit] = useState<"metric" | "imperial">("metric");
 
   const [isPaused, setIsPaused] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
+  const isLockedRef = useRef(isLocked);
+  isLockedRef.current = isLocked;
+  const applyLockedState = (nextLocked: boolean): void => {
+    // Update the ref synchronously so in-flight async handlers are blocked even
+    // before React commits the state update from a Realtime event.
+    isLockedRef.current = nextLocked;
+    setIsLocked(nextLocked);
+  };
 
   const [newItemLabels, setNewItemLabels] = useState<Record<number, string>>(
     {},
@@ -839,8 +817,11 @@ type SmartMatchRow = {
 
   const [voicePulse, setVoicePulse] = useState(false);
   const pulseTimerRef = useRef<number | null>(null);
-  const [serverBootLoaded, setServerBootLoaded] = useState(false);
-  const [draftBootLoaded, setDraftBootLoaded] = useState(false);
+  const [draftBootstrappedKey, setDraftBootstrappedKey] = useState<
+    string | null
+  >(null);
+  const draftBootLoaded = draftBootstrappedKey === draftKey;
+  const [hasRecoveredLocalDraft, setHasRecoveredLocalDraft] = useState(false);
   const [recoveryState, setRecoveryState] =
     useState<InspectionDraftRecoveryState>("editing");
   const [recoveryMessage, setRecoveryMessage] = useState<string | null>(null);
@@ -848,8 +829,6 @@ type SmartMatchRow = {
   const queuedSessionRef = useRef<InspectionSession | null>(null);
   const skipNextQueuedEditCheckRef = useRef(false);
   const inspectionCompletedRef = useRef(false);
-  const localDraftUpdatedAtRef = useRef(0);
-  const serverStartedRef = useRef<string | null>(null);
 
   const triggerVoicePulse = (): void => {
     setVoicePulse(true);
@@ -876,47 +855,132 @@ type SmartMatchRow = {
       quote: [],
       customer,
       vehicle,
-      sections: [],
+      sections: bootSections,
       currentSectionIndex: 0,
       currentItemIndex: 0,
       started: false,
       completed: false,
     }),
-    [inspectionId, templateName, workOrderId, workOrderLineId, customer, vehicle],
+    [
+      bootSections,
+      inspectionId,
+      templateName,
+      workOrderId,
+      workOrderLineId,
+      customer,
+      vehicle,
+    ],
   );
 
   const {
     session,
-    updateInspection,
-    updateItem,
-    updateSection,
-    startSession,
-    finishSession,
-    resumeSession,
-    pauseSession,
-    addQuoteLine,
-    updateQuoteLine,
-  } = useInspectionSession(persistedSession ?? initialSession);
+    updateInspection: updateSessionInspection,
+    updateItem: updateSessionItem,
+    updateSection: updateSessionSection,
+    replaceSession,
+    finishSession: finishInspectionSession,
+    resumeSession: resumeInspectionSession,
+    pauseSession: pauseInspectionSession,
+    addQuoteLine: addSessionQuoteLine,
+    updateQuoteLine: updateSessionQuoteLine,
+  } = useInspectionSession(initialSession);
+
+  // Realtime finalization can arrive while this screen is open. Keep every
+  // mutation entry point read-only as soon as the canonical row is locked.
+  const updateInspection = (
+    ...args: Parameters<typeof updateSessionInspection>
+  ) => {
+    if (!isLockedRef.current) updateSessionInspection(...args);
+  };
+  const updateItem = (...args: Parameters<typeof updateSessionItem>) => {
+    if (!isLockedRef.current) updateSessionItem(...args);
+  };
+  const updateSection = (...args: Parameters<typeof updateSessionSection>) => {
+    if (!isLockedRef.current) updateSessionSection(...args);
+  };
+  const addQuoteLine = (...args: Parameters<typeof addSessionQuoteLine>) => {
+    if (!isLockedRef.current) addSessionQuoteLine(...args);
+  };
+  const updateQuoteLine = (
+    ...args: Parameters<typeof updateSessionQuoteLine>
+  ) => {
+    if (!isLockedRef.current) updateSessionQuoteLine(...args);
+  };
+  const resumeSession = (
+    ...args: Parameters<typeof resumeInspectionSession>
+  ) => {
+    if (!isLockedRef.current) resumeInspectionSession(...args);
+  };
+  const pauseSession = (
+    ...args: Parameters<typeof pauseInspectionSession>
+  ) => {
+    if (!isLockedRef.current) pauseInspectionSession(...args);
+  };
+  const finishSession = (
+    ...args: Parameters<typeof finishInspectionSession>
+  ) => {
+    if (!isLockedRef.current) finishInspectionSession(...args);
+  };
+
+  const {
+    hydrated: serverBootLoaded,
+    flush: flushAutosave,
+    flushToServer: flushAutosaveToServer,
+    label: autosaveLabel,
+    lastError: autosaveError,
+  } = useInspectionAutosave({
+    session,
+    inspectionId,
+    workOrderLineId,
+    enabled: draftBootLoaded && !inspectionCompletedRef.current,
+    locked: isLocked,
+    draftKey,
+    recoveryOperationKey: recoveryOperationKeyRef.current,
+    hasRecoveredLocalDraft,
+    onRemoteSession: (remote) => {
+      replaceSession(remote);
+    },
+    onRemoteMeta: (meta) => {
+      // An unversioned `locked: false` response means the canonical row has not
+      // been observed yet; it must not erase durable evidence of an offline
+      // signed inspection. Versioned server metadata remains authoritative.
+      if (meta.updatedAt === null && !meta.locked) return;
+      applyLockedState(meta.locked);
+    },
+    onRecoveryState: (state, operationKey) => {
+      setRecoveryState(state);
+      recoveryOperationKeyRef.current = operationKey;
+      queuedSessionRef.current = operationKey ? session : null;
+      skipNextQueuedEditCheckRef.current = false;
+      setRecoveryMessage(
+        state === "queued"
+          ? "Inspection is safe on this device and queued for server sync."
+          : state === "conflicted"
+            ? "Sync paused to protect this device copy. It has not replaced the shop copy."
+            : "Inspection progress is saved and available on all devices.",
+      );
+    },
+  });
 
   useEffect(() => {
     let cancelled = false;
     inspectionCompletedRef.current = false;
+    setHasRecoveredLocalDraft(false);
+    setRecoveryState("editing");
+    recoveryOperationKeyRef.current = undefined;
+    queuedSessionRef.current = null;
+    skipNextQueuedEditCheckRef.current = false;
+    setRecoveryMessage(null);
     const recoverDraft = async () => {
       try {
         const recovered = await getInspectionOfflineDraft({
           draftKey,
-          sessionHint: persistedSession ?? initialSession,
+          sessionHint: initialSession,
         });
         if (cancelled) return;
         if (recovered) {
-          const recoveredAt = inspectionDraftTimestamp(recovered.session);
-          const legacyAt = inspectionDraftTimestamp(persistedSession);
-          const preferred =
-            recoveredAt >= legacyAt ? recovered.session : persistedSession;
-          if (preferred) {
-            startSession(preferred);
-            localDraftUpdatedAtRef.current = inspectionDraftTimestamp(preferred);
-          }
+          setHasRecoveredLocalDraft(true);
+          replaceSession(recovered.session);
           setRecoveryState(recovered.state);
           recoveryOperationKeyRef.current = recovered.operationKey;
           queuedSessionRef.current = null;
@@ -927,22 +991,25 @@ type SmartMatchRow = {
             recovered.state === "queued"
               ? "Recovered inspection · server save is queued."
               : recovered.state === "conflicted"
-                ? "Recovered inspection · sync needs review."
+                ? "Recovered device copy · sync is paused without changing the shop copy."
                 : `Recovered inspection saved ${new Date(recovered.savedAt).toLocaleString()}.`,
           );
+        } else {
+          setHasRecoveredLocalDraft(false);
+          replaceSession(initialSession);
         }
       } catch (error) {
         console.warn("[inspection] offline recovery unavailable", error);
       } finally {
-        if (!cancelled) setDraftBootLoaded(true);
+        if (!cancelled) setDraftBootstrappedKey(draftKey);
       }
     };
     void recoverDraft();
     return () => {
       cancelled = true;
     };
-    // Recovery is intentionally keyed to the draft identity. Including startSession
-    // would restart this effect on every render because the hook returns a new function.
+    // Recovery is intentionally keyed to the draft identity. The server load that
+    // follows is the cross-device authority; this snapshot only protects unsent work.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftKey]);
 
@@ -1090,6 +1157,8 @@ type SmartMatchRow = {
   };
 
   const dismissSmartMatch = async (sectionIndex: number, itemIndex: number) => {
+    if (guardLocked()) return;
+
     const key = itemKey(sectionIndex, itemIndex);
     const sec = session.sections?.[sectionIndex];
     const item = sec?.items?.[itemIndex];
@@ -1131,6 +1200,8 @@ type SmartMatchRow = {
     sectionIndex: number,
     itemIndex: number,
   ): Promise<void> => {
+    if (guardLocked()) return;
+
     const key = itemKey(sectionIndex, itemIndex);
     const match = smartMatchByKey[key];
     const sec = session?.sections?.[sectionIndex];
@@ -1210,6 +1281,8 @@ type SmartMatchRow = {
           | { ok?: boolean; error?: string; workOrderQuoteLineId?: string | null; quoteLineId?: string | null }
           | null;
 
+        if (guardLocked()) return;
+
         if (!res.ok || !json?.ok) {
           throw new Error(json?.error || "Failed to add matched repair");
         }
@@ -1255,6 +1328,8 @@ type SmartMatchRow = {
           jobType: "repair",
         });
 
+        if (guardLocked()) return;
+
         const createdId = (created as { id?: unknown } | null)?.id;
         createdWorkOrderLineId =
           typeof createdId === "string" && createdId ? createdId : null;
@@ -1292,6 +1367,7 @@ type SmartMatchRow = {
         } satisfies VoiceMeta,
       });
 
+      if (guardLocked()) return;
       await fetch("/api/inspections/smart-match/history", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1306,7 +1382,7 @@ type SmartMatchRow = {
         }),
       });
 
-
+      if (guardLocked()) return;
       await fetch("/api/inspections/smart-match/feedback", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1320,6 +1396,8 @@ type SmartMatchRow = {
           vehicle: asVehicleForSmartMatch(vehicle),
         }),
       });
+
+      if (guardLocked()) return;
 
       const autoAcceptReady =
         match.autoAcceptReady === true ||
@@ -1354,128 +1432,11 @@ type SmartMatchRow = {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.id]);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const raw = localStorage.getItem(lockKey);
-      setIsLocked(raw === "1");
-    } catch {}
-  }, [lockKey]);
-
   const guardLocked = (): boolean => {
-    if (!isLocked) return false;
+    if (!isLockedRef.current) return false;
     toast.error("This inspection is signed and locked. Editing is disabled.");
     return true;
   };
-
-  /* ------------------------------ session boot ------------------------------ */
-
-    useEffect(() => {
-    if (persistedSession) {
-      const hydratedSession: Partial<InspectionSession> & {
-        workOrderLineId?: string | null;
-      } = {
-        ...persistedSession,
-        workOrderId:
-          persistedSession.workOrderId ??
-          workOrderId ??
-          null,
-        workOrderLineId:
-          (persistedSession as InspectionSession & {
-            workOrderLineId?: string | null;
-          }).workOrderLineId ??
-          workOrderLineId ??
-          null,
-      };
-
-      startSession(hydratedSession);
-    } else {
-      startSession(initialSession);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [persistedSession, initialSession, workOrderId, workOrderLineId]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadSavedInspection = async () => {
-      if (!draftBootLoaded) return;
-      if (!inspectionId && !workOrderLineId) {
-        setServerBootLoaded(true);
-        return;
-      }
-
-      try {
-        const params = new URLSearchParams();
-        if (inspectionId) params.set("inspectionId", inspectionId);
-        if (workOrderLineId) params.set("workOrderLineId", workOrderLineId);
-
-        const res = await fetch(`/api/inspections/load?${params.toString()}`, {
-          method: "GET",
-          credentials: "include",
-          cache: "no-store",
-        });
-
-        const data = (await res.json().catch(() => null)) as
-          | {
-              session?: InspectionSession | null;
-              inspectionMeta?: { locked?: boolean | null };
-            }
-          | null;
-
-        if (cancelled) return;
-
-        const loaded = data?.session ?? null;
-
-        if (
-          loaded &&
-          Array.isArray(loaded.sections) &&
-          loaded.sections.length > 0
-        ) {
-          const serverUpdatedAt = inspectionDraftTimestamp(loaded);
-          if (serverUpdatedAt >= localDraftUpdatedAtRef.current) {
-            startSession(loaded);
-            localDraftUpdatedAtRef.current = serverUpdatedAt;
-
-            try {
-              localStorage.setItem(draftKey, JSON.stringify(loaded));
-            } catch {
-              // noop
-            }
-
-            serverStartedRef.current = String(
-              loaded.id ?? inspectionId ?? workOrderLineId ?? "loaded",
-            );
-          } else {
-            setRecoveryMessage(
-              "Recovered a newer device draft; the older server copy was not applied.",
-            );
-          }
-        }
-        setIsLocked(Boolean(data?.inspectionMeta?.locked));
-      } catch (err) {
-        console.error("[inspection] failed to load saved inspection", err);
-      } finally {
-        if (!cancelled) {
-          setServerBootLoaded(true);
-        }
-      }
-    };
-
-    void loadSavedInspection();
-
-    return () => {
-      cancelled = true;
-    };
-    // startSession is intentionally omitted; this fetch should run once per identity.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inspectionId, workOrderLineId, draftKey, draftBootLoaded]);
-
-  useEffect(() => {
-    if (session && (session.sections?.length ?? 0) === 0) {
-      updateInspection({ sections: bootSections });
-    }
-  }, [session, bootSections, updateInspection]);
 
   useEffect(() => {
     if (
@@ -1501,20 +1462,10 @@ type SmartMatchRow = {
         queuedSessionRef.current = null;
         setRecoveryState("editing");
         setRecoveryMessage(
-          "Newer edits are safe on this device. Save Progress again to queue them for server sync.",
+          "Newer edits are safe on this device and will sync automatically.",
         );
       }
     }
-
-    localDraftUpdatedAtRef.current = inspectionDraftTimestamp(session);
-    try {
-      localStorage.setItem(draftKey, JSON.stringify(session));
-      window.dispatchEvent(
-        new CustomEvent("inspection:draft-updated", {
-          detail: { draftKey },
-        }),
-      );
-    } catch {}
 
     if (skipDraftWrite) return;
 
@@ -1529,47 +1480,6 @@ type SmartMatchRow = {
     }, 250);
     return () => window.clearTimeout(timer);
   }, [session, draftKey, draftBootLoaded, serverBootLoaded, recoveryState]);
-
-  useEffect(() => {
-    const persistNow = () => {
-      if (inspectionCompletedRef.current || !serverBootLoaded) return;
-      try {
-        const payload = {
-          ...(session ?? initialSession),
-          workOrderId:
-            (session?.workOrderId ?? initialSession.workOrderId ?? workOrderId ?? null),
-          workOrderLineId:
-            (
-              (session as (InspectionSession & { workOrderLineId?: string | null }) | null)
-              ?.workOrderLineId ??
-              (initialSession as Partial<InspectionSession> & { workOrderLineId?: string | null })
-                .workOrderLineId ??
-              workOrderLineId ??
-              null
-            ),
-        };
-        localStorage.setItem(draftKey, JSON.stringify(payload));
-      } catch {}
-    };
-    const onVisibility = () => {
-      if (document.visibilityState === "hidden") persistNow();
-    };
-    window.addEventListener("beforeunload", persistNow);
-    window.addEventListener("pagehide", persistNow);
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => {
-      window.removeEventListener("beforeunload", persistNow);
-      window.removeEventListener("pagehide", persistNow);
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
-  }, [
-    session,
-    draftKey,
-    initialSession,
-    workOrderId,
-    workOrderLineId,
-    serverBootLoaded,
-  ]);
 
   useEffect(() => {
     const handler = (evt: Event) => {
@@ -1601,10 +1511,6 @@ type SmartMatchRow = {
         }),
       );
 
-      try {
-        localStorage.removeItem(draftKey);
-        localStorage.removeItem(lockKey);
-      } catch {}
       inspectionCompletedRef.current = true;
       void removeInspectionOfflineDraft({
         draftKey,
@@ -1620,7 +1526,7 @@ type SmartMatchRow = {
         "inspection:completed",
         handler as EventListener,
       );
-  }, [session, draftKey, lockKey, initialSession]);
+  }, [session, draftKey, initialSession]);
 
   // ✅ TS-safe label for ParsedCommand (no ".command" assumption)
   const commandLabel = (c: ParsedCommand): string => {
@@ -1808,6 +1714,8 @@ type SmartMatchRow = {
         commands = await interpretCommand(mainText, ctx);
       }
 
+      if (guardLocked()) return;
+
       // ✅ FALLBACK: if AI returns nothing, try local parsing
       if (!commands.length) {
         const fallback = localFallbackCommands(mainText);
@@ -1842,6 +1750,8 @@ type SmartMatchRow = {
         | null = null;
 
       for (const command of commands) {
+        if (guardLocked()) return;
+
         // lightweight detection from parsed shape
         try {
           const result = await handleTranscriptFn({
@@ -1853,6 +1763,8 @@ type SmartMatchRow = {
             finishSession,
             rawSpeech: mainText,
           });
+
+          if (guardLocked()) return;
 
           // ✅ capture resolver-selected target (preferred)
           const r = result as unknown as {
@@ -2036,6 +1948,9 @@ type SmartMatchRow = {
       voiceHeldRef.current = false;
       setVoiceHeld(false);
       await voice.start();
+      if (guardLocked()) {
+        voice.stop();
+      }
     } catch (e: unknown) {
       // eslint-disable-next-line no-console
       console.error(e);
@@ -2066,10 +1981,7 @@ type SmartMatchRow = {
   ): Promise<void> => {
     if (!session) return;
 
-    if (isLocked) {
-      toast.error("Inspection is locked; AI suggestions are disabled.");
-      return;
-    }
+    if (guardLocked()) return;
 
     const key = `${secIdx}:${itemIdx}`;
     if (inFlightRef.current.has(key)) return;
@@ -2090,6 +2002,7 @@ type SmartMatchRow = {
     const itExt = it as unknown as {
       parts?: { description: string; qty: number }[];
       laborHours?: number | null;
+      noPartsRequired?: boolean;
       name?: string | null;
 
       // ✅ estimate state (persisted on the item)
@@ -2110,6 +2023,7 @@ type SmartMatchRow = {
 
     const manualLaborHours =
       typeof itExt.laborHours === "number" ? itExt.laborHours : null;
+    const noPartsRequired = itExt.noPartsRequired === true;
 
     inFlightRef.current.add(key);
 
@@ -2172,20 +2086,25 @@ type SmartMatchRow = {
         vehicle: session.vehicle ?? undefined,
       });
 
+      // Finalization can arrive over Realtime while AI or network work is in
+      // flight. Do not continue into local or work-order mutations afterward.
+      if (guardLocked()) return;
+
       if (!suggestion) {
         updateQuoteLine(quoteId, { aiState: "error" });
         toast.error("No AI suggestion available", { id: toastId });
         return;
       }
 
-      const mergedParts: Array<{ name: string; qty: number; cost?: number }> = [
-        ...((suggestion.parts ?? []) as Array<{
-          name: string;
-          qty: number;
-          cost?: number;
-        }>),
-        ...manualParts.map((p) => ({ name: p.description, qty: p.qty })),
-      ];
+      const mergedParts: Array<{ name: string; qty: number; cost?: number }> =
+        noPartsRequired
+          ? []
+          : manualParts
+              .map((part) => ({
+                name: String(part.description ?? "").trim(),
+                qty: Number(part.qty ?? 0),
+              }))
+              .filter((part) => part.name.length > 0 && part.qty > 0);
 
       const laborTime =
         manualLaborHours != null && !Number.isNaN(manualLaborHours)
@@ -2215,16 +2134,20 @@ type SmartMatchRow = {
       });
 
       if (workOrderId) {
-        const cleanParts = manualParts
-          .map((p) => ({
-            description: String(p.description ?? "").trim(),
-            qty: Number(p.qty ?? 0),
-          }))
-          .filter((p) => p.description.length > 0 && p.qty > 0);
+        const cleanParts = noPartsRequired
+          ? []
+          : manualParts
+              .map((p) => ({
+                description: String(p.description ?? "").trim(),
+                qty: Number(p.qty ?? 0),
+              }))
+              .filter((p) => p.description.length > 0 && p.qty > 0);
 
         let createdJobId: string | null = null;
+        let createdQuoteLineId: string | null = existingQuoteId;
 
         if (existingLineId) {
+          if (guardLocked()) return;
           const updateRes = await fetch(
             "/api/work-orders/lines/update-from-inspection",
             {
@@ -2241,6 +2164,8 @@ type SmartMatchRow = {
             },
           );
 
+          if (guardLocked()) return;
+
           if (!updateRes.ok) {
             const body = (await updateRes.json().catch(() => null)) as unknown;
             // eslint-disable-next-line no-console
@@ -2252,6 +2177,7 @@ type SmartMatchRow = {
           createdJobId = existingLineId;
 
           if (cleanParts.length > 0) {
+            if (guardLocked()) return;
             const res = await fetch("/api/parts/requests/create", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -2262,6 +2188,8 @@ type SmartMatchRow = {
                 items: cleanParts,
               }),
             });
+
+            if (guardLocked()) return;
 
             if (!res.ok) {
               const body = (await res.json().catch(() => null)) as unknown;
@@ -2278,6 +2206,7 @@ type SmartMatchRow = {
         } else {
           const complaint = String(it.notes ?? "").trim() || null;
 
+          if (guardLocked()) return;
           const created = await addWorkOrderLineFromSuggestion({
             workOrderId,
             description: desc,
@@ -2286,17 +2215,28 @@ type SmartMatchRow = {
             complaint,
             suggestion: {
               ...suggestion,
-              parts: mergedParts,
+              parts: noPartsRequired
+                ? []
+                : cleanParts.map((part) => ({
+                    name: part.description,
+                    qty: part.qty,
+                  })),
               laborHours: laborTime,
+              price: Math.max(0, laborRate * laborTime),
               notes: complaint ?? undefined,
             },
             source: "inspection",
             jobType: "repair",
           });
 
+          if (guardLocked()) return;
+
           const createdId = (created as unknown as { id?: unknown })?.id;
-          createdJobId =
-            (createdId ? String(createdId) : null) || workOrderLineId || null;
+          createdQuoteLineId = createdId ? String(createdId) : null;
+
+          if (!createdQuoteLineId) {
+            throw new Error("Quote line created without an id");
+          }
 
           updateInspection({
             voiceMeta: {
@@ -2305,54 +2245,22 @@ type SmartMatchRow = {
             } satisfies VoiceMeta,
           });
 
-          if (cleanParts.length > 0) {
-            try {
-              const res = await fetch("/api/parts/requests/create", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  workOrderId,
-                  jobId: createdJobId,
-                  notes: String(it.notes ?? "") || null,
-                  items: cleanParts,
-                }),
-              });
-
-              if (!res.ok) {
-                const body = (await res.json().catch(() => null)) as unknown;
-                // eslint-disable-next-line no-console
-                console.error("Parts request error", body);
-                toast.error("Line added, but parts request failed", {
-                  id: toastId,
-                });
-                return;
-              }
-
-              toast.success("Line + parts request created from inspection", {
-                id: toastId,
-              });
-            } catch (err: unknown) {
-              // eslint-disable-next-line no-console
-              console.error("Parts request failed", err);
-              toast.error("Line added, but couldn't reach parts request service", {
-                id: toastId,
-              });
-              return;
-            }
-          } else {
-            toast.success("Added to work order (no parts requested)", {
-              id: toastId,
-            });
-          }
+          toast.success(
+            cleanParts.length > 0 && !noPartsRequired
+              ? "Added to Quote Review with parts request"
+              : "Added to Quote Review — no parts required",
+            { id: toastId },
+          );
         }
 
-        if (createdJobId) {
+        if (createdJobId || createdQuoteLineId) {
           updateItem(secIdx, itemIdx, {
             estimateSubmitted: true,
             estimateSubmittedAt: itExt.estimateSubmittedAt ?? nowIso,
             estimateLastUpdatedAt: nowIso,
             estimateWorkOrderLineId: createdJobId,
-            estimateQuoteLineId: quoteId,
+            estimateQuoteLineId: createdQuoteLineId ?? quoteId,
+            noPartsRequired: noPartsRequired || cleanParts.length === 0,
           } as ItemPatch);
         }
       } else {
@@ -2647,15 +2555,13 @@ type SmartMatchRow = {
   };
 
   const handleSigned = (): void => {
-    setIsLocked(true);
-    try {
-      localStorage.setItem(lockKey, "1");
-    } catch {}
+    applyLockedState(true);
     toast.success("Inspection snapshot locked by signature.");
   };
 
   const handleReopenLockedInspection = async (): Promise<void> => {
-    if (!inspectionId) {
+    const canonicalInspectionId = session?.id ?? inspectionId;
+    if (!canonicalInspectionId) {
       toast.error("Inspection id missing; cannot reopen.");
       return;
     }
@@ -2671,15 +2577,15 @@ type SmartMatchRow = {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ inspectionId, reason: reason.trim() }),
+        body: JSON.stringify({
+          inspectionId: canonicalInspectionId,
+          reason: reason.trim(),
+        }),
       });
       const json = (await res.json().catch(() => null)) as { error?: string } | null;
       if (!res.ok || json?.error) throw new Error(json?.error ?? "Failed to reopen inspection");
 
-      setIsLocked(false);
-      try {
-        localStorage.removeItem(lockKey);
-      } catch {}
+      applyLockedState(false);
       toast.success("Inspection reopened. Editing is enabled.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to reopen inspection.");
@@ -2690,8 +2596,8 @@ type SmartMatchRow = {
     ? "relative mx-auto max-w-[1280px] px-3 py-4 pb-6 md:px-5 md:py-5"
     : "relative mx-auto max-w-5xl px-3 md:px-4 py-6 pb-[calc(9.5rem+env(safe-area-inset-bottom))]";
 
-  const headerCard = `${PANEL_VARIANTS.primary} rounded-2xl px-4 py-4 md:px-5 md:py-5 mb-3`;
-  const sectionCard = `${PANEL_VARIANTS.primary} rounded-2xl px-3 py-3 md:px-5 md:py-5 mb-4`;
+  const headerCard = `${PANEL_VARIANTS.primary} rounded-[22px] border border-[color:var(--theme-border-soft)] bg-[var(--theme-gradient-panel)] px-4 py-4 shadow-[var(--theme-shadow-medium)] md:px-5 md:py-5 mb-3`;
+  const sectionCard = `${PANEL_VARIANTS.primary} rounded-[22px] border border-[color:var(--theme-border-soft)] bg-[var(--theme-gradient-panel)] px-3 py-3 shadow-[var(--theme-shadow-soft)] md:px-5 md:py-5 mb-4`;
   const supportCard = "space-y-3";
   const passiveCard = `${PANEL_VARIANTS.passive} rounded-xl px-3 py-2.5 md:px-4 md:py-3`;
 
@@ -2729,32 +2635,23 @@ type SmartMatchRow = {
 
   const actions = (
     <>
-      <SaveInspectionButton
-        session={session}
-        workOrderLineId={workOrderLineId}
-        disabled={isLocked}
-        draftKey={draftKey}
-        onRecoveryState={(state, operationKey) => {
-          setRecoveryState(state);
-          recoveryOperationKeyRef.current = operationKey;
-          queuedSessionRef.current = operationKey ? session : null;
-          skipNextQueuedEditCheckRef.current = false;
-          setRecoveryMessage(
-            state === "queued"
-              ? "Inspection is safe on this device and queued for server sync."
-              : state === "conflicted"
-                ? "Inspection is safe on this device, but sync needs review."
-                : "Inspection progress is saved on this device and the server.",
-          );
-        }}
-      />
-
       <Button
         type="button"
         variant="outline"
         size="sm"
         className="font-medium border-[color:var(--theme-border-soft)] text-[11px] tracking-[0.16em] uppercase text-[color:var(--theme-text-primary)]"
-        onClick={() => router.push(findingsHref)}
+        onClick={async () => {
+          try {
+            await flushAutosave();
+            router.push(findingsHref);
+          } catch (error) {
+            toast.error(
+              error instanceof Error
+                ? error.message
+                : "Wait for the inspection to finish saving.",
+            );
+          }
+        }}
         disabled={isLocked}
       >
         Open findings list
@@ -2765,6 +2662,7 @@ type SmartMatchRow = {
           session={session}
           workOrderLineId={workOrderLineId}
           disabled={isLocked}
+          beforeNavigate={() => flushAutosaveToServer()}
         />
       )}
 
@@ -3127,7 +3025,8 @@ type SmartMatchRow = {
 
                     <div className="mt-3 md:mt-4">
                       {useGrid ? (
-                        batterySection ? (
+                        <>
+                          {batterySection ? (
                           <BatteryGrid
                             sectionIndex={sectionIndex}
                             items={itemsWithHints}
@@ -3142,7 +3041,7 @@ type SmartMatchRow = {
                               handleAddAxleForSection(sectionIndex, axleLabel)
                             }
                             onSpecHint={(metricLabel: string) =>
-                              _props.onSpecHint?.({
+                              props.onSpecHint?.({
                                 source: "air_corner",
                                 label: metricLabel,
                                 meta: { sectionTitle: section.title },
@@ -3182,7 +3081,7 @@ type SmartMatchRow = {
                                 handleAddTireAxleForSection(sectionIndex, axleLabel)
                               }
                               onSpecHint={(metricLabel: string) =>
-                                _props.onSpecHint?.({
+                                props.onSpecHint?.({
                                   source: "tire",
                                   label: metricLabel,
                                   meta: { sectionTitle: section.title },
@@ -3220,14 +3119,91 @@ type SmartMatchRow = {
                             items={itemsWithHints}
                             unitHint={(label: string) => unitHintGeneric(label, unit)}
                             onSpecHint={(label: string) =>
-                              _props.onSpecHint?.({
+                              props.onSpecHint?.({
                                 source: "corner",
                                 label,
                                 meta: { sectionTitle: section.title },
                               })
                             }
                           />
-                        )
+                          )}
+                          <SectionDisplay
+                            title={section.title}
+                            showGridFindings
+                            section={{ ...section, items: itemsWithHints }}
+                            sectionIndex={sectionIndex}
+                            showNotes
+                            showPhotos
+                            inspectionId={inspectionId}
+                            workOrderId={workOrderId}
+                            workOrderLineId={workOrderLineId || null}
+                            draftKey={draftKey}
+                            onUpdateStatus={(
+                              secIdx: number,
+                              itemIdx: number,
+                              statusValue: InspectionItemStatus,
+                            ) => {
+                              if (guardLocked()) return;
+                              updateItem(secIdx, itemIdx, {
+                                status: statusValue,
+                              } as ItemPatch);
+                              autoAdvanceFrom(secIdx, itemIdx);
+                            }}
+                            onUpdateNote={handleUpdateNoteWithSmartMatch}
+                            onUpdatePhotos={(
+                              secIdx: number,
+                              itemIdx: number,
+                              photoUrls: string[],
+                            ) => {
+                              if (guardLocked()) return;
+                              updateItem(secIdx, itemIdx, {
+                                photoUrls,
+                              } as ItemPatch);
+                            }}
+                            onUpdateParts={(
+                              secIdx: number,
+                              itemIdx: number,
+                              parts: { description: string; qty: number }[],
+                            ) => {
+                              if (guardLocked()) return;
+                              updateItem(secIdx, itemIdx, {
+                                parts,
+                              } as ItemPatch);
+                            }}
+                            onUpdateLaborHours={(
+                              secIdx: number,
+                              itemIdx: number,
+                              hours: number | null,
+                            ) => {
+                              if (guardLocked()) return;
+                              updateItem(secIdx, itemIdx, {
+                                laborHours: hours,
+                              } as ItemPatch);
+                            }}
+                            onUpdateNoPartsRequired={(
+                              secIdx: number,
+                              itemIdx: number,
+                              value: boolean,
+                            ) => {
+                              if (guardLocked()) return;
+                              updateItem(secIdx, itemIdx, {
+                                noPartsRequired: value,
+                                ...(value ? { parts: [] } : {}),
+                              } as ItemPatch);
+                            }}
+                            requireNoteForAI
+                            onSubmitAI={(secIdx: number, itemIdx: number) => {
+                              void submitAIForItem(secIdx, itemIdx);
+                            }}
+                            isSubmittingAI={isSubmittingAI}
+                            smartMatchByKey={smartMatchByKey}
+                            smartMatchLoadingByKey={smartMatchLoadingByKey}
+                            onAcceptSmartMatch={(secIdx: number, itemIdx: number) => {
+                              void acceptSmartMatch(secIdx, itemIdx);
+                            }}
+                            onDismissSmartMatch={dismissSmartMatch}
+                          />
+                        </>
                       ) : (
                         <>
                                                     <SectionDisplay
@@ -3252,17 +3228,14 @@ type SmartMatchRow = {
                               autoAdvanceFrom(secIdx, itemIdx);
                             }}
                             onUpdateNote={handleUpdateNoteWithSmartMatch}
-                            onUpload={(
-                              photoUrl: string,
+                            onUpdatePhotos={(
                               secIdx: number,
                               itemIdx: number,
+                              photoUrls: string[],
                             ) => {
                               if (guardLocked()) return;
-                              const prev =
-                                session.sections[secIdx].items[itemIdx].photoUrls ??
-                                [];
                               updateItem(secIdx, itemIdx, {
-                                photoUrls: [...prev, photoUrl],
+                                photoUrls,
                               } as ItemPatch);
                             }}
                             onUpdateParts={(
@@ -3283,6 +3256,17 @@ type SmartMatchRow = {
                               if (guardLocked()) return;
                               updateItem(secIdx, itemIdx, {
                                 laborHours: hours,
+                              } as ItemPatch);
+                            }}
+                            onUpdateNoPartsRequired={(
+                              secIdx: number,
+                              itemIdx: number,
+                              value: boolean,
+                            ) => {
+                              if (guardLocked()) return;
+                              updateItem(secIdx, itemIdx, {
+                                noPartsRequired: value,
+                                ...(value ? { parts: [] } : {}),
                               } as ItemPatch);
                             }}
                             requireNoteForAI
@@ -3363,6 +3347,7 @@ type SmartMatchRow = {
         <div className="mt-2">
           <InspectionSignaturePanel
             inspectionId={inspectionId}
+            workOrderLineId={workOrderLineId}
             role="technician"
             defaultName={(() => {
               const techName =
@@ -3372,7 +3357,8 @@ type SmartMatchRow = {
                   : "";
               return techName.trim().length ? techName.trim() : undefined;
             })()}
-            techSettingsHref="/settings/tech"
+            techSettingsHref="/dashboard/tech/settings"
+            beforeSign={() => flushAutosaveToServer()}
             onSigned={handleSigned}
           />
         </div>
@@ -3394,7 +3380,10 @@ type SmartMatchRow = {
         <div className="mx-auto flex max-w-[1240px] flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="grid grid-cols-2 gap-2 [&>*]:w-full [&>*:last-child:nth-child(odd)]:col-span-2 sm:flex sm:flex-wrap sm:items-center sm:[&>*]:w-auto">{actions}</div>
           <div className="order-first text-[10px] font-medium text-[color:var(--theme-text-secondary)] sm:order-none">
-            Draft auto-saves locally
+            <span>{autosaveLabel}</span>
+            {autosaveError && (
+              <span className="ml-2 text-red-300">{autosaveError}</span>
+            )}
           </div>
         </div>
       </div>
@@ -3409,7 +3398,7 @@ type SmartMatchRow = {
       {showMissingLineWarning && (
         <div className={cn("inset-x-0 z-50 px-3", isEmbed ? "sticky bottom-[76px]" : "fixed bottom-[52px]")}>
           <div className="mx-auto max-w-[1100px] rounded-xl border border-red-500/40 bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-xs text-red-200 shadow-[var(--theme-shadow-medium)]">
-            Missing <code>workOrderLineId</code> — save/finish will be blocked.
+            Missing <code>workOrderLineId</code> — autosave/finish will be blocked.
           </div>
         </div>
       )}
@@ -3423,7 +3412,7 @@ type SmartMatchRow = {
   return (
     <PageShell
       title={session?.templateitem || templateName || "Inspection"}
-      description="Run guided inspections, capture notes, and push items into work orders."
+      description="Complete a free-form inspection, capture evidence, and keep every device in sync."
     >
       {body}
     </PageShell>

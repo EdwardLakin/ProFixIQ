@@ -10,8 +10,44 @@ import {
   filterAllocationsNotBackedByCanonicalParts,
   getCanonicalPartDescription,
   getCanonicalPartTotal,
+  type CanonicalWorkOrderPart,
 } from "./workOrderParts";
 import { resolveWorkOrderLinePricing } from "../pricing/resolveWorkOrderLinePricing";
+
+function canonicalPart(overrides: Partial<CanonicalWorkOrderPart>): CanonicalWorkOrderPart {
+  return {
+    created_at: null,
+    description_snapshot: null,
+    id: "part-row",
+    is_active: true,
+    lifecycle_status: "requested",
+    manufacturer_snapshot: null,
+    part_id: null,
+    part_number_snapshot: null,
+    quantity: 1,
+    quantity_allocated: 0,
+    quantity_cancelled: 0,
+    quantity_consumed: 0,
+    quantity_ordered: 0,
+    quantity_received: 0,
+    quantity_requested: 1,
+    quantity_returned: 0,
+    shop_id: "shop",
+    sku_snapshot: null,
+    source_parts_request_id: null,
+    source_parts_request_item_id: null,
+    supplier_snapshot: null,
+    total_price: null,
+    unit_cost_snapshot: null,
+    unit_price: null,
+    unit_sell_price_snapshot: null,
+    updated_at: "2026-01-01T00:00:00.000Z",
+    vendor_snapshot: null,
+    work_order_id: "wo",
+    work_order_line_id: "line-a",
+    ...overrides,
+  };
+}
 
 describe("linePresentation", () => {
   it("returns Unassigned when tech is missing or non-tech profile", () => {
@@ -86,28 +122,29 @@ describe("linePresentation", () => {
 
   it("loads only active canonical work-order parts for the selected line before allocation", () => {
     const activeParts = activeCanonicalWorkOrderParts([
-      { id: "filter", work_order_id: "wo", work_order_line_id: "line-a", shop_id: "shop", part_id: "p1", quantity: 1, quantity_requested: 1, unit_price: null, unit_sell_price_snapshot: 260.47, total_price: 260.47, description_snapshot: "ACDelco Oil Filter", is_active: true, created_at: null },
-      { id: "oil", work_order_id: "wo", work_order_line_id: "line-a", shop_id: "shop", part_id: "p2", quantity: 6, quantity_requested: 6, unit_price: null, unit_sell_price_snapshot: 229.39, total_price: 1376.34, description_snapshot: "ACDelco 5W30 Oil", is_active: true, created_at: null },
-      { id: "inactive", work_order_id: "wo", work_order_line_id: "line-a", shop_id: "shop", part_id: "p3", quantity: 1, unit_price: 10, total_price: 10, description_snapshot: "Inactive", is_active: false, created_at: null },
-      { id: "other-line", work_order_id: "wo", work_order_line_id: "line-b", shop_id: "shop", part_id: "p4", quantity: 1, unit_price: 999, total_price: 999, description_snapshot: "Other line", is_active: true, created_at: null },
+      canonicalPart({ id: "filter", part_id: "p1", quantity: 1, quantity_requested: 1, unit_sell_price_snapshot: 260.47, total_price: 260.47, description_snapshot: "ACDelco Oil Filter" }),
+      canonicalPart({ id: "oil", part_id: "p2", quantity: 6, quantity_requested: 6, unit_sell_price_snapshot: 229.39, total_price: 1376.34, description_snapshot: "ACDelco 5W30 Oil" }),
+      canonicalPart({ id: "inactive", part_id: "p3", quantity: 1, unit_price: 10, total_price: 10, description_snapshot: "Inactive", is_active: false }),
+      canonicalPart({ id: "other-line", work_order_line_id: "line-b", part_id: "p4", quantity: 1, unit_price: 999, total_price: 999, description_snapshot: "Other line" }),
     ]).filter((part) => part.work_order_line_id === "line-a");
 
     expect(activeParts.map(getCanonicalPartDescription)).toEqual(["ACDelco Oil Filter", "ACDelco 5W30 Oil"]);
     expect(activeParts.reduce((sum, part) => sum + getCanonicalPartTotal(part), 0)).toBeCloseTo(1636.81, 2);
   });
 
-  it("does not double-count allocations backed by canonical request items and does not require allocation for display", () => {
+  it("does not double-count allocations linked to canonical parts or request items", () => {
     const canonicalParts = [
-      { source_parts_request_item_id: "request-item-1" },
-      { source_parts_request_item_id: "request-item-2" },
+      { id: "canonical-direct", source_parts_request_item_id: null },
+      { id: "canonical-request", source_parts_request_item_id: "request-item-1" },
     ];
     const allocations = [
-      { source_request_item_id: "request-item-1", qty: 1, unit_cost: 260.47 },
-      { source_request_item_id: null, qty: 1, unit_cost: 20 },
+      { work_order_part_id: null, source_request_item_id: "request-item-1", qty: 1, unit_cost: 260.47 },
+      { work_order_part_id: "canonical-direct", source_request_item_id: null, qty: 1, unit_cost: 50 },
+      { work_order_part_id: null, source_request_item_id: null, qty: 1, unit_cost: 20 },
     ];
 
     expect(filterAllocationsNotBackedByCanonicalParts(allocations, canonicalParts)).toEqual([
-      { source_request_item_id: null, qty: 1, unit_cost: 20 },
+      { work_order_part_id: null, source_request_item_id: null, qty: 1, unit_cost: 20 },
     ]);
   });
 });

@@ -1,0 +1,66 @@
+name: Shop Assistant Validation
+
+on:
+  pull_request:
+    paths:
+      - "app/api/shop-assistant/**"
+      - "app/assistant/**"
+      - "app/mobile/assistant/**"
+      - "features/shop-assistant/**"
+      - "tests/shop-assistant-*.test.ts"
+      - ".github/workflows/shop-assistant-validation.yml"
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Capture TypeScript validation
+        id: typecheck
+        shell: bash
+        run: |
+          set +e
+          pnpm typecheck > shop-assistant-typecheck.log 2>&1
+          status=$?
+          cat shop-assistant-typecheck.log
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload TypeScript diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shop-assistant-typecheck-${{ github.run_id }}
+          path: shop-assistant-typecheck.log
+          if-no-files-found: error
+
+      - name: Fail on TypeScript errors
+        if: steps.typecheck.outputs.status != '0'
+        run: exit 1
+
+      - run: >-
+          pnpm exec eslint
+          app/api/shop-assistant
+          app/assistant/page.tsx
+          app/mobile/assistant/page.tsx
+          features/shop-assistant
+          tests/shop-assistant-reliability.test.ts
+          tests/shop-assistant-state.test.ts
+          tests/shop-assistant-actions.test.ts
+      - run: >-
+          pnpm exec vitest run
+          tests/shop-assistant-reliability.test.ts
+          tests/shop-assistant-state.test.ts
+          tests/shop-assistant-actions.test.ts
+      - run: node scripts/audit-api-routes.mjs

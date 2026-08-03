@@ -5,13 +5,14 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 
 import SignaturePad, {
   openSignaturePad,
 } from "@/features/shared/signaturePad/controller";
+import { MyWorkforceCard } from "@/features/workforce/components/MyWorkforceCard";
 
 const PREFS_KEY = "profixiq.tech.prefs.v1";
 
@@ -44,7 +45,7 @@ async function sha256Base64(dataUrl: string): Promise<string> {
 }
 
 export default function MobileTechSettingsPage(): JSX.Element {
-  const supabase = createBrowserSupabase();
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   // profile fields (from profiles table)
   const [loading, setLoading] = useState(true);
@@ -193,14 +194,19 @@ export default function MobileTechSettingsPage(): JSX.Element {
       const blob = dataUrlToBlob(dataUrl);
       const hash = await sha256Base64(dataUrl);
 
-      const path = `tech-signatures/${profileId}.png`;
+      const path = `tech-signatures/${profileId}/${hash}.png`;
 
       const up = await supabase.storage.from("signatures").upload(path, blob, {
-        upsert: true,
+        upsert: false,
         contentType: "image/png",
       });
 
-      if (up.error) throw up.error;
+      if (
+        up.error &&
+        !/already exists|resource exists|duplicate/i.test(up.error.message)
+      ) {
+        throw up.error;
+      }
 
       const update: Database["public"]["Tables"]["profiles"]["Update"] = {
         tech_signature_path: path,
@@ -284,6 +290,8 @@ export default function MobileTechSettingsPage(): JSX.Element {
 
       <main className="mobile-body-gradient flex-1 px-4 py-4">
         <div className="mx-auto max-w-xl space-y-5">
+          <MyWorkforceCard mobile />
+
           {/* profile card */}
           <section className="glass-card rounded-2xl border border-[color:var(--theme-border-soft)] px-4 py-4 space-y-4">
             <div className="flex items-center justify-between gap-3">
@@ -372,16 +380,11 @@ export default function MobileTechSettingsPage(): JSX.Element {
               <SigPill />
             </div>
 
-            {sigPath ? (
-              <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-[11px] text-[color:var(--theme-text-secondary)]">
-                <div className="text-[color:var(--theme-text-muted)]">Path</div>
-                <div className="font-mono">{sigPath}</div>
-              </div>
-            ) : (
+            {!sigPath ? (
               <div className="text-[11px] text-[color:var(--theme-text-secondary)]">
                 No signature on file yet.
               </div>
-            )}
+            ) : null}
 
             <div className="flex flex-wrap items-center gap-2">
               <button
@@ -392,10 +395,6 @@ export default function MobileTechSettingsPage(): JSX.Element {
               >
                 {sigBusy ? "Opening…" : sigPath ? "Update signature" : "Capture signature"}
               </button>
-
-              <span className="text-[11px] text-[color:var(--theme-text-muted)]">
-                Stored in <span className="font-mono text-[color:var(--theme-text-secondary)]">signatures</span> bucket
-              </span>
             </div>
 
             <p className="text-[11px] text-[color:var(--theme-text-muted)]">

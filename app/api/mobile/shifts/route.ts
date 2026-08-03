@@ -1,8 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
-import {
-  createAdminSupabase,
-  createServerSupabaseRoute,
-} from "@/features/shared/lib/supabase/server";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { WORKFORCE_STAFF_ROLES } from "@/features/workforce/lib/roster";
 import type { Json } from "@shared/types/types/supabase";
 import {
   closeAllActiveTechnicianJobLabor,
@@ -62,36 +61,20 @@ type ShiftLifecycleRpcRow = ActiveShift & {
 };
 
 async function authz() {
-  const supabase = createServerSupabaseRoute();
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-  if (error || !user)
+  const access = await requireShopScopedApiAccess({
+    allowRoles: [...WORKFORCE_STAFF_ROLES],
+  });
+  if (!access.ok) {
     return {
       ok: false as const,
-      res: NextResponse.json({ error: "Not authenticated" }, { status: 401 }),
+      res: access.response,
     };
-
-  let { data: me } = await supabase
-    .from("profiles")
-    .select("id, shop_id")
-    .eq("id", user.id)
-    .maybeSingle<Caller>();
-  if (!me) {
-    const byUser = await supabase
-      .from("profiles")
-      .select("id, shop_id")
-      .eq("user_id", user.id)
-      .maybeSingle<Caller>();
-    me = byUser.data ?? null;
   }
-  if (!me?.shop_id)
-    return {
-      ok: false as const,
-      res: NextResponse.json({ error: "Missing shop" }, { status: 403 }),
-    };
-  return { ok: true as const, me, authUserId: user.id };
+  const me: Caller = {
+    id: access.profile.id,
+    shop_id: access.profile.shop_id,
+  };
+  return { ok: true as const, me, authUserId: access.authUserId };
 }
 
 async function loadActiveShift(
@@ -354,7 +337,20 @@ async function maybeResumeJobAfterBreak(params: {
     }>();
   if (lineErr) throw new Error(lineErr.message);
   if (!line) return cancel("line_ineligible");
-  if (line.assigned_tech_id && line.assigned_tech_id !== params.userId)
+
+  const { data: additionalAssignment, error: assignmentErr } =
+    await params.admin
+      .from("work_order_line_technicians")
+      .select("id")
+      .eq("work_order_line_id", line.id)
+      .eq("technician_id", params.userId)
+      .limit(1)
+      .maybeSingle<{ id: string }>();
+  if (assignmentErr) throw new Error(assignmentErr.message);
+
+  const isAssigned =
+    line.assigned_tech_id === params.userId || Boolean(additionalAssignment);
+  if (!isAssigned)
     return cancel("assignment_changed");
   const status = normalizeWorkOrderLineStatus(line.status);
   if (

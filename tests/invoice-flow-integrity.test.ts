@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { resolveWorkOrderLinePricing } from "../features/work-orders/lib/pricing/resolveWorkOrderLinePricing";
 
 function source(path: string) {
-  return readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
+  return readFileSync(path, "utf8");
 }
 
 describe("invoice flow financial integrity", () => {
@@ -18,10 +18,11 @@ describe("invoice flow financial integrity", () => {
 
   it("billing snapshot failures are not converted into zero-dollar invoices", () => {
     const route = source("app/api/billing/work-orders/route.ts");
-    expect(route).toContain("getInvoiceSnapshotForWorkOrder");
-    expect(route).toContain("Failed to resolve invoice totals");
-    expect(route).toContain("{ ok: false, error: snapshotResults.error }");
-    expect(route).not.toContain("resolved_labor_total: 0,\n          resolved_parts_total: 0");
+    expect(route).toContain("getIssuableInvoiceSnapshot");
+    expect(route).toContain("resolved_labor_total: null");
+    expect(route).toContain("resolved_parts_total: null");
+    expect(route).toContain("resolved_invoice_total: null");
+    expect(route).toContain("pricing_error:");
   });
 
   it("new invoice snapshots include shop supplies overrides and shop tax rate", () => {
@@ -29,21 +30,28 @@ describe("invoice flow financial integrity", () => {
     expect(snapshot).toContain("shop_supplies_enabled_override");
     expect(snapshot).toContain("shop_supplies_amount_override");
     expect(snapshot).toContain("tax_rate");
-    expect(snapshot).toContain("taxRateFraction(shop?.tax_rate)");
+    expect(snapshot).toContain("taxRatePercent: configuredTaxRate");
   });
 
   it("allocated parts use catalog sell price before allocation cost", () => {
     const snapshot = source("features/invoices/server/getInvoiceSnapshot.ts");
-    expect(snapshot).toContain("id, name, sku, part_number, unit, price, supplier");
-    expect(snapshot).toContain("safeNumberOrNull(p?.price) ?? safeNumber(a.unit_cost)");
-    expect(snapshot).toContain("unit_price: safeNumberOrNull(catalogPart?.price) ?? safeNumber(part.unit_cost)");
+    expect(snapshot).toContain(
+      'select("id, name, sku, part_number, unit, price, default_price")',
+    );
+    expect(snapshot).toContain("safeNumber(p?.price) ||");
+    expect(snapshot).toContain("safeNumber(p?.default_price)");
+    expect(snapshot).not.toContain("safeNumber(a.unit_cost)");
   });
 
   it("focused job pricing uses the shop labor rate", () => {
-    const modal = source("features/work-orders/components/workorders/FocusedJobModal.tsx");
+    const modal = source(
+      "features/work-orders/components/workorders/FocusedJobModal.tsx",
+    );
     expect(modal).toContain('select("labor_rate")');
     expect(modal).toContain("const [shopLaborRate, setShopLaborRate]");
-    expect(modal).toContain("resolveWorkOrderLinePricing({ line, shopLaborRate");
+    expect(modal).toContain(
+      "resolveWorkOrderLinePricing({ line, shopLaborRate",
+    );
     expect(modal).not.toContain("shopLaborRate: null");
   });
 

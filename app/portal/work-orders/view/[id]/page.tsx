@@ -12,6 +12,11 @@ import {
 } from "@/features/portal/server/portalAuth";
 
 import PortalInvoicePayButton from "@/features/stripe/components/PortalInvoicePayButton";
+import {
+  calculateShopSupplies,
+  resolveShopSuppliesOverride,
+  resolveShopSuppliesSettings,
+} from "@/features/work-orders/lib/shopSupplies";
 
 import WorkOrderViewer, {
   type WorkOrderViewerLine,
@@ -28,6 +33,7 @@ type CustomerRow = DB["public"]["Tables"]["customers"]["Row"];
 type ShopRow = DB["public"]["Tables"]["shops"]["Row"];
 type PartRow = DB["public"]["Tables"]["parts"]["Row"];
 type AllocationRow = DB["public"]["Tables"]["work_order_part_allocations"]["Row"];
+type QuoteLineRow = DB["public"]["Tables"]["work_order_quote_lines"]["Row"];
 
 type WorkOrderLite = Pick<
   WorkOrderRow,
@@ -45,6 +51,8 @@ type WorkOrderLite = Pick<
   | "invoice_pdf_url"
   | "intake_status"
   | "intake_submitted_at"
+  | "shop_supplies_enabled_override"
+  | "shop_supplies_amount_override"
 >;
 
 type VehicleLite = Pick<
@@ -85,6 +93,29 @@ type ShopLite = Pick<
   | "province"
   | "postal_code"
   | "country"
+  | "labor_rate"
+  | "shop_supplies_enabled"
+  | "shop_supplies_type"
+  | "shop_supplies_percent"
+  | "shop_supplies_flat_amount"
+  | "shop_supplies_cap_amount"
+  | "supplies_percent"
+>;
+type QuoteLineLite = Pick<
+  QuoteLineRow,
+  | "labor_hours"
+  | "est_labor_hours"
+  | "labor_total"
+  | "parts_total"
+  | "subtotal"
+  | "grand_total"
+  | "status"
+  | "stage"
+  | "sent_to_customer_at"
+  | "approved_at"
+  | "declined_at"
+  | "work_order_line_id"
+  | "metadata"
 >;
 
 type PartLookupRow = Pick<PartRow, "id" | "name" | "sku" | "part_number" | "unit">;
@@ -97,6 +128,47 @@ function normalizeCurrencyFromCountry(country: unknown): "CAD" | "USD" {
 function safeNumber(v: unknown): number {
   const n = typeof v === "number" ? v : Number(v);
   return Number.isFinite(n) ? n : 0;
+}
+
+function nullableNumber(v: unknown): number | null {
+  if (v == null) return null;
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function quoteMetadata(line: Pick<QuoteLineLite, "metadata">): Record<string, unknown> {
+  if (!line.metadata || typeof line.metadata !== "object" || Array.isArray(line.metadata)) {
+    return {};
+  }
+  return line.metadata as Record<string, unknown>;
+}
+
+function quoteLaborHours(line: Pick<QuoteLineLite, "labor_hours" | "est_labor_hours">): number {
+  return nullableNumber(line.labor_hours) ?? nullableNumber(line.est_labor_hours) ?? 0;
+}
+
+function quoteLaborRate(line: Pick<QuoteLineLite, "metadata">, shopLaborRate: number): number {
+  return nullableNumber(quoteMetadata(line).labor_rate) ?? shopLaborRate;
+}
+
+function quoteLaborTotal(line: Pick<QuoteLineLite, "labor_total" | "labor_hours" | "est_labor_hours" | "metadata">, shopLaborRate: number): number {
+  return nullableNumber(line.labor_total) ?? quoteLaborHours(line) * quoteLaborRate(line, shopLaborRate);
+}
+
+function quotePartsTotal(line: Pick<QuoteLineLite, "parts_total">): number {
+  return nullableNumber(line.parts_total) ?? 0;
+}
+
+function quoteGrandTotal(line: Pick<QuoteLineLite, "grand_total" | "subtotal" | "labor_total" | "labor_hours" | "est_labor_hours" | "metadata" | "parts_total">, shopLaborRate: number): number {
+  return nullableNumber(line.grand_total) ?? nullableNumber(line.subtotal) ?? quoteLaborTotal(line, shopLaborRate) + quotePartsTotal(line);
+}
+
+function isCustomerVisibleQuoteLine(line: QuoteLineLite): boolean {
+  const status = String(line.status ?? "").trim().toLowerCase();
+  const stage = String(line.stage ?? "").trim().toLowerCase();
+  if (line.declined_at || status === "declined" || stage === "customer_declined") return false;
+  if (status === "pending_parts" || stage === "advisor_pending") return false;
+  return Boolean(line.sent_to_customer_at || line.approved_at || line.work_order_line_id || ["sent", "approved", "converted"].includes(status));
 }
 
 function dollarsToCents(n: number | null): number {
@@ -140,7 +212,7 @@ export default async function PortalWorkOrderViewerPage({
     const { data: wo, error: woErr } = await supabase
       .from("work_orders")
       .select(
-        "id, custom_id, status, created_at, updated_at, invoice_total, labor_total, parts_total, shop_id, customer_id, vehicle_id, invoice_pdf_url, intake_status, intake_submitted_at",
+        "id, custom_id, status, created_at, updated_at, invoice_total, labor_total, parts_total, shop_id, customer_id, vehicle_id, invoice_pdf_url, intake_status, intake_submitted_at, shop_supplies_enabled_override, shop_supplies_amount_override",
       )
       .eq("id", workOrderId)
       .eq("customer_id", portalCustomer.id)
@@ -155,7 +227,7 @@ export default async function PortalWorkOrderViewerPage({
       const { data: s, error: sErr } = await supabase
         .from("shops")
         .select(
-          "business_name, shop_name, name, phone_number, email, street, city, province, postal_code, country",
+          "business_name, shop_name, name, phone_number, email, street, city, province, postal_code, country, labor_rate, shop_supplies_enabled, shop_supplies_type, shop_supplies_percent, shop_supplies_flat_amount, shop_supplies_cap_amount, supplies_percent",
         )
         .eq("id", wo.shop_id)
         .maybeSingle<ShopLite>();
@@ -204,6 +276,24 @@ export default async function PortalWorkOrderViewerPage({
     if (wolErr) throw wolErr;
 
     const lines = (Array.isArray(wol) ? wol : []) as WorkOrderViewerLine[];
+
+    const { data: quoteLineRaw, error: quoteLineErr } = await supabase
+      .from("work_order_quote_lines")
+      .select("labor_hours, est_labor_hours, labor_total, parts_total, subtotal, grand_total, status, stage, sent_to_customer_at, approved_at, declined_at, work_order_line_id, metadata")
+      .eq("work_order_id", workOrderId);
+
+    if (quoteLineErr) throw quoteLineErr;
+
+    const quoteLines = ((Array.isArray(quoteLineRaw) ? quoteLineRaw : []) as QuoteLineLite[]).filter(isCustomerVisibleQuoteLine);
+    const shopLaborRate = nullableNumber(shop?.labor_rate) ?? 140;
+    const quoteLineTotal = quoteLines.reduce((sum, line) => sum + quoteGrandTotal(line, shopLaborRate), 0);
+    const quoteLaborPartsBase = quoteLines.reduce((sum, line) => sum + quoteLaborTotal(line, shopLaborRate) + quotePartsTotal(line), 0);
+    const quoteSupplies = calculateShopSupplies({
+      baseAmount: quoteLaborPartsBase,
+      settings: resolveShopSuppliesSettings(shop as Parameters<typeof resolveShopSuppliesSettings>[0]),
+      override: resolveShopSuppliesOverride(wo as Parameters<typeof resolveShopSuppliesOverride>[0]),
+    });
+    const visibleQuoteTotal = quoteLines.length > 0 ? quoteLineTotal + quoteSupplies.amount : null;
 
     // Allocations (truth for parts)
     const { data: allocRaw, error: allocErr } = await supabase
@@ -276,6 +366,9 @@ export default async function PortalWorkOrderViewerPage({
     });
 
     const woInvoiceTotal = safeNumber(wo.invoice_total);
+    const displayWorkOrder = visibleQuoteTotal != null && woInvoiceTotal <= 0
+      ? { ...wo, invoice_total: visibleQuoteTotal }
+      : wo;
     const payAmountCents = dollarsToCents(woInvoiceTotal > 0 ? woInvoiceTotal : null);
 
     // Intake CTA (portal)
@@ -313,7 +406,7 @@ export default async function PortalWorkOrderViewerPage({
 
         <WorkOrderViewer
           kind="portal"
-          workOrder={wo}
+          workOrder={displayWorkOrder}
           currency={currency}
           vehicle={vehicle ?? undefined}
           customer={
@@ -339,7 +432,7 @@ export default async function PortalWorkOrderViewerPage({
           }
           lines={lines}
           parts={parts}
-          backHref="/portal/history"
+          backHref="/portal"
           title="Work order"
           subtitle="Read-only view (customer portal)."
           invoicePdfUrl={wo.invoice_pdf_url ?? null}

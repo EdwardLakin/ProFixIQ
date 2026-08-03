@@ -23,6 +23,8 @@ import AssignTechModal from "@/features/work-orders/components/workorders/extras
 import { JobCard } from "@/features/work-orders/components/JobCard";
 import WorkOrderAiOperationalRecommendations from "@/features/work-orders/components/WorkOrderAiOperationalRecommendations";
 import WorkOrderAiFreshnessBadge from "@/features/work-orders/components/WorkOrderAiFreshnessBadge";
+import WorkOrderMediaGallery from "@/features/work-orders/components/workorders/extras/WorkOrderMediaGallery";
+import type { WorkOrderEvidenceItem } from "@/features/work-orders/lib/evidence/workOrderEvidence";
 import PageShell from "@/features/shared/components/PageShell";
 import StatusBadge from "@/features/shared/components/ui/StatusBadge";
 import DecisionTimeline, {
@@ -35,8 +37,17 @@ import { formatDecisionStatus, resolveDecisionStatus } from "@/features/shared/l
 import { deriveEventsFromWorkOrder } from "@/features/shared/lib/decisionEvents";
 import { resolveWorkOrderLinePricing } from "@/features/work-orders/lib/pricing/resolveWorkOrderLinePricing";
 import { filterAllocationsNotBackedByCanonicalParts } from "@/features/work-orders/lib/display/workOrderParts";
+import {
+  getPartsRequestDisplayState,
+  getPartsRequestStatusLabel,
+  loadCanonicalWorkOrderLineContext,
+  type CanonicalWorkOrderPartRow as WorkOrderPartRow,
+  type WorkOrderAllocationRow as AllocationRow,
+  type WorkOrderPartRequestRow as PartRequestRow,
+} from "@/features/work-orders/lib/data/loadCanonicalWorkOrderLineContext";
 import { isReviewableQuoteLine } from "@/features/work-orders/lib/quotes/reviewableQuoteLines";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import { useTabs } from "@/features/shared/components/tabs/TabsProvider";
 
 import { prepareSectionsWithCornerGrid } from "@inspections/lib/inspection/prepareSectionsWithCornerGrid";
 
@@ -57,25 +68,6 @@ type WorkOrderShopRateRow = Pick<DB["public"]["Tables"]["shops"]["Row"], "labor_
 type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
 type Customer = DB["public"]["Tables"]["customers"]["Row"];
 type Profile = DB["public"]["Tables"]["profiles"]["Row"];
-type AllocationRow =
-  DB["public"]["Tables"]["work_order_part_allocations"]["Row"] & {
-    parts?: { name: string | null } | null;
-  };
-type WorkOrderPartRow = DB["public"]["Tables"]["work_order_parts"]["Row"] & {
-  description_snapshot?: string | null;
-  manufacturer_snapshot?: string | null;
-  part_number_snapshot?: string | null;
-  unit_sell_price_snapshot?: number | null;
-  lifecycle_status?: string | null;
-  is_active?: boolean | null;
-  source_parts_request_item_id?: string | null;
-  parts?: { name: string | null; sku?: string | null; part_number?: string | null; manufacturer?: string | null } | null;
-};
-type LineTechRow = DB["public"]["Tables"]["work_order_line_technicians"]["Row"];
-type PartRequestRow = Pick<
-  DB["public"]["Tables"]["part_requests"]["Row"],
-  "id" | "quote_line_id" | "job_id" | "status"
->;
 
 type WorkOrderLineWithInspectionMeta = WorkOrderLine & {
   // real DB column
@@ -94,9 +86,6 @@ type WorkOrderLineWithInspectionMeta = WorkOrderLine & {
     template?: string | null;
   } | null;
 };
-type JobLinePriority = "low" | "normal" | "high" | "urgent";
-
-
 type PropertyContext = {
   requestId: string;
   requestTitle: string | null;
@@ -127,22 +116,14 @@ function isCompletedLineStatus(status: string | null | undefined): boolean {
 }
 
 function partsRequestActionLabel(requests: PartRequestRow[]): string {
-  if (requests.length === 0) return "Request all parts";
-  const statuses = new Set(
-    requests.map((request) => String(request.status ?? "requested").toLowerCase()),
-  );
-  if (statuses.has("fulfilled")) return "Parts handed off";
-  if (
-    statuses.has("approved") ||
-    statuses.has("partially_ordered") ||
-    statuses.has("partially_consumed") ||
-    statuses.has("partially_returned")
-  ) {
-    return "Open Pick / Order";
+  switch (getPartsRequestDisplayState(requests)) {
+    case "none": return "Request all parts";
+    case "pick_order": return "Open Pick / Order";
+    case "awaiting_approval": return "Awaiting approval";
+    case "requested": return "Parts requested";
+    case "handoff": return "Parts handed off";
+    case "history": return "View parts history";
   }
-  if (statuses.has("quoted")) return "Awaiting approval";
-  if (statuses.has("rejected") || statuses.has("cancelled")) return "View parts history";
-  return "Parts requested";
 }
 
 /** Normalize “where is the inspection template id stored for this line?” */
@@ -219,6 +200,7 @@ export default function WorkOrderIdClient(): JSX.Element {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { updateActiveTab } = useTabs();
 
   const routeId = (params?.id as string) || "";
 
@@ -236,6 +218,7 @@ export default function WorkOrderIdClient(): JSX.Element {
   const [stagedPartsByLine, setStagedPartsByLine] = useState<Record<string, WorkOrderPartRow[]>>({});
   const [partRequestsByQuoteLine, setPartRequestsByQuoteLine] = useState<Record<string, PartRequestRow[]>>({});
   const [partRequestsByLine, setPartRequestsByLine] = useState<Record<string, PartRequestRow[]>>({});
+  const [evidence, setEvidence] = useState<WorkOrderEvidenceItem[]>([]);
   const [requestingPartsLineId, setRequestingPartsLineId] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [loadedOnce, setLoadedOnce] = useState<boolean>(false);
@@ -282,8 +265,7 @@ export default function WorkOrderIdClient(): JSX.Element {
     Array<Pick<Profile, "id" | "full_name" | "role">>
   >([]);
 
-  // per-line technicians
-  const [lineTechsByLine, setLineTechsByLine] = useState<Record<string, string[]>>({});
+  const [activeTechsByLine, setActiveTechsByLine] = useState<Record<string, string[]>>({});
 
   // ✅ AI review state for status icons
   const [, setReviewChecked] = useState<boolean>(false);
@@ -296,6 +278,33 @@ export default function WorkOrderIdClient(): JSX.Element {
 
   // ✅ read job from query (desktop panel)
   const jobFromQuery = searchParams?.get("job") || null;
+
+  useEffect(() => {
+    if (!wo) return;
+    const customerName =
+      customer?.business_name?.trim() ||
+      customer?.name?.trim() ||
+      [customer?.first_name ?? "", customer?.last_name ?? ""]
+        .filter(Boolean)
+        .join(" ")
+        .trim() ||
+      wo.customer_name?.trim() ||
+      "";
+    const vehicleLabel = vehicle
+      ? [vehicle.year, vehicle.make, vehicle.model]
+          .filter((value) => value != null && String(value).trim())
+          .join(" ")
+      : "";
+    const workOrderLabel = wo.custom_id?.trim() || `WO-${wo.id.slice(0, 8)}`;
+
+    updateActiveTab({
+      title: customerName
+        ? `${workOrderLabel} · ${customerName}`
+        : workOrderLabel,
+      subtitle: vehicleLabel || undefined,
+      status: formatDecisionStatus({ workStatus: wo.status }).label,
+    });
+  }, [customer, updateActiveTab, vehicle, wo]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -409,22 +418,14 @@ export default function WorkOrderIdClient(): JSX.Element {
       if (uid) {
         const { data: prof } = await supabase
           .from("profiles")
-          .select("role")
-          .eq("id", uid)
+          .select("id, role")
+          .or(`id.eq.${uid},user_id.eq.${uid}`)
+          .limit(1)
           .maybeSingle();
+        const canonicalProfileId = prof?.id ?? uid;
+        setCurrentUserId(canonicalProfileId);
+        setUserId(canonicalProfileId);
         setCurrentUserRole(prof?.role ?? null);
-      }
-
-      try {
-        const res = await fetch("/api/assignables");
-        const json = (await res.json().catch(() => null)) as
-          | { data?: Array<Pick<Profile, "id" | "full_name" | "role">> }
-          | null;
-        if (res.ok && Array.isArray(json?.data)) {
-          setAssignables(json.data);
-        }
-      } catch {
-        // ignore
       }
 
       if (!uid) setLoading(false);
@@ -447,6 +448,37 @@ export default function WorkOrderIdClient(): JSX.Element {
       sub?.subscription?.unsubscribe?.();
     };
   }, [routeId, setCurrentUserId, setUserId]);
+
+  useEffect(() => {
+    if (!currentUserRole) return;
+    const actor = getActorCapabilities({ role: currentUserRole });
+    const assignablesUrl = actor.canAssignWork
+      ? "/api/assignables"
+      : wo?.id
+        ? `/api/assignables?scope=work_order&work_order_id=${encodeURIComponent(wo.id)}`
+        : null;
+    if (!assignablesUrl) return;
+
+    let cancelled = false;
+    const loadReadableTechnicians = async () => {
+      try {
+        const res = await fetch(assignablesUrl);
+        const json = (await res.json().catch(() => null)) as
+          | { data?: Array<Pick<Profile, "id" | "full_name" | "role">> }
+          | null;
+        if (!cancelled && res.ok && Array.isArray(json?.data)) {
+          setAssignables(json.data);
+        }
+      } catch {
+        // Existing work-order data remains available if the name lookup fails.
+      }
+    };
+
+    void loadReadableTechnicians();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUserRole, wo?.id]);
 
   /* ---------------------- FETCH ---------------------- */
   const fetchAll = useCallback(
@@ -522,7 +554,8 @@ export default function WorkOrderIdClient(): JSX.Element {
             setAllocsByLine({});
             setStagedPartsByLine({});
             setPartRequestsByQuoteLine({});
-            setLineTechsByLine({});
+            setEvidence([]);
+            setActiveTechsByLine({});
           }
 
           // ✅ reset review state
@@ -548,7 +581,7 @@ export default function WorkOrderIdClient(): JSX.Element {
           setWarnedMissing(true);
         }
 
-        const [linesRes, quoteRes, vehRes, custRes, shopRes, propertyReqRes] = await Promise.all([
+        const [linesRes, quoteRes, vehRes, custRes, shopRes, propertyReqRes, evidenceRes] = await Promise.all([
           supabase
             .from("work_order_lines")
             .select("*")
@@ -585,6 +618,9 @@ export default function WorkOrderIdClient(): JSX.Element {
             .select("*")
             .eq("work_order_id", woRow.id)
             .maybeSingle(),
+          fetch(`/api/work-orders/${woRow.id}/media?scope=all`, {
+            cache: "no-store",
+          }),
         ]);
 
         if (linesRes.error) throw linesRes.error;
@@ -594,6 +630,15 @@ export default function WorkOrderIdClient(): JSX.Element {
         if (quoteRes.error) throw quoteRes.error;
         const quoteRows = (quoteRes.data ?? []) as WorkOrderQuoteLine[];
         setQuoteLines(quoteRows);
+
+        if (evidenceRes.ok) {
+          const evidenceBody = (await evidenceRes.json().catch(() => null)) as
+            | { items?: WorkOrderEvidenceItem[] }
+            | null;
+          setEvidence(evidenceBody?.items ?? []);
+        } else {
+          setEvidence([]);
+        }
 
         if (vehRes?.error) throw vehRes.error;
         setVehicle((vehRes?.data as Vehicle | null) ?? null);
@@ -668,94 +713,23 @@ export default function WorkOrderIdClient(): JSX.Element {
 
         // allocations + line techs
         if (lineRows.length) {
-          const [allocsQuery, stagedQuery, lineTechsQuery, partRequestsQuery] = await Promise.all([
-            supabase
-              .from("work_order_part_allocations")
-              .select("*, parts(name)")
-              .in(
-                "work_order_line_id",
-                lineRows.map((l) => l.id),
-              ),
-
-            // ✅ staged/quoted parts from menu quick add (NOT allocated inventory)
-            supabase
-              .from("work_order_parts")
-              .select("*, parts(name, sku, part_number, manufacturer, supplier)")
-              .eq("work_order_id", woRow.id)
-              .eq("shop_id", woRow.shop_id)
-              .eq("is_active", true)
-              .in(
-                "work_order_line_id",
-                lineRows.map((l) => l.id),
-              ),
-
-            supabase
-              .from("work_order_line_technicians")
-              .select("work_order_line_id, technician_id")
-              .in(
-                "work_order_line_id",
-                lineRows.map((l) => l.id),
-              ),
-
-            supabase
-              .from("part_requests")
-              .select("id, quote_line_id, job_id, status")
-              .eq("work_order_id", woRow.id)
-              .eq("shop_id", woRow.shop_id),
-          ]);
-
-          const byLine: Record<string, AllocationRow[]> = {};
-          (allocsQuery.data ?? []).forEach((a) => {
-            const row = a as AllocationRow;
-            const key = row.work_order_line_id;
-            if (!byLine[key]) byLine[key] = [];
-            byLine[key].push(row);
+          const lineContext = await loadCanonicalWorkOrderLineContext({
+            supabase,
+            workOrderId: woRow.id,
+            shopId: woRow.shop_id,
+            lineIds: lineRows.map((line) => line.id),
           });
-          setAllocsByLine(byLine);
-
-          const stagedByLine: Record<string, WorkOrderPartRow[]> = {};
-          (stagedQuery.data ?? []).forEach((p) => {
-            const row = p as WorkOrderPartRow;
-            const key = row.work_order_line_id;
-            if (!key) return;
-            if (!stagedByLine[key]) stagedByLine[key] = [];
-            stagedByLine[key].push(row);
-          });
-          setStagedPartsByLine(stagedByLine);
-
-          const techMap: Record<string, string[]> = {};
-          (lineTechsQuery.data as LineTechRow[] | null)?.forEach((lt) => {
-            const lnId = lt.work_order_line_id;
-            const techId = lt.technician_id;
-            if (!techMap[lnId]) techMap[lnId] = [];
-            if (!techMap[lnId].includes(techId)) {
-              techMap[lnId].push(techId);
-            }
-          });
-          setLineTechsByLine(techMap);
-
-          const requestsByQuote: Record<string, PartRequestRow[]> = {};
-          const requestsByLine: Record<string, PartRequestRow[]> = {};
-          (partRequestsQuery.data as PartRequestRow[] | null)?.forEach((request) => {
-            const quoteLineId = request.quote_line_id;
-            if (quoteLineId) {
-              if (!requestsByQuote[quoteLineId]) requestsByQuote[quoteLineId] = [];
-              requestsByQuote[quoteLineId].push(request);
-            }
-            const lineId = request.job_id;
-            if (lineId) {
-              if (!requestsByLine[lineId]) requestsByLine[lineId] = [];
-              requestsByLine[lineId].push(request);
-            }
-          });
-          setPartRequestsByQuoteLine(requestsByQuote);
-          setPartRequestsByLine(requestsByLine);
+          setAllocsByLine(lineContext.allocationsByLine);
+          setStagedPartsByLine(lineContext.canonicalPartsByLine);
+          setActiveTechsByLine(lineContext.activeTechnicianIdsByLine);
+          setPartRequestsByQuoteLine(lineContext.partRequestsByQuoteLine);
+          setPartRequestsByLine(lineContext.partRequestsByLine);
         } else {
           setAllocsByLine({});
           setStagedPartsByLine({});
           setPartRequestsByQuoteLine({});
           setPartRequestsByLine({});
-          setLineTechsByLine({});
+          setActiveTechsByLine({});
         }
 
         // ✅ load latest AI invoice review (drives status icons in JobCard)
@@ -849,6 +823,26 @@ export default function WorkOrderIdClient(): JSX.Element {
         {
           event: "*",
           schema: "public",
+          table: "work_order_line_labor_segments",
+          filter: `work_order_id=eq.${wo.id}`,
+        },
+        () => fetchAll(),
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "part_requests",
+          filter: `work_order_id=eq.${wo.id}`,
+        },
+        () => fetchAll(),
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
           table: "work_order_quote_lines",
           filter: `work_order_id=eq.${wo.id}`,
         },
@@ -865,6 +859,26 @@ export default function WorkOrderIdClient(): JSX.Element {
         },
         () => fetchLatestReview(wo.id),
       )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "work_order_media",
+          filter: `work_order_id=eq.${wo.id}`,
+        },
+        () => fetchAll(),
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "work_order_media_annotations",
+          filter: `shop_id=eq.${wo.shop_id}`,
+        },
+        () => fetchAll(),
+      )
       .subscribe();
 
     const local = () => fetchAll();
@@ -878,7 +892,7 @@ export default function WorkOrderIdClient(): JSX.Element {
       }
       window.removeEventListener("wo:parts-used", local);
     };
-  }, [wo?.id, fetchAll, fetchLatestReview]);
+  }, [wo?.id, wo?.shop_id, fetchAll, fetchLatestReview]);
 
   // ---------- listen for inspection finish ----------
   useEffect(() => {
@@ -960,7 +974,7 @@ export default function WorkOrderIdClient(): JSX.Element {
   }, [quoteLines]);
 
   const pricingByLine = useMemo(() => {
-    const byLine: Record<string, { laborTotal: number; partsTotal: number; lineTotal: number }> = {};
+    const byLine: Record<string, { laborTotal: number; partsTotal: number; lineTotal: number; partsCount: number }> = {};
     for (const line of lines) {
       const quoteCandidates = activeQuotesByLine[line.id] ?? [];
       const quote = quoteCandidates[quoteCandidates.length - 1];
@@ -975,6 +989,7 @@ export default function WorkOrderIdClient(): JSX.Element {
         laborTotal: resolved.laborTotal,
         partsTotal: resolved.partsTotal,
         lineTotal: resolved.lineTotal,
+        partsCount: resolved.partsCount,
       };
     }
     return byLine;
@@ -1087,17 +1102,14 @@ export default function WorkOrderIdClient(): JSX.Element {
     });
 
     const activeForCurrentTech = baseSorted.find((line) => {
-      const punchedIn = Boolean(line.punched_in_at) && !line.punched_out_at;
+      const activeTechnicianIds = activeTechsByLine[line.id] ?? [];
+      const punchedIn =
+        activeTechnicianIds.length > 0 ||
+        (Boolean(line.punched_in_at) && !line.punched_out_at);
       if (!punchedIn || isCompletedLineStatus(line.status)) return false;
 
       if (!currentUserId) return true;
-
-      const assignedTechId =
-        typeof (line as { assigned_tech_id?: string | null }).assigned_tech_id === "string"
-          ? (line as { assigned_tech_id?: string | null }).assigned_tech_id
-          : null;
-      const linkedTechIds = lineTechsByLine[line.id] ?? [];
-      return assignedTechId === currentUserId || linkedTechIds.includes(currentUserId);
+      return activeTechnicianIds.includes(currentUserId);
     });
 
     const pinnedActiveId = activeForCurrentTech?.id ?? null;
@@ -1112,7 +1124,7 @@ export default function WorkOrderIdClient(): JSX.Element {
       return [activeForCurrentTech, ...nonCompleted, ...completed];
     }
     return [...nonCompleted, ...completed];
-  }, [activeJobLines, currentUserId, lineTechsByLine]);
+  }, [activeJobLines, activeTechsByLine, currentUserId]);
 
   useEffect(() => {
     if (!prefersPanel) return;
@@ -1136,20 +1148,6 @@ export default function WorkOrderIdClient(): JSX.Element {
   const canRequestParts = currentActor.canManageWorkOrders;
 
   const canDeleteLine = currentUserRole ? LINE_DELETE_ROLES.has(currentUserRole) : false;
-
-  const updateLinePriority = useCallback(
-    async (lineId: string, priority: JobLinePriority) => {
-      const { error } = await supabase
-        .from("work_order_lines")
-        .update({ job_priority: priority } as DB["public"]["Tables"]["work_order_lines"]["Update"])
-        .eq("id", lineId)
-        .eq("work_order_id", routeId)
-        .eq("line_type", "job");
-
-      if (error) throw error;
-    },
-    [routeId],
-  );
 
   const selectedDelLine = useMemo(() => {
     if (!delLineId) return null;
@@ -1973,7 +1971,10 @@ export default function WorkOrderIdClient(): JSX.Element {
               ) : (
                 <div className="space-y-2.5">
                   {sortedLines.map((ln, idx) => {
-                    const punchedIn = !!ln.punched_in_at && !ln.punched_out_at;
+                    const activeTechnicianIds = activeTechsByLine[ln.id] ?? [];
+                    const punchedIn =
+                      activeTechnicianIds.length > 0 ||
+                      (!!ln.punched_in_at && !ln.punched_out_at);
 
                     const allocPartsForLine = allocsByLine[ln.id] ?? [];
                     const stagedForLine = stagedPartsByLine[ln.id] ?? [];
@@ -1997,33 +1998,19 @@ export default function WorkOrderIdClient(): JSX.Element {
 
                     const partsForLine = [...allocPartsForLine, ...stagedAsAllocShape];
 
-                    const lineTechIds = lineTechsByLine[ln.id] ?? [];
-                    const primaryId =
-                      typeof (ln as unknown as { assigned_tech_id?: string | null }).assigned_tech_id === "string"
-                        ? (ln as unknown as { assigned_tech_id?: string | null }).assigned_tech_id
-                        : null;
-
-                    const orderedTechIds: string[] = [];
-                    if (primaryId) orderedTechIds.push(primaryId);
-                    lineTechIds.forEach((tid) => {
-                      if (!orderedTechIds.includes(tid)) orderedTechIds.push(tid);
-                    });
-
                     const isPunchedIn = punchedIn;
                     const isCurrentUserWorkingThisLine = Boolean(
                       isPunchedIn &&
                         currentUserId &&
-                        (primaryId === currentUserId || lineTechIds.includes(currentUserId)),
+                        activeTechnicianIds.includes(currentUserId),
                     );
-                    const activeTechnicianNames = isPunchedIn
-                      ? orderedTechIds
-                          .map(
-                            (techId) =>
-                              assignables.find((tech) => tech.id === techId)?.full_name?.trim() ??
-                              null,
-                          )
-                          .filter((name): name is string => Boolean(name))
-                      : [];
+                    const activeTechnicianNames = activeTechnicianIds
+                      .map(
+                        (techId) =>
+                          assignables.find((tech) => tech.id === techId)?.full_name?.trim() ??
+                          null,
+                      )
+                      .filter((name): name is string => Boolean(name));
                     const isSelectedForPanel = panelLineId === ln.id;
                     const linePartRequests = partRequestsByLine[ln.id] ?? [];
                     const hasRequestableParts =
@@ -2035,6 +2022,8 @@ export default function WorkOrderIdClient(): JSX.Element {
                         index={idx}
                         line={ln}
                         parts={partsForLine}
+                        partsCount={pricingByLine[ln.id]?.partsCount ?? 0}
+                        partsStatusLabel={getPartsRequestStatusLabel(linePartRequests)}
                         technicians={assignables}
                         canAssign={canAssign}
                         isPunchedIn={isPunchedIn}
@@ -2074,21 +2063,6 @@ export default function WorkOrderIdClient(): JSX.Element {
                               }
                             : undefined
                         }
-                        onPriorityChange={
-                          canAssign
-                            ? async (priority: JobLinePriority) => {
-                                try {
-                                  await updateLinePriority(ln.id, priority);
-                                  toast.success("Job priority updated.");
-                                  await fetchAll();
-                                } catch (e) {
-                                  const msg =
-                                    e instanceof Error ? e.message : "Failed to update priority.";
-                                  toast.error(msg);
-                                }
-                              }
-                            : undefined
-                        }
                         onOpenInspection={
                           ln.job_type === "inspection"
                             ? () => void openInspectionForLine(ln)
@@ -2110,6 +2084,9 @@ export default function WorkOrderIdClient(): JSX.Element {
                         compact={showPanel}
                         selected={isSelectedForPanel}
                         hideExecutionStageCompletenessPills
+                        evidence={evidence.filter(
+                          (item) => item.workOrderLineId === ln.id,
+                        )}
                       />
                     );
                   })}
@@ -2204,6 +2181,19 @@ export default function WorkOrderIdClient(): JSX.Element {
                   </div>
                 </section>
               )}
+
+              {wo?.id ? (
+                <WorkOrderMediaGallery
+                  workOrderId={wo.id}
+                  scope="unassigned"
+                  hideWhenEmpty
+                  lineOptions={sortedLines.map((line, index) => ({
+                    id: line.id,
+                    label: `${index + 1}. ${line.description || line.complaint || "Job"}`,
+                  }))}
+                  className={cn(PANEL_VARIANTS.passive, "rounded-xl p-3")}
+                />
+              ) : null}
             </div>
 
             {/* Right: focused job workspace pane */}

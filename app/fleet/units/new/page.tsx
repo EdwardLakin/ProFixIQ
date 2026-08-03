@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import PageShell from "@/features/shared/components/PageShell";
 import { supabaseBrowser as supabase } from "@/features/shared/lib/supabase/client";
@@ -106,7 +107,7 @@ export default function FleetUnitNewPage(): JSX.Element {
       }
 
       if (!fleetId) {
-        throw new Error("Select a fleet program before adding a unit.");
+        throw new Error("Select a fleet before adding a unit.");
       }
 
       let vehicleId: string | null = null;
@@ -237,7 +238,7 @@ export default function FleetUnitNewPage(): JSX.Element {
   return (
     <PageShell
       title="Add fleet unit"
-      description="Enroll a vehicle into a fleet program so it appears in the tower, pre-trips, and service requests."
+      description="Assign a vehicle to a fleet so it appears in the tower, pre-trips, and service requests."
     >
       <div className="space-y-6 text-[color:var(--theme-text-primary)]">
         <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 shadow-card backdrop-blur-xl sm:p-6">
@@ -245,8 +246,8 @@ export default function FleetUnitNewPage(): JSX.Element {
             <div>
               <h2 className="text-lg font-semibold">Fleet & vehicle</h2>
               <p className="text-xs text-[color:var(--theme-text-secondary)]">
-                Choose the fleet program and either link an existing vehicle or
-                create a new asset.
+                Choose a fleet, then link an existing vehicle or create a new
+                one.
               </p>
             </div>
             <button
@@ -262,9 +263,17 @@ export default function FleetUnitNewPage(): JSX.Element {
           {loading ? (
             <p className="text-sm text-[color:var(--theme-text-secondary)]">Loading fleet data…</p>
           ) : fleets.length === 0 ? (
-            <div className="rounded-xl border border-amber-500/30 bg-amber-950/20 px-3 py-3 text-xs text-amber-100">
-              No fleet programs found for this shop. Create a fleet in the
-              database (or future Fleet Programs screen) before adding units.
+            <div className="rounded-xl border border-amber-500/30 bg-amber-950/20 px-4 py-4 text-sm text-amber-100">
+              <p className="font-semibold">Create a fleet before adding units.</p>
+              <p className="mt-1 text-xs text-amber-100/80">
+                Every fleet unit must belong to a fleet.
+              </p>
+              <Link
+                href="/fleet/programs"
+                className="mt-3 inline-flex rounded-lg bg-amber-100 px-3 py-2 text-xs font-semibold text-amber-950 transition hover:bg-white"
+              >
+                Create fleet
+              </Link>
             </div>
           ) : null}
 
@@ -282,10 +291,14 @@ export default function FleetUnitNewPage(): JSX.Element {
           <div className="mt-4 space-y-5 opacity-100">
             {/* Fleet selection */}
             <div className="space-y-1 text-sm">
-              <label className="text-xs font-medium uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
-                Fleet program
+              <label
+                htmlFor="fleet-unit-fleet"
+                className="text-xs font-medium uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]"
+              >
+                Fleet
               </label>
               <select
+                id="fleet-unit-fleet"
                 disabled={disabled}
                 className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:border-sky-400/40 disabled:cursor-not-allowed disabled:opacity-50"
                 value={fleetId}

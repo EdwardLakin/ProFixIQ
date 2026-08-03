@@ -2,14 +2,28 @@
 
 import { useEffect, useMemo, useState, type JSX, type MouseEvent } from "react";
 import { formatDistanceToNow } from "date-fns";
-import { ChevronDown, ChevronUp, CircleAlert, CircleCheck, PackagePlus, Wrench } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronUp,
+  CircleAlert,
+  CircleCheck,
+  PackagePlus,
+  UserRound,
+  Wrench,
+} from "lucide-react";
 
 import type { Database } from "@shared/types/types/supabase";
 import { Button } from "@shared/components/ui/Button";
 import Card from "@shared/components/ui/Card";
 import { cn } from "@shared/lib/utils";
 import { normalizeWorkOrderLineStatus } from "@/features/work-orders/lib/line-status";
-import { formatLaborSummary, formatPartsSummary, resolvePrimaryTechDisplay } from "@/features/work-orders/lib/display/linePresentation";
+import {
+  formatLaborSummary,
+  formatPartsSummary,
+  resolvePrimaryTechDisplay,
+} from "@/features/work-orders/lib/display/linePresentation";
+import JobEvidenceStrip from "@/features/work-orders/components/evidence/JobEvidenceStrip";
+import type { WorkOrderEvidenceItem } from "@/features/work-orders/lib/evidence/workOrderEvidence";
 
 type WorkOrderLine = Database["public"]["Tables"]["work_order_lines"]["Row"];
 type WorkOrderPartAllocation =
@@ -40,6 +54,8 @@ type JobCardProps = {
   index: number;
   line: WorkOrderLine;
   parts: WorkOrderPartAllocation[];
+  partsCount?: number;
+  partsStatusLabel?: string | null;
   technicians: Pick<ProfileRow, "id" | "full_name">[];
   canAssign: boolean;
   canDelete?: boolean;
@@ -49,7 +65,6 @@ type JobCardProps = {
   isSelectedForPanel?: boolean;
   onOpen: () => void;
   onAssign?: (techId: string) => void;
-  onPriorityChange?: (priority: JobLinePriority) => void;
   onOpenInspection?: () => void;
   onAddPart?: () => void;
   onRequestParts?: () => void;
@@ -62,9 +77,8 @@ type JobCardProps = {
   compact?: boolean;
   selected?: boolean;
   hideExecutionStageCompletenessPills?: boolean;
+  evidence?: WorkOrderEvidenceItem[];
 };
-
-type JobLinePriority = "low" | "normal" | "high" | "urgent";
 
 type StatusVisual = {
   label: string | null;
@@ -75,26 +89,12 @@ type StatusVisual = {
   muted: boolean;
 };
 
-const PRIORITY_OPTIONS: JobLinePriority[] = ["urgent", "high", "normal", "low"];
-
-const PRIORITY_CHIP_STYLES: Record<JobLinePriority, string> = {
-  urgent: "border-red-400/50 bg-red-500/10 text-red-100",
-  high: "border-amber-400/50 bg-amber-500/10 text-amber-100",
-  normal: "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-secondary)]",
-  low: "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-secondary)]",
-};
-
-const METALLIC_CARD_SURFACE =
-  "bg-[var(--theme-gradient-panel)]";
+const METALLIC_CARD_SURFACE = "bg-[var(--theme-gradient-panel)]";
 
 function norm(s: unknown): string {
-  return String(s ?? "").trim().toLowerCase();
-}
-
-function toLinePriority(line: WorkOrderLine): JobLinePriority {
-  const raw = norm((line as WorkOrderLine & { job_priority?: string | null }).job_priority);
-  if (raw === "urgent" || raw === "high" || raw === "normal" || raw === "low") return raw;
-  return "normal";
+  return String(s ?? "")
+    .trim()
+    .toLowerCase();
 }
 
 function formatCurrency(value: number | null | undefined): string {
@@ -118,18 +118,24 @@ function resolveStatusVisual(status: string | null | undefined): StatusVisual {
     return {
       label: null,
       railClass: "bg-[color:var(--theme-surface-subtle)]",
-      chipClass: "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-primary)]",
+      chipClass:
+        "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-primary)]",
       borderClass: "border-[color:var(--theme-border-soft)]",
       glowClass: "",
       muted: false,
     };
   }
 
-  if (normalized === "completed" || normalized === "ready_to_invoice" || normalized === "invoiced") {
+  if (
+    normalized === "completed" ||
+    normalized === "ready_to_invoice" ||
+    normalized === "invoiced"
+  ) {
     return {
       label: statusLabelFromKey(normalized),
       railClass: "bg-[color:var(--theme-surface-subtle)]",
-      chipClass: "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-primary)]",
+      chipClass:
+        "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-primary)]",
       borderClass: "border-[color:var(--theme-border-soft)]",
       glowClass: "",
       muted: true,
@@ -169,9 +175,19 @@ function resolveStatusVisual(status: string | null | undefined): StatusVisual {
     };
   }
 
-  if (raw === "blocked" || raw === "critical" || normalized === "declined" || normalized === "deferred") {
+  if (
+    raw === "blocked" ||
+    raw === "critical" ||
+    normalized === "declined" ||
+    normalized === "deferred"
+  ) {
     return {
-      label: normalized === "deferred" ? "Deferred" : normalized === "declined" ? "Declined" : "Blocked",
+      label:
+        normalized === "deferred"
+          ? "Deferred"
+          : normalized === "declined"
+            ? "Declined"
+            : "Blocked",
       railClass: "bg-red-400/90",
       chipClass: "border-red-300/60 bg-red-500/12 text-red-100",
       borderClass: "border-red-400/45",
@@ -192,7 +208,12 @@ function resolveStatusVisual(status: string | null | undefined): StatusVisual {
   }
 
   return {
-    label: normalized === "pending" ? "Awaiting" : raw ? statusLabelFromKey(raw) : "Awaiting",
+    label:
+      normalized === "pending"
+        ? "Awaiting"
+        : raw
+          ? statusLabelFromKey(raw)
+          : "Awaiting",
     railClass: "bg-sky-500/80",
     chipClass: "border-sky-400/55 bg-sky-500/10 text-sky-100",
     borderClass: "border-sky-500/40",
@@ -208,7 +229,8 @@ function computeReviewFlags(args: {
 }): ReviewFlags {
   const localMissingCause = !norm(args.line.cause);
   const localMissingCorrection = !norm(args.line.correction);
-  const localMissingComplaint = !norm(args.line.complaint) && !norm(args.line.description);
+  const localMissingComplaint =
+    !norm(args.line.complaint) && !norm(args.line.description);
   const localNoParts = args.partsCount === 0;
 
   const issues = Array.isArray(args.reviewIssues) ? args.reviewIssues : [];
@@ -280,17 +302,15 @@ function ReviewPill({
   );
 }
 
-function MetaTile({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
+function MetaTile({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3">
-      <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">{label}</div>
-      <div className="mt-1 text-sm text-[color:var(--theme-text-primary)]">{value}</div>
+      <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
+        {label}
+      </div>
+      <div className="mt-1 text-sm text-[color:var(--theme-text-primary)]">
+        {value}
+      </div>
     </div>
   );
 }
@@ -299,6 +319,8 @@ export function JobCard({
   index,
   line,
   parts,
+  partsCount,
+  partsStatusLabel,
   technicians,
   canAssign,
   canDelete,
@@ -308,7 +330,6 @@ export function JobCard({
   isSelectedForPanel,
   onOpen,
   onAssign,
-  onPriorityChange,
   onOpenInspection,
   onAddPart,
   onRequestParts,
@@ -321,6 +342,7 @@ export function JobCard({
   compact = false,
   selected = false,
   hideExecutionStageCompletenessPills = false,
+  evidence = [],
 }: JobCardProps): JSX.Element {
   const [collapsed, setCollapsed] = useState<boolean>(false);
 
@@ -351,15 +373,21 @@ export function JobCard({
   const assignedTech = useMemo(() => {
     const techId = line.assigned_tech_id;
     const profile = technicians.find((tech) => tech.id === techId) ?? null;
-    return resolvePrimaryTechDisplay(line, profile ? { ...profile, role: "tech" } : null);
+    return resolvePrimaryTechDisplay(
+      line,
+      profile ? { ...profile, role: "tech" } : null,
+    );
   }, [line, technicians]);
 
-  const linePriority = toLinePriority(line);
-  const quietPriority = linePriority === "urgent" || linePriority === "high" ? linePriority : null;
+  const effectivePartsCount = Math.max(
+    parts.length,
+    partsCount ?? 0,
+    Number(pricing?.partsTotal ?? 0) > 0 ? 1 : 0,
+  );
 
   const reviewFlags = computeReviewFlags({
     line,
-    partsCount: parts.length,
+    partsCount: effectivePartsCount,
     reviewIssues,
   });
 
@@ -372,9 +400,11 @@ export function JobCard({
     : "—";
 
   const lineTotal =
-    pricing?.lineTotal ?? (Number(pricing?.laborTotal ?? 0) + Number(pricing?.partsTotal ?? 0));
+    pricing?.lineTotal ??
+    Number(pricing?.laborTotal ?? 0) + Number(pricing?.partsTotal ?? 0);
 
-  const isBlocked = norm(line.status) === "on_hold" || norm(line.status) === "blocked";
+  const isBlocked =
+    norm(line.status) === "on_hold" || norm(line.status) === "blocked";
   const waitingApproval = norm(line.approval_state) === "pending";
 
   const showDeleteAction = canDelete === true && typeof onDelete === "function";
@@ -413,17 +443,31 @@ export function JobCard({
         className={cn(
           "relative overflow-hidden border p-0 transition",
           METALLIC_CARD_SURFACE,
-          isPunchedIn ? "border-cyan-300/70 shadow-[0_0_28px_rgba(34,211,238,0.24)]" : statusVisual.borderClass,
+          isPunchedIn
+            ? "border-cyan-300/70 shadow-[0_0_28px_rgba(34,211,238,0.24)]"
+            : statusVisual.borderClass,
           !isPunchedIn && statusVisual.glowClass,
           isPunchedIn && "[animation:pulse_3.2s_ease-in-out_infinite]",
-          statusVisual.muted && "border-[color:var(--theme-border-soft)] opacity-[0.74] saturate-[0.56] contrast-[0.9]",
+          statusVisual.muted &&
+            "border-[color:var(--theme-border-soft)] opacity-[0.74] saturate-[0.56] contrast-[0.9]",
           "hover:-translate-y-[1px] hover:border-[color:var(--theme-border-soft)]",
           "focus-within:border-[color:var(--theme-border-soft)]",
-          isSelected && !isPunchedIn && "border-[color:var(--theme-border-soft)] shadow-[0_0_0_1px_rgba(148,163,184,0.45)]",
-          isSelected && isPunchedIn && "shadow-[0_0_0_1px_rgba(226,232,240,0.38),0_0_28px_rgba(34,211,238,0.24)]",
+          isSelected &&
+            !isPunchedIn &&
+            "border-[color:var(--theme-border-soft)] shadow-[0_0_0_1px_rgba(148,163,184,0.45)]",
+          isSelected &&
+            isPunchedIn &&
+            "shadow-[0_0_0_1px_rgba(226,232,240,0.38),0_0_28px_rgba(34,211,238,0.24)]",
         )}
       >
-        <div className={cn("absolute inset-y-0 left-0", isPunchedIn ? "w-2 bg-cyan-300" : "w-1.5", !isPunchedIn && statusVisual.railClass, statusVisual.muted && "opacity-75")} />
+        <div
+          className={cn(
+            "absolute inset-y-0 left-0",
+            isPunchedIn ? "w-2 bg-cyan-300" : "w-1.5",
+            !isPunchedIn && statusVisual.railClass,
+            statusVisual.muted && "opacity-75",
+          )}
+        />
 
         <div className={cn("relative pl-5", compact ? "p-3" : "p-4")}>
           <div className={cn("flex flex-col", compact ? "gap-2" : "gap-3")}>
@@ -433,7 +477,14 @@ export function JobCard({
                   <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 text-xs font-semibold text-[color:var(--theme-text-primary)]">
                     {index + 1}
                   </span>
-                  <h3 className={cn("truncate font-semibold text-[color:var(--theme-text-primary)]", compact ? "text-sm sm:text-[15px]" : "text-[15px] sm:text-base")}>
+                  <h3
+                    className={cn(
+                      "truncate font-semibold text-[color:var(--theme-text-primary)]",
+                      compact
+                        ? "text-sm sm:text-[15px]"
+                        : "text-[15px] sm:text-base",
+                    )}
+                  >
                     {jobLabel}
                   </h3>
                   {statusVisual.label ? (
@@ -441,7 +492,8 @@ export function JobCard({
                       className={cn(
                         "inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em]",
                         statusVisual.chipClass,
-                        statusVisual.muted && "text-[color:var(--theme-text-secondary)]",
+                        statusVisual.muted &&
+                          "text-[color:var(--theme-text-secondary)]",
                       )}
                     >
                       {statusVisual.label}
@@ -455,16 +507,6 @@ export function JobCard({
                       {liveMarkerLabel}
                     </span>
                   ) : null}
-                  {quietPriority ? (
-                    <span
-                      className={cn(
-                        "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.1em]",
-                        PRIORITY_CHIP_STYLES[quietPriority],
-                      )}
-                    >
-                      {quietPriority}
-                    </span>
-                  ) : null}
                 </div>
 
                 <p className="text-xs uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
@@ -472,19 +514,61 @@ export function JobCard({
                 </p>
               </div>
 
-              <div className={cn("flex flex-wrap items-center", compact ? "gap-1" : "gap-1.5", statusVisual.muted && "opacity-80")}>
-                <Button type="button" variant={isSelected ? "secondary" : "outline"} size="sm" onClick={onOpen}>
-                  Open
-                </Button>
+              <div
+                className={cn(
+                  "flex max-w-full flex-wrap items-center justify-end",
+                  compact ? "gap-1" : "gap-1.5",
+                  statusVisual.muted && "opacity-80",
+                )}
+              >
+                {canAssign && onAssign ? (
+                  <label
+                    className="relative inline-flex items-center"
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <UserRound className="pointer-events-none absolute left-2 h-3.5 w-3.5 text-[color:var(--theme-text-muted)]" />
+                    <span className="sr-only">Assigned technician</span>
+                    <select
+                      aria-label="Assigned technician"
+                      value={line.assigned_tech_id ?? ""}
+                      onChange={(event) => onAssign(event.target.value)}
+                      className="h-8 max-w-44 appearance-none truncate rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] py-1 pl-7 pr-3 text-[10px] font-semibold text-[color:var(--theme-text-primary)]"
+                    >
+                      <option value="" disabled>
+                        Unassigned
+                      </option>
+                      {technicians.map((tech) => (
+                        <option key={tech.id} value={tech.id}>
+                          {tech.full_name || "Unnamed tech"}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : (
+                  <span className="inline-flex max-w-44 items-center gap-1 truncate rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 py-1 text-[10px] font-semibold text-[color:var(--theme-text-primary)]">
+                    <UserRound className="h-3.5 w-3.5 shrink-0" />
+                    {assignedTech}
+                  </span>
+                )}
 
                 {onOpenInspection ? (
-                  <Button type="button" variant="secondary" size="sm" onClick={onOpenInspection}>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={onOpenInspection}
+                  >
                     Inspection
                   </Button>
                 ) : null}
 
                 {onAddPart ? (
-                  <Button type="button" variant="secondary" size="sm" onClick={handleAddPartClick}>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleAddPartClick}
+                  >
                     Add Part
                   </Button>
                 ) : null}
@@ -519,7 +603,10 @@ export function JobCard({
                   variant="ghost"
                   size="sm"
                   onClick={() => setCollapsed((v) => !v)}
-                  className={cn("border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]", compact && "px-2")}
+                  className={cn(
+                    "border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]",
+                    compact && "px-2",
+                  )}
                 >
                   {collapsed ? (
                     <>
@@ -534,33 +621,76 @@ export function JobCard({
               </div>
             </div>
 
-            <div className={cn("flex flex-wrap", compact ? "gap-1" : "gap-1.5", statusVisual.muted && "opacity-85")}>
-              {!hideExecutionStageCompletenessPills && reviewFlags.missingCause ? (
-                <ReviewPill tone="warn" label="Cause Missing" title="Cause completeness" />
+            <div
+              className={cn(
+                "flex flex-wrap",
+                compact ? "gap-1" : "gap-1.5",
+                statusVisual.muted && "opacity-85",
+              )}
+            >
+              {!hideExecutionStageCompletenessPills &&
+              reviewFlags.missingCause ? (
+                <ReviewPill
+                  tone="warn"
+                  label="Cause Missing"
+                  title="Cause completeness"
+                />
               ) : null}
-              {!hideExecutionStageCompletenessPills && reviewFlags.missingCorrection ? (
-                <ReviewPill tone="warn" label="Correction Missing" title="Correction completeness" />
+              {!hideExecutionStageCompletenessPills &&
+              reviewFlags.missingCorrection ? (
+                <ReviewPill
+                  tone="warn"
+                  label="Correction Missing"
+                  title="Correction completeness"
+                />
               ) : null}
               {!hideExecutionStageCompletenessPills && reviewFlags.noParts ? (
-                <ReviewPill tone="warn" label="No Parts" title="Parts completeness" />
+                <ReviewPill
+                  tone="warn"
+                  label="No Parts"
+                  title="Parts completeness"
+                />
               ) : null}
-              {isBlocked ? <ReviewPill tone="warn" label="Blocked" title="Line currently blocked or on hold" /> : null}
+              {isBlocked ? (
+                <ReviewPill
+                  tone="warn"
+                  label="Blocked"
+                  title="Line currently blocked or on hold"
+                />
+              ) : null}
               {waitingApproval ? (
-                <ReviewPill tone="info" label="Awaiting Approval" title="Waiting for approval decision" />
+                <ReviewPill
+                  tone="info"
+                  label="Awaiting Approval"
+                  title="Waiting for approval decision"
+                />
               ) : null}
               {reviewFlags.missingComplaint ? (
-                <ReviewPill tone="info" label="Complaint Missing" title="Complaint / description completeness" />
+                <ReviewPill
+                  tone="info"
+                  label="Complaint Missing"
+                  title="Complaint / description completeness"
+                />
               ) : null}
               {reviewFlags.otherIssues > 0 ? (
-                <ReviewPill tone="info" label={`${reviewFlags.otherIssues} Other`} title="Additional review issues" />
+                <ReviewPill
+                  tone="info"
+                  label={`${reviewFlags.otherIssues} Other`}
+                  title="Additional review issues"
+                />
               ) : null}
-              {reviewOk ? <ReviewPill tone="ok" label="Review Ready" title="Review checks are clear" /> : null}
+              {reviewOk ? (
+                <ReviewPill
+                  tone="ok"
+                  label="Review Ready"
+                  title="Review checks are clear"
+                />
+              ) : null}
             </div>
 
             {!collapsed ? (
               <>
-                <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-4">
-                  <MetaTile label="Assigned Tech" value={assignedTech} />
+                <div className="grid gap-2.5 sm:grid-cols-3">
                   <MetaTile
                     label="Labor"
                     value={formatLaborSummary(
@@ -572,70 +702,48 @@ export function JobCard({
                   />
                   <MetaTile
                     label="Parts"
-                    value={formatPartsSummary({
-                      partsCount: Math.max(parts.length, Number(pricing?.partsTotal ?? 0) > 0 ? 1 : 0),
-                      partsTotal: Number(pricing?.partsTotal ?? 0),
-                    })}
+                    value={[
+                      formatPartsSummary({
+                        partsCount: effectivePartsCount,
+                        partsTotal: Number(pricing?.partsTotal ?? 0),
+                      }),
+                      partsStatusLabel,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
                   />
-                  <MetaTile label="Line Total" value={lineTotal > 0 ? formatCurrency(lineTotal) : "Estimate pending"} />
+                  <MetaTile
+                    label="Line Total"
+                    value={
+                      lineTotal > 0
+                        ? formatCurrency(lineTotal)
+                        : "Estimate pending"
+                    }
+                  />
                 </div>
 
-                {(line.complaint || line.cause || line.correction || line.hold_reason) ? (
+                {evidence.length > 0 ? (
+                  <JobEvidenceStrip evidence={evidence} />
+                ) : null}
+
+                {line.complaint ||
+                line.cause ||
+                line.correction ||
+                line.hold_reason ? (
                   <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-xs text-[color:var(--theme-text-secondary)]">
-                    {line.complaint ? <div>Complaint: {line.complaint}</div> : null}
+                    {line.complaint ? (
+                      <div>Complaint: {line.complaint}</div>
+                    ) : null}
                     {line.cause ? <div>Cause: {line.cause}</div> : null}
-                    {line.correction ? <div>Correction: {line.correction}</div> : null}
-                    {line.hold_reason ? <div>Blocker: {line.hold_reason}</div> : null}
-                    <div className="mt-2 text-[11px] text-[color:var(--theme-text-muted)]">Updated {updatedLabel}</div>
-                  </div>
-                ) : null}
-
-                {canAssign && onAssign ? (
-                  <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
-                    <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">Assign technician</div>
-
-                    <div className="mt-2.5 flex flex-wrap gap-1.5">
-                      {technicians.length === 0 ? (
-                        <span className="text-sm text-[color:var(--theme-text-secondary)]">No technicians available.</span>
-                      ) : (
-                        technicians.map((tech) => {
-                          const isAssigned = tech.id === line.assigned_tech_id;
-
-                          return (
-                            <button
-                              key={tech.id}
-                              type="button"
-                              onClick={() => onAssign(tech.id)}
-                              className={cn(
-                                "rounded-full border px-3 py-1.5 text-xs font-semibold transition",
-                                isAssigned
-                                  ? "border-cyan-300/50 bg-cyan-500/10 text-cyan-100"
-                                  : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-primary)] hover:border-[color:var(--theme-border-soft)] hover:bg-[color:var(--theme-surface-subtle)]",
-                              )}
-                            >
-                              {tech.full_name || "Unnamed tech"}
-                            </button>
-                          );
-                        })
-                      )}
+                    {line.correction ? (
+                      <div>Correction: {line.correction}</div>
+                    ) : null}
+                    {line.hold_reason ? (
+                      <div>Blocker: {line.hold_reason}</div>
+                    ) : null}
+                    <div className="mt-2 text-[11px] text-[color:var(--theme-text-muted)]">
+                      Updated {updatedLabel}
                     </div>
-                  </div>
-                ) : null}
-
-                {onPriorityChange ? (
-                  <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
-                    <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">Job priority</div>
-                    <select
-                      className="mt-2 w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 py-1.5 text-sm text-[color:var(--theme-text-primary)]"
-                      value={linePriority}
-                      onChange={(event) => onPriorityChange(event.target.value as JobLinePriority)}
-                    >
-                      {PRIORITY_OPTIONS.map((priority) => (
-                        <option key={priority} value={priority}>
-                          {priority[0].toUpperCase() + priority.slice(1)}
-                        </option>
-                      ))}
-                    </select>
                   </div>
                 ) : null}
               </>
