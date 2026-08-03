@@ -1,4 +1,3 @@
-import OpenAI from "openai";
 import { NextResponse } from "next/server";
 import {
   createAdminSupabase,
@@ -8,6 +7,18 @@ import {
   resolveFleetActorContext,
   resolveFleetActorScope,
 } from "@/features/fleet/lib/resolveFleetActorContext";
+import { getAIPolicy } from "@/features/shared/lib/server/ai-policy";
+import {
+  enforceAIOperationalPolicy,
+  estimateAICostUsd,
+  registerAIUsageEvent,
+} from "@/features/shared/lib/server/ai-ops-guard";
+import { recordAITelemetry } from "@/features/shared/lib/server/ai-telemetry";
+import {
+  getOpenAIClient,
+  isOpenAIConfigured,
+} from "@/features/shared/lib/server/openai";
+import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +38,7 @@ function numeric(value: unknown) {
 }
 
 export async function POST(request: Request) {
+  const startedAt = Date.now();
   try {
     const supabase = createServerSupabaseRoute();
     const body = (await request.json().catch(() => ({}))) as Body;
@@ -206,22 +218,97 @@ export async function POST(request: Request) {
 
     let headline = "Fleet activity is summarized below from live operational data.";
     let aiGenerated = false;
-    if (process.env.OPENAI_API_KEY) {
+    const feature = "fleet_operations_summary" as const;
+    const endpoint = "/api/fleet/ai-summary";
+    const policy = getAIPolicy(feature);
+    const enforcement = enforceAIOperationalPolicy({
+      feature,
+      endpoint,
+      shopId: scope.shopId,
+    });
+    if (isOpenAIConfigured() && enforcement.allowed) {
+      const model = getOpenAIModelForPurpose(policy.modelPurpose);
       try {
-        const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-        const response = await openai.responses.create({
-          model: process.env.OPENAI_FLEET_SUMMARY_MODEL ?? "gpt-4.1-mini",
-          instructions:
-            "You are an automotive fleet operations copilot. Return one plain-language sentence, under 28 words, naming the first operational priority. Never invent facts or repeat every metric.",
-          input: JSON.stringify(snapshot),
-          max_output_tokens: 80,
-        });
-        if (response.output_text.trim()) {
-          headline = response.output_text.trim();
+        const completion = await Promise.race([
+          getOpenAIClient().chat.completions.create({
+            model,
+            max_tokens: policy.maxTokens,
+            messages: [
+              {
+                role: "system",
+                content:
+                  "You are an automotive fleet operations copilot. Return one plain-language sentence, under 28 words, naming the first operational priority. Never invent facts or repeat every metric.",
+              },
+              { role: "user", content: JSON.stringify(snapshot) },
+            ],
+          }),
+          new Promise<never>((_, reject) =>
+            setTimeout(
+              () => reject(new Error("AI request timed out")),
+              policy.timeoutMs,
+            ),
+          ),
+        ]);
+        const generated = completion.choices[0]?.message?.content?.trim() ?? "";
+        if (generated) {
+          headline = generated;
           aiGenerated = true;
         }
+        const totalTokens = completion.usage?.total_tokens ?? null;
+        const estimatedCost = estimateAICostUsd(feature, totalTokens);
+        recordAITelemetry({
+          feature,
+          endpoint,
+          shop_id: scope.shopId,
+          user_id: actor.userId,
+          model,
+          latency_ms: Date.now() - startedAt,
+          prompt_tokens: completion.usage?.prompt_tokens ?? null,
+          completion_tokens: completion.usage?.completion_tokens ?? null,
+          total_tokens: totalTokens,
+          estimated_cost_usd: estimatedCost,
+          status: "success",
+          error_code: null,
+          error_message: null,
+        });
+        registerAIUsageEvent({
+          feature,
+          endpoint,
+          shopId: scope.shopId,
+          model,
+          totalTokens,
+          estimatedCostUsd: estimatedCost,
+          status: "success",
+          errorCode: null,
+        });
       } catch (error) {
-        console.warn("[fleet/ai-summary] AI fallback used", error);
+        const message = error instanceof Error ? error.message : "AI summary failed";
+        recordAITelemetry({
+          feature,
+          endpoint,
+          shop_id: scope.shopId,
+          user_id: actor.userId,
+          model,
+          latency_ms: Date.now() - startedAt,
+          prompt_tokens: null,
+          completion_tokens: null,
+          total_tokens: null,
+          estimated_cost_usd: 0,
+          status: "error",
+          error_code: "fleet_summary_error",
+          error_message: message,
+        });
+        registerAIUsageEvent({
+          feature,
+          endpoint,
+          shopId: scope.shopId,
+          model,
+          totalTokens: null,
+          estimatedCostUsd: 0,
+          status: "error",
+          errorCode: "fleet_summary_error",
+        });
+        console.warn("[fleet/ai-summary] deterministic fallback used", message);
       }
     }
 
