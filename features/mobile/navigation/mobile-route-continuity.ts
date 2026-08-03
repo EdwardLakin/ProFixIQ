@@ -138,12 +138,12 @@ function mapFleetPath(pathname: string): string {
   return "/mobile/fleet";
 }
 
-function mapDashboardPath(pathname: string): string | null {
+function mapDashboardPath(pathname: string): string {
   if (
     isPathAtOrBelow(pathname, "/dashboard/owner/settings") ||
     isPathAtOrBelow(pathname, "/dashboard/admin/settings")
   ) {
-    return null;
+    return "/mobile/settings";
   }
   if (isPathAtOrBelow(pathname, "/dashboard/workforce")) {
     return "/mobile/workforce/attendance";
@@ -248,7 +248,6 @@ export function resolveMobileHref(rawHref: string | null | undefined): string | 
 
   if (!mobilePath) return null;
 
-  // Some mobile mappings already include their own query string.
   if (mobilePath.includes("?")) {
     const [mappedPath, mappedQuery] = mobilePath.split("?", 2);
     const merged = new URLSearchParams(mappedQuery);
