@@ -113,6 +113,16 @@ function workOrderDisplayId(workOrder: Pick<WorkOrder, "id" | "custom_id">): str
   return customId || `#${workOrder.id.slice(0, 8)}`;
 }
 
+function workOrderStatusLabel(value: unknown): string {
+  const key = normalizeWorkOrderStatus(value);
+  if (key === "waiting_parts") return "Waiting for parts";
+  if (key === "ready_to_invoice") return "Ready for invoice";
+  if (key === "awaiting_approval") return "Needs approval";
+  if (key === "awaiting_inspection") return "Needs inspection";
+  if (key === "in_progress") return "In progress";
+  return key.charAt(0).toUpperCase() + key.slice(1).replaceAll("_", " ");
+}
+
 function isStatusPickerStatus(x: string): x is WorkOrderStatus {
   return (
     x === "awaiting_approval" ||
@@ -1038,7 +1048,7 @@ export default function WorkOrdersView(): JSX.Element {
                       <span
                         className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${accent.badge}`}
                       >
-                        {normalizeWorkOrderStatus(r.status).replaceAll("_", " ")}
+                        {workOrderStatusLabel(r.status)}
                       </span>
 
                       <span

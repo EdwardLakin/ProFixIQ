@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import { toast } from "sonner";
 
 import type { Database } from "@shared/types/types/supabase";
 import type { RepairLine } from "@ai/lib/parseRepairOutput";
@@ -86,6 +87,8 @@ type InvoiceLinePayload = {
 };
 
 type SendInvoiceResponse = { ok?: boolean; error?: string };
+type FinalizeInvoiceResponse = { ok?: boolean; invoiceId?: string; invoiceVersionId?: string; total?: number; error?: string; issues?: ReviewIssue[] };
+type MarkPaidResponse = { ok?: boolean; status?: string; outstandingTotal?: number; error?: string };
 
 function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === "object" && x !== null;
@@ -243,6 +246,8 @@ export default function InvoicePreviewPageClient({
 
   const [fSummary, setFSummary] = useState<string | undefined>(undefined);
   const [sending, setSending] = useState(false);
+  const [finalizing, setFinalizing] = useState(false);
+  const [markingPaid, setMarkingPaid] = useState(false);
 
   // ✅ inspection PDF (works even when no invoice exists yet)
   const [inspectionPdfLoading, setInspectionPdfLoading] = useState(false);
@@ -694,6 +699,7 @@ export default function InvoicePreviewPageClient({
 
   const canTakePayment = Boolean(shopId && stripeAccountId);
   const canProceed = canTakePayment && reviewOk && !reviewLoading;
+  const displayedTotal = canonicalInvoiceTotal > 0 ? canonicalInvoiceTotal : derivedInvoiceTotal;
 
   const handleBack = useCallback(() => {
     router.back();
@@ -704,6 +710,56 @@ export default function InvoicePreviewPageClient({
     if (!url) return;
     if (typeof window !== "undefined") window.open(url, "_blank", "noopener,noreferrer");
   }, [inspectionPdf?.pdfUrl]);
+
+  const finalizeInvoice = useCallback(async () => {
+    if (finalizing || !reviewOk || reviewLoading) return;
+    try {
+      setFinalizing(true);
+      const res = await fetch("/api/invoices/finalize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workOrderId }),
+      });
+      const json = (await res.json().catch(() => null)) as FinalizeInvoiceResponse | null;
+      if (!res.ok || !json?.ok || !json.invoiceId) {
+        if (Array.isArray(json?.issues)) setReviewIssues(json.issues);
+        throw new Error(json?.error ?? "Failed to finalize invoice.");
+      }
+      setInvoiceId(json.invoiceId);
+      if (typeof json.total === "number" && Number.isFinite(json.total)) {
+        setCanonicalInvoiceTotal(Math.max(0, json.total));
+      }
+      toast.success("Invoice finalized.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to finalize invoice.");
+    } finally {
+      setFinalizing(false);
+    }
+  }, [finalizing, reviewLoading, reviewOk, workOrderId]);
+
+  const markInvoicePaid = useCallback(async () => {
+    if (markingPaid || !reviewOk) return;
+    try {
+      if (!invoiceId) await finalizeInvoice();
+      setMarkingPaid(true);
+      const res = await fetch("/api/invoices/mark-paid", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workOrderId }),
+      });
+      const json = (await res.json().catch(() => null)) as MarkPaidResponse | null;
+      if (!res.ok || !json?.ok) throw new Error(json?.error ?? "Failed to mark invoice paid.");
+      toast.success(json.status === "paid" ? "Invoice marked paid." : "Payment recorded.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to mark invoice paid.");
+    } finally {
+      setMarkingPaid(false);
+    }
+  }, [finalizeInvoice, invoiceId, markingPaid, reviewOk, workOrderId]);
+
+  const printInvoice = useCallback(() => {
+    window.print();
+  }, []);
 
   const sendInvoiceEmail = useCallback(async () => {
     if (sending) return;
@@ -833,6 +889,24 @@ export default function InvoicePreviewPageClient({
           <div className="flex items-center gap-2">
             <button
               type="button"
+              onClick={() => void finalizeInvoice()}
+              disabled={!reviewOk || reviewLoading || finalizing}
+              className="rounded-full border border-emerald-400/50 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-100 transition hover:bg-emerald-500/20 disabled:opacity-50"
+              title={reviewOk ? "Approve and finalize this invoice" : "Blocked until required info is complete"}
+            >
+              {finalizing ? "Finalizing..." : invoiceId ? "Finalized" : "Approve & finalize"}
+            </button>
+
+            <button
+              type="button"
+              onClick={printInvoice}
+              className="rounded-full border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]"
+            >
+              Print
+            </button>
+
+            <button
+              type="button"
               onClick={() => void sendInvoiceEmail()}
               disabled={!reviewOk || reviewLoading || sending}
               className={
@@ -852,7 +926,26 @@ export default function InvoicePreviewPageClient({
                 disabled={!reviewOk || reviewLoading}
                 className={!reviewOk || reviewLoading ? "opacity-60" : ""}
               />
-            ) : null}
+            ) : (
+              <button
+                type="button"
+                onClick={() => void finalizeInvoice()}
+                disabled={!reviewOk || reviewLoading || finalizing}
+                className="rounded-full border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1.5 text-xs font-semibold text-[color:var(--theme-text-primary)] opacity-80 disabled:opacity-50"
+                title="Finalize first to create the invoice record QuickBooks needs"
+              >
+                Sync to QuickBooks
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => void markInvoicePaid()}
+              disabled={!reviewOk || reviewLoading || markingPaid}
+              className="rounded-full border border-sky-400/50 bg-sky-500/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-sky-100 transition hover:bg-sky-500/20 disabled:opacity-50"
+            >
+              {markingPaid ? "Recording..." : "Mark paid"}
+            </button>
 
             {canTakePayment ? (
               <div className={canProceed ? "" : "opacity-50 pointer-events-none"}>
@@ -869,6 +962,10 @@ export default function InvoicePreviewPageClient({
         </div>
 
         <WorkOrderCloseoutGatePreview workOrderId={workOrderId} />
+        <div className="rounded-lg border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-[0.75rem] text-[color:var(--theme-text-secondary)]">
+          Need a manual price override? Update the labor/parts on the work order, then return here and use Approve & finalize.
+          Current invoice total: <span className="font-semibold text-[color:var(--theme-text-primary)]">${displayedTotal.toFixed(2)}</span>
+        </div>
         {snapshotWarning ? (
           <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[0.75rem] text-amber-100">
             {snapshotWarning}
