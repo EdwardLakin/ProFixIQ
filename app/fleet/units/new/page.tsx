@@ -1,518 +1,233 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import PageShell from "@/features/shared/components/PageShell";
-import { supabaseBrowser as supabase } from "@/features/shared/lib/supabase/client";
-import type { Database } from "@shared/types/types/supabase";
-import { resolveCurrentActor } from "@/features/shared/lib/currentActor";
-import { checkVehicleDuplicates } from "@/features/shared/lib/vehicles/duplicateCheck";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Search, Truck, UserRoundCheck } from "lucide-react";
 
-type DB = Database;
-type FleetRow = DB["public"]["Tables"]["fleets"]["Row"];
-type VehicleInsert = DB["public"]["Tables"]["vehicles"]["Insert"];
-type FleetVehicleInsert = DB["public"]["Tables"]["fleet_vehicles"]["Insert"];
+type Fleet = { id: string; name: string };
+type Vehicle = {
+  id: string;
+  unitNumber: string | null;
+  vin: string | null;
+  licensePlate: string | null;
+  description: string;
+};
+type Driver = { fleetId: string; id: string; name: string };
+type Enrollment = { fleetId: string; vehicleId: string; nickname: string | null; active: boolean };
+type Assignment = {
+  id: string;
+  fleetId: string;
+  vehicleId: string;
+  driverProfileId: string;
+  driverName: string;
+  routeLabel: string | null;
+  nextPretripDue: string | null;
+  state: string;
+};
+type Context = {
+  fleets: Fleet[];
+  vehicles: Vehicle[];
+  drivers: Driver[];
+  enrollments: Enrollment[];
+  assignments: Assignment[];
+};
 
-type Mode = "new_vehicle" | "existing_vehicle";
+const panel = "rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4";
 
+function vehicleLabel(vehicle: Vehicle | undefined) {
+  if (!vehicle) return "Unit";
+  return [vehicle.unitNumber || vehicle.licensePlate || vehicle.vin || "Unit", vehicle.description]
+    .filter(Boolean)
+    .join(" • ");
+}
 
+export default function FleetUnitEnrollmentPage() {
+  const [context, setContext] = useState<Context | null>(null);
+  const [fleetId, setFleetId] = useState("");
+  const [mode, setMode] = useState<"existing" | "new">("existing");
+  const [search, setSearch] = useState("");
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [vehicleId, setVehicleId] = useState("");
+  const [nickname, setNickname] = useState("");
+  const [unitNumber, setUnitNumber] = useState("");
+  const [vin, setVin] = useState("");
+  const [plate, setPlate] = useState("");
+  const [year, setYear] = useState("");
+  const [make, setMake] = useState("");
+  const [model, setModel] = useState("");
+  const [driverByVehicle, setDriverByVehicle] = useState<Record<string, string>>({});
+  const [routeByVehicle, setRouteByVehicle] = useState<Record<string, string>>({});
+  const [dueByVehicle, setDueByVehicle] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
 
-export default function FleetUnitNewPage(): JSX.Element {
-  const router = useRouter();
-  const [loading, setLoading] = useState(true);
-
-  const [creatorShopId, setCreatorShopId] = useState<string | null>(null);
-  const [fleets, setFleets] = useState<FleetRow[]>([]);
-
-  const [mode, setMode] = useState<Mode>("new_vehicle");
-
-  const [fleetId, setFleetId] = useState<string>("");
-  const [existingVehicleId, setExistingVehicleId] = useState<string>("");
-
-  const [nickname, setNickname] = useState<string>("");
-  const [unitNumber, setUnitNumber] = useState<string>("");
-  const [vin, setVin] = useState<string>("");
-  const [plate, setPlate] = useState<string>("");
-  const [year, setYear] = useState<string>("");
-  const [make, setMake] = useState<string>("");
-  const [model, setModel] = useState<string>("");
-
-  const [customKm, setCustomKm] = useState<string>("");
-  const [customHours, setCustomHours] = useState<string>("");
-  const [customDays, setCustomDays] = useState<string>("");
-
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+  const load = useCallback(async () => {
+    const response = await fetch("/api/fleet/enrollment", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "context" }),
+      cache: "no-store",
+    });
+    const body = (await response.json().catch(() => ({}))) as Context & { error?: string };
+    if (!response.ok) throw new Error(body.error || "Unable to load fleet setup");
+    setContext(body);
+    setVehicles(body.vehicles);
+    setFleetId((current) => current || body.fleets[0]?.id || "");
+  }, []);
 
   useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      setError(null);
+    void load().catch((error) => setMessage(error instanceof Error ? error.message : "Unable to load fleet setup"));
+  }, [load]);
 
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
+  useEffect(() => {
+    if (!context) return;
+    const timer = window.setTimeout(() => {
+      void fetch("/api/fleet/enrollment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "search_vehicles", query: search }),
+        cache: "no-store",
+      })
+        .then(async (response) => {
+          const body = (await response.json().catch(() => ({}))) as { vehicles?: Vehicle[]; error?: string };
+          if (!response.ok) throw new Error(body.error || "Vehicle search failed");
+          setVehicles(body.vehicles ?? []);
+        })
+        .catch((error) => setMessage(error instanceof Error ? error.message : "Vehicle search failed"));
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [context, search]);
 
-      if (userError || !user) {
-        setError("You must be signed in to add fleet units.");
-        setLoading(false);
-        return;
-      }
+  const enrolled = useMemo(
+    () => context?.enrollments.filter((row) => row.fleetId === fleetId && row.active) ?? [],
+    [context, fleetId],
+  );
+  const vehicleMap = useMemo(
+    () => new Map([...(context?.vehicles ?? []), ...vehicles].map((vehicle) => [vehicle.id, vehicle])),
+    [context?.vehicles, vehicles],
+  );
+  const drivers = context?.drivers.filter((driver) => driver.fleetId === fleetId) ?? [];
 
-      const actor = await resolveCurrentActor(supabase);
-
-      if (!actor.shopId) {
-        setError("Unable to resolve your shop. Check your profile settings.");
-        setLoading(false);
-        return;
-      }
-
-      const shopId = actor.shopId;
-      setCreatorShopId(shopId);
-
-      const { data: fleetRows, error: fleetError } = await supabase
-        .from("fleets")
-        .select("*")
-        .eq("shop_id", shopId)
-        .order("created_at", { ascending: true });
-
-      if (fleetError) {
-        setError("Failed to load fleets for this shop.");
-        setLoading(false);
-        return;
-      }
-
-      setFleets(fleetRows ?? []);
-      if ((fleetRows ?? []).length > 0 && !fleetId) {
-        setFleetId((fleetRows ?? [])[0].id);
-      }
-
-      setLoading(false);
-    };
-
-    void load();
-  }, [fleetId]);
-
-  async function handleSubmit(): Promise<void> {
-    setSaving(true);
-    setError(null);
-    setSuccess(null);
-
+  async function mutate(action: "enroll_existing" | "create_and_enroll" | "assign", extra: Record<string, unknown>) {
+    setBusy(true);
+    setMessage(null);
     try {
-      if (!creatorShopId) {
-        throw new Error("Missing shop context.");
-      }
-
-      if (!fleetId) {
-        throw new Error("Select a fleet before adding a unit.");
-      }
-
-      let vehicleId: string | null = null;
-
-      if (mode === "existing_vehicle") {
-        const trimmed = existingVehicleId.trim();
-        if (!trimmed) {
-          throw new Error("Enter an existing Vehicle ID or switch to New vehicle.");
-        }
-        const { data: existingVehicle, error: existingVehicleError } = await supabase
-          .from("vehicles")
-          .select("id")
-          .eq("id", trimmed)
-          .eq("shop_id", creatorShopId)
-          .maybeSingle();
-
-        if (existingVehicleError || !existingVehicle) {
-          throw new Error("Existing vehicle was not found in this shop.");
-        }
-
-        vehicleId = existingVehicle.id;
-      } else {
-        // create new vehicle
-        if (!unitNumber.trim() && !vin.trim() && !plate.trim()) {
-          throw new Error(
-            "Provide at least a unit number, VIN, or plate for the new vehicle.",
-          );
-        }
-
-        const duplicateCheck = await checkVehicleDuplicates({
-          vin,
-          licensePlate: plate,
-          unitNumber,
-        });
-
-        const duplicate = duplicateCheck.matches[0] ?? null;
-        if (duplicate) {
-          setExistingVehicleId(duplicate.id);
-          setMode("existing_vehicle");
-          throw new Error(
-            "Vehicle already exists. Use existing vehicle to link this fleet unit instead of creating a duplicate.",
-          );
-        }
-
-        const yearTrim = year.trim();
-        const yearValue =
-          yearTrim.length > 0 ? Number.parseInt(yearTrim, 10) : null;
-
-        const vehicleInsert: VehicleInsert = {
-          shop_id: creatorShopId,
-          unit_number: unitNumber.trim() || null,
-          vin: vin.trim() || null,
-          license_plate: plate.trim() || null,
-          year: Number.isNaN(yearValue) ? null : yearValue,
-          make: make.trim() || null,
-          model: model.trim() || null,
-        };
-
-        const { data: insertedVehicle, error: vehicleError } = await supabase
-          .from("vehicles")
-          .insert(vehicleInsert)
-          .select("id")
-          .single();
-
-        if (vehicleError || !insertedVehicle) {
-          throw new Error("Failed to create vehicle record.");
-        }
-
-        vehicleId = insertedVehicle.id;
-      }
-
-      if (!vehicleId) {
-        throw new Error("Unable to resolve vehicle for fleet unit.");
-      }
-
-      const kmTrim = customKm.trim();
-      const hoursTrim = customHours.trim();
-      const daysTrim = customDays.trim();
-
-      const kmVal =
-        kmTrim.length > 0 ? Number.parseInt(kmTrim, 10) : null;
-      const hoursVal =
-        hoursTrim.length > 0 ? Number.parseInt(hoursTrim, 10) : null;
-      const daysVal =
-        daysTrim.length > 0 ? Number.parseInt(daysTrim, 10) : null;
-
-      const fleetVehicleInsert: FleetVehicleInsert = {
-        fleet_id: fleetId,
-        vehicle_id: vehicleId,
-        active: true,
-        nickname: nickname.trim() || null,
-        custom_interval_km: Number.isNaN(kmVal) ? null : kmVal,
-        custom_interval_hours: Number.isNaN(hoursVal) ? null : hoursVal,
-        custom_interval_days: Number.isNaN(daysVal) ? null : daysVal,
-      };
-
-      const { error: fvError } = await supabase
-        .from("fleet_vehicles")
-        .insert(fleetVehicleInsert);
-
-      if (fvError) {
-        throw new Error("Failed to link vehicle into fleet.");
-      }
-
-      setSuccess("Fleet unit added.");
-      setExistingVehicleId("");
-      setNickname("");
-      if (mode === "new_vehicle") {
-        setUnitNumber("");
-        setVin("");
-        setPlate("");
-        setYear("");
-        setMake("");
-        setModel("");
-      }
-
-      // send them back to units list
-      router.push("/fleet/units");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Unexpected error");
+      const response = await fetch("/api/fleet/enrollment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, fleetId, nickname: nickname || null, ...extra }),
+      });
+      const body = (await response.json().catch(() => ({}))) as { error?: string };
+      if (!response.ok) throw new Error(body.error || "Fleet setup update failed");
+      setMessage(action === "assign" ? "Driver assignment saved. Daily pre-trip tracking is active." : "Unit enrolled in the fleet.");
+      await load();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Fleet setup update failed");
     } finally {
-      setSaving(false);
+      setBusy(false);
     }
   }
 
-  const disabled = loading || fleets.length === 0;
+  if (!context) {
+    return <main className="mx-auto max-w-6xl px-4 py-6 text-sm">Loading fleet setup…</main>;
+  }
 
   return (
-    <PageShell
-      title="Add fleet unit"
-      description="Assign a vehicle to a fleet so it appears in the tower, pre-trips, and service requests."
-    >
-      <div className="space-y-6 text-[color:var(--theme-text-primary)]">
-        <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 shadow-card backdrop-blur-xl sm:p-6">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-semibold">Fleet & vehicle</h2>
-              <p className="text-xs text-[color:var(--theme-text-secondary)]">
-                Choose a fleet, then link an existing vehicle or create a new
-                one.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => router.push("/fleet/units")}
-              className="inline-flex items-center gap-2 rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1.5 text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-inset)]"
-            >
-              <span aria-hidden>←</span>
-              Back to units
-            </button>
-          </div>
-
-          {loading ? (
-            <p className="text-sm text-[color:var(--theme-text-secondary)]">Loading fleet data…</p>
-          ) : fleets.length === 0 ? (
-            <div className="rounded-xl border border-amber-500/30 bg-amber-950/20 px-4 py-4 text-sm text-amber-100">
-              <p className="font-semibold">Create a fleet before adding units.</p>
-              <p className="mt-1 text-xs text-amber-100/80">
-                Every fleet unit must belong to a fleet.
-              </p>
-              <Link
-                href="/fleet/programs"
-                className="mt-3 inline-flex rounded-lg bg-amber-100 px-3 py-2 text-xs font-semibold text-amber-950 transition hover:bg-white"
-              >
-                Create fleet
-              </Link>
-            </div>
-          ) : null}
-
-          {error && (
-            <div className="mt-3 rounded-xl border border-red-500/60 bg-red-950/60 px-3 py-2 text-xs text-red-100 shadow-[0_0_18px_rgba(127,29,29,0.45)]">
-              {error}
-            </div>
-          )}
-          {success && (
-            <div className="mt-3 rounded-xl border border-emerald-500/60 bg-emerald-950/60 px-3 py-2 text-xs text-emerald-100 shadow-[var(--theme-shadow-medium)]">
-              {success}
-            </div>
-          )}
-
-          <div className="mt-4 space-y-5 opacity-100">
-            {/* Fleet selection */}
-            <div className="space-y-1 text-sm">
-              <label
-                htmlFor="fleet-unit-fleet"
-                className="text-xs font-medium uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]"
-              >
-                Fleet
-              </label>
-              <select
-                id="fleet-unit-fleet"
-                disabled={disabled}
-                className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:border-sky-400/40 disabled:cursor-not-allowed disabled:opacity-50"
-                value={fleetId}
-                onChange={(e) => setFleetId(e.target.value)}
-              >
-                {fleets.map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.name}
-                  </option>
-                ))}
-              </select>
-              <p className="text-[11px] text-[color:var(--theme-text-muted)]">
-                Units enrolled here show up together in the Fleet Control Tower.
-              </p>
-            </div>
-
-            {/* Mode toggle */}
-            <div className="space-y-2 text-sm">
-              <label className="text-xs font-medium uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
-                Vehicle mode
-              </label>
-              <div className="inline-flex rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] p-1 text-[11px]">
-                <button
-                  type="button"
-                  onClick={() => setMode("new_vehicle")}
-                  className={`flex-1 rounded-full px-3 py-1 uppercase tracking-[0.18em] transition ${
-                    mode === "new_vehicle"
-                      ? "bg-sky-400 text-[color:var(--theme-text-primary)] font-semibold shadow-[0_0_18px_rgba(56,189,248,0.35)]"
-                      : "text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-surface-overlay)]"
-                  }`}
-                >
-                  New vehicle
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMode("existing_vehicle")}
-                  className={`flex-1 rounded-full px-3 py-1 uppercase tracking-[0.18em] transition ${
-                    mode === "existing_vehicle"
-                      ? "bg-sky-400 text-[color:var(--theme-text-primary)] font-semibold shadow-[0_0_18px_rgba(56,189,248,0.35)]"
-                      : "text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-surface-overlay)]"
-                  }`}
-                >
-                  Existing vehicle
-                </button>
-              </div>
-            </div>
-
-            {/* Existing vehicle ID */}
-            {mode === "existing_vehicle" && (
-              <div className="space-y-1 text-sm">
-                <label className="text-xs font-medium uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
-                  Existing Vehicle ID
-                </label>
-                <input
-                  disabled={disabled}
-                  className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[var(--glass-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:border-sky-400/40 disabled:cursor-not-allowed disabled:opacity-50"
-                  placeholder="Paste vehicles.id"
-                  value={existingVehicleId}
-                  onChange={(e) => setExistingVehicleId(e.target.value)}
-                />
-                <p className="text-[11px] text-[color:var(--theme-text-muted)]">
-                  Later you can replace this with a VIN / plate search picker.
-                </p>
-              </div>
-            )}
-
-            {/* New vehicle details */}
-            {mode === "new_vehicle" && (
-              <div className="space-y-3 text-sm">
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
-                      Unit #
-                    </label>
-                    <input
-                      disabled={disabled}
-                      className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[var(--glass-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:border-sky-400/40 disabled:cursor-not-allowed disabled:opacity-50"
-                      placeholder="Truck / trailer ID"
-                      value={unitNumber}
-                      onChange={(e) => setUnitNumber(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
-                      Plate
-                    </label>
-                    <input
-                      disabled={disabled}
-                      className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[var(--glass-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:border-sky-400/40 disabled:cursor-not-allowed disabled:opacity-50"
-                      placeholder="License plate"
-                      value={plate}
-                      onChange={(e) => setPlate(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
-                      VIN
-                    </label>
-                    <input
-                      disabled={disabled}
-                      className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[var(--glass-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:border-sky-400/40 disabled:cursor-not-allowed disabled:opacity-50"
-                      placeholder="VIN"
-                      value={vin}
-                      onChange={(e) => setVin(e.target.value)}
-                    />
-                  </div>
-                </div>
-
-                <div className="grid gap-3 sm:grid-cols-4">
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
-                      Year
-                    </label>
-                    <input
-                      disabled={disabled}
-                      className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[var(--glass-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:border-sky-400/40 disabled:cursor-not-allowed disabled:opacity-50"
-                      placeholder="YYYY"
-                      inputMode="numeric"
-                      value={year}
-                      onChange={(e) => setYear(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
-                      Make
-                    </label>
-                    <input
-                      disabled={disabled}
-                      className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[var(--glass-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:border-sky-400/40 disabled:cursor-not-allowed disabled:opacity-50"
-                      placeholder="Make"
-                      value={make}
-                      onChange={(e) => setMake(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-1 sm:col-span-2">
-                    <label className="text-xs font-medium uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
-                      Model
-                    </label>
-                    <input
-                      disabled={disabled}
-                      className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[var(--glass-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:border-sky-400/40 disabled:cursor-not-allowed disabled:opacity-50"
-                      placeholder="Model / trim"
-                      value={model}
-                      onChange={(e) => setModel(e.target.value)}
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Fleet meta */}
-            <div className="grid gap-3 sm:grid-cols-2 text-sm">
-              <div className="space-y-1">
-                <label className="text-xs font-medium uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
-                  Display nickname
-                </label>
-                <input
-                  disabled={disabled}
-                  className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[var(--glass-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:border-sky-400/40 disabled:cursor-not-allowed disabled:opacity-50"
-                  placeholder="Optional label (e.g. Linehaul 12)"
-                  value={nickname}
-                  onChange={(e) => setNickname(e.target.value)}
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-medium uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
-                  Custom intervals (optional)
-                </label>
-                <div className="grid grid-cols-3 gap-2">
-                  <input
-                    disabled={disabled}
-                    className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-2 py-2 text-xs text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:border-sky-400/40 disabled:cursor-not-allowed disabled:opacity-50"
-                    placeholder="km"
-                    inputMode="numeric"
-                    value={customKm}
-                    onChange={(e) => setCustomKm(e.target.value)}
-                  />
-                  <input
-                    disabled={disabled}
-                    className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-2 py-2 text-xs text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:border-sky-400/40 disabled:cursor-not-allowed disabled:opacity-50"
-                    placeholder="hours"
-                    inputMode="numeric"
-                    value={customHours}
-                    onChange={(e) => setCustomHours(e.target.value)}
-                  />
-                  <input
-                    disabled={disabled}
-                    className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-2 py-2 text-xs text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:border-sky-400/40 disabled:cursor-not-allowed disabled:opacity-50"
-                    placeholder="days"
-                    inputMode="numeric"
-                    value={customDays}
-                    onChange={(e) => setCustomDays(e.target.value)}
-                  />
-                </div>
-                <p className="text-[11px] text-[color:var(--theme-text-muted)]">
-                  Used later to drive next inspection dates and reminders.
-                </p>
-              </div>
-            </div>
-
-            <div className="pt-2">
-              <button
-                type="button"
-                disabled={disabled || saving}
-                onClick={() => void handleSubmit()}
-                className="inline-flex items-center justify-center rounded-full bg-[var(--theme-gradient-panel)] px-5 py-2.5 text-sm font-semibold uppercase tracking-[0.2em] text-[color:var(--theme-text-on-accent)] shadow-[0_0_26px_rgba(56,189,248,0.35)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {saving ? "Saving…" : "Add fleet unit"}
-              </button>
-            </div>
-          </div>
+    <main className="mx-auto w-full max-w-6xl space-y-5 px-4 py-6 text-[color:var(--theme-text-primary)]">
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-300">Fleet setup</p>
+          <h1 className="mt-1 text-2xl font-semibold">Enroll units & assign drivers</h1>
+          <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
+            Pick a fleet, add the unit, then assign its driver. Both jobs stay on this one page.
+          </p>
         </div>
+        <Link href="/fleet/units" className="rounded-xl border border-[color:var(--theme-border-soft)] px-3 py-2 text-xs font-semibold">Back to units</Link>
+      </header>
+
+      <section className={panel}>
+        <label className="block max-w-md text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
+          Fleet
+          <select value={fleetId} onChange={(event) => setFleetId(event.target.value)} className="mt-1 w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm normal-case tracking-normal">
+            {context.fleets.map((fleet) => <option key={fleet.id} value={fleet.id}>{fleet.name}</option>)}
+          </select>
+        </label>
+      </section>
+
+      <div className="grid gap-5 lg:grid-cols-2">
+        <section className={panel}>
+          <div className="flex items-center gap-2"><Truck className="h-4 w-4 text-sky-300" /><h2 className="font-semibold">1. Enroll a unit</h2></div>
+          <div className="mt-3 flex gap-2">
+            <button onClick={() => setMode("existing")} className={`rounded-xl px-3 py-2 text-xs font-semibold ${mode === "existing" ? "bg-sky-300 text-slate-950" : "border border-[color:var(--theme-border-soft)]"}`}>Existing vehicle</button>
+            <button onClick={() => setMode("new")} className={`rounded-xl px-3 py-2 text-xs font-semibold ${mode === "new" ? "bg-sky-300 text-slate-950" : "border border-[color:var(--theme-border-soft)]"}`}>New vehicle</button>
+          </div>
+
+          {mode === "existing" ? (
+            <div className="mt-4 space-y-3">
+              <label className="relative block">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-[color:var(--theme-text-muted)]" />
+                <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search unit number, VIN, plate, make or model" className="w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] py-2 pl-9 pr-3 text-sm" />
+              </label>
+              <select value={vehicleId} onChange={(event) => setVehicleId(event.target.value)} size={8} className="w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] p-2 text-sm">
+                {vehicles.map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicleLabel(vehicle)}</option>)}
+              </select>
+              <input value={nickname} onChange={(event) => setNickname(event.target.value)} placeholder="Fleet nickname (optional)" className="w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm" />
+              <button disabled={busy || !fleetId || !vehicleId} onClick={() => void mutate("enroll_existing", { vehicleId })} className="w-full rounded-xl bg-sky-300 px-4 py-2.5 text-sm font-semibold text-slate-950 disabled:opacity-60">Enroll selected vehicle</button>
+            </div>
+          ) : (
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <input value={unitNumber} onChange={(event) => setUnitNumber(event.target.value)} placeholder="Unit number" className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm" />
+              <input value={plate} onChange={(event) => setPlate(event.target.value)} placeholder="Plate" className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm" />
+              <input value={vin} onChange={(event) => setVin(event.target.value)} placeholder="VIN" className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm sm:col-span-2" />
+              <input type="number" value={year} onChange={(event) => setYear(event.target.value)} placeholder="Year" className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm" />
+              <input value={make} onChange={(event) => setMake(event.target.value)} placeholder="Make" className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm" />
+              <input value={model} onChange={(event) => setModel(event.target.value)} placeholder="Model" className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm" />
+              <input value={nickname} onChange={(event) => setNickname(event.target.value)} placeholder="Fleet nickname" className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm" />
+              <button disabled={busy || !fleetId || (!unitNumber && !vin && !plate)} onClick={() => void mutate("create_and_enroll", { unitNumber, vin, licensePlate: plate, year: year ? Number(year) : null, make, model })} className="rounded-xl bg-sky-300 px-4 py-2.5 text-sm font-semibold text-slate-950 disabled:opacity-60 sm:col-span-2">Create & enroll unit</button>
+            </div>
+          )}
+        </section>
+
+        <section className={panel}>
+          <div className="flex items-center gap-2"><UserRoundCheck className="h-4 w-4 text-sky-300" /><h2 className="font-semibold">2. Assign drivers</h2></div>
+          <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">A driver must be invited to this fleet before assignment.</p>
+          <div className="mt-4 space-y-3">
+            {enrolled.map((row) => {
+              const assignment = context.assignments.find((item) => item.fleetId === fleetId && item.vehicleId === row.vehicleId);
+              return (
+                <div key={row.vehicleId} className="rounded-xl border border-[color:var(--theme-border-soft)] p-3">
+                  <div className="text-sm font-semibold">{row.nickname || vehicleLabel(vehicleMap.get(row.vehicleId))}</div>
+                  {assignment ? <div className="mt-1 text-xs text-emerald-200">Assigned to {assignment.driverName} • {assignment.state.replaceAll("_", " ")}</div> : <div className="mt-1 text-xs text-amber-100">Driver not assigned</div>}
+                  <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                    <select value={driverByVehicle[row.vehicleId] ?? assignment?.driverProfileId ?? ""} onChange={(event) => setDriverByVehicle((current) => ({ ...current, [row.vehicleId]: event.target.value }))} className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-2 py-2 text-xs">
+                      <option value="">Select driver</option>
+                      {drivers.map((driver) => <option key={driver.id} value={driver.id}>{driver.name}</option>)}
+                    </select>
+                    <input value={routeByVehicle[row.vehicleId] ?? assignment?.routeLabel ?? ""} onChange={(event) => setRouteByVehicle((current) => ({ ...current, [row.vehicleId]: event.target.value }))} placeholder="Route / location" className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-2 py-2 text-xs" />
+                    <input type="time" value={dueByVehicle[row.vehicleId] ?? "07:00"} onChange={(event) => setDueByVehicle((current) => ({ ...current, [row.vehicleId]: event.target.value }))} className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-2 py-2 text-xs" />
+                  </div>
+                  <button
+                    disabled={busy || !(driverByVehicle[row.vehicleId] ?? assignment?.driverProfileId)}
+                    onClick={() => void mutate("assign", {
+                      vehicleId: row.vehicleId,
+                      driverProfileId: driverByVehicle[row.vehicleId] ?? assignment?.driverProfileId,
+                      nickname: row.nickname,
+                      routeLabel: routeByVehicle[row.vehicleId] ?? assignment?.routeLabel ?? null,
+                      pretripDueLocalTime: dueByVehicle[row.vehicleId] ?? "07:00",
+                    })}
+                    className="mt-2 rounded-xl border border-sky-300/40 px-3 py-2 text-xs font-semibold text-sky-200 disabled:opacity-50"
+                  >
+                    Save assignment & daily pre-trip
+                  </button>
+                </div>
+              );
+            })}
+            {!enrolled.length ? <p className="text-sm text-[color:var(--theme-text-secondary)]">Enroll a unit first; it appears here immediately.</p> : null}
+          </div>
+        </section>
       </div>
-    </PageShell>
+
+      {message ? <p role="status" className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-sm">{message}</p> : null}
+    </main>
   );
 }
