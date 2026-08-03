@@ -9,8 +9,7 @@ export default async function PortalFleetUnitsPage() {
 
   return (
     <FleetUnitsPage
-      shopId={actor.shopId}
-      uiContext={getFleetUiContext(actor)}
+uiContext={getFleetUiContext(actor)}
       routePrefix="/portal/fleet"
     />
   );
