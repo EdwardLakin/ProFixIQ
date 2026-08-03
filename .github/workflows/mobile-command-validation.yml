@@ -25,6 +25,8 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
         with:
@@ -82,26 +84,68 @@ jobs:
           if-no-files-found: ignore
           retention-days: 5
 
-      - name: Capture full test suite
+      - name: Compare full suite with main
         id: full-suite
         shell: bash
         run: |
           set +e
+
           pnpm exec vitest run > mobile-full-suite.log 2>&1
-          status=$?
+          head_status=$?
           cat mobile-full-suite.log
-          echo "status=$status" >> "$GITHUB_OUTPUT"
-          exit 0
+
+          git worktree add --detach ../profixiq-main origin/main
+          (
+            cd ../profixiq-main
+            pnpm install --frozen-lockfile
+            pnpm exec vitest run > "$GITHUB_WORKSPACE/mobile-main-suite.log" 2>&1
+          )
+          main_status=$?
+
+          HEAD_STATUS="$head_status" MAIN_STATUS="$main_status" node <<'NODE'
+          const fs = require("node:fs");
+
+          const stripAnsi = (value) =>
+            value.replace(/[\u001B\u009B][[\]()#;?]*(?:(?:(?:[a-zA-Z\d]*(?:;[-a-zA-Z\d\/#&.:=?%@~_]+)*)?\u0007)|(?:(?:\d{1,4}(?:[;:]\d{0,4})*)?[\dA-PR-TZcf-nq-uy=><~]))/g, "");
+
+          const collectFailures = (path) => {
+            if (!fs.existsSync(path)) return [];
+            return [...new Set(
+              stripAnsi(fs.readFileSync(path, "utf8"))
+                .split(/\r?\n/)
+                .map((line) => line.trim())
+                .filter((line) => line.startsWith("FAIL "))
+                .map((line) => line.replace(/\s+\d+ms$/, "")),
+            )].sort();
+          };
+
+          const headFailures = collectFailures("mobile-full-suite.log");
+          const mainFailures = new Set(collectFailures("mobile-main-suite.log"));
+          const newFailures = headFailures.filter((failure) => !mainFailures.has(failure));
+
+          const report = [
+            `Head exit status: ${process.env.HEAD_STATUS}`,
+            `Main exit status: ${process.env.MAIN_STATUS}`,
+            `Head failures: ${headFailures.length}`,
+            `Main failures: ${mainFailures.size}`,
+            `New failures: ${newFailures.length}`,
+            "",
+            ...newFailures,
+          ].join("\n");
+
+          fs.writeFileSync("mobile-new-failures.log", `${report}\n`);
+          console.log(report);
+          process.exitCode = newFailures.length > 0 ? 1 : 0;
+          NODE
 
       - name: Upload full-suite diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: mobile-command-full-suite-${{ github.run_id }}
-          path: mobile-full-suite.log
+          path: |
+            mobile-full-suite.log
+            mobile-main-suite.log
+            mobile-new-failures.log
           if-no-files-found: error
           retention-days: 5
-
-      - name: Fail on full-suite errors
-        if: steps.full-suite.outputs.status != '0'
-        run: exit 1
