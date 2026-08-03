@@ -245,12 +245,6 @@ export default function FleetDispatchBoard({
                           : "—"}
                       </td>
                       <td className="px-3 py-1.5 text-right text-[11px]">
-                        <Link
-                          href={`/fleet/assets/${encodeURIComponent(a.unitId)}`}
-                          className="mr-2 text-[color:var(--accent-copper)] underline-offset-4 hover:underline"
-                        >
-                          Open unit
-                        </Link>
                         {uiContext.capabilities.canCreateFleetWorkOrders && (
                           <Link
                             href={`/work-orders/create?unitId=${encodeURIComponent(a.unitId)}`}
