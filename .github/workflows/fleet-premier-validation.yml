@@ -63,9 +63,9 @@ jobs:
           features/fleet/types/workspace.ts
           tests/fleet-premier-workspaces.test.ts
           tests/fleet-pretrip-defect-compliance.test.ts
-          tests/fleet-pretrip-defect-compliance.test.ts
       - name: Fleet contracts
         run: >-
           pnpm exec vitest run
           tests/fleet-operations-core.test.ts
           tests/fleet-premier-workspaces.test.ts
+          tests/fleet-pretrip-defect-compliance.test.ts
