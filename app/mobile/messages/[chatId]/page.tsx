@@ -1,5 +1,6 @@
 "use client";
 
+import { ChevronLeft, MessageCircle } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -71,37 +72,45 @@ export default function MobileChatThreadPage() {
   }, [conversationId, supabase]);
 
   return (
-    <div className="flex min-h-screen flex-col bg-background px-4 py-3 text-foreground">
-      <div className="metal-bar mb-3 flex items-center justify-between gap-2 border-b border-[var(--metal-border-soft)] pb-2">
+    <main className="flex min-h-[calc(100dvh-3.75rem-env(safe-area-inset-top,0px))] flex-col overflow-hidden">
+      <header className="flex min-h-16 items-center gap-3 border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-3 py-2 shadow-sm">
         <Link
           href="/mobile/messages"
-          className="inline-flex items-center rounded-full border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1 text-xs text-[color:var(--theme-text-primary)] shadow-[var(--theme-shadow-medium)]"
+          aria-label="Return to messages"
+          className="inline-grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-primary)]"
         >
-          ← Messages
+          <ChevronLeft aria-hidden className="h-5 w-5" />
         </Link>
-        <div className="min-w-0 text-right">
-          <h1 className="truncate text-sm font-blackops uppercase tracking-[0.18em] text-[var(--accent-copper-light)]">
+        <span className="inline-grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-blue-500/10 text-blue-600 dark:text-blue-300">
+          <MessageCircle aria-hidden className="h-5 w-5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate text-base font-extrabold tracking-[-0.025em] text-[color:var(--theme-text-primary)]">
             {title}
           </h1>
-          <p className="mt-0.5 text-[0.65rem] text-[color:var(--theme-text-muted)]">
-            Chat
+          <p className="mt-0.5 text-xs text-[color:var(--theme-text-secondary)]">
+            Team conversation
           </p>
         </div>
-      </div>
+      </header>
 
       {!userId ? (
-        <div className="metal-card mt-4 rounded-xl border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 text-sm text-[color:var(--theme-text-secondary)]">
-          Loading…
+        <div className="flex flex-1 items-center justify-center p-4">
+          <div className="mobile-command-panel w-full max-w-sm border p-5 text-center text-sm text-[color:var(--theme-text-secondary)]">
+            Loading conversation…
+          </div>
         </div>
       ) : (
-        <div className="metal-panel metal-panel--card flex min-h-0 flex-1 flex-col rounded-2xl border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-2">
-          <ChatWindow
-            conversationId={conversationId}
-            userId={userId}
-            title={title}
-          />
+        <div className="min-h-0 flex-1 bg-[color:var(--theme-surface-page)] p-2 sm:p-3">
+          <div className="mobile-command-panel mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col overflow-hidden border">
+            <ChatWindow
+              conversationId={conversationId}
+              userId={userId}
+              title={title}
+            />
+          </div>
         </div>
       )}
-    </div>
+    </main>
   );
 }
