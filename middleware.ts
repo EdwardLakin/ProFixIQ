@@ -106,6 +106,14 @@ export async function middleware(req: NextRequest) {
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set("x-next-pathname", pathname);
 
+  if (
+    pathname === "/portal/fleet/auth/sign-in" ||
+    pathname === "/portal/fleet/auth/sign-in/"
+  ) {
+    const target = new URL(PORTAL_SIGN_IN.fleet, req.url);
+    return NextResponse.redirect(target, 308);
+  }
+
   if (isAssetPath(pathname) || pathname.startsWith("/api")) {
     return NextResponse.next();
   }

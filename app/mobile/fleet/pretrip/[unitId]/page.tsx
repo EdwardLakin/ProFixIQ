@@ -2,16 +2,11 @@
 
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
-import { useMemo } from "react";
-
 import PretripForm from "@/features/fleet/components/PretripForm";
-import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
 export default function MobileFleetPretripPage() {
   const params = useParams<{ unitId: string }>();
   const search = useSearchParams();
-  const supabase = useMemo(() => createBrowserSupabase(), []);
-
   const unitId = params?.unitId ? String(params.unitId) : null;
   const driverHint = search.get("driver");
 
@@ -70,7 +65,6 @@ export default function MobileFleetPretripPage() {
         <PretripForm
           unitId={unitId}
           driverHint={driverHint}
-          supabase={supabase}
         />
       </div>
     </main>

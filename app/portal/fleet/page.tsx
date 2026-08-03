@@ -13,6 +13,7 @@ export default async function PortalFleetPage() {
     <FleetControlTower
       shopName="Fleet Portal"
       shopId={actor.shopId}
+      fleetId={actor.primaryFleetId}
       uiContext={uiContext}
       routePrefix="/portal/fleet"
     />

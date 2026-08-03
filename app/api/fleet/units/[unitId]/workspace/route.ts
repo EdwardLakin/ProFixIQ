@@ -101,12 +101,18 @@ function deriveStatus(requests: Row[]): FleetUnitOperationalStatus {
   return open.length > 0 ? "limited" : "in_service";
 }
 
-export async function GET(_request: Request, { params }: Props) {
+export async function GET(request: Request, { params }: Props) {
   try {
     const { unitId } = await params;
+    const requestedFleetId = new URL(request.url).searchParams.get("fleetId");
     const supabase = createServerSupabaseRoute();
-    const actor = await resolveFleetActorContext(supabase);
-    const scope = resolveFleetActorScope(actor);
+    const actor = await resolveFleetActorContext(supabase, {
+      requestedFleetId,
+    });
+    const scope = resolveFleetActorScope(actor, {
+      explicitFleetId: requestedFleetId,
+      preferMembershipFleet: true,
+    });
 
     if (!actor.userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -144,6 +150,7 @@ export async function GET(_request: Request, { params }: Props) {
       dueResult,
       requestResult,
       pretripResult,
+      defectResult,
       inspectionResult,
       workOrderResult,
       lifetimeMetrics,
@@ -200,6 +207,13 @@ export async function GET(_request: Request, { params }: Props) {
         .order("inspection_date", { ascending: false })
         .limit(50),
       admin
+        .from("fleet_unit_defects")
+        .select("id,label,severity,state,description,reported_at,deferred_until,service_request_id,work_order_id")
+        .eq("fleet_id", fleetId)
+        .eq("vehicle_id", unitId)
+        .order("reported_at", { ascending: false })
+        .limit(100),
+      admin
         .from("fleet_inspection_schedules")
         .select("next_inspection_date")
         .eq("fleet_id", fleetId)
@@ -227,6 +241,7 @@ export async function GET(_request: Request, { params }: Props) {
       dueResult.error,
       requestResult.error,
       pretripResult.error,
+      defectResult.error,
       inspectionResult.error,
       workOrderResult.error,
     ].find(Boolean);
@@ -237,6 +252,7 @@ export async function GET(_request: Request, { params }: Props) {
     const policies = rowArray(policyResult.data);
     const dueEvents = rowArray(dueResult.data);
     const requests = rowArray(requestResult.data);
+    const defects = rowArray(defectResult.data);
     const workOrders = rowArray(workOrderResult.data);
     const workOrderIds = workOrders.map((row) => String(row.id));
 
@@ -461,6 +477,7 @@ export async function GET(_request: Request, { params }: Props) {
         openRequests,
         openApprovals,
         activePmDue,
+        activeDefects: defects.filter((row) => text(row.state) !== "resolved").length,
         lifetimeWorkOrders: lifetimeMetrics.count,
         lifetimeSpend,
         outstandingBalance,
@@ -475,6 +492,17 @@ export async function GET(_request: Request, { params }: Props) {
         status: text(row.status) ?? "open",
         createdAt: iso(row.created_at) ?? new Date().toISOString(),
         scheduledForDate: text(row.scheduled_for_date),
+        workOrderId: text(row.work_order_id),
+      })),
+      defects: defects.map((row) => ({
+        id: String(row.id),
+        label: text(row.label) ?? "Reported defect",
+        severity: text(row.severity) ?? "recommend",
+        state: text(row.state) ?? "open",
+        description: text(row.description),
+        reportedAt: iso(row.reported_at) ?? new Date().toISOString(),
+        deferredUntil: text(row.deferred_until),
+        serviceRequestId: text(row.service_request_id),
         workOrderId: text(row.work_order_id),
       })),
       workOrders: history,

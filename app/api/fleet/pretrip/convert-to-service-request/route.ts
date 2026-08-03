@@ -1,218 +1,62 @@
-// app/api/fleet/pretrip/convert-to-service/route.ts
-import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
-import type { Database } from "@shared/types/types/supabase";
-import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
+import {
+  canManageFleetForActor,
+  resolveFleetActorContext,
+} from "@/features/fleet/lib/resolveFleetActorContext";
 
-type DB = Database;
-
-type FleetPretripReportRow =
-  DB["public"]["Tables"]["fleet_pretrip_reports"]["Row"];
-type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
-type FleetServiceRequestRow =
-  DB["public"]["Tables"]["fleet_service_requests"]["Row"];
-
-type ConvertBody = {
-  pretripId: string;
+type Body = {
+  pretripId?: string;
+  requestedForDate?: string | null;
 };
 
-type DefectState = "ok" | "defect" | "na";
-
-// Allow extra keys without using `any`
-type ChecklistPayload = {
-  defects?: Record<string, DefectState>;
-} & Record<string, unknown>;
-
-type PretripWithVehicle = Pick<
-  FleetPretripReportRow,
-  | "id"
-  | "fleet_id"
-  | "vehicle_id"
-  | "driver_name"
-  | "has_defects"
-  | "inspection_date"
-  | "checklist"
-  | "notes"
-> & {
-  vehicles: Pick<VehicleRow, "unit_number" | "license_plate" | "vin"> | null;
-};
-
-function normalizeSeverity(
-  defectKeys: string[],
-): FleetServiceRequestRow["severity"] {
-  if (defectKeys.some((k) => k === "brakes" || k === "steering")) {
-    return "safety";
-  }
-  if (
-    defectKeys.some(
-      (k) => k === "suspension" || k === "tires" || k === "lights",
-    )
-  ) {
-    return "compliance";
-  }
-  if (defectKeys.length > 0) return "maintenance";
-  return "recommend";
-}
-
-export async function POST(req: NextRequest) {
+export async function POST(request: Request) {
   try {
-    const supabase = createServerSupabaseRoute();
-    const body = (await req.json().catch(() => null)) as ConvertBody | null;
-
-    if (!body?.pretripId) {
-      return NextResponse.json(
-        { error: "pretripId is required." },
-        { status: 400 },
-      );
+    const body = (await request.json().catch(() => ({}))) as Body;
+    if (!body.pretripId) {
+      return NextResponse.json({ error: "Missing pre-trip report" }, { status: 400 });
     }
 
-    const pretripId = body.pretripId;
+    const supabase = createServerSupabaseRoute();
     const actor = await resolveFleetActorContext(supabase);
     if (!actor.userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Load the pretrip (fleet_id is authoritative)
-    const { data: pretripRow, error: pretripError } = await supabase
-      .from("fleet_pretrip_reports")
-      .select(
-        `
-        id,
-        fleet_id,
-        vehicle_id,
-        driver_name,
-        has_defects,
-        inspection_date,
-        checklist,
-        notes,
-        vehicles!inner (
-          unit_number,
-          license_plate,
-          vin
-        )
-      `,
-      )
-      .eq("id", pretripId)
-      .maybeSingle();
-
-    if (pretripError || !pretripRow) {
+    const { data: defects, error: defectError } = await supabase
+      .from("fleet_unit_defects")
+      .select("id,fleet_id")
+      .eq("source_pretrip_id", body.pretripId)
+      .in("state", ["open", "acknowledged", "deferred"]);
+    if (defectError) throw new Error(defectError.message);
+    if (!defects?.length) {
       return NextResponse.json(
-        { error: "Pre-trip report not found." },
-        { status: 404 },
+        { error: "No active tracked defects remain on this pre-trip." },
+        { status: 409 },
       );
     }
 
-    const pretrip = pretripRow as unknown as PretripWithVehicle;
-    const fleetScopedActor = await resolveFleetActorContext(supabase, {
-      userId: actor.userId,
-      requestedFleetId: pretrip.fleet_id,
+    const fleetId = defects[0]?.fleet_id;
+    if (!fleetId || !canManageFleetForActor(actor, fleetId)) {
+      return NextResponse.json(
+        { error: "Fleet management access required" },
+        { status: 403 },
+      );
+    }
+
+    const { data, error } = await supabase.rpc("manage_fleet_unit_defects", {
+      p_action: "create_request",
+      p_defect_ids: defects.map((defect) => defect.id),
+      p_requested_for_date: body.requestedForDate || undefined,
     });
-    if (!fleetScopedActor.capabilities.canConvertPretripToServiceRequest) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
     }
-
-    // Check if already linked
-    const { data: existing, error: existingError } = await supabase
-      .from("fleet_service_requests")
-      .select("id")
-      .eq("source_pretrip_id", pretripId)
-      .maybeSingle();
-
-    if (existingError) {
-      // eslint-disable-next-line no-console
-      console.error(
-        "[pretrip/convert-to-service-request] existing check error",
-        existingError,
-      );
-      return NextResponse.json(
-        { error: "Failed to check existing service request." },
-        { status: 500 },
-      );
-    }
-
-    if (existing?.id) {
-      return NextResponse.json({
-        serviceRequestId: existing.id,
-        status: "already_linked",
-      });
-    }
-
-    const vehicle = pretrip.vehicles;
-
-    const unitLabel =
-      vehicle?.unit_number ||
-      vehicle?.license_plate ||
-      vehicle?.vin ||
-      pretrip.vehicle_id;
-
-    const checklist = (pretrip.checklist ?? {}) as ChecklistPayload;
-    const defects = checklist.defects ?? {};
-
-    const defectKeys = Object.entries(defects)
-      .filter(([, v]) => v === "defect")
-      .map(([k]) => k);
-
-    const severity = normalizeSeverity(defectKeys);
-
-    const title = `Pre-trip defects – ${unitLabel}`;
-    const summaryParts: string[] = [];
-
-    if (defectKeys.length > 0) {
-      summaryParts.push(
-        `Driver ${pretrip.driver_name ?? "unknown"} reported defects on: ${defectKeys.join(", ")}.`,
-      );
-    } else {
-      summaryParts.push(
-        `Pre-trip from driver ${pretrip.driver_name ?? "unknown"} with no specific systems flagged, but a service request was requested.`,
-      );
-    }
-
-    if (pretrip.notes) {
-      summaryParts.push(`Driver notes: ${pretrip.notes}`);
-    }
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    // created_by_profile_id should be a profile id; if your schema uses profiles.id = auth.uid(), this is correct.
-    const { data: inserted, error: insertError } = await supabase
-      .from("fleet_service_requests")
-      .insert({
-        fleet_id: pretrip.fleet_id,
-        vehicle_id: pretrip.vehicle_id,
-        source_pretrip_id: pretrip.id,
-        title,
-        summary: summaryParts.join(" "),
-        severity,
-        status: "open",
-        created_by_profile_id: user?.id ?? null,
-      })
-      .select("id")
-      .single();
-
-    if (insertError || !inserted) {
-      // eslint-disable-next-line no-console
-      console.error(
-        "[pretrip/convert-to-service-request] insert error",
-        insertError,
-      );
-      return NextResponse.json(
-        { error: "Failed to create service request from pre-trip." },
-        { status: 500 },
-      );
-    }
-
-    return NextResponse.json({
-      serviceRequestId: inserted.id,
-      status: "created",
-    });
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.error("[pretrip/convert-to-service-request] error", err);
+    return NextResponse.json(data);
+  } catch (error) {
+    console.error("[fleet/pretrip/convert] error", error);
     return NextResponse.json(
-      { error: "Failed to convert pre-trip to service request." },
+      { error: error instanceof Error ? error.message : "Unable to create service request" },
       { status: 500 },
     );
   }
