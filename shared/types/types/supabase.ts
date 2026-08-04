@@ -15706,6 +15706,7 @@ export type Database = {
       receive_po_part_and_allocate: {
         Args: {
           p_location_id: string
+          p_operation_id?: string
           p_part_id: string
           p_po_id: string
           p_qty: number
