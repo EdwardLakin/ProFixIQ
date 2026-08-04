@@ -55,6 +55,21 @@ describe("create work order fast-intake redesign", () => {
     expect(createPage).toContain("min-h-10 items-center");
   });
 
+  it("revalidates tab-persisted work orders before exposing line mutations", () => {
+    expect(createPage).toContain("validatedWorkOrderId === wo.id");
+    expect(createPage).toContain('.from("work_orders")');
+    expect(createPage).toContain('.eq("id", workOrderId)');
+    expect(createPage).toContain('.eq("shop_id", shopId)');
+    expect(createPage).toContain("setWo(null)");
+    expect(createPage).toContain("setLines([])");
+    expect(createPage).toContain(
+      "hasValidatedWorkOrder && wo?.id && (",
+    );
+    expect(createPage).toContain(
+      "loading || isPersistedWorkOrderPending",
+    );
+  });
+
   it("renders every intake control as a separate rounded themed field", () => {
     expect(customerVehicleForm).toContain(
       "const intakeFieldClass = `${ui.input} min-h-11 rounded-xl`",
