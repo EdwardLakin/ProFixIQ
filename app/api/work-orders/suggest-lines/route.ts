@@ -262,7 +262,7 @@ export async function POST(req: Request) {
           { role: "system", content: system },
           { role: "user", content: userContext },
         ],
-        max_tokens: policy.maxTokens,
+        max_completion_tokens: policy.maxTokens,
       }),
       new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("AI request timed out")), policy.timeoutMs),

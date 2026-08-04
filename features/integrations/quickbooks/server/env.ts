@@ -37,8 +37,16 @@ export function getQuickBooksTokenUrl(): string {
   return "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer";
 }
 
-export function getQuickBooksApiBaseUrl(): string {
-  return "https://quickbooks.api.intuit.com";
+export function getQuickBooksApiBaseUrl(
+  environment: string,
+): string {
+  if (environment === "sandbox") {
+    return "https://sandbox-quickbooks.api.intuit.com";
+  }
+  if (environment === "production") {
+    return "https://quickbooks.api.intuit.com";
+  }
+  throw new Error(`Unsupported QuickBooks environment: ${environment}`);
 }
 
 export function getAppBaseUrl(): string {

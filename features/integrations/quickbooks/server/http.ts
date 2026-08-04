@@ -11,6 +11,74 @@ type TokenExchangeResponse = {
   scope?: string;
 };
 
+type QuickBooksFaultError = {
+  Message?: string;
+  Detail?: string;
+  code?: string;
+  element?: string;
+};
+
+type QuickBooksErrorResponse = {
+  Fault?: {
+    type?: string;
+    Error?: QuickBooksFaultError[];
+  };
+};
+
+export type QuickBooksApiFailureDetails = {
+  status: number;
+  statusText: string | null;
+  requestId: string | null;
+  faultType: string | null;
+  errors: Array<{
+    code: string | null;
+    element: string | null;
+    message: string | null;
+    detail: string | null;
+  }>;
+};
+
+export class QuickBooksApiError extends Error {
+  readonly details: QuickBooksApiFailureDetails;
+
+  constructor(message: string, details: QuickBooksApiFailureDetails) {
+    super(message);
+    this.name = "QuickBooksApiError";
+    this.details = details;
+  }
+}
+
+function safeQuickBooksText(
+  value: string | null | undefined,
+  maxLength = 500,
+): string | null {
+  if (!value) return null;
+  return value
+    .replace(/(access_token|refresh_token|authorization)([\s:=\"]+)[^\s,}\"]+/gi, "$1$2[redacted]")
+    .slice(0, maxLength);
+}
+
+function buildQuickBooksFailureDetails(
+  res: Response,
+  json: QuickBooksErrorResponse,
+): QuickBooksApiFailureDetails {
+  return {
+    status: res.status,
+    statusText: safeQuickBooksText(res.statusText, 100),
+    requestId: safeQuickBooksText(
+      res.headers.get("intuit_tid") ?? res.headers.get("intuit-tid"),
+      128,
+    ),
+    faultType: safeQuickBooksText(json.Fault?.type, 100),
+    errors: (json.Fault?.Error ?? []).slice(0, 5).map((error) => ({
+      code: safeQuickBooksText(error.code, 100),
+      element: safeQuickBooksText(error.element, 100),
+      message: safeQuickBooksText(error.Message),
+      detail: safeQuickBooksText(error.Detail),
+    })),
+  };
+}
+
 function buildBasicAuthHeader(clientId: string, clientSecret: string): string {
   return `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString("base64")}`;
 }
@@ -155,7 +223,7 @@ export async function quickBooksFetch<T>(
   path: string,
   init?: RequestInit,
 ): Promise<T> {
-  const url = `${getQuickBooksApiBaseUrl()}/v3/company/${connection.realm_id}${path}`;
+  const url = `${getQuickBooksApiBaseUrl(connection.environment)}/v3/company/${connection.realm_id}${path}`;
   const res = await fetch(url, {
     ...init,
     headers: {
@@ -167,18 +235,21 @@ export async function quickBooksFetch<T>(
     cache: "no-store",
   });
 
-  const json = (await res.json().catch(() => ({}))) as T & {
-    Fault?: {
-      Error?: Array<{ Message?: string; Detail?: string }>;
-    };
-  };
+  const json = (await res.json().catch(() => ({}))) as T & QuickBooksErrorResponse;
 
   if (!res.ok) {
+    const details = buildQuickBooksFailureDetails(res, json);
     const qbMessage =
-      json?.Fault?.Error?.[0]?.Detail ||
-      json?.Fault?.Error?.[0]?.Message ||
+      details.errors[0]?.detail ||
+      details.errors[0]?.message ||
       "QuickBooks API request failed.";
-    throw new Error(qbMessage);
+    console.error("[quickbooks/http] request failed", {
+      environment: connection.environment,
+      resource: path.split("?", 1)[0] || "/",
+      method: init?.method ?? "GET",
+      ...details,
+    });
+    throw new QuickBooksApiError(qbMessage, details);
   }
 
   return json;

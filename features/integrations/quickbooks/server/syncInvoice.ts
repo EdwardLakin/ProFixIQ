@@ -6,7 +6,7 @@ import type {
   QuickBooksConnectionRow,
 } from "../types";
 import type { Json } from "@shared/types/types/supabase";
-import { quickBooksFetch } from "./http";
+import { QuickBooksApiError, quickBooksFetch } from "./http";
 import { ensureQuickBooksCustomer } from "./syncCustomer";
 import { mapInvoiceToQuickBooksPayload } from "./mapInvoice";
 import {
@@ -25,7 +25,26 @@ async function logSyncEvent(
   supabase: SupabaseClient<DB>,
   payload: DB["public"]["Tables"]["quickbooks_sync_events"]["Insert"],
 ) {
-  await supabase.from("quickbooks_sync_events").insert(payload);
+  const { error } = await supabase.from("quickbooks_sync_events").insert(payload);
+  if (error) {
+    console.error("[quickbooks/sync-audit] insert failed", {
+      shopId: payload.shop_id,
+      connectionId: payload.connection_id ?? null,
+      entityType: payload.entity_type,
+      entityId: payload.entity_id ?? null,
+      action: payload.action,
+      status: payload.status,
+      code: error.code,
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+    });
+  }
+}
+
+function quickBooksFailurePayload(error: unknown): Json | null {
+  if (!(error instanceof QuickBooksApiError)) return null;
+  return error.details as unknown as Json;
 }
 
 async function ensureQuickBooksSalesItem(connection: QuickBooksConnectionRow): Promise<string> {
@@ -319,6 +338,7 @@ export async function syncInvoiceToQuickBooks(
       status: "failed",
       created_by: actorId ?? null,
       error_message: message,
+      response_payload: quickBooksFailurePayload(error),
     });
     throw error;
   }
