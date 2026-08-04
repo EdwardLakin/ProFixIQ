@@ -10,8 +10,7 @@ describe("job completion punch-out ordering", () => {
   it("writes a non-null punch-out in the same update that completes the line", () => {
     const migration = readFileSync(originalMigrationPath, "utf8");
     const completionUpdate = migration.indexOf(
-      "update public.work_order_lines
-    set status = 'completed'",
+      "update public.work_order_lines\n    set status = 'completed'",
     );
     const punchOut = migration.indexOf(
       "punched_out_at = coalesce(",
@@ -35,8 +34,7 @@ describe("job completion punch-out ordering", () => {
     expect(hardening).toContain("OTHER_TECHNICIANS_STILL_PUNCHED_IN");
     expect(hardening).toContain("segment.ended_at is null");
     expect(hardening).toContain(
-      "new.punched_in_at := null;
-    new.punched_out_at := null;",
+      "new.punched_in_at := null;\n    new.punched_out_at := null;",
     );
   });
 });
