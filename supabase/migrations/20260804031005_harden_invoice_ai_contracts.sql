@@ -85,85 +85,73 @@ $block$;
 
 -- Financial mutations are invoked only after server-side authorization with
 -- the service-role client. Remove the inherited PUBLIC/anon execution path.
-revoke all on function public.post_payment_event(
-  uuid,uuid,uuid,text,numeric,text,text,text,text,text,text,uuid,timestamptz,jsonb
-) from public, anon, authenticated;
-grant execute on function public.post_payment_event(
-  uuid,uuid,uuid,text,numeric,text,text,text,text,text,text,uuid,timestamptz,jsonb
-) to service_role;
-
-revoke all on function public.void_invoice_version(uuid,uuid,uuid,text,text)
-  from public, anon, authenticated;
-grant execute on function public.void_invoice_version(uuid,uuid,uuid,text,text)
-  to service_role;
-
--- This compatibility RPC has no caller authorization and no application
--- consumers. Keep it for server-side compatibility without exposing it.
-revoke all on function public.get_invoice_net_issued_parts(uuid,uuid)
-  from public, anon, authenticated;
-grant execute on function public.get_invoice_net_issued_parts(uuid,uuid)
-  to service_role;
-
-revoke all on function public.recompute_live_invoice_costs(uuid)
-  from public, anon, authenticated;
-grant execute on function public.recompute_live_invoice_costs(uuid)
-  to service_role;
-
--- Trigger functions are internal database implementation details, not RPCs.
-revoke all on function public.link_superseded_invoice_version()
-  from public, anon, authenticated;
-revoke all on function public.sync_invoice_version_financial_rollup()
-  from public, anon, authenticated;
-grant execute on function public.link_superseded_invoice_version()
-  to service_role;
-grant execute on function public.sync_invoice_version_financial_rollup()
-  to service_role;
+-- Some helpers exist only in production because of historical schema drift.
+-- Apply the intended boundary wherever each signature is present.
+do $block$
+declare
+  v_signature text;
+begin
+  foreach v_signature in array array[
+    'public.post_payment_event(uuid,uuid,uuid,text,numeric,text,text,text,text,text,text,uuid,timestamp with time zone,jsonb)',
+    'public.void_invoice_version(uuid,uuid,uuid,text,text)',
+    'public.get_invoice_net_issued_parts(uuid,uuid)',
+    'public.recompute_live_invoice_costs(uuid)',
+    'public.link_superseded_invoice_version()',
+    'public.sync_invoice_version_financial_rollup()'
+  ] loop
+    if to_regprocedure(v_signature) is not null then
+      execute format(
+        'revoke all on function %s from public, anon, authenticated',
+        v_signature
+      );
+      execute format(
+        'grant execute on function %s to service_role',
+        v_signature
+      );
+    end if;
+  end loop;
+end
+$block$;
 
 -- Pin the lookup path for invoice functions flagged by Security Advisor.
 -- Every referenced relation/function is schema-qualified, while pg_catalog
 -- remains implicitly available.
-alter function public.compute_labor_cost_for_work_order(uuid)
-  set search_path = '';
-alter function public.compute_parts_cost_for_work_order(uuid)
-  set search_path = '';
-alter function public.enforce_invoice_amount_consistency()
-  set search_path = '';
-alter function public.enforce_invoice_lifecycle()
-  set search_path = '';
-alter function public.enforce_invoice_work_order_for_active_invoices()
-  set search_path = '';
-alter function public.get_live_invoice_id(uuid)
-  set search_path = '';
-alter function public.get_invoice_net_issued_parts(uuid,uuid)
-  set search_path = '';
-alter function public.invoice_is_historical_import(jsonb)
-  set search_path = '';
-alter function public.invoice_is_locked(text,timestamptz)
-  set search_path = '';
-alter function public.invoices_sync_work_orders_aiu()
-  set search_path = '';
-alter function public.link_superseded_invoice_version()
-  set search_path = '';
-alter function public.post_payment_event(
-  uuid,uuid,uuid,text,numeric,text,text,text,text,text,text,uuid,timestamptz,jsonb
-) set search_path = '';
-alter function public.recompute_live_invoice_costs(uuid)
-  set search_path = '';
-alter function public.sync_invoice_from_work_order()
-  set search_path = '';
-alter function public.sync_invoice_from_work_order(uuid)
-  set search_path = '';
-alter function public.sync_invoice_version_financial_rollup()
-  set search_path = '';
-alter function public.tg_invoices_compute_totals()
-  set search_path = '';
-alter function public.tg_invoices_sync_work_orders()
-  set search_path = '';
-alter function public.void_invoice_version(uuid,uuid,uuid,text,text)
-  set search_path = '';
-alter function public.wo_alloc_recompute_invoice_aiu()
-  set search_path = '';
-alter function public.wol_recompute_invoice_aiu()
-  set search_path = '';
+do $block$
+declare
+  v_signature text;
+begin
+  foreach v_signature in array array[
+    'public.compute_labor_cost_for_work_order(uuid)',
+    'public.compute_parts_cost_for_work_order(uuid)',
+    'public.enforce_invoice_amount_consistency()',
+    'public.enforce_invoice_lifecycle()',
+    'public.enforce_invoice_work_order_for_active_invoices()',
+    'public.get_live_invoice_id(uuid)',
+    'public.get_invoice_net_issued_parts(uuid,uuid)',
+    'public.invoice_is_historical_import(jsonb)',
+    'public.invoice_is_locked(text,timestamp with time zone)',
+    'public.invoices_sync_work_orders_aiu()',
+    'public.link_superseded_invoice_version()',
+    'public.post_payment_event(uuid,uuid,uuid,text,numeric,text,text,text,text,text,text,uuid,timestamp with time zone,jsonb)',
+    'public.recompute_live_invoice_costs(uuid)',
+    'public.sync_invoice_from_work_order()',
+    'public.sync_invoice_from_work_order(uuid)',
+    'public.sync_invoice_version_financial_rollup()',
+    'public.tg_invoices_compute_totals()',
+    'public.tg_invoices_sync_work_orders()',
+    'public.void_invoice_version(uuid,uuid,uuid,text,text)',
+    'public.wo_alloc_recompute_invoice_aiu()',
+    'public.wol_recompute_invoice_aiu()'
+  ] loop
+    if to_regprocedure(v_signature) is not null then
+      execute format(
+        'alter function %s set search_path = %L',
+        v_signature,
+        ''
+      );
+    end if;
+  end loop;
+end
+$block$;
 
 commit;

@@ -48,16 +48,19 @@ describe("invoice AI and advisor hardening", () => {
   it("keeps financial mutations service-only and trigger functions internal", () => {
     const migration = migrationSource();
     expect(migration).toContain(
-      "revoke all on function public.post_payment_event(",
+      "public.post_payment_event(uuid,uuid,uuid,text,numeric",
     );
     expect(migration).toContain(
-      "grant execute on function public.post_payment_event(",
+      "'revoke all on function %s from public, anon, authenticated'",
     );
     expect(migration).toContain(
-      "revoke all on function public.void_invoice_version(uuid,uuid,uuid,text,text)",
+      "'grant execute on function %s to service_role'",
     );
     expect(migration).toContain(
-      "revoke all on function public.link_superseded_invoice_version()",
+      "public.void_invoice_version(uuid,uuid,uuid,text,text)",
+    );
+    expect(migration).toContain(
+      "public.link_superseded_invoice_version()",
     );
     expect(migration).not.toContain(
       "revoke all on function public.sync_invoice_from_work_order(uuid)",
@@ -67,11 +70,14 @@ describe("invoice AI and advisor hardening", () => {
   it("pins search paths for the invoice functions found by Security Advisor", () => {
     const migration = migrationSource();
     expect(migration).toContain(
-      "alter function public.sync_invoice_from_work_order(uuid)",
+      "public.sync_invoice_from_work_order(uuid)",
     );
     expect(migration).toContain(
-      "alter function public.recompute_live_invoice_costs(uuid)",
+      "public.recompute_live_invoice_costs(uuid)",
     );
-    expect(migration).toContain("set search_path = ''");
+    expect(migration).toContain(
+      "'alter function %s set search_path = %L'",
+    );
+    expect(migration).toContain("to_regprocedure(v_signature) is not null");
   });
 });
