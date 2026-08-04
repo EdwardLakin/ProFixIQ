@@ -9,7 +9,10 @@ import {
   runMutationWithOfflineQueue,
   type OfflineMutationScope,
 } from "@/features/shared/lib/offline/mutations";
-import type { MobileShiftState } from "@/features/mobile/shifts/client";
+import {
+  modeFromActivity,
+  type MobileShiftState,
+} from "@/features/mobile/shifts/client";
 
 export type MobileShiftAction =
   | "start_shift"
@@ -128,15 +131,17 @@ async function postShiftAction(
     error.status = response.status;
     throw error;
   }
+  const activity = body.activity ?? "off_shift";
+  const shiftStatus = body.shiftStatus ?? null;
   return {
     shiftId: body.shiftId ?? null,
-    shiftStatus: body.shiftStatus ?? null,
-    activity: body.activity ?? "off_shift",
+    shiftStatus,
+    activity,
     startTime: body.startTime ?? null,
     endTime: body.endTime ?? null,
     latestEventType: body.latestEventType ?? null,
     latestEventAt: body.latestEventAt ?? null,
-    mode: body.mode ?? "none",
+    mode: body.mode ?? modeFromActivity(activity, shiftStatus),
   };
 }
 
@@ -198,3 +203,4 @@ export async function runMobileShiftAction(args: {
   await saveCachedMobileShiftState({ scope, state });
   return { state, ...result };
 }
+
