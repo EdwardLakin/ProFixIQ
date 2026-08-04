@@ -4,8 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { safeInternalRedirect } from "@/features/auth/lib/safeRedirect";
-
-import type { Database } from "@shared/types/types/supabase";
+import { activatePasswordProfile } from "@/features/auth/lib/passwordActivation";
 import { Button } from "@shared/components/ui/Button";
 import { Input } from "@shared/components/ui/input";
 
@@ -13,12 +12,9 @@ type StatusTone = "neutral" | "error" | "success";
 
 function getReturnPath(role: string | null | undefined): string {
   const normalized = String(role ?? "").trim().toLowerCase();
-
   if (!normalized) return "/dashboard";
-
   if (normalized === "customer") return "/portal";
   if (normalized === "fleet_manager") return "/fleet";
-
   return "/dashboard";
 }
 
@@ -32,7 +28,9 @@ export default function SetPasswordPage() {
   const [submitting, setSubmitting] = useState(false);
   const [checkingSession, setCheckingSession] = useState(true);
   const [hasSession, setHasSession] = useState(false);
-
+  const [passwordCommitted, setPasswordCommitted] = useState(false);
+  const [activationUserId, setActivationUserId] = useState<string | null>(null);
+  const [activationRole, setActivationRole] = useState<string | null>(null);
   const [statusTone, setStatusTone] = useState<StatusTone>("neutral");
   const [statusMessage, setStatusMessage] = useState(
     isPortalActivation
@@ -42,23 +40,16 @@ export default function SetPasswordPage() {
 
   useEffect(() => {
     let cancelled = false;
-
     async function checkSession() {
-      const {
-        data: { session },
-        error,
-      } = await supabase.auth.getSession();
-
+      const { data: { session }, error } = await supabase.auth.getSession();
       if (cancelled) return;
-
       if (error) {
         setHasSession(false);
         setStatusTone("error");
-        setStatusMessage(error.message || "Unable to validate your session.");
+        setStatusMessage("Unable to validate your session. Request a new link and try again.");
         setCheckingSession(false);
         return;
       }
-
       if (!session) {
         setHasSession(false);
         setStatusTone("error");
@@ -70,59 +61,80 @@ export default function SetPasswordPage() {
         setCheckingSession(false);
         return;
       }
-
       setHasSession(true);
       setStatusTone("neutral");
       setStatusMessage("Enter your new password.");
       setCheckingSession(false);
     }
-
     void checkSession();
-
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [isPortalActivation, supabase]);
+
+  async function finishActivation(userId: string, role: string | null) {
+    const activation = await activatePasswordProfile(supabase, userId);
+    if (!activation.ok) {
+      console.error("[set-password] profile activation failed", {
+        userId,
+        detail: activation.detail,
+      });
+      setStatusTone("error");
+      setStatusMessage(activation.userMessage);
+      return false;
+    }
+
+    setStatusTone("success");
+    setStatusMessage(
+      isPortalActivation
+        ? "Portal password created. Opening your portal..."
+        : "Password updated. Redirecting...",
+    );
+    const redirect = safeInternalRedirect(
+      searchParams.get("redirect"),
+      getReturnPath(role),
+      ["/dashboard", "/onboarding", "/portal", "/fleet", "/mobile"],
+    );
+    window.setTimeout(() => window.location.replace(redirect), 700);
+    return true;
+  }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-
     if (!hasSession) {
       setStatusTone("error");
       setStatusMessage("No active reset session found.");
       return;
     }
 
-    const trimmedPassword = password.trim();
-    const trimmedConfirm = confirmPassword.trim();
-
-    if (!trimmedPassword) {
-      setStatusTone("error");
-      setStatusMessage("Password is required.");
-      return;
-    }
-
-    if (trimmedPassword.length < 12) {
-      setStatusTone("error");
-      setStatusMessage("Password must be at least 12 characters.");
-      return;
-    }
-
-    if (trimmedPassword !== trimmedConfirm) {
-      setStatusTone("error");
-      setStatusMessage("Passwords do not match.");
-      return;
-    }
-
     try {
       setSubmitting(true);
       setStatusTone("neutral");
+
+      if (passwordCommitted && activationUserId) {
+        setStatusMessage("Retrying account activation...");
+        await finishActivation(activationUserId, activationRole);
+        return;
+      }
+
+      const trimmedPassword = password.trim();
+      const trimmedConfirm = confirmPassword.trim();
+      if (!trimmedPassword) {
+        setStatusTone("error");
+        setStatusMessage("Password is required.");
+        return;
+      }
+      if (trimmedPassword.length < 12) {
+        setStatusTone("error");
+        setStatusMessage("Password must be at least 12 characters.");
+        return;
+      }
+      if (trimmedPassword !== trimmedConfirm) {
+        setStatusTone("error");
+        setStatusMessage("Passwords do not match.");
+        return;
+      }
+
       setStatusMessage("Saving your new password...");
-
-      const { data, error } = await supabase.auth.updateUser({
-        password: trimmedPassword,
-      });
-
+      const { data, error } = await supabase.auth.updateUser({ password: trimmedPassword });
       if (error) {
         setStatusTone("error");
         setStatusMessage(error.message || "Failed to update password.");
@@ -130,48 +142,24 @@ export default function SetPasswordPage() {
       }
 
       const userId = data.user?.id ?? null;
-      const nextRole = data.user?.user_metadata?.role as string | undefined;
-
-      if (userId) {
-        const { error: profileError } = await supabase
-          .from("profiles")
-          .update({
-            must_change_password: false,
-            updated_at: new Date().toISOString(),
-          } as Database["public"]["Tables"]["profiles"]["Update"])
-          .eq("id", userId);
-
-        if (profileError) {
-          setStatusTone("error");
-          setStatusMessage(
-            `Password updated, but account activation failed: ${profileError.message}`,
-          );
-          return;
-        }
+      const role = (data.user?.user_metadata?.role as string | undefined) ?? null;
+      if (!userId) {
+        setStatusTone("error");
+        setStatusMessage("Password updated, but the account could not be identified. Contact support.");
+        return;
       }
 
-      setStatusTone("success");
-      setStatusMessage(
-        isPortalActivation
-          ? "Portal password created. Opening your portal..."
-          : "Password updated. Redirecting...",
-      );
-
-      const redirect = safeInternalRedirect(
-        searchParams.get("redirect"),
-        getReturnPath(nextRole),
-        ["/dashboard", "/onboarding", "/portal", "/fleet", "/mobile"],
-      );
-
-      window.setTimeout(() => {
-        window.location.replace(redirect);
-      }, 700);
+      setPasswordCommitted(true);
+      setActivationUserId(userId);
+      setActivationRole(role);
+      setPassword("");
+      setConfirmPassword("");
+      setStatusMessage("Password updated. Activating your account...");
+      await finishActivation(userId, role);
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to update password.";
-
+      console.error("[set-password] unexpected activation error", error);
       setStatusTone("error");
-      setStatusMessage(message);
+      setStatusMessage("Unable to finish account setup. Retry activation or contact support.");
     } finally {
       setSubmitting(false);
     }
@@ -181,8 +169,8 @@ export default function SetPasswordPage() {
     statusTone === "error"
       ? "text-red-300"
       : statusTone === "success"
-      ? "text-emerald-300"
-      : "text-[color:var(--theme-text-secondary)]";
+        ? "text-emerald-300"
+        : "text-[color:var(--theme-text-secondary)]";
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-[color:var(--theme-surface-page)] px-6 py-10 text-[color:var(--theme-text-primary)]">
@@ -198,33 +186,35 @@ export default function SetPasswordPage() {
             <Input
               type="password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Enter new password"
-              disabled={checkingSession || submitting || !hasSession}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder={passwordCommitted ? "Password already updated" : "Enter new password"}
+              disabled={checkingSession || submitting || !hasSession || passwordCommitted}
             />
           </div>
-
           <div className="space-y-2">
             <label className="text-xs text-[color:var(--theme-text-secondary)]">Confirm password</label>
             <Input
               type="password"
               value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="Confirm new password"
-              disabled={checkingSession || submitting || !hasSession}
+              onChange={(event) => setConfirmPassword(event.target.value)}
+              placeholder={passwordCommitted ? "Password already updated" : "Confirm new password"}
+              disabled={checkingSession || submitting || !hasSession || passwordCommitted}
             />
           </div>
-
           <Button
             type="submit"
             className="w-full"
             disabled={checkingSession || submitting || !hasSession}
           >
             {submitting
-              ? "Saving..."
-              : isPortalActivation
-                ? "Create password"
-                : "Update password"}
+              ? passwordCommitted
+                ? "Activating..."
+                : "Saving..."
+              : passwordCommitted
+                ? "Retry account activation"
+                : isPortalActivation
+                  ? "Create password"
+                  : "Update password"}
           </Button>
         </form>
       </div>

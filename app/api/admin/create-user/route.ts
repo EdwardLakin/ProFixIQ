@@ -77,6 +77,27 @@ async function rollbackCreatedAuthUser(args: {
   adminId: string;
   shopId: string;
 }): Promise<boolean> {
+  const cleanupTables = [
+    ["shop_members", "user_id"],
+    ["people_workforce_profiles", "user_id"],
+    ["profiles", "id"],
+  ] as const;
+  for (const [table, column] of cleanupTables) {
+    const { error: cleanupError } = await args.serviceSupabase
+      .from(table)
+      .delete()
+      .eq(column, args.authUserId);
+    if (cleanupError) {
+      logCreateUserError("rollback_dependent_row_failed", {
+        adminId: args.adminId,
+        targetShopId: args.shopId,
+        authUserId: args.authUserId,
+        error: `${table}: ${cleanupError.message}`,
+      });
+      return false;
+    }
+  }
+
   const { error } = await args.serviceSupabase.auth.admin.deleteUser(args.authUserId);
   if (error) {
     logCreateUserError("rollback_auth_user_failed", {

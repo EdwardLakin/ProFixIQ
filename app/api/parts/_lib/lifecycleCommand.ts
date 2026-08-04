@@ -44,7 +44,7 @@ export async function runPartsLifecycleRpc(
   args: Record<string, unknown>,
 ) {
   const access = await requireShopScopedApiAccess({
-    requiredCapability: "canManageWorkOrders",
+    requiredCapability: "canManageParts",
   });
   if (!access.ok) return access.response;
 

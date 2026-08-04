@@ -8,6 +8,12 @@ import { toast } from "sonner";
 import type { Database, TablesInsert } from "@shared/types/types/supabase";
 import { AiSuggestModal } from "@work-orders/components/AiSuggestModal";
 import { calculateTax, type ProvinceCode } from "@/features/integrations/tax";
+import {
+  isMissingWorkOrderWriteError,
+  requireMutableWorkOrder,
+  signalStaleCreateWorkOrder,
+  STALE_CREATE_WORK_ORDER_MESSAGE,
+} from "@/features/work-orders/lib/client/validateMutableWorkOrder";
 
 type DB = Database;
 type WorkOrderLineInsert = TablesInsert<"work_order_lines">;
@@ -407,6 +413,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
 
     setMenuLoading(true);
     try {
+      await requireMutableWorkOrder({ supabase, workOrderId, shopId });
       await ensureShopContext(shopId);
 
       // Canonical menu catalog source: menu_items only.
@@ -535,9 +542,14 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
 
       return params.returnLineId ? (data?.id ?? null) : null;
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Failed to add job.";
       lastSetShopId.current = null;
-      toast.error(msg);
+      if (isMissingWorkOrderWriteError(e)) {
+        signalStaleCreateWorkOrder(workOrderId);
+        toast.error(STALE_CREATE_WORK_ORDER_MESSAGE);
+      } else {
+        const msg = e instanceof Error ? e.message : "Failed to add job.";
+        toast.error(msg);
+      }
       return null;
     } finally {
       setAddingId(null);

@@ -38,6 +38,11 @@ import { normalizeVinInput } from "@/features/shared/lib/vin/normalizeVin";
 import { checkVehicleDuplicates } from "@/features/shared/lib/vehicles/duplicateCheck";
 import { requestVehicleRecallEnrichment } from "@/features/vehicles/lib/requestRecallEnrichment";
 import { desktopPrimitives as ui } from "@/features/shared/components/ui/desktopPrimitives";
+import {
+  CREATE_WORK_ORDER_STALE_EVENT,
+  requireMutableWorkOrder,
+  STALE_CREATE_WORK_ORDER_MESSAGE,
+} from "@/features/work-orders/lib/client/validateMutableWorkOrder";
 
 // 👇 inspection modal, client-only
 const InspectionModal = dynamic(
@@ -666,6 +671,24 @@ export default function CreateWorkOrderPage() {
   const [selectedMaintenanceCodes, setSelectedMaintenanceCodes] = useState<
     string[]
   >([]);
+
+  useEffect(() => {
+    const handleStaleDraft = (event: Event) => {
+      const detail = (event as CustomEvent<{ workOrderId?: string }>).detail;
+      if (!detail?.workOrderId || detail.workOrderId !== wo?.id) return;
+      setWo(null);
+      setLines([]);
+      setValidatedWorkOrderId(null);
+      setError(STALE_CREATE_WORK_ORDER_MESSAGE);
+      toast.error(STALE_CREATE_WORK_ORDER_MESSAGE);
+    };
+    window.addEventListener(CREATE_WORK_ORDER_STALE_EVENT, handleStaleDraft);
+    return () =>
+      window.removeEventListener(
+        CREATE_WORK_ORDER_STALE_EVENT,
+        handleStaleDraft,
+      );
+  }, [setError, setLines, setWo, wo?.id]);
 
   // Current user id (for VIN modal)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -1927,6 +1950,21 @@ export default function CreateWorkOrderPage() {
     async (lineId: string) => {
       if (!wo?.id) return;
 
+      try {
+        await requireMutableWorkOrder({
+          supabase,
+          workOrderId: wo.id,
+          shopId: wo.shop_id,
+        });
+      } catch (staleError) {
+        alert(
+          staleError instanceof Error
+            ? staleError.message
+            : STALE_CREATE_WORK_ORDER_MESSAGE,
+        );
+        return;
+      }
+
       const ok = confirm("Delete this line?");
       if (!ok) return;
 
@@ -1966,7 +2004,38 @@ export default function CreateWorkOrderPage() {
 
   const openInspectionForLine = useCallback(
     async (ln: WorkOrderLine) => {
-      if (!ln?.id) return;
+      if (!ln?.id || !wo?.id) return;
+
+      try {
+        await requireMutableWorkOrder({
+          supabase,
+          workOrderId: wo.id,
+          shopId: wo.shop_id,
+        });
+      } catch (staleError) {
+        toast.error(
+          staleError instanceof Error
+            ? staleError.message
+            : STALE_CREATE_WORK_ORDER_MESSAGE,
+        );
+        return;
+      }
+
+      const { data: liveLine, error: liveLineError } = await supabase
+        .from("work_order_lines")
+        .select("id")
+        .eq("id", ln.id)
+        .eq("work_order_id", wo.id)
+        .maybeSingle();
+      if (liveLineError) {
+        toast.error(liveLineError.message);
+        return;
+      }
+      if (!liveLine) {
+        toast.error("This work-order line no longer exists. The list was refreshed.");
+        await fetchLines();
+        return;
+      }
 
       const anyLine = ln as WorkOrderLineWithInspectionMeta;
       const templateId = extractInspectionTemplateId(anyLine);
@@ -2018,7 +2087,7 @@ export default function CreateWorkOrderPage() {
       setInspectionOpen(true);
       toast.success("Inspection opened");
     },
-    [wo?.id],
+    [fetchLines, supabase, wo?.id, wo?.shop_id],
   );
 
   async function linkBookingToWorkOrder(
@@ -2672,9 +2741,9 @@ export default function CreateWorkOrderPage() {
 
             {/* Create-flow maintenance suggestions */}
             <CreateFlowMaintenanceSelector
-              workOrderId={wo?.id ?? null}
+              workOrderId={hasValidatedWorkOrder ? wo?.id ?? null : null}
               vehicleId={vehicleIdProp}
-              enabled={!!customerId && !!vehicleIdProp}
+              enabled={hasValidatedWorkOrder && !!customerId && !!vehicleIdProp}
               selectedServiceCodes={selectedMaintenanceCodes}
               onChange={setSelectedMaintenanceCodes}
               onAdded={fetchLines}
@@ -2894,6 +2963,7 @@ export default function CreateWorkOrderPage() {
                                 <button
                                   type="button"
                                   onClick={() => void openInspectionForLine(ln)}
+                                  disabled={!hasValidatedWorkOrder}
                                   className="
                               rounded-full border px-3 py-2 text-sm font-semibold
                               border-[color:var(--copper)]/70 bg-[color:var(--copper)]/10 text-[color:var(--copper)]
@@ -2907,6 +2977,7 @@ export default function CreateWorkOrderPage() {
                               <button
                                 type="button"
                                 onClick={() => void handleDeleteLine(ln.id)}
+                                disabled={!hasValidatedWorkOrder}
                                 className={cx(
                                   "rounded-full border border-red-400/25 bg-[color:color-mix(in_srgb,var(--theme-card-bg,var(--theme-surface-page))_62%,transparent)] px-3 py-2 text-sm font-semibold text-red-200 hover:bg-red-500/10",
                                 )}

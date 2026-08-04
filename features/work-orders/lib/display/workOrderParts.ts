@@ -20,6 +20,14 @@ export type CanonicalWorkOrderPart = WorkOrderPart & {
   parts?: { name?: string | null; part_number?: string | null; sku?: string | null; manufacturer?: string | null; supplier?: string | null } | null;
 };
 
+type AllocationLink = {
+  source_request_item_id?: string | null;
+  work_order_part_id?: string | null;
+  location_id?: string | null;
+  qty?: number | null;
+  quantity?: number | null;
+};
+
 function toNumber(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string" && value.trim() !== "") {
@@ -42,10 +50,7 @@ export function getCanonicalPartTotal(part: Pick<CanonicalWorkOrderPart, "quanti
 }
 
 export function getCanonicalPartDescription(part: Pick<CanonicalWorkOrderPart, "description_snapshot" | "parts">): string | null {
-  const snapshot = part.description_snapshot?.trim();
-  if (snapshot) return snapshot;
-  const catalogName = part.parts?.name?.trim();
-  return catalogName || null;
+  return part.description_snapshot?.trim() || part.parts?.name?.trim() || null;
 }
 
 export function getCanonicalPartNumber(part: Pick<CanonicalWorkOrderPart, "part_number_snapshot" | "parts">): string | null {
@@ -60,30 +65,43 @@ export function activeCanonicalWorkOrderParts(parts: CanonicalWorkOrderPart[]): 
   return parts.filter((part) => part.is_active !== false);
 }
 
-export function filterAllocationsNotBackedByCanonicalParts<T extends {
-  source_request_item_id?: string | null;
-  work_order_part_id?: string | null;
-}>(
+function isLinkedAllocation(
+  allocation: AllocationLink,
+  part: { id?: string | null; source_parts_request_item_id?: string | null },
+): boolean {
+  return Boolean(
+    (allocation.work_order_part_id && allocation.work_order_part_id === part.id) ||
+      (allocation.source_request_item_id &&
+        allocation.source_request_item_id === part.source_parts_request_item_id),
+  );
+}
+
+export function summarizeCanonicalPartAllocations(
+  part: { id?: string | null; source_parts_request_item_id?: string | null },
+  allocations: AllocationLink[],
+): { allocatedQuantity: number; locations: string[] } {
+  const linked = allocations.filter((allocation) => isLinkedAllocation(allocation, part));
+  const allocatedQuantity = linked.reduce(
+    (sum, allocation) =>
+      sum + (toNumber(allocation.qty) ?? toNumber(allocation.quantity) ?? 0),
+    0,
+  );
+  const locations = Array.from(
+    new Set(
+      linked
+        .map((allocation) => allocation.location_id?.trim() || null)
+        .filter((location): location is string => Boolean(location)),
+    ),
+  );
+  return { allocatedQuantity, locations };
+}
+
+export function filterAllocationsNotBackedByCanonicalParts<T extends AllocationLink>(
   allocations: T[],
   canonicalParts: Array<{ id?: string | null; source_parts_request_item_id?: string | null }>,
 ): T[] {
-  const canonicalPartIds = new Set(
-    canonicalParts
-      .map((part) => part.id ?? null)
-      .filter((id): id is string => typeof id === "string" && id.length > 0),
+  return allocations.filter(
+    (allocation) =>
+      !canonicalParts.some((part) => isLinkedAllocation(allocation, part)),
   );
-  const canonicalSourceItemIds = new Set(
-    canonicalParts
-      .map((part) => part.source_parts_request_item_id ?? null)
-      .filter((id): id is string => typeof id === "string" && id.length > 0),
-  );
-  if (canonicalPartIds.size === 0 && canonicalSourceItemIds.size === 0) return allocations;
-  return allocations.filter((allocation) => {
-    const workOrderPartId = allocation.work_order_part_id ?? null;
-    const sourceItemId = allocation.source_request_item_id ?? null;
-    return !(
-      (workOrderPartId && canonicalPartIds.has(workOrderPartId)) ||
-      (sourceItemId && canonicalSourceItemIds.has(sourceItemId))
-    );
-  });
 }

@@ -51,16 +51,22 @@ describe("mobile shift online-first behavior", () => {
     expect(source).not.toContain('mode: body.mode ?? "none"');
   });
 
-  it("refreshes the home shift card immediately after a drawer action", () => {
+  it("updates the home shift card optimistically and preserves queued offline state", () => {
     const tracker = read("features/mobile/components/MobileShiftTracker.tsx");
     const home = read("features/mobile/dashboard/MobileTechHome.tsx");
 
     expect(tracker).toContain(
-      'window.dispatchEvent(new Event("profixiq:mobile-shift-updated"))',
+      'new CustomEvent("profixiq:mobile-shift-updated"',
+    );
+    expect(tracker).toContain(
+      "detail: { state: result.state, queued: result.queued }",
     );
     expect(home).toContain(
       'window.addEventListener("profixiq:mobile-shift-updated", onShiftUpdated)',
     );
+    expect(home).toContain("if (detail?.state)");
+    expect(home).toContain("setShiftStatus(mode === \"shift\" ? \"active\" : mode)");
+    expect(home).toContain("if (detail?.queued || !navigator.onLine) return");
     expect(home).toContain(
       'window.removeEventListener(\n        "profixiq:mobile-shift-updated"',
     );

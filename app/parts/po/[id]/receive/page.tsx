@@ -156,6 +156,9 @@ export default function PoReceivePage(): JSX.Element {
   const [lastScan, setLastScan] = useState<string>("");
   const onDetectedRef = useRef<QuaggaDetectedHandler | null>(null);
   const receiveOperationRef = useRef<{ key: string; id: string } | null>(null);
+  const receiveBusyRef = useRef(false);
+  const activeScanCodeRef = useRef<string | null>(null);
+  const scanReleaseTimerRef = useRef<number | null>(null);
 
   // last receive output
   const [result, setResult] = useState<ReceiveResult | null>(null);
@@ -310,6 +313,12 @@ export default function PoReceivePage(): JSX.Element {
     } catch {
       /* ignore */
     }
+    if (scanReleaseTimerRef.current != null) {
+      window.clearTimeout(scanReleaseTimerRef.current);
+      scanReleaseTimerRef.current = null;
+    }
+    activeScanCodeRef.current = null;
+    receiveBusyRef.current = false;
     setScanning(false);
   };
 
@@ -334,6 +343,11 @@ export default function PoReceivePage(): JSX.Element {
       setErr("Quantity must be greater than 0.");
       return;
     }
+    if (Math.abs(receiveQty * 100 - Math.round(receiveQty * 100)) > 1e-7) {
+      setErr("Quantity supports at most two decimal places.");
+      return;
+    }
+    if (receiveBusyRef.current) return;
 
     const partRemaining = lines
       .filter((line) => String(line.part_id ?? "") === partId)
@@ -368,10 +382,12 @@ export default function PoReceivePage(): JSX.Element {
       p_operation_id: receiveOperationRef.current.id,
     };
 
+    receiveBusyRef.current = true;
     const { data, error } = await supabase.rpc(
       "receive_po_part_and_allocate",
       args as unknown as DB["public"]["Functions"]["receive_po_part_and_allocate"]["Args"],
     );
+    receiveBusyRef.current = false;
 
     if (error) {
       setErr(error.message);
@@ -506,28 +522,39 @@ export default function PoReceivePage(): JSX.Element {
 
     cleanupScannerHandlers();
 
+    const releaseScanAfterSilence = (code: string) => {
+      if (scanReleaseTimerRef.current != null) {
+        window.clearTimeout(scanReleaseTimerRef.current);
+      }
+      scanReleaseTimerRef.current = window.setTimeout(() => {
+        if (activeScanCodeRef.current === code) {
+          activeScanCodeRef.current = null;
+          setLastScan("");
+        }
+        scanReleaseTimerRef.current = null;
+      }, 900);
+    };
+
     const handler: QuaggaDetectedHandler = async (res) => {
       const code = res.codeResult?.code ?? "";
-      if (!code || code === lastScan) return;
-
-      setLastScan(code);
-
-      const supplierId = po?.supplier_id ? String(po.supplier_id) : null;
-
-      const { part_id } = await resolveScannedCode({
-        code,
-        supplier_id: supplierId,
-      });
-
-      if (!part_id) {
-        setErr(`No part found for "${code}". Map it in Parts → Inventory → Edit → Barcodes.`);
-        window.setTimeout(() => setLastScan(""), 900);
+      if (!code) return;
+      if (activeScanCodeRef.current === code) {
+        releaseScanAfterSilence(code);
         return;
       }
+      if (receiveBusyRef.current || activeScanCodeRef.current) return;
 
+      activeScanCodeRef.current = code;
+      setLastScan(code);
+      releaseScanAfterSilence(code);
+
+      const supplierId = po?.supplier_id ? String(po.supplier_id) : null;
+      const { part_id } = await resolveScannedCode({ code, supplier_id: supplierId });
+      if (!part_id) {
+        setErr(`No part found for "${code}". Map it in Parts → Inventory → Edit → Barcodes.`);
+        return;
+      }
       await doReceive(part_id, qty);
-
-      window.setTimeout(() => setLastScan(""), 900);
     };
 
     onDetectedRef.current = handler;

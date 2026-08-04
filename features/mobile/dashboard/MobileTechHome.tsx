@@ -159,10 +159,10 @@ export function MobileTechHome({
       setShiftStart(state.startTime ?? null);
       setShiftStatus(state.mode === "shift" ? "active" : state.mode);
     } catch (error) {
+      // Keep the latest optimistic/offline state. A failed network refresh must
+      // not turn a queued active shift into an off-shift dashboard.
       // eslint-disable-next-line no-console
       console.error("[MobileTechHome] shift state refresh failed", error);
-      setShiftStatus("none");
-      setShiftStart(null);
     } finally {
       setLoadingShift(false);
     }
@@ -173,7 +173,19 @@ export function MobileTechHome({
   }, [refreshShiftState]);
 
   useEffect(() => {
-    const onShiftUpdated = () => void refreshShiftState();
+    const onShiftUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<{
+        state?: { mode?: ShiftStatus | "shift"; startTime?: string | null };
+        queued?: boolean;
+      }>).detail;
+      if (detail?.state) {
+        setShiftStart(detail.state.startTime ?? null);
+        const mode = detail.state.mode ?? "none";
+        setShiftStatus(mode === "shift" ? "active" : mode);
+      }
+      if (detail?.queued || !navigator.onLine) return;
+      void refreshShiftState();
+    };
     window.addEventListener("profixiq:mobile-shift-updated", onShiftUpdated);
     return () =>
       window.removeEventListener(

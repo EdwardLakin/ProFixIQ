@@ -12,6 +12,7 @@ import {
   WalletCards,
 } from "lucide-react";
 import type { FleetUiContext } from "@/features/fleet/lib/fleetUiCapabilities";
+import { convertFleetServiceRequest } from "@/features/fleet/lib/convertFleetServiceRequest";
 
 type RequestItem = {
   id: string;
@@ -53,11 +54,6 @@ type Payload = {
 };
 
 type Filter = "active" | "approval" | "scheduled" | "completed" | "all";
-
-type ConvertPayload = {
-  workOrderId?: string;
-  error?: string;
-};
 
 const panel =
   "rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]";
@@ -139,22 +135,8 @@ export default function FleetServiceRequestsPage({
     setError(null);
 
     try {
-      const response = await fetch(
-        "/api/fleet/service-requests/convert-to-work-order",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ serviceRequestId: item.id }),
-        },
-      );
-      const body = (await response.json().catch(() => ({}))) as ConvertPayload;
-      if (!response.ok || !body.workOrderId) {
-        throw new Error(body.error || "Unable to create work order");
-      }
-
-      window.location.assign(
-        `/work-orders/${encodeURIComponent(body.workOrderId)}`,
-      );
+      const workOrderId = await convertFleetServiceRequest(item.id);
+      window.location.assign(`/work-orders/${encodeURIComponent(workOrderId)}`);
     } catch (cause) {
       setError(
         cause instanceof Error ? cause.message : "Unable to create work order",
@@ -309,7 +291,9 @@ export default function FleetServiceRequestsPage({
                     {item.workOrder.reference}
                   </span>
                 ) : routePrefix === "/fleet" &&
-                  uiContext.capabilities.canConvertRequests ? (
+                  uiContext.isInternal &&
+                  uiContext.capabilities.canConvertServiceRequestToWorkOrder &&
+                  item.status === "open" ? (
                   <button
                     type="button"
                     disabled={convertingId !== null}

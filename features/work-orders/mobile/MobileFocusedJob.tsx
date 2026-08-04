@@ -42,6 +42,7 @@ import {
   getCanonicalPartManufacturer,
   getCanonicalPartNumber,
   getCanonicalPartQuantity,
+  summarizeCanonicalPartAllocations,
 } from "@/features/work-orders/lib/display/workOrderParts";
 
 import VehicleHistoryModal from "@/features/work-orders/components/workorders/VehicleHistoryModal";
@@ -89,7 +90,7 @@ const btnWarn = `${btnBase} mobile-tech-btn-danger`;
 const btnInfo = `${btnBase} mobile-tech-btn-utility`;
 
 type DB = Database;
-type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"];
+type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"] & { technician_notes?: string | null };
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
 type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
 type Customer = DB["public"]["Tables"]["customers"]["Row"];
@@ -341,7 +342,7 @@ export default function MobileFocusedJob(props: {
         setTechNotes(editorDraft.notes);
         setNotesDirty(true);
       } else if (!notesDirty) {
-        setTechNotes(cached.line.notes ?? "");
+        setTechNotes((cached.line as WorkOrderLine).technician_notes ?? "");
       }
       if (editorDraft?.cause != null) setPrefillCause(editorDraft.cause);
       else setPrefillCause(cached.line.cause ?? "");
@@ -375,7 +376,7 @@ export default function MobileFocusedJob(props: {
 
       // ✅ align with app logic: keep notes in sync unless user is actively editing
       if (!notesDirty) {
-        setTechNotes(l?.notes ?? "");
+        setTechNotes(l?.technician_notes ?? "");
       }
 
       await loadWorkOrder(l?.work_order_id ?? null);
@@ -1373,22 +1374,33 @@ export default function MobileFocusedJob(props: {
                         <div className="col-span-2 text-right">Qty</div>
                       </div>
                       <ul className="max-h-56 overflow-auto divide-y divide-[color:var(--theme-border-soft)]">
-                        {requiredParts.map((p) => (
-                          <li
-                            key={`required-${p.id}`}
-                            className="grid grid-cols-12 items-center px-3 py-2 text-sm"
-                          >
-                            <div className="col-span-7 truncate text-[color:var(--theme-text-primary)]">
-                              {getCanonicalPartDescription(p) ?? "—"}
-                            </div>
-                            <div className="col-span-3 truncate text-[color:var(--theme-text-secondary)]">
-                              {[getCanonicalPartNumber(p), getCanonicalPartManufacturer(p), p.lifecycle_status ?? "requested"].filter(Boolean).join(" • ") || "—"}
-                            </div>
-                            <div className="col-span-2 text-right font-semibold text-[color:var(--theme-text-primary)]">
-                              {getCanonicalPartQuantity(p)}
-                            </div>
-                          </li>
-                        ))}
+                        {requiredParts.map((p) => {
+                          const allocation = summarizeCanonicalPartAllocations(p, allocs);
+                          const requested = getCanonicalPartQuantity(p);
+                          return (
+                            <li
+                              key={`required-${p.id}`}
+                              className="grid grid-cols-12 items-center px-3 py-2 text-sm"
+                            >
+                              <div className="col-span-7 truncate text-[color:var(--theme-text-primary)]">
+                                {getCanonicalPartDescription(p) ?? "—"}
+                                <div className="text-[11px] text-[color:var(--theme-text-secondary)]">
+                                  {[getCanonicalPartNumber(p), getCanonicalPartManufacturer(p), p.lifecycle_status ?? "requested"].filter(Boolean).join(" • ")}
+                                </div>
+                              </div>
+                              <div className="col-span-3 truncate text-[color:var(--theme-text-secondary)]">
+                                {allocation.locations.length > 0
+                                  ? allocation.locations.map((location) => `loc ${location.slice(0, 6)}…`).join(", ")
+                                  : "—"}
+                              </div>
+                              <div className="col-span-2 text-right font-semibold text-[color:var(--theme-text-primary)]">
+                                {allocation.allocatedQuantity > 0
+                                  ? `${allocation.allocatedQuantity}/${requested}`
+                                  : requested}
+                              </div>
+                            </li>
+                          );
+                        })}
                         {displayOnlyAllocations.map((a) => (
                           <li
                             key={a.id}

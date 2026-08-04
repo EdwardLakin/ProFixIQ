@@ -6,6 +6,7 @@ import {
 } from "@/features/shared/lib/supabase/server";
 import { PortalAccessError } from "@/features/portal/server/portalAuth";
 import { requirePortalCustomerActor } from "@/features/portal/server/requirePortalActor";
+import { validateRequestedPortalSlot } from "@/features/portal/server/validatePortalBookingSlot";
 
 export const runtime = "nodejs";
 
@@ -146,10 +147,18 @@ export async function POST(req: Request) {
       return bad("startsAt must be a valid ISO date string.");
     }
 
-    const duration =
-      typeof body.durationMins === "number" && Number.isFinite(body.durationMins)
-        ? Math.max(15, Math.min(180, Math.trunc(body.durationMins)))
-        : 60;
+    const suppliedDuration = body.durationMins;
+    if (
+      suppliedDuration != null &&
+      (typeof suppliedDuration !== "number" ||
+        !Number.isFinite(suppliedDuration) ||
+        !Number.isInteger(suppliedDuration) ||
+        suppliedDuration < 15 ||
+        suppliedDuration > 180)
+    ) {
+      return bad("durationMins must be a whole number between 15 and 180.");
+    }
+    const duration = suppliedDuration ?? 60;
 
     const startsAtDate = new Date(startsAtRaw);
     if (Number.isNaN(startsAtDate.getTime())) return bad("Invalid startsAt");
@@ -191,6 +200,16 @@ export async function POST(req: Request) {
         .maybeSingle();
       if (vehicleErr) return bad(vehicleErr.message, 500);
       if (!vehicle) return bad("Vehicle does not belong to this customer and shop", 403);
+    }
+
+    const slotValidation = await validateRequestedPortalSlot({
+      supabase: admin,
+      shopId: customer.shop_id,
+      startsAt,
+      endsAt,
+    });
+    if (!slotValidation.ok) {
+      return bad(slotValidation.error, slotValidation.status);
     }
 
     const quoteLineId =
