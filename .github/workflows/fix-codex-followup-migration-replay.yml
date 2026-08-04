@@ -1,0 +1,31 @@
+name: Fix Codex Follow-up Migration Replay
+
+on:
+  push:
+    branches:
+      - repair/codex-review-followups-1302-1316
+    paths:
+      - scripts/fix_codex_followup_migration_replay.py
+      - .github/workflows/fix-codex-followup-migration-replay.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: repair/codex-review-followups-1302-1316
+          fetch-depth: 1
+      - name: Patch migration
+        run: python scripts/fix_codex_followup_migration_replay.py
+      - name: Commit migration correction
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "fix: make Codex follow-up migration clean-replay safe"
+          git push origin HEAD:repair/codex-review-followups-1302-1316
