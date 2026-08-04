@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@shared/components/ui/Button";
-import  Card  from "@shared/components/ui/Card";
+import Card from "@shared/components/ui/Card";
+import LinkButton from "@shared/components/ui/LinkButton";
 
 type StatusResponse = {
   ok: boolean;
@@ -18,6 +19,11 @@ type StatusResponse = {
   } | null;
   error?: string;
 };
+
+const QUICKBOOKS_COMPANY_URL = {
+  sandbox: "https://sandbox.qbo.intuit.com/app/homepage",
+  production: "https://qbo.intuit.com/app/homepage",
+} as const;
 
 export default function QuickBooksConnectCard() {
   const [loading, setLoading] = useState(true);
@@ -105,7 +111,8 @@ export default function QuickBooksConnectCard() {
     }
   }
 
-  const connected = Boolean(status?.connected && status.connection);
+  const connection = status?.connected ? status.connection : null;
+  const connected = Boolean(connection);
 
   return (
     <Card className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-6 text-[color:var(--theme-text-primary)]">
@@ -122,29 +129,29 @@ export default function QuickBooksConnectCard() {
         </div>
       </div>
 
-      {connected && status?.connection ? (
+      {connection ? (
         <div className="mb-4 space-y-1 text-sm text-[color:var(--theme-text-secondary)]">
           <div>
             <span className="text-[color:var(--theme-text-secondary)]">Realm ID:</span>{" "}
-            {status.connection.realmId}
+            {connection.realmId}
           </div>
           <div>
             <span className="text-[color:var(--theme-text-secondary)]">Environment:</span>{" "}
-            {status.connection.environment}
+            {connection.environment}
           </div>
           <div>
             <span className="text-[color:var(--theme-text-secondary)]">Connected:</span>{" "}
-            {new Date(status.connection.connectedAt).toLocaleString()}
+            {new Date(connection.connectedAt).toLocaleString()}
           </div>
           <div>
             <span className="text-[color:var(--theme-text-secondary)]">Last sync:</span>{" "}
-            {status.connection.lastSyncAt
-              ? new Date(status.connection.lastSyncAt).toLocaleString()
+            {connection.lastSyncAt
+              ? new Date(connection.lastSyncAt).toLocaleString()
               : "—"}
           </div>
           <div>
             <span className="text-[color:var(--theme-text-secondary)]">Last error:</span>{" "}
-            {status.connection.lastError || "—"}
+            {connection.lastError || "—"}
           </div>
         </div>
       ) : null}
@@ -156,12 +163,22 @@ export default function QuickBooksConnectCard() {
       ) : null}
 
       <div className="flex flex-wrap gap-3">
-        {!connected ? (
+        {!connection ? (
           <Button onClick={handleConnect} disabled={busy || loading}>
             {busy ? "Connecting…" : "Connect QuickBooks"}
           </Button>
         ) : (
           <>
+            <LinkButton
+              href={QUICKBOOKS_COMPANY_URL[connection.environment]}
+              target="_blank"
+              rel="noopener noreferrer"
+              variant="outline"
+              size="md"
+              className="text-sm"
+            >
+              Open QuickBooks
+            </LinkButton>
             <Button onClick={() => void loadStatus()} disabled={busy || loading}>
               Refresh Status
             </Button>
