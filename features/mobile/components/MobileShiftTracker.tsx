@@ -227,8 +227,8 @@ export default function MobileShiftTracker({ userId }: Props) {
 
       {hasSyncAttention ? (
         <div className="mt-3 rounded-xl border border-amber-300/25 bg-amber-400/10 px-3 py-2 text-[0.68rem] leading-4 text-amber-100">
-          Shift changes pending {syncSummary.queued + syncSummary.syncing} Â· failed{" "}
-          {syncSummary.failed} Â· conflicted {syncSummary.conflicted}
+          Shift changes pending {syncSummary.queued + syncSummary.syncing} · failed{" "}
+          {syncSummary.failed} · conflicted {syncSummary.conflicted}
         </div>
       ) : null}
 
@@ -246,7 +246,7 @@ export default function MobileShiftTracker({ userId }: Props) {
           className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#32b9f3] px-3 text-sm font-extrabold text-[#041022] shadow-lg disabled:opacity-55"
         >
           <Play aria-hidden className="h-4 w-4 fill-current" />
-          {busy ? "Startingâ€¦" : online ? "Clock in" : "Connect to clock in"}
+          {busy ? "Starting…" : online ? "Clock in" : "Connect to clock in"}
         </button>
       ) : null}
 
@@ -298,10 +298,9 @@ export default function MobileShiftTracker({ userId }: Props) {
           className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#32b9f3] px-3 text-sm font-extrabold text-[#041022] disabled:opacity-55"
         >
           <Play aria-hidden className="h-4 w-4 fill-current" />
-          {busy ? "Startingâ€¦" : "Start new shift"}
+          {busy ? "Starting…" : "Start new shift"}
         </button>
       ) : null}
     </section>
   );
 }
-
