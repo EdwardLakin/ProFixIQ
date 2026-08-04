@@ -15,6 +15,7 @@ import { logOperationalEvent } from "@/features/work-orders/server/logOperationa
 
 type DB = Database;
 type Body = { workOrderId?: string };
+type FinalizationWarning = { step: string; message: string };
 
 const admin = createClient<DB>(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -33,6 +34,23 @@ function invoicePartSignature(
     .sort((left, right) => left.id.localeCompare(right.id))
     .map((part) => `${part.id}:${part.qty}:${part.unitPrice}`)
     .join("|");
+}
+
+async function runFinalizationSideEffects(
+  steps: Array<{ step: string; run: () => Promise<void> }>,
+): Promise<FinalizationWarning[]> {
+  const warnings: FinalizationWarning[] = [];
+  for (const step of steps) {
+    try {
+      await step.run();
+    } catch (error) {
+      warnings.push({
+        step: step.step,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+  return warnings;
 }
 
 export async function POST(request: Request) {
@@ -149,82 +167,55 @@ export async function POST(request: Request) {
       );
     }
 
-    const { data: pending, error: pendingError } = await admin
-      .from("invoices")
-      .select("id")
-      .eq("work_order_id", workOrderId)
-      .eq("shop_id", workOrder.shop_id)
-      .eq("status", "draft")
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle<{ id: string }>();
-    if (pendingError) throw new Error(pendingError.message);
-
-    const invoicePayload = {
-      shop_id: workOrder.shop_id,
-      work_order_id: workOrderId,
-      customer_id: workOrder.customer_id,
-      currency: snapshot.currency,
-      subtotal: snapshot.subtotal ?? 0,
-      labor_cost: snapshot.laborCost ?? 0,
-      parts_cost: snapshot.partsCost ?? 0,
-      discount_total: snapshot.discountTotal ?? 0,
-      tax_total: snapshot.taxTotal ?? 0,
-      total,
-      status: "draft",
-      issued_at: null,
-    } as DB["public"]["Tables"]["invoices"]["Insert"];
-
-    let invoiceId = pending?.id ?? null;
-    if (invoiceId) {
-      const { error } = await admin
-        .from("invoices")
-        .update(invoicePayload)
-        .eq("id", invoiceId)
-        .eq("shop_id", workOrder.shop_id);
-      if (error) throw new Error(error.message);
-    } else {
-      const { data, error } = await admin
-        .from("invoices")
-        .insert(invoicePayload)
-        .select("id")
-        .single<{ id: string }>();
-      if (error || !data?.id)
-        throw new Error(error?.message ?? "Failed to create invoice.");
-      invoiceId = data.id;
-    }
-
     const brand = await getActiveBrandForRender(workOrder.shop_id);
-    const inspectionAttachment = await attachInspectionReportToInvoice({
-      supabase: admin,
-      invoiceId,
-      workOrderId,
-      shopId: workOrder.shop_id,
-      actorUserId: access.authUserId,
-    });
     const version = await finalizeInvoiceVersion({
       supabase: admin,
       shopId: workOrder.shop_id,
       workOrderId,
-      invoiceId,
+      invoiceId: null,
       snapshot: { ...snapshot, documentConfiguration: brand.document },
       actorUserId: access.profile.id,
       operationKey:
         request.headers.get("idempotency-key")?.trim() ||
         `invoice-finalize:${workOrder.shop_id}:${workOrderId}`,
     });
+    const invoiceId = version.invoice_id;
+    if (!invoiceId) {
+      throw new Error("Invoice finalization did not return an invoice ID.");
+    }
 
-    await logOperationalEvent({
-      supabase: admin,
-      event: "invoice_finalized",
-      entityType: "invoice_version",
-      entityId: version.id,
-      details: {
-        work_order_id: workOrderId,
-        invoice_id: invoiceId,
-        invoice_total: version.total,
+    let inspectionAttachment: Awaited<
+      ReturnType<typeof attachInspectionReportToInvoice>
+    > | null = null;
+    const warnings = await runFinalizationSideEffects([
+      {
+        step: "inspection_attachment",
+        run: async () => {
+          inspectionAttachment = await attachInspectionReportToInvoice({
+            supabase: admin,
+            invoiceId,
+            workOrderId,
+            shopId: workOrder.shop_id,
+            actorUserId: access.authUserId,
+          });
+        },
       },
-    });
+      {
+        step: "invoice_finalized_audit_log",
+        run: () =>
+          logOperationalEvent({
+            supabase: admin,
+            event: "invoice_finalized",
+            entityType: "invoice_version",
+            entityId: version.id,
+            details: {
+              work_order_id: workOrderId,
+              invoice_id: invoiceId,
+              invoice_total: version.total,
+            },
+          }),
+      },
+    ]);
 
     return NextResponse.json({
       ok: true,
@@ -232,6 +223,8 @@ export async function POST(request: Request) {
       invoiceVersionId: version.id,
       invoiceVersion: version,
       inspectionAttachment,
+      finalizedWithWarnings: warnings.length > 0 || undefined,
+      warnings: warnings.length ? warnings : undefined,
     });
   } catch (error) {
     console.error("[invoices/finalize] failed", {

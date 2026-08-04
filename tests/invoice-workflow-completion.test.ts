@@ -35,13 +35,15 @@ describe("invoice and work-order workflow completion", () => {
     expect(finalize).toContain("getActiveInvoiceVersion");
     expect(finalize).toContain("documentConfiguration: brand.document");
     expect(finalize).toContain("invoicePartSignature");
-    expect(finalize).toContain('status: "draft"');
-    expect(finalize).toContain("issued_at: null");
+    expect(finalize).toContain("invoiceId: null");
+    expect(finalize).not.toContain('.from("invoices")');
+    expect(finalize).toContain("runFinalizationSideEffects");
     expect(finalize).not.toContain("issued_pending_send");
     expect(finalize).not.toContain("invoiceUpdateError");
     expect(send).toContain("if (version)");
     expect(send).toContain("snapshot = version.snapshot");
-    expect(send).toContain('status: "draft"');
+    expect(send).toContain("invoiceId: null");
+    expect(send).toContain('step: "inspection_attachment"');
     expect(send).not.toContain("issued_pending_send");
     expect(preview).toContain("Invoice finalization failed");
     expect(preview).toContain("toast.error(message)");
