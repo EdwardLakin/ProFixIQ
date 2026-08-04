@@ -27,4 +27,13 @@ describe("profile user count trigger scope", () => {
       "execute function public.tg_profiles_recalc_shop_user_count()",
     );
   });
+
+  it("leaves clean replay unchanged when the drifted function is absent", () => {
+    const migration = migrationSource();
+
+    expect(migration).toContain(
+      "to_regprocedure('public.tg_profiles_recalc_shop_user_count()') is null",
+    );
+    expect(migration).toContain("execute $ddl$");
+  });
 });
