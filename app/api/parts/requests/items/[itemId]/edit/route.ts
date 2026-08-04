@@ -42,7 +42,7 @@ export async function PATCH(
     return NextResponse.json({ ok: false, error: "Invalid itemId." }, { status: 400 });
   }
 
-  const access = await requireShopScopedApiAccess({ requiredCapability: "canManageWorkOrders" });
+  const access = await requireShopScopedApiAccess({ requiredCapability: "canManageParts" });
   if (!access.ok) return access.response;
 
   const supabase = access.supabase;
