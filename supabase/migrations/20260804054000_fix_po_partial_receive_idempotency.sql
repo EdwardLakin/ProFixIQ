@@ -19,7 +19,7 @@ create function public.receive_po_part_and_allocate(
   p_part_id uuid,
   p_location_id uuid,
   p_qty numeric,
-  p_operation_id uuid default gen_random_uuid()
+  p_operation_id uuid
 )
 returns jsonb
 language plpgsql
@@ -334,10 +334,37 @@ begin
 end;
 $function$;
 
--- The default keeps legacy four-argument SQL/PostgREST calls working. Callers
--- that need retry safety supply p_operation_id explicitly.
+-- Preserve the deployed four-argument routine identity for schema contracts and
+-- legacy callers. Each legacy call is a distinct receipt operation; retry-aware
+-- callers use the five-argument overload with a stable p_operation_id.
+create function public.receive_po_part_and_allocate(
+  p_po_id uuid,
+  p_part_id uuid,
+  p_location_id uuid,
+  p_qty numeric
+)
+returns jsonb
+language sql
+security invoker
+set search_path to 'public', 'pg_temp'
+as $function$
+  select public.receive_po_part_and_allocate(
+    p_po_id,
+    p_part_id,
+    p_location_id,
+    p_qty,
+    gen_random_uuid()
+  );
+$function$;
+
+revoke all on function public.receive_po_part_and_allocate(uuid, uuid, uuid, numeric) from public, anon;
+grant execute on function public.receive_po_part_and_allocate(uuid, uuid, uuid, numeric) to authenticated, service_role;
+
 revoke all on function public.receive_po_part_and_allocate(uuid, uuid, uuid, numeric, uuid) from public, anon;
 grant execute on function public.receive_po_part_and_allocate(uuid, uuid, uuid, numeric, uuid) to authenticated, service_role;
 
 comment on function public.receive_po_part_and_allocate(uuid, uuid, uuid, numeric, uuid)
 is 'Atomically receives a PO part exactly once per operation id, advances PO lines, and allocates matching requests.';
+
+comment on function public.receive_po_part_and_allocate(uuid, uuid, uuid, numeric)
+is 'Legacy receipt entry point that assigns a unique operation id and delegates to the retry-safe overload.';
