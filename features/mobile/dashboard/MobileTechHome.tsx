@@ -97,12 +97,12 @@ function vehicleLabel(vehicle: Vehicle | null): string | null {
     .replace(/\s+/g, " ")
     .trim();
   const plate = String(vehicle.license_plate ?? "").trim();
-  if (base && plate) return `${base} Â· ${plate}`;
+  if (base && plate) return `${base} · ${plate}`;
   return base || plate || null;
 }
 
 function efficiencyText(value: number | null): string {
-  if (value == null || !Number.isFinite(value)) return "â€”";
+  if (value == null || !Number.isFinite(value)) return "—";
   if (value > 250) return "250%+";
   if (value < 0) return "0%";
   return `${value.toFixed(0)}%`;
@@ -344,7 +344,7 @@ export function MobileTechHome({
         })
       : null;
 
-    if (loadingShift) return { label: "Checking shiftâ€¦", detail: null };
+    if (loadingShift) return { label: "Checking shift…", detail: null };
     if (shiftStatus === "active") {
       return { label: "On shift", detail: start ? `Started ${start}` : null };
     }
@@ -389,15 +389,15 @@ export function MobileTechHome({
         <div className="mt-3 grid grid-cols-3 gap-2">
           <HeroMetric
             label="Open"
-            value={loadingStats ? "â€¦" : openJobs}
+            value={loadingStats ? "…" : openJobs}
           />
           <HeroMetric
             label="Assigned"
-            value={loadingStats ? "â€¦" : assignedJobs}
+            value={loadingStats ? "…" : assignedJobs}
           />
           <HeroMetric
             label="Done today"
-            value={loadingStats ? "â€¦" : jobsCompletedToday}
+            value={loadingStats ? "…" : jobsCompletedToday}
           />
         </div>
       </section>
@@ -464,7 +464,7 @@ export function MobileTechHome({
           <ActionTile
             href="/mobile/tech/queue"
             title="My jobs"
-            detail={loadingStats ? "Loadingâ€¦" : `${openJobs} open`}
+            detail={loadingStats ? "Loading…" : `${openJobs} open`}
             icon={BriefcaseBusiness}
           />
           <ActionTile
@@ -494,16 +494,16 @@ export function MobileTechHome({
         <div className="grid grid-cols-3 border-y border-[color:var(--theme-border-soft)]">
           <PerformanceValue
             label="Worked"
-            value={loadingStats ? "â€¦" : `${today.workedHours.toFixed(1)}h`}
+            value={loadingStats ? "…" : `${today.workedHours.toFixed(1)}h`}
           />
           <PerformanceValue
             label="Billed"
-            value={loadingStats ? "â€¦" : `${today.billedHours.toFixed(1)}h`}
+            value={loadingStats ? "…" : `${today.billedHours.toFixed(1)}h`}
             bordered
           />
           <PerformanceValue
             label="Efficiency"
-            value={loadingStats ? "â€¦" : efficiencyText(today.efficiencyPct)}
+            value={loadingStats ? "…" : efficiencyText(today.efficiencyPct)}
           />
         </div>
         <details className="group">
@@ -514,16 +514,16 @@ export function MobileTechHome({
           <div className="grid grid-cols-3 border-t border-[color:var(--theme-border-soft)]">
             <PerformanceValue
               label="Worked"
-              value={loadingStats ? "â€¦" : `${week.workedHours.toFixed(1)}h`}
+              value={loadingStats ? "…" : `${week.workedHours.toFixed(1)}h`}
             />
             <PerformanceValue
               label="Billed"
-              value={loadingStats ? "â€¦" : `${week.billedHours.toFixed(1)}h`}
+              value={loadingStats ? "…" : `${week.billedHours.toFixed(1)}h`}
               bordered
             />
             <PerformanceValue
               label="Efficiency"
-              value={loadingStats ? "â€¦" : efficiencyText(week.efficiencyPct)}
+              value={loadingStats ? "…" : efficiencyText(week.efficiencyPct)}
             />
           </div>
         </details>
@@ -768,4 +768,3 @@ function PerformanceValue({
     </div>
   );
 }
-
