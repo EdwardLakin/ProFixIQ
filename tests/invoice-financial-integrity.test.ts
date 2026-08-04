@@ -61,6 +61,9 @@ describe("invoice financial integrity repair", () => {
     expect(migration).toContain(
       "drop trigger if exists trg_sync_invoice_from_work_order on public.work_orders",
     );
+    expect(migration).toContain(
+      "to_regprocedure('public.sync_invoice_from_work_order()') is not null",
+    );
     expect(migration).not.toContain(
       "drop function public.sync_invoice_from_work_order()",
     );
