@@ -2672,9 +2672,9 @@ export default function CreateWorkOrderPage() {
 
             {/* Create-flow maintenance suggestions */}
             <CreateFlowMaintenanceSelector
-              workOrderId={wo?.id ?? null}
+              workOrderId={hasValidatedWorkOrder ? wo?.id ?? null : null}
               vehicleId={vehicleIdProp}
-              enabled={!!customerId && !!vehicleIdProp}
+              enabled={hasValidatedWorkOrder && !!customerId && !!vehicleIdProp}
               selectedServiceCodes={selectedMaintenanceCodes}
               onChange={setSelectedMaintenanceCodes}
               onAdded={fetchLines}
@@ -2894,6 +2894,7 @@ export default function CreateWorkOrderPage() {
                                 <button
                                   type="button"
                                   onClick={() => void openInspectionForLine(ln)}
+                                  disabled={!hasValidatedWorkOrder}
                                   className="
                               rounded-full border px-3 py-2 text-sm font-semibold
                               border-[color:var(--copper)]/70 bg-[color:var(--copper)]/10 text-[color:var(--copper)]
@@ -2907,6 +2908,7 @@ export default function CreateWorkOrderPage() {
                               <button
                                 type="button"
                                 onClick={() => void handleDeleteLine(ln.id)}
+                                disabled={!hasValidatedWorkOrder}
                                 className={cx(
                                   "rounded-full border border-red-400/25 bg-[color:color-mix(in_srgb,var(--theme-card-bg,var(--theme-surface-page))_62%,transparent)] px-3 py-2 text-sm font-semibold text-red-200 hover:bg-red-500/10",
                                 )}

@@ -32,6 +32,7 @@ import {
   getCanonicalPartManufacturer,
   getCanonicalPartNumber,
   getCanonicalPartQuantity,
+  summarizeCanonicalPartAllocations,
   getCanonicalPartUnitPrice,
 } from "@/features/work-orders/lib/display/workOrderParts";
 import VehicleHistoryModal from "@/features/work-orders/components/workorders/VehicleHistoryModal";
@@ -88,7 +89,7 @@ const btnTertiary =
   btnBase + " border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]";
 
 type DB = Database;
-type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"];
+type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"] & { technician_notes?: string | null };
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
 type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
 type Customer = DB["public"]["Tables"]["customers"]["Row"];
@@ -213,6 +214,10 @@ export default function FocusedJobModal(props: {
 
   const [allocs, setAllocs] = useState<AllocationRow[]>([]);
   const [requiredParts, setRequiredParts] = useState<RequiredPartRow[]>([]);
+  const displayOnlyAllocations = useMemo(
+    () => filterAllocationsNotBackedByCanonicalParts(allocs, requiredParts),
+    [allocs, requiredParts],
+  );
   const [assignedTechProfile, setAssignedTechProfile] = useState<{ id: string; full_name: string | null; role: string | null } | null>(null);
   const [allocsLoading, setAllocsLoading] = useState(false);
 
@@ -277,7 +282,7 @@ export default function FocusedJobModal(props: {
         if (cancelled) return;
 
         setLine(l ?? null);
-        setTechNotes(l?.notes ?? "");
+        setTechNotes(l?.technician_notes ?? "");
         if (l?.assigned_tech_id) {
           const { data: profile } = await supabase
             .from("profiles")
@@ -478,7 +483,7 @@ export default function FocusedJobModal(props: {
       .maybeSingle<WorkOrderLine>();
 
     setLine(l ?? null);
-    setTechNotes(l?.notes ?? "");
+    setTechNotes(l?.technician_notes ?? "");
     await onChanged?.();
     await loadAllocations();
   }, [supabase, workOrderLineId, onChanged, loadAllocations]);
@@ -595,7 +600,7 @@ export default function FocusedJobModal(props: {
       const { error } = await supabase
         .from("work_order_lines")
         .update({
-          notes: techNotes,
+          technician_notes: techNotes,
         } as DB["public"]["Tables"]["work_order_lines"]["Update"])
         .eq("id", workOrderLineId);
 
@@ -1007,11 +1012,11 @@ export default function FocusedJobModal(props: {
               <SectionCard title={partsBottleneckDisplay?.heading ?? "Parts used"}>
                 {allocsLoading ? (
                   <div className="text-sm text-[color:var(--theme-text-secondary)]">Loading…</div>
-                ) : partsBottleneckDisplay && (allocs.length + requiredParts.length) === 0 ? (
+                ) : partsBottleneckDisplay && (displayOnlyAllocations.length + requiredParts.length) === 0 ? (
                   <div className="text-sm text-[color:var(--theme-text-primary)]">
                     {partsBottleneckDisplay.detail}
                   </div>
-                ) : (allocs.length + requiredParts.length) === 0 ? (
+                ) : (displayOnlyAllocations.length + requiredParts.length) === 0 ? (
                   <div className="text-sm text-[color:var(--theme-text-secondary)]">No parts used yet.</div>
                 ) : (
                   <div className="overflow-hidden rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]">
@@ -1024,18 +1029,25 @@ export default function FocusedJobModal(props: {
                       {requiredParts.map((p) => {
                         const qty = getCanonicalPartQuantity(p);
                         const unit = getCanonicalPartUnitPrice(p);
+                        const allocation = summarizeCanonicalPartAllocations(p, allocs);
                         return (
                           <li key={`required-${p.id}`} className="grid grid-cols-12 items-center gap-2 px-3 py-2 text-sm">
                             <div className="col-span-7 min-w-0 break-words text-[color:var(--theme-text-primary)]">
                               {getCanonicalPartDescription(p) ?? "—"}
                               <div className="text-[11px] text-[color:var(--theme-text-secondary)]">{[getCanonicalPartNumber(p), getCanonicalPartManufacturer(p), p.lifecycle_status ?? "requested"].filter(Boolean).join(" • ")}</div>
                             </div>
-                            <div className="col-span-3 truncate text-[color:var(--theme-text-secondary)]">{unit > 0 ? money(unit) : "—"}</div>
-                            <div className="col-span-2 text-right font-semibold text-[color:var(--theme-text-primary)]">{qty}</div>
+                            <div className="col-span-3 truncate text-[color:var(--theme-text-secondary)]">
+                              {allocation.locations.length > 0
+                                ? allocation.locations.map((location) => `loc ${location.slice(0, 6)}…`).join(", ")
+                                : unit > 0 ? money(unit) : "—"}
+                            </div>
+                            <div className="col-span-2 text-right font-semibold text-[color:var(--theme-text-primary)]">
+                              {allocation.allocatedQuantity > 0 ? `${allocation.allocatedQuantity}/${qty}` : qty}
+                            </div>
                           </li>
                         );
                       })}
-                      {allocs.map((a) => {
+                      {displayOnlyAllocations.map((a) => {
                         const qty =
                           (a as unknown as { qty?: number | null }).qty ??
                           (a as unknown as { quantity?: number | null }).quantity ??

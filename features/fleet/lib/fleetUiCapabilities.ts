@@ -13,6 +13,7 @@ export type FleetUiCapabilities = {
   canSubmitPretrip: boolean;
   canReviewPretripHistory: boolean;
   canConvertRequests: boolean;
+  canConvertServiceRequestToWorkOrder: boolean;
   canCreateFleetWorkOrders: boolean;
   canViewBroadFleetOperations: boolean;
   canAccessPortalFleetWrappers: boolean;
@@ -61,6 +62,8 @@ export function getFleetUiContext(actor: FleetActorContext): FleetUiContext {
       canSubmitPretrip: actor.capabilities.canCreatePretripReports,
       canReviewPretripHistory: actor.actorType !== "none",
       canConvertRequests,
+      canConvertServiceRequestToWorkOrder:
+        actor.capabilities.canConvertServiceRequestToWorkOrder,
       canCreateFleetWorkOrders:
         actor.isInternal || actor.actorType === "fleet_manager",
       canViewBroadFleetOperations: actor.capabilities.canSeeFleetWideUnits,

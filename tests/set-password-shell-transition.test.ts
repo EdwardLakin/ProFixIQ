@@ -1,25 +1,50 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import {
+  activatePasswordProfile,
+  PASSWORD_ACTIVATION_RETRY_MESSAGE,
+} from "@/features/auth/lib/passwordActivation";
 
 const pagePath = "app/auth/set-password/page.tsx";
+const helperPath = "features/auth/lib/passwordActivation.ts";
 
-function pageSource() {
-  return readFileSync(pagePath, "utf8");
-}
-
-describe("set-password protected-shell transition", () => {
-  it("fails visibly when the profile activation flag cannot be cleared", () => {
-    const source = pageSource();
-
-    expect(source).toContain("const { error: profileError } = await supabase");
-    expect(source).toContain("if (profileError)");
-    expect(source).toContain("account activation failed");
-  });
-
-  it("performs a document navigation so the root shell is recalculated", () => {
-    const source = pageSource();
-
+describe("set-password shell transition", () => {
+  it("performs a document navigation so the protected app shell is rebuilt", () => {
+    const source = readFileSync(pagePath, "utf8");
     expect(source).toContain("window.location.replace(redirect)");
     expect(source).not.toContain("router.replace(redirect)");
+    expect(source).not.toContain("router.push(redirect)");
+  });
+
+  it("treats credential success and profile activation as separate stages", () => {
+    const source = readFileSync(pagePath, "utf8");
+    expect(source).toContain("passwordCommitted");
+    expect(source).toContain("activatePasswordProfile");
+    expect(source).toContain("Retry account activation");
+    expect(source).toContain('setPassword("")');
+    expect(source).toContain('setConfirmPassword("")');
+  });
+
+  it("keeps database details internal and presents a safe retry message", async () => {
+    const eq = vi.fn().mockResolvedValue({
+      error: { message: "raw postgres policy detail" },
+    });
+    const update = vi.fn(() => ({ eq }));
+    const from = vi.fn(() => ({ update }));
+
+    const result = await activatePasswordProfile(
+      { from } as never,
+      "profile-id",
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      userMessage: PASSWORD_ACTIVATION_RETRY_MESSAGE,
+      detail: "raw postgres policy detail",
+    });
+    expect(PASSWORD_ACTIVATION_RETRY_MESSAGE).not.toContain("postgres");
+    expect(readFileSync(helperPath, "utf8")).toContain(
+      "PASSWORD_ACTIVATION_RETRY_MESSAGE",
+    );
   });
 });

@@ -36,7 +36,7 @@ describe("parts package commit route safeguards", () => {
   );
 
   it("commits the complete request through a shop-scoped atomic command", () => {
-    expect(commitRoute).toContain('requiredCapability: "canManageWorkOrders"');
+    expect(commitRoute).toContain('requiredCapability: "canManageParts"');
     expect(commitRoute).toContain('"parts_commit_request_package_atomic"');
     expect(commitRoute).toContain("p_shop_id: access.profile.shop_id");
     expect(commitMigration).toContain("public.parts_ensure_work_order_part(v_item.id)");

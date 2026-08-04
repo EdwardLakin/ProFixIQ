@@ -1,40 +1,34 @@
-import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
 
-describe("active approved technician notes", () => {
-  it("keeps completed and assignment guards while permitting active approved notes", () => {
-    const sql = readFileSync(
-      "supabase/migrations/20260804055000_allow_active_approved_job_notes.sql",
-      "utf8",
-    );
+const mobilePath = "features/work-orders/mobile/MobileFocusedJob.tsx";
+const originalMigrationPath =
+  "supabase/migrations/20260804055000_allow_active_approved_job_notes.sql";
+const hardeningMigrationPath =
+  "supabase/migrations/20260804120000_codex_review_followup_hardening.sql";
 
-    expect(sql).toContain(
-      "if lower(coalesce(v_line.status::text, '')) = 'completed' then",
-    );
-    expect(sql).toContain(
-      "and v_line.assigned_tech_id is distinct from p_actor_user_id",
-    );
-    expect(sql).toContain("OFFLINE_VERSION_CONFLICT");
-    expect(sql).toContain(
-      "if p_action_type = 'update_work_order_line_notes' then",
-    );
-    expect(sql).toContain(
-      "set notes = coalesce(v_payload->>'notes', ''), updated_at = now()",
-    );
-    expect(sql).not.toContain(
-      "Approved job notes require review before editing.",
-    );
+describe("mobile technician notes on active approved jobs", () => {
+  it("keeps the mobile editor available for active approved work", () => {
+    const source = readFileSync(mobilePath, "utf8");
+    expect(source).toContain("technician_notes");
+    expect(source).toContain("saveTechNotes");
+    expect(source).toContain('actionType: "update_work_order_line_notes"');
+    expect(source).toContain('line.status !== "completed"');
+    expect(source).toContain('line.approval_state !== "approved"');
   });
 
-  it("matches the active mobile editor contract", () => {
-    const mobile = readFileSync(
-      "features/work-orders/mobile/MobileFocusedJob.tsx",
-      "utf8",
-    );
+  it("preserves the original permission repair and supersedes it with active-state and void guards", () => {
+    const original = readFileSync(originalMigrationPath, "utf8");
+    const hardening = readFileSync(hardeningMigrationPath, "utf8");
 
-    expect(mobile).toContain('onBlur={saveNotes}');
-    expect(mobile).toContain(
-      'mode === "notes" && data.approval_state === "approved" && data.status === "completed"',
+    expect(original).toContain(
+      "create or replace function public.apply_offline_line_mutation_atomic",
     );
+    expect(hardening).toContain("v_line.voided_at is not null");
+    expect(hardening).toContain("Work-order line is not active.");
+    expect(hardening).toContain("technician_notes");
+    expect(hardening).toContain("OFFLINE_VERSION_CONFLICT");
+    expect(hardening).toContain("Actor is not assigned to this work-order line.");
+    expect(hardening).toContain("offline_mutation_receipts");
   });
 });
