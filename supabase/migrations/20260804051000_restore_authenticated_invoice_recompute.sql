@@ -49,9 +49,12 @@ begin
     if v_actor_user_id is null
        or not exists (
          select 1
-         from public.user_shops us
-         where us.user_id = v_actor_user_id
-           and us.shop_id = v_shop_id
+         from public.profiles p
+         where p.shop_id = v_shop_id
+           and (
+             p.id = v_actor_user_id
+             or p.user_id = v_actor_user_id
+           )
        ) then
       raise exception 'Forbidden'
         using errcode = '42501';
