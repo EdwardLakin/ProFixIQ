@@ -609,6 +609,15 @@ export default function CreateWorkOrderPage() {
   // Work order + lines
   const [wo, setWo] = useTabState<WorkOrderRow | null>("__create_wo", null);
   const [lines, setLines] = useTabState<LineRow[]>("__create_lines", []);
+  const [validatedWorkOrderId, setValidatedWorkOrderId] = useState<
+    string | null
+  >(null);
+  const hasValidatedWorkOrder = Boolean(
+    wo?.id && validatedWorkOrderId === wo.id,
+  );
+  const isPersistedWorkOrderPending = Boolean(
+    wo?.id && !hasValidatedWorkOrder,
+  );
 
   // ✅ inspection modal state
   const [inspectionOpen, setInspectionOpen] = useState(false);
@@ -851,6 +860,70 @@ export default function CreateWorkOrderPage() {
     },
     [supabase],
   );
+
+  // A create-tab draft can outlive the underlying work order (for example,
+  // after an empty shell is deleted elsewhere). Never expose line mutations
+  // until the persisted id has been revalidated inside the current shop.
+  useEffect(() => {
+    const workOrderId = wo?.id ?? null;
+    if (!workOrderId) {
+      setValidatedWorkOrderId(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (!user?.id) throw new Error("Not signed in.");
+
+        const shopId = await getOrLinkShopId(user.id);
+        if (!shopId)
+          throw new Error("Your profile isn’t linked to a shop yet.");
+
+        const { data: persisted, error: validationError } = await supabase
+          .from("work_orders")
+          .select("*")
+          .eq("id", workOrderId)
+          .eq("shop_id", shopId)
+          .maybeSingle<WorkOrderRow>();
+
+        if (validationError) throw validationError;
+        if (cancelled) return;
+
+        if (!persisted) {
+          setWo(null);
+          setLines([]);
+          setValidatedWorkOrderId(null);
+          setError("");
+          return;
+        }
+
+        setWo(persisted);
+        setValidatedWorkOrderId(persisted.id);
+      } catch {
+        if (cancelled) return;
+        setValidatedWorkOrderId(null);
+        setError(
+          "Unable to restore the saved work order. Refresh and try again.",
+        );
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    getOrLinkShopId,
+    setError,
+    setLines,
+    setWo,
+    supabase,
+    wo?.id,
+  ]);
 
   // ✅ advisor ownership helper
 
@@ -1436,7 +1509,7 @@ export default function CreateWorkOrderPage() {
   const [savingCv, setSavingCv] = useState(false);
 
   const fetchLines = useCallback(async () => {
-    if (!wo?.id) return;
+    if (!wo?.id || !hasValidatedWorkOrder) return;
     const { data } = await supabase
       .from("work_order_lines")
       .select("*")
@@ -1444,11 +1517,15 @@ export default function CreateWorkOrderPage() {
       .order("created_at", { ascending: true });
 
     setLines(data ?? []);
-  }, [supabase, wo?.id, setLines]);
+  }, [hasValidatedWorkOrder, supabase, wo?.id, setLines]);
 
   // ✅ normal function (no hook deps warnings, no parser issues)
   async function handleSaveCustomerVehicle(): Promise<string> {
     if (savingCv) return wo?.id ?? "";
+    if (isPersistedWorkOrderPending) {
+      setError("Checking the saved work order. Please try again in a moment.");
+      return "";
+    }
     setSavingCv(true);
     setError("");
 
@@ -1775,6 +1852,7 @@ export default function CreateWorkOrderPage() {
     setPhotoFiles([]);
     setDocFiles([]);
     setUploadSummary(null);
+    setError("");
     setInviteNotice("");
     setSendInvite(true);
     setSelectedMaintenanceCodes([]);
@@ -1789,6 +1867,7 @@ export default function CreateWorkOrderPage() {
     setVehicleId,
     setPrefillCustomerId,
     setPrefillVehicleId,
+    setError,
     setInviteNotice,
     setSendInvite,
     setIsWaiter,
@@ -2108,7 +2187,7 @@ export default function CreateWorkOrderPage() {
   }
 
   useEffect(() => {
-    if (!wo?.id) return;
+    if (!wo?.id || !hasValidatedWorkOrder) return;
     void fetchLines();
     const ch = supabase
       .channel(`create-wo:${wo.id}`)
@@ -2130,7 +2209,7 @@ export default function CreateWorkOrderPage() {
         /* noop */
       }
     };
-  }, [supabase, wo?.id, fetchLines]);
+  }, [supabase, wo?.id, fetchLines, hasValidatedWorkOrder]);
 
   useEffect(() => {
     const h = () => {
@@ -2157,7 +2236,8 @@ export default function CreateWorkOrderPage() {
     null;
 
   // ✅ never undefined
-  const vehicleIdProp: string | null = vehicleId ?? wo?.vehicle_id ?? null;
+  const vehicleIdProp: string | null =
+    vehicleId ?? (hasValidatedWorkOrder ? wo?.vehicle_id : null) ?? null;
 
   return (
     <div
@@ -2182,7 +2262,7 @@ export default function CreateWorkOrderPage() {
                 else is optional.
               </p>
 
-              {wo?.custom_id && (
+              {hasValidatedWorkOrder && wo?.custom_id && (
                 <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
                   Current WO:{" "}
                   <span className="font-mono text-[color:var(--copper)]">
@@ -2467,14 +2547,18 @@ export default function CreateWorkOrderPage() {
                     const id = await handleSaveCustomerVehicle();
                     if (id) await maybeOpenIntakeAfterSave(id);
                   }}
-                  disabled={savingCv || loading}
+                  disabled={
+                    savingCv || loading || isPersistedWorkOrderPending
+                  }
                   className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-[color:var(--brand-primary)] px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(23,71,255,0.2)] transition hover:brightness-110 disabled:opacity-60"
                 >
                   {savingCv
                     ? "Saving…"
-                    : wo?.id
+                    : hasValidatedWorkOrder
                       ? "Update customer & vehicle"
-                      : "Save & add work"}
+                      : isPersistedWorkOrderPending
+                        ? "Checking saved work…"
+                        : "Save & add work"}
                 </button>
 
                 <button
@@ -2675,7 +2759,7 @@ export default function CreateWorkOrderPage() {
             </details>
 
             {/* Menu quick add */}
-            {wo?.id && (
+            {hasValidatedWorkOrder && wo?.id && (
               <section className={sectionPanel}>
                 <div
                   className={cx(
@@ -2696,7 +2780,7 @@ export default function CreateWorkOrderPage() {
             )}
 
             {/* Add line */}
-            {wo?.id && (
+            {hasValidatedWorkOrder && wo?.id && (
               <section className={sectionPanel}>
                 <div
                   className={cx(
@@ -2733,7 +2817,7 @@ export default function CreateWorkOrderPage() {
                   Current lines
                 </h2>
 
-                {wo?.id && (
+                {hasValidatedWorkOrder && wo?.id && (
                   <button
                     type="button"
                     onClick={() => setAiSuggestOpen(true)}
@@ -2886,7 +2970,7 @@ export default function CreateWorkOrderPage() {
                 </button>
                 <button
                   type="submit"
-                  disabled={loading}
+                  disabled={loading || isPersistedWorkOrderPending}
                   className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[color:var(--brand-primary)] px-6 py-2.5 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(23,71,255,0.28)] transition hover:brightness-110 disabled:opacity-60 sm:w-auto"
                 >
                   <Check className="h-4 w-4" aria-hidden="true" />
@@ -2905,7 +2989,7 @@ export default function CreateWorkOrderPage() {
             />
           )}
 
-          {wo?.id && (
+          {hasValidatedWorkOrder && wo?.id && (
             <AiSuggestModal
               open={aiSuggestOpen}
               onClose={() => setAiSuggestOpen(false)}
