@@ -11,6 +11,9 @@ describe("purchase-order receipt idempotency", () => {
     const sql = readFileSync(migrationPath, "utf8");
 
     expect(sql).toContain("p_operation_id uuid");
+    expect(sql).toContain(
+      "drop trigger if exists trg_stock_moves_apply_snapshot on public.stock_moves",
+    );
     expect(sql).toContain("purchase_order_receipt:");
     expect(sql).toContain("PO_RECEIVE_IDEMPOTENCY_CONFLICT");
     expect(sql).toContain("v_move.metadata -> 'receipt_result'");
