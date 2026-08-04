@@ -97,12 +97,12 @@ function vehicleLabel(vehicle: Vehicle | null): string | null {
     .replace(/\s+/g, " ")
     .trim();
   const plate = String(vehicle.license_plate ?? "").trim();
-  if (base && plate) return `${base} · ${plate}`;
+  if (base && plate) return `${base} Â· ${plate}`;
   return base || plate || null;
 }
 
 function efficiencyText(value: number | null): string {
-  if (value == null || !Number.isFinite(value)) return "—";
+  if (value == null || !Number.isFinite(value)) return "â€”";
   if (value > 250) return "250%+";
   if (value < 0) return "0%";
   return `${value.toFixed(0)}%`;
@@ -170,6 +170,16 @@ export function MobileTechHome({
 
   useEffect(() => {
     void refreshShiftState();
+  }, [refreshShiftState]);
+
+  useEffect(() => {
+    const onShiftUpdated = () => void refreshShiftState();
+    window.addEventListener("profixiq:mobile-shift-updated", onShiftUpdated);
+    return () =>
+      window.removeEventListener(
+        "profixiq:mobile-shift-updated",
+        onShiftUpdated,
+      );
   }, [refreshShiftState]);
 
   useEffect(() => {
@@ -334,7 +344,7 @@ export function MobileTechHome({
         })
       : null;
 
-    if (loadingShift) return { label: "Checking shift…", detail: null };
+    if (loadingShift) return { label: "Checking shiftâ€¦", detail: null };
     if (shiftStatus === "active") {
       return { label: "On shift", detail: start ? `Started ${start}` : null };
     }
@@ -379,15 +389,15 @@ export function MobileTechHome({
         <div className="mt-3 grid grid-cols-3 gap-2">
           <HeroMetric
             label="Open"
-            value={loadingStats ? "…" : openJobs}
+            value={loadingStats ? "â€¦" : openJobs}
           />
           <HeroMetric
             label="Assigned"
-            value={loadingStats ? "…" : assignedJobs}
+            value={loadingStats ? "â€¦" : assignedJobs}
           />
           <HeroMetric
             label="Done today"
-            value={loadingStats ? "…" : jobsCompletedToday}
+            value={loadingStats ? "â€¦" : jobsCompletedToday}
           />
         </div>
       </section>
@@ -454,7 +464,7 @@ export function MobileTechHome({
           <ActionTile
             href="/mobile/tech/queue"
             title="My jobs"
-            detail={loadingStats ? "Loading…" : `${openJobs} open`}
+            detail={loadingStats ? "Loadingâ€¦" : `${openJobs} open`}
             icon={BriefcaseBusiness}
           />
           <ActionTile
@@ -484,16 +494,16 @@ export function MobileTechHome({
         <div className="grid grid-cols-3 border-y border-[color:var(--theme-border-soft)]">
           <PerformanceValue
             label="Worked"
-            value={loadingStats ? "…" : `${today.workedHours.toFixed(1)}h`}
+            value={loadingStats ? "â€¦" : `${today.workedHours.toFixed(1)}h`}
           />
           <PerformanceValue
             label="Billed"
-            value={loadingStats ? "…" : `${today.billedHours.toFixed(1)}h`}
+            value={loadingStats ? "â€¦" : `${today.billedHours.toFixed(1)}h`}
             bordered
           />
           <PerformanceValue
             label="Efficiency"
-            value={loadingStats ? "…" : efficiencyText(today.efficiencyPct)}
+            value={loadingStats ? "â€¦" : efficiencyText(today.efficiencyPct)}
           />
         </div>
         <details className="group">
@@ -504,16 +514,16 @@ export function MobileTechHome({
           <div className="grid grid-cols-3 border-t border-[color:var(--theme-border-soft)]">
             <PerformanceValue
               label="Worked"
-              value={loadingStats ? "…" : `${week.workedHours.toFixed(1)}h`}
+              value={loadingStats ? "â€¦" : `${week.workedHours.toFixed(1)}h`}
             />
             <PerformanceValue
               label="Billed"
-              value={loadingStats ? "…" : `${week.billedHours.toFixed(1)}h`}
+              value={loadingStats ? "â€¦" : `${week.billedHours.toFixed(1)}h`}
               bordered
             />
             <PerformanceValue
               label="Efficiency"
-              value={loadingStats ? "…" : efficiencyText(week.efficiencyPct)}
+              value={loadingStats ? "â€¦" : efficiencyText(week.efficiencyPct)}
             />
           </div>
         </details>
@@ -758,3 +768,4 @@ function PerformanceValue({
     </div>
   );
 }
+
