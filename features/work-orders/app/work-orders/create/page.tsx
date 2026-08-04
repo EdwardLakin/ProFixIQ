@@ -624,24 +624,6 @@ export default function CreateWorkOrderPage() {
     wo?.id && !hasValidatedWorkOrder,
   );
 
-  useEffect(() => {
-    const handleStaleDraft = (event: Event) => {
-      const detail = (event as CustomEvent<{ workOrderId?: string }>).detail;
-      if (!detail?.workOrderId || detail.workOrderId !== wo?.id) return;
-      setWo(null);
-      setLines([]);
-      setValidatedWorkOrderId(null);
-      setError(STALE_CREATE_WORK_ORDER_MESSAGE);
-      toast.error(STALE_CREATE_WORK_ORDER_MESSAGE);
-    };
-    window.addEventListener(CREATE_WORK_ORDER_STALE_EVENT, handleStaleDraft);
-    return () =>
-      window.removeEventListener(
-        CREATE_WORK_ORDER_STALE_EVENT,
-        handleStaleDraft,
-      );
-  }, [setError, setLines, setWo, wo?.id]);
-
   // ✅ inspection modal state
   const [inspectionOpen, setInspectionOpen] = useState(false);
   const [inspectionSrc, setInspectionSrc] = useState<string | null>(null);
@@ -689,6 +671,24 @@ export default function CreateWorkOrderPage() {
   const [selectedMaintenanceCodes, setSelectedMaintenanceCodes] = useState<
     string[]
   >([]);
+
+  useEffect(() => {
+    const handleStaleDraft = (event: Event) => {
+      const detail = (event as CustomEvent<{ workOrderId?: string }>).detail;
+      if (!detail?.workOrderId || detail.workOrderId !== wo?.id) return;
+      setWo(null);
+      setLines([]);
+      setValidatedWorkOrderId(null);
+      setError(STALE_CREATE_WORK_ORDER_MESSAGE);
+      toast.error(STALE_CREATE_WORK_ORDER_MESSAGE);
+    };
+    window.addEventListener(CREATE_WORK_ORDER_STALE_EVENT, handleStaleDraft);
+    return () =>
+      window.removeEventListener(
+        CREATE_WORK_ORDER_STALE_EVENT,
+        handleStaleDraft,
+      );
+  }, [setError, setLines, setWo, wo?.id]);
 
   // Current user id (for VIN modal)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
