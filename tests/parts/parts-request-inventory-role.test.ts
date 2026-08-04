@@ -55,7 +55,7 @@ describe("parts request inventory route authorization", () => {
   it("forwards and persists the inventory cost and selected supplier", () => {
     expect(pageSource).toContain("cost: input.cost");
     expect(pageSource).toContain("input.defaultSupplierId");
-    expect(routeSource).toContain("cost: number | string | null");
+    expect(routeSource).toContain("cost?: number | string | null");
     expect(routeSource).toContain("default_cost: cost");
     expect(routeSource).toContain("supplier: clean(body.supplier)");
   });
