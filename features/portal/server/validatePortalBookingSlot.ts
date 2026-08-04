@@ -3,6 +3,8 @@ import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
 
+const PORTAL_SLOT_MINUTES = 60;
+
 type LocalParts = {
   year: number;
   month: number;
@@ -64,6 +66,12 @@ function minuteOfDay(value: string | null | undefined): number | null {
   return hours * 60 + minutes;
 }
 
+function sameInstant(left: string | null | undefined, right: string): boolean {
+  const leftTime = Date.parse(String(left ?? ""));
+  const rightTime = Date.parse(right);
+  return Number.isFinite(leftTime) && leftTime === rightTime;
+}
+
 export async function validateRequestedPortalSlot(input: {
   supabase: SupabaseClient<DB>;
   shopId: string;
@@ -77,11 +85,13 @@ export async function validateRequestedPortalSlot(input: {
   if (
     !Number.isFinite(start.getTime()) ||
     !Number.isFinite(end.getTime()) ||
-    !Number.isInteger(durationMinutes) ||
-    durationMinutes < 15 ||
-    durationMinutes > 180
+    durationMinutes !== PORTAL_SLOT_MINUTES
   ) {
-    return { ok: false, error: "Select a valid appointment duration.", status: 400 };
+    return {
+      ok: false,
+      error: "Select one of the one-hour appointment times offered by the shop.",
+      status: 400,
+    };
   }
 
   const { data: shop, error: shopError } = await input.supabase
@@ -116,9 +126,6 @@ export async function validateRequestedPortalSlot(input: {
   ) {
     return { ok: false, error: "Appointments must remain within one shop business day.", status: 409 };
   }
-  if (localStart.minute % 15 !== 0) {
-    return { ok: false, error: "Select one of the appointment times offered by the shop.", status: 409 };
-  }
 
   const { data: hours, error: hoursError } = await input.supabase
     .from("shop_hours")
@@ -130,14 +137,25 @@ export async function validateRequestedPortalSlot(input: {
 
   const startMinute = localStart.hour * 60 + localStart.minute;
   const endMinute = localEnd.hour * 60 + localEnd.minute;
-  const insideBusinessHours = (hours ?? []).some((row) => {
+  const isOfferedSlot = (hours ?? []).some((row) => {
     if (!weekdayCandidates(row.weekday).includes(localStart.weekday)) return false;
     const open = minuteOfDay(row.open_time);
     const close = minuteOfDay(row.close_time);
-    return open != null && close != null && close > open && startMinute >= open && endMinute <= close;
+    return (
+      open != null &&
+      close != null &&
+      close > open &&
+      startMinute >= open &&
+      endMinute <= close &&
+      (startMinute - open) % PORTAL_SLOT_MINUTES === 0
+    );
   });
-  if (!insideBusinessHours) {
-    return { ok: false, error: "That time is outside the shop's booking hours.", status: 409 };
+  if (!isOfferedSlot) {
+    return {
+      ok: false,
+      error: "Select one of the appointment times offered by the shop.",
+      status: 409,
+    };
   }
 
   const [timeOffResult, bookingResult] = await Promise.all([
@@ -150,17 +168,29 @@ export async function validateRequestedPortalSlot(input: {
       .limit(1),
     input.supabase
       .from("bookings")
-      .select("id")
+      .select("id,starts_at,ends_at")
       .eq("shop_id", input.shopId)
       .in("status", ["pending", "confirmed"])
       .lt("starts_at", input.endsAt)
       .gt("ends_at", input.startsAt)
-      .limit(1),
+      .limit(10),
   ]);
   if (timeOffResult.error || bookingResult.error) {
     return { ok: false, error: "Unable to confirm appointment availability.", status: 500 };
   }
-  if ((timeOffResult.data?.length ?? 0) > 0 || (bookingResult.data?.length ?? 0) > 0) {
+  if ((timeOffResult.data?.length ?? 0) > 0) {
+    return { ok: false, error: "That appointment time is no longer available.", status: 409 };
+  }
+
+  // An exact existing window may be this request's idempotent replay. Let the
+  // route/RPC resolve ownership and operation identity. Any other overlap is a
+  // real conflict and must fail before a write is attempted.
+  const conflictingBookings = (bookingResult.data ?? []).filter(
+    (booking) =>
+      !sameInstant(booking.starts_at, input.startsAt) ||
+      !sameInstant(booking.ends_at, input.endsAt),
+  );
+  if (conflictingBookings.length > 0) {
     return { ok: false, error: "That appointment time is no longer available.", status: 409 };
   }
 
