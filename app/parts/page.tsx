@@ -67,7 +67,6 @@ type RecentMove = Pick<
 type TrustExtendedPart = Pick<PartRow, "id" | "created_at" | "sku"> & {
   part_number?: string | null;
   normalized_part_key?: string | null;
-  import_confidence?: number | null;
 };
 type TrustSummary = {
   lowTrust: number;
@@ -223,7 +222,7 @@ export default function PartsDashboardPage(): JSX.Element {
         supabase
           .from("parts")
           .select(
-            "id, created_at, sku, part_number, normalized_part_key, import_confidence, source_intake_id",
+            "id, created_at, sku, part_number, normalized_part_key, source_intake_id",
           ),
         supabase
           .from("stock_moves")
@@ -256,9 +255,7 @@ export default function PartsDashboardPage(): JSX.Element {
         (part) =>
           !part.sku?.trim() ||
           !part.part_number?.trim() ||
-          !part.normalized_part_key?.trim() ||
-          (typeof part.import_confidence === "number" &&
-            part.import_confidence < 0.75),
+          !part.normalized_part_key?.trim(),
       ).length;
       const reviewStaging = (stagingRes.data ?? []).filter((row) =>
         ["pending", "review", "ambiguous"].includes(
