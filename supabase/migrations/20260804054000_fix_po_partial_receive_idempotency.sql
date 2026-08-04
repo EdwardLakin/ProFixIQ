@@ -12,12 +12,14 @@
 -- snapshot trigger performs the same increment a second time.
 drop trigger if exists trg_stock_moves_apply_snapshot on public.stock_moves;
 
-create or replace function public.receive_po_part_and_allocate(
+drop function if exists public.receive_po_part_and_allocate(uuid, uuid, uuid, numeric);
+
+create function public.receive_po_part_and_allocate(
   p_po_id uuid,
   p_part_id uuid,
   p_location_id uuid,
   p_qty numeric,
-  p_operation_id uuid
+  p_operation_id uuid default gen_random_uuid()
 )
 returns jsonb
 language plpgsql
@@ -332,35 +334,10 @@ begin
 end;
 $function$;
 
--- Backward-compatible legacy signature. It receives correctly but cannot make
--- a caller retry-safe without an operation id, so each invocation is a new
--- bounded receipt.
-create or replace function public.receive_po_part_and_allocate(
-  p_po_id uuid,
-  p_part_id uuid,
-  p_location_id uuid,
-  p_qty numeric
-)
-returns jsonb
-language plpgsql
-security definer
-set search_path to 'public', 'pg_temp'
-as $function$
-begin
-  return public.receive_po_part_and_allocate(
-    p_po_id => p_po_id,
-    p_part_id => p_part_id,
-    p_location_id => p_location_id,
-    p_qty => p_qty,
-    p_operation_id => gen_random_uuid()
-  );
-end;
-$function$;
-
+-- The default keeps legacy four-argument SQL/PostgREST calls working. Callers
+-- that need retry safety supply p_operation_id explicitly.
 revoke all on function public.receive_po_part_and_allocate(uuid, uuid, uuid, numeric, uuid) from public, anon;
-revoke all on function public.receive_po_part_and_allocate(uuid, uuid, uuid, numeric) from public, anon;
 grant execute on function public.receive_po_part_and_allocate(uuid, uuid, uuid, numeric, uuid) to authenticated, service_role;
-grant execute on function public.receive_po_part_and_allocate(uuid, uuid, uuid, numeric) to authenticated, service_role;
 
 comment on function public.receive_po_part_and_allocate(uuid, uuid, uuid, numeric, uuid)
 is 'Atomically receives a PO part exactly once per operation id, advances PO lines, and allocates matching requests.';
