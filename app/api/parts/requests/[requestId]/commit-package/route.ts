@@ -32,7 +32,7 @@ export async function POST(
   }
 
   const access = await requireShopScopedApiAccess({
-    requiredCapability: "canManageWorkOrders",
+    requiredCapability: "canManageParts",
   });
   if (!access.ok) return access.response;
 
