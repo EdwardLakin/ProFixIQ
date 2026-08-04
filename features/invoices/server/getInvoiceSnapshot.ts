@@ -524,4 +524,774 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
             | "phone_number"
             | "email"
             | "business_name"
-   ßMz¶‰žËkºwµçuÌ(€€ø ¤ì(€™½È€¡½¹ÍÐ¥Ñ•´½˜™…±±‰…­I•ÅÕ•ÍÑ%Ñ•µÌ¤ì(€€€¥˜€ …¥Ñ•´¹Ý½É­}½É‘•É}±¥¹•}¥¤½¹Ñ¥¹Õ”ì(€€€‰å1¥¹•…±±‰…­I•ÅÕ•ÍÑ%Ñ•µÌ¹Í•Ð¡¥Ñ•´¹Ý½É­}½É‘•É}±¥¹•}¥°l(€€€€€€¸¸¸¡‰å1¥¹•…±±‰…­I•ÅÕ•ÍÑ%Ñ•µÌ¹•Ð¡¥Ñ•´¹Ý½É­}½É‘•É}±¥¹•}¥¤€üümt¤°(€€€€€¥Ñ•´°(€€€t¤ì(€ô((€½¹ÍÐÁ…ÉÑ%‘Ì€ôÉÉ…ä¹™É½´ (€€€¹•ÜM•Ð (€€€€€l(€€€€€€€€¸¸¹…±±½Ì¹µ…À ¡„¤€ôø„¹Á…ÉÑ}¥¤°(€€€€€€€€¸¸¹ÍÑ…•‘A…ÉÑÌ¹µ…À ¡Á…ÉÐ¤€ôøÁ…ÉÐ¹Á…ÉÑ}¥¤°(€€€€€€€€¸¸¹™…±±‰…­I•ÅÕ•ÍÑ%Ñ•µÌ¹µ…À ¡¥Ñ•´¤€ôø¥Ñ•´¹Á…ÉÑ}¥¤°(€€€€€t(€€€€€€€€¹™¥±Ñ•È¡¥Í9½¹µÁÑåMÑÉ¥¹œ¤(€€€€€€€€¹µ…À ¡¥¤€ôø¥¹ÑÉ¥´ ¤¤°(€€€€¤°(€€¤ì((€½¹ÍÐÁ…ÉÑÍ5…À€ô¹•Ü5…Àð(€€€ÍÑÉ¥¹œ°(€€€A¥¬ð(€€€€€A…ÉÑI½Ü°(€€€€€€‰¥ˆð€‰¹…µ”ˆð€‰Í­Ôˆð€‰Á…ÉÑ}¹Õµ‰•Èˆð€‰Õ¹¥Ðˆð€‰ÁÉ¥”ˆð€‰‘•™…Õ±Ñ}ÁÉ¥”ˆ(€€€€ø(€€ø ¤ì((€¥˜€¡Á…ÉÑ%‘Ì¹±•¹Ñ €ø€À¤ì(€€€½¹ÍÐì‘…Ñ„èÁ…ÉÑI½ÝÌ°•ÉÉ½ÈèÁ…ÉÑI½ÝÍÉÉ½Èô€ô…Ý…¥ÐÍÕÁ…‰…Í”(€€€€€€¹™É½´ ‰Á…ÉÑÌˆ¤(€€€€€€¹Í•±•Ð ‰¥°¹…µ”°Í­Ô°Á…ÉÑ}¹Õµ‰•È°Õ¹¥Ð°ÁÉ¥”°‘•™…Õ±Ñ}ÁÉ¥”ˆ¤(€€€€€€¹•Ä ‰Í¡½Á}¥ˆ°Ý½É­=É‘•È¹Í¡½Á}¥¤(€€€€€€¹¥¸ ‰¥ˆ°Á…ÉÑ%‘Ì¤(€€€€€€¹É•ÑÕÉ¹Ìð(€€€€€€€ÉÉ…äð(€€€€€€€€€A¥¬ð(€€€€€€€€€€€A…ÉÑI½Ü°(€€€€€€€€€€€ð€‰¥ˆ(€€€€€€€€€€€ð€‰¹…µ”ˆ(€€€€€€€€€€€ð€‰Í­Ôˆ(€€€€€€€€€€€ð€‰Á…ÉÑ}¹Õµ‰•Èˆ(€€€€€€€€€€€ð€‰Õ¹¥Ðˆ(€€€€€€€€€€€ð€‰ÁÉ¥”ˆ(€€€€€€€€€€€ð€‰‘•™…Õ±Ñ}ÁÉ¥”ˆ(€€€€€€€€€€ø(€€€€€€€€ø(€€€€€€ø ¤ì((€€€¥˜€¡Á…ÉÑI½ÝÍÉÉ½È¤ì(€€€€€Ñ¡É½Ü¹•ÜÉÉ½È (€€€€€€€A…ÉÑÌ…Ñ…±½œÁÉ¥¥¹œ¥ÌÕ¹…Ù…¥±…‰±”è€‘íÁ…ÉÑI½ÝÍÉÉ½È¹µ•ÍÍ…•õ€°(€€€€€€¤ì(€€€ô((€€€™½È€¡½¹ÍÐÀ½˜ÉÉ…ä¹¥ÍÉÉ…ä¡Á…ÉÑI½ÝÌ¤€üÁ…ÉÑI½ÝÌ€èmt¤ì(€€€€€¥˜€¡¥Í9½¹µÁÑåMÑÉ¥¹œ¡À¹¥¤¤Á…ÉÑÍ5…À¹Í•Ð¡À¹¥°À¤ì(€€€ô(€ô((€½¹ÍÐÉ•ÅÕ•ÍÑ%Ñ•µ	å%€ô¹•Ü5…À¡É•ÅÕ•ÍÑ%Ñ•µÌ¹µ…À ¡¥Ñ•´¤€ôøm¥Ñ•´¹¥°¥Ñ•µt¤¤ì(€½¹ÍÐ…±±½…Ñ¥½¹A…ÉÑ	å%€ô¹•Ü5…ÀñÍÑÉ¥¹œ°%¹Ù½¥•M¹…ÁÍ¡½ÑA…ÉÐø ¤ì(€™½È€¡½¹ÍÐ„½˜…±±½Ì¤ì(€€€½¹ÍÐÀ€ô¥Í9½¹µÁÑåMÑÉ¥¹œ¡„¹Á…ÉÑ}¥¤€üÁ…ÉÑÍ5…À¹•Ð¡„¹Á…ÉÑ}¥¤€èÕ¹‘•™¥¹•ì(€€€½¹ÍÐÉ•ÅÕ•ÍÑ%Ñ•´€ô¥Í9½¹µÁÑåMÑÉ¥¹œ¡„¹Í½ÕÉ•}É•ÅÕ•ÍÑ}¥Ñ•µ}¥¤(€€€€€€üÉ•ÅÕ•ÍÑ%Ñ•µ	å%¹•Ð¡„¹Í½ÕÉ•}É•ÅÕ•ÍÑ}¥Ñ•µ}¥¤(€€€€€€èÕ¹‘•™¥¹•ì(€€€½¹ÍÐÅÑåI…Ü€ôÍ…™•9Õµ‰•È¡„¹ÅÑä¤ì(€€€½¹ÍÐÅÑä€ôÅÑåI…Ü€ø€À€üÅÑåI…Ü€è€Äì(€€€€¼¼±±½…Ñ¥½¸½ÍÐ¥Ì…¸¥¹Ñ•É¹…°Ù…±Õ…Ñ¥½¸…¹µÕÍÐ¹•Ù•È‰•½µ”„ÕÍÑ½µ•È(€€€€¼¼¡…É”¸AÉ•™•ÈÑ¡”É•ÅÕ•ÍÐÌÕÍÑ½µ•ÈÅÕ½Ñ”°Ñ¡•¸Ñ¡”…Ñ…±½œÍ•±°ÁÉ¥”¸(€€€½¹ÍÐÕ¹¥ÑAÉ¥”€ô(€€€€€€¡É•ÅÕ•ÍÑ%Ñ•´€ü¥Ñ•µU¹¥ÑAÉ¥”¡É•ÅÕ•ÍÑ%Ñ•´¤€è€À¤ñð(€€€€€Í…™•9Õµ‰•È¡Àü¹ÁÉ¥”¤ñð(€€€€€Í…™•9Õµ‰•È¡Àü¹‘•™…Õ±Ñ}ÁÉ¥”¤ì(€€€½¹ÍÐÑ½Ñ…±AÉ¥”€ô5…Ñ ¹µ…à À°ÅÑä€¨Õ¹¥ÑAÉ¥”¤ì(€€€½¹ÍÐ±¥‘I…Ü€ô„¹Ý½É­}½É‘•É}±¥¹•}¥ì(€€€½¹ÍÐ±¥¹•%€ô¥Í9½¹µÁÑåMÑÉ¥¹œ¡±¥‘I…Ü¤€ü±¥‘I…Ü¹ÑÉ¥´ ¤€èÕ¹‘•™¥¹•ì((€€€…±±½…Ñ¥½¹A…ÉÑ	å%¹Í•Ð¡MÑÉ¥¹œ¡„¹¥¤°ì(€€€€€¥èMÑÉ¥¹œ¡„¹¥¤°(€€€€€ÁÉ¥¥¹M½ÕÉ•%èÉ•ÅÕ•ÍÑ%Ñ•´ü¹¥°(€€€€€±¥¹•%°(€€€€€¹…µ”è€¡Àü¹¹…µ”€üü€‰A…ÉÐˆ¤¹ÑÉ¥´ ¤ñð€‰A…ÉÐˆ°(€€€€€ÅÑä°(€€€€€Õ¹¥ÑAÉ¥”°(€€€€€Ñ½Ñ…±AÉ¥”°(€€€€€Í­Ôè€¡Àü¹Í­Ô€üü€ˆˆ¤¹ÑÉ¥´ ¤ñðÕ¹‘•™¥¹•°(€€€€€Á…ÉÑ9Õµ‰•Èè€¡Àü¹Á…ÉÑ}¹Õµ‰•È€üü€ˆˆ¤¹ÑÉ¥´ ¤ñðÕ¹‘•™¥¹•°(€€€€€Õ¹¥Ðè€¡Àü¹Õ¹¥Ð€üü€ˆˆ¤¹ÑÉ¥´ ¤ñðÕ¹‘•™¥¹•°(€€€€€Í½ÕÉ”è€‰Ý½É­}½É‘•É}Á…ÉÑ}…±±½…Ñ¥½¸ˆ°(€€€ô¤ì(€ô((€½¹ÍÐÍÑ…•‘%¹Ù½¥•A…ÉÑÌè%¹Ù½¥•M¹…ÁÍ¡½ÑA…ÉÑmt€ôÍÑ…•‘A…ÉÑÌ¹™±…Ñ5…À (€€€€¡Á…ÉÐ¤€ôøì(€€€€€½¹ÍÐÀ€ô¥Í9½¹µÁÑåMÑÉ¥¹œ¡Á…ÉÐ¹Á…ÉÑ}¥¤(€€€€€€€€üÁ…ÉÑÍ5…À¹•Ð¡Á…ÉÐ¹Á…ÉÑ}¥¤(€€€€€€€€èÕ¹‘•™¥¹•ì(€€€€€½¹ÍÐÁ…ÉÑI•½É€ôÁ…ÉÐ…ÌI•½ÉñÍÑÉ¥¹œ°Õ¹­¹½Ý¸øì(€€€€€¥˜€¡Á…ÉÑI•½É¹¥Í}…Ñ¥Ù”€ôôô™…±Í”¤É•ÑÕÉ¸mtì(€€€€€€¼¼ÁÁÉ½Ù…°™É••é•ÌÑ¡”ÕÍÑ½µ•Èµ™…¥¹œÅÕ…¹Ñ¥Ñä½¸Ý½É­}½É‘•É}Á…ÉÑÌ¸(€€€€€€¼¼½¹ÍÕµÁÑ¥½¸¥Ì…¸¥¹Ù•¹Ñ½Éä•Ù•¹Ð…¹µÕÍÐ¹½Ð¡…¹”¥¹Ù½¥”ÅÕ…¹Ñ¥Ñä¸(€€€€€½¹ÍÐÅÑä€ôÉ•Í½±Ù•ÁÁÉ½Ù•‘A…ÉÑ%¹Ù½¥•EÕ…¹Ñ¥Ñä¡ì(€€€€€€€ÅÕ…¹Ñ¥ÑåI•ÅÕ•ÍÑ•èÁ…ÉÑI•½É¹ÅÕ…¹Ñ¥Ñå}É•ÅÕ•ÍÑ•°(€€€€€€€ÅÕ…¹Ñ¥ÑäèÁ…ÉÐ¹ÅÕ…¹Ñ¥Ñä°(€€€€€€€ÅÕ…¹Ñ¥ÑåI•ÑÕÉ¹•èÁ…ÉÑI•½É¹ÅÕ…¹Ñ¥Ñå}É•ÑÕÉ¹•°(€€€€€€€ÅÕ…¹Ñ¥Ñå…¹•±±•èÁ…ÉÑI•½É¹ÅÕ…¹Ñ¥Ñå}…¹•±±•°(€€€€€ô¤ì(€€€€€¥˜€¡ÅÑä€ðô€À¤É•ÑÕÉ¸mtì(€€€€€½¹ÍÐÑ½Ñ…±I…Ü€ôÍ…™•9Õµ‰•È¡Á…ÉÐ¹Ñ½Ñ…±}ÁÉ¥”¤ì(€€€€€½¹ÍÐÕ¹¥ÑAÉ¥”€ô(€€€€€€€Í…™•9Õµ‰•È¡Á…ÉÑI•½É¹Õ¹¥Ñ}Í•±±}ÁÉ¥•}Í¹…ÁÍ¡½Ð¤ñð(€€€€€€€Í…™•9Õµ‰•È¡Á…ÉÐ¹Õ¹¥Ñ}ÁÉ¥”¤ñð(€€€€€€€Í…™•9Õµ‰•È¡Àü¹ÁÉ¥”¤ñð(€€€€€€€Í…™•9Õµ‰•È¡Àü¹‘•™…Õ±Ñ}ÁÉ¥”¤ì(€€€€€½¹ÍÐÑ½Ñ…±AÉ¥”€ô(€€€€€€€Õ¹¥ÑAÉ¥”€ø€À€ü5…Ñ ¹µ…à À°ÅÑä€¨Õ¹¥ÑAÉ¥”¤€èÑ½Ñ…±I…Üì(€€€€€½¹ÍÐ±¥¹•%€ô¥Í9½¹µÁÑåMÑÉ¥¹œ¡Á…ÉÐ¹Ý½É­}½É‘•É}±¥¹•}¥¤(€€€€€€€€üÁ…ÉÐ¹Ý½É­}½É‘•É}±¥¹•}¥¹ÑÉ¥´ ¤(€€€€€€€€èÕ¹‘•™¥¹•ì((€€€€€É•ÑÕÉ¸l(€€€€€€€ì(€€€€€€€€€¥èMÑÉ¥¹œ¡Á…ÉÐ¹¥¤°(€€€€€€€€€±¥¹•%°(€€€€€€€€€¹…µ”è(€€€€€€€€€€€€ (€€€€€€€€€€€€€MÑÉ¥¹œ¡Á…ÉÑI•½É¹‘•ÍÉ¥ÁÑ¥½¹}Í¹…ÁÍ¡½Ð€üü€ˆˆ¤¹ÑÉ¥´ ¤ñð(€€€€€€€€€€€€€€¡Àü¹¹…µ”€üü€‰A…ÉÐˆ¤(€€€€€€€€€€€€¤¹ÑÉ¥´ ¤ñð€‰A…ÉÐˆ°(€€€€€€€€€ÅÑä°(€€€€€€€€€Õ¹¥ÑAÉ¥”°(€€€€€€€€€Ñ½Ñ…±AÉ¥”°(€€€€€€€€€Í­Ôè€¡Àü¹Í­Ô€üü€ˆˆ¤¹ÑÉ¥´ ¤ñðÕ¹‘•™¥¹•°(€€€€€€€€€Á…ÉÑ9Õµ‰•Èè(€€€€€€€€€€€€ (€€€€€€€€€€€€€MÑÉ¥¹œ¡Á…ÉÑI•½É¹Á…ÉÑ}¹Õµ‰•É}Í¹…ÁÍ¡½Ð€üü€ˆˆ¤¹ÑÉ¥´ ¤ñð(€€€€€€€€€€€€€€¡Àü¹Á…ÉÑ}¹Õµ‰•È€üü€ˆˆ¤(€€€€€€€€€€€€¤¹ÑÉ¥´ ¤ñðÕ¹‘•™¥¹•°(€€€€€€€€€Õ¹¥Ðè€¡Àü¹Õ¹¥Ð€üü€ˆˆ¤¹ÑÉ¥´ ¤ñðÕ¹‘•™¥¹•°(€€€€€€€€€Í½ÕÉ”è€‰Ý½É­}½É‘•É}Á…ÉÐˆ°(€€€€€€€ô°(€€€€€tì(€€€ô°(€€¤ì((€½¹ÍÐÉ•ÅÕ•ÍÑ%Ñ•µ%¹Ù½¥•A…ÉÑÌè%¹Ù½¥•M¹…ÁÍ¡½ÑA…ÉÑmt€ô(€€€™…±±‰…­I•ÅÕ•ÍÑ%Ñ•µÌ¹µ…À ¡¥Ñ•´¤€ôøì(€€€€€½¹ÍÐÀ€ô¥Í9½¹µÁÑåMÑÉ¥¹œ¡¥Ñ•´¹Á…ÉÑ}¥¤(€€€€€€€€üÁ…ÉÑÍ5…À¹•Ð¡¥Ñ•´¹Á…ÉÑ}¥¤(€€€€€€€€èÕ¹‘•™¥¹•ì(€€€€€½¹ÍÐÅÑä€ô¥Ñ•µEÕ…¹Ñ¥Ñä¡¥Ñ•´¤ì(€€€€€½¹ÍÐÕ¹¥ÑAÉ¥”€ô¥Ñ•µU¹¥ÑAÉ¥”¡¥Ñ•´¤ì(€€€€€½¹ÍÐ±¥¹•%€ô¥Í9½¹µÁÑåMÑÉ¥¹œ¡¥Ñ•´¹Ý½É­}½É‘•É}±¥¹•}¥¤(€€€€€€€€ü¥Ñ•´¹Ý½É­}½É‘•É}±¥¹•}¥¹ÑÉ¥´ ¤(€€€€€€€€èÕ¹‘•™¥¹•ì(€€€€€½¹ÍÐ¹…µ”€ô(€€€€€€€€¡¥Ñ•´¹‘•ÍÉ¥ÁÑ¥½¸€üü€ˆˆ¤¹ÑÉ¥´ ¤ñð€¡Àü¹¹…µ”€üü€ˆˆ¤¹ÑÉ¥´ ¤ñð€‰A…ÉÐˆì((€€€€€É•ÑÕÉ¸ì(€€€€€€€¥èMÑÉ¥¹œ¡¥Ñ•´¹¥¤°(€€€€€€€±¥¹•%°(€€€€€€€¹…µ”°(€€€€€€€ÅÑä°(€€€€€€€Õ¹¥ÑAÉ¥”°(€€€€€€€Ñ½Ñ…±AÉ¥”è5…Ñ ¹µ…à À°ÅÑä€¨Õ¹¥ÑAÉ¥”¤°(€€€€€€€Í­Ôè€¡Àü¹Í­Ô€üü€ˆˆ¤¹ÑÉ¥´ ¤ñðÕ¹‘•™¥¹•°(€€€€€€€Á…ÉÑ9Õµ‰•Èè€¡Àü¹Á…ÉÑ}¹Õµ‰•È€üü€ˆˆ¤¹ÑÉ¥´ ¤ñðÕ¹‘•™¥¹•°(€€€€€€€Õ¹¥Ðè€¡Àü¹Õ¹¥Ð€üü€ˆˆ¤¹ÑÉ¥´ ¤ñðÕ¹‘•™¥¹•°(€€€€€€€Ù•¹‘½Èè€¡¥Ñ•´¹Ù•¹‘½È€üü€ˆˆ¤¹ÑÉ¥´ ¤ñðÕ¹‘•™¥¹•°(€€€€€€€Í½ÕÉ”è€‰ÅÕ½Ñ•}±¥¹•}Á…ÉÑ}É•ÅÕ•ÍÐˆ°(€€€€€ôì(€€€ô¤ì((€½¹ÍÐÍÑ…•‘A…ÉÑÍ	å1¥¹•½É¥ÍÁ±…ä€ô¹•Ü5…ÀñÍÑÉ¥¹œ°%¹Ù½¥•M¹…ÁÍ¡½ÑA…ÉÑmtø ¤ì(€™½È€¡½¹ÍÐÁ…ÉÐ½˜ÍÑ…•‘%¹Ù½¥•A…ÉÑÌ¤ì(€€€¥˜€ …Á…ÉÐ¹±¥¹•%¤½¹Ñ¥¹Õ”ì(€€€ÍÑ…•‘A…ÉÑÍ	å1¥¹•½É¥ÍÁ±…ä¹Í•Ð¡Á…ÉÐ¹±¥¹•%°l(€€€€€€¸¸¸¡ÍÑ…•‘A…ÉÑÍ	å1¥¹•½É¥ÍÁ±…ä¹•Ð¡Á…ÉÐ¹±¥¹•%¤€üümt¤°(€€€€€Á…ÉÐ°(€€€t¤ì(€ô((€½¹ÍÐ™…±±‰…­A…ÉÑÍ	å1¥¹•½É¥ÍÁ±…ä€ô¹•Ü5…Àð(€€€ÍÑÉ¥¹œ°(€€€%¹Ù½¥•M¹…ÁÍ¡½ÑA…ÉÑmt(€€ø ¤ì(€™½È€¡½¹ÍÐÁ…ÉÐ½˜É•ÅÕ•ÍÑ%Ñ•µ%¹Ù½¥•A…ÉÑÌ¤ì(€€€¥˜€ …Á…ÉÐ¹±¥¹•%¤½¹Ñ¥¹Õ”ì(€€€™…±±‰…­A…ÉÑÍ	å1¥¹•½É¥ÍÁ±…ä¹Í•Ð¡Á…ÉÐ¹±¥¹•%°l(€€€€€€¸¸¸¡™…±±‰…­A…ÉÑÍ	å1¥¹•½É¥ÍÁ±…ä¹•Ð¡Á…ÉÐ¹±¥¹•%¤€üümt¤°(€€€€€Á…ÉÐ°(€€€t¤ì(€ô((€½¹ÍÐÁ…ÉÑÌè%¹Ù½¥•M¹…ÁÍ¡½ÑA…ÉÑmt€ômtì(€™½È€¡½¹ÍÐ±¥¹”½˜±¥¹•Ì¤ì(€€€½¹ÍÐ±¥¹•±±½…Ñ¥½¹Ì€ô‰å1¥¹•±±½Œ¹•Ð¡±¥¹”¹¥¤€üümtì(€€€½¹ÍÐ±¥¹•MÑ…•€ôÍÑ…•‘A…ÉÑÍ	å1¥¹•½É¥ÍÁ±…ä¹•Ð¡±¥¹”¹¥¤€üümtì(€€€½¹ÍÐÉ…Ý1¥¹•MÑ…•€ô‰å1¥¹•MÑ…•¹•Ð¡±¥¹”¹¥¤€üümtì(€€€½¹ÍÐ‘¥ÍÁ±…å•‘MÑ…•‘%‘Ì€ô¹•ÜM•Ð¡±¥¹•MÑ…•¹µ…À ¡Á…ÉÐ¤€ôøÁ…ÉÐ¹¥¤¤ì(€€€½¹ÍÐÕ¹‰…­•‘±±½…Ñ¥½¹Ì€ô™¥±Ñ•É%¹Ù½¥•A…ÉÑ±±½…Ñ¥½¹Ì¡ì(€€€€€…±±½…Ñ¥½¹Ìè±¥¹•±±½…Ñ¥½¹Ì°(€€€€€ÍÑ…•‘A…ÉÑÌèÉ…Ý1¥¹•MÑ…•…ÌÉÉ…äð(€€€€€€€€¡ÑåÁ•½˜É…Ý1¥¹•MÑ…•¥m¹Õµ‰•Ét€˜ì(€€€€€€€€€Í½ÕÉ•}Á…ÉÑÍ}É•ÅÕ•ÍÑ}¥Ñ•µ}¥üèÍÑÉ¥¹œð¹Õ±°ì(€€€€€€€ô(€€€€€€ø°(€€€€€‘¥ÍÁ±…å•‘MÑ…•‘A…ÉÑ%‘Ìè‘¥ÍÁ±…å•‘MÑ…•‘%‘Ì°(€€€ô¤ì(€€€½¹ÍÐÕ¹‰…­•‘±±½…Ñ¥½¹A…ÉÑÌ€ôÕ¹‰…­•‘±±½…Ñ¥½¹Ì¹™±…Ñ5…À (€€€€€€¡…±±½…Ñ¥½¸¤€ôøì(€€€€€€€½¹ÍÐÁ…ÉÐ€ô…±±½…Ñ¥½¹A…ÉÑ	å%¹•Ð¡MÑÉ¥¹œ¡…±±½…Ñ¥½¸¹¥¤¤ì(€€€€€€€É•ÑÕÉ¸Á…ÉÐ€ümÁ…ÉÑt€èmtì(€€€€€ô°(€€€€¤ì((€€€¥˜€¡±¥¹•MÑ…•¹±•¹Ñ €ø€À¤ì(€€€€€Á…ÉÑÌ¹ÁÕÍ  ¸¸¹±¥¹•MÑ…•¤ì(€€€€€Á…ÉÑÌ¹ÁÕÍ  ¸¸¹Õ¹‰…­•‘±±½…Ñ¥½¹A…ÉÑÌ¤ì(€€€€€½¹Ñ¥¹Õ”ì(€€€ô((€€€¥˜€¡Õ¹‰…­•‘±±½…Ñ¥½¹A…ÉÑÌ¹±•¹Ñ €ø€À¤ì(€€€€€Á…ÉÑÌ¹ÁÕÍ  ¸¸¹Õ¹‰…­•‘±±½…Ñ¥½¹A…ÉÑÌ¤ì(€€€€€½¹Ñ¥¹Õ”ì(€€€ô((€€€Á…ÉÑÌ¹ÁÕÍ  ¸¸¸¡™…±±‰…­A…ÉÑÍ	å1¥¹•½É¥ÍÁ±…ä¹•Ð¡±¥¹”¹¥¤€üümt¤¤ì(€ô((€½¹ÍÐ½Ù•ÉÉ¥‘•±¥•¹Ð€ôÍÕÁ…‰…Í”…ÌÕ¹­¹½Ý¸…ÌAÉ¥¥¹=Ù•ÉÉ¥‘•±¥•¹Ðì(€½¹ÍÐì‘…Ñ„èÁÉ¥¥¹=Ù•ÉÉ¥‘”°•ÉÉ½ÈèÁÉ¥¥¹=Ù•ÉÉ¥‘•ÉÉ½Èô€ô(€€€…Ý…¥Ð½Ù•ÉÉ¥‘•±¥•¹Ð(€€€€€€¹™É½´ ‰¥¹Ù½¥•}ÁÉ¥¥¹}½Ù•ÉÉ¥‘•Ìˆ¤(€€€€€€¹Í•±•Ð ‰±¥¹•}±…‰½É}Ñ½Ñ…±Ì±Á…ÉÑ}Õ¹¥Ñ}ÁÉ¥•Ì±Í¡½Á}ÍÕÁÁ±¥•Í}…µ½Õ¹Ðˆ¤(€€€€€€¹•Ä ‰Í¡½Á}¥ˆ°Ý½É­=É‘•È¹Í¡½Á}¥¤(€€€€€€¹•Ä ‰Ý½É­}½É‘•É}¥ˆ°Ý½É­=É‘•É%¤(€€€€€€¹µ…å‰•M¥¹±”ñ%¹Ù½¥•AÉ¥¥¹=Ù•ÉÉ¥‘•I½Üø ¤ì(€¥˜€ (€€€ÁÉ¥¥¹=Ù•ÉÉ¥‘•ÉÉ½È€˜˜(€€€€„½Í¡•µ„…¡•ñ‘½•Ì¹½Ð•á¥ÍÐ½¤¹Ñ•ÍÐ¡ÁÉ¥¥¹=Ù•ÉÉ¥‘•ÉÉ½È¹µ•ÍÍ…”¤(€€¤ì(€€€Ñ¡É½Ü¹•ÜÉÉ½È (€€€€€%¹Ù½¥”ÁÉ¥¥¹œ½Ù•ÉÉ¥‘•Ì…É”Õ¹…Ù…¥±…‰±”è€‘íÁÉ¥¥¹=Ù•ÉÉ¥‘•ÉÉ½È¹µ•ÍÍ…•õ€°(€€€€¤ì(€ô(€½¹ÍÐ±¥¹•1…‰½É=Ù•ÉÉ¥‘•Ì€ôµ½¹•å=Ù•ÉÉ¥‘•5…À (€€€ÁÉ¥¥¹=Ù•ÉÉ¥‘”ü¹±¥¹•}±…‰½É}Ñ½Ñ…±Ì°(€€¤ì(€½¹ÍÐÁ…ÉÑAÉ¥•=Ù•ÉÉ¥‘•Ì€ôµ½¹•å=Ù•ÉÉ¥‘•5…À (€€€ÁÉ¥¥¹=Ù•ÉÉ¥‘”ü¹Á…ÉÑ}Õ¹¥Ñ}ÁÉ¥•Ì°(€€¤ì(€™½È€¡½¹ÍÐÁ…ÉÐ½˜Á…ÉÑÌ¤ì(€€€½¹ÍÐ½Ù•ÉÉ¥‘”€ô(€€€€€Á…ÉÑAÉ¥•=Ù•ÉÉ¥‘•Ì¹•Ð¡Á…ÉÐ¹ÁÉ¥¥¹M½ÕÉ•%€üü€ˆˆ¤€üü(€€€€€Á…ÉÑAÉ¥•=Ù•ÉÉ¥‘•Ì¹•Ð¡Á…ÉÐ¹¥¤ì(€€€¥˜€¡½Ù•ÉÉ¥‘”€ôô¹Õ±°¤½¹Ñ¥¹Õ”ì(€€€Á…ÉÐ¹Õ¹¥ÑAÉ¥”€ô½Ù•ÉÉ¥‘”ì(€€€Á…ÉÐ¹Ñ½Ñ…±AÉ¥”€ô5…Ñ ¹µ…à À°Í…™•9Õµ‰•È¡Á…ÉÐ¹ÅÑä¤€¨½Ù•ÉÉ¥‘”¤ì(€ô((€½¹ÍÐÕ¹ÁÉ¥•‘A…ÉÐ€ôÁ…ÉÑÌ¹™¥¹ (€€€€¡Á…ÉÐ¤€ôøÍ…™•9Õµ‰•È¡Á…ÉÐ¹ÅÑä¤€ø€À€˜˜Í…™•9Õµ‰•È¡Á…ÉÐ¹Õ¹¥ÑAÉ¥”¤€ðô€À°(€€¤ì(€¥˜€¡Õ¹ÁÉ¥•‘A…ÉÐ¤ì(€€€Ñ¡É½Ü¹•ÜÉÉ½È (€€€€€ÕÍÑ½µ•ÈÍ•±°ÁÉ¥”¥Ìµ¥ÍÍ¥¹œ™½È€‘íÕ¹ÁÉ¥•‘A…ÉÐ¹¹…µ”ñð€‰…¸…ÑÑ…¡•Á…ÉÐ‰ô¹€°(€€€€¤ì(€ô(€¥˜€ (€€€Á…ÉÑÌ¹±•¹Ñ €ôôô€À€˜˜(€€€€¡…±±½Ì¹±•¹Ñ €ø€Àñð(€€€€€ÍÑ…•‘%¹Ù½¥•A…ÉÑÌ¹±•¹Ñ €ø€Àñð(€€€€€™…±±‰…­I•ÅÕ•ÍÑ%Ñ•µÌ¹±•¹Ñ €ø€À¤(€€¤ì(€€€Ñ¡É½Ü¹•ÜÉÉ½È (€€€€€€‰ÑÑ…¡•Á…ÉÑÌ½Õ±¹½Ð‰”É•Í½±Ù•¥¹Ñ¼¥¹Ù½¥”±¥¹”¥Ñ•µÌ¸ˆ°(€€€€¤ì(€ô((€½¹ÍÐÕÍ•A•ÉÍ¥ÍÑ•‘%¹Ù½¥•Q½Ñ…±Ì€ôÍ¡½Õ±‘UÍ•A•ÉÍ¥ÍÑ•‘%¹Ù½¥•Q½Ñ…±Ì¡ì(€€€Ý½É­=É‘•ÉMÑ…ÑÕÌèÝ½É­=É‘•È¹ÍÑ…ÑÕÌ°(€€€¥¹Ù½¥•MÑ…ÑÕÌè¥¹Ù½¥”ü¹ÍÑ…ÑÕÌ°(€ô¤ì((€½¹ÍÐÕÉÉ•¹ä€ô(€€€€¡ÕÍ•A•ÉÍ¥ÍÑ•‘%¹Ù½¥•Q½Ñ…±Ì(€€€€€€ü¹½Éµ…±¥é•%¹Ù½¥•ÕÉÉ•¹ä¡¥¹Ù½¥”ü¹ÕÉÉ•¹ä¤(€€€€€€è¹Õ±°¤€üü¹½Éµ…±¥é•ÕÉÉ•¹åÉ½µ½Õ¹ÑÉä¡Í¡½Àü¹½Õ¹ÑÉä¤ì((€½¹ÍÐ¥¹ÙMÕ‰Ñ½Ñ…°€ôÕÍ•A•ÉÍ¥ÍÑ•‘%¹Ù½¥•Q½Ñ…±Ì(€€€€üÍ…™•9Õµ‰•É=É9Õ±°¡¥¹Ù½¥”ü¹ÍÕ‰Ñ½Ñ…°¤(€€€€è¹Õ±°ì(€½¹ÍÐ¥¹Ù1…‰½È€ôÕÍ•A•ÉÍ¥ÍÑ•‘%¹Ù½¥•Q½Ñ…±Ì(€€€€üÍ…™•9Õµ‰•É=É9Õ±°¡¥¹Ù½¥”ü¹±…‰½É}½ÍÐ¤(€€€€è¹Õ±°ì(€½¹ÍÐ¥¹ÙA…ÉÑÌ€ôÕÍ•A•ÉÍ¥ÍÑ•‘%¹Ù½¥•Q½Ñ…±Ì(€€€€üÍ…™•9Õµ‰•É=É9Õ±°¡¥¹Ù½¥”ü¹Á…ÉÑÍ}½ÍÐ¤(€€€€è¹Õ±°ì(€½¹ÍÐ¥¹ÙMÕÁÁ±¥•Ì€ôÕÍ•A•ÉÍ¥ÍÑ•‘%¹Ù½¥•Q½Ñ…±Ì(€€€€üÍ…™•9Õµ‰•É=É9Õ±°¡¥¹Ù½¥”ü¹Í¡½Á}ÍÕÁÁ±¥•Í}Ñ½Ñ…°¤(€€€€è¹Õ±°ì(€½¹ÍÐ¥¹ÙQ½Ñ…°€ôÕÍ•A•ÉÍ¥ÍÑ•‘%¹Ù½¥•Q½Ñ…±Ì(€€€€üÍ…™•9Õµ‰•É=É9Õ±°¡¥¹Ù½¥”ü¹Ñ½Ñ…°¤(€€€€è¹Õ±°ì(€½¹ÍÐ¥¹Ù¥Í½Õ¹Ð€ôÕÍ•A•ÉÍ¥ÍÑ•‘%¹Ù½¥•Q½Ñ…±Ì(€€€€üÍ…™•9Õµ‰•È¡¥¹Ù½¥”ü¹‘¥Í½Õ¹Ñ}Ñ½Ñ…°¤(€€€€è€Àì(€½¹ÍÐ¥¹ÙQ…à€ôÕÍ•A•ÉÍ¥ÍÑ•‘%¹Ù½¥•Q½Ñ…±Ì€üÍ…™•9Õµ‰•È¡¥¹Ù½¥”ü¹Ñ…á}Ñ½Ñ…°¤€è€Àì((€½¹ÍÐÝ½1…‰½È€ôÁ½Í¥Ñ¥Ù•=É9Õ±°¡Ý½É­=É‘•È¹±…‰½É}Ñ½Ñ…°¤ì(€½¹ÍÐÝ½A…ÉÑÌ€ôÁ½Í¥Ñ¥Ù•=É9Õ±°¡Ý½É­=É‘•È¹Á…ÉÑÍ}Ñ½Ñ…°¤ì(€½¹ÍÐÝ½%¹Ù½¥•Q½Ñ…°€ôÁ½Í¥Ñ¥Ù•=É9Õ±°¡Ý½É­=É‘•È¹¥¹Ù½¥•}Ñ½Ñ…°¤ì((€½¹ÍÐ‰å1¥¹•EÕ½Ñ”€ô¹•Ü5…ÀñÍÑÉ¥¹œ°€¡ÑåÁ•½˜…Ñ¥Ù•EÕ½Ñ•Ì¥m¹Õµ‰•Étø ¤ì(€™½È€¡½¹ÍÐÄ½˜…Ñ¥Ù•EÕ½Ñ•Ì¤ì(€€€¥˜€ …Ä¹Ý½É­}½É‘•É}±¥¹•}¥¤½¹Ñ¥¹Õ”ì(€€€‰å1¥¹•EÕ½Ñ”¹Í•Ð¡Ä¹Ý½É­}½É‘•É}±¥¹•}¥°Ä¤ì(€ô((€±•ÐÉ•Í½±Ù•‘1…‰½È€ô€Àì(€±•ÐÉ•Í½±Ù•‘A…ÉÑÌ€ô€Àì(€½¹ÍÐÁÉ¥•‘1¥¹•Ìè%¹Ù½¥•M¹…ÁÍ¡½Ñ1¥¹•mt€ômtì(€™½È€¡½¹ÍÐ±¥¹”½˜±¥¹•Ì¤ì(€€€½¹ÍÐ±¥¹•A…ÉÑÌ€ôÁ…ÉÑÌ¹™¥±Ñ•È ¡Á…ÉÐ¤€ôøÁ…ÉÐ¹±¥¹•%€ôôô±¥¹”¹¥¤ì(€€€½¹ÍÐÍÑ…•‘AÉ¥¥¹A…ÉÑÌ€ô±¥¹•A…ÉÑÌ¹µ…À ¡Á…ÉÐ¤€ôø€¡ì(€€€€€ÅÕ…¹Ñ¥ÑäèÁ…ÉÐ¹ÅÑä°(€€€€€Õ¹¥Ñ}ÁÉ¥”èÁ…ÉÐ¹Õ¹¥ÑAÉ¥”°(€€€€€Ñ½Ñ…±}ÁÉ¥”èÁ…ÉÐ¹Ñ½Ñ…±AÉ¥”°(€€€ô¤¤ì((€€€½¹ÍÐÉ•Í½±Ù•€ôÉ•Í½±Ù•]½É­=É‘•É1¥¹•AÉ¥¥¹œ¡ì(€€€€€±¥¹”°(€€€€€ÅÕ½Ñ”è‰å1¥¹•EÕ½Ñ”¹•Ð¡±¥¹”¹¥¤€üü¹Õ±°°(€€€€€Í¡½Á1…‰½ÉI…Ñ”èÍ…™•9Õµ‰•É=É9Õ±°¡Í¡½Àü¹±…‰½É}É…Ñ”¤°(€€€€€ÍÑ…•‘A…ÉÑÌèÍÑ…•‘AÉ¥¥¹A…ÉÑÌ°(€€€€€…±±½…Ñ•‘A…ÉÑÌèmt°(€€€ô¤ì(€€€½¹ÍÐÉ•Í½±Ù•‘1¥¹•A…ÉÑÌ€ô(€€€€€±¥¹•A…ÉÑÌ¹±•¹Ñ €ø€À(€€€€€€€€ü±¥¹•A…ÉÑÌ¹É•‘Õ” ¡ÍÕ´°Á…ÉÐ¤€ôøÍÕ´€¬Í…™•9Õµ‰•È¡Á…ÉÐ¹Ñ½Ñ…±AÉ¥”¤°€À¤(€€€€€€€€èÉ•Í½±Ù•¹Á…ÉÑÍQ½Ñ…°ì(€€€½¹ÍÐÉ•Í½±Ù•‘1¥¹•1…‰½È€ô(€€€€€±¥¹•1…‰½É=Ù•ÉÉ¥‘•Ì¹•Ð¡±¥¹”¹¥¤€üüÉ•Í½±Ù•¹±…‰½ÉQ½Ñ…°ì(€€€É•Í½±Ù•‘1…‰½È€¬ôÉ•Í½±Ù•‘1¥¹•1…‰½Èì(€€€É•Í½±Ù•‘A…ÉÑÌ€¬ôÉ•Í½±Ù•‘1¥¹•A…ÉÑÌì(€€€ÁÉ¥•‘1¥¹•Ì¹ÁÕÍ ¡ì(€€€€€€¸¸¹±¥¹”°(€€€€€É•Í½±Ù•‘1…‰½É!½ÕÉÌèÉ•Í½±Ù•¹±…‰½É!½ÕÉÌ°(€€€€€É•Í½±Ù•‘1…‰½ÉI…Ñ”èÉ•Í½±Ù•¹±…‰½ÉI…Ñ”°(€€€€€É•Í½±Ù•‘1…‰½ÉQ½Ñ…°èÉ•Í½±Ù•‘1¥¹•1…‰½È°(€€€€€É•Í½±Ù•‘A…ÉÑÍQ½Ñ…°èÉ•Í½±Ù•‘1¥¹•A…ÉÑÌ°(€€€€€É•Í½±Ù•‘1¥¹•Q½Ñ…°èÉ•Í½±Ù•‘1¥¹•1…‰½È€¬É•Í½±Ù•‘1¥¹•A…ÉÑÌ°(€€€ô¤ì(€ô((€½¹ÍÐÕ¹É•Í½±Ù•‘1…‰½É1¥¹”€ôÁÉ¥•‘1¥¹•Ì¹™¥¹ (€€€€¡±¥¹”¤€ôø±¥¹”¹É•Í½±Ù•‘1…‰½É!½ÕÉÌ€ø€À€˜˜±¥¹”¹É•Í½±Ù•‘1…‰½ÉQ½Ñ…°€ðô€À°(€€¤ì(€¥˜€ …ÕÍ•A•ÉÍ¥ÍÑ•‘%¹Ù½¥•Q½Ñ…±Ì€˜˜Õ¹É•Í½±Ù•‘1…‰½É1¥¹”¤ì(€€€Ñ¡É½Ü¹•ÜÉÉ½È (€€€€€1…‰½ÈÉ…Ñ”¥Ìµ¥ÍÍ¥¹œ™½È€‘íÕ¹É•Í½±Ù•‘1…‰½É1¥¹”¹‘•ÍÉ¥ÁÑ¥½¸ñð±¥¹”€‘íÕ¹É•Í½±Ù•‘1…‰½É1¥¹”¹±¥¹•}¹¼€üü€ˆ‰õ€¹ÑÉ¥´ ¥ô¹€°(€€€€¤ì(€ô((€€¼¼á¥ÍÑ¥¹œ±¥¹”¥Ñ•µÌ…É”…ÕÑ¡½É¥Ñ…Ñ¥Ù”¸Ý½É­}½É‘•ÉÌ¹±…‰½É}Ñ½Ñ…°¡…Ì±•…ä(€€¼¼É½ÝÌÝ¡•É”€Ä¸ÀÉ•ÁÉ•Í•¹ÑÌ±…‰½È¡½ÕÉÌ°¹½Ð€Ä¸ÀÀ°Í¼½¹±äÕÍ”Ñ¡…ÐÉ½±±ÕÀ(€€¼¼Ý¡•¸Ñ¡•É”…É”¹¼¥Ñ•µ¥é•±¥¹•ÌÑ¼ÁÉ¥”¸(€½¹ÍÐ±…‰½É½ÍÐ€ô(€€€¥¹Ù1…‰½È€üü(€€€€¡É•Í½±Ù•‘1…‰½È€ø€À(€€€€€€üÉ•Í½±Ù•‘1…‰½È(€€€€€€èÁÉ¥•‘1¥¹•Ì¹±•¹Ñ €ôôô€À(€€€€€€€€üÝ½1…‰½È(€€€€€€€€è¹Õ±°¤€üü(€€€¹Õ±°ì(€½¹ÍÐÁ…ÉÑÍ½ÍÐ€ô(€€€¥¹ÙA…ÉÑÌ€üü€¡É•Í½±Ù•‘A…ÉÑÌ€ø€À€üÉ•Í½±Ù•‘A…ÉÑÌ€èÝ½A…ÉÑÌ¤€üü¹Õ±°ì((€½¹ÍÐ‰…Í•MÕ‰Ñ½Ñ…°€ô€¡±…‰½É½ÍÐ€üü€À¤€¬€¡Á…ÉÑÍ½ÍÐ€üü€À¤ì(€½¹ÍÐÍ¡½ÁMÕÁÁ±¥•Ì€ô…±Õ±…Ñ•M¡½ÁMÕÁÁ±¥•Ì¡ì(€€€‰…Í•µ½Õ¹Ðè‰…Í•MÕ‰Ñ½Ñ…°°(€€€Í•ÑÑ¥¹ÌèÉ•Í½±Ù•M¡½ÁMÕÁÁ±¥•ÍM•ÑÑ¥¹Ì (€€€€€Í¡½À…ÌA…É…µ•Ñ•ÉÌñÑåÁ•½˜É•Í½±Ù•M¡½ÁMÕÁÁ±¥•ÍM•ÑÑ¥¹ÌùlÁt°(€€€€¤°(€€€½Ù•ÉÉ¥‘”èÉ•Í½±Ù•M¡½ÁMÕÁÁ±¥•Í=Ù•ÉÉ¥‘” (€€€€€Ý½É­=É‘•È…ÌA…É…µ•Ñ•ÉÌñÑåÁ•½˜É•Í½±Ù•M¡½ÁMÕÁÁ±¥•Í=Ù•ÉÉ¥‘”ùlÁt°(€€€€¤°(€ô¤ì(€½¹ÍÐÁ•ÉÍ¥ÍÑ•‘MÕÁÁ±¥•Ì€ô(€€€ÕÍ•A•ÉÍ¥ÍÑ•‘%¹Ù½¥•Q½Ñ…±Ì€˜˜¥¹ÙMÕ‰Ñ½Ñ…°€„ô¹Õ±°(€€€€€€ü€¡¥¹ÙMÕÁÁ±¥•Ì€üü(€€€€€€€5…Ñ ¹µ…à À°¥¹ÙMÕ‰Ñ½Ñ…°€´€¡±…‰½É½ÍÐ€üü€À¤€´€¡Á…ÉÑÍ½ÍÐ€üü€À¤¤¤(€€€€€€è¹Õ±°ì(€½¹ÍÐÍ¡½ÁMÕÁÁ±¥•ÍQ½Ñ…°€ôÕÍ•A•ÉÍ¥ÍÑ•‘%¹Ù½¥•Q½Ñ…±Ì(€€€€üÁ•ÉÍ¥ÍÑ•‘MÕÁÁ±¥•Ì€˜˜Á•ÉÍ¥ÍÑ•‘MÕÁÁ±¥•Ì€ø€À(€€€€€€üÁ•ÉÍ¥ÍÑ•‘MÕÁÁ±¥•Ì(€€€€€€è¹Õ±°(€€€€èÁÉ¥¥¹=Ù•ÉÉ¥‘”ü¹Í¡½Á}ÍÕÁÁ±¥•Í}…µ½Õ¹Ð€„ô¹Õ±°(€€€€€€ü5…Ñ ¹µ…à À°Í…™•9Õµ‰•È¡ÁÉ¥¥¹=Ù•ÉÉ¥‘”¹Í¡½Á}ÍÕÁÁ±¥•Í}…µ½Õ¹Ð¤¤(€€€€€€èÍ¡½ÁMÕÁÁ±¥•Ì¹…µ½Õ¹Ð€ø€À(€€€€€€€€üÍ¡½ÁMÕÁÁ±¥•Ì¹…µ½Õ¹Ð(€€€€€€€€è¹Õ±°ì(€½¹ÍÐ½¹™¥ÕÉ•‘Q…áI…Ñ”€ô5…Ñ ¹µ…à À°Í…™•9Õµ‰•È¡Í¡½Àü¹Ñ…á}É…Ñ”¤¤ì(€½¹ÍÐ…±Õ±…Ñ•€ô…±Õ±…Ñ•%¹Ù½¥•Q½Ñ…±Ì¡ì(€€€±…‰½É½ÍÐè±…‰½É½ÍÐ€üü€À°(€€€Á…ÉÑÍ½ÍÐèÁ…ÉÑÍ½ÍÐ€üü€À°(€€€Í¡½ÁMÕÁÁ±¥•ÍQ½Ñ…°°(€€€‘¥Í½Õ¹ÑQ½Ñ…°è¥¹Ù¥Í½Õ¹Ð°(€€€Ñ…áI…Ñ•A•É•¹Ðè½¹™¥ÕÉ•‘Q…áI…Ñ”°(€ô¤ì(€½¹ÍÐÍÕ‰Ñ½Ñ…°€ôÕÍ•A•ÉÍ¥ÍÑ•‘%¹Ù½¥•Q½Ñ…±Ì(€€€€ü€¡¥¹ÙMÕ‰Ñ½Ñ…°€üü…±Õ±…Ñ•¹ÍÕ‰Ñ½Ñ…°¤(€€€€è…±Õ±…Ñ•¹ÍÕ‰Ñ½Ñ…°€ø€À(€€€€€€ü…±Õ±…Ñ•¹ÍÕ‰Ñ½Ñ…°(€€€€€€è¹Õ±°ì(€½¹ÍÐÑ…áQ½Ñ…°€ôÕÍ•A•ÉÍ¥ÍÑ•‘%¹Ù½¥•Q½Ñ…±Ì€ü¥¹ÙQ…à€è…±Õ±…Ñ•¹Ñ…áQ½Ñ…°ì(€½¹ÍÐÁ•ÉÍ¥ÍÑ•‘Q…á…‰±•	…Í”€ô5…Ñ ¹µ…à ¡ÍÕ‰Ñ½Ñ…°€üü€À¤€´¥¹Ù¥Í½Õ¹Ð°€À¤ì(€½¹ÍÐÑ…áI…Ñ”€ô(€€€ÕÍ•A•ÉÍ¥ÍÑ•‘%¹Ù½¥•Q½Ñ…±Ì€˜˜Á•ÉÍ¥ÍÑ•‘Q…á…‰±•	…Í”€ø€À(€€€€€€ü€¡Ñ…áQ½Ñ…°€¼Á•ÉÍ¥ÍÑ•‘Q…á…‰±•	…Í”¤€¨€ÄÀÀ(€€€€€€è½¹™¥ÕÉ•‘Q…áI…Ñ”ì(€½¹ÍÐ‘•É¥Ù•‘%¹Ù½¥•Q½Ñ…°€ô…±Õ±…Ñ•%¹Ù½¥•Q½Ñ…±Ì¡ì(€€€±…‰½É½ÍÐè±…‰½É½ÍÐ€üü€À°(€€€Á…ÉÑÍ½ÍÐèÁ…ÉÑÍ½ÍÐ€üü€À°(€€€Í¡½ÁMÕÁÁ±¥•ÍQ½Ñ…°°(€€€‘¥Í½Õ¹ÑQ½Ñ…°è¥¹Ù¥Í½Õ¹Ð°(€€€Ñ…áI…Ñ•A•É•¹ÐèÑ…áI…Ñ”°(€ô¤¹Ñ½Ñ…°ì(€½¹ÍÐÑ½Ñ…°€ôÕÍ•A•ÉÍ¥ÍÑ•‘%¹Ù½¥•Q½Ñ…±Ì(€€€€ü€¡¥¹ÙQ½Ñ…°€üü‘•É¥Ù•‘%¹Ù½¥•Q½Ñ…°¤(€€€€è‘•É¥Ù•‘%¹Ù½¥•Q½Ñ…°€ø€À(€€€€€€ü‘•É¥Ù•‘%¹Ù½¥•Q½Ñ…°(€€€€€€èÝ½%¹Ù½¥•Q½Ñ…°ì((€É•ÑÕÉ¸ì(€€€Ý½É­=É‘•È°(€€€¥¹Ù½¥”è¥¹Ù½¥”€üü¹Õ±°°(€€€Í¡½ÀèÍ¡½À€üü¹Õ±°°(€€€ÕÍÑ½µ•ÈèÕÍÑ½µ•È€üü¹Õ±°°(€€€Ù•¡¥±”èÙ•¡¥±”€üü¹Õ±°°(€€€±¥¹•ÌèÁÉ¥•‘1¥¹•Ì°(€€€Á…ÉÑÌ°(€€€ÕÉÉ•¹ä°(€€€±…‰½É½ÍÐ°(€€€Á…ÉÑÍ½ÍÐ°(€€€Í¡½ÁMÕÁÁ±¥•ÍQ½Ñ…°°(€€€ÍÕ‰Ñ½Ñ…°°(€€€‘¥Í½Õ¹ÑQ½Ñ…°è¥¹Ù¥Í½Õ¹Ð€ø€À€ü¥¹Ù¥Í½Õ¹Ð€è¹Õ±°°(€€€Ñ…áQ½Ñ…°èÑ…áQ½Ñ…°€ø€À€üÑ…áQ½Ñ…°€è¹Õ±°°(€€€Ñ…áI…Ñ”èÑ…áI…Ñ”€ø€À€üÑ…áI…Ñ”€è¹Õ±°°(€€€Ñ½Ñ…°°(€ôì)ô
+            | "street"
+            | "city"
+            | "province"
+            | "postal_code"
+          >
+        >()
+    : { data: null };
+
+  const { data: vehicle } = workOrder.vehicle_id
+    ? await supabase
+        .from("vehicles")
+        .select(
+          "year, make, model, vin, license_plate, unit_number, mileage, color, engine_hours",
+        )
+        .eq("id", workOrder.vehicle_id)
+        .maybeSingle<
+          Pick<
+            VehicleRow,
+            | "year"
+            | "make"
+            | "model"
+            | "vin"
+            | "license_plate"
+            | "unit_number"
+            | "mileage"
+            | "color"
+            | "engine_hours"
+          >
+        >()
+    : { data: null };
+
+  const { data: linesRaw, error: linesError } = await supabase
+    .from("work_order_lines")
+    .select(
+      "id, line_no, description, complaint, cause, correction, labor_time, price_estimate, intake_json",
+    )
+    .eq("shop_id", workOrder.shop_id)
+    .eq("work_order_id", workOrderId)
+    .order("line_no", { ascending: true })
+    .returns<
+      Array<
+        Pick<
+          WorkOrderLineRow,
+          | "id"
+          | "line_no"
+          | "description"
+          | "complaint"
+          | "cause"
+          | "correction"
+          | "labor_time"
+          | "price_estimate"
+          | "intake_json"
+        >
+      >
+    >();
+
+  if (linesError) {
+    throw new Error(
+      `Work-order labor lines are unavailable: ${linesError.message}`,
+    );
+  }
+
+  const lines = Array.isArray(linesRaw) ? linesRaw : [];
+
+  const { data: allocRaw, error: allocationsError } = await supabase
+    .from("work_order_part_allocations")
+    .select(
+      "id, shop_id, work_order_id, work_order_line_id, part_id, qty, unit_cost, source_request_item_id, created_at",
+    )
+    .eq("shop_id", workOrder.shop_id)
+    .eq("work_order_id", workOrderId)
+    .order("created_at", { ascending: true })
+    .returns<
+      Array<
+        Pick<
+          AllocationRow,
+          | "id"
+          | "shop_id"
+          | "work_order_id"
+          | "work_order_line_id"
+          | "part_id"
+          | "qty"
+          | "unit_cost"
+          | "source_request_item_id"
+          | "created_at"
+        >
+      >
+    >();
+
+  if (allocationsError) {
+    throw new Error(
+      `Allocated work-order parts are unavailable: ${allocationsError.message}`,
+    );
+  }
+
+  const allocs = Array.isArray(allocRaw) ? allocRaw : [];
+  const stagedPartsResult = await supabase
+    .from("work_order_parts")
+    .select(
+      "id, shop_id, work_order_line_id, part_id, quantity, unit_price, total_price, description_snapshot, manufacturer_snapshot, part_number_snapshot, quantity_requested, quantity_consumed, quantity_returned, quantity_cancelled, unit_sell_price_snapshot, lifecycle_status, source_parts_request_item_id, is_active",
+    )
+    .eq("shop_id", workOrder.shop_id)
+    .eq("work_order_id", workOrderId)
+    .returns<
+      Array<
+        Pick<
+          WorkOrderPartRow,
+          | "id"
+          | "shop_id"
+          | "work_order_line_id"
+          | "part_id"
+          | "quantity"
+          | "unit_price"
+          | "total_price"
+        > &
+          Record<string, unknown>
+      >
+    >();
+
+  // The lifecycle/snapshot columns are newer than the original
+  // work_order_parts shape. Fall back to the stable pricing columns so an
+  // older deployed schema still invoices its attached parts instead of
+  // returning an empty parts array.
+  const stagedPartsFallbackResult = stagedPartsResult.error
+    ? await supabase
+        .from("work_order_parts")
+        .select(
+          "id, shop_id, work_order_line_id, part_id, quantity, unit_price, total_price",
+        )
+        .eq("shop_id", workOrder.shop_id)
+        .eq("work_order_id", workOrderId)
+        .returns<
+          Array<
+            Pick<
+              WorkOrderPartRow,
+              | "id"
+              | "shop_id"
+              | "work_order_line_id"
+              | "part_id"
+              | "quantity"
+              | "unit_price"
+              | "total_price"
+            >
+          >
+        >()
+    : null;
+
+  if (stagedPartsFallbackResult?.error) {
+    throw new Error(
+      `Attached work-order parts are unavailable: ${stagedPartsFallbackResult.error.message}`,
+    );
+  }
+
+  const stagedPartsRaw =
+    stagedPartsResult.data ?? stagedPartsFallbackResult?.data ?? [];
+  const stagedParts = Array.isArray(stagedPartsRaw) ? stagedPartsRaw : [];
+
+  const { data: quoteRaw } = await supabase
+    .from("work_order_quote_lines")
+    .select(
+      "id, work_order_line_id, status, labor_hours, est_labor_hours, labor_total, parts_total, subtotal, grand_total",
+    )
+    .eq("shop_id", workOrder.shop_id)
+    .eq("work_order_id", workOrderId)
+    .returns<
+      Array<
+        Pick<
+          WorkOrderQuoteLineRow,
+          | "id"
+          | "work_order_line_id"
+          | "status"
+          | "labor_hours"
+          | "est_labor_hours"
+          | "labor_total"
+          | "parts_total"
+          | "subtotal"
+          | "grand_total"
+        >
+      >
+    >();
+  const activeQuotes = (Array.isArray(quoteRaw) ? quoteRaw : []).filter((q) => {
+    const s = String(q.status ?? "").toLowerCase();
+    return s !== "converted" && !NON_BILLABLE_QUOTE_LINE_STATUSES.has(s);
+  });
+
+  const quoteLines = Array.isArray(quoteRaw) ? quoteRaw : [];
+  const quoteLineById = new Map<
+    string,
+    Pick<WorkOrderQuoteLineRow, "status" | "work_order_line_id">
+  >();
+  for (const q of quoteLines) {
+    if (isNonEmptyString(q.id)) {
+      quoteLineById.set(q.id, {
+        status: q.status,
+        work_order_line_id: q.work_order_line_id,
+      });
+    }
+  }
+
+  const { data: requestItemsRaw, error: requestItemsError } = await supabase
+    .from("part_request_items")
+    .select(
+      "id, request_id, shop_id, work_order_id, work_order_line_id, quote_line_id, description, qty, qty_requested, qty_approved, quoted_price, unit_price, unit_cost, status, approved, part_id, vendor",
+    )
+    .eq("shop_id", workOrder.shop_id)
+    .eq("work_order_id", workOrderId)
+    .returns<
+      Array<
+        Pick<
+          PartRequestItemRow,
+          | "id"
+          | "request_id"
+          | "shop_id"
+          | "work_order_id"
+          | "work_order_line_id"
+          | "quote_line_id"
+          | "description"
+          | "qty"
+          | "qty_requested"
+          | "qty_approved"
+          | "quoted_price"
+          | "unit_price"
+          | "unit_cost"
+          | "status"
+          | "approved"
+          | "part_id"
+          | "vendor"
+        >
+      >
+    >();
+
+  if (requestItemsError) {
+    throw new Error(
+      `Parts pricing is unavailable: ${requestItemsError.message}`,
+    );
+  }
+
+  const requestItems = Array.isArray(requestItemsRaw) ? requestItemsRaw : [];
+  const requestIdsNeedingQuoteLink = Array.from(
+    new Set(
+      requestItems
+        .filter((item) => !isNonEmptyString(item.quote_line_id))
+        .map((item) => item.request_id)
+        .filter(isNonEmptyString),
+    ),
+  );
+
+  const requestQuoteLineIdByRequestId = new Map<string, string>();
+  if (requestIdsNeedingQuoteLink.length > 0) {
+    const { data: requestRows } = await supabase
+      .from("part_requests")
+      .select("id, shop_id, work_order_id, quote_line_id")
+      .eq("shop_id", workOrder.shop_id)
+      .eq("work_order_id", workOrderId)
+      .in("id", requestIdsNeedingQuoteLink)
+      .returns<
+        Array<
+          Pick<
+            PartRequestRow,
+            "id" | "shop_id" | "work_order_id" | "quote_line_id"
+          >
+        >
+      >();
+
+    for (const request of Array.isArray(requestRows) ? requestRows : []) {
+      if (
+        request.shop_id === workOrder.shop_id &&
+        request.work_order_id === workOrderId &&
+        isNonEmptyString(request.id) &&
+        isNonEmptyString(request.quote_line_id)
+      ) {
+        requestQuoteLineIdByRequestId.set(
+          request.id,
+          request.quote_line_id.trim(),
+        );
+      }
+    }
+  }
+
+  const byLineStaged = new Map<string, typeof stagedParts>();
+  for (const part of stagedParts) {
+    if (!part.work_order_line_id) continue;
+    byLineStaged.set(part.work_order_line_id, [
+      ...(byLineStaged.get(part.work_order_line_id) ?? []),
+      part,
+    ]);
+  }
+  const byLineAlloc = new Map<string, typeof allocs>();
+  for (const alloc of allocs) {
+    if (!alloc.work_order_line_id) continue;
+    byLineAlloc.set(alloc.work_order_line_id, [
+      ...(byLineAlloc.get(alloc.work_order_line_id) ?? []),
+      alloc,
+    ]);
+  }
+
+  const fallbackRequestItems = requestItems.filter((item) => {
+    const lineId = isNonEmptyString(item.work_order_line_id)
+      ? item.work_order_line_id.trim()
+      : "";
+    if (!lineId) return false;
+
+    return partRequestItemIsInvoiceFallbackEligible(item, {
+      shopId: workOrder.shop_id,
+      workOrderId,
+      workOrderLineId: lineId,
+      requestQuoteLineIdByRequestId,
+      quoteLineById,
+    });
+  });
+
+  const byLineFallbackRequestItems = new Map<
+    string,
+    typeof fallbackRequestItems
+  >();
+  for (const item of fallbackRequestItems) {
+    if (!item.work_order_line_id) continue;
+    byLineFallbackRequestItems.set(item.work_order_line_id, [
+      ...(byLineFallbackRequestItems.get(item.work_order_line_id) ?? []),
+      item,
+    ]);
+  }
+
+  const partIds = Array.from(
+    new Set(
+      [
+        ...allocs.map((a) => a.part_id),
+        ...stagedParts.map((part) => part.part_id),
+        ...fallbackRequestItems.map((item) => item.part_id),
+      ]
+        .filter(isNonEmptyString)
+        .map((id) => id.trim()),
+    ),
+  );
+
+  const partsMap = new Map<
+    string,
+    Pick<
+      PartRow,
+      "id" | "name" | "sku" | "part_number" | "unit" | "price" | "default_price"
+    >
+  >();
+
+  if (partIds.length > 0) {
+    const { data: partRows, error: partRowsError } = await supabase
+      .from("parts")
+      .select("id, name, sku, part_number, unit, price, default_price")
+      .eq("shop_id", workOrder.shop_id)
+      .in("id", partIds)
+      .returns<
+        Array<
+          Pick<
+            PartRow,
+            | "id"
+            | "name"
+            | "sku"
+            | "part_number"
+            | "unit"
+            | "price"
+            | "default_price"
+          >
+        >
+      >();
+
+    if (partRowsError) {
+      throw new Error(
+        `Parts catalog pricing is unavailable: ${partRowsError.message}`,
+      );
+    }
+
+    for (const p of Array.isArray(partRows) ? partRows : []) {
+      if (isNonEmptyString(p.id)) partsMap.set(p.id, p);
+    }
+  }
+
+  const requestItemById = new Map(requestItems.map((item) => [item.id, item]));
+  const allocationPartById = new Map<string, InvoiceSnapshotPart>();
+  for (const a of allocs) {
+    const p = isNonEmptyString(a.part_id) ? partsMap.get(a.part_id) : undefined;
+    const requestItem = isNonEmptyString(a.source_request_item_id)
+      ? requestItemById.get(a.source_request_item_id)
+      : undefined;
+    const qtyRaw = safeNumber(a.qty);
+    const qty = qtyRaw > 0 ? qtyRaw : 1;
+    // Allocation cost is an internal valuation and must never become a customer
+    // charge. Prefer the request's customer quote, then the catalog sell price.
+    const unitPrice =
+      (requestItem ? itemUnitPrice(requestItem) : 0) ||
+      safeNumber(p?.price) ||
+      safeNumber(p?.default_price);
+    const totalPrice = Math.max(0, qty * unitPrice);
+    const lidRaw = a.work_order_line_id;
+    const lineId = isNonEmptyString(lidRaw) ? lidRaw.trim() : undefined;
+
+    allocationPartById.set(String(a.id), {
+      id: String(a.id),
+      pricingSourceId: requestItem?.id,
+      lineId,
+      name: (p?.name ?? "Part").trim() || "Part",
+      qty,
+      unitPrice,
+      totalPrice,
+      sku: (p?.sku ?? "").trim() || undefined,
+      partNumber: (p?.part_number ?? "").trim() || undefined,
+      unit: (p?.unit ?? "").trim() || undefined,
+      source: "work_order_part_allocation",
+    });
+  }
+
+  const stagedInvoiceParts: InvoiceSnapshotPart[] = stagedParts.flatMap(
+    (part) => {
+      const p = isNonEmptyString(part.part_id)
+        ? partsMap.get(part.part_id)
+        : undefined;
+      const partRecord = part as Record<string, unknown>;
+      if (partRecord.is_active === false) return [];
+      // Approval freezes the customer-facing quantity on work_order_parts.
+      // Consumption is an inventory event and must not change invoice quantity.
+      const qty = resolveApprovedPartInvoiceQuantity({
+        quantityRequested: partRecord.quantity_requested,
+        quantity: part.quantity,
+        quantityReturned: partRecord.quantity_returned,
+        quantityCancelled: partRecord.quantity_cancelled,
+      });
+      if (qty <= 0) return [];
+      const totalRaw = safeNumber(part.total_price);
+      const unitPrice =
+        safeNumber(partRecord.unit_sell_price_snapshot) ||
+        safeNumber(part.unit_price) ||
+        safeNumber(p?.price) ||
+        safeNumber(p?.default_price);
+      const totalPrice =
+        unitPrice > 0 ? Math.max(0, qty * unitPrice) : totalRaw;
+      const lineId = isNonEmptyString(part.work_order_line_id)
+        ? part.work_order_line_id.trim()
+        : undefined;
+
+      return [
+        {
+          id: String(part.id),
+          lineId,
+          name:
+            (
+              String(partRecord.description_snapshot ?? "").trim() ||
+              (p?.name ?? "Part")
+            ).trim() || "Part",
+          qty,
+          unitPrice,
+          totalPrice,
+          sku: (p?.sku ?? "").trim() || undefined,
+          partNumber:
+            (
+              String(partRecord.part_number_snapshot ?? "").trim() ||
+              (p?.part_number ?? "")
+            ).trim() || undefined,
+          unit: (p?.unit ?? "").trim() || undefined,
+          source: "work_order_part",
+        },
+      ];
+    },
+  );
+
+  const requestItemInvoiceParts: InvoiceSnapshotPart[] =
+    fallbackRequestItems.map((item) => {
+      const p = isNonEmptyString(item.part_id)
+        ? partsMap.get(item.part_id)
+        : undefined;
+      const qty = itemQuantity(item);
+      const unitPrice = itemUnitPrice(item);
+      const lineId = isNonEmptyString(item.work_order_line_id)
+        ? item.work_order_line_id.trim()
+        : undefined;
+      const name =
+        (item.description ?? "").trim() || (p?.name ?? "").trim() || "Part";
+
+      return {
+        id: String(item.id),
+        lineId,
+        name,
+        qty,
+        unitPrice,
+        totalPrice: Math.max(0, qty * unitPrice),
+        sku: (p?.sku ?? "").trim() || undefined,
+        partNumber: (p?.part_number ?? "").trim() || undefined,
+        unit: (p?.unit ?? "").trim() || undefined,
+        vendor: (item.vendor ?? "").trim() || undefined,
+        source: "quote_line_part_request",
+      };
+    });
+
+  const stagedPartsByLineForDisplay = new Map<string, InvoiceSnapshotPart[]>();
+  for (const part of stagedInvoiceParts) {
+    if (!part.lineId) continue;
+    stagedPartsByLineForDisplay.set(part.lineId, [
+      ...(stagedPartsByLineForDisplay.get(part.lineId) ?? []),
+      part,
+    ]);
+  }
+
+  const fallbackPartsByLineForDisplay = new Map<
+    string,
+    InvoiceSnapshotPart[]
+  >();
+  for (const part of requestItemInvoiceParts) {
+    if (!part.lineId) continue;
+    fallbackPartsByLineForDisplay.set(part.lineId, [
+      ...(fallbackPartsByLineForDisplay.get(part.lineId) ?? []),
+      part,
+    ]);
+  }
+
+  const parts: InvoiceSnapshotPart[] = [];
+  for (const line of lines) {
+    const lineAllocations = byLineAlloc.get(line.id) ?? [];
+    const lineStaged = stagedPartsByLineForDisplay.get(line.id) ?? [];
+    const rawLineStaged = byLineStaged.get(line.id) ?? [];
+    const displayedStagedIds = new Set(lineStaged.map((part) => part.id));
+    const unbackedAllocations = filterInvoicePartAllocations({
+      allocations: lineAllocations,
+      stagedParts: rawLineStaged as Array<
+        (typeof rawLineStaged)[number] & {
+          source_parts_request_item_id?: string | null;
+        }
+      >,
+      displayedStagedPartIds: displayedStagedIds,
+    });
+    const unbackedAllocationParts = unbackedAllocations.flatMap(
+      (allocation) => {
+        const part = allocationPartById.get(String(allocation.id));
+        return part ? [part] : [];
+      },
+    );
+
+    if (lineStaged.length > 0) {
+      parts.push(...lineStaged);
+      parts.push(...unbackedAllocationParts);
+      continue;
+    }
+
+    if (unbackedAllocationParts.length > 0) {
+      parts.push(...unbackedAllocationParts);
+      continue;
+    }
+
+    parts.push(...(fallbackPartsByLineForDisplay.get(line.id) ?? []));
+  }
+
+  const overrideClient = supabase as unknown as PricingOverrideClient;
+  const { data: pricingOverride, error: pricingOverrideError } =
+    await overrideClient
+      .from("invoice_pricing_overrides")
+      .select("line_labor_totals,part_unit_prices,shop_supplies_amount")
+      .eq("shop_id", workOrder.shop_id)
+      .eq("work_order_id", workOrderId)
+      .maybeSingle<InvoicePricingOverrideRow>();
+  if (
+    pricingOverrideError &&
+    !/schema cache|does not exist/i.test(pricingOverrideError.message)
+  ) {
+    throw new Error(
+      `Invoice pricing overrides are unavailable: ${pricingOverrideError.message}`,
+    );
+  }
+  const lineLaborOverrides = moneyOverrideMap(
+    pricingOverride?.line_labor_totals,
+  );
+  const partPriceOverrides = moneyOverrideMap(
+    pricingOverride?.part_unit_prices,
+  );
+  for (const part of parts) {
+    const override =
+      partPriceOverrides.get(part.pricingSourceId ?? "") ??
+      partPriceOverrides.get(part.id);
+    if (override == null) continue;
+    part.unitPrice = override;
+    part.totalPrice = Math.max(0, safeNumber(part.qty) * override);
+  }
+
+  const unpricedPart = parts.find(
+    (part) => safeNumber(part.qty) > 0 && safeNumber(part.unitPrice) <= 0,
+  );
+  if (unpricedPart) {
+    throw new Error(
+      `Customer sell price is missing for ${unpricedPart.name || "an attached part"}.`,
+    );
+  }
+  if (
+    parts.length === 0 &&
+    (allocs.length > 0 ||
+      stagedInvoiceParts.length > 0 ||
+      fallbackRequestItems.length > 0)
+  ) {
+    throw new Error(
+      "Attached parts could not be resolved into invoice line items.",
+    );
+  }
+
+  const usePersistedInvoiceTotals = shouldUsePersistedInvoiceTotals({
+    workOrderStatus: workOrder.status,
+    invoiceStatus: invoice?.status,
+  });
+
+  const currency =
+    (usePersistedInvoiceTotals
+      ? normalizeInvoiceCurrency(invoice?.currency)
+      : null) ?? normalizeCurrencyFromCountry(shop?.country);
+
+  const invSubtotal = usePersistedInvoiceTotals
+    ? safeNumberOrNull(invoice?.subtotal)
+    : null;
+  const invLabor = usePersistedInvoiceTotals
+    ? safeNumberOrNull(invoice?.labor_cost)
+    : null;
+  const invParts = usePersistedInvoiceTotals
+    ? safeNumberOrNull(invoice?.parts_cost)
+    : null;
+  const invSupplies = usePersistedInvoiceTotals
+    ? safeNumberOrNull(invoice?.shop_supplies_total)
+    : null;
+  const invTotal = usePersistedInvoiceTotals
+    ? safeNumberOrNull(invoice?.total)
+    : null;
+  const invDiscount = usePersistedInvoiceTotals
+    ? safeNumber(invoice?.discount_total)
+    : 0;
+  const invTax = usePersistedInvoiceTotals ? safeNumber(invoice?.tax_total) : 0;
+
+  const woLabor = positiveOrNull(workOrder.labor_total);
+  const woParts = positiveOrNull(workOrder.parts_total);
+  const woInvoiceTotal = positiveOrNull(workOrder.invoice_total);
+
+  const byLineQuote = new Map<string, (typeof activeQuotes)[number]>();
+  for (const q of activeQuotes) {
+    if (!q.work_order_line_id) continue;
+    byLineQuote.set(q.work_order_line_id, q);
+  }
+
+  let resolvedLabor = 0;
+  let resolvedParts = 0;
+  const pricedLines: InvoiceSnapshotLine[] = [];
+  for (const line of lines) {
+    const lineParts = parts.filter((part) => part.lineId === line.id);
+    const stagedPricingParts = lineParts.map((part) => ({
+      quantity: part.qty,
+      unit_price: part.unitPrice,
+      total_price: part.totalPrice,
+    }));
+
+    const resolved = resolveWorkOrderLinePricing({
+      line,
+      quote: byLineQuote.get(line.id) ?? null,
+      shopLaborRate: safeNumberOrNull(shop?.labor_rate),
+      stagedParts: stagedPricingParts,
+      allocatedParts: [],
+    });
+    const resolvedLineParts =
+      lineParts.length > 0
+        ? lineParts.reduce((sum, part) => sum + safeNumber(part.totalPrice), 0)
+        : resolved.partsTotal;
+    const resolvedLineLabor =
+      lineLaborOverrides.get(line.id) ?? resolved.laborTotal;
+    resolvedLabor += resolvedLineLabor;
+    resolvedParts += resolvedLineParts;
+    pricedLines.push({
+      ...line,
+      resolvedLaborHours: resolved.laborHours,
+      resolvedLaborRate: resolved.laborRate,
+      resolvedLaborTotal: resolvedLineLabor,
+      resolvedPartsTotal: resolvedLineParts,
+      resolvedLineTotal: resolvedLineLabor + resolvedLineParts,
+    });
+  }
+
+  const unresolvedLaborLine = pricedLines.find(
+    (line) => line.resolvedLaborHours > 0 && line.resolvedLaborTotal <= 0,
+  );
+  if (!usePersistedInvoiceTotals && unresolvedLaborLine) {
+    throw new Error(
+      `Labor rate is missing for ${unresolvedLaborLine.description || `line ${unresolvedLaborLine.line_no ?? ""}`.trim()}.`,
+    );
+  }
+
+  // Existing line items are authoritative. work_orders.labor_total has legacy
+  // rows where 1.0 represents labor hours, not $1.00, so only use that rollup
+  // when there are no itemized lines to price.
+  const laborCost =
+    invLabor ??
+    (resolvedLabor > 0
+      ? resolvedLabor
+      : pricedLines.length === 0
+        ? woLabor
+        : null) ??
+    null;
+  const partsCost =
+    invParts ?? (resolvedParts > 0 ? resolvedParts : woParts) ?? null;
+
+  const baseSubtotal = (laborCost ?? 0) + (partsCost ?? 0);
+  const shopSupplies = calculateShopSupplies({
+    baseAmount: baseSubtotal,
+    settings: resolveShopSuppliesSettings(
+      shop as Parameters<typeof resolveShopSuppliesSettings>[0],
+    ),
+    override: resolveShopSuppliesOverride(
+      workOrder as Parameters<typeof resolveShopSuppliesOverride>[0],
+    ),
+  });
+  const persistedSupplies =
+    usePersistedInvoiceTotals && invSubtotal != null
+      ? (invSupplies ??
+        Math.max(0, invSubtotal - (laborCost ?? 0) - (partsCost ?? 0)))
+      : null;
+  const shopSuppliesTotal = usePersistedInvoiceTotals
+    ? persistedSupplies && persistedSupplies > 0
+      ? persistedSupplies
+      : null
+    : pricingOverride?.shop_supplies_amount != null
+      ? Math.max(0, safeNumber(pricingOverride.shop_supplies_amount))
+      : shopSupplies.amount > 0
+        ? shopSupplies.amount
+        : null;
+  const configuredTaxRate = Math.max(0, safeNumber(shop?.tax_rate));
+  const calculated = calculateInvoiceTotals({
+    laborCost: laborCost ?? 0,
+    partsCost: partsCost ?? 0,
+    shopSuppliesTotal,
+    discountTotal: invDiscount,
+    taxRatePercent: configuredTaxRate,
+  });
+  const subtotal = usePersistedInvoiceTotals
+    ? (invSubtotal ?? calculated.subtotal)
+    : calculated.subtotal > 0
+      ? calculated.subtotal
+      : null;
+  const taxTotal = usePersistedInvoiceTotals ? invTax : calculated.taxTotal;
+  const persistedTaxableBase = Math.max((subtotal ?? 0) - invDiscount, 0);
+  const taxRate =
+    usePersistedInvoiceTotals && persistedTaxableBase > 0
+      ? (taxTotal / persistedTaxableBase) * 100
+      : configuredTaxRate;
+  const derivedInvoiceTotal = calculateInvoiceTotals({
+    laborCost: laborCost ?? 0,
+    partsCost: partsCost ?? 0,
+    shopSuppliesTotal,
+    discountTotal: invDiscount,
+    taxRatePercent: taxRate,
+  }).total;
+  const total = usePersistedInvoiceTotals
+    ? (invTotal ?? derivedInvoiceTotal)
+    : derivedInvoiceTotal > 0
+      ? derivedInvoiceTotal
+      : woInvoiceTotal;
+
+  return {
+    workOrder,
+    invoice: invoice ?? null,
+    shop: shop ?? null,
+    customer: customer ?? null,
+    vehicle: vehicle ?? null,
+    lines: pricedLines,
+    parts,
+    currency,
+    laborCost,
+    partsCost,
+    shopSuppliesTotal,
+    subtotal,
+    discountTotal: invDiscount > 0 ? invDiscount : null,
+    taxTotal: taxTotal > 0 ? taxTotal : null,
+    taxRate: taxRate > 0 ? taxRate : null,
+    total,
+  };
+}
