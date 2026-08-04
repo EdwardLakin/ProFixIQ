@@ -11,6 +11,12 @@ describe("purchase-order receipt idempotency", () => {
     const sql = readFileSync(migrationPath, "utf8");
 
     expect(sql).toContain("p_operation_id uuid");
+    expect(sql).toMatch(
+      /create function public\.receive_po_part_and_allocate\(\s*p_po_id uuid,\s*p_part_id uuid,\s*p_location_id uuid,\s*p_qty numeric\s*\)/,
+    );
+    expect(sql).toContain(
+      "grant execute on function public.receive_po_part_and_allocate(uuid, uuid, uuid, numeric) to authenticated, service_role",
+    );
     expect(sql).toContain(
       "drop trigger if exists trg_stock_moves_apply_snapshot on public.stock_moves",
     );
