@@ -7286,6 +7286,7 @@ export type Database = {
           parts_cost: number
           refunded_total: number
           shop_id: string
+          shop_supplies_total: number
           status: string
           subtotal: number
           tax_total: number
@@ -7315,6 +7316,7 @@ export type Database = {
           parts_cost?: number
           refunded_total?: number
           shop_id: string
+          shop_supplies_total?: number
           status?: string
           subtotal?: number
           tax_total?: number
@@ -7344,6 +7346,7 @@ export type Database = {
           parts_cost?: number
           refunded_total?: number
           shop_id?: string
+          shop_supplies_total?: number
           status?: string
           subtotal?: number
           tax_total?: number

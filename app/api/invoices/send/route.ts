@@ -213,77 +213,50 @@ export async function POST(request: Request) {
     const now = new Date().toISOString();
     const brand = await getActiveBrandForRender(workOrder.shop_id);
     let invoiceId = version?.invoice_id ?? null;
+    let finalizedNow = false;
     let inspectionAttachment: Awaited<
       ReturnType<typeof attachInspectionReportToInvoice>
     > | null = null;
+    const issuanceWarnings: Awaited<ReturnType<typeof runPostSendPersistence>> =
+      [];
 
     if (!version) {
-      const { data: pending, error: pendingError } = await admin
-        .from("invoices")
-        .select("id")
-        .eq("work_order_id", workOrderId)
-        .eq("shop_id", workOrder.shop_id)
-        .eq("status", "draft")
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle<{ id: string }>();
-      if (pendingError) throw new Error(pendingError.message);
-
-      const payload = {
-        shop_id: workOrder.shop_id,
-        work_order_id: workOrderId,
-        customer_id: workOrder.customer_id,
-        currency: snapshot.currency,
-        subtotal: snapshot.subtotal ?? 0,
-        labor_cost: snapshot.laborCost ?? 0,
-        parts_cost: snapshot.partsCost ?? 0,
-        discount_total: snapshot.discountTotal ?? 0,
-        tax_total: snapshot.taxTotal ?? 0,
-        total: snapshot.total ?? 0,
-        status: "draft",
-        issued_at: null,
-      } as DB["public"]["Tables"]["invoices"]["Insert"];
-      invoiceId = pending?.id ?? null;
-      if (invoiceId) {
-        const { error } = await admin
-          .from("invoices")
-          .update(payload)
-          .eq("id", invoiceId)
-          .eq("shop_id", workOrder.shop_id);
-        if (error) throw new Error(error.message);
-      } else {
-        const { data, error } = await admin
-          .from("invoices")
-          .insert(payload)
-          .select("id")
-          .single<{ id: string }>();
-        if (error || !data?.id)
-          throw new Error(error?.message ?? "Failed to create invoice");
-        invoiceId = data.id;
-      }
-
-      inspectionAttachment = await attachInspectionReportToInvoice({
-        supabase: admin,
-        invoiceId,
-        workOrderId,
-        shopId: workOrder.shop_id,
-        actorUserId: access.authUserId,
-      });
       snapshot = { ...snapshot, documentConfiguration: brand.document };
       version = await finalizeInvoiceVersion({
         supabase: admin,
         shopId: workOrder.shop_id,
         workOrderId,
-        invoiceId,
+        invoiceId: null,
         snapshot,
         actorUserId: access.profile.id,
         operationKey:
           request.headers.get("idempotency-key")?.trim() ||
           `invoice-send:${workOrderId}`,
       });
+      invoiceId = version.invoice_id;
+      finalizedNow = true;
     }
     if (!invoiceId || !version)
       throw new Error("Invoice issuance did not return an active version.");
+
+    if (finalizedNow) {
+      issuanceWarnings.push(
+        ...(await runPostSendPersistence([
+          {
+            step: "inspection_attachment",
+            run: async () => {
+              inspectionAttachment = await attachInspectionReportToInvoice({
+                supabase: admin,
+                invoiceId,
+                workOrderId,
+                shopId: workOrder.shop_id,
+                actorUserId: access.authUserId,
+              });
+            },
+          },
+        ])),
+      );
+    }
 
     const base = SITE_URL.trim().replace(/\/+$/, "");
     const portalUrl = `${base}/portal/invoices/${workOrderId}?version=${version.id}`;
@@ -311,7 +284,7 @@ export async function POST(request: Request) {
       brandSecondaryColor: brand.colors.secondary ?? null,
     });
 
-    const warnings = await runPostSendPersistence([
+    const postSendWarnings = await runPostSendPersistence([
       {
         step: "invoice_status_after_send",
         run: async () => {
@@ -379,6 +352,7 @@ export async function POST(request: Request) {
           ]
         : []),
     ]);
+    const warnings = [...issuanceWarnings, ...postSendWarnings];
 
     return NextResponse.json({
       ok: true,

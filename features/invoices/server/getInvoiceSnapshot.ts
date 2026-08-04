@@ -92,6 +92,7 @@ export type InvoiceSnapshot = {
     | "subtotal"
     | "parts_cost"
     | "labor_cost"
+    | "shop_supplies_total"
     | "discount_total"
     | "tax_total"
     | "total"
@@ -374,7 +375,7 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
   const { data: invoice } = await supabase
     .from("invoices")
     .select(
-      "id, invoice_number, status, currency, subtotal, parts_cost, labor_cost, discount_total, tax_total, total, issued_at, created_at, notes",
+      "id, invoice_number, status, currency, subtotal, parts_cost, labor_cost, shop_supplies_total, discount_total, tax_total, total, issued_at, created_at, notes",
     )
     .eq("work_order_id", workOrderId)
     .order("issued_at", { ascending: false, nullsFirst: false })
@@ -390,6 +391,7 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
         | "subtotal"
         | "parts_cost"
         | "labor_cost"
+        | "shop_supplies_total"
         | "discount_total"
         | "tax_total"
         | "total"
@@ -1138,6 +1140,9 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
   const invParts = usePersistedInvoiceTotals
     ? safeNumberOrNull(invoice?.parts_cost)
     : null;
+  const invSupplies = usePersistedInvoiceTotals
+    ? safeNumberOrNull(invoice?.shop_supplies_total)
+    : null;
   const invTotal = usePersistedInvoiceTotals
     ? safeNumberOrNull(invoice?.total)
     : null;
@@ -1227,7 +1232,8 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
   });
   const persistedSupplies =
     usePersistedInvoiceTotals && invSubtotal != null
-      ? Math.max(0, invSubtotal - (laborCost ?? 0) - (partsCost ?? 0))
+      ? (invSupplies ??
+        Math.max(0, invSubtotal - (laborCost ?? 0) - (partsCost ?? 0)))
       : null;
   const shopSuppliesTotal = usePersistedInvoiceTotals
     ? persistedSupplies && persistedSupplies > 0

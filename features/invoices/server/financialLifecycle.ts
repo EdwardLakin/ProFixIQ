@@ -77,7 +77,7 @@ export async function finalizeInvoiceVersion(args: {
   supabase: SupabaseClient<DB>;
   shopId: string;
   workOrderId: string;
-  invoiceId: string;
+  invoiceId?: string | null;
   snapshot: InvoiceSnapshot;
   actorUserId: string;
   operationKey: string;
@@ -86,7 +86,7 @@ export async function finalizeInvoiceVersion(args: {
   const { data, error } = await asRpcClient(args.supabase).rpc("finalize_invoice_version", {
     p_shop_id: args.shopId,
     p_work_order_id: args.workOrderId,
-    p_invoice_id: args.invoiceId,
+    p_invoice_id: args.invoiceId ?? null,
     p_snapshot: snapshot,
     p_currency: snapshot.currency,
     p_subtotal: snapshot.subtotal ?? 0,
