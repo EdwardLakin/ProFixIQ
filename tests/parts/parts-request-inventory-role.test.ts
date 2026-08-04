@@ -1,5 +1,9 @@
+import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextResponse } from "next/server";
+
+const routeSource = readFileSync("app/api/parts/requests/items/[itemId]/inventory/route.ts", "utf8");
+const pageSource = readFileSync("app/parts/requests/[id]/page.tsx", "utf8");
 
 const mocks = vi.hoisted(() => ({
   requireShopScopedApiAccess: vi.fn(),
@@ -46,5 +50,13 @@ describe("parts request inventory route authorization", () => {
     expect(mocks.requireShopScopedApiAccess).toHaveBeenCalledWith({
       requiredCapability: "canManageParts",
     });
+  });
+
+  it("forwards and persists the inventory cost and selected supplier", () => {
+    expect(pageSource).toContain("cost: input.cost");
+    expect(pageSource).toContain("input.defaultSupplierId");
+    expect(routeSource).toContain("cost: number | string | null");
+    expect(routeSource).toContain("default_cost: cost");
+    expect(routeSource).toContain("supplier: clean(body.supplier)");
   });
 });
