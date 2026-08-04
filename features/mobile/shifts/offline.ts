@@ -203,4 +203,3 @@ export async function runMobileShiftAction(args: {
   await saveCachedMobileShiftState({ scope, state });
   return { state, ...result };
 }
-
