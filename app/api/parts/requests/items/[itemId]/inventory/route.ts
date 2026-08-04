@@ -41,7 +41,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ itemId: string
   const { itemId } = await ctx.params;
   if (!isUuid(itemId)) return NextResponse.json({ ok: false, error: "Invalid itemId." }, { status: 400 });
 
-  const access = await requireShopScopedApiAccess({ requiredCapability: "canManageWorkOrders" });
+  const access = await requireShopScopedApiAccess({ requiredCapability: "canManageParts" });
   if (!access.ok) return access.response;
 
   const supabase = access.supabase;
