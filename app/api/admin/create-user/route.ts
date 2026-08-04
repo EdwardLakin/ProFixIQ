@@ -350,6 +350,43 @@ export async function POST(req: Request) {
       );
     }
 
+    const { error: membershipErr } = await serviceSupabase
+      .from("shop_members")
+      .upsert(
+        {
+          shop_id: effectiveShopId,
+          user_id: newUserId,
+          role: canonicalRole,
+          created_by: access.profile.id,
+        } as Database["public"]["Tables"]["shop_members"]["Insert"],
+        { onConflict: "shop_id,user_id" },
+      );
+
+    if (membershipErr) {
+      const rolledBack = await rollbackCreatedAuthUser({
+        serviceSupabase,
+        authUserId: newUserId,
+        adminId: access.profile.id,
+        shopId: effectiveShopId,
+      });
+      logCreateUserError("shop_membership_seed_failed", {
+        adminId: access.profile.id,
+        targetShopId: effectiveShopId,
+        role: canonicalRole,
+        authUserId: newUserId,
+        error: membershipErr.message,
+      });
+      return NextResponse.json(
+        {
+          error: rolledBack
+            ? "User setup could not be completed. No account was created; you can try again."
+            : "User setup could not be completed, and automatic cleanup failed. Contact support before retrying.",
+          code: rolledBack ? "shop_membership_seed_failed" : "provisioning_rollback_failed",
+        },
+        { status: 500 },
+      );
+    }
+
     // Seed the canonical workforce profile row so People detail is immediately usable.
     const { error: workforceErr } = await serviceSupabase
       .from("people_workforce_profiles")
