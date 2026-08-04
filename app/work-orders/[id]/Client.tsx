@@ -1996,7 +1996,11 @@ export default function WorkOrderIdClient(): JSX.Element {
                       } as unknown as AllocationRow;
                     });
 
-                    const partsForLine = [...allocPartsForLine, ...stagedAsAllocShape];
+                    const displayAllocations = filterAllocationsNotBackedByCanonicalParts(
+                      allocPartsForLine,
+                      stagedForLine,
+                    );
+                    const partsForLine = [...displayAllocations, ...stagedAsAllocShape];
 
                     const isPunchedIn = punchedIn;
                     const isCurrentUserWorkingThisLine = Boolean(
