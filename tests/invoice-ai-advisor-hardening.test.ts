@@ -19,13 +19,26 @@ describe("invoice AI and advisor hardening", () => {
     );
   });
 
+  it("admits immutable invoice versions in the QuickBooks audit contract", () => {
+    const migration = migrationSource();
+    expect(migration).toContain("'invoice_version'");
+    expect(migration).toContain("'connection'");
+    expect(migration).toContain("'token'");
+    expect(migration).toContain(
+      "validate constraint quickbooks_sync_events_entity_type_check",
+    );
+  });
+
   it("makes tenant-scoped invoice views honor caller RLS", () => {
     const migration = migrationSource();
     expect(migration).toContain(
       "alter view public.invoice_net_issued_parts\n  set (security_invoker = true)",
     );
     expect(migration).toContain(
-      "alter view public.v_work_order_line_labor_rollups\n  set (security_invoker = true)",
+      "to_regclass('public.v_work_order_line_labor_rollups') is not null",
+    );
+    expect(migration).toContain(
+      "alter view public.v_work_order_line_labor_rollups set (security_invoker = true)",
     );
     expect(migration).toContain(
       "revoke all on public.invoice_net_issued_parts from public, anon",

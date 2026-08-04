@@ -38,17 +38,50 @@ alter table public.ai_events
 alter table public.ai_events
   validate constraint ai_events_event_type_check;
 
+-- Invoice exports are audited against the immutable issued version. Align
+-- that canonical entity name with the QuickBooks event contract while
+-- retaining every existing integration event type.
+alter table public.quickbooks_sync_events
+  drop constraint if exists quickbooks_sync_events_entity_type_check;
+
+alter table public.quickbooks_sync_events
+  add constraint quickbooks_sync_events_entity_type_check
+  check (
+    entity_type = any (
+      array[
+        'connection',
+        'customer',
+        'invoice',
+        'invoice_version',
+        'item',
+        'token'
+      ]::text[]
+    )
+  ) not valid;
+
+alter table public.quickbooks_sync_events
+  validate constraint quickbooks_sync_events_entity_type_check;
+
 -- These views expose tenant-scoped data and must evaluate the underlying
 -- tables' RLS policies as the caller, never as the view owner.
 alter view public.invoice_net_issued_parts
   set (security_invoker = true);
-alter view public.v_work_order_line_labor_rollups
-  set (security_invoker = true);
 
 revoke all on public.invoice_net_issued_parts from public, anon;
-revoke all on public.v_work_order_line_labor_rollups from public, anon;
 grant select on public.invoice_net_issued_parts to authenticated, service_role;
-grant select on public.v_work_order_line_labor_rollups to authenticated, service_role;
+
+-- This view exists in production but is not part of the clean migration
+-- history. Harden it where present without making clean database replay depend
+-- on production-only schema drift.
+do $block$
+begin
+  if to_regclass('public.v_work_order_line_labor_rollups') is not null then
+    execute 'alter view public.v_work_order_line_labor_rollups set (security_invoker = true)';
+    execute 'revoke all on public.v_work_order_line_labor_rollups from public, anon';
+    execute 'grant select on public.v_work_order_line_labor_rollups to authenticated, service_role';
+  end if;
+end
+$block$;
 
 -- Financial mutations are invoked only after server-side authorization with
 -- the service-role client. Remove the inherited PUBLIC/anon execution path.
