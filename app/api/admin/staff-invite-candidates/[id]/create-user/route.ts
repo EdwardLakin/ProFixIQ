@@ -38,6 +38,25 @@ function makeTempPassword(length = 12): string {
   return out;
 }
 
+async function rollbackProvisionedCandidateUser(
+  admin: ReturnType<typeof createAdminSupabase>,
+  userId: string,
+): Promise<string | null> {
+  const cleanupTargets = [
+    ["shop_members", "user_id"],
+    ["people_workforce_profiles", "user_id"],
+    ["profiles", "id"],
+  ] as const;
+
+  for (const [table, column] of cleanupTargets) {
+    const { error } = await admin.from(table).delete().eq(column, userId);
+    if (error) return `${table}: ${error.message}`;
+  }
+
+  const { error: authError } = await admin.auth.admin.deleteUser(userId);
+  return authError?.message ?? null;
+}
+
 export async function POST(_req: NextRequest, context: unknown) {
   try {
     const { params } = context as RouteContext;
@@ -176,25 +195,41 @@ export async function POST(_req: NextRequest, context: unknown) {
       .upsert(profileInsert, { onConflict: "id" });
 
     if (profileInsertErr) {
-      if (String(profileInsertErr.message ?? "").toLowerCase().includes("shop user limit reached")) {
-        return NextResponse.json(
-          { error: "Shop user limit reached for your current plan." },
-          { status: 400 },
-        );
-      }
+      const rollbackError = await rollbackProvisionedCandidateUser(
+        admin,
+        createdUser.user.id,
+      );
+      const seatLimit = String(profileInsertErr.message ?? "")
+        .toLowerCase()
+        .includes("shop user limit reached");
+      const publicError = rollbackError
+        ? "User provisioning failed and automatic cleanup also failed. Contact support before retrying."
+        : seatLimit
+          ? "Shop user limit reached for your current plan. No account was created."
+          : "User provisioning failed. No account was created; you can retry.";
+
       await admin
         .from("staff_invite_candidates")
         .update({
           status: INVITE_STATUS.error,
-          error: profileInsertErr.message,
+          error: rollbackError
+            ? `${profileInsertErr.message}; rollback: ${rollbackError}`
+            : profileInsertErr.message,
           updated_at: new Date().toISOString(),
           created_by: access.profile.id,
         } as DB["public"]["Tables"]["staff_invite_candidates"]["Update"])
         .eq("id", candidateId);
 
       return NextResponse.json(
-        { error: profileInsertErr.message },
-        { status: 500 },
+        {
+          error: publicError,
+          code: rollbackError
+            ? "provisioning_rollback_failed"
+            : seatLimit
+              ? "shop_user_limit_reached"
+              : "profile_upsert_failed",
+        },
+        { status: seatLimit && !rollbackError ? 400 : 500 },
       );
     }
 
@@ -212,18 +247,31 @@ export async function POST(_req: NextRequest, context: unknown) {
       );
 
     if (workforceErr) {
+      const rollbackError = await rollbackProvisionedCandidateUser(
+        admin,
+        createdUser.user.id,
+      );
       await admin
         .from("staff_invite_candidates")
         .update({
           status: INVITE_STATUS.error,
-          error: workforceErr.message,
+          error: rollbackError
+            ? `${workforceErr.message}; rollback: ${rollbackError}`
+            : workforceErr.message,
           updated_at: new Date().toISOString(),
           created_by: access.profile.id,
         } as DB["public"]["Tables"]["staff_invite_candidates"]["Update"])
         .eq("id", candidateId);
 
       return NextResponse.json(
-        { error: workforceErr.message },
+        {
+          error: rollbackError
+            ? "User provisioning failed and automatic cleanup also failed. Contact support before retrying."
+            : "User provisioning failed. No account was created; you can retry.",
+          code: rollbackError
+            ? "provisioning_rollback_failed"
+            : "workforce_profile_seed_failed",
+        },
         { status: 500 },
       );
     }

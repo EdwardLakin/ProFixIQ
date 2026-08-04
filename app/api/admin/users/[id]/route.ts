@@ -7,7 +7,11 @@ import { canonicalizeRole } from "@/features/shared/lib/rbac";
 
 type DB = Database;
 
-type TargetCheckOk = { ok: true };
+type TargetProfile = Pick<
+  DB["public"]["Tables"]["profiles"]["Row"],
+  "id" | "user_id" | "shop_id" | "role"
+>;
+type TargetCheckOk = { ok: true; target: TargetProfile };
 type TargetCheckBad = { ok: false; message: string };
 type TargetCheck = TargetCheckOk | TargetCheckBad;
 
@@ -18,9 +22,9 @@ async function assertTargetInSameShop(
 ): Promise<TargetCheck> {
   const { data: target, error } = await admin
     .from("profiles")
-    .select("id, shop_id")
+    .select("id, user_id, shop_id, role")
     .eq("id", targetId)
-    .maybeSingle<Pick<DB["public"]["Tables"]["profiles"]["Row"], "id" | "shop_id">>();
+    .maybeSingle<TargetProfile>();
 
   if (error) return { ok: false, message: error.message };
   if (!target) return { ok: false, message: "Target user not found" };
@@ -28,7 +32,7 @@ async function assertTargetInSameShop(
     return { ok: false, message: "Target user not in your shop" };
   }
 
-  return { ok: true };
+  return { ok: true, target };
 }
 
 type PutBody = {
@@ -88,13 +92,17 @@ export async function PUT(req: NextRequest, context: unknown) {
     ...(body.role !== undefined ? { role: canonicalRole } : {}),
   };
 
+  const previousRole = canonicalizeRole(check.target.role);
   if (
     roleProvided &&
-    canonicalRole !== null &&
-    ADMIN_LEVEL_ROLES.has(canonicalRole) &&
-    access.canonicalRole !== "owner"
+    access.canonicalRole !== "owner" &&
+    (canonicalRole !== null && ADMIN_LEVEL_ROLES.has(canonicalRole) ||
+      ADMIN_LEVEL_ROLES.has(previousRole))
   ) {
-    return NextResponse.json({ error: "Only owners can assign owner/admin roles" }, { status: 403 });
+    return NextResponse.json(
+      { error: "Only owners can assign or change owner/admin roles" },
+      { status: 403 },
+    );
   }
 
   const { error } = await admin.from("profiles").update(update).eq("id", id);
@@ -104,11 +112,24 @@ export async function PUT(req: NextRequest, context: unknown) {
   }
 
   if (roleProvided && canonicalRole !== null) {
-    const { error: authErr } = await admin.auth.admin.updateUserById(id, {
+    const authUserId = check.target.user_id ?? check.target.id;
+    const { error: authErr } = await admin.auth.admin.updateUserById(authUserId, {
       user_metadata: { role: canonicalRole },
     });
     if (authErr) {
-      return NextResponse.json({ error: authErr.message }, { status: 500 });
+      const { error: rollbackError } = await admin
+        .from("profiles")
+        .update({ role: check.target.role })
+        .eq("id", id)
+        .eq("shop_id", access.profile.shop_id);
+      return NextResponse.json(
+        {
+          error: rollbackError
+            ? `${authErr.message}. Restoring the previous role also failed: ${rollbackError.message}`
+            : authErr.message,
+        },
+        { status: 500 },
+      );
     }
   }
 

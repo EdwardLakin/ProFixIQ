@@ -110,6 +110,12 @@ describe("Codex review follow-up hardening", () => {
     expect(read("features/work-orders/components/MenuQuickAdd.tsx")).toContain(
       "requireMutableWorkOrder",
     );
+    expect(
+      read("app/api/admin/staff-invite-candidates/[id]/create-user/route.ts"),
+    ).toContain("rollbackProvisionedCandidateUser");
+    expect(read("app/api/admin/users/[id]/route.ts")).toContain(
+      "Restoring the previous role also failed",
+    );
     expect(read("app/api/parts/_lib/lifecycleCommand.ts")).toContain(
       'requiredCapability: "canManageParts"',
     );
