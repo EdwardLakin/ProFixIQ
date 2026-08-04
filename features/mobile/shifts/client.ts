@@ -45,4 +45,3 @@ export async function fetchMobileShiftState(): Promise<MobileShiftState> {
     mode: body.mode ?? modeFromActivity(activity, body.shiftStatus),
   };
 }
-
