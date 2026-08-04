@@ -6968,6 +6968,78 @@ export type Database = {
           },
         ]
       }
+      inventory_reconciliation_exceptions: {
+        Row: {
+          created_at: string
+          details: Json
+          id: string
+          missing_quantity: number
+          part_id: string | null
+          purchase_order_id: string | null
+          reason: string
+          resolved_at: string | null
+          shop_id: string
+        }
+        Insert: {
+          created_at?: string
+          details?: Json
+          id?: string
+          missing_quantity: number
+          part_id?: string | null
+          purchase_order_id?: string | null
+          reason: string
+          resolved_at?: string | null
+          shop_id: string
+        }
+        Update: {
+          created_at?: string
+          details?: Json
+          id?: string
+          missing_quantity?: number
+          part_id?: string | null
+          purchase_order_id?: string | null
+          reason?: string
+          resolved_at?: string | null
+          shop_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_reconciliation_exceptions_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "part_stock_summary"
+            referencedColumns: ["part_id"]
+          },
+          {
+            foreignKeyName: "inventory_reconciliation_exceptions_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_reconciliation_exceptions_purchase_order_id_fkey"
+            columns: ["purchase_order_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_reconciliation_exceptions_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_reconciliation_exceptions_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       invoice_documents: {
         Row: {
           created_at: string
@@ -21191,6 +21263,7 @@ export type Database = {
           source_intake_id: string | null
           source_row_id: string | null
           status: string
+          technician_notes: string | null
           template_id: string | null
           tools: string | null
           updated_at: string | null
@@ -21256,6 +21329,7 @@ export type Database = {
           source_intake_id?: string | null
           source_row_id?: string | null
           status?: string
+          technician_notes?: string | null
           template_id?: string | null
           tools?: string | null
           updated_at?: string | null
@@ -21321,6 +21395,7 @@ export type Database = {
           source_intake_id?: string | null
           source_row_id?: string | null
           status?: string
+          technician_notes?: string | null
           template_id?: string | null
           tools?: string | null
           updated_at?: string | null
@@ -24281,6 +24356,10 @@ export type Database = {
         Args: { p_shop_id: string }
         Returns: boolean
       }
+      canonical_shop_membership_role: {
+        Args: { p_role: string }
+        Returns: string
+      }
       chat_participants_key: {
         Args: { _recipients: string[]; _sender: string }
         Returns: string
@@ -25105,6 +25184,23 @@ export type Database = {
           p_operation_key: string
           p_request_id: string
           p_shop_id: string
+        }
+        Returns: Json
+      }
+      parts_create_and_attach_inventory_atomic: {
+        Args: {
+          p_category: string
+          p_cost: number
+          p_initial_qty: number
+          p_item_id: string
+          p_location_id: string
+          p_manufacturer: string
+          p_name: string
+          p_operation_key: string
+          p_part_number: string
+          p_sell_price: number
+          p_sku: string
+          p_supplier: string
         }
         Returns: Json
       }
