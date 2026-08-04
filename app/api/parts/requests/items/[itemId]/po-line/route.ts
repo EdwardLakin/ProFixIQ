@@ -6,7 +6,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ itemId: string
   const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
   const poId = typeof body?.poId === "string" ? body.poId : typeof body?.po_id === "string" ? body.po_id : "";
   const supplierId = typeof body?.supplierId === "string" ? body.supplierId : typeof body?.supplier_id === "string" ? body.supplier_id : "";
-  const locationId = typeof body?.locationId === "string" ? body.locationId : typeof body?.location_id === "string" ? body.location_id : null;
+  const rawLocationId =
+    typeof body?.locationId === "string"
+      ? body.locationId
+      : typeof body?.location_id === "string"
+        ? body.location_id
+        : null;
+  const locationId = rawLocationId?.trim() || null;
   const notes = typeof body?.notes === "string" ? body.notes.trim() : null;
   const qty = positiveNumber(body?.qty);
   const unitCost = body?.unitCost == null ? null : Number(body.unitCost);
