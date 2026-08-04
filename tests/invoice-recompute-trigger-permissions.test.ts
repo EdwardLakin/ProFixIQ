@@ -13,10 +13,10 @@ describe("invoice recompute trigger permissions", () => {
     const migration = migrationSource();
 
     expect(migration).toContain(
-      "grant execute on function public.recompute_live_invoice_costs(uuid)\n  to authenticated, service_role",
+      "grant execute on function public.recompute_live_invoice_costs(uuid) to authenticated, service_role",
     );
     expect(migration).toContain(
-      "revoke all on function public.recompute_live_invoice_costs(uuid)\n  from public, anon",
+      "revoke all on function public.recompute_live_invoice_costs(uuid) from public, anon",
     );
   });
 
@@ -39,5 +39,13 @@ describe("invoice recompute trigger permissions", () => {
       "session_user not in ('postgres', 'supabase_admin')",
     );
   });
-});
 
+  it("does not introduce the production-only helper into clean schema replay", () => {
+    const migration = migrationSource();
+
+    expect(migration).toContain(
+      "to_regprocedure('public.recompute_live_invoice_costs(uuid)') is null",
+    );
+    expect(migration).toContain("execute $ddl$");
+  });
+});
