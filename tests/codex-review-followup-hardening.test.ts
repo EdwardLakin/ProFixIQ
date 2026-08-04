@@ -62,6 +62,7 @@ describe("Codex review follow-up hardening", () => {
     for (const contract of [
       "sync_profile_shop_membership",
       "FLEET_REQUEST_NOT_CONVERTIBLE",
+      "old.status::text in ('completed','closed','cancelled','declined','rejected')",
       "operation', 'apply_stock_move",
       "stock_moves_shop_reference_idx",
       "historical_po_receipt_reconciliation",
