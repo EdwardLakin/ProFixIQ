@@ -37,6 +37,7 @@ import NewChatModal from "@/features/ai/components/chat/NewChatModal";
 import SuggestedQuickAdd from "@work-orders/components/SuggestedQuickAdd";
 import { runJobPunchTransition } from "@/features/work-orders/lib/jobPunchTransitionsClient";
 import {
+  filterAllocationsNotBackedByCanonicalParts,
   getCanonicalPartDescription,
   getCanonicalPartManufacturer,
   getCanonicalPartNumber,
@@ -187,6 +188,10 @@ export default function MobileFocusedJob(props: {
   const [allocs, setAllocs] = useState<AllocationRow[]>([]);
   const [requiredParts, setRequiredParts] = useState<RequiredPartRow[]>([]);
   const [allocsLoading, setAllocsLoading] = useState(false);
+  const displayOnlyAllocations = useMemo(
+    () => filterAllocationsNotBackedByCanonicalParts(allocs, requiredParts),
+    [allocs, requiredParts],
+  );
 
   const showErr = (prefix: string, err?: { message?: string } | null) => {
     toast.error(`${prefix}: ${err?.message ?? "Something went wrong."}`);
@@ -1358,7 +1363,7 @@ export default function MobileFocusedJob(props: {
 
                   {allocsLoading ? (
                     <div className="text-sm text-[color:var(--theme-text-secondary)]">Loading…</div>
-                  ) : (allocs.length + requiredParts.length) === 0 ? (
+                  ) : (displayOnlyAllocations.length + requiredParts.length) === 0 ? (
                     <div className="text-sm text-[color:var(--theme-text-secondary)]">No parts used yet.</div>
                   ) : (
                     <div className="mobile-tech-subpanel overflow-hidden">
@@ -1384,7 +1389,7 @@ export default function MobileFocusedJob(props: {
                             </div>
                           </li>
                         ))}
-                        {allocs.map((a) => (
+                        {displayOnlyAllocations.map((a) => (
                           <li
                             key={a.id}
                             className="grid grid-cols-12 items-center px-3 py-2 text-sm"
