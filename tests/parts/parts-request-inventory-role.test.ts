@@ -4,6 +4,9 @@ import { NextResponse } from "next/server";
 
 const routeSource = readFileSync("app/api/parts/requests/items/[itemId]/inventory/route.ts", "utf8");
 const pageSource = readFileSync("app/parts/requests/[id]/page.tsx", "utf8");
+const editRouteSource = readFileSync("app/api/parts/requests/items/[itemId]/edit/route.ts", "utf8");
+const addRouteSource = readFileSync("app/api/parts/requests/items/[itemId]/add/route.ts", "utf8");
+const commitRouteSource = readFileSync("app/api/parts/requests/[requestId]/commit-package/route.ts", "utf8");
 
 const mocks = vi.hoisted(() => ({
   requireShopScopedApiAccess: vi.fn(),
@@ -50,6 +53,18 @@ describe("parts request inventory route authorization", () => {
     expect(mocks.requireShopScopedApiAccess).toHaveBeenCalledWith({
       requiredCapability: "canManageParts",
     });
+  });
+
+  it("keeps the complete parts workbench sequence available to parts operators", () => {
+    for (const source of [
+      routeSource,
+      editRouteSource,
+      addRouteSource,
+      commitRouteSource,
+    ]) {
+      expect(source).toContain('requiredCapability: "canManageParts"');
+      expect(source).not.toContain('requiredCapability: "canManageWorkOrders"');
+    }
   });
 
   it("forwards and persists the inventory cost and selected supplier", () => {
