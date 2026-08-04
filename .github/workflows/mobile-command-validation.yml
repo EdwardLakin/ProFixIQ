@@ -147,5 +147,5 @@ jobs:
             mobile-full-suite.log
             mobile-main-suite.log
             mobile-new-failures.log
-          if-no-files-found: error
+          if-no-files-found: ignore
           retention-days: 5
