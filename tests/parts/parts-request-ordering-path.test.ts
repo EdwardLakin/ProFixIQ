@@ -31,6 +31,15 @@ describe("parts request ordering path", () => {
     expect(poLineRoute).toContain("p_idempotency_key");
   });
 
+  it("accepts an omitted optional location instead of rejecting the empty UI fallback", () => {
+    expect(poLineRoute).toContain(
+      "const locationId = rawLocationId?.trim() || null",
+    );
+    expect(poLineRoute).toContain(
+      "locationId != null && !isUuid(locationId)",
+    );
+  });
+
   it("validates release before creating a PO header and line in one transaction", () => {
     expect(p0Migration).toContain(
       "create or replace function public.parts_create_or_reuse_po_line_for_request",
