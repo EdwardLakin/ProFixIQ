@@ -118,6 +118,7 @@ export default function MobileShiftTracker({ userId }: Props) {
           current: shiftState,
         });
         applyState(result.state);
+        window.dispatchEvent(new Event("profixiq:mobile-shift-updated"));
         if (result.queued) {
           setErr("Shift update saved on this device and queued.");
         }

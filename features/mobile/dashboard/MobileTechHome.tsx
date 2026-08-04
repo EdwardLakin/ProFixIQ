@@ -173,6 +173,16 @@ export function MobileTechHome({
   }, [refreshShiftState]);
 
   useEffect(() => {
+    const onShiftUpdated = () => void refreshShiftState();
+    window.addEventListener("profixiq:mobile-shift-updated", onShiftUpdated);
+    return () =>
+      window.removeEventListener(
+        "profixiq:mobile-shift-updated",
+        onShiftUpdated,
+      );
+  }, [refreshShiftState]);
+
+  useEffect(() => {
     if (!userId) return;
 
     const channel = supabase
