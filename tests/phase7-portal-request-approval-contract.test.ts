@@ -9,6 +9,10 @@ const approvalSql = read(
   "supabase/migrations/20260715080300_phase7_atomic_portal_line_decisions.sql",
 );
 const requestStart = read("app/api/portal/request/start/route.ts");
+const requestWhen = read("app/portal/request/when/page.tsx");
+const bookingGuardRepair = read(
+  "supabase/migrations/20260804050000_allow_service_role_portal_booking_start.sql",
+);
 const customRoute = read("app/api/portal/request/add-custom-line/route.ts");
 const menuRoute = read("app/api/portal/request/add-menu-line/route.ts");
 const inspectionRoute = read(
@@ -24,6 +28,28 @@ describe("Phase 7 portal requests and approvals", () => {
     expect(requestStart).toContain("A stable Idempotency-Key is required.");
     expect(requestStart).toContain('.eq("customer_id", customer.id)');
     expect(requestStart).toContain('.eq("shop_id", customer.shop_id)');
+  });
+
+  it("keeps appointment date values aligned with their local calendar labels", () => {
+    expect(requestWhen).toContain("d.getFullYear()");
+    expect(requestWhen).toContain("d.getMonth() + 1");
+    expect(requestWhen).toContain("d.getDate()");
+    expect(requestWhen).not.toContain('d.toISOString().slice(0, 10)');
+  });
+
+  it("allows trusted server booking writes without weakening portal-user checks", () => {
+    expect(bookingGuardRepair).toContain(
+      "coalesce(auth.role(), '') = 'service_role'",
+    );
+    expect(bookingGuardRepair).toContain(
+      "IF public.is_staff_for_shop(new.shop_id) THEN",
+    );
+    expect(bookingGuardRepair).toContain(
+      "v_customer_user_id IS DISTINCT FROM auth.uid()",
+    );
+    expect(bookingGuardRepair).toContain(
+      "Booking does not belong to the current customer",
+    );
   });
 
   it("routes all request line kinds through one atomic command", () => {
