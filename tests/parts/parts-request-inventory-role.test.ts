@@ -28,7 +28,7 @@ describe("parts request inventory route authorization", () => {
     });
 
     const { POST } = await import(
-      "../../../app/api/parts/requests/items/[itemId]/inventory/route"
+      "../../app/api/parts/requests/items/[itemId]/inventory/route"
     );
     const response = await POST(
       new Request(
