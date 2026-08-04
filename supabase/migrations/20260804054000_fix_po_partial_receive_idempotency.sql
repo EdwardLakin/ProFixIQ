@@ -7,6 +7,10 @@
 -- New callers supply a stable operation id. The operation id is bound to the
 -- PO in reference_kind, so retries return the prior result while separate
 -- partial receipts create separate stock moves.
+--
+-- apply_stock_move already maintains part_stock. The legacy AFTER INSERT
+-- snapshot trigger performs the same increment a second time.
+drop trigger if exists trg_stock_moves_apply_snapshot on public.stock_moves;
 
 create or replace function public.receive_po_part_and_allocate(
   p_po_id uuid,
