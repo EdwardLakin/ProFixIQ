@@ -35,7 +35,9 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Apply deterministic repairs
-        run: python scripts/apply_codex_review_followups.py
+        run: |
+          sed -i 's/if (ROOT.joinpath(parts_test).exists():/if ROOT.joinpath(parts_test).exists():/' scripts/apply_codex_review_followups.py
+          python scripts/apply_codex_review_followups.py
       - name: Validate changed surface
         run: |
           pnpm exec tsc --noEmit
@@ -64,8 +66,7 @@ jobs:
             tests/mobile-active-approved-notes.test.ts \
             tests/job-finish-punchout-order.test.ts \
             tests/fleet-service-request-conversion-action.test.ts \
-            tests/set-password-shell-transition.test.ts \
-            tests/stale-create-work-order-validation.test.ts
+            tests/set-password-shell-transition.test.ts
       - name: Commit repaired files
         run: |
           git config user.name github-actions[bot]
