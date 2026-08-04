@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { safeInternalRedirect } from "@/features/auth/lib/safeRedirect";
 
@@ -23,7 +23,6 @@ function getReturnPath(role: string | null | undefined): string {
 }
 
 export default function SetPasswordPage() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const isPortalActivation = searchParams.get("mode") === "portal";
@@ -134,13 +133,21 @@ export default function SetPasswordPage() {
       const nextRole = data.user?.user_metadata?.role as string | undefined;
 
       if (userId) {
-        await supabase
+        const { error: profileError } = await supabase
           .from("profiles")
           .update({
             must_change_password: false,
             updated_at: new Date().toISOString(),
           } as Database["public"]["Tables"]["profiles"]["Update"])
           .eq("id", userId);
+
+        if (profileError) {
+          setStatusTone("error");
+          setStatusMessage(
+            `Password updated, but account activation failed: ${profileError.message}`,
+          );
+          return;
+        }
       }
 
       setStatusTone("success");
@@ -157,7 +164,7 @@ export default function SetPasswordPage() {
       );
 
       window.setTimeout(() => {
-        router.replace(redirect);
+        window.location.replace(redirect);
       }, 700);
     } catch (error) {
       const message =
