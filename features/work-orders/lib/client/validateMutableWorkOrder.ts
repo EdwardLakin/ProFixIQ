@@ -40,7 +40,7 @@ export function isMissingWorkOrderWriteError(error: unknown): boolean {
     .toLowerCase();
   return (
     text.includes("work_order_lines_work_order_id_fkey") ||
-    text.includes("foreign key") && text.includes("work_order") ||
+    (text.includes("foreign key") && text.includes("work_order")) ||
     text.includes("work order no longer exists") ||
     text.includes("work order not found")
   );

@@ -5,6 +5,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
+import {
+  isMissingWorkOrderWriteError,
+  requireMutableWorkOrder,
+  signalStaleCreateWorkOrder,
+  STALE_CREATE_WORK_ORDER_MESSAGE,
+} from "@/features/work-orders/lib/client/validateMutableWorkOrder";
 
 type DB = Database;
 type InsertLine = DB["public"]["Tables"]["work_order_lines"]["Insert"];
@@ -256,6 +262,8 @@ export function NewWorkOrderLineForm(props: {
     setErr(null);
 
     try {
+      await requireMutableWorkOrder({ supabase, workOrderId, shopId });
+
       // Prefer exact vehicle-specific repair if available (job lines only)
       if (lineType === "job" && smartMatch?.menuRepairItemId) {
         const repairRes = await fetch("/api/work-orders/quotes/add-from-menu-repair", {
@@ -274,7 +282,14 @@ export function NewWorkOrderLineForm(props: {
           | null;
 
         if (!repairRes.ok || !repairJson?.ok) {
-          setErr(repairJson?.error || "Failed to add matched repair to Quote Review.");
+          const repairError =
+            repairJson?.error || "Failed to add matched repair to Quote Review.";
+          if (isMissingWorkOrderWriteError({ message: repairError })) {
+            signalStaleCreateWorkOrder(workOrderId);
+            setErr(STALE_CREATE_WORK_ORDER_MESSAGE);
+          } else {
+            setErr(repairError);
+          }
           return;
         }
 
@@ -333,7 +348,10 @@ export function NewWorkOrderLineForm(props: {
       if (error) {
         const msg = error.message || "Insert failed";
 
-        if (/(job_type).*check/i.test(msg)) {
+        if (isMissingWorkOrderWriteError(error)) {
+          signalStaleCreateWorkOrder(workOrderId);
+          setErr(STALE_CREATE_WORK_ORDER_MESSAGE);
+        } else if (/(job_type).*check/i.test(msg)) {
           setErr("This job type isn’t allowed by the database. Pick another type.");
         } else if (/status.*check/i.test(msg)) {
           setErr("This status isn’t allowed by the database. Try a different status.");
@@ -365,8 +383,13 @@ export function NewWorkOrderLineForm(props: {
       onCreated?.();
       window.dispatchEvent(new CustomEvent("wo:line-added"));
     } catch (e: unknown) {
-      const msg = (e as Error)?.message ?? "Failed to add line.";
-      setErr(msg);
+      if (isMissingWorkOrderWriteError(e)) {
+        signalStaleCreateWorkOrder(workOrderId);
+        setErr(STALE_CREATE_WORK_ORDER_MESSAGE);
+      } else {
+        const msg = (e as Error)?.message ?? "Failed to add line.";
+        setErr(msg);
+      }
     } finally {
       setBusy(false);
     }

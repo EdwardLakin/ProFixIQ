@@ -95,6 +95,14 @@ describe("Codex review follow-up hardening", () => {
     const createPage = read("features/work-orders/app/work-orders/create/page.tsx");
     expect(createPage).toContain("workOrderId={hasValidatedWorkOrder");
     expect(createPage).toContain("disabled={!hasValidatedWorkOrder}");
+    expect(createPage).toContain("CREATE_WORK_ORDER_STALE_EVENT");
+    expect(createPage).toContain("requireMutableWorkOrder");
+    expect(read("features/work-orders/components/NewWorkOrderLineForm.tsx")).toContain(
+      "requireMutableWorkOrder",
+    );
+    expect(read("features/work-orders/components/MenuQuickAdd.tsx")).toContain(
+      "requireMutableWorkOrder",
+    );
     expect(read("app/api/parts/_lib/lifecycleCommand.ts")).toContain(
       'requiredCapability: "canManageParts"',
     );
