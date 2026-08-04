@@ -54,6 +54,11 @@ type Payload = {
 
 type Filter = "active" | "approval" | "scheduled" | "completed" | "all";
 
+type ConvertPayload = {
+  workOrderId?: string;
+  error?: string;
+};
+
 const panel =
   "rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]";
 
@@ -96,6 +101,7 @@ export default function FleetServiceRequestsPage({
   const [filter, setFilter] = useState<Filter>("active");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [convertingId, setConvertingId] = useState<string | null>(null);
 
   async function load(signal?: AbortSignal) {
     setLoading(true);
@@ -127,6 +133,35 @@ export default function FleetServiceRequestsPage({
     void load(controller.signal);
     return () => controller.abort();
   }, []);
+
+  async function convertToWorkOrder(item: RequestItem) {
+    setConvertingId(item.id);
+    setError(null);
+
+    try {
+      const response = await fetch(
+        "/api/fleet/service-requests/convert-to-work-order",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ serviceRequestId: item.id }),
+        },
+      );
+      const body = (await response.json().catch(() => ({}))) as ConvertPayload;
+      if (!response.ok || !body.workOrderId) {
+        throw new Error(body.error || "Unable to create work order");
+      }
+
+      window.location.assign(
+        `/work-orders/${encodeURIComponent(body.workOrderId)}`,
+      );
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "Unable to create work order",
+      );
+      setConvertingId(null);
+    }
+  }
 
   const visible = useMemo(() => {
     const requests = payload?.requests ?? [];
@@ -273,8 +308,23 @@ export default function FleetServiceRequestsPage({
                   <span className="rounded-lg border border-[color:var(--theme-border-soft)] px-3 py-2 text-xs">
                     {item.workOrder.reference}
                   </span>
+                ) : routePrefix === "/fleet" &&
+                  uiContext.capabilities.canConvertRequests ? (
+                  <button
+                    type="button"
+                    disabled={convertingId !== null}
+                    onClick={() => void convertToWorkOrder(item)}
+                    className="inline-flex items-center gap-2 rounded-lg border border-sky-300/30 px-3 py-2 text-xs font-medium text-sky-300 hover:bg-sky-300/10 disabled:cursor-wait disabled:opacity-60"
+                  >
+                    <ClipboardList size={14} />
+                    {convertingId === item.id
+                      ? "Creating work order..."
+                      : "Create work order"}
+                  </button>
                 ) : (
-                  <span className="text-xs text-[color:var(--theme-text-muted)]">Awaiting shop conversion</span>
+                  <span className="text-xs text-[color:var(--theme-text-muted)]">
+                    Awaiting shop conversion
+                  </span>
                 )}
                 {item.workOrder?.needsApproval || (item.workOrder?.outstandingBalance ?? 0) > 0 ? (
                   <Link
