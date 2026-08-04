@@ -5,6 +5,16 @@ begin;
 -- SECURITY DEFINER helper, but the trigger still needs to execute it. Restore
 -- that path with an explicit tenant-membership guard so direct RPC calls
 -- cannot recompute another shop's invoice.
+-- This helper exists only in the production schema drift currently being
+-- reconciled. Keep clean database replay unchanged until that schema is
+-- promoted into the canonical baseline.
+do $migration$
+begin
+  if to_regprocedure('public.recompute_live_invoice_costs(uuid)') is null then
+    return;
+  end if;
+
+  execute $ddl$
 create or replace function public.recompute_live_invoice_costs(
   p_work_order_id uuid
 )
@@ -63,10 +73,11 @@ begin
 end;
 $function$;
 
-revoke all on function public.recompute_live_invoice_costs(uuid)
-  from public, anon;
-grant execute on function public.recompute_live_invoice_costs(uuid)
-  to authenticated, service_role;
+$ddl$;
+
+  execute 'revoke all on function public.recompute_live_invoice_costs(uuid) from public, anon';
+  execute 'grant execute on function public.recompute_live_invoice_costs(uuid) to authenticated, service_role';
+end
+$migration$;
 
 commit;
-
