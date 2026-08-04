@@ -224,6 +224,11 @@ create table if not exists public.inventory_reconciliation_exceptions(
   unique(shop_id,purchase_order_id,part_id,reason)
 );
 
+alter table public.inventory_reconciliation_exceptions enable row level security;
+revoke all on table public.inventory_reconciliation_exceptions
+  from public, anon, authenticated;
+grant all on table public.inventory_reconciliation_exceptions to service_role;
+
 create or replace function public.receive_po_part_and_allocate(
   p_po_id uuid,
   p_part_id uuid,
@@ -416,7 +421,7 @@ with line_totals as (
   select move.shop_id,move.reference_id po_id,move.part_id,
          round(sum(move.qty_change),2) moved_qty,
          count(distinct move.location_id) location_count,
-         min(move.location_id) location_id
+         (array_agg(move.location_id order by move.location_id))[1] location_id
   from public.stock_moves move
   where move.reference_kind='purchase_order' and move.reason='receive'
   group by move.shop_id,move.reference_id,move.part_id
