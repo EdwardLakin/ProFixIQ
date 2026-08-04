@@ -17,6 +17,7 @@ type Body =
       supplier?: string | null;
       sku?: string | null;
       category?: string | null;
+      cost?: number | string | null;
       sellPrice?: number | string | null;
       initialQty?: number | string | null;
       locationId?: string | null;
@@ -41,7 +42,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ itemId: string
   const { itemId } = await ctx.params;
   if (!isUuid(itemId)) return NextResponse.json({ ok: false, error: "Invalid itemId." }, { status: 400 });
 
-  const access = await requireShopScopedApiAccess({ requiredCapability: "canManageWorkOrders" });
+  const access = await requireShopScopedApiAccess({ requiredCapability: "canManageParts" });
   if (!access.ok) return access.response;
 
   const supabase = access.supabase;
@@ -79,6 +80,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ itemId: string
     const name = clean(body.name);
     if (!name) return NextResponse.json({ ok: false, error: "Name is required." }, { status: 400 });
 
+    const cost = num(body.cost);
+    if (cost != null && cost < 0) {
+      return NextResponse.json({ ok: false, error: "Cost must be zero or greater." }, { status: 400 });
+    }
+
     const sellPrice = num(body.sellPrice);
     if (sellPrice != null && sellPrice < 0) {
       return NextResponse.json({ ok: false, error: "Sell price must be zero or greater." }, { status: 400 });
@@ -90,6 +96,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ itemId: string
       part_number: clean(body.partNumber),
       sku: clean(body.sku) ?? clean(body.partNumber),
       category: clean(body.category),
+      cost,
+      default_cost: cost,
       price: sellPrice,
       default_price: sellPrice,
       manufacturer: clean(body.manufacturer) ?? clean(item.requested_manufacturer),

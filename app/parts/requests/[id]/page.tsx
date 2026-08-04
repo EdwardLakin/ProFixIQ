@@ -2198,7 +2198,13 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                               manufacturer: input.manufacturer,
                               sku: input.sku,
                               category: input.category,
+                              cost: input.cost,
                               sellPrice: input.sellPrice,
+                              supplier:
+                                suppliers.find(
+                                  (supplier) =>
+                                    String(supplier.id) === input.defaultSupplierId,
+                                )?.name ?? null,
                               initialQty: input.initialQty,
                               locationId: resolvedDefaultLocId || defaultLocationId || null,
                             }),
