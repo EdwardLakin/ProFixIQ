@@ -360,14 +360,11 @@ export default function PurchaseOrderDetailPage(): JSX.Element {
 
     setBusyAddLine(true);
     try {
-      // NOTE: your schema might name these columns differently.
-      // We use the strongly-typed Insert shape, then fill common fields.
-      // If your generated types don't include ordered_qty/unit_cost, rename them to match your schema.
       const insert = {
         po_id: po.id,
         part_id: pid || null,
         description: description || null,
-        ordered_qty: qty,
+        qty,
         unit_cost: n(lineUnitCost),
       } as unknown as POLineInsert;
 
