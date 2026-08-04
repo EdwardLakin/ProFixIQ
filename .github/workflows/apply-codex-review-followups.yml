@@ -38,6 +38,35 @@ jobs:
         run: |
           sed -i 's/if (ROOT.joinpath(parts_test).exists():/if ROOT.joinpath(parts_test).exists():/' scripts/apply_codex_review_followups.py
           python scripts/apply_codex_review_followups.py
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          inventory = Path("app/api/parts/requests/items/[itemId]/inventory/route.ts")
+          text = inventory.read_text()
+          text = text.replace(
+              '  const value = typeof body[key] === "number" ? body[key] : Number(body[key]);',
+              '  const raw = body[key];\n  const value = typeof raw === "number" ? raw : Number(raw);',
+          )
+          inventory.write_text(text)
+
+          fleet = Path("features/fleet/components/FleetServiceRequestsPage.tsx")
+          text = fleet.read_text()
+          text = re.sub(
+              r'type ConvertPayload = \{\n  workOrderId\?: string;\n  error\?: string;\n\};\n\n',
+              '',
+              text,
+              count=1,
+          )
+          fleet.write_text(text)
+
+          mobile = Path("features/work-orders/mobile/MobileFocusedJob.tsx")
+          text = mobile.read_text().replace(
+              'cached.line.technician_notes ?? ""',
+              '(cached.line as WorkOrderLine).technician_notes ?? ""',
+          )
+          mobile.write_text(text)
+          PY
       - name: Validate changed surface
         run: |
           pnpm exec tsc --noEmit
