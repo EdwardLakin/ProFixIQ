@@ -24,9 +24,9 @@ describe("invoice recompute trigger permissions", () => {
     const migration = migrationSource();
 
     expect(migration).toContain("v_actor_user_id uuid := auth.uid()");
-    expect(migration).toContain("from public.user_shops us");
-    expect(migration).toContain("us.user_id = v_actor_user_id");
-    expect(migration).toContain("us.shop_id = v_shop_id");
+    expect(migration).toContain("from public.profiles p");
+    expect(migration).toContain("p.id = v_actor_user_id");
+    expect(migration).toContain("p.shop_id = v_shop_id");
     expect(migration).toContain("using errcode = '42501'");
   });
 
