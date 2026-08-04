@@ -1,0 +1,67 @@
+name: Apply Codex Review Follow-ups
+
+on:
+  push:
+    branches:
+      - repair/codex-review-followups-1302-1316
+    paths:
+      - scripts/apply_codex_review_followups.py
+      - .github/workflows/apply-codex-review-followups.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: repair/codex-review-followups-1302-1316
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Apply deterministic repairs
+        run: python scripts/apply_codex_review_followups.py
+      - name: Validate changed surface
+        run: |
+          pnpm exec tsc --noEmit
+          pnpm exec eslint \
+            app/api/portal/request/start/route.ts \
+            app/api/work-orders/maintenance-suggestions/add-bundle/route.ts \
+            features/mobile/components/MobileShiftTracker.tsx \
+            features/mobile/dashboard/MobileTechHome.tsx \
+            app/auth/set-password/page.tsx \
+            features/auth/lib/passwordActivation.ts \
+            features/fleet/components/FleetServiceRequestsPage.tsx \
+            features/fleet/lib/fleetUiCapabilities.ts \
+            features/fleet/lib/convertFleetServiceRequest.ts \
+            app/api/admin/create-user/route.ts \
+            app/api/parts/_lib/lifecycleCommand.ts \
+            app/api/parts/_lib/receivePartRequestItem.ts \
+            app/api/parts/requests/items/[itemId]/inventory/route.ts \
+            app/parts/po/[id]/receive/page.tsx \
+            features/work-orders/lib/display/workOrderParts.ts \
+            features/work-orders/mobile/MobileFocusedJob.tsx \
+            features/work-orders/components/workorders/FocusedJobModal.tsx \
+            tests/codex-review-followup-hardening.test.ts
+          pnpm exec vitest run \
+            tests/codex-review-followup-hardening.test.ts \
+            tests/parts/parts-request-inventory-role.test.ts \
+            tests/mobile-active-approved-notes.test.ts \
+            tests/job-finish-punchout-order.test.ts \
+            tests/fleet-service-request-conversion-action.test.ts \
+            tests/set-password-shell-transition.test.ts \
+            tests/stale-create-work-order-validation.test.ts
+      - name: Commit repaired files
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "fix: address Codex review findings from PRs 1302-1316"
+          git push origin HEAD:repair/codex-review-followups-1302-1316
