@@ -71,9 +71,13 @@ describe("Codex review follow-up hardening", () => {
       "OTHER_TECHNICIANS_STILL_PUNCHED_IN",
       "round(p_qty,2) is distinct from p_qty",
       "'owner','admin','manager','lead_hand','foreman','parts'",
+      "array_agg(move.location_id order by move.location_id)",
+      "inventory_reconciliation_exceptions enable row level security",
+      "revoke all on table public.inventory_reconciliation_exceptions",
     ]) {
       expect(migration).toContain(contract);
     }
+    expect(migration).not.toContain("min(move.location_id)");
   });
 
   it("keeps mobile optimistic shift state and exact fleet conversion capability", () => {
