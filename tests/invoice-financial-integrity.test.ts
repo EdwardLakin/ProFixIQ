@@ -7,6 +7,8 @@ function source(path: string) {
 
 const migrationPath =
   "supabase/migrations/20260803174543_fix_invoice_financial_integrity.sql";
+const legacyTriggerRetirementPath =
+  "supabase/migrations/20260803193215_retire_legacy_invoice_status_sync.sql";
 
 describe("invoice financial integrity repair", () => {
   it("persists shop supplies and computes subtotal, discount, tax, and total once", () => {
@@ -52,6 +54,16 @@ describe("invoice financial integrity repair", () => {
     expect(finalize).toContain("finalizedWithWarnings");
     expect(send).not.toContain('status: "draft"');
     expect(send).toContain("issuanceWarnings");
+  });
+
+  it("retires the legacy status trigger that competes with atomic issuance", () => {
+    const migration = source(legacyTriggerRetirementPath);
+    expect(migration).toContain(
+      "drop trigger if exists trg_sync_invoice_from_work_order on public.work_orders",
+    );
+    expect(migration).not.toContain(
+      "drop function public.sync_invoice_from_work_order()",
+    );
   });
 
   it("reads the persisted shop-supplies amount for issued snapshots", () => {
