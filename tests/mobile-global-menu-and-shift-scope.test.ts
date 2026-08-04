@@ -66,4 +66,3 @@ describe("mobile shift online-first behavior", () => {
     );
   });
 });
-
