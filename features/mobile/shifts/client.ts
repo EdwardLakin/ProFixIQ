@@ -17,7 +17,10 @@ export type MobileShiftState = {
 
 type ShiftResponse = ({ ok?: boolean; error?: string } & Partial<MobileShiftState>) | null;
 
-function modeFromActivity(activity: ShiftActivity | undefined, shiftStatus?: ShiftStatus | null): MobileShiftMode {
+export function modeFromActivity(
+  activity: ShiftActivity | undefined,
+  shiftStatus?: ShiftStatus | null,
+): MobileShiftMode {
   if (shiftStatus === "completed") return "ended";
   if (activity === "working") return "shift";
   if (activity === "on_break") return "break";
@@ -42,3 +45,4 @@ export async function fetchMobileShiftState(): Promise<MobileShiftState> {
     mode: body.mode ?? modeFromActivity(activity, body.shiftStatus),
   };
 }
+
