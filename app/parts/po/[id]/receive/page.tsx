@@ -155,6 +155,7 @@ export default function PoReceivePage(): JSX.Element {
   const [scanning, setScanning] = useState<boolean>(false);
   const [lastScan, setLastScan] = useState<string>("");
   const onDetectedRef = useRef<QuaggaDetectedHandler | null>(null);
+  const receiveOperationRef = useRef<{ key: string; id: string } | null>(null);
 
   // last receive output
   const [result, setResult] = useState<ReceiveResult | null>(null);
@@ -334,11 +335,37 @@ export default function PoReceivePage(): JSX.Element {
       return;
     }
 
+    const partRemaining = lines
+      .filter((line) => String(line.part_id ?? "") === partId)
+      .reduce(
+        (sum, line) =>
+          sum + Math.max(0, n(line.qty) - n(line.received_qty)),
+        0,
+      );
+
+    if (partRemaining <= 0) {
+      setErr("This part has no remaining quantity on the purchase order.");
+      return;
+    }
+    if (receiveQty > partRemaining) {
+      setErr(`Quantity exceeds the ${partRemaining} remaining on this purchase order.`);
+      return;
+    }
+
+    const operationKey = [poId, partId, selectedLoc, receiveQty].join(":");
+    if (receiveOperationRef.current?.key !== operationKey) {
+      receiveOperationRef.current = {
+        key: operationKey,
+        id: crypto.randomUUID(),
+      };
+    }
+
     const args = {
       p_po_id: poId,
       p_part_id: partId,
       p_location_id: selectedLoc,
       p_qty: receiveQty,
+      p_operation_id: receiveOperationRef.current.id,
     };
 
     const { data, error } = await supabase.rpc(
@@ -350,6 +377,8 @@ export default function PoReceivePage(): JSX.Element {
       setErr(error.message);
       return;
     }
+
+    receiveOperationRef.current = null;
 
     const parsed = extractReceiveResult(data);
     setResult(parsed ?? {});
@@ -597,7 +626,8 @@ export default function PoReceivePage(): JSX.Element {
                 {!scanning ? (
                   <button
                     onClick={startScan}
-                    className="rounded-full border border-sky-500/40 bg-sky-950/25 px-4 py-2 text-sm text-[rgba(242,210,187,0.94)] hover:bg-sky-900/25"
+                    disabled={remaining <= 0}
+                    className="rounded-full border border-sky-500/40 bg-sky-950/25 px-4 py-2 text-sm text-[rgba(242,210,187,0.94)] hover:bg-sky-900/25 disabled:cursor-not-allowed disabled:opacity-50"
                     type="button"
                   >
                     Start Scanner
@@ -712,8 +742,8 @@ export default function PoReceivePage(): JSX.Element {
 
                 <button
                   onClick={() => void doReceive(manualPartId, qty)}
-                  disabled={!manualPartId || !selectedLoc || qty <= 0}
-                  className="rounded-full border border-sky-500/40 bg-sky-950/25 px-4 py-2 text-sm text-[rgba(242,210,187,0.94)] hover:bg-sky-900/25 disabled:opacity-50"
+                  disabled={!manualPartId || !selectedLoc || qty <= 0 || remaining <= 0}
+                  className="rounded-full border border-sky-500/40 bg-sky-950/25 px-4 py-2 text-sm text-[rgba(242,210,187,0.94)] hover:bg-sky-900/25 disabled:cursor-not-allowed disabled:opacity-50"
                   type="button"
                 >
                   Receive & Allocate →

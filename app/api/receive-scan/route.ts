@@ -65,6 +65,7 @@ export async function POST(req: Request) {
           p_part_id: partId,
           p_location_id: locationId,
           p_qty: qty,
+          p_operation_id: operationId ?? crypto.randomUUID(),
         } as unknown as DB["public"]["Functions"]["receive_po_part_and_allocate"]["Args"],
       );
 

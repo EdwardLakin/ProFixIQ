@@ -15703,15 +15703,26 @@ export type Database = {
           status: Database["public"]["Enums"]["part_request_item_status"]
         }[]
       }
-      receive_po_part_and_allocate: {
-        Args: {
-          p_location_id: string
-          p_part_id: string
-          p_po_id: string
-          p_qty: number
-        }
-        Returns: Json
-      }
+      receive_po_part_and_allocate:
+        | {
+            Args: {
+              p_location_id: string
+              p_part_id: string
+              p_po_id: string
+              p_qty: number
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_location_id: string
+              p_operation_id: string
+              p_part_id: string
+              p_po_id: string
+              p_qty: number
+            }
+            Returns: Json
+          }
       recompute_live_invoice_costs: {
         Args: { p_work_order_id: string }
         Returns: undefined
