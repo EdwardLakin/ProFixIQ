@@ -85,9 +85,12 @@ describe("shop billing entitlement", () => {
 
     expect(middleware).toContain('"/api/:path*"');
     expect(middleware).toContain("enforceApiWriteBillingEntitlement(req)");
-    expect(gate).toContain('const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"])');
+    expect(gate).toContain(
+      'const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"])',
+    );
     expect(gate).toContain('"/api/stripe/"');
-    expect(gate).toContain('"/api/portal/"');
+    expect(gate).not.toContain('"/api/portal/"');
+    expect(gate).not.toContain('"/api/public/"');
     expect(gate).toContain('code: "shop_billing_read_only"');
     expect(gate).toContain("status: 402");
   });
@@ -97,10 +100,30 @@ describe("shop billing entitlement", () => {
       "supabase/migrations/20260806040000_shop_billing_entitlement_enforcement.sql",
     );
 
-    expect(migration).toContain("drop policy if exists shops_insert_authenticated");
+    expect(migration).toContain(
+      "drop policy if exists shops_insert_authenticated",
+    );
     expect(migration).toContain("create policy shops_insert_first_shop_only");
     expect(migration).toContain("and p.shop_id is not null");
     expect(migration).toContain("stripe_billing_sync_required = true");
     expect(migration).toContain("profiles_mark_shop_billing_sync");
+  });
+
+  it("creates additional locations read-only and bills each target shop separately", () => {
+    const createLocation = read(
+      "app/api/organizations/locations/create/route.ts",
+    );
+    const locationCheckout = read(
+      "app/api/organizations/locations/[shopId]/checkout/route.ts",
+    );
+
+    expect(createLocation).toContain('billing_entitlement_override: "read_only"');
+    expect(createLocation).toContain("organization_required");
+    expect(createLocation).toContain("canManageBilling");
+    expect(locationCheckout).toContain(
+      "currentShop.organization_id !== targetShop.organization_id",
+    );
+    expect(locationCheckout).toContain("shop_id: targetShop.id");
+    expect(locationCheckout).toContain("profixiq:location-checkout:");
   });
 });
