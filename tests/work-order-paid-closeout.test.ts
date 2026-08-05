@@ -66,6 +66,7 @@ describe("work-order paid closeout boundary", () => {
     expect(quoteApprovalActions).toContain(
       "/api/work-orders/lines/${encodeURIComponent(lineId)}/approval-decision",
     );
+    expect(quoteClient).toContain("source: line.source");
     expect(quoteApprovalActions).toContain('line.source === "work_order"');
     expect(quoteClient).toContain("item.workOrderLineId === line.id");
   });
