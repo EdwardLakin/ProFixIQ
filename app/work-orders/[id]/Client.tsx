@@ -36,6 +36,10 @@ import { cn } from "@shared/lib/utils";
 import { formatDecisionStatus, resolveDecisionStatus } from "@/features/shared/lib/decisionStatus";
 import { deriveEventsFromWorkOrder } from "@/features/shared/lib/decisionEvents";
 import { resolveWorkOrderLinePricing } from "@/features/work-orders/lib/pricing/resolveWorkOrderLinePricing";
+import {
+  countActiveWorkOrderLines,
+  formatWorkOrderHeaderStatus,
+} from "@/features/work-orders/lib/display/workOrderPresentation";
 import { filterAllocationsNotBackedByCanonicalParts } from "@/features/work-orders/lib/display/workOrderParts";
 import {
   getPartsRequestDisplayState,
@@ -290,6 +294,10 @@ export default function WorkOrderIdClient(): JSX.Element {
   );
   const [propertyContext, setPropertyContext] = useState<PropertyContext | null>(null);
   const isPropertySourcedWorkOrder = propertyContext !== null;
+  const workOrderStatusView = useMemo(
+    () => formatWorkOrderHeaderStatus(wo?.status),
+    [wo?.status],
+  );
 
   // ✅ read job from query (desktop panel)
   const jobFromQuery = searchParams?.get("job") || null;
@@ -317,9 +325,9 @@ export default function WorkOrderIdClient(): JSX.Element {
         ? `${workOrderLabel} · ${customerName}`
         : workOrderLabel,
       subtitle: vehicleLabel || undefined,
-      status: formatDecisionStatus({ workStatus: wo.status }).label,
+      status: workOrderStatusView.label,
     });
-  }, [customer, updateActiveTab, vehicle, wo]);
+  }, [customer, updateActiveTab, vehicle, wo, workOrderStatusView.label]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1039,6 +1047,7 @@ export default function WorkOrderIdClient(): JSX.Element {
   const approvalPending = useMemo(() => jobLines.filter(isPendingApprovalLine), [jobLines]);
 
   const activeJobLines = useMemo(() => jobLines, [jobLines]);
+  const activeJobCount = useMemo(() => countActiveWorkOrderLines(jobLines), [jobLines]);
 
   const approvalPendingQuotes = useMemo(
     () => quoteLines.filter((q) => isReviewableQuoteLine(q)),
@@ -1622,8 +1631,8 @@ export default function WorkOrderIdClient(): JSX.Element {
                 <div className="text-sm font-semibold text-foreground">
                   {wo.custom_id ?? `WO-${wo.id.slice(0, 8)}`}
                 </div>
-                <StatusBadge variant={formatDecisionStatus({ workStatus: wo.status }).variant} size="sm">
-                  {formatDecisionStatus({ workStatus: wo.status }).label}
+                <StatusBadge variant={workOrderStatusView.variant} size="sm">
+                  {workOrderStatusView.label}
                 </StatusBadge>
                 {isWaiter ? (
                   <StatusBadge variant="danger" size="sm">
@@ -1642,8 +1651,8 @@ export default function WorkOrderIdClient(): JSX.Element {
                   : `${customer ? [customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ") || "Customer" : "No customer linked"} • ${vehicle ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`.trim() || "Vehicle linked" : "No vehicle linked"}`}
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
-                <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-muted-foreground">State: {formatDecisionStatus({ workStatus: wo.status }).label}</span>
-                <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-muted-foreground">Active jobs: {sortedLines.length}</span>
+                <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-muted-foreground">State: {workOrderStatusView.label}</span>
+                <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-muted-foreground">Active jobs: {activeJobCount}</span>
                 <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-muted-foreground">In progress: {inProgressCount}</span>
                 <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-muted-foreground">Blocked: {blockedCount}</span>
                 {hasAnyApprovalItems ? (
@@ -1729,10 +1738,10 @@ export default function WorkOrderIdClient(): JSX.Element {
                     </div>
                     <div className="mt-1 flex flex-wrap items-center gap-1.5">
                       <StatusBadge
-                        variant={formatDecisionStatus({ workStatus: wo.status }).variant}
+                        variant={workOrderStatusView.variant}
                         size="sm"
                       >
-                        {formatDecisionStatus({ workStatus: wo.status }).label}
+                        {workOrderStatusView.label}
                       </StatusBadge>
                     </div>
                   </div>
