@@ -27,6 +27,7 @@ import {
   isVideoEvidence,
   type WorkOrderEvidenceItem,
 } from "@/features/work-orders/lib/evidence/workOrderEvidence";
+import { selectCustomerVisibleQuoteParts } from "@/features/portal/lib/customerVisibleQuoteParts";
 
 const COPPER = "#C57A4A";
 const CUSTOMER_VISIBLE_QUOTE_STATUSES = new Set([
@@ -253,19 +254,7 @@ function getQuoteParts(
   allowCanonicalPartsQuote: boolean,
 ): QuotePartView[] {
   const metadata = quoteMetadata(line);
-  const directParts = metadataArray(metadata, "parts");
-  const partsQuote = metadata.parts_quote;
-  const quotedParts =
-    partsQuote && typeof partsQuote === "object" && !Array.isArray(partsQuote)
-      ? metadataArray(partsQuote as Record<string, unknown>, "items")
-      : [];
-  return (
-    directParts.length > 0
-      ? directParts
-      : allowCanonicalPartsQuote
-        ? quotedParts
-        : []
-  )
+  return selectCustomerVisibleQuoteParts(metadata, allowCanonicalPartsQuote)
     .filter(
       (part): part is Record<string, unknown> =>
         Boolean(part) && typeof part === "object" && !Array.isArray(part),

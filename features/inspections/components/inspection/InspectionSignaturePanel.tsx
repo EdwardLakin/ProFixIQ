@@ -39,7 +39,7 @@ function roleLabel(role: SignatureRole): string {
 
 function roleSubtext(role: SignatureRole): string {
   if (role === "technician")
-    return "Uses the saved signature from your profile (no re-signing every time).";
+    return "Signing submits failed and recommended findings to Quote Review, then locks this inspection.";
   if (role === "advisor")
     return "Sign to approve/confirm this inspection snapshot.";
   return "A staff user records the customer's typed acknowledgement; no drawn customer signature is captured.";
@@ -258,7 +258,11 @@ const InspectionSignaturePanel: React.FC<InspectionSignaturePanelProps> = ({
         throw new Error(json?.error || "Signature failed");
       }
 
-      toast.success(`${roleLabel(role)} signature captured.`);
+      toast.success(
+        role === "technician"
+          ? "Inspection signed and findings submitted to Quote Review."
+          : `${roleLabel(role)} signature captured.`,
+      );
       onSigned?.();
     } catch (error) {
       // eslint-disable-next-line no-console
@@ -376,4 +380,3 @@ const InspectionSignaturePanel: React.FC<InspectionSignaturePanelProps> = ({
 };
 
 export default InspectionSignaturePanel;
-

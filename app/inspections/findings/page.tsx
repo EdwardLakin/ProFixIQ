@@ -1,1 +1,5 @@
-export { default } from "@/features/inspections/lib/inspection/findings/page";
+import { redirect } from "next/navigation";
+
+export default function LegacyInspectionFindingsPage(): never {
+  redirect("/inspections");
+}

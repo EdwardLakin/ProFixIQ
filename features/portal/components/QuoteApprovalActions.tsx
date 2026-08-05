@@ -93,6 +93,7 @@ export default function QuoteApprovalActions({ workOrderId, lines, onChanged }: 
               operationKey,
             }),
             cache: "no-store",
+            credentials: "include",
           }),
         );
       }
@@ -114,6 +115,7 @@ export default function QuoteApprovalActions({ workOrderId, lines, onChanged }: 
                 idempotencyKey: lineOperationKey,
               }),
               cache: "no-store",
+              credentials: "include",
             },
           ),
         );

@@ -114,11 +114,18 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(target, 308);
   }
 
-  if (isAssetPath(pathname) || pathname.startsWith("/api")) {
+  if (isAssetPath(pathname)) {
     return NextResponse.next();
   }
 
   const res = NextResponse.next({ request: { headers: requestHeaders } });
+
+  if (pathname.startsWith("/api")) {
+    if (!hasSupabasePublicEnv()) return res;
+    const supabase = createMiddlewareSupabase(req, res);
+    await supabase.auth.getUser();
+    return res;
+  }
 
   const isPortal = pathname === "/portal" || pathname.startsWith("/portal/");
   const isFleetPortalAuthPage = pathname === PORTAL_SIGN_IN.fleet;
@@ -414,6 +421,7 @@ export const config = {
     "/inspections/:path*",
     "/mobile/:path*",
     "/parts/:path*",
+    "/api/:path*",
     "/tech/queue",
   ],
 };

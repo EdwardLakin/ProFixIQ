@@ -1,9 +1,9 @@
 import "server-only";
 
 import { NextResponse, type NextRequest } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
-import type { Database } from "@shared/types/types/supabase";
+import { requirePortalCustomerActor } from "@/features/portal/server/requirePortalActor";
+import { PortalAccessError } from "@/features/portal/server/portalAuth";
 import {
   applyWorkOrderQuoteLineDecision,
   type QuoteApprovalDecision,
@@ -11,7 +11,6 @@ import {
 
 export const runtime = "nodejs";
 
-type DB = Database;
 type RouteContext = { params: Promise<{ id: string }> };
 type Body = {
   decision?: QuoteApprovalDecision;
@@ -26,27 +25,22 @@ function safeTrim(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function serviceSupabase() {
-  return createClient<DB>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  );
-}
-
 export async function POST(req: NextRequest, context: RouteContext) {
   const routeSupabase = createServerSupabaseRoute();
   const { id } = await context.params;
   const routeQuoteLineId = safeTrim(id);
 
-  const {
-    data: { user },
-    error: userError,
-  } = await routeSupabase.auth.getUser();
-
-  if (userError || !user) {
+  let actor;
+  try {
+    actor = await requirePortalCustomerActor(routeSupabase);
+  } catch (error) {
+    const status = error instanceof PortalAccessError ? error.status : 400;
     return NextResponse.json(
-      { ok: false, error: "Unauthorized" },
-      { status: 401 },
+      {
+        ok: false,
+        error: error instanceof Error ? error.message : "Unable to authorize portal access",
+      },
+      { status },
     );
   }
 
@@ -82,30 +76,11 @@ export async function POST(req: NextRequest, context: RouteContext) {
     );
   }
 
-  const { data: customer, error: customerError } = await routeSupabase
-    .from("customers")
-    .select("id")
-    .eq("user_id", user.id)
-    .maybeSingle();
-
-  if (customerError) {
-    return NextResponse.json(
-      { ok: false, error: customerError.message },
-      { status: 400 },
-    );
-  }
-  if (!customer?.id) {
-    return NextResponse.json(
-      { ok: false, error: "Customer profile not found" },
-      { status: 403 },
-    );
-  }
-
   const { data: workOrder, error: workOrderError } = await routeSupabase
     .from("work_orders")
     .select("id, shop_id, customer_id")
     .eq("id", workOrderId)
-    .eq("customer_id", customer.id)
+    .eq("customer_id", actor.customer.id)
     .maybeSingle();
 
   if (workOrderError) {
@@ -117,7 +92,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
   if (
     !workOrder?.id ||
     !workOrder.shop_id ||
-    workOrder.customer_id !== customer.id
+    workOrder.customer_id !== actor.customer.id
   ) {
     return NextResponse.json(
       { ok: false, error: "Quote not found" },
@@ -126,12 +101,12 @@ export async function POST(req: NextRequest, context: RouteContext) {
   }
 
   const result = await applyWorkOrderQuoteLineDecision({
-    supabase: serviceSupabase(),
+    supabase: routeSupabase,
     quoteLineIds,
     workOrderId: workOrder.id,
     shopId: workOrder.shop_id,
-    customerId: customer.id,
-    actorUserId: user.id,
+    customerId: actor.customer.id,
+    actorUserId: actor.userId,
     decision,
     declineRemaining: body?.declineRemaining === true,
     operationKey,

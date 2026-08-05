@@ -6,7 +6,6 @@ import { useInspectionForm } from "@inspections/lib/inspection/ui/InspectionForm
 import type {
   InspectionItem,
 } from "@inspections/lib/inspection/types";
-import { Button } from "@shared/components/ui/Button";
 
 type PartLine = { description: string; qty: number };
 
@@ -273,11 +272,6 @@ function getLabel(it: InspectionItem): string {
   return String(anyIt.item ?? anyIt.name ?? "").trim();
 }
 
-function readNotes(it: InspectionItem): string {
-  const anyIt = it as unknown as { notes?: unknown; note?: unknown };
-  return String(anyIt.notes ?? anyIt.note ?? "").trim();
-}
-
 function readParts(it: InspectionItem): PartLine[] {
   const anyIt = it as unknown as { parts?: unknown };
   if (!Array.isArray(anyIt.parts)) return [];
@@ -347,8 +341,6 @@ export default function TireGrid(props: Props) {
     unitHint,
     onAddAxle,
     requireNoteForAI,
-    onSubmitAI,
-    isSubmittingAI,
     onUpdateParts,
     onUpdateLaborHours,
   } = props;
@@ -498,18 +490,6 @@ export default function TireGrid(props: Props) {
 
     if (!isFailOrRec && !requireNoteForAI) return null;
 
-    const note = readNotes(it).trim();
-    const canShowSubmit =
-      !!requireNoteForAI &&
-      isFailOrRec &&
-      note.length > 0 &&
-      typeof onSubmitAI === "function";
-
-    const submitting =
-      typeof isSubmittingAI === "function"
-        ? isSubmittingAI(sectionIndex, itemIndex)
-        : false;
-
     const currentParts = readParts(it);
     const currentLabor = readLaborHours(it);
 
@@ -609,20 +589,6 @@ export default function TireGrid(props: Props) {
           </div>
         ) : null}
 
-        {canShowSubmit ? (
-          <div className="mt-2 flex items-center justify-end">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="px-3"
-              disabled={submitting}
-              onClick={() => onSubmitAI!(sectionIndex, itemIndex)}
-            >
-              {submitting ? "Submitting…" : "Submit for estimate"}
-            </Button>
-          </div>
-        ) : null}
       </>
     );
   };

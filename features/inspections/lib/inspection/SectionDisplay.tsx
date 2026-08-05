@@ -202,9 +202,6 @@ export default function SectionDisplay(props: SectionDisplayProps) {
     onUpdateStatus,
     onUpdateNote,
     onUpdatePhotos,
-    requireNoteForAI,
-    onSubmitAI,
-    isSubmittingAI,
     smartMatchByKey,
     smartMatchLoadingByKey,
     onAcceptSmartMatch,
@@ -450,15 +447,6 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                   const isFailOrRec = isFail || isRec;
 
                   const note = getNote(item).trim();
-
-                  const canShowSubmit =
-                    !!requireNoteForAI &&
-                    isFailOrRec &&
-                    note.length > 0 &&
-                    typeof onSubmitAI === "function";
-
-                  const submitting =
-                    isSubmittingAI?.(sectionIndex, itemIndex) ?? false;
 
                   const rail = isFail
                     ? "before:bg-red-500/70"
@@ -1024,59 +1012,6 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                         </div>
                       ) : null}
 
-                      {canShowSubmit && (
-                        <div className="mt-2 flex items-center justify-end gap-2">
-                          {(() => {
-                            if (!submitted) {
-                              return (
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="sm"
-                                  className="px-3"
-                                  disabled={submitting}
-                                  onClick={() =>
-                                    onSubmitAI?.(sectionIndex, itemIndex)
-                                  }
-                                >
-                                  {submitting
-                                    ? "Submitting…"
-                                    : "Submit for estimate"}
-                                </Button>
-                              );
-                            }
-
-                            if (isEditing) {
-                              return (
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="sm"
-                                  className="px-3"
-                                  disabled={submitting}
-                                  onClick={() =>
-                                    onSubmitAI?.(sectionIndex, itemIndex)
-                                  }
-                                >
-                                  {submitting ? "Updating…" : "Update estimate"}
-                                </Button>
-                              );
-                            }
-
-                            return (
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="px-3 opacity-70"
-                                disabled
-                              >
-                                Submitted
-                              </Button>
-                            );
-                          })()}
-                        </div>
-                      )}
                     </div>
                   );
                 })}
