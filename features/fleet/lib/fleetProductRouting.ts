@@ -1,3 +1,5 @@
+export const FLEET_PRODUCT_ORIGIN = "https://fleet.profixiq.com";
+
 const FLEET_PRODUCT_HOSTNAMES = new Set([
   "fleet.profixiq.com",
   "fleet.localhost",
@@ -26,7 +28,6 @@ const FLEET_ROUTE_MAPPINGS: readonly FleetRouteMapping[] = [
     internalPath: "/portal/fleet/pretrip-history",
   },
   { publicPath: "/assets", internalPath: "/portal/fleet/units" },
-  { publicPath: "/dispatch", internalPath: "/portal/fleet/board" },
   { publicPath: "/maintenance", internalPath: "/portal/fleet/maintenance" },
   { publicPath: "/calendar", internalPath: "/portal/fleet/calendar" },
   { publicPath: "/drivers", internalPath: "/portal/fleet/drivers" },
@@ -55,7 +56,11 @@ function replaceRouteBase(
 ): string | null {
   const normalized = normalizePathname(pathname);
   if (normalized === sourceBase) return destinationBase;
-  if (sourceBase === "/" || !normalized.startsWith(`${sourceBase}/`)) {
+  if (
+    sourceBase === "/" ||
+    destinationBase === "/" ||
+    !normalized.startsWith(`${sourceBase}/`)
+  ) {
     return null;
   }
   return `${destinationBase}${normalized.slice(sourceBase.length)}`;
