@@ -21,6 +21,7 @@ describe("approval-time menu parts release migration", () => {
     expect(migration).toContain("create unique index uq_pri_line_part");
     expect(migration).toContain("create unique index uq_pri_line_desc_nullpart");
     expect(migration).toContain("lower(trim(description))");
+    expect(migration).toContain("and approved is true");
   });
 
   it("stages durable menu identity and pricing snapshots going forward", () => {
@@ -37,15 +38,20 @@ describe("approval-time menu parts release migration", () => {
       expect(migration).toContain(column);
     }
     expect(migration).toContain("'Menu part ' || left(mip.id::text, 8)");
+    expect(migration).toContain("create trigger trg_wol_copy_menu_parts");
+    expect(migration).toContain("p.price,\n          p.default_price");
   });
 
-  it("repairs only historical menu-derived rows missing descriptions", () => {
+  it("repairs only safe one-to-one historical menu matches", () => {
     expect(migration).toContain("with menu_candidates as");
     expect(migration).toContain("join public.menu_item_parts mip");
     expect(migration).toContain(
       "where nullif(trim(wop.description_snapshot), '') is null",
     );
-    expect(migration).toContain("menu.match_ordinal = wop.match_ordinal");
+    expect(migration).toContain("menu.match_count = 1");
+    expect(migration).toContain("wop.match_count = 1");
+    expect(migration).toContain("not public.work_order_is_financially_locked");
+    expect(migration).not.toContain("row_number()");
   });
 
   it("contains no production row identifiers", () => {

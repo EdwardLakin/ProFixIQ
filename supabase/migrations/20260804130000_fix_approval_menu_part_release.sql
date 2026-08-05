@@ -37,7 +37,9 @@ create unique index uq_pri_line_desc_nullpart
   )
   where part_id is null
     and work_order_line_id is not null
-    and source_work_order_part_id is null;
+    and source_work_order_part_id is null
+    and approved is true
+    and nullif(trim(description), '') is not null;
 
 -- Preserve menu-part identity on every new staged work-order part. This is
 -- consumed by the approval-time Parts release and by quote/invoice display.
@@ -96,11 +98,11 @@ begin
     select case
       when mip.part_id is not null then
         coalesce(
-          p.default_price,
           p.price,
+          p.default_price,
           mip.unit_cost,
-          p.default_cost,
           p.cost,
+          p.default_cost,
           0
         )::numeric
       else coalesce(mip.unit_cost, 0)::numeric
@@ -113,9 +115,16 @@ begin
 end;
 $$;
 
+drop trigger if exists trg_wol_copy_menu_parts
+  on public.work_order_lines;
+create trigger trg_wol_copy_menu_parts
+after insert on public.work_order_lines
+for each row
+execute function public.wol_copy_menu_parts_to_work_order_parts();
+
 -- Repair historical menu-derived rows that were staged before the trigger
--- copied snapshots. Matching uses the same quantity and sell-price contract
--- as the trigger; an ordinal only disambiguates financially identical rows.
+-- copied snapshots. Only one-to-one financial matches on mutable work orders
+-- are safe to repair; ambiguous or locked rows are deliberately left alone.
 with menu_candidates as (
   select
     wol.id as work_order_line_id,
@@ -142,7 +151,7 @@ with menu_candidates as (
     nullif(trim(p.part_number), '') as part_number_snapshot,
     nullif(trim(p.manufacturer), '') as manufacturer_snapshot,
     coalesce(mip.unit_cost, p.default_cost, p.cost) as unit_cost_snapshot,
-    row_number() over (
+    count(*) over (
       partition by
         wol.id,
         greatest(1, coalesce(round(mip.quantity)::int, 1)),
@@ -158,8 +167,7 @@ with menu_candidates as (
             )::numeric
           else coalesce(mip.unit_cost, 0)::numeric
         end
-      order by mip.id
-    ) as match_ordinal
+    ) as match_count
   from public.work_order_lines wol
   join public.menu_item_parts mip
     on mip.menu_item_id = wol.menu_item_id
@@ -168,19 +176,22 @@ with menu_candidates as (
     on p.id = mip.part_id
    and (p.shop_id is null or p.shop_id = wol.shop_id)
   where wol.menu_item_id is not null
+    and not public.work_order_is_financially_locked(
+      wol.shop_id,
+      wol.work_order_id
+    )
 ), work_order_candidates as (
   select
     wop.id,
     wop.work_order_line_id,
     coalesce(wop.quantity, 0)::numeric as quantity,
     coalesce(wop.unit_price, 0)::numeric as sell_price,
-    row_number() over (
+    count(*) over (
       partition by
         wop.work_order_line_id,
         coalesce(wop.quantity, 0),
         coalesce(wop.unit_price, 0)
-      order by wop.id
-    ) as match_ordinal
+    ) as match_count
   from public.work_order_parts wop
   where nullif(trim(wop.description_snapshot), '') is null
 ), matched as (
@@ -190,13 +201,14 @@ with menu_candidates as (
     menu.part_number_snapshot,
     menu.manufacturer_snapshot,
     menu.unit_cost_snapshot,
-    menu.sell_price
+    wop.sell_price
   from work_order_candidates wop
   join menu_candidates menu
     on menu.work_order_line_id = wop.work_order_line_id
    and menu.quantity = wop.quantity
    and menu.sell_price = wop.sell_price
-   and menu.match_ordinal = wop.match_ordinal
+   and menu.match_count = 1
+   and wop.match_count = 1
 )
 update public.work_order_parts wop
 set description_snapshot = matched.description_snapshot,
