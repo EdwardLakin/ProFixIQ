@@ -11,10 +11,15 @@ import {
   resolvePortalSurfaceRedirect,
   type PortalSurface,
 } from "@/features/auth/lib/portalSurfaceRouting";
+import {
+  toFleetInternalHref,
+  toFleetPublicHref,
+} from "@/features/fleet/lib/fleetProductRouting";
 import { signInWithIdentifier } from "@/features/auth/lib/signInClient";
 
 type PortalSignInFormProps = {
   portalType: PortalSurface;
+  productHost?: boolean;
 };
 
 const inputClass =
@@ -22,6 +27,7 @@ const inputClass =
 
 export default function PortalSignInForm({
   portalType,
+  productHost = false,
 }: PortalSignInFormProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -38,6 +44,13 @@ export default function PortalSignInForm({
         isFleet
           ? "This activation link is invalid or has expired. Ask your shop or fleet administrator to resend the fleet invitation."
           : "This activation link is invalid or has expired. Ask your shop to resend your customer portal invitation.",
+      );
+      return;
+    }
+
+    if (isFleet && searchParams.get("access") === "required") {
+      setError(
+        "This account does not have access to a Fleet workspace. Sign in with an invited Fleet account or ask a fleet administrator for access.",
       );
     }
   }, [isFleet, searchParams]);
@@ -62,11 +75,20 @@ export default function PortalSignInForm({
         return;
       }
 
-      const destination = resolvePortalSurfaceRedirect(
-        searchParams.get("redirect"),
+      const requestedRedirect = searchParams.get("redirect");
+      const internalRedirect =
+        isFleet && productHost
+          ? toFleetInternalHref(requestedRedirect) ?? requestedRedirect
+          : requestedRedirect;
+      const internalDestination = resolvePortalSurfaceRedirect(
+        internalRedirect,
         result.destination,
         portalType,
       );
+      const destination =
+        isFleet && productHost
+          ? toFleetPublicHref(internalDestination) ?? "/"
+          : internalDestination;
       router.replace(destination);
       router.refresh();
     } finally {
@@ -76,22 +98,22 @@ export default function PortalSignInForm({
 
   return (
     <AuthShell
-      productLabel={isFleet ? "Fleet portal" : "Customer portal"}
+      productLabel={isFleet ? "ProFixIQ Fleet" : "Customer portal"}
       heroTitle={isFleet ? "Keep every unit moving." : "Your service, all in one place."}
       heroDescription={
         isFleet
-          ? "Approvals, pre-trips, service requests, and shop visibility in one secure portal."
+          ? "Asset readiness, preventive maintenance, service decisions, and repair history in one dedicated Fleet workspace."
           : "Approve work, follow progress, and keep every service record connected to your vehicle."
       }
       highlights={
         isFleet
-          ? ["Invite-only access", "Fleet-scoped records", "Service visibility"]
+          ? ["Fleet control tower", "Maintenance planning", "Connected repair history"]
           : ["Secure approvals", "Live progress", "Service history"]
       }
     >
       <div className="mb-6">
         <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-copper)]">
-          {isFleet ? "Fleet portal" : "Customer portal"}
+          {isFleet ? "ProFixIQ Fleet" : "Customer portal"}
         </div>
         <h1 className="mt-2 text-3xl font-semibold tracking-[-0.035em] text-[color:var(--theme-text-primary)] sm:text-4xl">
           Sign in
@@ -176,15 +198,17 @@ export default function PortalSignInForm({
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
           {loading
             ? "Verifying access…"
-            : `Sign in to ${isFleet ? "fleet" : "customer"} portal`}
+            : isFleet
+              ? "Sign in to ProFixIQ Fleet"
+              : "Sign in to customer portal"}
         </button>
       </form>
 
       <div className="mt-5 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3.5 py-3 text-xs leading-5 text-[color:var(--theme-text-secondary)]">
         {isFleet ? (
           <>
-            Fleet access is invitation-only. Contact your shop or fleet administrator if
-            you need an invitation.
+            Fleet access is invitation-only. Contact your fleet administrator if you
+            need access to this workspace.
           </>
         ) : (
           <>
@@ -205,7 +229,13 @@ export default function PortalSignInForm({
       <div className="mt-4 text-center text-xs text-[color:var(--theme-text-muted)]">
         {isFleet ? "Looking for a customer service record?" : "Managing a fleet?"}{" "}
         <Link
-          href={isFleet ? PORTAL_SIGN_IN.customer : PORTAL_SIGN_IN.fleet}
+          href={
+            isFleet && productHost
+              ? `${process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") || "https://profixiq.com"}${PORTAL_SIGN_IN.customer}`
+              : isFleet
+                ? PORTAL_SIGN_IN.customer
+                : PORTAL_SIGN_IN.fleet
+          }
           className="font-semibold text-[var(--accent-copper)] hover:underline"
         >
           Sign in to the {isFleet ? "customer" : "fleet"} portal
