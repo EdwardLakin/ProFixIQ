@@ -96,17 +96,29 @@ insert into public.parts (
   default_cost,
   price,
   default_price
-) values (
-  'e0000000-0000-4000-8000-000000000001',
-  'a0000000-0000-4000-8000-000000000001',
-  'Runtime Brake Pad',
-  'RUNTIME-BP',
-  'RUNTIME-BP',
-  10,
-  11,
-  null,
-  25
-);
+) values
+  (
+    'e0000000-0000-4000-8000-000000000001',
+    'a0000000-0000-4000-8000-000000000001',
+    'Runtime Brake Pad',
+    'RUNTIME-BP',
+    'RUNTIME-BP',
+    10,
+    11,
+    null,
+    25
+  ),
+  (
+    'e0000000-0000-4000-8000-000000000002',
+    'a0000000-0000-4000-8000-000000000001',
+    'Runtime Rotor',
+    'RUNTIME-ROT',
+    'RUNTIME-ROT',
+    20,
+    22,
+    null,
+    50
+  );
 
 insert into public.stock_locations (id, shop_id, code, name)
 values (
@@ -955,7 +967,7 @@ insert into public.part_request_items (
     'a0000000-0000-4000-8000-000000000001',
     'c0000000-0000-4000-8000-000000000001',
     'd0000000-0000-4000-8000-000000000001',
-    'e0000000-0000-4000-8000-000000000001',
+    'e0000000-0000-4000-8000-000000000002',
     'Runtime rollback missing allocation',
     1,
     1,
