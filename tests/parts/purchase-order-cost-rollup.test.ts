@@ -18,13 +18,13 @@ describe("purchase-order cost and total reconciliation", () => {
   it("prefers catalog acquisition cost when the request still mirrors sell price", () => {
     expect(requestPage).toContain("selectedInventoryPart?.default_cost");
     expect(requestPage).toContain("selectedInventoryPart?.cost");
-    expect(migration).toContain("create or replace function public.normalize_purchase_order_line_cost()");
+    expect(migration).toContain("create or replace function private.normalize_purchase_order_line_cost()");
     expect(migration).toContain("round(v_request_cost, 4) = round(v_request_sell, 4)");
     expect(migration).toContain("new.unit_cost := v_catalog_cost");
   });
 
   it("synchronizes the durable request and work-order cost snapshots", () => {
-    expect(migration).toContain("create or replace function public.sync_purchase_order_line_cost_to_parts()");
+    expect(migration).toContain("create or replace function private.sync_purchase_order_line_cost_to_parts()");
     expect(migration).toContain("set unit_cost = new.unit_cost");
     expect(migration).toContain("set unit_cost_snapshot = new.unit_cost");
   });

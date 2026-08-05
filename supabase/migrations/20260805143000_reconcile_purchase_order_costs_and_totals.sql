@@ -5,7 +5,7 @@ begin;
 -- Once a catalog-backed PO line is created, prefer the catalog acquisition cost
 -- only when the submitted value is absent or is the unchanged mirrored sell
 -- price. A genuinely distinct supplier quote remains authoritative.
-create or replace function public.normalize_purchase_order_line_cost()
+create or replace function private.normalize_purchase_order_line_cost()
 returns trigger
 language plpgsql
 security definer
@@ -60,7 +60,7 @@ begin
 end;
 $$;
 
-revoke all on function public.normalize_purchase_order_line_cost()
+revoke all on function private.normalize_purchase_order_line_cost()
   from public, anon, authenticated;
 
 drop trigger if exists trg_normalize_purchase_order_line_cost
@@ -69,12 +69,12 @@ create trigger trg_normalize_purchase_order_line_cost
 before insert or update of part_request_item_id, part_id, unit_cost
 on public.purchase_order_lines
 for each row
-execute function public.normalize_purchase_order_line_cost();
+execute function private.normalize_purchase_order_line_cost();
 
 -- The PO line is the durable procurement-cost boundary. Keep its linked
 -- lifecycle rows aligned so margins do not continue using a pre-inventory
 -- customer sell price.
-create or replace function public.sync_purchase_order_line_cost_to_parts()
+create or replace function private.sync_purchase_order_line_cost_to_parts()
 returns trigger
 language plpgsql
 security definer
@@ -101,7 +101,7 @@ begin
 end;
 $$;
 
-revoke all on function public.sync_purchase_order_line_cost_to_parts()
+revoke all on function private.sync_purchase_order_line_cost_to_parts()
   from public, anon, authenticated;
 
 drop trigger if exists trg_sync_purchase_order_line_cost_to_parts
@@ -110,9 +110,9 @@ create trigger trg_sync_purchase_order_line_cost_to_parts
 after insert or update of part_request_item_id, work_order_part_id, unit_cost
 on public.purchase_order_lines
 for each row
-execute function public.sync_purchase_order_line_cost_to_parts();
+execute function private.sync_purchase_order_line_cost_to_parts();
 
-create or replace function public.recalculate_purchase_order_totals(
+create or replace function private.recalculate_purchase_order_totals(
   p_po_id uuid
 )
 returns void
@@ -146,10 +146,10 @@ begin
 end;
 $$;
 
-revoke all on function public.recalculate_purchase_order_totals(uuid)
+revoke all on function private.recalculate_purchase_order_totals(uuid)
   from public, anon, authenticated;
 
-create or replace function public.sync_purchase_order_totals_from_line()
+create or replace function private.sync_purchase_order_totals_from_line()
 returns trigger
 language plpgsql
 security definer
@@ -157,19 +157,19 @@ set search_path = public, pg_temp
 as $$
 begin
   if tg_op = 'DELETE' then
-    perform public.recalculate_purchase_order_totals(old.po_id);
+    perform private.recalculate_purchase_order_totals(old.po_id);
     return old;
   end if;
 
-  perform public.recalculate_purchase_order_totals(new.po_id);
+  perform private.recalculate_purchase_order_totals(new.po_id);
   if tg_op = 'UPDATE' and old.po_id is distinct from new.po_id then
-    perform public.recalculate_purchase_order_totals(old.po_id);
+    perform private.recalculate_purchase_order_totals(old.po_id);
   end if;
   return new;
 end;
 $$;
 
-revoke all on function public.sync_purchase_order_totals_from_line()
+revoke all on function private.sync_purchase_order_totals_from_line()
   from public, anon, authenticated;
 
 drop trigger if exists trg_sync_purchase_order_totals_from_line
@@ -178,7 +178,7 @@ create trigger trg_sync_purchase_order_totals_from_line
 after insert or delete or update of po_id, qty, unit_cost, cancelled_qty
 on public.purchase_order_lines
 for each row
-execute function public.sync_purchase_order_totals_from_line();
+execute function private.sync_purchase_order_totals_from_line();
 
 -- Repair header arithmetic only where line detail exists. Header-only imports
 -- retain their original totals because no deterministic line rollup is possible.
@@ -191,7 +191,7 @@ begin
     from public.purchase_order_lines line
     where line.po_id is not null
   loop
-    perform public.recalculate_purchase_order_totals(v_po.po_id);
+    perform private.recalculate_purchase_order_totals(v_po.po_id);
   end loop;
 end;
 $$;
