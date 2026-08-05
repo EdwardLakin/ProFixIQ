@@ -81,9 +81,11 @@ function daysUntil(iso: string | null): number | null {
 export default function AppShell({
   children,
   initialIdentity,
+  initialOutsideDesktopShell = false,
 }: {
   children: React.ReactNode;
   initialIdentity?: AppShellInitialIdentity | null;
+  initialOutsideDesktopShell?: boolean;
 }) {
   const pathname = usePathname() ?? "/";
   const router = useRouter();
@@ -117,7 +119,8 @@ export default function AppShell({
 
   const punchRef = useRef<HTMLDivElement | null>(null);
 
-  const isAppRoute = !isOutsideDesktopAppShell(pathname);
+  const isAppRoute =
+    !initialOutsideDesktopShell && !isOutsideDesktopAppShell(pathname);
 
   const canSeeAgentConsole =
     !!userRole &&
