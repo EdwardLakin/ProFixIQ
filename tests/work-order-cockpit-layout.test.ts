@@ -15,13 +15,16 @@ describe("desktop work-order cockpit", () => {
   it("uses stable navigator, workspace, command-center, and activity surfaces", () => {
     expect(detail).toContain('display="navigator"');
     expect(detail).toContain('variant="cockpit"');
-    expect(detail).toContain("Latest activity");
+    expect(detail).toContain("Work order activity");
+    expect(detail).toContain("primaryTechSnapshot={panelPrimaryTech}");
+    expect(detail).toContain("isPunchedInSnapshot={panelLineIsPunchedIn}");
     expect(detail).not.toContain("<PageShell");
 
     expect(focusedJob).toContain('data-work-order-cockpit="true"');
     expect(focusedJob).toContain("Command center");
     expect(focusedJob).toContain('role="tablist"');
     expect(focusedJob).toContain('activeWorkspaceTab === "overview"');
+    expect(focusedJob).toContain("resolveOperationalLineStatusLabel");
     expect(jobCard).toContain('display === "navigator"');
   });
 
