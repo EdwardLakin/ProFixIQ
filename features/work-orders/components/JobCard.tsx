@@ -75,6 +75,7 @@ type JobCardProps = {
   reviewIssues?: ReviewIssue[];
   reviewOk?: boolean;
   compact?: boolean;
+  display?: "card" | "navigator";
   selected?: boolean;
   hideExecutionStageCompletenessPills?: boolean;
   evidence?: WorkOrderEvidenceItem[];
@@ -90,6 +91,8 @@ type StatusVisual = {
 };
 
 const METALLIC_CARD_SURFACE = "bg-[var(--theme-gradient-panel)]";
+const btnLikeNavigatorAction =
+  "inline-flex min-h-8 items-center justify-center rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-1.5 text-[10px] font-semibold text-[color:var(--theme-text-primary)] transition hover:bg-[color:var(--theme-surface-subtle)] disabled:cursor-not-allowed disabled:opacity-50";
 
 function norm(s: unknown): string {
   return String(s ?? "")
@@ -340,6 +343,7 @@ export function JobCard({
   reviewIssues,
   reviewOk,
   compact = false,
+  display = "card",
   selected = false,
   hideExecutionStageCompletenessPills = false,
   evidence = [],
@@ -423,6 +427,124 @@ export function JobCard({
     event.stopPropagation();
     onRequestParts?.();
   };
+
+  if (display === "navigator") {
+    return (
+      <article
+        className={cn(
+          "border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] transition",
+          isSelected
+            ? "border-l-[3px] border-l-[color:var(--brand-primary)] bg-[color:var(--theme-surface-subtle)]"
+            : "border-l-[3px] border-l-transparent hover:bg-[color:var(--theme-surface-subtle)]",
+          statusVisual.muted && "opacity-75",
+        )}
+      >
+        <button
+          type="button"
+          onClick={onOpen}
+          className="w-full px-3 py-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[color:var(--brand-primary)]"
+          aria-label={`Open job ${index + 1}: ${jobLabel}`}
+          aria-pressed={isSelected}
+        >
+          <div className="flex items-start gap-2.5">
+            <span className="mt-0.5 inline-flex h-6 min-w-6 items-center justify-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-1.5 text-[11px] font-semibold text-[color:var(--theme-text-primary)]">
+              {index + 1}
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="line-clamp-2 text-sm font-semibold leading-5 text-[color:var(--theme-text-primary)]">
+                {jobLabel}
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                {statusVisual.label ? (
+                  <span
+                    className={cn(
+                      "inline-flex rounded-md border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em]",
+                      statusVisual.chipClass,
+                    )}
+                  >
+                    {statusVisual.label}
+                  </span>
+                ) : null}
+                {liveMarkerLabel ? (
+                  <span className="inline-flex rounded-md border border-cyan-300/50 bg-cyan-400/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-cyan-100">
+                    {liveMarkerLabel}
+                  </span>
+                ) : null}
+              </div>
+              <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-[color:var(--theme-text-secondary)]">
+                <span className="inline-flex min-w-0 items-center gap-1 truncate">
+                  <UserRound className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">{assignedTech}</span>
+                </span>
+                <span className="shrink-0 font-mono font-semibold text-[color:var(--theme-text-primary)]">
+                  {lineTotal > 0 ? formatCurrency(lineTotal) : "Estimate pending"}
+                </span>
+              </div>
+            </div>
+          </div>
+        </button>
+
+        {isSelected ? (
+          <div className="border-t border-[color:var(--theme-border-soft)] px-3 py-2">
+            {canAssign && onAssign ? (
+              <label className="relative mb-2 block">
+                <UserRound className="pointer-events-none absolute left-2 top-2 h-3.5 w-3.5 text-[color:var(--theme-text-muted)]" />
+                <span className="sr-only">Assigned technician</span>
+                <select
+                  aria-label="Assigned technician"
+                  value={line.assigned_tech_id ?? ""}
+                  onChange={(event) => onAssign(event.target.value)}
+                  className="h-8 w-full appearance-none truncate rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] py-1 pl-7 pr-3 text-[10px] font-semibold text-[color:var(--theme-text-primary)]"
+                >
+                  <option value="" disabled>
+                    Unassigned
+                  </option>
+                  {technicians.map((tech) => (
+                    <option key={tech.id} value={tech.id}>
+                      {tech.full_name || "Unnamed tech"}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+
+            <details className="group">
+              <summary className="cursor-pointer list-none text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)]">
+                Job actions
+              </summary>
+              <div className="mt-2 grid grid-cols-2 gap-1.5">
+                {onOpenInspection ? (
+                  <button type="button" className={btnLikeNavigatorAction} onClick={onOpenInspection}>
+                    Inspection
+                  </button>
+                ) : null}
+                {onAddPart ? (
+                  <button type="button" className={btnLikeNavigatorAction} onClick={onAddPart}>
+                    Add part
+                  </button>
+                ) : null}
+                {onRequestParts ? (
+                  <button
+                    type="button"
+                    className={btnLikeNavigatorAction}
+                    onClick={onRequestParts}
+                    disabled={requestPartsBusy}
+                  >
+                    {requestPartsBusy ? "Requesting…" : requestPartsLabel}
+                  </button>
+                ) : null}
+                {showDeleteAction ? (
+                  <button type="button" className={btnLikeNavigatorAction} onClick={onDelete}>
+                    Delete / Void
+                  </button>
+                ) : null}
+              </div>
+            </details>
+          </div>
+        ) : null}
+      </article>
+    );
+  }
 
   return (
     <div
