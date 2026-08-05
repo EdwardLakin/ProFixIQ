@@ -1237,7 +1237,14 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
       return true;
     }
 
-    const rawUnitCost = Number(item.unit_cost);
+    const selectedInventoryPart = parts.find(
+      (part) => String(part.id) === String(item.part_id),
+    );
+    const rawUnitCost = Number(
+      selectedInventoryPart?.default_cost ??
+        selectedInventoryPart?.cost ??
+        item.unit_cost,
+    );
     const unitCost = Number.isFinite(rawUnitCost) ? Math.max(rawUnitCost, 0) : null;
     const idempotencyKey = [
       "request-order",

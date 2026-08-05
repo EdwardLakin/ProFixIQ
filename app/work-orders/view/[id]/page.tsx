@@ -5,6 +5,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import { formatWorkOrderHeaderStatus } from "@/features/work-orders/lib/display/workOrderPresentation";
 import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
@@ -142,6 +143,10 @@ export default function WorkOrderReadOnlyStoryPage(): JSX.Element {
   const expectedCompletionAt = wo?.expected_completion_at
     ? format(new Date(wo.expected_completion_at), "PPpp")
     : "—";
+  const statusView = formatWorkOrderHeaderStatus(
+    wo?.status,
+    wo?.payment_status,
+  );
 
   const goBack = () => {
     const r = safeTrim(returnUrl);
@@ -207,10 +212,10 @@ export default function WorkOrderReadOnlyStoryPage(): JSX.Element {
                   <span
                     className={
                       "rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] " +
-                      chipClass(wo.status)
+                      chipClass(statusView.label)
                     }
                   >
-                    {String(wo.status ?? "—").replaceAll("_", " ")}
+                    {statusView.label}
                   </span>
                   <span className="desktop-pill px-2 py-0.5 text-[10px] font-mono text-[color:var(--theme-text-secondary)]">
                     {wo.id.slice(0, 8)}
