@@ -15,6 +15,14 @@ const controlRouteSource = readFileSync(
   join(process.cwd(), "app/api/agent/requests/[id]/route.ts"),
   "utf8",
 );
+const replyRouteSource = readFileSync(
+  join(process.cwd(), "app/api/agent/requests/[id]/reply/route.ts"),
+  "utf8",
+);
+const discordRouteSource = readFileSync(
+  join(process.cwd(), "app/api/agent/requests/[id]/notify-discord/route.ts"),
+  "utf8",
+);
 const bridgeMigrationSource = readFileSync(
   join(
     process.cwd(),
@@ -75,14 +83,19 @@ describe("ProFixIQ-Agent team authentication contract", () => {
     );
   });
 
-  it("routes submission and human controls through the canonical Agent service", () => {
+  it("routes the complete UI control plane through the canonical Agent service", () => {
     expect(requestRouteSource).toContain("agentTeamRequest<AgentServiceResponse>");
     expect(requestRouteSource).toContain("readAgentTeamCase");
     expect(controlRouteSource).toContain("approveAgentTeamMission");
     expect(controlRouteSource).toContain("approveAgentTeamRelease");
     expect(controlRouteSource).toContain("rejectAgentTeamCase");
+    expect(replyRouteSource).toContain("resumeAgentTeamCase");
+    expect(replyRouteSource).toContain("readAgentTeamCase");
+    expect(discordRouteSource).toContain('"/notify-discord"');
+    expect(discordRouteSource).toContain("agentTeamRequest");
     expect(controlRouteSource).not.toContain("agent_approve_action");
     expect(controlRouteSource).not.toContain("feature-requests/merge");
     expect(controlRouteSource).not.toContain('.from("agent_jobs")');
+    expect(discordRouteSource).not.toContain('.from("agent_jobs")');
   });
 });
