@@ -23,10 +23,17 @@ const discordRouteSource = readFileSync(
   join(process.cwd(), "app/api/agent/requests/[id]/notify-discord/route.ts"),
   "utf8",
 );
-const bridgeMigrationSource = readFileSync(
+const bridgeCreateMigrationSource = readFileSync(
   join(
     process.cwd(),
     "supabase/migrations/20260805202500_agent_team_bridge_credentials.sql",
+  ),
+  "utf8",
+);
+const bridgeMoveMigrationSource = readFileSync(
+  join(
+    process.cwd(),
+    "supabase/migrations/20260805202600_move_agent_bridge_to_integrations.sql",
   ),
   "utf8",
 );
@@ -59,18 +66,21 @@ describe("ProFixIQ-Agent team authentication contract", () => {
     }).primary).toBe("internal-alias");
   });
 
-  it("loads the durable bridge credential only with the service-role client", () => {
-    expect(teamClientSource).toContain('.from("agent_bridge_credentials")');
+  it("keeps the durable bridge in the existing service-only integration registry", () => {
+    expect(teamClientSource).toContain('.from("integrations")');
+    expect(teamClientSource).toContain('BRIDGE_INTEGRATION_KIND = "profixiq_agent_bridge"');
+    expect(teamClientSource).toContain('.is("shop_id", null)');
     expect(teamClientSource).toContain('headers.set("x-profixiq-bridge-secret", bridgeSecret)');
     expect(teamClientSource).toContain("SUPABASE_SERVICE_ROLE_KEY");
-    expect(bridgeMigrationSource).toContain(
+
+    expect(bridgeCreateMigrationSource).toContain(
       "revoke all on table public.agent_bridge_credentials from public, anon, authenticated",
     );
-    expect(bridgeMigrationSource).toContain(
-      "grant select on table public.agent_bridge_credentials to service_role",
-    );
-    expect(bridgeMigrationSource).toContain(
-      "alter table public.agent_bridge_credentials enable row level security",
+    expect(bridgeMoveMigrationSource).toContain("insert into public.integrations");
+    expect(bridgeMoveMigrationSource).toContain("'kind', 'profixiq_agent_bridge'");
+    expect(bridgeMoveMigrationSource).toContain("shop_id = null");
+    expect(bridgeMoveMigrationSource).toContain(
+      "drop table public.agent_bridge_credentials",
     );
   });
 
