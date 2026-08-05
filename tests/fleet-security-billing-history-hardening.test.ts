@@ -6,6 +6,9 @@ const read = (path: string) => readFileSync(path, "utf8");
 const migration = read(
   "supabase/migrations/20260805185619_fleet_security_billing_history_hardening.sql",
 );
+const customerIndexMigration = read(
+  "supabase/migrations/20260805200003_index_fleet_customer_account.sql",
+);
 
 describe("Fleet security, billing, and history hardening", () => {
   it("binds portal mutations to authenticated actors", () => {
@@ -29,6 +32,7 @@ describe("Fleet security, billing, and history hardening", () => {
     expect(migration).toContain(
       "Structured request lines must match the request scope",
     );
+    expect(customerIndexMigration).toContain("on public.fleets (customer_id)");
   });
 
   it("requires assigned drivers and derives their identity from the profile", () => {
