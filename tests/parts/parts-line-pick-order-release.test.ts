@@ -86,6 +86,8 @@ describe("work-order line parts release and Pick / Order flow", () => {
     expect(pickModal).toContain("Idempotency-Key");
     expect(pickModal).toContain("Dismiss duplicate");
     expect(pickModal).toContain("/cancel");
+    expect(pickModal).toContain("workOrderId || workOrderLabel");
+    expect(pickModal).not.toContain("workOrderLabel || workOrderId");
   });
 
   it("keeps the action footer visible while only the item list scrolls", () => {
