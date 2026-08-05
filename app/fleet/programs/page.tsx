@@ -398,3 +398,32 @@ export default function FleetProgramsPage(): JSX.Element {
                   aria-label={`Edit ${f.name || "unnamed fleet"}`}
                   onClick={() => startEdit(f)}
                   className="flex w-full items-start justify-between gap-3 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-left hover:border-[color:var(--accent-copper-soft)] hover:bg-[color:var(--theme-surface-overlay)]"
+                >
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-[color:var(--theme-text-primary)]">
+                        {f.name || "Unnamed fleet"}
+                      </span>
+                      <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
+                        Select to edit
+                      </span>
+                    </div>
+                    {f.notes && (
+                      <p className="mt-1 line-clamp-2 text-xs text-[color:var(--theme-text-secondary)]">
+                        {f.notes}
+                      </p>
+                    )}
+                  </div>
+                  <div className="text-right text-[11px] text-[color:var(--theme-text-muted)]">
+                    {f.contact_name && <div>{f.contact_name}</div>}
+                    {f.contact_email && <div>{f.contact_email}</div>}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </PageShell>
+  );
+}
