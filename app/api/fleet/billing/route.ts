@@ -14,15 +14,27 @@ import { applyWorkOrderQuoteLineDecision } from "@/features/work-orders/server/w
 export const dynamic = "force-dynamic";
 
 type Row = Record<string, unknown>;
+type ContactMethod = "phone" | "in_person" | "email" | "other";
 type Body = {
   action?: "list" | "decide";
   workOrderId?: string;
   quoteLineIds?: string[];
   decision?: "approve" | "decline" | "defer";
   operationKey?: string;
-  contactMethod?: "phone" | "in_person" | "email" | "other";
+  contactMethod?: ContactMethod;
   note?: string;
 };
+
+const CONTACT_METHODS = new Set<ContactMethod>([
+  "phone",
+  "in_person",
+  "email",
+  "other",
+]);
+
+function isContactMethod(value: string | null): value is ContactMethod {
+  return value !== null && CONTACT_METHODS.has(value as ContactMethod);
+}
 
 function rows(value: unknown): Row[] {
   return Array.isArray(value) ? (value as Row[]) : [];
@@ -320,7 +332,10 @@ export async function POST(request: Request) {
       new Set((body.quoteLineIds ?? []).map((value) => value.trim()).filter(Boolean)),
     );
     const operationKey = clean(body.operationKey);
-    const contactMethod = clean(body.contactMethod);
+    const requestedContactMethod = clean(body.contactMethod);
+    const contactMethod = isContactMethod(requestedContactMethod)
+      ? requestedContactMethod
+      : null;
     const note = clean(body.note);
     if (
       !workOrderId ||
@@ -334,7 +349,6 @@ export async function POST(request: Request) {
     if (
       actor.isInternal &&
       (!contactMethod ||
-        !["phone", "in_person", "email", "other"].includes(contactMethod) ||
         !note)
     ) {
       return NextResponse.json(
