@@ -54,6 +54,7 @@ type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
 type ShopRow = DB["public"]["Tables"]["shops"]["Row"];
 type QuoteLineDbRow = DB["public"]["Tables"]["work_order_quote_lines"]["Row"];
 type WorkOrderLineDbRow = DB["public"]["Tables"]["work_order_lines"]["Row"];
+type WorkOrderPartDbRow = DB["public"]["Tables"]["work_order_parts"]["Row"];
 type InspectionPhotoRow = DB["public"]["Tables"]["inspection_photos"]["Row"];
 
 type ParamsShape = Record<string, string | string[] | undefined>;
@@ -105,6 +106,19 @@ type DirectLineRow = Pick<
   | "created_at"
   | "updated_at"
   | "voided_at"
+>;
+
+type DirectPartRow = Pick<
+  WorkOrderPartDbRow,
+  | "id"
+  | "work_order_line_id"
+  | "description_snapshot"
+  | "part_number_snapshot"
+  | "manufacturer_snapshot"
+  | "quantity"
+  | "unit_price"
+  | "total_price"
+  | "is_active"
 >;
 
 type QuotePartView = {
@@ -413,7 +427,7 @@ export default function QuotePageClient(): JSX.Element {
     );
     setShop(shopRow);
 
-    const [quoteResult, directLineResult] = await Promise.all([
+    const [quoteResult, directLineResult, directPartResult] = await Promise.all([
       supabase
         .from("work_order_quote_lines")
         .select(
@@ -430,11 +444,20 @@ export default function QuotePageClient(): JSX.Element {
         .eq("work_order_id", workOrderId)
         .eq("shop_id", wo.shop_id)
         .order("line_no", { ascending: true }),
+      supabase
+        .from("work_order_parts")
+        .select(
+          "id,work_order_line_id,description_snapshot,part_number_snapshot,manufacturer_snapshot,quantity,unit_price,total_price,is_active",
+        )
+        .eq("work_order_id", workOrderId)
+        .eq("shop_id", wo.shop_id)
+        .eq("is_active", true),
     ]);
     const { data: quoteRowsRaw, error: quoteErr } = quoteResult;
     const { data: directRowsRaw, error: directLineErr } = directLineResult;
+    const { data: directPartsRaw, error: directPartErr } = directPartResult;
 
-    if (quoteErr || directLineErr) {
+    if (quoteErr || directLineErr || directPartErr) {
       setLines([]);
       setLoading(false);
       return;
@@ -581,7 +604,10 @@ export default function QuotePageClient(): JSX.Element {
         const lineStatus = safeTrim(line.line_status).toLowerCase();
         const approvalState = safeTrim(line.approval_state).toLowerCase();
         return (
+          (approvalState === "pending" && status === "awaiting_approval") ||
           approvalState === "approved" ||
+          approvalState === "declined" ||
+          approvalState === "deferred" ||
           lineStatus === "authorized" ||
           Boolean(line.approval_at) ||
           ["completed", "ready_to_invoice", "invoiced"].includes(status)
@@ -590,13 +616,54 @@ export default function QuotePageClient(): JSX.Element {
       .map((line, index) => {
         const laborHours = asNumber(line.labor_time);
         const computedLabor = laborHours * laborRate;
-        const totalAmount = nullableNumber(line.price_estimate) ?? computedLabor;
-        const laborAmount =
-          totalAmount > 0 ? Math.min(computedLabor, totalAmount) : computedLabor;
-        const partsAmount = Math.max(totalAmount - laborAmount, 0);
+        const laborAmount = nullableNumber(line.price_estimate) ?? computedLabor;
+        const directParts: QuotePartView[] = (
+          (directPartsRaw ?? []) as DirectPartRow[]
+        )
+          .filter((part) => part.work_order_line_id === line.id)
+          .map((part) => {
+            const qty = asNumber(part.quantity);
+            const unitPrice = asNumber(part.unit_price);
+            return {
+              name: safeTrim(part.description_snapshot) || "Part",
+              qty,
+              unitPrice,
+              total: nullableNumber(part.total_price) ?? qty * unitPrice,
+              meta:
+                [
+                  safeTrim(part.manufacturer_snapshot),
+                  safeTrim(part.part_number_snapshot),
+                ]
+                  .filter(Boolean)
+                  .join(" • ") || null,
+            };
+          });
+        const partsAmount = directParts.reduce(
+          (sum, part) => sum + part.total,
+          0,
+        );
+        const totalAmount = laborAmount + partsAmount;
         const linkedEvidence = canonicalEvidence.filter(
           (item) => item.workOrderLineId === line.id,
         );
+        const normalizedApprovalState = safeTrim(
+          line.approval_state,
+        ).toLowerCase();
+        const approvalState: LineView["approvalState"] = [
+          "pending",
+          "approved",
+          "declined",
+          "deferred",
+        ].includes(normalizedApprovalState)
+          ? (normalizedApprovalState as Exclude<
+              LineView["approvalState"],
+              null
+            >)
+          : ["completed", "ready_to_invoice", "invoiced"].includes(
+                safeTrim(line.status).toLowerCase(),
+              ) || safeTrim(line.line_status).toLowerCase() === "authorized"
+            ? "approved"
+            : null;
         return {
           id: line.id,
           source: "work_order" as const,
@@ -616,7 +683,7 @@ export default function QuotePageClient(): JSX.Element {
           subtotalAmount: totalAmount,
           taxAmount: 0,
           totalAmount,
-          approvalState: "approved" as const,
+          approvalState,
           status: line.status,
           stage: null,
           sentAt: line.quoted_at ?? null,
@@ -625,7 +692,7 @@ export default function QuotePageClient(): JSX.Element {
           convertedWorkOrderLineId: line.id,
           createdAt: line.created_at ?? null,
           updatedAt: line.updated_at ?? null,
-          parts: [],
+          parts: directParts,
           evidence: linkedEvidence,
           requestKind: null,
           fulfillment: null,
@@ -1072,14 +1139,13 @@ export default function QuotePageClient(): JSX.Element {
 
           <QuoteApprovalActions
             workOrderId={workOrder.id}
-            lines={lines
-              .filter((line) => line.source === "quote")
-              .map((line) => ({
-                id: line.id,
-                description: line.title,
-                approval_state: line.approvalState,
-                status: line.status,
-              }))}
+            lines={lines.map((line) => ({
+              id: line.id,
+              source: line.source,
+              description: line.title,
+              approval_state: line.approvalState,
+              status: line.status,
+            }))}
             onChanged={() => {
               void load();
             }}
