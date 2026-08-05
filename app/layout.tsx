@@ -13,7 +13,10 @@ import PwaRuntime from "@/features/shared/components/pwa/PwaRuntime";
 import type { Metadata, Viewport } from "next";
 
 import ThemedToaster from "@/features/shared/components/ThemedToaster";
-import { isStandalonePublicRoute } from "@/features/shared/lib/routes/shellBoundaries";
+import {
+  isOutsideDesktopAppShell,
+  isStandalonePublicRoute,
+} from "@/features/shared/lib/routes/shellBoundaries";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -60,6 +63,7 @@ export default async function RootLayout({
   const pathname = hdrs.get("x-next-pathname") ?? "";
 
   const isPublicRoute = isStandalonePublicRoute(pathname);
+  const isOutsideDesktopShell = isOutsideDesktopAppShell(pathname);
 
   const useAppShell = !isPublicRoute;
 
@@ -76,7 +80,12 @@ export default async function RootLayout({
     <VoiceProvider>
       <BrandThemeBoot />
       {useAppShell ? (
-        <AppShell initialIdentity={dashboardIdentity}>{children}</AppShell>
+        <AppShell
+          initialIdentity={dashboardIdentity}
+          initialOutsideDesktopShell={isOutsideDesktopShell}
+        >
+          {children}
+        </AppShell>
       ) : (
         children
       )}

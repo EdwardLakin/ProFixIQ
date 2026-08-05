@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { safeInternalRedirect } from "@/features/auth/lib/safeRedirect";
+import { isFleetProductHostname } from "@/features/fleet/lib/fleetProductRouting";
 
 function mustEnv(name: string): string {
   const value = process.env[name];
@@ -10,7 +11,12 @@ function mustEnv(name: string): string {
   return value;
 }
 
-function getBaseUrl(): string {
+export function resolvePasswordResetBaseUrl(req: Request): string {
+  const requestUrl = new URL(req.url);
+  if (isFleetProductHostname(requestUrl.hostname)) {
+    return requestUrl.origin;
+  }
+
   if (process.env.NEXT_PUBLIC_SITE_URL?.trim()) {
     return process.env.NEXT_PUBLIC_SITE_URL.trim().replace(/\/$/, "");
   }
@@ -29,7 +35,7 @@ function buildRedirectTo(req: Request): string {
     "",
     ["/auth/set-password"],
   );
-  const baseUrl = getBaseUrl();
+  const baseUrl = resolvePasswordResetBaseUrl(req);
 
   if (!requestedRedirect) {
     return `${baseUrl}/auth/reset`;
