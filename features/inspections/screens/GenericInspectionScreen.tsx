@@ -3,7 +3,7 @@
 
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
 import { toast } from "sonner";
 
@@ -44,7 +44,6 @@ import TireGridHydraulic from "@inspections/lib/inspection/ui/TireGridHydraulic"
 import BatteryGrid from "@inspections/lib/inspection/ui/BatteryGrid";
 
 import { InspectionFormCtx } from "@inspections/lib/inspection/ui/InspectionFormContext";
-import FinishInspectionButton from "@inspections/components/inspection/FinishInspectionButton";
 import CustomerVehicleHeader from "@inspections/lib/inspection/ui/CustomerVehicleHeader";
 import InspectionSignaturePanel from "@inspections/components/inspection/InspectionSignaturePanel";
 import PageShell from "@/features/shared/components/PageShell";
@@ -604,7 +603,6 @@ export default function GenericInspectionScreen(
   props: GenericInspectionScreenProps,
 ): JSX.Element {
   const routeSp = useSearchParams();
-  const router = useRouter();
   const rootRef = useRef<HTMLDivElement | null>(null);
 
   type ItemPatch = Partial<InspectionSection["items"][number]>;
@@ -924,7 +922,6 @@ type SmartMatchRow = {
 
   const {
     hydrated: serverBootLoaded,
-    flush: flushAutosave,
     flushToServer: flushAutosaveToServer,
     label: autosaveLabel,
     lastError: autosaveError,
@@ -2608,18 +2605,6 @@ type SmartMatchRow = {
     "mt-1 block text-xs text-[color:var(--theme-text-secondary)]";
 
 
-  const findingsHref = useMemo(() => {
-    const params = new URLSearchParams();
-    params.set("inspectionId", inspectionId);
-
-    if (workOrderId) params.set("workOrderId", workOrderId);
-    if (workOrderLineId) params.set("workOrderLineId", workOrderLineId);
-    if (templateName) params.set("template", templateName);
-
-    return `/inspections/findings?${params.toString()}`;
-  }, [inspectionId, workOrderId, workOrderLineId, templateName]);
-
-
   const allItems = (session.sections ?? []).flatMap((s) => s.items ?? []);
   const failed = allItems.filter(
     (it) => String(it.status ?? "").toLowerCase() === "fail",
@@ -2635,37 +2620,6 @@ type SmartMatchRow = {
 
   const actions = (
     <>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className="font-medium border-[color:var(--theme-border-soft)] text-[11px] tracking-[0.16em] uppercase text-[color:var(--theme-text-primary)]"
-        onClick={async () => {
-          try {
-            await flushAutosave();
-            router.push(findingsHref);
-          } catch (error) {
-            toast.error(
-              error instanceof Error
-                ? error.message
-                : "Wait for the inspection to finish saving.",
-            );
-          }
-        }}
-        disabled={isLocked}
-      >
-        Open findings list
-      </Button>
-
-      {workOrderLineId && (
-        <FinishInspectionButton
-          session={session}
-          workOrderLineId={workOrderLineId}
-          disabled={isLocked}
-          beforeNavigate={() => flushAutosaveToServer()}
-        />
-      )}
-
       {isLocked && (
         <Button
           type="button"

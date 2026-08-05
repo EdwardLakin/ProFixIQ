@@ -59,9 +59,7 @@ describe("inspection live autosave and saved signatures", () => {
     expect(screen).not.toContain("<SaveInspectionButton");
     expect(screen).not.toContain("import { SaveInspectionButton }");
     expect(screen).toContain("beforeSign={() => flushAutosaveToServer()}");
-    expect(screen).toContain(
-      "beforeNavigate={() => flushAutosaveToServer()}",
-    );
+    expect(screen).not.toContain("<FinishInspectionButton");
     expect(findings).toContain("await flushAutosaveToServer(nextSession)");
     expect(autosave).toContain("flushToServer");
     expect(autosave).toContain("A signing/finalization flush is a barrier");

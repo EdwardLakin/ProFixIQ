@@ -6,6 +6,7 @@ import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server
 import { createAdminClient } from "@/features/integrations/shopreel/server/createAdminClient";
 import { publishInspectionPdf } from "@/features/inspections/server/publishInspectionPdf";
 import type { InspectionSession } from "@/features/inspections/lib/inspection/types";
+import { insertPrioritizedJobsFromInspection } from "@/features/work-orders/lib/work-orders/insertPrioritizedJobsFromInspection";
 
 type Role = "technician" | "customer" | "advisor";
 
@@ -352,6 +353,44 @@ export async function POST(req: NextRequest) {
       { error: resolved.error },
       { status: resolved.status },
     );
+  }
+
+  if (bodyUnknown.role === "technician") {
+    const { data: inspectionContext, error: inspectionContextError } =
+      await supabase
+        .from("inspections")
+        .select("work_order_id, vehicle_id")
+        .eq("id", resolved.inspectionId)
+        .eq("shop_id", profile.shop_id)
+        .eq("is_canonical", true)
+        .maybeSingle<{
+          work_order_id: string | null;
+          vehicle_id: string | null;
+        }>();
+
+    if (inspectionContextError || !inspectionContext?.work_order_id) {
+      return NextResponse.json(
+        {
+          error:
+            inspectionContextError?.message ??
+            "Inspection is not attached to a work order; findings cannot be submitted.",
+        },
+        { status: inspectionContextError ? 400 : 409 },
+      );
+    }
+
+    const imported = await insertPrioritizedJobsFromInspection({
+      supabase,
+      inspectionId: resolved.inspectionId,
+      workOrderId: inspectionContext.work_order_id,
+      vehicleId: inspectionContext.vehicle_id,
+      userId: user.id,
+      operationKey: `sign:${resolved.inspectionId}:${bodyUnknown.expectedSyncRevision}`,
+    });
+
+    if (!imported.ok) {
+      return NextResponse.json({ error: imported.error }, { status: 400 });
+    }
   }
 
   const { data, error } = await callSignInspectionRpc(supabase, {
