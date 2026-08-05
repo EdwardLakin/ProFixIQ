@@ -86,8 +86,9 @@ describe("premier fleet workspaces", () => {
     expect(actor).toContain("fleetMemberships");
     expect(actor).toContain("canManageFleetForActor");
     expect(billing).toContain("Fleet billing access required");
-    expect(billing).toContain("apply_shop_quote_decision_atomic");
-    expect(billing).toContain("apply_customer_quote_decision_atomic");
+    expect(billing).toContain("applyWorkOrderQuoteLineDecision");
+    expect(billing).toContain('decisionSource: actor.isInternal ? "shop" : "customer"');
+    expect(billing).not.toContain("apply_customer_quote_decision_atomic");
     expect(billing).toContain('"issued", "partially_paid", "paid"');
     expect(billing).toContain("byCurrency");
     expect(checkout).toContain("manageableFleetIdsForActor");

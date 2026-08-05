@@ -16,11 +16,8 @@ export default async function FleetLayout({
     redirect("/sign-in?next=%2Ffleet");
   }
 
-  if (
-    actor.actorType === "none" ||
-    (!actor.isInternal && !actor.capabilities.canAccessPortalFleetWrappers)
-  ) {
-    redirect("/dashboard");
+  if (!actor.isInternal) {
+    redirect(actor.capabilities.canAccessPortalFleetWrappers ? "/portal/fleet" : "/dashboard");
   }
 
   return (

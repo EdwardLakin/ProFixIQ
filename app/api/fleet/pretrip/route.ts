@@ -19,7 +19,6 @@ type PretripJoinedRow = FleetPretripReportRow & {
 type CreatePretripBody = {
   unitId: string;
   fleetId: string | null;
-  driverName: string;
   odometer: string | null;
   engineHours: string | null;
   readingCorrectionReason: string | null;
@@ -77,7 +76,7 @@ export async function POST(req: NextRequest) {
 
       const { data: vehicleMembership, error: membershipError } = await supabase
         .from("fleet_vehicles")
-        .select("vehicle_id")
+        .select("vehicle_id,shop_id")
         .eq("fleet_id", fleetId)
         .eq("vehicle_id", raw.unitId)
         .or("active.is.null,active.eq.true")
@@ -85,10 +84,39 @@ export async function POST(req: NextRequest) {
       if (membershipError || !vehicleMembership) {
         return NextResponse.json({ error: "Vehicle is not available in your fleet." }, { status: 403 });
       }
+      if (vehicleMembership.shop_id && vehicleMembership.shop_id !== scope.shopId) {
+        return NextResponse.json({ error: "Vehicle is not available in your shop." }, { status: 403 });
+      }
 
-      const driverName = raw.driverName?.trim();
+      if (!actor.isInternal) {
+        const { data: assignment, error: assignmentError } = await supabase
+          .from("fleet_dispatch_assignments")
+          .select("id")
+          .eq("shop_id", scope.shopId)
+          .eq("fleet_id", fleetId)
+          .eq("vehicle_id", raw.unitId)
+          .eq("driver_profile_id", actor.userId)
+          .eq("active", true)
+          .maybeSingle();
+        if (assignmentError || !assignment) {
+          return NextResponse.json(
+            { error: "This unit is not assigned to your driver account." },
+            { status: 403 },
+          );
+        }
+      }
+
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("full_name,email")
+        .eq("id", actor.userId)
+        .maybeSingle();
+      if (profileError || !profile) {
+        return NextResponse.json({ error: "Driver profile is unavailable." }, { status: 403 });
+      }
+      const driverName = profile.full_name?.trim() || profile.email?.trim();
       if (!driverName) {
-        return NextResponse.json({ error: "Driver name is required." }, { status: 400 });
+        return NextResponse.json({ error: "Driver profile name is required." }, { status: 400 });
       }
       const odometer = numericInput(raw.odometer ?? null, "Odometer");
       const engineHours = numericInput(raw.engineHours ?? null, "Engine hours");

@@ -157,6 +157,10 @@ export default function FleetProgramsPage(): JSX.Element {
           router.push(`${returnTo}?fleetId=${encodeURIComponent(inserted.id)}`);
           return;
         }
+        if (returnTo === "/fleet/units/new") {
+          router.push(returnTo);
+          return;
+        }
         setSuccess("Fleet created.");
         resetForm();
       } else {

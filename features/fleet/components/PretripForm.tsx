@@ -38,7 +38,6 @@ function initialDefects() {
 }
 
 export default function PretripForm({ unitId, fleetId, driverHint }: Props) {
-  const [driverName, setDriverName] = useState(driverHint ?? "");
   const [odometer, setOdometer] = useState("");
   const [engineHours, setEngineHours] = useState("");
   const [location, setLocation] = useState("");
@@ -54,7 +53,7 @@ export default function PretripForm({ unitId, fleetId, driverHint }: Props) {
     () => Object.values(defects).some((value) => value === "defect"),
     [defects],
   );
-  const canSubmit = driverName.trim().length > 0 && !submitting;
+  const canSubmit = Boolean(driverHint?.trim()) && !submitting;
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -69,7 +68,6 @@ export default function PretripForm({ unitId, fleetId, driverHint }: Props) {
         body: JSON.stringify({
           unitId,
           fleetId: fleetId ?? null,
-          driverName,
           odometer: odometer || null,
           engineHours: engineHours || null,
           readingCorrectionReason: correctionReason || null,
@@ -123,7 +121,7 @@ export default function PretripForm({ unitId, fleetId, driverHint }: Props) {
       <div className="grid gap-3 sm:grid-cols-3">
         <label className="space-y-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
           Driver
-          <input value={driverName} onChange={(event) => setDriverName(event.target.value)} className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm normal-case tracking-normal text-[color:var(--theme-text-primary)]" />
+          <input value={driverHint ?? ""} readOnly aria-readonly="true" className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm normal-case tracking-normal text-[color:var(--theme-text-primary)]" />
         </label>
         <label className="space-y-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
           Odometer (km)

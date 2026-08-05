@@ -150,14 +150,12 @@ export async function applyWorkOrderQuoteLineDecision(params: {
         p_operation_key: `${params.shopId}:shop-quote-decision:${rawOperationKey}`,
         p_at: new Date().toISOString(),
       })
-    : await rpc.rpc("apply_customer_quote_decision_atomic", {
+    : await rpc.rpc("apply_portal_quote_decision_atomic", {
         p_shop_id: params.shopId,
         p_work_order_id: params.workOrderId,
         p_quote_line_ids: quoteLineIds,
         p_decision: params.decision,
         p_decline_remaining: declineRemaining,
-        p_customer_id: params.customerId,
-        p_actor_user_id: params.actorUserId,
         p_operation_key: `${params.shopId}:quote-decision:${rawOperationKey}`,
         p_at: new Date().toISOString(),
       });
