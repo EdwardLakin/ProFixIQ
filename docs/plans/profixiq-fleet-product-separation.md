@@ -76,7 +76,6 @@ The intended public mappings on `fleet.profixiq.com` are:
 | `/calendar` | `/portal/fleet/calendar` |
 | `/requests` | `/portal/fleet/service-requests` |
 | `/requests/new` | `/portal/fleet/request/build` |
-| `/dispatch` | `/portal/fleet/board` |
 | `/history` | `/portal/fleet/billing` |
 | `/reports` | `/portal/fleet/reports` |
 | `/settings` | `/portal/fleet/settings` |
@@ -92,6 +91,8 @@ the canonical fleet membership authorization before rendering data.
 - Fleet has a dedicated ProFixIQ Fleet shell.
 - Fleet navigation is organized around operating, maintaining and understanding
   a fleet rather than around shop work orders.
+- Shop work-order boards remain Shop-owned; Fleet uses requests, approvals,
+  maintenance history and costs as its side of the shared repair record.
 - Manager and driver navigation are distinct.
 - Light and dark mode use the canonical ProFixIQ theme contract.
 - Shop navigation no longer exposes Fleet operations.
@@ -123,5 +124,5 @@ the canonical fleet membership authorization before rendering data.
    allowlist so Fleet password recovery returns to the Fleet product.
 4. Verify `/`, `/sign-in`, an asset deep link, a service-request deep link and
    password recovery on the production hostname.
-5. Keep the primary-domain `/portal/fleet/*` routes available until all existing
-   invite emails, bookmarks and operational links have transitioned.
+5. Verify legacy primary-domain `/portal/fleet/*` links redirect to the clean
+   Fleet hostname while invitation activation remains on ProFixIQ Shop.
