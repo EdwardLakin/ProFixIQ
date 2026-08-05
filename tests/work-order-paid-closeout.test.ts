@@ -27,6 +27,7 @@ const shopHistory = read("app/work-orders/history/WorkOrdersHistoryClient.tsx");
 const historyCard = read(
   "features/work-orders/components/ImportedHistoryRecordCard.tsx",
 );
+const readOnlyWorkOrder = read("app/work-orders/view/[id]/page.tsx");
 
 describe("work-order paid closeout boundary", () => {
   it("derives the shell from durable line and quote state", () => {
@@ -65,6 +66,13 @@ describe("work-order paid closeout boundary", () => {
     expect(shopHistory).toContain("badgeLabel={");
     expect(historyCard).toContain('badgeLabel = "Read-only imported"');
     expect(historyCard).toContain("{badgeLabel}");
+  });
+
+  it("shows the paid state on the read-only work-order story", () => {
+    expect(readOnlyWorkOrder).toContain(
+      "formatWorkOrderHeaderStatus(\n    wo?.status,\n    wo?.payment_status",
+    );
+    expect(readOnlyWorkOrder).toContain("{statusView.label}");
   });
 
   it("keeps direct lines visible and routes pending decisions to the line API", () => {
