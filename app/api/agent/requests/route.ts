@@ -1,20 +1,20 @@
-// app/api/agent/requests/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
-import { resolveAgentApiSecrets } from "@/features/shared/lib/server/agent-api-secrets";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
-
-const AGENT_SERVICE_URL = String(process.env.PROFIXIQ_AGENT_URL ?? "")
-  .trim()
-  .replace(/\/+$/, "");
+import {
+  AgentTeamRequestError,
+  agentTeamRequest,
+  mapAgentTeamRequestStatus,
+  projectAgentTeamCase,
+  readAgentTeamCase,
+  type AgentTeamProjection,
+} from "@/features/agent/server/teamClient";
 
 const supabaseAdmin = createClient<Database>(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
-    auth: { persistSession: false },
-  },
+  { auth: { persistSession: false } },
 );
 
 type AgentGithubMeta = {
@@ -73,6 +73,8 @@ type AgentRequestStatus =
   | "failed"
   | "merged";
 
+type AgentRequestRow = Database["public"]["Tables"]["agent_requests"]["Row"];
+
 const AGENT_INTENTS: AgentIntent[] = [
   "feature_request",
   "bug_report",
@@ -92,6 +94,107 @@ function normalizeIntent(raw: unknown): AgentIntent {
 function asNullableString(value: unknown): string | null {
   const text = typeof value === "string" ? value.trim() : "";
   return text || null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function teamCaseId(row: AgentRequestRow): string | null {
+  if (!isRecord(row.normalized_json)) return null;
+  const team = isRecord(row.normalized_json.agentTeam)
+    ? row.normalized_json.agentTeam
+    : null;
+  return team ? asNullableString(team.engineeringCaseId) : null;
+}
+
+function lastTeamSyncAt(row: AgentRequestRow): number | null {
+  if (!isRecord(row.normalized_json)) return null;
+  const team = isRecord(row.normalized_json.agentTeam)
+    ? row.normalized_json.agentTeam
+    : null;
+  const value = team ? asNullableString(team.syncedAt) : null;
+  const timestamp = value ? Date.parse(value) : Number.NaN;
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function initialProjection(
+  response: AgentServiceResponse,
+  requestId: string,
+): AgentTeamProjection {
+  return {
+    engineeringCaseId: String(response.engineeringCaseId ?? ""),
+    requestId,
+    currentStage: String(response.currentStage ?? "intake"),
+    caseStatus: String(response.status ?? "active"),
+    stepStatus: "pending",
+    summary: response.message ?? "Accepted into the ProFixIQ engineering organization.",
+    decision: null,
+    missingInformation: [],
+    updatedAt: new Date().toISOString(),
+    mission: null,
+    pullRequest: {
+      number: response.github?.prNumber ?? null,
+      url: response.github?.prUrl ?? null,
+      branch: response.github?.branchName ?? null,
+      headSha: response.github?.commitSha ?? null,
+    },
+  };
+}
+
+async function syncAgentRequestRow(row: AgentRequestRow): Promise<AgentRequestRow> {
+  const activeStatuses: AgentRequestStatus[] = [
+    "submitted",
+    "in_progress",
+    "awaiting_approval",
+    "approved",
+  ];
+  if (!activeStatuses.includes(row.status as AgentRequestStatus)) return row;
+
+  const engineeringCaseId = teamCaseId(row);
+  if (!engineeringCaseId) return row;
+
+  const lastSync = lastTeamSyncAt(row);
+  if (lastSync && Date.now() - lastSync < 5_000) return row;
+
+  try {
+    const envelope = await readAgentTeamCase(engineeringCaseId);
+    const projection = projectAgentTeamCase(envelope);
+    const normalized = isRecord(row.normalized_json) ? row.normalized_json : {};
+    const nextStatus = mapAgentTeamRequestStatus(projection);
+    const synchronizedAt = new Date().toISOString();
+
+    const { data: updated, error } = await supabaseAdmin
+      .from("agent_requests")
+      .update({
+        status: nextStatus,
+        normalized_json: {
+          ...normalized,
+          agentTeam: { ...projection, syncedAt: synchronizedAt },
+        },
+        github_pr_number: projection.pullRequest.number,
+        github_pr_url: projection.pullRequest.url,
+        github_branch: projection.pullRequest.branch,
+        github_commit_sha: projection.pullRequest.headSha,
+        llm_notes: projection.summary,
+      })
+      .eq("id", row.id)
+      .select("*")
+      .single();
+
+    if (error || !updated) {
+      console.error("agent request team synchronization failed", error);
+      return row;
+    }
+    return updated;
+  } catch (error) {
+    console.error("agent request team read failed", {
+      requestId: row.id,
+      engineeringCaseId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return row;
+  }
 }
 
 type CreateAgentRequestBody = {
@@ -132,7 +235,8 @@ export async function GET() {
     );
   }
 
-  return NextResponse.json({ requests: data });
+  const requests = await Promise.all((data ?? []).map(syncAgentRequestRow));
+  return NextResponse.json({ requests });
 }
 
 export async function POST(req: NextRequest) {
@@ -183,7 +287,7 @@ export async function POST(req: NextRequest) {
   if (attachmentIds.length > 0) {
     const { data, error } = await supabaseAdmin.storage
       .from("agent_uploads")
-      .createSignedUrls(attachmentIds, 60 * 60 * 24);
+      .createSignedUrls(attachmentIds, 60 * 60 * 24 * 7);
 
     if (error) {
       console.error("createSignedUrls error for agent_uploads:", error);
@@ -239,7 +343,6 @@ export async function POST(req: NextRequest) {
   const actualBehavior = asNullableString(body.actual) ?? description;
   const route = asNullableString(body.location);
   const browser = asNullableString(body.device);
-  const agentSecrets = resolveAgentApiSecrets();
 
   const contextForAgent = {
     ...structuredContext,
@@ -258,13 +361,6 @@ export async function POST(req: NextRequest) {
   let agentFailure: { status: number | null; detail: string } | null = null;
 
   try {
-    if (!AGENT_SERVICE_URL) {
-      throw new Error("PROFIXIQ_AGENT_URL is not configured");
-    }
-    if (!agentSecrets.primary) {
-      throw new Error("AGENT_API_SECRET is not configured");
-    }
-
     const endpoint = intent === "refactor" ? "/refactors" : "/feature-requests";
     const payload = intent === "refactor"
       ? {
@@ -274,6 +370,10 @@ export async function POST(req: NextRequest) {
           shopId: profile.shop_id,
           title: `Refactor: ${description.slice(0, 80)}`,
           description,
+          expectedBehavior,
+          actualBehavior,
+          route,
+          platform: browser,
           context: contextForAgent,
         }
       : {
@@ -293,39 +393,25 @@ export async function POST(req: NextRequest) {
           context: contextForAgent,
         };
 
-    const response = await fetch(`${AGENT_SERVICE_URL}${endpoint}`, {
+    agentResponse = await agentTeamRequest<AgentServiceResponse>(endpoint, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-agent-api-secret": agentSecrets.canonical || agentSecrets.primary,
-        "x-agent-secret": agentSecrets.profixiqAlias || agentSecrets.primary,
-        Authorization: `Bearer ${agentSecrets.internalAlias || agentSecrets.primary}`,
-      },
       body: JSON.stringify(payload),
-      cache: "no-store",
     });
 
-    const rawResponse = await response.text();
-    if (!response.ok) {
-      agentFailure = {
-        status: response.status,
-        detail: rawResponse.slice(0, 2_000) || `HTTP ${response.status}`,
-      };
-    } else {
-      try {
-        agentResponse = JSON.parse(rawResponse) as AgentServiceResponse;
-      } catch {
-        agentFailure = {
-          status: response.status,
-          detail: "ProFixIQ-Agent returned invalid JSON",
-        };
-      }
+    if (!agentResponse.engineeringCaseId) {
+      throw new AgentTeamRequestError(
+        "ProFixIQ-Agent did not return an engineering case",
+        502,
+        "The Agent accepted the request without a durable engineeringCaseId.",
+      );
     }
   } catch (error) {
-    agentFailure = {
-      status: null,
-      detail: error instanceof Error ? error.message : String(error),
-    };
+    agentFailure = error instanceof AgentTeamRequestError
+      ? { status: error.status, detail: error.detail }
+      : {
+          status: null,
+          detail: error instanceof Error ? error.message : String(error),
+        };
   }
 
   if (agentFailure) {
@@ -362,45 +448,37 @@ export async function POST(req: NextRequest) {
       {
         error: "ProFixIQ-Agent request failed",
         detail: agentFailure.detail,
+        requestId,
+        savedLocally: true,
+        engineeringCaseCreated: false,
         request: failedRequest ?? inserted,
       },
       { status: 502 },
     );
   }
 
-  const github = agentResponse?.github ?? null;
+  const engineeringCaseId = String(agentResponse?.engineeringCaseId ?? "");
+  let projection = initialProjection(agentResponse ?? {}, requestId);
+  try {
+    projection = projectAgentTeamCase(await readAgentTeamCase(engineeringCaseId));
+  } catch (error) {
+    console.warn("Agent case created but initial synchronization failed", {
+      requestId,
+      engineeringCaseId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  const finalIntent = normalizeIntent(agentResponse?.intent ?? intent);
+  const status = mapAgentTeamRequestStatus(projection);
+  const synchronizedAt = new Date().toISOString();
   const llmMeta = agentResponse?.llm ?? agentResponse?.analysis ?? null;
-  const llmConfidence = llmMeta?.confidence ?? null;
-  const llmNotes =
-    llmMeta?.notes
+  const llmNotes = projection.summary
+    ?? llmMeta?.notes
     ?? llmMeta?.commentary
     ?? llmMeta?.summary
     ?? agentResponse?.message
     ?? null;
-
-  let finalIntent: AgentIntent = intent;
-  const agentIntent = agentResponse?.intent as AgentIntent | null | undefined;
-  if (
-    agentIntent === "inspection_catalog_add"
-    || agentIntent === "service_catalog_add"
-  ) {
-    finalIntent = agentIntent;
-  }
-
-  const hasPersistedEngineeringCase = Boolean(
-    agentResponse?.engineeringCaseId
-    || agentResponse?.intakeJobId,
-  );
-  const status: AgentRequestStatus = github?.prUrl
-    ? "awaiting_approval"
-    : github?.issueUrl
-      ? "in_progress"
-      : hasPersistedEngineeringCase
-        ? "in_progress"
-        : finalIntent === "inspection_catalog_add"
-            || finalIntent === "service_catalog_add"
-          ? "merged"
-          : "submitted";
 
   const { data: updated, error: updateError } = await supabase
     .from("agent_requests")
@@ -409,15 +487,16 @@ export async function POST(req: NextRequest) {
       normalized_json: {
         ...structuredContext,
         agentRequest: agentResponse ?? {},
+        agentTeam: { ...projection, syncedAt: synchronizedAt },
       },
-      github_issue_number: github?.issueNumber ?? null,
-      github_issue_url: github?.issueUrl ?? null,
-      github_pr_number: github?.prNumber ?? null,
-      github_pr_url: github?.prUrl ?? null,
-      github_branch: github?.branchName ?? null,
-      github_commit_sha: github?.commitSha ?? null,
+      github_issue_number: agentResponse?.github?.issueNumber ?? null,
+      github_issue_url: agentResponse?.github?.issueUrl ?? null,
+      github_pr_number: projection.pullRequest.number,
+      github_pr_url: projection.pullRequest.url,
+      github_branch: projection.pullRequest.branch,
+      github_commit_sha: projection.pullRequest.headSha,
       llm_model: llmMeta?.model ?? null,
-      llm_confidence: llmConfidence,
+      llm_confidence: llmMeta?.confidence ?? null,
       llm_notes: llmNotes,
       status,
     })
@@ -432,5 +511,8 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     request: updated ?? inserted,
     agent: agentResponse,
+    engineeringCaseId,
+    currentStage: projection.currentStage,
+    caseStatus: projection.caseStatus,
   });
 }
