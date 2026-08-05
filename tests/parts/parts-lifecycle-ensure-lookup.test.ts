@@ -5,6 +5,10 @@ const migration = readFileSync(
   "supabase/migrations/20260805042000_fix_parts_lifecycle_ensure_lookup.sql",
   "utf8",
 );
+const receiveStatusMigration = readFileSync(
+  "supabase/migrations/20260805043000_fix_parts_receive_status_enum.sql",
+  "utf8",
+);
 
 describe("parts lifecycle ensure lookup migration", () => {
   it("resolves the ensured work-order part before selecting it", () => {
@@ -43,5 +47,15 @@ describe("parts lifecycle ensure lookup migration", () => {
       "revoke all on function public.parts_receive_request_item(",
     );
     expect(migration).toContain("to authenticated, service_role;");
+  });
+
+  it("stores the derived receive status in the request item enum", () => {
+    expect(receiveStatusMigration).toContain(
+      "v_status public.part_request_item_status;",
+    );
+    expect(receiveStatusMigration).not.toContain("v_status text;");
+    expect(receiveStatusMigration).toContain(
+      "'received'::public.part_request_item_status",
+    );
   });
 });
