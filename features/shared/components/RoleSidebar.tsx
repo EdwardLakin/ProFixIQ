@@ -24,7 +24,6 @@ const GROUP_ORDER = [
   "Tech",
   "Operations",
   "Parts",
-  "Fleet",
   "Property",
   "Tools",
   "Admin",

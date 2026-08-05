@@ -7,7 +7,9 @@ import {
 } from "@/features/fleet/lib/fleetUiCapabilities";
 
 
-export async function requireFleetPortalActor(): Promise<FleetUiContext> {
+export async function requireFleetPortalActor(): Promise<
+  FleetUiContext & { userId: string }
+> {
   const supabase = createServerSupabaseRSC();
   const {
     data: { user },
@@ -22,5 +24,8 @@ export async function requireFleetPortalActor(): Promise<FleetUiContext> {
     redirect("/portal");
   }
 
-  return getFleetUiContext(actor);
+  return {
+    ...getFleetUiContext(actor),
+    userId: user.id,
+  };
 }

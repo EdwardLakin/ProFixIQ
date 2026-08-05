@@ -11,7 +11,7 @@ export default async function PortalFleetPage() {
 
   return (
     <FleetControlTower
-      shopName="Fleet Portal"
+      shopName="ProFixIQ Fleet"
       shopId={actor.shopId}
       fleetId={actor.primaryFleetId}
       uiContext={uiContext}

@@ -4,17 +4,21 @@ import { describe, expect, it } from "vitest";
 const read = (path: string) => readFileSync(path, "utf8");
 
 describe("fleet management UI cohesion", () => {
-  it("names fleet records consistently across navigation and unit surfaces", () => {
+  it("keeps operational Fleet work out of the Shop sidebar", () => {
     const tiles = read("features/shared/config/tiles.ts");
     const manageFleets = read("app/fleet/programs/page.tsx");
     const addUnit = read("app/fleet/units/new/page.tsx");
     const units = read("features/fleet/components/FleetUnitsPage.tsx");
 
-    expect(tiles).toContain('title: "Manage Fleets"');
-    expect(tiles).toContain('subtitle: "Create fleets and contacts"');
-    expect(tiles).toContain('subtitle: "Assign vehicles to fleets"');
-    expect(tiles).not.toContain('title: "Fleet Programs"');
+    expect(tiles).toContain('title: "Fleet Access Invites"');
+    expect(tiles).toContain('href: "/dashboard/owner/fleet-access"');
+    expect(tiles).not.toContain('title: "Fleet Control Tower"');
+    expect(tiles).not.toContain('title: "Fleet Units"');
+    expect(tiles).not.toContain('title: "Manage Fleets"');
+    expect(tiles).not.toContain('title: "Fleet Service Requests"');
 
+    // Legacy direct routes remain during the compatibility window, but they are
+    // no longer part of Shop navigation.
     expect(manageFleets).toContain('title="Manage fleets"');
     expect(manageFleets).toContain('"Create fleet"');
     expect(manageFleets).toContain("Existing fleets");
@@ -33,6 +37,16 @@ describe("fleet management UI cohesion", () => {
       "features/fleet/components/FleetPortalAccessManager.tsx",
     );
     const manageFleets = read("app/fleet/programs/page.tsx");
+    const shopInvitePage = read(
+      "app/dashboard/owner/fleet-access/page.tsx",
+    );
+    const legacyInvitePage = read("app/fleet/portal-access/page.tsx");
+
+    expect(shopInvitePage).toContain("FleetPortalAccessManager");
+    expect(shopInvitePage).toContain("canInviteFleetMembers");
+    expect(legacyInvitePage).toContain(
+      'redirect("/dashboard/owner/fleet-access")',
+    );
 
     expect(portalAccess).toContain(
       '"/fleet/programs?returnTo=%2Ffleet%2Fportal-access"',

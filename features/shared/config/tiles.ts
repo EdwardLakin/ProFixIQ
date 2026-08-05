@@ -338,63 +338,15 @@ export const TILES: Tile[] = [
     section: "Parts",
   },
   /* ---------------------------------------------------------------------- */
-  /* FLEET                                                                   */
+  /* FLEET CONNECTION                                                        */
   /* ---------------------------------------------------------------------- */
   {
-    href: "/fleet/tower",
-    title: "Fleet Control Tower",
-    subtitle: "HD units, issues & health",
-    roles: ["owner", "admin", "manager", "advisor"],
-    scopes: ["management", "work_orders", "inspections", "all"],
-    section: "Fleet",
-  },
-  {
-    href: "/fleet/dispatch",
-    title: "Fleet Dispatch",
-    subtitle: "Assign units & routes",
-    roles: ["owner", "admin", "manager"],
-    scopes: ["management", "work_orders", "all"],
-    section: "Fleet",
-  },
-  {
-    href: "/fleet/units",
-    title: "Fleet Units",
-    subtitle: "Tractors, trailers, buses",
-    roles: ["owner", "admin", "manager", "advisor"],
-    scopes: ["management", "all"],
-    section: "Fleet",
-  },
-  {
-    href: "/fleet/units/new",
-    title: "Add Fleet Unit",
-    subtitle: "Assign vehicles to fleets",
-    roles: ["owner", "admin", "manager"],
-    scopes: ["management", "inspections", "all"],
-    section: "Fleet",
-  },
-  {
-    href: "/fleet/programs",
-    title: "Manage Fleets",
-    subtitle: "Create fleets and contacts",
+    href: "/dashboard/owner/fleet-access",
+    title: "Fleet Access Invites",
+    subtitle: "Connect fleet customers to ProFixIQ Fleet",
     roles: ["owner", "admin", "manager"],
     scopes: ["management", "settings", "all"],
-    section: "Fleet",
-  },
-  {
-    href: "/fleet/service-requests",
-    title: "Fleet Service Requests",
-    subtitle: "Review and convert fleet requests",
-    roles: ["owner", "admin", "manager", "advisor"],
-    scopes: ["management", "work_orders", "all"],
-    section: "Fleet",
-  },
-  {
-    href: "/fleet/portal-access",
-    title: "Fleet Portal Access",
-    subtitle: "Invite fleet portal members",
-    roles: ["owner", "admin", "manager"],
-    scopes: ["management", "all"],
-    section: "Fleet",
+    section: "Settings",
   },
 
   /* ---------------------------------------------------------------------- */

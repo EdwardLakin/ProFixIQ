@@ -4,16 +4,29 @@ import { describe, expect, it } from "vitest";
 const source = (path: string) => readFileSync(path, "utf8");
 
 describe("premier fleet workspaces", () => {
-  it("keeps staff and portal navigation to the same five destinations", () => {
-    const staffNav = source("features/fleet/components/FleetWorkspaceNav.tsx");
-    const portalNav = source("app/portal/fleet/FleetShell.tsx");
+  it("gives ProFixIQ Fleet a complete fleet-owned navigation model", () => {
+    const fleetShell = source(
+      "features/fleet/components/FleetProductShell.tsx",
+    );
 
-    for (const label of ["Overview", "Units", "Maintenance", "Requests", "Billing"]) {
-      expect(staffNav).toContain(label);
-      expect(portalNav).toContain(label);
+    for (const label of [
+      "Control Tower",
+      "Assets",
+      "Drivers",
+      "Pre-trips & Defects",
+      "PM & Maintenance",
+      "Maintenance Calendar",
+      "Requests & Approvals",
+      "History & Costs",
+      "Reports",
+      "Fleet Settings",
+    ]) {
+      expect(fleetShell).toContain(label);
     }
-    expect(staffNav.match(/label:/g)).toHaveLength(5);
-    expect(portalNav.match(/label:/g)).toHaveLength(5);
+    expect(fleetShell).toContain("ThemeToggleButton");
+    expect(fleetShell).toContain('experience !== "external_driver"');
+    expect(fleetShell).toContain("ProFixIQ");
+    expect(fleetShell).toContain("Fleet");
   });
 
   it("provides one complete record for each fleet unit", () => {
