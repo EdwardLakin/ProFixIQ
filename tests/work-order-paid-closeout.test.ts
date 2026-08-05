@@ -12,6 +12,9 @@ const portalLoader = read("features/portal/server/portalWorkOrders.ts");
 const quoteClient = read(
   "features/portal/app/quotes/[id]/QuotePageClient.tsx",
 );
+const quoteApprovalActions = read(
+  "features/portal/components/QuoteApprovalActions.tsx",
+);
 const boardHook = read("features/shared/hooks/useWorkOrderBoard.ts");
 const shiftTracker = read("features/shared/components/ShiftTracker.tsx");
 const receiveItem = read("app/api/parts/_lib/receivePartRequestItem.ts");
@@ -52,12 +55,19 @@ describe("work-order paid closeout boundary", () => {
     expect(portalLoader).toContain("paidAt: workOrder.paid_at");
   });
 
-  it("keeps authorized direct lines visible without making them actionable quotes", () => {
+  it("keeps direct lines visible and routes pending decisions to the line API", () => {
     expect(quoteClient).toContain('.from("work_order_lines")');
+    expect(quoteClient).toContain('.from("work_order_parts")');
     expect(quoteClient).toContain('source: "work_order" as const');
     expect(quoteClient).toContain(
-      '.filter((line) => line.source === "quote")',
+      'approvalState === "pending" && status === "awaiting_approval"',
     );
+    expect(quoteClient).toContain("partsAmount = directParts.reduce");
+    expect(quoteApprovalActions).toContain(
+      "/api/work-orders/lines/${encodeURIComponent(lineId)}/approval-decision",
+    );
+    expect(quoteClient).toContain("source: line.source");
+    expect(quoteApprovalActions).toContain('line.source === "work_order"');
     expect(quoteClient).toContain("item.workOrderLineId === line.id");
   });
 

@@ -9,6 +9,7 @@ type ApprovalState = "pending" | "approved" | "declined" | "deferred" | null;
 
 type LineLite = {
   id: string;
+  source: "quote" | "work_order";
   description: string | null;
   approval_state: ApprovalState;
   status: string | null;
@@ -60,22 +61,78 @@ export default function QuoteApprovalActions({ workOrderId, lines, onChanged }: 
     setError(null);
 
     try {
-      const res = await fetch(`/api/work-orders/quotes/${ids[0]}/approval-decision`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Idempotency-Key": operationKey,
-        },
-        body: JSON.stringify({ decision, lineIds: ids, workOrderId, declineRemaining, operationKey }),
-        cache: "no-store",
-      });
+      const targetLines = ids
+        .map((id) => lines.find((line) => line.id === id))
+        .filter((line): line is LineLite => Boolean(line));
+      if (targetLines.length !== ids.length) {
+        setError("One or more approval items could not be found.");
+        return;
+      }
 
-      const json = (await res.json().catch(() => null)) as
-        | { ok?: boolean; error?: string }
-        | null;
+      const quoteIds = targetLines
+        .filter((line) => line.source === "quote")
+        .map((line) => line.id);
+      const workOrderLineIds = targetLines
+        .filter((line) => line.source === "work_order")
+        .map((line) => line.id);
+      const requests: Promise<Response>[] = [];
 
-      if (!res.ok || !json?.ok) {
-        setError(json?.error ?? "Unable to update quote decision.");
+      if (quoteIds.length > 0) {
+        requests.push(
+          fetch(`/api/work-orders/quotes/${quoteIds[0]}/approval-decision`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Idempotency-Key": operationKey,
+            },
+            body: JSON.stringify({
+              decision,
+              lineIds: quoteIds,
+              workOrderId,
+              declineRemaining,
+              operationKey,
+            }),
+            cache: "no-store",
+          }),
+        );
+      }
+
+      for (const lineId of workOrderLineIds) {
+        const lineOperationKey = `${operationKey}:${lineId}`;
+        requests.push(
+          fetch(
+            `/api/work-orders/lines/${encodeURIComponent(lineId)}/approval-decision`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Idempotency-Key": lineOperationKey,
+              },
+              body: JSON.stringify({
+                decision,
+                workOrderId,
+                idempotencyKey: lineOperationKey,
+              }),
+              cache: "no-store",
+            },
+          ),
+        );
+      }
+
+      const responses = await Promise.all(requests);
+      const results = await Promise.all(
+        responses.map(async (response) => ({
+          response,
+          json: (await response.json().catch(() => null)) as
+            | { ok?: boolean; error?: string }
+            | null,
+        })),
+      );
+      const failed = results.find(
+        ({ response, json }) => !response.ok || !json?.ok,
+      );
+      if (failed) {
+        setError(failed.json?.error ?? "Unable to update approval decision.");
         return;
       }
 

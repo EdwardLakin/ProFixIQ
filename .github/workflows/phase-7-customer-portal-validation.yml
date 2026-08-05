@@ -7,10 +7,13 @@ on:
       - "app/api/work-orders/lines/**"
       - "app/portal/auth/confirm/page.tsx"
       - "app/portal/auth/fleet-invite/page.tsx"
+      - "features/portal/app/quotes/**"
+      - "features/portal/components/QuoteApprovalActions.tsx"
       - "features/portal/server/**"
       - "supabase/migrations/20260715080*.sql"
       - "tests/auth-portal-hardening.test.ts"
       - "tests/phase7-*.test.ts"
+      - "tests/work-order-paid-closeout.test.ts"
       - ".github/workflows/phase-7-customer-portal-validation.yml"
 
 jobs:
@@ -44,14 +47,18 @@ jobs:
           app/api/work-orders/lines/[id]/approval-decision/route.ts
           app/portal/auth/confirm/page.tsx
           app/portal/auth/fleet-invite/page.tsx
+          features/portal/app/quotes/[id]/QuotePageClient.tsx
+          features/portal/components/QuoteApprovalActions.tsx
           features/portal/server/addPortalRequestLine.ts
           features/portal/server/createPortalBooking.ts
           features/portal/server/customerBookings.ts
           tests/auth-portal-hardening.test.ts
           tests/phase7-portal-invite-booking-contract.test.ts
           tests/phase7-portal-request-approval-contract.test.ts
+          tests/work-order-paid-closeout.test.ts
       - run: >-
           pnpm exec vitest run
           tests/auth-portal-hardening.test.ts
           tests/phase7-portal-invite-booking-contract.test.ts
           tests/phase7-portal-request-approval-contract.test.ts
+          tests/work-order-paid-closeout.test.ts
