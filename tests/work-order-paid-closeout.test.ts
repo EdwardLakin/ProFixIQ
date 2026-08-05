@@ -16,6 +16,10 @@ const boardHook = read("features/shared/hooks/useWorkOrderBoard.ts");
 const shiftTracker = read("features/shared/components/ShiftTracker.tsx");
 const receiveItem = read("app/api/parts/_lib/receivePartRequestItem.ts");
 const lifecycleCommand = read("app/api/parts/_lib/lifecycleCommand.ts");
+const lifecycleEnsureMigration = read(
+  "supabase/migrations/20260805042000_fix_parts_lifecycle_ensure_lookup.sql",
+);
+const generatedTypes = read("features/shared/types/types/supabase.ts");
 
 describe("work-order paid closeout boundary", () => {
   it("derives the shell from durable line and quote state", () => {
@@ -66,6 +70,20 @@ describe("work-order paid closeout boundary", () => {
     expect(migration).toContain("insert into public.work_order_approvals(");
     expect(migration).toContain("set status = 'received'");
     expect(migration).toContain("received_at = coalesce(received_at, current_date)");
+  });
+
+  it("keeps the clean bootstrap schema aligned with production PO lifecycle links", () => {
+    expect(lifecycleEnsureMigration).toContain(
+      "add column if not exists work_order_part_id uuid",
+    );
+    expect(lifecycleEnsureMigration).toContain(
+      "add column if not exists idempotency_key text",
+    );
+    expect(lifecycleEnsureMigration).toContain(
+      "create unique index if not exists uq_purchase_order_lines_idempotency",
+    );
+    expect(generatedTypes).toContain("work_order_part_id: string | null");
+    expect(generatedTypes).toContain("idempotency_key: string | null");
   });
 
   it("maps unexpected database failures to a correlation id", () => {
