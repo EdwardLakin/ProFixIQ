@@ -21,6 +21,8 @@ describe("Fleet security, billing, and history hardening", () => {
   });
 
   it("links Fleet requests to a canonical same-shop customer", () => {
+    const fleetPrograms = read("app/fleet/programs/page.tsx");
+
     expect(migration).toContain("add column if not exists customer_id uuid");
     expect(migration).toContain("ensure_fleet_customer_account_trigger");
     expect(migration).toContain("c.shop_id = new.shop_id");
@@ -33,6 +35,10 @@ describe("Fleet security, billing, and history hardening", () => {
       "Structured request lines must match the request scope",
     );
     expect(customerIndexMigration).toContain("on public.fleets (customer_id)");
+    expect(fleetPrograms).toContain(
+      'type FleetCreateInsert = Omit<FleetInsert, "customer_id">',
+    );
+    expect(fleetPrograms).toContain(".insert(insertPayload as FleetInsert)");
   });
 
   it("requires assigned drivers and derives their identity from the profile", () => {
