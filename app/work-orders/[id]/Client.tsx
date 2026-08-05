@@ -2,7 +2,7 @@
 
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { format } from "date-fns";
@@ -46,6 +46,10 @@ import {
   type WorkOrderPartRequestRow as PartRequestRow,
 } from "@/features/work-orders/lib/data/loadCanonicalWorkOrderLineContext";
 import { isReviewableQuoteLine } from "@/features/work-orders/lib/quotes/reviewableQuoteLines";
+import {
+  assignWorkOrderLineTechnician,
+  createAssignTechnicianOperationKey,
+} from "@/features/work-orders/lib/assignTechnicianClient";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import { useTabs } from "@/features/shared/components/tabs/TabsProvider";
 
@@ -264,6 +268,9 @@ export default function WorkOrderIdClient(): JSX.Element {
   const [assignables, setAssignables] = useState<
     Array<Pick<Profile, "id" | "full_name" | "role">>
   >([]);
+  const assignmentOperationsRef = useRef<
+    Map<string, { technicianId: string; operationKey: string }>
+  >(new Map());
 
   const [activeTechsByLine, setActiveTechsByLine] = useState<Record<string, string[]>>({});
 
@@ -2038,28 +2045,35 @@ export default function WorkOrderIdClient(): JSX.Element {
                         onAssign={
                           canAssign
                             ? async (techId: string) => {
+                                const existingOperation =
+                                  assignmentOperationsRef.current.get(ln.id);
+                                const operationKey =
+                                  existingOperation?.technicianId === techId
+                                    ? existingOperation.operationKey
+                                    : createAssignTechnicianOperationKey(
+                                        ln.id,
+                                        techId,
+                                      );
+
+                                assignmentOperationsRef.current.set(ln.id, {
+                                  technicianId: techId,
+                                  operationKey,
+                                });
+
                                 try {
-                                  const res = await fetch("/api/work-orders/assign-line", {
-                                    method: "POST",
-                                    headers: { "Content-Type": "application/json" },
-                                    body: JSON.stringify({
-                                      work_order_line_id: ln.id,
-                                      tech_id: techId,
-                                    }),
+                                  await assignWorkOrderLineTechnician({
+                                    lineId: ln.id,
+                                    technicianId: techId,
+                                    operationKey,
                                   });
-
-                                  const json = await res.json().catch(() => ({}));
-
-                                  if (!res.ok) {
-                                    throw new Error(
-                                      typeof json?.error === "string"
-                                        ? json.error
-                                        : "Failed to update primary tech."
-                                    );
-                                  }
-
-                                  toast.success("Primary tech updated.");
                                   await fetchAll();
+                                  if (
+                                    assignmentOperationsRef.current.get(ln.id)
+                                      ?.operationKey === operationKey
+                                  ) {
+                                    assignmentOperationsRef.current.delete(ln.id);
+                                  }
+                                  toast.success("Primary tech updated.");
                                 } catch (e) {
                                   const msg = e instanceof Error ? e.message : "Failed to update primary tech.";
                                   toast.error(msg);
