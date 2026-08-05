@@ -109,6 +109,21 @@ describe("shop billing entitlement", () => {
     expect(migration).toContain("profiles_mark_shop_billing_sync");
   });
 
+  it("prevents authenticated clients from forging shop billing identity", () => {
+    const migration = read(
+      "supabase/migrations/20260806043000_protect_shop_billing_identity.sql",
+    );
+
+    expect(migration).toContain("profixiq_protect_shop_billing_identity");
+    expect(migration).toContain("request.jwt.claim.role");
+    expect(migration).toContain("shop billing identity is server-managed");
+    expect(migration).toContain("new.billing_entitlement_override := null");
+    expect(migration).toContain("shops_protect_billing_identity");
+    expect(migration).toContain(
+      "revoke all on function public.profixiq_protect_shop_billing_identity()",
+    );
+  });
+
   it("creates additional locations read-only and bills each target shop separately", () => {
     const createLocation = read(
       "app/api/organizations/locations/create/route.ts",
