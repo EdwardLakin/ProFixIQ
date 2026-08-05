@@ -1,6 +1,14 @@
 import type { ReactNode } from "react";
-import FleetShell from "./FleetShell";
+import type { Metadata } from "next";
+import FleetProductShell from "@/features/fleet/components/FleetProductShell";
 import { requireFleetPortalActor } from "./_lib/requireFleetPortalActor";
+
+export const metadata: Metadata = {
+  title: "ProFixIQ Fleet | Maintenance Command",
+  description:
+    "Fleet asset readiness, preventive maintenance, service approvals, history and costs in one connected workspace.",
+  applicationName: "ProFixIQ Fleet",
+};
 
 export default async function PortalFleetLayout({
   children,
@@ -11,12 +19,18 @@ export default async function PortalFleetLayout({
 
   const subtitle =
     actor.experience === "external_driver"
-      ? "Driver pre-trip, assigned units, and request visibility"
-      : "Fleet operations, service request follow-through, and dispatch visibility";
+      ? "Assigned assets, pre-trips and reported defects"
+      : "Asset readiness, preventive maintenance and repair decisions";
 
   return (
-    <FleetShell title="Fleet Portal" subtitle={subtitle}>
+    <FleetProductShell
+      title="ProFixIQ Fleet"
+      subtitle={subtitle}
+      actorLabel={actor.actorLabel}
+      experience={actor.experience}
+      userId={actor.userId}
+    >
       {children}
-    </FleetShell>
+    </FleetProductShell>
   );
 }

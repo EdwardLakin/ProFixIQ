@@ -1,7 +1,5 @@
-import { requireShopPageAccess } from "@/features/shared/lib/server/admin-access";
-import FleetPortalAccessManager from "@/features/fleet/components/FleetPortalAccessManager";
+import { redirect } from "next/navigation";
 
-export default async function FleetPortalAccessPage() {
-  await requireShopPageAccess({ requiredCapability: "canInviteFleetMembers" });
-  return <FleetPortalAccessManager />;
+export default function FleetPortalAccessPage() {
+  redirect("/dashboard/owner/fleet-access");
 }
