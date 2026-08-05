@@ -1,9 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import ModalShell from "@/features/shared/components/ModalShell";
 import { toast } from "sonner";
+import {
+  assignWorkOrderLineTechnician,
+  createAssignTechnicianOperationKey,
+} from "@/features/work-orders/lib/assignTechnicianClient";
 
 interface Assignable {
   id: string;
@@ -32,6 +36,10 @@ export default function AssignTechModal({
   const [users, setUsers] = useState<Assignable[]>(() => mechanics ?? initialMechanics ?? []);
   const [techId, setTechId] = useState<string>("");
   const [submitting, setSubmitting] = useState(false);
+  const assignmentOperationRef = useRef<{
+    technicianId: string;
+    operationKey: string;
+  } | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -75,23 +83,24 @@ export default function AssignTechModal({
     }
 
     setSubmitting(true);
+    const existingOperation = assignmentOperationRef.current;
+    const operationKey =
+      existingOperation?.technicianId === techId
+        ? existingOperation.operationKey
+        : createAssignTechnicianOperationKey(workOrderLineId, techId);
+    assignmentOperationRef.current = { technicianId: techId, operationKey };
+
     try {
-      const res = await fetch("/api/work-orders/assign-line", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          work_order_line_id: workOrderLineId,
-          tech_id: techId,
-        }),
+      await assignWorkOrderLineTechnician({
+        lineId: workOrderLineId,
+        technicianId: techId,
+        operationKey,
       });
-
-      if (!res.ok) {
-        const json = (await res.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(json?.error || "Failed to update primary tech.");
-      }
-
-      toast.success("Primary tech updated.");
       await onAssigned?.(techId);
+      if (assignmentOperationRef.current?.operationKey === operationKey) {
+        assignmentOperationRef.current = null;
+      }
+      toast.success("Primary tech updated.");
       onClose();
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed to update primary tech.";
