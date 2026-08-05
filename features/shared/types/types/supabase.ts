@@ -13468,6 +13468,13 @@ export type Database = {
             foreignKeyName: "purchase_order_lines_work_order_part_id_fkey"
             columns: ["work_order_part_id"]
             isOneToOne: false
+            referencedRelation: "invoice_net_issued_parts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_order_lines_work_order_part_id_fkey"
+            columns: ["work_order_part_id"]
+            isOneToOne: false
             referencedRelation: "work_order_parts"
             referencedColumns: ["id"]
           },
