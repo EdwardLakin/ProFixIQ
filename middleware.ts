@@ -12,6 +12,7 @@ import {
 } from "@/features/auth/lib/portalSurfaceRouting";
 import { resolveMobileHref } from "@/features/mobile/navigation/mobile-route-continuity";
 import {
+  FLEET_PRODUCT_ORIGIN,
   isFleetProductHostname,
   isFleetProductSharedPath,
   toFleetInternalHref,
@@ -155,6 +156,23 @@ export async function middleware(req: NextRequest) {
 
   if (isAssetPath(requestPathname)) {
     return NextResponse.next();
+  }
+
+  if (!fleetProductRequest) {
+    const publicFleetPath = toFleetPublicPath(requestPathname);
+    const isLegacyFleetWorkspace =
+      requestPathname === "/portal/fleet" ||
+      requestPathname.startsWith("/portal/fleet/");
+    const isLegacyFleetSignIn = requestPathname === PORTAL_SIGN_IN.fleet;
+
+    if (publicFleetPath || isLegacyFleetWorkspace || isLegacyFleetSignIn) {
+      const target = new URL(
+        isLegacyFleetSignIn ? "/sign-in" : publicFleetPath ?? "/",
+        FLEET_PRODUCT_ORIGIN,
+      );
+      target.search = search;
+      return NextResponse.redirect(target, 308);
+    }
   }
 
   if (fleetProductRequest) {
@@ -571,7 +589,6 @@ export const config = {
     "/history/:path*",
     "/reports/:path*",
     "/settings/:path*",
-    "/dispatch/:path*",
     "/mobile/sign-in",
     "/launch",
     "/offline/:path*",
