@@ -16,8 +16,6 @@ const WRITE_GATE_EXEMPT_PREFIXES = [
   "/api/auth/",
   "/api/internal/",
   "/api/organizations/",
-  "/api/portal/",
-  "/api/public/",
   "/api/shop/owner-pin/",
   "/api/stripe/",
   "/api/webhooks/",
@@ -126,8 +124,8 @@ export async function enforceApiWriteBillingEntitlement(
     error: userError,
   } = await supabase.auth.getUser();
 
-  // Public webhooks and portal calls are handled by their own route-level auth.
-  // The write gate only applies once an authenticated shop staff identity exists.
+  // Public webhooks and portal identities either use exempt routes or do not
+  // resolve to a staff profile. The write gate activates only for shop staff.
   if (userError || !user) return response;
 
   const profile = await resolveStaffProfile(supabase, user.id);
