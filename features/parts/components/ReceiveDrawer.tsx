@@ -1,7 +1,7 @@
 // features/parts/components/ReceiveDrawer.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { itemFlowLabel, toItemFlowDisplay } from "@/features/parts/lib/status-display";
 import { trustBadgeTone, trustLevelLabel, type PartTrustLevel } from "@/features/parts/lib/trust-signals";
 
@@ -73,6 +73,7 @@ export default function ReceiveDrawer(props: {
 
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [err, setErr] = useState<string | null>(null);
+  const receiveOperationRef = useRef<{ signature: string; key: string } | null>(null);
 
   const remaining = useMemo(() => {
     if (!item) return 0;
@@ -100,6 +101,7 @@ export default function ReceiveDrawer(props: {
     setErr(null);
     setSubmitting(false);
     setQty("");
+    receiveOperationRef.current = null;
 
     // ✅ Always reset when opening / switching items (prevents stale PO/location)
     setLocationId(resolvedDefaultLocationId);
@@ -141,6 +143,7 @@ export default function ReceiveDrawer(props: {
   function close(): void {
     setErr(null);
     setSubmitting(false);
+    receiveOperationRef.current = null;
 
     if (onClose) onClose();
     if (closeEventName) window.dispatchEvent(new Event(closeEventName));
@@ -170,16 +173,34 @@ export default function ReceiveDrawer(props: {
     setSubmitting(true);
 
     try {
+      const normalizedPoId = poId?.trim() ? poId.trim() : null;
+      const signature = JSON.stringify({
+        itemId: item.id,
+        locationId,
+        qty: q,
+        poId: normalizedPoId,
+      });
+      const existingOperation = receiveOperationRef.current;
+      const idempotencyKey =
+        existingOperation?.signature === signature
+          ? existingOperation.key
+          : crypto.randomUUID();
+      receiveOperationRef.current = { signature, key: idempotencyKey };
+
       // ✅ Canonical endpoint: item-scoped receive
       const res = await fetch(
         `/api/parts/requests/items/${encodeURIComponent(item.id)}/receive`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": idempotencyKey,
+          },
           body: JSON.stringify({
             location_id: locationId,
             qty: q,
-            po_id: poId?.trim() ? poId.trim() : null,
+            po_id: normalizedPoId,
+            idempotencyKey,
           }),
         },
       );
@@ -204,6 +225,7 @@ export default function ReceiveDrawer(props: {
 
       // ✅ tell any pages to refresh
       window.dispatchEvent(new Event("parts:received"));
+      receiveOperationRef.current = null;
 
       setSubmitting(false);
       close();
