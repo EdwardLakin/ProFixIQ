@@ -109,6 +109,9 @@ describe("linePresentation", () => {
     );
     expect(resolveOperationalLineStatusLabel(baseLine, { isActive: true })).toBe("In progress");
     expect(
+      resolveOperationalLineStatusLabel({ ...baseLine, status: "in_progress" }),
+    ).toBe("Ready to start");
+    expect(
       resolveOperationalLineStatusLabel({ ...baseLine, hold_reason: "Awaiting parts" }),
     ).toBe("On hold");
   });

@@ -66,10 +66,14 @@ export function resolveOperationalLineStatusLabel(
   if (normalized === "awaiting_approval" || approvalState === "pending") {
     return "Awaiting approval";
   }
-  if (isActive || normalized === "in_progress") return "In progress";
+  // A line can retain the workflow status `in_progress` after approval or a
+  // previous punch. The operational UI should only say it is in progress
+  // while there is a live job punch; otherwise the primary action correctly
+  // remains "Start job".
+  if (isActive) return "In progress";
   if (!line.assigned_tech_id) return "Awaiting technician";
   if (
-    ["awaiting", "pending", "queued", "approved", "assigned", "unassigned"].includes(
+    ["awaiting", "pending", "queued", "approved", "assigned", "unassigned", "in_progress"].includes(
       normalized,
     )
   ) {

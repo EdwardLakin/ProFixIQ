@@ -1652,7 +1652,7 @@ export default function FocusedJobModal(props: {
                       ? "Manage hold"
                       : isOperationallyActive
                         ? "Hold"
-                        : "Add blocker"}
+                        : "Add hold"}
                   </button>
                   <button
                     type="button"

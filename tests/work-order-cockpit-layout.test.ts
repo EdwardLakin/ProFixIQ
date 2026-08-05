@@ -28,6 +28,8 @@ describe("desktop work-order cockpit", () => {
     expect(focusedJob).toContain('role="tablist"');
     expect(focusedJob).toContain('activeWorkspaceTab === "overview"');
     expect(focusedJob).toContain("resolveOperationalLineStatusLabel");
+    expect(focusedJob).toContain('"Add hold"');
+    expect(focusedJob).not.toContain('"Add blocker"');
     expect(jobCard).toContain('display === "navigator"');
   });
 
