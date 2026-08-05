@@ -5,6 +5,19 @@ import { Dialog } from "@headlessui/react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { v4 as uuidv4 } from "uuid";
+import {
+  AlertTriangle,
+  Camera,
+  CheckCircle2,
+  Clock3,
+  History,
+  MessageSquare,
+  PackageSearch,
+  PauseCircle,
+  Plus,
+  Sparkles,
+  UserRound,
+} from "lucide-react";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { cn } from "@shared/lib/utils";
 
@@ -42,7 +55,16 @@ import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 
 type Mode = "tech" | "view";
-type Variant = "modal" | "panel";
+type Variant = "modal" | "panel" | "cockpit";
+type WorkspaceTab = "overview" | "story" | "parts" | "evidence" | "details";
+
+const WORKSPACE_TABS: ReadonlyArray<{ id: WorkspaceTab; label: string }> = [
+  { id: "overview", label: "Overview" },
+  { id: "story", label: "Story" },
+  { id: "parts", label: "Parts" },
+  { id: "evidence", label: "Evidence" },
+  { id: "details", label: "Details" },
+];
 
 const statusTextColor: Record<string, string> = {
   in_progress: "text-sky-200",
@@ -208,6 +230,7 @@ export default function FocusedJobModal(props: {
   const [openAi, setOpenAi] = useState(false);
   const [openDtc, setOpenDtc] = useState(false);
   const [openVehicleHistory, setOpenVehicleHistory] = useState(false);
+  const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<WorkspaceTab>("overview");
 
   const [prefillCause, setPrefillCause] = useState("");
   const [prefillCorrection, setPrefillCorrection] = useState("");
@@ -264,6 +287,10 @@ export default function FocusedJobModal(props: {
     }
     closeAllSubModals();
   }, [isOpen, workOrderLineId, closeAllSubModals, variant]);
+
+  useEffect(() => {
+    setActiveWorkspaceTab("overview");
+  }, [workOrderLineId]);
 
   useEffect(() => {
     if (!isOpen || !workOrderLineId) return;
@@ -1143,8 +1170,529 @@ export default function FocusedJobModal(props: {
     </div>
   );
 
+  const repairStoryWorkspace = line ? (
+    <section className="border-b border-[color:var(--theme-border-soft)] pb-6">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">
+            Repair story
+          </div>
+          <h3 className="mt-1 text-base font-semibold text-[color:var(--theme-text-primary)]">
+            Complaint, cause &amp; correction
+          </h3>
+        </div>
+        <button
+          type="button"
+          className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1.5 text-xs font-semibold text-[color:var(--theme-text-primary)] transition hover:bg-[color:var(--theme-surface-subtle)]"
+          onClick={() => {
+            closeAllSubModals();
+            setPrefillCause(line.cause ?? "");
+            setPrefillCorrection(line.correction ?? "");
+            setOpenComplete(true);
+          }}
+        >
+          Edit story
+        </button>
+      </div>
+      <dl className="grid gap-3 text-sm">
+        {[
+          ["Complaint", line.complaint?.trim() || line.description?.trim() || "Add complaint"],
+          ["Cause", line.cause?.trim() || "Add cause"],
+          ["Correction", line.correction?.trim() || "Add correction"],
+          ["Blocker", line.hold_reason?.trim() || "None"],
+        ].map(([label, value]) => (
+          <div key={label} className="grid gap-1 sm:grid-cols-[7rem_minmax(0,1fr)] sm:gap-4">
+            <dt className="font-medium text-[color:var(--theme-text-secondary)]">{label}</dt>
+            <dd className="text-[color:var(--theme-text-primary)]">{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  ) : null;
+
+  const partsWorkspace = line ? (
+    <section>
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">
+            Parts &amp; labor
+          </div>
+          <h3 className="mt-1 text-base font-semibold text-[color:var(--theme-text-primary)]">
+            Job economics and fulfillment
+          </h3>
+        </div>
+        <button
+          type="button"
+          className="rounded-lg border border-sky-400/40 bg-sky-500/10 px-3 py-1.5 text-xs font-semibold text-sky-100 transition hover:bg-sky-500/20"
+          onClick={() => {
+            closeAllSubModals();
+            setOpenParts(true);
+          }}
+          disabled={busy}
+        >
+          Request parts
+        </button>
+      </div>
+      <div className="grid divide-y divide-[color:var(--theme-border-soft)] border-y border-[color:var(--theme-border-soft)] sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+        <div className="px-3 py-3 sm:first:pl-0">
+          <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">Labor</div>
+          <div className="mt-1 text-sm font-medium text-[color:var(--theme-text-primary)]">{laborDisplay}</div>
+        </div>
+        <div className="px-3 py-3">
+          <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">Parts</div>
+          <div className="mt-1 text-sm font-medium text-[color:var(--theme-text-primary)]">
+            {allocsLoading
+              ? "Loading…"
+              : `${allocs.length + requiredParts.length} attached or required`}
+          </div>
+        </div>
+        <div className="px-3 py-3">
+          <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">Line total</div>
+          <div className="mt-1 font-mono text-sm font-semibold text-[color:var(--theme-text-primary)]">
+            {lineTotal > 0 ? money(lineTotal) : "Estimate pending"}
+          </div>
+        </div>
+      </div>
+      {partsBottleneckDisplay ? (
+        <div className="mt-4 flex items-start gap-2 rounded-xl border border-amber-400/30 bg-amber-400/8 px-3 py-3 text-sm text-amber-100">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <div>
+            <div className="font-semibold">{partsBottleneckDisplay.heading}</div>
+            <div className="mt-0.5 text-xs text-amber-100/80">{partsBottleneckDisplay.detail}</div>
+          </div>
+        </div>
+      ) : null}
+    </section>
+  ) : null;
+
+  const fullPartsWorkspace = line ? (
+    <section>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">
+            Fulfillment
+          </div>
+          <h3 className="mt-1 text-base font-semibold text-[color:var(--theme-text-primary)]">
+            {partsBottleneckDisplay?.heading ?? "Parts used and required"}
+          </h3>
+        </div>
+        <button
+          type="button"
+          className="rounded-lg border border-sky-400/40 bg-sky-500/10 px-3 py-1.5 text-xs font-semibold text-sky-100 transition hover:bg-sky-500/20"
+          onClick={() => {
+            closeAllSubModals();
+            setOpenParts(true);
+          }}
+          disabled={busy}
+        >
+          Request parts
+        </button>
+      </div>
+      {allocsLoading ? (
+        <div className="text-sm text-[color:var(--theme-text-secondary)]">Loading…</div>
+      ) : allocs.length + requiredParts.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-[color:var(--theme-border-soft)] px-4 py-8 text-center text-sm text-[color:var(--theme-text-secondary)]">
+          {partsBottleneckDisplay?.detail ?? "No parts used yet."}
+        </div>
+      ) : (
+        <div className="overflow-hidden rounded-xl border border-[color:var(--theme-border-soft)]">
+          <div className="grid grid-cols-12 bg-[color:var(--theme-surface-subtle)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.15em] text-[color:var(--theme-text-secondary)]">
+            <div className="col-span-7">Part</div>
+            <div className="col-span-3">Price / location</div>
+            <div className="col-span-2 text-right">Qty</div>
+          </div>
+          <ul className="divide-y divide-[color:var(--theme-border-soft)]">
+            {requiredParts.map((part) => {
+              const qty = getCanonicalPartQuantity(part);
+              const unit = getCanonicalPartUnitPrice(part);
+              return (
+                <li key={`cockpit-required-${part.id}`} className="grid grid-cols-12 items-center gap-2 px-3 py-3 text-sm">
+                  <div className="col-span-7 min-w-0 text-[color:var(--theme-text-primary)]">
+                    <div className="truncate font-medium">{getCanonicalPartDescription(part) ?? "Part"}</div>
+                    <div className="mt-0.5 truncate text-[11px] text-[color:var(--theme-text-secondary)]">
+                      {[getCanonicalPartNumber(part), getCanonicalPartManufacturer(part), part.lifecycle_status ?? "requested"].filter(Boolean).join(" • ")}
+                    </div>
+                  </div>
+                  <div className="col-span-3 truncate text-[color:var(--theme-text-secondary)]">{unit > 0 ? money(unit) : "—"}</div>
+                  <div className="col-span-2 text-right font-semibold text-[color:var(--theme-text-primary)]">{qty}</div>
+                </li>
+              );
+            })}
+            {allocs.map((allocation) => {
+              const qty =
+                (allocation as unknown as { qty?: number | null }).qty ??
+                (allocation as unknown as { quantity?: number | null }).quantity ??
+                0;
+              const locationId = (allocation as unknown as { location_id?: string | null }).location_id;
+              return (
+                <li key={`cockpit-allocated-${allocation.id}`} className="grid grid-cols-12 items-center gap-2 px-3 py-3 text-sm">
+                  <div className="col-span-7 truncate font-medium text-[color:var(--theme-text-primary)]">{allocation.parts?.name ?? "Part"}</div>
+                  <div className="col-span-3 truncate text-[color:var(--theme-text-secondary)]">{locationId ? `loc ${locationId.slice(0, 6)}…` : "—"}</div>
+                  <div className="col-span-2 text-right font-semibold text-[color:var(--theme-text-primary)]">{qty}</div>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+    </section>
+  ) : null;
+
+  const CockpitBody = (
+    <div
+      data-work-order-cockpit="true"
+      className="grid min-h-[40rem] overflow-hidden border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] lg:h-[calc(100vh-13.5rem)] lg:min-h-[42rem] lg:grid-cols-[minmax(0,1fr)_21rem]"
+    >
+      <section className="flex min-h-0 min-w-0 flex-col bg-[color:var(--theme-surface-page)]">
+        <header className="border-b border-[color:var(--theme-border-soft)] px-5 pb-0 pt-4">
+          <div className="flex flex-wrap items-start justify-between gap-3 pb-4">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex h-2.5 w-2.5 rounded-full bg-[color:var(--brand-primary)]" aria-hidden="true" />
+                <span className={`text-[10px] font-semibold uppercase tracking-[0.16em] ${chip(normalizedLineStatus)}`}>
+                  {statusLabel}
+                </span>
+                {line?.approval_state ? (
+                  <span className="text-[10px] uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">
+                    Approval {line.approval_state}
+                  </span>
+                ) : null}
+              </div>
+              <h2 className="mt-2 line-clamp-2 text-lg font-semibold tracking-tight text-[color:var(--theme-text-primary)]">
+                {titleText}
+              </h2>
+              <div className="mt-1 font-mono text-[11px] text-[color:var(--theme-text-muted)]">
+                {workOrder ? `WO ${workOrder.custom_id || workOrder.id.slice(0, 8)}` : "Selected job"}
+              </div>
+            </div>
+            <button
+              type="button"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-xs font-semibold text-[color:var(--theme-text-primary)] transition hover:bg-[color:var(--theme-surface-subtle)]"
+              onClick={() => {
+                closeAllSubModals();
+                setOpenAddJob(true);
+              }}
+              disabled={busy || !workOrder?.id}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Add job
+            </button>
+          </div>
+          <div className="flex gap-1 overflow-x-auto" role="tablist" aria-label="Selected job workspace">
+            {WORKSPACE_TABS.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={activeWorkspaceTab === tab.id}
+                onClick={() => setActiveWorkspaceTab(tab.id)}
+                className={cn(
+                  "border-b-2 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.12em] transition",
+                  activeWorkspaceTab === tab.id
+                    ? "border-[color:var(--brand-primary)] text-[color:var(--theme-text-primary)]"
+                    : "border-transparent text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)]",
+                )}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </header>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-6">
+          {busy && !line ? (
+            <div className="grid gap-3">
+              <div className="h-6 w-40 animate-pulse rounded bg-[color:var(--theme-surface-subtle)]" />
+              <div className="h-32 animate-pulse rounded-xl bg-[color:var(--theme-surface-subtle)]" />
+            </div>
+          ) : !line ? (
+            <div className="text-sm text-[color:var(--theme-text-secondary)]">No job found.</div>
+          ) : activeWorkspaceTab === "overview" ? (
+            <div className="space-y-6">
+              {repairStoryWorkspace}
+              {partsWorkspace}
+              {workOrder?.id ? (
+                <section className="border-t border-[color:var(--theme-border-soft)] pt-6">
+                  <WorkOrderMediaGallery
+                    workOrderId={workOrder.id}
+                    workOrderLineId={workOrderLineId}
+                    refreshKey={mediaRefreshKey}
+                  />
+                </section>
+              ) : null}
+            </div>
+          ) : activeWorkspaceTab === "story" ? (
+            <div className="space-y-6">
+              {repairStoryWorkspace}
+              <section>
+                <div className="mb-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">
+                  Technician notes
+                </div>
+                <textarea
+                  rows={10}
+                  value={techNotes}
+                  onChange={(event) => setTechNotes(event.target.value)}
+                  onBlur={saveNotes}
+                  disabled={savingNotes}
+                  className="w-full resize-y rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3 text-sm leading-6 text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:border-[color:var(--brand-primary)] focus:outline-none focus:ring-2 focus:ring-[color:var(--brand-primary)]/20"
+                  placeholder="Add notes for this job…"
+                />
+                <div className="mt-2 text-[11px] text-[color:var(--theme-text-muted)]">
+                  Notes save when focus leaves the field.
+                </div>
+              </section>
+            </div>
+          ) : activeWorkspaceTab === "parts" ? (
+            fullPartsWorkspace
+          ) : activeWorkspaceTab === "evidence" ? (
+            workOrder?.id ? (
+              <WorkOrderMediaGallery
+                workOrderId={workOrder.id}
+                workOrderLineId={workOrderLineId}
+                refreshKey={mediaRefreshKey}
+              />
+            ) : null
+          ) : (
+            <div className="space-y-6">
+              <section>
+                <div className="mb-4 text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">
+                  Job details
+                </div>
+                <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
+                  <MetaStat label="Start" value={createdStart} />
+                  <MetaStat label="Finish" value={createdFinish} />
+                  <MetaStat label="Hold reason" value={line.hold_reason ?? "—"} />
+                  <MetaStat label="Job type" value={String(line.job_type ?? "—").replaceAll("_", " ")} />
+                  <MetaStat label="Primary tech" value={primaryTechDisplay} />
+                  <MetaStat label="Labor" value={laborDisplay} />
+                  <MetaStat label="Line total" value={lineTotal > 0 ? money(lineTotal) : "Estimate pending"} />
+                </div>
+              </section>
+              <section className="border-t border-[color:var(--theme-border-soft)] pt-6">
+                <details className="group">
+                  <summary className="cursor-pointer text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                    AI suggested repairs
+                  </summary>
+                  <div className="mt-3">
+                    {line && workOrder ? (
+                      <SuggestedQuickAdd
+                        jobId={line.id}
+                        workOrderId={workOrder.id}
+                        vehicleId={vehicle?.id ?? null}
+                        onAdded={async () => {
+                          toast.success("Suggested line added");
+                          await refresh();
+                        }}
+                      />
+                    ) : null}
+                  </div>
+                </details>
+              </section>
+              <div className="font-mono text-[11px] text-[color:var(--theme-text-muted)]">
+                Job ID {line.id}
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+
+      <aside className="min-h-0 overflow-y-auto border-t border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] lg:border-l lg:border-t-0">
+        <div className="border-b border-[color:var(--theme-border-soft)] px-4 py-4">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--theme-text-muted)]">
+            Command center
+          </div>
+          <div className="mt-4 grid gap-3">
+            <div className="flex items-start gap-3">
+              <Clock3 className="mt-0.5 h-5 w-5 text-sky-300" />
+              <div>
+                <div className="text-[11px] text-[color:var(--theme-text-secondary)]">Current state</div>
+                <div className={`mt-0.5 text-sm font-semibold ${chip(normalizedLineStatus)}`}>{statusLabel}</div>
+              </div>
+            </div>
+            <div className="flex items-start gap-3">
+              <AlertTriangle className={cn("mt-0.5 h-5 w-5", line?.hold_reason ? "text-amber-300" : "text-[color:var(--theme-text-muted)]")} />
+              <div>
+                <div className="text-[11px] text-[color:var(--theme-text-secondary)]">Blocker</div>
+                <div className="mt-0.5 text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                  {line?.hold_reason || partsBottleneckDisplay?.detail || "None"}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {line ? (
+          <div className="space-y-4 px-4 py-4">
+            {mode === "tech" ? (
+              <section>
+                <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
+                  Next action
+                </div>
+                {line.status !== "completed" ? (
+                  <JobPunchButton
+                    lineId={line.id}
+                    punchedInAt={line.punched_in_at}
+                    punchedOutAt={line.punched_out_at}
+                    status={line.status as WorkflowStatus}
+                    onFinishRequested={() => {
+                      closeAllSubModals();
+                      setPrefillCause(line.cause ?? "");
+                      setPrefillCorrection(line.correction ?? "");
+                      setOpenComplete(true);
+                    }}
+                    onUpdated={refresh}
+                    disabled={completionBlocked}
+                  />
+                ) : (
+                  <div className="flex items-center gap-2 rounded-xl border border-emerald-400/30 bg-emerald-400/10 px-3 py-3 text-sm font-semibold text-emerald-100">
+                    <CheckCircle2 className="h-4 w-4" />
+                    Job completed
+                  </div>
+                )}
+
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    className={cn(btnInfo, "gap-1.5 text-xs")}
+                    onClick={() => {
+                      closeAllSubModals();
+                      setOpenParts(true);
+                    }}
+                    disabled={busy}
+                  >
+                    <PackageSearch className="h-4 w-4" />
+                    Parts
+                  </button>
+                  <button
+                    type="button"
+                    className={cn(btnInfo, "gap-1.5 text-xs")}
+                    onClick={() => {
+                      closeAllSubModals();
+                      setOpenHold(true);
+                    }}
+                    disabled={busy}
+                  >
+                    <PauseCircle className="h-4 w-4" />
+                    {normalizedLineStatus === "on_hold" ? "On hold" : "Hold"}
+                  </button>
+                  <button
+                    type="button"
+                    className={cn(btnTertiary, "gap-1.5 text-xs")}
+                    onClick={() => {
+                      closeAllSubModals();
+                      setOpenPhoto(true);
+                    }}
+                    disabled={busy}
+                  >
+                    <Camera className="h-4 w-4" />
+                    Add photo
+                  </button>
+                  <button
+                    type="button"
+                    className={cn(btnTertiary, "gap-1.5 text-xs")}
+                    onClick={() => {
+                      closeAllSubModals();
+                      setOpenChat(true);
+                    }}
+                  >
+                    <MessageSquare className="h-4 w-4" />
+                    Message
+                  </button>
+                  <button
+                    type="button"
+                    className={cn(btnTertiary, "gap-1.5 text-xs")}
+                    onClick={() => {
+                      closeAllSubModals();
+                      setOpenAi(true);
+                    }}
+                  >
+                    <Sparkles className="h-4 w-4" />
+                    AI assist
+                  </button>
+                  <button
+                    type="button"
+                    className={cn(btnTertiary, "gap-1.5 text-xs")}
+                    onClick={() => {
+                      if (!vehicle?.id) {
+                        toast.error("No vehicle linked to this work order yet.");
+                        return;
+                      }
+                      closeAllSubModals();
+                      setOpenVehicleHistory(true);
+                    }}
+                    disabled={busy || !vehicle?.id}
+                  >
+                    <History className="h-4 w-4" />
+                    History
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  className={cn(btnDanger, "mt-2 w-full text-xs")}
+                  onClick={() => {
+                    closeAllSubModals();
+                    setPrefillCause(line.cause ?? "");
+                    setPrefillCorrection(line.correction ?? "");
+                    setOpenComplete(true);
+                  }}
+                  disabled={completionBlocked}
+                >
+                  Complete job
+                </button>
+
+                {completionBlocked ? (
+                  <div className="mt-2 text-[11px] text-amber-300">
+                    {normalizedLineStatus === "awaiting_approval"
+                      ? "Awaiting approval — labor actions disabled"
+                      : normalizedLineStatus === "declined"
+                        ? "Declined — labor actions disabled"
+                        : line.approval_state && line.approval_state !== "approved"
+                          ? "Not approved — labor actions disabled"
+                          : ""}
+                  </div>
+                ) : null}
+              </section>
+            ) : null}
+
+            <section className="border-t border-[color:var(--theme-border-soft)] pt-4">
+              <div className="grid gap-3 text-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-[color:var(--theme-text-secondary)]">Approval</span>
+                  <span className="font-semibold capitalize text-[color:var(--theme-text-primary)]">{line.approval_state ?? "—"}</span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-[color:var(--theme-text-secondary)]">Primary tech</span>
+                  <span className="inline-flex min-w-0 items-center gap-1.5 truncate font-semibold text-[color:var(--theme-text-primary)]">
+                    <UserRound className="h-4 w-4 shrink-0" />
+                    {primaryTechDisplay}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-[color:var(--theme-text-secondary)]">Line total</span>
+                  <span className="font-mono font-semibold text-[color:var(--theme-text-primary)]">{lineTotal > 0 ? money(lineTotal) : "—"}</span>
+                </div>
+              </div>
+            </section>
+
+            <section className="border-t border-[color:var(--theme-border-soft)] pt-4">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">Timing</div>
+              <dl className="mt-3 grid gap-2 text-xs">
+                <div className="flex justify-between gap-3"><dt className="text-[color:var(--theme-text-secondary)]">Start</dt><dd className="text-right text-[color:var(--theme-text-primary)]">{createdStart}</dd></div>
+                <div className="flex justify-between gap-3"><dt className="text-[color:var(--theme-text-secondary)]">Finish</dt><dd className="text-right text-[color:var(--theme-text-primary)]">{createdFinish}</dd></div>
+                <div className="flex justify-between gap-3"><dt className="text-[color:var(--theme-text-secondary)]">Labor</dt><dd className="text-right text-[color:var(--theme-text-primary)]">{laborDisplay}</dd></div>
+              </dl>
+            </section>
+          </div>
+        ) : null}
+      </aside>
+    </div>
+  );
+
   const Shell =
-    variant === "panel" ? (
+    variant === "cockpit" ? (
+      <div className="relative h-full">{CockpitBody}</div>
+    ) : variant === "panel" ? (
       <div className="relative h-full">{Body}</div>
     ) : (
       <Dialog

@@ -8,6 +8,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import dynamic from "next/dynamic";
+import { BrainCircuit, Clock3, ListChecks, Plus, ReceiptText } from "lucide-react";
 
 import { supabaseBrowser as supabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
@@ -25,7 +26,6 @@ import WorkOrderAiOperationalRecommendations from "@/features/work-orders/compon
 import WorkOrderAiFreshnessBadge from "@/features/work-orders/components/WorkOrderAiFreshnessBadge";
 import WorkOrderMediaGallery from "@/features/work-orders/components/workorders/extras/WorkOrderMediaGallery";
 import type { WorkOrderEvidenceItem } from "@/features/work-orders/lib/evidence/workOrderEvidence";
-import PageShell from "@/features/shared/components/PageShell";
 import StatusBadge from "@/features/shared/components/ui/StatusBadge";
 import DecisionTimeline, {
   type DecisionTimelineStage,
@@ -128,6 +128,14 @@ function partsRequestActionLabel(requests: PartRequestRow[]): string {
     case "handoff": return "Parts handed off";
     case "history": return "View parts history";
   }
+}
+
+function formatCurrency(value: number): string {
+  return new Intl.NumberFormat("en-CA", {
+    style: "currency",
+    currency: "CAD",
+    maximumFractionDigits: 2,
+  }).format(value);
 }
 
 /** Normalize “where is the inspection template id stored for this line?” */
@@ -1002,6 +1010,17 @@ export default function WorkOrderIdClient(): JSX.Element {
     return byLine;
   }, [activeQuotesByLine, allocsByLine, lines, shopLaborRate, stagedPartsByLine]);
 
+  const workOrderTotal = useMemo(
+    () =>
+      lines
+        .filter((line) => (line.line_type ?? "job") !== "info")
+        .reduce(
+        (total, line) => total + Number(pricingByLine[line.id]?.lineTotal ?? 0),
+        0,
+      ),
+    [lines, pricingByLine],
+  );
+
   const isPendingApprovalLine = (l: WorkOrderLine) => {
     const a = (l.approval_state ?? "").toLowerCase();
     const s = (l.status ?? "").toLowerCase();
@@ -1091,6 +1110,7 @@ export default function WorkOrderIdClient(): JSX.Element {
       }),
     [wo, jobLines],
   );
+  const latestDecisionEvent = decisionEvents[decisionEvents.length - 1] ?? null;
 
   const sortedLines = useMemo(() => {
     const pr: Record<string, number> = {
@@ -1510,10 +1530,9 @@ export default function WorkOrderIdClient(): JSX.Element {
 
   // ✅ layout: desktop keeps the focused cockpit open with a selected (or first) line.
   const panelLineId = focusedJobId ?? sortedLines[0]?.id ?? null;
-  const showPanel = prefersPanel && !!panelLineId;
 
   return (
-    <div className="w-full bg-[var(--theme-surface-2,var(--theme-surface-page))] px-3 py-4 text-foreground sm:px-5 lg:px-8 xl:px-10">
+    <div className="w-full bg-[var(--theme-surface-2,var(--theme-surface-page))] px-2 py-3 text-foreground sm:px-3 lg:px-4">
       <VoiceContextSetter
         currentView="work_order_page"
         workOrderId={wo?.id}
@@ -1522,7 +1541,6 @@ export default function WorkOrderIdClient(): JSX.Element {
         lineId={focusedJobId}
       />
 
-      <PageShell eyebrow="" title="" description="" actions={null}>
         {authChecked && !currentUserId && (
           <section className={cn(PANEL_VARIANTS.secondary, "p-3 text-sm text-amber-100")}>
             You appear signed out on this tab. If actions fail, open{" "}
@@ -1548,8 +1566,8 @@ export default function WorkOrderIdClient(): JSX.Element {
         ) : !wo ? (
           <div className="mt-2 text-sm text-red-400">Work order not found.</div>
         ) : (
-          <div className={cn("space-y-2.5", supportFullyCollapsed && "space-y-2")}>
-            <section className={cn(PANEL_VARIANTS.secondary, "px-3 py-2")}>
+          <div className={cn("space-y-2", supportFullyCollapsed && "space-y-1.5")}>
+            <section className="overflow-hidden border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3 sm:px-4">
               <div className="flex flex-wrap items-center gap-2">
                 <PreviousPageButton />
                 <div className="text-sm font-semibold text-foreground">
@@ -1583,6 +1601,51 @@ export default function WorkOrderIdClient(): JSX.Element {
                   <span className="rounded-full border border-sky-400/30 bg-sky-500/10 px-2 py-0.5 text-sky-200">Approval queue: {approvalPending.length + approvalPendingQuotes.length}</span>
                 ) : null}
               </div>
+              <div className="mt-3 flex flex-wrap items-center gap-1 border-t border-[color:var(--theme-border-soft)] pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowWoContext((prev) => !prev)}
+                  aria-expanded={showWoContext}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition",
+                    showWoContext
+                      ? "bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-primary)]"
+                      : "text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-surface-subtle)]",
+                  )}
+                >
+                  <BrainCircuit className="h-3.5 w-3.5" />
+                  Context &amp; AI
+                </button>
+                <button
+                  type="button"
+                  onClick={openQuoteReview}
+                  className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-[color:var(--theme-text-secondary)] transition hover:bg-[color:var(--theme-surface-subtle)] hover:text-[color:var(--theme-text-primary)]"
+                >
+                  <ReceiptText className="h-3.5 w-3.5" />
+                  Approvals{hasAnyApprovalItems ? ` (${approvalPending.length + approvalPendingQuotes.length})` : ""}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowWoContext(true);
+                    setShowTimeline((prev) => !prev);
+                  }}
+                  aria-expanded={showTimeline}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition",
+                    showTimeline
+                      ? "bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-primary)]"
+                      : "text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-surface-subtle)]",
+                  )}
+                >
+                  <Clock3 className="h-3.5 w-3.5" />
+                  Activity
+                </button>
+                <span className="ml-auto inline-flex items-center gap-2 font-mono text-[11px] font-semibold text-[color:var(--theme-text-primary)]">
+                  <ListChecks className="h-3.5 w-3.5 text-[color:var(--theme-text-secondary)]" />
+                  {sortedLines.length} jobs · {formatCurrency(workOrderTotal)}
+                </span>
+              </div>
             </section>
 
             {loading ? (
@@ -1590,7 +1653,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                 Refreshing work order data…
               </div>
             ) : null}
-            <section className={cn(PANEL_VARIANTS.secondary, "p-2")}>
+            <section className={cn(PANEL_VARIANTS.secondary, showWoContext ? "p-2" : "hidden")}>
               <button
                 type="button"
                 className="flex w-full items-center justify-between gap-2 text-left"
@@ -1953,12 +2016,26 @@ export default function WorkOrderIdClient(): JSX.Element {
               )}
             </section>
 
-          {/* Workspace */}
-          <section className={cn("grid lg:grid-cols-[minmax(0,58fr)_minmax(0,42fr)] lg:items-start", supportFullyCollapsed ? "gap-2.5 lg:gap-3" : "gap-3 lg:gap-4")}>
-            {/* Left: jobs list/cards */}
-            <div className="space-y-2">
+          {/* Full-height cockpit: navigate left, work center, act right. */}
+          <section className="grid overflow-hidden border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] lg:h-[calc(100vh-12.5rem)] lg:min-h-[44rem] lg:grid-cols-[17rem_minmax(0,1fr)]">
+            <aside className="flex min-h-0 flex-col border-b border-[color:var(--theme-border-soft)] lg:border-b-0 lg:border-r">
+              <div className="flex items-center justify-between gap-3 border-b border-[color:var(--theme-border-soft)] px-3 py-3">
+                <div>
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--theme-text-muted)]">Jobs</div>
+                  <div className="mt-0.5 text-xs text-[color:var(--theme-text-secondary)]">{sortedLines.length} on this work order</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setAddJobOpen(true)}
+                  className="inline-flex h-8 items-center gap-1 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[color:var(--theme-text-primary)] transition hover:bg-[color:var(--theme-surface-subtle)]"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Add
+                </button>
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto">
               {sortedLines.length === 0 ? (
-                <section className={cn(PANEL_VARIANTS.secondary, "rounded-2xl p-4")}>
+                <section className="p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <p className="text-sm font-semibold text-foreground">No jobs added yet.</p>
@@ -1976,7 +2053,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                   </div>
                 </section>
               ) : (
-                <div className="space-y-2.5">
+                <div>
                   {sortedLines.map((ln, idx) => {
                     const activeTechnicianIds = activeTechsByLine[ln.id] ?? [];
                     const punchedIn =
@@ -2099,7 +2176,8 @@ export default function WorkOrderIdClient(): JSX.Element {
                         reviewIssues={reviewIssuesByLine[ln.id] ?? []}
                         canDelete={canDeleteLine}
                         onDelete={() => openDeleteForLine(ln.id)}
-                        compact={showPanel}
+                        display="navigator"
+                        compact
                         selected={isSelectedForPanel}
                         hideExecutionStageCompletenessPills
                         evidence={evidence.filter(
@@ -2127,7 +2205,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                       Open Quote Review
                     </Link>
                   </div>
-                  <div className="grid gap-3 md:grid-cols-2">
+                  <div className="grid gap-3">
                     {approvalPendingQuotes.map((q) => {
                       const meta = isRecord(q.metadata) ? q.metadata : {};
                       const parts = Array.isArray(meta.parts) ? meta.parts : [];
@@ -2152,7 +2230,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                               {String(q.stage ?? q.status ?? "advisor_pending").replaceAll("_", " ")}
                             </span>
                           </div>
-                          <div className="mt-3 grid gap-2 text-xs text-[color:var(--theme-text-secondary)] sm:grid-cols-2">
+                          <div className="mt-3 grid gap-2 text-xs text-[color:var(--theme-text-secondary)]">
                             <div>Tech notes: <span className="text-[color:var(--theme-text-primary)]">{technicianNotes}</span></div>
                             <div>Labor: <span className="text-[color:var(--theme-text-primary)]">{typeof q.labor_hours === "number" ? `${q.labor_hours}h` : typeof q.est_labor_hours === "number" ? `${q.est_labor_hours}h` : "—"}</span></div>
                             <div>Parts: <span className="text-[color:var(--theme-text-primary)]">{parts.length > 0 ? `${parts.length} requirement(s)` : "None / labor-only"}</span></div>
@@ -2213,10 +2291,11 @@ export default function WorkOrderIdClient(): JSX.Element {
                 />
               ) : null}
             </div>
+            </aside>
 
-            {/* Right: focused job workspace pane */}
-            <div className="min-w-0 lg:sticky lg:top-20">
-              {panelLineId ? (
+            {/* Center workspace and right command center are owned by the selected job. */}
+            <div className="min-w-0">
+              {prefersPanel && panelLineId ? (
                 <FocusedJobModal
                   key={panelLineId}
                   isOpen={true}
@@ -2224,19 +2303,37 @@ export default function WorkOrderIdClient(): JSX.Element {
                   workOrderLineId={panelLineId}
                   onChanged={fetchAll}
                   mode="tech"
-                  variant="panel"
+                  variant="cockpit"
                 />
               ) : (
-                <section className={cn(PANEL_VARIANTS.passive, "rounded-2xl p-4 text-sm text-muted-foreground")}>
-                  Select a job
+                <section className="flex min-h-64 items-center justify-center p-6 text-center text-sm text-muted-foreground">
+                  Select a job to open its focused workspace.
                 </section>
               )}
             </div>
           </section>
 
+          {latestDecisionEvent ? (
+            <button
+              type="button"
+              onClick={() => {
+                setShowWoContext(true);
+                setShowTimeline(true);
+              }}
+              className="flex w-full items-center gap-2 border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-left text-[11px] text-[color:var(--theme-text-secondary)] transition hover:bg-[color:var(--theme-surface-subtle)]"
+            >
+              <Clock3 className="h-3.5 w-3.5 shrink-0 text-[color:var(--brand-primary)]" />
+              <span className="font-semibold text-[color:var(--theme-text-primary)]">Latest activity</span>
+              <span className="h-1 w-1 rounded-full bg-[color:var(--brand-primary)]" />
+              <span className="truncate">{latestDecisionEvent.label}{latestDecisionEvent.meta ? ` · ${latestDecisionEvent.meta}` : ""}</span>
+              <time className="ml-auto hidden shrink-0 font-mono text-[10px] sm:inline">
+                {format(new Date(latestDecisionEvent.timestamp), "PP p")}
+              </time>
+            </button>
+          ) : null}
+
         </div>
       )}
-      </PageShell>
 
       {/* Focused job modal (mobile fallback) */}
       {!prefersPanel && focusedOpen && focusedJobId && (
