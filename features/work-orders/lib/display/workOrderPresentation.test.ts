@@ -11,6 +11,7 @@ describe("work-order presentation", () => {
       "Ready to invoice",
     );
     expect(formatWorkOrderHeaderStatus("invoiced").label).toBe("Invoiced");
+    expect(formatWorkOrderHeaderStatus("invoiced", "paid").label).toBe("Paid");
     expect(formatWorkOrderHeaderStatus("completed").label).toBe("Completed");
   });
 

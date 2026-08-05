@@ -295,8 +295,8 @@ export default function WorkOrderIdClient(): JSX.Element {
   const [propertyContext, setPropertyContext] = useState<PropertyContext | null>(null);
   const isPropertySourcedWorkOrder = propertyContext !== null;
   const workOrderStatusView = useMemo(
-    () => formatWorkOrderHeaderStatus(wo?.status),
-    [wo?.status],
+    () => formatWorkOrderHeaderStatus(wo?.status, wo?.payment_status),
+    [wo?.payment_status, wo?.status],
   );
 
   // ✅ read job from query (desktop panel)
