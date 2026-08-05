@@ -22,6 +22,8 @@ type PortalWorkOrderStatusInput = {
   approvalState?: string | null;
   scheduledAt?: string | null;
   invoiceSentAt?: string | null;
+  paymentStatus?: string | null;
+  paidAt?: string | null;
 };
 
 function normalize(value: string | null | undefined): string {
@@ -84,6 +86,18 @@ export function toPortalWorkOrderStatus(
 ): PortalWorkOrderStatus {
   const status = normalize(input.status);
   const approvalState = normalize(input.approvalState);
+  const paymentStatus = normalize(input.paymentStatus);
+
+  if (paymentStatus === "paid" || Boolean(input.paidAt)) {
+    return {
+      key: "completed",
+      label: "Completed",
+      nextStep:
+        "This service visit is paid and remains available in your history.",
+      actionRequired: false,
+      complete: true,
+    };
+  }
 
   if (
     status === "awaiting_approval" ||

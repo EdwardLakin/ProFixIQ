@@ -70,30 +70,117 @@ export function useWorkOrderBoard(
       return;
     }
 
-    const workOrderIds = boardRows.map((row) => row.work_order_id);
-    const [activeSegmentsResult, requestResults] = await Promise.all([
-      supabase
-        .from("work_order_line_labor_segments")
-        .select("work_order_id")
-        .in("work_order_id", workOrderIds)
-        .is("ended_at", null),
-      Promise.all(
-        Array.from(
-          { length: Math.ceil(workOrderIds.length / 200) },
-          (_, index) =>
-            supabase
-              .from("part_requests")
-              .select("id,work_order_id,status")
-              .in("work_order_id", workOrderIds.slice(index * 200, index * 200 + 200)),
+    const boardWorkOrderIds = boardRows.map((row) => row.work_order_id);
+    const workOrderStateResult = await supabase
+      .from("work_orders")
+      .select("id,payment_status")
+      .in("id", boardWorkOrderIds);
+
+    if (workOrderStateResult.error) {
+      setError(workOrderStateResult.error.message);
+      setRows([]);
+      setLoading(false);
+      return;
+    }
+
+    const paidWorkOrderIds = new Set(
+      (workOrderStateResult.data ?? [])
+        .filter((workOrder) => workOrder.payment_status === "paid")
+        .map((workOrder) => workOrder.id),
+    );
+    const activeBoardRows = boardRows.filter(
+      (row) => !paidWorkOrderIds.has(row.work_order_id),
+    );
+    const workOrderIds = activeBoardRows.map((row) => row.work_order_id);
+
+    if (workOrderIds.length === 0) {
+      setRows([]);
+      setLoading(false);
+      return;
+    }
+
+    const [activeSegmentsResult, assignedLinesResult, requestResults] =
+      await Promise.all([
+        supabase
+          .from("work_order_line_labor_segments")
+          .select("work_order_id")
+          .in("work_order_id", workOrderIds)
+          .is("ended_at", null),
+        supabase
+          .from("work_order_lines")
+          .select("work_order_id,assigned_tech_id,assigned_to")
+          .in("work_order_id", workOrderIds)
+          .is("voided_at", null),
+        Promise.all(
+          Array.from(
+            { length: Math.ceil(workOrderIds.length / 200) },
+            (_, index) =>
+              supabase
+                .from("part_requests")
+                .select("id,work_order_id,status")
+                .in(
+                  "work_order_id",
+                  workOrderIds.slice(index * 200, index * 200 + 200),
+                ),
+          ),
         ),
-      ),
-    ]);
+      ]);
 
     const activeWorkOrderIds = new Set(
       (activeSegmentsResult.data ?? [])
         .map((segment) => segment.work_order_id)
         .filter((id): id is string => typeof id === "string" && id.length > 0),
     );
+
+    const assignedTechIdsByWorkOrder = new Map<string, Set<string>>();
+    for (const line of assignedLinesResult.data ?? []) {
+      const technicianId = line.assigned_tech_id ?? line.assigned_to;
+      if (!technicianId) continue;
+      const ids =
+        assignedTechIdsByWorkOrder.get(line.work_order_id) ?? new Set<string>();
+      ids.add(technicianId);
+      assignedTechIdsByWorkOrder.set(line.work_order_id, ids);
+    }
+    const assignedTechIds = Array.from(
+      new Set(
+        Array.from(assignedTechIdsByWorkOrder.values()).flatMap((ids) =>
+          Array.from(ids),
+        ),
+      ),
+    );
+    const profileNamesById = new Map<string, string>();
+    if (assignedTechIds.length > 0) {
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("id,full_name")
+        .in("id", assignedTechIds);
+      for (const profile of profiles ?? []) {
+        profileNamesById.set(
+          profile.id,
+          profile.full_name?.trim() || "Assigned",
+        );
+      }
+    }
+
+    const rowsWithDirectTechnicians = activeBoardRows.map((row) => {
+      const directNames = Array.from(
+        assignedTechIdsByWorkOrder.get(row.work_order_id) ?? [],
+      ).map((id) => profileNamesById.get(id) ?? "Assigned");
+      const techNames = Array.from(
+        new Set([...(row.tech_names ?? []), ...directNames].filter(Boolean)),
+      );
+      if (techNames.length === 0) return row;
+      return {
+        ...row,
+        assigned_tech_count: techNames.length,
+        first_tech_name: techNames[0] ?? null,
+        tech_names: techNames,
+        assigned_summary:
+          techNames.length === 1
+            ? techNames[0]
+            : `${techNames[0]} +${techNames.length - 1}`,
+      };
+    });
 
     const requests = requestResults.flatMap((result) =>
       result.error ? [] : ((result.data ?? []) as OpenPartsRequest[]),
@@ -117,7 +204,7 @@ export function useWorkOrderBoard(
 
     setRows(
       reconcileBoardPartsState(
-        boardRows,
+        rowsWithDirectTechnicians,
         countOpenPartsObligationsByWorkOrder(requests, items),
         activeWorkOrderIds,
       ),

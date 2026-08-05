@@ -2,7 +2,6 @@ import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 import { buildWorkOrderCompletedEvent } from "@/features/integrations/shopreel/server/buildProFixIQStoryEvents";
 import { postStoryEventToShopReel } from "@/features/integrations/shopreel/server/postStoryEventToShopReel";
-import { syncWorkOrderToHistory } from "@/features/work-orders/server/syncWorkOrderToHistory";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { seedCompletedWorkOrderIntelligence } from "@/features/ai/server/workOrderIntelligence";
 import { getInvoiceSnapshotForWorkOrder } from "@/features/invoices/server/getInvoiceSnapshot";
@@ -145,15 +144,6 @@ export async function POST(req: Request) {
     });
   }
 
-  let historySync:
-    | { ok: true; historyId: string | null; skippedReason?: string }
-    | null = null;
-  try {
-    historySync = await syncWorkOrderToHistory(access.supabase, workOrderId);
-  } catch (historyError) {
-    console.warn("[work-orders/mark-ready] history sync failed:", historyError);
-  }
-
   try {
     await seedCompletedWorkOrderIntelligence({
       supabase: access.supabase,
@@ -170,6 +160,5 @@ export async function POST(req: Request) {
 
   return NextResponse.json({
     ...(data && typeof data === "object" ? data : { ok: true }),
-    historySync,
   });
 }
