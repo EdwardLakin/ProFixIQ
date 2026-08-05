@@ -118,7 +118,7 @@ export default function PickOrderTaskModal({
   }, [load, open]);
 
   const detailHref = `/parts/requests/${encodeURIComponent(
-    workOrderLabel || workOrderId || "",
+    workOrderId || workOrderLabel || "",
   )}`;
 
   const pickable = useMemo(
