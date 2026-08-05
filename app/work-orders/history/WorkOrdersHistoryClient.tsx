@@ -48,6 +48,7 @@ type Row = Pick<
   | "correction"
   | "source_external_id"
   | "source_row_id"
+  | "source_system"
   | "imported_from_session_id"
 > & {
   customers: Pick<
@@ -114,7 +115,7 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
     let query = supabase
       .from("history")
       .select(
-        "id, customer_id, vehicle_id, work_order_id, service_date, description, notes, created_at, work_order_number, invoice_number, historical_status, payment_state, approval_state, odometer, advisor_name, assigned_tech_name, labor_sale, parts_sale, tax, total, symptom, cause, correction, source_external_id, source_row_id, imported_from_session_id, customers:customers(first_name,last_name,email,phone), vehicles:vehicles(year,make,model,license_plate,vin,unit_number)",
+        "id, customer_id, vehicle_id, work_order_id, service_date, description, notes, created_at, work_order_number, invoice_number, historical_status, payment_state, approval_state, odometer, advisor_name, assigned_tech_name, labor_sale, parts_sale, tax, total, symptom, cause, correction, source_system, source_external_id, source_row_id, imported_from_session_id, customers:customers(first_name,last_name,email,phone), vehicles:vehicles(year,make,model,license_plate,vin,unit_number)",
       )
       .order("service_date", { ascending: false })
       .limit(300);
@@ -286,6 +287,7 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
             <div className="grid gap-2">
               {rows.map((r) => {
                 const p = parseHistoryNotes(r.notes);
+                const isLiveServiceRecord = r.source_system === "profixiq_live";
                 return (
                   <ImportedHistoryRecordCard
                     key={r.id}
@@ -298,7 +300,16 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
                     summary={
                       r.description?.trim() ||
                       p.extraLines.join(" • ") ||
-                      "Imported historical service record"
+                      (isLiveServiceRecord
+                        ? "Closed service record"
+                        : "Imported historical service record")
+                    }
+                    badgeLabel={
+                      isLiveServiceRecord
+                        ? r.payment_state === "paid"
+                          ? "Paid service"
+                          : "Service history"
+                        : undefined
                     }
                     action={
                       <div className="flex flex-wrap items-center gap-3">

@@ -47,6 +47,7 @@ type Props = {
   onToggle?: () => void;
   action?: ReactNode;
   className?: string;
+  badgeLabel?: string;
 };
 
 function formatMoney(value: number | null | undefined): string | null {
@@ -101,6 +102,7 @@ export function ImportedHistoryRecordCard({
   onToggle,
   action,
   className = "",
+  badgeLabel = "Read-only imported",
 }: Props): JSX.Element {
   const detailsId = `imported-history-details-${row.id}`;
   const serviceSummary =
@@ -139,7 +141,7 @@ export function ImportedHistoryRecordCard({
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="rounded-full border border-[var(--accent-copper-soft)]/45 bg-[var(--accent-copper-soft)]/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--accent-copper,#C57A4A)]">
-            Read-only imported
+            {badgeLabel}
           </span>
           {onToggle ? (
             <button

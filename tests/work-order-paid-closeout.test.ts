@@ -23,6 +23,10 @@ const lifecycleEnsureMigration = read(
   "supabase/migrations/20260805042000_fix_parts_lifecycle_ensure_lookup.sql",
 );
 const generatedTypes = read("features/shared/types/types/supabase.ts");
+const shopHistory = read("app/work-orders/history/WorkOrdersHistoryClient.tsx");
+const historyCard = read(
+  "features/work-orders/components/ImportedHistoryRecordCard.tsx",
+);
 
 describe("work-order paid closeout boundary", () => {
   it("derives the shell from durable line and quote state", () => {
@@ -53,6 +57,14 @@ describe("work-order paid closeout boundary", () => {
     expect(portalLoader).toContain('href: "/portal/history"');
     expect(portalLoader).toContain("paymentStatus: workOrder.payment_status");
     expect(portalLoader).toContain("paidAt: workOrder.paid_at");
+  });
+
+  it("identifies live paid closeouts as service history instead of imports", () => {
+    expect(shopHistory).toContain('r.source_system === "profixiq_live"');
+    expect(shopHistory).toContain('? "Paid service"');
+    expect(shopHistory).toContain("badgeLabel={");
+    expect(historyCard).toContain('badgeLabel = "Read-only imported"');
+    expect(historyCard).toContain("{badgeLabel}");
   });
 
   it("keeps direct lines visible and routes pending decisions to the line API", () => {
