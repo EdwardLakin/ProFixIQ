@@ -16,6 +16,7 @@ import {
   hasSupabasePublicEnv,
   readSupabasePublicEnv,
 } from "@/features/shared/lib/supabase/public-env";
+import { enforceApiWriteBillingEntitlement } from "@/features/stripe/lib/server/enforce-middleware-entitlement";
 
 function isAssetPath(p: string) {
   return (
@@ -114,8 +115,12 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(target, 308);
   }
 
-  if (isAssetPath(pathname) || pathname.startsWith("/api")) {
+  if (isAssetPath(pathname)) {
     return NextResponse.next();
+  }
+
+  if (pathname.startsWith("/api")) {
+    return enforceApiWriteBillingEntitlement(req);
   }
 
   const res = NextResponse.next({ request: { headers: requestHeaders } });
@@ -393,6 +398,7 @@ export async function middleware(req: NextRequest) {
 export const config = {
   matcher: [
     "/",
+    "/api/:path*",
     "/sign-in",
     "/compare-plans",
     "/subscribe",
