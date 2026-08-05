@@ -4,7 +4,8 @@ import { resolveAgentApiSecrets } from "@/features/shared/lib/server/agent-api-s
 const AGENT_SERVICE_URL = String(process.env.PROFIXIQ_AGENT_URL ?? "")
   .trim()
   .replace(/\/+$/, "");
-const BRIDGE_CREDENTIAL_ID = "profixiq";
+const BRIDGE_INTEGRATION_ID = "7c2da329-5117-48c0-a1ee-d51b5d63827d";
+const BRIDGE_INTEGRATION_KIND = "profixiq_agent_bridge";
 
 const bridgeSupabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -127,17 +128,24 @@ function nullableNumber(value: unknown): number | null {
 
 async function readBridgeSecret(): Promise<string> {
   const result = await bridgeSupabase
-    .from("agent_bridge_credentials")
-    .select("secret")
-    .eq("id", BRIDGE_CREDENTIAL_ID)
-    .eq("active", true)
+    .from("integrations")
+    .select("config")
+    .eq("id", BRIDGE_INTEGRATION_ID)
+    .eq("status", "enabled")
+    .is("shop_id", null)
     .maybeSingle();
 
   if (result.error) {
-    console.error("agent bridge credential read failed", result.error);
+    console.error("Agent bridge integration read failed", result.error);
     return "";
   }
-  return String(result.data?.secret ?? "").trim();
+
+  const config = isRecord(result.data?.config) ? result.data.config : {};
+  if (config.kind !== BRIDGE_INTEGRATION_KIND) {
+    console.error("Agent bridge integration has an invalid kind");
+    return "";
+  }
+  return nullableString(config.secret) ?? "";
 }
 
 async function agentTeamHeaders(): Promise<Headers> {
