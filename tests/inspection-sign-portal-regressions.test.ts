@@ -65,6 +65,10 @@ describe("inspection sign and portal approval regressions", () => {
     expect(route).toContain("supabase: routeSupabase");
     expect(route).not.toContain("SUPABASE_SERVICE_ROLE_KEY");
     expect(route).toContain('.eq("customer_id", actor.customer.id)');
+    expect(route).toContain('result.error?.includes("PART_RELINK_CONFLICT")');
+    expect(route).toContain(
+      "This quote needs a parts review by the shop before it can be approved. No approval was recorded.",
+    );
     expect(actions.match(/credentials: "include"/g)).toHaveLength(2);
   });
 

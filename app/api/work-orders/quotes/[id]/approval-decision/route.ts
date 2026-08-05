@@ -113,15 +113,20 @@ export async function POST(req: NextRequest, context: RouteContext) {
   });
 
   if (!result.ok) {
+    const partRelinkConflict = result.error?.includes("PART_RELINK_CONFLICT");
     const status =
-      result.expired || result.error?.includes("FINANCIALLY_LOCKED")
+      result.expired ||
+      partRelinkConflict ||
+      result.error?.includes("FINANCIALLY_LOCKED")
         ? 409
         : 400;
     return NextResponse.json(
       {
         ok: false,
         expired: result.expired === true,
-        error: result.error ?? "Unable to update quote decision",
+        error: partRelinkConflict
+          ? "This quote needs a parts review by the shop before it can be approved. No approval was recorded."
+          : (result.error ?? "Unable to update quote decision"),
       },
       { status },
     );
