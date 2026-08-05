@@ -33,7 +33,44 @@ function fleetRequest(pathname: string): NextRequest {
   });
 }
 
+function shopRequest(pathname: string): NextRequest {
+  return new NextRequest(`https://profixiq.com${pathname}`, {
+    headers: { host: "profixiq.com" },
+  });
+}
+
 describe("Fleet product middleware boundary", () => {
+  it("moves legacy Fleet workspace URLs off the Shop hostname", async () => {
+    const response = await middleware(
+      shopRequest("/portal/fleet/units/unit-42?tab=history"),
+    );
+
+    expect(response.status).toBe(308);
+    expect(response.headers.get("location")).toBe(
+      "https://fleet.profixiq.com/assets/unit-42?tab=history",
+    );
+  });
+
+  it("moves legacy Fleet sign-in off the Shop hostname", async () => {
+    const response = await middleware(
+      shopRequest("/portal/auth/fleet-sign-in?redirect=%2Fportal%2Ffleet"),
+    );
+
+    expect(response.status).toBe(308);
+    expect(response.headers.get("location")).toBe(
+      "https://fleet.profixiq.com/sign-in?redirect=%2Fportal%2Ffleet",
+    );
+  });
+
+  it("does not expose the Shop work-order board as a Fleet route", async () => {
+    const response = await middleware(fleetRequest("/dispatch"));
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      "https://fleet.profixiq.com/",
+    );
+  });
+
   it("canonicalizes legacy Fleet paths onto clean Fleet product URLs", async () => {
     const response = await middleware(
       fleetRequest("/portal/fleet/units/unit-42?tab=history"),
