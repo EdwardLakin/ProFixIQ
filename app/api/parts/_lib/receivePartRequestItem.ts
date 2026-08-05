@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { toSafeDatabaseError } from "@/features/shared/lib/server/safeDatabaseError";
 
 type ReceivePayload = {
   itemId: string;
@@ -78,7 +79,16 @@ export async function receivePartRequestItem(payload: ReceivePayload): Promise<N
     .eq("id", payload.itemId)
     .eq("shop_id", access.profile.shop_id)
     .maybeSingle();
-  if (itemError) return NextResponse.json({ error: itemError.message }, { status: 500 });
+  if (itemError) {
+    const safeError = toSafeDatabaseError(itemError, {
+      context: "parts/receive-item-lookup",
+      fallback: "The part request could not be loaded.",
+    });
+    return NextResponse.json(
+      { error: safeError.message, correlationId: safeError.correlationId },
+      { status: 500 },
+    );
+  }
   if (!item) return NextResponse.json({ error: "Request item not found for shop." }, { status: 404 });
 
   const rpc = access.supabase as unknown as RpcClient;
@@ -91,9 +101,27 @@ export async function receivePartRequestItem(payload: ReceivePayload): Promise<N
   });
 
   if (error) {
-    const message = [error.message, error.details, error.hint].filter(Boolean).join(" — ");
-    const status = error.message.includes("FINANCIALLY_LOCKED") ? 409 : 400;
-    return NextResponse.json({ error: message }, { status });
+    const safeError = toSafeDatabaseError(error, {
+      context: "parts/receive-item",
+      fallback: "The part receipt could not be completed.",
+      publicMessagePatterns: [
+        /^FINANCIALLY_LOCKED\b/i,
+        /^A stable idempotency key is required\.?$/i,
+        /^Request item .*not found\.?$/i,
+        /^Receipt quantity .*$/i,
+        /^Requested receive quantity .*$/i,
+        /^No outstanding purchase order line .*$/i,
+      ],
+    });
+    const status = error.message.includes("FINANCIALLY_LOCKED")
+      ? 409
+      : safeError.isPublicMessage
+        ? 400
+        : 500;
+    return NextResponse.json(
+      { error: safeError.message, correlationId: safeError.correlationId },
+      { status },
+    );
   }
 
   return NextResponse.json({ ok: true, result: Array.isArray(data) ? data[0] : data });

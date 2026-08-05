@@ -66,7 +66,7 @@ export default function ShiftTracker({
     setErr(null);
 
     try {
-      applyShiftState(await fetchMobileShiftState(), false);
+      applyShiftState(await fetchMobileShiftState(), true);
     } catch (error) {
       setErr(formatErr(error, "Failed to load shift state"));
       setShiftState(null);

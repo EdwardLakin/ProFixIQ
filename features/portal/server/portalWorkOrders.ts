@@ -29,6 +29,8 @@ type WorkOrderSummaryRow = Pick<
   | "expected_completion_at"
   | "invoice_sent_at"
   | "invoice_total"
+  | "payment_status"
+  | "paid_at"
   | "vehicle_year"
   | "vehicle_make"
   | "vehicle_model"
@@ -117,6 +119,12 @@ function primaryAction(
       label: "Review estimate",
     };
   }
+  if (status.complete) {
+    return {
+      href: "/portal/history",
+      label: "View history",
+    };
+  }
   if (workOrder.invoice_sent_at) {
     return {
       href: `/portal/invoices/${workOrder.id}`,
@@ -143,7 +151,7 @@ export async function listPortalWorkOrdersForCustomer({
   const { data: workOrders, error: workOrderError } = await supabase
     .from("work_orders")
     .select(
-      "id,custom_id,shop_id,customer_id,vehicle_id,advisor_id,status,approval_state,created_at,updated_at,scheduled_at,expected_completion_at,invoice_sent_at,invoice_total,vehicle_year,vehicle_make,vehicle_model,vehicle_unit_number,vehicle_license_plate,external_id",
+      "id,custom_id,shop_id,customer_id,vehicle_id,advisor_id,status,approval_state,created_at,updated_at,scheduled_at,expected_completion_at,invoice_sent_at,invoice_total,payment_status,paid_at,vehicle_year,vehicle_make,vehicle_model,vehicle_unit_number,vehicle_license_plate,external_id",
     )
     .eq("shop_id", shopId)
     .eq("customer_id", customerId)
@@ -259,6 +267,8 @@ export async function listPortalWorkOrdersForCustomer({
         : workOrder.approval_state,
       scheduledAt: workOrder.scheduled_at,
       invoiceSentAt: workOrder.invoice_sent_at,
+      paymentStatus: workOrder.payment_status,
+      paidAt: workOrder.paid_at,
     });
     const vehicle = vehiclePresentation(
       workOrder,

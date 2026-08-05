@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { toSafeDatabaseError } from "@/features/shared/lib/server/safeDatabaseError";
 
 export function isUuid(value: unknown): value is string {
   return (
@@ -64,8 +65,28 @@ export async function runPartsLifecycleRpc(
   const rpc = access.supabase as unknown as RpcClient;
   const { data, error } = await rpc.rpc(rpcName, scopedArgs);
   if (error) {
-    const message = [error.message, error.details, error.hint].filter(Boolean).join(" — ");
-    return NextResponse.json({ ok: false, error: message }, { status: 409 });
+    const safeError = toSafeDatabaseError(error, {
+      context: `parts/${rpcName}`,
+      fallback: "The parts operation could not be completed.",
+      publicMessagePatterns: [
+        /^FINANCIALLY_LOCKED\b/i,
+        /^A stable idempotency key is required\.?$/i,
+        /^Request item .*not found\.?$/i,
+        /^Part request .*not found\.?$/i,
+        /^Receipt quantity .*$/i,
+        /^Requested .* quantity .*$/i,
+        /^No outstanding .*$/i,
+        /^Cannot .*$/i,
+      ],
+    });
+    return NextResponse.json(
+      {
+        ok: false,
+        error: safeError.message,
+        correlationId: safeError.correlationId,
+      },
+      { status: safeError.isPublicMessage ? 409 : 500 },
+    );
   }
   return NextResponse.json({ ok: true, result: data });
 }

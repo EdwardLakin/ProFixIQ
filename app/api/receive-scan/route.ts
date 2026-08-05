@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import type { Database } from "@shared/types/types/supabase";
 import { logOperationalEvent } from "@/features/work-orders/server/logOperationalEvent";
+import { toSafeDatabaseError } from "@/features/shared/lib/server/safeDatabaseError";
 
 type DB = Database;
 
@@ -139,10 +140,22 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true, mode: "manual" });
   } catch (e: unknown) {
-    const message =
-      e instanceof Error ? e.message : typeof e === "string" ? e : "Server error";
-
-    console.error("[receive-scan] error:", message);
-    return NextResponse.json({ error: message }, { status: 500 });
+    const databaseError =
+      e && typeof e === "object"
+        ? (e as {
+            message?: string;
+            details?: string;
+            hint?: string;
+            code?: string;
+          })
+        : { message: typeof e === "string" ? e : "Server error" };
+    const safeError = toSafeDatabaseError(databaseError, {
+      context: "receive-scan",
+      fallback: "The stock receipt could not be completed.",
+    });
+    return NextResponse.json(
+      { error: safeError.message, correlationId: safeError.correlationId },
+      { status: 500 },
+    );
   }
 }

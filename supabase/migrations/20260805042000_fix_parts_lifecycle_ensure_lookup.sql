@@ -1,5 +1,37 @@
 begin;
 
+-- The production schema already had these lifecycle links, but the generated
+-- bootstrap baseline did not. Declare the function's table prerequisites so a
+-- clean install and an existing production upgrade converge on the same shape.
+alter table public.purchase_order_lines
+  add column if not exists work_order_part_id uuid,
+  add column if not exists idempotency_key text;
+
+do $constraint$
+begin
+  if not exists (
+    select 1
+    from pg_constraint c
+    where c.conrelid = 'public.purchase_order_lines'::regclass
+      and c.conname = 'purchase_order_lines_work_order_part_id_fkey'
+  ) then
+    alter table public.purchase_order_lines
+      add constraint purchase_order_lines_work_order_part_id_fkey
+      foreign key (work_order_part_id)
+      references public.work_order_parts(id)
+      on delete restrict;
+  end if;
+end
+$constraint$;
+
+create index if not exists idx_purchase_order_lines_wop
+  on public.purchase_order_lines(work_order_part_id)
+  where work_order_part_id is not null;
+
+create unique index if not exists uq_purchase_order_lines_idempotency
+  on public.purchase_order_lines(po_id, idempotency_key)
+  where idempotency_key is not null;
+
 -- Resolve the lifecycle row in a separate statement. Calling the mutating
 -- ensure function from a table WHERE clause can scan past the row that the
 -- function creates or updates and leave the row variable empty.

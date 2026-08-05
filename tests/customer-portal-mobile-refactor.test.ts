@@ -37,6 +37,18 @@ describe("customer portal mobile refactor", () => {
       key: "completed",
       complete: true,
     });
+    expect(
+      toPortalWorkOrderStatus({
+        status: "awaiting_approval",
+        approvalState: "pending",
+        paymentStatus: "paid",
+        paidAt: "2026-08-04T12:00:00.000Z",
+      }),
+    ).toMatchObject({
+      key: "completed",
+      complete: true,
+      actionRequired: false,
+    });
   });
 
   it("removes the internal shop board from every customer portal entry point", () => {

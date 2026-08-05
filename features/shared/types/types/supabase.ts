@@ -13385,6 +13385,7 @@ export type Database = {
           created_at: string
           description: string | null
           id: string
+          idempotency_key: string | null
           location_id: string | null
           part_id: string | null
           part_request_item_id: string | null
@@ -13393,12 +13394,14 @@ export type Database = {
           received_qty: number
           sku: string | null
           unit_cost: number | null
+          work_order_part_id: string | null
         }
         Insert: {
           cancelled_qty?: number
           created_at?: string
           description?: string | null
           id?: string
+          idempotency_key?: string | null
           location_id?: string | null
           part_id?: string | null
           part_request_item_id?: string | null
@@ -13407,12 +13410,14 @@ export type Database = {
           received_qty?: number
           sku?: string | null
           unit_cost?: number | null
+          work_order_part_id?: string | null
         }
         Update: {
           cancelled_qty?: number
           created_at?: string
           description?: string | null
           id?: string
+          idempotency_key?: string | null
           location_id?: string | null
           part_id?: string | null
           part_request_item_id?: string | null
@@ -13421,6 +13426,7 @@ export type Database = {
           received_qty?: number
           sku?: string | null
           unit_cost?: number | null
+          work_order_part_id?: string | null
         }
         Relationships: [
           {
@@ -13456,6 +13462,20 @@ export type Database = {
             columns: ["po_id"]
             isOneToOne: false
             referencedRelation: "purchase_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_order_lines_work_order_part_id_fkey"
+            columns: ["work_order_part_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_net_issued_parts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_order_lines_work_order_part_id_fkey"
+            columns: ["work_order_part_id"]
+            isOneToOne: false
+            referencedRelation: "work_order_parts"
             referencedColumns: ["id"]
           },
         ]
