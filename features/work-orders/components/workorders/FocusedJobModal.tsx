@@ -14,7 +14,6 @@ import {
   MessageSquare,
   PackageSearch,
   PauseCircle,
-  Plus,
   Sparkles,
   UserRound,
 } from "lucide-react";
@@ -35,6 +34,7 @@ import { runJobPunchTransition } from "@/features/work-orders/lib/jobPunchTransi
 import { normalizeWorkOrderLineStatus } from "@/features/work-orders/lib/line-status";
 import {
   formatLaborSummary,
+  resolveOperationalLineStatusLabel,
   resolvePartsBottleneckDisplay,
   resolvePrimaryTechDisplay,
 } from "@/features/work-orders/lib/display/linePresentation";
@@ -84,19 +84,6 @@ const statusTextColor: Record<string, string> = {
 };
 
 const chip = (status: string) => statusTextColor[status] ?? "text-[color:var(--theme-text-primary)]";
-
-const displayStatusLabel = (status: string, punchedInAt: string | null): string => {
-  if (status === "in_progress" || (!!punchedInAt && status !== "completed" && status !== "declined" && status !== "deferred")) return "Active";
-  if (status === "waiting_parts") return "Waiting Parts";
-  if (status === "on_hold") return "On Hold";
-  if (status === "completed") return "Completed";
-  if (status === "declined") return "Declined";
-  if (status === "deferred") return "Deferred";
-  if (status === "awaiting_approval") return "Awaiting Approval";
-  if (status === "approved") return "Queued";
-  if (status === "pending" || status === "awaiting") return "Awaiting";
-  return status.replaceAll("_", " ");
-};
 
 const btnBase =
   "inline-flex items-center justify-center rounded-xl border px-3 py-2 text-sm font-medium transition";
@@ -194,6 +181,13 @@ export default function FocusedJobModal(props: {
   isOpen: boolean;
   onClose: () => void;
   workOrderLineId: string;
+  lineSnapshot?: WorkOrderLine | null;
+  primaryTechSnapshot?: {
+    id: string;
+    full_name: string | null;
+    role: string | null;
+  } | null;
+  isPunchedInSnapshot?: boolean;
   onChanged?: () => void | Promise<void>;
   mode?: Mode;
   variant?: Variant;
@@ -202,6 +196,9 @@ export default function FocusedJobModal(props: {
     isOpen,
     onClose,
     workOrderLineId,
+    lineSnapshot,
+    primaryTechSnapshot,
+    isPunchedInSnapshot,
     onChanged,
     mode = "tech",
     variant = "modal",
@@ -293,6 +290,12 @@ export default function FocusedJobModal(props: {
   }, [workOrderLineId]);
 
   useEffect(() => {
+    if (lineSnapshot?.id === workOrderLineId) {
+      setLine(lineSnapshot);
+    }
+  }, [lineSnapshot, workOrderLineId]);
+
+  useEffect(() => {
     if (!isOpen || !workOrderLineId) return;
 
     let cancelled = false;
@@ -310,16 +313,6 @@ export default function FocusedJobModal(props: {
 
         setLine(l ?? null);
         setTechNotes(l?.technician_notes ?? "");
-        if (l?.assigned_tech_id) {
-          const { data: profile } = await supabase
-            .from("profiles")
-            .select("id, full_name, role")
-            .eq("id", l.assigned_tech_id)
-            .maybeSingle<{ id: string; full_name: string | null; role: string | null }>();
-          if (!cancelled) setAssignedTechProfile(profile ?? null);
-        } else {
-          setAssignedTechProfile(null);
-        }
 
         if (l?.work_order_id) {
           const { data: wo, error: we } = await supabase
@@ -396,6 +389,42 @@ export default function FocusedJobModal(props: {
       cancelled = true;
     };
   }, [isOpen, workOrderLineId, supabase, ensureShopContext]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const assignedTechId = line?.assigned_tech_id ?? null;
+    if (!assignedTechId) {
+      setAssignedTechProfile(null);
+      return;
+    }
+    if (primaryTechSnapshot?.id === assignedTechId) {
+      setAssignedTechProfile(primaryTechSnapshot);
+      return;
+    }
+
+    let cancelled = false;
+    setAssignedTechProfile(null);
+
+    void (async () => {
+      const { data: profile, error } = await supabase
+        .from("profiles")
+        .select("id, full_name, role")
+        .eq("id", assignedTechId)
+        .maybeSingle<{ id: string; full_name: string | null; role: string | null }>();
+
+      if (cancelled) return;
+      if (error) {
+        console.warn("[FocusedJob] assigned technician lookup failed:", error);
+        return;
+      }
+      setAssignedTechProfile(profile ?? null);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, line?.assigned_tech_id, primaryTechSnapshot, supabase]);
 
   useEffect(() => {
     if (!isOpen || !workOrderLineId) return;
@@ -655,9 +684,18 @@ export default function FocusedJobModal(props: {
     "Job";
 
   const normalizedLineStatus = normalizeWorkOrderLineStatus(line?.status);
-  const statusLabel = displayStatusLabel(normalizedLineStatus, line?.punched_in_at ?? null);
+  const isOperationallyActive =
+    isPunchedInSnapshot ??
+    (Boolean(line?.punched_in_at) && !line?.punched_out_at);
+  const statusLabel = line
+    ? resolveOperationalLineStatusLabel(line, { isActive: isOperationallyActive })
+    : "Loading";
 
-  const createdStart = startAt ? format(new Date(startAt), "PPpp") : "—";
+  const createdStart = startAt
+    ? format(new Date(startAt), "PPpp")
+    : isOperationallyActive
+      ? "Active session"
+      : "—";
   const createdFinish = finishAt ? format(new Date(finishAt), "PPpp") : "—";
 
   const completionBlocked =
@@ -689,6 +727,16 @@ export default function FocusedJobModal(props: {
           ""
         ).trim() || resolvePrimaryTechDisplay(line, assignedTechProfile)
       : "Unassigned";
+  const customerDisplay = customer
+    ? customer.business_name?.trim() ||
+      [customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ") ||
+      "Customer"
+    : "No customer linked";
+  const vehicleDisplay = vehicle
+    ? [vehicle.year, vehicle.make, vehicle.model]
+        .filter((value) => value != null && String(value).trim())
+        .join(" ") || "Vehicle linked"
+    : "No vehicle linked";
 
   if (!isOpen) return null;
 
@@ -799,6 +847,7 @@ export default function FocusedJobModal(props: {
                       punchedInAt={line.punched_in_at}
                       punchedOutAt={line.punched_out_at}
                       status={line.status as WorkflowStatus}
+                      isActive={isOperationallyActive}
                       onFinishRequested={() => {
                         closeAllSubModals();
                         setPrefillCause(line.cause ?? "");
@@ -1341,16 +1390,16 @@ export default function FocusedJobModal(props: {
   const CockpitBody = (
     <div
       data-work-order-cockpit="true"
-      className="grid min-h-[40rem] overflow-hidden border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] lg:h-[calc(100vh-13.5rem)] lg:min-h-[42rem] lg:grid-cols-[minmax(0,1fr)_21rem]"
+      className="grid h-full min-h-[40rem] gap-2 bg-transparent lg:min-h-0 lg:grid-cols-[minmax(0,1fr)_20rem]"
     >
-      <section className="flex min-h-0 min-w-0 flex-col bg-[color:var(--theme-surface-page)]">
-        <header className="border-b border-[color:var(--theme-border-soft)] px-5 pb-0 pt-4">
+      <section className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-[20px] border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] shadow-[0_16px_42px_rgba(15,23,42,0.1)]">
+        <header className="border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-5 pb-0 pt-4">
           <div className="flex flex-wrap items-start justify-between gap-3 pb-4">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="inline-flex h-2.5 w-2.5 rounded-full bg-[color:var(--brand-primary)]" aria-hidden="true" />
-                <span className={`text-[10px] font-semibold uppercase tracking-[0.16em] ${chip(normalizedLineStatus)}`}>
-                  {statusLabel}
+                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
+                  {String(line?.job_type ?? "Selected job").replaceAll("_", " ")}
                 </span>
                 {line?.approval_state ? (
                   <span className="text-[10px] uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">
@@ -1359,24 +1408,18 @@ export default function FocusedJobModal(props: {
                 ) : null}
               </div>
               <h2 className="mt-2 line-clamp-2 text-lg font-semibold tracking-tight text-[color:var(--theme-text-primary)]">
-                {titleText}
+                {lineLabel}
               </h2>
-              <div className="mt-1 font-mono text-[11px] text-[color:var(--theme-text-muted)]">
-                {workOrder ? `WO ${workOrder.custom_id || workOrder.id.slice(0, 8)}` : "Selected job"}
+              <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-[color:var(--theme-text-muted)]">
+                <span className="font-mono">
+                  {workOrder ? `WO ${workOrder.custom_id || workOrder.id.slice(0, 8)}` : "Selected job"}
+                </span>
+                <span aria-hidden="true">•</span>
+                <span>{customerDisplay}</span>
+                <span aria-hidden="true">•</span>
+                <span>{vehicleDisplay}</span>
               </div>
             </div>
-            <button
-              type="button"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-xs font-semibold text-[color:var(--theme-text-primary)] transition hover:bg-[color:var(--theme-surface-subtle)]"
-              onClick={() => {
-                closeAllSubModals();
-                setOpenAddJob(true);
-              }}
-              disabled={busy || !workOrder?.id}
-            >
-              <Plus className="h-3.5 w-3.5" />
-              Add job
-            </button>
           </div>
           <div className="flex gap-1 overflow-x-auto" role="tablist" aria-label="Selected job workspace">
             {WORKSPACE_TABS.map((tab) => (
@@ -1399,7 +1442,7 @@ export default function FocusedJobModal(props: {
           </div>
         </header>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-6">
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 [scrollbar-gutter:stable]">
           {busy && !line ? (
             <div className="grid gap-3">
               <div className="h-6 w-40 animate-pulse rounded bg-[color:var(--theme-surface-subtle)]" />
@@ -1496,7 +1539,7 @@ export default function FocusedJobModal(props: {
         </div>
       </section>
 
-      <aside className="min-h-0 overflow-y-auto border-t border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] lg:border-l lg:border-t-0">
+      <aside className="min-h-0 overflow-y-auto rounded-[20px] border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] shadow-[0_16px_42px_rgba(15,23,42,0.1)] [scrollbar-gutter:stable]">
         <div className="border-b border-[color:var(--theme-border-soft)] px-4 py-4">
           <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--theme-text-muted)]">
             Command center
@@ -1534,6 +1577,7 @@ export default function FocusedJobModal(props: {
                     punchedInAt={line.punched_in_at}
                     punchedOutAt={line.punched_out_at}
                     status={line.status as WorkflowStatus}
+                    isActive={isOperationallyActive}
                     onFinishRequested={() => {
                       closeAllSubModals();
                       setPrefillCause(line.cause ?? "");
@@ -1573,7 +1617,11 @@ export default function FocusedJobModal(props: {
                     disabled={busy}
                   >
                     <PauseCircle className="h-4 w-4" />
-                    {normalizedLineStatus === "on_hold" ? "On hold" : "Hold"}
+                    {normalizedLineStatus === "on_hold"
+                      ? "Manage hold"
+                      : isOperationallyActive
+                        ? "Hold"
+                        : "Add blocker"}
                   </button>
                   <button
                     type="button"
@@ -1627,20 +1675,6 @@ export default function FocusedJobModal(props: {
                   </button>
                 </div>
 
-                <button
-                  type="button"
-                  className={cn(btnDanger, "mt-2 w-full text-xs")}
-                  onClick={() => {
-                    closeAllSubModals();
-                    setPrefillCause(line.cause ?? "");
-                    setPrefillCorrection(line.correction ?? "");
-                    setOpenComplete(true);
-                  }}
-                  disabled={completionBlocked}
-                >
-                  Complete job
-                </button>
-
                 {completionBlocked ? (
                   <div className="mt-2 text-[11px] text-amber-300">
                     {normalizedLineStatus === "awaiting_approval"
@@ -1659,7 +1693,7 @@ export default function FocusedJobModal(props: {
               <div className="grid gap-3 text-sm">
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-[color:var(--theme-text-secondary)]">Approval</span>
-                  <span className="font-semibold capitalize text-[color:var(--theme-text-primary)]">{line.approval_state ?? "—"}</span>
+                  <span className="font-semibold capitalize text-[color:var(--theme-text-primary)]">{line.approval_state ?? "Not required"}</span>
                 </div>
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-[color:var(--theme-text-secondary)]">Primary tech</span>
@@ -1667,10 +1701,6 @@ export default function FocusedJobModal(props: {
                     <UserRound className="h-4 w-4 shrink-0" />
                     {primaryTechDisplay}
                   </span>
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-[color:var(--theme-text-secondary)]">Line total</span>
-                  <span className="font-mono font-semibold text-[color:var(--theme-text-primary)]">{lineTotal > 0 ? money(lineTotal) : "—"}</span>
                 </div>
               </div>
             </section>
@@ -1680,7 +1710,6 @@ export default function FocusedJobModal(props: {
               <dl className="mt-3 grid gap-2 text-xs">
                 <div className="flex justify-between gap-3"><dt className="text-[color:var(--theme-text-secondary)]">Start</dt><dd className="text-right text-[color:var(--theme-text-primary)]">{createdStart}</dd></div>
                 <div className="flex justify-between gap-3"><dt className="text-[color:var(--theme-text-secondary)]">Finish</dt><dd className="text-right text-[color:var(--theme-text-primary)]">{createdFinish}</dd></div>
-                <div className="flex justify-between gap-3"><dt className="text-[color:var(--theme-text-secondary)]">Labor</dt><dd className="text-right text-[color:var(--theme-text-primary)]">{laborDisplay}</dd></div>
               </dl>
             </section>
           </div>

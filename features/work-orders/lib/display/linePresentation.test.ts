@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   formatLaborSummary,
   formatPartsSummary,
+  resolveOperationalLineStatusLabel,
   resolvePartsBottleneckDisplay,
   resolvePrimaryTechDisplay,
 } from "./linePresentation";
@@ -55,18 +56,61 @@ describe("linePresentation", () => {
     expect(
       resolvePrimaryTechDisplay(
         { assigned_tech_id: "cc4edd23-aaaa-4bbb-8ccc-123456789012" },
-        { id: "1", full_name: "Owner Demo", role: "owner" },
+        { id: "cc4edd23-aaaa-4bbb-8ccc-123456789012", full_name: "Owner Demo", role: "owner" },
       ),
     ).toBe("Unassigned");
   });
 
-  it("returns technician full name for resolvable tech profile", () => {
+  it("returns technician full name for canonical mechanic and technician profiles", () => {
     expect(
       resolvePrimaryTechDisplay(
         { assigned_tech_id: "cc4edd23-aaaa-4bbb-8ccc-123456789012" },
-        { id: "1", full_name: "Lead Tech", role: "tech" },
+        {
+          id: "cc4edd23-aaaa-4bbb-8ccc-123456789012",
+          full_name: "Test Mechanic",
+          role: "mechanic",
+        },
+      ),
+    ).toBe("Test Mechanic");
+    expect(
+      resolvePrimaryTechDisplay(
+        { assigned_tech_id: "cc4edd23-aaaa-4bbb-8ccc-123456789012" },
+        {
+          id: "cc4edd23-aaaa-4bbb-8ccc-123456789012",
+          full_name: "Lead Tech",
+          role: "tech",
+        },
       ),
     ).toBe("Lead Tech");
+  });
+
+  it("does not show a stale technician profile after assignment changes", () => {
+    expect(
+      resolvePrimaryTechDisplay(
+        { assigned_tech_id: "new-tech" },
+        { id: "previous-tech", full_name: "Previous Tech", role: "mechanic" },
+      ),
+    ).toBe("Unassigned");
+  });
+
+  it("uses one explicit operational status label across cockpit surfaces", () => {
+    const baseLine = {
+      approval_state: "approved",
+      assigned_tech_id: "tech-1",
+      hold_reason: null,
+      punched_in_at: null,
+      punched_out_at: null,
+      status: "awaiting",
+    };
+
+    expect(resolveOperationalLineStatusLabel(baseLine)).toBe("Ready to start");
+    expect(resolveOperationalLineStatusLabel({ ...baseLine, assigned_tech_id: null })).toBe(
+      "Awaiting technician",
+    );
+    expect(resolveOperationalLineStatusLabel(baseLine, { isActive: true })).toBe("In progress");
+    expect(
+      resolveOperationalLineStatusLabel({ ...baseLine, hold_reason: "Awaiting parts" }),
+    ).toBe("On hold");
   });
 
   it("formats labor summary with non-zero labor dollars", () => {

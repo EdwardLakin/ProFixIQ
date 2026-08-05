@@ -1530,6 +1530,20 @@ export default function WorkOrderIdClient(): JSX.Element {
 
   // ✅ layout: desktop keeps the focused cockpit open with a selected (or first) line.
   const panelLineId = focusedJobId ?? sortedLines[0]?.id ?? null;
+  const panelLine = panelLineId
+    ? sortedLines.find((line) => line.id === panelLineId) ?? null
+    : null;
+  const panelPrimaryTech = panelLine?.assigned_tech_id
+    ? assignables.find((profile) => profile.id === panelLine.assigned_tech_id) ?? null
+    : null;
+  const panelActiveTechnicianIds = panelLine
+    ? activeTechsByLine[panelLine.id] ?? []
+    : [];
+  const panelLineIsPunchedIn = Boolean(
+    panelLine &&
+      (panelActiveTechnicianIds.length > 0 ||
+        (panelLine.punched_in_at && !panelLine.punched_out_at)),
+  );
 
   return (
     <div className="w-full bg-[var(--theme-surface-2,var(--theme-surface-page))] px-2 py-3 text-foreground sm:px-3 lg:px-4">
@@ -1567,7 +1581,7 @@ export default function WorkOrderIdClient(): JSX.Element {
           <div className="mt-2 text-sm text-red-400">Work order not found.</div>
         ) : (
           <div className={cn("space-y-2", supportFullyCollapsed && "space-y-1.5")}>
-            <section className="overflow-hidden border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3 sm:px-4">
+            <section className="overflow-hidden rounded-[20px] border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3 shadow-[0_14px_36px_rgba(15,23,42,0.08)] sm:px-4">
               <div className="flex flex-wrap items-center gap-2">
                 <PreviousPageButton />
                 <div className="text-sm font-semibold text-foreground">
@@ -2017,8 +2031,8 @@ export default function WorkOrderIdClient(): JSX.Element {
             </section>
 
           {/* Full-height cockpit: navigate left, work center, act right. */}
-          <section className="grid overflow-hidden border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] lg:h-[calc(100vh-12.5rem)] lg:min-h-[44rem] lg:grid-cols-[17rem_minmax(0,1fr)]">
-            <aside className="flex min-h-0 flex-col border-b border-[color:var(--theme-border-soft)] lg:border-b-0 lg:border-r">
+          <section className="grid gap-2 rounded-[24px] border border-[color:var(--theme-border-soft)] bg-[var(--theme-gradient-panel)] p-2 shadow-[0_20px_55px_rgba(15,23,42,0.1)] lg:h-[calc(100vh-12.5rem)] lg:min-h-[44rem] lg:grid-cols-[17rem_minmax(0,1fr)]">
+            <aside className="flex min-h-0 flex-col overflow-hidden rounded-[20px] border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] shadow-[0_16px_42px_rgba(15,23,42,0.08)]">
               <div className="flex items-center justify-between gap-3 border-b border-[color:var(--theme-border-soft)] px-3 py-3">
                 <div>
                   <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--theme-text-muted)]">Jobs</div>
@@ -2294,13 +2308,16 @@ export default function WorkOrderIdClient(): JSX.Element {
             </aside>
 
             {/* Center workspace and right command center are owned by the selected job. */}
-            <div className="min-w-0">
+            <div className="min-h-0 min-w-0">
               {prefersPanel && panelLineId ? (
                 <FocusedJobModal
                   key={panelLineId}
                   isOpen={true}
                   onClose={closeFocusedPanel}
                   workOrderLineId={panelLineId}
+                  lineSnapshot={panelLine}
+                  primaryTechSnapshot={panelPrimaryTech}
+                  isPunchedInSnapshot={panelLineIsPunchedIn}
                   onChanged={fetchAll}
                   mode="tech"
                   variant="cockpit"
@@ -2320,10 +2337,10 @@ export default function WorkOrderIdClient(): JSX.Element {
                 setShowWoContext(true);
                 setShowTimeline(true);
               }}
-              className="flex w-full items-center gap-2 border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-left text-[11px] text-[color:var(--theme-text-secondary)] transition hover:bg-[color:var(--theme-surface-subtle)]"
+              className="flex w-full items-center gap-2 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-left text-[11px] text-[color:var(--theme-text-secondary)] shadow-[0_8px_22px_rgba(15,23,42,0.06)] transition hover:bg-[color:var(--theme-surface-subtle)]"
             >
               <Clock3 className="h-3.5 w-3.5 shrink-0 text-[color:var(--brand-primary)]" />
-              <span className="font-semibold text-[color:var(--theme-text-primary)]">Latest activity</span>
+              <span className="font-semibold text-[color:var(--theme-text-primary)]">Work order activity</span>
               <span className="h-1 w-1 rounded-full bg-[color:var(--brand-primary)]" />
               <span className="truncate">{latestDecisionEvent.label}{latestDecisionEvent.meta ? ` · ${latestDecisionEvent.meta}` : ""}</span>
               <time className="ml-auto hidden shrink-0 font-mono text-[10px] sm:inline">

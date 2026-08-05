@@ -10,6 +10,7 @@ type Props = {
   punchedInAt?: string | null;
   punchedOutAt?: string | null;
   status?: string | null;
+  isActive?: boolean;
   onUpdated?: () => void | Promise<void>;
   onFinishRequested?: () => void;
   disabled?: boolean;
@@ -26,6 +27,7 @@ export default function JobPunchButton({
   punchedInAt,
   punchedOutAt,
   status,
+  isActive,
   onUpdated,
   onFinishRequested,
   disabled = false,
@@ -36,7 +38,7 @@ export default function JobPunchButton({
   const normalizedStatus = (status ?? "").toLowerCase();
   const isOnHold = normalizedStatus === "on_hold";
 
-  const isStarted = !!punchedInAt && !punchedOutAt && !isOnHold;
+  const isStarted = (isActive ?? (!!punchedInAt && !punchedOutAt)) && !isOnHold;
   const effectiveDisabled = disabled || isOnHold;
 
   const showFlash = (kind: typeof flash) => {

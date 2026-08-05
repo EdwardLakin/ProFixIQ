@@ -20,6 +20,7 @@ import { normalizeWorkOrderLineStatus } from "@/features/work-orders/lib/line-st
 import {
   formatLaborSummary,
   formatPartsSummary,
+  resolveOperationalLineStatusLabel,
   resolvePrimaryTechDisplay,
 } from "@/features/work-orders/lib/display/linePresentation";
 import JobEvidenceStrip from "@/features/work-orders/components/evidence/JobEvidenceStrip";
@@ -350,10 +351,13 @@ export function JobCard({
 }: JobCardProps): JSX.Element {
   const [collapsed, setCollapsed] = useState<boolean>(false);
 
-  const statusVisual = useMemo(
-    () => resolveStatusVisual(line.status),
-    [line.status],
-  );
+  const statusVisual = useMemo(() => {
+    const visual = resolveStatusVisual(line.status);
+    return {
+      ...visual,
+      label: resolveOperationalLineStatusLabel(line, { isActive: isPunchedIn }),
+    };
+  }, [isPunchedIn, line]);
 
   const isCompletedLike = statusVisual.muted;
   const isSelected = isSelectedForPanel ?? selected;
@@ -432,10 +436,10 @@ export function JobCard({
     return (
       <article
         className={cn(
-          "border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] transition",
+          "mx-2 my-2 overflow-hidden rounded-2xl border bg-[color:var(--theme-surface-inset)] shadow-[0_10px_28px_rgba(15,23,42,0.08)] transition",
           isSelected
-            ? "border-l-[3px] border-l-[color:var(--brand-primary)] bg-[color:var(--theme-surface-subtle)]"
-            : "border-l-[3px] border-l-transparent hover:bg-[color:var(--theme-surface-subtle)]",
+            ? "border-[color:var(--brand-primary)] bg-[color:var(--theme-surface-subtle)] ring-1 ring-[color:var(--brand-primary)]/20"
+            : "border-[color:var(--theme-border-soft)] hover:-translate-y-px hover:bg-[color:var(--theme-surface-subtle)] hover:shadow-[0_14px_32px_rgba(15,23,42,0.12)]",
           statusVisual.muted && "opacity-75",
         )}
       >
@@ -471,13 +475,10 @@ export function JobCard({
                   </span>
                 ) : null}
               </div>
-              <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-[color:var(--theme-text-secondary)]">
+              <div className="mt-2 flex items-center gap-2 text-[11px] text-[color:var(--theme-text-secondary)]">
                 <span className="inline-flex min-w-0 items-center gap-1 truncate">
                   <UserRound className="h-3.5 w-3.5 shrink-0" />
                   <span className="truncate">{assignedTech}</span>
-                </span>
-                <span className="shrink-0 font-mono font-semibold text-[color:var(--theme-text-primary)]">
-                  {lineTotal > 0 ? formatCurrency(lineTotal) : "Estimate pending"}
                 </span>
               </div>
             </div>
@@ -485,7 +486,7 @@ export function JobCard({
         </button>
 
         {isSelected ? (
-          <div className="border-t border-[color:var(--theme-border-soft)] px-3 py-2">
+          <div className="border-t border-[color:var(--theme-border-soft)] px-3 py-2.5">
             {canAssign && onAssign ? (
               <label className="relative mb-2 block">
                 <UserRound className="pointer-events-none absolute left-2 top-2 h-3.5 w-3.5 text-[color:var(--theme-text-muted)]" />
@@ -509,8 +510,9 @@ export function JobCard({
             ) : null}
 
             <details className="group">
-              <summary className="cursor-pointer list-none text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)]">
-                Job actions
+              <summary className="flex cursor-pointer list-none items-center justify-between rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 py-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)] transition hover:bg-[color:var(--theme-surface-subtle)] hover:text-[color:var(--theme-text-primary)]">
+                More actions
+                <ChevronDown className="h-3.5 w-3.5 transition group-open:rotate-180" aria-hidden="true" />
               </summary>
               <div className="mt-2 grid grid-cols-2 gap-1.5">
                 {onOpenInspection ? (
