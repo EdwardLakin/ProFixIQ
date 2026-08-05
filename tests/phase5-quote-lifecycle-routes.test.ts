@@ -41,8 +41,9 @@ describe("Phase 5 route and helper contract", () => {
     expect(approvalRoute).not.toContain("remainingIds");
     expect(approvalRoute).not.toContain("declineResult");
     expect(approvalHelper).toContain(
-      'rpc("apply_customer_quote_decision_atomic"',
+      'rpc("apply_portal_quote_decision_atomic"',
     );
+    expect(approvalHelper).not.toContain('rpc("apply_customer_quote_decision_atomic"');
     expect(approvalHelper).not.toContain(
       '.from("work_order_lines").insert',
     );

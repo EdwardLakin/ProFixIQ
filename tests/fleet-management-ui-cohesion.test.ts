@@ -21,10 +21,10 @@ describe("fleet management UI cohesion", () => {
     expect(manageFleets).not.toContain('title="Fleet programs"');
     expect(manageFleets).not.toContain('"Create program"');
 
-    expect(addUnit).toContain("Select a fleet before adding a unit.");
-    expect(addUnit).toContain("Create a fleet before adding units.");
+    expect(addUnit).toContain("Create your first fleet");
+    expect(addUnit).toContain('href="/fleet/programs?returnTo=%2Ffleet%2Funits%2Fnew"');
     expect(addUnit).not.toContain("Select a fleet program");
-    expect(units).toContain("assigned to fleets.");
+    expect(units).toContain("Every unit, one record");
     expect(units).not.toContain("enrolled in fleet programs.");
   });
 
@@ -50,5 +50,6 @@ describe("fleet management UI cohesion", () => {
     expect(manageFleets).toContain(
       "fleetId=${encodeURIComponent(inserted.id)}",
     );
+    expect(manageFleets).toContain('if (returnTo === "/fleet/units/new")');
   });
 });

@@ -24,7 +24,7 @@ export default async function FleetPortalPretripPage({ params, searchParams }: P
     notFound();
   }
 
-  const [{ data: enrollment }, { data: profile }] = await Promise.all([
+  const [{ data: enrollment }, { data: profile }, { data: assignment }] = await Promise.all([
     supabase
       .from("fleet_vehicles")
       .select("vehicle_id,nickname,vehicles!inner(unit_number,license_plate,vin)")
@@ -33,8 +33,16 @@ export default async function FleetPortalPretripPage({ params, searchParams }: P
       .or("active.is.null,active.eq.true")
       .maybeSingle(),
     supabase.from("profiles").select("full_name,email").eq("id", actor.userId).maybeSingle(),
+    supabase
+      .from("fleet_dispatch_assignments")
+      .select("id")
+      .eq("fleet_id", fleetId)
+      .eq("vehicle_id", unitId)
+      .eq("driver_profile_id", actor.userId)
+      .eq("active", true)
+      .maybeSingle(),
   ]);
-  if (!enrollment) notFound();
+  if (!enrollment || (!actor.isInternal && !assignment)) notFound();
 
   const vehicle = enrollment.vehicles as unknown as {
     unit_number: string | null;

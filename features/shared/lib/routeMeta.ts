@@ -392,27 +392,27 @@ export const ROUTE_META: Record<string, RouteMeta> = {
   "/fleet/tower": {
     title: () => "Fleet Control Tower",
     icon: "🚛",
-    roles: ["owner", "admin", "manager", "fleet_manager", "dispatcher"],
+    roles: ["owner", "admin", "manager", "advisor"],
   },
   "/fleet/dispatch": {
     title: () => "Fleet Dispatch",
     icon: "📍",
-    roles: ["owner", "admin", "manager", "fleet_manager", "dispatcher"],
+    roles: ["owner", "admin", "manager"],
   },
   "/fleet/pretrip": {
     title: () => "Pre-trip Reports",
     icon: "📋",
-    roles: ["owner", "admin", "manager", "fleet_manager", "dispatcher"],
+    roles: ["owner", "admin", "manager", "advisor"],
   },
   "/fleet/units": {
     title: () => "Fleet Units",
     icon: "🚚",
-    roles: ["owner", "admin", "manager", "fleet_manager"],
+    roles: ["owner", "admin", "manager", "advisor"],
   },
   "/fleet/service-requests": {
     title: () => "Fleet Service Requests",
     icon: "🛠️",
-    roles: ["owner", "admin", "manager", "fleet_manager", "dispatcher"],
+    roles: ["owner", "admin", "manager", "advisor"],
   },
 
   // ----------------------------------------------------------------

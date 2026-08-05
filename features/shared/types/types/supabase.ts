@@ -5398,6 +5398,7 @@ export type Database = {
           contact_phone: string | null
           created_at: string
           created_by: string | null
+          customer_id: string
           id: string
           name: string
           notes: string | null
@@ -5411,6 +5412,7 @@ export type Database = {
           contact_phone?: string | null
           created_at?: string
           created_by?: string | null
+          customer_id: string
           id?: string
           name: string
           notes?: string | null
@@ -5424,6 +5426,7 @@ export type Database = {
           contact_phone?: string | null
           created_at?: string
           created_by?: string | null
+          customer_id?: string
           id?: string
           name?: string
           notes?: string | null
@@ -5431,6 +5434,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "fleets_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "fleets_shop_id_fkey"
             columns: ["shop_id"]
@@ -24070,6 +24080,20 @@ export type Database = {
         }
         Returns: Json
       }
+      apply_customer_quote_decision_engine_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_at?: string
+          p_customer_id: string
+          p_decision: string
+          p_decline_remaining: boolean
+          p_operation_key: string
+          p_quote_line_ids: string[]
+          p_shop_id: string
+          p_work_order_id: string
+        }
+        Returns: Json
+      }
       apply_job_punch_transition_atomic: {
         Args: {
           p_action: string
@@ -24141,6 +24165,18 @@ export type Database = {
           p_decision: string
           p_line_id: string
           p_operation_key: string
+          p_shop_id: string
+          p_work_order_id: string
+        }
+        Returns: Json
+      }
+      apply_portal_quote_decision_atomic: {
+        Args: {
+          p_at?: string
+          p_decision: string
+          p_decline_remaining: boolean
+          p_operation_key: string
+          p_quote_line_ids: string[]
           p_shop_id: string
           p_work_order_id: string
         }

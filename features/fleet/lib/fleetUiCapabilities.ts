@@ -44,8 +44,10 @@ function resolveExperience(
 }
 
 export function getFleetUiContext(actor: FleetActorContext): FleetUiContext {
-  const canManageUnits =
-    actor.isInternal || actor.actorType === "fleet_manager";
+  const canManageInternalFleet = ["owner", "admin", "manager"].includes(actor.canonicalRole);
+  const canManageUnits = actor.isInternal
+    ? canManageInternalFleet
+    : actor.actorType === "fleet_manager";
   const canViewDispatch = actor.capabilities.canRunFleetDispatchActions;
   const canConvertRequests =
     actor.capabilities.canConvertPretripToServiceRequest ||
@@ -65,7 +67,7 @@ export function getFleetUiContext(actor: FleetActorContext): FleetUiContext {
       canConvertServiceRequestToWorkOrder:
         actor.capabilities.canConvertServiceRequestToWorkOrder,
       canCreateFleetWorkOrders:
-        actor.isInternal || actor.actorType === "fleet_manager",
+        actor.capabilities.canConvertServiceRequestToWorkOrder,
       canViewBroadFleetOperations: actor.capabilities.canSeeFleetWideUnits,
       canAccessPortalFleetWrappers:
         actor.capabilities.canAccessPortalFleetWrappers,

@@ -9,19 +9,32 @@ import {
   resolveFleetActorContext,
   resolveFleetActorScope,
 } from "@/features/fleet/lib/resolveFleetActorContext";
+import { applyWorkOrderQuoteLineDecision } from "@/features/work-orders/server/workOrderQuoteLineApproval";
 
 export const dynamic = "force-dynamic";
 
 type Row = Record<string, unknown>;
+type ContactMethod = "phone" | "in_person" | "email" | "other";
 type Body = {
   action?: "list" | "decide";
   workOrderId?: string;
   quoteLineIds?: string[];
   decision?: "approve" | "decline" | "defer";
   operationKey?: string;
-  contactMethod?: "phone" | "in_person" | "email" | "other";
+  contactMethod?: ContactMethod;
   note?: string;
 };
+
+const CONTACT_METHODS = new Set<ContactMethod>([
+  "phone",
+  "in_person",
+  "email",
+  "other",
+]);
+
+function isContactMethod(value: string | null): value is ContactMethod {
+  return value !== null && CONTACT_METHODS.has(value as ContactMethod);
+}
 
 function rows(value: unknown): Row[] {
   return Array.isArray(value) ? (value as Row[]) : [];
@@ -319,7 +332,10 @@ export async function POST(request: Request) {
       new Set((body.quoteLineIds ?? []).map((value) => value.trim()).filter(Boolean)),
     );
     const operationKey = clean(body.operationKey);
-    const contactMethod = clean(body.contactMethod);
+    const requestedContactMethod = clean(body.contactMethod);
+    const contactMethod = isContactMethod(requestedContactMethod)
+      ? requestedContactMethod
+      : null;
     const note = clean(body.note);
     if (
       !workOrderId ||
@@ -333,7 +349,6 @@ export async function POST(request: Request) {
     if (
       actor.isInternal &&
       (!contactMethod ||
-        !["phone", "in_person", "email", "other"].includes(contactMethod) ||
         !note)
     ) {
       return NextResponse.json(
@@ -348,7 +363,7 @@ export async function POST(request: Request) {
     const accessibleVehicleIds = enrollments.map((row) => String(row.vehicle_id));
     const { data: workOrder, error: workOrderError } = await admin
       .from("work_orders")
-      .select("id,shop_id,vehicle_id")
+      .select("id,shop_id,vehicle_id,customer_id")
       .eq("id", workOrderId)
       .eq("shop_id", scope.shopId)
       .in("vehicle_id", accessibleVehicleIds)
@@ -369,33 +384,28 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Estimate line not found" }, { status: 404 });
     }
 
-    const rpcResult = actor.isInternal
-      ? await supabase.rpc("apply_shop_quote_decision_atomic", {
-          p_shop_id: scope.shopId,
-          p_work_order_id: workOrderId,
-          p_quote_line_ids: quoteLineIds,
-          p_decision: decision,
-          p_actor_user_id: actor.userId,
-          p_contact_method: contactMethod ?? "other",
-          p_note: note ?? "",
-          p_operation_key: `fleet-staff:${operationKey}`,
-          p_at: new Date().toISOString(),
-        })
-      : await supabase.rpc("apply_customer_quote_decision_atomic", {
-          p_shop_id: scope.shopId,
-          p_work_order_id: workOrderId,
-          p_quote_line_ids: quoteLineIds,
-          p_decision: decision,
-          p_decline_remaining: false,
-          // The SQL contract permits NULL; generated RPC args model it as string.
-          p_customer_id: null as unknown as string,
-          p_actor_user_id: actor.userId,
-          p_operation_key: `fleet:${operationKey}`,
-          p_at: new Date().toISOString(),
-        });
-    const { data, error } = rpcResult;
-    if (error) throw new Error(error.message);
-    return NextResponse.json({ ok: true, result: data });
+    if (!actor.isInternal && !workOrder.customer_id) {
+      return NextResponse.json(
+        { error: "Fleet billing account is not linked to this work order" },
+        { status: 409 },
+      );
+    }
+
+    const result = await applyWorkOrderQuoteLineDecision({
+      supabase,
+      workOrderId,
+      shopId: scope.shopId,
+      quoteLineIds,
+      decision,
+      decisionSource: actor.isInternal ? "shop" : "customer",
+      customerId: workOrder.customer_id,
+      actorUserId: actor.userId,
+      contactMethod: contactMethod ?? "other",
+      decisionNote: note,
+      operationKey: actor.isInternal ? `fleet-staff:${operationKey}` : `fleet:${operationKey}`,
+    });
+    if (!result.ok) throw new Error(result.error ?? "Unable to save estimate decision");
+    return NextResponse.json({ ok: true, result });
   } catch (error) {
     console.error("[fleet/billing] error", error);
     return NextResponse.json(

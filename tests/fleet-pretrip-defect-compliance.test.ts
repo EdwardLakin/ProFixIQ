@@ -37,7 +37,7 @@ function dualRoleActor(): FleetActorContext {
       canAccessFleetIntake: true,
       canAccessPortalFleetWrappers: true,
       canRunFleetDispatchActions: true,
-      canOverrideShopScope: true,
+      canOverrideShopScope: false,
     },
   };
 }
@@ -53,6 +53,11 @@ describe("fleet pre-trip, defects, and compliance", () => {
       fleetIds: [actor.primaryFleetId],
     });
     expect(resolveFleetActorScope(actor)?.fleetId).toBeNull();
+    expect(
+      resolveFleetActorScope(actor, {
+        explicitShopId: "20000000-0000-4000-8000-000000000099",
+      }),
+    ).toBeNull();
   });
 
   it("keeps drivers out of manager conversion and puts pre-trip one click from portal home", () => {

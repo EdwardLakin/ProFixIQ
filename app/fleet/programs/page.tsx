@@ -9,6 +9,7 @@ import type { Database } from "@shared/types/types/supabase";
 type DB = Database;
 type FleetRow = DB["public"]["Tables"]["fleets"]["Row"];
 type FleetInsert = DB["public"]["Tables"]["fleets"]["Insert"];
+type FleetCreateInsert = Omit<FleetInsert, "customer_id">;
 
 type FormMode = "create" | "edit";
 
@@ -131,7 +132,7 @@ export default function FleetProgramsPage(): JSX.Element {
 
     try {
       if (mode === "create") {
-        const insertPayload: FleetInsert = {
+        const insertPayload: FleetCreateInsert = {
           shop_id: shopId,
           name: form.name.trim(),
           contact_name: form.contact_name.trim() || null,
@@ -141,7 +142,9 @@ export default function FleetProgramsPage(): JSX.Element {
 
         const { data: inserted, error: insertError } = await supabase
           .from("fleets")
-          .insert(insertPayload)
+          // The BEFORE INSERT trigger creates and assigns the canonical
+          // customer_id in the same database transaction.
+          .insert(insertPayload as FleetInsert)
           .select("*")
           .single();
 
@@ -155,6 +158,10 @@ export default function FleetProgramsPage(): JSX.Element {
         );
         if (returnTo === "/fleet/portal-access") {
           router.push(`${returnTo}?fleetId=${encodeURIComponent(inserted.id)}`);
+          return;
+        }
+        if (returnTo === "/fleet/units/new") {
+          router.push(returnTo);
           return;
         }
         setSuccess("Fleet created.");

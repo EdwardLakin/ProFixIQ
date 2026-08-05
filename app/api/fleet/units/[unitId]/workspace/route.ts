@@ -49,30 +49,42 @@ async function loadLifetimeWorkOrderMetrics(
 ) {
   const pageSize = 1000;
   let offset = 0;
-  let count = 0;
-  let lifetimeSpend = 0;
-  let outstandingBalance = 0;
+  const { count, error: countError } = await admin
+    .from("work_orders")
+    .select("id", { count: "exact", head: true })
+    .eq("shop_id", shopId)
+    .eq("vehicle_id", unitId);
+  if (countError) throw new Error(countError.message);
+
+  const latestByWorkOrder = new Map<string, Row>();
 
   for (;;) {
     const { data, error } = await admin
-      .from("work_orders")
-      .select("invoice_total,outstanding_balance")
+      .from("invoice_versions")
+      .select("work_order_id,version_number,total,outstanding_total,work_orders!inner(vehicle_id)")
       .eq("shop_id", shopId)
-      .eq("vehicle_id", unitId)
-      .order("created_at", { ascending: false })
+      .in("lifecycle_status", ["issued", "partially_paid", "paid"])
+      .eq("work_orders.vehicle_id", unitId)
+      .order("version_number", { ascending: false })
       .range(offset, offset + pageSize - 1);
     if (error) throw new Error(error.message);
     const batch = rowArray(data);
-    count += batch.length;
     for (const row of batch) {
-      lifetimeSpend += numberValue(row.invoice_total) ?? 0;
-      outstandingBalance += numberValue(row.outstanding_balance) ?? 0;
+      const workOrderId = String(row.work_order_id);
+      if (!latestByWorkOrder.has(workOrderId)) latestByWorkOrder.set(workOrderId, row);
     }
     if (batch.length < pageSize) break;
     offset += pageSize;
   }
 
-  return { count, lifetimeSpend, outstandingBalance };
+  let lifetimeSpend = 0;
+  let outstandingBalance = 0;
+  for (const row of latestByWorkOrder.values()) {
+    lifetimeSpend += numberValue(row.total) ?? 0;
+    outstandingBalance += numberValue(row.outstanding_total) ?? 0;
+  }
+
+  return { count: count ?? 0, lifetimeSpend, outstandingBalance };
 }
 
 function priorityBullet(
@@ -271,6 +283,7 @@ export async function GET(request: Request, { params }: Props) {
               "id,work_order_id,version_number,lifecycle_status,currency,total,outstanding_total,paid_total,issued_at",
             )
             .in("work_order_id", workOrderIds)
+            .in("lifecycle_status", ["issued", "partially_paid", "paid"])
             .order("version_number", { ascending: false }),
         ])
       : [
@@ -317,20 +330,23 @@ export async function GET(request: Request, { params }: Props) {
 
     const history: FleetWorkOrderHistory[] = workOrders.map((row) => {
       const id = String(row.id);
+      const invoice = invoicesByWorkOrder.get(id) ?? null;
+      const status = text(row.status) ?? "open";
+      const isTerminal = ["completed", "closed", "ready", "ready_for_pickup", "invoiced"].includes(status.toLowerCase());
       return {
         id,
         reference: text(row.custom_id) ?? `#${id.slice(0, 8).toUpperCase()}`,
-        status: text(row.status) ?? "open",
+        status,
         approvalState: text(row.approval_state),
         createdAt: iso(row.created_at),
         updatedAt: iso(row.updated_at),
         scheduledAt: iso(row.scheduled_at),
-        completedAt: iso(row.paid_at),
-        invoiceTotal: numberValue(row.invoice_total) ?? 0,
+        completedAt: isTerminal ? iso(row.updated_at) : null,
+        invoiceTotal: invoice?.total ?? 0,
         paymentStatus: text(row.payment_status) ?? "unpaid",
-        outstandingBalance: numberValue(row.outstanding_balance) ?? 0,
+        outstandingBalance: invoice?.outstandingTotal ?? 0,
         quoteLines: quotesByWorkOrder.get(id) ?? [],
-        invoice: invoicesByWorkOrder.get(id) ?? null,
+        invoice,
       };
     });
 

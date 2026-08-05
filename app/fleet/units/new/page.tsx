@@ -132,6 +132,23 @@ export default function FleetUnitEnrollmentPage() {
     return <main className="mx-auto max-w-6xl px-4 py-6 text-sm">Loading fleet setup…</main>;
   }
 
+  if (context.fleets.length === 0) {
+    return (
+      <main className="mx-auto w-full max-w-3xl px-4 py-10 text-[color:var(--theme-text-primary)]">
+        <section className={`${panel} text-center`}>
+          <Truck className="mx-auto h-8 w-8 text-sky-300" />
+          <h1 className="mt-3 text-2xl font-semibold">Create your first fleet</h1>
+          <p className="mx-auto mt-2 max-w-xl text-sm text-[color:var(--theme-text-secondary)]">
+            A fleet is required before units can be enrolled or drivers assigned.
+          </p>
+          <Link href="/fleet/programs?returnTo=%2Ffleet%2Funits%2Fnew" className="mt-5 inline-flex rounded-xl bg-sky-300 px-4 py-2.5 text-sm font-semibold text-slate-950">
+            Create fleet
+          </Link>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main className="mx-auto w-full max-w-6xl space-y-5 px-4 py-6 text-[color:var(--theme-text-primary)]">
       <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
