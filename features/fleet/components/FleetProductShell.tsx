@@ -24,6 +24,10 @@ import {
 
 import ThemeToggleButton from "@/features/shared/components/ThemeToggleButton";
 import ForcePasswordChangeModal from "@/features/auth/components/ForcePasswordChangeModal";
+import {
+  toFleetInternalPath,
+  toFleetPublicPath,
+} from "@/features/fleet/lib/fleetProductRouting";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { cn } from "@/features/shared/utils/cn";
 
@@ -144,11 +148,13 @@ function isActivePath(pathname: string, href: string): boolean {
 
 function NavItem({
   item,
+  href,
   compact,
   active,
   onNavigate,
 }: {
   item: FleetNavItem;
+  href: string;
   compact: boolean;
   active: boolean;
   onNavigate?: () => void;
@@ -157,7 +163,7 @@ function NavItem({
 
   return (
     <Link
-      href={item.href}
+      href={href}
       onClick={onNavigate}
       aria-current={active ? "page" : undefined}
       title={compact ? item.label : undefined}
@@ -200,6 +206,7 @@ export default function FleetProductShell({
   actorLabel,
   experience,
   userId,
+  productHost,
   children,
 }: {
   title: string;
@@ -207,9 +214,11 @@ export default function FleetProductShell({
   actorLabel: string;
   experience: FleetExperience;
   userId: string | null;
+  productHost: boolean;
   children: React.ReactNode;
 }) {
   const pathname = usePathname() ?? "/portal/fleet";
+  const internalPathname = toFleetInternalPath(pathname) ?? pathname;
   const router = useRouter();
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -253,9 +262,9 @@ export default function FleetProductShell({
     () =>
       groups
         .flatMap((group) => group.items)
-        .filter((item) => isActivePath(pathname, item.href))
+        .filter((item) => isActivePath(internalPathname, item.href))
         .sort((a, b) => b.href.length - a.href.length)[0] ?? null,
-    [groups, pathname],
+    [groups, internalPathname],
   );
 
   async function signOut() {
@@ -264,7 +273,7 @@ export default function FleetProductShell({
     try {
       await supabase.auth.signOut();
     } finally {
-      router.replace("/portal/auth/fleet-sign-in");
+      router.replace(productHost ? "/sign-in" : "/portal/auth/fleet-sign-in");
       setSigningOut(false);
     }
   }
@@ -305,6 +314,11 @@ export default function FleetProductShell({
                 <NavItem
                   key={item.href}
                   item={item}
+                  href={
+                    productHost
+                      ? toFleetPublicPath(item.href) ?? item.href
+                      : item.href
+                  }
                   compact={compact && !isMobile}
                   active={activeItem?.href === item.href}
                   onNavigate={isMobile ? () => setMobileOpen(false) : undefined}

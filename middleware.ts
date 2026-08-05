@@ -11,6 +11,14 @@ import {
   type PortalSurface,
 } from "@/features/auth/lib/portalSurfaceRouting";
 import { resolveMobileHref } from "@/features/mobile/navigation/mobile-route-continuity";
+import {
+  isFleetProductHostname,
+  isFleetProductSharedPath,
+  toFleetInternalHref,
+  toFleetInternalPath,
+  toFleetPublicHref,
+  toFleetPublicPath,
+} from "@/features/fleet/lib/fleetProductRouting";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import {
   hasSupabasePublicEnv,
@@ -40,6 +48,45 @@ function safeRedirectPath(v: string | null): string | null {
   if (!v.startsWith("/")) return null;
   if (v.startsWith("//")) return null;
   return v;
+}
+
+function requestHostname(req: NextRequest): string {
+  return (
+    req.headers.get("x-forwarded-host") ??
+    req.headers.get("host") ??
+    req.nextUrl.hostname
+  );
+}
+
+function productRequestUrl(
+  req: NextRequest,
+  path: string,
+  fleetProductRequest: boolean,
+): URL {
+  const target = new URL(path, req.url);
+  if (fleetProductRequest) {
+    const publicPath = toFleetPublicPath(target.pathname);
+    if (publicPath) target.pathname = publicPath;
+  }
+  return target;
+}
+
+function redirectWithResponseHeaders(
+  target: URL,
+  response: NextResponse,
+): NextResponse {
+  const headers = new Headers(response.headers);
+  for (const header of Array.from(headers.keys())) {
+    if (
+      header === "x-middleware-next" ||
+      header === "x-middleware-rewrite" ||
+      header === "x-middleware-override-headers" ||
+      header.startsWith("x-middleware-request-")
+    ) {
+      headers.delete(header);
+    }
+  }
+  return NextResponse.redirect(target, { headers });
 }
 
 type PortalAccess = {
@@ -101,24 +148,66 @@ async function resolvePortalAccessServer(
 }
 
 export async function middleware(req: NextRequest) {
-  const { pathname, search } = req.nextUrl;
+  const requestPathname = req.nextUrl.pathname;
+  const { search } = req.nextUrl;
+  const fleetProductRequest = isFleetProductHostname(requestHostname(req));
   const mobileDeviceRequest = isMobileDeviceRequest(req);
+
+  if (isAssetPath(requestPathname)) {
+    return NextResponse.next();
+  }
+
+  if (fleetProductRequest) {
+    const canonicalPublicPath = toFleetPublicPath(requestPathname);
+    if (canonicalPublicPath && canonicalPublicPath !== requestPathname) {
+      const target = req.nextUrl.clone();
+      target.pathname = canonicalPublicPath;
+      return NextResponse.redirect(target, 308);
+    }
+  }
+
+  const fleetInternalPath = fleetProductRequest
+    ? toFleetInternalPath(requestPathname)
+    : null;
+
+  if (
+    fleetProductRequest &&
+    !fleetInternalPath &&
+    !isFleetProductSharedPath(requestPathname)
+  ) {
+    const target = req.nextUrl.clone();
+    target.pathname = "/";
+    target.search = "";
+    return NextResponse.redirect(target);
+  }
+
+  const pathname = fleetInternalPath ?? requestPathname;
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set("x-next-pathname", pathname);
+  if (fleetProductRequest) {
+    requestHeaders.set("x-profixiq-product-host", "fleet");
+  }
 
   if (
     pathname === "/portal/fleet/auth/sign-in" ||
     pathname === "/portal/fleet/auth/sign-in/"
   ) {
-    const target = new URL(PORTAL_SIGN_IN.fleet, req.url);
+    const target = productRequestUrl(
+      req,
+      PORTAL_SIGN_IN.fleet,
+      fleetProductRequest,
+    );
     return NextResponse.redirect(target, 308);
   }
 
-  if (isAssetPath(pathname)) {
-    return NextResponse.next();
-  }
+  const fleetRewriteTarget = req.nextUrl.clone();
+  if (fleetInternalPath) fleetRewriteTarget.pathname = fleetInternalPath;
 
-  const res = NextResponse.next({ request: { headers: requestHeaders } });
+  const res = fleetInternalPath
+    ? NextResponse.rewrite(fleetRewriteTarget, {
+        request: { headers: requestHeaders },
+      })
+    : NextResponse.next({ request: { headers: requestHeaders } });
 
   if (pathname.startsWith("/api")) {
     if (!hasSupabasePublicEnv()) return res;
@@ -225,13 +314,15 @@ export async function middleware(req: NextRequest) {
   if (pathname === "/" && user) {
     if (isPortalOnlyAccount) {
       const access = await resolvePortalAccessServer(supabase, user.id);
-      const target = new URL(
+      const target = productRequestUrl(
+        req,
         access.fleet && !access.customer ? "/portal/fleet" : "/portal",
-        req.url,
+        fleetProductRequest,
       );
-      return NextResponse.redirect(target, { headers: res.headers });
+      return redirectWithResponseHeaders(target, res);
     }
-    const target = new URL(
+    const target = productRequestUrl(
+      req,
       !completed
         ? "/onboarding"
         : needsShopBoostIntake
@@ -239,15 +330,18 @@ export async function middleware(req: NextRequest) {
           : mobileDeviceRequest
             ? "/mobile"
             : "/dashboard",
-      req.url,
+      fleetProductRequest,
     );
-    return NextResponse.redirect(target, { headers: res.headers });
+    return redirectWithResponseHeaders(target, res);
   }
 
   if (isPublic) {
-    const redirectParam = safeRedirectPath(
+    const requestedRedirect = safeRedirectPath(
       req.nextUrl.searchParams.get("redirect"),
     );
+    const redirectParam = fleetProductRequest
+      ? toFleetInternalHref(requestedRedirect) ?? requestedRedirect
+      : requestedRedirect;
     const isMainSignIn =
       pathname.startsWith("/sign-in") || pathname.startsWith("/signup");
     const isMobileSignIn = pathname.startsWith("/mobile/sign-in");
@@ -255,11 +349,12 @@ export async function middleware(req: NextRequest) {
     if (user && (isMainSignIn || isMobileSignIn)) {
       if (isPortalOnlyAccount) {
         const access = await resolvePortalAccessServer(supabase, user.id);
-        const target = new URL(
+        const target = productRequestUrl(
+          req,
           access.fleet && !access.customer ? "/portal/fleet" : "/portal",
-          req.url,
+          fleetProductRequest,
         );
-        return NextResponse.redirect(target, { headers: res.headers });
+        return redirectWithResponseHeaders(target, res);
       }
 
       const defaultAuthenticatedPath = !completed
@@ -270,8 +365,22 @@ export async function middleware(req: NextRequest) {
             ? "/mobile"
             : "/dashboard";
       const to = redirectParam ?? defaultAuthenticatedPath;
-      const target = new URL(to, req.url);
-      return NextResponse.redirect(target, { headers: res.headers });
+      const target = productRequestUrl(req, to, fleetProductRequest);
+      return redirectWithResponseHeaders(target, res);
+    }
+
+    if (fleetProductRequest && isFleetPortalAuthPage && user) {
+      const access = await resolvePortalAccessServer(supabase, user.id);
+      if (!access.fleet) return res;
+
+      const target = productRequestUrl(
+        req,
+        isPortalPathForSurface(redirectParam, "fleet")
+          ? redirectParam!
+          : "/portal/fleet",
+        true,
+      );
+      return redirectWithResponseHeaders(target, res);
     }
 
     if (
@@ -302,8 +411,8 @@ export async function middleware(req: NextRequest) {
         ? redirectParam!
         : PORTAL_HOME[surface];
 
-      const target = new URL(to, req.url);
-      return NextResponse.redirect(target, { headers: res.headers });
+      const target = productRequestUrl(req, to, fleetProductRequest);
+      return redirectWithResponseHeaders(target, res);
     }
 
     if (
@@ -311,11 +420,20 @@ export async function middleware(req: NextRequest) {
       pathname === PORTAL_SIGN_IN.customer &&
       req.nextUrl.searchParams.get("portal") === "fleet"
     ) {
-      const login = new URL(PORTAL_SIGN_IN.fleet, req.url);
+      const login = productRequestUrl(
+        req,
+        PORTAL_SIGN_IN.fleet,
+        fleetProductRequest,
+      );
       if (isPortalPathForSurface(redirectParam, "fleet")) {
-        login.searchParams.set("redirect", redirectParam!);
+        login.searchParams.set(
+          "redirect",
+          fleetProductRequest
+            ? toFleetPublicHref(redirectParam) ?? redirectParam!
+            : redirectParam!,
+        );
       }
-      return NextResponse.redirect(login, { headers: res.headers });
+      return redirectWithResponseHeaders(login, res);
     }
 
     return res;
@@ -324,25 +442,33 @@ export async function middleware(req: NextRequest) {
   if (!user) {
     if (isPortal) {
       const surface: PortalSurface = isFleetPortalPath ? "fleet" : "customer";
-      const login = new URL(PORTAL_SIGN_IN[surface], req.url);
-      login.searchParams.set("redirect", pathname + search);
-      return NextResponse.redirect(login, { headers: res.headers });
+      const login = productRequestUrl(
+        req,
+        PORTAL_SIGN_IN[surface],
+        fleetProductRequest,
+      );
+      login.searchParams.set(
+        "redirect",
+        fleetProductRequest ? requestPathname + search : pathname + search,
+      );
+      return redirectWithResponseHeaders(login, res);
     }
 
     const isMobileRoute = pathname.startsWith("/mobile");
     const loginPath = isMobileRoute ? "/mobile/sign-in" : "/sign-in";
-    const login = new URL(loginPath, req.url);
+    const login = productRequestUrl(req, loginPath, fleetProductRequest);
     login.searchParams.set("redirect", pathname + search);
-    return NextResponse.redirect(login, { headers: res.headers });
+    return redirectWithResponseHeaders(login, res);
   }
 
   if (isPortalOnlyAccount && !isPortal) {
     const access = await resolvePortalAccessServer(supabase, user.id);
-    const target = new URL(
+    const target = productRequestUrl(
+      req,
       access.fleet && !access.customer ? "/portal/fleet" : "/portal",
-      req.url,
+      fleetProductRequest,
     );
-    return NextResponse.redirect(target, { headers: res.headers });
+    return redirectWithResponseHeaders(target, res);
   }
 
   if (
@@ -355,22 +481,26 @@ export async function middleware(req: NextRequest) {
     const requestedHref = `${pathname}${search}`;
     const mobileHref = resolveMobileHref(requestedHref);
     if (mobileHref && mobileHref !== requestedHref) {
-      const target = new URL(mobileHref, req.url);
-      return NextResponse.redirect(target, { headers: res.headers });
+      const target = productRequestUrl(req, mobileHref, fleetProductRequest);
+      return redirectWithResponseHeaders(target, res);
     }
   }
 
   if (pathname.startsWith("/mobile") && !canUseMobile) {
     if (!completed) {
-      const target = new URL("/onboarding", req.url);
-      return NextResponse.redirect(target, { headers: res.headers });
+      const target = productRequestUrl(
+        req,
+        "/onboarding",
+        fleetProductRequest,
+      );
+      return redirectWithResponseHeaders(target, res);
     }
 
     // Keep completed but unsupported/legacy roles inside the mobile surface.
     // `/mobile` renders the role-not-configured state without exposing desktop.
     if (pathname !== "/mobile") {
-      const target = new URL("/mobile", req.url);
-      return NextResponse.redirect(target, { headers: res.headers });
+      const target = productRequestUrl(req, "/mobile", fleetProductRequest);
+      return redirectWithResponseHeaders(target, res);
     }
     return res;
   }
@@ -379,19 +509,33 @@ export async function middleware(req: NextRequest) {
     const access = await resolvePortalAccessServer(supabase, user.id);
 
     if (!access.customer && access.fleet && !isFleetPortalPath) {
-      const target = new URL("/portal/fleet", req.url);
-      return NextResponse.redirect(target, { headers: res.headers });
+      const target = productRequestUrl(
+        req,
+        "/portal/fleet",
+        fleetProductRequest,
+      );
+      return redirectWithResponseHeaders(target, res);
     }
 
     if (!access.fleet && isFleetPortalPath) {
-      const target = new URL("/portal", req.url);
-      return NextResponse.redirect(target, { headers: res.headers });
+      const target = productRequestUrl(
+        req,
+        fleetProductRequest
+          ? "/portal/auth/fleet-sign-in?access=required"
+          : "/portal",
+        fleetProductRequest,
+      );
+      return redirectWithResponseHeaders(target, res);
     }
   }
 
   if (!isPortal && !completed && !pathname.startsWith("/onboarding")) {
-    const target = new URL("/onboarding", req.url);
-    return NextResponse.redirect(target, { headers: res.headers });
+    const target = productRequestUrl(
+      req,
+      "/onboarding",
+      fleetProductRequest,
+    );
+    return redirectWithResponseHeaders(target, res);
   }
 
   return res;
@@ -399,6 +543,14 @@ export async function middleware(req: NextRequest) {
 
 export const config = {
   matcher: [
+    {
+      source: "/((?!_next/static|_next/image|favicon.ico).*)",
+      has: [{ type: "host", value: "fleet.profixiq.com" }],
+    },
+    {
+      source: "/((?!_next/static|_next/image|favicon.ico).*)",
+      has: [{ type: "host", value: "fleet.localhost" }],
+    },
     "/",
     "/sign-in",
     "/compare-plans",
@@ -410,6 +562,16 @@ export const config = {
     "/auth/set-password",
     "/demo/:path*",
     "/portal/:path*",
+    "/assets/:path*",
+    "/drivers/:path*",
+    "/pre-trips/:path*",
+    "/maintenance/:path*",
+    "/calendar/:path*",
+    "/requests/:path*",
+    "/history/:path*",
+    "/reports/:path*",
+    "/settings/:path*",
+    "/dispatch/:path*",
     "/mobile/sign-in",
     "/launch",
     "/offline/:path*",
