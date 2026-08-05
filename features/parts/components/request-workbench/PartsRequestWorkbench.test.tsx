@@ -175,6 +175,41 @@ describe("PartsRequestWorkbench inventory attach flow", () => {
     });
     expect(attached.items[0]?.insights?.some((insight) => insight.kind === "no_stock")).toBe(true);
   });
+
+  it("opens Create PO for the first item that is not already assigned to a PO", async () => {
+    const user = userEvent.setup();
+    const twoItemModel = model("part-1");
+    twoItemModel.defaultSupplierId = "supplier-1";
+    twoItemModel.supplierOptions = [
+      { value: "supplier-1", label: "AutoValue Local" },
+    ];
+    twoItemModel.items = [
+      {
+        ...twoItemModel.items[0],
+        id: "item-oil",
+        description: "5W30 oil",
+        qty: 6,
+        poId: "po-existing",
+      },
+      {
+        ...twoItemModel.items[0],
+        id: "item-filter",
+        description: "Oil filter",
+        qty: 1,
+        poId: null,
+      },
+    ];
+
+    render(<PartsRequestWorkbench model={twoItemModel} />);
+
+    await user.click(screen.getByRole("button", { name: "Create PO" }));
+
+    expect(screen.getByText(/Order Part.*Oil filter/)).toBeInTheDocument();
+    expect(screen.getByRole("spinbutton", { name: "Qty" })).toHaveValue(1);
+    expect(screen.getByRole("combobox", { name: "Supplier" })).toHaveValue(
+      "supplier-1",
+    );
+  });
 });
 
 describe("PartsRequestWorkbench inventory picker mobile layout", () => {
