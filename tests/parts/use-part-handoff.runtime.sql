@@ -909,6 +909,22 @@ $$;
 
 -- Build an inconsistent two-item package. The second item advertises reserved
 -- stock but has no allocation, so Complete must roll back the first item issue.
+insert into public.work_order_lines (
+  id,
+  work_order_id,
+  shop_id,
+  status,
+  approval_state,
+  assigned_tech_id
+) values (
+  'd0000000-0000-4000-8000-000000000002',
+  'c0000000-0000-4000-8000-000000000001',
+  'a0000000-0000-4000-8000-000000000001',
+  'active',
+  'approved',
+  '10000000-0000-4000-8000-000000000001'
+);
+
 insert into public.part_requests (
   id,
   shop_id,
@@ -920,7 +936,7 @@ insert into public.part_requests (
   '92000000-0000-4000-8000-000000000002',
   'a0000000-0000-4000-8000-000000000001',
   'c0000000-0000-4000-8000-000000000001',
-  'd0000000-0000-4000-8000-000000000001',
+  'd0000000-0000-4000-8000-000000000002',
   '10000000-0000-4000-8000-000000000001',
   'approved'
 );
@@ -948,7 +964,7 @@ insert into public.part_request_items (
     '92000000-0000-4000-8000-000000000002',
     'a0000000-0000-4000-8000-000000000001',
     'c0000000-0000-4000-8000-000000000001',
-    'd0000000-0000-4000-8000-000000000001',
+    'd0000000-0000-4000-8000-000000000002',
     'e0000000-0000-4000-8000-000000000001',
     'Runtime rollback first item',
     1,
@@ -966,7 +982,7 @@ insert into public.part_request_items (
     '92000000-0000-4000-8000-000000000002',
     'a0000000-0000-4000-8000-000000000001',
     'c0000000-0000-4000-8000-000000000001',
-    'd0000000-0000-4000-8000-000000000001',
+    'd0000000-0000-4000-8000-000000000002',
     'e0000000-0000-4000-8000-000000000002',
     'Runtime rollback missing allocation',
     1,
