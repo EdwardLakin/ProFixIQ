@@ -55,6 +55,9 @@ describe("Fleet product domain routing", () => {
     expect(toFleetInternalPath("/assets-private")).toBeNull();
     expect(toFleetInternalPath("/dashboard")).toBeNull();
     expect(toFleetPublicPath("/portal/fleetish")).toBeNull();
+    expect(toFleetInternalPath("/dispatch")).toBeNull();
+    expect(toFleetPublicPath("/portal/fleet/board")).toBeNull();
+    expect(toFleetPublicPath("/portal/fleet/unknown")).toBeNull();
     expect(toFleetInternalHref("https://attacker.test/assets")).toBeNull();
     expect(toFleetInternalHref("//attacker.test/assets")).toBeNull();
   });
