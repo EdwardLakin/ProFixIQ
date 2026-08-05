@@ -161,8 +161,14 @@ export function PartsRequestWorkbench({
         supplierOptions={model.supplierOptions}
         onDefaultSupplierChange={setDefaultSupplierId}
         onCreatePo={() => {
-          const firstItem = items[0];
-          if (firstItem) setActiveModal({ type: "order", itemId: firstItem.id });
+          const firstItem =
+            items.find((item) => !item.poId) ?? items[0];
+          if (firstItem) {
+            setOrderDraft(
+              createOrderDraftFromItem(firstItem, defaultSupplierId),
+            );
+            setActiveModal({ type: "order", itemId: firstItem.id });
+          }
         }}
         onCommitPackage={onCommitPackage}
         commitPackageDisabled={items.length === 0}
