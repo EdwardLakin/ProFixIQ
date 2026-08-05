@@ -12,6 +12,10 @@ const invoiceRoute = readFileSync("app/api/work-orders/[id]/invoice/route.ts", "
 const invoicePdfRoute = readFileSync("app/api/work-orders/[id]/invoice-pdf/route.ts", "utf8");
 const workOrderView = readFileSync("features/work-orders/app/work-orders/view/page.tsx", "utf8");
 const manualPayment = readFileSync("features/invoices/components/RecordManualPayment.tsx", "utf8");
+const invoiceCreatedByReconciliation = readFileSync(
+  "supabase/migrations/20260805135500_restore_invoice_created_by.sql",
+  "utf8",
+);
 
 describe("regular live invoice flow safety", () => {
   it("prices 1.0 labor hour from explicit total or labor rate, never as $1.00", () => {
@@ -121,5 +125,20 @@ describe("regular live invoice flow safety", () => {
     expect(previewClient).toContain("SyncInvoiceToQuickBooksButton");
     expect(previewClient).toContain("RecordManualPayment");
     expect(manualPayment).toContain('fetch("/api/payments/manual"');
+  });
+
+  it("reconciles the invoice audit column required by finalization", () => {
+    expect(invoiceCreatedByReconciliation).toContain(
+      "add column if not exists created_by uuid",
+    );
+    expect(invoiceCreatedByReconciliation).toContain(
+      "constraint invoices_created_by_fkey",
+    );
+    expect(invoiceCreatedByReconciliation).toContain(
+      "references auth.users(id)",
+    );
+    expect(invoiceCreatedByReconciliation).toContain(
+      "invoices.created_by reconciliation failed",
+    );
   });
 });

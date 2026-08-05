@@ -18,9 +18,18 @@ const NON_ACTIVE_LINE_STATUSES = new Set<WorkOrderLineStatus>([
 
 export function formatWorkOrderHeaderStatus(
   status: string | null | undefined,
+  paymentStatus?: string | null,
 ): DecisionStatusView {
   const normalized = normalizeWorkOrderStatus(status);
   const decisionStatus = formatDecisionStatus({ workStatus: normalized });
+  const normalizedPaymentStatus = String(paymentStatus ?? "")
+    .trim()
+    .toLowerCase()
+    .replaceAll(" ", "_");
+
+  if (normalizedPaymentStatus === "paid") {
+    return { ...decisionStatus, label: "Paid", variant: "success" };
+  }
 
   if (normalized === "ready_to_invoice") {
     return { ...decisionStatus, label: "Ready to invoice" };
