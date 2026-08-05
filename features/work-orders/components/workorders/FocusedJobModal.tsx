@@ -102,6 +102,13 @@ type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"] & { techn
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
 type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
 type Customer = DB["public"]["Tables"]["customers"]["Row"];
+type TechnicianOption = {
+  id: string;
+  full_name: string | null;
+  role: string | null;
+};
+
+const EMPTY_TECHNICIAN_OPTIONS: readonly TechnicianOption[] = [];
 
 type AllocationRow = DB["public"]["Tables"]["work_order_part_allocations"]["Row"] & {
   parts?: { name: string | null } | null;
@@ -182,12 +189,14 @@ export default function FocusedJobModal(props: {
   onClose: () => void;
   workOrderLineId: string;
   lineSnapshot?: WorkOrderLine | null;
-  primaryTechSnapshot?: {
-    id: string;
-    full_name: string | null;
-    role: string | null;
-  } | null;
+  primaryTechSnapshot?: TechnicianOption | null;
   isPunchedInSnapshot?: boolean;
+  canAssignTechnician?: boolean;
+  technicianOptions?: readonly TechnicianOption[];
+  onAssignTechnician?: (
+    lineId: string,
+    technicianId: string,
+  ) => void | Promise<void>;
   onChanged?: () => void | Promise<void>;
   mode?: Mode;
   variant?: Variant;
@@ -199,6 +208,9 @@ export default function FocusedJobModal(props: {
     lineSnapshot,
     primaryTechSnapshot,
     isPunchedInSnapshot,
+    canAssignTechnician = false,
+    technicianOptions = EMPTY_TECHNICIAN_OPTIONS,
+    onAssignTechnician,
     onChanged,
     mode = "tech",
     variant = "modal",
@@ -238,7 +250,8 @@ export default function FocusedJobModal(props: {
     () => filterAllocationsNotBackedByCanonicalParts(allocs, requiredParts),
     [allocs, requiredParts],
   );
-  const [assignedTechProfile, setAssignedTechProfile] = useState<{ id: string; full_name: string | null; role: string | null } | null>(null);
+  const [assignedTechProfile, setAssignedTechProfile] = useState<TechnicianOption | null>(null);
+  const [assigningTechnician, setAssigningTechnician] = useState(false);
   const [allocsLoading, setAllocsLoading] = useState(false);
 
   const showErr = (prefix: string, err?: { message?: string } | null) => {
@@ -411,7 +424,7 @@ export default function FocusedJobModal(props: {
         .from("profiles")
         .select("id, full_name, role")
         .eq("id", assignedTechId)
-        .maybeSingle<{ id: string; full_name: string | null; role: string | null }>();
+        .maybeSingle<TechnicianOption>();
 
       if (cancelled) return;
       if (error) {
@@ -543,6 +556,19 @@ export default function FocusedJobModal(props: {
     await onChanged?.();
     await loadAllocations();
   }, [supabase, workOrderLineId, onChanged, loadAllocations]);
+
+  const assignTechnician = useCallback(
+    async (technicianId: string): Promise<void> => {
+      if (!line?.id || !onAssignTechnician || assigningTechnician) return;
+      setAssigningTechnician(true);
+      try {
+        await onAssignTechnician(line.id, technicianId);
+      } finally {
+        setAssigningTechnician(false);
+      }
+    },
+    [assigningTechnician, line?.id, onAssignTechnician],
+  );
 
   useEffect(() => {
     const handler = () => void refresh();
@@ -727,6 +753,10 @@ export default function FocusedJobModal(props: {
           ""
         ).trim() || resolvePrimaryTechDisplay(line, assignedTechProfile)
       : "Unassigned";
+  const assignedTechnicianIsSelectable = Boolean(
+    line?.assigned_tech_id &&
+      technicianOptions.some((technician) => technician.id === line.assigned_tech_id),
+  );
   const customerDisplay = customer
     ? customer.business_name?.trim() ||
       [customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ") ||
@@ -1390,9 +1420,10 @@ export default function FocusedJobModal(props: {
   const CockpitBody = (
     <div
       data-work-order-cockpit="true"
-      className="grid h-full min-h-[40rem] gap-2 bg-transparent lg:min-h-0 lg:grid-cols-[minmax(0,1fr)_20rem]"
+      data-work-order-scroll-owner="page"
+      className="grid items-start gap-2 bg-transparent lg:grid-cols-[minmax(0,1fr)_20rem]"
     >
-      <section className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-[20px] border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] shadow-[0_16px_42px_rgba(15,23,42,0.1)]">
+      <section className="flex min-w-0 flex-col overflow-hidden rounded-[20px] border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] shadow-[0_16px_42px_rgba(15,23,42,0.1)]">
         <header className="border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-5 pb-0 pt-4">
           <div className="flex flex-wrap items-start justify-between gap-3 pb-4">
             <div className="min-w-0">
@@ -1442,7 +1473,7 @@ export default function FocusedJobModal(props: {
           </div>
         </header>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 [scrollbar-gutter:stable]">
+        <div className="px-5 py-5">
           {busy && !line ? (
             <div className="grid gap-3">
               <div className="h-6 w-40 animate-pulse rounded bg-[color:var(--theme-surface-subtle)]" />
@@ -1539,7 +1570,7 @@ export default function FocusedJobModal(props: {
         </div>
       </section>
 
-      <aside className="min-h-0 overflow-y-auto rounded-[20px] border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] shadow-[0_16px_42px_rgba(15,23,42,0.1)] [scrollbar-gutter:stable]">
+      <aside className="rounded-[20px] border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] shadow-[0_16px_42px_rgba(15,23,42,0.1)]">
         <div className="border-b border-[color:var(--theme-border-soft)] px-4 py-4">
           <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--theme-text-muted)]">
             Command center
@@ -1695,13 +1726,45 @@ export default function FocusedJobModal(props: {
                   <span className="text-[color:var(--theme-text-secondary)]">Approval</span>
                   <span className="font-semibold capitalize text-[color:var(--theme-text-primary)]">{line.approval_state ?? "Not required"}</span>
                 </div>
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-[color:var(--theme-text-secondary)]">Primary tech</span>
-                  <span className="inline-flex min-w-0 items-center gap-1.5 truncate font-semibold text-[color:var(--theme-text-primary)]">
-                    <UserRound className="h-4 w-4 shrink-0" />
-                    {primaryTechDisplay}
-                  </span>
-                </div>
+                {canAssignTechnician && onAssignTechnician && technicianOptions.length > 0 ? (
+                  <label className="grid gap-1.5">
+                    <span className="text-[color:var(--theme-text-secondary)]">Primary tech</span>
+                    <span className="relative block">
+                      <UserRound className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-[color:var(--theme-text-muted)]" />
+                      <select
+                        aria-label="Primary technician"
+                        value={line.assigned_tech_id ?? ""}
+                        onChange={(event) => void assignTechnician(event.target.value)}
+                        disabled={busy || assigningTechnician}
+                        className="h-10 w-full appearance-none rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] py-2 pl-9 pr-3 text-sm font-semibold text-[color:var(--theme-text-primary)] outline-none transition focus:border-[color:var(--brand-primary)] focus:ring-2 focus:ring-[color:var(--brand-primary)]/20 disabled:cursor-wait disabled:opacity-60"
+                      >
+                        <option value="" disabled>
+                          Choose technician
+                        </option>
+                        {line.assigned_tech_id && !assignedTechnicianIsSelectable ? (
+                          <option value={line.assigned_tech_id}>
+                            {primaryTechDisplay === "Unassigned"
+                              ? "Current technician"
+                              : primaryTechDisplay}
+                          </option>
+                        ) : null}
+                        {technicianOptions.map((technician) => (
+                          <option key={technician.id} value={technician.id}>
+                            {technician.full_name || "Unnamed technician"}
+                          </option>
+                        ))}
+                      </select>
+                    </span>
+                  </label>
+                ) : (
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-[color:var(--theme-text-secondary)]">Primary tech</span>
+                    <span className="inline-flex min-w-0 items-center gap-1.5 truncate font-semibold text-[color:var(--theme-text-primary)]">
+                      <UserRound className="h-4 w-4 shrink-0" />
+                      {primaryTechDisplay}
+                    </span>
+                  </div>
+                )}
               </div>
             </section>
 

@@ -18,10 +18,13 @@ describe("desktop work-order cockpit", () => {
     expect(detail).toContain("Work order activity");
     expect(detail).toContain("primaryTechSnapshot={panelPrimaryTech}");
     expect(detail).toContain("isPunchedInSnapshot={panelLineIsPunchedIn}");
+    expect(detail).toContain("onAssignTechnician={assignLineTechnician}");
     expect(detail).not.toContain("<PageShell");
 
     expect(focusedJob).toContain('data-work-order-cockpit="true"');
+    expect(focusedJob).toContain('data-work-order-scroll-owner="page"');
     expect(focusedJob).toContain("Command center");
+    expect(focusedJob).toContain('aria-label="Primary technician"');
     expect(focusedJob).toContain('role="tablist"');
     expect(focusedJob).toContain('activeWorkspaceTab === "overview"');
     expect(focusedJob).toContain("resolveOperationalLineStatusLabel");

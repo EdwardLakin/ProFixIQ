@@ -1176,6 +1176,41 @@ export default function WorkOrderIdClient(): JSX.Element {
 
   const canDeleteLine = currentUserRole ? LINE_DELETE_ROLES.has(currentUserRole) : false;
 
+  const assignLineTechnician = useCallback(
+    async (lineId: string, technicianId: string): Promise<void> => {
+      const existingOperation = assignmentOperationsRef.current.get(lineId);
+      const operationKey =
+        existingOperation?.technicianId === technicianId
+          ? existingOperation.operationKey
+          : createAssignTechnicianOperationKey(lineId, technicianId);
+
+      assignmentOperationsRef.current.set(lineId, {
+        technicianId,
+        operationKey,
+      });
+
+      try {
+        await assignWorkOrderLineTechnician({
+          lineId,
+          technicianId,
+          operationKey,
+        });
+        await fetchAll();
+        if (
+          assignmentOperationsRef.current.get(lineId)?.operationKey === operationKey
+        ) {
+          assignmentOperationsRef.current.delete(lineId);
+        }
+        toast.success("Primary tech updated.");
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Failed to update primary tech.";
+        toast.error(message);
+      }
+    },
+    [fetchAll],
+  );
+
   const selectedDelLine = useMemo(() => {
     if (!delLineId) return null;
     return lines.find((l) => l.id === delLineId) ?? null;
@@ -2031,7 +2066,7 @@ export default function WorkOrderIdClient(): JSX.Element {
             </section>
 
           {/* Full-height cockpit: navigate left, work center, act right. */}
-          <section className="grid gap-2 rounded-[24px] border border-[color:var(--theme-border-soft)] bg-[var(--theme-gradient-panel)] p-2 shadow-[0_20px_55px_rgba(15,23,42,0.1)] lg:h-[calc(100vh-12.5rem)] lg:min-h-[44rem] lg:grid-cols-[17rem_minmax(0,1fr)]">
+          <section className="grid items-start gap-2 rounded-[24px] border border-[color:var(--theme-border-soft)] bg-[var(--theme-gradient-panel)] p-2 shadow-[0_20px_55px_rgba(15,23,42,0.1)] lg:grid-cols-[17rem_minmax(0,1fr)]">
             <aside className="flex min-h-0 flex-col overflow-hidden rounded-[20px] border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] shadow-[0_16px_42px_rgba(15,23,42,0.08)]">
               <div className="flex items-center justify-between gap-3 border-b border-[color:var(--theme-border-soft)] px-3 py-3">
                 <div>
@@ -2135,41 +2170,8 @@ export default function WorkOrderIdClient(): JSX.Element {
                         onOpen={() => openFocusedJob(ln.id)}
                         onAssign={
                           canAssign
-                            ? async (techId: string) => {
-                                const existingOperation =
-                                  assignmentOperationsRef.current.get(ln.id);
-                                const operationKey =
-                                  existingOperation?.technicianId === techId
-                                    ? existingOperation.operationKey
-                                    : createAssignTechnicianOperationKey(
-                                        ln.id,
-                                        techId,
-                                      );
-
-                                assignmentOperationsRef.current.set(ln.id, {
-                                  technicianId: techId,
-                                  operationKey,
-                                });
-
-                                try {
-                                  await assignWorkOrderLineTechnician({
-                                    lineId: ln.id,
-                                    technicianId: techId,
-                                    operationKey,
-                                  });
-                                  await fetchAll();
-                                  if (
-                                    assignmentOperationsRef.current.get(ln.id)
-                                      ?.operationKey === operationKey
-                                  ) {
-                                    assignmentOperationsRef.current.delete(ln.id);
-                                  }
-                                  toast.success("Primary tech updated.");
-                                } catch (e) {
-                                  const msg = e instanceof Error ? e.message : "Failed to update primary tech.";
-                                  toast.error(msg);
-                                }
-                              }
+                            ? (technicianId: string) =>
+                                void assignLineTechnician(ln.id, technicianId)
                             : undefined
                         }
                         onOpenInspection={
@@ -2318,6 +2320,9 @@ export default function WorkOrderIdClient(): JSX.Element {
                   lineSnapshot={panelLine}
                   primaryTechSnapshot={panelPrimaryTech}
                   isPunchedInSnapshot={panelLineIsPunchedIn}
+                  canAssignTechnician={canAssign}
+                  technicianOptions={assignables}
+                  onAssignTechnician={assignLineTechnician}
                   onChanged={fetchAll}
                   mode="tech"
                   variant="cockpit"
