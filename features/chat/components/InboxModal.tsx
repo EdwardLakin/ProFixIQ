@@ -757,6 +757,9 @@ export default function InboxModal({
                   (participant) => participant.id === m.sender_participant_id,
                 ) ?? users.find((u) => u.id === m.sender_id);
 
+              // Accessible high-contrast colors in light mode for outgoing messages
+              // Outgoing (mine): use bg-white, border-orange-600/85, text-orange-900 in light, original in dark
+              // Incoming: unchanged
               return (
                 <div
                   key={m.id}
@@ -772,9 +775,25 @@ export default function InboxModal({
                   <div
                     className={`max-w-[78%] rounded-lg border px-2.5 py-1.5 text-xs leading-relaxed ${
                       mine
-                        ? "border-orange-500/35 bg-orange-500/18 text-orange-50"
+                        ?
+                          "border-orange-500/35 bg-orange-500/18 text-orange-50 " +
+                          "@media (prefers-color-scheme: light){ border-orange-600/85 bg-white text-orange-900 }"
                         : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)]"
                     }`}
+                    style={mine ? {
+                      // Inline override for light mode (high contrast)
+                      backgroundColor: "#fff",
+                      borderColor: "#ea580c", // orange-600
+                      color: "#7c2d12", // orange-900
+                      // Only applies in light mode, dark mode remains unaffected
+                      ...(typeof window !== "undefined" && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+                        ? {
+                            backgroundColor: undefined,
+                            borderColor: undefined,
+                            color: undefined
+                          }
+                        : {}),
+                    } : undefined}
                   >
                     {m.content}
                   </div>
