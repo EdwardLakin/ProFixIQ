@@ -429,7 +429,7 @@ export default function FleetRequestBuilderPage() {
             className={inputClass}
             type="date"
             value={requestedForDate}
-            onChange={(event) => setRequestedForDate(event.target.value)}
+            onInput={(event) => setRequestedForDate(event.currentTarget.value)}
           />
         </label>
       </section>
