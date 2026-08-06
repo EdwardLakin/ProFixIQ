@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { resolveHistoryNarratives } from "@/features/work-orders/lib/display/historyNarratives";
 
 type VehicleLike = {
   year?: string | number | null;
@@ -112,10 +113,11 @@ export function ImportedHistoryRecordCard({
   currency = "CAD",
 }: Props): JSX.Element {
   const detailsId = `imported-history-details-${row.id}`;
+  const resolvedNarratives = resolveHistoryNarratives(row);
   const narratives = [
-    ["Complaint", row.symptom],
-    ["Cause", row.cause],
-    ["Correction", row.correction],
+    ["Complaint", resolvedNarratives.complaint],
+    ["Cause", resolvedNarratives.cause],
+    ["Correction", resolvedNarratives.correction],
   ] as const;
   const hasNarratives = narratives.some(([, value]) => Boolean(value?.trim()));
   const serviceSummary =
