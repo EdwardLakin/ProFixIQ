@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - fix/supabase-clean-replay
+      - agent/reconcile-production-migration-drift
   pull_request:
     paths:
       - "supabase/migrations/**"
