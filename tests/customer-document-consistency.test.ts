@@ -21,6 +21,10 @@ describe("customer document consistency", () => {
   it("allocates stable shop-scoped work-order and invoice numbers", () => {
     expect(migration).toContain("private.document_number_counters");
     expect(migration).toContain("on conflict (shop_id, document_kind) do update");
+    expect(migration).toContain(
+      "drop constraint if exists work_orders_custom_id_key",
+    );
+    expect(migration).toContain("work_orders_shop_custom_id_uniq");
     expect(migration).toContain("'WO-'");
     expect(migration).toContain("'INV-'");
     expect(migration).toContain("trg_assign_work_order_customer_number");

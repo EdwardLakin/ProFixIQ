@@ -18,6 +18,16 @@ create table if not exists private.document_number_counters (
 revoke all on table private.document_number_counters
   from public, anon, authenticated;
 
+-- The clean baseline still carries a legacy global custom-id constraint,
+-- while production is correctly tenant-scoped. Per-shop counters require the
+-- same tenant-scoped uniqueness contract in both database shapes.
+alter table public.work_orders
+  drop constraint if exists work_orders_custom_id_key;
+
+create unique index if not exists work_orders_shop_custom_id_uniq
+  on public.work_orders (shop_id, custom_id)
+  where custom_id is not null;
+
 -- Preserve the numeric sequence already used by legacy staff-created work
 -- orders (for example EL000008). Imported invoice numbers are intentionally
 -- excluded because they belong to the source system's numbering sequence.
