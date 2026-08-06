@@ -31,6 +31,24 @@ type AgentResponse = {
   answers?: Record<string, string> | null;
 };
 
+type AgentTeamMission = {
+  id?: string;
+  status?: string;
+  title?: string | null;
+};
+
+type AgentTeamState = {
+  engineeringCaseId?: string;
+  currentStage?: string;
+  caseStatus?: string;
+  stepStatus?: string | null;
+  summary?: string | null;
+  decision?: string | null;
+  missingInformation?: string[];
+  mission?: AgentTeamMission | null;
+  syncedAt?: string;
+};
+
 type AgentContext = {
   location?: string | null;
   steps?: string | null;
@@ -41,6 +59,7 @@ type AgentContext = {
 
   questions?: AgentQuestion[];
   responses?: AgentResponse[];
+  agentTeam?: AgentTeamState;
 
   [key: string]: unknown;
 };
@@ -120,20 +139,43 @@ export default function AgentConsolePage() {
   const [replySending, setReplySending] = useState(false);
 
   const selectedContext: AgentContext | null = selected?.normalized_json ?? null;
+  const selectedTeam = useMemo<AgentTeamState | null>(() => {
+    const raw = selectedContext?.agentTeam;
+    return raw && typeof raw === "object" && !Array.isArray(raw)
+      ? raw
+      : null;
+  }, [selectedContext?.agentTeam]);
 
   const questions = useMemo<AgentQuestion[]>(() => {
     const raw = selectedContext?.questions;
-    if (!raw || !Array.isArray(raw)) return [];
-    return raw
-      .filter((q): q is AgentQuestion => !!q && typeof q === "object")
-      .filter((q) => isString((q as { question?: unknown }).question))
-      .map((q) => ({
-        id: isString((q as { id?: unknown }).id)
-          ? (q as { id: string }).id
-          : undefined,
-        question: (q as { question: string }).question,
-      }));
-  }, [selectedContext?.questions]);
+    const legacy = raw && Array.isArray(raw)
+      ? raw
+          .filter((q): q is AgentQuestion => !!q && typeof q === "object")
+          .filter((q) => isString((q as { question?: unknown }).question))
+          .map((q) => ({
+            id: isString((q as { id?: unknown }).id)
+              ? (q as { id: string }).id
+              : undefined,
+            question: (q as { question: string }).question,
+          }))
+      : [];
+    const teamMissing = Array.isArray(selectedTeam?.missingInformation)
+      ? selectedTeam.missingInformation
+          .filter(isString)
+          .map((question, index) => ({
+            id: `team-${selectedTeam?.engineeringCaseId ?? "case"}-${index}`,
+            question,
+          }))
+      : [];
+
+    const seen = new Set<string>();
+    return [...legacy, ...teamMissing].filter((question) => {
+      const key = question.question.trim().toLowerCase();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [selectedContext?.questions, selectedTeam]);
 
   const responses = useMemo<AgentResponse[]>(() => {
     const raw = selectedContext?.responses;
@@ -187,6 +229,13 @@ export default function AgentConsolePage() {
       return ta - tb;
     });
   }, [selectedContext?.responses]);
+
+  const missionAwaitingApproval = selectedTeam?.mission?.status === "awaiting_approval";
+  const releaseAwaitingApproval = selectedTeam?.caseStatus === "ready_for_human_approval"
+    && selectedTeam?.currentStage === "release";
+  const canApprove = Boolean(missionAwaitingApproval || releaseAwaitingApproval);
+  const approvalLabel = missionAwaitingApproval ? "Approve Mission" : "Approve Release";
+  const awaitingReporterInput = selectedTeam?.caseStatus === "blocked" && questions.length > 0;
 
   async function loadRequests() {
     try {
@@ -614,6 +663,49 @@ export default function AgentConsolePage() {
                   </div>
                 </div>
 
+                {selectedTeam && (
+                  <>
+                    <Separator className="bg-[color:var(--theme-surface-subtle)]" />
+                    <div className="space-y-2 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-[0.75rem]">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="text-[0.7rem] font-semibold uppercase tracking-[0.13em] text-[color:var(--theme-text-secondary)]">
+                          Engineering Team
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {selectedTeam.currentStage && (
+                            <Badge className="border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] text-[10px] text-[color:var(--theme-text-primary)]">
+                              {selectedTeam.currentStage.replace(/_/g, " ")}
+                            </Badge>
+                          )}
+                          {selectedTeam.caseStatus && (
+                            <Badge className="border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] text-[10px] text-[color:var(--theme-text-primary)]">
+                              {selectedTeam.caseStatus.replace(/_/g, " ")}
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                      {selectedTeam.summary && (
+                        <p className="whitespace-pre-line text-xs text-[color:var(--theme-text-primary)]">
+                          {selectedTeam.summary}
+                        </p>
+                      )}
+                      {selectedTeam.mission?.id && (
+                        <div className="text-xs text-[color:var(--theme-text-secondary)]">
+                          Mission: {selectedTeam.mission.title ?? selectedTeam.mission.id}{" "}
+                          {selectedTeam.mission.status
+                            ? `(${selectedTeam.mission.status.replace(/_/g, " ")})`
+                            : ""}
+                        </div>
+                      )}
+                      {selectedTeam.caseStatus === "blocked" && questions.length === 0 && (
+                        <div className="text-xs text-[color:var(--theme-text-muted)]">
+                          The engineering team is blocked on an internal dependency. No reporter input is requested.
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+
                 <Separator className="bg-[color:var(--theme-surface-subtle)]" />
 
                 {/* CONTEXT */}
@@ -827,9 +919,11 @@ export default function AgentConsolePage() {
                   </div>
 
                   {questions.length > 0 ? (
-                    <div className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2">
-                      <div className="text-[0.7rem] text-[color:var(--theme-text-secondary)]">
-                        Questions the agent needs answered:
+                    <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-2">
+                      <div className="text-[0.7rem] font-medium text-[color:var(--theme-text-secondary)]">
+                        {awaitingReporterInput
+                          ? "The engineering team needs this information to continue:"
+                          : "Questions the agent needs answered:"}
                       </div>
                       <ul className="mt-2 space-y-2">
                         {questions.map((q, idx) => (
@@ -849,8 +943,7 @@ export default function AgentConsolePage() {
                     </div>
                   ) : (
                     <div className="text-[0.7rem] text-[color:var(--theme-text-muted)]">
-                      No structured questions yet. (Once the worker starts
-                      asking, they’ll show here.)
+                      No reporter input is currently requested.
                     </div>
                   )}
 
@@ -886,7 +979,9 @@ export default function AgentConsolePage() {
 
                   <div className="space-y-2 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2">
                     <div className="text-[0.7rem] text-[color:var(--theme-text-secondary)]">
-                      Reply (answer the agent / add missing info)
+                      {awaitingReporterInput
+                        ? "Provide the requested evidence or answer"
+                        : "Reply (answer the agent / add missing info)"}
                     </div>
                     <textarea
                       value={replyText}
@@ -906,7 +1001,11 @@ export default function AgentConsolePage() {
                         )}
                         onClick={() => void sendReply()}
                       >
-                        {replySending ? "Sending…" : "Send Reply"}
+                        {replySending
+                          ? "Sending…"
+                          : awaitingReporterInput
+                            ? "Provide Evidence"
+                            : "Send Reply"}
                       </Button>
                     </div>
                   </div>
@@ -916,19 +1015,21 @@ export default function AgentConsolePage() {
 
                 {/* ACTION BUTTONS */}
                 <div className="flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    disabled={!selected || isPending}
-                    className={cn(
-                      "border-emerald-500/60 text-xs font-semibold text-emerald-300 hover:bg-emerald-600 hover:text-[color:var(--theme-text-on-accent)] disabled:opacity-50",
-                      isPending && "cursor-wait",
-                    )}
-                    onClick={() => selected && updateStatus("approve", selected)}
-                  >
-                    {isPending ? "Working…" : "Approve"}
-                  </Button>
+                  {canApprove && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={!selected || isPending}
+                      className={cn(
+                        "border-emerald-500/60 text-xs font-semibold text-emerald-300 hover:bg-emerald-600 hover:text-[color:var(--theme-text-on-accent)] disabled:opacity-50",
+                        isPending && "cursor-wait",
+                      )}
+                      onClick={() => selected && updateStatus("approve", selected)}
+                    >
+                      {isPending ? "Working…" : approvalLabel}
+                    </Button>
+                  )}
 
                   <Button
                     type="button"

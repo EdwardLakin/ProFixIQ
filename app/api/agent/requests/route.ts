@@ -100,6 +100,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
+function projectionQuestions(projection: AgentTeamProjection) {
+  return projection.missingInformation.map((question, index) => ({
+    id: `team-${projection.engineeringCaseId}-${index}`,
+    question,
+  }));
+}
+
 function teamCaseId(row: AgentRequestRow): string | null {
   if (!isRecord(row.normalized_json)) return null;
   const team = isRecord(row.normalized_json.agentTeam)
@@ -170,6 +177,7 @@ async function syncAgentRequestRow(row: AgentRequestRow): Promise<AgentRequestRo
         status: nextStatus,
         normalized_json: {
           ...normalized,
+          questions: projectionQuestions(projection),
           agentTeam: { ...projection, syncedAt: synchronizedAt },
         },
         github_pr_number: projection.pullRequest.number,
@@ -486,6 +494,7 @@ export async function POST(req: NextRequest) {
       intent: finalIntent,
       normalized_json: {
         ...structuredContext,
+        questions: projectionQuestions(projection),
         agentRequest: agentResponse ?? {},
         agentTeam: { ...projection, syncedAt: synchronizedAt },
       },
