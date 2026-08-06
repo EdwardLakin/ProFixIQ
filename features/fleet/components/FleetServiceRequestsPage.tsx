@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
@@ -93,6 +94,9 @@ export default function FleetServiceRequestsPage({
   uiContext: FleetUiContext;
   routePrefix: "/fleet" | "/portal/fleet";
 }) {
+  const pathname = usePathname() ?? "";
+  const productRoutes =
+    routePrefix === "/portal/fleet" && !pathname.startsWith("/portal/fleet");
   const [payload, setPayload] = useState<Payload | null>(null);
   const [filter, setFilter] = useState<Filter>("active");
   const [loading, setLoading] = useState(true);
@@ -165,10 +169,17 @@ export default function FleetServiceRequestsPage({
     );
   }, [filter, payload?.requests]);
 
-  const buildHref =
-    routePrefix === "/portal/fleet"
+  const buildHref = productRoutes
+    ? "/requests/new"
+    : routePrefix === "/portal/fleet"
       ? "/portal/fleet/request/build"
       : "/fleet/service-requests/new";
+  const assetHref = (vehicleId: string) =>
+    productRoutes
+      ? `/assets/${encodeURIComponent(vehicleId)}`
+      : `${routePrefix}/units/${encodeURIComponent(vehicleId)}`;
+  const billingHref = (workOrderId: string) =>
+    `${productRoutes ? "/history" : `${routePrefix}/billing`}?workOrderId=${encodeURIComponent(workOrderId)}`;
 
   return (
     <main className="mx-auto w-full max-w-6xl space-y-5 px-4 py-6 text-[color:var(--theme-text-primary)]">
@@ -286,7 +297,7 @@ export default function FleetServiceRequestsPage({
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <Link
-                    href={`${routePrefix}/units/${item.vehicleId}`}
+                    href={assetHref(item.vehicleId)}
                     className="text-sm font-semibold text-sky-300 hover:underline"
                   >
                     {item.unitLabel}
@@ -350,7 +361,7 @@ export default function FleetServiceRequestsPage({
                 {item.workOrder?.needsApproval ||
                 (item.workOrder?.outstandingBalance ?? 0) > 0 ? (
                   <Link
-                    href={`${routePrefix}/billing?workOrderId=${item.workOrder?.id ?? ""}`}
+                    href={billingHref(item.workOrder?.id ?? "")}
                     className="inline-flex items-center gap-2 rounded-lg border border-sky-300/30 px-3 py-2 text-xs font-medium text-sky-300 hover:bg-sky-300/10"
                   >
                     <WalletCards size={14} />

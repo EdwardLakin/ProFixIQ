@@ -193,11 +193,19 @@ describe("premier fleet workspaces", () => {
     const economics = source(
       "features/fleet/components/FleetUnitEconomicsPanel.tsx",
     );
+    const requests = source(
+      "features/fleet/components/FleetServiceRequestsPage.tsx",
+    );
+    const pretrips = source("features/fleet/components/PretripReportsPage.tsx");
 
     expect(issues).toContain("requestHref = productHostRoute");
     expect(issues).toContain('"/requests/new"');
     expect(detail).toContain('"/pre-trips/start"');
     expect(detail).toContain('"/requests/new"');
     expect(economics).toContain("`/assets/${encodeURIComponent(unit.unitId)}`");
+  expect(requests).toContain("const buildHref = productRoutes");
+  expect(requests).toContain('? "/requests/new"');
+    expect(requests).toContain('productRoutes ? "/history"');
+    expect(pretrips).toContain('productRoutes ? "/assets"');
   });
 });
