@@ -86,6 +86,8 @@ describe("premier fleet workspaces", () => {
     expect(workspace).toContain("TERMINAL_REQUEST_STATUSES");
     expect(workspace).toContain("One timeline from fleet request");
     expect(workspace).toContain("Review approval");
+    expect(workspace).toContain("Submitted {dateLabel(item.createdAt)}");
+    expect(workspace).toContain("dateLabel(item.requestedForDate)");
   });
 
   it("protects financial data and records decisions through canonical flows", () => {
