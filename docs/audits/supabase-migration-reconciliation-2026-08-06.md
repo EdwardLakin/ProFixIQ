@@ -12,7 +12,7 @@ verified in PostgreSQL.
 | `20260806181455_reconcile_production_billing_protections.sql` | Promotes the four production-only billing entitlement hotfixes into repository history, including the final generated-`max_users` guard fix. |
 | `20260806181502_restore_fleet_owned_unit_enrollment.sql`      | Re-applies Fleet-owned unit enrollment through a new forward migration because production missed `20260806021000`.                           |
 | `20260806181508_retire_legacy_bootstrap_schema_aliases.sql`   | Preserves and retires the 17 clean-replay-only bootstrap aliases, then verifies the two overloaded Parts functions directly in PostgreSQL.   |
-| `20260806181742_reconcile_migration_alias_effects.sql`        | Adds the one effect missing from the non-identical invoice alias, normalizes bridge RLS, and validates any configured agent-bridge row.      |
+| `20260806181742_reconcile_migration_alias_effects.sql`        | Adds the missing invoice effect, restores the service-only onboarding namespace, normalizes bridge RLS, and validates any configured bridge. |
 
 ## Seventeen-column classification
 
@@ -53,6 +53,16 @@ production:
 Both names are overloaded in production. A linked type export can omit one
 overload, so type-file presence is not valid function-existence evidence. The
 forward migration and runtime test use `to_regprocedure(...)` instead.
+
+## Exposed-schema compatibility
+
+Production's API configuration exposes `onboarding_agent`, but this repository's
+ordered migration chain did not create that namespace. That prevented PostgREST
+from building a schema cache on clean preview databases. The forward repair
+creates the namespace when absent, revokes `anon` and `authenticated`, and grants
+only `service_role` usage. It does not recreate, replace, or modify production's
+existing onboarding-agent objects or data; those remain outside this
+public-schema reconciliation.
 
 ## Production-only history classification
 

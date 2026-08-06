@@ -1068,6 +1068,17 @@ begin
     raise exception 'P0-008 retired agent bridge credential table remains';
   end if;
 
+  if not exists (
+    select 1
+    from pg_namespace n
+    where n.nspname = 'onboarding_agent'
+  )
+  or not has_schema_privilege('service_role', 'onboarding_agent', 'USAGE')
+  or has_schema_privilege('anon', 'onboarding_agent', 'USAGE')
+  or has_schema_privilege('authenticated', 'onboarding_agent', 'USAGE') then
+    raise exception 'P0-008 onboarding-agent compatibility namespace is unsafe';
+  end if;
+
   if (
     select array_agg(p.policyname::text order by p.policyname)
     from pg_policies p

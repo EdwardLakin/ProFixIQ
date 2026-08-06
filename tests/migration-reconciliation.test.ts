@@ -77,6 +77,10 @@ describe("Supabase migration reconciliation", () => {
   });
 
   it("fills the one non-identical timestamp-alias schema effect", () => {
+    expect(effects).toContain("create schema if not exists onboarding_agent");
+    expect(effects).toContain(
+      "grant usage on schema onboarding_agent to service_role",
+    );
     expect(effects).toContain("quickbooks_sync_events_entity_type_check");
     expect(effects).toContain("'invoice_version'");
     expect(effects).toContain("to authenticated");
