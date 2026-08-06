@@ -26,6 +26,8 @@ type DB = Database;
 type FleetPretripReportRow =
   DB["public"]["Tables"]["fleet_pretrip_reports"]["Row"];
 type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
+type SubmitFleetPretripArgs =
+  DB["public"]["Functions"]["submit_fleet_pretrip_report"]["Args"];
 
 type PretripJoinedRow = FleetPretripReportRow & {
   vehicles: Pick<VehicleRow, "unit_number" | "license_plate" | "vin"> | null;
@@ -374,19 +376,22 @@ export async function POST(req: NextRequest) {
         uploads,
       });
 
+      const pretripArgs = {
+        p_report_id: reportId,
+        p_fleet_id: fleetId,
+        p_vehicle_id: raw.unitId,
+        p_trailer_vehicle_id: trailerVehicleId,
+        p_odometer_km: odometer,
+        p_checklist: checklist as Json,
+        p_notes: raw.notes?.trim() || null,
+        p_template_assignment_id: templateAssignmentId,
+        p_evidence: uploadedEvidence,
+      };
       const { data: inserted, error: insertError } = await supabase.rpc(
         "submit_fleet_pretrip_report",
-        {
-          p_report_id: reportId,
-          p_fleet_id: fleetId,
-          p_vehicle_id: raw.unitId,
-          p_trailer_vehicle_id: trailerVehicleId,
-          p_odometer_km: odometer,
-          p_checklist: checklist as Json,
-          p_notes: raw.notes?.trim() || null,
-          p_template_assignment_id: templateAssignmentId,
-          p_evidence: uploadedEvidence,
-        },
+        // PostgreSQL permits SQL NULL for these deliberately optional inputs;
+        // generated function types do not encode argument nullability.
+        pretripArgs as unknown as SubmitFleetPretripArgs,
       );
 
       if (insertError || !inserted) {

@@ -889,6 +889,247 @@ begin
   then
     raise exception 'P0-008 work-order creation RPC contract or ACL is unsafe';
   end if;
+
+  select array_agg(
+      retired.table_name || '.' || retired.column_name
+      order by retired.table_name, retired.column_name
+    )
+    into unsafe
+  from (values
+    ('demo_shop_boosts', 'updated_at'),
+    ('email_logs', 'email'),
+    ('email_logs', 'error'),
+    ('email_logs', 'event_type'),
+    ('email_logs', 'sg_event_id'),
+    ('email_logs', 'timestamp'),
+    ('fleet_members', 'id'),
+    ('invoices', 'due_at'),
+    ('messages', 'chat_id'),
+    ('payments', 'invoice_id'),
+    ('payments', 'payment_method'),
+    ('payments', 'processor'),
+    ('payments', 'processor_payment_id'),
+    ('work_order_lines', 'void_note'),
+    ('work_order_lines', 'void_reason'),
+    ('work_order_quote_lines', 'inspection_item_id'),
+    ('work_order_quote_lines', 'menu_item_id')
+  ) retired(table_name, column_name)
+  join information_schema.columns c
+    on c.table_schema = 'public'
+   and c.table_name = retired.table_name
+   and c.column_name = retired.column_name;
+
+  if unsafe is not null then
+    raise exception 'P0-008 retired bootstrap aliases remain: %', unsafe;
+  end if;
+
+  select array_agg(
+      required.table_name || '.' || required.column_name
+      order by required.table_name, required.column_name
+    )
+    into missing
+  from (values
+    ('shops', 'billing_entitlement_override'),
+    ('shops', 'billing_grace_until'),
+    ('shops', 'billing_entitlement_updated_at'),
+    ('shops', 'location_type')
+  ) required(table_name, column_name)
+  where not exists (
+    select 1
+    from information_schema.columns c
+    where c.table_schema = 'public'
+      and c.table_name = required.table_name
+      and c.column_name = required.column_name
+  );
+
+  if missing is not null then
+    raise exception 'P0-008 missing billing entitlement columns: %', missing;
+  end if;
+
+  if to_regprocedure('public.can_update_part_request_items(uuid)') is null
+    or to_regprocedure(
+      'public.receive_part_request_item(uuid,uuid,numeric,uuid,text)'
+    ) is null
+  then
+    raise exception 'P0-008 required Parts overloads are missing';
+  end if;
+
+  if has_function_privilege(
+      'anon',
+      'public.prevent_client_shop_billing_identity_write()',
+      'EXECUTE'
+    )
+    or has_function_privilege(
+      'authenticated',
+      'public.prevent_client_shop_billing_identity_write()',
+      'EXECUTE'
+    )
+    or has_function_privilege(
+      'anon',
+      'public.normalize_client_shop_billing_identity_insert()',
+      'EXECUTE'
+    )
+    or has_function_privilege(
+      'authenticated',
+      'public.normalize_client_shop_billing_identity_insert()',
+      'EXECUTE'
+    )
+    or has_function_privilege(
+      'anon',
+      'public.profixiq_mark_shop_billing_sync()',
+      'EXECUTE'
+    )
+    or has_function_privilege(
+      'authenticated',
+      'public.profixiq_mark_shop_billing_sync()',
+      'EXECUTE'
+    )
+  then
+    raise exception 'P0-008 shop billing trigger functions are exposed to clients';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_policies
+    where schemaname = 'public'
+      and tablename = 'shops'
+      and policyname = 'shops_insert_first_shop_only'
+      and roles = array['authenticated']::name[]
+      and cmd = 'INSERT'
+  ) then
+    raise exception 'P0-008 first-shop-only insert policy is missing';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_trigger t
+    where t.tgrelid = 'public.profiles'::regclass
+      and t.tgname = 'profiles_mark_shop_billing_sync'
+      and not t.tgisinternal
+  ) or not exists (
+    select 1
+    from pg_trigger t
+    where t.tgrelid = 'public.shops'::regclass
+      and t.tgname = 'prevent_client_shop_billing_identity_write'
+      and not t.tgisinternal
+  ) or not exists (
+    select 1
+    from pg_trigger t
+    where t.tgrelid = 'public.shops'::regclass
+      and t.tgname = 'shops_normalize_client_billing_identity_insert'
+      and not t.tgisinternal
+  ) then
+    raise exception 'P0-008 shop billing protection triggers are missing';
+  end if;
+
+  if position(
+      'new.max_users is distinct from old.max_users'
+      in pg_get_functiondef(
+        'public.prevent_client_shop_billing_identity_write()'::regprocedure
+      )
+    ) > 0
+  then
+    raise exception 'P0-008 billing guard must not compare generated max_users';
+  end if;
+
+  if position(
+      'f.shop_id, f.customer_id'
+      in pg_get_functiondef(
+        'public.manage_fleet_unit_enrollment(text,uuid,uuid,uuid,text,text,text,integer,text,text,text,text,time without time zone)'::regprocedure
+      )
+    ) = 0
+    or position(
+      'Enroll the unit before assigning a driver'
+      in pg_get_functiondef(
+        'public.manage_fleet_unit_enrollment(text,uuid,uuid,uuid,text,text,text,integer,text,text,text,text,time without time zone)'::regprocedure
+      )
+    ) = 0
+  then
+    raise exception 'P0-008 Fleet-owned unit enrollment boundary is stale';
+  end if;
+
+  if position(
+      'voided_reason = trim(p_reason)'
+      in pg_get_functiondef(
+        'public.parts_void_work_order_line_atomic(uuid,uuid,text,text,text,text,text,text,text,text,uuid)'::regprocedure
+      )
+    ) = 0
+    or position(
+      'voided_note = nullif(trim(p_note)'
+      in pg_get_functiondef(
+        'public.parts_void_work_order_line_atomic(uuid,uuid,text,text,text,text,text,text,text,text,uuid)'::regprocedure
+      )
+    ) = 0
+  then
+    raise exception 'P0-008 line-void RPC still targets retired aliases';
+  end if;
+
+  if to_regclass('public.agent_bridge_credentials') is not null then
+    raise exception 'P0-008 retired agent bridge credential table remains';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_namespace n
+    where n.nspname = 'onboarding_agent'
+  )
+  or not has_schema_privilege('service_role', 'onboarding_agent', 'USAGE')
+  or has_schema_privilege('anon', 'onboarding_agent', 'USAGE')
+  or has_schema_privilege('authenticated', 'onboarding_agent', 'USAGE') then
+    raise exception 'P0-008 onboarding-agent compatibility namespace is unsafe';
+  end if;
+
+  if (
+    select array_agg(p.policyname::text order by p.policyname)
+    from pg_policies p
+    where p.schemaname = 'public'
+      and p.tablename = 'integrations'
+  ) is distinct from array[
+    'integrations__shop_delete',
+    'integrations__shop_insert',
+    'integrations__shop_select',
+    'integrations__shop_update'
+  ]::text[]
+  or exists (
+    select 1
+    from pg_policies p
+    where p.schemaname = 'public'
+      and p.tablename = 'integrations'
+      and p.roles::text <> '{authenticated}'
+  ) then
+    raise exception 'P0-008 integration policies must be authenticated-only';
+  end if;
+
+  if exists (
+    select 1
+    from public.integrations i
+    where i.id = '7c2da329-5117-48c0-a1ee-d51b5d63827d'::uuid
+      and not (
+        i.shop_id is null
+        and i.provider = 'aftermarket_api'
+        and i.status = 'enabled'
+        and i.config ->> 'kind' = 'profixiq_agent_bridge'
+        and nullif(i.config ->> 'secret', '') is not null
+      )
+  ) or exists (
+    select 1
+    from public.integrations i
+    where i.config ->> 'kind' = 'profixiq_agent_bridge'
+      and i.id <> '7c2da329-5117-48c0-a1ee-d51b5d63827d'::uuid
+  ) then
+    raise exception 'P0-008 configured agent bridge integration is noncanonical';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_constraint c
+    where c.conrelid = 'public.quickbooks_sync_events'::regclass
+      and c.conname = 'quickbooks_sync_events_entity_type_check'
+      and c.convalidated
+      and pg_get_constraintdef(c.oid, true) like '%invoice_version%'
+  ) then
+    raise exception 'P0-008 QuickBooks invoice-version entity contract is missing';
+  end if;
 end
 $p0_008$;
 
