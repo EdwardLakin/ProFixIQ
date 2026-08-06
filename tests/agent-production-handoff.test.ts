@@ -8,6 +8,7 @@ function read(path: string) {
 
 describe("production agent request handoff", () => {
   const route = read("app/api/agent/requests/route.ts");
+  const detailRoute = read("app/api/agent/requests/[id]/route.ts");
   const teamClient = read("features/agent/server/teamClient.ts");
   const consolePage = read("features/agent/agent-console/app/agent/page.tsx");
   const replyRoute = read("app/api/agent/requests/[id]/reply/route.ts");
@@ -57,6 +58,14 @@ describe("production agent request handoff", () => {
     expect(teamClient).toContain("Human approval is required before the engineering team can change code");
     expect(teamClient).toContain("awaitingMissionApproval");
     expect(teamClient).toContain("? []");
+  });
+
+  it("keeps the expanded mission shape when reading the local request projection", () => {
+    expect(detailRoute).toContain('acceptanceCriteria: stringArray(team.mission.acceptanceCriteria)');
+    expect(detailRoute).toContain('constraints: stringArray(team.mission.constraints)');
+    expect(detailRoute).toContain('risks: stringArray(team.mission.risks)');
+    expect(detailRoute).toContain('planSteps: missionPlanSteps(team.mission.planSteps)');
+    expect(detailRoute).toContain('NonNullable<AgentTeamProjection["mission"]>["planSteps"]');
   });
 
   it("only exposes approval when the Agent team has a mission or release gate", () => {

@@ -44,6 +44,24 @@ function nullableString(value: unknown): string | null {
   return text || null;
 }
 
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.map((item) => nullableString(item)).filter((item): item is string => Boolean(item))
+    : [];
+}
+
+function missionPlanSteps(value: unknown): NonNullable<AgentTeamProjection["mission"]>["planSteps"] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter(isRecord)
+    .map((step) => ({
+      position: Number.isFinite(Number(step.position)) ? Number(step.position) : null,
+      title: nullableString(step.title) ?? "Plan step",
+      description: nullableString(step.description),
+      ownerStage: nullableString(step.ownerStage ?? step.owner_stage),
+    }));
+}
+
 function projectionFromNormalized(value: unknown): AgentTeamProjection | null {
   if (!isRecord(value) || !isRecord(value.agentTeam)) return null;
   const team = value.agentTeam;
@@ -59,6 +77,10 @@ function projectionFromNormalized(value: unknown): AgentTeamProjection | null {
         problemStatement: nullableString(team.mission.problemStatement),
         approvedAt: nullableString(team.mission.approvedAt),
         approvedBy: nullableString(team.mission.approvedBy),
+        acceptanceCriteria: stringArray(team.mission.acceptanceCriteria),
+        constraints: stringArray(team.mission.constraints),
+        risks: stringArray(team.mission.risks),
+        planSteps: missionPlanSteps(team.mission.planSteps),
       }
     : null;
   const pullRequest = isRecord(team.pullRequest) ? team.pullRequest : {};
