@@ -1,4 +1,4 @@
-import sgMail from "@sendgrid/mail";
+import sgMail, { type MailDataRequired } from "@sendgrid/mail";
 import { createClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@shared/types/types/supabase";
 import { getTemplateId, type EmailTemplateKey } from "./templateIds";
@@ -12,6 +12,10 @@ type SendDynamicTemplateEmailInput = {
   to: string;
   dynamicTemplateData?: Record<string, unknown>;
   subject?: string | null;
+  content?: {
+    text: string;
+    html: string;
+  } | null;
   createdBy?: string | null;
   metadata?: Json;
 };
@@ -110,16 +114,25 @@ export async function sendDynamicTemplateEmail(
   }
 
   try {
-    const [response] = await sgMail.send({
-      to,
-      from: fromEmail,
-      templateId,
-      dynamicTemplateData: input.dynamicTemplateData ?? {},
-      customArgs: {
-        email_log_id: logRow.id,
-      },
-      ...(input.subject ? { subject: input.subject } : {}),
-    });
+    const customArgs = { email_log_id: logRow.id };
+    const message: MailDataRequired = input.content
+      ? {
+          to,
+          from: fromEmail,
+          subject: input.subject?.trim() || "A message from ProFixIQ",
+          text: input.content.text,
+          html: input.content.html,
+          customArgs,
+        }
+      : {
+          to,
+          from: fromEmail,
+          templateId,
+          dynamicTemplateData: input.dynamicTemplateData ?? {},
+          customArgs,
+          ...(input.subject ? { subject: input.subject } : {}),
+        };
+    const [response] = await sgMail.send(message);
 
     const headerValue =
       response.headers["x-message-id"] ??
