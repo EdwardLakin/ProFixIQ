@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { sendQuoteReadyEmail } from "@/features/email/server";
 import { getActiveBrandForRender } from "@/features/branding/server/getActiveBrandForRender";
+import { upsertPortalNotification } from "@/features/portal/server/upsertPortalNotification";
 
 type DB = Database;
 type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -43,18 +44,19 @@ function safeStr(v: unknown): string {
 
 function buildVehicleLabel(vehicleInfo?: QuoteVehicleInfo | null): string {
   if (!vehicleInfo) return "";
-  const year =
-    vehicleInfo.year != null ? String(vehicleInfo.year).trim() : "";
+  const year = vehicleInfo.year != null ? String(vehicleInfo.year).trim() : "";
   const make = safeStr(vehicleInfo.make).trim();
   const model = safeStr(vehicleInfo.model).trim();
   return [year, make, model].filter(Boolean).join(" ");
 }
 
-function buildCustomerName(customer: {
-  first_name?: string | null;
-  last_name?: string | null;
-  business_name?: string | null;
-} | null): string {
+function buildCustomerName(
+  customer: {
+    first_name?: string | null;
+    last_name?: string | null;
+    business_name?: string | null;
+  } | null,
+): string {
   if (!customer) return "";
   if (customer.business_name) return customer.business_name;
   return `${customer.first_name ?? ""} ${customer.last_name ?? ""}`.trim();
@@ -103,9 +105,7 @@ export async function sendQuoteEmail(
       .maybeSingle<Pick<ShopRow, "name" | "shop_name">>();
 
     resolvedShopName =
-      safeStr(shop?.shop_name).trim() ||
-      safeStr(shop?.name).trim() ||
-      "";
+      safeStr(shop?.shop_name).trim() || safeStr(shop?.name).trim() || "";
   }
 
   let resolvedCustomerName = customerName ?? "";
@@ -189,22 +189,22 @@ export async function sendQuoteEmail(
   }
 
   if (portalUserId) {
-    const { error: notifErr } = await supabase
-      .from("portal_notifications")
-      .insert({
-        user_id: portalUserId,
-        customer_id: portalCustomerId,
-        work_order_id: workOrderId,
+    try {
+      await upsertPortalNotification(supabase, {
+        userId: portalUserId,
+        customerId: portalCustomerId,
+        workOrderId,
         kind: "quote_ready",
         title: "Quote ready",
         body: `Your quote for Work Order ${workOrderId} at ${
           resolvedShopName || "the shop"
         } is ready to review in your portal.`,
+        eventKey: `quote_ready:${workOrderId}:${quoteUrl || quoteTotal || "current"}`,
+        href: `/portal/quotes/${workOrderId}`,
       });
-
-    if (notifErr) {
+    } catch (notifErr) {
       console.error(
-        "[sendQuoteEmail] Failed to insert portal quote notification:",
+        "[sendQuoteEmail] Failed to upsert portal quote notification:",
         notifErr,
       );
     }

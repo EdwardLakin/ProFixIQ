@@ -1,15 +1,8 @@
 // features/ai/components/chat/ChatWindow.tsx
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
-import type { Database } from "@shared/types/types/supabase";
 import {
   createMessageDraft,
   getOfflineMessageDraft,
@@ -19,54 +12,32 @@ import {
   type OfflineMessageDraft,
 } from "@/features/chat/offline/messageDrafts";
 import type { OfflineMutationScope } from "@/features/shared/lib/offline/mutations";
+import type { ChatMessage, MessageActorKind } from "@/features/chat/types";
 
-type Message = Database["public"]["Tables"]["messages"]["Row"];
+type Message = ChatMessage;
 
 type ChatWindowProps = {
   conversationId: string;
   userId: string;
   title?: string;
+  actorKind?: MessageActorKind;
 };
-
-// Helper type for Realtime broadcast payloads coming from realtime.broadcast_changes
-type BroadcastPayload<T> = {
-  payload?: {
-    record?: T;
-    new?: T;
-    old?: T | null;
-    [key: string]: unknown;
-  };
-  record?: T;
-  new?: T;
-  old?: T | null;
-  [key: string]: unknown;
-};
-
-function extractRecord<T>(payload: BroadcastPayload<T>): T | null {
-  return (
-    payload?.payload?.record ??
-    payload?.payload?.new ??
-    payload?.record ??
-    payload?.new ??
-    null
-  ) as T | null;
-}
 
 export default function ChatWindow({
   conversationId,
   userId,
   title = "Conversation",
+  actorKind = "staff",
 }: ChatWindowProps) {
-  const supabase = useMemo(
-    () => createBrowserSupabase(),
-    [],
-  );
+  const supabase = useMemo(() => createBrowserSupabase(), []);
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [draftScope, setDraftScope] = useState<OfflineMutationScope | null>(null);
+  const [draftScope, setDraftScope] = useState<OfflineMutationScope | null>(
+    null,
+  );
   const [draft, setDraft] = useState<OfflineMessageDraft | null>(null);
   const [draftReady, setDraftReady] = useState(false);
   const [draftSaved, setDraftSaved] = useState(false);
@@ -86,9 +57,13 @@ export default function ChatWindow({
         );
         return;
       }
-      const stored = await getOfflineMessageDraft({ scope, targetId: draftTargetId });
+      const stored = await getOfflineMessageDraft({
+        scope,
+        targetId: draftTargetId,
+      });
       if (cancelled) return;
-      const next = stored ?? createMessageDraft({ scope, targetId: draftTargetId });
+      const next =
+        stored ?? createMessageDraft({ scope, targetId: draftTargetId });
       setDraftScope(scope);
       setDraft(next);
       setNewMessage(next.content);
@@ -104,15 +79,32 @@ export default function ChatWindow({
     if (!draftReady || !draftScope || !draft || sending) return;
     const timer = window.setTimeout(() => {
       if (!newMessage.trim()) {
-        void removeOfflineMessageDraft({ scope: draftScope, targetId: draftTargetId });
+        void removeOfflineMessageDraft({
+          scope: draftScope,
+          targetId: draftTargetId,
+        });
         setDraftSaved(false);
         return;
       }
-      const next = { ...draft, content: newMessage, updatedAt: new Date().toISOString() };
+      const next = {
+        ...draft,
+        content: newMessage,
+        updatedAt: new Date().toISOString(),
+      };
       void saveOfflineMessageDraft(next).then(() => setDraftSaved(true));
     }, 350);
     return () => window.clearTimeout(timer);
   }, [draft, draftReady, draftScope, draftTargetId, newMessage, sending]);
+
+  const markRead = useCallback(async () => {
+    if (!conversationId) return;
+    await fetch("/api/chat/mark-read", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ conversationId, actor_kind: actorKind }),
+    }).catch(() => undefined);
+    window.dispatchEvent(new CustomEvent("profixiq:inbox-read"));
+  }, [actorKind, conversationId]);
 
   const fetchMessages = useCallback(async () => {
     if (!conversationId) return;
@@ -121,20 +113,21 @@ export default function ChatWindow({
       const res = await fetch("/api/chat/get-messages", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversationId }),
+        body: JSON.stringify({ conversationId, actor_kind: actorKind }),
       });
       if (!res.ok) throw new Error(String(res.status));
       const data = (await res.json()) as Message[];
       setMessages((prev) =>
         prev.length > 0 && data.length === 0 ? prev : data,
       );
+      await markRead();
     } catch (err) {
       console.error("[ChatWindow] fetchMessages error:", err);
       setError("Couldn't load messages.");
     } finally {
       setLoading(false);
     }
-  }, [conversationId]);
+  }, [actorKind, conversationId, markRead]);
 
   // initial load
   useEffect(() => {
@@ -185,49 +178,22 @@ export default function ChatWindow({
     const channel = supabase
       .channel(topic, {
         config: {
+          private: true,
           broadcast: {
             self: true,
             ack: true,
           },
         },
+      } as unknown as NonNullable<Parameters<typeof supabase.channel>[1]>)
+      .on("broadcast", { event: "INSERT" }, () => {
+        void fetchMessages();
       })
-      .on(
-        "broadcast",
-        { event: "INSERT" },
-        (payload: BroadcastPayload<Message>) => {
-          console.log("[ChatWindow] broadcast INSERT", payload);
-          const msg = extractRecord<Message>(payload);
-          if (!msg) return;
-          setMessages((prev) =>
-            prev.some((m) => m.id === msg.id) ? prev : [...prev, msg],
-          );
-        },
-      )
-      .on(
-        "broadcast",
-        { event: "UPDATE" },
-        (payload: BroadcastPayload<Message>) => {
-          console.log("[ChatWindow] broadcast UPDATE", payload);
-          const msg = extractRecord<Message>(payload);
-          if (!msg) return;
-          setMessages((prev) =>
-            prev.map((m) => (m.id === msg.id ? msg : m)),
-          );
-        },
-      )
-      .on(
-        "broadcast",
-        { event: "DELETE" },
-        (payload: BroadcastPayload<Message>) => {
-          console.log("[ChatWindow] broadcast DELETE", payload);
-          const msg =
-            (payload?.payload?.old as Message | undefined) ??
-            (payload.old as Message | undefined) ??
-            null;
-          if (!msg) return;
-          setMessages((prev) => prev.filter((m) => m.id !== msg.id));
-        },
-      )
+      .on("broadcast", { event: "UPDATE" }, () => {
+        void fetchMessages();
+      })
+      .on("broadcast", { event: "DELETE" }, () => {
+        void fetchMessages();
+      })
       .subscribe((status) => {
         console.log("[ChatWindow] broadcast subscribe status", status, topic);
       });
@@ -235,7 +201,7 @@ export default function ChatWindow({
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [supabase, conversationId]);
+  }, [supabase, conversationId, fetchMessages]);
 
   // scroll to bottom on new messages
   useEffect(() => {
@@ -265,10 +231,14 @@ export default function ChatWindow({
         await saveOfflineMessageDraft(savedDraft);
         setDraft(savedDraft);
         setDraftSaved(true);
-        setError("Offline — this message is saved as a draft and has not been sent.");
+        setError(
+          "Offline — this message is saved as a draft and has not been sent.",
+        );
       } catch {
         setDraftSaved(false);
-        setError("Offline draft could not be saved. Keep this window open and try again.");
+        setError(
+          "Offline draft could not be saved. Keep this window open and try again.",
+        );
       }
       return;
     }
@@ -282,6 +252,12 @@ export default function ChatWindow({
       content,
       sent_at: new Date().toISOString(),
       client_message_id: clientMessageId,
+      sender_kind: actorKind,
+      sender_participant_id: null,
+      sender_name: null,
+      sender_avatar_url: null,
+      is_mine: true,
+      can_delete: false,
     } as Message;
 
     setMessages((prev) => [...prev, optimistic]);
@@ -297,13 +273,11 @@ export default function ChatWindow({
           conversationId,
           content,
           clientMessageId,
+          actor_kind: actorKind,
         }),
       });
       if (!res.ok) {
-        console.error(
-          "[ChatWindow] send-message failed:",
-          await res.text(),
-        );
+        console.error("[ChatWindow] send-message failed:", await res.text());
         setMessages((prev) => prev.filter((message) => message.id !== tempId));
         setNewMessage(content);
         setError("Message failed to send.");
@@ -321,10 +295,15 @@ export default function ChatWindow({
         inserted,
       ]);
       if (draftScope) {
-        await removeOfflineMessageDraft({ scope: draftScope, targetId: draftTargetId });
+        await removeOfflineMessageDraft({
+          scope: draftScope,
+          targetId: draftTargetId,
+        });
       }
       setDraft(
-        draftScope ? createMessageDraft({ scope: draftScope, targetId: draftTargetId }) : null,
+        draftScope
+          ? createMessageDraft({ scope: draftScope, targetId: draftTargetId })
+          : null,
       );
       setDraftSaved(false);
     } catch (err) {
@@ -335,7 +314,17 @@ export default function ChatWindow({
     } finally {
       setSending(false);
     }
-  }, [conversationId, draft, draftReady, draftScope, draftTargetId, newMessage, sending, userId]);
+  }, [
+    actorKind,
+    conversationId,
+    draft,
+    draftReady,
+    draftScope,
+    draftTargetId,
+    newMessage,
+    sending,
+    userId,
+  ]);
 
   const deleteMessage = useCallback(
     async (id: string) => {
@@ -345,7 +334,7 @@ export default function ChatWindow({
         const res = await fetch("/api/chat/delete-message", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id }),
+          body: JSON.stringify({ id, actor_kind: actorKind }),
         });
         if (!res.ok) {
           console.error(
@@ -359,7 +348,7 @@ export default function ChatWindow({
         setMessages(prev);
       }
     },
-    [messages],
+    [actorKind, messages],
   );
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -387,21 +376,23 @@ export default function ChatWindow({
         lastSender = "";
       }
 
-      const isMine = m.sender_id === userId;
-      const showAvatar = m.sender_id !== lastSender;
+      const isMine = m.is_mine;
+      const showAvatar = m.sender_participant_id !== lastSender;
       byDay.push({ type: "msg", msg: m, isMine, showAvatar });
 
-      lastSender = m.sender_id ?? "";
+      lastSender = m.sender_participant_id ?? m.sender_id ?? "";
     });
 
     return byDay;
-  }, [messages, userId]);
+  }, [messages]);
 
   return (
     <div className="flex h-full flex-col rounded border border-[var(--metal-border-soft)] bg-[var(--metal-surface)] text-[color:var(--theme-text-primary)]">
       {/* header */}
       <div className="border-b border-[var(--metal-border-soft)] px-4 py-3 flex items-center justify-between">
-        <div className="text-sm font-medium text-[color:var(--theme-text-primary)]">{title}</div>
+        <div className="text-sm font-medium text-[color:var(--theme-text-primary)]">
+          {title}
+        </div>
         {error ? (
           <div className="text-[10px] text-red-200/80">{error}</div>
         ) : null}
@@ -446,7 +437,7 @@ export default function ChatWindow({
               >
                 {!isMine && showAvatar ? (
                   <div className="mt-6 h-7 w-7 rounded-full bg-[color:var(--theme-surface-panel-strong)] flex items-center justify-center text-[10px] text-[color:var(--theme-text-secondary)]">
-                    U
+                    {(msg.sender_name?.trim().charAt(0) || "U").toUpperCase()}
                   </div>
                 ) : (
                   !isMine && <div className="w-7" />
@@ -457,8 +448,8 @@ export default function ChatWindow({
                     className={[
                       "inline-flex",
                       "flex-col",
-                      "min-w-[140px]",   // 👈 prevents super-narrow bubbles
-                      "max-w-[80%]",     // 👈 lets them stretch nicely on wider screens
+                      "min-w-[140px]", // 👈 prevents super-narrow bubbles
+                      "max-w-[80%]", // 👈 lets them stretch nicely on wider screens
                       "rounded-2xl",
                       "px-3 py-2 text-sm",
                       "whitespace-pre-wrap break-words",
@@ -467,12 +458,19 @@ export default function ChatWindow({
                         : "bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)]",
                     ].join(" ")}
                   >
+                    {!isMine && msg.sender_name ? (
+                      <p className="mb-0.5 text-[10px] font-semibold text-[color:var(--theme-text-secondary)]">
+                        {msg.sender_name}
+                      </p>
+                    ) : null}
                     <p>{msg.content}</p>
                     {time ? (
                       <p
                         className={[
                           "mt-1 text-[10px]",
-                          isMine ? "text-[color:var(--theme-text-on-accent)]" : "text-[color:var(--theme-text-secondary)]",
+                          isMine
+                            ? "text-[color:var(--theme-text-on-accent)]"
+                            : "text-[color:var(--theme-text-secondary)]",
                         ].join(" ")}
                       >
                         {time}
@@ -480,7 +478,7 @@ export default function ChatWindow({
                     ) : null}
                   </div>
 
-                  {isMine ? (
+                  {msg.can_delete ? (
                     <button
                       type="button"
                       onClick={() => void deleteMessage(msg.id)}

@@ -1,6 +1,9 @@
 // app/api/chat/delete-message/route.ts
 import { NextResponse } from "next/server";
-import { createAdminSupabase, createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import {
+  createAdminSupabase,
+  createServerSupabaseRoute,
+} from "@/features/shared/lib/supabase/server";
 import { authorizeConversationActor } from "@/features/ai/lib/chat/authorization";
 
 export const dynamic = "force-dynamic";
@@ -20,7 +23,10 @@ export async function POST(req: Request): Promise<NextResponse> {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  const body = (await req.json().catch(() => null)) as { id?: string } | null;
+  const body = (await req.json().catch(() => null)) as {
+    id?: string;
+    actor_kind?: "staff" | "customer";
+  } | null;
   const messageId = body?.id;
 
   if (!messageId) {
@@ -30,7 +36,7 @@ export async function POST(req: Request): Promise<NextResponse> {
   const admin = createAdminSupabase();
   const { data: message, error: fetchError } = await admin
     .from("messages")
-    .select("id, sender_id, conversation_id")
+    .select("id, sender_id, sender_participant_id, conversation_id")
     .eq("id", messageId)
     .maybeSingle();
 
@@ -43,20 +49,27 @@ export async function POST(req: Request): Promise<NextResponse> {
   }
 
   if (!message.conversation_id) {
-    return NextResponse.json({ error: "Message has no conversation" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Message has no conversation" },
+      { status: 400 },
+    );
   }
 
   const access = await authorizeConversationActor({
     supabase: admin,
     conversationId: message.conversation_id,
     actorUserId: user.id,
+    preferredKind: body?.actor_kind,
   });
 
   if (!access.ok) {
-    return NextResponse.json({ error: access.error }, { status: access.status });
+    return NextResponse.json(
+      { error: access.error },
+      { status: access.status },
+    );
   }
 
-  if (message.sender_id !== user.id) {
+  if (message.sender_participant_id !== access.actorParticipant.id) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
   }
 

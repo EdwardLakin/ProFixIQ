@@ -1,13 +1,7 @@
 // features/ai/components/chat/NewChatModal.tsx
 "use client";
 
-import {
-  useEffect,
-  useMemo,
-  useState,
-  useCallback,
-  useRef,
-} from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { toast } from "sonner";
 import ModalShell from "@/features/shared/components/ModalShell";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
@@ -32,8 +26,11 @@ type MessageRow = {
   id: string;
   conversation_id: string;
   sender_id: string | null;
+  sender_participant_id?: string | null;
+  sender_kind?: "staff" | "customer" | null;
   content: string | null;
   sent_at: string | null;
+  is_mine?: boolean;
   // client-only
   recipients?: string[] | null;
 };
@@ -56,28 +53,8 @@ type Props = {
 const LOCAL_ACTIVE_KEY = "pfq-chat-last-conversation";
 const LOCAL_RECENT_KEY = "pfq-chat-recent-convos";
 
-// Realtime broadcast payload helper
-type BroadcastPayload<T> = {
-  payload?: {
-    record?: T;
-    new?: T;
-    old?: T | null;
-    [key: string]: unknown;
-  };
-  record?: T;
-  new?: T;
-  old?: T | null;
-  [key: string]: unknown;
-};
-
-function extractRecord<T>(payload: BroadcastPayload<T>): T | null {
-  return (
-    payload?.payload?.record ??
-    payload?.payload?.new ??
-    payload?.record ??
-    payload?.new ??
-    null
-  ) as T | null;
+function scopedStorageKey(key: string, userId: string): string {
+  return `${key}:${userId}`;
 }
 
 export default function NewChatModal({
@@ -161,21 +138,29 @@ export default function NewChatModal({
 
   // helpers for localStorage
   const loadRecentFromStorage = useCallback(() => {
-    if (typeof window === "undefined") return [];
+    if (typeof window === "undefined" || !currentUserId) return [];
     try {
-      const raw = window.localStorage.getItem(LOCAL_RECENT_KEY);
+      const raw = window.localStorage.getItem(
+        scopedStorageKey(LOCAL_RECENT_KEY, currentUserId),
+      );
       if (!raw) return [];
       const parsed = JSON.parse(raw);
       return Array.isArray(parsed) ? (parsed as string[]) : [];
     } catch {
       return [];
     }
-  }, []);
+  }, [currentUserId]);
 
-  const saveRecentToStorage = useCallback((ids: string[]) => {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(LOCAL_RECENT_KEY, JSON.stringify(ids));
-  }, []);
+  const saveRecentToStorage = useCallback(
+    (ids: string[]) => {
+      if (typeof window === "undefined" || !currentUserId) return;
+      window.localStorage.setItem(
+        scopedStorageKey(LOCAL_RECENT_KEY, currentUserId),
+        JSON.stringify(ids),
+      );
+    },
+    [currentUserId],
+  );
 
   const upsertRecent = useCallback(
     (id: string) => {
@@ -191,7 +176,7 @@ export default function NewChatModal({
 
   // when modal opens
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || !currentUserId) return;
 
     (async () => {
       // load recent from storage
@@ -208,15 +193,23 @@ export default function NewChatModal({
           method: "GET",
           credentials: "include",
         });
-        const json = await res.json().catch(() => ({} as any));
+        const rawJson: unknown = await res.json().catch(() => ({}));
+        const json =
+          rawJson && typeof rawJson === "object" && !Array.isArray(rawJson)
+            ? (rawJson as {
+                users?: unknown;
+                data?: unknown;
+                error?: string;
+              })
+            : {};
         if (res.ok) {
-          const list: UserRow[] = Array.isArray(json)
-            ? json
+          const list: UserRow[] = Array.isArray(rawJson)
+            ? (rawJson as UserRow[])
             : Array.isArray(json.users)
-            ? json.users
-            : Array.isArray(json.data)
-            ? json.data
-            : [];
+              ? json.users
+              : Array.isArray(json.data)
+                ? json.data
+                : [];
           setUsers(list ?? []);
           gotUsers = true;
         } else if (res.status !== 401) {
@@ -261,7 +254,9 @@ export default function NewChatModal({
       // restore active convo
       const stored =
         typeof window !== "undefined"
-          ? window.localStorage.getItem(LOCAL_ACTIVE_KEY)
+          ? window.localStorage.getItem(
+              scopedStorageKey(LOCAL_ACTIVE_KEY, currentUserId),
+            )
           : null;
 
       if (forcedConversationId) {
@@ -277,7 +272,14 @@ export default function NewChatModal({
       setLoadingUsers(false);
       setSearch("");
     })();
-  }, [isOpen, supabase, forcedConversationId, loadRecentFromStorage, upsertRecent]);
+  }, [
+    currentUserId,
+    isOpen,
+    supabase,
+    forcedConversationId,
+    loadRecentFromStorage,
+    upsertRecent,
+  ]);
 
   // auto-role filter from context
   useEffect(() => {
@@ -318,10 +320,21 @@ export default function NewChatModal({
             return data;
           });
 
-          if (typeof window !== "undefined") {
-            window.localStorage.setItem(LOCAL_ACTIVE_KEY, activeConvoId);
+          if (typeof window !== "undefined" && currentUserId) {
+            window.localStorage.setItem(
+              scopedStorageKey(LOCAL_ACTIVE_KEY, currentUserId),
+              activeConvoId,
+            );
           }
           upsertRecent(activeConvoId);
+          await fetch("/api/chat/mark-read", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              conversationId: activeConvoId,
+              actor_kind: "staff",
+            }),
+          }).catch(() => undefined);
         }
       } catch (e) {
         console.error("[NewChatModal] get-messages failed:", e);
@@ -333,7 +346,7 @@ export default function NewChatModal({
     return () => {
       cancelled = true;
     };
-  }, [activeConvoId, isOpen, upsertRecent]);
+  }, [activeConvoId, currentUserId, isOpen, upsertRecent]);
 
   // 🔔 Realtime broadcast for current convo (room:<id>:messages)
   useEffect(() => {
@@ -349,25 +362,23 @@ export default function NewChatModal({
             self: true,
             ack: true,
           },
-        } as any,
-      })
-      .on(
-        "broadcast",
-        { event: "INSERT" },
-        (payload: BroadcastPayload<MessageRow>) => {
-          const msg = extractRecord<MessageRow>(payload);
-          if (!msg) {
-            console.warn(
-              "[NewChatModal] INSERT payload missing record",
-              payload,
-            );
-            return;
-          }
-          setMessages((prev) =>
-            prev.some((m) => m.id === msg.id) ? prev : [...prev, msg],
-          );
         },
-      )
+      } as unknown as NonNullable<Parameters<typeof supabase.channel>[1]>)
+      .on("broadcast", { event: "INSERT" }, () => {
+        void fetch("/api/chat/get-messages", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            conversationId: activeConvoId,
+            actor_kind: "staff",
+          }),
+        })
+          .then((response) => response.json())
+          .then((data: unknown) => {
+            if (Array.isArray(data)) setMessages(data as MessageRow[]);
+          })
+          .catch(() => undefined);
+      })
       .subscribe((status) => {
         if (status === "SUBSCRIBED") {
           console.log("[NewChatModal] subscribed to", topic);
@@ -430,7 +441,7 @@ export default function NewChatModal({
   useEffect(() => {
     setActiveConvoId(null);
     setMessages([]);
-  }, [selectedIds.join(",")]);
+  }, [selectedIds]);
 
   const getOrFetchUserId = useCallback(async () => {
     if (currentUserId) return currentUserId;
@@ -460,20 +471,27 @@ export default function NewChatModal({
           }),
         });
 
-        const json = (await res.json().catch(() => null)) as
-          | { id?: string; error?: string }
-          | null;
+        const json = (await res.json().catch(() => null)) as {
+          id?: string;
+          error?: string;
+        } | null;
 
         if (!res.ok || !json?.id) {
-          console.error("conversation create failed:", json?.error ?? `HTTP ${res.status}`);
+          console.error(
+            "conversation create failed:",
+            json?.error ?? `HTTP ${res.status}`,
+          );
           toast.error(json?.error ?? "Could not create conversation");
           return null;
         }
 
         const newId = json.id;
         setActiveConvoId(newId);
-        if (typeof window !== "undefined") {
-          window.localStorage.setItem(LOCAL_ACTIVE_KEY, newId);
+        if (typeof window !== "undefined" && currentUserId) {
+          window.localStorage.setItem(
+            scopedStorageKey(LOCAL_ACTIVE_KEY, currentUserId),
+            newId,
+          );
         }
         onCreated?.(newId);
         upsertRecent(newId);
@@ -488,6 +506,7 @@ export default function NewChatModal({
       activeConvoId,
       context_type,
       context_id,
+      currentUserId,
       onCreated,
       upsertRecent,
     ],
@@ -519,13 +538,15 @@ export default function NewChatModal({
     setSending(true);
 
     // optimistic bubble
-    const tempId = `temp-${Date.now()}`;
+    const clientMessageId = crypto.randomUUID();
+    const tempId = `temp-${clientMessageId}`;
     const optimistic: MessageRow = {
       id: tempId,
       conversation_id: convoId,
       sender_id: actualUserId,
       content: text,
       sent_at: new Date().toISOString(),
+      is_mine: true,
       recipients: targetIds.filter((id) => id !== actualUserId),
     };
     setMessages((prev) => [...prev, optimistic]);
@@ -537,16 +558,29 @@ export default function NewChatModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           conversationId: convoId,
-          senderId: actualUserId,
+          actor_kind: "staff",
           content: text,
+          clientMessageId,
         }),
       });
       if (!res.ok) {
         console.error("send-message failed:", await res.text());
+        setMessages((prev) => prev.filter((message) => message.id !== tempId));
+        setSendText(text);
         toast.error("Message failed to send (server).");
+        return;
       }
+      const sent = (await res.json()) as MessageRow;
+      setMessages((prev) => [
+        ...prev.filter(
+          (message) => message.id !== tempId && message.id !== sent.id,
+        ),
+        sent,
+      ]);
     } catch (e) {
       console.error("send failed:", e);
+      setMessages((prev) => prev.filter((message) => message.id !== tempId));
+      setSendText(text);
       toast.error("Message failed to send (network).");
     } finally {
       setSending(false);
@@ -606,12 +640,7 @@ export default function NewChatModal({
   }, [recentConversationIds, buildRecentLabel]);
 
   return (
-    <ModalShell
-      isOpen={isOpen}
-      onClose={onClose}
-      title="Team chat"
-      size="xl"
-    >
+    <ModalShell isOpen={isOpen} onClose={onClose} title="Team chat" size="xl">
       {/* helper row */}
       <div className="mb-3 flex items-center justify-between gap-3">
         <div className="text-xs text-[color:var(--theme-text-secondary)]">
@@ -752,8 +781,7 @@ export default function NewChatModal({
             </button>
             <div className="text-[11px] text-[color:var(--theme-text-muted)]">
               Current:{" "}
-              {ROLE_OPTIONS.find((r) => r.value === role)?.label ??
-                "All roles"}
+              {ROLE_OPTIONS.find((r) => r.value === role)?.label ?? "All roles"}
             </div>
           </div>
 
@@ -787,7 +815,9 @@ export default function NewChatModal({
 
       {/* Recents */}
       <div className="mt-3 flex items-center gap-2">
-        <div className="text-[11px] text-[color:var(--theme-text-muted)]">Recent:</div>
+        <div className="text-[11px] text-[color:var(--theme-text-muted)]">
+          Recent:
+        </div>
         <div className="flex flex-wrap gap-2">
           {recentConversationIds.length === 0 ? (
             <div className="text-[11px] text-[color:var(--theme-text-muted)]">
@@ -851,7 +881,7 @@ export default function NewChatModal({
             </div>
           ) : (
             messages.map((m) => {
-              const isMine = m.sender_id === currentUserId;
+              const isMine = m.is_mine ?? m.sender_id === currentUserId;
               const time =
                 m.sent_at &&
                 new Date(m.sent_at).toLocaleTimeString([], {
@@ -861,9 +891,7 @@ export default function NewChatModal({
               return (
                 <div
                   key={m.id}
-                  className={`flex ${
-                    isMine ? "justify-end" : "justify-start"
-                  }`}
+                  className={`flex ${isMine ? "justify-end" : "justify-start"}`}
                 >
                   <div
                     className={`max-w-[70%] break-words rounded-md px-3 py-2 text-xs ${
@@ -876,7 +904,9 @@ export default function NewChatModal({
                     {time ? (
                       <p
                         className={`mt-1 text-[9px] ${
-                          isMine ? "text-[color:var(--theme-text-on-accent)]" : "text-[color:var(--theme-text-secondary)]"
+                          isMine
+                            ? "text-[color:var(--theme-text-on-accent)]"
+                            : "text-[color:var(--theme-text-secondary)]"
                         }`}
                       >
                         {time}

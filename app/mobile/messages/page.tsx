@@ -4,7 +4,7 @@ import { formatDistanceToNow } from "date-fns";
 import { ChevronRight, MessageCircle, Plus } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import type { Database } from "@shared/types/types/supabase";
 
@@ -13,7 +13,11 @@ type DB = Database;
 type ConversationRow = {
   conversation: DB["public"]["Tables"]["conversations"]["Row"];
   latest_message: DB["public"]["Tables"]["messages"]["Row"] | null;
-  participants: Array<{ id: string; full_name: string | null }>;
+  participants: Array<{
+    id: string;
+    user_id: string;
+    full_name: string | null;
+  }>;
   unread_count: number;
 };
 
@@ -23,34 +27,42 @@ export default function MobileMessagesPage() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
-  useEffect(() => {
-    void (async () => {
-      setLoading(true);
-      setErr(null);
-      try {
-        const response = await fetch("/api/chat/my-conversations", {
-          method: "GET",
-          credentials: "include",
-        });
+  const loadConversations = useCallback(async () => {
+    setLoading(true);
+    setErr(null);
+    try {
+      const response = await fetch("/api/chat/my-conversations", {
+        method: "GET",
+        credentials: "include",
+      });
 
-        if (!response.ok) {
-          throw new Error(`Failed to load conversations (${response.status})`);
-        }
-
-        const data = (await response.json()) as ConversationRow[];
-        setRows(data ?? []);
-      } catch (error) {
-        setErr(
-          error instanceof Error
-            ? error.message
-            : "Failed to load conversations.",
-        );
-        setRows([]);
-      } finally {
-        setLoading(false);
+      if (!response.ok) {
+        throw new Error(`Failed to load conversations (${response.status})`);
       }
-    })();
+
+      const data = (await response.json()) as ConversationRow[];
+      setRows(data ?? []);
+    } catch (error) {
+      setErr(
+        error instanceof Error
+          ? error.message
+          : "Failed to load conversations.",
+      );
+      setRows([]);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void loadConversations();
+    const interval = window.setInterval(() => void loadConversations(), 30_000);
+    window.addEventListener("profixiq:inbox-refresh", loadConversations);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("profixiq:inbox-refresh", loadConversations);
+    };
+  }, [loadConversations]);
 
   const unreadTotal = rows.reduce((sum, row) => sum + row.unread_count, 0);
 
@@ -59,7 +71,9 @@ export default function MobileMessagesPage() {
       <section className="mobile-dashboard-hero">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <div className="mobile-dashboard-hero__eyebrow">Shop communication</div>
+            <div className="mobile-dashboard-hero__eyebrow">
+              Shop communication
+            </div>
             <h1 className="mobile-dashboard-hero__title">Team chat</h1>
             <p className="mobile-dashboard-hero__subtitle">
               {unreadTotal > 0
@@ -140,8 +154,10 @@ export default function MobileMessagesPage() {
                 unread_count: unreadCount,
               } = row;
               const href = `/mobile/messages/${conversation.id}`;
-              const preview = latestMessage?.content?.slice(0, 100) ?? "No messages yet.";
-              const timestamp = latestMessage?.created_at ?? conversation.created_at;
+              const preview =
+                latestMessage?.content?.slice(0, 100) ?? "No messages yet.";
+              const timestamp =
+                latestMessage?.created_at ?? conversation.created_at;
               const when = timestamp
                 ? formatDistanceToNow(new Date(timestamp), { addSuffix: true })
                 : "";

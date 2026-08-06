@@ -18,6 +18,7 @@ import {
   resolveShopSuppliesSettings,
   shopSuppliesTaxableSubtotal,
 } from "@/features/work-orders/lib/shopSupplies";
+import { upsertPortalNotification } from "@/features/portal/server/upsertPortalNotification";
 
 type DB = Database;
 
@@ -331,19 +332,16 @@ async function upsertEstimatePortalNotification(input: {
   revision: number;
   shopName: string;
 }): Promise<void> {
-  const { error } = await supabaseAdmin.from("portal_notifications").upsert(
-    {
-      user_id: input.userId,
-      customer_id: input.customerId,
-      work_order_id: input.workOrderId,
-      kind: "quote_ready",
-      title: "Quote ready",
-      body: `Your estimate at ${input.shopName || "the shop"} is ready to review in your portal.`,
-      event_key: `estimate:quote_ready:${input.workOrderId}:revision:${input.revision}`,
-    },
-    { onConflict: "user_id,event_key" },
-  );
-  if (error) throw new Error(error.message);
+  await upsertPortalNotification(supabaseAdmin, {
+    userId: input.userId,
+    customerId: input.customerId,
+    workOrderId: input.workOrderId,
+    kind: "quote_ready",
+    title: "Quote ready",
+    body: `Your estimate at ${input.shopName || "the shop"} is ready to review in your portal.`,
+    eventKey: `estimate:quote_ready:${input.workOrderId}:revision:${input.revision}`,
+    href: `/portal/quotes/${input.workOrderId}`,
+  });
 }
 
 async function repairEstimatePortalNotification(input: {
@@ -1253,19 +1251,18 @@ export async function POST(req: Request) {
                   });
                   return;
                 }
-                const { error } = await supabaseAdmin
-                  .from("portal_notifications")
-                  .insert({
-                    user_id: portalUserId,
-                    customer_id: portalCustomerId,
-                    work_order_id: workOrderId,
-                    kind: "quote_ready",
-                    title: "Quote ready",
-                    body: `Your quote for Work Order ${workOrderId} at ${
-                      shopName || "the shop"
-                    } is ready to review in your portal.`,
-                  });
-                if (error) throw new Error(error.message);
+                await upsertPortalNotification(supabaseAdmin, {
+                  userId: portalUserId,
+                  customerId: portalCustomerId,
+                  workOrderId,
+                  kind: "quote_ready",
+                  title: "Quote ready",
+                  body: `Your quote for Work Order ${workOrderId} at ${
+                    shopName || "the shop"
+                  } is ready to review in your portal.`,
+                  eventKey: `quote_ready:${workOrderId}:revision:${wo.estimate_revision}`,
+                  href: `/portal/quotes/${workOrderId}`,
+                });
               },
             },
           ]

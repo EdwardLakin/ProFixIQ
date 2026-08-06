@@ -1,11 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
-type PortalNotificationRow = DB["public"]["Tables"]["portal_notifications"]["Row"];
+type PortalNotificationRow =
+  DB["public"]["Tables"]["portal_notifications"]["Row"];
 type RpcClient = ReturnType<typeof createBrowserSupabase> & {
   rpc(
     fn: string,
@@ -18,20 +20,24 @@ function classNames(...parts: Array<string | false | null | undefined>) {
 }
 
 export default function PortalNotificationsBell() {
+  const router = useRouter();
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const rpc = supabase as RpcClient;
   const [items, setItems] = useState<PortalNotificationRow[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setError(null);
     const { data, error } = await supabase
       .from("portal_notifications")
       .select("*")
       .order("created_at", { ascending: false })
       .limit(50);
-    if (!error) setItems(data ?? []);
+    if (error) setError("Notifications could not be loaded.");
+    else setItems(data ?? []);
     setLoading(false);
   }, [supabase]);
 
@@ -58,7 +64,9 @@ export default function PortalNotificationsBell() {
       if (!error) {
         setItems((current) =>
           current.map((item) =>
-            item.id === id ? { ...item, read_at: item.read_at ?? new Date().toISOString() } : item,
+            item.id === id
+              ? { ...item, read_at: item.read_at ?? new Date().toISOString() }
+              : item,
           ),
         );
       }
@@ -70,11 +78,32 @@ export default function PortalNotificationsBell() {
     const { error } = await rpc.rpc("mark_all_portal_notifications_read");
     if (!error) {
       const now = new Date().toISOString();
-      setItems((current) => current.map((item) => ({ ...item, read_at: item.read_at ?? now })));
+      setItems((current) =>
+        current.map((item) => ({ ...item, read_at: item.read_at ?? now })),
+      );
     }
   }, [rpc]);
 
   const unreadCount = items.filter((item) => item.read_at == null).length;
+
+  const openNotification = useCallback(
+    async (item: PortalNotificationRow) => {
+      await markRead(item.id);
+      const metadata =
+        item.metadata &&
+        typeof item.metadata === "object" &&
+        !Array.isArray(item.metadata)
+          ? item.metadata
+          : null;
+      const href =
+        metadata && typeof metadata.href === "string" ? metadata.href : null;
+      if (href?.startsWith("/")) {
+        setOpen(false);
+        router.push(href);
+      }
+    },
+    [markRead, router],
+  );
 
   return (
     <div className="relative">
@@ -111,7 +140,12 @@ export default function PortalNotificationsBell() {
             </button>
           </div>
 
-          {loading ? <div className="py-3 text-[color:var(--theme-text-muted)]">Loading…</div> : null}
+          {loading ? (
+            <div className="py-3 text-[color:var(--theme-text-muted)]">
+              Loading…
+            </div>
+          ) : null}
+          {error ? <div className="py-3 text-red-300">{error}</div> : null}
           {!loading && items.length === 0 ? (
             <div className="rounded-xl border border-dashed border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3 text-[0.7rem] text-[color:var(--theme-text-secondary)]">
               You do not have any notifications yet.
@@ -123,7 +157,7 @@ export default function PortalNotificationsBell() {
               <li key={item.id}>
                 <button
                   type="button"
-                  onClick={() => void markRead(item.id)}
+                  onClick={() => void openNotification(item)}
                   className={classNames(
                     "w-full rounded-xl border px-3 py-2 text-left",
                     item.read_at
@@ -138,7 +172,9 @@ export default function PortalNotificationsBell() {
                     {item.title ?? "Notification"}
                   </div>
                   {item.body ? (
-                    <div className="mt-0.5 text-[0.75rem] text-[color:var(--theme-text-secondary)]">{item.body}</div>
+                    <div className="mt-0.5 text-[0.75rem] text-[color:var(--theme-text-secondary)]">
+                      {item.body}
+                    </div>
                   ) : null}
                   {item.created_at ? (
                     <div className="mt-1 text-[0.65rem] text-[color:var(--theme-text-muted)]">

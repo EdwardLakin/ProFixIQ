@@ -7,6 +7,8 @@ import {
 import {
   authorizeConversationCreate,
   isCustomerMessagingRole,
+  participantSeedForActor,
+  type MessagingParticipantSeed,
 } from "@/features/ai/lib/chat/authorization";
 import { authorizeConversationContext } from "@/features/chat/server/conversationContext";
 import type { Database } from "@/features/shared/types/types/supabase";
@@ -14,7 +16,7 @@ import type { Database } from "@/features/shared/types/types/supabase";
 export const dynamic = "force-dynamic";
 
 type CreateMessagingConversationArgs =
-  Database["public"]["Functions"]["create_messaging_conversation"]["Args"];
+  Database["public"]["Functions"]["create_actor_messaging_conversation"]["Args"];
 type NullableConversationArgument =
   | "_booking_id"
   | "_context_id"
@@ -29,13 +31,32 @@ type CreateMessagingConversationInput = Omit<
 > &
   Record<NullableConversationArgument, string | null>;
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+function uniqueParticipants(
+  participants: MessagingParticipantSeed[],
+): MessagingParticipantSeed[] {
+  return participants.filter(
+    (participant, index, rows) =>
+      rows.findIndex(
+        (candidate) =>
+          candidate.kind === participant.kind &&
+          candidate.userId === participant.userId &&
+          candidate.profileId === participant.profileId &&
+          candidate.customerId === participant.customerId,
+      ) === index,
+  );
+}
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function isUuid(value: string): boolean {
   return UUID_RE.test(value);
 }
 
-function deterministicUuidFromRequestId(requestId: string, actorUserId: string): string {
+function deterministicUuidFromRequestId(
+  requestId: string,
+  actorUserId: string,
+): string {
   const hex = createHash("sha256")
     .update(`chat:start-conversation:${actorUserId}:${requestId}`)
     .digest("hex");
@@ -123,12 +144,14 @@ export async function POST(req: Request): Promise<NextResponse> {
     );
   }
 
-  let recipientUserIds = createAccess.recipientUserIds;
-  let participantKindByUserId = createAccess.participantKinds;
+  let recipientParticipants = createAccess.recipientParticipants;
 
   const requestedWorkOrderId =
-    body?.context_type === "work_order" && body?.context_id ? body.context_id : null;
-  const routedWorkOrderId = context.anchors.work_order_id ?? requestedWorkOrderId;
+    body?.context_type === "work_order" && body?.context_id
+      ? body.context_id
+      : null;
+  const routedWorkOrderId =
+    context.anchors.work_order_id ?? requestedWorkOrderId;
 
   if (
     createAccess.actor.kind === "customer" &&
@@ -175,19 +198,26 @@ export async function POST(req: Request): Promise<NextResponse> {
       );
     }
 
-    const advisorUserId = assignedAdvisor && isCustomerMessagingRole(assignedAdvisor.role)
-      ? assignedAdvisor.user_id ?? assignedAdvisor.id
-      : null;
-    const coverageUserIds = (coverage ?? [])
-      .map((profile) => profile.user_id ?? profile.id)
-      .filter((id): id is string => Boolean(id) && id !== user.id);
+    const advisorUserId =
+      assignedAdvisor && isCustomerMessagingRole(assignedAdvisor.role)
+        ? (assignedAdvisor.user_id ?? assignedAdvisor.id)
+        : null;
+    const routedProfiles = [
+      ...(assignedAdvisor && advisorUserId ? [assignedAdvisor] : []),
+      ...(coverage ?? []),
+    ];
 
-    if (advisorUserId || coverageUserIds.length > 0) {
-      recipientUserIds = Array.from(
-        new Set([...(advisorUserId ? [advisorUserId] : []), ...coverageUserIds]),
-      ).filter((id) => id !== user.id);
-      participantKindByUserId = Object.fromEntries(
-        recipientUserIds.map((id) => [id, "staff" as const]),
+    if (routedProfiles.length > 0) {
+      recipientParticipants = uniqueParticipants(
+        routedProfiles
+          .filter((profile) => isCustomerMessagingRole(profile.role))
+          .map((profile) => ({
+            userId: profile.user_id ?? profile.id,
+            kind: "staff" as const,
+            profileId: profile.id,
+            customerId: null,
+            role: profile.role,
+          })),
       );
     }
   }
@@ -233,12 +263,10 @@ export async function POST(req: Request): Promise<NextResponse> {
     }
   }
 
-  const allParticipantIds = Array.from(new Set([user.id, ...recipientUserIds]));
-  const participantKindValues = allParticipantIds.map((id) =>
-    id === user.id
-      ? createAccess.actor.kind
-      : (participantKindByUserId[id] ?? "staff"),
-  );
+  const allParticipants = uniqueParticipants([
+    participantSeedForActor(createAccess.actor),
+    ...recipientParticipants,
+  ]);
 
   const createConversationInput: CreateMessagingConversationInput = {
     _conversation_id: conversationId,
@@ -252,14 +280,19 @@ export async function POST(req: Request): Promise<NextResponse> {
     _context_type: context.anchors.context_type,
     _context_id: context.anchors.context_id,
     _title: body?.title?.trim().slice(0, 160) || null,
-    _participant_user_ids: allParticipantIds,
-    _participant_kinds: participantKindValues,
+    _participants: allParticipants.map((participant) => ({
+      user_id: participant.userId,
+      participant_kind: participant.kind,
+      profile_id: participant.profileId,
+      customer_id: participant.customerId,
+      role: participant.role,
+    })),
   };
 
   // PostgreSQL accepts nullable context anchors; the local Supabase generator
   // does not preserve function-argument nullability in its TypeScript output.
   const { data: createdId, error: createError } = await admin.rpc(
-    "create_messaging_conversation",
+    "create_actor_messaging_conversation",
     createConversationInput as CreateMessagingConversationArgs,
   );
 
