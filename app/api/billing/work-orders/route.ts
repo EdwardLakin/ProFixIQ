@@ -46,6 +46,7 @@ export async function GET() {
           resolved_shop_supplies_total: snapshot.shopSuppliesTotal ?? 0,
           resolved_tax_total: snapshot.taxTotal ?? 0,
           resolved_invoice_total: snapshot.total ?? 0,
+          resolved_invoice_number: snapshot.invoice?.invoice_number ?? null,
           pricing_error: null,
         };
       } catch (error: unknown) {
@@ -56,6 +57,7 @@ export async function GET() {
           resolved_shop_supplies_total: null,
           resolved_tax_total: null,
           resolved_invoice_total: null,
+          resolved_invoice_number: null,
           pricing_error:
             error instanceof Error
               ? error.message

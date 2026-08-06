@@ -226,6 +226,8 @@ type SnapshotLine = {
   line_no?: number | null;
   description?: string | null;
   complaint?: string | null;
+  cause?: string | null;
+  correction?: string | null;
   labor_time?: number | null;
   resolvedLaborHours?: number;
   resolvedLaborRate?: number;
@@ -246,6 +248,16 @@ type InvoiceSnapshotView = {
   total?: number | null;
   parts?: SnapshotPart[];
   lines?: SnapshotLine[];
+  invoice?: {
+    invoice_number?: string | null;
+    issued_at?: string | null;
+    status?: string | null;
+  } | null;
+};
+
+type DocumentIdentityView = {
+  workOrderNumber?: string | null;
+  invoiceNumber?: string | null;
 };
 
 function formatInvoiceMoney(
@@ -256,6 +268,18 @@ function formatInvoiceMoney(
     style: "currency",
     currency: invoiceCurrency,
   }).format(safeMoney(value));
+}
+
+function formatInvoiceDate(value: string | null | undefined): string {
+  if (!value) return "Not issued";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? "Not issued"
+    : date.toLocaleDateString("en-CA", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      });
 }
 
 type InspectionPdfInfo = {
@@ -286,6 +310,8 @@ export default function InvoicePreviewPageClient({
 
   const [shopInfo, setShopInfo] = useState<ShopInfo | undefined>(undefined);
   const [invoiceId, setInvoiceId] = useState<string | null>(null);
+  const [invoiceNumber, setInvoiceNumber] = useState<string | null>(null);
+  const [invoiceIssuedAt, setInvoiceIssuedAt] = useState<string | null>(null);
   const [workOrderLabel, setWorkOrderLabel] = useState<string | null>(null);
   const [canonicalSnapshot, setCanonicalSnapshot] =
     useState<InvoiceSnapshotView | null>(null);
@@ -323,7 +349,7 @@ export default function InvoicePreviewPageClient({
   const effectiveCustomerInfo = customerInfo ?? fCustomerInfo;
 
   useEffect(() => {
-    const label = workOrderLabel || workOrderId.slice(0, 8);
+    const label = invoiceNumber || workOrderLabel || "Draft invoice";
     updateActiveTab({
       title: `Invoice · ${label}`,
       subtitle:
@@ -341,6 +367,7 @@ export default function InvoicePreviewPageClient({
     reviewLoading,
     reviewOk,
     updateActiveTab,
+    invoiceNumber,
     workOrderId,
     workOrderLabel,
   ]);
@@ -491,14 +518,20 @@ export default function InvoicePreviewPageClient({
 
       const { data: invoiceRow } = await supabase
         .from("invoices")
-        .select("id")
+        .select("id,invoice_number,issued_at")
         .eq("work_order_id", workOrderId)
         .order("created_at", { ascending: false })
         .limit(1)
-        .maybeSingle<{ id: string }>();
+        .maybeSingle<{
+          id: string;
+          invoice_number: string | null;
+          issued_at: string | null;
+        }>();
 
       if (cancelled) return;
       setInvoiceId(invoiceRow?.id ?? null);
+      setInvoiceNumber(invoiceRow?.invoice_number?.trim() || null);
+      setInvoiceIssuedAt(invoiceRow?.issued_at ?? null);
       const snapshotPartsByLine = new Map<string, PdfLinePart[]>();
       try {
         const snapshotRes = await fetch(`/api/work-orders/${workOrderId}/invoice`, { method: "GET" });
@@ -506,13 +539,28 @@ export default function InvoicePreviewPageClient({
           | {
               snapshot?: InvoiceSnapshotView;
               activeInvoiceVersion?: ActiveInvoiceVersionSummary | null;
+              documentIdentity?: DocumentIdentityView;
             }
           | null;
         const loadedSnapshot = snapshotJson?.snapshot ?? null;
         const loadedVersion = snapshotJson?.activeInvoiceVersion ?? null;
+        const loadedIdentity = snapshotJson?.documentIdentity;
         const snapshotTotal = loadedSnapshot?.total;
         setCanonicalSnapshot(loadedSnapshot);
         setActiveInvoiceVersion(loadedVersion);
+        setWorkOrderLabel(
+          loadedIdentity?.workOrderNumber?.trim() ||
+            woRow.custom_id?.trim() ||
+            null,
+        );
+        setInvoiceNumber(
+          loadedIdentity?.invoiceNumber?.trim() ||
+            invoiceRow?.invoice_number?.trim() ||
+            null,
+        );
+        setInvoiceIssuedAt(
+          loadedSnapshot?.invoice?.issued_at ?? invoiceRow?.issued_at ?? null,
+        );
         if (loadedVersion?.invoice_id) setInvoiceId(loadedVersion.invoice_id);
         for (const part of loadedSnapshot?.parts ?? []) {
           const lineId = typeof part.lineId === "string" ? part.lineId.trim() : "";
@@ -889,6 +937,13 @@ export default function InvoicePreviewPageClient({
         setCanonicalInvoiceTotal(Math.max(0, Number(json.invoiceVersion.total)));
         if (json.invoiceVersion.snapshot) {
           setCanonicalSnapshot(json.invoiceVersion.snapshot);
+          setInvoiceNumber(
+            json.invoiceVersion.snapshot.invoice?.invoice_number?.trim() ||
+              null,
+          );
+          setInvoiceIssuedAt(
+            json.invoiceVersion.snapshot.invoice?.issued_at ?? null,
+          );
         }
       }
       await onSent?.();
@@ -943,6 +998,13 @@ export default function InvoicePreviewPageClient({
       setCanonicalInvoiceTotal(Math.max(0, Number(result.invoiceVersion.total)));
       if (result.invoiceVersion.snapshot) {
         setCanonicalSnapshot(result.invoiceVersion.snapshot);
+        setInvoiceNumber(
+          result.invoiceVersion.snapshot.invoice?.invoice_number?.trim() ||
+            null,
+        );
+        setInvoiceIssuedAt(
+          result.invoiceVersion.snapshot.invoice?.issued_at ?? null,
+        );
       }
       toast.success("Invoice finalized. QuickBooks sync is now available.");
       router.refresh();
@@ -973,8 +1035,13 @@ export default function InvoicePreviewPageClient({
             <div className="text-[0.7rem] uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">
               Invoice
               <span className="ml-2 rounded-full border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-[0.65rem] text-[color:var(--theme-text-primary)]">
-                #{workOrderId}
+                {invoiceNumber || "Draft invoice"}
               </span>
+              {workOrderLabel ? (
+                <span className="ml-2 text-[0.65rem] normal-case tracking-normal text-[color:var(--theme-text-muted)]">
+                  Work order {workOrderLabel}
+                </span>
+              ) : null}
             </div>
 
             {loading ? (
@@ -1115,6 +1182,53 @@ export default function InvoicePreviewPageClient({
               </div>
             </div>
 
+            <div className="grid gap-3 border-b border-[color:var(--theme-border-soft)] px-4 py-4 sm:grid-cols-3">
+              <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-3">
+                <div className="text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
+                  Customer
+                </div>
+                <div className="mt-1 text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                  {effectiveCustomerInfo?.name ||
+                    effectiveCustomerInfo?.business_name ||
+                    "Customer not recorded"}
+                </div>
+                <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+                  {effectiveCustomerInfo?.email ||
+                    effectiveCustomerInfo?.phone ||
+                    "No contact details recorded"}
+                </div>
+              </div>
+              <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-3">
+                <div className="text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
+                  Vehicle
+                </div>
+                <div className="mt-1 text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                  {[effectiveVehicleInfo?.year, effectiveVehicleInfo?.make, effectiveVehicleInfo?.model]
+                    .filter(Boolean)
+                    .join(" ") || "Vehicle not recorded"}
+                </div>
+                <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+                  {effectiveVehicleInfo?.vin
+                    ? `VIN ${effectiveVehicleInfo.vin}`
+                    : effectiveVehicleInfo?.license_plate
+                      ? `Plate ${effectiveVehicleInfo.license_plate}`
+                      : "No VIN or plate recorded"}
+                </div>
+              </div>
+              <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-3">
+                <div className="text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
+                  Document
+                </div>
+                <div className="mt-1 text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                  {invoiceNumber || "Draft invoice"}
+                </div>
+                <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+                  {workOrderLabel ? `Work order ${workOrderLabel}` : "Work order number pending"}
+                  {` · ${formatInvoiceDate(invoiceIssuedAt)}`}
+                </div>
+              </div>
+            </div>
+
             <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
               <div className="space-y-3">
                 {(canonicalSnapshot.lines ?? []).map((line, index) => {
@@ -1143,6 +1257,26 @@ export default function InvoicePreviewPageClient({
                           {formatInvoiceMoney(line.resolvedLineTotal, invoiceCurrency)}
                         </div>
                       </div>
+
+                      <dl className="mt-3 grid gap-2 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3 text-xs sm:grid-cols-[6rem_minmax(0,1fr)]">
+                        {[
+                          ["Complaint", line.complaint],
+                          ["Cause", line.cause],
+                          ["Correction", line.correction],
+                        ].map(([narrativeLabel, value]) => (
+                          <div
+                            key={narrativeLabel}
+                            className="grid gap-1 sm:col-span-2 sm:grid-cols-[6rem_minmax(0,1fr)]"
+                          >
+                            <dt className="font-medium text-[color:var(--theme-text-secondary)]">
+                              {narrativeLabel}
+                            </dt>
+                            <dd className="text-[color:var(--theme-text-primary)]">
+                              {value?.trim() || "Not recorded"}
+                            </dd>
+                          </div>
+                        ))}
+                      </dl>
 
                       <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-[color:var(--theme-text-secondary)]">
                         <div>Labor</div>
@@ -1316,8 +1450,9 @@ export default function InvoicePreviewPageClient({
           </div>
         ) : null}
 
-        {/* Inspection PDF Panel (works even when invoice doesn't exist yet) */}
-        <div className="rounded-xl border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
+        {/* Inspection reports only occupy invoice space when one exists. */}
+        {inspectionPdfLoading || inspectionPdf ? (
+          <div className="rounded-xl border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <div className="text-[0.7rem] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
@@ -1366,7 +1501,8 @@ export default function InvoicePreviewPageClient({
               No inspection PDF is attached to this work order yet. Finish/finalize an inspection to generate it.
             </div>
           ) : null}
-        </div>
+          </div>
+        ) : null}
 
         {/* PDF Download Panel */}
         <div className="rounded-xl border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">

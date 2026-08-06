@@ -13,6 +13,10 @@ import {
   getInvoiceVersionById,
   getLatestCustomerVisibleInvoiceVersion,
 } from "@/features/invoices/server/invoiceVersionQueries";
+import {
+  getCanonicalDocumentIdentity,
+  overlayCanonicalDocumentIdentity,
+} from "@/features/invoices/server/canonicalDocumentIdentity";
 
 export const dynamic = "force-dynamic";
 
@@ -68,14 +72,22 @@ export default async function PortalInvoicePage({
 
     if (!selectedVersion) redirect("/portal/invoices");
 
-    const snapshot = selectedVersion.snapshot;
+    const identity = await getCanonicalDocumentIdentity({
+      supabase,
+      shopId: workOrder.shop_id,
+      workOrderId,
+      invoiceId: selectedVersion.invoice_id,
+    });
+    const snapshot = overlayCanonicalDocumentIdentity(
+      selectedVersion.snapshot,
+      identity,
+    );
     const payable =
       ["issued", "partially_paid"].includes(selectedVersion.lifecycle_status) &&
       Number(selectedVersion.outstanding_total) >= 0.5;
-    const title =
-      snapshot.workOrder.custom_id ||
-      selectedVersion.invoice_id ||
-      `Work order ${workOrderId.slice(0, 8)}`;
+    const title = identity.invoiceNumber || "Invoice";
+    const workOrderNumber =
+      identity.workOrderNumber || `#${workOrderId.slice(0, 8)}`;
 
     return (
       <div className="min-h-screen bg-background px-4 py-10 text-foreground">
@@ -102,7 +114,7 @@ export default async function PortalInvoicePage({
                 <div className="text-xs uppercase tracking-[0.2em] text-[color:var(--theme-text-muted)]">Invoice</div>
                 <h1 className="mt-1 text-2xl font-semibold text-[color:var(--theme-text-primary)]">{title}</h1>
                 <div className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
-                  Issued {dateLabel(selectedVersion.issued_at)}
+                  Work order {workOrderNumber} · Issued {dateLabel(selectedVersion.issued_at)}
                 </div>
               </div>
               <div className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-2 text-sm capitalize text-[color:var(--theme-text-primary)]">
@@ -188,6 +200,7 @@ export default async function PortalInvoicePage({
               {snapshot.lines.map((line) => (
                 <div key={line.id} className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
                   <div className="font-semibold text-[color:var(--theme-text-primary)]">{line.description || line.complaint || "Service line"}</div>
+                  {line.complaint ? <div className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">Complaint: {line.complaint}</div> : null}
                   {line.cause ? <div className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">Cause: {line.cause}</div> : null}
                   {line.correction ? <div className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">Correction: {line.correction}</div> : null}
                 </div>

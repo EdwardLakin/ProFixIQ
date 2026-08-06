@@ -13,6 +13,7 @@ import {
   premiumInvoiceFilename,
   renderPremiumInvoicePdf,
 } from "@/features/invoices/server/renderPremiumInvoicePdf";
+import { overlayCanonicalDocumentIdentity } from "@/features/invoices/server/canonicalDocumentIdentity";
 
 export async function GET(
   req: NextRequest,
@@ -37,9 +38,13 @@ export async function GET(
     // The session-scoped client keeps the read inside the caller's shop RLS boundary.
     const { data: workOrder, error: workOrderError } = await supabase
       .from("work_orders")
-      .select("id,shop_id")
+      .select("id,shop_id,custom_id")
       .eq("id", workOrderId)
-      .maybeSingle<{ id: string; shop_id: string }>();
+      .maybeSingle<{
+        id: string;
+        shop_id: string;
+        custom_id: string | null;
+      }>();
     if (workOrderError) throw workOrderError;
     if (!workOrder) {
       return NextResponse.json(
@@ -53,7 +58,7 @@ export async function GET(
       workOrderId,
       shopId: workOrder.shop_id,
     });
-    const snapshot =
+    const storedSnapshot =
       activeVersion?.snapshot ??
       (await getIssuableInvoiceSnapshot({
         supabase,
@@ -71,6 +76,10 @@ export async function GET(
             notes: string | null;
           }>()
       : { data: null };
+    const snapshot = overlayCanonicalDocumentIdentity(storedSnapshot, {
+      workOrderNumber: workOrder.custom_id,
+      invoiceNumber: invoice?.invoice_number ?? null,
+    });
     const brand =
       activeVersion &&
       isFrozenInvoiceDocumentConfiguration(snapshot.documentConfiguration)

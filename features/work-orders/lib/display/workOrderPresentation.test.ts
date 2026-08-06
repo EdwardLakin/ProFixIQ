@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   countActiveWorkOrderLines,
   formatWorkOrderHeaderStatus,
+  shouldUseReadOnlyWorkOrderView,
 } from "./workOrderPresentation";
 
 describe("work-order presentation", () => {
@@ -27,5 +28,11 @@ describe("work-order presentation", () => {
         { status: "deferred" },
       ]),
     ).toBe(2);
+  });
+
+  it("routes paid work orders to the immutable service view", () => {
+    expect(shouldUseReadOnlyWorkOrderView("paid")).toBe(true);
+    expect(shouldUseReadOnlyWorkOrderView("unpaid")).toBe(false);
+    expect(shouldUseReadOnlyWorkOrderView(null)).toBe(false);
   });
 });
