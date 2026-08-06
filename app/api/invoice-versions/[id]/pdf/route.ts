@@ -14,6 +14,7 @@ import {
   premiumInvoiceFilename,
   renderPremiumInvoicePdf,
 } from "@/features/invoices/server/renderPremiumInvoicePdf";
+import { overlayCanonicalDocumentIdentity } from "@/features/invoices/server/canonicalDocumentIdentity";
 
 type DB = Database;
 
@@ -59,10 +60,13 @@ export async function GET(
         .maybeSingle<{ shop_id: string | null }>(),
       admin
         .from("work_orders")
-        .select("customer_id")
+        .select("customer_id,custom_id")
         .eq("id", version.work_order_id)
         .eq("shop_id", version.shop_id)
-        .maybeSingle<{ customer_id: string | null }>(),
+        .maybeSingle<{
+          customer_id: string | null;
+          custom_id: string | null;
+        }>(),
     ]);
 
     let customerAccess = false;
@@ -109,8 +113,12 @@ export async function GET(
       notes: invoice?.notes ?? version.snapshot.invoice?.notes,
       draft: false,
     };
+    const snapshot = overlayCanonicalDocumentIdentity(version.snapshot, {
+      workOrderNumber: workOrder?.custom_id ?? null,
+      invoiceNumber: invoice?.invoice_number ?? null,
+    });
     const bytes = await renderPremiumInvoicePdf({
-      snapshot: version.snapshot,
+      snapshot,
       document: pdfDocument,
       brand,
     });
@@ -120,7 +128,7 @@ export async function GET(
       status: 200,
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `${download ? "attachment" : "inline"}; filename="${premiumInvoiceFilename(version.snapshot, pdfDocument)}"`,
+        "Content-Disposition": `${download ? "attachment" : "inline"}; filename="${premiumInvoiceFilename(snapshot, pdfDocument)}"`,
         "Cache-Control": "private, no-store",
         "X-Content-Type-Options": "nosniff",
       },

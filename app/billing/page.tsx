@@ -23,6 +23,7 @@ type Row = WorkOrder & {
   resolved_shop_supplies_total?: number | null;
   resolved_tax_total?: number | null;
   resolved_invoice_total?: number | null;
+  resolved_invoice_number?: string | null;
   pricing_error?: string | null;
 };
 
@@ -93,6 +94,14 @@ function stageAccent(status: string | null | undefined): {
       badge: "border-emerald-400/70 bg-emerald-500/10 text-emerald-100",
       border: "border-emerald-500/25",
       progress: "bg-emerald-400",
+    };
+  }
+
+  if (key === "paid") {
+    return {
+      badge: "border-emerald-300/80 bg-emerald-500/15 text-emerald-100",
+      border: "border-emerald-400/35",
+      progress: "bg-emerald-300",
     };
   }
 
@@ -231,10 +240,14 @@ export default function BillingPage(): JSX.Element {
                 .toLowerCase();
 
               const cid = (r.custom_id ?? "").toLowerCase();
+              const invoiceNumber = (
+                r.resolved_invoice_number ?? ""
+              ).toLowerCase();
 
               return (
                 r.id.toLowerCase().includes(qlc) ||
                 cid.includes(qlc) ||
+                invoiceNumber.includes(qlc) ||
                 name.includes(qlc) ||
                 plate.includes(qlc) ||
                 ymm.includes(qlc)
@@ -613,8 +626,12 @@ export default function BillingPage(): JSX.Element {
       ) : (
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {rows.map((r) => {
-            const href = `/work-orders/${r.custom_id ?? r.id}?mode=view`;
-            const accent = stageAccent(r.status);
+            const isPaid = r.payment_status === "paid";
+            const href = isPaid
+              ? `/work-orders/view/${r.id}`
+              : `/work-orders/${r.custom_id ?? r.id}?mode=view`;
+            const visualStatus = isPaid ? "paid" : r.status;
+            const accent = stageAccent(visualStatus);
 
             const customerName = r.customers
               ? [r.customers.first_name ?? "", r.customers.last_name ?? ""]
@@ -644,7 +661,9 @@ export default function BillingPage(): JSX.Element {
             const pricingAvailable = !r.pricing_error;
             const billingState = r.pricing_error
               ? "Pricing unavailable"
-              : statusLower === "invoiced"
+              : isPaid
+                ? "Paid in full"
+                : statusLower === "invoiced"
                 ? "Invoice issued"
                 : statusLower === "ready_to_invoice"
                   ? "Ready for invoice review"
@@ -672,8 +691,14 @@ export default function BillingPage(): JSX.Element {
                         <span
                           className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] ${accent.badge}`}
                         >
-                          {String(r.status ?? "completed").replaceAll("_", " ")}
+                          {String(visualStatus ?? "completed").replaceAll("_", " ")}
                         </span>
+
+                        {r.resolved_invoice_number ? (
+                          <span className="inline-flex items-center rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2.5 py-1 text-[11px] font-semibold text-[color:var(--theme-text-secondary)]">
+                            Invoice {r.resolved_invoice_number}
+                          </span>
+                        ) : null}
 
                         {priorityText ? (
                           <span
@@ -760,23 +785,25 @@ export default function BillingPage(): JSX.Element {
                       Open WO
                     </Link>
 
-                    <button
-                      type="button"
-                      onClick={() => void handleAiReview(r)}
-                      className="rounded-full border border-sky-500/60 bg-sky-500/10 px-3 py-1.5 text-sm font-semibold text-sky-100 transition hover:bg-sky-500/20"
-                      title="Run AI checklist"
-                    >
-                      AI Review
-                    </button>
+                    {!isPaid ? (
+                      <button
+                        type="button"
+                        onClick={() => void handleAiReview(r)}
+                        className="rounded-full border border-sky-500/60 bg-sky-500/10 px-3 py-1.5 text-sm font-semibold text-sky-100 transition hover:bg-sky-500/20"
+                        title="Run AI checklist"
+                      >
+                        AI Review
+                      </button>
+                    ) : null}
 
-                    {statusLower === "ready_to_invoice" ? (
+                    {!isPaid && statusLower === "ready_to_invoice" ? (
                       <span
                         className="inline-flex items-center rounded-full border border-emerald-400/60 bg-emerald-500/10 px-3 py-1.5 text-sm font-semibold text-emerald-100"
                         title="This work order is already ready to invoice"
                       >
                         Ready ✓
                       </span>
-                    ) : statusLower !== "invoiced" ? (
+                    ) : !isPaid && statusLower !== "invoiced" ? (
                       <button
                         type="button"
                         onClick={() => void handleMarkReady(r.id)}
@@ -793,7 +820,11 @@ export default function BillingPage(): JSX.Element {
                       className="rounded-full border border-emerald-400/70 bg-emerald-500/10 px-3 py-1.5 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
                       title={statusLower === "invoiced" ? "Open issued invoice" : "Open invoice preview"}
                     >
-                      {statusLower === "invoiced" ? "Open Invoice" : "Invoice"}
+                      {isPaid
+                        ? "Open paid invoice"
+                        : statusLower === "invoiced"
+                          ? "Open Invoice"
+                          : "Invoice"}
                     </button>
                   </div>
                 </div>

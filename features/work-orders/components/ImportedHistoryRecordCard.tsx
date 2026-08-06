@@ -26,6 +26,8 @@ export type ImportedHistoryRecordLike = {
   labor_hours?: string | number | null;
   labor_sale?: number | null;
   parts_sale?: number | null;
+  shop_supplies?: number | null;
+  discount?: number | null;
   tax?: number | null;
   total?: number | null;
   advisor_name?: string | null;
@@ -48,13 +50,17 @@ type Props = {
   action?: ReactNode;
   className?: string;
   badgeLabel?: string;
+  currency?: "CAD" | "USD";
 };
 
-function formatMoney(value: number | null | undefined): string | null {
+function formatMoney(
+  value: number | null | undefined,
+  currency: "CAD" | "USD",
+): string | null {
   if (value == null || !Number.isFinite(value)) return null;
-  return new Intl.NumberFormat("en-US", {
+  return new Intl.NumberFormat(currency === "CAD" ? "en-CA" : "en-US", {
     style: "currency",
-    currency: "USD",
+    currency,
   }).format(value);
 }
 
@@ -103,23 +109,34 @@ export function ImportedHistoryRecordCard({
   action,
   className = "",
   badgeLabel = "Read-only imported",
+  currency = "CAD",
 }: Props): JSX.Element {
   const detailsId = `imported-history-details-${row.id}`;
+  const narratives = [
+    ["Complaint", row.symptom],
+    ["Cause", row.cause],
+    ["Correction", row.correction],
+  ] as const;
+  const hasNarratives = narratives.some(([, value]) => Boolean(value?.trim()));
   const serviceSummary =
-    (summary ??
-      [
-        row.symptom ? `Complaint: ${row.symptom}` : null,
-        row.cause ? `Cause: ${row.cause}` : null,
-        row.correction ? `Correction: ${row.correction}` : null,
-      ]
-        .filter(Boolean)
-        .join(" • ")) ||
+    summary?.trim() ||
     row.description?.trim() ||
     row.notes?.trim() ||
     "Imported historical service record";
   const moneyParts = [
-    row.total != null ? `Total ${formatMoney(row.total)}` : null,
-    row.labor_sale != null ? `Labor ${formatMoney(row.labor_sale)}` : null,
+    row.total != null ? `Total ${formatMoney(row.total, currency)}` : null,
+    row.labor_sale != null
+      ? `Labor ${formatMoney(row.labor_sale, currency)}`
+      : null,
+    row.parts_sale != null
+      ? `Parts ${formatMoney(row.parts_sale, currency)}`
+      : null,
+    row.shop_supplies != null && row.shop_supplies !== 0
+      ? `Supplies ${formatMoney(row.shop_supplies, currency)}`
+      : null,
+    row.tax != null && row.tax !== 0
+      ? `Tax ${formatMoney(row.tax, currency)}`
+      : null,
     row.labor_hours != null
       ? `${formatNumberLike(row.labor_hours)} labor hrs`
       : null,
@@ -172,7 +189,9 @@ export function ImportedHistoryRecordCard({
             <Detail
               label="Odometer"
               value={
-                row.odometer != null ? formatNumberLike(row.odometer) : "—"
+                row.odometer != null
+                  ? formatNumberLike(row.odometer)
+                  : "Not recorded"
               }
             />
             <Detail label="Amount" value={moneyParts.join(" • ") || "—"} />
@@ -181,7 +200,23 @@ export function ImportedHistoryRecordCard({
             <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">
               Service summary
             </div>
-            {serviceSummary}
+            {hasNarratives ? (
+              <dl className="grid gap-2">
+                {narratives.map(([label, value]) => (
+                  <div
+                    key={label}
+                    className="grid gap-1 sm:grid-cols-[7rem_minmax(0,1fr)] sm:gap-3"
+                  >
+                    <dt className="font-medium text-[color:var(--theme-text-secondary)]">
+                      {label}
+                    </dt>
+                    <dd>{value?.trim() || "Not recorded"}</dd>
+                  </div>
+                ))}
+              </dl>
+            ) : (
+              serviceSummary
+            )}
           </div>
         </div>
       ) : null}

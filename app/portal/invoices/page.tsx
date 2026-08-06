@@ -30,11 +30,27 @@ export default async function PortalInvoicesPage() {
       .returns<Array<{ id: string; custom_id: string | null }>>();
     if (workOrderError) throw new Error(workOrderError.message);
 
-    const labels = new Map((workOrders ?? []).map((row) => [row.id, row.custom_id]));
+    const workOrderLabels = new Map(
+      (workOrders ?? []).map((row) => [row.id, row.custom_id]),
+    );
     const versions = await listCustomerVisibleInvoiceVersions({
       supabase,
       workOrderIds: (workOrders ?? []).map((row) => row.id),
     });
+    const invoiceIds = versions
+      .map((version) => version.invoice_id)
+      .filter((id): id is string => Boolean(id));
+    const { data: invoices, error: invoiceError } = invoiceIds.length
+      ? await supabase
+          .from("invoices")
+          .select("id,invoice_number")
+          .in("id", invoiceIds)
+          .returns<Array<{ id: string; invoice_number: string | null }>>()
+      : { data: [], error: null };
+    if (invoiceError) throw new Error(invoiceError.message);
+    const invoiceLabels = new Map(
+      (invoices ?? []).map((invoice) => [invoice.id, invoice.invoice_number]),
+    );
 
     return (
       <div className="space-y-6 text-[color:var(--theme-text-primary)]">
@@ -61,7 +77,13 @@ export default async function PortalInvoicesPage() {
           ) : (
             <div className="space-y-3">
               {versions.map((version) => {
-                const label = labels.get(version.work_order_id) || `Work order ${version.work_order_id.slice(0, 8)}`;
+                const workOrderLabel =
+                  workOrderLabels.get(version.work_order_id) ||
+                  `Work order ${version.work_order_id.slice(0, 8)}`;
+                const invoiceLabel =
+                  (version.invoice_id
+                    ? invoiceLabels.get(version.invoice_id)
+                    : null) || "Invoice";
                 return (
                   <Link
                     key={version.id}
@@ -70,9 +92,9 @@ export default async function PortalInvoicesPage() {
                   >
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div>
-                        <div className="font-semibold text-[color:var(--theme-text-primary)]">{label}</div>
+                        <div className="font-semibold text-[color:var(--theme-text-primary)]">{invoiceLabel}</div>
                         <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
-                          Version {version.version_number} • Issued {dateLabel(version.issued_at)}
+                          {workOrderLabel} • Version {version.version_number} • Issued {dateLabel(version.issued_at)}
                         </div>
                         <div className="mt-1 text-xs capitalize text-[color:var(--theme-text-secondary)]">
                           {version.lifecycle_status.replaceAll("_", " ")}

@@ -39,6 +39,7 @@ import { resolveWorkOrderLinePricing } from "@/features/work-orders/lib/pricing/
 import {
   countActiveWorkOrderLines,
   formatWorkOrderHeaderStatus,
+  shouldUseReadOnlyWorkOrderView,
 } from "@/features/work-orders/lib/display/workOrderPresentation";
 import { filterAllocationsNotBackedByCanonicalParts } from "@/features/work-orders/lib/display/workOrderParts";
 import {
@@ -298,6 +299,11 @@ export default function WorkOrderIdClient(): JSX.Element {
     () => formatWorkOrderHeaderStatus(wo?.status, wo?.payment_status),
     [wo?.payment_status, wo?.status],
   );
+
+  useEffect(() => {
+    if (!wo?.id || !shouldUseReadOnlyWorkOrderView(wo.payment_status)) return;
+    router.replace(`/work-orders/view/${wo.id}`);
+  }, [router, wo?.id, wo?.payment_status]);
 
   // ✅ read job from query (desktop panel)
   const jobFromQuery = searchParams?.get("job") || null;

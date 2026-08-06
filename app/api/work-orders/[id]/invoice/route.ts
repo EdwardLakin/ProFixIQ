@@ -8,6 +8,10 @@ import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server
 import { reviewWorkOrder } from "../_lib/reviewWorkOrder";
 import { getIssuableInvoiceSnapshot } from "@/features/invoices/server/getIssuableInvoiceSnapshot";
 import { getActiveInvoiceVersion } from "@/features/invoices/server/financialLifecycle";
+import {
+  getCanonicalDocumentIdentity,
+  overlayCanonicalDocumentIdentity,
+} from "@/features/invoices/server/canonicalDocumentIdentity";
 
 
 function isError(x: unknown): x is Error {
@@ -93,15 +97,25 @@ export async function GET(
       workOrderId: woId,
       shopId: scopedWorkOrder.shop_id,
     });
-    const snapshot =
+    const storedSnapshot =
       activeInvoiceVersion?.snapshot ??
       (await getIssuableInvoiceSnapshot({
         supabase,
         workOrderId: woId,
         shopId: scopedWorkOrder.shop_id,
       }));
+    const identity = await getCanonicalDocumentIdentity({
+      supabase,
+      workOrderId: woId,
+      shopId: scopedWorkOrder.shop_id,
+      invoiceId: activeInvoiceVersion?.invoice_id,
+    });
+    const snapshot = overlayCanonicalDocumentIdentity(
+      storedSnapshot,
+      identity,
+    );
     return NextResponse.json(
-      { snapshot, activeInvoiceVersion },
+      { snapshot, activeInvoiceVersion, documentIdentity: identity },
       { headers: { "Cache-Control": "private, no-store" } },
     );
   } catch (e: unknown) {

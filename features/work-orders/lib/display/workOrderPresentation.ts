@@ -53,3 +53,9 @@ export function countActiveWorkOrderLines(
     (line) => !NON_ACTIVE_LINE_STATUSES.has(normalizeWorkOrderLineStatus(line.status)),
   ).length;
 }
+
+export function shouldUseReadOnlyWorkOrderView(
+  paymentStatus: string | null | undefined,
+): boolean {
+  return String(paymentStatus ?? "").trim().toLowerCase() === "paid";
+}

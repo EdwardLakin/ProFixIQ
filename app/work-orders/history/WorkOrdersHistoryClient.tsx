@@ -20,6 +20,7 @@ type HistoryRow = DB["public"]["Tables"]["history"]["Row"];
 type CustomerRow = DB["public"]["Tables"]["customers"]["Row"];
 type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
 type ProfileRow = DB["public"]["Tables"]["profiles"]["Row"];
+type ShopRow = DB["public"]["Tables"]["shops"]["Row"];
 
 type Row = Pick<
   HistoryRow,
@@ -39,8 +40,11 @@ type Row = Pick<
   | "odometer"
   | "advisor_name"
   | "assigned_tech_name"
+  | "labor_hours"
   | "labor_sale"
   | "parts_sale"
+  | "shop_supplies"
+  | "discount"
   | "tax"
   | "total"
   | "symptom"
@@ -72,6 +76,7 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
   const vehicleHistoryGuidedQuery = usePersistentGuidedOnboardingQuery("vehicle_history");
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const [shopId, setShopId] = useState<string | null>(null);
+  const [currency, setCurrency] = useState<"CAD" | "USD">("CAD");
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -104,6 +109,16 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
           setLoading(false)
         );
       setShopId(profile.shop_id);
+      const { data: shop } = await supabase
+        .from("shops")
+        .select("country")
+        .eq("id", profile.shop_id)
+        .maybeSingle<Pick<ShopRow, "country">>();
+      setCurrency(
+        String(shop?.country ?? "CA").trim().toUpperCase() === "CA"
+          ? "CAD"
+          : "USD",
+      );
       setLoading(false);
     })();
   }, [supabase]);
@@ -115,7 +130,7 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
     let query = supabase
       .from("history")
       .select(
-        "id, customer_id, vehicle_id, work_order_id, service_date, description, notes, created_at, work_order_number, invoice_number, historical_status, payment_state, approval_state, odometer, advisor_name, assigned_tech_name, labor_sale, parts_sale, tax, total, symptom, cause, correction, source_system, source_external_id, source_row_id, imported_from_session_id, customers:customers(first_name,last_name,email,phone), vehicles:vehicles(year,make,model,license_plate,vin,unit_number)",
+        "id, customer_id, vehicle_id, work_order_id, service_date, description, notes, created_at, work_order_number, invoice_number, historical_status, payment_state, approval_state, odometer, advisor_name, assigned_tech_name, labor_hours, labor_sale, parts_sale, shop_supplies, discount, tax, total, symptom, cause, correction, source_system, source_external_id, source_row_id, imported_from_session_id, customers:customers(first_name,last_name,email,phone), vehicles:vehicles(year,make,model,license_plate,vin,unit_number)",
       )
       .order("service_date", { ascending: false })
       .limit(300);
@@ -292,7 +307,10 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
                   <ImportedHistoryRecordCard
                     key={r.id}
                     row={r}
-                    serviceDateLabel={fmtDate(r.service_date ?? r.created_at)}
+                    serviceDateLabel={fmtDate(
+                      r.service_date ?? r.created_at,
+                      "PPp",
+                    )}
                     vehicleLabel={fmtVehicle(r.vehicles)}
                     vehicleIdentifiers={
                       r.vehicles?.vin ? `VIN ${r.vehicles.vin}` : null
@@ -311,6 +329,7 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
                           : "Service history"
                         : undefined
                     }
+                    currency={currency}
                     action={
                       <div className="flex flex-wrap items-center gap-3">
                         <Link
