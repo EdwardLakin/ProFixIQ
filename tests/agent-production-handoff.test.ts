@@ -8,17 +8,20 @@ function read(path: string) {
 
 describe("production agent request handoff", () => {
   const route = read("app/api/agent/requests/route.ts");
-  const secrets = read("features/shared/lib/server/agent-api-secrets.ts");
+  const teamClient = read("features/agent/server/teamClient.ts");
+  const consolePage = read("features/agent/agent-console/app/agent/page.tsx");
+  const replyRoute = read("app/api/agent/requests/[id]/reply/route.ts");
 
-  it("uses explicit production configuration and authenticated service calls", () => {
-    expect(route).toContain("PROFIXIQ_AGENT_URL");
-    expect(route).toContain("resolveAgentApiSecrets()");
-    expect(secrets).toContain("PROFIXIQ_AGENT_API_SECRET");
-    expect(route).toContain('"x-agent-api-secret": agentSecrets.canonical');
+  it("uses the canonical authenticated Agent team client", () => {
+    expect(route).toContain("agentTeamRequest<AgentServiceResponse>");
+    expect(route).toContain("readAgentTeamCase(engineeringCaseId)");
+    expect(route).toContain("projectAgentTeamCase");
+    expect(teamClient).toContain("resolveAgentApiSecrets()");
+    expect(teamClient).toContain('"x-agent-api-secret"');
     expect(route).not.toContain("app.github.dev");
   });
 
-  it("sends canonical engineering context to the production workforce", () => {
+  it("sends canonical engineering context and screenshot evidence", () => {
     expect(route).toContain("const expectedBehavior = asNullableString(body.expected)");
     expect(route).toContain("const actualBehavior = asNullableString(body.actual)");
     expect(route).toContain("expectedBehavior,");
@@ -35,9 +38,20 @@ describe("production agent request handoff", () => {
     expect(route).toContain("{ status: 502 }");
   });
 
-  it("marks persisted engineering cases in progress", () => {
-    expect(route).toContain("agentResponse?.engineeringCaseId");
-    expect(route).toContain("agentResponse?.intakeJobId");
-    expect(route).toContain('? "in_progress"');
+  it("projects team blockers into the visible Agent Q&A contract", () => {
+    expect(route).toContain("function projectionQuestions(projection: AgentTeamProjection)");
+    expect(route).toContain("projection.missingInformation.map");
+    expect(route).toContain("questions: projectionQuestions(projection)");
+    expect(consolePage).toContain("selectedTeam?.missingInformation");
+    expect(consolePage).toContain("The engineering team needs this information to continue:");
+    expect(replyRoute).toContain("resumeAgentTeamCase");
+  });
+
+  it("only exposes approval when the Agent team has a mission or release gate", () => {
+    expect(consolePage).toContain('selectedTeam?.mission?.status === "awaiting_approval"');
+    expect(consolePage).toContain('selectedTeam?.caseStatus === "ready_for_human_approval"');
+    expect(consolePage).toContain('selectedTeam?.currentStage === "release"');
+    expect(consolePage).toContain("{canApprove && (");
+    expect(consolePage).toContain('missionAwaitingApproval ? "Approve Mission" : "Approve Release"');
   });
 });
