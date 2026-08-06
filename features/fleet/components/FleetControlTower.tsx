@@ -266,6 +266,7 @@ export default function FleetControlTower({
             issues={issues}
             assignments={assignments}
             uiContext={uiContext}
+            fleetId={fleetId}
             routePrefix={routePrefix}
           />
         </div>
