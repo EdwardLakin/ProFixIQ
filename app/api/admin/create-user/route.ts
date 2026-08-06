@@ -3,7 +3,6 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
-import type { Database } from "@shared/types/types/supabase";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { sendUserInviteEmail } from "@/features/email/server";
@@ -329,7 +328,7 @@ export async function POST(req: Request) {
           username,
           must_change_password: true,
           updated_at: new Date().toISOString(),
-        } as Database["public"]["Tables"]["profiles"]["Insert"],
+        },
         {
           onConflict: "id",
         }
@@ -379,7 +378,7 @@ export async function POST(req: Request) {
           user_id: newUserId,
           role: canonicalRole,
           created_by: access.profile.id,
-        } as Database["public"]["Tables"]["shop_members"]["Insert"],
+        },
         { onConflict: "shop_id,user_id" },
       );
 
