@@ -15,6 +15,9 @@ const billing = read("app/billing/page.tsx");
 const history = read(
   "features/work-orders/components/ImportedHistoryRecordCard.tsx",
 );
+const historyNarratives = read(
+  "features/work-orders/lib/display/historyNarratives.ts",
+);
 const paidWorkOrder = read("app/work-orders/[id]/Client.tsx");
 
 describe("customer document consistency", () => {
@@ -49,9 +52,12 @@ describe("customer document consistency", () => {
     expect(migration).toContain("v_odometer := coalesce(");
     expect(migration).toContain("new.vehicle_mileage,");
     expect(migration).toContain("new.odometer_km");
-    expect(history).toContain('["Complaint", row.symptom]');
-    expect(history).toContain('["Cause", row.cause]');
-    expect(history).toContain('["Correction", row.correction]');
+    expect(history).toContain("resolveHistoryNarratives(row)");
+    expect(history).toContain('["Complaint", resolvedNarratives.complaint]');
+    expect(history).toContain('["Cause", resolvedNarratives.cause]');
+    expect(history).toContain('["Correction", resolvedNarratives.correction]');
+    expect(historyNarratives).toContain("clean(input.symptom)");
+    expect(historyNarratives).toContain(".split(/\\s+\\/\\s+/)");
   });
 
   it("shows customer-facing identity and narratives throughout invoice views", () => {
@@ -63,6 +69,9 @@ describe("customer document consistency", () => {
     expect(portalInvoice).toContain("identity.invoiceNumber");
     expect(portalInvoice).toContain("Complaint:");
     expect(portalInvoiceList).toContain("invoiceLabels");
+    expect(billing).toContain("resolved_shop_supplies_total");
+    expect(billing).toContain("Shop supplies");
+    expect(billing).toContain("resolved_tax_total");
   });
 
   it("treats paid work as immutable history across billing and the cockpit", () => {

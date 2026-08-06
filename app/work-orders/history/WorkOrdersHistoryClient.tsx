@@ -119,7 +119,6 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
           ? "CAD"
           : "USD",
       );
-      setLoading(false);
     })();
   }, [supabase]);
 

@@ -1,0 +1,48 @@
+name: Customer Document Consistency
+
+on:
+  pull_request:
+    paths:
+      - "app/billing/**"
+      - "app/portal/invoices/**"
+      - "app/work-orders/history/**"
+      - "features/invoices/**"
+      - "features/work-orders/components/ImportedHistoryRecordCard.tsx"
+      - "features/work-orders/components/InvoicePreviewPageClient.tsx"
+      - "features/work-orders/lib/display/historyNarratives.ts"
+      - "features/work-orders/lib/display/historyNarratives.test.ts"
+      - "features/work-orders/lib/display/workOrderPresentation.ts"
+      - "features/work-orders/lib/display/workOrderPresentation.test.ts"
+      - "tests/customer-document-consistency.test.ts"
+      - ".github/workflows/customer-document-consistency-validation.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: >-
+          pnpm exec eslint
+          app/billing/page.tsx
+          app/work-orders/history/WorkOrdersHistoryClient.tsx
+          features/work-orders/components/ImportedHistoryRecordCard.tsx
+          features/work-orders/lib/display/historyNarratives.ts
+          features/work-orders/lib/display/historyNarratives.test.ts
+      - run: >-
+          pnpm exec vitest run
+          features/invoices/server/canonicalDocumentIdentity.test.ts
+          features/work-orders/lib/display/historyNarratives.test.ts
+          features/work-orders/lib/display/workOrderPresentation.test.ts
+          tests/customer-document-consistency.test.ts

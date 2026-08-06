@@ -655,8 +655,13 @@ export default function BillingPage(): JSX.Element {
 
             const laborTotal = Number(r.resolved_labor_total ?? 0);
             const partsTotal = Number(r.resolved_parts_total ?? 0);
+            const shopSuppliesTotal = Number(
+              r.resolved_shop_supplies_total ?? 0,
+            );
+            const taxTotal = Number(r.resolved_tax_total ?? 0);
             const invoiceTotal = Number(
-              r.resolved_invoice_total ?? laborTotal + partsTotal,
+              r.resolved_invoice_total ??
+                laborTotal + partsTotal + shopSuppliesTotal + taxTotal,
             );
             const pricingAvailable = !r.pricing_error;
             const billingState = r.pricing_error
@@ -764,6 +769,26 @@ export default function BillingPage(): JSX.Element {
                       </div>
                       <div className="mt-1 text-sm font-semibold text-[color:var(--theme-text-primary)]">
                         {pricingAvailable ? formatMoney(partsTotal) : "—"}
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-3">
+                      <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
+                        Shop supplies
+                      </div>
+                      <div className="mt-1 text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                        {pricingAvailable
+                          ? formatMoney(shopSuppliesTotal)
+                          : "—"}
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-3">
+                      <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
+                        Tax
+                      </div>
+                      <div className="mt-1 text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                        {pricingAvailable ? formatMoney(taxTotal) : "—"}
                       </div>
                     </div>
 
