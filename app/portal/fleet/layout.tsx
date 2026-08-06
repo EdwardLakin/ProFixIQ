@@ -11,6 +11,12 @@ export const metadata: Metadata = {
   description:
     "Fleet asset readiness, preventive maintenance, service approvals, history and costs in one connected workspace.",
   applicationName: "ProFixIQ Fleet",
+  manifest: "/fleet-manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    title: "ProFixIQ Fleet",
+    statusBarStyle: "black-translucent",
+  },
   alternates: { canonical: "/" },
   openGraph: {
     type: "website",

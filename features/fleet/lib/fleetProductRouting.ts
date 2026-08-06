@@ -95,7 +95,9 @@ function mapFleetHref(
   return `${mappedPathname}${parsed.search}${parsed.hash}`;
 }
 
-export function normalizeRequestHostname(value: string | null | undefined): string {
+export function normalizeRequestHostname(
+  value: string | null | undefined,
+): string {
   const forwardedHost = String(value ?? "")
     .split(",", 1)[0]
     .trim()
@@ -149,7 +151,7 @@ export function isFleetProductSharedPath(pathname: string): boolean {
     normalized === "/confirm" ||
     normalized === "/robots.txt" ||
     normalized === "/sitemap.xml" ||
-    normalized === "/manifest.webmanifest" ||
+    normalized === "/fleet-manifest.webmanifest" ||
     normalized === "/api" ||
     normalized.startsWith("/api/")
   );

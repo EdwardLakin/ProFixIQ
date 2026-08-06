@@ -14,8 +14,12 @@ describe("Fleet product domain routing", () => {
     expect(isFleetProductHostname("fleet.profixiq.com")).toBe(true);
     expect(isFleetProductHostname("fleet.profixiq.com:443")).toBe(true);
     expect(isFleetProductHostname("fleet.localhost:3000")).toBe(true);
-    expect(isFleetProductHostname("Fleet.ProFixIQ.com, proxy.internal")).toBe(true);
-    expect(isFleetProductHostname("fleet.profixiq.com.attacker.test")).toBe(false);
+    expect(isFleetProductHostname("Fleet.ProFixIQ.com, proxy.internal")).toBe(
+      true,
+    );
+    expect(isFleetProductHostname("fleet.profixiq.com.attacker.test")).toBe(
+      false,
+    );
     expect(isFleetProductHostname("profixiq.com")).toBe(false);
     expect(normalizeRequestHostname("[::1]:3000")).toBe("[::1]");
   });
@@ -35,10 +39,13 @@ describe("Fleet product domain routing", () => {
     ["/reports", "/portal/fleet/reports"],
     ["/settings", "/portal/fleet/settings"],
     ["/sign-in", "/portal/auth/fleet-sign-in"],
-  ])("maps the public route %s to the canonical route and back", (publicPath, internalPath) => {
-    expect(toFleetInternalPath(publicPath)).toBe(internalPath);
-    expect(toFleetPublicPath(internalPath)).toBe(publicPath);
-  });
+  ])(
+    "maps the public route %s to the canonical route and back",
+    (publicPath, internalPath) => {
+      expect(toFleetInternalPath(publicPath)).toBe(internalPath);
+      expect(toFleetPublicPath(internalPath)).toBe(publicPath);
+    },
+  );
 
   it("preserves query strings and fragments for deep-link authentication", () => {
     expect(toFleetInternalHref("/assets/unit-42?tab=history#invoice")).toBe(
@@ -66,6 +73,8 @@ describe("Fleet product domain routing", () => {
     expect(isFleetProductSharedPath("/api/portal/fleet/units")).toBe(true);
     expect(isFleetProductSharedPath("/forgot-password")).toBe(true);
     expect(isFleetProductSharedPath("/auth/reset")).toBe(true);
+    expect(isFleetProductSharedPath("/fleet-manifest.webmanifest")).toBe(true);
+    expect(isFleetProductSharedPath("/manifest.webmanifest")).toBe(false);
     expect(isFleetProductSharedPath("/portal")).toBe(false);
     expect(isFleetProductSharedPath("/dashboard")).toBe(false);
   });

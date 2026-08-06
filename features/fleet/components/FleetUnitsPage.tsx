@@ -38,7 +38,9 @@ function StatusPill({ status }: { status: FleetUnitListItem["status"] }) {
     oos: "Out of service",
   };
   return (
-    <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${styles[status]}`}>
+    <span
+      className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${styles[status]}`}
+    >
       {labels[status]}
     </span>
   );
@@ -68,11 +70,16 @@ export default function FleetUnitsPage({
           units?: FleetUnitListItem[];
           error?: string;
         };
-        if (!response.ok) throw new Error(body.error || "Unable to load fleet units");
+        if (!response.ok)
+          throw new Error(body.error || "Unable to load fleet units");
         if (!cancelled) setUnits(body.units ?? []);
       } catch (cause) {
         if (!cancelled) {
-          setError(cause instanceof Error ? cause.message : "Unable to load fleet units");
+          setError(
+            cause instanceof Error
+              ? cause.message
+              : "Unable to load fleet units",
+          );
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -86,7 +93,11 @@ export default function FleetUnitsPage({
   const fleets = useMemo(
     () =>
       Array.from(
-        new Set(units.map((unit) => unit.fleetName).filter((value): value is string => Boolean(value))),
+        new Set(
+          units
+            .map((unit) => unit.fleetName)
+            .filter((value): value is string => Boolean(value)),
+        ),
       ).sort(),
     [units],
   );
@@ -132,9 +143,11 @@ export default function FleetUnitsPage({
           >
             Fleet-wide pre-trip history
           </Link>
-          {routePrefix === "/fleet" && uiContext.capabilities.canManageUnits ? (
+          {uiContext.capabilities.canManageUnits ? (
             <Link
-              href="/fleet/units/new"
+              href={
+                routePrefix === "/fleet" ? "/fleet/units/new" : "/assets/new"
+              }
               className="inline-flex min-h-10 items-center rounded-xl bg-sky-300 px-3 py-2 text-xs font-semibold text-slate-950"
             >
               Enroll units & assign drivers
@@ -147,18 +160,24 @@ export default function FleetUnitsPage({
         <div className={`${panel} p-4`}>
           <Truck size={17} className="text-sky-300" />
           <div className="mt-3 text-2xl font-semibold">{units.length}</div>
-          <div className="text-xs text-[color:var(--theme-text-muted)]">Active units</div>
+          <div className="text-xs text-[color:var(--theme-text-muted)]">
+            Active units
+          </div>
         </div>
         <div className={`${panel} p-4`}>
           <Wrench size={17} className="text-amber-200" />
           <div className="mt-3 text-2xl font-semibold">{attention}</div>
-          <div className="text-xs text-[color:var(--theme-text-muted)]">Need attention</div>
+          <div className="text-xs text-[color:var(--theme-text-muted)]">
+            Need attention
+          </div>
         </div>
         <div className={`${panel} p-4`}>
           <div className="text-xs uppercase tracking-wide text-[color:var(--theme-text-muted)]">
             Navigation rule
           </div>
-          <div className="mt-2 text-sm font-semibold">Everything is inside the unit</div>
+          <div className="mt-2 text-sm font-semibold">
+            Everything is inside the unit
+          </div>
           <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
             Select a unit once; its full record is one click away.
           </div>
@@ -199,7 +218,9 @@ export default function FleetUnitsPage({
 
         {error ? <p className="p-5 text-sm text-red-300">{error}</p> : null}
         {loading ? (
-          <p className="p-5 text-sm text-[color:var(--theme-text-secondary)]">Loading units…</p>
+          <p className="p-5 text-sm text-[color:var(--theme-text-secondary)]">
+            Loading units…
+          </p>
         ) : null}
         {!loading && !error && visible.length === 0 ? (
           <p className="p-8 text-center text-sm text-[color:var(--theme-text-secondary)]">
@@ -222,14 +243,20 @@ export default function FleetUnitsPage({
               </div>
               <StatusPill status={unit.status} />
               <div className="text-xs text-[color:var(--theme-text-secondary)]">
-                <div className="font-medium text-[color:var(--theme-text-primary)]">Latest reading</div>
+                <div className="font-medium text-[color:var(--theme-text-primary)]">
+                  Latest reading
+                </div>
                 <div className="mt-1">{meter(unit)}</div>
               </div>
               <div className="text-xs text-[color:var(--theme-text-secondary)]">
                 <div>{unit.pmDueCount} PM due</div>
-                <div className="mt-1">{unit.openRequestCount} open requests</div>
+                <div className="mt-1">
+                  {unit.openRequestCount} open requests
+                </div>
               </div>
-              <span className="text-xs font-semibold text-sky-300">Open unit →</span>
+              <span className="text-xs font-semibold text-sky-300">
+                Open unit →
+              </span>
             </Link>
           ))}
         </div>

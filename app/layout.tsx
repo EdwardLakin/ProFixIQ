@@ -17,6 +17,7 @@ import {
   isOutsideDesktopAppShell,
   isStandalonePublicRoute,
 } from "@/features/shared/lib/routes/shellBoundaries";
+import { isFleetProductHostname } from "@/features/fleet/lib/fleetProductRouting";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -37,13 +38,23 @@ export const metadata: Metadata = {
     "Voice inspections, technician-built repairs, approvals, parts workflows, workforce operations, and fleet transparency—connected in one repair shop operating system.",
   applicationName: "ProFixIQ",
   manifest: "/manifest.webmanifest",
-  appleWebApp: { capable: true, title: "ProFixIQ", statusBarStyle: "black-translucent" },
+  appleWebApp: {
+    capable: true,
+    title: "ProFixIQ",
+    statusBarStyle: "black-translucent",
+  },
   icons: {
     icon: [
       { url: "/pwa-icons/icon-192", sizes: "192x192", type: "image/png" },
       { url: "/pwa-icons/icon-512", sizes: "512x512", type: "image/png" },
     ],
-    apple: [{ url: "/pwa-icons/apple-touch-icon", sizes: "180x180", type: "image/png" }],
+    apple: [
+      {
+        url: "/pwa-icons/apple-touch-icon",
+        sizes: "180x180",
+        type: "image/png",
+      },
+    ],
   },
 };
 
@@ -61,6 +72,9 @@ export default async function RootLayout({
 }) {
   const hdrs = await headers();
   const pathname = hdrs.get("x-next-pathname") ?? "";
+  const isFleetProductHost =
+    hdrs.get("x-profixiq-product-host") === "fleet" ||
+    isFleetProductHostname(hdrs.get("x-forwarded-host") ?? hdrs.get("host"));
 
   const isPublicRoute = isStandalonePublicRoute(pathname);
   const isOutsideDesktopShell = isOutsideDesktopAppShell(pathname);
@@ -106,8 +120,7 @@ export default async function RootLayout({
       <body
         className="min-h-screen antialiased"
         style={{
-          backgroundImage:
-            "var(--theme-gradient-panel)",
+          backgroundImage: "var(--theme-gradient-panel)",
         }}
       >
         {useAppShell ? (
@@ -116,7 +129,7 @@ export default async function RootLayout({
           appContent
         )}
 
-        <PwaRuntime />
+        {isFleetProductHost ? null : <PwaRuntime />}
         <ThemedToaster />
       </body>
     </html>
