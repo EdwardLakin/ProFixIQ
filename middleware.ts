@@ -26,13 +26,16 @@ import {
   readSupabasePublicEnv,
 } from "@/features/shared/lib/supabase/public-env";
 
-function isAssetPath(p: string) {
+function isStaticAssetPath(p: string) {
   return (
-    p.startsWith("/_next") ||
-    p.startsWith("/fonts") ||
-    p.endsWith("/favicon.ico") ||
-    p.endsWith(".svg") ||
-    /\.(png|jpg|jpeg|gif|webp|ico|css|js|map)$/i.test(p)
+    p.startsWith("/_next/") ||
+    p.startsWith("/fonts/") ||
+    p.startsWith("/icons/") ||
+    p.startsWith("/pwa-icons/") ||
+    p.startsWith("/voice/") ||
+    p === "/favicon.ico" ||
+    p === "/carbon-weave.png" ||
+    p === "/BlackOpsOne-Regular.ttf"
   );
 }
 
@@ -154,7 +157,7 @@ export async function middleware(req: NextRequest) {
   const fleetProductRequest = isFleetProductHostname(requestHostname(req));
   const mobileDeviceRequest = isMobileDeviceRequest(req);
 
-  if (isAssetPath(requestPathname)) {
+  if (isStaticAssetPath(requestPathname)) {
     return NextResponse.next();
   }
 
@@ -167,7 +170,7 @@ export async function middleware(req: NextRequest) {
 
     if (publicFleetPath || isLegacyFleetWorkspace || isLegacyFleetSignIn) {
       const target = new URL(
-        isLegacyFleetSignIn ? "/sign-in" : publicFleetPath ?? "/",
+        isLegacyFleetSignIn ? "/sign-in" : (publicFleetPath ?? "/"),
         FLEET_PRODUCT_ORIGIN,
       );
       target.search = search;
@@ -246,6 +249,11 @@ export async function middleware(req: NextRequest) {
     pathname === "/portal/confirm/" ||
     pathname.startsWith("/portal/confirm");
   const isPublicPortalEnrollment = pathname.startsWith("/portal/join/");
+  const isPublicFleetMetadata =
+    fleetProductRequest &&
+    (pathname === "/fleet-manifest.webmanifest" ||
+      pathname === "/robots.txt" ||
+      pathname === "/sitemap.xml");
 
   const isPublic =
     pathname === "/" ||
@@ -259,6 +267,7 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith("/auth/reset") ||
     pathname.startsWith("/auth/set-password") ||
     pathname.startsWith("/demo") ||
+    isPublicFleetMetadata ||
     isPortalAuthPage ||
     isLegacyPortalConfirm ||
     isPublicPortalEnrollment;
@@ -291,8 +300,7 @@ export async function middleware(req: NextRequest) {
   let completed = false;
   let needsShopBoostIntake = false;
   let canUseMobile = false;
-  const isPortalOnlyAccount =
-    user?.app_metadata?.profixiq_portal_only === true;
+  const isPortalOnlyAccount = user?.app_metadata?.profixiq_portal_only === true;
 
   if (user && !isPortal) {
     try {
@@ -358,7 +366,7 @@ export async function middleware(req: NextRequest) {
       req.nextUrl.searchParams.get("redirect"),
     );
     const redirectParam = fleetProductRequest
-      ? toFleetInternalHref(requestedRedirect) ?? requestedRedirect
+      ? (toFleetInternalHref(requestedRedirect) ?? requestedRedirect)
       : requestedRedirect;
     const isMainSignIn =
       pathname.startsWith("/sign-in") || pathname.startsWith("/signup");
@@ -447,7 +455,7 @@ export async function middleware(req: NextRequest) {
         login.searchParams.set(
           "redirect",
           fleetProductRequest
-            ? toFleetPublicHref(redirectParam) ?? redirectParam!
+            ? (toFleetPublicHref(redirectParam) ?? redirectParam!)
             : redirectParam!,
         );
       }
@@ -506,11 +514,7 @@ export async function middleware(req: NextRequest) {
 
   if (pathname.startsWith("/mobile") && !canUseMobile) {
     if (!completed) {
-      const target = productRequestUrl(
-        req,
-        "/onboarding",
-        fleetProductRequest,
-      );
+      const target = productRequestUrl(req, "/onboarding", fleetProductRequest);
       return redirectWithResponseHeaders(target, res);
     }
 
@@ -548,11 +552,7 @@ export async function middleware(req: NextRequest) {
   }
 
   if (!isPortal && !completed && !pathname.startsWith("/onboarding")) {
-    const target = productRequestUrl(
-      req,
-      "/onboarding",
-      fleetProductRequest,
-    );
+    const target = productRequestUrl(req, "/onboarding", fleetProductRequest);
     return redirectWithResponseHeaders(target, res);
   }
 

@@ -2,18 +2,77 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { config, middleware } from "../middleware";
 
+const authFixture = vi.hoisted(() => ({
+  user: null as null | {
+    id: string;
+    app_metadata: Record<string, unknown>;
+  },
+  profile: null as null | {
+    id: string;
+    role: string;
+    shop_id: string;
+    completed_onboarding: boolean;
+  },
+  memberships: [] as Array<{
+    fleet_id: string;
+    shop_id: string;
+    role: string;
+    created_at: string;
+  }>,
+}));
+
 vi.mock("@supabase/ssr", () => ({
-  createServerClient: () => ({
-    auth: {
-      getUser: async () => ({ data: { user: null }, error: null }),
-    },
-  }),
+  createServerClient: () => {
+    class MockQuery {
+      constructor(private readonly table: string) {}
+
+      select() {
+        return this;
+      }
+
+      eq() {
+        return this;
+      }
+
+      limit() {
+        return this;
+      }
+
+      async maybeSingle() {
+        return {
+          data: this.table === "profiles" ? authFixture.profile : null,
+          error: null,
+        };
+      }
+
+      async order() {
+        return {
+          data: this.table === "fleet_members" ? authFixture.memberships : [],
+          error: null,
+        };
+      }
+    }
+
+    return {
+      auth: {
+        getUser: async () => ({
+          data: { user: authFixture.user },
+          error: null,
+        }),
+      },
+      from: (table: string) => new MockQuery(table),
+    };
+  },
 }));
 
 const originalSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const originalSupabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 afterEach(() => {
+  authFixture.user = null;
+  authFixture.profile = null;
+  authFixture.memberships = [];
+
   if (originalSupabaseUrl === undefined) {
     delete process.env.NEXT_PUBLIC_SUPABASE_URL;
   } else {
@@ -82,6 +141,33 @@ describe("Fleet product middleware boundary", () => {
     );
   });
 
+  it("keeps an authenticated Shop staff member with Fleet membership inside Fleet", async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "test-anon-key";
+    authFixture.user = { id: "user-1", app_metadata: {} };
+    authFixture.profile = {
+      id: "user-1",
+      role: "owner",
+      shop_id: "shop-1",
+      completed_onboarding: true,
+    };
+    authFixture.memberships = [
+      {
+        fleet_id: "fleet-1",
+        shop_id: "shop-1",
+        role: "manager",
+        created_at: "2026-08-05T00:00:00.000Z",
+      },
+    ];
+
+    const response = await middleware(fleetRequest("/"));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-middleware-rewrite")).toBe(
+      "https://fleet.profixiq.com/portal/fleet",
+    );
+  });
+
   it("does not expose Shop routes on the Fleet product host", async () => {
     const response = await middleware(fleetRequest("/dashboard/work-orders"));
 
@@ -91,11 +177,40 @@ describe("Fleet product middleware boundary", () => {
     );
   });
 
+  it("does not let extension-shaped Shop routes bypass the Fleet boundary", async () => {
+    const response = await middleware(
+      fleetRequest("/work-orders/forged-route.js"),
+    );
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      "https://fleet.profixiq.com/",
+    );
+  });
+
+  it("serves only the Fleet manifest on the Fleet product host", async () => {
+    const shopManifest = await middleware(
+      fleetRequest("/manifest.webmanifest"),
+    );
+    const fleetManifest = await middleware(
+      fleetRequest("/fleet-manifest.webmanifest"),
+    );
+
+    expect(shopManifest.status).toBe(307);
+    expect(shopManifest.headers.get("location")).toBe(
+      "https://fleet.profixiq.com/",
+    );
+    expect(fleetManifest.status).toBe(200);
+    expect(fleetManifest.headers.get("x-middleware-next")).toBe("1");
+  });
+
   it("rewrites the clean Fleet sign-in route to the existing protected implementation", async () => {
     delete process.env.NEXT_PUBLIC_SUPABASE_URL;
     delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-    const response = await middleware(fleetRequest("/sign-in?redirect=%2Fassets"));
+    const response = await middleware(
+      fleetRequest("/sign-in?redirect=%2Fassets"),
+    );
 
     expect(response.status).toBe(200);
     expect(response.headers.get("x-middleware-rewrite")).toBe(

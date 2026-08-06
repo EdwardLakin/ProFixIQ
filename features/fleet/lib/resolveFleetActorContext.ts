@@ -55,7 +55,12 @@ type ResolveFleetActorContextOptions = {
   requestedFleetId?: string | null;
 };
 
-const INTERNAL_STAFF_ROLES: CanonicalRole[] = ["owner", "admin", "manager", "advisor"];
+const INTERNAL_STAFF_ROLES: CanonicalRole[] = [
+  "owner",
+  "admin",
+  "manager",
+  "advisor",
+];
 
 function uniqueStrings(input: Array<string | null | undefined>): string[] {
   return Array.from(new Set(input.filter((value): value is string => !!value)));
@@ -150,7 +155,9 @@ export async function resolveFleetActorContext(
   const isInternal = actorType === "internal_staff";
   const isFleetActor =
     actorType === "fleet_manager" || actorType === "fleet_driver";
-  const canManageInternalFleet = ["owner", "admin", "manager"].includes(canonicalRole);
+  const canManageInternalFleet = ["owner", "admin", "manager"].includes(
+    canonicalRole,
+  );
 
   const actorCaps = getActorCapabilities({
     role: profileRole,
@@ -204,7 +211,9 @@ export function canManageFleetForActor(
   actor: FleetActorContext,
   fleetId: string,
 ): boolean {
-  if (actor.isInternal) return true;
+  if (actor.isInternal) {
+    return ["owner", "admin", "manager"].includes(actor.canonicalRole);
+  }
   const tier = resolveFleetRoleTier(fleetRoleForActor(actor, fleetId));
   return tier === "manager" || tier === "approver";
 }

@@ -105,7 +105,9 @@ describe("fleet pre-trip, defects, and compliance", () => {
   });
 
   it("keeps unit enrollment and assignment behind the atomic server RPC", () => {
-    const page = read("app/fleet/units/new/page.tsx");
+    const page = read(
+      "features/fleet/components/FleetUnitEnrollmentPage.tsx",
+    );
     const route = read("app/api/fleet/enrollment/route.ts");
     expect(page).not.toContain(".from(");
     expect(page).toContain("Enroll units & assign drivers");
