@@ -32,6 +32,9 @@ describe("customer document consistency", () => {
     expect(migration).toContain("'INV-'");
     expect(migration).toContain("trg_assign_work_order_customer_number");
     expect(migration).toContain("trg_assign_invoice_customer_number");
+    expect(migration).toContain("open_work_order_correction_session");
+    expect(migration).toContain("close_work_order_correction_session");
+    expect(migration).toContain("work_order_number_backfill");
     expect(migration).toContain("^WO-[0-9A-Fa-f]{12}$");
     expect(migration).toContain("^WO-[0-9A-Fa-f]{8}$");
   });
