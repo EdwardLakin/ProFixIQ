@@ -76,6 +76,7 @@ describe("premier fleet workspaces", () => {
 
   it("keeps the service request lifecycle tied to sent estimate facts", () => {
     const route = source("app/api/fleet/service-requests/route.ts");
+    const builder = source("app/portal/fleet/request/build/page.tsx");
     const workspace = source(
       "features/fleet/components/FleetServiceRequestsPage.tsx",
     );
@@ -88,6 +89,9 @@ describe("premier fleet workspaces", () => {
     expect(workspace).toContain("Review approval");
     expect(workspace).toContain("Submitted {dateLabel(item.createdAt)}");
     expect(workspace).toContain("dateLabel(item.requestedForDate)");
+    expect(builder).toContain(
+      "onInput={(event) => setRequestedForDate(event.currentTarget.value)}",
+    );
   });
 
   it("protects financial data and records decisions through canonical flows", () => {
