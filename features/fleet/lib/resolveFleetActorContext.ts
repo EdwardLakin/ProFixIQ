@@ -218,6 +218,19 @@ export function canManageFleetForActor(
   return tier === "manager" || tier === "approver";
 }
 
+export function canAdministerFleetForActor(
+  actor: FleetActorContext,
+  fleetId: string,
+): boolean {
+  if (actor.isInternal) {
+    return (
+      ["owner", "admin", "manager"].includes(actor.canonicalRole) &&
+      actor.fleetIds.includes(fleetId)
+    );
+  }
+  return resolveFleetRoleTier(fleetRoleForActor(actor, fleetId)) === "manager";
+}
+
 export function manageableFleetIdsForActor(actor: FleetActorContext): string[] {
   if (actor.isInternal) return [];
   return uniqueStrings(
