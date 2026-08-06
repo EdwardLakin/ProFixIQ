@@ -772,7 +772,7 @@ export default function InboxModal({
                   <div
                     className={`max-w-[78%] rounded-lg border px-2.5 py-1.5 text-xs leading-relaxed ${
                       mine
-                        ? "border-orange-500/35 bg-orange-500/18 text-orange-50"
+                        ? "border-orange-300 bg-orange-100 text-orange-950 dark:border-orange-500/35 dark:bg-orange-500/18 dark:text-orange-50"
                         : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)]"
                     }`}
                   >
