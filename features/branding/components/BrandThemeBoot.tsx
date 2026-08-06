@@ -181,6 +181,14 @@ function setPresetVars(root: HTMLElement, preset: string | null | undefined) {
       appGlow =
         "var(--theme-gradient-panel)";
       break;
+    case "forged-redline":
+      glassBg = "rgba(17, 18, 20, 0.88)";
+      glassBgSoft = "rgba(9, 9, 10, 0.72)";
+      metalBorderSoft = "rgba(201, 205, 209, 0.32)";
+      metalBorderStrong = "rgba(201, 205, 209, 0.64)";
+      appGlow =
+        "radial-gradient(900px 480px at 90% -10%, rgba(226, 27, 35, 0.16), transparent 60%), var(--theme-gradient-panel)";
+      break;
     case "fleet-utility":
       glassBg = "var(--theme-surface-inset)";
       glassBgSoft = "var(--theme-surface-inset)";
