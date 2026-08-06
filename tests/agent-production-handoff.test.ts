@@ -47,6 +47,18 @@ describe("production agent request handoff", () => {
     expect(replyRoute).toContain("resumeAgentTeamCase");
   });
 
+  it("projects an awaiting mission as diagnosis plus repair proposal rather than a fake Q&A blocker", () => {
+    expect(teamClient).toContain("function missionApprovalSummary(");
+    expect(teamClient).toContain("Diagnosis\\n");
+    expect(teamClient).toContain("Proposed repair\\n");
+    expect(teamClient).toContain("Repair scope\\n");
+    expect(teamClient).toContain("Acceptance checks\\n");
+    expect(teamClient).toContain("Engineering plan\\n");
+    expect(teamClient).toContain("Human approval is required before the engineering team can change code");
+    expect(teamClient).toContain("awaitingMissionApproval");
+    expect(teamClient).toContain("? []");
+  });
+
   it("only exposes approval when the Agent team has a mission or release gate", () => {
     expect(consolePage).toContain('selectedTeam?.mission?.status === "awaiting_approval"');
     expect(consolePage).toContain('selectedTeam?.caseStatus === "ready_for_human_approval"');

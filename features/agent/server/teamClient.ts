@@ -91,6 +91,15 @@ export type AgentTeamProjection = {
     problemStatement: string | null;
     approvedAt: string | null;
     approvedBy: string | null;
+    acceptanceCriteria: string[];
+    constraints: string[];
+    risks: string[];
+    planSteps: Array<{
+      position: number | null;
+      title: string;
+      description: string | null;
+      ownerStage: string | null;
+    }>;
   } | null;
   pullRequest: {
     number: number | null;
@@ -124,6 +133,73 @@ function nullableString(value: unknown): string | null {
 function nullableNumber(value: unknown): number | null {
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
+}
+
+function recordStrings(value: unknown, key: string): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter(isRecord)
+    .map((row) => nullableString(row[key]))
+    .filter((item): item is string => Boolean(item));
+}
+
+function stageStrings(
+  engineeringCase: AgentTeamEngineeringCase,
+  stage: string,
+  key: string,
+): string[] {
+  const data = engineeringCase.stages[stage]?.result?.data;
+  const value = isRecord(data) ? data[key] : null;
+  return Array.isArray(value)
+    ? value.map((item) => String(item ?? "").trim()).filter(Boolean)
+    : [];
+}
+
+function missionPlanSteps(value: unknown): AgentTeamProjection["mission"] extends infer Mission
+  ? Mission extends { planSteps: infer Steps } ? Steps : never
+  : never {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter(isRecord)
+    .map((row) => ({
+      position: nullableNumber(row.position),
+      title: nullableString(row.title) ?? "Plan step",
+      description: nullableString(row.description),
+      ownerStage: nullableString(row.owner_stage ?? row.ownerStage),
+    }));
+}
+
+function missionApprovalSummary(
+  engineeringCase: AgentTeamEngineeringCase,
+  mission: AgentTeamMission,
+  fallback: string | null,
+): string | null {
+  if (mission.status !== "awaiting_approval") return fallback;
+
+  const diagnosis = nullableString(engineeringCase.stages.root_cause?.result?.summary)
+    ?? nullableString(mission.problem_statement);
+  const proposedRepair = nullableString(engineeringCase.stages.planning?.result?.summary)
+    ?? nullableString(mission.desired_outcome);
+  const recommendedFiles = stageStrings(engineeringCase, "planning", "recommendedFiles").slice(0, 6);
+  const acceptanceCriteria = recordStrings(mission.acceptanceCriteria, "criterion").slice(0, 5);
+  const planSteps = missionPlanSteps(mission.planSteps).slice(0, 5);
+
+  const lines = [
+    diagnosis ? `Diagnosis\n${diagnosis}` : null,
+    proposedRepair ? `Proposed repair\n${proposedRepair}` : null,
+    recommendedFiles.length > 0
+      ? `Repair scope\n${recommendedFiles.map((path) => `• ${path}`).join("\n")}`
+      : null,
+    acceptanceCriteria.length > 0
+      ? `Acceptance checks\n${acceptanceCriteria.map((criterion) => `• ${criterion}`).join("\n")}`
+      : null,
+    planSteps.length > 0
+      ? `Engineering plan\n${planSteps.map((step, index) => `${step.position ?? index + 1}. ${step.title}${step.description ? ` — ${step.description}` : ""}`).join("\n")}`
+      : null,
+    "Human approval is required before the engineering team can change code. Review the repair mission, then select Approve Mission.",
+  ].filter((line): line is string => Boolean(line));
+
+  return lines.join("\n\n") || fallback;
 }
 
 async function readBridgeSecret(): Promise<string> {
@@ -309,13 +385,13 @@ export function projectAgentTeamCase(
 ): AgentTeamProjection {
   const engineeringCase = envelope.engineeringCase;
   const currentStep = engineeringCase.stages[engineeringCase.currentStage] ?? null;
-  const summary = envelope.caseSummary?.summary
+  const baseSummary = envelope.caseSummary?.summary
     ?? currentStep?.result?.summary
     ?? null;
   const decision = envelope.caseSummary?.decision
     ?? currentStep?.result?.decision
     ?? null;
-  const missingInformation = envelope.caseSummary?.missingInformation
+  const rawMissingInformation = envelope.caseSummary?.missingInformation
     ?? currentStep?.result?.missingInformation
     ?? [];
   const metadata = isRecord(engineeringCase.ticket.metadata)
@@ -327,6 +403,21 @@ export function projectAgentTeamCase(
   const approvalPackage = isRecord(metadata.approvalPackage)
     ? metadata.approvalPackage
     : {};
+  const mission = envelope.mission;
+  const awaitingMissionApproval = mission?.status === "awaiting_approval";
+  const summary = mission
+    ? missionApprovalSummary(engineeringCase, mission, baseSummary)
+    : baseSummary;
+  const acceptanceCriteria = mission
+    ? recordStrings(mission.acceptanceCriteria, "criterion")
+    : [];
+  const constraints = mission
+    ? recordStrings(mission.constraints, "description")
+    : [];
+  const risks = mission
+    ? recordStrings(mission.risks, "description")
+    : [];
+  const planSteps = mission ? missionPlanSteps(mission.planSteps) : [];
 
   return {
     engineeringCaseId: engineeringCase.id,
@@ -336,19 +427,25 @@ export function projectAgentTeamCase(
     stepStatus: envelope.caseSummary?.stepStatus ?? currentStep?.status ?? null,
     summary,
     decision,
-    missingInformation: Array.isArray(missingInformation)
-      ? missingInformation.filter((value): value is string => typeof value === "string")
-      : [],
+    missingInformation: awaitingMissionApproval
+      ? []
+      : Array.isArray(rawMissingInformation)
+        ? rawMissingInformation.filter((value): value is string => typeof value === "string")
+        : [],
     updatedAt: engineeringCase.updatedAt,
-    mission: envelope.mission
+    mission: mission
       ? {
-          id: envelope.mission.id,
-          status: envelope.mission.status,
-          title: nullableString(envelope.mission.title),
-          desiredOutcome: nullableString(envelope.mission.desired_outcome),
-          problemStatement: nullableString(envelope.mission.problem_statement),
-          approvedAt: nullableString(envelope.mission.approved_at),
-          approvedBy: nullableString(envelope.mission.approved_by),
+          id: mission.id,
+          status: mission.status,
+          title: nullableString(mission.title),
+          desiredOutcome: nullableString(mission.desired_outcome),
+          problemStatement: nullableString(mission.problem_statement),
+          approvedAt: nullableString(mission.approved_at),
+          approvedBy: nullableString(mission.approved_by),
+          acceptanceCriteria,
+          constraints,
+          risks,
+          planSteps,
         }
       : null,
     pullRequest: {
