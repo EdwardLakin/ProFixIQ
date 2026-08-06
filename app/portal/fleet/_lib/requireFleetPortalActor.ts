@@ -6,9 +6,8 @@ import {
   type FleetUiContext,
 } from "@/features/fleet/lib/fleetUiCapabilities";
 
-
 export async function requireFleetPortalActor(): Promise<
-  FleetUiContext & { userId: string }
+  FleetUiContext & { userId: string; primaryFleetId: string | null }
 > {
   const supabase = createServerSupabaseRSC();
   const {
@@ -27,5 +26,6 @@ export async function requireFleetPortalActor(): Promise<
   return {
     ...getFleetUiContext(actor),
     userId: user.id,
+    primaryFleetId: actor.primaryFleetId,
   };
 }

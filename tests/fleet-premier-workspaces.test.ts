@@ -125,7 +125,8 @@ describe("premier fleet workspaces", () => {
     const route = source("app/api/fleet/units/route.ts");
     const units = source("features/fleet/components/FleetUnitsPage.tsx");
 
-    expect(route).toContain("resolveFleetActorScope(actor)");
+    expect(route).toContain("resolveFleetActorScope(actor, {");
+    expect(route).toContain("preferMembershipFleet: !actor.isInternal");
     expect(route).not.toContain("explicitShopId");
     expect(units).not.toContain("shopId");
   });
@@ -226,7 +227,8 @@ describe("premier fleet workspaces", () => {
     expect(requests).toContain("const buildHref = productRoutes");
     expect(requests).toContain('? "/requests/new"');
     expect(requests).toContain('productRoutes ? "/history"');
-    expect(pretrips).toContain('productRoutes ? "/assets"');
+    expect(pretrips).toContain('"/pre-trips/start"');
+    expect(pretrips).toContain('"/assets"');
   });
 
   it("keeps driver pre-trip history visible without widening its Fleet scope", () => {

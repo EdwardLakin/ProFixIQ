@@ -10,6 +10,7 @@ import {
 
 export type FleetUnitListItem = {
   id: string;
+  fleetId: string;
   label: string;
   fleetName: string | null;
   plate: string | null;
@@ -38,32 +39,34 @@ function numberValue(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function status(requests: Row[]): FleetUnitListItem["status"] {
+function status(requests: Row[], defects: Row[]): FleetUnitListItem["status"] {
   const active = requests.filter((row) =>
     ["open", "scheduled"].includes(clean(row.status)?.toLowerCase() ?? ""),
   );
   if (
-    active.some((row) =>
-      ["safety", "compliance"].includes(
-        clean(row.severity)?.toLowerCase() ?? "",
-      ),
-    )
+    active.some((row) => clean(row.severity)?.toLowerCase() === "safety") ||
+    defects.some((row) => clean(row.severity) === "safety")
   ) {
     return "oos";
   }
-  return active.length ? "limited" : "in_service";
+  return active.length || defects.length ? "limited" : "in_service";
 }
 
 export async function POST(_request: Request) {
   try {
     const supabase = createServerSupabaseRoute();
     const actor = await resolveFleetActorContext(supabase);
-    const scope = resolveFleetActorScope(actor);
+    const scope = resolveFleetActorScope(actor, {
+      preferMembershipFleet: !actor.isInternal,
+    });
     if (!actor.userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     if (!scope?.shopId) {
-      return NextResponse.json({ error: "Fleet access required" }, { status: 403 });
+      return NextResponse.json(
+        { error: "Fleet access required" },
+        { status: 403 },
+      );
     }
 
     const admin = createAdminSupabase();
@@ -72,7 +75,8 @@ export async function POST(_request: Request) {
       .select("id,name")
       .eq("shop_id", scope.shopId)
       .order("name", { ascending: true });
-    if (scope.fleetIds?.length) fleetQuery = fleetQuery.in("id", scope.fleetIds);
+    if (scope.fleetIds?.length)
+      fleetQuery = fleetQuery.in("id", scope.fleetIds);
     const { data: fleetData, error: fleetError } = await fleetQuery;
     if (fleetError) throw new Error(fleetError.message);
     const fleets = rows(fleetData);
@@ -86,7 +90,25 @@ export async function POST(_request: Request) {
       .in("fleet_id", fleetIds)
       .or("active.is.null,active.eq.true");
     if (enrollmentError) throw new Error(enrollmentError.message);
-    const enrollments = rows(enrollmentData);
+    let enrollments = rows(enrollmentData);
+    if (actor.actorType === "fleet_driver") {
+      const { data: assignmentData, error: assignmentError } = await admin
+        .from("fleet_dispatch_assignments")
+        .select("fleet_id,vehicle_id")
+        .eq("shop_id", scope.shopId)
+        .eq("driver_profile_id", actor.userId)
+        .eq("active", true)
+        .in("fleet_id", fleetIds);
+      if (assignmentError) throw new Error(assignmentError.message);
+      const assigned = new Set(
+        rows(assignmentData).map(
+          (row) => `${String(row.fleet_id)}:${String(row.vehicle_id)}`,
+        ),
+      );
+      enrollments = enrollments.filter((row) =>
+        assigned.has(`${String(row.fleet_id)}:${String(row.vehicle_id)}`),
+      );
+    }
     const vehicleIds = Array.from(
       new Set(enrollments.map((row) => String(row.vehicle_id))),
     );
@@ -98,6 +120,7 @@ export async function POST(_request: Request) {
       inspectionResult,
       readingResult,
       pmResult,
+      defectResult,
     ] = await Promise.all([
       admin
         .from("vehicles")
@@ -131,6 +154,14 @@ export async function POST(_request: Request) {
         .eq("shop_id", scope.shopId)
         .in("fleet_id", fleetIds)
         .in("status", ["pending", "deferred", "converted"]),
+      admin
+        .from("fleet_unit_defects")
+        .select("vehicle_id,severity")
+        .eq("shop_id", scope.shopId)
+        .in("fleet_id", fleetIds)
+        .in("vehicle_id", vehicleIds)
+        .eq("marks_vehicle_attention", true)
+        .in("state", ["open", "acknowledged", "deferred"]),
     ]);
     const firstError = [
       vehicleResult.error,
@@ -138,6 +169,7 @@ export async function POST(_request: Request) {
       inspectionResult.error,
       readingResult.error,
       pmResult.error,
+      defectResult.error,
     ].find(Boolean);
     if (firstError) throw new Error(firstError.message);
 
@@ -169,6 +201,11 @@ export async function POST(_request: Request) {
       const key = String(row.vehicle_id);
       pmByVehicle.set(key, (pmByVehicle.get(key) ?? 0) + 1);
     }
+    const defectsByVehicle = new Map<string, Row[]>();
+    for (const row of rows(defectResult.data)) {
+      const key = String(row.vehicle_id);
+      defectsByVehicle.set(key, [...(defectsByVehicle.get(key) ?? []), row]);
+    }
 
     const units: FleetUnitListItem[] = enrollments.map((enrollment) => {
       const vehicleId = String(enrollment.vehicle_id);
@@ -177,6 +214,7 @@ export async function POST(_request: Request) {
       const requests = requestsByVehicle.get(vehicleId) ?? [];
       return {
         id: vehicleId,
+        fleetId: String(enrollment.fleet_id),
         label:
           clean(enrollment.nickname) ??
           clean(vehicle.unit_number) ??
@@ -186,15 +224,20 @@ export async function POST(_request: Request) {
         fleetName: fleetNames.get(String(enrollment.fleet_id)) ?? null,
         plate: clean(vehicle.license_plate),
         vin: clean(vehicle.vin),
-        status: status(requests),
+        status: status(requests, defectsByVehicle.get(vehicleId) ?? []),
         nextInspectionDate: inspectionByVehicle.get(vehicleId) ?? null,
         location: null,
         currentOdometerKm:
           numberValue(reading.odometer_km) ?? numberValue(vehicle.mileage),
         currentEngineHours:
-          numberValue(reading.engine_hours) ?? numberValue(vehicle.engine_hours),
-        pmDueCount: pmByVehicle.get(vehicleId) ?? 0,
-        openRequestCount: requests.length,
+          numberValue(reading.engine_hours) ??
+          numberValue(vehicle.engine_hours),
+        pmDueCount:
+          actor.actorType === "fleet_driver"
+            ? 0
+            : (pmByVehicle.get(vehicleId) ?? 0),
+        openRequestCount:
+          actor.actorType === "fleet_driver" ? 0 : requests.length,
       };
     });
 
@@ -202,7 +245,10 @@ export async function POST(_request: Request) {
   } catch (error) {
     console.error("[fleet/units] error", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to load fleet units" },
+      {
+        error:
+          error instanceof Error ? error.message : "Failed to load fleet units",
+      },
       { status: 500 },
     );
   }

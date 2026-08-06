@@ -50,7 +50,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  if (actor.actorType === "fleet_driver" || actor.actorType === "none") {
+  if (
+    actor.actorType === "fleet_driver" ||
+    actor.actorType === "fleet_dispatcher" ||
+    actor.actorType === "none"
+  ) {
     return NextResponse.json(
       { error: "Fleet manager access is required." },
       { status: 403 },

@@ -16,7 +16,7 @@ import {
 } from "./actions";
 import FleetMemberRemoveButton from "@/features/fleet/components/FleetMemberRemoveButton";
 import {
-  canManageFleetForActor,
+  canAdministerFleetForActor,
   resolveFleetActorContext,
 } from "@/features/fleet/lib/resolveFleetActorContext";
 import {
@@ -47,19 +47,19 @@ type ProfileRow = {
 const panel =
   "rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] shadow-[var(--theme-shadow-soft)]";
 
-function roleValue(role: string): "manager" | "approver" | "viewer" {
+function roleValue(role: string): "manager" | "dispatcher" | "driver" {
   if (["owner", "admin", "manager", "fleet_manager"].includes(role)) {
     return "manager";
   }
-  if (["approver", "dispatcher"].includes(role)) return "approver";
-  return "viewer";
+  if (["approver", "dispatcher"].includes(role)) return "dispatcher";
+  return "driver";
 }
 
 function roleLabel(role: string): string {
   const normalized = roleValue(role);
   if (normalized === "manager") return "Fleet manager";
-  if (normalized === "approver") return "Approver / dispatcher";
-  return "Driver / viewer";
+  if (normalized === "dispatcher") return "Dispatcher";
+  return "Driver";
 }
 
 export default async function FleetSettingsPage({ searchParams }: PageProps) {
@@ -75,7 +75,7 @@ export default async function FleetSettingsPage({ searchParams }: PageProps) {
   if (!actor.shopId) redirect("/portal/fleet");
 
   const manageableFleetIds = actor.fleetIds.filter((fleetId) =>
-    canManageFleetForActor(actor, fleetId),
+    canAdministerFleetForActor(actor, fleetId),
   );
   const selectedFleetId =
     params.fleetId && manageableFleetIds.includes(params.fleetId)
@@ -383,10 +383,8 @@ export default async function FleetSettingsPage({ searchParams }: PageProps) {
                             className="h-10 w-full rounded-xl border border-[color:var(--theme-input-border)] bg-[color:var(--theme-input-bg)] px-3 text-xs text-[color:var(--theme-input-text)]"
                           >
                             <option value="manager">Fleet manager</option>
-                            <option value="approver">
-                              Approver / dispatcher
-                            </option>
-                            <option value="viewer">Driver / viewer</option>
+                            <option value="dispatcher">Dispatcher</option>
+                            <option value="driver">Driver</option>
                           </select>
                         </label>
                         <button

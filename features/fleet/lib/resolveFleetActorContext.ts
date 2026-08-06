@@ -20,6 +20,7 @@ export type FleetMembershipContext = {
 export type FleetActorType =
   | "internal_staff"
   | "fleet_manager"
+  | "fleet_dispatcher"
   | "fleet_driver"
   | "none";
 
@@ -141,20 +142,30 @@ export async function resolveFleetActorContext(
   const canonicalRole = canonicalizeRole(profileRole);
   const internalRole = INTERNAL_STAFF_ROLES.includes(canonicalRole);
   const fleetTier = resolveFleetRoleTier(membershipRole);
+  const normalizedMembershipRole = String(membershipRole ?? "")
+    .trim()
+    .toLowerCase();
+  const isDispatcherMembership = ["dispatcher", "approver"].includes(
+    normalizedMembershipRole,
+  );
   // A dual-role user can enter the fleet portal only when they have an explicit fleet membership.
   const hasFleetPortalMembership = fleetTier !== "none";
 
   const actorType: FleetActorType = internalRole
     ? "internal_staff"
-    : fleetTier === "manager" || fleetTier === "approver"
+    : fleetTier === "manager"
       ? "fleet_manager"
-      : fleetTier === "viewer"
-        ? "fleet_driver"
-        : "none";
+      : isDispatcherMembership
+        ? "fleet_dispatcher"
+        : fleetTier === "viewer"
+          ? "fleet_driver"
+          : "none";
 
   const isInternal = actorType === "internal_staff";
   const isFleetActor =
-    actorType === "fleet_manager" || actorType === "fleet_driver";
+    actorType === "fleet_manager" ||
+    actorType === "fleet_dispatcher" ||
+    actorType === "fleet_driver";
   const canManageInternalFleet = ["owner", "admin", "manager"].includes(
     canonicalRole,
   );
@@ -183,10 +194,15 @@ export async function resolveFleetActorContext(
     isInternal,
     isFleetActor,
     capabilities: {
-      canSeeFleetWideUnits: isInternal || actorType === "fleet_manager",
-      canCreatePretripReports: isInternal || isFleetActor,
+      canSeeFleetWideUnits:
+        isInternal ||
+        actorType === "fleet_manager" ||
+        actorType === "fleet_dispatcher",
+      canCreatePretripReports: isInternal || actorType === "fleet_driver",
       canConvertPretripToServiceRequest:
-        isInternal || actorType === "fleet_manager",
+        isInternal ||
+        actorType === "fleet_manager" ||
+        actorType === "fleet_dispatcher",
       canConvertServiceRequestToWorkOrder: isInternal,
       canAccessFleetIntake: isInternal || isFleetActor,
       canAccessPortalFleetWrappers: hasFleetPortalMembership,

@@ -42,6 +42,11 @@ type RequestItem = {
     paymentStatus: string;
     outstandingBalance: number;
   } | null;
+  shopProgress: {
+    status: string;
+    scheduledAt: string | null;
+    expectedCompletionAt: string | null;
+  } | null;
 };
 
 type Payload = {
@@ -96,6 +101,7 @@ export default function FleetServiceRequestsPage({
   const pathname = usePathname() ?? "";
   const productRoutes =
     routePrefix === "/portal/fleet" && !pathname.startsWith("/portal/fleet");
+  const isDispatcher = uiContext.experience === "external_dispatcher";
   const [payload, setPayload] = useState<Payload | null>(null);
   const [filter, setFilter] = useState<Filter>("active");
   const [loading, setLoading] = useState(true);
@@ -168,6 +174,18 @@ export default function FleetServiceRequestsPage({
     );
   }, [filter, payload?.requests]);
 
+  const inShopCount = useMemo(
+    () =>
+      payload?.requests.filter(
+        (item) =>
+          item.shopProgress &&
+          !["completed", "closed", "cancelled"].includes(
+            item.shopProgress.status,
+          ),
+      ).length ?? 0,
+    [payload?.requests],
+  );
+
   const buildHref = productRoutes
     ? "/requests/new"
     : routePrefix === "/portal/fleet"
@@ -185,12 +203,17 @@ export default function FleetServiceRequestsPage({
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-300">
-            Fleet requests
+            {isDispatcher ? "Dispatch follow-through" : "Fleet requests"}
           </p>
-          <h1 className="mt-2 text-2xl font-semibold">Service requests</h1>
+          <h1 className="mt-2 text-2xl font-semibold">
+            {isDispatcher
+              ? "Approved maintenance requests"
+              : "Service requests"}
+          </h1>
           <p className="mt-1 max-w-2xl text-sm text-[color:var(--theme-text-secondary)]">
-            One timeline from fleet request to shop schedule, approval,
-            completion, and payment.
+            {isDispatcher
+              ? "Track what dispatch sent forward: submitted, scheduled, in Shop, or completed."
+              : "One timeline from fleet request to shop schedule, approval, completion, and payment."}
           </p>
         </div>
         {uiContext.capabilities.canCreateFleetWorkOrders ? (
@@ -206,17 +229,23 @@ export default function FleetServiceRequestsPage({
 
       {payload ? (
         <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {(
-            [
-              ["Open", payload.summary.open, ClipboardList],
-              ["Scheduled", payload.summary.scheduled, CalendarClock],
-              [
-                "Need approval",
-                payload.summary.awaitingApproval,
-                AlertTriangle,
-              ],
-              ["Completed", payload.summary.completed, CheckCircle2],
-            ] as const
+          {(isDispatcher
+            ? ([
+                ["Submitted", payload.summary.open, ClipboardList],
+                ["Scheduled", payload.summary.scheduled, CalendarClock],
+                ["In Shop", inShopCount, AlertTriangle],
+                ["Completed", payload.summary.completed, CheckCircle2],
+              ] as const)
+            : ([
+                ["Open", payload.summary.open, ClipboardList],
+                ["Scheduled", payload.summary.scheduled, CalendarClock],
+                [
+                  "Need approval",
+                  payload.summary.awaitingApproval,
+                  AlertTriangle,
+                ],
+                ["Completed", payload.summary.completed, CheckCircle2],
+              ] as const)
           ).map(([label, value, Icon]) => (
             <div key={String(label)} className={`${panel} p-4`}>
               <Icon size={17} className="text-sky-300" />
@@ -236,14 +265,20 @@ export default function FleetServiceRequestsPage({
             role="tablist"
             aria-label="Request filters"
           >
-            {(
-              [
-                ["active", "Active"],
-                ["approval", "Need approval"],
-                ["scheduled", "Scheduled"],
-                ["completed", "Completed"],
-                ["all", "All"],
-              ] as const
+            {(isDispatcher
+              ? ([
+                  ["active", "Active"],
+                  ["scheduled", "Scheduled"],
+                  ["completed", "Completed"],
+                  ["all", "All"],
+                ] as const)
+              : ([
+                  ["active", "Active"],
+                  ["approval", "Need approval"],
+                  ["scheduled", "Scheduled"],
+                  ["completed", "Completed"],
+                  ["all", "All"],
+                ] as const)
             ).map(([value, label]) => (
               <button
                 key={value}
@@ -309,7 +344,7 @@ export default function FleetServiceRequestsPage({
                   >
                     {item.status}
                   </span>
-                  {item.workOrder?.needsApproval ? (
+                  {!isDispatcher && item.workOrder?.needsApproval ? (
                     <span className="rounded-full bg-amber-300/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-200">
                       Approval needed
                     </span>
@@ -333,7 +368,13 @@ export default function FleetServiceRequestsPage({
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-                {item.workOrder ? (
+                {isDispatcher ? (
+                  <span className="rounded-lg border border-[color:var(--theme-border-soft)] px-3 py-2 text-xs">
+                    {item.shopProgress
+                      ? `In Shop · ${item.shopProgress.status}`
+                      : "Sent to Shop"}
+                  </span>
+                ) : item.workOrder ? (
                   <span className="rounded-lg border border-[color:var(--theme-border-soft)] px-3 py-2 text-xs">
                     {item.workOrder.reference}
                   </span>
@@ -357,18 +398,19 @@ export default function FleetServiceRequestsPage({
                     Awaiting shop conversion
                   </span>
                 )}
-                {item.workOrder?.needsApproval ||
-                (item.workOrder?.outstandingBalance ?? 0) > 0 ? (
-                  <Link
-                    href={billingHref(item.workOrder?.id ?? "")}
-                    className="inline-flex items-center gap-2 rounded-lg border border-sky-300/30 px-3 py-2 text-xs font-medium text-sky-300 hover:bg-sky-300/10"
-                  >
-                    <WalletCards size={14} />
-                    {item.workOrder?.needsApproval
-                      ? "Review approval"
-                      : "View invoice"}
-                  </Link>
-                ) : null}
+                {!isDispatcher &&
+                  (item.workOrder?.needsApproval ||
+                  (item.workOrder?.outstandingBalance ?? 0) > 0 ? (
+                    <Link
+                      href={billingHref(item.workOrder?.id ?? "")}
+                      className="inline-flex items-center gap-2 rounded-lg border border-sky-300/30 px-3 py-2 text-xs font-medium text-sky-300 hover:bg-sky-300/10"
+                    >
+                      <WalletCards size={14} />
+                      {item.workOrder?.needsApproval
+                        ? "Review approval"
+                        : "View invoice"}
+                    </Link>
+                  ) : null)}
               </div>
             </article>
           ))}

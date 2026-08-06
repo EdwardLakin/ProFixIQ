@@ -10,6 +10,9 @@ export default async function PortalFleetUnitDetailPage({ params }: Props) {
   const supabase = createServerSupabaseRSC();
   const actor = await resolveFleetActorContext(supabase);
   const uiContext = getFleetUiContext(actor);
+  if (!uiContext.capabilities.canViewUnitMaintenanceRecord) {
+    redirect("/portal/fleet/units");
+  }
 
   return (
     <FleetUnitDetailWorkspace
@@ -20,3 +23,4 @@ export default async function PortalFleetUnitDetailPage({ params }: Props) {
     />
   );
 }
+import { redirect } from "next/navigation";

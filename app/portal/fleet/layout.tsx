@@ -45,8 +45,10 @@ export default async function PortalFleetLayout({
 
   const subtitle =
     actor.experience === "external_driver"
-      ? "Assigned assets, pre-trips and reported defects"
-      : "Asset readiness, preventive maintenance and repair decisions";
+      ? "Today’s inspections, reported issues and updates"
+      : actor.experience === "external_dispatcher"
+        ? "Driver intake, asset readiness and maintenance coordination"
+        : "Asset readiness, preventive maintenance and repair decisions";
 
   return (
     <FleetProductShell

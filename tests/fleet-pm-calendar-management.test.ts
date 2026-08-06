@@ -84,7 +84,7 @@ describe("Fleet PM scheduling and maintenance calendar", () => {
     }
     expect(calendar).toContain("Maintenance Calendar");
     expect(calendar).toContain("Needs a planning date");
-    expect(page).toContain('actor.experience === "external_driver"');
+    expect(page).toContain("!actor.capabilities.canManageUnits");
     expect(route).toContain('actor.actorType === "fleet_driver"');
   });
 });

@@ -45,11 +45,17 @@ describe("Fleet security, billing, and history hardening", () => {
     const route = read("app/api/fleet/pretrip/route.ts");
     const page = read("app/portal/fleet/pretrip/[unitId]/page.tsx");
     const form = read("features/fleet/components/PretripForm.tsx");
+    const driverMigration = read(
+      "supabase/migrations/20260806164259_fleet_driver_dispatch_portals.sql",
+    );
 
     expect(route).toContain('.from("fleet_dispatch_assignments")');
     expect(route).toContain('.eq("driver_profile_id", actor.userId)');
-    expect(route).toContain(
-      "profile.full_name?.trim() || profile.email?.trim()",
+    expect(driverMigration).toContain(
+      "select * into v_profile from public.profiles p where p.id = v_user_id",
+    );
+    expect(driverMigration).toContain(
+      "coalesce(nullif(btrim(v_profile.full_name), ''), nullif(btrim(v_profile.email), ''), 'Driver')",
     );
     expect(page).toContain("(!actor.isInternal && !assignment)");
     expect(form).toContain("readOnly");

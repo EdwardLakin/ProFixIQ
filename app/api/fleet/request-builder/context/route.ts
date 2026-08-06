@@ -17,7 +17,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  if (actor.actorType === "fleet_driver" || actor.actorType === "none") {
+  if (
+    actor.actorType === "fleet_driver" ||
+    actor.actorType === "fleet_dispatcher" ||
+    actor.actorType === "none"
+  ) {
     return NextResponse.json(
       { error: "Fleet manager access is required to build service requests." },
       { status: 403 },
