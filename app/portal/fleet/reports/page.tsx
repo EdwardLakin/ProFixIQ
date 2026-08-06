@@ -1,32 +1,15 @@
-import { ChartNoAxesCombined, CircleDollarSign, ShieldCheck } from "lucide-react";
+import { redirect } from "next/navigation";
 
-import FleetModuleFoundation from "@/features/fleet/components/FleetModuleFoundation";
+import FleetReportsWorkspace from "@/features/fleet/components/FleetReportsWorkspace";
+import { getFleetUiContext } from "@/features/fleet/lib/fleetUiCapabilities";
+import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
+import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
 
-export default function FleetReportsPage() {
-  return (
-    <FleetModuleFoundation
-      eyebrow="Fleet intelligence"
-      title="Reports"
-      description="Operational reporting for the fleet manager: maintenance compliance, downtime, asset cost and repair performance across every connected or external service provider."
-      capabilities={[
-        {
-          title: "PM compliance",
-          description: "Due, overdue, deferred and completed preventive maintenance.",
-          icon: ShieldCheck,
-        },
-        {
-          title: "Cost performance",
-          description: "Maintenance spend by asset, category, kilometre and engine hour.",
-          icon: CircleDollarSign,
-        },
-        {
-          title: "Downtime & reliability",
-          description: "Unavailable time, repeat repairs and recurring asset issues.",
-          icon: ChartNoAxesCombined,
-        },
-      ]}
-      primaryHref="/portal/fleet/billing"
-      primaryLabel="Review history & costs"
-    />
-  );
+export default async function FleetReportsPage() {
+  const supabase = createServerSupabaseRSC();
+  const actor = await resolveFleetActorContext(supabase);
+  const uiContext = getFleetUiContext(actor);
+  if (uiContext.experience === "external_driver") redirect("/portal/fleet");
+
+  return <FleetReportsWorkspace actorLabel={uiContext.actorLabel} />;
 }

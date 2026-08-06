@@ -10,6 +10,8 @@ type Fleet = {
   name: string;
 };
 
+type InviteRole = "viewer" | "approver" | "manager";
+
 type Invite = {
   id: string;
   fleet_id: string;
@@ -27,18 +29,30 @@ type InvitePayload = {
   error?: string;
 };
 
-const CREATE_FLEET_HREF =
+const DEFAULT_CREATE_FLEET_HREF =
   "/fleet/programs?returnTo=%2Ffleet%2Fportal-access";
 
-export default function FleetPortalAccessManager() {
+export default function FleetPortalAccessManager({
+  embedded = false,
+  routePrefix = "/fleet",
+  defaultRole = "viewer",
+}: {
+  embedded?: boolean;
+  routePrefix?: "/fleet" | "/portal/fleet";
+  defaultRole?: InviteRole;
+}) {
   const [fleets, setFleets] = useState<Fleet[]>([]);
   const [invites, setInvites] = useState<Invite[]>([]);
   const [fleetId, setFleetId] = useState("");
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState("viewer");
+  const [role, setRole] = useState(defaultRole);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const createFleetHref =
+    routePrefix === "/portal/fleet" ? "/settings" : DEFAULT_CREATE_FLEET_HREF;
+  const manageFleetsHref =
+    routePrefix === "/portal/fleet" ? "/settings" : "/fleet/programs";
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -62,9 +76,9 @@ export default function FleetPortalAccessManager() {
       setFleets(nextFleets);
       setInvites(payload?.invites ?? []);
 
-      const requestedFleetId = new URLSearchParams(
-        window.location.search,
-      ).get("fleetId");
+      const requestedFleetId = new URLSearchParams(window.location.search).get(
+        "fleetId",
+      );
       setFleetId((current) => {
         const preferred = current || requestedFleetId || "";
         return nextFleets.some((fleet) => fleet.id === preferred)
@@ -109,7 +123,9 @@ export default function FleetPortalAccessManager() {
       await load();
     } catch (value) {
       toast.error(
-        value instanceof Error ? value.message : "Invitation could not be sent.",
+        value instanceof Error
+          ? value.message
+          : "Invitation could not be sent.",
       );
     } finally {
       setSending(false);
@@ -117,19 +133,27 @@ export default function FleetPortalAccessManager() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-6 px-4 py-6 text-[color:var(--theme-text-primary)] xl:px-6">
-      <header>
-        <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-copper)]">
-          Fleet portal
-        </div>
-        <h1 className="mt-2 text-3xl font-semibold tracking-[-0.035em]">
-          Invite & access
-        </h1>
-        <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">
-          Invite fleet managers, approvers, and drivers into the correct
-          fleet-scoped portal.
-        </p>
-      </header>
+    <div
+      className={
+        embedded
+          ? "w-full space-y-6 text-[color:var(--theme-text-primary)]"
+          : "mx-auto w-full max-w-6xl space-y-6 px-4 py-6 text-[color:var(--theme-text-primary)] xl:px-6"
+      }
+    >
+      {!embedded ? (
+        <header>
+          <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-copper)]">
+            Fleet portal
+          </div>
+          <h1 className="mt-2 text-3xl font-semibold tracking-[-0.035em]">
+            Invite & access
+          </h1>
+          <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">
+            Invite fleet managers, approvers, and drivers into the correct
+            fleet-scoped portal.
+          </p>
+        </header>
+      ) : null}
 
       <div className="grid gap-5 lg:grid-cols-[360px_1fr]">
         <form
@@ -166,13 +190,15 @@ export default function FleetPortalAccessManager() {
             </div>
           ) : fleets.length === 0 ? (
             <div className="rounded-xl border border-dashed border-[color:var(--theme-border-soft)] p-5 text-center">
-              <p className="font-semibold">Create a fleet before inviting members.</p>
+              <p className="font-semibold">
+                Create a fleet before inviting members.
+              </p>
               <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
                 Invitations are scoped to one fleet so members only see the
                 correct units and service records.
               </p>
               <Link
-                href={CREATE_FLEET_HREF}
+                href={createFleetHref}
                 className="mt-4 inline-flex rounded-xl bg-[var(--accent-copper)] px-4 py-2.5 text-sm font-bold text-[color:var(--theme-text-on-accent)]"
               >
                 Create fleet
@@ -189,7 +215,7 @@ export default function FleetPortalAccessManager() {
                     Fleet
                   </label>
                   <Link
-                    href="/fleet/programs"
+                    href={manageFleetsHref}
                     className="text-xs font-semibold text-[var(--accent-copper)] hover:underline"
                   >
                     Manage fleets
@@ -239,7 +265,9 @@ export default function FleetPortalAccessManager() {
                 <select
                   id="fleet-invite-role"
                   value={role}
-                  onChange={(event) => setRole(event.target.value)}
+                  onChange={(event) =>
+                    setRole(event.target.value as InviteRole)
+                  }
                   className="mt-1.5 w-full rounded-xl border border-[color:var(--theme-input-border)] bg-[color:var(--theme-input-bg)] px-3 py-2.5 text-sm text-[color:var(--theme-input-text)]"
                 >
                   <option value="viewer">Viewer / driver</option>

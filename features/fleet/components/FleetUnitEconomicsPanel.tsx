@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 type Recommendation = {
   id: string;
@@ -47,6 +48,8 @@ export default function FleetUnitEconomicsPanel({
   shopId?: string | null;
   routePrefix?: "/fleet" | "/portal/fleet";
 }) {
+  const pathname = usePathname() ?? "";
+  const productRoutes = !pathname.startsWith("/portal/fleet");
   const [payload, setPayload] = useState<Payload | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -129,9 +132,11 @@ export default function FleetUnitEconomicsPanel({
                 <div>
                   <Link
                     href={
-                      routePrefix === "/portal/fleet"
-                        ? `${routePrefix}/units/${unit.unitId}`
-                        : `${routePrefix}/units`
+                      productRoutes
+                        ? `/assets/${encodeURIComponent(unit.unitId)}`
+                        : routePrefix === "/portal/fleet"
+                          ? `${routePrefix}/units/${encodeURIComponent(unit.unitId)}`
+                          : `${routePrefix}/units`
                     }
                     className="text-sm font-semibold hover:underline"
                   >

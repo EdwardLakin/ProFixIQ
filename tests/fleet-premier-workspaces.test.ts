@@ -149,4 +149,53 @@ describe("premier fleet workspaces", () => {
     expect(units).toContain("Fleet-wide pre-trip history");
     expect(dispatch).not.toContain("/fleet/assets/");
   });
+
+  it("ships real driver operations and fleet intelligence instead of placeholders", () => {
+    const driversPage = source("app/portal/fleet/drivers/page.tsx");
+    const drivers = source(
+      "features/fleet/components/FleetDriversWorkspace.tsx",
+    );
+    const reportsPage = source("app/portal/fleet/reports/page.tsx");
+    const reports = source(
+      "features/fleet/components/FleetReportsWorkspace.tsx",
+    );
+
+    expect(driversPage).toContain("FleetDriversWorkspace");
+    expect(driversPage).toContain("FleetPortalAccessManager");
+    expect(driversPage).not.toContain("FleetModuleFoundation");
+    expect(drivers).toContain('fetch("/api/fleet/enrollment"');
+    expect(drivers).toContain("Drivers & assignments");
+    expect(drivers).toContain("Invite driver");
+    expect(drivers).toContain("/assets/new");
+
+    expect(reportsPage).toContain("FleetReportsWorkspace");
+    expect(reportsPage).not.toContain("FleetModuleFoundation");
+    for (const endpoint of [
+      "/api/fleet/maintenance",
+      "/api/fleet/unit-economics",
+      "/api/fleet/billing",
+      "/api/fleet/tower",
+      "/api/fleet/pretrip",
+    ]) {
+      expect(reports).toContain(endpoint);
+    }
+    expect(reports).toContain("Export CSV");
+    expect(reports).toContain("Asset cost and maintenance performance");
+  });
+
+  it("keeps product-domain actions on clean public Fleet routes", () => {
+    const issues = source("features/fleet/components/FleetIssueTables.tsx");
+    const detail = source(
+      "features/fleet/components/FleetUnitDetailWorkspace.tsx",
+    );
+    const economics = source(
+      "features/fleet/components/FleetUnitEconomicsPanel.tsx",
+    );
+
+    expect(issues).toContain("requestHref = productHostRoute");
+    expect(issues).toContain('"/requests/new"');
+    expect(detail).toContain('"/pre-trips/start"');
+    expect(detail).toContain('"/requests/new"');
+    expect(economics).toContain("`/assets/${encodeURIComponent(unit.unitId)}`");
+  });
 });

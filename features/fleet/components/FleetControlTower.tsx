@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import FleetSummaryCards from "./FleetSummaryCards";
 import FleetIssueTables from "./FleetIssueTables";
@@ -86,6 +87,9 @@ export default function FleetControlTower({
   uiContext,
   routePrefix = "/fleet",
 }: Props) {
+  const pathname = usePathname() ?? "";
+  const productRoutes =
+    routePrefix === "/portal/fleet" && !pathname.startsWith("/portal/fleet");
   const [data, setData] = useState<TowerPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -189,9 +193,12 @@ export default function FleetControlTower({
       error={
         error ? (
           <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-800 dark:text-amber-100">
-            <div className="font-semibold">Live fleet feed is temporarily unavailable</div>
+            <div className="font-semibold">
+              Live fleet feed is temporarily unavailable
+            </div>
             <div className="mt-1 text-xs opacity-80">
-              {error} Dashboard sections remain visible with the data currently available.
+              {error} Dashboard sections remain visible with the data currently
+              available.
             </div>
           </div>
         ) : null
@@ -236,11 +243,12 @@ export default function FleetControlTower({
                   Pre-trip • {todaysAssignment.unitLabel}
                 </h2>
                 <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
-                  Enter mileage and engine hours, complete the walk-around, and submit defects.
+                  Enter mileage and engine hours, complete the walk-around, and
+                  submit defects.
                 </p>
               </div>
               <Link
-                href={`/portal/fleet/pretrip/${encodeURIComponent(todaysAssignment.unitId)}${fleetId ? `?fleetId=${encodeURIComponent(fleetId)}` : ""}`}
+                href={`${productRoutes ? "/pre-trips/start" : "/portal/fleet/pretrip"}/${encodeURIComponent(todaysAssignment.unitId)}${fleetId ? `?fleetId=${encodeURIComponent(fleetId)}` : ""}`}
                 className="inline-flex min-h-11 items-center justify-center rounded-xl bg-sky-300 px-4 py-2 text-sm font-semibold text-slate-950"
               >
                 Start today’s pre-trip
