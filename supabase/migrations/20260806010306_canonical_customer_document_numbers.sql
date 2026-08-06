@@ -312,7 +312,11 @@ begin
   );
 
   if v_odometer is null then
-    select v.mileage
+    select case
+      when pg_catalog.btrim(v.mileage::text) ~ '^[0-9]+([.][0-9]+)?$'
+        then pg_catalog.btrim(v.mileage::text)::numeric
+      else null
+    end
     into v_odometer
     from public.vehicles v
     where v.id = new.vehicle_id
@@ -470,7 +474,11 @@ with paid_rows as (
     wo.payment_status,
     wo.vehicle_mileage,
     wo.odometer_km,
-    v.mileage as vehicle_odometer,
+    case
+      when pg_catalog.btrim(v.mileage::text) ~ '^[0-9]+([.][0-9]+)?$'
+        then pg_catalog.btrim(v.mileage::text)::numeric
+      else null
+    end as vehicle_odometer,
     i.id as invoice_id,
     i.invoice_number,
     coalesce(i.labor_cost, wo.labor_total, 0) as labor_sale,
