@@ -1,9 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import {
+  createAdminSupabase,
+  createServerSupabaseRoute,
+} from "@/features/shared/lib/supabase/server";
 import {
   resolveFleetActorContext,
   resolveFleetActorScope,
 } from "@/features/fleet/lib/resolveFleetActorContext";
+import type { Database } from "@shared/types/types/supabase";
+
+type InvoiceCurrencyRow = Pick<
+  Database["public"]["Tables"]["invoice_versions"]["Row"],
+  "work_order_id" | "currency" | "total"
+>;
 
 type Body = {
   shopId?: string | null;
@@ -13,6 +22,12 @@ type Body = {
 function asMoney(value: number | string | null | undefined) {
   const parsed = typeof value === "number" ? value : Number(value ?? 0);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+type FleetCurrency = "CAD" | "USD";
+
+function fleetCurrency(value: unknown, fallback: FleetCurrency): FleetCurrency {
+  return String(value ?? "").toUpperCase() === "USD" ? "USD" : fallback;
 }
 
 export async function POST(req: NextRequest) {
@@ -32,6 +47,7 @@ export async function POST(req: NextRequest) {
   if (!scope?.shopId) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
+  const admin = createAdminSupabase();
 
   let fleetQuery = supabase
     .from("fleet_vehicles")
@@ -135,6 +151,52 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const workOrderIds = (workOrderResult.data ?? []).map((row) => row.id);
+  const [invoiceVersionResult, shopResult] = await Promise.all([
+    workOrderIds.length
+      ? admin
+          .from("invoice_versions")
+          .select("work_order_id,version_number,currency,total")
+          .eq("shop_id", scope.shopId)
+          .in("work_order_id", workOrderIds)
+          .in("lifecycle_status", ["issued", "partially_paid", "paid"])
+          .order("version_number", { ascending: false })
+      : Promise.resolve({ data: [] as unknown[], error: null }),
+    admin
+      .from("shops")
+      .select("stripe_default_currency")
+      .eq("id", scope.shopId)
+      .maybeSingle(),
+  ]);
+  const financialError = invoiceVersionResult.error ?? shopResult.error;
+  if (financialError) {
+    console.error(
+      "[fleet/unit-economics] invoice currency load error",
+      financialError,
+    );
+    return NextResponse.json(
+      { error: "Failed to calculate fleet invoice costs." },
+      { status: 500 },
+    );
+  }
+  const defaultCurrency = fleetCurrency(
+    shopResult.data?.stripe_default_currency,
+    "CAD",
+  );
+  const invoiceVersionByWorkOrder = new Map<
+    string,
+    { currency: FleetCurrency; total: number }
+  >();
+  const invoiceVersionRows = (invoiceVersionResult.data ??
+    []) as InvoiceCurrencyRow[];
+  for (const row of invoiceVersionRows) {
+    if (invoiceVersionByWorkOrder.has(row.work_order_id)) continue;
+    invoiceVersionByWorkOrder.set(row.work_order_id, {
+      currency: fleetCurrency(row.currency, defaultCurrency),
+      total: asMoney(row.total),
+    });
+  }
+
   const payload = units.map((unit) => {
     const vehicle = Array.isArray(unit.vehicles)
       ? unit.vehicles[0]
@@ -155,10 +217,16 @@ export async function POST(req: NextRequest) {
       (row) => row.subject_id === unit.vehicle_id,
     );
 
-    const trailing12MonthSpend = workOrders.reduce(
-      (sum, row) => sum + asMoney(row.invoice_total),
-      0,
-    );
+    const trailing12MonthSpendByCurrency: Record<FleetCurrency, number> = {
+      CAD: 0,
+      USD: 0,
+    };
+    for (const row of workOrders) {
+      const invoiceVersion = invoiceVersionByWorkOrder.get(row.id);
+      const currency = invoiceVersion?.currency ?? defaultCurrency;
+      trailing12MonthSpendByCurrency[currency] +=
+        invoiceVersion?.total ?? asMoney(row.invoice_total);
+    }
     const firstOdometer = readings[0]?.odometer_km ?? null;
     const latestReading = readings.at(-1) ?? null;
     const latestOdometer = latestReading?.odometer_km ?? null;
@@ -166,10 +234,16 @@ export async function POST(req: NextRequest) {
       firstOdometer != null && latestOdometer != null
         ? Math.max(0, latestOdometer - firstOdometer)
         : null;
-    const costPerKm =
-      distanceKm != null && distanceKm >= 100
-        ? trailing12MonthSpend / distanceKm
-        : null;
+    const costPerKmByCurrency: Record<FleetCurrency, number | null> = {
+      CAD:
+        distanceKm != null && distanceKm >= 100
+          ? trailing12MonthSpendByCurrency.CAD / distanceKm
+          : null,
+      USD:
+        distanceKm != null && distanceKm >= 100
+          ? trailing12MonthSpendByCurrency.USD / distanceKm
+          : null,
+    };
 
     return {
       fleetId: unit.fleet_id,
@@ -183,11 +257,11 @@ export async function POST(req: NextRequest) {
       vehicle: [vehicle?.year, vehicle?.make, vehicle?.model]
         .filter(Boolean)
         .join(" "),
-      trailing12MonthSpend,
+      trailing12MonthSpendByCurrency,
       currentOdometerKm: latestOdometer,
       readingRecordedAt: latestReading?.recorded_at ?? null,
       distanceCoveredKm: distanceKm,
-      costPerKm,
+      costPerKmByCurrency,
       completedWorkOrders: workOrders.filter((row) =>
         ["completed", "closed", "invoiced", "paid"].includes(
           (row.status ?? "").toLowerCase(),
@@ -215,13 +289,13 @@ export async function POST(req: NextRequest) {
       (a, b) =>
         b.pmDueCount - a.pmDueCount ||
         b.openServiceRequests - a.openServiceRequests ||
-        b.trailing12MonthSpend - a.trailing12MonthSpend,
+        a.label.localeCompare(b.label),
     ),
     generatedAt: new Date().toISOString(),
     methodology: {
       spendWindow: "trailing_12_months",
       costPerKm:
-        "Trailing 12-month invoice total divided by measured odometer delta; hidden below 100 km of evidence.",
+        "Trailing 12-month finalized invoice totals, kept separate by currency, divided by measured odometer delta; hidden below 100 km of evidence.",
       telematics: "not_used",
     },
   });

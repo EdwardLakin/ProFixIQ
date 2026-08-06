@@ -54,6 +54,7 @@ export default async function PortalFleetLayout({
       subtitle={subtitle}
       actorLabel={actor.actorLabel}
       experience={actor.experience}
+      canAccessManagerWorkspaces={actor.capabilities.canManageUnits}
       userId={actor.userId}
       productHost={productHost}
     >

@@ -10,7 +10,7 @@ export default async function FleetDriversPage() {
   const supabase = createServerSupabaseRSC();
   const actor = await resolveFleetActorContext(supabase);
   const uiContext = getFleetUiContext(actor);
-  if (uiContext.experience === "external_driver") redirect("/portal/fleet");
+  if (!uiContext.capabilities.canManageUnits) redirect("/portal/fleet");
 
   const canInviteDrivers =
     actor.isInternal &&

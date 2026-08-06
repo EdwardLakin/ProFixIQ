@@ -17,6 +17,7 @@ type Row = Record<string, unknown>;
 type ContactMethod = "phone" | "in_person" | "email" | "other";
 type Body = {
   action?: "list" | "decide";
+  fleetId?: string | null;
   workOrderId?: string;
   quoteLineIds?: string[];
   decision?: "approve" | "decline" | "defer";
@@ -67,10 +68,14 @@ function canApprove(
 
 async function accessibleVehicleContext(
   actor: Awaited<ReturnType<typeof resolveFleetActorContext>>,
-  options?: { financialOnly?: boolean },
+  options?: { financialOnly?: boolean; fleetId?: string | null },
 ) {
-  const scope = resolveFleetActorScope(actor);
+  const fleetId = clean(options?.fleetId);
+  const scope = resolveFleetActorScope(actor, { explicitFleetId: fleetId });
   if (!scope?.shopId) throw new Error("Fleet scope is unavailable");
+  if (fleetId && !canApprove(actor, fleetId)) {
+    throw new Error("Fleet billing access required");
+  }
 
   const admin = createAdminSupabase();
   let query = admin
@@ -78,11 +83,13 @@ async function accessibleVehicleContext(
     .select("fleet_id,vehicle_id,nickname,active")
     .eq("shop_id", scope.shopId)
     .or("active.is.null,active.eq.true");
-  const allowedFleetIds = actor.isInternal
-    ? scope.fleetIds
-    : options?.financialOnly
-      ? manageableFleetIdsForActor(actor)
-      : scope.fleetIds;
+  const allowedFleetIds = fleetId
+    ? [fleetId]
+    : actor.isInternal
+      ? scope.fleetIds
+      : options?.financialOnly
+        ? manageableFleetIdsForActor(actor)
+        : scope.fleetIds;
   if (!actor.isInternal && options?.financialOnly && !allowedFleetIds?.length) {
     throw new Error("Fleet billing access required");
   }
@@ -95,9 +102,11 @@ async function accessibleVehicleContext(
 
 async function listBilling(
   actor: Awaited<ReturnType<typeof resolveFleetActorContext>>,
+  fleetId?: string | null,
 ) {
   const { admin, scope, enrollments } = await accessibleVehicleContext(actor, {
     financialOnly: true,
+    fleetId,
   });
   const vehicleIds = Array.from(
     new Set(enrollments.map((row) => String(row.vehicle_id))),
@@ -202,7 +211,10 @@ async function listBilling(
   const paymentsByWorkOrder = new Map<string, Row[]>();
   for (const payment of rows(paymentResult.data)) {
     const key = String(payment.work_order_id);
-    paymentsByWorkOrder.set(key, [...(paymentsByWorkOrder.get(key) ?? []), payment]);
+    paymentsByWorkOrder.set(key, [
+      ...(paymentsByWorkOrder.get(key) ?? []),
+      payment,
+    ]);
   }
 
   const items = workOrders.map((workOrder) => {
@@ -239,7 +251,11 @@ async function listBilling(
         clean(vehicle.license_plate) ??
         clean(vehicle.vin) ??
         "Unit",
-      vehicleDescription: [vehicle.year, clean(vehicle.make), clean(vehicle.model)]
+      vehicleDescription: [
+        vehicle.year,
+        clean(vehicle.make),
+        clean(vehicle.model),
+      ]
         .filter(Boolean)
         .join(" "),
       reference:
@@ -254,7 +270,8 @@ async function listBilling(
             id: String(invoice.id),
             versionNumber: numeric(invoice.version_number),
             lifecycleStatus: clean(invoice.lifecycle_status) ?? "draft",
-            currency: clean(invoice.currency)?.toUpperCase() === "USD" ? "USD" : "CAD",
+            currency:
+              clean(invoice.currency)?.toUpperCase() === "USD" ? "USD" : "CAD",
             total: numeric(invoice.total),
             paidTotal: numeric(invoice.paid_total),
             refundedTotal: numeric(invoice.refunded_total),
@@ -265,7 +282,8 @@ async function listBilling(
       payments: (paymentsByWorkOrder.get(id) ?? []).map((payment) => ({
         id: String(payment.id),
         amountCents: numeric(payment.amount_cents),
-        currency: clean(payment.currency)?.toUpperCase() === "USD" ? "USD" : "CAD",
+        currency:
+          clean(payment.currency)?.toUpperCase() === "USD" ? "USD" : "CAD",
         status: clean(payment.status) ?? "pending",
         createdAt: iso(payment.created_at),
       })),
@@ -304,32 +322,42 @@ async function listBilling(
 export async function POST(request: Request) {
   try {
     const supabase = createServerSupabaseRoute();
-    const actor = await resolveFleetActorContext(supabase);
+    const body = (await request.json().catch(() => ({}))) as Body;
+    const actor = await resolveFleetActorContext(supabase, {
+      requestedFleetId: body.fleetId ?? null,
+    });
     if (!actor.userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     if (actor.actorType === "none") {
-      return NextResponse.json({ error: "Fleet access required" }, { status: 403 });
+      return NextResponse.json(
+        { error: "Fleet access required" },
+        { status: 403 },
+      );
     }
 
-    const body = (await request.json().catch(() => ({}))) as Body;
     if (!body.action || body.action === "list") {
-      if (!canApprove(actor)) {
+      if (!canApprove(actor, clean(body.fleetId) ?? undefined)) {
         return NextResponse.json(
           { error: "Fleet billing access required" },
           { status: 403 },
         );
       }
-      return NextResponse.json(await listBilling(actor));
+      return NextResponse.json(await listBilling(actor, body.fleetId));
     }
     if (!canApprove(actor)) {
-      return NextResponse.json({ error: "Approval access required" }, { status: 403 });
+      return NextResponse.json(
+        { error: "Approval access required" },
+        { status: 403 },
+      );
     }
 
     const workOrderId = clean(body.workOrderId);
     const decision = body.decision;
     const quoteLineIds = Array.from(
-      new Set((body.quoteLineIds ?? []).map((value) => value.trim()).filter(Boolean)),
+      new Set(
+        (body.quoteLineIds ?? []).map((value) => value.trim()).filter(Boolean),
+      ),
     );
     const operationKey = clean(body.operationKey);
     const requestedContactMethod = clean(body.contactMethod);
@@ -344,23 +372,27 @@ export async function POST(request: Request) {
       !quoteLineIds.length ||
       !operationKey
     ) {
-      return NextResponse.json({ error: "Invalid approval decision" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Invalid approval decision" },
+        { status: 400 },
+      );
     }
-    if (
-      actor.isInternal &&
-      (!contactMethod ||
-        !note)
-    ) {
+    if (actor.isInternal && (!contactMethod || !note)) {
       return NextResponse.json(
         { error: "Contact method and decision note are required" },
         { status: 400 },
       );
     }
 
-    const { admin, scope, enrollments } = await accessibleVehicleContext(actor, {
-      financialOnly: true,
-    });
-    const accessibleVehicleIds = enrollments.map((row) => String(row.vehicle_id));
+    const { admin, scope, enrollments } = await accessibleVehicleContext(
+      actor,
+      {
+        financialOnly: true,
+      },
+    );
+    const accessibleVehicleIds = enrollments.map((row) =>
+      String(row.vehicle_id),
+    );
     const { data: workOrder, error: workOrderError } = await admin
       .from("work_orders")
       .select("id,shop_id,vehicle_id,customer_id")
@@ -370,7 +402,10 @@ export async function POST(request: Request) {
       .maybeSingle();
     if (workOrderError) throw new Error(workOrderError.message);
     if (!workOrder) {
-      return NextResponse.json({ error: "Fleet work order not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Fleet work order not found" },
+        { status: 404 },
+      );
     }
 
     const { data: quotes, error: quoteError } = await admin
@@ -381,7 +416,10 @@ export async function POST(request: Request) {
       .in("id", quoteLineIds);
     if (quoteError) throw new Error(quoteError.message);
     if ((quotes ?? []).length !== quoteLineIds.length) {
-      return NextResponse.json({ error: "Estimate line not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Estimate line not found" },
+        { status: 404 },
+      );
     }
 
     if (!actor.isInternal && !workOrder.customer_id) {
@@ -402,14 +440,22 @@ export async function POST(request: Request) {
       actorUserId: actor.userId,
       contactMethod: contactMethod ?? "other",
       decisionNote: note,
-      operationKey: actor.isInternal ? `fleet-staff:${operationKey}` : `fleet:${operationKey}`,
+      operationKey: actor.isInternal
+        ? `fleet-staff:${operationKey}`
+        : `fleet:${operationKey}`,
     });
-    if (!result.ok) throw new Error(result.error ?? "Unable to save estimate decision");
+    if (!result.ok)
+      throw new Error(result.error ?? "Unable to save estimate decision");
     return NextResponse.json({ ok: true, result });
   } catch (error) {
     console.error("[fleet/billing] error", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Unable to load fleet billing" },
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Unable to load fleet billing",
+      },
       { status: 500 },
     );
   }

@@ -190,7 +190,9 @@ function NavItem({
       </span>
       {!compact ? (
         <span className="min-w-0">
-          <span className="block truncate text-sm font-semibold">{item.label}</span>
+          <span className="block truncate text-sm font-semibold">
+            {item.label}
+          </span>
           <span className="mt-0.5 block truncate text-[10px] text-[color:var(--theme-text-muted)]">
             {item.description}
           </span>
@@ -205,6 +207,7 @@ export default function FleetProductShell({
   subtitle,
   actorLabel,
   experience,
+  canAccessManagerWorkspaces,
   userId,
   productHost,
   children,
@@ -213,6 +216,7 @@ export default function FleetProductShell({
   subtitle: string;
   actorLabel: string;
   experience: FleetExperience;
+  canAccessManagerWorkspaces: boolean;
   userId: string | null;
   productHost: boolean;
   children: React.ReactNode;
@@ -252,10 +256,10 @@ export default function FleetProductShell({
       NAV_GROUPS.map((group) => ({
         ...group,
         items: group.items.filter(
-          (item) => experience !== "external_driver" || !item.managerOnly,
+          (item) => canAccessManagerWorkspaces || !item.managerOnly,
         ),
       })).filter((group) => group.items.length > 0),
-    [experience],
+    [canAccessManagerWorkspaces],
   );
 
   const activeItem = useMemo(
@@ -286,7 +290,7 @@ export default function FleetProductShell({
           compact && !isMobile ? "justify-center px-2 py-5" : "gap-3 px-4 py-5",
         )}
       >
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-sky-400/30 bg-sky-400/[0.12] text-sky-300 shadow-[0_0_30px_rgba(56,189,248,0.12)]">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-sky-400/30 bg-sky-400/[0.12] text-sky-300 shadow-[0_0_30px_rgba(56,189,248,0.12)]">
           <Truck className="h-5 w-5" aria-hidden="true" />
         </div>
         {compact && !isMobile ? null : (
@@ -301,7 +305,10 @@ export default function FleetProductShell({
         )}
       </div>
 
-      <nav className="flex-1 space-y-5 overflow-y-auto px-2.5 py-4" aria-label="Fleet workspace">
+      <nav
+        className="flex-1 space-y-5 overflow-y-auto px-2.5 py-4"
+        aria-label="Fleet workspace"
+      >
         {groups.map((group) => (
           <div key={group.label}>
             {compact && !isMobile ? null : (
@@ -316,7 +323,7 @@ export default function FleetProductShell({
                   item={item}
                   href={
                     productHost
-                      ? toFleetPublicPath(item.href) ?? item.href
+                      ? (toFleetPublicPath(item.href) ?? item.href)
                       : item.href
                   }
                   compact={compact && !isMobile}
@@ -340,7 +347,11 @@ export default function FleetProductShell({
           )}
         >
           <LogOut className="h-4 w-4 shrink-0" aria-hidden="true" />
-          {compact && !isMobile ? null : signingOut ? "Signing out…" : "Sign out"}
+          {compact && !isMobile
+            ? null
+            : signingOut
+              ? "Signing out…"
+              : "Sign out"}
         </button>
         {compact && !isMobile ? null : (
           <div className="mt-3 px-3 text-[10px] text-[color:var(--theme-text-muted)]">
@@ -353,7 +364,10 @@ export default function FleetProductShell({
 
   return (
     <div className="min-h-dvh bg-[color:var(--theme-surface-page)] text-[color:var(--theme-text-primary)]">
-      <div className="pointer-events-none fixed inset-0 overflow-hidden" aria-hidden="true">
+      <div
+        className="pointer-events-none fixed inset-0 overflow-hidden"
+        aria-hidden="true"
+      >
         <div className="absolute inset-0 bg-[var(--theme-gradient-panel)]" />
         <div className="absolute -left-60 top-[-22rem] h-[46rem] w-[46rem] rounded-full bg-sky-400/10 blur-3xl" />
         <div className="absolute -right-72 bottom-[-24rem] h-[48rem] w-[48rem] rounded-full bg-blue-600/[0.08] blur-3xl" />
@@ -390,7 +404,12 @@ export default function FleetProductShell({
         </div>
       ) : null}
 
-      <div className={cn("relative min-h-dvh transition-[padding] duration-200", compact ? "lg:pl-[76px]" : "lg:pl-[286px]")}>
+      <div
+        className={cn(
+          "relative min-h-dvh transition-[padding] duration-200",
+          compact ? "lg:pl-[76px]" : "lg:pl-[286px]",
+        )}
+      >
         <header className="sticky top-0 z-30 border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-header-bg)]/88 backdrop-blur-xl">
           <div className="flex min-h-16 items-center gap-3 px-3 sm:px-5 lg:px-6">
             <button
@@ -404,10 +423,18 @@ export default function FleetProductShell({
             <button
               type="button"
               onClick={() => setCompact((value) => !value)}
-              aria-label={compact ? "Expand fleet navigation" : "Collapse fleet navigation"}
+              aria-label={
+                compact
+                  ? "Expand fleet navigation"
+                  : "Collapse fleet navigation"
+              }
               className="hidden h-9 w-9 items-center justify-center rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-secondary)] lg:flex"
             >
-              {compact ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+              {compact ? (
+                <ChevronRight className="h-4 w-4" />
+              ) : (
+                <ChevronLeft className="h-4 w-4" />
+              )}
             </button>
 
             <div className="min-w-0 flex-1">

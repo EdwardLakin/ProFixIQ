@@ -175,14 +175,16 @@ export default function FleetIssueTables({
               )}
 
               <div className="flex flex-wrap gap-2 pt-1">
-                {uiContext.capabilities.canSubmitPretrip && (
+                {uiContext.capabilities.canSubmitPretrip &&
+                (uiContext.isInternal ||
+                  uiContext.experience === "external_driver") ? (
                   <Link
                     href={pretripHref(a.unitId)}
                     className="rounded-full bg-[color:var(--accent-copper)] px-3 py-1 text-[10px] font-semibold text-[color:var(--theme-text-on-accent)] shadow-[0_0_16px_rgba(193,102,59,0.7)] hover:opacity-95"
                   >
                     Send pre-trip link
                   </Link>
-                )}
+                ) : null}
                 <Link
                   href={unitHref(a.unitId)}
                   className="rounded-full border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[10px] font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-panel)]"

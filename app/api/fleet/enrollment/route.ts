@@ -169,18 +169,22 @@ export async function POST(request: Request) {
             admin
               .from("fleet_members")
               .select("fleet_id,user_id,role")
+              .eq("shop_id", scope.shopId)
               .in("fleet_id", fleetIds)
               .in("role", ["driver", "viewer"]),
             admin
               .from("fleet_vehicles")
               .select("fleet_id,vehicle_id,nickname,active")
+              .eq("shop_id", scope.shopId)
               .in("fleet_id", fleetIds),
             admin
               .from("fleet_dispatch_assignments")
               .select(
                 "id,fleet_id,vehicle_id,driver_profile_id,driver_name,route_label,next_pretrip_due,state",
               )
+              .eq("shop_id", scope.shopId)
               .in("fleet_id", fleetIds)
+              .eq("active", true)
               .neq("state", "completed"),
           ])
         : [

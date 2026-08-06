@@ -20,6 +20,7 @@ import type {
   FleetUnitWorkspacePayload,
 } from "@/features/fleet/types/workspace";
 import FleetUnitWorkOrderEvidence from "@/features/fleet/components/FleetUnitWorkOrderEvidence";
+import { formatFleetDate } from "@/features/fleet/lib/fleetDate";
 import { InspectionReportAttachments } from "@/features/inspections/components/InspectionReportAttachments";
 
 type Tab = "overview" | "maintenance" | "history" | "activity";
@@ -36,9 +37,7 @@ function money(value: number, currency: "CAD" | "USD" = "CAD") {
 }
 
 function dateLabel(value: string | null) {
-  if (!value) return "—";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "—" : date.toLocaleDateString();
+  return formatFleetDate(value) ?? "—";
 }
 
 function priorityClass(priority: FleetPriority) {

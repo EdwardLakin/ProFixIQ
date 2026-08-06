@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  partitionFleetIdsByManagement,
   resolveFleetActorScope,
   type FleetActorContext,
 } from "@/features/fleet/lib/resolveFleetActorContext";
@@ -60,6 +61,24 @@ describe("fleet pre-trip, defects, and compliance", () => {
     ).toBeNull();
   });
 
+  it("applies each external membership role only to its own Fleet", () => {
+    const managerFleetId = "30000000-0000-4000-8000-000000000001";
+    const driverFleetId = "30000000-0000-4000-8000-000000000002";
+    const actor = dualRoleActor();
+    actor.isInternal = false;
+    actor.actorType = "fleet_manager";
+    actor.fleetIds = [managerFleetId, driverFleetId];
+    actor.fleetMemberships = [
+      { fleetId: managerFleetId, shopId: actor.shopId, role: "manager" },
+      { fleetId: driverFleetId, shopId: actor.shopId, role: "viewer" },
+    ];
+
+    expect(partitionFleetIdsByManagement(actor, actor.fleetIds)).toEqual({
+      managerFleetIds: [managerFleetId],
+      driverFleetIds: [driverFleetId],
+    });
+  });
+
   it("keeps drivers out of manager conversion and puts pre-trip one click from portal home", () => {
     const form = read("features/fleet/components/PretripForm.tsx");
     const tower = read("features/fleet/components/FleetControlTower.tsx");
@@ -70,6 +89,7 @@ describe("fleet pre-trip, defects, and compliance", () => {
     expect(tower).toContain("Start today’s pre-trip");
     expect(tower).toContain("/portal/fleet/pretrip/");
     expect(page).toContain("const admin = createAdminSupabase()");
+    expect(page).toContain('.eq("shop_id", scope.shopId)');
     expect(page).toContain('.eq("fleet_id", fleetId)');
     expect(page).toContain('.eq("driver_profile_id", actor.userId)');
     expect(page).toContain('.eq("active", true)');

@@ -9,6 +9,7 @@ import { toFleetPublicHref } from "@/features/fleet/lib/fleetProductRouting";
 
 type FleetAISummaryProps = {
   shopId?: string | null;
+  fleetId?: string | null;
   routePrefix?: "/fleet" | "/portal/fleet";
 };
 
@@ -36,6 +37,7 @@ const tones: Record<Point["priority"], string> = {
 
 export default function FleetAISummary({
   shopId,
+  fleetId,
   routePrefix = "/fleet",
 }: FleetAISummaryProps) {
   const pathname = usePathname() ?? "";
@@ -53,7 +55,11 @@ export default function FleetAISummary({
         const response = await fetch("/api/fleet/ai-summary", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ shopId: shopId ?? null, routePrefix }),
+          body: JSON.stringify({
+            shopId: shopId ?? null,
+            fleetId: fleetId ?? null,
+            routePrefix,
+          }),
           cache: "no-store",
         });
         const body = (await response.json().catch(() => ({}))) as
@@ -82,7 +88,7 @@ export default function FleetAISummary({
     return () => {
       cancelled = true;
     };
-  }, [routePrefix, shopId]);
+  }, [fleetId, routePrefix, shopId]);
 
   return (
     <section className="text-xs text-[color:var(--theme-text-primary)]">

@@ -70,7 +70,29 @@ export async function POST(request: Request) {
       await enrollmentQuery;
     if (enrollmentError) throw new Error(enrollmentError.message);
 
-    const enrollments = rows(enrollmentData);
+    let enrollments = rows(enrollmentData);
+    if (actor.actorType === "fleet_driver") {
+      const authorizedFleetIds = Array.from(
+        new Set(enrollments.map((row) => String(row.fleet_id))),
+      );
+      const { data: assignmentData, error: assignmentError } =
+        authorizedFleetIds.length
+          ? await admin
+              .from("fleet_dispatch_assignments")
+              .select("fleet_id,vehicle_id")
+              .eq("shop_id", scope.shopId)
+              .in("fleet_id", authorizedFleetIds)
+              .eq("driver_profile_id", actor.userId)
+              .eq("active", true)
+          : { data: [] as unknown[], error: null };
+      if (assignmentError) throw new Error(assignmentError.message);
+      const assignedVehicles = new Set(
+        rows(assignmentData).map((row) => String(row.vehicle_id)),
+      );
+      enrollments = enrollments.filter((row) =>
+        assignedVehicles.has(String(row.vehicle_id)),
+      );
+    }
     const fleetIds = Array.from(
       new Set(enrollments.map((row) => String(row.fleet_id))),
     );
@@ -98,35 +120,48 @@ export async function POST(request: Request) {
       });
     }
 
+    const isDriver = actor.actorType === "fleet_driver";
+    const requestQuery = admin
+      .from("fleet_service_requests")
+      .select("id,severity,status")
+      .eq("shop_id", scope.shopId)
+      .in("fleet_id", fleetIds)
+      .in("vehicle_id", vehicleIds)
+      .in("status", ["open", "scheduled"]);
+    let pretripQuery = admin
+      .from("fleet_pretrip_reports")
+      .select("id,has_defects,inspection_date")
+      .eq("shop_id", scope.shopId)
+      .in("fleet_id", fleetIds)
+      .in("vehicle_id", vehicleIds)
+      .gte(
+        "inspection_date",
+        new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 10),
+      );
+    if (isDriver) {
+      pretripQuery = pretripQuery.eq("driver_profile_id", actor.userId);
+    }
+
     const [requestResult, pmResult, pretripResult, workOrderResult] =
       await Promise.all([
-        admin
-          .from("fleet_service_requests")
-          .select("id,severity,status")
-          .eq("shop_id", scope.shopId)
-          .in("fleet_id", fleetIds)
-          .in("status", ["open", "scheduled"]),
-        admin
-          .from("fleet_pm_due_events")
-          .select("id,status")
-          .eq("shop_id", scope.shopId)
-          .in("fleet_id", fleetIds)
-          .in("status", ["pending", "deferred", "converted"]),
-        admin
-          .from("fleet_pretrip_reports")
-          .select("id,has_defects,inspection_date")
-          .eq("shop_id", scope.shopId)
-          .in("fleet_id", fleetIds)
-          .gte(
-            "inspection_date",
-            new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 10),
-          ),
-        admin
-          .from("work_orders")
-          .select("id,approval_state,outstanding_balance,payment_status")
-          .eq("shop_id", scope.shopId)
-          .in("vehicle_id", vehicleIds)
-          .limit(500),
+        requestQuery,
+        isDriver
+          ? Promise.resolve({ data: [] as unknown[], error: null })
+          : admin
+              .from("fleet_pm_due_events")
+              .select("id,status")
+              .eq("shop_id", scope.shopId)
+              .in("fleet_id", fleetIds)
+              .in("status", ["pending", "deferred", "converted"]),
+        pretripQuery,
+        isDriver
+          ? Promise.resolve({ data: [] as unknown[], error: null })
+          : admin
+              .from("work_orders")
+              .select("id,approval_state,outstanding_balance,payment_status")
+              .eq("shop_id", scope.shopId)
+              .in("vehicle_id", vehicleIds)
+              .limit(500),
       ]);
     const firstError = [
       requestResult.error,
@@ -170,16 +205,21 @@ export async function POST(request: Request) {
       (total, row) => total + numeric(row.outstanding_balance),
       0,
     );
-    const snapshot = {
+    const authorizedSnapshot = {
       activeUnits: vehicleIds.length,
       openRequests: requests.length,
       safetyOrComplianceRequests: safety,
-      pmItems: pmItems.length,
-      approvals,
-      outstandingBalance: outstanding,
       recentPretrips: pretrips.length,
       pretripDefects: defects,
     };
+    const snapshot = isDriver
+      ? authorizedSnapshot
+      : {
+          ...authorizedSnapshot,
+          pmItems: pmItems.length,
+          approvals,
+          outstandingBalance: outstanding,
+        };
 
     const points = [
       {

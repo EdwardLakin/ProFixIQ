@@ -128,10 +128,16 @@ export default function FleetDriversWorkspace({
       ),
     [context?.assignments, fleetId],
   );
+  const fleetDrivers = useMemo(
+    () =>
+      (context?.drivers ?? []).filter(
+        (driver) => fleetId === "all" || driver.fleetId === fleetId,
+      ),
+    [context?.drivers, fleetId],
+  );
   const drivers = useMemo(() => {
     const needle = search.trim().toLowerCase();
-    return (context?.drivers ?? []).filter((driver) => {
-      if (fleetId !== "all" && driver.fleetId !== fleetId) return false;
+    return fleetDrivers.filter((driver) => {
       if (!needle) return true;
       const assigned = assignments.filter(
         (assignment) => assignment.driverProfileId === driver.id,
@@ -149,7 +155,7 @@ export default function FleetDriversWorkspace({
         .toLowerCase()
         .includes(needle);
     });
-  }, [assignments, context?.drivers, fleetId, search]);
+  }, [assignments, fleetDrivers, search]);
   const enrollments = (context?.enrollments ?? []).filter(
     (enrollment) =>
       enrollment.active &&
@@ -224,7 +230,7 @@ export default function FleetDriversWorkspace({
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {(
           [
-            ["Active drivers", context?.drivers.length ?? 0, UsersRound],
+            ["Active drivers", fleetDrivers.length, UsersRound],
             ["Assigned units", assignments.length, Truck],
             ["Pre-trips due", duePretrips, ClipboardCheck],
             ["Unassigned units", unassignedUnits, CalendarClock],

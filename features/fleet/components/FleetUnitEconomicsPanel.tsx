@@ -17,9 +17,9 @@ type UnitEconomics = {
   unitId: string;
   label: string;
   vehicle: string;
-  trailing12MonthSpend: number;
+  trailing12MonthSpendByCurrency: Record<"CAD" | "USD", number>;
   currentOdometerKm: number | null;
-  costPerKm: number | null;
+  costPerKmByCurrency: Record<"CAD" | "USD", number | null>;
   openServiceRequests: number;
   deferredRequests: number;
   pmDueCount: number;
@@ -33,23 +33,38 @@ type Payload = {
   generatedAt: string;
 };
 
-function money(value: number) {
-  return value.toLocaleString(undefined, {
+function money(value: number, currency: "CAD" | "USD") {
+  return value.toLocaleString(currency === "USD" ? "en-US" : "en-CA", {
     style: "currency",
-    currency: "CAD",
+    currency,
+    minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
 }
 
+function currencyValues<T extends number | null>(
+  values: Record<"CAD" | "USD", T>,
+  includeZero = false,
+) {
+  const entries = (["CAD", "USD"] as const).filter((currency) => {
+    const value = values[currency];
+    return value != null && (includeZero || value !== 0);
+  });
+  return entries.length ? entries : (["CAD"] as const);
+}
+
 export default function FleetUnitEconomicsPanel({
   shopId,
+  fleetId,
   routePrefix = "/fleet",
 }: {
   shopId?: string | null;
+  fleetId?: string | null;
   routePrefix?: "/fleet" | "/portal/fleet";
 }) {
   const pathname = usePathname() ?? "";
-  const productRoutes = !pathname.startsWith("/portal/fleet");
+  const productRoutes =
+    routePrefix === "/portal/fleet" && !pathname.startsWith("/portal/fleet");
   const [payload, setPayload] = useState<Payload | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -61,7 +76,10 @@ export default function FleetUnitEconomicsPanel({
         const response = await fetch("/api/fleet/unit-economics", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ shopId: shopId ?? null }),
+          body: JSON.stringify({
+            shopId: shopId ?? null,
+            fleetId: fleetId ?? null,
+          }),
         });
         const body = (await response.json().catch(() => ({}))) as
           | Payload
@@ -88,7 +106,7 @@ export default function FleetUnitEconomicsPanel({
     return () => {
       cancelled = true;
     };
-  }, [shopId]);
+  }, [fleetId, shopId]);
 
   if (error) {
     return <div className="text-xs text-red-300">{error}</div>;
@@ -147,9 +165,17 @@ export default function FleetUnitEconomicsPanel({
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-sm font-semibold">
-                    {money(unit.trailing12MonthSpend)}
-                  </div>
+                  {currencyValues(unit.trailing12MonthSpendByCurrency).map(
+                    (currency) => (
+                      <div key={currency} className="text-sm font-semibold">
+                        {currency}{" "}
+                        {money(
+                          unit.trailing12MonthSpendByCurrency[currency],
+                          currency,
+                        )}
+                      </div>
+                    ),
+                  )}
                   <div className="text-[11px] text-[color:var(--theme-text-muted)]">
                     trailing 12 months
                   </div>
@@ -161,9 +187,21 @@ export default function FleetUnitEconomicsPanel({
                     Cost/km
                   </div>
                   <div className="mt-0.5 font-medium">
-                    {unit.costPerKm == null
+                    {Object.values(unit.costPerKmByCurrency).every(
+                      (value) => value == null,
+                    )
                       ? "Needs readings"
-                      : money(unit.costPerKm)}
+                      : currencyValues(unit.costPerKmByCurrency).map(
+                          (currency) => (
+                            <span key={currency} className="block">
+                              {currency}{" "}
+                              {money(
+                                unit.costPerKmByCurrency[currency] ?? 0,
+                                currency,
+                              )}
+                            </span>
+                          ),
+                        )}
                   </div>
                 </div>
                 <div>

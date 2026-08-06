@@ -215,11 +215,16 @@ export default function FleetControlTower({
       aiSummary={
         <div className="space-y-4">
           <div className="metal-card rounded-3xl p-4">
-            <FleetAISummary shopId={shopId ?? null} routePrefix={routePrefix} />
+            <FleetAISummary
+              shopId={shopId ?? null}
+              fleetId={fleetId ?? null}
+              routePrefix={routePrefix}
+            />
           </div>
           <div className="metal-card rounded-3xl p-4">
             <FleetUnitEconomicsPanel
               shopId={shopId ?? null}
+              fleetId={fleetId ?? null}
               routePrefix={routePrefix}
             />
           </div>

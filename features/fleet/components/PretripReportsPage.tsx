@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { FleetUiContext } from "@/features/fleet/lib/fleetUiCapabilities";
+import { formatFleetDate } from "@/features/fleet/lib/fleetDate";
 import { desktopPrimitives as ui } from "@/features/shared/components/ui/desktopPrimitives";
 
 type PretripStatus = "open" | "reviewed" | "archived" | "all";
@@ -24,20 +25,6 @@ type PretripReport = {
   created_at: string;
   status: string | null;
 };
-
-function dateLabel(value: string | null) {
-  if (!value) return "—";
-  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  const date = dateOnly
-    ? new Date(
-        Number(dateOnly[1]),
-        Number(dateOnly[2]) - 1,
-        Number(dateOnly[3]),
-      )
-    : new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleDateString();
-}
 
 export default function PretripReportsPage({
   uiContext,
@@ -282,7 +269,7 @@ export default function PretripReportsPage({
                   {filteredReports.map((r) => (
                     <tr key={r.id} className="align-middle">
                       <td className="px-3 py-1.5 text-[11px] text-[color:var(--theme-text-secondary)]">
-                        {dateLabel(r.inspection_date ?? r.created_at)}
+                        {formatFleetDate(r.inspection_date ?? r.created_at)}
                       </td>
                       <td className="px-3 py-1.5 text-[11px] text-[color:var(--theme-text-primary)]">
                         {r.unit_label ?? "—"}
