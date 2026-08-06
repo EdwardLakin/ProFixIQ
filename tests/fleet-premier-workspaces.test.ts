@@ -203,9 +203,21 @@ describe("premier fleet workspaces", () => {
     expect(detail).toContain('"/pre-trips/start"');
     expect(detail).toContain('"/requests/new"');
     expect(economics).toContain("`/assets/${encodeURIComponent(unit.unitId)}`");
-  expect(requests).toContain("const buildHref = productRoutes");
-  expect(requests).toContain('? "/requests/new"');
+    expect(requests).toContain("const buildHref = productRoutes");
+    expect(requests).toContain('? "/requests/new"');
     expect(requests).toContain('productRoutes ? "/history"');
     expect(pretrips).toContain('productRoutes ? "/assets"');
+  });
+
+  it("sends Fleet invitations with a subject and Fleet-specific content", () => {
+    const events = source("features/email/server/emailEvents.ts");
+    const sender = source("features/email/server/sendDynamicTemplateEmail.ts");
+
+    expect(events).toContain("Your ${fleetName} Fleet invitation");
+    expect(events).toContain("Activate your Fleet access");
+    expect(events).toContain('input.portalType === "fleet"');
+    expect(events).toContain("content: fleetContent");
+    expect(sender).toContain("content?: {");
+    expect(sender).toContain("const message: MailDataRequired = input.content");
   });
 });
