@@ -90,6 +90,9 @@ export default function FleetControlTower({
   const pathname = usePathname() ?? "";
   const productRoutes =
     routePrefix === "/portal/fleet" && !pathname.startsWith("/portal/fleet");
+  const pretripStartBase = productRoutes
+    ? "/pre-trips/start/"
+    : "/portal/fleet/pretrip/";
   const [data, setData] = useState<TowerPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -248,7 +251,7 @@ export default function FleetControlTower({
                 </p>
               </div>
               <Link
-                href={`${productRoutes ? "/pre-trips/start" : "/portal/fleet/pretrip"}/${encodeURIComponent(todaysAssignment.unitId)}${fleetId ? `?fleetId=${encodeURIComponent(fleetId)}` : ""}`}
+                href={`${pretripStartBase}${encodeURIComponent(todaysAssignment.unitId)}${fleetId ? `?fleetId=${encodeURIComponent(fleetId)}` : ""}`}
                 className="inline-flex min-h-11 items-center justify-center rounded-xl bg-sky-300 px-4 py-2 text-sm font-semibold text-slate-950"
               >
                 Start today’s pre-trip
