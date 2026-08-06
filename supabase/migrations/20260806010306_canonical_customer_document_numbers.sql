@@ -365,7 +365,7 @@ begin
       invoice_number, opened_at, closed_at, historical_status, advisor_name,
       assigned_tech_name, priority, odometer, symptom, cause, correction,
       labor_hours, labor_sale, parts_sale, shop_supplies, discount, tax, total,
-      approval_state, payment_state, source_payload, shop_id
+      approval_state, payment_state, source_payload
     ) values (
       new.customer_id, new.vehicle_id, new.id,
       coalesce(new.paid_at, pg_catalog.now()), v_description,
@@ -385,8 +385,7 @@ begin
         'work_order_id', new.id,
         'invoice_id', v_invoice.id,
         'closed_from', 'paid_invoice'
-      ),
-      new.shop_id
+      )
     )
     returning id into v_history_id;
   else
@@ -431,9 +430,21 @@ begin
           'work_order_id', new.id,
           'invoice_id', v_invoice.id,
           'closed_from', 'paid_invoice'
-        ),
-        shop_id = new.shop_id
+        )
     where id = v_history_id;
+  end if;
+
+  -- Production has an optional history.shop_id column that is absent from the
+  -- clean baseline. Keep both shapes valid while preserving production scope.
+  if exists (
+    select 1
+    from pg_catalog.pg_attribute attribute
+    where attribute.attrelid = 'public.history'::pg_catalog.regclass
+      and attribute.attname = 'shop_id'
+      and not attribute.attisdropped
+  ) then
+    execute 'update public.history set shop_id = $1 where id = $2'
+    using new.shop_id, v_history_id;
   end if;
 
   return new;
@@ -542,7 +553,26 @@ set work_order_number = paid.custom_id,
       )
 from paid_rows paid
 join line_rollup lines on lines.work_order_id = paid.work_order_id
-where h.work_order_id = paid.work_order_id
-  and h.shop_id = paid.shop_id;
+where h.work_order_id = paid.work_order_id;
+
+do $optional_history_shop_scope$
+begin
+  if exists (
+    select 1
+    from pg_catalog.pg_attribute attribute
+    where attribute.attrelid = 'public.history'::pg_catalog.regclass
+      and attribute.attname = 'shop_id'
+      and not attribute.attisdropped
+  ) then
+    execute $sql$
+      update public.history history_row
+      set shop_id = work_order.shop_id
+      from public.work_orders work_order
+      where history_row.work_order_id = work_order.id
+        and history_row.shop_id is distinct from work_order.shop_id
+    $sql$;
+  end if;
+end
+$optional_history_shop_scope$;
 
 commit;
