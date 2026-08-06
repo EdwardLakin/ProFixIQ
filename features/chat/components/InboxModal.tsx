@@ -631,6 +631,11 @@ export default function InboxModal({
 
   if (!open) return null;
 
+  // Styles for outgoing messages in light mode Inbox
+  const outgoingBubbleLight =
+    "border-[color:var(--accent-copper)] bg-[color:#fff8f2] text-[color:#3f2313]"; // orange border, off-white background, dark readable text
+  const outgoingBubbleDark = "border-orange-500/35 bg-orange-500/18 text-orange-50";
+
   return (
     <ModalShell
       isOpen={open}
@@ -757,6 +762,7 @@ export default function InboxModal({
                   (participant) => participant.id === m.sender_participant_id,
                 ) ?? users.find((u) => u.id === m.sender_id);
 
+              // Use explicit high-contrast style only for my outgoing messages in Inbox, light mode
               return (
                 <div
                   key={m.id}
@@ -772,9 +778,10 @@ export default function InboxModal({
                   <div
                     className={`max-w-[78%] rounded-lg border px-2.5 py-1.5 text-xs leading-relaxed ${
                       mine
-                        ? "border-orange-500/35 bg-orange-500/18 text-orange-50"
+                        ? `lightmode-inbox-outgoing ${outgoingBubbleLight} dark:${outgoingBubbleDark}`
                         : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)]"
                     }`}
+                    // Tailwind's class precedence is fine here; fallback for dark mode is styled below
                   >
                     {m.content}
                   </div>
@@ -971,6 +978,32 @@ export default function InboxModal({
           )}
         </aside>
       </div>
+
+      {/* Inline style for guaranteed light/dark support */}
+      <style jsx global>{`
+        @media (prefers-color-scheme: light) {
+          .lightmode-inbox-outgoing {
+            /* These are strong contrast: border orange, bg light, text dark brown for Inbox outgoing only */
+            border-color: var(--accent-copper, #d97706);
+            background: #fff8f2;
+            color: #3f2313;
+          }
+          .lightmode-inbox-outgoing a, .lightmode-inbox-outgoing strong {
+            color: #212121;
+          }
+        }
+        @media (prefers-color-scheme: dark) {
+          .dark\:border-orange-500\/35 {
+            border-color: rgba(245,158,11,.35)!important;
+          }
+          .dark\:bg-orange-500\/18 {
+            background-color: rgba(245,158,11,.18)!important;
+          }
+          .dark\:text-orange-50 {
+            color: #fffaf3!important;
+          }
+        }
+      `}</style>
     </ModalShell>
   );
 }
