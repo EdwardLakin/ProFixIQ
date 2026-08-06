@@ -4,6 +4,7 @@ import {
   createServerSupabaseRoute,
 } from "@/features/shared/lib/supabase/server";
 import {
+  canAdministerFleetForActor,
   canManageFleetForActor,
   manageableFleetIdsForActor,
   resolveFleetActorContext,
@@ -12,14 +13,41 @@ import {
 
 export const dynamic = "force-dynamic";
 
+const UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 type Row = Record<string, unknown>;
 type Body = {
-  action?: "list" | "evaluate" | "defer" | "create_request";
+  action?:
+    | "list"
+    | "evaluate"
+    | "defer"
+    | "create_request"
+    | "save_program"
+    | "archive_program";
   fleetId?: string | null;
   vehicleId?: string | null;
   dueEventId?: string;
   deferredUntil?: string;
   reason?: string;
+  requestedForDate?: string | null;
+  programId?: string | null;
+  name?: string;
+  cadence?: string;
+  intervalKm?: number | null;
+  intervalHours?: number | null;
+  intervalDays?: number | null;
+  assignmentMode?: "all_units" | "selected_units";
+  vehicleIds?: string[];
+  tasks?: Array<{
+    description?: string;
+    jobType?: string;
+    laborHours?: number | null;
+    sectionKey?: string | null;
+  }>;
+  notes?: string | null;
+  requiresFleetApproval?: boolean;
+  operationKey?: string;
 };
 
 function rows(value: unknown): Row[] {
@@ -31,8 +59,15 @@ function clean(value: unknown): string | null {
 }
 
 function numeric(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+// Supabase's generated RPC types do not encode nullable parameters without
+// defaults, even though PostgreSQL accepts null for these optional fields.
+function nullableRpcArg<T>(value: T | null): T {
+  return value as T;
 }
 
 function canManage(
@@ -40,7 +75,9 @@ function canManage(
   fleetId?: string,
   visibleFleetIds?: string[],
 ) {
-  if (actor.isInternal) return true;
+  if (actor.isInternal) {
+    return ["owner", "admin", "manager"].includes(actor.canonicalRole);
+  }
   if (fleetId) return canManageFleetForActor(actor, fleetId);
   if (visibleFleetIds?.length) {
     return visibleFleetIds.every((id) => canManageFleetForActor(actor, id));
@@ -80,53 +117,67 @@ async function listWorkspace(
   if (!fleetIds.length) {
     return {
       canManage: canManage(actor, explicitFleetId ?? undefined, fleetIds),
+      canManagePrograms: false,
       fleets: [],
       summary: { overdue: 0, due: 0, deferred: 0, converted: 0, clearUnits: 0 },
+      units: [],
       items: [],
       programs: [],
     };
   }
 
-  const [enrollmentResult, vehicleResult, policyResult, dueResult, programResult, readingResult] =
-    await Promise.all([
-      admin
-        .from("fleet_vehicles")
-        .select("fleet_id,vehicle_id,nickname,active")
-        .in("fleet_id", fleetIds)
-        .or("active.is.null,active.eq.true"),
-      admin
-        .from("vehicles")
-        .select("id,unit_number,license_plate,vin,year,make,model")
-        .eq("shop_id", scope.shopId),
-      admin
-        .from("fleet_pm_policies")
-        .select(
-          "id,shop_id,fleet_id,vehicle_id,program_id,name,interval_km,interval_hours,interval_days,anchor_odometer_km,anchor_engine_hours,anchor_date,last_completed_at,requires_fleet_approval,active",
-        )
-        .in("fleet_id", fleetIds)
-        .eq("active", true),
-      admin
-        .from("fleet_pm_due_events")
-        .select(
-          "id,shop_id,fleet_id,vehicle_id,policy_id,program_id,status,due_reasons,due_snapshot,first_due_at,last_evaluated_at,deferred_until,service_request_id",
-        )
-        .in("fleet_id", fleetIds)
-        .in("status", ["pending", "deferred", "converted"])
-        .order("first_due_at", { ascending: true }),
-      admin
-        .from("fleet_programs")
-        .select(
-          "id,fleet_id,name,cadence,interval_km,interval_hours,interval_days,notes",
-        )
-        .in("fleet_id", fleetIds)
-        .order("name", { ascending: true }),
-      admin
-        .from("fleet_unit_readings")
-        .select("id,fleet_id,vehicle_id,odometer_km,engine_hours,recorded_at")
-        .in("fleet_id", fleetIds)
-        .order("recorded_at", { ascending: false })
-        .limit(2000),
-    ]);
+  const [
+    enrollmentResult,
+    vehicleResult,
+    policyResult,
+    dueResult,
+    programResult,
+    readingResult,
+    assignmentResult,
+  ] = await Promise.all([
+    admin
+      .from("fleet_vehicles")
+      .select("fleet_id,vehicle_id,nickname,active")
+      .in("fleet_id", fleetIds)
+      .or("active.is.null,active.eq.true"),
+    admin
+      .from("vehicles")
+      .select("id,unit_number,license_plate,vin,year,make,model")
+      .eq("shop_id", scope.shopId),
+    admin
+      .from("fleet_pm_policies")
+      .select(
+        "id,shop_id,fleet_id,vehicle_id,program_id,name,interval_km,interval_hours,interval_days,anchor_odometer_km,anchor_engine_hours,anchor_date,last_completed_at,requires_fleet_approval,active",
+      )
+      .in("fleet_id", fleetIds)
+      .eq("active", true),
+    admin
+      .from("fleet_pm_due_events")
+      .select(
+        "id,shop_id,fleet_id,vehicle_id,policy_id,program_id,status,due_reasons,due_snapshot,first_due_at,last_evaluated_at,deferred_until,service_request_id",
+      )
+      .in("fleet_id", fleetIds)
+      .in("status", ["pending", "deferred", "converted"])
+      .order("first_due_at", { ascending: true }),
+    admin
+      .from("fleet_programs")
+      .select(
+        "id,fleet_id,name,cadence,interval_km,interval_hours,interval_days,notes,assignment_mode,requires_fleet_approval,active,updated_at",
+      )
+      .in("fleet_id", fleetIds)
+      .eq("active", true)
+      .order("name", { ascending: true }),
+    admin
+      .from("fleet_unit_readings")
+      .select("id,fleet_id,vehicle_id,odometer_km,engine_hours,recorded_at")
+      .in("fleet_id", fleetIds)
+      .order("recorded_at", { ascending: false })
+      .limit(2000),
+    admin
+      .from("fleet_program_assignments")
+      .select("program_id,fleet_id,vehicle_id")
+      .in("fleet_id", fleetIds),
+  ]);
 
   const error = [
     enrollmentResult.error,
@@ -135,15 +186,32 @@ async function listWorkspace(
     dueResult.error,
     programResult.error,
     readingResult.error,
+    assignmentResult.error,
   ].find(Boolean);
   if (error) throw new Error(error.message);
 
-  const vehicles = new Map(rows(vehicleResult.data).map((row) => [String(row.id), row]));
+  const programIds = rows(programResult.data).map((row) => String(row.id));
+  const { data: taskData, error: taskError } = programIds.length
+    ? await admin
+        .from("fleet_program_tasks")
+        .select(
+          "id,program_id,display_order,description,job_type,default_labor_hours,section_key",
+        )
+        .in("program_id", programIds)
+        .order("display_order", { ascending: true })
+    : { data: [] as unknown[], error: null };
+  if (taskError) throw new Error(taskError.message);
+
+  const vehicles = new Map(
+    rows(vehicleResult.data).map((row) => [String(row.id), row]),
+  );
   const enrollments = rows(enrollmentResult.data);
   const enrollmentByVehicle = new Map(
     enrollments.map((row) => [String(row.vehicle_id), row]),
   );
-  const fleetNames = new Map(fleetRows.map((row) => [String(row.id), clean(row.name) ?? "Fleet"]));
+  const fleetNames = new Map(
+    fleetRows.map((row) => [String(row.id), clean(row.name) ?? "Fleet"]),
+  );
   const policies = rows(policyResult.data);
   const policiesById = new Map(policies.map((row) => [String(row.id), row]));
   const latestReadings = new Map<string, Row>();
@@ -185,7 +253,11 @@ async function listWorkspace(
         clean(vehicle.license_plate) ??
         clean(vehicle.vin) ??
         "Unit",
-      vehicleDescription: [vehicle.year, clean(vehicle.make), clean(vehicle.model)]
+      vehicleDescription: [
+        vehicle.year,
+        clean(vehicle.make),
+        clean(vehicle.model),
+      ]
         .filter(Boolean)
         .join(" "),
       policyId: String(due.policy_id),
@@ -213,17 +285,42 @@ async function listWorkspace(
   const assignedByProgram = new Map<string, number>();
   for (const policy of policies) {
     const programId = String(policy.program_id);
-    assignedByProgram.set(programId, (assignedByProgram.get(programId) ?? 0) + 1);
+    assignedByProgram.set(
+      programId,
+      (assignedByProgram.get(programId) ?? 0) + 1,
+    );
   }
   const dueByProgram = new Map<string, number>();
   for (const item of items) {
-    dueByProgram.set(item.programId, (dueByProgram.get(item.programId) ?? 0) + 1);
+    dueByProgram.set(
+      item.programId,
+      (dueByProgram.get(item.programId) ?? 0) + 1,
+    );
   }
 
-  const activeUnitIds = new Set(enrollments.map((row) => String(row.vehicle_id)));
+  const activeUnitIds = new Set(
+    enrollments.map((row) => String(row.vehicle_id)),
+  );
   const unitsWithDue = new Set(items.map((item) => item.vehicleId));
+  const tasksByProgram = new Map<string, Row[]>();
+  for (const task of rows(taskData)) {
+    const programId = String(task.program_id);
+    const current = tasksByProgram.get(programId) ?? [];
+    current.push(task);
+    tasksByProgram.set(programId, current);
+  }
+  const assignedVehicleIdsByProgram = new Map<string, string[]>();
+  for (const assignment of rows(assignmentResult.data)) {
+    const programId = String(assignment.program_id);
+    const current = assignedVehicleIdsByProgram.get(programId) ?? [];
+    current.push(String(assignment.vehicle_id));
+    assignedVehicleIdsByProgram.set(programId, current);
+  }
   return {
     canManage: canManage(actor, explicitFleetId ?? undefined, fleetIds),
+    canManagePrograms: fleetIds.some((id) =>
+      canAdministerFleetForActor(actor, id),
+    ),
     fleets: fleetRows.map((row) => ({
       id: String(row.id),
       name: clean(row.name) ?? "Fleet",
@@ -235,6 +332,23 @@ async function listWorkspace(
       converted: items.filter((item) => item.urgency === "converted").length,
       clearUnits: Math.max(0, activeUnitIds.size - unitsWithDue.size),
     },
+    units: enrollments.map((enrollment) => {
+      const vehicle = vehicles.get(String(enrollment.vehicle_id)) ?? {};
+      return {
+        id: String(enrollment.vehicle_id),
+        fleetId: String(enrollment.fleet_id),
+        fleetName: fleetNames.get(String(enrollment.fleet_id)) ?? "Fleet",
+        label:
+          clean(enrollment.nickname) ??
+          clean(vehicle.unit_number) ??
+          clean(vehicle.license_plate) ??
+          clean(vehicle.vin) ??
+          "Unit",
+        description: [vehicle.year, clean(vehicle.make), clean(vehicle.model)]
+          .filter(Boolean)
+          .join(" "),
+      };
+    }),
     items,
     programs: rows(programResult.data).map((program) => ({
       id: String(program.id),
@@ -246,6 +360,26 @@ async function listWorkspace(
       intervalHours: numeric(program.interval_hours),
       intervalDays: numeric(program.interval_days),
       notes: clean(program.notes),
+      assignmentMode:
+        clean(program.assignment_mode) === "selected_units"
+          ? "selected_units"
+          : "all_units",
+      requiresFleetApproval: program.requires_fleet_approval !== false,
+      assignedVehicleIds:
+        clean(program.assignment_mode) === "selected_units"
+          ? (assignedVehicleIdsByProgram.get(String(program.id)) ?? [])
+          : enrollments
+              .filter(
+                (row) => String(row.fleet_id) === String(program.fleet_id),
+              )
+              .map((row) => String(row.vehicle_id)),
+      tasks: (tasksByProgram.get(String(program.id)) ?? []).map((task) => ({
+        id: String(task.id),
+        description: clean(task.description) ?? "Maintenance task",
+        jobType: clean(task.job_type) ?? "maintenance",
+        laborHours: numeric(task.default_labor_hours),
+        sectionKey: clean(task.section_key),
+      })),
       assignedUnits: assignedByProgram.get(String(program.id)) ?? 0,
       dueUnits: dueByProgram.get(String(program.id)) ?? 0,
     })),
@@ -260,7 +394,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     if (actor.actorType === "none" || !actor.shopId) {
-      return NextResponse.json({ error: "Fleet access required" }, { status: 403 });
+      return NextResponse.json(
+        { error: "Fleet access required" },
+        { status: 403 },
+      );
+    }
+    if (actor.actorType === "fleet_driver") {
+      return NextResponse.json(
+        { error: "Fleet manager access required" },
+        { status: 403 },
+      );
     }
 
     const body = (await request.json().catch(() => ({}))) as Body;
@@ -312,10 +455,13 @@ export async function POST(request: Request) {
 
       const evaluations = await Promise.all(
         targetFleetIds.map(async (fleetId) => {
-          const { data, error } = await supabase.rpc("evaluate_fleet_pm_due_events", {
-            p_fleet_id: fleetId,
-            p_vehicle_id: clean(body.vehicleId) ?? undefined,
-          });
+          const { data, error } = await supabase.rpc(
+            "evaluate_fleet_pm_due_events",
+            {
+              p_fleet_id: fleetId,
+              p_vehicle_id: clean(body.vehicleId) ?? undefined,
+            },
+          );
           if (error) throw new Error(error.message);
           return { fleetId, evaluated: data ?? [] };
         }),
@@ -323,13 +469,121 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, evaluations });
     }
 
+    if (["save_program", "archive_program"].includes(action)) {
+      const fleetId = clean(body.fleetId);
+      if (!fleetId || !UUID.test(fleetId)) {
+        return NextResponse.json(
+          { error: "Valid Fleet is required" },
+          { status: 400 },
+        );
+      }
+      if (!canAdministerFleetForActor(actor, fleetId)) {
+        return NextResponse.json(
+          { error: "Fleet manager access required" },
+          { status: 403 },
+        );
+      }
+
+      const { data: fleet, error: fleetError } = await admin
+        .from("fleets")
+        .select("id")
+        .eq("id", fleetId)
+        .eq("shop_id", actor.shopId)
+        .maybeSingle();
+      if (fleetError) throw new Error(fleetError.message);
+      if (!fleet) {
+        return NextResponse.json({ error: "Fleet not found" }, { status: 404 });
+      }
+
+      const programId = clean(body.programId);
+      if (programId && !UUID.test(programId)) {
+        return NextResponse.json(
+          { error: "Valid PM program is required" },
+          { status: 400 },
+        );
+      }
+      if (action === "archive_program" && !programId) {
+        return NextResponse.json(
+          { error: "PM program is required" },
+          { status: 400 },
+        );
+      }
+
+      const vehicleIds = Array.from(
+        new Set((body.vehicleIds ?? []).filter((id) => UUID.test(id))),
+      );
+      if (vehicleIds.length !== (body.vehicleIds ?? []).length) {
+        return NextResponse.json(
+          { error: "A selected asset is invalid" },
+          { status: 400 },
+        );
+      }
+      const tasks = (body.tasks ?? []).map((task) => ({
+        description: clean(task.description)?.slice(0, 500) ?? "",
+        jobType: ["maintenance", "inspection", "repair"].includes(
+          clean(task.jobType) ?? "",
+        )
+          ? clean(task.jobType)
+          : "maintenance",
+        laborHours:
+          task.laborHours == null || !Number.isFinite(Number(task.laborHours))
+            ? null
+            : Math.max(0, Number(task.laborHours)),
+        sectionKey: clean(task.sectionKey)?.slice(0, 80) ?? null,
+      }));
+      const rpcAction =
+        action === "archive_program"
+          ? "archive"
+          : programId
+            ? "update"
+            : "create";
+      const { data: result, error: programError } = await supabase.rpc(
+        "manage_fleet_pm_program",
+        {
+          p_action: rpcAction,
+          p_fleet_id: fleetId,
+          p_program_id: nullableRpcArg(programId),
+          p_name: clean(body.name)?.slice(0, 120) ?? "",
+          p_cadence: clean(body.cadence) ?? "mileage_based",
+          p_interval_km: nullableRpcArg(numeric(body.intervalKm)),
+          p_interval_hours: nullableRpcArg(numeric(body.intervalHours)),
+          p_interval_days: nullableRpcArg(numeric(body.intervalDays)),
+          p_assignment_mode:
+            body.assignmentMode === "selected_units"
+              ? "selected_units"
+              : "all_units",
+          p_vehicle_ids: vehicleIds,
+          p_tasks: tasks,
+          p_notes: nullableRpcArg(clean(body.notes)?.slice(0, 2000) ?? null),
+          p_requires_fleet_approval: body.requiresFleetApproval !== false,
+          p_operation_key: clean(body.operationKey) ?? "",
+        },
+      );
+      if (programError) throw new Error(programError.message);
+
+      if (action === "save_program") {
+        const { error: evaluationError } = await supabase.rpc(
+          "evaluate_fleet_pm_due_events",
+          { p_fleet_id: fleetId },
+        );
+        if (evaluationError) throw new Error(evaluationError.message);
+      }
+      return NextResponse.json({ ok: true, program: result });
+    }
+
     if (!["defer", "create_request"].includes(action)) {
-      return NextResponse.json({ error: "Unsupported PM action" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Unsupported PM action" },
+        { status: 400 },
+      );
     }
 
     const dueEventId = clean(body.dueEventId);
     if (!dueEventId) {
-      return NextResponse.json({ error: "dueEventId is required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "dueEventId is required" },
+        { status: 400 },
+      );
     }
     const { data: dueRow, error: dueError } = await admin
       .from("fleet_pm_due_events")
@@ -428,26 +682,64 @@ export async function POST(request: Request) {
     const dueReasons = Array.isArray(dueRow.due_reasons)
       ? dueRow.due_reasons.map(String)
       : [];
+    const requestedForDate = clean(body.requestedForDate);
+    if (requestedForDate) {
+      const requestedDate = new Date(`${requestedForDate}T00:00:00Z`);
+      const today = new Date();
+      today.setUTCHours(0, 0, 0, 0);
+      if (
+        Number.isNaN(requestedDate.getTime()) ||
+        requestedDate.getTime() < today.getTime()
+      ) {
+        return NextResponse.json(
+          { error: "Requested service date cannot be in the past" },
+          { status: 400 },
+        );
+      }
+    }
 
-    const { data: policy, error: policyError } = await admin
-      .from("fleet_pm_policies")
-      .select("id,name,interval_km,interval_hours,interval_days")
-      .eq("id", dueRow.policy_id)
-      .maybeSingle();
+    const [policyResult, programTaskResult] = await Promise.all([
+      admin
+        .from("fleet_pm_policies")
+        .select("id,name,interval_km,interval_hours,interval_days")
+        .eq("id", dueRow.policy_id)
+        .maybeSingle(),
+      admin
+        .from("fleet_program_tasks")
+        .select(
+          "id,description,job_type,default_labor_hours,section_key,display_order",
+        )
+        .eq("program_id", dueRow.program_id)
+        .order("display_order", { ascending: true }),
+    ]);
+    const { data: policy, error: policyError } = policyResult;
     if (policyError) throw new Error(policyError.message);
     const policyName = clean(policy?.name) ?? "Preventive maintenance";
-    const operationKey = `pm-due:${dueEventId}`;
-    const { data: serviceRequestId, error: createError } = await supabase.rpc(
-      "create_fleet_service_request_atomic",
-      {
-        p_fleet_id: dueRow.fleet_id,
-        p_vehicle_id: dueRow.vehicle_id,
-        p_title: `${policyName} service`,
-        p_summary: `Preventive maintenance due: ${dueReasons.join(", ") || "policy interval reached"}.`,
-        // The SQL function intentionally accepts an unscheduled request.
-        p_requested_for_date: null as unknown as string,
-        p_operation_key: operationKey,
-        p_lines: [
+    const { data: programTasks, error: programTaskError } = programTaskResult;
+    if (programTaskError) throw new Error(programTaskError.message);
+    const requestLines = rows(programTasks).length
+      ? rows(programTasks).map((task) => ({
+          lineKind:
+            clean(task.job_type) === "inspection" ? "inspection" : "custom",
+          description: clean(task.description) ?? policyName,
+          notes: clean(task.section_key)
+            ? `PM section: ${clean(task.section_key)}`
+            : "Created from the Fleet PM template.",
+          quantity: 1,
+          requestedLaborHours: numeric(task.default_labor_hours),
+          unitPriceSnapshot: null,
+          sourceFleetProgramId: dueRow.program_id,
+          sourceSnapshot: {
+            dueEventId,
+            programTaskId: String(task.id),
+            programJobType: clean(task.job_type) ?? "maintenance",
+            intervalKm: policy?.interval_km ?? null,
+            intervalHours: policy?.interval_hours ?? null,
+            intervalDays: policy?.interval_days ?? null,
+            dueReasons,
+          },
+        }))
+      : [
           {
             lineKind: "pm_package",
             description: policyName,
@@ -464,7 +756,19 @@ export async function POST(request: Request) {
               dueReasons,
             },
           },
-        ],
+        ];
+    const operationKey = `pm-due:${dueEventId}`;
+    const { data: serviceRequestId, error: createError } = await supabase.rpc(
+      "create_fleet_service_request_atomic",
+      {
+        p_fleet_id: dueRow.fleet_id,
+        p_vehicle_id: dueRow.vehicle_id,
+        p_title: `${policyName} service`,
+        p_summary: `Preventive maintenance due: ${dueReasons.join(", ") || "policy interval reached"}.`,
+        // The SQL function intentionally accepts an unscheduled request.
+        p_requested_for_date: requestedForDate as unknown as string,
+        p_operation_key: operationKey,
+        p_lines: requestLines,
       },
     );
     if (createError) throw new Error(createError.message);
@@ -505,7 +809,10 @@ export async function POST(request: Request) {
         });
       }
       return NextResponse.json(
-        { error: "PM item changed while the request was being created; retry safely" },
+        {
+          error:
+            "PM item changed while the request was being created; retry safely",
+        },
         { status: 409 },
       );
     }

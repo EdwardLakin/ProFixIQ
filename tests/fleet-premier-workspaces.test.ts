@@ -69,7 +69,7 @@ describe("premier fleet workspaces", () => {
     expect(route).toContain("source_pm_due_event_id: dueEventId");
     expect(route).toContain("create_fleet_service_request_atomic");
     expect(workspace).toContain('fleetId: fleetId === "all" ? null : fleetId');
-    expect(workspace).toContain("Create request");
+    expect(workspace).toContain("Plan request");
     expect(workspace).toContain("PM programs");
     expect(workspace).toContain("Confirm deferral");
   });
@@ -100,7 +100,9 @@ describe("premier fleet workspaces", () => {
     expect(actor).toContain("canManageFleetForActor");
     expect(billing).toContain("Fleet billing access required");
     expect(billing).toContain("applyWorkOrderQuoteLineDecision");
-    expect(billing).toContain('decisionSource: actor.isInternal ? "shop" : "customer"');
+    expect(billing).toContain(
+      'decisionSource: actor.isInternal ? "shop" : "customer"',
+    );
     expect(billing).not.toContain("apply_customer_quote_decision_atomic");
     expect(billing).toContain('"issued", "partially_paid", "paid"');
     expect(billing).toContain("byCurrency");

@@ -9,6 +9,7 @@ on:
       - "app/portal/fleet/**"
       - "features/fleet/**"
       - "tests/fleet-operations-core.test.ts"
+      - "tests/fleet-pm-calendar-management.test.ts"
       - "tests/fleet-premier-workspaces.test.ts"
       - "tests/fleet-pretrip-defect-compliance.test.ts"
       - ".github/workflows/fleet-premier-validation.yml"
@@ -39,6 +40,7 @@ jobs:
           app/api/fleet/billing/checkout/route.ts
           app/api/fleet/billing/route.ts
           app/api/fleet/maintenance/route.ts
+          app/api/fleet/calendar/route.ts
           app/api/fleet/service-requests/route.ts
           app/api/fleet/units/route.ts
           app/api/internal/fleet/pretrip-compliance/route.ts
@@ -48,6 +50,7 @@ jobs:
           app/fleet/service-requests/page.tsx
           "app/fleet/units/[unitId]/page.tsx"
           app/portal/fleet/layout.tsx
+          app/portal/fleet/calendar/page.tsx
           app/portal/fleet/maintenance/page.tsx
           app/portal/fleet/service-requests/page.tsx
           app/portal/fleet/units/page.tsx
@@ -56,16 +59,20 @@ jobs:
           features/fleet/components/FleetBillingWorkspace.tsx
           features/fleet/components/FleetControlTower.tsx
           features/fleet/components/FleetMaintenanceWorkspace.tsx
+          features/fleet/components/FleetMaintenanceCalendar.tsx
+          features/fleet/components/FleetPmProgramEditor.tsx
           features/fleet/components/FleetServiceRequestsPage.tsx
           features/fleet/components/FleetUnitDetailWorkspace.tsx
           features/fleet/components/FleetUnitsPage.tsx
           features/fleet/components/FleetWorkspaceNav.tsx
           features/fleet/types/workspace.ts
           tests/fleet-premier-workspaces.test.ts
+          tests/fleet-pm-calendar-management.test.ts
           tests/fleet-pretrip-defect-compliance.test.ts
       - name: Fleet contracts
         run: >-
           pnpm exec vitest run
           tests/fleet-operations-core.test.ts
+          tests/fleet-pm-calendar-management.test.ts
           tests/fleet-premier-workspaces.test.ts
           tests/fleet-pretrip-defect-compliance.test.ts

@@ -4682,6 +4682,79 @@ export type Database = {
           },
         ]
       }
+      fleet_program_assignments: {
+        Row: {
+          created_at: string
+          created_by: string
+          fleet_id: string
+          id: string
+          program_id: string
+          shop_id: string
+          vehicle_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string
+          fleet_id: string
+          id?: string
+          program_id: string
+          shop_id: string
+          vehicle_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          fleet_id?: string
+          id?: string
+          program_id?: string
+          shop_id?: string
+          vehicle_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fleet_program_assignments_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_program_assignments_fleet_id_fkey"
+            columns: ["fleet_id"]
+            isOneToOne: false
+            referencedRelation: "fleets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_program_assignments_program_id_fkey"
+            columns: ["program_id"]
+            isOneToOne: false
+            referencedRelation: "fleet_programs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_program_assignments_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_program_assignments_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_program_assignments_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       fleet_program_tasks: {
         Row: {
           created_at: string
@@ -4725,6 +4798,8 @@ export type Database = {
       }
       fleet_programs: {
         Row: {
+          active: boolean
+          assignment_mode: string
           base_template_slug: string | null
           cadence: Database["public"]["Enums"]["fleet_program_cadence"]
           created_at: string
@@ -4736,8 +4811,13 @@ export type Database = {
           interval_km: number | null
           name: string
           notes: string | null
+          operation_key: string | null
+          requires_fleet_approval: boolean
+          updated_at: string
         }
         Insert: {
+          active?: boolean
+          assignment_mode?: string
           base_template_slug?: string | null
           cadence: Database["public"]["Enums"]["fleet_program_cadence"]
           created_at?: string
@@ -4749,8 +4829,13 @@ export type Database = {
           interval_km?: number | null
           name: string
           notes?: string | null
+          operation_key?: string | null
+          requires_fleet_approval?: boolean
+          updated_at?: string
         }
         Update: {
+          active?: boolean
+          assignment_mode?: string
           base_template_slug?: string | null
           cadence?: Database["public"]["Enums"]["fleet_program_cadence"]
           created_at?: string
@@ -4762,6 +4847,9 @@ export type Database = {
           interval_km?: number | null
           name?: string
           notes?: string | null
+          operation_key?: string | null
+          requires_fleet_approval?: boolean
+          updated_at?: string
         }
         Relationships: [
           {
@@ -25048,6 +25136,25 @@ export type Database = {
       is_shop_member: { Args: { p_shop: string }; Returns: boolean }
       is_shop_member_v2: { Args: { shop_id: string }; Returns: boolean }
       is_staff_for_shop: { Args: { _shop: string }; Returns: boolean }
+      manage_fleet_pm_program: {
+        Args: {
+          p_action: string
+          p_assignment_mode: string
+          p_cadence: string
+          p_fleet_id: string
+          p_interval_days: number
+          p_interval_hours: number
+          p_interval_km: number
+          p_name: string
+          p_notes: string
+          p_operation_key: string
+          p_program_id: string
+          p_requires_fleet_approval: boolean
+          p_tasks: Json
+          p_vehicle_ids: string[]
+        }
+        Returns: Json
+      }
       manage_fleet_unit_defects: {
         Args: {
           p_action: string
