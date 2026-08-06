@@ -1,11 +1,13 @@
-import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
-import FleetDispatchBoard from "@/features/fleet/components/FleetDispatchBoard";
-import { resolveFleetUiContext } from "@/features/fleet/lib/fleetUiCapabilities";
+import { redirect } from "next/navigation";
 
+import FleetDispatchBoard from "@/features/fleet/components/FleetDispatchBoard";
+import { requireFleetPortalActor } from "../_lib/requireFleetPortalActor";
 
 export default async function PortalFleetBoardPage() {
-  const supabase = createServerSupabaseRSC();
-  const uiContext = await resolveFleetUiContext(supabase);
+  const uiContext = await requireFleetPortalActor();
+  if (!uiContext.capabilities.canManageUnits) redirect("/portal/fleet");
 
-  return <FleetDispatchBoard uiContext={uiContext} routePrefix="/portal/fleet" />;
+  return (
+    <FleetDispatchBoard uiContext={uiContext} routePrefix="/portal/fleet" />
+  );
 }

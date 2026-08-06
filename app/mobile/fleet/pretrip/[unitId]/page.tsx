@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import PretripForm from "@/features/fleet/components/PretripForm";
+import { DEFAULT_FLEET_PRETRIP_TEMPLATE } from "@/features/fleet/types/driverPortal";
 
 export default function MobileFleetPretripPage() {
   const params = useParams<{ unitId: string }>();
@@ -65,6 +66,8 @@ export default function MobileFleetPretripPage() {
         <PretripForm
           unitId={unitId}
           driverHint={driverHint}
+          template={DEFAULT_FLEET_PRETRIP_TEMPLATE}
+          trailers={[]}
         />
       </div>
     </main>

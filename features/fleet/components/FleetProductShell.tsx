@@ -9,6 +9,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ClipboardCheck,
+  ClipboardList,
   Gauge,
   History,
   LogOut,
@@ -31,7 +32,11 @@ import {
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { cn } from "@/features/shared/utils/cn";
 
-type FleetExperience = "internal_ops" | "external_manager" | "external_driver";
+type FleetExperience =
+  | "internal_ops"
+  | "external_manager"
+  | "external_dispatcher"
+  | "external_driver";
 
 type FleetNavItem = {
   href: string;
@@ -102,6 +107,14 @@ const NAV_GROUPS: FleetNavGroup[] = [
         managerOnly: true,
       },
       {
+        href: "/portal/fleet/inspection-templates",
+        label: "Inspection Templates",
+        shortLabel: "Templates",
+        description: "Driver pre-trip forms by asset type",
+        icon: ClipboardList,
+        managerOnly: true,
+      },
+      {
         href: "/portal/fleet/service-requests",
         label: "Requests & Approvals",
         shortLabel: "Requests",
@@ -136,6 +149,92 @@ const NAV_GROUPS: FleetNavGroup[] = [
         description: "Workspace, users, roles and preferences",
         icon: Settings,
         managerOnly: true,
+      },
+    ],
+  },
+];
+
+const DRIVER_NAV_GROUPS: FleetNavGroup[] = [
+  {
+    label: "Driver",
+    items: [
+      {
+        href: "/portal/fleet",
+        label: "Today",
+        shortLabel: "Today",
+        description: "Your assignment and required inspection",
+        icon: Gauge,
+      },
+      {
+        href: "/portal/fleet/pretrip",
+        label: "Start Inspection",
+        shortLabel: "Inspect",
+        description: "Complete a fast pre-trip or report an issue",
+        icon: ClipboardCheck,
+      },
+      {
+        href: "/portal/fleet/units",
+        label: "My Assets",
+        shortLabel: "Assets",
+        description: "Units currently assigned to you",
+        icon: Truck,
+      },
+      {
+        href: "/portal/fleet/pretrip-history",
+        label: "My Reports",
+        shortLabel: "Reports",
+        description: "Your submitted inspections",
+        icon: History,
+      },
+      {
+        href: "/portal/fleet/updates",
+        label: "Updates",
+        shortLabel: "Updates",
+        description: "Status and dispatch questions",
+        icon: ClipboardList,
+      },
+    ],
+  },
+];
+
+const DISPATCHER_NAV_GROUPS: FleetNavGroup[] = [
+  {
+    label: "Dispatch",
+    items: [
+      {
+        href: "/portal/fleet",
+        label: "Dispatch Control",
+        shortLabel: "Dispatch",
+        description: "Assignments, readiness and driver intake",
+        icon: Gauge,
+      },
+      {
+        href: "/portal/fleet/intake",
+        label: "Intake Queue",
+        shortLabel: "Intake",
+        description: "Review and route driver-reported defects",
+        icon: ClipboardList,
+      },
+      {
+        href: "/portal/fleet/units",
+        label: "Assets",
+        shortLabel: "Assets",
+        description: "Fleet readiness and current maintenance state",
+        icon: Truck,
+      },
+      {
+        href: "/portal/fleet/pretrip-history",
+        label: "Pre-trips",
+        shortLabel: "Pre-trips",
+        description: "Inspection completion and defect evidence",
+        icon: ClipboardCheck,
+      },
+      {
+        href: "/portal/fleet/service-requests",
+        label: "Approved Requests",
+        shortLabel: "Requests",
+        description: "Items dispatch has sent forward",
+        icon: ShieldCheck,
       },
     ],
   },
@@ -251,16 +350,22 @@ export default function FleetProductShell({
     };
   }, [supabase, userId]);
 
-  const groups = useMemo(
-    () =>
-      NAV_GROUPS.map((group) => ({
+  const groups = useMemo(() => {
+    const sourceGroups =
+      experience === "external_driver"
+        ? DRIVER_NAV_GROUPS
+        : experience === "external_dispatcher"
+          ? DISPATCHER_NAV_GROUPS
+          : NAV_GROUPS;
+    return sourceGroups
+      .map((group) => ({
         ...group,
         items: group.items.filter(
           (item) => canAccessManagerWorkspaces || !item.managerOnly,
         ),
-      })).filter((group) => group.items.length > 0),
-    [canAccessManagerWorkspaces],
-  );
+      }))
+      .filter((group) => group.items.length > 0);
+  }, [canAccessManagerWorkspaces, experience]);
 
   const activeItem = useMemo(
     () =>
@@ -461,10 +566,47 @@ export default function FleetProductShell({
           </div>
         </header>
 
-        <main className="relative mx-auto w-full max-w-[1680px] px-3 py-4 sm:px-5 sm:py-6 lg:px-7">
+        <main
+          className={cn(
+            "relative mx-auto w-full max-w-[1680px] px-3 py-4 sm:px-5 sm:py-6 lg:px-7",
+            experience === "external_driver" && "pb-24 lg:pb-7",
+          )}
+        >
           {children}
         </main>
       </div>
+
+      {experience === "external_driver" ? (
+        <nav
+          aria-label="Driver shortcuts"
+          className="fixed inset-x-2 bottom-[max(0.5rem,env(safe-area-inset-bottom))] z-40 grid grid-cols-5 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-sidebar-bg)]/96 p-1.5 shadow-2xl backdrop-blur-xl lg:hidden"
+        >
+          {DRIVER_NAV_GROUPS[0].items.map((item) => {
+            const Icon = item.icon;
+            const active = isActivePath(internalPathname, item.href);
+            return (
+              <Link
+                key={item.href}
+                href={
+                  productHost
+                    ? (toFleetPublicPath(item.href) ?? item.href)
+                    : item.href
+                }
+                aria-current={active ? "page" : undefined}
+                className={cn(
+                  "flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl px-1 text-[9px] font-semibold",
+                  active
+                    ? "bg-sky-400/15 text-sky-600 dark:text-sky-200"
+                    : "text-[color:var(--theme-text-muted)]",
+                )}
+              >
+                <Icon className="h-4 w-4" aria-hidden="true" />
+                <span className="truncate">{item.shortLabel}</span>
+              </Link>
+            );
+          })}
+        </nav>
+      ) : null}
 
       <ForcePasswordChangeModal
         open={Boolean(userId && mustChangePassword)}

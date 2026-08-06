@@ -45,13 +45,28 @@ export async function POST(request: Request) {
     });
     const scope = resolveFleetActorScope(actor, {
       explicitFleetId: body.fleetId ?? null,
+      preferMembershipFleet: !actor.isInternal,
     });
+    const dispatcherView = actor.actorType === "fleet_dispatcher";
 
     if (!actor.userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     if (!scope?.shopId) {
-      return NextResponse.json({ error: "Fleet access required" }, { status: 403 });
+      return NextResponse.json(
+        { error: "Fleet access required" },
+        { status: 403 },
+      );
+    }
+    if (
+      !actor.isInternal &&
+      actor.actorType !== "fleet_manager" &&
+      actor.actorType !== "fleet_dispatcher"
+    ) {
+      return NextResponse.json(
+        { error: "Fleet manager or dispatcher access required" },
+        { status: 403 },
+      );
     }
 
     const admin = createAdminSupabase();
@@ -64,7 +79,8 @@ export async function POST(request: Request) {
       enrollmentQuery = enrollmentQuery.in("fleet_id", scope.fleetIds);
     }
 
-    const { data: enrollmentData, error: enrollmentError } = await enrollmentQuery;
+    const { data: enrollmentData, error: enrollmentError } =
+      await enrollmentQuery;
     if (enrollmentError) throw new Error(enrollmentError.message);
     const enrollments = rows(enrollmentData);
     const vehicleIds = Array.from(
@@ -109,27 +125,36 @@ export async function POST(request: Request) {
     const requests = rows(requestResult.data);
     const requestIds = requests.map((row) => String(row.id));
     const { data: workOrderData, error: workOrderError } = requestIds.length
-      ? await admin
-          .from("work_orders")
-          .select(
-            "id,source_fleet_service_request_id,custom_id,status,approval_state,scheduled_at,expected_completion_at,payment_status,outstanding_balance",
-          )
-          .eq("shop_id", scope.shopId)
-          .in("source_fleet_service_request_id", requestIds)
+      ? dispatcherView
+        ? await admin
+            .from("work_orders")
+            .select(
+              "id,source_fleet_service_request_id,status,scheduled_at,expected_completion_at",
+            )
+            .eq("shop_id", scope.shopId)
+            .in("source_fleet_service_request_id", requestIds)
+        : await admin
+            .from("work_orders")
+            .select(
+              "id,source_fleet_service_request_id,custom_id,status,approval_state,scheduled_at,expected_completion_at,payment_status,outstanding_balance",
+            )
+            .eq("shop_id", scope.shopId)
+            .in("source_fleet_service_request_id", requestIds)
       : { data: [] as unknown[], error: null };
     if (workOrderError) throw new Error(workOrderError.message);
 
     const workOrderRows = rows(workOrderData);
     const workOrderIds = workOrderRows.map((row) => String(row.id));
-    const { data: quoteData, error: quoteError } = workOrderIds.length
-      ? await admin
-          .from("work_order_quote_lines")
-          .select(
-            "id,work_order_id,status,sent_to_customer_at,approved_at,declined_at",
-          )
-          .eq("shop_id", scope.shopId)
-          .in("work_order_id", workOrderIds)
-      : { data: [] as unknown[], error: null };
+    const { data: quoteData, error: quoteError } =
+      workOrderIds.length && !dispatcherView
+        ? await admin
+            .from("work_order_quote_lines")
+            .select(
+              "id,work_order_id,status,sent_to_customer_at,approved_at,declined_at",
+            )
+            .eq("shop_id", scope.shopId)
+            .in("work_order_id", workOrderIds)
+        : { data: [] as unknown[], error: null };
     if (quoteError) throw new Error(quoteError.message);
 
     const pendingApprovalsByWorkOrder = new Map<string, number>();
@@ -139,9 +164,14 @@ export async function POST(request: Request) {
         Boolean(quote.sent_to_customer_at) &&
         !quote.approved_at &&
         !quote.declined_at &&
-        !["approved", "converted", "declined", "deferred", "rejected", "cancelled"].includes(
-          status,
-        );
+        ![
+          "approved",
+          "converted",
+          "declined",
+          "deferred",
+          "rejected",
+          "cancelled",
+        ].includes(status);
       if (!needsDecision) continue;
       const key = String(quote.work_order_id);
       pendingApprovalsByWorkOrder.set(
@@ -154,7 +184,10 @@ export async function POST(request: Request) {
       rows(vehicleResult.data).map((row) => [String(row.id), row]),
     );
     const fleets = new Map(
-      rows(fleetResult.data).map((row) => [String(row.id), clean(row.name) ?? "Fleet"]),
+      rows(fleetResult.data).map((row) => [
+        String(row.id),
+        clean(row.name) ?? "Fleet",
+      ]),
     );
     const enrollmentByVehicle = new Map(
       enrollments.map((row) => [String(row.vehicle_id), row]),
@@ -186,7 +219,11 @@ export async function POST(request: Request) {
           clean(vehicle.license_plate) ??
           clean(vehicle.vin) ??
           "Unit",
-        vehicleDescription: [vehicle.year, clean(vehicle.make), clean(vehicle.model)]
+        vehicleDescription: [
+          vehicle.year,
+          clean(vehicle.make),
+          clean(vehicle.model),
+        ]
           .filter(Boolean)
           .join(" "),
         title: clean(row.title) ?? "Service request",
@@ -199,18 +236,27 @@ export async function POST(request: Request) {
         scheduledForDate: clean(row.scheduled_for_date),
         sourcePmDueEventId: clean(row.source_pm_due_event_id),
         workOrder: clean(workOrder.id)
+          ? dispatcherView
+            ? null
+            : {
+                id: String(workOrder.id),
+                reference:
+                  clean(workOrder.custom_id) ??
+                  `#${String(workOrder.id).slice(0, 8).toUpperCase()}`,
+                status: clean(workOrder.status) ?? "open",
+                approvalState,
+                needsApproval,
+                scheduledAt: iso(workOrder.scheduled_at),
+                expectedCompletionAt: iso(workOrder.expected_completion_at),
+                paymentStatus: clean(workOrder.payment_status) ?? "unpaid",
+                outstandingBalance: Number(workOrder.outstanding_balance) || 0,
+              }
+          : null,
+        shopProgress: clean(workOrder.id)
           ? {
-              id: String(workOrder.id),
-              reference:
-                clean(workOrder.custom_id) ??
-                `#${String(workOrder.id).slice(0, 8).toUpperCase()}`,
               status: clean(workOrder.status) ?? "open",
-              approvalState,
-              needsApproval,
               scheduledAt: iso(workOrder.scheduled_at),
               expectedCompletionAt: iso(workOrder.expected_completion_at),
-              paymentStatus: clean(workOrder.payment_status) ?? "unpaid",
-              outstandingBalance: Number(workOrder.outstanding_balance) || 0,
             }
           : null,
       };
@@ -221,7 +267,9 @@ export async function POST(request: Request) {
       summary: {
         open: payload.filter((item) => item.status === "open").length,
         scheduled: payload.filter((item) => item.status === "scheduled").length,
-        awaitingApproval: payload.filter((item) => item.workOrder?.needsApproval).length,
+        awaitingApproval: dispatcherView
+          ? 0
+          : payload.filter((item) => item.workOrder?.needsApproval).length,
         completed: payload.filter((item) =>
           ["completed", "closed"].includes(item.status),
         ).length,
@@ -236,7 +284,9 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error:
-          error instanceof Error ? error.message : "Failed to load service requests",
+          error instanceof Error
+            ? error.message
+            : "Failed to load service requests",
       },
       { status: 500 },
     );

@@ -1,10 +1,11 @@
-import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
+import { redirect } from "next/navigation";
+
 import FleetServiceRequestsPage from "@/features/fleet/components/FleetServiceRequestsPage";
-import { resolveFleetUiContext } from "@/features/fleet/lib/fleetUiCapabilities";
+import { requireFleetPortalActor } from "../_lib/requireFleetPortalActor";
 
 export default async function PortalFleetServiceRequestsPage() {
-  const supabase = createServerSupabaseRSC();
-  const uiContext = await resolveFleetUiContext(supabase);
+  const uiContext = await requireFleetPortalActor();
+  if (!uiContext.capabilities.canViewServiceRequests) redirect("/portal/fleet");
 
   return (
     <FleetServiceRequestsPage

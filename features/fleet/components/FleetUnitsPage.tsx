@@ -54,6 +54,7 @@ export default function FleetUnitsPage({
   const pathname = usePathname() ?? "";
   const productRoutes =
     routePrefix === "/portal/fleet" && !pathname.startsWith("/portal/fleet");
+  const isDriver = uiContext.actorType === "fleet_driver";
   const [units, setUnits] = useState<FleetUnitListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -132,10 +133,13 @@ export default function FleetUnitsPage({
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-300">
           Fleet units
         </p>
-        <h1 className="mt-2 text-2xl font-semibold">Every unit, one record</h1>
+        <h1 className="mt-2 text-2xl font-semibold">
+          {isDriver ? "My assigned assets" : "Every unit, one record"}
+        </h1>
         <p className="mt-1 max-w-2xl text-sm text-[color:var(--theme-text-secondary)]">
-          Open any unit for PM, service history, requests, approvals, invoices,
-          readings, pre-trips, and repair evidence.
+          {isDriver
+            ? "See the units dispatch has assigned to you and start the correct inspection."
+            : "Open any unit for PM, service history, requests, approvals, invoices, readings, pre-trips, and repair evidence."}
         </p>
         <p className="mt-1 text-[10px] text-[color:var(--theme-text-muted)]">
           {uiContext.actorLabel}
@@ -147,7 +151,7 @@ export default function FleetUnitsPage({
             }
             className="inline-flex min-h-10 items-center rounded-xl border border-[color:var(--theme-border-soft)] px-3 py-2 text-xs font-semibold text-sky-300 hover:bg-sky-300/10"
           >
-            Fleet-wide pre-trip history
+            {isDriver ? "My pre-trip history" : "Fleet-wide pre-trip history"}
           </Link>
           {uiContext.capabilities.canManageUnits ? (
             <Link
@@ -163,13 +167,15 @@ export default function FleetUnitsPage({
       </header>
 
       <section className="grid gap-3 sm:grid-cols-3">
-        <div className={`${panel} p-4`}>
-          <Truck size={17} className="text-sky-300" />
-          <div className="mt-3 text-2xl font-semibold">{units.length}</div>
-          <div className="text-xs text-[color:var(--theme-text-muted)]">
-            Active units
+        {!isDriver ? (
+          <div className={`${panel} p-4`}>
+            <Truck size={17} className="text-sky-300" />
+            <div className="mt-3 text-2xl font-semibold">{units.length}</div>
+            <div className="text-xs text-[color:var(--theme-text-muted)]">
+              Active units
+            </div>
           </div>
-        </div>
+        ) : null}
         <div className={`${panel} p-4`}>
           <Wrench size={17} className="text-amber-200" />
           <div className="mt-3 text-2xl font-semibold">{attention}</div>
@@ -182,10 +188,14 @@ export default function FleetUnitsPage({
             Navigation rule
           </div>
           <div className="mt-2 text-sm font-semibold">
-            Everything is inside the unit
+            {isDriver
+              ? "Fast inspection access"
+              : "Everything is inside the unit"}
           </div>
           <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
-            Select a unit once; its full record is one click away.
+            {isDriver
+              ? "Choose an assigned unit and report only what you see."
+              : "Select a unit once; its full record is one click away."}
           </div>
         </div>
       </section>
@@ -236,13 +246,8 @@ export default function FleetUnitsPage({
 
         <div className="divide-y divide-[color:var(--theme-border-soft)]">
           {visible.map((unit) => (
-            <Link
-              key={unit.id}
-              href={
-                productRoutes
-                  ? `/assets/${encodeURIComponent(unit.id)}`
-                  : `${routePrefix}/units/${encodeURIComponent(unit.id)}`
-              }
+            <div
+              key={`${unit.fleetId}:${unit.id}`}
               className="grid gap-3 p-4 transition hover:bg-white/[0.03] md:grid-cols-[minmax(180px,1.1fr)_minmax(120px,.7fr)_minmax(160px,1fr)_minmax(150px,.8fr)_auto] md:items-center"
             >
               <div>
@@ -252,22 +257,46 @@ export default function FleetUnitsPage({
                 </div>
               </div>
               <StatusPill status={unit.status} />
-              <div className="text-xs text-[color:var(--theme-text-secondary)]">
-                <div className="font-medium text-[color:var(--theme-text-primary)]">
-                  Latest reading
-                </div>
-                <div className="mt-1">{meter(unit)}</div>
-              </div>
-              <div className="text-xs text-[color:var(--theme-text-secondary)]">
-                <div>{unit.pmDueCount} PM due</div>
-                <div className="mt-1">
-                  {unit.openRequestCount} open requests
-                </div>
-              </div>
-              <span className="text-xs font-semibold text-sky-300">
-                Open unit →
-              </span>
-            </Link>
+              {!isDriver ? (
+                <>
+                  <div className="text-xs text-[color:var(--theme-text-secondary)]">
+                    <div className="font-medium text-[color:var(--theme-text-primary)]">
+                      Latest reading
+                    </div>
+                    <div className="mt-1">{meter(unit)}</div>
+                  </div>
+                  <div className="text-xs text-[color:var(--theme-text-secondary)]">
+                    <div>{unit.pmDueCount} PM due</div>
+                    <div className="mt-1">
+                      {unit.openRequestCount} open requests
+                    </div>
+                  </div>
+                </>
+              ) : null}
+              {isDriver ? (
+                <Link
+                  href={`${productRoutes ? "/pre-trips/start" : "/portal/fleet/pretrip"}/${encodeURIComponent(unit.id)}?fleetId=${encodeURIComponent(unit.fleetId)}`}
+                  className="text-xs font-semibold text-sky-300"
+                >
+                  Start inspection →
+                </Link>
+              ) : uiContext.capabilities.canViewUnitMaintenanceRecord ? (
+                <Link
+                  href={
+                    productRoutes
+                      ? `/assets/${encodeURIComponent(unit.id)}`
+                      : `${routePrefix}/units/${encodeURIComponent(unit.id)}`
+                  }
+                  className="text-xs font-semibold text-sky-300"
+                >
+                  Open unit →
+                </Link>
+              ) : (
+                <span className="text-xs font-semibold text-[color:var(--theme-text-muted)]">
+                  Readiness only
+                </span>
+              )}
+            </div>
           ))}
         </div>
       </section>

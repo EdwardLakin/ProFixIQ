@@ -61,7 +61,9 @@ async function loadLifetimeWorkOrderMetrics(
   for (;;) {
     const { data, error } = await admin
       .from("invoice_versions")
-      .select("work_order_id,version_number,total,outstanding_total,work_orders!inner(vehicle_id)")
+      .select(
+        "work_order_id,version_number,total,outstanding_total,work_orders!inner(vehicle_id)",
+      )
       .eq("shop_id", shopId)
       .in("lifecycle_status", ["issued", "partially_paid", "paid"])
       .eq("work_orders.vehicle_id", unitId)
@@ -71,7 +73,8 @@ async function loadLifetimeWorkOrderMetrics(
     const batch = rowArray(data);
     for (const row of batch) {
       const workOrderId = String(row.work_order_id);
-      if (!latestByWorkOrder.has(workOrderId)) latestByWorkOrder.set(workOrderId, row);
+      if (!latestByWorkOrder.has(workOrderId))
+        latestByWorkOrder.set(workOrderId, row);
     }
     if (batch.length < pageSize) break;
     offset += pageSize;
@@ -130,7 +133,22 @@ export async function GET(request: Request, { params }: Props) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     if (!scope?.shopId || actor.actorType === "none") {
-      return NextResponse.json({ error: "Fleet access required" }, { status: 403 });
+      return NextResponse.json(
+        { error: "Fleet access required" },
+        { status: 403 },
+      );
+    }
+    if (
+      actor.actorType === "fleet_driver" ||
+      actor.actorType === "fleet_dispatcher"
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Detailed maintenance records are not part of the driver portal",
+        },
+        { status: 403 },
+      );
     }
 
     const admin = createAdminSupabase();
@@ -146,11 +164,15 @@ export async function GET(request: Request, { params }: Props) {
       enrollmentQuery = enrollmentQuery.in("fleet_id", scope.fleetIds);
     }
 
-    const { data: enrollmentRows, error: enrollmentError } = await enrollmentQuery;
+    const { data: enrollmentRows, error: enrollmentError } =
+      await enrollmentQuery;
     if (enrollmentError) throw new Error(enrollmentError.message);
     const enrollment = rowArray(enrollmentRows)[0];
     if (!enrollment) {
-      return NextResponse.json({ error: "Unit not found in your fleet" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Unit not found in your fleet" },
+        { status: 404 },
+      );
     }
 
     const fleetId = String(enrollment.fleet_id);
@@ -220,7 +242,9 @@ export async function GET(request: Request, { params }: Props) {
         .limit(50),
       admin
         .from("fleet_unit_defects")
-        .select("id,label,severity,state,description,reported_at,deferred_until,service_request_id,work_order_id")
+        .select(
+          "id,label,severity,state,description,reported_at,deferred_until,service_request_id,work_order_id",
+        )
         .eq("fleet_id", fleetId)
         .eq("vehicle_id", unitId)
         .order("reported_at", { ascending: false })
@@ -332,7 +356,13 @@ export async function GET(request: Request, { params }: Props) {
       const id = String(row.id);
       const invoice = invoicesByWorkOrder.get(id) ?? null;
       const status = text(row.status) ?? "open";
-      const isTerminal = ["completed", "closed", "ready", "ready_for_pickup", "invoiced"].includes(status.toLowerCase());
+      const isTerminal = [
+        "completed",
+        "closed",
+        "ready",
+        "ready_for_pickup",
+        "invoiced",
+      ].includes(status.toLowerCase());
       return {
         id,
         reference: text(row.custom_id) ?? `#${id.slice(0, 8).toUpperCase()}`,
@@ -487,13 +517,16 @@ export async function GET(request: Request, { params }: Props) {
           numberValue(latestReading.engine_hours) ??
           numberValue(vehicle.engine_hours),
         lastReadingAt: iso(latestReading.recorded_at),
-        nextInspectionDate: text((inspectionResult.data as Row | null)?.next_inspection_date),
+        nextInspectionDate: text(
+          (inspectionResult.data as Row | null)?.next_inspection_date,
+        ),
       },
       metrics: {
         openRequests,
         openApprovals,
         activePmDue,
-        activeDefects: defects.filter((row) => text(row.state) !== "resolved").length,
+        activeDefects: defects.filter((row) => text(row.state) !== "resolved")
+          .length,
         lifetimeWorkOrders: lifetimeMetrics.count,
         lifetimeSpend,
         outstandingBalance,
@@ -544,7 +577,12 @@ export async function GET(request: Request, { params }: Props) {
   } catch (error) {
     console.error("[fleet/unit-workspace] error", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Unable to load unit workspace" },
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Unable to load unit workspace",
+      },
       { status: 500 },
     );
   }

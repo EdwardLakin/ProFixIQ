@@ -8,7 +8,7 @@ import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const MEMBER_ROLES = new Set(["manager", "approver", "viewer"]);
+const MEMBER_ROLES = new Set(["manager", "dispatcher", "driver"]);
 
 function field(formData: FormData, key: string, maxLength: number): string {
   return String(formData.get(key) ?? "")

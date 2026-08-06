@@ -36,11 +36,14 @@ export default function PretripReportsPage({
   const pathname = usePathname() ?? "";
   const productRoutes =
     routePrefix === "/portal/fleet" && !pathname.startsWith("/portal/fleet");
+  const isDriver = uiContext.actorType === "fleet_driver";
   const [reports, setReports] = useState<PretripReport[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [statusFilter, setStatusFilter] = useState<PretripStatus>("open");
+  const [statusFilter, setStatusFilter] = useState<PretripStatus>(
+    isDriver ? "all" : "open",
+  );
   const [defectFilter, setDefectFilter] = useState<"all" | "defects" | "clear">(
     "all",
   );
@@ -122,10 +125,13 @@ export default function PretripReportsPage({
         >
           <div className={ui.headerTop}>
             <div>
-              <h1 className={ui.title}>Pre-trip Reports</h1>
+              <h1 className={ui.title}>
+                {isDriver ? "My Inspection History" : "Pre-trip Reports"}
+              </h1>
               <p className={ui.subtitle}>
-                View and audit daily DVIR / pre-trip reports coming in from
-                drivers.
+                {isDriver
+                  ? "Your completed pre-trips and the issues you reported."
+                  : "View and audit daily DVIR / pre-trip reports coming in from drivers."}
               </p>
               <p className={ui.note}>Actor surface: {uiContext.actorLabel}</p>
             </div>
@@ -151,14 +157,26 @@ export default function PretripReportsPage({
             </div>
 
             <div className="text-[11px] text-[color:var(--theme-text-muted)] md:pl-3">
-              Drivers submit pre-trips from the{" "}
+              {isDriver
+                ? "Start the next inspection from "
+                : "Drivers submit pre-trips from the "}
               <Link
-                href={productRoutes ? "/assets" : "/mobile/fleet/pretrip"}
+                href={
+                  isDriver
+                    ? productRoutes
+                      ? "/pre-trips/start"
+                      : "/portal/fleet/pretrip"
+                    : productRoutes
+                      ? "/assets"
+                      : "/mobile/fleet/pretrip"
+                }
                 className="underline decoration-dotted underline-offset-4"
               >
-                {productRoutes
-                  ? "Today’s pre-trip action on an assigned asset"
-                  : "mobile pre-trip screen"}
+                {isDriver
+                  ? "Today"
+                  : productRoutes
+                    ? "Today’s pre-trip action on an assigned asset"
+                    : "mobile pre-trip screen"}
               </Link>
               .
             </div>
@@ -245,8 +263,9 @@ export default function PretripReportsPage({
                 No pre-trip reports
               </div>
               <p className="mt-2 text-xs text-[color:var(--theme-text-secondary)]">
-                Once drivers start submitting pre-trips from mobile, they will
-                show up here for review.
+                {isDriver
+                  ? "Your submitted inspections will appear here."
+                  : "Once drivers start submitting pre-trips from mobile, they will show up here for review."}
               </p>
             </div>
           )}
@@ -297,21 +316,31 @@ export default function PretripReportsPage({
                           .replace(/\b\w/g, (c) => c.toUpperCase())}
                       </td>
                       <td className="px-3 py-1.5 text-right text-[11px]">
-                        {r.unit_id && (
-                          <Link
-                            href={`${routePrefix}/units/${encodeURIComponent(r.unit_id)}`}
-                            className="mr-2 text-[color:var(--accent-copper)] underline-offset-4 hover:underline"
-                          >
-                            Open unit
-                          </Link>
-                        )}
+                        {r.unit_id &&
+                          uiContext.capabilities
+                            .canViewUnitMaintenanceRecord && (
+                            <Link
+                              href={`${routePrefix}/units/${encodeURIComponent(r.unit_id)}`}
+                              className="mr-2 text-[color:var(--accent-copper)] underline-offset-4 hover:underline"
+                            >
+                              Open unit
+                            </Link>
+                          )}
 
                         {uiContext.capabilities.canConvertRequests && (
                           <Link
-                            href={`${routePrefix}/service-requests?pretripId=${encodeURIComponent(r.id)}`}
+                            href={
+                              uiContext.experience === "external_dispatcher"
+                                ? productRoutes
+                                  ? "/intake"
+                                  : "/portal/fleet/intake"
+                                : `${routePrefix}/service-requests?pretripId=${encodeURIComponent(r.id)}`
+                            }
                             className="rounded-full border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-panel)]"
                           >
-                            New request
+                            {uiContext.experience === "external_dispatcher"
+                              ? "Open intake"
+                              : "New request"}
                           </Link>
                         )}
                       </td>

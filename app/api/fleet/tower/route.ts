@@ -44,7 +44,13 @@ type FleetVehicleJoinedRow = FleetVehicleRow & {
 
 type ServiceRequestSelect = Pick<
   FleetServiceRequestRow,
-  "id" | "vehicle_id" | "title" | "summary" | "severity" | "status" | "created_at"
+  | "id"
+  | "vehicle_id"
+  | "title"
+  | "summary"
+  | "severity"
+  | "status"
+  | "created_at"
 >;
 
 type DispatchSelect = Pick<
@@ -67,6 +73,11 @@ type InspectionScheduleSelect = Pick<
   "vehicle_id" | "next_inspection_date"
 >;
 
+type DefectSelect = Pick<
+  DB["public"]["Tables"]["fleet_unit_defects"]["Row"],
+  "vehicle_id" | "severity"
+>;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Normalizers
 // ─────────────────────────────────────────────────────────────────────────────
@@ -86,7 +97,9 @@ function normalizeIssueStatus(st: string | null): FleetIssue["status"] {
   return "open";
 }
 
-function normalizeDispatchState(st: string | null): DispatchAssignment["state"] {
+function normalizeDispatchState(
+  st: string | null,
+): DispatchAssignment["state"] {
   const s = (st ?? "").toLowerCase();
   if (s === "en_route") return "en_route";
   if (s === "in_shop") return "in_shop";
@@ -181,8 +194,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const fleetRows: FleetVehicleJoinedRow[] =
-      (fleetRowsRaw ?? []) as unknown as FleetVehicleJoinedRow[];
+    const fleetRows: FleetVehicleJoinedRow[] = (fleetRowsRaw ??
+      []) as unknown as FleetVehicleJoinedRow[];
 
     // Build meta from enrolled vehicles (best labels)
     const vehicleMeta = new Map<
@@ -194,11 +207,7 @@ export async function POST(req: NextRequest) {
       const v = row.vehicles;
 
       const label =
-        row.nickname ||
-        v?.unit_number ||
-        v?.license_plate ||
-        v?.vin ||
-        "Unit";
+        row.nickname || v?.unit_number || v?.license_plate || v?.vin || "Unit";
 
       vehicleMeta.set(row.vehicle_id, {
         label,
@@ -236,8 +245,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const dispatchRows: DispatchSelect[] =
-      (dispatchRaw ?? []) as unknown as DispatchSelect[];
+    const dispatchRows: DispatchSelect[] = (dispatchRaw ??
+      []) as unknown as DispatchSelect[];
 
     for (const d of dispatchRows) {
       if (d.vehicle_id) vehicleIdSet.add(d.vehicle_id);
@@ -251,13 +260,26 @@ export async function POST(req: NextRequest) {
     // ────────────────────────────────────────────────────────────────────────
     // 3) Service requests (issues) – fleet scoped
     // ────────────────────────────────────────────────────────────────────────
-    const { data: serviceRequests, error: srError } = await supabase
-      .from("fleet_service_requests")
-      .select("id, vehicle_id, title, summary, severity, status, created_at")
-      .eq("fleet_id", fleetId)
-      .neq("status", "cancelled");
+    const [serviceRequestResult, attentionDefectResult] = await Promise.all([
+      actor.actorType === "fleet_driver"
+        ? Promise.resolve({ data: [], error: null })
+        : supabase
+            .from("fleet_service_requests")
+            .select(
+              "id, vehicle_id, title, summary, severity, status, created_at",
+            )
+            .eq("fleet_id", fleetId)
+            .neq("status", "cancelled"),
+      supabase
+        .from("fleet_unit_defects")
+        .select("vehicle_id,severity")
+        .eq("fleet_id", fleetId)
+        .eq("marks_vehicle_attention", true)
+        .in("state", ["open", "acknowledged", "deferred"]),
+    ]);
+    const { data: serviceRequests, error: srError } = serviceRequestResult;
 
-    if (srError) {
+    if (srError || attentionDefectResult.error) {
       // eslint-disable-next-line no-console
       console.error("[fleet/tower] service_requests error", srError);
       return NextResponse.json(
@@ -266,8 +288,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const serviceRequestsTyped: ServiceRequestSelect[] =
-      (serviceRequests ?? []) as unknown as ServiceRequestSelect[];
+    const serviceRequestsTyped: ServiceRequestSelect[] = (serviceRequests ??
+      []) as unknown as ServiceRequestSelect[];
+    const attentionDefects = (attentionDefectResult.data ??
+      []) as unknown as DefectSelect[];
+    const defectsByVehicle = new Map<string, DefectSelect[]>();
+    for (const defect of attentionDefects) {
+      const current = defectsByVehicle.get(defect.vehicle_id) ?? [];
+      current.push(defect);
+      defectsByVehicle.set(defect.vehicle_id, current);
+    }
 
     for (const sr of serviceRequestsTyped) {
       if (sr.vehicle_id) vehicleIdSet.add(sr.vehicle_id);
@@ -297,8 +327,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const scheduleRowsTyped: InspectionScheduleSelect[] =
-      (scheduleRows ?? []) as unknown as InspectionScheduleSelect[];
+    const scheduleRowsTyped: InspectionScheduleSelect[] = (scheduleRows ??
+      []) as unknown as InspectionScheduleSelect[];
 
     const inspectionByVehicle = new Map<string, string | null>();
     for (const row of scheduleRowsTyped) {
@@ -342,23 +372,28 @@ export async function POST(req: NextRequest) {
       };
 
       const relatedRequests = requestsByVehicle.get(vehicleId) ?? [];
+      const relatedDefects = defectsByVehicle.get(vehicleId) ?? [];
 
       let status: FleetUnit["status"] = "in_service";
 
-      const hasSafety = relatedRequests.some((sr) => {
-        const st = (sr.status ?? "").toLowerCase();
-        const sev = (sr.severity ?? "").toLowerCase();
-        return st !== "completed" && sev === "safety";
-      });
+      const hasSafety =
+        relatedRequests.some((sr) => {
+          const st = (sr.status ?? "").toLowerCase();
+          const sev = (sr.severity ?? "").toLowerCase();
+          return st !== "completed" && sev === "safety";
+        }) || relatedDefects.some((defect) => defect.severity === "safety");
 
-      const hasComplianceOrMaint = relatedRequests.some((sr) => {
-        const st = (sr.status ?? "").toLowerCase();
-        const sev = (sr.severity ?? "").toLowerCase();
-        return (
-          st !== "completed" &&
-          (sev === "compliance" || sev === "maintenance" || sev === "recommend")
-        );
-      });
+      const hasComplianceOrMaint =
+        relatedRequests.some((sr) => {
+          const st = (sr.status ?? "").toLowerCase();
+          const sev = (sr.severity ?? "").toLowerCase();
+          return (
+            st !== "completed" &&
+            (sev === "compliance" ||
+              sev === "maintenance" ||
+              sev === "recommend")
+          );
+        }) || relatedDefects.length > 0;
 
       if (hasSafety) status = "oos";
       else if (hasComplianceOrMaint) status = "limited";
@@ -384,25 +419,26 @@ export async function POST(req: NextRequest) {
     const issues: FleetIssue[] = serviceRequestsTyped
       .filter((sr) => visibleVehicleIds.has(sr.vehicle_id))
       .map((sr) => {
-      const meta = vehicleMeta.get(sr.vehicle_id) ?? {
-        label: "Unit",
-        plate: null,
-        vin: null,
-      };
+        const meta = vehicleMeta.get(sr.vehicle_id) ?? {
+          label: "Unit",
+          plate: null,
+          vin: null,
+        };
 
-      const severity = normalizeSeverity(sr.severity) ?? ("recommend" as const);
-      const status = normalizeIssueStatus(sr.status);
+        const severity =
+          normalizeSeverity(sr.severity) ?? ("recommend" as const);
+        const status = normalizeIssueStatus(sr.status);
 
-      return {
-        id: sr.id,
-        unitId: sr.vehicle_id,
-        unitLabel: meta.label,
-        severity,
-        summary: sr.summary || sr.title,
-        createdAt: sr.created_at,
-        status,
-      };
-    });
+        return {
+          id: sr.id,
+          unitId: sr.vehicle_id,
+          unitLabel: meta.label,
+          severity,
+          summary: sr.summary || sr.title,
+          createdAt: sr.created_at,
+          status,
+        };
+      });
 
     // ────────────────────────────────────────────────────────────────────────
     // 8) Build assignments payload

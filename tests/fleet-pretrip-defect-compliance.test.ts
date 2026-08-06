@@ -84,8 +84,11 @@ describe("fleet pre-trip, defects, and compliance", () => {
     const tower = read("features/fleet/components/FleetControlTower.tsx");
     const page = read("app/portal/fleet/pretrip/[unitId]/page.tsx");
     const route = read("app/api/fleet/pretrip/route.ts");
+    const driverMigration = read(
+      "supabase/migrations/20260806164259_fleet_driver_dispatch_portals.sql",
+    );
     expect(form).not.toContain("convert-to-service-request");
-    expect(form).toContain("Fleet managers—not drivers");
+    expect(form.replace(/\s+/g, " ")).toContain("Fleet managers—not drivers");
     expect(tower).toContain("Start today’s pre-trip");
     expect(tower).toContain("/portal/fleet/pretrip/");
     expect(page).toContain("const admin = createAdminSupabase()");
@@ -93,9 +96,13 @@ describe("fleet pre-trip, defects, and compliance", () => {
     expect(page).toContain('.eq("fleet_id", fleetId)');
     expect(page).toContain('.eq("driver_profile_id", actor.userId)');
     expect(page).toContain('.eq("active", true)');
-    expect(route).toContain("serviceDateInTimeZone(shop.timezone)");
-    expect(route).toContain("inspection_date: inspectionDate");
-    expect(route).toContain('.select("timezone")');
+    expect(route).toContain('"submit_fleet_pretrip_report"');
+    expect(driverMigration).toContain(
+      "v_inspection_date := (now() at time zone v_timezone)::date",
+    );
+    expect(driverMigration).toContain(
+      "p_report_id, p_fleet_id, v_shop_id, p_vehicle_id",
+    );
   });
 
   it("uses one durable defect ledger and manager lifecycle RPC", () => {

@@ -19,6 +19,8 @@ const FLEET_ROUTE_MAPPINGS: readonly FleetRouteMapping[] = [
     publicPath: "/pre-trips/start",
     internalPath: "/portal/fleet/pretrip",
   },
+  { publicPath: "/updates", internalPath: "/portal/fleet/updates" },
+  { publicPath: "/intake", internalPath: "/portal/fleet/intake" },
   {
     publicPath: "/requests",
     internalPath: "/portal/fleet/service-requests",
@@ -30,6 +32,10 @@ const FLEET_ROUTE_MAPPINGS: readonly FleetRouteMapping[] = [
   { publicPath: "/assets", internalPath: "/portal/fleet/units" },
   { publicPath: "/maintenance", internalPath: "/portal/fleet/maintenance" },
   { publicPath: "/calendar", internalPath: "/portal/fleet/calendar" },
+  {
+    publicPath: "/inspection-templates",
+    internalPath: "/portal/fleet/inspection-templates",
+  },
   { publicPath: "/drivers", internalPath: "/portal/fleet/drivers" },
   { publicPath: "/history", internalPath: "/portal/fleet/billing" },
   { publicPath: "/reports", internalPath: "/portal/fleet/reports" },

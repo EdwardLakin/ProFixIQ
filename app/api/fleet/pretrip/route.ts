@@ -1,15 +1,26 @@
 // app/api/fleet/pretrip/route.ts
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 import { supabaseAdmin } from "@/features/shared/lib/supabase/admin";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
-import type { Database } from "@shared/types/types/supabase";
+import type { Database, Json } from "@shared/types/types/supabase";
+import {
+  removeFleetDriverEvidence,
+  uploadFleetDriverEvidence,
+  type FleetEvidenceMediaType,
+  type FleetEvidenceUploadInput,
+} from "@/features/fleet/lib/fleetDriverEvidence";
 import {
   partitionFleetIdsByManagement,
   resolveFleetActorContext,
   resolveFleetActorScope,
 } from "@/features/fleet/lib/resolveFleetActorContext";
-import { serviceDateInTimeZone } from "@/features/fleet/lib/fleetDate";
+import {
+  DEFAULT_FLEET_PRETRIP_TEMPLATE,
+  normalizeFleetPretripTemplateSections,
+  type FleetPretripTemplateSection,
+} from "@/features/fleet/types/driverPortal";
 
 type DB = Database;
 type FleetPretripReportRow =
@@ -29,9 +40,22 @@ type CreatePretripBody = {
   location: string | null;
   notes: string | null;
   defects: Record<string, "ok" | "defect" | "na">;
+  answers?: Record<
+    string,
+    { status?: "ok" | "defect" | "na"; value?: string | number | null }
+  >;
+  evidenceMeta?: Array<{
+    itemId?: string | null;
+    mediaType?: FleetEvidenceMediaType;
+  }>;
+  templateAssignmentId?: string | null;
+  trailerVehicleId?: string | null;
 };
 
 type ListPretripBody = { shopId?: string | null; fleetId?: string | null };
+
+const UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function numericInput(value: string | null, label: string) {
   if (!value?.trim()) return null;
@@ -42,11 +66,185 @@ function numericInput(value: string | null, label: string) {
   return parsed;
 }
 
+type TemplateAssignmentRow = {
+  id: string;
+  version: number;
+  vehicle_type: string;
+  inspection_template_id: string;
+  inspection_templates:
+    | { template_name: string; sections: unknown }
+    | Array<{ template_name: string; sections: unknown }>;
+};
+
+function joinedTemplate(value: TemplateAssignmentRow["inspection_templates"]) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function templateItems(sections: FleetPretripTemplateSection[]) {
+  return sections.flatMap((section) => section.items);
+}
+
+function sanitizeChecklist(args: {
+  raw: Partial<CreatePretripBody>;
+  templateAssignment: TemplateAssignmentRow | null;
+  uploads: FleetEvidenceUploadInput[];
+  engineHours: number | null;
+  correctionReason: string | null;
+}) {
+  const answers: Record<string, { status?: string; value?: number | null }> =
+    {};
+  const defects: Record<string, "ok" | "defect" | "na"> = {};
+  const defectMeta: Record<string, Json> = {};
+
+  const templateRow = args.templateAssignment
+    ? joinedTemplate(args.templateAssignment.inspection_templates)
+    : null;
+  const sections = templateRow?.sections;
+  const customSections = normalizeFleetPretripTemplateSections(sections);
+  const template = customSections.length
+    ? {
+        assignmentId: args.templateAssignment?.id ?? null,
+        templateId: args.templateAssignment?.inspection_template_id ?? null,
+        name: templateRow?.template_name ?? "Fleet pre-trip",
+        vehicleType: args.templateAssignment?.vehicle_type ?? "Fleet asset",
+        version: args.templateAssignment?.version ?? 1,
+        sections: customSections,
+      }
+    : DEFAULT_FLEET_PRETRIP_TEMPLATE;
+
+  const submittedAnswers = args.raw.answers ?? {};
+  for (const item of templateItems(template.sections)) {
+    const answer = submittedAnswers[item.id] ?? {};
+    const matchingUploads = args.uploads.filter(
+      (upload) => upload.itemId === item.id,
+    );
+
+    if (item.type === "pass_fail") {
+      const status = answer.status;
+      if (status !== "ok" && status !== "defect" && status !== "na") {
+        if (item.required) throw new Error(`Complete ${item.label}.`);
+        continue;
+      }
+      answers[item.id] = { status };
+      defects[item.id] = status;
+      if (status === "defect") {
+        if (
+          item.failureActions?.requirePhoto &&
+          !matchingUploads.some((upload) => upload.mediaType === "photo")
+        ) {
+          throw new Error(`Add a photo for ${item.label}.`);
+        }
+        defectMeta[item.id] = {
+          label: item.label,
+          severity: item.severity,
+          failureActions: item.failureActions,
+        };
+      }
+      continue;
+    }
+
+    if (item.type === "number") {
+      const rawValue = answer.value;
+      const value =
+        rawValue === null || rawValue === undefined || rawValue === ""
+          ? null
+          : Number(rawValue);
+      if (value !== null && (!Number.isFinite(value) || value < 0)) {
+        throw new Error(`${item.label} must be a valid non-negative number.`);
+      }
+      if (item.required && value === null)
+        throw new Error(`Enter ${item.label}.`);
+      answers[item.id] = { value };
+      continue;
+    }
+
+    const mediaType: FleetEvidenceMediaType =
+      item.type === "photo" ? "photo" : "voice";
+    if (
+      item.required &&
+      !matchingUploads.some((upload) => upload.mediaType === mediaType)
+    ) {
+      throw new Error(
+        item.type === "photo" ? `Add ${item.label}.` : `Record ${item.label}.`,
+      );
+    }
+  }
+
+  // Preserve compatibility for clients still submitting the original fixed
+  // defects object while the mobile clients roll forward.
+  if (!args.templateAssignment && !args.raw.answers) {
+    for (const [key, value] of Object.entries(args.raw.defects ?? {})) {
+      if (value === "ok" || value === "defect" || value === "na") {
+        defects[key] = value;
+      }
+    }
+  }
+
+  return {
+    defects,
+    defectMeta,
+    answers,
+    location: args.raw.location?.trim() || null,
+    engineHours: args.engineHours,
+    readingCorrectionReason: args.correctionReason,
+    template,
+    source: "fleet_driver_portal_v3",
+  };
+}
+
 export async function POST(req: NextRequest) {
   const supabase = createServerSupabaseRoute();
-  const raw = (await req.json().catch(() => ({}))) as Partial<
-    CreatePretripBody & ListPretripBody
-  >;
+  const multipart = req.headers
+    .get("content-type")
+    ?.includes("multipart/form-data");
+  let raw: Partial<CreatePretripBody & ListPretripBody> = {};
+  let uploads: FleetEvidenceUploadInput[] = [];
+
+  if (multipart) {
+    const formData = await req.formData().catch(() => null);
+    if (!formData) {
+      return NextResponse.json(
+        { error: "Pre-trip form data is invalid" },
+        { status: 400 },
+      );
+    }
+    const payload = formData.get("payload");
+    if (typeof payload !== "string") {
+      return NextResponse.json(
+        { error: "Pre-trip payload is required" },
+        { status: 400 },
+      );
+    }
+    try {
+      raw = JSON.parse(payload) as Partial<CreatePretripBody & ListPretripBody>;
+    } catch {
+      return NextResponse.json(
+        { error: "Pre-trip payload is invalid" },
+        { status: 400 },
+      );
+    }
+    const files = formData
+      .getAll("evidence")
+      .filter(
+        (value): value is File => value instanceof File && value.size > 0,
+      );
+    const metadata = raw.evidenceMeta ?? [];
+    if (files.length !== metadata.length) {
+      return NextResponse.json(
+        { error: "Evidence metadata does not match the selected files" },
+        { status: 400 },
+      );
+    }
+    uploads = files.map((file, index) => ({
+      file,
+      itemId: metadata[index]?.itemId?.trim() || null,
+      mediaType: metadata[index]?.mediaType === "voice" ? "voice" : "photo",
+    }));
+  } else {
+    raw = (await req.json().catch(() => ({}))) as Partial<
+      CreatePretripBody & ListPretripBody
+    >;
+  }
 
   if (typeof raw.unitId === "string") {
     try {
@@ -124,75 +322,84 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      const { data: profile, error: profileError } = await supabase
-        .from("profiles")
-        .select("full_name,email")
-        .eq("id", actor.userId)
-        .maybeSingle();
-      if (profileError || !profile) {
-        return NextResponse.json(
-          { error: "Driver profile is unavailable." },
-          { status: 403 },
-        );
-      }
-      const driverName = profile.full_name?.trim() || profile.email?.trim();
-      if (!driverName) {
-        return NextResponse.json(
-          { error: "Driver profile name is required." },
-          { status: 400 },
-        );
-      }
-      const { data: shop, error: shopError } = await supabaseAdmin
-        .from("shops")
-        .select("timezone")
-        .eq("id", scope.shopId)
-        .maybeSingle();
-      if (shopError || !shop) {
-        return NextResponse.json(
-          { error: "Fleet shop timezone is unavailable." },
-          { status: 500 },
-        );
-      }
-      const inspectionDate = serviceDateInTimeZone(shop.timezone);
       const odometer = numericInput(raw.odometer ?? null, "Odometer");
       const engineHours = numericInput(raw.engineHours ?? null, "Engine hours");
       const correctionReason = raw.readingCorrectionReason?.trim() || null;
-      const defects = raw.defects ?? {};
-      const hasDefects = Object.values(defects).some(
-        (value) => value === "defect",
-      );
-      const status: FleetPretripReportRow["status"] = hasDefects
-        ? "open"
-        : "reviewed";
+      const templateAssignmentId = raw.templateAssignmentId?.trim() || null;
+      const trailerVehicleId = raw.trailerVehicleId?.trim() || null;
+      if (templateAssignmentId && !UUID.test(templateAssignmentId)) {
+        return NextResponse.json(
+          { error: "The assigned pre-trip template is invalid." },
+          { status: 400 },
+        );
+      }
+      if (trailerVehicleId && !UUID.test(trailerVehicleId)) {
+        return NextResponse.json(
+          { error: "The selected trailer is invalid." },
+          { status: 400 },
+        );
+      }
+      let templateAssignment: TemplateAssignmentRow | null = null;
+      if (templateAssignmentId) {
+        const { data, error } = await supabaseAdmin
+          .from("fleet_pretrip_template_assignments")
+          .select(
+            "id,version,vehicle_type,inspection_template_id,inspection_templates!inner(template_name,sections)",
+          )
+          .eq("id", templateAssignmentId)
+          .eq("shop_id", scope.shopId)
+          .eq("fleet_id", fleetId)
+          .eq("active", true)
+          .maybeSingle();
+        if (error || !data) {
+          return NextResponse.json(
+            { error: "The assigned pre-trip template is no longer active." },
+            { status: 409 },
+          );
+        }
+        templateAssignment = data as unknown as TemplateAssignmentRow;
+      }
 
-      const { data: inserted, error: insertError } = await supabase
-        .from("fleet_pretrip_reports")
-        .insert({
-          fleet_id: fleetId,
-          shop_id: scope.shopId,
-          vehicle_id: raw.unitId,
-          driver_profile_id: actor.userId,
-          driver_name: driverName,
-          inspection_date: inspectionDate,
-          odometer_km: odometer,
-          checklist: {
-            defects,
-            location: raw.location?.trim() || null,
-            engineHours,
-            readingCorrectionReason: correctionReason,
-            source: "fleet_pretrip_v2",
-          },
-          notes: raw.notes?.trim() || null,
-          has_defects: hasDefects,
-          status,
-        })
-        .select("id,has_defects,status")
-        .single();
+      const checklist = sanitizeChecklist({
+        raw,
+        templateAssignment,
+        uploads,
+        engineHours,
+        correctionReason,
+      });
+      const reportId = randomUUID();
+      const uploadedEvidence = await uploadFleetDriverEvidence({
+        admin: supabaseAdmin,
+        prefix: `${fleetId}/${reportId}`,
+        uploads,
+      });
+
+      const { data: inserted, error: insertError } = await supabase.rpc(
+        "submit_fleet_pretrip_report",
+        {
+          p_report_id: reportId,
+          p_fleet_id: fleetId,
+          p_vehicle_id: raw.unitId,
+          p_trailer_vehicle_id: trailerVehicleId,
+          p_odometer_km: odometer,
+          p_checklist: checklist as Json,
+          p_notes: raw.notes?.trim() || null,
+          p_template_assignment_id: templateAssignmentId,
+          p_evidence: uploadedEvidence,
+        },
+      );
 
       if (insertError || !inserted) {
+        await removeFleetDriverEvidence(
+          supabaseAdmin,
+          uploadedEvidence.map((item) => item.storagePath),
+        );
         const message =
           insertError?.message ?? "Failed to save pre-trip report.";
-        if (insertError?.code === "23505") {
+        if (
+          insertError?.code === "23505" ||
+          /already complete/i.test(message)
+        ) {
           return NextResponse.json(
             {
               error:
@@ -228,13 +435,12 @@ export async function POST(req: NextRequest) {
         );
       }
 
+      const payload =
+        inserted && typeof inserted === "object" && !Array.isArray(inserted)
+          ? (inserted as Record<string, unknown>)
+          : { report: inserted };
       return NextResponse.json({
-        id: inserted.id,
-        hasDefects: inserted.has_defects ?? hasDefects,
-        status: inserted.status ?? status,
-        defectCount: Object.values(defects).filter(
-          (value) => value === "defect",
-        ).length,
+        ...payload,
         pmEvaluationQueued: !pmEvaluationError,
       });
     } catch (error) {
@@ -242,7 +448,10 @@ export async function POST(req: NextRequest) {
         error instanceof Error
           ? error.message
           : "Failed to save pre-trip report.";
-      const status = /must be a valid/i.test(message) ? 400 : 500;
+      const status =
+        /must be a valid|complete |add |enter |required|invalid/i.test(message)
+          ? 400
+          : 500;
       console.error("[fleet/pretrip] create error", error);
       return NextResponse.json({ error: message }, { status });
     }
@@ -258,7 +467,7 @@ export async function POST(req: NextRequest) {
     const scope = resolveFleetActorScope(actor, {
       explicitShopId: raw.shopId ?? null,
       explicitFleetId: raw.fleetId ?? null,
-      preferMembershipFleet: Boolean(raw.fleetId),
+      preferMembershipFleet: !actor.isInternal,
     });
     if (!scope?.shopId) {
       return NextResponse.json(

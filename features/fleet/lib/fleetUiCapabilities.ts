@@ -18,12 +18,18 @@ export type FleetUiCapabilities = {
   canViewBroadFleetOperations: boolean;
   canAccessPortalFleetWrappers: boolean;
   canViewServiceRequests: boolean;
+  canManagePretripTemplates: boolean;
+  canViewUnitMaintenanceRecord: boolean;
 };
 
 export type FleetUiContext = {
   actorType: FleetActorContext["actorType"];
   actorLabel: string;
-  experience: "internal_ops" | "external_manager" | "external_driver";
+  experience:
+    | "internal_ops"
+    | "external_manager"
+    | "external_dispatcher"
+    | "external_driver";
   isInternal: boolean;
   capabilities: FleetUiCapabilities;
 };
@@ -31,6 +37,7 @@ export type FleetUiContext = {
 function resolveActorLabel(actor: FleetActorContext): string {
   if (actor.actorType === "internal_staff") return "Internal Fleet Operations";
   if (actor.actorType === "fleet_manager") return "Fleet Manager";
+  if (actor.actorType === "fleet_dispatcher") return "Fleet Dispatcher";
   if (actor.actorType === "fleet_driver") return "Fleet Driver";
   return "Unknown Fleet Actor";
 }
@@ -40,11 +47,14 @@ function resolveExperience(
 ): FleetUiContext["experience"] {
   if (actor.actorType === "internal_staff") return "internal_ops";
   if (actor.actorType === "fleet_manager") return "external_manager";
+  if (actor.actorType === "fleet_dispatcher") return "external_dispatcher";
   return "external_driver";
 }
 
 export function getFleetUiContext(actor: FleetActorContext): FleetUiContext {
-  const canManageInternalFleet = ["owner", "admin", "manager"].includes(actor.canonicalRole);
+  const canManageInternalFleet = ["owner", "admin", "manager"].includes(
+    actor.canonicalRole,
+  );
   const canManageUnits = actor.isInternal
     ? canManageInternalFleet
     : actor.actorType === "fleet_manager";
@@ -71,8 +81,11 @@ export function getFleetUiContext(actor: FleetActorContext): FleetUiContext {
       canViewBroadFleetOperations: actor.capabilities.canSeeFleetWideUnits,
       canAccessPortalFleetWrappers:
         actor.capabilities.canAccessPortalFleetWrappers,
-      canViewServiceRequests:
-        actor.capabilities.canSeeFleetWideUnits || actor.isFleetActor,
+      canViewServiceRequests: actor.capabilities.canSeeFleetWideUnits,
+      canManagePretripTemplates: canManageUnits,
+      canViewUnitMaintenanceRecord:
+        actor.actorType === "internal_staff" ||
+        actor.actorType === "fleet_manager",
     },
   };
 }
