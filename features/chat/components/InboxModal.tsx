@@ -770,11 +770,22 @@ export default function InboxModal({
                     />
                   ) : null}
                   <div
-                    className={`max-w-[78%] rounded-lg border px-2.5 py-1.5 text-xs leading-relaxed ${
-                      mine
-                        ? "border-orange-500/35 bg-orange-500/18 text-orange-50"
-                        : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)]"
-                    }`}
+                    // Accessible contrast fix for outgoing (mine) messages, scoped to light mode only
+                    className={`max-w-[78%] rounded-lg border px-2.5 py-1.5 text-xs leading-relaxed
+                      ${mine
+                        ? "bg-orange-600/90 text-white border-orange-900 dark:bg-orange-500/18 dark:text-orange-50 dark:border-orange-500/35"
+                        : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)]"}
+                    `}
+                    style={mine ? {
+                      // Only for light mode, use high-contrast if document body is not dark
+                      ...(typeof window !== "undefined" && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+                        ? {} // don't override for dark
+                        : {
+                            backgroundColor: '#ea580c', // orange-600
+                            color: '#fff',
+                            borderColor: '#9a3412' // orange-900
+                          })
+                    } : {}}
                   >
                     {m.content}
                   </div>
