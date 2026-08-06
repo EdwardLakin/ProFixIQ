@@ -79,7 +79,11 @@ describe("Supabase migration reconciliation", () => {
   it("fills the one non-identical timestamp-alias schema effect", () => {
     expect(effects).toContain("quickbooks_sync_events_entity_type_check");
     expect(effects).toContain("'invoice_version'");
-    expect(effects).toContain("canonical agent bridge integration is missing");
+    expect(effects).toContain("to authenticated");
+    expect(effects).toContain(
+      "canonical agent bridge integration is malformed",
+    );
+    expect(effects).toContain("noncanonical agent bridge integration remains");
     expect(effects).not.toContain(
       "create table public.agent_bridge_credentials",
     );

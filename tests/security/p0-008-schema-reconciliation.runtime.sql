@@ -1064,6 +1064,51 @@ begin
     raise exception 'P0-008 line-void RPC still targets retired aliases';
   end if;
 
+  if to_regclass('public.agent_bridge_credentials') is not null then
+    raise exception 'P0-008 retired agent bridge credential table remains';
+  end if;
+
+  if (
+    select array_agg(p.policyname::text order by p.policyname)
+    from pg_policies p
+    where p.schemaname = 'public'
+      and p.tablename = 'integrations'
+  ) is distinct from array[
+    'integrations__shop_delete',
+    'integrations__shop_insert',
+    'integrations__shop_select',
+    'integrations__shop_update'
+  ]::text[]
+  or exists (
+    select 1
+    from pg_policies p
+    where p.schemaname = 'public'
+      and p.tablename = 'integrations'
+      and p.roles::text <> '{authenticated}'
+  ) then
+    raise exception 'P0-008 integration policies must be authenticated-only';
+  end if;
+
+  if exists (
+    select 1
+    from public.integrations i
+    where i.id = '7c2da329-5117-48c0-a1ee-d51b5d63827d'::uuid
+      and not (
+        i.shop_id is null
+        and i.provider = 'aftermarket_api'
+        and i.status = 'enabled'
+        and i.config ->> 'kind' = 'profixiq_agent_bridge'
+        and nullif(i.config ->> 'secret', '') is not null
+      )
+  ) or exists (
+    select 1
+    from public.integrations i
+    where i.config ->> 'kind' = 'profixiq_agent_bridge'
+      and i.id <> '7c2da329-5117-48c0-a1ee-d51b5d63827d'::uuid
+  ) then
+    raise exception 'P0-008 configured agent bridge integration is noncanonical';
+  end if;
+
   if not exists (
     select 1
     from pg_constraint c
