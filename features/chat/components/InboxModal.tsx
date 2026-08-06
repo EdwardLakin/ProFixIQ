@@ -631,6 +631,13 @@ export default function InboxModal({
 
   if (!open) return null;
 
+  // Color fix: Outgoing (mine) messages in light mode use readable dark-orange text and border on white bg.
+  function isLightMode() {
+    // Simple heuristic: check if 'dark' class is absent from html
+    if (typeof window === "undefined") return true;
+    return !document.documentElement.classList.contains("dark");
+  }
+
   return (
     <ModalShell
       isOpen={open}
@@ -663,6 +670,7 @@ export default function InboxModal({
 
       <div className="grid h-[min(72vh,760px)] grid-cols-1 gap-2.5 md:grid-cols-[290px_1fr] xl:grid-cols-[280px_1fr_230px]">
         <aside className="flex min-h-0 flex-col rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]">
+          {/* ... sidebar code unchanged ... */}
           <div className="space-y-2 border-b border-[color:var(--theme-border-soft)] p-2">
             <div className="grid grid-cols-2 rounded-lg bg-[color:var(--theme-surface-overlay)] p-0.5">
               {(["internal", "customer"] as const).map((audience) => (
@@ -757,6 +765,18 @@ export default function InboxModal({
                   (participant) => participant.id === m.sender_participant_id,
                 ) ?? users.find((u) => u.id === m.sender_id);
 
+              // Outgoing (mine) message bubble contrast-fix styles for InboxModal in light mode only.
+              let mineStyles = {};
+              if (mine && typeof window !== "undefined" && isLightMode()) {
+                mineStyles = {
+                  // Brighter border, white bg, dark orange text for legibility
+                  borderColor: "#ff9800",
+                  background: "#fff",
+                  color: "#b35900",
+                  fontWeight: 600,
+                };
+              }
+
               return (
                 <div
                   key={m.id}
@@ -775,6 +795,7 @@ export default function InboxModal({
                         ? "border-orange-500/35 bg-orange-500/18 text-orange-50"
                         : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)]"
                     }`}
+                    style={mine ? mineStyles : undefined}
                   >
                     {m.content}
                   </div>
