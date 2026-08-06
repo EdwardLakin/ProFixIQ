@@ -256,7 +256,7 @@ declare
   v_symptoms text;
   v_causes text;
   v_corrections text;
-  v_odometer text;
+  v_odometer numeric;
   v_labor_hours numeric := 0;
   v_advisor_name text;
   v_technician_name text;
@@ -307,12 +307,12 @@ begin
   );
 
   v_odometer := coalesce(
-    new.vehicle_mileage::text,
-    new.odometer_km::text
+    new.vehicle_mileage,
+    new.odometer_km
   );
 
   if v_odometer is null then
-    select v.mileage::text
+    select v.mileage
     into v_odometer
     from public.vehicles v
     where v.id = new.vehicle_id
@@ -531,9 +531,9 @@ set work_order_number = paid.custom_id,
     cause = lines.cause,
     correction = lines.correction,
     odometer = coalesce(
-      paid.vehicle_mileage::text,
-      paid.odometer_km::text,
-      paid.vehicle_odometer::text,
+      paid.vehicle_mileage,
+      paid.odometer_km,
+      paid.vehicle_odometer,
       h.odometer
     ),
     labor_hours = lines.labor_hours,

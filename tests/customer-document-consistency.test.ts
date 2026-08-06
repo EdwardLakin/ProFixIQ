@@ -42,8 +42,9 @@ describe("customer document consistency", () => {
     expect(migration).toContain("symptom = lines.symptom");
     expect(migration).toContain("cause = lines.cause");
     expect(migration).toContain("correction = lines.correction");
-    expect(migration).toContain("new.vehicle_mileage::text");
-    expect(migration).toContain("new.odometer_km::text");
+    expect(migration).toContain("v_odometer := coalesce(");
+    expect(migration).toContain("new.vehicle_mileage,");
+    expect(migration).toContain("new.odometer_km");
     expect(history).toContain('["Complaint", row.symptom]');
     expect(history).toContain('["Cause", row.cause]');
     expect(history).toContain('["Correction", row.correction]');
