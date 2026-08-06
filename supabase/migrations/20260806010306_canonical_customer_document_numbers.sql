@@ -40,7 +40,7 @@ where wo.shop_id is not null
   )
 group by wo.shop_id
 on conflict (shop_id, document_kind) do update
-set last_value = pg_catalog.greatest(
+set last_value = greatest(
       private.document_number_counters.last_value,
       excluded.last_value
     ),
@@ -61,11 +61,11 @@ from public.invoices i
 where i.shop_id is not null
   and i.invoice_number ~ '^INV-[0-9]{6,}$'
   and not public.invoice_is_historical_import(
-    pg_catalog.coalesce(i.metadata, '{}'::jsonb)
+    coalesce(i.metadata, '{}'::jsonb)
   )
 group by i.shop_id
 on conflict (shop_id, document_kind) do update
-set last_value = pg_catalog.greatest(
+set last_value = greatest(
       private.document_number_counters.last_value,
       excluded.last_value
     ),
@@ -134,7 +134,7 @@ as $function$
 begin
   if new.shop_id is not null
      and (
-       pg_catalog.nullif(pg_catalog.btrim(new.custom_id), '') is null
+       nullif(pg_catalog.btrim(new.custom_id), '') is null
        or new.custom_id ~ '^WO-[0-9A-Fa-f]{12}$'
      ) then
     new.custom_id := private.next_customer_document_number(
@@ -166,10 +166,10 @@ set search_path = ''
 as $function$
 begin
   if not public.invoice_is_historical_import(
-       pg_catalog.coalesce(new.metadata, '{}'::jsonb)
+       coalesce(new.metadata, '{}'::jsonb)
      )
      and (
-       pg_catalog.nullif(pg_catalog.btrim(new.invoice_number), '') is null
+       nullif(pg_catalog.btrim(new.invoice_number), '') is null
        or new.invoice_number ~ '^WO-[0-9A-Fa-f]{8}$'
      ) then
     new.invoice_number := private.next_customer_document_number(
@@ -205,7 +205,7 @@ begin
     from public.work_orders wo
     where wo.shop_id is not null
       and (
-        pg_catalog.nullif(pg_catalog.btrim(wo.custom_id), '') is null
+        nullif(pg_catalog.btrim(wo.custom_id), '') is null
         or wo.custom_id ~ '^WO-[0-9A-Fa-f]{12}$'
       )
     order by wo.created_at nulls last, wo.id
@@ -225,10 +225,10 @@ begin
     select i.id
     from public.invoices i
     where not public.invoice_is_historical_import(
-            pg_catalog.coalesce(i.metadata, '{}'::jsonb)
+            coalesce(i.metadata, '{}'::jsonb)
           )
       and (
-        pg_catalog.nullif(pg_catalog.btrim(i.invoice_number), '') is null
+        nullif(pg_catalog.btrim(i.invoice_number), '') is null
         or i.invoice_number ~ '^WO-[0-9A-Fa-f]{8}$'
       )
     order by i.created_at nulls last, i.id
@@ -262,7 +262,7 @@ declare
   v_technician_name text;
   v_notes text;
 begin
-  if pg_catalog.lower(pg_catalog.coalesce(new.payment_status, '')) <> 'paid'
+  if pg_catalog.lower(coalesce(new.payment_status, '')) <> 'paid'
      or new.customer_id is null then
     return new;
   end if;
@@ -280,33 +280,33 @@ begin
 
   select
     pg_catalog.string_agg(
-      distinct pg_catalog.coalesce(
-        pg_catalog.nullif(pg_catalog.btrim(wol.complaint), ''),
-        pg_catalog.nullif(pg_catalog.btrim(wol.description), '')
+      distinct coalesce(
+        nullif(pg_catalog.btrim(wol.complaint), ''),
+        nullif(pg_catalog.btrim(wol.description), '')
       ),
       E'\n'
     ),
     pg_catalog.string_agg(
-      distinct pg_catalog.nullif(pg_catalog.btrim(wol.cause), ''),
+      distinct nullif(pg_catalog.btrim(wol.cause), ''),
       E'\n'
     ),
     pg_catalog.string_agg(
-      distinct pg_catalog.nullif(pg_catalog.btrim(wol.correction), ''),
+      distinct nullif(pg_catalog.btrim(wol.correction), ''),
       E'\n'
     ),
-    pg_catalog.coalesce(pg_catalog.sum(wol.labor_time), 0)
+    coalesce(pg_catalog.sum(wol.labor_time), 0)
   into v_symptoms, v_causes, v_corrections, v_labor_hours
   from public.work_order_lines wol
   where wol.work_order_id = new.id
     and wol.voided_at is null;
 
-  v_description := pg_catalog.coalesce(
-    pg_catalog.nullif(pg_catalog.btrim(v_symptoms), ''),
-    pg_catalog.nullif(pg_catalog.btrim(new.notes), ''),
-    'Completed work order ' || pg_catalog.coalesce(new.custom_id, new.id::text)
+  v_description := coalesce(
+    nullif(pg_catalog.btrim(v_symptoms), ''),
+    nullif(pg_catalog.btrim(new.notes), ''),
+    'Completed work order ' || coalesce(new.custom_id, new.id::text)
   );
 
-  v_odometer := pg_catalog.coalesce(
+  v_odometer := coalesce(
     new.vehicle_mileage::text,
     new.odometer_km::text
   );
@@ -319,13 +319,13 @@ begin
       and v.shop_id = new.shop_id;
   end if;
 
-  select pg_catalog.nullif(pg_catalog.btrim(p.full_name), '')
+  select nullif(pg_catalog.btrim(p.full_name), '')
   into v_advisor_name
   from public.profiles p
   where p.id = new.advisor_id;
 
   select pg_catalog.string_agg(
-    distinct pg_catalog.nullif(pg_catalog.btrim(p.full_name), ''),
+    distinct nullif(pg_catalog.btrim(p.full_name), ''),
     ', '
   )
   into v_technician_name
@@ -333,7 +333,7 @@ begin
   left join public.work_order_line_technicians wolt
     on wolt.work_order_line_id = wol.id
   left join public.profiles p
-    on p.id = pg_catalog.coalesce(
+    on p.id = coalesce(
       wolt.technician_id,
       wol.assigned_tech_id,
       wol.assigned_to
@@ -343,11 +343,11 @@ begin
 
   v_notes := pg_catalog.concat_ws(
     E'\n',
-    'Work order: ' || pg_catalog.coalesce(new.custom_id, new.id::text),
+    'Work order: ' || coalesce(new.custom_id, new.id::text),
     case when v_invoice.invoice_number is not null
       then 'Invoice: ' || v_invoice.invoice_number else null end,
     'Payment: paid',
-    pg_catalog.nullif(pg_catalog.btrim(new.notes), '')
+    nullif(pg_catalog.btrim(new.notes), '')
   );
 
   select h.id
@@ -368,18 +368,18 @@ begin
       approval_state, payment_state, source_payload, shop_id
     ) values (
       new.customer_id, new.vehicle_id, new.id,
-      pg_catalog.coalesce(new.paid_at, pg_catalog.now()), v_description,
+      coalesce(new.paid_at, pg_catalog.now()), v_description,
       v_notes, 'profixiq_live', new.id::text, new.custom_id,
       v_invoice.invoice_number, new.created_at,
-      pg_catalog.coalesce(new.paid_at, pg_catalog.now()), 'paid',
+      coalesce(new.paid_at, pg_catalog.now()), 'paid',
       v_advisor_name, v_technician_name, new.priority::text, v_odometer,
       v_symptoms, v_causes, v_corrections, v_labor_hours,
-      pg_catalog.coalesce(v_invoice.labor_cost, new.labor_total, 0),
-      pg_catalog.coalesce(v_invoice.parts_cost, new.parts_total, 0),
-      pg_catalog.coalesce(v_invoice.shop_supplies_total, 0),
-      pg_catalog.coalesce(v_invoice.discount_total, 0),
-      pg_catalog.coalesce(v_invoice.tax_total, 0),
-      pg_catalog.coalesce(v_invoice.total, new.invoice_total, 0),
+      coalesce(v_invoice.labor_cost, new.labor_total, 0),
+      coalesce(v_invoice.parts_cost, new.parts_total, 0),
+      coalesce(v_invoice.shop_supplies_total, 0),
+      coalesce(v_invoice.discount_total, 0),
+      coalesce(v_invoice.tax_total, 0),
+      coalesce(v_invoice.total, new.invoice_total, 0),
       new.approval_state, new.payment_status,
       pg_catalog.jsonb_build_object(
         'work_order_id', new.id,
@@ -393,7 +393,7 @@ begin
     update public.history
     set customer_id = new.customer_id,
         vehicle_id = new.vehicle_id,
-        service_date = pg_catalog.coalesce(new.paid_at, pg_catalog.now()),
+        service_date = coalesce(new.paid_at, pg_catalog.now()),
         description = v_description,
         notes = v_notes,
         source_system = 'profixiq_live',
@@ -401,7 +401,7 @@ begin
         work_order_number = new.custom_id,
         invoice_number = v_invoice.invoice_number,
         opened_at = new.created_at,
-        closed_at = pg_catalog.coalesce(new.paid_at, pg_catalog.now()),
+        closed_at = coalesce(new.paid_at, pg_catalog.now()),
         historical_status = 'paid',
         advisor_name = v_advisor_name,
         assigned_tech_name = v_technician_name,
@@ -411,20 +411,20 @@ begin
         cause = v_causes,
         correction = v_corrections,
         labor_hours = v_labor_hours,
-        labor_sale = pg_catalog.coalesce(
+        labor_sale = coalesce(
           v_invoice.labor_cost,
           new.labor_total,
           0
         ),
-        parts_sale = pg_catalog.coalesce(
+        parts_sale = coalesce(
           v_invoice.parts_cost,
           new.parts_total,
           0
         ),
-        shop_supplies = pg_catalog.coalesce(v_invoice.shop_supplies_total, 0),
-        discount = pg_catalog.coalesce(v_invoice.discount_total, 0),
-        tax = pg_catalog.coalesce(v_invoice.tax_total, 0),
-        total = pg_catalog.coalesce(v_invoice.total, new.invoice_total, 0),
+        shop_supplies = coalesce(v_invoice.shop_supplies_total, 0),
+        discount = coalesce(v_invoice.discount_total, 0),
+        tax = coalesce(v_invoice.tax_total, 0),
+        total = coalesce(v_invoice.total, new.invoice_total, 0),
         approval_state = new.approval_state,
         payment_state = new.payment_status,
         source_payload = pg_catalog.jsonb_build_object(
@@ -462,12 +462,12 @@ with paid_rows as (
     v.mileage as vehicle_odometer,
     i.id as invoice_id,
     i.invoice_number,
-    pg_catalog.coalesce(i.labor_cost, wo.labor_total, 0) as labor_sale,
-    pg_catalog.coalesce(i.parts_cost, wo.parts_total, 0) as parts_sale,
-    pg_catalog.coalesce(i.shop_supplies_total, 0) as shop_supplies,
-    pg_catalog.coalesce(i.discount_total, 0) as discount,
-    pg_catalog.coalesce(i.tax_total, 0) as tax,
-    pg_catalog.coalesce(i.total, wo.invoice_total, 0) as total
+    coalesce(i.labor_cost, wo.labor_total, 0) as labor_sale,
+    coalesce(i.parts_cost, wo.parts_total, 0) as parts_sale,
+    coalesce(i.shop_supplies_total, 0) as shop_supplies,
+    coalesce(i.discount_total, 0) as discount,
+    coalesce(i.tax_total, 0) as tax,
+    coalesce(i.total, wo.invoice_total, 0) as total
   from public.work_orders wo
   left join public.vehicles v
     on v.id = wo.vehicle_id
@@ -489,21 +489,21 @@ line_rollup as (
   select
     wol.work_order_id,
     pg_catalog.string_agg(
-      distinct pg_catalog.coalesce(
-        pg_catalog.nullif(pg_catalog.btrim(wol.complaint), ''),
-        pg_catalog.nullif(pg_catalog.btrim(wol.description), '')
+      distinct coalesce(
+        nullif(pg_catalog.btrim(wol.complaint), ''),
+        nullif(pg_catalog.btrim(wol.description), '')
       ),
       E'\n'
     ) as symptom,
     pg_catalog.string_agg(
-      distinct pg_catalog.nullif(pg_catalog.btrim(wol.cause), ''),
+      distinct nullif(pg_catalog.btrim(wol.cause), ''),
       E'\n'
     ) as cause,
     pg_catalog.string_agg(
-      distinct pg_catalog.nullif(pg_catalog.btrim(wol.correction), ''),
+      distinct nullif(pg_catalog.btrim(wol.correction), ''),
       E'\n'
     ) as correction,
-    pg_catalog.coalesce(pg_catalog.sum(wol.labor_time), 0) as labor_hours
+    coalesce(pg_catalog.sum(wol.labor_time), 0) as labor_hours
   from public.work_order_lines wol
   join paid_rows paid on paid.work_order_id = wol.work_order_id
   where wol.voided_at is null
@@ -512,14 +512,14 @@ line_rollup as (
 update public.history h
 set work_order_number = paid.custom_id,
     invoice_number = paid.invoice_number,
-    description = pg_catalog.coalesce(
-      pg_catalog.nullif(pg_catalog.btrim(lines.symptom), ''),
+    description = coalesce(
+      nullif(pg_catalog.btrim(lines.symptom), ''),
       h.description
     ),
     symptom = lines.symptom,
     cause = lines.cause,
     correction = lines.correction,
-    odometer = pg_catalog.coalesce(
+    odometer = coalesce(
       paid.vehicle_mileage::text,
       paid.odometer_km::text,
       paid.vehicle_odometer::text,
@@ -534,7 +534,7 @@ set work_order_number = paid.custom_id,
     total = paid.total,
     historical_status = 'paid',
     payment_state = 'paid',
-    source_payload = pg_catalog.coalesce(h.source_payload, '{}'::jsonb)
+    source_payload = coalesce(h.source_payload, '{}'::jsonb)
       || pg_catalog.jsonb_build_object(
         'work_order_id', paid.work_order_id,
         'invoice_id', paid.invoice_id,
