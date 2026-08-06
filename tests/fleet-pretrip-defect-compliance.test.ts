@@ -111,6 +111,9 @@ describe("fleet pre-trip, defects, and compliance", () => {
     expect(assignmentBoundary).toContain(
       "delete from public.fleet_pretrip_compliance",
     );
+    expect(assignmentBoundary).toContain(
+      "to_regclass('public.assistant_notifications')",
+    );
   });
 
   it("schedules missed-pretrip evaluation in Supabase and keeps the retired sign-in URL safe", () => {

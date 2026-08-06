@@ -1,26 +1,34 @@
 -- Do not count a pre-trip as missed when the assignment began after that
 -- day's local due time. The first required service date is the next day.
 
-update public.assistant_notifications n
-set status = 'resolved',
-    resolved_at = coalesce(n.resolved_at, now()),
-    updated_at = now()
-where n.status = 'active'
-  and exists (
-    select 1
-    from public.fleet_pretrip_compliance c
-    join public.fleet_dispatch_assignments a on a.id = c.assignment_id
-    join public.shops s on s.id = a.shop_id
-    where c.notification_fingerprint = n.fingerprint
-      and c.pretrip_report_id is null
-      and c.status in ('due', 'missed')
-      and c.service_date = (
-        a.assigned_at at time zone coalesce(nullif(s.timezone, ''), 'America/Los_Angeles')
-      )::date
-      and (
-        a.assigned_at at time zone coalesce(nullif(s.timezone, ''), 'America/Los_Angeles')
-      )::time > a.pretrip_due_local_time
-  );
+do $cleanup$
+begin
+  if to_regclass('public.assistant_notifications') is not null then
+    execute $sql$
+      update public.assistant_notifications n
+      set status = 'resolved',
+          resolved_at = coalesce(n.resolved_at, now()),
+          updated_at = now()
+      where n.status = 'active'
+        and exists (
+          select 1
+          from public.fleet_pretrip_compliance c
+          join public.fleet_dispatch_assignments a on a.id = c.assignment_id
+          join public.shops s on s.id = a.shop_id
+          where c.notification_fingerprint = n.fingerprint
+            and c.pretrip_report_id is null
+            and c.status in ('due', 'missed')
+            and c.service_date = (
+              a.assigned_at at time zone coalesce(nullif(s.timezone, ''), 'America/Los_Angeles')
+            )::date
+            and (
+              a.assigned_at at time zone coalesce(nullif(s.timezone, ''), 'America/Los_Angeles')
+            )::time > a.pretrip_due_local_time
+        )
+    $sql$;
+  end if;
+end;
+$cleanup$;
 
 delete from public.fleet_pretrip_compliance c
 using public.fleet_dispatch_assignments a, public.shops s
