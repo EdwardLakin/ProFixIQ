@@ -1,6 +1,7 @@
 // app/api/fleet/pretrip/route.ts
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { supabaseAdmin } from "@/features/shared/lib/supabase/admin";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import type { Database } from "@shared/types/types/supabase";
 import {
@@ -9,7 +10,8 @@ import {
 } from "@/features/fleet/lib/resolveFleetActorContext";
 
 type DB = Database;
-type FleetPretripReportRow = DB["public"]["Tables"]["fleet_pretrip_reports"]["Row"];
+type FleetPretripReportRow =
+  DB["public"]["Tables"]["fleet_pretrip_reports"]["Row"];
 type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
 
 type PretripJoinedRow = FleetPretripReportRow & {
@@ -40,7 +42,9 @@ function numericInput(value: string | null, label: string) {
 
 export async function POST(req: NextRequest) {
   const supabase = createServerSupabaseRoute();
-  const raw = (await req.json().catch(() => ({}))) as Partial<CreatePretripBody & ListPretripBody>;
+  const raw = (await req.json().catch(() => ({}))) as Partial<
+    CreatePretripBody & ListPretripBody
+  >;
 
   if (typeof raw.unitId === "string") {
     try {
@@ -71,7 +75,10 @@ export async function POST(req: NextRequest) {
       }
 
       if (!fleetId || !scope?.shopId) {
-        return NextResponse.json({ error: "Fleet scope is required for this unit." }, { status: 403 });
+        return NextResponse.json(
+          { error: "Fleet scope is required for this unit." },
+          { status: 403 },
+        );
       }
 
       const { data: vehicleMembership, error: membershipError } = await supabase
@@ -82,10 +89,19 @@ export async function POST(req: NextRequest) {
         .or("active.is.null,active.eq.true")
         .maybeSingle();
       if (membershipError || !vehicleMembership) {
-        return NextResponse.json({ error: "Vehicle is not available in your fleet." }, { status: 403 });
+        return NextResponse.json(
+          { error: "Vehicle is not available in your fleet." },
+          { status: 403 },
+        );
       }
-      if (vehicleMembership.shop_id && vehicleMembership.shop_id !== scope.shopId) {
-        return NextResponse.json({ error: "Vehicle is not available in your shop." }, { status: 403 });
+      if (
+        vehicleMembership.shop_id &&
+        vehicleMembership.shop_id !== scope.shopId
+      ) {
+        return NextResponse.json(
+          { error: "Vehicle is not available in your shop." },
+          { status: 403 },
+        );
       }
 
       if (!actor.isInternal) {
@@ -112,18 +128,28 @@ export async function POST(req: NextRequest) {
         .eq("id", actor.userId)
         .maybeSingle();
       if (profileError || !profile) {
-        return NextResponse.json({ error: "Driver profile is unavailable." }, { status: 403 });
+        return NextResponse.json(
+          { error: "Driver profile is unavailable." },
+          { status: 403 },
+        );
       }
       const driverName = profile.full_name?.trim() || profile.email?.trim();
       if (!driverName) {
-        return NextResponse.json({ error: "Driver profile name is required." }, { status: 400 });
+        return NextResponse.json(
+          { error: "Driver profile name is required." },
+          { status: 400 },
+        );
       }
       const odometer = numericInput(raw.odometer ?? null, "Odometer");
       const engineHours = numericInput(raw.engineHours ?? null, "Engine hours");
       const correctionReason = raw.readingCorrectionReason?.trim() || null;
       const defects = raw.defects ?? {};
-      const hasDefects = Object.values(defects).some((value) => value === "defect");
-      const status: FleetPretripReportRow["status"] = hasDefects ? "open" : "reviewed";
+      const hasDefects = Object.values(defects).some(
+        (value) => value === "defect",
+      );
+      const status: FleetPretripReportRow["status"] = hasDefects
+        ? "open"
+        : "reviewed";
 
       const { data: inserted, error: insertError } = await supabase
         .from("fleet_pretrip_reports")
@@ -149,10 +175,14 @@ export async function POST(req: NextRequest) {
         .single();
 
       if (insertError || !inserted) {
-        const message = insertError?.message ?? "Failed to save pre-trip report.";
+        const message =
+          insertError?.message ?? "Failed to save pre-trip report.";
         if (insertError?.code === "23505") {
           return NextResponse.json(
-            { error: "Today’s pre-trip is already complete for this driver and unit." },
+            {
+              error:
+                "Today’s pre-trip is already complete for this driver and unit.",
+            },
             { status: 409 },
           );
         }
@@ -163,26 +193,40 @@ export async function POST(req: NextRequest) {
           );
         }
         console.error("[fleet/pretrip] insert error", insertError);
-        return NextResponse.json({ error: "Failed to save pre-trip report." }, { status: 500 });
+        return NextResponse.json(
+          { error: "Failed to save pre-trip report." },
+          { status: 500 },
+        );
       }
 
-      const { error: pmEvaluationError } = await supabase.rpc("evaluate_fleet_pm_due_events", {
-        p_fleet_id: fleetId,
-        p_vehicle_id: raw.unitId,
-      });
+      const { error: pmEvaluationError } = await supabase.rpc(
+        "evaluate_fleet_pm_due_events",
+        {
+          p_fleet_id: fleetId,
+          p_vehicle_id: raw.unitId,
+        },
+      );
       if (pmEvaluationError) {
-        console.error("[fleet/pretrip] PM evaluation deferred", pmEvaluationError);
+        console.error(
+          "[fleet/pretrip] PM evaluation deferred",
+          pmEvaluationError,
+        );
       }
 
       return NextResponse.json({
         id: inserted.id,
         hasDefects: inserted.has_defects ?? hasDefects,
         status: inserted.status ?? status,
-        defectCount: Object.values(defects).filter((value) => value === "defect").length,
+        defectCount: Object.values(defects).filter(
+          (value) => value === "defect",
+        ).length,
         pmEvaluationQueued: !pmEvaluationError,
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to save pre-trip report.";
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to save pre-trip report.";
       const status = /must be a valid/i.test(message) ? 400 : 500;
       console.error("[fleet/pretrip] create error", error);
       return NextResponse.json({ error: message }, { status });
@@ -193,45 +237,68 @@ export async function POST(req: NextRequest) {
     const actor = await resolveFleetActorContext(supabase, {
       requestedFleetId: raw.fleetId ?? null,
     });
+    if (!actor.userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     const scope = resolveFleetActorScope(actor, {
       explicitShopId: raw.shopId ?? null,
       explicitFleetId: raw.fleetId ?? null,
       preferMembershipFleet: true,
     });
     if (!scope?.shopId) {
-      return NextResponse.json({ error: "Unable to resolve fleet for pre-trip reports." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Unable to resolve fleet for pre-trip reports." },
+        { status: 400 },
+      );
     }
 
-    let query = supabase
+    // Authentication and Fleet scope are resolved with the caller's session above.
+    // Read the authorized slice with the server client so RLS cannot turn a
+    // driver's just-submitted report into an empty history result.
+    let query = supabaseAdmin
       .from("fleet_pretrip_reports")
-      .select(`id,shop_id,vehicle_id,driver_name,has_defects,inspection_date,created_at,status,vehicles!inner(unit_number,license_plate,vin)`)
+      .select(
+        `id,shop_id,vehicle_id,driver_name,has_defects,inspection_date,created_at,status,vehicles!inner(unit_number,license_plate,vin)`,
+      )
       .order("inspection_date", { ascending: false })
       .limit(250);
     query = scope.fleetIds?.length
       ? query.in("fleet_id", scope.fleetIds)
       : query.eq("shop_id", scope.shopId);
+    if (actor.actorType === "fleet_driver") {
+      query = query.eq("driver_profile_id", actor.userId);
+    }
 
     const { data, error } = await query;
     if (error) throw new Error(error.message);
 
-    const reports = ((data ?? []) as unknown as PretripJoinedRow[]).map((row) => {
-      const vehicle = row.vehicles;
-      return {
-        id: row.id,
-        shop_id: row.shop_id,
-        unit_id: row.vehicle_id,
-        unit_label: vehicle?.unit_number || vehicle?.license_plate || vehicle?.vin || row.vehicle_id,
-        plate: vehicle?.license_plate ?? null,
-        driver_name: row.driver_name,
-        has_defects: row.has_defects,
-        inspection_date: row.inspection_date,
-        created_at: row.created_at,
-        status: row.status ?? (row.has_defects ? "open" : "reviewed"),
-      };
-    });
+    const reports = ((data ?? []) as unknown as PretripJoinedRow[]).map(
+      (row) => {
+        const vehicle = row.vehicles;
+        return {
+          id: row.id,
+          shop_id: row.shop_id,
+          unit_id: row.vehicle_id,
+          unit_label:
+            vehicle?.unit_number ||
+            vehicle?.license_plate ||
+            vehicle?.vin ||
+            row.vehicle_id,
+          plate: vehicle?.license_plate ?? null,
+          driver_name: row.driver_name,
+          has_defects: row.has_defects,
+          inspection_date: row.inspection_date,
+          created_at: row.created_at,
+          status: row.status ?? (row.has_defects ? "open" : "reviewed"),
+        };
+      },
+    );
     return NextResponse.json({ reports });
   } catch (error) {
     console.error("[fleet/pretrip] list error", error);
-    return NextResponse.json({ error: "Failed to load pre-trip reports." }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to load pre-trip reports." },
+      { status: 500 },
+    );
   }
 }

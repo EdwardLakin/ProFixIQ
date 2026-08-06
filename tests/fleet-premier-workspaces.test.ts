@@ -220,6 +220,15 @@ describe("premier fleet workspaces", () => {
     expect(pretrips).toContain('productRoutes ? "/assets"');
   });
 
+  it("keeps driver pre-trip history visible without widening its Fleet scope", () => {
+    const pretripApi = source("app/api/fleet/pretrip/route.ts");
+
+    expect(pretripApi).toContain("import { supabaseAdmin }");
+    expect(pretripApi).toContain('actor.actorType === "fleet_driver"');
+    expect(pretripApi).toContain('.eq("driver_profile_id", actor.userId)');
+    expect(pretripApi).toContain('query.in("fleet_id", scope.fleetIds)');
+  });
+
   it("sends Fleet invitations with a subject and Fleet-specific content", () => {
     const events = source("features/email/server/emailEvents.ts");
     const sender = source("features/email/server/sendDynamicTemplateEmail.ts");
