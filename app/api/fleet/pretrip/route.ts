@@ -40,6 +40,26 @@ function numericInput(value: string | null, label: string) {
   return parsed;
 }
 
+function serviceDateInTimeZone(timeZone: string | null, at = new Date()) {
+  const partsFor = (zone: string) =>
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: zone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(at);
+  let parts: Intl.DateTimeFormatPart[];
+  try {
+    parts = partsFor(timeZone?.trim() || "America/Los_Angeles");
+  } catch {
+    parts = partsFor("America/Los_Angeles");
+  }
+  const value = Object.fromEntries(
+    parts.map((part) => [part.type, part.value]),
+  );
+  return `${value.year}-${value.month}-${value.day}`;
+}
+
 export async function POST(req: NextRequest) {
   const supabase = createServerSupabaseRoute();
   const raw = (await req.json().catch(() => ({}))) as Partial<
@@ -140,6 +160,18 @@ export async function POST(req: NextRequest) {
           { status: 400 },
         );
       }
+      const { data: shop, error: shopError } = await supabaseAdmin
+        .from("shops")
+        .select("timezone")
+        .eq("id", scope.shopId)
+        .maybeSingle();
+      if (shopError || !shop) {
+        return NextResponse.json(
+          { error: "Fleet shop timezone is unavailable." },
+          { status: 500 },
+        );
+      }
+      const inspectionDate = serviceDateInTimeZone(shop.timezone);
       const odometer = numericInput(raw.odometer ?? null, "Odometer");
       const engineHours = numericInput(raw.engineHours ?? null, "Engine hours");
       const correctionReason = raw.readingCorrectionReason?.trim() || null;
@@ -159,6 +191,7 @@ export async function POST(req: NextRequest) {
           vehicle_id: raw.unitId,
           driver_profile_id: actor.userId,
           driver_name: driverName,
+          inspection_date: inspectionDate,
           odometer_km: odometer,
           checklist: {
             defects,

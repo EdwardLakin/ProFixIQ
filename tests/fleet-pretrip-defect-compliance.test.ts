@@ -64,6 +64,7 @@ describe("fleet pre-trip, defects, and compliance", () => {
     const form = read("features/fleet/components/PretripForm.tsx");
     const tower = read("features/fleet/components/FleetControlTower.tsx");
     const page = read("app/portal/fleet/pretrip/[unitId]/page.tsx");
+    const route = read("app/api/fleet/pretrip/route.ts");
     expect(form).not.toContain("convert-to-service-request");
     expect(form).toContain("Fleet managers—not drivers");
     expect(tower).toContain("Start today’s pre-trip");
@@ -72,6 +73,9 @@ describe("fleet pre-trip, defects, and compliance", () => {
     expect(page).toContain('.eq("fleet_id", fleetId)');
     expect(page).toContain('.eq("driver_profile_id", actor.userId)');
     expect(page).toContain('.eq("active", true)');
+    expect(route).toContain("serviceDateInTimeZone(shop.timezone)");
+    expect(route).toContain("inspection_date: inspectionDate");
+    expect(route).toContain('.select("timezone")');
   });
 
   it("uses one durable defect ledger and manager lifecycle RPC", () => {
@@ -96,6 +100,19 @@ describe("fleet pre-trip, defects, and compliance", () => {
     );
     expect(migration).toContain(
       "revoke execute on function public.evaluate_fleet_pretrip_compliance",
+    );
+    const assignmentBoundary = read(
+      "supabase/migrations/20260806063000_fleet_pretrip_assignment_start_boundary.sql",
+    );
+    expect(assignmentBoundary).toContain(
+      "> v_assignment.pretrip_due_local_time then 1",
+    );
+    expect(assignmentBoundary).toContain("when v_status is null then state");
+    expect(assignmentBoundary).toContain(
+      "delete from public.fleet_pretrip_compliance",
+    );
+    expect(assignmentBoundary).toContain(
+      "to_regclass('public.assistant_notifications')",
     );
   });
 
