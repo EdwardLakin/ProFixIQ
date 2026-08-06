@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import {
+  isPortalWorkOrderVisible,
   toPortalWorkOrderStatus,
   type PortalWorkOrderStatus,
 } from "@/features/portal/lib/workOrderPresentation";
@@ -163,8 +164,9 @@ export async function listPortalWorkOrdersForCustomer({
   if (workOrderError) throw new Error(workOrderError.message);
   const rows = (workOrders ?? []).filter(
     (workOrder) =>
-      !workOrder.external_id?.startsWith("portal_quote:") ||
-      Boolean(workOrder.scheduled_at),
+      isPortalWorkOrderVisible(workOrder.status) &&
+      (!workOrder.external_id?.startsWith("portal_quote:") ||
+        Boolean(workOrder.scheduled_at)),
   );
   if (rows.length === 0) return [];
 

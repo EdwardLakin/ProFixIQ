@@ -81,6 +81,14 @@ const READY_STATES = new Set([
 
 const COMPLETE_STATES = new Set(["archived", "cancelled", "closed", "paid"]);
 
+const CUSTOMER_HIDDEN_STATES = new Set(["canceled", "cancelled"]);
+
+export function isPortalWorkOrderVisible(
+  status: string | null | undefined,
+): boolean {
+  return !CUSTOMER_HIDDEN_STATES.has(normalize(status));
+}
+
 export function toPortalWorkOrderStatus(
   input: PortalWorkOrderStatusInput,
 ): PortalWorkOrderStatus {

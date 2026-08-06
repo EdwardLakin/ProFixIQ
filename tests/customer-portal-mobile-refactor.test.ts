@@ -1,6 +1,9 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { toPortalWorkOrderStatus } from "@/features/portal/lib/workOrderPresentation";
+import {
+  isPortalWorkOrderVisible,
+  toPortalWorkOrderStatus,
+} from "@/features/portal/lib/workOrderPresentation";
 
 function read(path: string): string {
   return readFileSync(path, "utf8");
@@ -49,6 +52,13 @@ describe("customer portal mobile refactor", () => {
       complete: true,
       actionRequired: false,
     });
+  });
+
+  it("keeps cancelled service attempts out of customer status cards", () => {
+    expect(isPortalWorkOrderVisible("cancelled")).toBe(false);
+    expect(isPortalWorkOrderVisible("canceled")).toBe(false);
+    expect(isPortalWorkOrderVisible("paid")).toBe(true);
+    expect(isPortalWorkOrderVisible("in_progress")).toBe(true);
   });
 
   it("removes the internal shop board from every customer portal entry point", () => {
