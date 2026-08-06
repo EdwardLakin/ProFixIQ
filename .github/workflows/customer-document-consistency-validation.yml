@@ -35,6 +35,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: >-
           pnpm exec eslint
+          app/work-orders/history/WorkOrdersHistoryClient.tsx
           features/work-orders/components/ImportedHistoryRecordCard.tsx
           features/work-orders/lib/display/historyNarratives.ts
           features/work-orders/lib/display/historyNarratives.test.ts
