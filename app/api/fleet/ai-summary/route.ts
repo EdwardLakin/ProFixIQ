@@ -52,7 +52,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     if (!scope?.shopId) {
-      return NextResponse.json({ error: "Fleet access required" }, { status: 403 });
+      return NextResponse.json(
+        { error: "Fleet access required" },
+        { status: 403 },
+      );
     }
 
     const admin = createAdminSupabase();
@@ -61,13 +64,19 @@ export async function POST(request: Request) {
       .select("fleet_id,vehicle_id,active")
       .eq("shop_id", scope.shopId)
       .or("active.is.null,active.eq.true");
-    if (scope.fleetIds?.length) enrollmentQuery = enrollmentQuery.in("fleet_id", scope.fleetIds);
-    const { data: enrollmentData, error: enrollmentError } = await enrollmentQuery;
+    if (scope.fleetIds?.length)
+      enrollmentQuery = enrollmentQuery.in("fleet_id", scope.fleetIds);
+    const { data: enrollmentData, error: enrollmentError } =
+      await enrollmentQuery;
     if (enrollmentError) throw new Error(enrollmentError.message);
 
     const enrollments = rows(enrollmentData);
-    const fleetIds = Array.from(new Set(enrollments.map((row) => String(row.fleet_id))));
-    const vehicleIds = Array.from(new Set(enrollments.map((row) => String(row.vehicle_id))));
+    const fleetIds = Array.from(
+      new Set(enrollments.map((row) => String(row.fleet_id))),
+    );
+    const vehicleIds = Array.from(
+      new Set(enrollments.map((row) => String(row.vehicle_id))),
+    );
     const routePrefix =
       body.routePrefix === "/fleet" ? "/fleet" : "/portal/fleet";
 
@@ -80,7 +89,8 @@ export async function POST(request: Request) {
             id: "units",
             priority: "info",
             label: "Add your first fleet unit",
-            detail: "Units become the home for PM, requests, history, and invoices.",
+            detail:
+              "Units become the home for PM, requests, history, and invoices.",
             href: `${routePrefix}/units`,
           },
         ],
@@ -134,7 +144,9 @@ export async function POST(request: Request) {
     const { data: quoteData, error: quoteError } = workOrderIds.length
       ? await admin
           .from("work_order_quote_lines")
-          .select("id,work_order_id,status,sent_to_customer_at,approved_at,declined_at")
+          .select(
+            "id,work_order_id,status,sent_to_customer_at,approved_at,declined_at",
+          )
           .eq("shop_id", scope.shopId)
           .in("work_order_id", workOrderIds)
       : { data: [] as unknown[], error: null };
@@ -172,7 +184,8 @@ export async function POST(request: Request) {
     const points = [
       {
         id: "requests",
-        priority: safety > 0 ? "critical" : requests.length > 0 ? "attention" : "good",
+        priority:
+          safety > 0 ? "critical" : requests.length > 0 ? "attention" : "good",
         label:
           safety > 0
             ? `${safety} safety or compliance request${safety === 1 ? "" : "s"} need attention`
@@ -211,12 +224,14 @@ export async function POST(request: Request) {
           defects > 0
             ? `${defects} recent pre-trip${defects === 1 ? "" : "s"} reported defects`
             : `${vehicleIds.length} active unit${vehicleIds.length === 1 ? "" : "s"} in view`,
-        detail: "Open Units for live readings, history, pre-trips, and evidence.",
+        detail:
+          "Open Units for live readings, history, pre-trips, and evidence.",
         href: `${routePrefix}/units`,
       },
     ];
 
-    let headline = "Fleet activity is summarized below from live operational data.";
+    let headline =
+      "Fleet activity is summarized below from live operational data.";
     let aiGenerated = false;
     const feature = "fleet_operations_summary" as const;
     const endpoint = "/api/fleet/ai-summary";
@@ -282,7 +297,8 @@ export async function POST(request: Request) {
           errorCode: null,
         });
       } catch (error) {
-        const message = error instanceof Error ? error.message : "AI summary failed";
+        const message =
+          error instanceof Error ? error.message : "AI summary failed";
         recordAITelemetry({
           feature,
           endpoint,
@@ -312,17 +328,27 @@ export async function POST(request: Request) {
       }
     }
 
+    const visiblePoints =
+      actor.actorType === "fleet_driver"
+        ? points.filter((point) => ["requests", "units"].includes(point.id))
+        : points;
+
     return NextResponse.json({
       headline,
       aiGenerated,
-      points,
+      points: visiblePoints,
       snapshot,
       lastUpdated: new Date().toISOString(),
     });
   } catch (error) {
     console.error("[fleet/ai-summary] error", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to build fleet summary" },
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to build fleet summary",
+      },
       { status: 500 },
     );
   }

@@ -11,6 +11,7 @@ type Props = {
   issues: FleetIssue[];
   assignments: DispatchAssignment[];
   uiContext: FleetUiContext;
+  fleetId?: string | null;
   routePrefix?: "/fleet" | "/portal/fleet";
 };
 
@@ -19,6 +20,7 @@ export default function FleetIssueTables({
   issues,
   assignments,
   uiContext,
+  fleetId = null,
   routePrefix = "/fleet",
 }: Props) {
   const pathname = usePathname() ?? "";
@@ -34,6 +36,15 @@ export default function FleetIssueTables({
     productHostRoute
       ? `/assets/${encodeURIComponent(unitId)}`
       : `${routePrefix}/units/${encodeURIComponent(unitId)}`;
+  const pretripHref = (unitId: string) => {
+    const encodedUnitId = encodeURIComponent(unitId);
+    const base = productHostRoute
+      ? `/pre-trips/start/${encodedUnitId}`
+      : routePrefix === "/portal/fleet"
+        ? `/portal/fleet/pretrip/${encodedUnitId}`
+        : `/mobile/fleet/pretrip/${encodedUnitId}`;
+    return fleetId ? `${base}?fleetId=${encodeURIComponent(fleetId)}` : base;
+  };
 
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
@@ -166,7 +177,7 @@ export default function FleetIssueTables({
               <div className="flex flex-wrap gap-2 pt-1">
                 {uiContext.capabilities.canSubmitPretrip && (
                   <Link
-                    href={`/mobile/fleet/pretrip/${a.unitId}`}
+                    href={pretripHref(a.unitId)}
                     className="rounded-full bg-[color:var(--accent-copper)] px-3 py-1 text-[10px] font-semibold text-[color:var(--theme-text-on-accent)] shadow-[0_0_16px_rgba(193,102,59,0.7)] hover:opacity-95"
                   >
                     Send pre-trip link

@@ -144,6 +144,8 @@ describe("premier fleet workspaces", () => {
     expect(route).not.toContain('from "openai"');
     expect(route).not.toContain("OPENAI_FLEET_SUMMARY_MODEL");
     expect(policy).toContain("fleet_operations_summary");
+    expect(route).toContain('actor.actorType === "fleet_driver"');
+    expect(route).toContain('["requests", "units"].includes(point.id)');
     expect(summary).toContain("live records one click away");
     expect(summary).toContain("point.href");
   });
@@ -207,6 +209,8 @@ describe("premier fleet workspaces", () => {
 
     expect(issues).toContain("requestHref = productHostRoute");
     expect(issues).toContain('"/requests/new"');
+    expect(issues).toContain("`/pre-trips/start/${encodedUnitId}`");
+    expect(issues).toContain("href={pretripHref(a.unitId)}");
     expect(detail).toContain('"/pre-trips/start"');
     expect(detail).toContain('"/requests/new"');
     expect(economics).toContain("`/assets/${encodeURIComponent(unit.unitId)}`");
