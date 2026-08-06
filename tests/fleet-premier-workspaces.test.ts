@@ -89,6 +89,9 @@ describe("premier fleet workspaces", () => {
     expect(workspace).toContain("Review approval");
     expect(workspace).toContain("Submitted {dateLabel(item.createdAt)}");
     expect(workspace).toContain("dateLabel(item.requestedForDate)");
+    expect(workspace).toContain(
+      "const dateOnly = /^(\\d{4})-(\\d{2})-(\\d{2})$/",
+    );
     expect(builder).toContain(
       "onInput={(event) => setRequestedForDate(event.currentTarget.value)}",
     );
