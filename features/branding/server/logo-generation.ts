@@ -2,6 +2,7 @@ import OpenAI from "openai";
 
 export type LogoPreset =
   | "industrial-dark"
+  | "forged-redline"
   | "clean-oem"
   | "performance"
   | "fleet-utility"
@@ -17,6 +18,8 @@ type BuildLogoPromptInput = {
 const PRESET_GUIDANCE: Record<LogoPreset, string> = {
   "industrial-dark":
     "Industrial premium aesthetic. Dark metallic feel, sharp geometry, strong contrast, rugged but refined.",
+  "forged-redline":
+    "Original precision-shop aesthetic with signal red, carbon black, and satin chrome. Use bold engineered geometry, subtle metalwork cues, and strong contrast. Do not reference or imitate any existing tool manufacturer, trademark, logo, or trade dress.",
   "clean-oem":
     "Clean OEM service aesthetic. Minimal, trustworthy, modern, dealership-grade, balanced spacing.",
   performance:

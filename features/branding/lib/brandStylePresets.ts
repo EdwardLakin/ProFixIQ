@@ -1,6 +1,7 @@
 export type BrandStylePreset =
   | "profixiq-blue"
   | "industrial-dark"
+  | "forged-redline"
   | "clean-oem"
   | "performance"
   | "fleet-utility"
@@ -59,6 +60,12 @@ export const BRAND_STYLE_PRESETS: ReadonlyArray<{
     value: "industrial-dark",
     label: "Industrial Dark",
     description: "Graphite surfaces with warm copper service accents.",
+  },
+  {
+    value: "forged-redline",
+    label: "Forged Redline",
+    description:
+      "Signal red, carbon black, and satin chrome with a precision-shop feel.",
   },
   {
     value: "clean-oem",
@@ -150,6 +157,16 @@ const PRESETS: Record<BrandStylePreset, BrandStylePresetValues> = {
     buttonSecondaryBg: "#1E293B", buttonSecondaryText: "#F8FAFC", inputBackground: "#0F172A", inputBorder: "#475569",
     inputText: "#F8FAFC", dashboardBackgroundMode: "solid", dashboardBackgroundBase: "#0B1120", dashboardAmbientTint: "#C97A3D",
     dashboardGradientStart: "#1E293B", dashboardGradientEnd: "#0B1120", dashboardGradientAccent: "#7C2D12",
+  },
+  "forged-redline": {
+    primaryColor: "#E21B23", secondaryColor: "#0A0A0B", accentColor: "#C9CDD1", stylePreset: "forged-redline",
+    appBackground: "#070708", appBackgroundSecondary: "#111214", sidebarBackground: "#09090A", sidebarText: "#D7DADD",
+    sidebarActiveBackground: "#E21B23", sidebarActiveText: "#FFFFFF", headerBackground: "#0B0B0C", headerText: "#F7F7F5",
+    cardBackground: "#151719", cardBorder: "#6D747C", surface2Background: "#202327", textPrimary: "#F5F6F7",
+    textSecondary: "#C5C9CD", textMuted: "#8A9096", buttonPrimaryBg: "#E21B23", buttonPrimaryText: "#FFFFFF",
+    buttonSecondaryBg: "#2C3034", buttonSecondaryText: "#F4F5F6", inputBackground: "#0D0F11", inputBorder: "#59616A",
+    inputText: "#F7F7F5", dashboardBackgroundMode: "gradient", dashboardBackgroundBase: "#08090A", dashboardAmbientTint: "#E21B23",
+    dashboardGradientStart: "#3B0B0F", dashboardGradientEnd: "#08090A", dashboardGradientAccent: "#C9CDD1",
   },
   "clean-oem": {
     primaryColor: "#1F4E79", secondaryColor: "#E8EEF5", accentColor: "#3B82B6", stylePreset: "clean-oem",
