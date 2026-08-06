@@ -109,6 +109,38 @@ after the production execution and must run once.
 | `20260806022431`   | `20260806044348`                   | Normalized SQL hash match                                                                                                                                                                |
 | `20260806063000`   | `20260806064153`                   | Normalized SQL hash match                                                                                                                                                                |
 
+## Residual production-only public-schema inventory
+
+The post-replay type comparison is intentionally not reported as identical.
+The committed file had 296 tables, 18 views, and 197 function entries; the
+clean replay has 296 tables, 18 views, and 196 function entries; production
+has 349 tables, 33 views, and 235 function entries. The committed type file is
+regenerated from clean replay in this PR.
+
+Clean replay's only table absent from production is
+`profixiq_schema_baselines`, the repository's baseline-replay bookkeeping
+table. The two clean-only function entries,
+`can_update_part_request_items` and `receive_part_request_item`, are typegen
+overload-shape differences; direct production catalog checks prove both
+required overloads exist.
+
+The following production-only objects predate or sit outside the 23 mapped
+timestamp aliases. This PR does not pretend they are reconciled, drop them, or
+mark their SQL applied. They require a separate object-ownership audit before
+being promoted into ordered migrations or intentionally retired.
+
+**Production-only tables (54)**
+
+`admin_users`, `agent_job_events`, `agent_knowledge`, `agent_messages`, `ai_generation_runs`, `ai_training_events`, `assistant_notifications`, `content_analytics_events`, `content_calendar_items`, `content_calendars`, `cvip_specs`, `cvip_thresholds`, `cvip_thresholds_master`, `fleet_form_uploads`, `inspection_session_payloads`, `integration_logs`, `lead_events`, `learning_feedback`, `onboarding_activation_events`, `onboarding_activation_plans`, `onboarding_entities`, `onboarding_entity_links`, `onboarding_files`, `onboarding_raw_rows`, `onboarding_review_items`, `onboarding_sessions`, `part_fitment_events`, `parts_backup_20260708`, `parts_quote_requests`, `payroll_deductions`, `payroll_export_log`, `payroll_providers`, `property_approval_thresholds`, `property_request_read_receipts`, `reel_plans`, `reel_render_jobs`, `saved_menu_items`, `shop_content_signals`, `shop_marketing_memory`, `shop_onboarding_idempotency`, `shop_reel_settings`, `shop_tax_overrides`, `shopreel_manual_asset_files`, `supplier_orders`, `supplier_price_history`, `tax_calculation_log`, `tax_jurisdictions`, `tax_providers`, `tax_rates`, `vehicle_signatures`, `video_metrics`, `video_platform_posts`, `video_publications`, `viral_hook_tests`
+
+**Production-only views (15)**
+
+`ai_training_events_v`, `fitment_stats`, `stock_balances`, `v_fleet_inspection_buckets`, `v_fleet_inspections_due_14`, `v_fleet_inspections_due_30`, `v_fleet_inspections_due_7`, `v_global_saved_menu_items`, `v_my_conversation_ids`, `v_my_messages`, `v_parts_reconciliation`, `v_top_content_types_by_shop`, `v_vehicle_service_history`, `v_video_performance_summary`, `v_work_order_line_labor_rollups`
+
+**Production-only function entries (41)**
+
+`agent_claim_next_job`, `agent_claim_next_message`, `agent_create_action`, `agent_job_heartbeat`, `agent_mark_job_canceled`, `agent_mark_job_failed`, `agent_mark_message_failed`, `agent_mark_message_succeeded`, `assign_unassigned_lines`, `bootstrap_owner_atomic`, `can_view_work_order`, `chat_post_message`, `compute_labor_cost_for_work_order`, `compute_parts_cost_for_work_order`, `create_fleet_form_upload`, `create_part_request`, `ensure_same_shop_policies`, `find_menu_item_for_vehicle_service`, `generate_next_work_order_custom_id`, `generate_work_order_custom_id`, `get_default_stock_location`, `get_live_invoice_id`, `invoice_is_locked`, `maybe_release_line_hold_for_parts`, `parts_get_operation_result`, `parts_record_operation`, `parts_release_allocation`, `portal_approve_part_request_item`, `portal_decline_part_request_item`, `recalc_shop_active_user_count`, `recompute_live_invoice_costs`, `recompute_work_order_status`, `record_video_metric`, `resolve_fleet_id_from_vehicle`, `sync_invoice_from_work_order`, `sync_invoice_from_work_order_admin`, `transition_booking_status_by_staff`, `update_part_quote`, `upsert_part_allocation_from_request_item`, `work_order_in_my_shop`, `work_orders_set_intake`
+
 ## Production execution gate
 
 Do not run these commands until the PR's clean replay, runtime SQL, generated

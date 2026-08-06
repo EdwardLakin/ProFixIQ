@@ -123,7 +123,10 @@ export async function POST(request: Request) {
       "respond_fleet_defect_clarification",
       {
         p_clarification_id: clarification.id,
-        p_response_text: responseText || null,
+        // PostgreSQL function arguments accept SQL NULL, but generated
+        // function types cannot express argument nullability. An empty answer
+        // is already rejected above when the response type requires text.
+        p_response_text: responseText,
         p_evidence: metadata,
       },
     );
