@@ -101,6 +101,16 @@ describe("fleet pre-trip, defects, and compliance", () => {
     expect(migration).toContain(
       "revoke execute on function public.evaluate_fleet_pretrip_compliance",
     );
+    const assignmentBoundary = read(
+      "supabase/migrations/20260806063000_fleet_pretrip_assignment_start_boundary.sql",
+    );
+    expect(assignmentBoundary).toContain(
+      "> v_assignment.pretrip_due_local_time then 1",
+    );
+    expect(assignmentBoundary).toContain("when v_status is null then state");
+    expect(assignmentBoundary).toContain(
+      "delete from public.fleet_pretrip_compliance",
+    );
   });
 
   it("schedules missed-pretrip evaluation in Supabase and keeps the retired sign-in URL safe", () => {
