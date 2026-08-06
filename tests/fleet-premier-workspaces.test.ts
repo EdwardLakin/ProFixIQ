@@ -222,11 +222,18 @@ describe("premier fleet workspaces", () => {
 
   it("keeps driver pre-trip history visible without widening its Fleet scope", () => {
     const pretripApi = source("app/api/fleet/pretrip/route.ts");
+    const pretripPage = source(
+      "features/fleet/components/PretripReportsPage.tsx",
+    );
 
     expect(pretripApi).toContain("import { supabaseAdmin }");
     expect(pretripApi).toContain('actor.actorType === "fleet_driver"');
     expect(pretripApi).toContain('.eq("driver_profile_id", actor.userId)');
     expect(pretripApi).toContain('query.in("fleet_id", scope.fleetIds)');
+    expect(pretripPage).toContain("/^(\\d{4})-(\\d{2})-(\\d{2})$/");
+    expect(pretripPage).toContain(
+      "dateLabel(r.inspection_date ?? r.created_at)",
+    );
   });
 
   it("sends Fleet invitations with a subject and Fleet-specific content", () => {
