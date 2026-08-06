@@ -3,14 +3,6 @@ begin;
 set local lock_timeout = '5s';
 set local statement_timeout = '5min';
 
--- Production config exposes the legacy onboarding_agent namespace. Its
--- production-owned objects are outside this public-schema reconciliation, but
--- the namespace must exist on clean databases or PostgREST cannot build its
--- schema cache. Keep the empty compatibility namespace service-role only.
-create schema if not exists onboarding_agent;
-revoke all on schema onboarding_agent from public, anon, authenticated;
-grant usage on schema onboarding_agent to service_role;
-
 -- The production copy of harden_invoice_ai_contracts predates the guarded
 -- clean-replay version now in the repository. Its only additional schema
 -- effect is the immutable invoice-version entity used by QuickBooks exports.

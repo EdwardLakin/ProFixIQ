@@ -12,7 +12,8 @@ verified in PostgreSQL.
 | `20260806181455_reconcile_production_billing_protections.sql` | Promotes the four production-only billing entitlement hotfixes into repository history, including the final generated-`max_users` guard fix. |
 | `20260806181502_restore_fleet_owned_unit_enrollment.sql`      | Re-applies Fleet-owned unit enrollment through a new forward migration because production missed `20260806021000`.                           |
 | `20260806181508_retire_legacy_bootstrap_schema_aliases.sql`   | Preserves and retires the 17 clean-replay-only bootstrap aliases, then verifies the two overloaded Parts functions directly in PostgreSQL.   |
-| `20260806181742_reconcile_migration_alias_effects.sql`        | Adds the missing invoice effect, restores the service-only onboarding namespace, normalizes bridge RLS, and validates any configured bridge. |
+| `20260806181742_reconcile_migration_alias_effects.sql`        | Adds the missing invoice effect, normalizes bridge RLS, and validates any configured agent-bridge row.                                       |
+| `20260806191234_restore_onboarding_agent_namespace.sql`       | Restores the service-only namespace required by production's exposed-schema configuration and reloads the PostgREST cache.                   |
 
 ## Seventeen-column classification
 
@@ -157,7 +158,7 @@ type diff, typecheck, lint, tests, and build have passed on one commit.
 6. Run `supabase migration list --linked` and save the result. Leave
    `20260804031005` and `20260806021000` unapplied so their SQL executes.
 7. Run `supabase db push --linked --include-all --dry-run`. The only pending
-   versions must be `20260804031005`, `20260806021000`, and the four repair
+   versions must be `20260804031005`, `20260806021000`, and the five repair
    migrations listed above.
 8. Run `supabase db push --linked --include-all` once.
 9. Re-run migration-list comparison, generated linked types, runtime

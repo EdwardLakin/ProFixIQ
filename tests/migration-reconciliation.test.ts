@@ -15,6 +15,9 @@ const aliases = read(
 const effects = read(
   "supabase/migrations/20260806181742_reconcile_migration_alias_effects.sql",
 );
+const namespace = read(
+  "supabase/migrations/20260806191234_restore_onboarding_agent_namespace.sql",
+);
 
 describe("Supabase migration reconciliation", () => {
   it("promotes the final production billing protections", () => {
@@ -77,10 +80,11 @@ describe("Supabase migration reconciliation", () => {
   });
 
   it("fills the one non-identical timestamp-alias schema effect", () => {
-    expect(effects).toContain("create schema if not exists onboarding_agent");
-    expect(effects).toContain(
+    expect(namespace).toContain("create schema if not exists onboarding_agent");
+    expect(namespace).toContain(
       "grant usage on schema onboarding_agent to service_role",
     );
+    expect(namespace).toContain("notify pgrst, 'reload schema'");
     expect(effects).toContain("quickbooks_sync_events_entity_type_check");
     expect(effects).toContain("'invoice_version'");
     expect(effects).toContain("to authenticated");
