@@ -21,7 +21,7 @@ type Body = {
   email?: string | null;
   password: string;
   full_name?: string | null;
-  role?: Database["public"]["Enums"]["user_role_enum"] | null;
+  role?: string | null;
   // client can send it but we will ignore unless allowed
   shop_id?: string | null;
   phone?: string | null;
