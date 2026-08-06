@@ -10,17 +10,6 @@ const UUID =
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MEMBER_ROLES = new Set(["manager", "approver", "viewer"]);
 
-type FleetWorkspaceRpc = {
-  rpc: (
-    functionName: "manage_fleet_workspace",
-    args: Record<string, unknown>,
-  ) => Promise<{ error: { message: string } | null }>;
-};
-
-function fleetWorkspaceRpcClient(): FleetWorkspaceRpc {
-  return createServerSupabaseRSC() as unknown as FleetWorkspaceRpc;
-}
-
 function field(formData: FormData, key: string, maxLength: number): string {
   return String(formData.get(key) ?? "")
     .trim()
@@ -74,7 +63,7 @@ export async function updateFleetWorkspace(formData: FormData): Promise<void> {
     redirect(settingsHref(fleetId, { error: "Enter a valid contact email" }));
   }
 
-  const supabase = fleetWorkspaceRpcClient();
+  const supabase = createServerSupabaseRSC();
   const { error } = await supabase.rpc("manage_fleet_workspace", {
     p_action: "update_workspace",
     p_fleet_id: fleetId,
@@ -101,7 +90,7 @@ export async function updateFleetMemberRole(formData: FormData): Promise<void> {
     redirect("/settings?error=Valid+Fleet+member+and+role+required");
   }
 
-  const supabase = fleetWorkspaceRpcClient();
+  const supabase = createServerSupabaseRSC();
   const { error } = await supabase.rpc("manage_fleet_workspace", {
     p_action: "update_member_role",
     p_fleet_id: fleetId,
@@ -124,7 +113,7 @@ export async function removeFleetMember(formData: FormData): Promise<void> {
     redirect("/settings?error=Valid+Fleet+member+required");
   }
 
-  const supabase = fleetWorkspaceRpcClient();
+  const supabase = createServerSupabaseRSC();
   const { error } = await supabase.rpc("manage_fleet_workspace", {
     p_action: "remove_member",
     p_fleet_id: fleetId,

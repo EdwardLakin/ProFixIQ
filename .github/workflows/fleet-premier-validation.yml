@@ -47,7 +47,7 @@ jobs:
           app/fleet/maintenance/page.tsx
           app/fleet/service-requests/page.tsx
           "app/fleet/units/[unitId]/page.tsx"
-          app/portal/fleet/FleetShell.tsx
+          app/portal/fleet/layout.tsx
           app/portal/fleet/maintenance/page.tsx
           app/portal/fleet/service-requests/page.tsx
           app/portal/fleet/units/page.tsx

@@ -6881,6 +6881,51 @@ export type Database = {
           },
         ]
       }
+      integrations: {
+        Row: {
+          config: Json
+          created_at: string
+          id: string
+          provider: string
+          shop_id: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          config?: Json
+          created_at?: string
+          id?: string
+          provider: string
+          shop_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          config?: Json
+          created_at?: string
+          id?: string
+          provider?: string
+          shop_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "integrations_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "integrations_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       intelligence_story_signals: {
         Row: {
           created_at: string
@@ -25028,6 +25073,20 @@ export type Database = {
           p_vehicle_id?: string
           p_vin?: string
           p_year?: number
+        }
+        Returns: Json
+      }
+      manage_fleet_workspace: {
+        Args: {
+          p_action: string
+          p_contact_email?: string
+          p_contact_name?: string
+          p_contact_phone?: string
+          p_fleet_id: string
+          p_member_user_id?: string
+          p_name?: string
+          p_notes?: string
+          p_role?: string
         }
         Returns: Json
       }
