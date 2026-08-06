@@ -69,6 +69,9 @@ describe("customer document consistency", () => {
     expect(portalInvoice).toContain("identity.invoiceNumber");
     expect(portalInvoice).toContain("Complaint:");
     expect(portalInvoiceList).toContain("invoiceLabels");
+    expect(billing).toContain("resolved_shop_supplies_total");
+    expect(billing).toContain("Shop supplies");
+    expect(billing).toContain("resolved_tax_total");
   });
 
   it("treats paid work as immutable history across billing and the cockpit", () => {
