@@ -206,6 +206,56 @@ execute function private.assign_invoice_customer_number();
 -- Backfill live records deterministically. Existing legitimate custom/imported
 -- identifiers remain unchanged; only missing numbers and the old WO-<uuid>
 -- invoice fallback are replaced.
+create temporary table customer_document_number_corrections (
+  shop_id uuid not null,
+  work_order_id uuid primary key,
+  correction_session_id uuid not null
+) on commit drop;
+
+do $open_locked_work_order_corrections$
+declare
+  v_work_order record;
+  v_session_id uuid;
+begin
+  for v_work_order in
+    select wo.id, wo.shop_id
+    from public.work_orders wo
+    where wo.shop_id is not null
+      and (
+        nullif(pg_catalog.btrim(wo.custom_id), '') is null
+        or wo.custom_id ~ '^WO-[0-9A-Fa-f]{12}$'
+      )
+      and public.work_order_is_financially_locked(wo.shop_id, wo.id)
+    order by wo.created_at nulls last, wo.id
+  loop
+    select opened_session.id
+    into v_session_id
+    from public.open_work_order_correction_session(
+      v_work_order.shop_id,
+      v_work_order.id,
+      null,
+      'Backfill customer-facing work-order number',
+      'data_repair',
+      'migration:canonical_customer_document_numbers:' || v_work_order.id,
+      pg_catalog.jsonb_build_object(
+        'migration', 'canonical_customer_document_numbers',
+        'change', 'work_order_number_backfill'
+      )
+    ) as opened_session;
+
+    insert into customer_document_number_corrections (
+      shop_id,
+      work_order_id,
+      correction_session_id
+    ) values (
+      v_work_order.shop_id,
+      v_work_order.id,
+      v_session_id
+    );
+  end loop;
+end;
+$open_locked_work_order_corrections$;
+
 do $backfill_work_orders$
 declare
   v_id uuid;
@@ -226,6 +276,29 @@ begin
   end loop;
 end;
 $backfill_work_orders$;
+
+do $close_locked_work_order_corrections$
+declare
+  v_correction record;
+begin
+  for v_correction in
+    select shop_id, work_order_id, correction_session_id
+    from customer_document_number_corrections
+    order by work_order_id
+  loop
+    perform public.close_work_order_correction_session(
+      v_correction.shop_id,
+      v_correction.correction_session_id,
+      v_correction.work_order_id,
+      null,
+      pg_catalog.jsonb_build_object(
+        'migration', 'canonical_customer_document_numbers',
+        'result', 'work_order_number_backfilled'
+      )
+    );
+  end loop;
+end;
+$close_locked_work_order_corrections$;
 
 do $backfill_invoices$
 declare
