@@ -63,39 +63,62 @@ describe("fleet pre-trip, defects, and compliance", () => {
   it("keeps drivers out of manager conversion and puts pre-trip one click from portal home", () => {
     const form = read("features/fleet/components/PretripForm.tsx");
     const tower = read("features/fleet/components/FleetControlTower.tsx");
+    const page = read("app/portal/fleet/pretrip/[unitId]/page.tsx");
     expect(form).not.toContain("convert-to-service-request");
     expect(form).toContain("Fleet managers—not drivers");
     expect(tower).toContain("Start today’s pre-trip");
     expect(tower).toContain("/portal/fleet/pretrip/");
+    expect(page).toContain("const admin = createAdminSupabase()");
+    expect(page).toContain('.eq("fleet_id", fleetId)');
+    expect(page).toContain('.eq("driver_profile_id", actor.userId)');
+    expect(page).toContain('.eq("active", true)');
   });
 
   it("uses one durable defect ledger and manager lifecycle RPC", () => {
     const migration = read(
       "supabase/migrations/20260803023000_fleet_pretrip_defect_compliance.sql",
     );
-    expect(migration).toContain("create table if not exists public.fleet_unit_defects");
-    expect(migration).toContain("create table if not exists public.fleet_pretrip_compliance");
-    expect(migration).toContain("create or replace function public.manage_fleet_unit_defects");
-    expect(migration).toContain("create or replace function public.evaluate_fleet_pretrip_compliance");
+    expect(migration).toContain(
+      "create table if not exists public.fleet_unit_defects",
+    );
+    expect(migration).toContain(
+      "create table if not exists public.fleet_pretrip_compliance",
+    );
+    expect(migration).toContain(
+      "create or replace function public.manage_fleet_unit_defects",
+    );
+    expect(migration).toContain(
+      "create or replace function public.evaluate_fleet_pretrip_compliance",
+    );
     expect(migration).toContain("perform public.evaluate_fleet_pm_due_events");
-    expect(migration).toContain("grant select on table public.fleet_unit_defects to authenticated");
-    expect(migration).toContain("revoke execute on function public.evaluate_fleet_pretrip_compliance");
+    expect(migration).toContain(
+      "grant select on table public.fleet_unit_defects to authenticated",
+    );
+    expect(migration).toContain(
+      "revoke execute on function public.evaluate_fleet_pretrip_compliance",
+    );
   });
 
   it("schedules missed-pretrip evaluation in Supabase and keeps the retired sign-in URL safe", () => {
     const config = JSON.parse(read("vercel.json")) as {
       crons: Array<{ path: string; schedule: string }>;
     };
-    expect(config.crons).not.toContainEqual(expect.objectContaining({
-      path: "/api/internal/fleet/pretrip-compliance",
-    }));
+    expect(config.crons).not.toContainEqual(
+      expect.objectContaining({
+        path: "/api/internal/fleet/pretrip-compliance",
+      }),
+    );
     const scheduler = read(
       "supabase/migrations/20260803041000_schedule_fleet_pretrip_compliance.sql",
     );
     expect(scheduler).toContain("create extension if not exists pg_cron");
     expect(scheduler).toContain("'fleet-pretrip-compliance-hourly'");
-    expect(scheduler).toContain("public.evaluate_fleet_pretrip_compliance(clock_timestamp())");
-    const cronRoute = read("app/api/internal/fleet/pretrip-compliance/route.ts");
+    expect(scheduler).toContain(
+      "public.evaluate_fleet_pretrip_compliance(clock_timestamp())",
+    );
+    const cronRoute = read(
+      "app/api/internal/fleet/pretrip-compliance/route.ts",
+    );
     expect(cronRoute).toContain("process.env.CRON_SECRET");
     expect(cronRoute).toContain("`Bearer ${cronSecret}`");
     expect(cronRoute).toContain('envSecretName: "INTERNAL_CRON_SECRET"');
@@ -105,9 +128,7 @@ describe("fleet pre-trip, defects, and compliance", () => {
   });
 
   it("keeps unit enrollment and assignment behind the atomic server RPC", () => {
-    const page = read(
-      "features/fleet/components/FleetUnitEnrollmentPage.tsx",
-    );
+    const page = read("features/fleet/components/FleetUnitEnrollmentPage.tsx");
     const route = read("app/api/fleet/enrollment/route.ts");
     expect(page).not.toContain(".from(");
     expect(page).toContain("Enroll units & assign drivers");
