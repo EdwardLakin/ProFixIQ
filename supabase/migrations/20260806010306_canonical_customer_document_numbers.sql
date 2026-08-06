@@ -30,7 +30,7 @@ select
   wo.shop_id,
   'work_order',
   pg_catalog.max(
-    pg_catalog.substring(wo.custom_id from '([0-9]+)$')::bigint
+    pg_catalog.substring(wo.custom_id, '([0-9]+)$')::bigint
   )
 from public.work_orders wo
 where wo.shop_id is not null
@@ -55,7 +55,7 @@ select
   i.shop_id,
   'invoice',
   pg_catalog.max(
-    pg_catalog.substring(i.invoice_number from '^INV-([0-9]+)$')::bigint
+    pg_catalog.substring(i.invoice_number, '^INV-([0-9]+)$')::bigint
   )
 from public.invoices i
 where i.shop_id is not null
