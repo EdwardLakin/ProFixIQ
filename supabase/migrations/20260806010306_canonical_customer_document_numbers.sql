@@ -288,8 +288,8 @@ begin
   loop
     perform public.close_work_order_correction_session(
       v_correction.shop_id,
-      v_correction.correction_session_id,
       v_correction.work_order_id,
+      v_correction.correction_session_id,
       null,
       pg_catalog.jsonb_build_object(
         'migration', 'canonical_customer_document_numbers',
