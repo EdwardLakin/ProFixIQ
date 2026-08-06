@@ -3,10 +3,10 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 import Link from "next/link";
-import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
-
 import type { Database } from "@shared/types/types/supabase";
-import { requirePortalCustomerActor, } from "@/features/portal/server/requirePortalActor";
+import { toCustomerFacingHistoryNotes } from "@/features/portal/lib/historyPresentation";
+import { requirePortalCustomerActor } from "@/features/portal/server/requirePortalActor";
+import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
 
 type DB = Database;
 
@@ -15,7 +15,23 @@ type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
 
 type HistoryLite = Pick<
   HistoryRow,
-  "id" | "customer_id" | "vehicle_id" | "service_date" | "description" | "notes" | "created_at"
+  | "id"
+  | "customer_id"
+  | "vehicle_id"
+  | "service_date"
+  | "description"
+  | "notes"
+  | "created_at"
+  | "work_order_number"
+  | "invoice_number"
+  | "symptom"
+  | "cause"
+  | "correction"
+  | "labor_sale"
+  | "parts_sale"
+  | "shop_supplies"
+  | "total"
+  | "payment_state"
 >;
 
 type VehicleLite = Pick<
@@ -40,6 +56,14 @@ function fmtDate(iso: string | null | undefined): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
   return d.toLocaleString();
+}
+
+function fmtCurrency(value: number | null | undefined): string | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  return value.toLocaleString(undefined, {
+    style: "currency",
+    currency: "USD",
+  });
 }
 
 function historyLabel(row: HistoryLite): string {
@@ -73,7 +97,9 @@ export default async function HistoryPage() {
 
     const { data: historyRows, error: historyErr } = await supabase
       .from("history")
-      .select("id, customer_id, vehicle_id, service_date, description, notes, created_at")
+      .select(
+        "id, customer_id, vehicle_id, service_date, description, notes, created_at, work_order_number, invoice_number, symptom, cause, correction, labor_sale, parts_sale, shop_supplies, total, payment_state",
+      )
       .eq("customer_id", customer.id)
       .order("service_date", { ascending: false })
       .limit(100)
@@ -140,6 +166,19 @@ export default async function HistoryPage() {
                   typeof item.vehicle_id === "string"
                     ? vehiclesById.get(item.vehicle_id)
                     : undefined;
+                const visibleNotes = toCustomerFacingHistoryNotes(item.notes);
+                const narratives: Array<[string, string | null]> = [
+                  ["Complaint", item.symptom],
+                  ["Cause", item.cause],
+                  ["Correction", item.correction],
+                ];
+                const visibleNarratives = narratives.filter(([, value]) =>
+                  Boolean(value?.trim()),
+                );
+                const total = fmtCurrency(item.total);
+                const labor = fmtCurrency(item.labor_sale);
+                const parts = fmtCurrency(item.parts_sale);
+                const supplies = fmtCurrency(item.shop_supplies);
 
                 return (
                   <div
@@ -160,6 +199,17 @@ export default async function HistoryPage() {
                             {fmtDate(item.service_date ?? item.created_at)}
                           </span>
                         </div>
+                        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-[color:var(--theme-text-secondary)]">
+                          {item.work_order_number ? (
+                            <span>Work order {item.work_order_number}</span>
+                          ) : null}
+                          {item.invoice_number ? (
+                            <span>Invoice {item.invoice_number}</span>
+                          ) : null}
+                          {item.payment_state ? (
+                            <span className="capitalize">{item.payment_state}</span>
+                          ) : null}
+                        </div>
                       </div>
 
                       <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-200">
@@ -167,9 +217,35 @@ export default async function HistoryPage() {
                       </div>
                     </div>
 
-                    {item.notes ? (
+                    {visibleNarratives.length > 0 ? (
+                      <dl className="mt-3 grid gap-2 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-[11px] sm:grid-cols-3">
+                        {visibleNarratives.map(([label, value]) => (
+                          <div key={label}>
+                            <dt className="font-semibold text-[color:var(--theme-text-primary)]">
+                              {label}
+                            </dt>
+                            <dd className="mt-0.5 leading-relaxed text-[color:var(--theme-text-secondary)]">
+                              {value}
+                            </dd>
+                          </div>
+                        ))}
+                      </dl>
+                    ) : null}
+
+                    {total ? (
+                      <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-[color:var(--theme-text-secondary)]">
+                        <span className="font-semibold text-[color:var(--theme-text-primary)]">
+                          Total {total}
+                        </span>
+                        {labor ? <span>Labor {labor}</span> : null}
+                        {parts ? <span>Parts {parts}</span> : null}
+                        {supplies ? <span>Supplies {supplies}</span> : null}
+                      </div>
+                    ) : null}
+
+                    {visibleNotes ? (
                       <pre className="mt-3 whitespace-pre-wrap rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-[11px] leading-relaxed text-[color:var(--theme-text-secondary)]">
-                        {item.notes}
+                        {visibleNotes}
                       </pre>
                     ) : null}
                   </div>

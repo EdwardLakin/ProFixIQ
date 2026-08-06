@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 const read = (path: string) => readFileSync(path, "utf8");
 
 const migration = read(
-  "supabase/migrations/20260806010306_canonical_customer_document_numbers.sql",
+  "supabase/migrations/20260806034508_canonical_customer_document_numbers.sql",
 );
 const invoicePreview = read(
   "features/work-orders/components/InvoicePreviewPageClient.tsx",

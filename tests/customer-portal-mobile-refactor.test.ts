@@ -1,6 +1,10 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { toPortalWorkOrderStatus } from "@/features/portal/lib/workOrderPresentation";
+import {
+  isPortalWorkOrderVisible,
+  toPortalWorkOrderStatus,
+} from "@/features/portal/lib/workOrderPresentation";
+import { toCustomerFacingHistoryNotes } from "@/features/portal/lib/historyPresentation";
 
 function read(path: string): string {
   return readFileSync(path, "utf8");
@@ -49,6 +53,33 @@ describe("customer portal mobile refactor", () => {
       complete: true,
       actionRequired: false,
     });
+  });
+
+  it("keeps cancelled service attempts out of customer status cards", () => {
+    expect(isPortalWorkOrderVisible("cancelled")).toBe(false);
+    expect(isPortalWorkOrderVisible("canceled")).toBe(false);
+    expect(isPortalWorkOrderVisible("paid")).toBe(true);
+    expect(isPortalWorkOrderVisible("in_progress")).toBe(true);
+  });
+
+  it("removes internal identifiers from customer history notes", () => {
+    expect(
+      toCustomerFacingHistoryNotes(
+        "Work order: 0ce48e1c-2058-4055-bb2c-36387513a5d3\nPayment: paid",
+      ),
+    ).toBeNull();
+    expect(
+      toCustomerFacingHistoryNotes(
+        "Customer requested a tire check.\nPayment: paid",
+      ),
+    ).toBe("Customer requested a tire check.");
+
+    const history = read("app/portal/history/page.tsx");
+    expect(history).toContain("work_order_number");
+    expect(history).toContain("invoice_number");
+    expect(history).toContain('["Complaint", item.symptom]');
+    expect(history).toContain('["Cause", item.cause]');
+    expect(history).toContain('["Correction", item.correction]');
   });
 
   it("removes the internal shop board from every customer portal entry point", () => {
