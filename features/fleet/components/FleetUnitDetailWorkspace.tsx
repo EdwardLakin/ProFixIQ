@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import {
   Activity,
   AlertTriangle,
@@ -58,6 +59,14 @@ export default function FleetUnitDetailWorkspace({
   uiContext: FleetUiContext;
   routePrefix: RoutePrefix;
 }) {
+  const pathname = usePathname() ?? "";
+  const productRoutes =
+    routePrefix === "/portal/fleet" && !pathname.startsWith("/portal/fleet");
+  const unitsHref = productRoutes ? "/assets" : `${routePrefix}/units`;
+  const maintenanceHref = productRoutes
+    ? "/maintenance"
+    : `${routePrefix}/maintenance`;
+  const billingHref = productRoutes ? "/history" : `${routePrefix}/billing`;
   const [data, setData] = useState<FleetUnitWorkspacePayload | null>(null);
   const [tab, setTab] = useState<Tab>("overview");
   const [loading, setLoading] = useState(true);
@@ -83,7 +92,9 @@ export default function FleetUnitDetailWorkspace({
       } catch (loadError) {
         if (!cancelled) {
           setError(
-            loadError instanceof Error ? loadError.message : "Unable to load unit",
+            loadError instanceof Error
+              ? loadError.message
+              : "Unable to load unit",
           );
         }
       } finally {
@@ -154,9 +165,10 @@ export default function FleetUnitDetailWorkspace({
                   ? "Limited use"
                   : "In service"}
             </span>
-            {routePrefix === "/portal/fleet" && uiContext.capabilities.canSubmitPretrip ? (
+            {routePrefix === "/portal/fleet" &&
+            uiContext.capabilities.canSubmitPretrip ? (
               <Link
-                href={`/portal/fleet/pretrip/${encodeURIComponent(unitId)}${fleetId ? `?fleetId=${encodeURIComponent(fleetId)}` : ""}`}
+                href={`${productRoutes ? "/pre-trips/start" : "/portal/fleet/pretrip"}/${encodeURIComponent(unitId)}${fleetId ? `?fleetId=${encodeURIComponent(fleetId)}` : ""}`}
                 className="rounded-xl border border-sky-300/40 px-4 py-2 text-xs font-semibold text-sky-200"
               >
                 Today’s pre-trip
@@ -166,7 +178,7 @@ export default function FleetUnitDetailWorkspace({
               <Link
                 href={
                   routePrefix === "/portal/fleet"
-                    ? `/portal/fleet/request/build?unitId=${encodeURIComponent(unitId)}`
+                    ? `${productRoutes ? "/requests/new" : "/portal/fleet/request/build"}?unitId=${encodeURIComponent(unitId)}`
                     : `/fleet/service-requests/new?unitId=${encodeURIComponent(unitId)}`
                 }
                 className="rounded-xl bg-sky-300 px-4 py-2 text-xs font-semibold text-slate-950"
@@ -179,15 +191,35 @@ export default function FleetUnitDetailWorkspace({
 
         <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
           {[
-            ["Odometer", data.unit.currentOdometerKm == null ? "—" : `${data.unit.currentOdometerKm.toLocaleString()} km`],
-            ["Engine hours", data.unit.currentEngineHours == null ? "—" : data.unit.currentEngineHours.toLocaleString()],
+            [
+              "Odometer",
+              data.unit.currentOdometerKm == null
+                ? "—"
+                : `${data.unit.currentOdometerKm.toLocaleString()} km`,
+            ],
+            [
+              "Engine hours",
+              data.unit.currentEngineHours == null
+                ? "—"
+                : data.unit.currentEngineHours.toLocaleString(),
+            ],
             ["PM due", data.metrics.activePmDue],
             ["Open defects", data.metrics.activeDefects],
             ["Open requests", data.metrics.openRequests],
             ["Approvals", data.metrics.openApprovals],
-            ["Outstanding", money(data.metrics.outstandingBalance, data.workOrders.find((row) => row.invoice)?.invoice?.currency ?? "CAD")],
+            [
+              "Outstanding",
+              money(
+                data.metrics.outstandingBalance,
+                data.workOrders.find((row) => row.invoice)?.invoice?.currency ??
+                  "CAD",
+              ),
+            ],
           ].map(([label, value]) => (
-            <div key={String(label)} className="rounded-xl border border-[color:var(--theme-border-soft)] p-3">
+            <div
+              key={String(label)}
+              className="rounded-xl border border-[color:var(--theme-border-soft)] p-3"
+            >
               <div className="text-[10px] uppercase tracking-wide text-[color:var(--theme-text-muted)]">
                 {label}
               </div>
@@ -220,18 +252,24 @@ export default function FleetUnitDetailWorkspace({
           ))}
         </div>
         <p className="mt-3 text-[11px] text-[color:var(--theme-text-muted)]">
-          Generated from live PM, request, estimate, invoice, and unit-reading data.
-          Select any point to open the underlying records.
+          Generated from live PM, request, estimate, invoice, and unit-reading
+          data. Select any point to open the underlying records.
         </p>
       </section>
 
-      <div className="flex gap-2 overflow-x-auto" role="tablist" aria-label="Unit record sections">
-        {([
-          ["overview", "Overview", ClipboardList],
-          ["maintenance", "Maintenance", ShieldCheck],
-          ["history", "Service & invoices", History],
-          ["activity", "Readings & pre-trips", Activity],
-        ] as const).map(([value, label, Icon]) => (
+      <div
+        className="flex gap-2 overflow-x-auto"
+        role="tablist"
+        aria-label="Unit record sections"
+      >
+        {(
+          [
+            ["overview", "Overview", ClipboardList],
+            ["maintenance", "Maintenance", ShieldCheck],
+            ["history", "Service & invoices", History],
+            ["activity", "Readings & pre-trips", Activity],
+          ] as const
+        ).map(([value, label, Icon]) => (
           <button
             key={value}
             type="button"
@@ -266,8 +304,12 @@ export default function FleetUnitDetailWorkspace({
                 ["Next inspection", dateLabel(data.unit.nextInspectionDate)],
               ].map(([label, value]) => (
                 <div key={label}>
-                  <dt className="text-[color:var(--theme-text-muted)]">{label}</dt>
-                  <dd className="mt-1 break-words font-medium">{value || "—"}</dd>
+                  <dt className="text-[color:var(--theme-text-muted)]">
+                    {label}
+                  </dt>
+                  <dd className="mt-1 break-words font-medium">
+                    {value || "—"}
+                  </dd>
                 </div>
               ))}
             </dl>
@@ -275,26 +317,46 @@ export default function FleetUnitDetailWorkspace({
           <section className={card}>
             <h2 className="text-sm font-semibold">Open requests</h2>
             <div className="mt-3 space-y-2">
-              {data.requests.filter((request) => !["completed", "cancelled"].includes(request.status)).slice(0, 6).map((request) => (
-                <div key={request.id} className="rounded-xl border border-[color:var(--theme-border-soft)] p-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-sm font-medium">{request.title}</span>
-                    <span className="text-[10px] uppercase">{request.status}</span>
+              {data.requests
+                .filter(
+                  (request) =>
+                    !["completed", "cancelled"].includes(request.status),
+                )
+                .slice(0, 6)
+                .map((request) => (
+                  <div
+                    key={request.id}
+                    className="rounded-xl border border-[color:var(--theme-border-soft)] p-3"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-sm font-medium">
+                        {request.title}
+                      </span>
+                      <span className="text-[10px] uppercase">
+                        {request.status}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+                      {request.summary}
+                    </p>
                   </div>
-                  <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">{request.summary}</p>
-                </div>
-              ))}
+                ))}
               {data.metrics.openRequests === 0 ? (
-                <p className="text-sm text-[color:var(--theme-text-secondary)]">No open service requests.</p>
+                <p className="text-sm text-[color:var(--theme-text-secondary)]">
+                  No open service requests.
+                </p>
               ) : null}
             </div>
           </section>
           <section className={`${card} lg:col-span-2`}>
             <div className="flex items-center justify-between gap-3">
               <div>
-                <h2 className="text-sm font-semibold">Tracked pre-trip defects</h2>
+                <h2 className="text-sm font-semibold">
+                  Tracked pre-trip defects
+                </h2>
                 <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
-                  Durable history from driver report through request, work order, and resolution.
+                  Durable history from driver report through request, work
+                  order, and resolution.
                 </p>
               </div>
               <span className="rounded-full bg-amber-400/10 px-3 py-1 text-[10px] font-semibold uppercase text-amber-100">
@@ -303,10 +365,17 @@ export default function FleetUnitDetailWorkspace({
             </div>
             <div className="mt-3 grid gap-2 md:grid-cols-2">
               {data.defects.slice(0, 12).map((defect) => (
-                <div key={defect.id} className="rounded-xl border border-[color:var(--theme-border-soft)] p-3">
+                <div
+                  key={defect.id}
+                  className="rounded-xl border border-[color:var(--theme-border-soft)] p-3"
+                >
                   <div className="flex items-center justify-between gap-3">
-                    <span className="text-sm font-semibold">{defect.label}</span>
-                    <span className="text-[10px] uppercase">{defect.severity} • {defect.state}</span>
+                    <span className="text-sm font-semibold">
+                      {defect.label}
+                    </span>
+                    <span className="text-[10px] uppercase">
+                      {defect.severity} • {defect.state}
+                    </span>
                   </div>
                   <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
                     {dateLabel(defect.reportedAt)}
@@ -315,7 +384,9 @@ export default function FleetUnitDetailWorkspace({
                 </div>
               ))}
               {!data.defects.length ? (
-                <p className="text-sm text-[color:var(--theme-text-secondary)]">No defects have been reported for this unit.</p>
+                <p className="text-sm text-[color:var(--theme-text-secondary)]">
+                  No defects have been reported for this unit.
+                </p>
               ) : null}
             </div>
           </section>
@@ -331,13 +402,19 @@ export default function FleetUnitDetailWorkspace({
                 Due evidence, intervals, deferrals, and linked requests.
               </p>
             </div>
-            <Link href={`${routePrefix}/maintenance`} className="text-xs font-semibold text-sky-300">
+            <Link
+              href={maintenanceHref}
+              className="text-xs font-semibold text-sky-300"
+            >
               Open PM workspace
             </Link>
           </div>
           <div className="mt-4 space-y-3">
             {data.maintenance.map((item) => (
-              <article key={item.id} className="rounded-xl border border-[color:var(--theme-border-soft)] p-3">
+              <article
+                key={item.id}
+                className="rounded-xl border border-[color:var(--theme-border-soft)] p-3"
+              >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <h3 className="text-sm font-semibold">{item.name}</h3>
@@ -350,17 +427,25 @@ export default function FleetUnitDetailWorkspace({
                   </span>
                 </div>
                 <div className="mt-2 text-[11px] text-[color:var(--theme-text-muted)]">
-                  Interval: {[
-                    item.intervalKm ? `${item.intervalKm.toLocaleString()} km` : null,
-                    item.intervalHours ? `${item.intervalHours.toLocaleString()} hours` : null,
+                  Interval:{" "}
+                  {[
+                    item.intervalKm
+                      ? `${item.intervalKm.toLocaleString()} km`
+                      : null,
+                    item.intervalHours
+                      ? `${item.intervalHours.toLocaleString()} hours`
+                      : null,
                     item.intervalDays ? `${item.intervalDays} days` : null,
-                  ].filter(Boolean).join(" / ") || "Policy default"}
+                  ]
+                    .filter(Boolean)
+                    .join(" / ") || "Policy default"}
                 </div>
               </article>
             ))}
             {data.maintenance.length === 0 ? (
               <div className="flex items-center gap-2 rounded-xl bg-emerald-500/10 p-3 text-sm text-emerald-100">
-                <CheckCircle2 className="h-4 w-4" /> No PM items are currently due.
+                <CheckCircle2 className="h-4 w-4" /> No PM items are currently
+                due.
               </div>
             ) : null}
           </div>
@@ -369,24 +454,39 @@ export default function FleetUnitDetailWorkspace({
 
       {tab === "history" ? (
         <section className={card}>
-          <h2 className="text-sm font-semibold">Service, approvals, and invoices</h2>
+          <h2 className="text-sm font-semibold">
+            Service, approvals, and invoices
+          </h2>
           <div className="mt-4 space-y-3">
             {data.workOrders.map((workOrder) => (
-              <article key={workOrder.id} className="rounded-xl border border-[color:var(--theme-border-soft)] p-3">
+              <article
+                key={workOrder.id}
+                className="rounded-xl border border-[color:var(--theme-border-soft)] p-3"
+              >
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                   <div>
-                    <h3 className="text-sm font-semibold">{workOrder.reference}</h3>
+                    <h3 className="text-sm font-semibold">
+                      {workOrder.reference}
+                    </h3>
                     <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
-                      {workOrder.status.replaceAll("_", " ")} • {dateLabel(workOrder.createdAt)}
+                      {workOrder.status.replaceAll("_", " ")} •{" "}
+                      {dateLabel(workOrder.createdAt)}
                     </p>
                   </div>
                   {workOrder.invoice ? (
                     <div className="text-left sm:text-right">
                       <div className="text-sm font-semibold">
-                        {money(workOrder.invoice.total, workOrder.invoice.currency)}
+                        {money(
+                          workOrder.invoice.total,
+                          workOrder.invoice.currency,
+                        )}
                       </div>
                       <div className="text-[11px] text-[color:var(--theme-text-muted)]">
-                        Balance {money(workOrder.invoice.outstandingTotal, workOrder.invoice.currency)}
+                        Balance{" "}
+                        {money(
+                          workOrder.invoice.outstandingTotal,
+                          workOrder.invoice.currency,
+                        )}
                       </div>
                     </div>
                   ) : null}
@@ -394,9 +494,14 @@ export default function FleetUnitDetailWorkspace({
                 {workOrder.quoteLines.length ? (
                   <div className="mt-3 space-y-2">
                     {workOrder.quoteLines.map((line) => (
-                      <div key={line.id} className="flex items-start justify-between gap-3 rounded-lg bg-[color:var(--theme-surface-subtle)] p-2 text-xs">
+                      <div
+                        key={line.id}
+                        className="flex items-start justify-between gap-3 rounded-lg bg-[color:var(--theme-surface-subtle)] p-2 text-xs"
+                      >
                         <span>{line.description}</span>
-                        <span className="shrink-0 capitalize">{line.status.replaceAll("_", " ")}</span>
+                        <span className="shrink-0 capitalize">
+                          {line.status.replaceAll("_", " ")}
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -404,12 +509,19 @@ export default function FleetUnitDetailWorkspace({
               </article>
             ))}
             {!data.workOrders.length ? (
-              <p className="text-sm text-[color:var(--theme-text-secondary)]">No service history yet.</p>
+              <p className="text-sm text-[color:var(--theme-text-secondary)]">
+                No service history yet.
+              </p>
             ) : null}
           </div>
           {pendingQuotes.length > 0 ? (
-            <Link href={`${routePrefix}/billing?filter=approvals`} className="mt-4 inline-flex items-center gap-2 rounded-xl bg-amber-400 px-4 py-2 text-xs font-semibold text-slate-950">
-              <AlertTriangle className="h-4 w-4" /> Review {pendingQuotes.length} approval{pendingQuotes.length === 1 ? "" : "s"}
+            <Link
+              href={`${billingHref}?filter=approvals`}
+              className="mt-4 inline-flex items-center gap-2 rounded-xl bg-amber-400 px-4 py-2 text-xs font-semibold text-slate-950"
+            >
+              <AlertTriangle className="h-4 w-4" /> Review{" "}
+              {pendingQuotes.length} approval
+              {pendingQuotes.length === 1 ? "" : "s"}
             </Link>
           ) : null}
         </section>
@@ -423,13 +535,25 @@ export default function FleetUnitDetailWorkspace({
             </h2>
             <div className="mt-3 space-y-2">
               {data.readings.slice(0, 20).map((reading) => (
-                <div key={reading.id} className="rounded-xl border border-[color:var(--theme-border-soft)] p-3 text-xs">
-                  <div className="font-medium">{dateLabel(reading.recordedAt)}</div>
+                <div
+                  key={reading.id}
+                  className="rounded-xl border border-[color:var(--theme-border-soft)] p-3 text-xs"
+                >
+                  <div className="font-medium">
+                    {dateLabel(reading.recordedAt)}
+                  </div>
                   <div className="mt-1 text-[color:var(--theme-text-secondary)]">
-                    {reading.odometerKm == null ? "" : `${reading.odometerKm.toLocaleString()} km`}
-                    {reading.odometerKm != null && reading.engineHours != null ? " • " : ""}
-                    {reading.engineHours == null ? "" : `${reading.engineHours.toLocaleString()} hours`}
-                    {" • "}{reading.sourceType}
+                    {reading.odometerKm == null
+                      ? ""
+                      : `${reading.odometerKm.toLocaleString()} km`}
+                    {reading.odometerKm != null && reading.engineHours != null
+                      ? " • "
+                      : ""}
+                    {reading.engineHours == null
+                      ? ""
+                      : `${reading.engineHours.toLocaleString()} hours`}
+                    {" • "}
+                    {reading.sourceType}
                   </div>
                 </div>
               ))}
@@ -441,16 +565,25 @@ export default function FleetUnitDetailWorkspace({
             </h2>
             <div className="mt-3 space-y-2">
               {data.pretrips.slice(0, 20).map((pretrip) => (
-                <div key={pretrip.id} className="rounded-xl border border-[color:var(--theme-border-soft)] p-3 text-xs">
+                <div
+                  key={pretrip.id}
+                  className="rounded-xl border border-[color:var(--theme-border-soft)] p-3 text-xs"
+                >
                   <div className="flex items-center justify-between gap-3">
                     <span className="font-medium">{pretrip.driverName}</span>
-                    <span className={pretrip.hasDefects ? "text-red-300" : "text-emerald-300"}>
+                    <span
+                      className={
+                        pretrip.hasDefects ? "text-red-300" : "text-emerald-300"
+                      }
+                    >
                       {pretrip.hasDefects ? "Defects" : "Clear"}
                     </span>
                   </div>
                   <div className="mt-1 text-[color:var(--theme-text-secondary)]">
                     {dateLabel(pretrip.inspectionDate)}
-                    {pretrip.odometerKm == null ? "" : ` • ${pretrip.odometerKm.toLocaleString()} km`}
+                    {pretrip.odometerKm == null
+                      ? ""
+                      : ` • ${pretrip.odometerKm.toLocaleString()} km`}
                   </div>
                 </div>
               ))}
@@ -459,14 +592,23 @@ export default function FleetUnitDetailWorkspace({
         </div>
       ) : null}
 
-      <InspectionReportAttachments vehicleId={unitId} title="Completed inspections" />
+      <InspectionReportAttachments
+        vehicleId={unitId}
+        title="Completed inspections"
+      />
       <FleetUnitWorkOrderEvidence unitId={unitId} />
 
       <div className="flex flex-wrap gap-2 text-xs">
-        <Link href={`${routePrefix}/units`} className="rounded-xl border border-[color:var(--theme-border-soft)] px-3 py-2">
+        <Link
+          href={unitsHref}
+          className="rounded-xl border border-[color:var(--theme-border-soft)] px-3 py-2"
+        >
           ← All units
         </Link>
-        <Link href={`${routePrefix}/billing`} className="inline-flex items-center gap-2 rounded-xl border border-[color:var(--theme-border-soft)] px-3 py-2">
+        <Link
+          href={billingHref}
+          className="inline-flex items-center gap-2 rounded-xl border border-[color:var(--theme-border-soft)] px-3 py-2"
+        >
           <ReceiptText className="h-4 w-4" /> Fleet billing
         </Link>
       </div>

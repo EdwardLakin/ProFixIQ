@@ -3,6 +3,7 @@
 
 import { FleetUnit, FleetIssue, DispatchAssignment } from "./FleetControlTower";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import type { FleetUiContext } from "@/features/fleet/lib/fleetUiCapabilities";
 
 type Props = {
@@ -20,7 +21,19 @@ export default function FleetIssueTables({
   uiContext,
   routePrefix = "/fleet",
 }: Props) {
+  const pathname = usePathname() ?? "";
+  const productHostRoute =
+    routePrefix === "/portal/fleet" && !pathname.startsWith("/portal/fleet");
   const openIssues = issues.filter((i) => i.status !== "completed");
+  const requestHref = productHostRoute
+    ? "/requests/new"
+    : routePrefix === "/portal/fleet"
+      ? "/portal/fleet/request/build"
+      : "/work-orders/create";
+  const unitHref = (unitId: string) =>
+    productHostRoute
+      ? `/assets/${encodeURIComponent(unitId)}`
+      : `${routePrefix}/units/${encodeURIComponent(unitId)}`;
 
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
@@ -38,7 +51,7 @@ export default function FleetIssueTables({
           </div>
           {uiContext.capabilities.canCreateFleetWorkOrders && (
             <Link
-              href="/work-orders/create"
+              href={requestHref}
               className="rounded-xl bg-[color:var(--accent-copper)] px-3 py-1.5 text-xs font-semibold text-[color:var(--theme-text-on-accent)] shadow-[0_0_18px_rgba(193,102,59,0.7)] hover:opacity-95"
             >
               New service request
@@ -61,7 +74,7 @@ export default function FleetIssueTables({
                 <tr key={issue.id} className="align-middle">
                   <td className="px-3 py-1.5 text-[11px] text-[color:var(--theme-text-primary)]">
                     <Link
-                      href={`${routePrefix}/units/${encodeURIComponent(issue.unitId)}`}
+                      href={unitHref(issue.unitId)}
                       className="hover:underline"
                     >
                       {issue.unitLabel}
@@ -125,7 +138,7 @@ export default function FleetIssueTables({
                   <div className="text-[11px] text-[color:var(--theme-text-secondary)]">
                     Assigned to{" "}
                     <Link
-                      href={`${routePrefix}/units/${encodeURIComponent(a.unitId)}`}
+                      href={unitHref(a.unitId)}
                       className="font-medium text-[color:var(--theme-text-primary)] hover:underline"
                     >
                       {a.unitLabel}
@@ -160,7 +173,7 @@ export default function FleetIssueTables({
                   </Link>
                 )}
                 <Link
-                  href={`${routePrefix}/units/${a.unitId}`}
+                  href={unitHref(a.unitId)}
                   className="rounded-full border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[10px] font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-panel)]"
                 >
                   Open unit view
@@ -228,8 +241,7 @@ function StatusPill({ status }: { status: FleetIssue["status"] }) {
     },
     completed: {
       label: "Completed",
-      className:
-        "border-emerald-500/60 bg-emerald-500/10 text-emerald-200",
+      className: "border-emerald-500/60 bg-emerald-500/10 text-emerald-200",
     },
   };
 
@@ -244,11 +256,7 @@ function StatusPill({ status }: { status: FleetIssue["status"] }) {
   );
 }
 
-function DispatchStateBadge({
-  state,
-}: {
-  state: DispatchAssignment["state"];
-}) {
+function DispatchStateBadge({ state }: { state: DispatchAssignment["state"] }) {
   const map: Record<
     DispatchAssignment["state"],
     { label: string; className: string }

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
@@ -93,6 +94,9 @@ export default function FleetServiceRequestsPage({
   uiContext: FleetUiContext;
   routePrefix: "/fleet" | "/portal/fleet";
 }) {
+  const pathname = usePathname() ?? "";
+  const productRoutes =
+    routePrefix === "/portal/fleet" && !pathname.startsWith("/portal/fleet");
   const [payload, setPayload] = useState<Payload | null>(null);
   const [filter, setFilter] = useState<Filter>("active");
   const [loading, setLoading] = useState(true);
@@ -113,11 +117,14 @@ export default function FleetServiceRequestsPage({
       const body = (await response.json().catch(() => ({}))) as Payload & {
         error?: string;
       };
-      if (!response.ok) throw new Error(body.error || "Unable to load requests");
+      if (!response.ok)
+        throw new Error(body.error || "Unable to load requests");
       setPayload(body);
     } catch (cause) {
       if (!signal?.aborted) {
-        setError(cause instanceof Error ? cause.message : "Unable to load requests");
+        setError(
+          cause instanceof Error ? cause.message : "Unable to load requests",
+        );
       }
     } finally {
       if (!signal?.aborted) setLoading(false);
@@ -148,18 +155,31 @@ export default function FleetServiceRequestsPage({
   const visible = useMemo(() => {
     const requests = payload?.requests ?? [];
     if (filter === "all") return requests;
-    if (filter === "approval") return requests.filter((item) => item.workOrder?.needsApproval);
-    if (filter === "scheduled") return requests.filter((item) => item.status === "scheduled");
+    if (filter === "approval")
+      return requests.filter((item) => item.workOrder?.needsApproval);
+    if (filter === "scheduled")
+      return requests.filter((item) => item.status === "scheduled");
     if (filter === "completed") {
-      return requests.filter((item) => ["completed", "closed"].includes(item.status));
+      return requests.filter((item) =>
+        ["completed", "closed"].includes(item.status),
+      );
     }
-    return requests.filter((item) => !TERMINAL_REQUEST_STATUSES.has(item.status));
+    return requests.filter(
+      (item) => !TERMINAL_REQUEST_STATUSES.has(item.status),
+    );
   }, [filter, payload?.requests]);
 
-  const buildHref =
-    routePrefix === "/portal/fleet"
+  const buildHref = productRoutes
+    ? "/requests/new"
+    : routePrefix === "/portal/fleet"
       ? "/portal/fleet/request/build"
       : "/fleet/service-requests/new";
+  const assetHref = (vehicleId: string) =>
+    productRoutes
+      ? `/assets/${encodeURIComponent(vehicleId)}`
+      : `${routePrefix}/units/${encodeURIComponent(vehicleId)}`;
+  const billingHref = (workOrderId: string) =>
+    `${productRoutes ? "/history" : `${routePrefix}/billing`}?workOrderId=${encodeURIComponent(workOrderId)}`;
 
   return (
     <main className="mx-auto w-full max-w-6xl space-y-5 px-4 py-6 text-[color:var(--theme-text-primary)]">
@@ -170,8 +190,8 @@ export default function FleetServiceRequestsPage({
           </p>
           <h1 className="mt-2 text-2xl font-semibold">Service requests</h1>
           <p className="mt-1 max-w-2xl text-sm text-[color:var(--theme-text-secondary)]">
-            One timeline from fleet request to shop schedule, approval, completion,
-            and payment.
+            One timeline from fleet request to shop schedule, approval,
+            completion, and payment.
           </p>
         </div>
         {uiContext.capabilities.canCreateFleetWorkOrders ? (
@@ -187,16 +207,24 @@ export default function FleetServiceRequestsPage({
 
       {payload ? (
         <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {([
-            ["Open", payload.summary.open, ClipboardList],
-            ["Scheduled", payload.summary.scheduled, CalendarClock],
-            ["Need approval", payload.summary.awaitingApproval, AlertTriangle],
-            ["Completed", payload.summary.completed, CheckCircle2],
-          ] as const).map(([label, value, Icon]) => (
+          {(
+            [
+              ["Open", payload.summary.open, ClipboardList],
+              ["Scheduled", payload.summary.scheduled, CalendarClock],
+              [
+                "Need approval",
+                payload.summary.awaitingApproval,
+                AlertTriangle,
+              ],
+              ["Completed", payload.summary.completed, CheckCircle2],
+            ] as const
+          ).map(([label, value, Icon]) => (
             <div key={String(label)} className={`${panel} p-4`}>
               <Icon size={17} className="text-sky-300" />
               <div className="mt-3 text-2xl font-semibold">{String(value)}</div>
-              <div className="text-xs text-[color:var(--theme-text-muted)]">{String(label)}</div>
+              <div className="text-xs text-[color:var(--theme-text-muted)]">
+                {String(label)}
+              </div>
             </div>
           ))}
         </section>
@@ -204,14 +232,20 @@ export default function FleetServiceRequestsPage({
 
       <section className={`${panel} overflow-hidden`}>
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[color:var(--theme-border-soft)] p-3">
-          <div className="flex flex-wrap gap-2" role="tablist" aria-label="Request filters">
-            {([
-              ["active", "Active"],
-              ["approval", "Need approval"],
-              ["scheduled", "Scheduled"],
-              ["completed", "Completed"],
-              ["all", "All"],
-            ] as const).map(([value, label]) => (
+          <div
+            className="flex flex-wrap gap-2"
+            role="tablist"
+            aria-label="Request filters"
+          >
+            {(
+              [
+                ["active", "Active"],
+                ["approval", "Need approval"],
+                ["scheduled", "Scheduled"],
+                ["completed", "Completed"],
+                ["all", "All"],
+              ] as const
+            ).map(([value, label]) => (
               <button
                 key={value}
                 type="button"
@@ -240,7 +274,9 @@ export default function FleetServiceRequestsPage({
 
         {error ? <p className="p-5 text-sm text-red-300">{error}</p> : null}
         {loading && !payload ? (
-          <p className="p-5 text-sm text-[color:var(--theme-text-secondary)]">Loading requests…</p>
+          <p className="p-5 text-sm text-[color:var(--theme-text-secondary)]">
+            Loading requests…
+          </p>
         ) : null}
         {!loading && !error && visible.length === 0 ? (
           <div className="p-8 text-center">
@@ -254,11 +290,14 @@ export default function FleetServiceRequestsPage({
 
         <div className="divide-y divide-[color:var(--theme-border-soft)]">
           {visible.map((item) => (
-            <article key={item.id} className="grid gap-4 p-4 lg:grid-cols-[1fr_auto]">
+            <article
+              key={item.id}
+              className="grid gap-4 p-4 lg:grid-cols-[1fr_auto]"
+            >
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <Link
-                    href={`${routePrefix}/units/${item.vehicleId}`}
+                    href={assetHref(item.vehicleId)}
                     className="text-sm font-semibold text-sky-300 hover:underline"
                   >
                     {item.unitLabel}
@@ -266,7 +305,9 @@ export default function FleetServiceRequestsPage({
                   <span className="text-xs text-[color:var(--theme-text-muted)]">
                     {item.vehicleDescription}
                   </span>
-                  <span className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-wide ${statusTone(item.status)}`}>
+                  <span
+                    className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-wide ${statusTone(item.status)}`}
+                  >
                     {item.status}
                   </span>
                   {item.workOrder?.needsApproval ? (
@@ -277,11 +318,18 @@ export default function FleetServiceRequestsPage({
                 </div>
                 <h2 className="mt-2 text-sm font-semibold">{item.title}</h2>
                 {item.summary ? (
-                  <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">{item.summary}</p>
+                  <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
+                    {item.summary}
+                  </p>
                 ) : null}
                 <p className="mt-2 text-xs text-[color:var(--theme-text-muted)]">
-                  Requested {dateLabel(item.createdAt)}
-                  {item.scheduledForDate ? ` • Scheduled ${dateLabel(item.scheduledForDate)}` : ""}
+                  Submitted {dateLabel(item.createdAt)}
+                  {item.requestedForDate
+                    ? ` • Requested ${dateLabel(item.requestedForDate)}`
+                    : ""}
+                  {item.scheduledForDate
+                    ? ` • Scheduled ${dateLabel(item.scheduledForDate)}`
+                    : ""}
                   {item.sourcePmDueEventId ? " • Created from PM" : ""}
                 </p>
               </div>
@@ -310,13 +358,16 @@ export default function FleetServiceRequestsPage({
                     Awaiting shop conversion
                   </span>
                 )}
-                {item.workOrder?.needsApproval || (item.workOrder?.outstandingBalance ?? 0) > 0 ? (
+                {item.workOrder?.needsApproval ||
+                (item.workOrder?.outstandingBalance ?? 0) > 0 ? (
                   <Link
-                    href={`${routePrefix}/billing?workOrderId=${item.workOrder?.id ?? ""}`}
+                    href={billingHref(item.workOrder?.id ?? "")}
                     className="inline-flex items-center gap-2 rounded-lg border border-sky-300/30 px-3 py-2 text-xs font-medium text-sky-300 hover:bg-sky-300/10"
                   >
                     <WalletCards size={14} />
-                    {item.workOrder?.needsApproval ? "Review approval" : "View invoice"}
+                    {item.workOrder?.needsApproval
+                      ? "Review approval"
+                      : "View invoice"}
                   </Link>
                 ) : null}
               </div>

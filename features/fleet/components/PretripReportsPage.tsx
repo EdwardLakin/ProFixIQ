@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import type { FleetUiContext } from "@/features/fleet/lib/fleetUiCapabilities";
 import { desktopPrimitives as ui } from "@/features/shared/components/ui/desktopPrimitives";
 
@@ -31,6 +32,9 @@ export default function PretripReportsPage({
   uiContext: FleetUiContext;
   routePrefix?: "/fleet" | "/portal/fleet";
 }) {
+  const pathname = usePathname() ?? "";
+  const productRoutes =
+    routePrefix === "/portal/fleet" && !pathname.startsWith("/portal/fleet");
   const [reports, setReports] = useState<PretripReport[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -112,12 +116,15 @@ export default function PretripReportsPage({
       <div className={ui.container}>
         <div aria-hidden className={ui.backdrop} />
 
-        <div className={`${ui.panel} ${ui.panelPadding} relative overflow-hidden`}>
+        <div
+          className={`${ui.panel} ${ui.panelPadding} relative overflow-hidden`}
+        >
           <div className={ui.headerTop}>
             <div>
               <h1 className={ui.title}>Pre-trip Reports</h1>
               <p className={ui.subtitle}>
-                View and audit daily DVIR / pre-trip reports coming in from drivers.
+                View and audit daily DVIR / pre-trip reports coming in from
+                drivers.
               </p>
               <p className={ui.note}>Actor surface: {uiContext.actorLabel}</p>
             </div>
@@ -145,10 +152,12 @@ export default function PretripReportsPage({
             <div className="text-[11px] text-[color:var(--theme-text-muted)] md:pl-3">
               Drivers submit pre-trips from the{" "}
               <Link
-                href="/mobile/fleet/pretrip"
+                href={productRoutes ? "/assets" : "/mobile/fleet/pretrip"}
                 className="underline decoration-dotted underline-offset-4"
               >
-                mobile pre-trip screen
+                {productRoutes
+                  ? "Today’s pre-trip action on an assigned asset"
+                  : "mobile pre-trip screen"}
               </Link>
               .
             </div>
@@ -235,7 +244,8 @@ export default function PretripReportsPage({
                 No pre-trip reports
               </div>
               <p className="mt-2 text-xs text-[color:var(--theme-text-secondary)]">
-                Once drivers start submitting pre-trips from mobile, they will show up here for review.
+                Once drivers start submitting pre-trips from mobile, they will
+                show up here for review.
               </p>
             </div>
           )}

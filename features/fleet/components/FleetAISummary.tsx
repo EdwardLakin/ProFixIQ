@@ -1,8 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ArrowRight, Sparkles } from "lucide-react";
+
+import { toFleetPublicHref } from "@/features/fleet/lib/fleetProductRouting";
 
 type FleetAISummaryProps = {
   shopId?: string | null;
@@ -35,6 +38,8 @@ export default function FleetAISummary({
   shopId,
   routePrefix = "/fleet",
 }: FleetAISummaryProps) {
+  const pathname = usePathname() ?? "";
+  const productRoutes = !pathname.startsWith("/portal/fleet");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<SummaryResponse | null>(null);
@@ -65,7 +70,9 @@ export default function FleetAISummary({
       } catch (cause) {
         if (!cancelled) {
           setError(
-            cause instanceof Error ? cause.message : "Failed to build fleet brief",
+            cause instanceof Error
+              ? cause.message
+              : "Failed to build fleet brief",
           );
         }
       } finally {
@@ -110,17 +117,27 @@ export default function FleetAISummary({
 
       {data && !loading && !error ? (
         <>
-          <p className="mt-3 text-sm font-medium leading-relaxed">{data.headline}</p>
+          <p className="mt-3 text-sm font-medium leading-relaxed">
+            {data.headline}
+          </p>
           <div className="mt-3 space-y-2">
             {data.points.map((point) => (
               <Link
                 key={point.id}
-                href={point.href}
+                href={
+                  productRoutes
+                    ? (toFleetPublicHref(point.href) ?? point.href)
+                    : point.href
+                }
                 className={`group flex items-start justify-between gap-3 rounded-xl border p-3 transition hover:brightness-110 ${tones[point.priority]}`}
               >
                 <span>
-                  <span className="block text-xs font-semibold">{point.label}</span>
-                  <span className="mt-1 block text-[11px] opacity-75">{point.detail}</span>
+                  <span className="block text-xs font-semibold">
+                    {point.label}
+                  </span>
+                  <span className="mt-1 block text-[11px] opacity-75">
+                    {point.detail}
+                  </span>
                 </span>
                 <ArrowRight
                   size={14}

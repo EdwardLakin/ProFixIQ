@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { Search, Truck, Wrench } from "lucide-react";
 import type { FleetUnitListItem } from "app/api/fleet/units/route";
@@ -50,6 +51,9 @@ export default function FleetUnitsPage({
   uiContext,
   routePrefix = "/fleet",
 }: Props) {
+  const pathname = usePathname() ?? "";
+  const productRoutes =
+    routePrefix === "/portal/fleet" && !pathname.startsWith("/portal/fleet");
   const [units, setUnits] = useState<FleetUnitListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -138,7 +142,9 @@ export default function FleetUnitsPage({
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           <Link
-            href={`${routePrefix}/pretrip-history`}
+            href={
+              productRoutes ? "/pre-trips" : `${routePrefix}/pretrip-history`
+            }
             className="inline-flex min-h-10 items-center rounded-xl border border-[color:var(--theme-border-soft)] px-3 py-2 text-xs font-semibold text-sky-300 hover:bg-sky-300/10"
           >
             Fleet-wide pre-trip history
@@ -232,7 +238,11 @@ export default function FleetUnitsPage({
           {visible.map((unit) => (
             <Link
               key={unit.id}
-              href={`${routePrefix}/units/${encodeURIComponent(unit.id)}`}
+              href={
+                productRoutes
+                  ? `/assets/${encodeURIComponent(unit.id)}`
+                  : `${routePrefix}/units/${encodeURIComponent(unit.id)}`
+              }
               className="grid gap-3 p-4 transition hover:bg-white/[0.03] md:grid-cols-[minmax(180px,1.1fr)_minmax(120px,.7fr)_minmax(160px,1fr)_minmax(150px,.8fr)_auto] md:items-center"
             >
               <div>
