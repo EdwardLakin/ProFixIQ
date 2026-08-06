@@ -1,7 +1,10 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import PretripForm from "@/features/fleet/components/PretripForm";
-import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
+import {
+  resolveFleetActorContext,
+  resolveFleetActorScope,
+} from "@/features/fleet/lib/resolveFleetActorContext";
 import {
   createAdminSupabase,
   createServerSupabaseRSC,
@@ -26,7 +29,15 @@ export default async function FleetPortalPretripPage({
   }
 
   const fleetId = query.fleetId ?? actor.primaryFleetId;
-  if (!fleetId || (!actor.isInternal && !actor.fleetIds.includes(fleetId))) {
+  const scope = resolveFleetActorScope(actor, {
+    explicitFleetId: fleetId,
+    preferMembershipFleet: true,
+  });
+  if (
+    !fleetId ||
+    !scope?.shopId ||
+    (!actor.isInternal && !actor.fleetIds.includes(fleetId))
+  ) {
     notFound();
   }
 
@@ -38,6 +49,7 @@ export default async function FleetPortalPretripPage({
         .select(
           "vehicle_id,nickname,vehicles!inner(unit_number,license_plate,vin)",
         )
+        .eq("shop_id", scope.shopId)
         .eq("fleet_id", fleetId)
         .eq("vehicle_id", unitId)
         .or("active.is.null,active.eq.true")
@@ -50,6 +62,7 @@ export default async function FleetPortalPretripPage({
       admin
         .from("fleet_dispatch_assignments")
         .select("id")
+        .eq("shop_id", scope.shopId)
         .eq("fleet_id", fleetId)
         .eq("vehicle_id", unitId)
         .eq("driver_profile_id", actor.userId)

@@ -13,6 +13,7 @@ import {
   Truck,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { fleetCsvCell } from "@/features/fleet/lib/fleetCsv";
 
 type MaintenancePayload = {
   summary: {
@@ -38,9 +39,9 @@ type EconomicsPayload = {
     unitId: string;
     label: string;
     vehicle: string;
-    trailing12MonthSpend: number;
+    trailing12MonthSpendByCurrency: Record<"CAD" | "USD", number>;
     currentOdometerKm: number | null;
-    costPerKm: number | null;
+    costPerKmByCurrency: Record<"CAD" | "USD", number | null>;
     completedWorkOrders: number;
     openServiceRequests: number;
     deferredRequests: number;
@@ -82,6 +83,15 @@ function money(value: number, currency: "CAD" | "USD" = "CAD") {
   }).format(value);
 }
 
+function moneyPerKm(value: number, currency: "CAD" | "USD") {
+  return new Intl.NumberFormat(currency === "USD" ? "en-US" : "en-CA", {
+    style: "currency",
+    currency,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
 async function post<T>(url: string, body: object): Promise<T> {
   const response = await fetch(url, {
     method: "POST",
@@ -100,15 +110,19 @@ async function post<T>(url: string, body: object): Promise<T> {
   return payload;
 }
 
-function csvCell(value: string | number | null) {
-  const normalized = value == null ? "" : String(value);
-  return `"${normalized.replaceAll('"', '""')}"`;
+function visibleCurrencies(values: Record<"CAD" | "USD", number>) {
+  const visible = (["CAD", "USD"] as const).filter(
+    (currency) => values[currency] !== 0,
+  );
+  return visible.length ? visible : (["CAD"] as const);
 }
 
 export default function FleetReportsWorkspace({
   actorLabel,
+  fleetId,
 }: {
   actorLabel: string;
+  fleetId: string;
 }) {
   const pathname = usePathname() ?? "";
   const internalRoutes = pathname.startsWith("/portal/fleet");
@@ -124,14 +138,24 @@ export default function FleetReportsWorkspace({
         await Promise.all([
           post<MaintenancePayload>("/api/fleet/maintenance", {
             action: "list",
+            fleetId,
           }),
-          post<EconomicsPayload>("/api/fleet/unit-economics", { shopId: null }),
-          post<BillingPayload>("/api/fleet/billing", { action: "list" }),
+          post<EconomicsPayload>("/api/fleet/unit-economics", {
+            shopId: null,
+            fleetId,
+          }),
+          post<BillingPayload>("/api/fleet/billing", {
+            action: "list",
+            fleetId,
+          }),
           post<TowerPayload>("/api/fleet/tower", {
             shopId: null,
-            fleetId: null,
+            fleetId,
           }),
-          post<PretripPayload>("/api/fleet/pretrip", { shopId: null }),
+          post<PretripPayload>("/api/fleet/pretrip", {
+            shopId: null,
+            fleetId,
+          }),
         ]);
       setData({ maintenance, economics, billing, tower, pretrips });
     } catch (cause) {
@@ -143,7 +167,7 @@ export default function FleetReportsWorkspace({
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [fleetId]);
 
   useEffect(() => {
     void load();
@@ -151,9 +175,12 @@ export default function FleetReportsWorkspace({
 
   const metrics = useMemo(() => {
     const units = data?.economics.units ?? [];
-    const spend = units.reduce(
-      (total, unit) => total + unit.trailing12MonthSpend,
-      0,
+    const spendByCurrency = units.reduce(
+      (total, unit) => ({
+        CAD: total.CAD + unit.trailing12MonthSpendByCurrency.CAD,
+        USD: total.USD + unit.trailing12MonthSpendByCurrency.USD,
+      }),
+      { CAD: 0, USD: 0 },
     );
     const activeUnits = data?.tower.units.length ?? units.length;
     const clearUnits = data?.maintenance.summary.clearUnits ?? 0;
@@ -161,13 +188,13 @@ export default function FleetReportsWorkspace({
       ? Math.round((clearUnits / activeUnits) * 100)
       : 100;
     const openDefects = (data?.pretrips.reports ?? []).filter(
-      (report) => report.has_defects && report.status !== "reviewed",
+      (report) => report.has_defects && report.status === "open",
     ).length;
     const assignedUnits = new Set(
       (data?.tower.assignments ?? []).map((assignment) => assignment.unitId),
     ).size;
     return {
-      spend,
+      spendByCurrency,
       activeUnits,
       clearUnits,
       compliance,
@@ -197,7 +224,9 @@ export default function FleetReportsWorkspace({
         "Asset",
         "Vehicle",
         "Trailing 12-month spend (CAD)",
-        "Cost per km",
+        "Trailing 12-month spend (USD)",
+        "Cost per km (CAD)",
+        "Cost per km (USD)",
         "Current odometer (km)",
         "Completed work orders",
         "Open requests",
@@ -207,8 +236,10 @@ export default function FleetReportsWorkspace({
       ...data.economics.units.map((unit) => [
         unit.label,
         unit.vehicle,
-        unit.trailing12MonthSpend,
-        unit.costPerKm,
+        unit.trailing12MonthSpendByCurrency.CAD,
+        unit.trailing12MonthSpendByCurrency.USD,
+        unit.costPerKmByCurrency.CAD,
+        unit.costPerKmByCurrency.USD,
         unit.currentOdometerKm,
         unit.completedWorkOrders,
         unit.openServiceRequests,
@@ -216,7 +247,7 @@ export default function FleetReportsWorkspace({
         unit.pmDueCount,
       ]),
     ];
-    const csv = rows.map((row) => row.map(csvCell).join(",")).join("\r\n");
+    const csv = rows.map((row) => row.map(fleetCsvCell).join(",")).join("\r\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
@@ -298,7 +329,16 @@ export default function FleetReportsWorkspace({
                 ["Active units", metrics.activeUnits, Truck],
                 ["PM compliance", `${metrics.compliance}%`, ShieldCheck],
                 ["Open defects", metrics.openDefects, ClipboardCheck],
-                ["12-month spend", money(metrics.spend), CircleDollarSign],
+                [
+                  "12-month spend",
+                  visibleCurrencies(metrics.spendByCurrency)
+                    .map(
+                      (currency) =>
+                        `${currency} ${money(metrics.spendByCurrency[currency], currency)}`,
+                    )
+                    .join(" · "),
+                  CircleDollarSign,
+                ],
               ] satisfies Array<[string, string | number, LucideIcon]>
             ).map(([label, value, Icon]) => (
               <div key={String(label)} className={`${panel} p-4`}>
@@ -503,12 +543,36 @@ export default function FleetReportsWorkspace({
                           </div>
                         </td>
                         <td className="px-5 py-4 font-medium">
-                          {money(unit.trailing12MonthSpend)}
+                          {visibleCurrencies(
+                            unit.trailing12MonthSpendByCurrency,
+                          ).map((currency) => (
+                            <span key={currency} className="block">
+                              {currency}{" "}
+                              {money(
+                                unit.trailing12MonthSpendByCurrency[currency],
+                                currency,
+                              )}
+                            </span>
+                          ))}
                         </td>
                         <td className="px-5 py-4">
-                          {unit.costPerKm == null
+                          {Object.values(unit.costPerKmByCurrency).every(
+                            (value) => value == null,
+                          )
                             ? "More readings needed"
-                            : `${money(unit.costPerKm)} / km`}
+                            : visibleCurrencies({
+                                CAD: unit.costPerKmByCurrency.CAD ?? 0,
+                                USD: unit.costPerKmByCurrency.USD ?? 0,
+                              }).map((currency) => (
+                                <span key={currency} className="block">
+                                  {currency}{" "}
+                                  {moneyPerKm(
+                                    unit.costPerKmByCurrency[currency] ?? 0,
+                                    currency,
+                                  )}{" "}
+                                  / km
+                                </span>
+                              ))}
                         </td>
                         <td className="px-5 py-4">
                           {unit.completedWorkOrders}

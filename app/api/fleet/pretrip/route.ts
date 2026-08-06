@@ -5,9 +5,11 @@ import { supabaseAdmin } from "@/features/shared/lib/supabase/admin";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import type { Database } from "@shared/types/types/supabase";
 import {
+  partitionFleetIdsByManagement,
   resolveFleetActorContext,
   resolveFleetActorScope,
 } from "@/features/fleet/lib/resolveFleetActorContext";
+import { serviceDateInTimeZone } from "@/features/fleet/lib/fleetDate";
 
 type DB = Database;
 type FleetPretripReportRow =
@@ -38,26 +40,6 @@ function numericInput(value: string | null, label: string) {
     throw new Error(`${label} must be a valid non-negative number.`);
   }
   return parsed;
-}
-
-function serviceDateInTimeZone(timeZone: string | null, at = new Date()) {
-  const partsFor = (zone: string) =>
-    new Intl.DateTimeFormat("en-US", {
-      timeZone: zone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).formatToParts(at);
-  let parts: Intl.DateTimeFormatPart[];
-  try {
-    parts = partsFor(timeZone?.trim() || "America/Los_Angeles");
-  } catch {
-    parts = partsFor("America/Los_Angeles");
-  }
-  const value = Object.fromEntries(
-    parts.map((part) => [part.type, part.value]),
-  );
-  return `${value.year}-${value.month}-${value.day}`;
 }
 
 export async function POST(req: NextRequest) {
@@ -276,7 +258,7 @@ export async function POST(req: NextRequest) {
     const scope = resolveFleetActorScope(actor, {
       explicitShopId: raw.shopId ?? null,
       explicitFleetId: raw.fleetId ?? null,
-      preferMembershipFleet: true,
+      preferMembershipFleet: Boolean(raw.fleetId),
     });
     if (!scope?.shopId) {
       return NextResponse.json(
@@ -285,47 +267,89 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Authentication and Fleet scope are resolved with the caller's session above.
-    // Read the authorized slice with the server client so RLS cannot turn a
-    // driver's just-submitted report into an empty history result.
-    let query = supabaseAdmin
-      .from("fleet_pretrip_reports")
-      .select(
-        `id,shop_id,vehicle_id,driver_name,has_defects,inspection_date,created_at,status,vehicles!inner(unit_number,license_plate,vin)`,
-      )
-      .order("inspection_date", { ascending: false })
-      .limit(250);
-    query = scope.fleetIds?.length
-      ? query.in("fleet_id", scope.fleetIds)
-      : query.eq("shop_id", scope.shopId);
-    if (actor.actorType === "fleet_driver") {
-      query = query.eq("driver_profile_id", actor.userId);
+    // The service-role client bypasses RLS, so every query keeps the trusted
+    // shop predicate and external access is split by each Fleet membership's
+    // role. A user can manage one Fleet while remaining driver-only in another.
+    const select =
+      "id,shop_id,fleet_id,vehicle_id,driver_profile_id,driver_name,has_defects,inspection_date,created_at,status,vehicles!inner(unit_number,license_plate,vin)";
+    let reportRows: PretripJoinedRow[] = [];
+
+    if (actor.isInternal) {
+      let query = supabaseAdmin
+        .from("fleet_pretrip_reports")
+        .select(select)
+        .eq("shop_id", scope.shopId)
+        .order("inspection_date", { ascending: false })
+        .limit(250);
+      if (scope.fleetIds?.length) {
+        query = query.in("fleet_id", scope.fleetIds);
+      }
+      const { data, error } = await query;
+      if (error) throw new Error(error.message);
+      reportRows = (data ?? []) as unknown as PretripJoinedRow[];
+    } else {
+      const scopedFleetIds = scope.fleetIds ?? [];
+      const { managerFleetIds, driverFleetIds } = partitionFleetIdsByManagement(
+        actor,
+        scopedFleetIds,
+      );
+      const results = await Promise.all([
+        managerFleetIds.length
+          ? supabaseAdmin
+              .from("fleet_pretrip_reports")
+              .select(select)
+              .eq("shop_id", scope.shopId)
+              .in("fleet_id", managerFleetIds)
+              .order("inspection_date", { ascending: false })
+              .limit(250)
+          : Promise.resolve({ data: [] as unknown[], error: null }),
+        driverFleetIds.length
+          ? supabaseAdmin
+              .from("fleet_pretrip_reports")
+              .select(select)
+              .eq("shop_id", scope.shopId)
+              .in("fleet_id", driverFleetIds)
+              .eq("driver_profile_id", actor.userId)
+              .order("inspection_date", { ascending: false })
+              .limit(250)
+          : Promise.resolve({ data: [] as unknown[], error: null }),
+      ]);
+      const error = results.map((result) => result.error).find(Boolean);
+      if (error) throw new Error(error.message);
+      reportRows = Array.from(
+        new Map(
+          results
+            .flatMap((result) => result.data ?? [])
+            .map((row) => [String((row as { id: string }).id), row]),
+        ).values(),
+      ) as unknown as PretripJoinedRow[];
+      reportRows.sort((left, right) =>
+        (right.inspection_date ?? right.created_at).localeCompare(
+          left.inspection_date ?? left.created_at,
+        ),
+      );
+      reportRows = reportRows.slice(0, 250);
     }
 
-    const { data, error } = await query;
-    if (error) throw new Error(error.message);
-
-    const reports = ((data ?? []) as unknown as PretripJoinedRow[]).map(
-      (row) => {
-        const vehicle = row.vehicles;
-        return {
-          id: row.id,
-          shop_id: row.shop_id,
-          unit_id: row.vehicle_id,
-          unit_label:
-            vehicle?.unit_number ||
-            vehicle?.license_plate ||
-            vehicle?.vin ||
-            row.vehicle_id,
-          plate: vehicle?.license_plate ?? null,
-          driver_name: row.driver_name,
-          has_defects: row.has_defects,
-          inspection_date: row.inspection_date,
-          created_at: row.created_at,
-          status: row.status ?? (row.has_defects ? "open" : "reviewed"),
-        };
-      },
-    );
+    const reports = reportRows.map((row) => {
+      const vehicle = row.vehicles;
+      return {
+        id: row.id,
+        shop_id: row.shop_id,
+        unit_id: row.vehicle_id,
+        unit_label:
+          vehicle?.unit_number ||
+          vehicle?.license_plate ||
+          vehicle?.vin ||
+          row.vehicle_id,
+        plate: vehicle?.license_plate ?? null,
+        driver_name: row.driver_name,
+        has_defects: row.has_defects,
+        inspection_date: row.inspection_date,
+        created_at: row.created_at,
+        status: row.status ?? (row.has_defects ? "open" : "reviewed"),
+      };
+    });
     return NextResponse.json({ reports });
   } catch (error) {
     console.error("[fleet/pretrip] list error", error);

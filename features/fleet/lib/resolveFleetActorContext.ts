@@ -243,6 +243,22 @@ export function manageableFleetIdsForActor(actor: FleetActorContext): string[] {
   );
 }
 
+export function partitionFleetIdsByManagement(
+  actor: FleetActorContext,
+  fleetIds: string[],
+): { managerFleetIds: string[]; driverFleetIds: string[] } {
+  const managerFleetIds = fleetIds.filter((fleetId) =>
+    canManageFleetForActor(actor, fleetId),
+  );
+  const managerFleetIdSet = new Set(managerFleetIds);
+  return {
+    managerFleetIds,
+    driverFleetIds: fleetIds.filter(
+      (fleetId) => !managerFleetIdSet.has(fleetId),
+    ),
+  };
+}
+
 export type FleetActorScope = {
   shopId: string;
   fleetIds: string[] | null;

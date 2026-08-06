@@ -14,9 +14,7 @@ describe("fleet control tower composition", () => {
 
     expect(fleetTower).toContain('layout="dashboard-first"');
     expect(fleetTower).toContain("renderContentWhenError");
-    expect(sharedTower).toContain(
-      'layout?: "board-first" | "dashboard-first"',
-    );
+    expect(sharedTower).toContain('layout?: "board-first" | "dashboard-first"');
 
     const summaryPosition = sharedTower.indexOf("{summaryCards}");
     const boardPosition = sharedTower.lastIndexOf("{workOrderBoard}");
@@ -32,7 +30,9 @@ describe("fleet control tower composition", () => {
     expect(widget).toContain("useWorkOrderBoard");
     expect(widget).toContain("limit: 5");
     expect(widget).toContain("Open full board");
-    expect(widget).not.toContain('import WorkOrderBoard from "./WorkOrderBoard"');
+    expect(widget).not.toContain(
+      'import WorkOrderBoard from "./WorkOrderBoard"',
+    );
     expect(widget).not.toContain("min-h-[560px]");
   });
 
@@ -48,7 +48,8 @@ describe("fleet control tower composition", () => {
       "const showContent = !isLoading && (!error || renderContentWhenError)",
     );
     expect(fleetTower).toContain(
-      "Dashboard sections remain visible with the data currently available.",
+      "Dashboard sections remain visible with the data currently",
     );
+    expect(fleetTower).toContain("available.");
   });
 });

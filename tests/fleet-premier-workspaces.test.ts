@@ -24,7 +24,7 @@ describe("premier fleet workspaces", () => {
       expect(fleetShell).toContain(label);
     }
     expect(fleetShell).toContain("ThemeToggleButton");
-    expect(fleetShell).toContain('experience !== "external_driver"');
+    expect(fleetShell).toContain("canAccessManagerWorkspaces");
     expect(fleetShell).toContain("ProFixIQ");
     expect(fleetShell).toContain("Fleet");
   });
@@ -89,9 +89,7 @@ describe("premier fleet workspaces", () => {
     expect(workspace).toContain("Review approval");
     expect(workspace).toContain("Submitted {dateLabel(item.createdAt)}");
     expect(workspace).toContain("dateLabel(item.requestedForDate)");
-    expect(workspace).toContain(
-      "const dateOnly = /^(\\d{4})-(\\d{2})-(\\d{2})$/",
-    );
+    expect(workspace).toContain("formatFleetDate");
     expect(builder).toContain(
       "onInput={(event) => setRequestedForDate(event.currentTarget.value)}",
     );
@@ -145,7 +143,10 @@ describe("premier fleet workspaces", () => {
     expect(route).not.toContain("OPENAI_FLEET_SUMMARY_MODEL");
     expect(policy).toContain("fleet_operations_summary");
     expect(route).toContain('actor.actorType === "fleet_driver"');
+    expect(route).toContain("assignedVehicles");
+    expect(route).toContain("authorizedSnapshot");
     expect(route).toContain('["requests", "units"].includes(point.id)');
+    expect(summary).toContain("fleetId");
     expect(summary).toContain("live records one click away");
     expect(summary).toContain("point.href");
   });
@@ -170,6 +171,7 @@ describe("premier fleet workspaces", () => {
     const reports = source(
       "features/fleet/components/FleetReportsWorkspace.tsx",
     );
+    const economics = source("app/api/fleet/unit-economics/route.ts");
 
     expect(driversPage).toContain("FleetDriversWorkspace");
     expect(driversPage).toContain("FleetPortalAccessManager");
@@ -180,6 +182,7 @@ describe("premier fleet workspaces", () => {
     expect(drivers).toContain("/assets/new");
 
     expect(reportsPage).toContain("FleetReportsWorkspace");
+    expect(reportsPage).toContain("fleetId={fleetId}");
     expect(reportsPage).not.toContain("FleetModuleFoundation");
     for (const endpoint of [
       "/api/fleet/maintenance",
@@ -192,6 +195,12 @@ describe("premier fleet workspaces", () => {
     }
     expect(reports).toContain("Export CSV");
     expect(reports).toContain("Asset cost and maintenance performance");
+    expect(reports).toContain("fleetCsvCell");
+    expect(reports).toContain('report.status === "open"');
+    expect(reports).toContain("costPerKmByCurrency");
+    expect(economics).toContain('from("invoice_versions")');
+    expect(economics).toContain("trailing12MonthSpendByCurrency");
+    expect(economics).toContain('.eq("shop_id", scope.shopId)');
   });
 
   it("keeps product-domain actions on clean public Fleet routes", () => {
@@ -227,12 +236,12 @@ describe("premier fleet workspaces", () => {
     );
 
     expect(pretripApi).toContain("import { supabaseAdmin }");
-    expect(pretripApi).toContain('actor.actorType === "fleet_driver"');
+    expect(pretripApi).toContain("partitionFleetIdsByManagement");
     expect(pretripApi).toContain('.eq("driver_profile_id", actor.userId)');
-    expect(pretripApi).toContain('query.in("fleet_id", scope.fleetIds)');
-    expect(pretripPage).toContain("/^(\\d{4})-(\\d{2})-(\\d{2})$/");
+    expect(pretripApi).toContain('.eq("shop_id", scope.shopId)');
+    expect(pretripPage).toContain("formatFleetDate");
     expect(pretripPage).toContain(
-      "dateLabel(r.inspection_date ?? r.created_at)",
+      "formatFleetDate(r.inspection_date ?? r.created_at)",
     );
   });
 
