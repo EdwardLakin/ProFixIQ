@@ -7,7 +7,6 @@ import FleetIssueTables from "./FleetIssueTables";
 import FleetAISummary from "./FleetAISummary";
 import FleetUnitEconomicsPanel from "./FleetUnitEconomicsPanel";
 import FleetDefectQueue from "./FleetDefectQueue";
-import WorkOrderBoardWidget from "@shared/components/workboard/WorkOrderBoardWidget";
 import type { FleetUiContext } from "@/features/fleet/lib/fleetUiCapabilities";
 import {
   MaintenanceControlTower,
@@ -187,16 +186,6 @@ export default function FleetControlTower({
       }}
       layout="dashboard-first"
       renderContentWhenError
-      workOrderBoard={
-        uiContext.capabilities.canViewDispatch ? (
-          <div className="metal-card rounded-3xl p-4 sm:p-5">
-            <WorkOrderBoardWidget
-              variant="fleet"
-              href={`${routePrefix}/board`}
-            />
-          </div>
-        ) : null
-      }
       error={
         error ? (
           <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-800 dark:text-amber-100">
