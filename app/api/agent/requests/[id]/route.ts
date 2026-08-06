@@ -2,14 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import {
   AgentTeamRequestError,
-  approveAgentTeamMission,
-  approveAgentTeamRelease,
   mapAgentTeamRequestStatus,
   projectAgentTeamCase,
   readAgentTeamCase,
   rejectAgentTeamCase,
   type AgentTeamProjection,
 } from "@/features/agent/server/teamClient";
+import {
+  approveAgentTeamMission,
+  approveAgentTeamRelease,
+} from "@/features/agent/server/humanApprovalClient";
+import { mintAgentHumanApprovalIntent } from "@/features/agent/server/humanApprovalIntent";
 
 type AgentRequestStatus =
   | "submitted"
@@ -168,8 +171,8 @@ function agentErrorResponse(error: unknown) {
  * PATCH /api/agent/requests/:id
  *
  * The Agent database is the sole execution authority. This route only authorizes
- * the ProFixIQ user, forwards mission/release/rejection decisions, then refreshes
- * the local projection used by the console.
+ * the ProFixIQ user, mints a short-lived one-time proof for explicit human
+ * approvals, forwards the decision, then refreshes the local console projection.
  */
 export async function PATCH(req: NextRequest) {
   const id = getIdFromUrl(req);
@@ -214,17 +217,32 @@ export async function PATCH(req: NextRequest) {
   try {
     if (body.action === "approve") {
       if (currentProjection.mission?.status === "awaiting_approval") {
+        const approvalProof = await mintAgentHumanApprovalIntent({
+          requestId: id,
+          engineeringCaseId: currentProjection.engineeringCaseId,
+          missionId: currentProjection.mission.id,
+          approvalKind: "mission",
+          approverUserId: user.id,
+        });
         await approveAgentTeamMission({
           missionId: currentProjection.mission.id,
           approvedBy: user.id,
+          approvalProof,
         });
       } else if (
         currentProjection.caseStatus === "ready_for_human_approval"
         && currentProjection.currentStage === "release"
       ) {
+        const approvalProof = await mintAgentHumanApprovalIntent({
+          requestId: id,
+          engineeringCaseId: currentProjection.engineeringCaseId,
+          approvalKind: "release",
+          approverUserId: user.id,
+        });
         await approveAgentTeamRelease({
           engineeringCaseId: currentProjection.engineeringCaseId,
           approvedBy: user.id,
+          approvalProof,
         });
       } else {
         return NextResponse.json(
