@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const mocks = vi.hoisted(() => {
   const conversations = new Map<string, { id: string; created_by: string }>();
@@ -44,6 +45,15 @@ vi.mock("@/features/shared/lib/supabase/server", () => ({
 vi.mock("@/features/ai/lib/chat/authorization", () => ({
   authorizeConversationCreate: mocks.authorizeConversationCreate,
   isCustomerMessagingRole: vi.fn(() => true),
+  participantSeedForActor: vi.fn(
+    (actor: { userId: string; customerId: string }) => ({
+      userId: actor.userId,
+      kind: "customer",
+      profileId: null,
+      customerId: actor.customerId,
+      role: "customer",
+    }),
+  ),
 }));
 
 vi.mock("@/features/chat/server/conversationContext", () => ({
@@ -81,6 +91,15 @@ describe("POST /api/chat/start-conversation", () => {
       customerId: "customer-1",
       recipientUserIds: ["advisor-user-1"],
       participantKinds: { "advisor-user-1": "staff" },
+      recipientParticipants: [
+        {
+          userId: "advisor-user-1",
+          kind: "staff",
+          profileId: "advisor-profile-1",
+          customerId: null,
+          role: "advisor",
+        },
+      ],
     });
     mocks.authorizeConversationContext.mockResolvedValue({
       ok: true,
@@ -93,13 +112,15 @@ describe("POST /api/chat/start-conversation", () => {
         booking_id: null,
       },
     });
-    mocks.rpc.mockImplementation(async (_fn: string, args: Record<string, string>) => {
-      mocks.conversations.set(args._conversation_id, {
-        id: args._conversation_id,
-        created_by: args._created_by,
-      });
-      return { data: args._conversation_id, error: null };
-    });
+    mocks.rpc.mockImplementation(
+      async (_fn: string, args: Record<string, string>) => {
+        mocks.conversations.set(args._conversation_id, {
+          id: args._conversation_id,
+          created_by: args._created_by,
+        });
+        return { data: args._conversation_id, error: null };
+      },
+    );
   });
 
   it("normalizes a stale non-UUID request ID into a replayable conversation ID", async () => {
@@ -120,6 +141,15 @@ describe("POST /api/chat/start-conversation", () => {
     expect(firstResponse.status).toBe(201);
     expect(firstPayload.id).toMatch(UUID_RE);
     expect(mocks.rpc).toHaveBeenCalledTimes(1);
+    expect(mocks.rpc).toHaveBeenCalledWith(
+      "create_actor_messaging_conversation",
+      expect.objectContaining({
+        _participants: expect.arrayContaining([
+          expect.objectContaining({ participant_kind: "customer" }),
+          expect.objectContaining({ participant_kind: "staff" }),
+        ]),
+      }),
+    );
 
     const secondResponse = await POST(startRequest(body));
     const secondPayload = await secondResponse.json();

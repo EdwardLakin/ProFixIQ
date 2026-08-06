@@ -52,13 +52,16 @@ type RecipientOption = {
   label: string;
 };
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function ensureUuid(value: string | null | undefined): string {
   return value && UUID_RE.test(value) ? value : crypto.randomUUID();
 }
 
-function normalizeMessageDraft(draft: OfflineMessageDraft): OfflineMessageDraft {
+function normalizeMessageDraft(
+  draft: OfflineMessageDraft,
+): OfflineMessageDraft {
   const conversationRequestId = ensureUuid(draft.conversationRequestId);
   const clientMessageId = ensureUuid(draft.clientMessageId);
   if (
@@ -73,6 +76,8 @@ function normalizeMessageDraft(draft: OfflineMessageDraft): OfflineMessageDraft 
 export default function PortalMessagesWorkspace(): JSX.Element {
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const searchParams = useSearchParams();
+  const requestedConversationId =
+    searchParams.get("conversationId")?.trim() ?? "";
   const requestedWorkOrderId = searchParams.get("workOrderId")?.trim() ?? "";
   const requestedContextKey = requestedWorkOrderId
     ? `work_order:${requestedWorkOrderId}`
@@ -110,8 +115,15 @@ export default function PortalMessagesWorkspace(): JSX.Element {
     if (!response.ok) throw new Error("Could not load messages");
     const payload = (await response.json()) as ConversationPayload[];
     setRows(payload);
-    setActiveId((current) => current ?? payload[0]?.conversation.id ?? null);
-  }, []);
+    setActiveId(
+      (current) =>
+        current ??
+        payload.find((row) => row.conversation.id === requestedConversationId)
+          ?.conversation.id ??
+        payload[0]?.conversation.id ??
+        null,
+    );
+  }, [requestedConversationId]);
 
   useEffect(() => {
     void supabase.auth.getSession().then(({ data }) => {
@@ -238,7 +250,9 @@ export default function PortalMessagesWorkspace(): JSX.Element {
     }
 
     const selectedContext =
-      contextOptions.find((option) => `${option.type}:${option.id}` === contextKey) ??
+      contextOptions.find(
+        (option) => `${option.type}:${option.id}` === contextKey,
+      ) ??
       (requestedWorkOrderId && contextKey === requestedContextKey
         ? {
             type: "work_order" as const,
@@ -293,6 +307,7 @@ export default function PortalMessagesWorkspace(): JSX.Element {
           conversationId: created.id,
           content,
           clientMessageId,
+          actor_kind: "customer",
         }),
       });
       if (!messageResponse.ok) {
@@ -563,6 +578,7 @@ export default function PortalMessagesWorkspace(): JSX.Element {
                   conversationId={active.conversation.id}
                   userId={userId}
                   title={active.conversation.title ?? "Shop team"}
+                  actorKind="customer"
                 />
               </div>
             </>

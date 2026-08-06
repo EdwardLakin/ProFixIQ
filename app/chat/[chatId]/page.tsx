@@ -12,7 +12,11 @@ type DB = Database;
 type ConversationPayload = {
   conversation: DB["public"]["Tables"]["conversations"]["Row"];
   latest_message: DB["public"]["Tables"]["messages"]["Row"] | null;
-  participants: Array<{ id: string; full_name: string | null }>;
+  participants: Array<{
+    id: string;
+    user_id: string;
+    full_name: string | null;
+  }>;
   unread_count: number;
 };
 
@@ -47,7 +51,7 @@ export default function ChatThreadPage(): JSX.Element {
             const others =
               user?.id == null
                 ? found.participants
-                : found.participants.filter((p) => p.id !== user.id);
+                : found.participants.filter((p) => p.user_id !== user.id);
             const label =
               others[0]?.full_name ??
               found.conversation.context_type ??

@@ -17,6 +17,7 @@ import {
   type OfflineMessageDraft,
 } from "@/features/chat/offline/messageDrafts";
 import type { OfflineMutationScope } from "@/features/shared/lib/offline/mutations";
+import type { ChatMessage } from "@/features/chat/types";
 
 type DB = Database;
 type MessageRow = DB["public"]["Tables"]["messages"]["Row"];
@@ -24,6 +25,7 @@ type ConversationRow = DB["public"]["Tables"]["conversations"]["Row"];
 
 type Participant = {
   id: string;
+  user_id?: string;
   kind?: "staff" | "customer";
   full_name: string | null;
   avatar_url?: string | null;
@@ -136,23 +138,33 @@ export default function InboxModal({
 
   const [me, setMe] = useState<string | null>(null);
   const [rows, setRows] = useState<ConversationPayload[]>([]);
-  const [activeConversationId, setActiveConversationId] = useState<string | null>(
-    null,
-  );
-  const [messages, setMessages] = useState<MessageRow[]>([]);
+  const [activeConversationId, setActiveConversationId] = useState<
+    string | null
+  >(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [users, setUsers] = useState<Participant[]>([]);
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [search, setSearch] = useState("");
   const [compose, setCompose] = useState("");
   const [sending, setSending] = useState(false);
   const [selectedRecipients, setSelectedRecipients] = useState<string[]>([]);
-  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
-  const [composeAudience, setComposeAudience] = useState<"internal" | "customer">("internal");
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(
+    null,
+  );
+  const [composeAudience, setComposeAudience] = useState<
+    "internal" | "customer"
+  >("internal");
   const [roleFilter, setRoleFilter] = useState("all");
   const [useContext, setUseContext] = useState(true);
-  const [draftScope, setDraftScope] = useState<OfflineMutationScope | null>(null);
-  const [messageDraft, setMessageDraft] = useState<OfflineMessageDraft | null>(null);
-  const [loadedDraftTarget, setLoadedDraftTarget] = useState<string | null>(null);
+  const [draftScope, setDraftScope] = useState<OfflineMutationScope | null>(
+    null,
+  );
+  const [messageDraft, setMessageDraft] = useState<OfflineMessageDraft | null>(
+    null,
+  );
+  const [loadedDraftTarget, setLoadedDraftTarget] = useState<string | null>(
+    null,
+  );
   const [draftSaved, setDraftSaved] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
 
@@ -162,9 +174,9 @@ export default function InboxModal({
     : `staff:new:${composeAudience}:${context.context_type ?? "general"}:${context.context_id ?? "none"}`;
   const draftReady = Boolean(
     draftScope &&
-      messageDraft &&
-      loadedDraftTarget === draftTargetId &&
-      messageDraft.targetId === draftTargetId,
+    messageDraft &&
+    loadedDraftTarget === draftTargetId &&
+    messageDraft.targetId === draftTargetId,
   );
   const newConversationFingerprint = useMemo(
     () =>
@@ -187,7 +199,9 @@ export default function InboxModal({
   );
 
   const loadConversations = useCallback(async () => {
-    const res = await fetch("/api/chat/my-conversations", { credentials: "include" });
+    const res = await fetch("/api/chat/my-conversations", {
+      credentials: "include",
+    });
     if (!res.ok) return;
 
     const data = (await res.json()) as ConversationPayload[];
@@ -201,14 +215,14 @@ export default function InboxModal({
     const res = await fetch("/api/chat/get-messages", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ conversationId }),
+      body: JSON.stringify({ conversationId, actor_kind: "staff" }),
     });
     const data = await res.json().catch(() => null);
     setMessages(Array.isArray(data) ? data : []);
     await fetch("/api/chat/mark-read", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ conversationId }),
+      body: JSON.stringify({ conversationId, actor_kind: "staff" }),
     }).catch(() => undefined);
     window.dispatchEvent(new CustomEvent("profixiq:inbox-read"));
   }, []);
@@ -216,7 +230,8 @@ export default function InboxModal({
   useEffect(() => {
     if (!open) return;
 
-    void supabase.auth.getSession().then(({ data }) => setMe(data.session?.user.id ?? null));
+    const sessionPromise = supabase.auth.getSession();
+    void sessionPromise.then(({ data }) => setMe(data.session?.user.id ?? null));
     void loadConversations().catch(() => undefined);
 
     void fetch("/api/chat/users", { credentials: "include" })
@@ -265,21 +280,24 @@ export default function InboxModal({
     if (!open || !draftScope) return;
     let cancelled = false;
     setLoadedDraftTarget(null);
-    void getOfflineMessageDraft({ scope: draftScope, targetId: draftTargetId }).then(
-      (stored) => {
-        if (cancelled) return;
-        const next = stored ?? createMessageDraft({ scope: draftScope, targetId: draftTargetId });
-        setMessageDraft(next);
-        setCompose(next.content);
-        if (!activeConversationId) {
-          setSelectedRecipients(next.recipientIds ?? []);
-          setSelectedCustomerId(next.customerId ?? null);
-          setUseContext(next.useContext ?? true);
-        }
-        setDraftSaved(Boolean(stored?.content));
-        setLoadedDraftTarget(draftTargetId);
-      },
-    );
+    void getOfflineMessageDraft({
+      scope: draftScope,
+      targetId: draftTargetId,
+    }).then((stored) => {
+      if (cancelled) return;
+      const next =
+        stored ??
+        createMessageDraft({ scope: draftScope, targetId: draftTargetId });
+      setMessageDraft(next);
+      setCompose(next.content);
+      if (!activeConversationId) {
+        setSelectedRecipients(next.recipientIds ?? []);
+        setSelectedCustomerId(next.customerId ?? null);
+        setUseContext(next.useContext ?? true);
+      }
+      setDraftSaved(Boolean(stored?.content));
+      setLoadedDraftTarget(draftTargetId);
+    });
     return () => {
       cancelled = true;
     };
@@ -321,10 +339,14 @@ export default function InboxModal({
       !messageDraft ||
       loadedDraftTarget !== draftTargetId ||
       messageDraft.targetId !== draftTargetId
-    ) return;
+    )
+      return;
     const timer = window.setTimeout(() => {
       if (!compose.trim()) {
-        void removeOfflineMessageDraft({ scope: draftScope, targetId: draftTargetId });
+        void removeOfflineMessageDraft({
+          scope: draftScope,
+          targetId: draftTargetId,
+        });
         setDraftSaved(false);
         return;
       }
@@ -339,7 +361,17 @@ export default function InboxModal({
       }).then(() => setDraftSaved(true));
     }, 350);
     return () => window.clearTimeout(timer);
-  }, [compose, composeAudience, draftScope, draftTargetId, loadedDraftTarget, messageDraft, selectedCustomerId, selectedRecipients, useContext]);
+  }, [
+    compose,
+    composeAudience,
+    draftScope,
+    draftTargetId,
+    loadedDraftTarget,
+    messageDraft,
+    selectedCustomerId,
+    selectedRecipients,
+    useContext,
+  ]);
 
   useEffect(() => {
     if (!open || !activeConversationId) return;
@@ -351,7 +383,8 @@ export default function InboxModal({
     if (!open) return;
 
     const refresh = (event: Event) => {
-      const detail = (event as CustomEvent<{ conversationId?: string | null }>).detail;
+      const detail = (event as CustomEvent<{ conversationId?: string | null }>)
+        .detail;
       const conversationId = detail?.conversationId ?? activeConversationId;
       void loadConversations();
       if (conversationId) {
@@ -379,11 +412,8 @@ export default function InboxModal({
           table: "messages",
           filter: `conversation_id=eq.${activeConversationId}`,
         },
-        (payload) => {
-          const message = payload.new as MessageRow;
-          setMessages((prev) =>
-            prev.some((m) => m.id === message.id) ? prev : [...prev, message],
-          );
+        () => {
+          void loadMessages(activeConversationId);
           void loadConversations();
         },
       )
@@ -392,7 +422,7 @@ export default function InboxModal({
     return () => {
       supabase.removeChannel(ch);
     };
-  }, [open, activeConversationId, supabase, loadConversations]);
+  }, [open, activeConversationId, supabase, loadConversations, loadMessages]);
 
   useEffect(() => {
     if (!open) return;
@@ -495,20 +525,23 @@ export default function InboxModal({
           body: JSON.stringify({
             participant_ids: selectedRecipients,
             channel: composeAudience,
-            customer_id: composeAudience === "customer" ? selectedCustomerId : null,
+            customer_id:
+              composeAudience === "customer" ? selectedCustomerId : null,
             context_type: useContext ? context.context_type : null,
             context_id: useContext ? context.context_id : null,
             title:
               useContext && context.context_label !== "General"
                 ? context.context_label
                 : null,
-            is_broadcast: composeAudience === "internal" && selectedRecipients.length > 3,
+            is_broadcast:
+              composeAudience === "internal" && selectedRecipients.length > 3,
             request_id: deliveryDraft.conversationRequestId,
           }),
         });
 
         const data = await res.json();
-        if (!res.ok) throw new Error(data?.error ?? "Could not start inbox thread");
+        if (!res.ok)
+          throw new Error(data?.error ?? "Could not start inbox thread");
 
         conversationId = data.id;
       }
@@ -522,7 +555,7 @@ export default function InboxModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           conversationId,
-          senderId: me,
+          actor_kind: "staff",
           content,
           clientMessageId: deliveryDraft.clientMessageId,
           metadata: {
@@ -534,10 +567,14 @@ export default function InboxModal({
       });
 
       if (!res.ok) {
-        const failure = (await res.json().catch(() => null)) as { error?: string } | null;
+        const failure = (await res.json().catch(() => null)) as {
+          error?: string;
+        } | null;
         throw new Error(failure?.error ?? "Could not send message");
       }
-      const sentMessage = (await res.json().catch(() => null)) as MessageRow | null;
+      const sentMessage = (await res
+        .json()
+        .catch(() => null)) as ChatMessage | null;
       if (sentMessage?.id) {
         setMessages((prev) =>
           prev.some((message) => message.id === sentMessage.id)
@@ -546,12 +583,17 @@ export default function InboxModal({
         );
       }
       if (draftScope) {
-        await removeOfflineMessageDraft({ scope: draftScope, targetId: draftTargetId });
+        await removeOfflineMessageDraft({
+          scope: draftScope,
+          targetId: draftTargetId,
+        });
       }
       setCompose("");
       setDraftSaved(false);
       if (draftScope) {
-        setMessageDraft(createMessageDraft({ scope: draftScope, targetId: draftTargetId }));
+        setMessageDraft(
+          createMessageDraft({ scope: draftScope, targetId: draftTargetId }),
+        );
       }
       setActiveConversationId(conversationId);
       await loadConversations();
@@ -562,7 +604,9 @@ export default function InboxModal({
         }),
       );
     } catch (cause) {
-      setSendError(cause instanceof Error ? cause.message : "Could not send message");
+      setSendError(
+        cause instanceof Error ? cause.message : "Could not send message",
+      );
     } finally {
       setSending(false);
     }
@@ -598,7 +642,9 @@ export default function InboxModal({
     >
       <div className="mb-2.5">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-[11px] text-[color:var(--theme-text-muted)]">Shop communication center</p>
+          <p className="text-[11px] text-[color:var(--theme-text-muted)]">
+            Shop communication center
+          </p>
           <button
             type="button"
             className="rounded-full border border-[var(--accent-copper-soft)] px-3 py-1 text-[11px] font-semibold text-[var(--accent-copper-soft)]"
@@ -649,11 +695,16 @@ export default function InboxModal({
 
           <div className="min-h-0 flex-1 overflow-auto">
             {visibleRows.map((row) => {
-              const mineExcluded = row.participants.filter((p) => p.id !== me);
+              const mineExcluded = row.participants.filter(
+                (p) => p.user_id !== me,
+              );
               const primary = mineExcluded[0] ?? row.participants[0];
               const title =
                 row.conversation.title ??
-                (mineExcluded.map((p) => p.full_name).filter(Boolean).join(", ") ||
+                (mineExcluded
+                  .map((p) => p.full_name)
+                  .filter(Boolean)
+                  .join(", ") ||
                   `Thread ${row.conversation.id.slice(0, 6)}`);
 
               return (
@@ -694,16 +745,16 @@ export default function InboxModal({
         <section className="flex min-h-0 flex-col rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]">
           <div className="border-b border-[color:var(--theme-border-soft)] px-3 py-1.5 text-xs font-medium text-[color:var(--theme-text-primary)]">
             {activeConversation
-              ? activeConversation.conversation.title ?? "Thread"
+              ? (activeConversation.conversation.title ?? "Thread")
               : "New message"}
           </div>
 
           <div className="min-h-0 flex-1 space-y-1.5 overflow-auto p-2.5">
             {messages.map((m) => {
-              const mine = m.sender_id === me;
+              const mine = m.is_mine;
               const sender =
                 activeConversation?.participants.find(
-                  (participant) => participant.id === m.sender_id,
+                  (participant) => participant.id === m.sender_participant_id,
                 ) ?? users.find((u) => u.id === m.sender_id);
 
               return (
@@ -713,8 +764,8 @@ export default function InboxModal({
                 >
                   {!mine ? (
                     <UserAvatar
-                      name={sender?.full_name}
-                      avatarUrl={sender?.avatar_url}
+                      name={m.sender_name ?? sender?.full_name}
+                      avatarUrl={m.sender_avatar_url ?? sender?.avatar_url}
                       size="sm"
                     />
                   ) : null}
@@ -734,53 +785,61 @@ export default function InboxModal({
 
           {!activeConversationId ? (
             <div className="space-y-2 border-t border-[color:var(--theme-border-soft)] p-2.5 text-xs">
-              {composeAudience === "internal" ? <><div className="flex gap-2">
-                <select
-                  value={roleFilter}
-                  onChange={(e) => setRoleFilter(e.target.value)}
-                  className="h-8 rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-2 py-1"
-                >
-                  <option value="all">All roles</option>
-                  <option value="tech">Tech</option>
-                  <option value="advisor">Advisor</option>
-                  <option value="parts">Parts</option>
-                  <option value="manager">Manager</option>
-                </select>
-                <button
-                  type="button"
-                  disabled={!draftReady || sending}
-                  className="h-8 rounded border border-[color:var(--theme-border-soft)] px-2"
-                  onClick={() => setSelectedRecipients(recipientOptions.map((u) => u.id))}
-                >
-                  Select all
-                </button>
-              </div>
-
-              <div className="max-h-20 overflow-auto rounded border border-[color:var(--theme-border-soft)] p-2">
-                {recipientOptions.map((u) => (
-                  <label key={u.id} className="mb-1 flex items-center gap-2">
-                    <input
-                      type="checkbox"
+              {composeAudience === "internal" ? (
+                <>
+                  <div className="flex gap-2">
+                    <select
+                      value={roleFilter}
+                      onChange={(e) => setRoleFilter(e.target.value)}
+                      className="h-8 rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-2 py-1"
+                    >
+                      <option value="all">All roles</option>
+                      <option value="tech">Tech</option>
+                      <option value="advisor">Advisor</option>
+                      <option value="parts">Parts</option>
+                      <option value="manager">Manager</option>
+                    </select>
+                    <button
+                      type="button"
                       disabled={!draftReady || sending}
-                      checked={selectedRecipients.includes(u.id)}
-                      onChange={(e) =>
-                        setSelectedRecipients((prev) =>
-                          e.target.checked
-                            ? [...prev, u.id]
-                            : prev.filter((id) => id !== u.id),
-                        )
+                      className="h-8 rounded border border-[color:var(--theme-border-soft)] px-2"
+                      onClick={() =>
+                        setSelectedRecipients(recipientOptions.map((u) => u.id))
                       }
-                    />
-                    <UserAvatar
-                      name={u.full_name}
-                      avatarUrl={u.avatar_url}
-                      size="sm"
-                    />
-                    <span>{u.full_name ?? u.id.slice(0, 6)}</span>
-                  </label>
-                ))}
-              </div>
-              </> : (
+                    >
+                      Select all
+                    </button>
+                  </div>
+
+                  <div className="max-h-20 overflow-auto rounded border border-[color:var(--theme-border-soft)] p-2">
+                    {recipientOptions.map((u) => (
+                      <label
+                        key={u.id}
+                        className="mb-1 flex items-center gap-2"
+                      >
+                        <input
+                          type="checkbox"
+                          disabled={!draftReady || sending}
+                          checked={selectedRecipients.includes(u.id)}
+                          onChange={(e) =>
+                            setSelectedRecipients((prev) =>
+                              e.target.checked
+                                ? [...prev, u.id]
+                                : prev.filter((id) => id !== u.id),
+                            )
+                          }
+                        />
+                        <UserAvatar
+                          name={u.full_name}
+                          avatarUrl={u.avatar_url}
+                          size="sm"
+                        />
+                        <span>{u.full_name ?? u.id.slice(0, 6)}</span>
+                      </label>
+                    ))}
+                  </div>
+                </>
+              ) : (
                 <div className="max-h-32 overflow-auto rounded border border-[color:var(--theme-border-soft)] p-1.5">
                   {customers.map((customer) => (
                     <button
@@ -795,9 +854,15 @@ export default function InboxModal({
                       } disabled:cursor-not-allowed disabled:opacity-50`}
                     >
                       <span>
-                        <span className="block font-medium text-[color:var(--theme-text-primary)]">{customer.full_name}</span>
+                        <span className="block font-medium text-[color:var(--theme-text-primary)]">
+                          {customer.full_name}
+                        </span>
                         <span className="block text-[10px] text-[color:var(--theme-text-muted)]">
-                          {customer.can_message ? customer.email ?? customer.phone ?? "Portal customer" : "Portal activation required"}
+                          {customer.can_message
+                            ? (customer.email ??
+                              customer.phone ??
+                              "Portal customer")
+                            : "Portal activation required"}
                         </span>
                       </span>
                     </button>
@@ -867,13 +932,15 @@ export default function InboxModal({
           {activeConversation ? (
             <>
               <p className="mb-1 text-[color:var(--theme-text-primary)]">
-              Type: {activeConversation.context?.type ?? "general"}
+                Type: {activeConversation.context?.type ?? "general"}
               </p>
 
               {activeConversation.context ? (
                 <p className="mb-3 text-[color:var(--theme-text-secondary)]">
                   {activeConversation.context.label}
-                  {activeConversation.context.secondary ? ` · ${activeConversation.context.secondary}` : ""}
+                  {activeConversation.context.secondary
+                    ? ` · ${activeConversation.context.secondary}`
+                    : ""}
                 </p>
               ) : (
                 <div className="mb-3 rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2 text-[11px] text-[color:var(--theme-text-secondary)]">
@@ -896,7 +963,9 @@ export default function InboxModal({
             </>
           ) : (
             <div className="rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2 text-[11px] text-[color:var(--theme-text-secondary)]">
-              <p className="mb-1 text-[color:var(--theme-text-primary)]">No thread selected.</p>
+              <p className="mb-1 text-[color:var(--theme-text-primary)]">
+                No thread selected.
+              </p>
               <p>Compose mode uses current page context when available.</p>
             </div>
           )}

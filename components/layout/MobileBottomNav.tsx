@@ -89,16 +89,20 @@ function isActivePath(pathname: string, href: string) {
 
 function roleLabel(role: MobileRole | null): string {
   if (!role) return "Mobile workspace";
-  return role.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+  return role
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function iconForHref(href: string): LucideIcon {
   if (href === "/mobile") return Home;
-  if (href.includes("tech/queue") || href.includes("work-orders")) return BriefcaseBusiness;
+  if (href.includes("tech/queue") || href.includes("work-orders"))
+    return BriefcaseBusiness;
   if (href.includes("inspections")) return ClipboardCheck;
   if (href.includes("appointments")) return CalendarDays;
   if (href.includes("messages")) return MessageCircle;
-  if (href.includes("performance") || href.includes("reports")) return BarChart3;
+  if (href.includes("performance") || href.includes("reports"))
+    return BarChart3;
   if (href.includes("workforce") || href.includes("technicians")) return Users;
   if (href.includes("dispatch")) return RadioTower;
   if (href.includes("parts")) return Boxes;
@@ -130,7 +134,11 @@ function MenuLink({
       className="mobile-command-nav-row"
     >
       <span className="mobile-command-nav-row__icon">
-        <Icon aria-hidden className="h-[1.05rem] w-[1.05rem]" strokeWidth={2.1} />
+        <Icon
+          aria-hidden
+          className="h-[1.05rem] w-[1.05rem]"
+          strokeWidth={2.1}
+        />
       </span>
       <span className="mobile-command-nav-row__label">{item.label}</span>
       {item.badge != null ? (
@@ -155,7 +163,9 @@ function MenuSection({
 
   return (
     <section className="space-y-1.5">
-      <h2 className="mobile-command-drawer__section-title px-2 pb-1">{title}</h2>
+      <h2 className="mobile-command-drawer__section-title px-2 pb-1">
+        {title}
+      </h2>
       <div className="space-y-0.5">
         {items.map((item) => (
           <MenuLink
@@ -178,6 +188,7 @@ export function MobileBottomNav({ open, onClose }: Props) {
   const [userId, setUserId] = useState<string | null>(null);
   const [profileName, setProfileName] = useState<string>("Team member");
   const [role, setRole] = useState<MobileRole | null>(null);
+  const [messageUnreadCount, setMessageUnreadCount] = useState(0);
   const [signingOut, setSigningOut] = useState(false);
   const [install, setInstall] = useState<InstallAvailability>({
     available: false,
@@ -218,6 +229,42 @@ export function MobileBottomNav({ open, onClose }: Props) {
   }, [supabase]);
 
   useEffect(() => {
+    if (!userId) {
+      setMessageUnreadCount(0);
+      return;
+    }
+
+    const loadUnread = async () => {
+      const response = await fetch("/api/chat/my-conversations", {
+        credentials: "include",
+      }).catch(() => null);
+      if (!response?.ok) return;
+      const conversations = (await response.json().catch(() => [])) as Array<{
+        unread_count?: number | null;
+      }>;
+      setMessageUnreadCount(
+        Array.isArray(conversations)
+          ? conversations.reduce(
+              (total, conversation) =>
+                total + Math.max(0, Number(conversation.unread_count ?? 0)),
+              0,
+            )
+          : 0,
+      );
+    };
+
+    void loadUnread();
+    const interval = window.setInterval(() => void loadUnread(), 30_000);
+    window.addEventListener("profixiq:inbox-refresh", loadUnread);
+    window.addEventListener("profixiq:inbox-read", loadUnread);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("profixiq:inbox-refresh", loadUnread);
+      window.removeEventListener("profixiq:inbox-read", loadUnread);
+    };
+  }, [userId]);
+
+  useEffect(() => {
     const onAvailability = (event: Event) => {
       const custom = event as CustomEvent<InstallAvailability>;
       setInstall(custom.detail);
@@ -227,14 +274,25 @@ export function MobileBottomNav({ open, onClose }: Props) {
       setRuntimeStatus(custom.detail);
     };
 
-    window.addEventListener("profixiq:pwa-install-availability", onAvailability);
+    window.addEventListener(
+      "profixiq:pwa-install-availability",
+      onAvailability,
+    );
     window.addEventListener("profixiq:pwa-runtime-status", onRuntimeStatus);
-    window.dispatchEvent(new Event("profixiq:pwa-install-availability-request"));
+    window.dispatchEvent(
+      new Event("profixiq:pwa-install-availability-request"),
+    );
     window.dispatchEvent(new Event("profixiq:pwa-runtime-status-request"));
 
     return () => {
-      window.removeEventListener("profixiq:pwa-install-availability", onAvailability);
-      window.removeEventListener("profixiq:pwa-runtime-status", onRuntimeStatus);
+      window.removeEventListener(
+        "profixiq:pwa-install-availability",
+        onAvailability,
+      );
+      window.removeEventListener(
+        "profixiq:pwa-runtime-status",
+        onRuntimeStatus,
+      );
     };
   }, [open]);
 
@@ -257,13 +315,19 @@ export function MobileBottomNav({ open, onClose }: Props) {
       href: tile.href,
       label: tile.title,
       icon: iconForHref(tile.href),
+      badge:
+        tile.href.includes("messages") && messageUnreadCount > 0
+          ? messageUnreadCount > 99
+            ? "99+"
+            : messageUnreadCount
+          : null,
     }));
 
     return [home, ...dynamic].filter(
       (item, index, items) =>
         items.findIndex((candidate) => candidate.href === item.href) === index,
     );
-  }, [role]);
+  }, [messageUnreadCount, role]);
 
   const utilityItems = useMemo<NavItem[]>(() => {
     if (role === "mechanic") return [];
@@ -322,7 +386,9 @@ export function MobileBottomNav({ open, onClose }: Props) {
         aria-label="Close menu"
         onClick={onClose}
         className={`mobile-command-backdrop fixed inset-0 z-40 transition-opacity ${
-          open ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
+          open
+            ? "pointer-events-auto opacity-100"
+            : "pointer-events-none opacity-0"
         }`}
       />
 
@@ -340,7 +406,9 @@ export function MobileBottomNav({ open, onClose }: Props) {
             <div className="mt-1 truncate text-sm font-semibold text-white">
               {profileName}
             </div>
-            <div className="mt-0.5 text-xs text-slate-300">{roleLabel(role)}</div>
+            <div className="mt-0.5 text-xs text-slate-300">
+              {roleLabel(role)}
+            </div>
           </div>
           <button
             type="button"
@@ -365,7 +433,10 @@ export function MobileBottomNav({ open, onClose }: Props) {
               </div>
               <div className="space-y-2">
                 {openWorkItems.map((item) => (
-                  <div key={item.key} className="mobile-command-resume-card flex items-center gap-2">
+                  <div
+                    key={item.key}
+                    className="mobile-command-resume-card flex items-center gap-2"
+                  >
                     <button
                       type="button"
                       onClick={() => {
@@ -378,7 +449,10 @@ export function MobileBottomNav({ open, onClose }: Props) {
                       className="min-w-0 flex-1 text-left"
                     >
                       <span className="flex items-center gap-2">
-                        <Wrench aria-hidden className="h-4 w-4 shrink-0 text-[#7dcfff]" />
+                        <Wrench
+                          aria-hidden
+                          className="h-4 w-4 shrink-0 text-[#7dcfff]"
+                        />
                         <span className="truncate text-sm font-semibold text-white">
                           {item.title}
                         </span>
@@ -422,7 +496,9 @@ export function MobileBottomNav({ open, onClose }: Props) {
           />
 
           <section className="space-y-2">
-            <h2 className="mobile-command-drawer__section-title px-2">Device & sync</h2>
+            <h2 className="mobile-command-drawer__section-title px-2">
+              Device & sync
+            </h2>
             <div
               className="mobile-command-device-card"
               data-attention={deviceNeedsAttention ? "true" : "false"}
@@ -430,13 +506,21 @@ export function MobileBottomNav({ open, onClose }: Props) {
               <div className="flex items-start gap-3">
                 <span className="mt-0.5 inline-grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-white/[0.08]">
                   {runtimeStatus.online ? (
-                    <Wifi aria-hidden className="h-4.5 w-4.5 text-emerald-300" />
+                    <Wifi
+                      aria-hidden
+                      className="h-4.5 w-4.5 text-emerald-300"
+                    />
                   ) : (
-                    <CloudOff aria-hidden className="h-4.5 w-4.5 text-amber-300" />
+                    <CloudOff
+                      aria-hidden
+                      className="h-4.5 w-4.5 text-amber-300"
+                    />
                   )}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm font-semibold text-white">{deviceLabel}</div>
+                  <div className="text-sm font-semibold text-white">
+                    {deviceLabel}
+                  </div>
                   <div className="mt-1 text-[0.69rem] leading-4 text-slate-300">
                     {runtimeStatus.syncBlocked
                       ? runtimeStatus.syncBlocked
@@ -463,10 +547,13 @@ export function MobileBottomNav({ open, onClose }: Props) {
                   <button
                     type="button"
                     onClick={() =>
-                      window.dispatchEvent(new Event("profixiq:pwa-update-request"))
+                      window.dispatchEvent(
+                        new Event("profixiq:pwa-update-request"),
+                      )
                     }
                     disabled={
-                      runtimeStatus.activatingUpdate || runtimeStatus.pending > 0
+                      runtimeStatus.activatingUpdate ||
+                      runtimeStatus.pending > 0
                     }
                     className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-xl bg-[#32b9f3] px-3 text-xs font-bold text-[#041022] disabled:opacity-55"
                   >
@@ -490,7 +577,9 @@ export function MobileBottomNav({ open, onClose }: Props) {
               <button
                 type="button"
                 onClick={() =>
-                  window.dispatchEvent(new Event("profixiq:pwa-install-request"))
+                  window.dispatchEvent(
+                    new Event("profixiq:pwa-install-request"),
+                  )
                 }
                 className="mobile-command-nav-row w-full text-left"
               >

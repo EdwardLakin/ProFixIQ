@@ -14,11 +14,12 @@ export const dynamic = "force-dynamic";
 type DB = Database;
 type ConversationRow = DB["public"]["Tables"]["conversations"]["Row"];
 type MessageRow = DB["public"]["Tables"]["messages"]["Row"];
-type ParticipantRow = DB["public"]["Tables"]["conversation_participants"]["Row"];
-type MessageReadRow = DB["public"]["Tables"]["message_reads"]["Row"];
+type ParticipantRow =
+  DB["public"]["Tables"]["conversation_participants"]["Row"];
 
 type ParticipantInfo = {
   id: string;
+  user_id: string;
   kind: "staff" | "customer";
   full_name: string | null;
   avatar_url: string | null;
@@ -38,6 +39,7 @@ type ConversationPayload = {
   participants: ParticipantInfo[];
   unread_count: number;
   context: ConversationContextPayload | null;
+  actor_participant_id: string;
 };
 
 function customerName(row: {
@@ -60,7 +62,8 @@ export async function GET(req: Request): Promise<NextResponse> {
     data: { user },
   } = await userClient.auth.getUser();
 
-  if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  if (!user)
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
   const admin = createAdminSupabase();
   const preferredKind =
@@ -73,15 +76,22 @@ export async function GET(req: Request): Promise<NextResponse> {
     preferredKind,
   });
   if (!actorResult.ok) {
-    return NextResponse.json({ error: actorResult.error }, { status: actorResult.status });
+    return NextResponse.json(
+      { error: actorResult.error },
+      { status: actorResult.status },
+    );
   }
 
-  const { ids: conversationIds, error: accessError } = await getActorConversationIds({
-    supabase: admin,
-    actorUserId: user.id,
-  });
-  if (accessError) return NextResponse.json({ error: accessError }, { status: 500 });
-  if (conversationIds.length === 0) return NextResponse.json<ConversationPayload[]>([]);
+  const { ids: conversationIds, error: accessError } =
+    await getActorConversationIds({
+      supabase: admin,
+      actorUserId: user.id,
+      participantKind: actorResult.actor.kind,
+    });
+  if (accessError)
+    return NextResponse.json({ error: accessError }, { status: 500 });
+  if (conversationIds.length === 0)
+    return NextResponse.json<ConversationPayload[]>([]);
 
   let conversationQuery = admin
     .from("conversations")
@@ -100,60 +110,85 @@ export async function GET(req: Request): Promise<NextResponse> {
     );
   }
 
-  const { data: conversations, error: conversationError } = await conversationQuery;
+  const { data: conversations, error: conversationError } =
+    await conversationQuery;
   if (conversationError) {
-    return NextResponse.json({ error: conversationError.message }, { status: 500 });
+    return NextResponse.json(
+      { error: conversationError.message },
+      { status: 500 },
+    );
   }
 
   const safeConversations = conversations ?? [];
   const safeConversationIds = safeConversations.map((row) => row.id);
-  if (safeConversationIds.length === 0) return NextResponse.json<ConversationPayload[]>([]);
+  if (safeConversationIds.length === 0)
+    return NextResponse.json<ConversationPayload[]>([]);
 
-  const [{ data: messages, error: messageError }, { data: participants, error: participantError }] =
-    await Promise.all([
-      admin
-        .from("messages")
-        .select("*")
-        .in("conversation_id", safeConversationIds)
-        .order("sent_at", { ascending: false })
-        .order("created_at", { ascending: false }),
-      admin
-        .from("conversation_participants")
-        .select("conversation_id, user_id, participant_kind, role")
-        .in("conversation_id", safeConversationIds),
-    ]);
-
-  if (messageError) return NextResponse.json({ error: messageError.message }, { status: 500 });
-  if (participantError) return NextResponse.json({ error: participantError.message }, { status: 500 });
-
-  const participantRows = (participants ?? []) as ParticipantRow[];
-  const participantUserIds = Array.from(
-    new Set(participantRows.map((row) => row.user_id).filter(Boolean)),
-  );
-
-  const [{ data: profiles }, { data: customers }, { data: readRows }] = await Promise.all([
-    participantUserIds.length
-      ? admin
-          .from("profiles")
-          .select("id, user_id, full_name, email, avatar_url, role")
-          .or(participantUserIds.map((id) => `user_id.eq.${id},id.eq.${id}`).join(","))
-      : Promise.resolve({ data: [], error: null }),
-    participantUserIds.length
-      ? admin
-          .from("customers")
-          .select("id, user_id, name, first_name, last_name, email")
-          .in("user_id", participantUserIds)
-      : Promise.resolve({ data: [], error: null }),
+  const [
+    { data: messages, error: messageError },
+    { data: participants, error: participantError },
+  ] = await Promise.all([
     admin
-      .from("message_reads")
-      .select("conversation_id, last_read_at")
-      .eq("user_id", user.id)
+      .from("messages")
+      .select("*")
+      .in("conversation_id", safeConversationIds)
+      .order("sent_at", { ascending: false })
+      .order("created_at", { ascending: false }),
+    admin
+      .from("conversation_participants")
+      .select(
+        "id, conversation_id, user_id, participant_kind, role, profile_id, customer_id",
+      )
       .in("conversation_id", safeConversationIds),
   ]);
 
-  const identityByUserId = new Map<
+  if (messageError)
+    return NextResponse.json({ error: messageError.message }, { status: 500 });
+  if (participantError)
+    return NextResponse.json(
+      { error: participantError.message },
+      { status: 500 },
+    );
+
+  const participantRows = (participants ?? []) as ParticipantRow[];
+  const profileIds = Array.from(
+    new Set(
+      participantRows
+        .map((row) => row.profile_id)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  );
+  const participantCustomerIds = Array.from(
+    new Set(
+      participantRows
+        .map((row) => row.customer_id)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  );
+
+  const [{ data: profiles }, { data: customers }] = await Promise.all([
+    profileIds.length
+      ? admin
+          .from("profiles")
+          .select("id, user_id, full_name, email, avatar_url, role")
+          .in("id", profileIds)
+      : Promise.resolve({ data: [], error: null }),
+    participantCustomerIds.length
+      ? admin
+          .from("customers")
+          .select("id, user_id, name, first_name, last_name, email")
+          .in("id", participantCustomerIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+
+  const identityByActorKey = new Map<
     string,
-    { full_name: string | null; avatar_url: string | null; role: string | null; kind: "staff" | "customer" }
+    {
+      full_name: string | null;
+      avatar_url: string | null;
+      role: string | null;
+      kind: "staff" | "customer";
+    }
   >();
   (profiles ?? []).forEach((profile) => {
     const identity = {
@@ -162,12 +197,10 @@ export async function GET(req: Request): Promise<NextResponse> {
       role: profile.role,
       kind: "staff" as const,
     };
-    identityByUserId.set(profile.user_id ?? profile.id, identity);
-    identityByUserId.set(profile.id, identity);
+    identityByActorKey.set(`staff:${profile.id}`, identity);
   });
   (customers ?? []).forEach((customer) => {
-    if (!customer.user_id) return;
-    identityByUserId.set(customer.user_id, {
+    identityByActorKey.set(`customer:${customer.id}`, {
       full_name: customerName(customer),
       avatar_url: null,
       role: "customer",
@@ -177,11 +210,19 @@ export async function GET(req: Request): Promise<NextResponse> {
 
   const participantsByConversation = new Map<string, ParticipantInfo[]>();
   participantRows.forEach((row) => {
-    const identity = identityByUserId.get(row.user_id);
+    const identity = identityByActorKey.get(
+      row.participant_kind === "customer"
+        ? `customer:${row.customer_id ?? ""}`
+        : `staff:${row.profile_id ?? ""}`,
+    );
     const list = participantsByConversation.get(row.conversation_id) ?? [];
     list.push({
-      id: row.user_id,
-      kind: row.participant_kind === "customer" ? "customer" : identity?.kind ?? "staff",
+      id: row.id,
+      user_id: row.user_id,
+      kind:
+        row.participant_kind === "customer"
+          ? "customer"
+          : (identity?.kind ?? "staff"),
       full_name: identity?.full_name ?? null,
       avatar_url: identity?.avatar_url ?? null,
       role: identity?.role ?? row.role,
@@ -191,41 +232,121 @@ export async function GET(req: Request): Promise<NextResponse> {
 
   const latestByConversation = new Map<string, MessageRow>();
   (messages ?? []).forEach((message) => {
-    if (message.conversation_id && !latestByConversation.has(message.conversation_id)) {
+    if (
+      message.conversation_id &&
+      !latestByConversation.has(message.conversation_id)
+    ) {
       latestByConversation.set(message.conversation_id, message);
     }
   });
-  const readByConversation = new Map(
-    ((readRows ?? []) as MessageReadRow[]).map((row) => [row.conversation_id, row.last_read_at]),
+  const actorParticipantIds = participantRows
+    .filter(
+      (participant) =>
+        participant.user_id === user.id &&
+        participant.participant_kind === actorResult.actor.kind,
+    )
+    .map((participant) => participant.id);
+  const { data: unreadDeliveries, error: deliveryError } =
+    actorParticipantIds.length
+      ? await admin
+          .from("message_deliveries")
+          .select("conversation_id")
+          .in("recipient_participant_id", actorParticipantIds)
+          .is("read_at", null)
+          .in("conversation_id", safeConversationIds)
+      : { data: [], error: null };
+  if (deliveryError) {
+    return NextResponse.json({ error: deliveryError.message }, { status: 500 });
+  }
+  const unreadByConversation = new Map<string, number>();
+  (unreadDeliveries ?? []).forEach((delivery) => {
+    unreadByConversation.set(
+      delivery.conversation_id,
+      (unreadByConversation.get(delivery.conversation_id) ?? 0) + 1,
+    );
+  });
+  const actorParticipantByConversation = new Map(
+    participantRows
+      .filter(
+        (participant) =>
+          participant.user_id === user.id &&
+          participant.participant_kind === actorResult.actor.kind,
+      )
+      .map((participant) => [participant.conversation_id, participant.id]),
   );
 
-  const workOrderIds = Array.from(new Set(safeConversations.map((row) => row.work_order_id).filter((id): id is string => Boolean(id))));
-  const vehicleIds = Array.from(new Set(safeConversations.map((row) => row.vehicle_id).filter((id): id is string => Boolean(id))));
-  const bookingIds = Array.from(new Set(safeConversations.map((row) => row.booking_id).filter((id): id is string => Boolean(id))));
-  const customerIds = Array.from(new Set(safeConversations.map((row) => row.customer_id).filter((id): id is string => Boolean(id))));
+  const workOrderIds = Array.from(
+    new Set(
+      safeConversations
+        .map((row) => row.work_order_id)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  );
+  const vehicleIds = Array.from(
+    new Set(
+      safeConversations
+        .map((row) => row.vehicle_id)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  );
+  const bookingIds = Array.from(
+    new Set(
+      safeConversations
+        .map((row) => row.booking_id)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  );
+  const customerIds = Array.from(
+    new Set(
+      safeConversations
+        .map((row) => row.customer_id)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  );
 
-  const [{ data: workOrders }, { data: vehicles }, { data: bookings }, { data: contextCustomers }] = await Promise.all([
+  const [
+    { data: workOrders },
+    { data: vehicles },
+    { data: bookings },
+    { data: contextCustomers },
+  ] = await Promise.all([
     workOrderIds.length
-      ? admin.from("work_orders").select("id, custom_id, status, customer_name").in("id", workOrderIds)
+      ? admin
+          .from("work_orders")
+          .select("id, custom_id, status, customer_name")
+          .in("id", workOrderIds)
       : Promise.resolve({ data: [], error: null }),
     vehicleIds.length
-      ? admin.from("vehicles").select("id, year, make, model, unit_number").in("id", vehicleIds)
+      ? admin
+          .from("vehicles")
+          .select("id, year, make, model, unit_number")
+          .in("id", vehicleIds)
       : Promise.resolve({ data: [], error: null }),
     bookingIds.length
-      ? admin.from("bookings").select("id, starts_at, status").in("id", bookingIds)
+      ? admin
+          .from("bookings")
+          .select("id, starts_at, status")
+          .in("id", bookingIds)
       : Promise.resolve({ data: [], error: null }),
     customerIds.length
-      ? admin.from("customers").select("id, name, first_name, last_name, email").in("id", customerIds)
+      ? admin
+          .from("customers")
+          .select("id, name, first_name, last_name, email")
+          .in("id", customerIds)
       : Promise.resolve({ data: [], error: null }),
   ]);
 
   const workOrderById = new Map((workOrders ?? []).map((row) => [row.id, row]));
   const vehicleById = new Map((vehicles ?? []).map((row) => [row.id, row]));
   const bookingById = new Map((bookings ?? []).map((row) => [row.id, row]));
-  const customerById = new Map((contextCustomers ?? []).map((row) => [row.id, row]));
+  const customerById = new Map(
+    (contextCustomers ?? []).map((row) => [row.id, row]),
+  );
   const portal = actorResult.actor.kind === "customer";
 
-  const contextFor = (conversation: ConversationRow): ConversationContextPayload | null => {
+  const contextFor = (
+    conversation: ConversationRow,
+  ): ConversationContextPayload | null => {
     if (conversation.work_order_id) {
       const workOrder = workOrderById.get(conversation.work_order_id);
       return {
@@ -239,7 +360,9 @@ export async function GET(req: Request): Promise<NextResponse> {
     }
     if (conversation.booking_id) {
       const booking = bookingById.get(conversation.booking_id);
-      const startsAt = booking?.starts_at ? new Date(booking.starts_at).toLocaleString() : null;
+      const startsAt = booking?.starts_at
+        ? new Date(booking.starts_at).toLocaleString()
+        : null;
       return {
         type: "booking",
         label: "Appointment",
@@ -271,7 +394,8 @@ export async function GET(req: Request): Promise<NextResponse> {
     if (conversation.context_type && conversation.context_id) {
       return {
         type: conversation.context_type,
-        label: conversation.title ?? conversation.context_type.replaceAll("_", " "),
+        label:
+          conversation.title ?? conversation.context_type.replaceAll("_", " "),
         secondary: null,
         href:
           !portal && conversation.context_type === "inspection"
@@ -282,27 +406,41 @@ export async function GET(req: Request): Promise<NextResponse> {
     return null;
   };
 
-  const payload: ConversationPayload[] = safeConversations.map((conversation) => {
-    const latest = latestByConversation.get(conversation.id) ?? null;
-    const lastReadAt = readByConversation.get(conversation.id);
-    const unreadCount = (messages ?? []).filter((message) => {
-      if (message.conversation_id !== conversation.id || message.sender_id === user.id) return false;
-      const sentAt = message.sent_at ?? message.created_at;
-      return !lastReadAt || sentAt > lastReadAt;
-    }).length;
+  const payload: ConversationPayload[] = safeConversations.map(
+    (conversation) => {
+      const latest = latestByConversation.get(conversation.id) ?? null;
+      const unreadCount = unreadByConversation.get(conversation.id) ?? 0;
+      const actorParticipantId = actorParticipantByConversation.get(
+        conversation.id,
+      );
+      if (!actorParticipantId) {
+        throw new Error(
+          `Missing actor participant for conversation ${conversation.id}`,
+        );
+      }
 
-    return {
-      conversation,
-      latest_message: latest,
-      participants: participantsByConversation.get(conversation.id) ?? [],
-      unread_count: unreadCount,
-      context: contextFor(conversation),
-    };
-  });
+      return {
+        conversation,
+        latest_message: latest,
+        participants: participantsByConversation.get(conversation.id) ?? [],
+        unread_count: unreadCount,
+        context: contextFor(conversation),
+        actor_participant_id: actorParticipantId,
+      };
+    },
+  );
 
   payload.sort((a, b) => {
-    const aTime = a.conversation.last_message_at ?? a.latest_message?.sent_at ?? a.conversation.created_at ?? "";
-    const bTime = b.conversation.last_message_at ?? b.latest_message?.sent_at ?? b.conversation.created_at ?? "";
+    const aTime =
+      a.conversation.last_message_at ??
+      a.latest_message?.sent_at ??
+      a.conversation.created_at ??
+      "";
+    const bTime =
+      b.conversation.last_message_at ??
+      b.latest_message?.sent_at ??
+      b.conversation.created_at ??
+      "";
     return bTime.localeCompare(aTime);
   });
 

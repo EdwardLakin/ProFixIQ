@@ -19,6 +19,7 @@ import { attachInspectionReportToInvoice } from "@/features/invoices/server/atta
 import { reviewWorkOrder } from "../../work-orders/[id]/_lib/reviewWorkOrder";
 import { logOperationalEvent } from "@/features/work-orders/server/logOperationalEvent";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { upsertPortalNotification } from "@/features/portal/server/upsertPortalNotification";
 
 type DB = Database;
 type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -336,17 +337,16 @@ export async function POST(request: Request) {
             {
               step: "portal_invoice_notification_insert",
               run: async () => {
-                const { error } = await admin
-                  .from("portal_notifications")
-                  .insert({
-                    user_id: customer.user_id,
-                    customer_id: customer.id,
-                    work_order_id: workOrderId,
-                    kind: "invoice_ready",
-                    title: "Invoice ready",
-                    body: `Your invoice for Work Order ${workOrderId} at ${shopLabel} is ready to view.`,
-                  });
-                if (error) throw new Error(error.message);
+                await upsertPortalNotification(admin, {
+                  userId: customer.user_id!,
+                  customerId: customer.id,
+                  workOrderId,
+                  kind: "invoice_ready",
+                  title: "Invoice ready",
+                  body: `Your invoice for Work Order ${workOrderId} at ${shopLabel} is ready to view.`,
+                  eventKey: `invoice_ready:${workOrderId}:version:${version.id}`,
+                  href: `/portal/invoices/${workOrderId}`,
+                });
               },
             },
           ]

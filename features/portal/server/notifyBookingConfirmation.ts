@@ -1,9 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { sendBookingConfirmation } from "@/features/shared/lib/email/sendEmail";
+import { upsertPortalNotification } from "@/features/portal/server/upsertPortalNotification";
 
 type BookingForNotification = Pick<
   Database["public"]["Tables"]["bookings"]["Row"],
+  | "id"
   | "starts_at"
   | "ends_at"
   | "customer_id"
@@ -22,7 +24,7 @@ export async function notifyBookingConfirmation(
     await Promise.all([
       supabase
         .from("customers")
-        .select("first_name,last_name,email")
+        .select("id,user_id,first_name,last_name,email")
         .eq("id", booking.customer_id)
         .maybeSingle(),
       booking.vehicle_id
@@ -39,7 +41,7 @@ export async function notifyBookingConfirmation(
         .maybeSingle(),
     ]);
 
-  if (!customer?.email) return false;
+  if (!customer) return false;
 
   const { data: lines } = booking.work_order_id
     ? await supabase
@@ -69,14 +71,30 @@ export async function notifyBookingConfirmation(
     ? [vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(" ")
     : "Vehicle details on file";
 
-  await sendBookingConfirmation({
-    customerEmail: customer.email,
-    customerName,
-    vehicle: vehicleLabel,
-    services: services.length ? services : ["Service appointment"],
-    estimatedTotal: "Estimate pending",
-    appointmentTime,
-  });
+  if (customer.email) {
+    await sendBookingConfirmation({
+      customerEmail: customer.email,
+      customerName,
+      vehicle: vehicleLabel,
+      services: services.length ? services : ["Service appointment"],
+      estimatedTotal: "Estimate pending",
+      appointmentTime,
+    });
+  }
 
-  return true;
+  if (customer.user_id) {
+    await upsertPortalNotification(supabase, {
+      userId: customer.user_id,
+      customerId: customer.id,
+      workOrderId: booking.work_order_id,
+      kind: "appointment_confirmed",
+      title: "Appointment confirmed",
+      body: `Your service appointment is confirmed for ${appointmentTime}.`,
+      eventKey: `appointment_confirmed:${booking.id}`,
+      href: "/portal/customer-appointments",
+      metadata: { booking_id: booking.id },
+    });
+  }
+
+  return Boolean(customer.email || customer.user_id);
 }

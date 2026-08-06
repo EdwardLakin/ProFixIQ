@@ -11,7 +11,7 @@ import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
 type ConversationRow = DB["public"]["Tables"]["conversations"]["Row"];
-type Participant = { id: string; full_name: string | null };
+type Participant = { id: string; user_id: string; full_name: string | null };
 
 type ConversationPayload = {
   conversation: ConversationRow;
@@ -53,7 +53,7 @@ export default function MobileChatThreadPage() {
           currentUserId == null
             ? found.participants
             : found.participants.filter(
-                (participant) => participant.id !== currentUserId,
+                (participant) => participant.user_id !== currentUserId,
               );
         setTitle(
           others[0]?.full_name ??

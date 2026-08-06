@@ -3,13 +3,17 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 
 import RoleSidebar from "@/features/shared/components/RoleSidebar";
 import ShiftTracker from "@shared/components/ShiftTracker";
-import { fetchMobileShiftState, type MobileShiftState } from "@/features/mobile/shifts/client";
+import {
+  fetchMobileShiftState,
+  type MobileShiftState,
+} from "@/features/mobile/shifts/client";
 import InboxModal from "@/features/chat/components/InboxModal";
 import AgentRequestModal from "@/features/agent/components/AgentRequestModal";
 import { cn } from "@/features/shared/utils/cn";
@@ -19,6 +23,7 @@ import AskAssistantEntry from "@/features/assistant/components/AskAssistantEntry
 import { useActiveBrand } from "@/features/branding/hooks/useActiveBrand";
 import { isBillingAttentionStatus } from "@/features/stripe/lib/stripe/subscriptionStatus";
 import { isOutsideDesktopAppShell } from "@/features/shared/lib/routes/shellBoundaries";
+import OpsNotificationsBell from "@/features/shared/components/OpsNotificationsBell";
 
 const HEADER_OFFSET_DESKTOP = "pt-14";
 
@@ -38,8 +43,7 @@ const ActionButton = ({
     className="app-shell-action inline-flex h-8 items-center justify-center gap-1.5 rounded-md border px-2.5 text-xs font-medium shadow-sm backdrop-blur-md transition-colors"
     style={{
       borderColor: "var(--theme-border-soft)",
-      background:
-        "var(--theme-gradient-panel)",
+      background: "var(--theme-gradient-panel)",
       color: "var(--theme-text-primary)",
     }}
   >
@@ -89,7 +93,7 @@ export default function AppShell({
 }) {
   const pathname = usePathname() ?? "/";
   const router = useRouter();
-  const supabase = createBrowserSupabase();
+  const supabase = useMemo(() => createBrowserSupabase(), []);
   const { data: activeBrand } = useActiveBrand();
 
   const [userId, setUserId] = useState<string | null>(
@@ -110,7 +114,8 @@ export default function AppShell({
   const periodDaysLeft = daysUntil(periodEndIso);
 
   const [punchOpen, setPunchOpen] = useState(false);
-  const [headerShiftState, setHeaderShiftState] = useState<MobileShiftState | null>(null);
+  const [headerShiftState, setHeaderShiftState] =
+    useState<MobileShiftState | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
   const [agentDialogOpen, setAgentDialogOpen] = useState(false);
   const [incomingConvoId, setIncomingConvoId] = useState<string | null>(null);
@@ -144,7 +149,9 @@ export default function AppShell({
     }).catch(() => null);
     if (!response?.ok) return;
 
-    const conversations = (await response.json().catch(() => [])) as InboxConversationSummary[];
+    const conversations = (await response
+      .json()
+      .catch(() => [])) as InboxConversationSummary[];
     const count = Array.isArray(conversations)
       ? conversations.reduce(
           (sum, row) => sum + Math.max(0, Number(row.unread_count ?? 0)),
@@ -223,7 +230,7 @@ export default function AppShell({
                 recipients?: string[] | null;
               };
 
-            if (msg.sender_id === uid) return;
+            if (msg.sender_id === uid && msg.sender_kind === "staff") return;
             if (Array.isArray(msg.recipients) && !msg.recipients.includes(uid))
               return;
 
@@ -234,7 +241,13 @@ export default function AppShell({
                 detail: { conversationId: msg.conversation_id },
               }),
             );
-            setChatOpen(true);
+            toast.info("New inbox message", {
+              description: "A customer or teammate sent a message.",
+              action: {
+                label: "Open inbox",
+                onClick: () => setChatOpen(true),
+              },
+            });
           },
         )
         .subscribe();
@@ -272,12 +285,15 @@ export default function AppShell({
       setHeaderShiftState(null);
       return;
     }
-    void fetchMobileShiftState().then(setHeaderShiftState).catch(() => setHeaderShiftState(null));
+    void fetchMobileShiftState()
+      .then(setHeaderShiftState)
+      .catch(() => setHeaderShiftState(null));
     const onShiftState = (event: Event) => {
       setHeaderShiftState((event as CustomEvent<MobileShiftState>).detail);
     };
     window.addEventListener("workforce:shift-state", onShiftState);
-    return () => window.removeEventListener("workforce:shift-state", onShiftState);
+    return () =>
+      window.removeEventListener("workforce:shift-state", onShiftState);
   }, [userId]);
 
   useEffect(() => {
@@ -292,7 +308,15 @@ export default function AppShell({
     return () => document.removeEventListener("mousedown", onClick);
   }, [punchOpen]);
 
-  const NavItem = ({ href, label }: { href: string; label: string }) => {
+  const NavItem = ({
+    href,
+    label,
+    badge = 0,
+  }: {
+    href: string;
+    label: string;
+    badge?: number;
+  }) => {
     const active = pathname.startsWith(href);
     return (
       <Link
@@ -305,7 +329,14 @@ export default function AppShell({
         )}
         style={active ? { color: "var(--brand-accent, #E39A6E)" } : undefined}
       >
-        {label}
+        <span className="relative inline-flex items-center gap-1">
+          {label}
+          {badge > 0 ? (
+            <span className="rounded-full bg-[var(--accent-copper-soft)] px-1 py-0.5 text-[9px] font-bold leading-none text-[color:var(--theme-text-on-accent)]">
+              {badge > 99 ? "99+" : badge}
+            </span>
+          ) : null}
+        </span>
       </Link>
     );
   };
@@ -344,13 +375,14 @@ export default function AppShell({
             className="rounded-full border px-3 py-1 text-[11px] font-semibold shadow-sm backdrop-blur transition"
             style={{
               borderColor: "rgba(255,255,255,0.10)",
-              background:
-                "var(--theme-gradient-panel)",
+              background: "var(--theme-gradient-panel)",
               color: "var(--theme-text-primary)",
             }}
           >
             <span style={{ color: "var(--brand-accent, #E39A6E)" }}>Trial</span>
-            <span className="ml-2 text-[color:var(--theme-text-secondary)]">{label}</span>
+            <span className="ml-2 text-[color:var(--theme-text-secondary)]">
+              {label}
+            </span>
           </div>
         </button>
       );
@@ -402,8 +434,7 @@ export default function AppShell({
           )}
           style={{
             borderColor: "var(--metal-border-soft, rgba(148,163,184,0.3))",
-            background:
-              "var(--theme-gradient-panel)",
+            background: "var(--theme-gradient-panel)",
           }}
         >
           <div
@@ -458,8 +489,7 @@ export default function AppShell({
             style={{
               borderColor:
                 "color-mix(in srgb, var(--brand-primary, #C1663B) 30%, var(--metal-border-soft, rgba(148,163,184,0.3)))",
-              background:
-                "var(--theme-gradient-panel)",
+              background: "var(--theme-gradient-panel)",
               boxShadow:
                 "0 18px 40px var(--theme-surface-inset), 0 0 26px color-mix(in srgb, var(--brand-primary, #C1663B) 18%, transparent)",
             }}
@@ -479,7 +509,10 @@ export default function AppShell({
               </button>
 
               <nav className="flex gap-3 text-sm text-[color:var(--theme-text-secondary)]">
-                <Link href="/dashboard" className="hover:text-[color:var(--theme-text-primary)]">
+                <Link
+                  href="/dashboard"
+                  className="hover:text-[color:var(--theme-text-primary)]"
+                >
                   Dashboard
                 </Link>
               </nav>
@@ -487,6 +520,8 @@ export default function AppShell({
 
             <div className="flex items-center gap-1.5 lg:gap-2">
               <BillingBadge />
+
+              {userId && canSeeAgentConsole ? <OpsNotificationsBell /> : null}
 
               {userId ? (
                 <ActionButton
@@ -498,7 +533,8 @@ export default function AppShell({
                       "inline-block h-2 w-2 rounded-full",
                       headerShiftState?.activity === "working"
                         ? "bg-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.9)]"
-                        : headerShiftState?.activity === "on_break" || headerShiftState?.activity === "on_lunch"
+                        : headerShiftState?.activity === "on_break" ||
+                            headerShiftState?.activity === "on_lunch"
                           ? "bg-amber-400"
                           : "bg-slate-400",
                     )}
@@ -560,8 +596,7 @@ export default function AppShell({
               className="fixed right-6 top-20 z-30 hidden w-72 rounded-xl border p-3 backdrop-blur-xl md:block"
               style={{
                 borderColor: "var(--metal-border-soft, rgba(148,163,184,0.3))",
-                background:
-                  "var(--theme-gradient-panel)",
+                background: "var(--theme-gradient-panel)",
                 boxShadow: "var(--theme-shadow-medium)",
               }}
             >
@@ -584,15 +619,14 @@ export default function AppShell({
             className="fixed inset-x-0 bottom-0 z-30 border-t pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
             style={{
               borderColor: "var(--metal-border-soft, rgba(148,163,184,0.3))",
-              background:
-                "var(--theme-gradient-panel)",
+              background: "var(--theme-gradient-panel)",
             }}
           >
             <div className="flex px-1">
               <NavItem href="/dashboard" label="Dashboard" />
               <NavItem href="/work-orders" label="Work Orders" />
               <NavItem href="/inspections" label="Inspections" />
-              <NavItem href="/chat" label="Inbox" />
+              <NavItem href="/chat" label="Inbox" badge={inboxUnreadCount} />
               <NavItem href="/mobile/appointments" label="Schedule" />
 
               <button
