@@ -69,11 +69,20 @@ const TERMINAL_REQUEST_STATUSES = new Set([
 
 function dateLabel(value: string | null) {
   if (!value) return null;
+  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  const date = dateOnly
+    ? new Date(
+        Number(dateOnly[1]),
+        Number(dateOnly[2]) - 1,
+        Number(dateOnly[3]),
+      )
+    : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
   return new Intl.DateTimeFormat(undefined, {
     month: "short",
     day: "numeric",
     year: "numeric",
-  }).format(new Date(value));
+  }).format(date);
 }
 
 function statusTone(status: string) {
