@@ -7,6 +7,7 @@ on:
       - "app/api/work-orders/lines/**"
       - "app/portal/auth/confirm/page.tsx"
       - "app/portal/auth/fleet-invite/page.tsx"
+      - "app/portal/history/page.tsx"
       - "features/portal/app/quotes/**"
       - "features/portal/components/QuoteApprovalActions.tsx"
       - "features/portal/lib/**"
@@ -49,9 +50,11 @@ jobs:
           app/api/work-orders/lines/[id]/approval-decision/route.ts
           app/portal/auth/confirm/page.tsx
           app/portal/auth/fleet-invite/page.tsx
+          app/portal/history/page.tsx
           features/portal/app/quotes/[id]/QuotePageClient.tsx
           features/portal/components/QuoteApprovalActions.tsx
           features/portal/lib/workOrderPresentation.ts
+          features/portal/lib/historyPresentation.ts
           features/portal/server/addPortalRequestLine.ts
           features/portal/server/createPortalBooking.ts
           features/portal/server/customerBookings.ts
