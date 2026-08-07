@@ -1513,10 +1513,10 @@ begin
     raise exception 'Pricing remediation did not clear and audit quarantine: %',
       v_after.metadata -> 'parts_quote' -> 'pricing_sanitization';
   end if;
-  if v_after.metadata -> 'parts_quote' -> 'items' -> 0 ->> 'unit_price'
-       is distinct from '40'
-     or v_after.metadata -> 'parts_quote' -> 'items' -> 0 ->> 'line_total'
-       is distinct from '40' then
+  if (v_after.metadata -> 'parts_quote' -> 'items' -> 0 ->> 'unit_price')::numeric
+       is distinct from 40::numeric
+     or (v_after.metadata -> 'parts_quote' -> 'items' -> 0 ->> 'line_total')::numeric
+       is distinct from 40::numeric then
     raise exception 'Pricing remediation did not restore exact customer sell detail: %',
       v_after.metadata -> 'parts_quote' -> 'items';
   end if;
