@@ -22,6 +22,9 @@ create table if not exists public.agent_human_approval_intents (
 create index if not exists agent_human_approval_intents_request_idx
   on public.agent_human_approval_intents (request_id, created_at desc);
 
+create index if not exists agent_human_approval_intents_approver_idx
+  on public.agent_human_approval_intents (approver_user_id);
+
 create index if not exists agent_human_approval_intents_active_idx
   on public.agent_human_approval_intents (engineering_case_id, approval_kind, expires_at)
   where consumed_at is null;
