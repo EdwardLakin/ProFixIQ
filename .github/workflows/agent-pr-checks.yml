@@ -43,6 +43,27 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Build full-app regression inventory
+        id: regression_inventory
+        continue-on-error: true
+        run: pnpm regression:inventory:check --output-dir "$RUNNER_TEMP/regression-inventory"
+
+      - name: Publish regression inventory summary
+        if: always() && hashFiles('scripts/regression-inventory/critical-flows.json') != ''
+        shell: bash
+        run: |
+          if [[ -f "$RUNNER_TEMP/regression-inventory/summary.md" ]]; then
+            cat "$RUNNER_TEMP/regression-inventory/summary.md" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload regression inventory
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-app-regression-inventory
+          path: ${{ runner.temp }}/regression-inventory
+          if-no-files-found: warn
+
       - name: Type-check
         run: pnpm typecheck
 
@@ -74,3 +95,9 @@ jobs:
           STRIPE_SECRET_KEY: sk_test_ci_build_placeholder
           NEXT_PUBLIC_SITE_URL: https://ci-build.example.test
         run: pnpm build
+
+      - name: Enforce regression inventory gate
+        if: always() && steps.regression_inventory.outcome == 'failure'
+        run: |
+          echo "Full-app regression inventory found new, expired, or stale findings."
+          exit 1

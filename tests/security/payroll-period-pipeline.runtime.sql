@@ -1,8 +1,43 @@
+\set ON_ERROR_STOP on
+
 begin;
+
+insert into auth.users (id, email, raw_user_meta_data)
+values (
+  'e7000000-0000-4000-8000-000000000001',
+  'payroll-period-runtime-owner@example.com',
+  '{"full_name":"Payroll Period Runtime Owner"}'::jsonb
+)
+on conflict (id) do nothing;
+
+insert into public.profiles (id, user_id, role, full_name)
+values (
+  'e7000000-0000-4000-8000-000000000001',
+  'e7000000-0000-4000-8000-000000000001',
+  'owner',
+  'Payroll Period Runtime Owner'
+)
+on conflict (id) do update
+set user_id = excluded.user_id,
+    role = excluded.role,
+    full_name = excluded.full_name;
+
+insert into public.shops (id, owner_id, business_name, name)
+values (
+  'e7000000-0000-4000-8000-000000000002',
+  'e7000000-0000-4000-8000-000000000001',
+  'Payroll Period Runtime Shop',
+  'Payroll Period Runtime Shop'
+)
+on conflict (id) do nothing;
+
+update public.profiles
+set shop_id = 'e7000000-0000-4000-8000-000000000002'
+where id = 'e7000000-0000-4000-8000-000000000001';
 
 do $payroll_period_pipeline$
 declare
-  v_shop_id uuid;
+  v_shop_id uuid := 'e7000000-0000-4000-8000-000000000002';
   v_period_id uuid;
   v_period public.payroll_pay_periods%rowtype;
 begin
@@ -82,15 +117,6 @@ begin
        'EXECUTE'
      ) then
     raise exception 'Payroll snapshot RPC grants are unsafe';
-  end if;
-
-  select shop.id
-  into v_shop_id
-  from public.shops shop
-  order by shop.created_at
-  limit 1;
-  if v_shop_id is null then
-    raise exception 'A shop is required for the payroll period trigger runtime test';
   end if;
 
   insert into public.payroll_pay_periods (

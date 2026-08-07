@@ -1,0 +1,530 @@
+{
+  "version": 1,
+  "fixture": {
+    "id": "two-shop-golden-path",
+    "description": "A reusable local-only fixture with two shops, repeated display values/SKUs/unit numbers, and owner, advisor, technician, parts, customer, and fleet identities. Mutations are replayed to prove tenant isolation and idempotency.",
+    "tenants": 2,
+    "sentinelPart": {
+      "cost": 40,
+      "sell": 80,
+      "rule": "Quote Review must keep both values, customer surfaces and invoices use sell, and purchase orders use cost."
+    },
+    "roles": ["owner", "advisor", "technician", "parts", "customer", "fleet"]
+  },
+  "flows": [
+    {
+      "id": "identity-tenant-boundaries",
+      "title": "Identity and tenant boundaries",
+      "domain": "identity-tenancy",
+      "stages": [
+        "sign in",
+        "resolve membership",
+        "select shop",
+        "deny cross-shop read",
+        "deny cross-shop write"
+      ],
+      "evidence": [
+        {
+          "id": "runtime-rls",
+          "label": "an executed cross-shop database boundary test",
+          "globs": ["tests/security/*relation-boundaries.runtime.sql"],
+          "kinds": ["database-runtime"],
+          "minimum": 1,
+          "ciRequired": true
+        },
+        {
+          "id": "membership-runtime",
+          "label": "executable membership/application coverage",
+          "globs": [
+            "**/*membership*.test.ts",
+            "**/*tenant*.test.ts",
+            "**/*auth-normalization*.test.ts"
+          ],
+          "kinds": ["vitest"],
+          "minimum": 1
+        }
+      ]
+    },
+    {
+      "id": "work-order-intake",
+      "title": "Work-order intake and assignment",
+      "domain": "work-orders",
+      "stages": [
+        "customer",
+        "vehicle",
+        "work order",
+        "repair line",
+        "technician assignment",
+        "history reload"
+      ],
+      "evidence": [
+        {
+          "id": "application-runtime",
+          "label": "executable work-order creation coverage",
+          "globs": [
+            "**/*create-work-order*.test.ts",
+            "**/*work-order*creation*.test.ts",
+            "**/*work-order*intake*.test.ts"
+          ],
+          "kinds": ["vitest"],
+          "minimum": 1
+        }
+      ]
+    },
+    {
+      "id": "inspection-repair-truth",
+      "title": "Inspection to repair truth",
+      "domain": "inspections",
+      "stages": [
+        "start inspection",
+        "capture evidence",
+        "save offline",
+        "complete",
+        "release",
+        "reopen",
+        "report"
+      ],
+      "evidence": [
+        {
+          "id": "application-runtime",
+          "label": "executable inspection lifecycle coverage",
+          "globs": ["**/*inspection*.test.ts", "**/*inspection*.test.tsx"],
+          "kinds": ["vitest"],
+          "minimum": 2
+        }
+      ]
+    },
+    {
+      "id": "quote-approval",
+      "title": "Quote Review and approval decisions",
+      "domain": "quotes-approvals",
+      "stages": [
+        "review labor",
+        "review part cost and sell",
+        "send",
+        "approve",
+        "decline",
+        "defer",
+        "replay decision"
+      ],
+      "evidence": [
+        {
+          "id": "application-runtime",
+          "label": "executable Quote Review cost/sell and decision coverage",
+          "globs": [
+            "**/*quote*review*.test.ts",
+            "**/*quote*approval*.test.ts",
+            "**/*approval*consistency*.test.ts"
+          ],
+          "kinds": ["vitest"],
+          "markers": ["quotes.review-cost-and-sell"],
+          "minimum": 1
+        }
+      ]
+    },
+    {
+      "id": "parts-request-purchase-order",
+      "title": "Parts request to purchase order",
+      "domain": "parts",
+      "stages": [
+        "create request",
+        "resolve supplier or inventory part",
+        "approve",
+        "create or reuse PO",
+        "prevent duplicate order"
+      ],
+      "evidence": [
+        {
+          "id": "database-runtime",
+          "label": "an executed request-to-PO database integration",
+          "globs": [
+            "tests/parts/*purchase-order*.runtime.sql",
+            "tests/parts/*ordering*.runtime.sql"
+          ],
+          "kinds": ["database-runtime"],
+          "markers": ["parts.request-to-po"],
+          "minimum": 1,
+          "ciRequired": true
+        }
+      ]
+    },
+    {
+      "id": "parts-receive-handoff",
+      "title": "Parts receive, pick, issue, consume, and return",
+      "domain": "parts",
+      "stages": [
+        "receive",
+        "allocate",
+        "pick",
+        "stage",
+        "handoff",
+        "consume",
+        "return",
+        "replay"
+      ],
+      "evidence": [
+        {
+          "id": "database-runtime",
+          "label": "an executed parts lifecycle database integration",
+          "globs": ["tests/parts/*handoff.runtime.sql"],
+          "kinds": ["database-runtime"],
+          "minimum": 1,
+          "ciRequired": true
+        }
+      ]
+    },
+    {
+      "id": "technician-offline",
+      "title": "Technician labor and offline replay",
+      "domain": "technician",
+      "stages": [
+        "assign",
+        "start labor",
+        "capture offline",
+        "reconnect",
+        "replay once",
+        "complete"
+      ],
+      "evidence": [
+        {
+          "id": "application-runtime",
+          "label": "executable offline/replay coverage",
+          "globs": [
+            "**/*offline*.test.ts",
+            "**/*labor*reliability*.test.ts",
+            "**/*job*punch*.test.ts"
+          ],
+          "kinds": ["vitest"],
+          "minimum": 1
+        }
+      ]
+    },
+    {
+      "id": "invoice-payment-receipt",
+      "title": "Invoice, payment, and receipt",
+      "domain": "financial",
+      "stages": [
+        "price approved work",
+        "finalize invoice",
+        "record payment",
+        "post outbox",
+        "issue receipt",
+        "replay"
+      ],
+      "evidence": [
+        {
+          "id": "financial-runtime",
+          "label": "an executed financial database integration",
+          "globs": [
+            "tests/security/p0-007-financial-outbox.runtime.sql",
+            "tests/invoices/*.runtime.sql"
+          ],
+          "kinds": ["database-runtime"],
+          "minimum": 1,
+          "ciRequired": true
+        },
+        {
+          "id": "application-runtime",
+          "label": "executable invoice total/document coverage",
+          "globs": ["**/*invoice*.test.ts", "**/*invoice*.test.tsx"],
+          "kinds": ["vitest"],
+          "minimum": 1
+        }
+      ]
+    },
+    {
+      "id": "customer-portal",
+      "title": "Customer portal request and approval",
+      "domain": "customer-portal",
+      "stages": [
+        "invite",
+        "authenticate",
+        "view scoped work",
+        "approve lines",
+        "view documents"
+      ],
+      "evidence": [
+        {
+          "id": "portal-policy-runtime",
+          "label": "an executed customer portal policy test",
+          "globs": [
+            "tests/security/work-order-parts-portal-policy.runtime.sql"
+          ],
+          "kinds": ["database-runtime"],
+          "minimum": 1,
+          "ciRequired": true
+        },
+        {
+          "id": "application-runtime",
+          "label": "executable portal application coverage",
+          "globs": ["**/*portal*.test.ts", "**/*portal*.test.tsx"],
+          "kinds": ["vitest"],
+          "minimum": 1
+        }
+      ]
+    },
+    {
+      "id": "payment-refund-receipt",
+      "title": "Payment posting, refund, and receipt",
+      "domain": "financial",
+      "stages": [
+        "post",
+        "deduplicate",
+        "refund",
+        "correct",
+        "issue receipt",
+        "reconcile"
+      ],
+      "evidence": [
+        {
+          "id": "payment-runtime",
+          "label": "an executed payment lifecycle database integration",
+          "globs": [
+            "tests/security/p0-007-financial-outbox.runtime.sql",
+            "tests/security/p1-012-stripe-webhook-receipts.runtime.sql"
+          ],
+          "kinds": ["database-runtime"],
+          "minimum": 1,
+          "ciRequired": true
+        }
+      ]
+    },
+    {
+      "id": "fleet-portal",
+      "title": "Fleet intake, approval, and service history",
+      "domain": "fleet",
+      "stages": [
+        "enroll unit",
+        "request service",
+        "convert to work order",
+        "approve",
+        "view history"
+      ],
+      "evidence": [
+        {
+          "id": "application-runtime",
+          "label": "executable fleet lifecycle coverage",
+          "globs": ["**/*fleet*.test.ts", "**/*fleet*.test.tsx"],
+          "kinds": ["vitest"],
+          "minimum": 2
+        }
+      ]
+    },
+    {
+      "id": "messaging-notifications",
+      "title": "Messaging and notification acknowledgement",
+      "domain": "messaging",
+      "stages": ["send", "deliver", "list", "read", "acknowledge", "retry"],
+      "evidence": [
+        {
+          "id": "application-runtime",
+          "label": "executable message/notification persistence coverage",
+          "globs": [
+            "**/*message*.test.ts",
+            "**/*notification*.test.ts",
+            "**/*chat*delivery*.test.ts"
+          ],
+          "kinds": ["vitest"],
+          "markers": ["messaging.notification-acknowledgement"],
+          "minimum": 1
+        }
+      ]
+    },
+    {
+      "id": "workforce-payroll",
+      "title": "Workforce time and payroll periods",
+      "domain": "workforce",
+      "stages": [
+        "clock",
+        "correct",
+        "approve",
+        "close period",
+        "reopen safely",
+        "export"
+      ],
+      "evidence": [
+        {
+          "id": "payroll-runtime",
+          "label": "an executed payroll period database integration",
+          "globs": ["tests/security/payroll-period-pipeline.runtime.sql"],
+          "kinds": ["database-runtime"],
+          "minimum": 1,
+          "ciRequired": true
+        }
+      ]
+    },
+    {
+      "id": "ai-human-approval",
+      "title": "AI recommendation and human approval",
+      "domain": "ai-automation",
+      "stages": [
+        "collect evidence",
+        "recommend",
+        "preview",
+        "human decision",
+        "execute once",
+        "audit"
+      ],
+      "evidence": [
+        {
+          "id": "approval-runtime",
+          "label": "an executed agent approval database integration",
+          "globs": ["tests/security/agent-human-approval-proof.runtime.sql"],
+          "kinds": ["database-runtime"],
+          "minimum": 1,
+          "ciRequired": true
+        },
+        {
+          "id": "application-runtime",
+          "label": "executable AI approval behavior coverage",
+          "globs": [
+            "**/*action*approval*.test.ts",
+            "**/*agent*approval*.test.ts",
+            "**/*automation*policy*.test.ts"
+          ],
+          "kinds": ["vitest"],
+          "minimum": 1
+        }
+      ]
+    },
+    {
+      "id": "imports",
+      "title": "CSV imports and replay-safe activation",
+      "domain": "imports",
+      "stages": [
+        "upload",
+        "map",
+        "validate",
+        "preview",
+        "activate",
+        "retry",
+        "audit failures"
+      ],
+      "evidence": [
+        {
+          "id": "application-runtime",
+          "label": "executable import behavior coverage",
+          "globs": ["**/*csv*import*.test.ts", "**/*import*job*.test.ts"],
+          "kinds": ["vitest"],
+          "minimum": 1
+        }
+      ]
+    },
+    {
+      "id": "billing-subscription-seats",
+      "title": "Subscription, seat, and webhook billing",
+      "domain": "financial",
+      "stages": [
+        "checkout",
+        "webhook",
+        "subscription snapshot",
+        "seat limit",
+        "replay",
+        "cancellation"
+      ],
+      "evidence": [
+        {
+          "id": "webhook-runtime",
+          "label": "an executed Stripe webhook receipt/concurrency integration",
+          "globs": [
+            "tests/security/p1-012-stripe-webhook-receipts.runtime.sql",
+            "tests/security/p1-012-stripe-webhook-concurrency.runtime.sh"
+          ],
+          "kinds": ["database-runtime", "database-runtime-shell"],
+          "minimum": 1,
+          "ciRequired": true
+        },
+        {
+          "id": "application-runtime",
+          "label": "executable seat and subscription coverage",
+          "globs": [
+            "**/*stripe*seat*.test.ts",
+            "**/*subscription*.test.ts",
+            "**/*billing*.test.ts"
+          ],
+          "kinds": ["vitest"],
+          "minimum": 1
+        }
+      ]
+    },
+    {
+      "id": "documents-reporting",
+      "title": "Reviewed documents, reports, and exports",
+      "domain": "reporting",
+      "stages": [
+        "load reviewed truth",
+        "render",
+        "attach evidence",
+        "export",
+        "reload identical document"
+      ],
+      "evidence": [
+        {
+          "id": "application-runtime",
+          "label": "executable document rendering coverage",
+          "globs": [
+            "**/*pdf*.test.ts",
+            "**/*report*.test.ts",
+            "**/*document*.test.ts"
+          ],
+          "kinds": ["vitest"],
+          "minimum": 1
+        }
+      ]
+    },
+    {
+      "id": "scheduling-booking",
+      "title": "Scheduling and booking",
+      "domain": "scheduling",
+      "stages": [
+        "request",
+        "select slot",
+        "confirm",
+        "convert",
+        "reschedule",
+        "cancel"
+      ],
+      "evidence": [
+        {
+          "id": "application-runtime",
+          "label": "executable booking lifecycle coverage",
+          "globs": ["**/*booking*.test.ts", "**/*schedule*.test.ts"],
+          "kinds": ["vitest"],
+          "minimum": 1
+        }
+      ]
+    },
+    {
+      "id": "observability-failure-sink",
+      "title": "Operational correlation and failure sink",
+      "domain": "reporting",
+      "stages": [
+        "correlate request",
+        "record domain event",
+        "classify failure",
+        "alert",
+        "resolve fingerprint"
+      ],
+      "evidence": [
+        {
+          "id": "database-runtime",
+          "label": "an executed operational observability database integration",
+          "globs": ["tests/security/operational-observability.runtime.sql"],
+          "kinds": ["database-runtime"],
+          "minimum": 1,
+          "ciRequired": true
+        },
+        {
+          "id": "application-runtime",
+          "label": "executable observability classification coverage",
+          "globs": [
+            "**/*operational-observability*.test.ts",
+            "**/*observability*.test.ts"
+          ],
+          "kinds": ["vitest"],
+          "minimum": 1
+        }
+      ]
+    }
+  ]
+}

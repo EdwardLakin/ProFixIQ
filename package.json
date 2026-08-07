@@ -23,7 +23,11 @@
     "db:check:size": "node shared/types/types/scripts/check-dump-size.cjs",
     "audit:api-routes": "node scripts/audit-api-routes.mjs",
     "seed:demo-shop": "node scripts/seed-demo-shop.mjs",
-    "qa:demo-seed": "node scripts/qa-demo-seed.mjs"
+    "qa:demo-seed": "node scripts/qa-demo-seed.mjs",
+    "regression:inventory": "node scripts/regression-inventory/cli.mjs",
+    "regression:inventory:check": "node scripts/regression-inventory/cli.mjs --check",
+    "regression:inventory:strict": "node scripts/regression-inventory/cli.mjs --strict",
+    "regression:inventory:baseline": "node scripts/regression-inventory/cli.mjs --write-baseline"
   },
   "lint-staged": {
     "*.{ts,tsx,js,jsx}": [
