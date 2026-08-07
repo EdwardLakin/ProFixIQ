@@ -46,6 +46,12 @@ set user_id = excluded.user_id,
     role = excluded.role,
     full_name = excluded.full_name;
 
+-- The canonical BEFORE INSERT trigger initializes user_id from id. Restore the
+-- imported profile-to-auth identity this fixture needs after the insert path.
+update public.profiles
+set user_id = '40100000-0000-4000-8000-000000000001'
+where id = '40100000-0000-4000-8000-000000000011';
+
 delete from public.profiles
 where id = '40100000-0000-4000-8000-000000000003';
 
@@ -53,7 +59,7 @@ insert into public.shops (id, owner_id, business_name, name, labor_rate)
 values
   (
     '40200000-0000-4000-8000-000000000001',
-    '40100000-0000-4000-8000-000000000001',
+    '40100000-0000-4000-8000-000000000011',
     'Quote Cost Sell Shop A',
     'Quote Cost Sell Shop A',
     0
@@ -218,7 +224,7 @@ insert into public.work_order_quote_lines (
     0,
     0,
     0,
-    '{}'::jsonb
+    jsonb_build_object('labor_rate', 0)
   ),
   (
     '40400000-0000-4000-8000-000000000004',
@@ -252,7 +258,7 @@ insert into public.work_order_quote_lines (
     'Stage-only protected quote',
     'repair',
     'quoted',
-    'customer_review',
+    'customer_pending',
     null,
     40,
     40,
@@ -696,6 +702,8 @@ insert into public.part_request_items (
 -- Seed a legacy unit_cost-derived locked estimate while Parts still owns the
 -- pricing step, then hand the estimate back to the advisor. The repair must
 -- sanitize customer metadata without touching the locked decision totals.
+select set_config('app.parts_lifecycle_reconciling', '1', true);
+
 update public.work_order_quote_lines
 set status = 'quoted',
     stage = 'ready_to_send',
@@ -703,6 +711,7 @@ set status = 'quoted',
     subtotal = 40,
     grand_total = 40,
     metadata = jsonb_build_object(
+      'labor_rate', 0,
       'parts_quote', jsonb_build_object(
         'parts_total', 40,
         'items', jsonb_build_array(jsonb_build_object(
@@ -721,6 +730,8 @@ set status = 'quoted',
       ))
     )
 where id = '40400000-0000-4000-8000-000000000003';
+
+select set_config('app.parts_lifecycle_reconciling', '0', true);
 
 update public.work_orders
 set estimate_status = 'ready_for_advisor'
@@ -1167,8 +1178,27 @@ revoke all on function public.quote_cost_sell_runtime_definer_clear_probe(uuid)
 grant execute on function public.quote_cost_sell_runtime_definer_clear_probe(uuid)
   to authenticated;
 
--- An authenticated Shop A owner may invoke the canonical sell sync. A final
--- quote is skipped and a handed-off estimate remains commercially locked.
+-- The trusted worker path sees the handed-off estimate and must preserve its
+-- locked commercial decision without attempting a resync.
+do $$
+declare
+  v_result jsonb;
+begin
+  v_result := public.sync_quote_line_pricing_from_parts(
+    '40200000-0000-4000-8000-000000000001',
+    '40400000-0000-4000-8000-000000000003'
+  );
+  if v_result ->> 'skipped' is distinct from 'locked_estimate_pricing' then
+    raise exception 'Locked estimate unexpectedly accepted a commercial resync: %',
+      v_result;
+  end if;
+end;
+$$;
+
+-- An authenticated Shop A owner may invoke the canonical sell sync for an
+-- editable line. Restrictive estimate UPDATE RLS must hide the handed-off
+-- estimate from this SECURITY INVOKER function, while customer-handed-off
+-- ordinary lines remain protected by their durable lifecycle state.
 set local role authenticated;
 select set_config(
   'request.jwt.claims',
@@ -1179,6 +1209,8 @@ select set_config(
 do $$
 declare
   v_result jsonb;
+  v_locked_before jsonb;
+  v_locked_after jsonb;
   v_clear_blocked boolean := false;
   v_definer_clear_blocked boolean := false;
 begin
@@ -1226,12 +1258,27 @@ begin
     raise exception 'Sent quote was not protected from resync: %', v_result;
   end if;
 
+  select to_jsonb(q)
+    into strict v_locked_before
+  from public.work_order_quote_lines q
+  where q.id = '40400000-0000-4000-8000-000000000003';
+
   v_result := public.sync_quote_line_pricing_from_parts(
     '40200000-0000-4000-8000-000000000001',
     '40400000-0000-4000-8000-000000000003'
   );
-  if v_result ->> 'skipped' is distinct from 'locked_estimate_pricing' then
-    raise exception 'Locked estimate unexpectedly accepted a commercial resync: %', v_result;
+  if coalesce((v_result ->> 'ok')::boolean, true)
+     or v_result ->> 'error' is distinct from 'Quote line not found for shop' then
+    raise exception 'Authenticated actor bypassed locked-estimate UPDATE RLS: %',
+      v_result;
+  end if;
+
+  select to_jsonb(q)
+    into strict v_locked_after
+  from public.work_order_quote_lines q
+  where q.id = '40400000-0000-4000-8000-000000000003';
+  if v_locked_after is distinct from v_locked_before then
+    raise exception 'Authenticated locked-estimate sync attempt mutated pricing';
   end if;
 
   v_result := public.sync_quote_line_pricing_from_parts(

@@ -11,7 +11,26 @@ describe("Quote Review quarantine database contract", () => {
     "utf8",
   );
 
+  it("builds the imported owner fixture through canonical identities", () => {
+    const fixtureSetup = runtime.slice(
+      0,
+      runtime.indexOf("insert into public.customers"),
+    );
+    expect(fixtureSetup).toContain(
+      "set user_id = '40100000-0000-4000-8000-000000000001'",
+    );
+    expect(fixtureSetup).toContain(
+      "'40200000-0000-4000-8000-000000000001',\n" +
+        "    '40100000-0000-4000-8000-000000000011',\n" +
+        "    'Quote Cost Sell Shop A'",
+    );
+  });
+
   it("protects timestamp and customer-stage handoffs from resync", () => {
+    const lockedEstimateFixture = runtime.slice(
+      runtime.indexOf("Locked estimate legacy quote"),
+      runtime.indexOf("Timestamp-only protected quote"),
+    );
     expect(migration).toContain("public.quote_line_pricing_is_protected");
     expect(migration).toContain("p_sent_to_customer_at is not null");
     expect(migration).toContain("p_sent_at is not null");
@@ -21,6 +40,9 @@ describe("Quote Review quarantine database contract", () => {
     expect(runtime).toContain("Timestamp-only protected quote");
     expect(runtime).toContain("Stage-only protected quote");
     expect(runtime).toContain("Converted-at-only protected quote");
+    expect(lockedEstimateFixture).toContain(
+      "jsonb_build_object('labor_rate', 0)",
+    );
   });
 
   it("quarantines snapshot-only and equal-sum item drift", () => {
