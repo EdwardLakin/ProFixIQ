@@ -88,7 +88,14 @@ set shop_id = case
   when id = '72000000-0000-4000-8000-000000000001'::uuid
     then '7b000000-0000-4000-8000-000000000001'::uuid
   else '7a000000-0000-4000-8000-000000000001'::uuid
-end
+end,
+    -- The canonical insert trigger initializes user_id from id. Restore this
+    -- imported-profile shape after insert so the runtime proves user_id auth.
+    user_id = case
+      when id = '71100000-0000-4000-8000-000000000002'::uuid
+        then '71000000-0000-4000-8000-000000000002'::uuid
+      else user_id
+    end
 where id in (
   '71000000-0000-4000-8000-000000000001',
   '71100000-0000-4000-8000-000000000002',
