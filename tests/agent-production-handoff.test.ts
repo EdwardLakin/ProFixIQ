@@ -52,9 +52,9 @@ describe("production agent request handoff", () => {
     expect(teamClient).toContain("function missionApprovalSummary(");
     expect(teamClient).toContain("Diagnosis\\n");
     expect(teamClient).toContain("Proposed repair\\n");
-    expect(teamClient).toContain("Repair scope\\n");
-    expect(teamClient).toContain("Acceptance checks\\n");
-    expect(teamClient).toContain("Engineering plan\\n");
+    expect(teamClient).toContain("Repair scope preview\\n");
+    expect(teamClient).toContain("Acceptance checks preview\\n");
+    expect(teamClient).toContain("Engineering plan preview\\n");
     expect(teamClient).toContain("Human approval is required before the engineering team can change code");
     expect(teamClient).toContain("awaitingMissionApproval");
     expect(teamClient).toContain("? []");

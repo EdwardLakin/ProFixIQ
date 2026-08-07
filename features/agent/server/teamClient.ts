@@ -7,12 +7,6 @@ const AGENT_SERVICE_URL = String(process.env.PROFIXIQ_AGENT_URL ?? "")
 const BRIDGE_INTEGRATION_ID = "7c2da329-5117-48c0-a1ee-d51b5d63827d";
 const BRIDGE_INTEGRATION_KIND = "profixiq_agent_bridge";
 
-const bridgeSupabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  { auth: { persistSession: false, autoRefreshToken: false } },
-);
-
 export type AgentTeamRequestStatus =
   | "submitted"
   | "in_progress"
@@ -180,29 +174,49 @@ function missionApprovalSummary(
     ?? nullableString(mission.problem_statement);
   const proposedRepair = nullableString(engineeringCase.stages.planning?.result?.summary)
     ?? nullableString(mission.desired_outcome);
-  const recommendedFiles = stageStrings(engineeringCase, "planning", "recommendedFiles").slice(0, 6);
-  const acceptanceCriteria = recordStrings(mission.acceptanceCriteria, "criterion").slice(0, 5);
-  const planSteps = missionPlanSteps(mission.planSteps).slice(0, 5);
+  const allRecommendedFiles = stageStrings(
+    engineeringCase,
+    "planning",
+    "recommendedFiles",
+  );
+  const allAcceptanceCriteria = recordStrings(
+    mission.acceptanceCriteria,
+    "criterion",
+  );
+  const allPlanSteps = missionPlanSteps(mission.planSteps);
+  const recommendedFiles = allRecommendedFiles.slice(0, 6);
+  const acceptanceCriteria = allAcceptanceCriteria.slice(0, 5);
+  const planSteps = allPlanSteps.slice(0, 5);
+  const omittedFiles = allRecommendedFiles.length - recommendedFiles.length;
+  const omittedCriteria = allAcceptanceCriteria.length - acceptanceCriteria.length;
+  const omittedSteps = allPlanSteps.length - planSteps.length;
 
   const lines = [
     diagnosis ? `Diagnosis\n${diagnosis}` : null,
     proposedRepair ? `Proposed repair\n${proposedRepair}` : null,
     recommendedFiles.length > 0
-      ? `Repair scope\n${recommendedFiles.map((path) => `• ${path}`).join("\n")}`
+      ? `Repair scope preview\n${recommendedFiles.map((path) => `• ${path}`).join("\n")}${omittedFiles > 0 ? `\n• +${omittedFiles} more file${omittedFiles === 1 ? "" : "s"} in the full mission review` : ""}`
       : null,
     acceptanceCriteria.length > 0
-      ? `Acceptance checks\n${acceptanceCriteria.map((criterion) => `• ${criterion}`).join("\n")}`
+      ? `Acceptance checks preview\n${acceptanceCriteria.map((criterion) => `• ${criterion}`).join("\n")}${omittedCriteria > 0 ? `\n• +${omittedCriteria} more check${omittedCriteria === 1 ? "" : "s"} in the full mission review` : ""}`
       : null,
     planSteps.length > 0
-      ? `Engineering plan\n${planSteps.map((step, index) => `${step.position ?? index + 1}. ${step.title}${step.description ? ` — ${step.description}` : ""}`).join("\n")}`
+      ? `Engineering plan preview\n${planSteps.map((step, index) => `${step.position ?? index + 1}. ${step.title}${step.description ? ` — ${step.description}` : ""}`).join("\n")}${omittedSteps > 0 ? `\n${planSteps.length + 1}. +${omittedSteps} more step${omittedSteps === 1 ? "" : "s"} in the full mission review` : ""}`
       : null,
-    "Human approval is required before the engineering team can change code. Review the repair mission, then select Approve Mission.",
+    "Human approval is required before the engineering team can change code. Review every item in the full mission review, then select Approve Mission.",
   ].filter((line): line is string => Boolean(line));
 
   return lines.join("\n\n") || fallback;
 }
 
 async function readBridgeSecret(): Promise<string> {
+  const supabaseUrl = nullableString(process.env.NEXT_PUBLIC_SUPABASE_URL);
+  const serviceRoleKey = nullableString(process.env.SUPABASE_SERVICE_ROLE_KEY);
+  if (!supabaseUrl || !serviceRoleKey) return "";
+
+  const bridgeSupabase = createClient(supabaseUrl, serviceRoleKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
   const result = await bridgeSupabase
     .from("integrations")
     .select("config")
