@@ -2,16 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import {
   AgentTeamRequestError,
+  approveAgentTeamMission,
+  approveAgentTeamRelease,
   mapAgentTeamRequestStatus,
   projectAgentTeamCase,
   readAgentTeamCase,
   rejectAgentTeamCase,
   type AgentTeamProjection,
 } from "@/features/agent/server/teamClient";
-import {
-  approveAgentTeamMission,
-  approveAgentTeamRelease,
-} from "@/features/agent/server/humanApprovalClient";
 import { mintAgentHumanApprovalIntent } from "@/features/agent/server/humanApprovalIntent";
 
 type AgentRequestStatus =
