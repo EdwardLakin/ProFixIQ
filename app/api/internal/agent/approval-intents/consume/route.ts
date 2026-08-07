@@ -3,6 +3,7 @@ import {
   consumeAgentHumanApprovalIntent,
   type AgentHumanApprovalKind,
 } from "@/features/agent/server/humanApprovalIntent";
+import { isAgentApiRequestAuthorized } from "@/features/shared/lib/server/agent-api-secrets";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,6 +13,10 @@ function isApprovalKind(value: unknown): value is AgentHumanApprovalKind {
 }
 
 export async function POST(req: Request) {
+  if (!isAgentApiRequestAuthorized(req)) {
+    return NextResponse.json({ valid: false }, { status: 401 });
+  }
+
   const body = await req.json().catch(() => null) as Record<string, unknown> | null;
   if (!body || !isApprovalKind(body.approvalKind)) {
     return NextResponse.json({ valid: false }, { status: 400 });
