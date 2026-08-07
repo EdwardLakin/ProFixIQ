@@ -13,6 +13,10 @@ const runtime = readFileSync(
   "tests/parts/parts-request-purchase-order.runtime.sql",
   "utf8",
 );
+const lockingRuntime = readFileSync(
+  "tests/parts/parts-request-purchase-order-locking.runtime.sh",
+  "utf8",
+);
 const workflow = readFileSync(
   ".github/workflows/supabase-clean-replay-audit.yml",
   "utf8",
@@ -227,6 +231,15 @@ describe("parts request purchase-order regression contract", () => {
     expect(workflow).toContain(
       "parts-request-purchase-order-locking-runtime.log",
     );
+    expect(lockingRuntime).toContain("wait_for_probe_lock");
+    expect(lockingRuntime).toContain("pg_advisory_xact_lock(760001, 1)");
+    expect(lockingRuntime).toContain("pg_advisory_xact_lock(760001, 2)");
+    expect(lockingRuntime).toContain("probe_lock.locktype = 'advisory'");
+    expect(lockingRuntime).toContain("pg_blocking_pids(contender.pid)");
+    expect(lockingRuntime.match(/pg_stat_clear_snapshot\(\)/g)).toHaveLength(3);
+    expect(lockingRuntime).not.toContain("for _ in $(seq 1 100)");
+    expect(lockingRuntime).not.toContain("query like '%pg_sleep(5)%'");
+    expect(lockingRuntime).not.toContain("select pg_sleep(7)");
   });
 
   it("keeps request-backed and generic free-text receipt atomic", () => {

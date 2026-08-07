@@ -72,6 +72,69 @@ SQL
 }
 trap cleanup EXIT
 
+wait_for_probe_lock() {
+  local probe_application_name="$1"
+  local probe_class_id="$2"
+  local probe_object_id="$3"
+
+  psql "$db_url" -X -v ON_ERROR_STOP=1 \
+    -v probe_application_name="$probe_application_name" \
+    -v probe_class_id="$probe_class_id" \
+    -v probe_object_id="$probe_object_id" \
+    >/dev/null <<'SQL'
+select set_config(
+  'app.parts_lock_probe_application_name',
+  :'probe_application_name',
+  false
+);
+select set_config(
+  'app.parts_lock_probe_class_id',
+  :'probe_class_id',
+  false
+);
+select set_config(
+  'app.parts_lock_probe_object_id',
+  :'probe_object_id',
+  false
+);
+
+do $wait_for_probe_lock$
+declare
+  v_deadline timestamptz := clock_timestamp() + interval '10 seconds';
+begin
+  loop
+    perform pg_stat_clear_snapshot();
+    if exists (
+      select 1
+      from pg_locks probe_lock
+      join pg_stat_activity activity on activity.pid = probe_lock.pid
+      where activity.application_name = current_setting(
+          'app.parts_lock_probe_application_name'
+        )
+        and probe_lock.locktype = 'advisory'
+        and probe_lock.classid = current_setting(
+          'app.parts_lock_probe_class_id'
+        )::oid
+        and probe_lock.objid = current_setting(
+          'app.parts_lock_probe_object_id'
+        )::oid
+        and probe_lock.objsubid = 2
+        and probe_lock.mode = 'ExclusiveLock'
+        and probe_lock.granted
+    ) then
+      return;
+    end if;
+
+    if clock_timestamp() >= v_deadline then
+      raise exception 'Timed out waiting for the concurrency probe lock.';
+    end if;
+    perform pg_sleep(0.05);
+  end loop;
+end
+$wait_for_probe_lock$;
+SQL
+}
+
 psql "$db_url" -X -v ON_ERROR_STOP=1 <<'SQL'
 insert into auth.users (id, email, raw_user_meta_data)
 values (
@@ -243,14 +306,38 @@ select set_config(
   false
 );
 begin;
-set local lock_timeout = '8s';
-set local statement_timeout = '15s';
+set local lock_timeout = '12s';
+set local statement_timeout = '20s';
 set local deadlock_timeout = '250ms';
 select id
 from public.purchase_orders
 where id = '76d00000-0000-4000-8000-000000000001'
 for update;
-select pg_sleep(5);
+select pg_advisory_xact_lock(760001, 1);
+do $wait_for_ordering_contender$
+declare
+  v_deadline timestamptz := clock_timestamp() + interval '10 seconds';
+begin
+  loop
+    perform pg_stat_clear_snapshot();
+    if exists (
+      select 1
+      from pg_stat_activity contender
+      where contender.application_name = 'parts-po-lock-probe-ordering'
+        and contender.state = 'active'
+        and contender.wait_event_type = 'Lock'
+        and pg_backend_pid() = any(pg_blocking_pids(contender.pid))
+    ) then
+      return;
+    end if;
+
+    if clock_timestamp() >= v_deadline then
+      raise exception 'Timed out waiting for ordering to block on the held PO.';
+    end if;
+    perform pg_sleep(0.05);
+  end loop;
+end
+$wait_for_ordering_contender$;
 select id
 from public.part_request_items
 where id = '76500000-0000-4000-8000-000000000001'
@@ -259,18 +346,15 @@ rollback;
 SQL
 receiver_pid=$!
 
-receiver_ready=false
-for _ in $(seq 1 100); do
-  if [[ "$(psql "$db_url" -X -Atc "select count(*) from pg_stat_activity where application_name = 'parts-po-lock-probe-receiver' and state = 'active' and query like '%pg_sleep(5)%'")" == "1" ]]; then
-    receiver_ready=true
-    break
-  fi
-  sleep 0.05
-done
-
-if [[ "$receiver_ready" != "true" ]]; then
+if ! wait_for_probe_lock \
+  "parts-po-lock-probe-receiver" \
+  "760001" \
+  "1"; then
   echo "Receiver session did not reach the PO-held concurrency window." >&2
-  wait "$receiver_pid" || true
+  receiver_status=0
+  wait "$receiver_pid" || receiver_status=$?
+  cat "$receiver_log" >&2
+  echo "Receiver exit status: $receiver_status" >&2
   exit 1
 fi
 
@@ -281,8 +365,8 @@ select set_config(
   false
 );
 begin;
-set local lock_timeout = '8s';
-set local statement_timeout = '15s';
+set local lock_timeout = '12s';
+set local statement_timeout = '20s';
 set local deadlock_timeout = '250ms';
 select set_config('request.jwt.claim.role', 'authenticated', true);
 select set_config(
@@ -324,14 +408,39 @@ select set_config(
   false
 );
 begin;
-set local lock_timeout = '8s';
-set local statement_timeout = '15s';
+set local lock_timeout = '12s';
+set local statement_timeout = '20s';
 set local deadlock_timeout = '250ms';
 select id
 from public.purchase_orders
 where id = '76d00000-0000-4000-8000-000000000002'
 for update;
-select pg_sleep(5);
+select pg_advisory_xact_lock(760001, 2);
+do $wait_for_supplier_contender$
+declare
+  v_deadline timestamptz := clock_timestamp() + interval '10 seconds';
+begin
+  loop
+    perform pg_stat_clear_snapshot();
+    if exists (
+      select 1
+      from pg_stat_activity contender
+      where contender.application_name =
+          'parts-po-lock-probe-supplier-ordering'
+        and contender.state = 'active'
+        and contender.wait_event_type = 'Lock'
+        and pg_backend_pid() = any(pg_blocking_pids(contender.pid))
+    ) then
+      return;
+    end if;
+
+    if clock_timestamp() >= v_deadline then
+      raise exception 'Timed out waiting for ordering to block on the held PO.';
+    end if;
+    perform pg_sleep(0.05);
+  end loop;
+end
+$wait_for_supplier_contender$;
 update public.purchase_orders
 set supplier_id = '76c00000-0000-4000-8000-000000000002'
 where id = '76d00000-0000-4000-8000-000000000002';
@@ -339,18 +448,15 @@ commit;
 SQL
 header_editor_pid=$!
 
-header_editor_ready=false
-for _ in $(seq 1 100); do
-  if [[ "$(psql "$db_url" -X -Atc "select count(*) from pg_stat_activity where application_name = 'parts-po-lock-probe-header-editor' and state = 'active' and query like '%pg_sleep(5)%'")" == "1" ]]; then
-    header_editor_ready=true
-    break
-  fi
-  sleep 0.05
-done
-
-if [[ "$header_editor_ready" != "true" ]]; then
+if ! wait_for_probe_lock \
+  "parts-po-lock-probe-header-editor" \
+  "760001" \
+  "2"; then
   echo "Header editor did not reach the PO-held supplier-FK window." >&2
-  wait "$header_editor_pid" || true
+  header_editor_status=0
+  wait "$header_editor_pid" || header_editor_status=$?
+  cat "$header_editor_log" >&2
+  echo "Header editor exit status: $header_editor_status" >&2
   exit 1
 fi
 
@@ -361,8 +467,8 @@ select set_config(
   false
 );
 begin;
-set local lock_timeout = '8s';
-set local statement_timeout = '15s';
+set local lock_timeout = '12s';
+set local statement_timeout = '20s';
 set local deadlock_timeout = '250ms';
 select set_config('request.jwt.claim.role', 'authenticated', true);
 select set_config(
