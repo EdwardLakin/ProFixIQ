@@ -1,0 +1,2766 @@
+{
+  "version": 1,
+  "schema": "features/shared/types/types/supabase.ts",
+  "findings": [
+    {
+      "fingerprint": "8538ceda2083cf38835f",
+      "rule": "critical-flow-evidence-gap",
+      "severity": "error",
+      "domain": "messaging",
+      "file": "scripts/regression-inventory/critical-flows.json",
+      "subject": "messaging-notifications:application-runtime",
+      "message": "Messaging and notification acknowledgement is missing executable message/notification persistence coverage",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "175a8bb9bdc03f3cd312",
+      "rule": "critical-flow-evidence-gap",
+      "severity": "error",
+      "domain": "parts",
+      "file": "scripts/regression-inventory/critical-flows.json",
+      "subject": "parts-request-purchase-order:database-runtime",
+      "message": "Parts request to purchase order is missing an executed request-to-PO database integration",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "937f363fa2990fa398c0",
+      "rule": "critical-flow-evidence-gap",
+      "severity": "error",
+      "domain": "quotes-approvals",
+      "file": "scripts/regression-inventory/critical-flows.json",
+      "subject": "quote-approval:application-runtime",
+      "message": "Quote Review and approval decisions is missing executable Quote Review cost/sell and decision coverage",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "4548e6f4906563f9cf34",
+      "rule": "critical-flow-evidence-gap",
+      "severity": "error",
+      "domain": "work-orders",
+      "file": "scripts/regression-inventory/critical-flows.json",
+      "subject": "work-order-intake:application-runtime",
+      "message": "Work-order intake and assignment is missing executable work-order creation coverage",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "a290fbea49852be72dde",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "ai-automation",
+      "file": "app/agent/planner/page.tsx",
+      "subject": "vehicles.trim",
+      "message": "select references missing column vehicles.trim",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "6e83811d8f25db78ba33",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "identity-tenancy",
+      "file": "app/api/admin/create-user/route.ts",
+      "subject": "profiles.first_name",
+      "message": "select references missing column profiles.first_name",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "57d170128a3740cdb6c9",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "identity-tenancy",
+      "file": "app/api/admin/create-user/route.ts",
+      "subject": "profiles.last_name",
+      "message": "select references missing column profiles.last_name",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "72fd2ec8da9b614159d7",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "identity-tenancy",
+      "file": "app/api/admin/staff-invite-candidates/[id]/create-user/route.ts",
+      "subject": "profiles.first_name",
+      "message": "select references missing column profiles.first_name",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "21c0cb1ce60715d92323",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "identity-tenancy",
+      "file": "app/api/admin/staff-invite-candidates/[id]/create-user/route.ts",
+      "subject": "profiles.last_name",
+      "message": "select references missing column profiles.last_name",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "9b09c0bfb6401f1c74fe",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "core",
+      "file": "app/api/admin/staff-invite-candidates/[id]/resend-invite/route.ts",
+      "subject": "profiles.first_name",
+      "message": "select references missing column profiles.first_name",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "607e7a6c3ced6233fe16",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "core",
+      "file": "app/api/admin/staff-invite-candidates/[id]/resend-invite/route.ts",
+      "subject": "profiles.last_name",
+      "message": "select references missing column profiles.last_name",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "633699a79e544d3d9e48",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "identity-tenancy",
+      "file": "app/api/admin/users/[id]/resend-invite/route.ts",
+      "subject": "profiles.first_name",
+      "message": "select references missing column profiles.first_name",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "72af49f602f9b9f484c0",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "identity-tenancy",
+      "file": "app/api/admin/users/[id]/resend-invite/route.ts",
+      "subject": "profiles.last_name",
+      "message": "select references missing column profiles.last_name",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "610de67c47d4644c13fe",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "core",
+      "file": "app/api/assignables/route.ts",
+      "subject": "work_orders.technician_id",
+      "message": "select references missing column work_orders.technician_id",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "0528e731124ebe000d33",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "core",
+      "file": "app/api/maintenance/suggestions/route.ts",
+      "subject": "maintenance_suggestions.id",
+      "message": "select references missing column maintenance_suggestions.id",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "040dffccd1b7c971c4ae",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "core",
+      "file": "app/api/maintenance/suggestions/route.ts",
+      "subject": "menu_items.price",
+      "message": "select references missing column menu_items.price",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "125f88c8e940ec9d1615",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "identity-tenancy",
+      "file": "app/api/settings/hours/route.ts",
+      "subject": "shop_hours.day_of_week",
+      "message": "select references missing column shop_hours.day_of_week",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "21d4ca0a113f5c292a9c",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "identity-tenancy",
+      "file": "app/api/settings/hours/route.ts",
+      "subject": "shop_hours.day_of_week",
+      "message": "order references missing column shop_hours.day_of_week",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "229d9318451f75b18e17",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "identity-tenancy",
+      "file": "app/api/settings/hours/route.ts",
+      "subject": "shop_hours.is_closed",
+      "message": "select references missing column shop_hours.is_closed",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "b06ff62b04f0e468afb2",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "identity-tenancy",
+      "file": "app/api/settings/time-off/route.ts",
+      "subject": "shop_time_off.start_date",
+      "message": "order references missing column shop_time_off.start_date",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "17eb7c5916951dc92256",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "ai-automation",
+      "file": "app/api/shop-boost/import-reset/route.ts",
+      "subject": "shop_import_files.shop_id",
+      "message": "eq references missing column shop_import_files.shop_id",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "54b105a6b26b5ceaedde",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "work-orders",
+      "file": "app/api/work-orders/maintenance-suggestions/route.ts",
+      "subject": "menu_items.price",
+      "message": "select references missing column menu_items.price",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "aa9d7aa374a16840351d",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "work-orders",
+      "file": "app/api/work-orders/update-status/list/route.ts",
+      "subject": "work_orders.appointment",
+      "message": "order references missing column work_orders.appointment",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "83d0900f8cff966ee3b9",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "core",
+      "file": "app/menu/item/[id]/page.tsx",
+      "subject": "parts.unit_cost",
+      "message": "select references missing column parts.unit_cost",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "dd32b13924c3974b76ee",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "core",
+      "file": "app/menu/page.tsx",
+      "subject": "parts.unit_cost",
+      "message": "select references missing column parts.unit_cost",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "b5ab30b194047e169693",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "parts",
+      "file": "app/parts/page.tsx",
+      "subject": "shop_parts_import_match_candidates.staging_id",
+      "message": "select references missing column shop_parts_import_match_candidates.staging_id",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "5188307ca5d91fab4160",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "parts",
+      "file": "app/parts/receive/page.tsx",
+      "subject": "parts.import_confidence",
+      "message": "select references missing column parts.import_confidence",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "79b17e3dc7bc8b802735",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "parts",
+      "file": "app/parts/receiving/page.tsx",
+      "subject": "shop_parts_import_match_candidates.staging_id",
+      "message": "select references missing column shop_parts_import_match_candidates.staging_id",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "85da6576aee2f976fb03",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "property",
+      "file": "app/portal/property/member/requests/[id]/page.tsx",
+      "subject": "property_request_attachments.visibility",
+      "message": "select references missing column property_request_attachments.visibility",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "5e8d7b86c6eff26dc980",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "property",
+      "file": "app/property/members/page.tsx",
+      "subject": "profiles.display_name",
+      "message": "select references missing column profiles.display_name",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "4d33c8f6b2df71b17138",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "property",
+      "file": "app/property/members/page.tsx",
+      "subject": "profiles.name",
+      "message": "select references missing column profiles.name",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "2f10e7b74ea4f071766c",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "core",
+      "file": "app/tech/queue/page.tsx",
+      "subject": "part_requests.assigned_tech_id",
+      "message": "select references missing column part_requests.assigned_tech_id",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "f19b1c48c23b45ef6095",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "work-orders",
+      "file": "app/work-orders/[id]/Client.tsx",
+      "subject": "property_units.label",
+      "message": "select references missing column property_units.label",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "30779ae5b713b5767318",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "work-orders",
+      "file": "app/work-orders/[id]/Client.tsx",
+      "subject": "property_vendor_assignments.property_request_id",
+      "message": "eq references missing column property_vendor_assignments.property_request_id",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "0c7509784bbb4d019ef4",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "core",
+      "file": "features/admin/components/AdminQuickPanel.tsx",
+      "subject": "activity_logs.actor_id",
+      "message": "select references missing column activity_logs.actor_id",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "c6762819a98e5fb513bc",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "core",
+      "file": "features/admin/components/AdminQuickPanel.tsx",
+      "subject": "activity_logs.created_at",
+      "message": "select references missing column activity_logs.created_at",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "2823d83fccd0fecdf91c",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "core",
+      "file": "features/admin/components/AdminQuickPanel.tsx",
+      "subject": "activity_logs.created_at",
+      "message": "order references missing column activity_logs.created_at",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "5a10b2d2925192619a4d",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "core",
+      "file": "features/admin/components/AdminQuickPanel.tsx",
+      "subject": "activity_logs.details",
+      "message": "select references missing column activity_logs.details",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "ca9bb305c511339c4171",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "core",
+      "file": "features/admin/components/AdminQuickPanel.tsx",
+      "subject": "activity_logs.event",
+      "message": "select references missing column activity_logs.event",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "1e3687387cb04d007be8",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "core",
+      "file": "features/admin/components/AdminQuickPanel.tsx",
+      "subject": "email_logs.error",
+      "message": "select references missing column email_logs.error",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "244f6487c15d76ce4b7a",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "core",
+      "file": "features/admin/components/AdminQuickPanel.tsx",
+      "subject": "email_logs.error",
+      "message": "not references missing column email_logs.error",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "5a2fda4834066a5531e7",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "core",
+      "file": "features/admin/components/AdminQuickPanel.tsx",
+      "subject": "email_logs.recipient",
+      "message": "select references missing column email_logs.recipient",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "cc9078a6c7940f8db890",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "core",
+      "file": "features/admin/components/AdminQuickPanel.tsx",
+      "subject": "parts_requests.needed_by",
+      "message": "select references missing column parts_requests.needed_by",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "7c33b659c333e1ac388b",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "core",
+      "file": "features/admin/components/AdminQuickPanel.tsx",
+      "subject": "parts_requests.status",
+      "message": "select references missing column parts_requests.status",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "d94a9ee094ca8008cf84",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "core",
+      "file": "features/admin/components/AdminQuickPanel.tsx",
+      "subject": "parts_requests.status",
+      "message": "neq references missing column parts_requests.status",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "f4dc98751f2fc2a0a2b8",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "core",
+      "file": "features/admin/components/AdminQuickPanel.tsx",
+      "subject": "vehicle_photos.reviewed",
+      "message": "select references missing column vehicle_photos.reviewed",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "fc62ae3dc7fdad06ffa5",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "core",
+      "file": "features/admin/components/AdminQuickPanel.tsx",
+      "subject": "vehicle_photos.reviewed",
+      "message": "or references missing column vehicle_photos.reviewed",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "937113e269e3a78ef4a0",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "ai-automation",
+      "file": "features/agent/assistant/server/answerAssistant.ts",
+      "subject": "work_order_parts.part_name",
+      "message": "select references missing column work_order_parts.part_name",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "90dd00f96db5a33fc2f9",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "ai-automation",
+      "file": "features/agent/assistant/server/answerAssistant.ts",
+      "subject": "work_order_parts.part_number",
+      "message": "select references missing column work_order_parts.part_number",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "3d604899e2d91140c18b",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "ai-automation",
+      "file": "features/agent/lib/plannerOpenAI.ts",
+      "subject": "menu_items.estimated_hours",
+      "message": "select references missing column menu_items.estimated_hours",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "375771af69802106f9ce",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "ai-automation",
+      "file": "features/agent/lib/plannerOpenAI.ts",
+      "subject": "work_order_lines.labor_hours_actual",
+      "message": "select references missing column work_order_lines.labor_hours_actual",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "fd379bf56a83fb21f87f",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "inspections",
+      "file": "features/inspections/server/findSmartInspectionMatch.ts",
+      "subject": "menu_items.updated_at",
+      "message": "order references missing column menu_items.updated_at",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "b367d5b699889357bb96",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "inspections",
+      "file": "features/inspections/server/inspectionReportAccess.ts",
+      "subject": "vehicles.fleet_id",
+      "message": "select references missing column vehicles.fleet_id",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "9d6d3e0247e2d97c04f1",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "imports",
+      "file": "features/integrations/imports/runPartsImportPipeline.ts",
+      "subject": "stock_locations.created_at",
+      "message": "order references missing column stock_locations.created_at",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "ed907f57daf90b87d751",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "ai-automation",
+      "file": "features/integrations/shopBoost/reviewMaterialization.ts",
+      "subject": "stock_locations.created_at",
+      "message": "order references missing column stock_locations.created_at",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "d41666589ad452076b45",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "identity-tenancy",
+      "file": "features/integrations/shopreel/server/buildProFixIQStoryEvents.ts",
+      "subject": "work_order_lines.item",
+      "message": "select references missing column work_order_lines.item",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "2b7bf96802c41004bdfd",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "identity-tenancy",
+      "file": "features/integrations/shopreel/server/buildProFixIQStoryEvents.ts",
+      "subject": "work_order_lines.name",
+      "message": "select references missing column work_order_lines.name",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "a4e9e5b5c4db93543d38",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "identity-tenancy",
+      "file": "features/integrations/shopreel/server/buildProFixIQStoryEvents.ts",
+      "subject": "work_order_lines.title",
+      "message": "select references missing column work_order_lines.title",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "1d0c9cf74643d40ee0c5",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "work-orders",
+      "file": "features/maintenance/server/addMaintenanceSuggestionToWorkOrder.ts",
+      "subject": "maintenance_suggestions.id",
+      "message": "select references missing column maintenance_suggestions.id",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "8b74aac993e4731db406",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "parts",
+      "file": "features/parts/server/buildPartSuggestions.ts",
+      "subject": "part_stock.shop_id",
+      "message": "eq references missing column part_stock.shop_id",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "abb8c32fc40edad092d4",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "parts",
+      "file": "features/parts/server/buildPartSuggestions.ts",
+      "subject": "parts.supplier_id",
+      "message": "select references missing column parts.supplier_id",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "097c52c67aeb8712cc06",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "parts",
+      "file": "features/parts/server/buildPartSuggestions.ts",
+      "subject": "work_order_parts.part_name",
+      "message": "select references missing column work_order_parts.part_name",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "153692070047b1fd1c8b",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "parts",
+      "file": "features/parts/server/buildPartSuggestions.ts",
+      "subject": "work_order_parts.part_number",
+      "message": "select references missing column work_order_parts.part_number",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "15b6949a47b81af08cb5",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "core",
+      "file": "features/shared/components/AccountPlanPanel.tsx",
+      "subject": "user_plans.plan",
+      "message": "select references missing column user_plans.plan",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "e26ed07bb9c043b87710",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "financial",
+      "file": "features/shop-assistant/server/tools/domains/invoices.ts",
+      "subject": "invoices.sent_at",
+      "message": "select references missing column invoices.sent_at",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "885e5f24319c4d72e080",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "work-orders",
+      "file": "features/work-orders/lib/generateCustomId.ts",
+      "subject": "profiles.first_name",
+      "message": "select references missing column profiles.first_name",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "658c9a536de659e8bcf5",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "work-orders",
+      "file": "features/work-orders/lib/generateCustomId.ts",
+      "subject": "profiles.last_name",
+      "message": "select references missing column profiles.last_name",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "7d2e29be63bcfa69ca12",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "work-orders",
+      "file": "features/work-orders/server/authorizeWorkOrderEvidence.ts",
+      "subject": "fleet_vehicles.id",
+      "message": "select references missing column fleet_vehicles.id",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "0613af0573363ea682ba",
+      "rule": "missing-column",
+      "severity": "error",
+      "domain": "work-orders",
+      "file": "features/work-orders/server/vehicle-history-import-job.ts",
+      "subject": "history.shop_id",
+      "message": "eq references missing column history.shop_id",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "99b841610817ac966b37",
+      "rule": "missing-mutation-column",
+      "severity": "error",
+      "domain": "core",
+      "file": "app/api/onboarding-v2/guided/sessions/[sessionId]/analysis/route.ts",
+      "subject": "guided_onboarding_events.created_by",
+      "message": "insert payload contains missing column guided_onboarding_events.created_by",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "66619f78f46af6c3ef45",
+      "rule": "missing-mutation-column",
+      "severity": "error",
+      "domain": "identity-tenancy",
+      "file": "app/api/settings/time-off/route.ts",
+      "subject": "shop_time_off.end_date",
+      "message": "insert payload contains missing column shop_time_off.end_date",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "41ca8dbaac789fc6380f",
+      "rule": "missing-mutation-column",
+      "severity": "error",
+      "domain": "identity-tenancy",
+      "file": "app/api/settings/time-off/route.ts",
+      "subject": "shop_time_off.label",
+      "message": "insert payload contains missing column shop_time_off.label",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "cbf8e18b0b98932d5c76",
+      "rule": "missing-mutation-column",
+      "severity": "error",
+      "domain": "identity-tenancy",
+      "file": "app/api/settings/time-off/route.ts",
+      "subject": "shop_time_off.notes",
+      "message": "insert payload contains missing column shop_time_off.notes",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "5fda08c91d76876279fe",
+      "rule": "missing-mutation-column",
+      "severity": "error",
+      "domain": "identity-tenancy",
+      "file": "app/api/settings/time-off/route.ts",
+      "subject": "shop_time_off.start_date",
+      "message": "insert payload contains missing column shop_time_off.start_date",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "c4ef16a64f03bf3d8dfa",
+      "rule": "missing-mutation-column",
+      "severity": "error",
+      "domain": "work-orders",
+      "file": "app/api/work-orders/lines/add-from-menu/route.ts",
+      "subject": "work_order_lines.labor_hours",
+      "message": "insert payload contains missing column work_order_lines.labor_hours",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "e155c1154fb34d266687",
+      "rule": "missing-mutation-column",
+      "severity": "error",
+      "domain": "work-orders",
+      "file": "app/api/work-orders/update-status/create/route.ts",
+      "subject": "work_orders.appointment",
+      "message": "insert payload contains missing column work_orders.appointment",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "f13bab11b2325b8f4afa",
+      "rule": "missing-mutation-column",
+      "severity": "error",
+      "domain": "work-orders",
+      "file": "app/api/work-orders/update-status/create/route.ts",
+      "subject": "work_orders.complaint",
+      "message": "insert payload contains missing column work_orders.complaint",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "6ae2c94596cb401e53b2",
+      "rule": "missing-mutation-column",
+      "severity": "error",
+      "domain": "work-orders",
+      "file": "app/api/work-orders/update-status/create/route.ts",
+      "subject": "work_orders.location",
+      "message": "insert payload contains missing column work_orders.location",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "c502305839e6af6c58eb",
+      "rule": "missing-mutation-column",
+      "severity": "error",
+      "domain": "work-orders",
+      "file": "app/api/work-orders/update-status/create/route.ts",
+      "subject": "work_orders.number",
+      "message": "insert payload contains missing column work_orders.number",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "98991ec180f7171cf95f",
+      "rule": "missing-mutation-column",
+      "severity": "error",
+      "domain": "work-orders",
+      "file": "features/agent/tools/generateFleetWorkOrders.ts",
+      "subject": "work_order_lines.source",
+      "message": "insert payload contains missing column work_order_lines.source",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "cbf96bbd94052205cbf1",
+      "rule": "missing-mutation-column",
+      "severity": "error",
+      "domain": "reporting",
+      "file": "features/dashboard/app/dashboard/owner/import-customers/page.tsx",
+      "subject": "customers.full_name",
+      "message": "insert payload contains missing column customers.full_name",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "5e821242dfb304b55c0f",
+      "rule": "missing-mutation-column",
+      "severity": "error",
+      "domain": "reporting",
+      "file": "features/dashboard/app/dashboard/owner/import-customers/page.tsx",
+      "subject": "vehicles.plate",
+      "message": "insert payload contains missing column vehicles.plate",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "36f4004a94f899c30b3b",
+      "rule": "missing-mutation-column",
+      "severity": "error",
+      "domain": "ai-automation",
+      "file": "features/integrations/ai/shopBoost/index.ts",
+      "subject": "shop_boost_intakes.error",
+      "message": "update payload contains missing column shop_boost_intakes.error",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "5c50785176b0f3cbc379",
+      "rule": "missing-mutation-column",
+      "severity": "error",
+      "domain": "imports",
+      "file": "features/integrations/imports/runFullImport.ts",
+      "subject": "staff_invite_suggestions.phone",
+      "message": "insert payload contains missing column staff_invite_suggestions.phone",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "e05231e6eb8029b92efe",
+      "rule": "missing-mutation-column",
+      "severity": "error",
+      "domain": "imports",
+      "file": "features/integrations/imports/runFullImport.ts",
+      "subject": "staff_invite_suggestions.username",
+      "message": "insert payload contains missing column staff_invite_suggestions.username",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "e0cba95af0bd7b776fd0",
+      "rule": "missing-mutation-column",
+      "severity": "error",
+      "domain": "work-orders",
+      "file": "features/maintenance/server/addMaintenanceSuggestionToWorkOrder.ts",
+      "subject": "work_order_lines.created_by",
+      "message": "update payload contains missing column work_order_lines.created_by",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "5da04febee92c790b698",
+      "rule": "missing-mutation-column",
+      "severity": "error",
+      "domain": "work-orders",
+      "file": "features/maintenance/server/addMaintenanceSuggestionToWorkOrder.ts",
+      "subject": "work_order_lines.created_by",
+      "message": "insert payload contains missing column work_order_lines.created_by",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "a3da949e9ed2ca1776c9",
+      "rule": "missing-mutation-column",
+      "severity": "error",
+      "domain": "work-orders",
+      "file": "features/maintenance/server/addMaintenanceSuggestionToWorkOrder.ts",
+      "subject": "work_order_lines.customer_id",
+      "message": "insert payload contains missing column work_order_lines.customer_id",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "546190b17513aae6ce06",
+      "rule": "missing-mutation-column",
+      "severity": "error",
+      "domain": "work-orders",
+      "file": "features/maintenance/server/addMaintenanceSuggestionToWorkOrder.ts",
+      "subject": "work_order_lines.estimated_hours",
+      "message": "update payload contains missing column work_order_lines.estimated_hours",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "ab3bcd8ceb2fb91f2f46",
+      "rule": "missing-mutation-column",
+      "severity": "error",
+      "domain": "work-orders",
+      "file": "features/maintenance/server/addMaintenanceSuggestionToWorkOrder.ts",
+      "subject": "work_order_lines.estimated_hours",
+      "message": "insert payload contains missing column work_order_lines.estimated_hours",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "e1ac4b329ab8e8605c44",
+      "rule": "missing-mutation-column",
+      "severity": "error",
+      "domain": "work-orders",
+      "file": "features/maintenance/server/addMaintenanceSuggestionToWorkOrder.ts",
+      "subject": "work_order_lines.note",
+      "message": "update payload contains missing column work_order_lines.note",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "61abe9deff13d48dec47",
+      "rule": "missing-mutation-column",
+      "severity": "error",
+      "domain": "work-orders",
+      "file": "features/maintenance/server/addMaintenanceSuggestionToWorkOrder.ts",
+      "subject": "work_order_lines.note",
+      "message": "insert payload contains missing column work_order_lines.note",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "e092e1212cba2344aa23",
+      "rule": "missing-mutation-column",
+      "severity": "error",
+      "domain": "work-orders",
+      "file": "features/maintenance/server/addMaintenanceSuggestionToWorkOrder.ts",
+      "subject": "work_order_lines.quoted_hours",
+      "message": "update payload contains missing column work_order_lines.quoted_hours",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "d7635d2ac3c3434ec4be",
+      "rule": "missing-mutation-column",
+      "severity": "error",
+      "domain": "work-orders",
+      "file": "features/maintenance/server/addMaintenanceSuggestionToWorkOrder.ts",
+      "subject": "work_order_lines.quoted_hours",
+      "message": "insert payload contains missing column work_order_lines.quoted_hours",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "81643c7512e6d7a53979",
+      "rule": "missing-mutation-column",
+      "severity": "error",
+      "domain": "work-orders",
+      "file": "features/maintenance/server/addMaintenanceSuggestionToWorkOrder.ts",
+      "subject": "work_order_lines.source",
+      "message": "update payload contains missing column work_order_lines.source",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "ad56d57c5c277a9968a6",
+      "rule": "missing-mutation-column",
+      "severity": "error",
+      "domain": "work-orders",
+      "file": "features/maintenance/server/addMaintenanceSuggestionToWorkOrder.ts",
+      "subject": "work_order_lines.source",
+      "message": "insert payload contains missing column work_order_lines.source",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "4c985eaad006a75c6bec",
+      "rule": "missing-mutation-column",
+      "severity": "error",
+      "domain": "core",
+      "file": "features/onboarding-v2/guided/instantAnalysisHandoff.ts",
+      "subject": "guided_onboarding_events.created_by",
+      "message": "insert payload contains missing column guided_onboarding_events.created_by",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "b1b4c4a7f2e4f92cbb62",
+      "rule": "missing-mutation-column",
+      "severity": "error",
+      "domain": "core",
+      "file": "features/onboarding-v2/guided/instantAnalysisHandoff.ts",
+      "subject": "guided_onboarding_sessions.existing_system",
+      "message": "insert payload contains missing column guided_onboarding_sessions.existing_system",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "fc49947a08cedae8c243",
+      "rule": "missing-mutation-column",
+      "severity": "error",
+      "domain": "core",
+      "file": "features/onboarding-v2/guided/instantAnalysisHandoff.ts",
+      "subject": "guided_onboarding_sessions.existing_system",
+      "message": "update payload contains missing column guided_onboarding_sessions.existing_system",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "413eaae24b805ea2bc2c",
+      "rule": "missing-mutation-column",
+      "severity": "error",
+      "domain": "quotes-approvals",
+      "file": "features/quotes/components/QuoteViewer.tsx",
+      "subject": "quote_lines.labor_hours",
+      "message": "upsert payload contains missing column quote_lines.labor_hours",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "e88f2ce0b27287170794",
+      "rule": "missing-mutation-column",
+      "severity": "error",
+      "domain": "quotes-approvals",
+      "file": "features/quotes/components/QuoteViewer.tsx",
+      "subject": "quote_lines.total_price",
+      "message": "upsert payload contains missing column quote_lines.total_price",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "05e9203276439e93b265",
+      "rule": "missing-mutation-column",
+      "severity": "error",
+      "domain": "work-orders",
+      "file": "features/shared/components/CreateWorkOrderForm.tsx",
+      "subject": "work_orders.customer_address",
+      "message": "insert payload contains missing column work_orders.customer_address",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "c27ce33ddf2fa4c3b939",
+      "rule": "missing-mutation-column",
+      "severity": "error",
+      "domain": "work-orders",
+      "file": "features/shared/components/CreateWorkOrderForm.tsx",
+      "subject": "work_orders.customer_email",
+      "message": "insert payload contains missing column work_orders.customer_email",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "94db9ca62f8daaa6d77c",
+      "rule": "missing-mutation-column",
+      "severity": "error",
+      "domain": "work-orders",
+      "file": "features/shared/components/CreateWorkOrderForm.tsx",
+      "subject": "work_orders.customer_phone",
+      "message": "insert payload contains missing column work_orders.customer_phone",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "06bf9270661313962b9d",
+      "rule": "missing-mutation-column",
+      "severity": "error",
+      "domain": "work-orders",
+      "file": "features/work-orders/server/logOperationalEvent.ts",
+      "subject": "activity_logs.actor_id",
+      "message": "insert payload contains missing column activity_logs.actor_id",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "72332ade3a20c221c237",
+      "rule": "missing-mutation-column",
+      "severity": "error",
+      "domain": "work-orders",
+      "file": "features/work-orders/server/logOperationalEvent.ts",
+      "subject": "activity_logs.created_at",
+      "message": "insert payload contains missing column activity_logs.created_at",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "0e67f40a267d71264497",
+      "rule": "missing-mutation-column",
+      "severity": "error",
+      "domain": "work-orders",
+      "file": "features/work-orders/server/logOperationalEvent.ts",
+      "subject": "activity_logs.details",
+      "message": "insert payload contains missing column activity_logs.details",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "ee54266bd48650d7d2b9",
+      "rule": "missing-mutation-column",
+      "severity": "error",
+      "domain": "work-orders",
+      "file": "features/work-orders/server/logOperationalEvent.ts",
+      "subject": "activity_logs.event",
+      "message": "insert payload contains missing column activity_logs.event",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "8139f45281e65ca100a5",
+      "rule": "missing-relation",
+      "severity": "error",
+      "domain": "messaging",
+      "file": "app/api/planner/notifications/[id]/ack/route.ts",
+      "subject": "assistant_notifications",
+      "message": ".from(\"assistant_notifications\") references a relation missing from the schema contract",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "dbaef55051c578e93ce7",
+      "rule": "missing-relation",
+      "severity": "error",
+      "domain": "core",
+      "file": "features/admin/components/AdminQuickPanel.tsx",
+      "subject": "certifications",
+      "message": ".from(\"certifications\") references a relation missing from the schema contract",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "58186a04ed54440d0fce",
+      "rule": "missing-relation",
+      "severity": "error",
+      "domain": "messaging",
+      "file": "features/agent/server/syncAssistantNotifications.ts",
+      "subject": "assistant_notifications",
+      "message": ".from(\"assistant_notifications\") references a relation missing from the schema contract",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "26dfe6186cdd3bb79949",
+      "rule": "missing-relation",
+      "severity": "error",
+      "domain": "inspections",
+      "file": "features/agent/tools/createCustomInspection.ts",
+      "subject": "work_order_inspections",
+      "message": ".from(\"work_order_inspections\") references a relation missing from the schema contract",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "843a229d8736d4bb4160",
+      "rule": "missing-relation",
+      "severity": "error",
+      "domain": "reporting",
+      "file": "features/dashboard/components/ShareBookingLink.tsx",
+      "subject": "shop",
+      "message": ".from(\"shop\") references a relation missing from the schema contract",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "0458b319c8d6cf0c6a32",
+      "rule": "missing-relation",
+      "severity": "error",
+      "domain": "core",
+      "file": "features/operations/server/syncOperationalObservabilityAlerts.ts",
+      "subject": "assistant_notifications",
+      "message": ".from(\"assistant_notifications\") references a relation missing from the schema contract",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "558484473d974a0c0a10",
+      "rule": "missing-storage-bucket",
+      "severity": "error",
+      "domain": "ai-automation",
+      "file": "app/agent/planner/page.tsx",
+      "subject": "agent-uploads",
+      "message": "Storage bucket agent-uploads is not provisioned by the migration chain",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "245ebb8510d2db72d89d",
+      "rule": "missing-storage-bucket",
+      "severity": "error",
+      "domain": "ai-automation",
+      "file": "app/api/agent/requests/[id]/route.ts",
+      "subject": "agent_uploads",
+      "message": "Storage bucket agent_uploads is not provisioned by the migration chain",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "518d9a4b98236c51f23d",
+      "rule": "missing-storage-bucket",
+      "severity": "error",
+      "domain": "ai-automation",
+      "file": "app/api/agent/requests/route.ts",
+      "subject": "agent_uploads",
+      "message": "Storage bucket agent_uploads is not provisioned by the migration chain",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "caa79ebe66b653edae8d",
+      "rule": "missing-storage-bucket",
+      "severity": "error",
+      "domain": "core",
+      "file": "app/api/assistant/attachments/route.ts",
+      "subject": "work_order_media",
+      "message": "Storage bucket work_order_media is not provisioned by the migration chain",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "18e3e31b06baa0b8dbba",
+      "rule": "missing-storage-bucket",
+      "severity": "error",
+      "domain": "core",
+      "file": "app/api/branding/assets/upload/route.ts",
+      "subject": "branding",
+      "message": "Storage bucket branding is not provisioned by the migration chain",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "609e194c2b35f80396e1",
+      "rule": "missing-storage-bucket",
+      "severity": "error",
+      "domain": "core",
+      "file": "app/api/branding/generate/route.ts",
+      "subject": "branding",
+      "message": "Storage bucket branding is not provisioned by the migration chain",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "ae0f44b12d20f602a9e9",
+      "rule": "missing-storage-bucket",
+      "severity": "error",
+      "domain": "ai-automation",
+      "file": "app/api/demo/shop-boost/activate/route.ts",
+      "subject": "shop-imports",
+      "message": "Storage bucket shop-imports is not provisioned by the migration chain",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "e0186393f3f949fd9ba8",
+      "rule": "missing-storage-bucket",
+      "severity": "error",
+      "domain": "inspections",
+      "file": "app/api/inspection-form-imports/route.ts",
+      "subject": "fleet-forms",
+      "message": "Storage bucket fleet-forms is not provisioned by the migration chain",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "a27f5ab2ee5633818a21",
+      "rule": "missing-storage-bucket",
+      "severity": "error",
+      "domain": "core",
+      "file": "app/api/planner/uploads/sign/route.ts",
+      "subject": "planner_uploads",
+      "message": "Storage bucket planner_uploads is not provisioned by the migration chain",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "9ad58ac40994e00c4f54",
+      "rule": "missing-storage-bucket",
+      "severity": "error",
+      "domain": "reporting",
+      "file": "app/dashboard/tech/settings/page.tsx",
+      "subject": "signatures",
+      "message": "Storage bucket signatures is not provisioned by the migration chain",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "cd1fa56e35a0596e7580",
+      "rule": "missing-storage-bucket",
+      "severity": "error",
+      "domain": "property",
+      "file": "app/portal/property/member/requests/[id]/actions.ts",
+      "subject": "property_request_attachments",
+      "message": "Storage bucket property_request_attachments is not provisioned by the migration chain",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "236f282c07716627b678",
+      "rule": "missing-storage-bucket",
+      "severity": "error",
+      "domain": "inspections",
+      "file": "app/property/inspections/new/actions.ts",
+      "subject": "property_request_attachments",
+      "message": "Storage bucket property_request_attachments is not provisioned by the migration chain",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "40a51a5e2d1f90f898f3",
+      "rule": "missing-storage-bucket",
+      "severity": "error",
+      "domain": "property",
+      "file": "app/property/requests/[id]/actions.ts",
+      "subject": "property_request_attachments",
+      "message": "Storage bucket property_request_attachments is not provisioned by the migration chain",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "838ccbebe8dc0d4f4747",
+      "rule": "missing-storage-bucket",
+      "severity": "error",
+      "domain": "property",
+      "file": "app/property/requests/[id]/page.tsx",
+      "subject": "property_request_attachments",
+      "message": "Storage bucket property_request_attachments is not provisioned by the migration chain",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "b3ff7d5e0d6f1d92d497",
+      "rule": "missing-storage-bucket",
+      "severity": "error",
+      "domain": "ai-automation",
+      "file": "features/agent/agent-console/app/agent/page.tsx",
+      "subject": "agent_uploads",
+      "message": "Storage bucket agent_uploads is not provisioned by the migration chain",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "29a554cdb5afaeee4d04",
+      "rule": "missing-storage-bucket",
+      "severity": "error",
+      "domain": "ai-automation",
+      "file": "features/agent/components/AgentRequestModal.tsx",
+      "subject": "agent_uploads",
+      "message": "Storage bucket agent_uploads is not provisioned by the migration chain",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "bc5d579e0d5867a09e81",
+      "rule": "missing-storage-bucket",
+      "severity": "error",
+      "domain": "inspections",
+      "file": "features/inspections/components/FleetFormImportCard.tsx",
+      "subject": "fleet-forms",
+      "message": "Storage bucket fleet-forms is not provisioned by the migration chain",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "d6a31a92ddfa5aebcf36",
+      "rule": "missing-storage-bucket",
+      "severity": "error",
+      "domain": "inspections",
+      "file": "features/inspections/server/inspection-form-import-job.ts",
+      "subject": "fleet-forms",
+      "message": "Storage bucket fleet-forms is not provisioned by the migration chain",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "dcf68680ebec58306b62",
+      "rule": "missing-storage-bucket",
+      "severity": "error",
+      "domain": "inspections",
+      "file": "features/inspections/server/inspectionReportAccess.ts",
+      "subject": "job-photos",
+      "message": "Storage bucket job-photos is not provisioned by the migration chain",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "1023dbd227be6ad6bf77",
+      "rule": "missing-storage-bucket",
+      "severity": "error",
+      "domain": "inspections",
+      "file": "features/inspections/server/publishInspectionPdf.ts",
+      "subject": "inspection_pdfs",
+      "message": "Storage bucket inspection_pdfs is not provisioned by the migration chain",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "29c193fad23b0da213af",
+      "rule": "missing-storage-bucket",
+      "severity": "error",
+      "domain": "ai-automation",
+      "file": "features/integrations/ai/shopBoost.ts",
+      "subject": "shop-imports",
+      "message": "Storage bucket shop-imports is not provisioned by the migration chain",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "14d243e2a28f0ccc6686",
+      "rule": "missing-storage-bucket",
+      "severity": "error",
+      "domain": "ai-automation",
+      "file": "features/integrations/ai/shopBoost/index.ts",
+      "subject": "shop-imports",
+      "message": "Storage bucket shop-imports is not provisioned by the migration chain",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "16db014f1eba49e67edb",
+      "rule": "missing-storage-bucket",
+      "severity": "error",
+      "domain": "imports",
+      "file": "features/integrations/imports/runFullImport.ts",
+      "subject": "shop-imports",
+      "message": "Storage bucket shop-imports is not provisioned by the migration chain",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "d66cba862191df2ec813",
+      "rule": "missing-storage-bucket",
+      "severity": "error",
+      "domain": "ai-automation",
+      "file": "features/integrations/shopBoost/runIntakeHandler.ts",
+      "subject": "shop-imports",
+      "message": "Storage bucket shop-imports is not provisioned by the migration chain",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "72dc77e8068be7d5feca",
+      "rule": "missing-storage-bucket",
+      "severity": "error",
+      "domain": "inspections",
+      "file": "features/invoices/server/attachInspectionReportToInvoice.ts",
+      "subject": "inspection_pdfs",
+      "message": "Storage bucket inspection_pdfs is not provisioned by the migration chain",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "9f93bcf37828783e51de",
+      "rule": "missing-storage-bucket",
+      "severity": "error",
+      "domain": "technician",
+      "file": "features/mobile/settings/MobileSettingsScreen.tsx",
+      "subject": "signatures",
+      "message": "Storage bucket signatures is not provisioned by the migration chain",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "e89e74621eb0c97c7ada",
+      "rule": "missing-storage-bucket",
+      "severity": "error",
+      "domain": "parts",
+      "file": "features/parts/components/VehiclePhotoUploader.tsx",
+      "subject": "vehicle-photos",
+      "message": "Storage bucket vehicle-photos is not provisioned by the migration chain",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "3c2c0872f57bb059da8a",
+      "rule": "missing-storage-bucket",
+      "severity": "error",
+      "domain": "technician",
+      "file": "features/shared/lib/offline/replay.ts",
+      "subject": "job-photos",
+      "message": "Storage bucket job-photos is not provisioned by the migration chain",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "4d56021d47149d20f065",
+      "rule": "missing-storage-bucket",
+      "severity": "error",
+      "domain": "core",
+      "file": "features/shared/lib/utils/uploadSignature.ts",
+      "subject": "signatures",
+      "message": "Storage bucket signatures is not provisioned by the migration chain",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "289b6b56c4636152f9e6",
+      "rule": "missing-storage-bucket",
+      "severity": "error",
+      "domain": "work-orders",
+      "file": "features/work-orders/components/workorders/FocusedJobModal.tsx",
+      "subject": "job-photos",
+      "message": "Storage bucket job-photos is not provisioned by the migration chain",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "c48640435a3a5ea2706d",
+      "rule": "missing-storage-bucket",
+      "severity": "error",
+      "domain": "work-orders",
+      "file": "features/work-orders/mobile/MobileFocusedJob.tsx",
+      "subject": "job-photos",
+      "message": "Storage bucket job-photos is not provisioned by the migration chain",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "d186c853998308e2f955",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "core",
+      "file": "app/api/branding/assets/[id]/archive/route.ts",
+      "subject": "shop_brand_assets",
+      "message": "update payload for shop_brand_assets cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "77a702bd48d1af717ba2",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "messaging",
+      "file": "app/api/chat/participants/route.ts",
+      "subject": "conversation_participants",
+      "message": "insert payload for conversation_participants cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "237adc7b3b3e7bed01e2",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "inspections",
+      "file": "app/api/inspection-form-imports/route.ts",
+      "subject": "import_job_rows",
+      "message": "insert payload for import_job_rows cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "f3dd53373088873b67f8",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "core",
+      "file": "app/api/menu-items/save-from-line/route.ts",
+      "subject": "menu_item_parts",
+      "message": "insert payload for menu_item_parts cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "b16bc696ddce79e5ef9b",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "core",
+      "file": "app/api/menu-repair-items/pricing/apply-batch/route.ts",
+      "subject": "menu_repair_item_pricing_parts",
+      "message": "insert payload for menu_repair_item_pricing_parts cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "2886cb3a5c43defd576e",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "imports",
+      "file": "app/api/menu-repair-items/pricing/import-batch-rows/route.ts",
+      "subject": "supplier_quote_batch_rows",
+      "message": "insert payload for supplier_quote_batch_rows cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "59d727909c38e5395563",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "technician",
+      "file": "app/api/mobile/shifts/route.ts",
+      "subject": "punch_events",
+      "message": "insert payload for punch_events cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "a31c7eaa6bd27a1844e2",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "ai-automation",
+      "file": "app/api/optimization/apply/route.ts",
+      "subject": "inspection_templates",
+      "message": "insert payload for inspection_templates cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "2ecf45d5bf329f1c177a",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "ai-automation",
+      "file": "app/api/optimization/apply/route.ts",
+      "subject": "menu_item_suggestions",
+      "message": "insert payload for menu_item_suggestions cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "97c48a6c83fc366a7cd7",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "core",
+      "file": "app/api/recalls/fetch/route.ts",
+      "subject": "vehicle_recalls",
+      "message": "upsert payload for vehicle_recalls cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "7e7f18a81fc7163039ca",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "ai-automation",
+      "file": "app/api/settings/ai-automation/route.ts",
+      "subject": "ai_automation_capability_settings",
+      "message": "upsert payload for ai_automation_capability_settings cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "420c046f0c71aeb26bb8",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "identity-tenancy",
+      "file": "app/api/settings/update/route.ts",
+      "subject": "shops",
+      "message": "update payload for shops cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "4f7f0104797faf44b8d6",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "identity-tenancy",
+      "file": "app/api/shop-health/accept-suggestion/route.ts",
+      "subject": "inspection_templates",
+      "message": "insert payload for inspection_templates cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "33ced8fa40aec4f337a9",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "identity-tenancy",
+      "file": "app/api/shop-health/accept-suggestion/route.ts",
+      "subject": "menu_items",
+      "message": "insert payload for menu_items cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "c15da8f832cb5c2ebc17",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "financial",
+      "file": "app/api/stripe/subscription/route.ts",
+      "subject": "shops",
+      "message": "update payload for shops cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "19a3d7ad3c6cba19942b",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "work-orders",
+      "file": "app/api/work-orders/[id]/intake/route.ts",
+      "subject": "work_order_lines",
+      "message": "insert payload for work_order_lines cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "6e3cede7f108f49d2f70",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "work-orders",
+      "file": "app/api/work-orders/assign-all/route.ts",
+      "subject": "work_order_line_technicians",
+      "message": "upsert payload for work_order_line_technicians cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "f86d9aaebc97136d9383",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "quotes-approvals",
+      "file": "app/api/work-orders/quotes/add-from-menu-repair/route.ts",
+      "subject": "part_request_items",
+      "message": "insert payload for part_request_items cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "f53afa4d229f2a39dd86",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "parts",
+      "file": "app/parts/inventory/page.tsx",
+      "subject": "parts",
+      "message": "upsert payload for parts cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "7b4a3b6e97f340eada0d",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "parts",
+      "file": "app/parts/inventory/page.tsx",
+      "subject": "parts_barcodes",
+      "message": "upsert payload for parts_barcodes cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "2677ae06191637c468d6",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "parts",
+      "file": "app/parts/po/[id]/page.tsx",
+      "subject": "purchase_order_lines",
+      "message": "insert payload for purchase_order_lines cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "e107ef0dc293bc386f01",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "parts",
+      "file": "app/parts/po/[id]/page.tsx",
+      "subject": "suppliers",
+      "message": "insert payload for suppliers cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "2e73f2e0a0dd34a83582",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "parts",
+      "file": "app/parts/po/page.tsx",
+      "subject": "purchase_order_lines",
+      "message": "insert payload for purchase_order_lines cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "9563f84839181810011c",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "financial",
+      "file": "features/billing/server/invoice-import-job.ts",
+      "subject": "import_job_rows",
+      "message": "insert payload for import_job_rows cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "dbc0f0d8fc0f3b423e50",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "financial",
+      "file": "features/billing/server/invoice-import-job.ts",
+      "subject": "invoices",
+      "message": "update payload for invoices cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "aeccec69269972b6916f",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "financial",
+      "file": "features/billing/server/invoice-import-job.ts",
+      "subject": "invoices",
+      "message": "insert payload for invoices cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "b6bb8e4ddbc1a8c054a3",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "core",
+      "file": "features/customers/app/customers/[id]/page.tsx",
+      "subject": "customers",
+      "message": "insert payload for customers cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "dc5c4f0c0cc5368d8301",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "core",
+      "file": "features/customers/app/customers/[id]/page.tsx",
+      "subject": "customers",
+      "message": "update payload for customers cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "784c20ffefe3de35c316",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "core",
+      "file": "features/customers/app/customers/[id]/page.tsx",
+      "subject": "vehicles",
+      "message": "update payload for vehicles cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "330cef63b0d5264c45a9",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "core",
+      "file": "features/customers/app/customers/[id]/page.tsx",
+      "subject": "vehicles",
+      "message": "insert payload for vehicles cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "10761bd7a22cb47df160",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "inspections",
+      "file": "features/inspections/app/inspection/custom-draft/page.tsx",
+      "subject": "inspection_templates",
+      "message": "insert payload for inspection_templates cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "10a4338547832545ce16",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "inspections",
+      "file": "features/inspections/app/inspection/custom-draft/page.tsx",
+      "subject": "inspection_templates",
+      "message": "update payload for inspection_templates cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "9eb79e8b68f3e4c46a14",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "ai-automation",
+      "file": "features/integrations/ai/shopBoost.ts",
+      "subject": "inspection_template_suggestions",
+      "message": "insert payload for inspection_template_suggestions cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "e0be78c0305773968375",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "ai-automation",
+      "file": "features/integrations/ai/shopBoost.ts",
+      "subject": "menu_item_suggestions",
+      "message": "insert payload for menu_item_suggestions cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "f11b471052bfe0c80ad0",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "ai-automation",
+      "file": "features/integrations/ai/shopBoost.ts",
+      "subject": "shop_import_rows",
+      "message": "insert payload for shop_import_rows cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "9c34d9e910cde0b4e94f",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "ai-automation",
+      "file": "features/integrations/ai/shopBoost.ts",
+      "subject": "staff_invite_candidates",
+      "message": "upsert payload for staff_invite_candidates cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "fc01de6ef2f730c3709f",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "ai-automation",
+      "file": "features/integrations/ai/shopBoost/index.ts",
+      "subject": "inspection_template_suggestions",
+      "message": "insert payload for inspection_template_suggestions cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "f1b230697a4ce8542afd",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "ai-automation",
+      "file": "features/integrations/ai/shopBoost/index.ts",
+      "subject": "menu_item_suggestions",
+      "message": "insert payload for menu_item_suggestions cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "afb1937c8d36d9aec449",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "ai-automation",
+      "file": "features/integrations/ai/shopBoost/index.ts",
+      "subject": "staff_invite_suggestions",
+      "message": "insert payload for staff_invite_suggestions cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "c0dba6a7f6fcb0b8cb37",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "ai-automation",
+      "file": "features/integrations/ai/shopBoost/index.ts",
+      "subject": "work_order_line_ai",
+      "message": "insert payload for work_order_line_ai cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "d8443a19761eba970b56",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "imports",
+      "file": "features/integrations/imports/runFullImport.ts",
+      "subject": "invoices",
+      "message": "update payload for invoices cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "ad34bc3549bb1894b7fd",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "imports",
+      "file": "features/integrations/imports/runFullImport.ts",
+      "subject": "shop_import_rows",
+      "message": "insert payload for shop_import_rows cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "b78aaeffc4b0c063aa13",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "imports",
+      "file": "features/integrations/imports/runFullImport.ts",
+      "subject": "work_order_lines",
+      "message": "update payload for work_order_lines cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "03855cac1853809c0b25",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "imports",
+      "file": "features/integrations/imports/runFullImport.ts",
+      "subject": "work_order_lines",
+      "message": "insert payload for work_order_lines cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "57df393c710fcb6e4b1a",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "imports",
+      "file": "features/integrations/imports/runPartsImportPipeline.ts",
+      "subject": "shop_import_rows",
+      "message": "insert payload for shop_import_rows cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "e3d3e964579285a09684",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "imports",
+      "file": "features/integrations/imports/runPartsImportPipeline.ts",
+      "subject": "shop_parts_import_match_candidates",
+      "message": "insert payload for shop_parts_import_match_candidates cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "1816c441cf3606859d40",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "imports",
+      "file": "features/integrations/imports/runPartsImportPipeline.ts",
+      "subject": "shop_parts_import_staging",
+      "message": "insert payload for shop_parts_import_staging cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "55361d6d71de8b21eae2",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "financial",
+      "file": "features/integrations/quickbooks/server/syncInvoice.ts",
+      "subject": "quickbooks_sync_events",
+      "message": "insert payload for quickbooks_sync_events cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "493c6747cdc65ec31120",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "ai-automation",
+      "file": "features/integrations/shopBoost/orchestrator/index.ts",
+      "subject": "shop_onboarding_jobs",
+      "message": "update payload for shop_onboarding_jobs cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "ca2869167f67631179b3",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "ai-automation",
+      "file": "features/integrations/shopBoost/orchestrator/index.ts",
+      "subject": "shop_onboarding_jobs",
+      "message": "upsert payload for shop_onboarding_jobs cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "b71b79082738f2eec2b6",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "ai-automation",
+      "file": "features/integrations/shopBoost/orchestrator/index.ts",
+      "subject": "shop_onboarding_runs",
+      "message": "upsert payload for shop_onboarding_runs cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "7003d71841ac474cf3bb",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "ai-automation",
+      "file": "features/integrations/shopBoost/reviewMaterialization.ts",
+      "subject": "vehicles",
+      "message": "update payload for vehicles cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "57f2c69669c44e23709e",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "ai-automation",
+      "file": "features/integrations/shopBoost/reviewMaterialization.ts",
+      "subject": "vehicles",
+      "message": "insert payload for vehicles cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "9620acf5f7b0455bc65d",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "core",
+      "file": "features/maintenance/server/generateMaintenanceRules.ts",
+      "subject": "maintenance_services",
+      "message": "insert payload for maintenance_services cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "055353ae4810dfaeb7af",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "work-orders",
+      "file": "features/menu-repair-items/server/createPricingSnapshotFromWorkOrderLine.ts",
+      "subject": "menu_repair_item_pricing_parts",
+      "message": "insert payload for menu_repair_item_pricing_parts cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "c8e100898d91ee72a4cd",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "core",
+      "file": "features/menu-repair-items/server/upsertMenuRepairItemFromCompletedLine.ts",
+      "subject": "menu_repair_item_parts",
+      "message": "insert payload for menu_repair_item_parts cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "fb0e497bb735a563e332",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "core",
+      "file": "features/menu-repair-items/server/upsertMenuRepairItemFromCompletedLine.ts",
+      "subject": "menu_repair_item_pricing_parts",
+      "message": "insert payload for menu_repair_item_pricing_parts cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "e84999dc0c578a616427",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "core",
+      "file": "features/onboarding-v2/guided/instantAnalysisHandoff.ts",
+      "subject": "guided_onboarding_steps",
+      "message": "insert payload for guided_onboarding_steps cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "a12cb3660a93c6871b4c",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "parts",
+      "file": "features/parts/actions.ts",
+      "subject": "parts",
+      "message": "insert payload for parts cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "4cb1a7aff24a01c01284",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "parts",
+      "file": "features/parts/lib/locations.ts",
+      "subject": "stock_locations",
+      "message": "insert payload for stock_locations cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "c32661ef23a0b1a53c51",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "parts",
+      "file": "features/parts/lib/suppliers.ts",
+      "subject": "suppliers",
+      "message": "insert payload for suppliers cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "650e247a00fd4187ebbe",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "workforce",
+      "file": "features/payroll-time/server/payrollTime.ts",
+      "subject": "payroll_export_rows",
+      "message": "insert payload for payroll_export_rows cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "03cc2a8ffba6312fb0a8",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "workforce",
+      "file": "features/payroll-time/server/payrollTime.ts",
+      "subject": "payroll_pay_periods",
+      "message": "upsert payload for payroll_pay_periods cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "3c1f126e11f7a64b30af",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "work-orders",
+      "file": "features/shared/components/CreateWorkOrderForm.tsx",
+      "subject": "work_order_lines",
+      "message": "insert payload for work_order_lines cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "e3bad6cdf3dc1cafab61",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "financial",
+      "file": "features/stripe/lib/server/canonical-shop-billing.ts",
+      "subject": "shops",
+      "message": "update payload for shops cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "157408ffe90da99a7249",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "financial",
+      "file": "features/stripe/lib/server/shop-billing-reconciliation.ts",
+      "subject": "shops",
+      "message": "update payload for shops cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "e11da041ef592b331c3d",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "financial",
+      "file": "features/stripe/lib/server/shop-payment-settings.ts",
+      "subject": "shop_payment_settings",
+      "message": "upsert payload for shop_payment_settings cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "2d835a8fd7dd95491531",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "imports",
+      "file": "features/vehicles/server/vehicle-import-job.ts",
+      "subject": "vehicles",
+      "message": "update payload for vehicles cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "c78396f5d619e044a9f4",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "imports",
+      "file": "features/vehicles/server/vehicle-import-job.ts",
+      "subject": "vehicles",
+      "message": "insert payload for vehicles cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "237ebf4f29baea37f9fe",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "work-orders",
+      "file": "features/work-orders/app/work-orders/create/page.tsx",
+      "subject": "customers",
+      "message": "update payload for customers cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "d1cac181c12226673afb",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "work-orders",
+      "file": "features/work-orders/app/work-orders/create/page.tsx",
+      "subject": "customers",
+      "message": "insert payload for customers cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "fc3e92b100be917a4953",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "work-orders",
+      "file": "features/work-orders/app/work-orders/create/page.tsx",
+      "subject": "vehicles",
+      "message": "update payload for vehicles cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "216c397069c9a3cddf62",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "work-orders",
+      "file": "features/work-orders/app/work-orders/create/page.tsx",
+      "subject": "vehicles",
+      "message": "insert payload for vehicles cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "ea459783927c57489eab",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "work-orders",
+      "file": "features/work-orders/app/work-orders/editor/page.tsx",
+      "subject": "work_order_lines",
+      "message": "insert payload for work_order_lines cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "1798df1df953ea078255",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "work-orders",
+      "file": "features/work-orders/components/MenuQuickAdd.tsx",
+      "subject": "work_order_lines",
+      "message": "insert payload for work_order_lines cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "708cd1e8aa1236fcb413",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "work-orders",
+      "file": "features/work-orders/components/NewWorkOrderLineForm.tsx",
+      "subject": "work_order_lines",
+      "message": "insert payload for work_order_lines cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "37453b360ae73a391867",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "work-orders",
+      "file": "features/work-orders/components/workorders/AddJobModal.tsx",
+      "subject": "work_order_lines",
+      "message": "insert payload for work_order_lines cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "bdf2da39c54f727000bd",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "work-orders",
+      "file": "features/work-orders/lib/saveWorkOrderLines.ts",
+      "subject": "work_order_lines",
+      "message": "insert payload for work_order_lines cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "8dcae0baff754243f1b8",
+      "rule": "dynamic-mutation-payload",
+      "severity": "warning",
+      "domain": "work-orders",
+      "file": "features/work-orders/server/vehicle-history-import-job.ts",
+      "subject": "history",
+      "message": "insert payload for history cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "1b34f7c090cfe5b044a4",
+      "rule": "dynamic-relation",
+      "severity": "warning",
+      "domain": "identity-tenancy",
+      "file": "app/api/admin/create-user/route.ts",
+      "subject": "dynamic .from()",
+      "message": "Dynamic relation name cannot be checked against the schema",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "8307022d1532c4b5ec0a",
+      "rule": "dynamic-relation",
+      "severity": "warning",
+      "domain": "identity-tenancy",
+      "file": "app/api/admin/staff-invite-candidates/[id]/create-user/route.ts",
+      "subject": "dynamic .from()",
+      "message": "Dynamic relation name cannot be checked against the schema",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "e93faec2b26fa8926540",
+      "rule": "dynamic-relation",
+      "severity": "warning",
+      "domain": "inspections",
+      "file": "app/api/inspection-form-imports/route.ts",
+      "subject": "dynamic .from()",
+      "message": "Dynamic relation name cannot be checked against the schema",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "23f4e173539819a1fd58",
+      "rule": "dynamic-relation",
+      "severity": "warning",
+      "domain": "technician",
+      "file": "app/api/mobile/shifts/route.ts",
+      "subject": "dynamic .from()",
+      "message": "Dynamic relation name cannot be checked against the schema",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "9798b5069a94581d87fc",
+      "rule": "dynamic-relation",
+      "severity": "warning",
+      "domain": "ai-automation",
+      "file": "app/api/shop-boost/import-reset/route.ts",
+      "subject": "dynamic .from()",
+      "message": "Dynamic relation name cannot be checked against the schema",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "ff4948f1c0bb5fff8b07",
+      "rule": "dynamic-relation",
+      "severity": "warning",
+      "domain": "ai-automation",
+      "file": "features/ai/server/types.ts",
+      "subject": "dynamic .from()",
+      "message": "Dynamic relation name cannot be checked against the schema",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "b1f393f3cf37c11d35f4",
+      "rule": "dynamic-relation",
+      "severity": "warning",
+      "domain": "core",
+      "file": "features/onboarding-v2/analysis/server.ts",
+      "subject": "dynamic .from()",
+      "message": "Dynamic relation name cannot be checked against the schema",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "c0f7a05c5b5cc619a59f",
+      "rule": "dynamic-relation",
+      "severity": "warning",
+      "domain": "core",
+      "file": "features/onboarding-v2/guided/server.ts",
+      "subject": "dynamic .from()",
+      "message": "Dynamic relation name cannot be checked against the schema",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "61780950387c3b596ab6",
+      "rule": "dynamic-relation",
+      "severity": "warning",
+      "domain": "core",
+      "file": "features/operations/server/getOperationalObservability.ts",
+      "subject": "dynamic .from()",
+      "message": "Dynamic relation name cannot be checked against the schema",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "69c8c9818bd5972ef2fa",
+      "rule": "dynamic-relation",
+      "severity": "warning",
+      "domain": "work-orders",
+      "file": "features/shared/hooks/useWorkOrderBoard.ts",
+      "subject": "dynamic .from()",
+      "message": "Dynamic relation name cannot be checked against the schema",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "45eb8246e5bc84abc991",
+      "rule": "dynamic-relation",
+      "severity": "warning",
+      "domain": "core",
+      "file": "features/shared/lib/hr/uploadEmployeeDoc.ts",
+      "subject": "dynamic .from()",
+      "message": "Dynamic relation name cannot be checked against the schema",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "66b1a1957c7c21958db4",
+      "rule": "dynamic-relation",
+      "severity": "warning",
+      "domain": "work-orders",
+      "file": "features/work-orders/server/vehicle-history-import-job.ts",
+      "subject": "dynamic .from()",
+      "message": "Dynamic relation name cannot be checked against the schema",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "360994a9b0abeba87bc2",
+      "rule": "dynamic-relation",
+      "severity": "warning",
+      "domain": "core",
+      "file": "scripts/qa-demo-seed.mjs",
+      "subject": "dynamic .from()",
+      "message": "Dynamic relation name cannot be checked against the schema",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "7b70e7ecdc954ab8cec4",
+      "rule": "dynamic-relation",
+      "severity": "warning",
+      "domain": "identity-tenancy",
+      "file": "scripts/seed-demo-shop.mjs",
+      "subject": "dynamic .from()",
+      "message": "Dynamic relation name cannot be checked against the schema",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "840b3a625a9b9f223b9f",
+      "rule": "dynamic-rpc-arguments",
+      "severity": "warning",
+      "domain": "inspections",
+      "file": "app/api/inspections/sign/route.ts",
+      "subject": "attach_signed_inspection_pdf_atomic",
+      "message": "RPC attach_signed_inspection_pdf_atomic arguments cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "8459c372107e17585d04",
+      "rule": "dynamic-rpc-arguments",
+      "severity": "warning",
+      "domain": "inspections",
+      "file": "app/api/inspections/sign/route.ts",
+      "subject": "sign_inspection",
+      "message": "RPC sign_inspection arguments cannot be checked statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "cc18a200320dd2cfc03c",
+      "rule": "dynamic-rpc",
+      "severity": "warning",
+      "domain": "technician",
+      "file": "app/api/offline/mutations/route.ts",
+      "subject": "dynamic rpc",
+      "message": "Dynamic RPC name cannot be checked against the schema",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "08c39ce18de7048c876a",
+      "rule": "dynamic-rpc",
+      "severity": "warning",
+      "domain": "parts",
+      "file": "app/api/parts/_lib/lifecycleCommand.ts",
+      "subject": "dynamic rpc",
+      "message": "Dynamic RPC name cannot be checked against the schema",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "8e149538e8f2308ce17c",
+      "rule": "dynamic-rpc",
+      "severity": "warning",
+      "domain": "core",
+      "file": "app/api/portal/enrollment/[slug]/route.ts",
+      "subject": "dynamic rpc",
+      "message": "Dynamic RPC name cannot be checked against the schema",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "7efc3be916ae3e262bc4",
+      "rule": "dynamic-rpc",
+      "severity": "warning",
+      "domain": "core",
+      "file": "app/debug/session/page.tsx",
+      "subject": "dynamic rpc",
+      "message": "Dynamic RPC name cannot be checked against the schema",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "1e30e7b2ba8b3ca156ea",
+      "rule": "dynamic-rpc",
+      "severity": "warning",
+      "domain": "financial",
+      "file": "features/invoices/server/processFinancialOutbox.ts",
+      "subject": "dynamic rpc",
+      "message": "Dynamic RPC name cannot be checked against the schema",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "5b14f4ebe7159f1b757f",
+      "rule": "dynamic-rpc",
+      "severity": "warning",
+      "domain": "parts",
+      "file": "features/parts/server/syncQuoteLinePartsStatus.ts",
+      "subject": "dynamic rpc",
+      "message": "Dynamic RPC name cannot be checked against the schema",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "3344fde2c072d23fc1e4",
+      "rule": "dynamic-rpc",
+      "severity": "warning",
+      "domain": "core",
+      "file": "features/portal/server/addPortalRequestLine.ts",
+      "subject": "dynamic rpc",
+      "message": "Dynamic RPC name cannot be checked against the schema",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "bc704cfcdf938cfd5ec4",
+      "rule": "dynamic-select",
+      "severity": "warning",
+      "domain": "core",
+      "file": "app/api/menu-repair-items/match/route.ts",
+      "subject": "menu_repair_items",
+      "message": "Dynamic select list for menu_repair_items cannot be checked",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "e8a592639b2b2facb9ca",
+      "rule": "dynamic-select",
+      "severity": "warning",
+      "domain": "core",
+      "file": "app/api/menu/match/route.ts",
+      "subject": "menu_items",
+      "message": "Dynamic select list for menu_items cannot be checked",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "46e5e5d2fffac101d208",
+      "rule": "dynamic-select",
+      "severity": "warning",
+      "domain": "work-orders",
+      "file": "app/api/work-orders/lines/add-from-menu/route.ts",
+      "subject": "menu_items",
+      "message": "Dynamic select list for menu_items cannot be checked",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "1b93acf3f509797f9733",
+      "rule": "dynamic-select",
+      "severity": "warning",
+      "domain": "identity-tenancy",
+      "file": "app/portal/shop/[slug]/ShopPublicProfileView.tsx",
+      "subject": "shops",
+      "message": "Dynamic select list for shops cannot be checked",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "839dd1b7b52abe77e272",
+      "rule": "dynamic-select",
+      "severity": "warning",
+      "domain": "identity-tenancy",
+      "file": "features/auth/hooks/useUser.ts",
+      "subject": "profiles",
+      "message": "Dynamic select list for profiles cannot be checked",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "ab1303d09a54ce780fc8",
+      "rule": "dynamic-select",
+      "severity": "warning",
+      "domain": "identity-tenancy",
+      "file": "features/auth/hooks/useUser.ts",
+      "subject": "shops",
+      "message": "Dynamic select list for shops cannot be checked",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "9e163b076a50dcedf76b",
+      "rule": "dynamic-select",
+      "severity": "warning",
+      "domain": "inspections",
+      "file": "features/inspections/server/findSmartInspectionMatch.ts",
+      "subject": "menu_items",
+      "message": "Dynamic select list for menu_items cannot be checked",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "10a2bfae93e762c51752",
+      "rule": "dynamic-select",
+      "severity": "warning",
+      "domain": "inspections",
+      "file": "features/inspections/server/findSmartInspectionMatch.ts",
+      "subject": "menu_repair_items",
+      "message": "Dynamic select list for menu_repair_items cannot be checked",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "c128fa4be443ababd436",
+      "rule": "dynamic-select",
+      "severity": "warning",
+      "domain": "identity-tenancy",
+      "file": "features/portal/server/portalAuth.ts",
+      "subject": "work_orders",
+      "message": "Dynamic select list for work_orders cannot be checked",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "dfc5bd03601a6b4bcb1f",
+      "rule": "dynamic-select",
+      "severity": "warning",
+      "domain": "identity-tenancy",
+      "file": "features/shops/components/ShopPublicProfileSection.tsx",
+      "subject": "shops",
+      "message": "Dynamic select list for shops cannot be checked",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "64c541ae14115840dcca",
+      "rule": "dynamic-storage-bucket",
+      "severity": "warning",
+      "domain": "core",
+      "file": "app/api/branding/assets/[id]/delete/route.ts",
+      "subject": "dynamic storage bucket",
+      "message": "Dynamic storage bucket cannot be inventoried statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "b08b38e3ad60353435d3",
+      "rule": "dynamic-storage-bucket",
+      "severity": "warning",
+      "domain": "ai-automation",
+      "file": "app/api/demo/shop-boost/run/route.ts",
+      "subject": "dynamic storage bucket",
+      "message": "Dynamic storage bucket cannot be inventoried statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "3fece318d8252424aa5c",
+      "rule": "dynamic-storage-bucket",
+      "severity": "warning",
+      "domain": "ai-automation",
+      "file": "app/api/demo/shop-boost/uploads/route.ts",
+      "subject": "dynamic storage bucket",
+      "message": "Dynamic storage bucket cannot be inventoried statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "ece392f9d3736917b992",
+      "rule": "dynamic-storage-bucket",
+      "severity": "warning",
+      "domain": "fleet",
+      "file": "app/api/fleet/evidence/[evidenceId]/route.ts",
+      "subject": "dynamic storage bucket",
+      "message": "Dynamic storage bucket cannot be inventoried statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "b349915a5095cca5a423",
+      "rule": "dynamic-storage-bucket",
+      "severity": "warning",
+      "domain": "inspections",
+      "file": "app/api/inspections/[id]/report/pdf/route.ts",
+      "subject": "dynamic storage bucket",
+      "message": "Dynamic storage bucket cannot be inventoried statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "108f8aaa5d1bbe9e9348",
+      "rule": "dynamic-storage-bucket",
+      "severity": "warning",
+      "domain": "inspections",
+      "file": "app/api/inspections/photos/upload/route.ts",
+      "subject": "dynamic storage bucket",
+      "message": "Dynamic storage bucket cannot be inventoried statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "90f089e58894f571a39f",
+      "rule": "dynamic-storage-bucket",
+      "severity": "warning",
+      "domain": "financial",
+      "file": "app/api/invoices/[id]/documents/[kind]/signed/route.ts",
+      "subject": "dynamic storage bucket",
+      "message": "Dynamic storage bucket cannot be inventoried statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "47980cbdb4bd3f5c9b48",
+      "rule": "dynamic-storage-bucket",
+      "severity": "warning",
+      "domain": "workforce",
+      "file": "app/api/payroll-time/exports/[batchId]/download/route.ts",
+      "subject": "dynamic storage bucket",
+      "message": "Dynamic storage bucket cannot be inventoried statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "4fc8e8a1a99c0d69e26a",
+      "rule": "dynamic-storage-bucket",
+      "severity": "warning",
+      "domain": "workforce",
+      "file": "app/api/workforce/documents-readiness/[id]/signed-url/route.ts",
+      "subject": "dynamic storage bucket",
+      "message": "Dynamic storage bucket cannot be inventoried statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "d8c7d7fd537bfd8eaff2",
+      "rule": "dynamic-storage-bucket",
+      "severity": "warning",
+      "domain": "inspections",
+      "file": "app/portal/property/member/inspections/[id]/page.tsx",
+      "subject": "dynamic storage bucket",
+      "message": "Dynamic storage bucket cannot be inventoried statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "6258bf335b70d1d1b2ad",
+      "rule": "dynamic-storage-bucket",
+      "severity": "warning",
+      "domain": "inspections",
+      "file": "app/portal/property/member/inspections/[id]/print/page.tsx",
+      "subject": "dynamic storage bucket",
+      "message": "Dynamic storage bucket cannot be inventoried statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "c4b6d04718306258eb30",
+      "rule": "dynamic-storage-bucket",
+      "severity": "warning",
+      "domain": "property",
+      "file": "app/portal/property/member/requests/[id]/page.tsx",
+      "subject": "dynamic storage bucket",
+      "message": "Dynamic storage bucket cannot be inventoried statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "ab77b7d7c911f06a1f06",
+      "rule": "dynamic-storage-bucket",
+      "severity": "warning",
+      "domain": "inspections",
+      "file": "app/property/inspections/[id]/page.tsx",
+      "subject": "dynamic storage bucket",
+      "message": "Dynamic storage bucket cannot be inventoried statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "7789deaec736bba30931",
+      "rule": "dynamic-storage-bucket",
+      "severity": "warning",
+      "domain": "inspections",
+      "file": "app/property/inspections/[id]/print/page.tsx",
+      "subject": "dynamic storage bucket",
+      "message": "Dynamic storage bucket cannot be inventoried statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "551961b0d0411f9ea375",
+      "rule": "dynamic-storage-bucket",
+      "severity": "warning",
+      "domain": "core",
+      "file": "features/customers/app/customers/[id]/page.tsx",
+      "subject": "dynamic storage bucket",
+      "message": "Dynamic storage bucket cannot be inventoried statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "0cebac861021dd564fac",
+      "rule": "dynamic-storage-bucket",
+      "severity": "warning",
+      "domain": "ai-automation",
+      "file": "features/integrations/shopBoost/stageDemoUploads.ts",
+      "subject": "dynamic storage bucket",
+      "message": "Dynamic storage bucket cannot be inventoried statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "f250ec7909f7a5a09935",
+      "rule": "dynamic-storage-bucket",
+      "severity": "warning",
+      "domain": "identity-tenancy",
+      "file": "features/users/components/ProfileAvatarUploader.tsx",
+      "subject": "dynamic storage bucket",
+      "message": "Dynamic storage bucket cannot be inventoried statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "50d6077594ed08cdbcae",
+      "rule": "dynamic-storage-bucket",
+      "severity": "warning",
+      "domain": "work-orders",
+      "file": "features/work-orders/app/work-orders/create/page.tsx",
+      "subject": "dynamic storage bucket",
+      "message": "Dynamic storage bucket cannot be inventoried statically",
+      "expiresOn": "2026-09-06"
+    },
+    {
+      "fingerprint": "d2c8a509d816a356c721",
+      "rule": "dynamic-storage-bucket",
+      "severity": "warning",
+      "domain": "work-orders",
+      "file": "features/work-orders/server/workOrderEvidenceUrls.ts",
+      "subject": "dynamic storage bucket",
+      "message": "Dynamic storage bucket cannot be inventoried statically",
+      "expiresOn": "2026-09-06"
+    }
+  ]
+}

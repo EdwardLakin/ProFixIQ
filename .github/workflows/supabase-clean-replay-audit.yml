@@ -272,6 +272,34 @@ jobs:
             -f tests/invoices/customer-document-numbering.runtime.sql \
             2>&1 | tee customer-document-numbering-runtime.log
 
+      - name: Execute payroll period pipeline integration
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+            -f tests/security/payroll-period-pipeline.runtime.sql \
+            2>&1 | tee payroll-period-pipeline-runtime.log
+
+      - name: Execute agent human-approval proof integration
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+            -f tests/security/agent-human-approval-proof.runtime.sql \
+            2>&1 | tee agent-human-approval-proof-runtime.log
+
       - name: Execute P0 schema reconciliation integration
         shell: bash
         env:
@@ -369,6 +397,8 @@ jobs:
             p1-012-stripe-webhook-receipts-runtime.log
             p1-012-stripe-webhook-concurrency.log
             work-order-parts-portal-policy-runtime.log
+            payroll-period-pipeline-runtime.log
+            agent-human-approval-proof-runtime.log
             p0-008-schema-reconciliation-runtime.log
             p0-008-generated-types.diff
             generated-supabase-types.ts
