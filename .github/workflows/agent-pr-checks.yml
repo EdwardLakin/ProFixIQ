@@ -49,7 +49,7 @@ jobs:
         shell: bash
         run: |
           mapfile -t changed_files < <(
-            git diff --name-only --diff-filter=ACMR "$BASE_SHA" "$HEAD_SHA" -- \
+            git diff --name-only --diff-filter=ACMR "$BASE_SHA...$HEAD_SHA" -- \
               '*.js' '*.jsx' '*.mjs' '*.cjs' '*.ts' '*.tsx'
           )
           if (( ${#changed_files[@]} == 0 )); then
@@ -58,5 +58,8 @@ jobs:
           fi
           pnpm exec eslint "${changed_files[@]}"
 
-      - name: Run tests related to the pull request
-        run: pnpm exec vitest run --changed "$BASE_SHA" --passWithNoTests
+      - name: Run complete test suite
+        run: pnpm test
+
+      - name: Build production application
+        run: pnpm build
