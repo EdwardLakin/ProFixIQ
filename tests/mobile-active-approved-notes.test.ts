@@ -13,10 +13,12 @@ describe("mobile technician notes on active approved jobs", () => {
   it("keeps the mobile editor available for active approved work", () => {
     const source = readFileSync(mobilePath, "utf8");
     expect(source).toContain("technician_notes");
-    expect(source).toContain("saveTechNotes");
+    expect(source).toContain("const saveNotes = async () =>");
     expect(source).toContain('actionType: "update_work_order_line_notes"');
-    expect(source).toContain('line.status !== "completed"');
-    expect(source).toContain('line.approval_state !== "approved"');
+    expect(source).toContain(
+      'mode === "notes" && data.approval_state === "approved" && data.status === "completed"',
+    );
+    expect(source).toContain("Notes update blocked.");
   });
 
   it("preserves the original permission repair and supersedes it with active-state and void guards", () => {

@@ -71,7 +71,8 @@ describe("parts request inventory route authorization", () => {
     expect(pageSource).toContain("cost: input.cost");
     expect(pageSource).toContain("input.defaultSupplierId");
     expect(routeSource).toContain("cost?: number | string | null");
-    expect(routeSource).toContain("default_cost: cost");
-    expect(routeSource).toContain("supplier: clean(body.supplier)");
+    expect(routeSource).toContain("p_cost: cost.value");
+    expect(routeSource).toContain("p_supplier: clean(body.supplier)");
+    expect(routeSource).toContain('rpc("parts_create_and_attach_inventory_atomic"');
   });
 });

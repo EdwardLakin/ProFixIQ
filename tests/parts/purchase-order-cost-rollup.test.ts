@@ -1,16 +1,17 @@
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const migration = readFileSync(
-  new URL(
-    "../../supabase/migrations/20260805143000_reconcile_purchase_order_costs_and_totals.sql",
-    import.meta.url,
+  join(
+    process.cwd(),
+    "supabase/migrations/20260805143000_reconcile_purchase_order_costs_and_totals.sql",
   ),
   "utf8",
 );
 
 const requestPage = readFileSync(
-  new URL("../../app/parts/requests/[id]/page.tsx", import.meta.url),
+  join(process.cwd(), "app/parts/requests/[id]/page.tsx"),
   "utf8",
 );
 

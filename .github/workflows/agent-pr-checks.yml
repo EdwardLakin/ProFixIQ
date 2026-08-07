@@ -18,6 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
+      TZ: UTC
       BASE_SHA: ${{ github.event.pull_request.base.sha }}
       HEAD_SHA: ${{ github.event.pull_request.head.sha }}
 
@@ -49,7 +50,7 @@ jobs:
         shell: bash
         run: |
           mapfile -t changed_files < <(
-            git diff --name-only --diff-filter=ACMR "$BASE_SHA" "$HEAD_SHA" -- \
+            git diff --name-only --diff-filter=ACMR "$BASE_SHA...$HEAD_SHA" -- \
               '*.js' '*.jsx' '*.mjs' '*.cjs' '*.ts' '*.tsx'
           )
           if (( ${#changed_files[@]} == 0 )); then
@@ -58,5 +59,18 @@ jobs:
           fi
           pnpm exec eslint "${changed_files[@]}"
 
-      - name: Run tests related to the pull request
-        run: pnpm exec vitest run --changed "$BASE_SHA" --passWithNoTests
+      - name: Run complete test suite
+        run: pnpm test
+
+      - name: Build production application
+        env:
+          # Pull requests do not receive production secrets. These values only
+          # let Next.js evaluate route modules while compiling; no network calls
+          # are made and deploys still use environment-scoped credentials.
+          NEXT_PUBLIC_SUPABASE_URL: https://ci-build-placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-build-placeholder-anon-key
+          SUPABASE_SERVICE_ROLE_KEY: ci-build-placeholder-service-role-key
+          OPENAI_API_KEY: ci-build-placeholder-openai-key
+          STRIPE_SECRET_KEY: sk_test_ci_build_placeholder
+          NEXT_PUBLIC_SITE_URL: https://ci-build.example.test
+        run: pnpm build

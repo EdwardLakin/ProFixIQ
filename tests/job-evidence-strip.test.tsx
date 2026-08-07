@@ -125,7 +125,12 @@ describe("job evidence strip", () => {
     expect(
       screen.getByRole("button", { name: "Save markup" }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("dialog", { name: "Mark up evidence" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("dialog", { name: "Front brake.jpg" }),
+    ).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     expect(

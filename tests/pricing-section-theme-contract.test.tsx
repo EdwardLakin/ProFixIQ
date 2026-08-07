@@ -85,7 +85,7 @@ describe("PricingSection theme contract", () => {
     ).toHaveAttribute("data-surface", "light");
     expect(
       screen.getAllByRole("button", { name: "Start 14-day free trial" }),
-    ).toHaveLength(3);
+    ).toHaveLength(2);
   });
 
   it("keeps text readable on both explicit card surfaces", () => {

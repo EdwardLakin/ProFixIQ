@@ -56,10 +56,10 @@ describe("inspection cross-device reconciliation and shared modal styling", () =
 
   it("resolves installed-app photo uploads by canonical work-order line", () => {
     const lineLookup = photoRoute.indexOf(
-      '.eq("work_order_line_id", workOrderLineId)',
+      '.eq("work_order_line_id", args.workOrderLineId)',
     );
     const uuidLookup = photoRoute.indexOf(
-      '.eq("id", inspectionId)',
+      '.eq("id", args.inspectionId)',
       lineLookup,
     );
     expect(lineLookup).toBeGreaterThan(-1);

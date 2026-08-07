@@ -14,7 +14,7 @@ describe("parts request inventory lifecycle route separation", () => {
   it("keeps inventory selection scoped to persisting part_request_items.part_id", () => {
     expect(inventoryRoute).toContain('body.mode === "attach"');
     expect(inventoryRoute).toContain(".from(\"part_request_items\")");
-    expect(inventoryRoute).toContain("part_id: partId");
+    expect(inventoryRoute).toContain("part_id: part.id");
     expect(inventoryRoute).not.toContain("upsert_part_allocation_from_request_item");
     expect(inventoryRoute).not.toContain("upsert-from-line");
     expect(inventoryRoute).not.toContain("work_order_parts");
