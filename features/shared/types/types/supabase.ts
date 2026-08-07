@@ -194,6 +194,56 @@ export type Database = {
           },
         ]
       }
+      agent_human_approval_intents: {
+        Row: {
+          approval_kind: string
+          approver_user_id: string
+          consumed_at: string | null
+          created_at: string
+          engineering_case_id: string
+          expires_at: string
+          id: string
+          metadata: Json
+          mission_id: string | null
+          request_id: string
+          token_sha256: string
+        }
+        Insert: {
+          approval_kind: string
+          approver_user_id: string
+          consumed_at?: string | null
+          created_at?: string
+          engineering_case_id: string
+          expires_at: string
+          id?: string
+          metadata?: Json
+          mission_id?: string | null
+          request_id: string
+          token_sha256: string
+        }
+        Update: {
+          approval_kind?: string
+          approver_user_id?: string
+          consumed_at?: string | null
+          created_at?: string
+          engineering_case_id?: string
+          expires_at?: string
+          id?: string
+          metadata?: Json
+          mission_id?: string | null
+          request_id?: string
+          token_sha256?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_human_approval_intents_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "agent_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       agent_jobs: {
         Row: {
           attempts: number
@@ -25151,6 +25201,16 @@ export type Database = {
       }
       complete_stripe_webhook_event: {
         Args: { p_claim_token: string; p_event_id: string }
+        Returns: boolean
+      }
+      consume_agent_human_approval_intent: {
+        Args: {
+          p_approval_kind: string
+          p_approver_user_id: string
+          p_engineering_case_id: string
+          p_mission_id?: string
+          p_token_sha256: string
+        }
         Returns: boolean
       }
       consume_ai_route_quota: {
