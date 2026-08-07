@@ -1205,6 +1205,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     item: UiItem,
     poId: string | null,
     supplierId: string | null,
+    acquisitionCostOverride: number | null = null,
   ): Promise<boolean> {
     const itemId = String(item.id);
     if ((!poId || !isUuid(poId)) && (!supplierId || !isUuid(supplierId))) {
@@ -1240,12 +1241,43 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     const selectedInventoryPart = parts.find(
       (part) => String(part.id) === String(item.part_id),
     );
-    const rawUnitCost = Number(
+    if (
+      acquisitionCostOverride != null &&
+      (!Number.isFinite(acquisitionCostOverride) || acquisitionCostOverride < 0)
+    ) {
+      toast.error("Enter a valid supplier acquisition cost.");
+      return false;
+    }
+
+    const sellPrice = item.quoted_price ?? item.unit_price;
+    const stagedAcquisitionCost =
+      item.unit_cost != null &&
+      (sellPrice == null || Number(item.unit_cost) !== Number(sellPrice))
+        ? Number(item.unit_cost)
+        : null;
+    const catalogAcquisitionCost =
+      selectedInventoryPart?.cost ??
       selectedInventoryPart?.default_cost ??
-        selectedInventoryPart?.cost ??
-        item.unit_cost,
-    );
-    const unitCost = Number.isFinite(rawUnitCost) ? Math.max(rawUnitCost, 0) : null;
+      null;
+    const rawUnitCost =
+      acquisitionCostOverride ??
+      stagedAcquisitionCost ??
+      catalogAcquisitionCost;
+    const unitCost =
+      rawUnitCost != null && Number.isFinite(Number(rawUnitCost))
+        ? Number(rawUnitCost)
+        : null;
+
+    if (!item.part_id && acquisitionCostOverride == null) {
+      toast.error(
+        "Enter the supplier acquisition cost before ordering this free-text part.",
+      );
+      return false;
+    }
+    if (unitCost == null || unitCost < 0) {
+      toast.error("No acquisition cost is available for this part.");
+      return false;
+    }
     const idempotencyKey = [
       "request-order",
       itemId,
@@ -1358,10 +1390,11 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     item: UiItem,
     supplierId: string,
     reuseExistingPoId?: string | null,
-  ): Promise<void> {
+    acquisitionCostOverride: number | null = null,
+  ): Promise<boolean> {
     if (!wo?.shop_id) {
       toast.error("Missing shop_id.");
-      return;
+      return false;
     }
 
     const sid = String(supplierId);
@@ -1370,7 +1403,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     const existingForVendor = pos.find(
       (p) =>
         String(p.supplier_id ?? "") === sid &&
-        String(p.status ?? "open").toLowerCase() !== "received",
+        ["draft", "open"].includes(String(p.status ?? "").toLowerCase()),
     );
 
     const useId = reuseExistingPoId?.trim()
@@ -1381,10 +1414,10 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
 
     if (useId && !isUuid(useId)) {
       toast.error("Invalid PO id.");
-      return;
+      return false;
     }
 
-    await createPoLineForItem(item, useId, sid);
+    return createPoLineForItem(item, useId, sid, acquisitionCostOverride);
   }
 
 
@@ -2237,10 +2270,16 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                             toast.error("Request item not found.");
                             return;
                           }
+                          const acquisitionCost = input.unitCost.trim()
+                            ? Number(input.unitCost)
+                            : null;
                           await createOrReusePoAndAssign(
                             item,
                             input.supplierId,
-                            input.poMode === "existing" ? input.existingPoId : null,
+                            input.poMode === "existing"
+                              ? input.existingPoId
+                              : null,
+                            acquisitionCost,
                           );
                           await load();
                         }}

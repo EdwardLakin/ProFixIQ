@@ -2,6 +2,11 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { requirePortalCustomerActor } from "@/features/portal/server/requirePortalActor";
 import { PortalAccessError } from "@/features/portal/server/portalAuth";
+import {
+  isQuotePricingQuarantineError,
+  QUOTE_PRICING_QUARANTINED_CODE,
+} from "@/features/work-orders/lib/quotes/quotePricingQuarantine";
+import { checkQuotePricingQuarantine } from "@/features/work-orders/server/quotePricingQuarantine";
 
 type RouteContext = { params: Promise<{ id: string }> };
 type Decision = "approve" | "decline" | "defer";
@@ -24,6 +29,7 @@ function safeString(value: unknown): string {
 
 function errorStatus(message: string): number {
   const lower = message.toLowerCase();
+  if (isQuotePricingQuarantineError(message)) return 409;
   if (lower.includes("not found")) return 404;
   if (lower.includes("not owned") || lower.includes("actor mismatch")) return 403;
   if (lower.includes("locked") || lower.includes("no longer eligible")) return 409;
@@ -55,6 +61,32 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       return NextResponse.json(
         { ok: false, error: "Customer is not linked to a shop" },
         { status: 409 },
+      );
+    }
+
+    const quarantineCheck = await checkQuotePricingQuarantine({
+      supabase,
+      shopId: actor.customer.shop_id,
+      workOrderId,
+      workOrderLineIds: [lineId],
+    });
+    if (!quarantineCheck.ok) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: quarantineCheck.error,
+          ...(quarantineCheck.reason === "quarantined"
+            ? { code: QUOTE_PRICING_QUARANTINED_CODE }
+            : {}),
+        },
+        {
+          status:
+            quarantineCheck.reason === "quarantined"
+              ? 409
+              : quarantineCheck.reason === "quote_line_not_found"
+                ? 404
+                : 500,
+        },
       );
     }
 

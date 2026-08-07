@@ -86,4 +86,28 @@ describe("inspection sign and portal approval regressions", () => {
     expect(selectCustomerVisibleQuoteParts(metadata, true)).toEqual(quoted);
     expect(selectCustomerVisibleQuoteParts(metadata, false)).toEqual(requested);
   });
+
+  it("hides quarantined protected item pricing instead of displaying $0 or stale parts", () => {
+    const metadata = {
+      parts: [{ description: "Legacy snapshot", qty: 1, unitPrice: 80 }],
+      parts_quote: {
+        items: [
+          {
+            description: "Protected item",
+            qty: 1,
+            unit_price: null,
+            line_total: null,
+            quote_ready: false,
+          },
+        ],
+        pricing_sanitization: {
+          manual_review_required: true,
+          customer_pricing_quarantined: true,
+        },
+      },
+    };
+
+    expect(selectCustomerVisibleQuoteParts(metadata, true)).toEqual([]);
+    expect(selectCustomerVisibleQuoteParts(metadata, false)).toEqual([]);
+  });
 });

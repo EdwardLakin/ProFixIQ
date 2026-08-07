@@ -138,7 +138,7 @@ export async function POST(req: NextRequest) {
           expired: result.expired === true,
           error: result.error ?? "Failed to authorize quote line",
         },
-        { status: result.expired ? 409 : 400 },
+        { status: result.expired || result.pricingQuarantined ? 409 : 400 },
       );
     }
 

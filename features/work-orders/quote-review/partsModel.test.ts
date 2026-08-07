@@ -4,6 +4,7 @@ import {
   resolveQuoteLineParts,
   quoteLineTotalResolved,
   type CatalogPart,
+  type PartRequest,
   type PartRequestItem,
   type QuoteLine,
 } from "./partsModel";
@@ -52,6 +53,25 @@ const liveItem = (
   vendor: null,
   vendor_id: null,
   work_order_line_id: null,
+  ...overrides,
+});
+
+const request = (overrides: Partial<PartRequest> = {}): PartRequest => ({
+  id: "pr-1",
+  shop_id: "shop-1",
+  work_order_id: "wo-1",
+  job_id: null,
+  quote_line_id: "ql-1",
+  requested_by: null,
+  assigned_to: null,
+  status: "requested",
+  notes: null,
+  created_at: "2026-01-01T00:00:00.000Z",
+  handoff_completed_at: null,
+  handoff_completed_by: null,
+  source_context: null,
+  source_menu_item_id: null,
+  source_revision: null,
   ...overrides,
 });
 
@@ -157,6 +177,54 @@ describe("Quote Review parts model", () => {
     expect(parts[0]).toMatchObject({
       description: "Live",
       source: "live_request_item",
+    });
+  });
+
+  it("uses the SQL-aligned greatest request quantity", () => {
+    const parts = resolveQuoteLineParts({
+      line: quoteLine(),
+      liveItems: [
+        liveItem({
+          qty: 1,
+          qty_requested: 3,
+          qty_approved: 2,
+          unit_price: 10,
+        }),
+      ],
+    });
+
+    expect(parts[0]).toMatchObject({
+      quantity: 3,
+      unitSellPrice: 10,
+      sellLineTotal: 30,
+    });
+  });
+
+  it("does not let a canceled live batch override active synced metadata", () => {
+    const parts = resolveQuoteLineParts({
+      line: quoteLine({
+        parts_quote: {
+          items: [
+            {
+              id: "active-item",
+              request_id: "active-request",
+              description: "Active synced part",
+              qty: 1,
+              unit_price: 25,
+              quote_ready: true,
+            },
+          ],
+        },
+      }),
+      requests: [request({ status: "cancelled" })],
+      liveItems: [liveItem({ description: "Canceled live part" })],
+    });
+
+    expect(parts).toHaveLength(1);
+    expect(parts[0]).toMatchObject({
+      description: "Active synced part",
+      source: "synced_metadata",
+      unitSellPrice: 25,
     });
   });
 
@@ -277,5 +345,28 @@ describe("QuoteReviewView linked parts queries and persistence boundaries", () =
 
   it("View Parts Request uses linked request_id", () => {
     expect(source).toContain("href={`/parts/requests/${request.id}`}");
+  });
+
+  it("renders quarantined pricing as manual review without a $0 or live-price claim", () => {
+    expect(source).toContain("Manual pricing review required");
+    expect(source).toContain(
+      "Current Parts Request pricing is hidden because it is not the finalized customer decision.",
+    );
+    expect(source).toContain(
+      'Finalized parts total is unavailable; do not treat it as $0.',
+    );
+    expect(source).toContain(
+      "Current operational pricing hidden — it is not the finalized customer decision.",
+    );
+    expect(source).toContain('label: "Manual pricing review"');
+    expect(source).toMatch(
+      /function canSendLine[\s\S]*quoteLinePartsPricingSanitization\(line\)\.customerPricingQuarantined[\s\S]*return false/,
+    );
+    expect(source).toContain(
+      'partsTotal == null ? "Manual review" : fmt(partsTotal)',
+    );
+    expect(source).toContain(
+      'partsSummary.partsTotal == null ? "total pending" : fmt(partsSummary.partsTotal)',
+    );
   });
 });

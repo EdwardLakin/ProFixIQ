@@ -39,16 +39,14 @@ type RpcClient = {
   ) => PromiseLike<{ data: unknown; error: RpcError | null }>;
 };
 
-export async function runPartsLifecycleRpc(
-  _req: Request,
+type ShopAccessResult = Awaited<ReturnType<typeof requireShopScopedApiAccess>>;
+export type PartsLifecycleAccess = Extract<ShopAccessResult, { ok: true }>;
+
+export async function runPartsLifecycleRpcWithAccess(
+  access: PartsLifecycleAccess,
   rpcName: string,
   args: Record<string, unknown>,
 ) {
-  const access = await requireShopScopedApiAccess({
-    requiredCapability: "canManageParts",
-  });
-  if (!access.ok) return access.response;
-
   const rawKey =
     typeof args.p_idempotency_key === "string" ? args.p_idempotency_key.trim() : "";
   if (!rawKey) {
@@ -70,6 +68,9 @@ export async function runPartsLifecycleRpc(
       fallback: "The parts operation could not be completed.",
       publicMessagePatterns: [
         /^FINANCIALLY_LOCKED\b/i,
+        /^PARTS_ACQUISITION_COST_(?:REQUIRED|INVALID)$/i,
+        /^PARTS_(?:ORDER|PO_LINE)_.*(?:CONFLICT|INVALID)$/i,
+        /^PARTS_(?:FREE_TEXT|PO|RECEIPT|REQUEST|ORDERED)_[A-Z0-9_]+$/i,
         /^A stable idempotency key is required\.?$/i,
         /^Request item .*not found\.?$/i,
         /^Part request .*not found\.?$/i,
@@ -89,4 +90,16 @@ export async function runPartsLifecycleRpc(
     );
   }
   return NextResponse.json({ ok: true, result: data });
+}
+
+export async function runPartsLifecycleRpc(
+  _req: Request,
+  rpcName: string,
+  args: Record<string, unknown>,
+) {
+  const access = await requireShopScopedApiAccess({
+    requiredCapability: "canManageParts",
+  });
+  if (!access.ok) return access.response;
+  return runPartsLifecycleRpcWithAccess(access, rpcName, args);
 }

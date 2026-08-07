@@ -19,6 +19,11 @@ import {
   shopSuppliesTaxableSubtotal,
 } from "@/features/work-orders/lib/shopSupplies";
 import { upsertPortalNotification } from "@/features/portal/server/upsertPortalNotification";
+import {
+  isQuoteCustomerPricingQuarantined,
+  QUOTE_PRICING_QUARANTINED_CODE,
+  QUOTE_PRICING_QUARANTINED_MESSAGE,
+} from "@/features/work-orders/lib/quotes/quotePricingQuarantine";
 
 type DB = Database;
 
@@ -850,11 +855,29 @@ export async function POST(req: Request) {
     const estimateHasApprovedLines = Boolean(
       wo.estimate_number && quoteLineRows.some(isApprovedQuoteLine),
     );
-    const sendableQuoteLines = quoteLineRows.filter(
+    const sendCandidateQuoteLines = quoteLineRows.filter(
       (line) =>
         isSendableQuoteLine(line) ||
         (requestAllowsResend && isResendableQuoteLine(line)),
     );
+    const quarantinedQuoteLineIds = sendCandidateQuoteLines
+      .filter((line) => isQuoteCustomerPricingQuarantined(line.metadata))
+      .map((line) => line.id);
+
+    if (quarantinedQuoteLineIds.length > 0) {
+      return NextResponse.json(
+        {
+          ok: false,
+          trace,
+          code: QUOTE_PRICING_QUARANTINED_CODE,
+          error: QUOTE_PRICING_QUARANTINED_MESSAGE,
+          quoteLineIds: quarantinedQuoteLineIds,
+        },
+        { status: 409 },
+      );
+    }
+
+    const sendableQuoteLines = sendCandidateQuoteLines;
 
     if (sendableQuoteLines.length === 0) {
       return NextResponse.json(

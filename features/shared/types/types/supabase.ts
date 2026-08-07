@@ -25822,6 +25822,10 @@ export type Database = {
         }
         Returns: Json
       }
+      parts_attach_inventory_to_request_item_atomic: {
+        Args: { p_item_id: string; p_part_id: string }
+        Returns: Json
+      }
       parts_attach_request_item: {
         Args: { p_request_item_id: string }
         Returns: string
@@ -25998,6 +26002,15 @@ export type Database = {
       parts_publish_request_notification_with_table: {
         Args: { p_request_id: string; p_stage: string }
         Returns: undefined
+      }
+      parts_receive_free_text_po_line: {
+        Args: {
+          p_idempotency_key: string
+          p_po_id: string
+          p_po_line_id: string
+          p_qty: number
+        }
+        Returns: Json
       }
       parts_receive_request_item: {
         Args: {
@@ -26210,6 +26223,20 @@ export type Database = {
       profixiq_workforce_profile_id: { Args: never; Returns: string }
       profixiq_workforce_role: { Args: never; Returns: string }
       profixiq_workforce_shop_id: { Args: never; Returns: string }
+      quote_line_pricing_is_protected: {
+        Args: {
+          p_approved_at: string
+          p_converted_at: string
+          p_declined_at: string
+          p_deferred_at: string
+          p_sent_at: string
+          p_sent_to_customer_at: string
+          p_stage: string
+          p_status: string
+          p_work_order_line_id: string
+        }
+        Returns: boolean
+      }
       realtime_conversation_id: { Args: { topic: string }; Returns: string }
       recalculate_estimate_work_order_totals: {
         Args: { p_shop_id: string; p_work_order_id: string }

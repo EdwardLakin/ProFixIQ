@@ -311,7 +311,7 @@ export function PartsRequestWorkbench({
         onChange={setOrderDraft}
         onSubmit={async () => {
           if (!activeItem) return;
-          if (!orderDraft.supplierId) {
+          if (orderDraft.poMode === "new" && !orderDraft.supplierId) {
             toast.error("Select a supplier.");
             return;
           }
@@ -320,8 +320,24 @@ export function PartsRequestWorkbench({
             return;
           }
           if (positiveNumber(orderDraft.qty, "Qty") == null) return;
-          if (nonNegativeNumber(orderDraft.unitCost, "Unit cost") === null && orderDraft.unitCost.trim() !== "") return;
-          await onSubmitOrder?.(activeItem.id, orderDraft);
+          const acquisitionCost = nonNegativeNumber(
+            orderDraft.unitCost,
+            "Acquisition unit cost",
+          );
+          if (acquisitionCost === null && orderDraft.unitCost.trim() !== "")
+            return;
+          if (!activeItem.partId && acquisitionCost === null) {
+            toast.error(
+              "Enter the supplier acquisition cost for this free-text part.",
+            );
+            return;
+          }
+          await onSubmitOrder?.(
+            activeItem.id,
+            orderDraft.poMode === "existing"
+              ? { ...orderDraft, supplierId: "" }
+              : orderDraft,
+          );
           setActiveModal(null);
         }}
         onClose={() => setActiveModal(null)}

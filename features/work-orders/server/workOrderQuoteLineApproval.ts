@@ -3,6 +3,8 @@ import "server-only";
 import crypto from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
+import { isQuotePricingQuarantineError } from "@/features/work-orders/lib/quotes/quotePricingQuarantine";
+import { checkQuotePricingQuarantine } from "@/features/work-orders/server/quotePricingQuarantine";
 
 type DB = Database;
 
@@ -99,6 +101,7 @@ export async function applyWorkOrderQuoteLineDecision(params: {
   decisionNote?: string | null;
   declineRemaining?: boolean;
   operationKey?: string;
+  quarantineCheckSupabase?: SupabaseClient<DB>;
 }): Promise<{
   ok: boolean;
   workOrderLineIds: string[];
@@ -107,6 +110,7 @@ export async function applyWorkOrderQuoteLineDecision(params: {
   partRelink: RelinkQuoteLinePartsResult;
   idempotent?: boolean;
   expired?: boolean;
+  pricingQuarantined?: boolean;
   error?: string;
 }> {
   const quoteLineIds = [
@@ -124,6 +128,26 @@ export async function applyWorkOrderQuoteLineDecision(params: {
   }
 
   const declineRemaining = params.declineRemaining === true;
+  const quarantineCheck = await checkQuotePricingQuarantine({
+    supabase: params.quarantineCheckSupabase ?? params.supabase,
+    shopId: params.shopId,
+    workOrderId: params.workOrderId,
+    quoteLineIds,
+    includeSentRemaining:
+      declineRemaining && params.decision === "approve",
+  });
+  if (!quarantineCheck.ok) {
+    return {
+      ok: false,
+      workOrderLineIds: [],
+      declinedRemainingQuoteLineIds: [],
+      approvalState: null,
+      partRelink: emptyPartRelinkResult(),
+      pricingQuarantined: quarantineCheck.reason === "quarantined",
+      error: quarantineCheck.error,
+    };
+  }
+
   const rawOperationKey =
     params.operationKey?.trim() ||
     stableDecisionKey({
@@ -162,13 +186,15 @@ export async function applyWorkOrderQuoteLineDecision(params: {
   const { data, error } = rpcResult;
 
   if (error) {
+    const message = messageFromRpcError(error);
     return {
       ok: false,
       workOrderLineIds: [],
       declinedRemainingQuoteLineIds: [],
       approvalState: null,
       partRelink: emptyPartRelinkResult(),
-      error: messageFromRpcError(error),
+      pricingQuarantined: isQuotePricingQuarantineError(message),
+      error: message,
     };
   }
 

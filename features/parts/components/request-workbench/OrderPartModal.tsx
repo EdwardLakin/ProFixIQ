@@ -48,10 +48,21 @@ export function OrderPartModal({
       }
     >
       <div className="space-y-3 text-sm text-[color:var(--theme-text-secondary)]">
-        <p>This can create/reuse a PO directly from the request row. Inventory stock is not required.</p>
+        <p>
+          This can create or reuse a PO directly from the request row. Free-text
+          vendor parts stay unmapped on the PO. Use Attach Part or Add to Stock
+          before ordering when inventory tracking is required.
+        </p>
         <label className="block space-y-1">
-          <span className="text-[color:var(--theme-text-secondary)]">Supplier</span>
-          <select className={modalInput} value={value.supplierId} onChange={(event) => patch({ supplierId: event.target.value })}>
+          <span className="text-[color:var(--theme-text-secondary)]">
+            Supplier (new PO)
+          </span>
+          <select
+            className={modalInput}
+            value={value.supplierId}
+            onChange={(event) => patch({ supplierId: event.target.value })}
+            disabled={value.poMode === "existing"}
+          >
             <option value="">Select supplier</option>
             {supplierOptions.map((supplier) => <option key={supplier.value} value={supplier.value}>{supplier.label}</option>)}
           </select>
@@ -72,12 +83,30 @@ export function OrderPartModal({
             </select>
           </label>
           <label className="space-y-1">
-            <span className="text-[color:var(--theme-text-secondary)]">Qty</span>
-            <input className={modalInput} type="number" min="1" step="1" value={value.qty} onChange={(event) => patch({ qty: event.target.value })} />
+            <span className="text-[color:var(--theme-text-secondary)]">
+              Approved qty to order
+            </span>
+            <input
+              className={modalInput}
+              type="number"
+              min="1"
+              step="1"
+              value={value.qty}
+              readOnly
+            />
           </label>
           <label className="space-y-1">
-            <span className="text-[color:var(--theme-text-secondary)]">Unit cost</span>
-            <input className={modalInput} type="number" min="0" step="0.01" value={value.unitCost} onChange={(event) => patch({ unitCost: event.target.value })} />
+            <span className="text-[color:var(--theme-text-secondary)]">
+              Acquisition unit cost
+            </span>
+            <input
+              className={modalInput}
+              type="number"
+              min="0"
+              step="0.01"
+              value={value.unitCost}
+              onChange={(event) => patch({ unitCost: event.target.value })}
+            />
           </label>
           <label className="space-y-1 sm:col-span-2">
             <span className="text-[color:var(--theme-text-secondary)]">Expected date optional</span>
