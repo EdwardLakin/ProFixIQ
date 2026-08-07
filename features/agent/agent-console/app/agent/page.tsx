@@ -11,6 +11,11 @@ import { Badge } from "@shared/components/ui/badge";
 import { Separator } from "@shared/components/ui/separator";
 import { cn } from "@shared/lib/utils";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import {
+  AgentMissionDetails,
+  isMissionReviewComplete,
+  type AgentMissionReview,
+} from "@/features/agent/agent-console/components/AgentMissionDetails";
 
 type AgentRequestStatus =
   | "submitted"
@@ -31,12 +36,6 @@ type AgentResponse = {
   answers?: Record<string, string> | null;
 };
 
-type AgentTeamMission = {
-  id?: string;
-  status?: string;
-  title?: string | null;
-};
-
 type AgentTeamState = {
   engineeringCaseId?: string;
   currentStage?: string;
@@ -45,7 +44,7 @@ type AgentTeamState = {
   summary?: string | null;
   decision?: string | null;
   missingInformation?: string[];
-  mission?: AgentTeamMission | null;
+  mission?: AgentMissionReview | null;
   syncedAt?: string;
 };
 
@@ -231,9 +230,12 @@ export default function AgentConsolePage() {
   }, [selectedContext?.responses]);
 
   const missionAwaitingApproval = selectedTeam?.mission?.status === "awaiting_approval";
+  const missionReviewComplete = isMissionReviewComplete(selectedTeam?.mission);
   const releaseAwaitingApproval = selectedTeam?.caseStatus === "ready_for_human_approval"
     && selectedTeam?.currentStage === "release";
-  const canApprove = Boolean(missionAwaitingApproval || releaseAwaitingApproval);
+  const canApprove = Boolean(
+    (missionAwaitingApproval && missionReviewComplete) || releaseAwaitingApproval,
+  );
   const approvalLabel = missionAwaitingApproval ? "Approve Mission" : "Approve Release";
   const awaitingReporterInput = selectedTeam?.caseStatus === "blocked" && questions.length > 0;
 
@@ -689,14 +691,9 @@ export default function AgentConsolePage() {
                           {selectedTeam.summary}
                         </p>
                       )}
-                      {selectedTeam.mission?.id && (
-                        <div className="text-xs text-[color:var(--theme-text-secondary)]">
-                          Mission: {selectedTeam.mission.title ?? selectedTeam.mission.id}{" "}
-                          {selectedTeam.mission.status
-                            ? `(${selectedTeam.mission.status.replace(/_/g, " ")})`
-                            : ""}
-                        </div>
-                      )}
+                      {selectedTeam.mission?.id ? (
+                        <AgentMissionDetails mission={selectedTeam.mission} />
+                      ) : null}
                       {selectedTeam.caseStatus === "blocked" && questions.length === 0 && (
                         <div className="text-xs text-[color:var(--theme-text-muted)]">
                           The engineering team is blocked on an internal dependency. No reporter input is requested.
