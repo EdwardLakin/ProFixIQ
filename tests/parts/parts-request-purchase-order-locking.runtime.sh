@@ -308,7 +308,6 @@ select set_config(
 begin;
 set local lock_timeout = '12s';
 set local statement_timeout = '20s';
-set local deadlock_timeout = '250ms';
 select id
 from public.purchase_orders
 where id = '76d00000-0000-4000-8000-000000000001'
@@ -367,7 +366,6 @@ select set_config(
 begin;
 set local lock_timeout = '12s';
 set local statement_timeout = '20s';
-set local deadlock_timeout = '250ms';
 select set_config('request.jwt.claim.role', 'authenticated', true);
 select set_config(
   'request.jwt.claim.sub',
@@ -410,7 +408,6 @@ select set_config(
 begin;
 set local lock_timeout = '12s';
 set local statement_timeout = '20s';
-set local deadlock_timeout = '250ms';
 select id
 from public.purchase_orders
 where id = '76d00000-0000-4000-8000-000000000002'
@@ -469,7 +466,6 @@ select set_config(
 begin;
 set local lock_timeout = '12s';
 set local statement_timeout = '20s';
-set local deadlock_timeout = '250ms';
 select set_config('request.jwt.claim.role', 'authenticated', true);
 select set_config(
   'request.jwt.claim.sub',

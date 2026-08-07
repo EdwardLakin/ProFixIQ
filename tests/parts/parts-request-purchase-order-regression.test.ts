@@ -240,6 +240,7 @@ describe("parts request purchase-order regression contract", () => {
     expect(lockingRuntime).not.toContain("for _ in $(seq 1 100)");
     expect(lockingRuntime).not.toContain("query like '%pg_sleep(5)%'");
     expect(lockingRuntime).not.toContain("select pg_sleep(7)");
+    expect(lockingRuntime).not.toContain("set local deadlock_timeout");
   });
 
   it("keeps request-backed and generic free-text receipt atomic", () => {
