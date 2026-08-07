@@ -1319,7 +1319,7 @@ select pg_temp.expect_free_text_receipt_error(
 -- then resume the authenticated flow for the remaining receipt assertions.
 reset role;
 
-do $
+do $assert_overprecision$
 begin
   if exists (
     select 1
@@ -1330,7 +1330,7 @@ begin
     raise exception 'Over-precision receipt wrote an operation receipt';
   end if;
 end;
-$;
+$assert_overprecision$;
 
 set local role authenticated;
 
