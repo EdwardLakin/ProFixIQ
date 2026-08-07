@@ -20,6 +20,11 @@ values
     '{"full_name":"Parts PO Lead A"}'::jsonb
   ),
   (
+    '71100000-0000-4000-8000-000000000002',
+    'parts-po-lead-profile-a@example.com',
+    '{"full_name":"Parts PO Lead Profile A"}'::jsonb
+  ),
+  (
     '71000000-0000-4000-8000-000000000003',
     'parts-po-advisor-a@example.com',
     '{"full_name":"Parts PO Advisor A"}'::jsonb
