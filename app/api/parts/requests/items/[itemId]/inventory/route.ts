@@ -112,20 +112,35 @@ export async function POST(req: Request, ctx: { params: Promise<{ itemId: string
     if (!part) {
       return NextResponse.json({ ok: false, error: "Inventory part not found." }, { status: 404 });
     }
-    const { data: updatedItem, error: updateError } = await access.supabase
-      .from("part_request_items")
-      .update({ part_id: part.id, updated_at: new Date().toISOString() })
-      .eq("id", itemId)
-      .eq("shop_id", access.profile.shop_id)
-      .select("*")
-      .maybeSingle();
-    if (updateError || !updatedItem) {
+    const rpc = access.supabase as unknown as RpcClient;
+    const { data: attachData, error: updateError } = await rpc.rpc(
+      "parts_attach_inventory_to_request_item_atomic",
+      { p_item_id: itemId, p_part_id: part.id },
+    );
+    const attachResult = (
+      Array.isArray(attachData) ? attachData[0] : attachData
+    ) as {
+      item?: unknown;
+      part_id?: string;
+    } | null;
+    if (updateError || !attachResult?.part_id) {
+      const stableError =
+        updateError?.message?.match(/^PARTS_[A-Z0-9_]+$/)?.[0];
       return NextResponse.json(
-        { ok: false, error: updateError?.message ?? "Inventory selection did not persist." },
-        { status: updateError ? 500 : 409 },
+        {
+          ok: false,
+          code: stableError ?? "PARTS_INVENTORY_ATTACH_FAILED",
+          error: stableError ?? "Inventory selection did not persist.",
+        },
+        { status: 409 },
       );
     }
-    return NextResponse.json({ ok: true, item: updatedItem, partId: part.id, part });
+    return NextResponse.json({
+      ok: true,
+      item: attachResult.item ?? null,
+      partId: attachResult.part_id,
+      part,
+    });
   }
 
   const name = clean(body.name);

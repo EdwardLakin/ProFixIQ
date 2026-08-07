@@ -18,6 +18,7 @@ const state = {
   accessResult: null as AccessResult | null,
   workOrderFound: true,
   scopedLineCount: 2,
+  quarantinedQuoteLineId: null as string | null,
 };
 
 function createSupabaseMock() {
@@ -42,9 +43,47 @@ function createSupabaseMock() {
       query.in = vi.fn(async () => ({
         data: Array.from({ length: state.scopedLineCount }, (_, i) => ({
           id: i === 0 ? LINE_ID_1 : LINE_ID_2,
+          source_row_id: null,
+          external_id: null,
         })),
         error: null,
       }));
+      return query;
+    }
+
+    if (table === "work_order_quote_lines") {
+      const query = {} as {
+        select: ReturnType<typeof vi.fn>;
+        eq: ReturnType<typeof vi.fn>;
+        then: (
+          resolve: (value: { data: unknown[]; error: null }) => unknown,
+        ) => Promise<unknown>;
+      };
+      query.select = vi.fn(() => query);
+      query.eq = vi.fn(() => query);
+      query.then = (
+        resolve: (value: { data: unknown[]; error: null }) => unknown,
+      ) =>
+        Promise.resolve({
+          data: state.quarantinedQuoteLineId
+            ? [
+                {
+                  id: state.quarantinedQuoteLineId,
+                  work_order_line_id: LINE_ID_1,
+                  source_work_order_line_id: null,
+                  status: "converted",
+                  metadata: {
+                    parts_quote: {
+                      pricing_sanitization: {
+                        customer_pricing_quarantined: true,
+                      },
+                    },
+                  },
+                },
+              ]
+            : [],
+          error: null,
+        }).then(resolve);
       return query;
     }
 
@@ -71,6 +110,7 @@ describe("POST /api/quotes/send-for-approval", () => {
     vi.clearAllMocks();
     state.workOrderFound = true;
     state.scopedLineCount = 2;
+    state.quarantinedQuoteLineId = null;
     state.accessResult = {
       ok: true,
       profile: { id: "actor-id", role: "advisor", shop_id: "shop-a" },
@@ -156,5 +196,32 @@ describe("POST /api/quotes/send-for-approval", () => {
       _set_wo_status: true,
     });
     expect(logOperationalEventMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("blocks a materialized quarantined quote before the approval RPC", async () => {
+    state.quarantinedQuoteLineId =
+      "44444444-4444-4444-8444-444444444444";
+    state.scopedLineCount = 1;
+
+    const { POST } = await import("../app/api/quotes/send-for-approval/route");
+    const response = await POST(
+      new Request("http://localhost/api/quotes/send-for-approval", {
+        method: "POST",
+        body: JSON.stringify({
+          workOrderId: WORK_ORDER_ID,
+          lineIds: [LINE_ID_1],
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      code: "QUOTE_PRICING_QUARANTINED",
+    });
+    const supabase = (
+      state.accessResult as Extract<AccessResult, { ok: true }>
+    ).supabase;
+    expect(supabase.rpc).not.toHaveBeenCalled();
+    expect(logOperationalEventMock).not.toHaveBeenCalled();
   });
 });

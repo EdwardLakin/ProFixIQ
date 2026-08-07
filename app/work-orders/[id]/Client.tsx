@@ -1370,12 +1370,19 @@ export default function WorkOrderIdClient(): JSX.Element {
   const declineQuoteLine = useCallback(
     async (quoteId: string) => {
       if (!quoteId) return;
-      const { error } = await supabase
-        .from("work_order_quote_lines")
-        .update({ status: "declined" })
-        .eq("id", quoteId);
-      if (error) {
-        toast.error(error.message);
+      const response = await fetch(
+        `/api/work-orders/quotes/${encodeURIComponent(quoteId)}/decline`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        },
+      );
+      const result = (await response.json().catch(() => null)) as
+        | { ok?: boolean; error?: string }
+        | null;
+      if (!response.ok || !result?.ok) {
+        toast.error(result?.error ?? "Failed to decline quote");
         return;
       }
       toast.success("Quote declined");

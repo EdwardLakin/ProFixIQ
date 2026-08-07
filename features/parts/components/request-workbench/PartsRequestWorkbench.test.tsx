@@ -205,10 +205,74 @@ describe("PartsRequestWorkbench inventory attach flow", () => {
     await user.click(screen.getByRole("button", { name: "Create PO" }));
 
     expect(screen.getByText(/Order Part.*Oil filter/)).toBeInTheDocument();
-    expect(screen.getByRole("spinbutton", { name: "Qty" })).toHaveValue(1);
-    expect(screen.getByRole("combobox", { name: "Supplier" })).toHaveValue(
-      "supplier-1",
+    expect(
+      screen.getByRole("spinbutton", { name: "Approved qty to order" }),
+    ).toHaveValue(1);
+    expect(
+      screen.getByRole("combobox", { name: "Supplier (new PO)" }),
+    ).toHaveValue("supplier-1");
+  });
+
+  it("submits an existing PO without requiring or forwarding a redundant supplier", async () => {
+    const user = userEvent.setup();
+    const existingPoModel = model("part-1");
+    existingPoModel.defaultSupplierId = "";
+    existingPoModel.supplierOptions = [
+      { value: "supplier-other", label: "Different Supplier" },
+    ];
+    existingPoModel.poOptions = [
+      {
+        value: "po-existing",
+        label: "PO existing • Canonical Supplier • open",
+      },
+    ];
+    const onSubmitOrder = vi.fn();
+
+    render(
+      <PartsRequestWorkbench
+        model={existingPoModel}
+        onSubmitOrder={onSubmitOrder}
+      />,
     );
+
+    await user.click(screen.getByRole("button", { name: "Order" }));
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "PO option" }),
+      "existing",
+    );
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Existing PO" }),
+      "po-existing",
+    );
+    await user.click(screen.getByRole("button", { name: "Create/reuse PO" }));
+
+    expect(onSubmitOrder).toHaveBeenCalledWith(
+      "item-1",
+      expect.objectContaining({
+        poMode: "existing",
+        existingPoId: "po-existing",
+        supplierId: "",
+      }),
+    );
+    expect(toast.error).not.toHaveBeenCalledWith("Select a supplier.");
+  });
+
+  it("still requires a supplier when creating a new PO", async () => {
+    const user = userEvent.setup();
+    const onSubmitOrder = vi.fn();
+
+    render(
+      <PartsRequestWorkbench
+        model={model("part-1")}
+        onSubmitOrder={onSubmitOrder}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Order" }));
+    await user.click(screen.getByRole("button", { name: "Create/reuse PO" }));
+
+    expect(toast.error).toHaveBeenCalledWith("Select a supplier.");
+    expect(onSubmitOrder).not.toHaveBeenCalled();
   });
 });
 

@@ -13,26 +13,6 @@
       "expiresOn": "2026-09-06"
     },
     {
-      "fingerprint": "175a8bb9bdc03f3cd312",
-      "rule": "critical-flow-evidence-gap",
-      "severity": "error",
-      "domain": "parts",
-      "file": "scripts/regression-inventory/critical-flows.json",
-      "subject": "parts-request-purchase-order:database-runtime",
-      "message": "Parts request to purchase order is missing an executed request-to-PO database integration",
-      "expiresOn": "2026-09-06"
-    },
-    {
-      "fingerprint": "937f363fa2990fa398c0",
-      "rule": "critical-flow-evidence-gap",
-      "severity": "error",
-      "domain": "quotes-approvals",
-      "file": "scripts/regression-inventory/critical-flows.json",
-      "subject": "quote-approval:application-runtime",
-      "message": "Quote Review and approval decisions is missing executable Quote Review cost/sell and decision coverage",
-      "expiresOn": "2026-09-06"
-    },
-    {
       "fingerprint": "4548e6f4906563f9cf34",
       "rule": "critical-flow-evidence-gap",
       "severity": "error",
@@ -1623,11 +1603,11 @@
       "expiresOn": "2026-09-06"
     },
     {
-      "fingerprint": "f86d9aaebc97136d9383",
+      "fingerprint": "20d4134ba70716b18566",
       "rule": "dynamic-mutation-payload",
       "severity": "warning",
       "domain": "quotes-approvals",
-      "file": "app/api/work-orders/quotes/add-from-menu-repair/route.ts",
+      "file": "app/api/work-orders/quotes/add-from-menu-repair/reusePartPersistence.ts",
       "subject": "part_request_items",
       "message": "insert payload for part_request_items cannot be checked statically",
       "expiresOn": "2026-09-06"

@@ -16,7 +16,16 @@ import {
   resolveShopSuppliesSettings,
   shopSuppliesSummaryText,
 } from "@/features/work-orders/lib/shopSupplies";
-import { quoteLineTotalResolved, resolveQuoteLineParts, type CatalogPart, type PartRequest, type PartRequestItem, type ResolvedQuotePart } from "./partsModel";
+import {
+  quoteLinePartsDisplayTotal,
+  quoteLinePartsPricingSanitization,
+  quoteLineTotalResolved,
+  resolveQuoteLineParts,
+  type CatalogPart,
+  type PartRequest,
+  type PartRequestItem,
+  type ResolvedQuotePart,
+} from "./partsModel";
 import { useTabs } from "@/features/shared/components/tabs/TabsProvider";
 
 const COPPER = "#C57A4A";
@@ -145,6 +154,11 @@ function jsonNumber(value: Json | undefined): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+function jsonMoney(value: Json | undefined): number | null {
+  const number = jsonNumber(value);
+  return number != null && number >= 0 ? number : null;
+}
+
 function jsonStringArray(value: Json | undefined): string[] {
   if (!Array.isArray(value)) return [];
   return value.map((item) => safeTrim(item)).filter(Boolean).slice(0, 6);
@@ -164,20 +178,27 @@ function quoteLineLaborTotal(line: EditableQuoteLine, shopLaborRate: number): nu
   return quoteLineLaborHours(line) * quoteLineLaborRate(line, shopLaborRate);
 }
 
-function quoteLinePartsTotal(line: Pick<QuoteLine, "parts_total" | "metadata">): number {
-  const explicit = asNumber(line.parts_total);
-  if (explicit != null) return explicit;
-
+function quoteLinePartsTotal(
+  line: Pick<QuoteLine, "parts_total" | "metadata">,
+): number | null {
   const parts = quoteMetadata(line).parts;
-  if (!Array.isArray(parts)) return 0;
+  const fallbackPartsTotal = Array.isArray(parts)
+    ? parts.reduce<number>((sum, part) => {
+        if (!part || typeof part !== "object" || Array.isArray(part)) return sum;
+        const p = part as Record<string, Json>;
+        const qty = jsonNumber(p.qty) ?? 1;
+        const unit =
+          jsonMoney(p.unitSellPrice) ??
+          jsonMoney(p.unit_sell_price) ??
+          jsonMoney(p.unitPrice) ??
+          jsonMoney(p.unit_price) ??
+          jsonMoney(p.price) ??
+          0;
+        return sum + qty * unit;
+      }, 0)
+    : 0;
 
-  return parts.reduce<number>((sum, part) => {
-    if (!part || typeof part !== "object" || Array.isArray(part)) return sum;
-    const p = part as Record<string, Json>;
-    const qty = jsonNumber(p.qty) ?? 1;
-    const unit = jsonNumber(p.unitPrice) ?? jsonNumber(p.unit_price) ?? jsonNumber(p.unitCost) ?? jsonNumber(p.unit_cost) ?? 0;
-    return sum + qty * unit;
-  }, 0);
+  return quoteLinePartsDisplayTotal({ line, fallbackPartsTotal });
 }
 
 function quoteLineTotal(line: EditableQuoteLine, shopLaborRate: number): number {
@@ -185,22 +206,31 @@ function quoteLineTotal(line: EditableQuoteLine, shopLaborRate: number): number 
     persistedGrandTotal: line.grand_total,
     persistedSubtotal: line.subtotal,
     calculatedLabor: quoteLineLaborTotal(line, shopLaborRate),
-    calculatedParts: quoteLinePartsTotal(line),
+    calculatedParts: quoteLinePartsTotal(line) ?? 0,
   });
 }
 
 function hasPartsPrice(line: Pick<QuoteLine, "parts_total" | "metadata">): boolean {
-  if (asNumber(line.parts_total) != null) return true;
+  if (quoteLinePartsPricingSanitization(line).customerPricingQuarantined) {
+    return false;
+  }
+  const summary = partsQuoteSummary(line);
+  if (summary) {
+    if (summary.requiredCount === 0) return true;
+    return summary.pendingCount === 0 && summary.quotedCount >= summary.requiredCount;
+  }
+
   const parts = quoteMetadata(line).parts;
   if (!Array.isArray(parts) || parts.length === 0) return true;
   return parts.every((part) => {
     if (!part || typeof part !== "object" || Array.isArray(part)) return false;
     const p = part as Record<string, Json>;
     return (
-      jsonNumber(p.unitPrice) != null ||
-      jsonNumber(p.unit_price) != null ||
-      jsonNumber(p.unitCost) != null ||
-      jsonNumber(p.unit_cost) != null
+      jsonMoney(p.unitSellPrice) != null ||
+      jsonMoney(p.unit_sell_price) != null ||
+      jsonMoney(p.unitPrice) != null ||
+      jsonMoney(p.unit_price) != null ||
+      jsonMoney(p.price) != null
     );
   });
 }
@@ -211,15 +241,19 @@ function partsQuoteSummary(line: Pick<QuoteLine, "metadata">): {
   quotedCount: number;
   pendingCount: number;
   partsTotal: number | null;
+  customerPricingQuarantined: boolean;
+  manualReviewRequired: boolean;
 } | null {
   const partsQuote = quoteMetadata(line).parts_quote;
   if (!partsQuote || typeof partsQuote !== "object" || Array.isArray(partsQuote)) return null;
   const record = partsQuote as Record<string, Json>;
+  const sanitization = quoteLinePartsPricingSanitization(line);
   return {
     requiredCount: jsonNumber(record.required_count) ?? 0,
     quotedCount: jsonNumber(record.quoted_count) ?? 0,
     pendingCount: jsonNumber(record.pending_count) ?? 0,
     partsTotal: jsonNumber(record.parts_total),
+    ...sanitization,
   };
 }
 
@@ -229,6 +263,9 @@ function partsWorkflowLabel(line: EditableQuoteLine): { label: string; tone: "wa
   const stage = safeTrim(line.stage).toLowerCase();
 
   if (summary) {
+    if (summary.customerPricingQuarantined) {
+      return { label: "Manual parts review", tone: "warn" };
+    }
     if (summary.pendingCount > 0 || status === "pending_parts") {
       return { label: `Parts pending (${summary.quotedCount}/${summary.requiredCount})`, tone: "warn" };
     }
@@ -276,6 +313,14 @@ function workflowDisplay(line: EditableQuoteLine): {
   if (status === "sent" || line.sent_to_customer_at) {
     return { label: "Sent to customer", detail: "Waiting for customer portal decision.", tone: "info" };
   }
+  if (quoteLinePartsPricingSanitization(line).customerPricingQuarantined) {
+    return {
+      label: "Manual pricing review",
+      detail:
+        "Protected finalized pricing is quarantined; current Parts Request pricing is not the customer decision.",
+      tone: "warn",
+    };
+  }
   if (status === "pending_parts") {
     return { label: "Pending parts quote", detail: "Parts pricing is not ready; blocked from sending.", tone: "warn" };
   }
@@ -315,6 +360,7 @@ function isSentForDecision(line: EditableQuoteLine): boolean {
 function canSendLine(line: EditableQuoteLine): boolean {
   const status = safeTrim(line.status).toLowerCase();
   const stage = safeTrim(line.stage).toLowerCase();
+  if (quoteLinePartsPricingSanitization(line).customerPricingQuarantined) return false;
   if (NON_SENDABLE_STATUSES.has(status)) return false;
   if (isSentForDecision(line)) return false;
   return SEND_READY_STATUSES.has(status) || SEND_READY_STAGES.has(stage);
@@ -343,10 +389,15 @@ function partsRequestLabel(line: Pick<QuoteLine, "description">, index: number):
   return description ? `Request for ${description}` : `Parts request for quote line ${index + 1}`;
 }
 
-function partPricingLabel(part: ResolvedQuotePart): string {
-  if (part.pricingState === "unresolved") return "Pricing unresolved";
-  if (part.unitPrice != null) return `Unit price: ${fmt(part.unitPrice)}`;
-  return "Price entered";
+function partCostLabel(part: ResolvedQuotePart): string {
+  return part.unitCost == null ? "Cost unresolved" : `Cost: ${fmt(part.unitCost)}`;
+}
+
+function partSellLabel(part: ResolvedQuotePart): string {
+  if (part.unitSellPrice == null) return "Sell unresolved";
+  return part.sellPriceIsSuggestion
+    ? `Sell suggestion: ${fmt(part.unitSellPrice)}`
+    : `Sell: ${fmt(part.unitSellPrice)}`;
 }
 
 function selectedPartLabel(part: ResolvedQuotePart): string | null {
@@ -508,7 +559,7 @@ export default function QuoteReviewView(props: {
         if (selectedPartIds.length > 0) {
           const { data: partRows, error: partErr } = await supabase
             .from("parts")
-            .select("id,name,sku,part_number,supplier")
+            .select("id,name,sku,part_number,supplier,cost,default_cost,price,default_price")
             .eq("shop_id", shopId)
             .in("id", selectedPartIds);
           if (partErr) toast.error(partErr.message);
@@ -580,7 +631,19 @@ export default function QuoteReviewView(props: {
 
   const quoteTotals = useMemo(() => {
     const labor = quoteLines.reduce((sum, line) => sum + quoteLineLaborTotal(line, laborRate), 0);
-    const parts = quoteLines.reduce((sum, line) => sum + quoteLinePartsTotal(line), 0);
+    const partTotals = quoteLines.map((line) => quoteLinePartsTotal(line));
+    const parts = partTotals.reduce<number>((sum, total) => sum + (total ?? 0), 0);
+    const partsTotalUnavailable = partTotals.some((total) => total == null);
+    const grandTotalUnavailable = quoteLines.some(
+      (line, index) =>
+        partTotals[index] == null &&
+        asNumber(line.grand_total) == null &&
+        asNumber(line.subtotal) == null,
+    );
+    const partsPricingQuarantined = quoteLines.some(
+      (line) =>
+        quoteLinePartsPricingSanitization(line).customerPricingQuarantined,
+    );
     const linesTotal = quoteLines.reduce((sum, line) => sum + quoteLineTotal(line, laborRate), 0);
     const baseSubtotal = labor + parts;
     const persistedOverride = resolveShopSuppliesOverride(wo as Parameters<typeof resolveShopSuppliesOverride>[0]);
@@ -597,7 +660,19 @@ export default function QuoteReviewView(props: {
     const sendable = quoteLines.filter(canSendLine).length;
     const pendingParts = quoteLines.filter((line) => safeTrim(line.status).toLowerCase() === "pending_parts").length;
     const sent = quoteLines.filter((line) => safeTrim(line.status).toLowerCase() === "sent" || Boolean(line.sent_to_customer_at)).length;
-    return { labor, parts, linesTotal, shopSupplies, total, sendable, pendingParts, sent };
+    return {
+      labor,
+      parts,
+      partsTotalUnavailable,
+      grandTotalUnavailable,
+      partsPricingQuarantined,
+      linesTotal,
+      shopSupplies,
+      total,
+      sendable,
+      pendingParts,
+      sent,
+    };
   }, [laborRate, quoteLines, shop, suppliesAmountDraft, suppliesEnabledDraft, wo]);
 
   const customerEmail = safeTrim(customer?.email ?? "");
@@ -635,6 +710,12 @@ export default function QuoteReviewView(props: {
         const laborHours = quoteLineLaborHours(line);
         const laborTotal = quoteLineLaborTotal(line, laborRate);
         const partsTotal = quoteLinePartsTotal(line);
+        if (partsTotal == null) {
+          toast.error(
+            "This protected quote needs manual pricing review and cannot be recalculated as $0.",
+          );
+          return false;
+        }
         const subtotal = laborTotal + partsTotal;
         const metadata = {
           ...quoteMetadata(line),
@@ -924,6 +1005,15 @@ export default function QuoteReviewView(props: {
                     const sources = sourceSummary(line);
                     const historyInsight = historyInsights[line.id];
                     const finalDecision = isFinalDecision(line);
+                    const pricingQuarantined =
+                      partsSummary?.customerPricingQuarantined === true;
+                    const commercialEditingDisabled =
+                      finalDecision || pricingQuarantined;
+                    const finalizedLineTotalUnavailable =
+                      pricingQuarantined &&
+                      partsTotal == null &&
+                      asNumber(line.grand_total) == null &&
+                      asNumber(line.subtotal) == null;
 
                     return (
                       <div key={line.id} className={`${padX} py-4`}>
@@ -944,8 +1034,8 @@ export default function QuoteReviewView(props: {
                             </div>
                             <div className="min-w-[180px] rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--theme-surface-inset)] p-3 text-sm">
                               <div className="flex justify-between gap-4"><span className="text-[color:var(--theme-text-secondary)]">Labor</span><span className="font-semibold text-[color:var(--theme-text-primary)]">{fmt(laborTotal)}</span></div>
-                              <div className="mt-1 flex justify-between gap-4"><span className="text-[color:var(--theme-text-secondary)]">Parts</span><span className="font-semibold text-[color:var(--theme-text-primary)]">{fmt(partsTotal)}</span></div>
-                              <div className={`mt-2 flex justify-between gap-4 border-t ${divider} pt-2`}><span className="text-[color:var(--theme-text-secondary)]">Total</span><span className="font-bold" style={{ color: COPPER }}>{fmt(total)}</span></div>
+                              <div className="mt-1 flex justify-between gap-4"><span className="text-[color:var(--theme-text-secondary)]">{pricingQuarantined ? "Parts (finalized)" : "Parts"}</span><span className="font-semibold text-[color:var(--theme-text-primary)]">{partsTotal == null ? "Manual review" : fmt(partsTotal)}</span></div>
+                              <div className={`mt-2 flex justify-between gap-4 border-t ${divider} pt-2`}><span className="text-[color:var(--theme-text-secondary)]">Total</span><span className="font-bold" style={{ color: COPPER }}>{finalizedLineTotalUnavailable ? "Manual review" : fmt(total)}</span></div>
                             </div>
                           </div>
 
@@ -955,6 +1045,20 @@ export default function QuoteReviewView(props: {
                             <div>Labor hours: <span className="text-[color:var(--theme-text-primary)]">{laborHours}</span></div>
                             <div>Labor rate: <span className="text-[color:var(--theme-text-primary)]">{fmt(lineLaborRate)}/hr</span></div>
                           </div>
+
+                          {pricingQuarantined ? (
+                            <div role="alert" className="mt-3 rounded-xl border border-amber-300/40 bg-amber-400/10 p-3 text-xs text-amber-50">
+                              <div className="font-semibold uppercase tracking-[0.16em]">Manual pricing review required</div>
+                              <div className="mt-1">
+                                This protected quote keeps its finalized decision total. Current Parts Request pricing is hidden because it is not the finalized customer decision.
+                              </div>
+                              <div className="mt-1 font-semibold">
+                                {partsTotal == null
+                                  ? "Finalized parts total is unavailable; do not treat it as $0."
+                                  : `Finalized parts total: ${fmt(partsTotal)}`}
+                              </div>
+                            </div>
+                          ) : null}
 
                           {historyInsight ? (
                             <div className="mt-3 rounded-xl border border-sky-300/30 bg-sky-400/10 p-3 text-xs">
@@ -973,7 +1077,7 @@ export default function QuoteReviewView(props: {
                             <div className="flex flex-wrap items-center justify-between gap-2">
                               <div className="font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">Required parts</div>
                               <div className="flex flex-wrap items-center gap-2">
-                                {partsSummary ? <div className="text-[color:var(--theme-text-secondary)]">Sync: <span className="text-[color:var(--theme-text-primary)]">{partsSummary.pendingCount > 0 ? "pending" : "quoted"} • {partsSummary.quotedCount}/{partsSummary.requiredCount} quoted • {fmt(partsSummary.partsTotal)}</span></div> : null}
+                                {partsSummary ? <div className="text-[color:var(--theme-text-secondary)]">Sync: <span className="text-[color:var(--theme-text-primary)]">{partsSummary.customerPricingQuarantined ? "manual review • customer item pricing quarantined" : <>{partsSummary.pendingCount > 0 ? "pending" : "quoted"} • {partsSummary.quotedCount}/{partsSummary.requiredCount} quoted • {partsSummary.partsTotal == null ? "total pending" : fmt(partsSummary.partsTotal)}</>}</span></div> : null}
                                 {(partsByQuoteLine[line.id] ?? []).length > 0 ? <button type="button" onClick={() => setOpenParts((prev) => ({ ...prev, [line.id]: !prev[line.id] }))} className="rounded-lg border border-[color:var(--desktop-border)] px-2.5 py-1.5 font-semibold text-[color:var(--theme-text-primary)]">{openParts[line.id] ? "Hide parts" : `View ${(partsByQuoteLine[line.id] ?? []).length} parts`}</button> : null}
                               </div>
                             </div>
@@ -996,8 +1100,16 @@ export default function QuoteReviewView(props: {
                                         {part.requestedPartNumber ? <span>Requested part #: <span className="text-[color:var(--theme-text-primary)]">{part.requestedPartNumber}</span></span> : null}
                                         {part.manufacturer ? <span>Manufacturer: <span className="text-[color:var(--theme-text-primary)]">{part.manufacturer}</span></span> : null}
                                         {part.supplier ?? part.vendor ? <span>Supplier: <span className="text-[color:var(--theme-text-primary)]">{part.supplier ?? part.vendor}</span></span> : null}
-                                        <span>{partPricingLabel(part)}</span>
-                                        {part.lineTotal != null ? <span>Line: <span className="text-[color:var(--theme-text-primary)]">{fmt(part.lineTotal)}</span></span> : null}
+                                        {pricingQuarantined ? (
+                                          <span className="font-semibold text-amber-100">Current operational pricing hidden — it is not the finalized customer decision.</span>
+                                        ) : (
+                                          <>
+                                            <span>{partCostLabel(part)}</span>
+                                            <span>{partSellLabel(part)}</span>
+                                            {part.costLineTotal != null ? <span>Cost line: <span className="text-[color:var(--theme-text-primary)]">{fmt(part.costLineTotal)}</span></span> : null}
+                                            {part.sellLineTotal != null ? <span>Sell line: <span className="text-[color:var(--theme-text-primary)]">{fmt(part.sellLineTotal)}</span></span> : null}
+                                          </>
+                                        )}
                                         {part.status ? <span>Status: <span className="text-[color:var(--theme-text-primary)]">{statusLabel(part.status)}</span></span> : null}
                                       </div>
                                       {request ? (
@@ -1034,21 +1146,21 @@ export default function QuoteReviewView(props: {
                           ) : null}
 
                           <div className="mt-3 flex flex-wrap gap-2">
-                            <button type="button" disabled={finalDecision} onClick={() => setOpenDetails((prev) => ({ ...prev, [line.id]: !prev[line.id] }))} className="desktop-btn-secondary rounded-xl px-3 py-2 text-xs font-semibold text-[color:var(--theme-text-primary)] disabled:opacity-45">
+                            <button type="button" disabled={commercialEditingDisabled} onClick={() => setOpenDetails((prev) => ({ ...prev, [line.id]: !prev[line.id] }))} className="desktop-btn-secondary rounded-xl px-3 py-2 text-xs font-semibold text-[color:var(--theme-text-primary)] disabled:opacity-45">
                               {openDetails[line.id] ? "Hide editor" : "Edit quote line"}
                             </button>
-                            <button type="button" disabled={finalDecision} onClick={() => markRecommendedReady(line)} className="desktop-btn-secondary rounded-xl px-3 py-2 text-xs font-semibold text-[color:var(--theme-text-primary)] disabled:opacity-45">
+                            <button type="button" disabled={commercialEditingDisabled} onClick={() => markRecommendedReady(line)} className="desktop-btn-secondary rounded-xl px-3 py-2 text-xs font-semibold text-[color:var(--theme-text-primary)] disabled:opacity-45">
                               Recompute ready state
                             </button>
                             {!line.sent_to_customer_at && canSendLine(line) ? <span className="rounded-xl border border-emerald-300/35 bg-emerald-400/10 px-3 py-2 text-xs font-semibold text-emerald-100">Will send</span> : null}
-                            {!finalDecision ? <>
+                            {!commercialEditingDisabled ? <>
                               <button type="button" disabled={!canSendLine(line) && !isSentForDecision(line)} onClick={() => openDecisionDialog(line, "approve")} className="rounded-xl border border-emerald-300/40 bg-emerald-500/15 px-3 py-2 text-xs font-semibold text-emerald-100 disabled:opacity-45">Approve</button>
                               <button type="button" onClick={() => openDecisionDialog(line, "defer")} className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-2 text-xs font-semibold text-[color:var(--theme-text-primary)]">Defer</button>
                               <button type="button" onClick={() => openDecisionDialog(line, "decline")} className="rounded-xl border border-red-400/45 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-100">Decline</button>
                             </> : null}
                           </div>
 
-                          {openDetails[line.id] && !finalDecision ? (
+                          {openDetails[line.id] && !commercialEditingDisabled ? (
                             <div className="desktop-panel-soft mt-3 p-4">
                               <div className={embedded ? "grid gap-3" : "grid gap-3 md:grid-cols-2"}>
                                 <label className="text-xs text-[color:var(--theme-text-secondary)]">
@@ -1080,8 +1192,17 @@ export default function QuoteReviewView(props: {
                                   <input inputMode="decimal" value={String(laborTotal)} onChange={(e) => patchQuoteLine(line.id, { labor_total: asNumber(e.target.value) ?? 0 })} className={inputCls} />
                                 </label>
                                 <label className="text-xs text-[color:var(--theme-text-secondary)]">
-                                  Parts quoted amount
-                                  <input inputMode="decimal" value={String(partsTotal)} onChange={(e) => patchQuoteLine(line.id, { parts_total: asNumber(e.target.value) ?? 0 })} className={inputCls} />
+                                  Parts sell total (calculated)
+                                  <input
+                                    value={partsTotal == null ? "" : String(partsTotal)}
+                                    placeholder="Manual review required"
+                                    readOnly
+                                    aria-describedby={`parts-sell-help-${line.id}`}
+                                    className={`${inputCls} cursor-not-allowed opacity-80`}
+                                  />
+                                  <span id={`parts-sell-help-${line.id}`} className="mt-1 block text-[11px] text-[color:var(--theme-text-muted)]">
+                                    Edit each item&apos;s sell price in the linked Parts Request; Quote Review recalculates this total.
+                                  </span>
                                 </label>
                                 <label className="text-xs text-[color:var(--theme-text-secondary)]">
                                   Status
@@ -1135,10 +1256,11 @@ export default function QuoteReviewView(props: {
                 <div className="mt-2 flex items-center justify-between"><span>Pending parts</span><span className="font-semibold text-[color:var(--theme-text-primary)]">{quoteTotals.pendingParts}</span></div>
                 <div className="mt-2 flex items-center justify-between"><span>Sent</span><span className="font-semibold text-[color:var(--theme-text-primary)]">{quoteTotals.sent}</span></div>
                 <div className={`mt-3 flex items-center justify-between border-t ${divider} pt-3`}><span>Labor</span><span className="font-medium text-[color:var(--theme-text-primary)]">{fmt(quoteTotals.labor)}</span></div>
-                <div className="mt-2 flex items-center justify-between"><span>Parts</span><span className="font-medium text-[color:var(--theme-text-primary)]">{fmt(quoteTotals.parts)}</span></div>
+                <div className="mt-2 flex items-center justify-between"><span>{quoteTotals.partsPricingQuarantined ? "Parts (protected)" : "Parts"}</span><span className="font-medium text-[color:var(--theme-text-primary)]">{quoteTotals.partsTotalUnavailable ? "Manual review" : fmt(quoteTotals.parts)}</span></div>
+                {quoteTotals.partsPricingQuarantined ? <div className="mt-1 text-xs text-amber-100">Protected finalized totals are retained; quarantined item pricing is excluded.</div> : null}
                 <div className="mt-2 flex items-center justify-between"><span>Shop supplies</span><span className="font-medium text-[color:var(--theme-text-primary)]">{fmt(quoteTotals.shopSupplies.amount)}</span></div>
                 <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">{shopSuppliesSummaryText(quoteTotals.shopSupplies)}</div>
-                <div className={`mt-3 flex items-center justify-between border-t ${divider} pt-3`}><span className="font-semibold text-[color:var(--theme-text-primary)]">Grand total</span><span className="text-lg font-bold" style={{ color: COPPER }}>{fmt(quoteTotals.total)}</span></div>
+                <div className={`mt-3 flex items-center justify-between border-t ${divider} pt-3`}><span className="font-semibold text-[color:var(--theme-text-primary)]">Grand total</span><span className="text-lg font-bold" style={{ color: COPPER }}>{quoteTotals.grandTotalUnavailable ? "Manual review" : fmt(quoteTotals.total)}</span></div>
                 <div className={`mt-4 border-t ${divider} pt-3`}>
                   <div className="text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">Shop supplies override</div>
                   <select

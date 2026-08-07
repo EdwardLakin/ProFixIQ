@@ -108,6 +108,10 @@ type ReceiveResult = {
   po_status?: string;
   allocations?: AllocationResult[];
   unallocated_qty?: number;
+  receipt_qty?: number;
+  line_received_qty?: number;
+  request_received_qty?: number;
+  status?: string;
 };
 
 function extractReceiveResult(data: unknown): ReceiveResult | null {
@@ -353,7 +357,11 @@ export default function PoReceivePage(): JSX.Element {
       .filter((line) => String(line.part_id ?? "") === partId)
       .reduce(
         (sum, line) =>
-          sum + Math.max(0, n(line.qty) - n(line.received_qty)),
+          sum +
+          Math.max(
+            0,
+            n(line.qty) - n(line.cancelled_qty) - n(line.received_qty),
+          ),
         0,
       );
 
@@ -410,7 +418,7 @@ export default function PoReceivePage(): JSX.Element {
     setResult(null);
 
     const lineId = String(line.id);
-    const ordered = n(line.qty);
+    const ordered = Math.max(0, n(line.qty) - n(line.cancelled_qty));
     const received = n(line.received_qty);
     const rem = Math.max(0, ordered - received);
     const requestedQty = n(freeTextQtyByLineId[lineId] ?? rem);
@@ -425,55 +433,31 @@ export default function PoReceivePage(): JSX.Element {
       return;
     }
 
-    const nextReceived = received + receiveQty;
-    const { error } = await supabase
-      .from("purchase_order_lines")
-      .update({ received_qty: nextReceived })
-      .eq("id", line.id)
-      .eq("po_id", poId)
-      .is("part_id", null);
-
-    if (error) {
-      setErr(error.message);
+    const idempotencyKey = [
+      "free-text-receipt",
+      lineId,
+      `from-${received}`,
+      `qty-${receiveQty}`,
+    ].join(":");
+    const response = await fetch(
+      `/api/parts/purchase-orders/${poId}/lines/${lineId}/receive-free-text`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ qty: receiveQty, idempotencyKey }),
+      },
+    );
+    const body = (await response.json().catch(() => null)) as {
+      ok?: boolean;
+      error?: string;
+      result?: ReceiveResult;
+    } | null;
+    if (!response.ok || !body?.ok) {
+      setErr(body?.error || "Could not receive the free-text request line.");
       return;
     }
 
-    const requestItemId = String(line.part_request_item_id ?? "");
-    if (requestItemId) {
-      const { data: requestItem, error: requestItemError } = await supabase
-        .from("part_request_items")
-        .select("id, qty, qty_approved, qty_received, status")
-        .eq("id", requestItemId)
-        .maybeSingle();
-
-      if (requestItemError) {
-        setErr(requestItemError.message);
-        return;
-      }
-
-      if (requestItem) {
-        const targetQtyRaw = n(requestItem.qty_approved) > 0 ? n(requestItem.qty_approved) : n(requestItem.qty);
-        const targetQty = Math.max(0, targetQtyRaw);
-        const currentQtyReceived = n(requestItem.qty_received);
-        const nextQtyReceived = Math.min(targetQty, currentQtyReceived + receiveQty);
-
-        let nextStatus = requestItem.status;
-        if (nextQtyReceived > 0) {
-          if (nextQtyReceived < targetQty) nextStatus = "partially_received";
-          else nextStatus = "received";
-        }
-
-        const { error: syncError } = await supabase
-          .from("part_request_items")
-          .update({ qty_received: nextQtyReceived, status: nextStatus })
-          .eq("id", requestItem.id);
-
-        if (syncError) {
-          setErr(syncError.message);
-          return;
-        }
-      }
-    }
+    setResult(body.result ?? {});
 
     setFreeTextQtyByLineId((prev) => ({ ...prev, [lineId]: Math.max(0, rem - receiveQty) }));
     await refreshPoAndLines();
@@ -810,7 +794,10 @@ export default function PoReceivePage(): JSX.Element {
                   </tr>
                 ) : (
                   lines.map((ln) => {
-                    const ordered = n(ln.qty);
+                    const ordered = Math.max(
+                      0,
+                      n(ln.qty) - n(ln.cancelled_qty),
+                    );
                     const received = n(ln.received_qty);
                     const rem = Math.max(0, ordered - received);
                     const trust = ln.part_id ? trustByPartId[String(ln.part_id)] : null;
@@ -844,9 +831,12 @@ export default function PoReceivePage(): JSX.Element {
                               <div className="text-[11px] uppercase tracking-[0.14em] text-amber-300/80">
                                 Non-inventory line
                               </div>
-                              <div className="text-[11px] text-[color:var(--theme-text-secondary)]">Free-text / match later</div>
+                              <div className="text-[11px] text-[color:var(--theme-text-secondary)]">
+                                Free-text / non-inventory
+                              </div>
                               <div className="text-[11px] text-[color:var(--theme-text-muted)]">
-                                No stock movement will be created until this line is matched to an inventory part.
+                                This receipt updates the PO and linked request
+                                only; it does not create a stock movement.
                               </div>
                               <div className="flex items-center gap-2">
                                 <input

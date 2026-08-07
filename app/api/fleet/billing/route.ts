@@ -440,12 +440,20 @@ export async function POST(request: Request) {
       actorUserId: actor.userId,
       contactMethod: contactMethod ?? "other",
       decisionNote: note,
+      quarantineCheckSupabase: admin,
       operationKey: actor.isInternal
         ? `fleet-staff:${operationKey}`
         : `fleet:${operationKey}`,
     });
-    if (!result.ok)
+    if (!result.ok) {
+      if (result.pricingQuarantined) {
+        return NextResponse.json(
+          { error: result.error ?? "Unable to save estimate decision" },
+          { status: 409 },
+        );
+      }
       throw new Error(result.error ?? "Unable to save estimate decision");
+    }
     return NextResponse.json({ ok: true, result });
   } catch (error) {
     console.error("[fleet/billing] error", error);

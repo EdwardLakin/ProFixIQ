@@ -92,6 +92,15 @@ function finiteNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+function nonNegativeFiniteNumber(value: unknown): number | null {
+  const number = finiteNumber(value);
+  return number != null && number >= 0 ? number : null;
+}
+
+function money(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
 function normalizeTitle(value: unknown): string {
   return safeTrim(value).toLowerCase().replace(/\s+/g, " ");
 }
@@ -113,12 +122,65 @@ export function cleanParts(parts: CanonicalQuotePart[] | undefined): Array<{
         partNumber:
           safeTrim(part.partNumber) || safeTrim(part.part_number) || safeTrim(part.sku) || null,
         qty,
-        unitCost: finiteNumber(part.unitCost) ?? finiteNumber(part.cost),
-        unitPrice: finiteNumber(part.unitPrice),
+        unitCost:
+          nonNegativeFiniteNumber(part.unitCost) ?? nonNegativeFiniteNumber(part.cost),
+        unitPrice: nonNegativeFiniteNumber(part.unitPrice),
         notes: safeTrim(part.notes) || null,
       };
     })
     .filter((part) => part.description.length > 0);
+}
+
+export function resolveInitialCanonicalQuotePricing(
+  item: CanonicalQuoteItem,
+  parts = cleanParts(item.parts),
+): {
+  partsTotal: number;
+  laborTotal: number | null;
+  subtotal: number;
+  taxTotal: number | null;
+  grandTotal: number;
+  hasUnpricedParts: boolean;
+} {
+  const hasParts = parts.length > 0;
+  const hasUnpricedParts = parts.some((part) => part.unitPrice == null);
+  const explicitSellTotal = money(
+    parts.reduce(
+      (sum, part) => sum + (part.unitPrice == null ? 0 : part.unitPrice * part.qty),
+      0,
+    ),
+  );
+  const laborHours = finiteNumber(item.laborHours) ?? finiteNumber(item.estLaborHours);
+  const laborRate = finiteNumber(item.laborRate);
+  const laborTotal =
+    finiteNumber(item.laborTotal) ??
+    (laborHours != null && laborRate != null ? money(laborHours * laborRate) : null);
+  const taxTotal = finiteNumber(item.taxTotal);
+
+  if (hasParts) {
+    const subtotal = money(explicitSellTotal + (laborTotal ?? 0));
+    return {
+      partsTotal: explicitSellTotal,
+      laborTotal,
+      subtotal,
+      taxTotal,
+      grandTotal: money(subtotal + (taxTotal ?? 0)),
+      hasUnpricedParts,
+    };
+  }
+
+  const partsTotal = finiteNumber(item.partsTotal) ?? 0;
+  const subtotal =
+    finiteNumber(item.subtotal) ?? money(partsTotal + (laborTotal ?? 0));
+  return {
+    partsTotal,
+    laborTotal,
+    subtotal,
+    taxTotal,
+    grandTotal:
+      finiteNumber(item.grandTotal) ?? money(subtotal + (taxTotal ?? 0)),
+    hasUnpricedParts,
+  };
 }
 
 export function identityFor(item: CanonicalQuoteItem): string | null {
@@ -269,13 +331,15 @@ export async function createCanonicalQuoteLines(
     if (findingIdentity) seenNewIdentities.add(findingIdentity);
 
     const parts = cleanParts(item.parts);
-    const partsTotal =
-      finiteNumber(item.partsTotal) ??
-      parts.reduce((sum, part) => sum + (part.unitCost ?? 0) * part.qty, 0);
+    const pricing = resolveInitialCanonicalQuotePricing(item, parts);
+    const customerVisibleParts = parts.map((part) => ({
+      description: part.description,
+      partNumber: part.partNumber,
+      qty: part.qty,
+      unitPrice: part.unitPrice,
+      notes: part.notes,
+    }));
     const laborHours = finiteNumber(item.laborHours) ?? finiteNumber(item.estLaborHours);
-    const laborTotal = finiteNumber(item.laborTotal);
-    const subtotal = finiteNumber(item.subtotal) ?? partsTotal + (laborTotal ?? 0);
-    const grandTotal = finiteNumber(item.grandTotal) ?? subtotal + (finiteNumber(item.taxTotal) ?? 0);
     const normalizedFindingTitle =
       normalizeTitle(item.normalizedFindingTitle) ||
       normalizeTitle(item.sourceFindingTitle) ||
@@ -293,7 +357,7 @@ export async function createCanonicalQuoteLines(
       source_finding_title_normalized: normalizedFindingTitle || undefined,
       inspection_finding_identity: findingIdentity ?? undefined,
       photo_urls: Array.isArray(item.photoUrls) ? item.photoUrls : [],
-      parts,
+      parts: customerVisibleParts,
       labor_rate: finiteNumber(item.laborRate) ?? undefined,
     };
 
@@ -308,18 +372,18 @@ export async function createCanonicalQuoteLines(
       job_type: item.jobType ?? "tech-suggested",
       est_labor_hours: finiteNumber(item.estLaborHours) ?? laborHours,
       notes: safeTrim(item.notes) || safeTrim(item.complaint) || null,
-      status: safeTrim(item.status) || "pending_parts",
+      status: parts.length > 0 ? "pending_parts" : safeTrim(item.status) || "pending_parts",
       ai_complaint: safeTrim(item.aiComplaint) || safeTrim(item.complaint) || null,
       ai_cause: safeTrim(item.aiCause) || null,
       ai_correction: safeTrim(item.aiCorrection) || null,
-      stage: safeTrim(item.stage) || "advisor_pending",
+      stage: parts.length > 0 ? "advisor_pending" : safeTrim(item.stage) || "advisor_pending",
       qty: 1,
       labor_hours: laborHours,
-      parts_total: partsTotal,
-      labor_total: laborTotal,
-      subtotal,
-      tax_total: finiteNumber(item.taxTotal),
-      grand_total: grandTotal,
+      parts_total: pricing.partsTotal,
+      labor_total: pricing.laborTotal,
+      subtotal: pricing.subtotal,
+      tax_total: pricing.taxTotal,
+      grand_total: pricing.grandTotal,
       metadata: metadata as Json,
       group_id: null,
       sent_to_customer_at: null,

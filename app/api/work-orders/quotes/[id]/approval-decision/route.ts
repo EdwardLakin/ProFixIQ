@@ -116,6 +116,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
     const partRelinkConflict = result.error?.includes("PART_RELINK_CONFLICT");
     const status =
       result.expired ||
+      result.pricingQuarantined ||
       partRelinkConflict ||
       result.error?.includes("FINANCIALLY_LOCKED")
         ? 409

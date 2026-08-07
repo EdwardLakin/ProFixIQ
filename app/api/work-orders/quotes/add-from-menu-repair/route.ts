@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import type { Database, Json } from "@shared/types/types/supabase";
 import { getActiveMenuRepairPricingSnapshot } from "@/features/parts/server/getActiveMenuRepairPricingSnapshot";
-import { syncQuoteLinePartsStatus } from "@/features/parts/server/syncQuoteLinePartsStatus";
 import { normalizeLaborHoursInput } from "@/features/work-orders/lib/pricing/resolveWorkOrderLinePricing";
 import {
   COMPLETED_REPAIR_SOURCE,
@@ -10,11 +9,14 @@ import {
   matchesCompletedRepairVehicle,
   resolveCompletedRepairSubtotal,
 } from "@/features/menu-repair-items/lib/completedRepair";
+import {
+  customerVisibleReuseParts,
+  persistReusePartRequest,
+  type ReusePartPersistenceInput,
+} from "./reusePartPersistence";
 
 type DB = Database;
 type QuoteInsert = DB["public"]["Tables"]["work_order_quote_lines"]["Insert"];
-type PartRequestInsert = DB["public"]["Tables"]["part_requests"]["Insert"];
-type PartRequestItemInsert = DB["public"]["Tables"]["part_request_items"]["Insert"];
 
 type Body = {
   workOrderId?: string;
@@ -77,20 +79,7 @@ type VehicleLite = Pick<
 
 type SnapshotPart = NonNullable<Awaited<ReturnType<typeof getActiveMenuRepairPricingSnapshot>>>["parts"][number];
 
-type ReusePart = {
-  description: string;
-  partNumber: string | null;
-  supplierPartNumber: string | null;
-  qty: number;
-  unitCost: number | null;
-  unitPrice: number | null;
-  availability: string | null;
-  leadTime: string | null;
-  notes: string | null;
-  source: "pricing_snapshot" | "menu_repair_item";
-  sourcePricingPartId?: string | null;
-  sourceMenuRepairItemPartId?: string | null;
-};
+type ReusePart = ReusePartPersistenceInput;
 
 function safeTrim(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -107,7 +96,7 @@ function positiveQty(value: unknown): number {
 
 function money(value: unknown): number | null {
   const n = finiteNumber(value);
-  return n == null ? null : Math.max(0, n);
+  return n == null || n < 0 ? null : n;
 }
 
 function vehicleContext(args: {
@@ -183,71 +172,6 @@ function partTotal(parts: ReusePart[], usePricing: boolean): number | null {
   if (parts.length === 0) return 0;
   if (!parts.every((part) => part.unitPrice != null)) return null;
   return parts.reduce((sum, part) => sum + (part.unitPrice ?? 0) * part.qty, 0);
-}
-
-async function createPartRequestForQuoteLine(
-  supabase: ReturnType<typeof createServerSupabaseRoute>,
-  input: {
-    shopId: string;
-    workOrderId: string;
-    quoteLineId: string;
-    requestedBy: string;
-    notes: string | null;
-    parts: ReusePart[];
-  },
-): Promise<{ created: boolean; error?: string }> {
-  if (input.parts.length === 0) return { created: false };
-
-  const requestPayload: PartRequestInsert = {
-    shop_id: input.shopId,
-    work_order_id: input.workOrderId,
-    quote_line_id: input.quoteLineId,
-    job_id: null,
-    requested_by: input.requestedBy,
-    notes: input.notes,
-    status: "requested",
-  };
-
-  const { data: request, error: requestError } = await supabase
-    .from("part_requests")
-    .insert(requestPayload)
-    .select("id")
-    .single();
-
-  if (requestError || !request?.id) {
-    return { created: false, error: requestError?.message ?? "Failed to create part request" };
-  }
-
-  const itemRows: PartRequestItemInsert[] = input.parts.map((part) => ({
-    request_id: request.id,
-    shop_id: input.shopId,
-    work_order_id: input.workOrderId,
-    quote_line_id: input.quoteLineId,
-    work_order_line_id: null,
-    description: part.description,
-    qty: part.qty,
-    qty_requested: part.qty,
-    unit_cost: null,
-    unit_price: null,
-    quoted_price: null,
-    status: "requested",
-  }));
-
-  const { error: itemsError } = await supabase.from("part_request_items").insert(itemRows);
-  if (itemsError) {
-    return { created: false, error: itemsError.message };
-  }
-
-  const syncResult = await syncQuoteLinePartsStatus(supabase, {
-    shopId: input.shopId,
-    quoteLineId: input.quoteLineId,
-  });
-
-  if (!syncResult.ok) {
-    return { created: false, error: syncResult.error ?? "Failed to sync quote-line parts status" };
-  }
-
-  return { created: true };
 }
 
 export async function POST(req: Request) {
@@ -438,6 +362,7 @@ export async function POST(req: Request) {
     });
     const grandTotal = subtotal;
     const status = useFinalPricing ? "quoted" : "pending_parts";
+    const initialStatus = reuseParts.length > 0 ? "pending_parts" : status;
     const stage = "advisor_pending";
     const vehicleUsed = vehicleContext({ workOrder, vehicle, repairItem });
 
@@ -449,12 +374,12 @@ export async function POST(req: Request) {
       pricing_valid_until_at_reuse: activeSnapshot?.validUntil ?? null,
       pricing_valid_days: activeSnapshot?.pricingValidDays ?? repairItem.pricing_valid_days ?? null,
       pricing_reuse_policy: useFinalPricing
-        ? "fresh_snapshot_reused_without_parts_request"
+        ? "fresh_snapshot_persisted_with_explicit_sell"
         : "verification_required_before_customer_send",
       parts_verification_required: partsVerificationRequired,
       vehicle: vehicleUsed,
       parts_source: snapshotParts.length > 0 ? "pricing_snapshot" : fallbackParts.length > 0 ? "menu_repair_item" : null,
-      parts: reuseParts,
+      parts: customerVisibleReuseParts(reuseParts, useFinalPricing),
       supplier_id: activeSnapshot?.supplierId ?? null,
       supplier_name: activeSnapshot?.supplierName ?? null,
       currency: activeSnapshot?.currency ?? null,
@@ -479,7 +404,7 @@ export async function POST(req: Request) {
       tax_total: null,
       grand_total: grandTotal,
       notes,
-      status,
+      status: initialStatus,
       stage,
       ai_complaint: notes || repairItem.complaint || null,
       ai_cause: repairItem.cause || null,
@@ -506,14 +431,19 @@ export async function POST(req: Request) {
     }
 
     let partRequestCreated = false;
-    if (partsVerificationRequired && reuseParts.length > 0) {
-      const partRequestResult = await createPartRequestForQuoteLine(supabase, {
+    let persistedStatus = initialStatus;
+    let persistedStage: string | null = stage;
+    let persistedPartsVerificationRequired = partsVerificationRequired;
+    if (reuseParts.length > 0) {
+      const partRequestResult = await persistReusePartRequest(supabase, {
         shopId,
         workOrderId: workOrder.id,
         quoteLineId: created.id,
         requestedBy: user.id,
         notes: [
-          "Menu repair reuse requires parts/pricing verification before customer send.",
+          useFinalPricing
+            ? "Fresh menu repair pricing persisted to the canonical parts request."
+            : "Menu repair reuse requires parts/pricing verification before customer send.",
           `Pricing status at reuse: ${pricingStatus}`,
           activeSnapshot?.validUntil ? `Pricing valid until: ${activeSnapshot.validUntil}` : null,
           notes,
@@ -521,12 +451,24 @@ export async function POST(req: Request) {
           .filter(Boolean)
           .join("\n"),
         parts: reuseParts,
+        includeExplicitSell: useFinalPricing,
       });
 
       if (partRequestResult.error) {
-        return NextResponse.json({ ok: false, error: partRequestResult.error }, { status: 500 });
+        const { error: quoteCleanupError } = await supabase
+          .from("work_order_quote_lines")
+          .delete()
+          .eq("id", created.id)
+          .eq("shop_id", shopId);
+        const error = quoteCleanupError
+          ? `${partRequestResult.error}; quote cleanup failed: ${quoteCleanupError.message}`
+          : partRequestResult.error;
+        return NextResponse.json({ ok: false, error }, { status: 500 });
       }
       partRequestCreated = partRequestResult.created;
+      persistedStatus = partRequestResult.sync?.status || initialStatus;
+      persistedStage = partRequestResult.sync?.stage ?? stage;
+      persistedPartsVerificationRequired = (partRequestResult.sync?.pendingCount ?? 0) > 0;
     }
 
     return NextResponse.json({
@@ -534,12 +476,12 @@ export async function POST(req: Request) {
       workOrderQuoteLineId: created.id,
       quoteLineId: created.id,
       pricingStatus,
-      partsVerificationRequired,
+      partsVerificationRequired: persistedPartsVerificationRequired,
       partRequestCreated,
       activePricingSnapshotId: activeSnapshot?.snapshotId ?? null,
       validUntil: activeSnapshot?.validUntil ?? null,
-      status,
-      stage,
+      status: persistedStatus,
+      stage: persistedStage,
       message: "Added to Quote Review",
     });
   } catch (error) {

@@ -5,6 +5,8 @@ import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server
 import type { Database } from "@shared/types/types/supabase";
 import { buildWorkOrderApprovedEvent } from "@/features/integrations/shopreel/server/buildProFixIQStoryEvents";
 import { postStoryEventToShopReel } from "@/features/integrations/shopreel/server/postStoryEventToShopReel";
+import { QUOTE_PRICING_QUARANTINED_CODE } from "@/features/work-orders/lib/quotes/quotePricingQuarantine";
+import { checkQuotePricingQuarantine } from "@/features/work-orders/server/quotePricingQuarantine";
 
 export const runtime = "nodejs";
 
@@ -78,15 +80,47 @@ export async function POST(req: NextRequest) {
   // 3) Make sure the work order belongs to this customer
   const { data: wo, error: woErr } = await supabase
     .from("work_orders")
-    .select("id, approval_state")
+    .select("id, shop_id, approval_state")
     .eq("id", workOrderId)
     .eq("customer_id", customer.id)
-    .maybeSingle<Pick<WorkOrderRow, "id" | "approval_state">>();
+    .maybeSingle<Pick<WorkOrderRow, "id" | "shop_id" | "approval_state">>();
 
   if (woErr || !wo) {
     return NextResponse.json(
       { error: "Work order not found for this customer" },
       { status: 404 },
+    );
+  }
+
+  if (!wo.shop_id) {
+    return NextResponse.json(
+      { error: "Work order is missing shop_id" },
+      { status: 409 },
+    );
+  }
+
+  const quarantineCheck = await checkQuotePricingQuarantine({
+    supabase,
+    shopId: wo.shop_id,
+    workOrderId,
+    includeAllQuoteLines: true,
+  });
+  if (!quarantineCheck.ok) {
+    return NextResponse.json(
+      {
+        error: quarantineCheck.error,
+        ...(quarantineCheck.reason === "quarantined"
+          ? { code: QUOTE_PRICING_QUARANTINED_CODE }
+          : {}),
+      },
+      {
+        status:
+          quarantineCheck.reason === "quarantined"
+            ? 409
+            : quarantineCheck.reason === "quote_line_not_found"
+              ? 404
+              : 500,
+      },
     );
   }
 

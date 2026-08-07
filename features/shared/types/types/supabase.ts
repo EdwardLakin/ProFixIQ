@@ -25822,6 +25822,10 @@ export type Database = {
         }
         Returns: Json
       }
+      parts_attach_inventory_to_request_item_atomic: {
+        Args: { p_item_id: string; p_part_id: string }
+        Returns: Json
+      }
       parts_attach_request_item: {
         Args: { p_request_item_id: string }
         Returns: string
@@ -25998,6 +26002,15 @@ export type Database = {
       parts_publish_request_notification_with_table: {
         Args: { p_request_id: string; p_stage: string }
         Returns: undefined
+      }
+      parts_receive_free_text_po_line: {
+        Args: {
+          p_idempotency_key: string
+          p_po_id: string
+          p_po_line_id: string
+          p_qty: number
+        }
+        Returns: Json
       }
       parts_receive_request_item: {
         Args: {

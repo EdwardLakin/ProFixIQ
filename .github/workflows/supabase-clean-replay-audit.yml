@@ -8,6 +8,7 @@ on:
     paths:
       - "supabase/migrations/**"
       - "tests/parts/*.runtime.sql"
+      - "tests/parts/*.runtime.sh"
       - "tests/security/*.runtime.sql"
       - "db/sql/schema.sql"
       - "features/shared/types/types/supabase.ts"
@@ -113,6 +114,44 @@ jobs:
           psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
             -f tests/parts/use-part-handoff.runtime.sql \
             2>&1 | tee parts-use-handoff-runtime.log
+
+      - name: Execute parts request purchase-order regression integration
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+            -f tests/parts/parts-request-purchase-order.runtime.sql \
+            2>&1 | tee parts-request-purchase-order-runtime.log
+
+      - name: Execute parts purchase-order lock-order concurrency regression
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          bash tests/parts/parts-request-purchase-order-locking.runtime.sh \
+            "$DB_URL" \
+            2>&1 | tee parts-request-purchase-order-locking-runtime.log
+
+      - name: Execute Quote Review cost/sell regression integration
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+            -f tests/security/quote-review-cost-and-sell.runtime.sql \
+            2>&1 | tee quote-review-cost-and-sell-runtime.log
 
       - name: Execute P0 relation-boundary runtime integration
         shell: bash
@@ -386,6 +425,9 @@ jobs:
             supabase-db-reset.log
             supabase-existing-baseline.log
             parts-use-handoff-runtime.log
+            parts-request-purchase-order-runtime.log
+            parts-request-purchase-order-locking-runtime.log
+            quote-review-cost-and-sell-runtime.log
             p0-001-relation-boundaries-runtime.log
             p0-002-rpc-privileges-runtime.log
             p0-002-stock-move-signature-compat-runtime.log

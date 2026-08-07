@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import type { Database } from "@shared/types/types/supabase";
 import { logOperationalEvent } from "@/features/work-orders/server/logOperationalEvent";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { QUOTE_PRICING_QUARANTINED_CODE } from "@/features/work-orders/lib/quotes/quotePricingQuarantine";
+import { checkQuotePricingQuarantine } from "@/features/work-orders/server/quotePricingQuarantine";
 
 type DB = Database;
 type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -115,6 +117,31 @@ export async function POST(req: Request) {
     return NextResponse.json(
       { error: "One or more lineIds are not accessible for this work order" },
       { status: 403 },
+    );
+  }
+
+  const quarantineCheck = await checkQuotePricingQuarantine({
+    supabase,
+    shopId: profile.shop_id,
+    workOrderId,
+    workOrderLineIds: lineIds,
+  });
+  if (!quarantineCheck.ok) {
+    return NextResponse.json(
+      {
+        error: quarantineCheck.error,
+        ...(quarantineCheck.reason === "quarantined"
+          ? { code: QUOTE_PRICING_QUARANTINED_CODE }
+          : {}),
+      },
+      {
+        status:
+          quarantineCheck.reason === "quarantined"
+            ? 409
+            : quarantineCheck.reason === "quote_line_not_found"
+              ? 404
+              : 500,
+      },
     );
   }
 

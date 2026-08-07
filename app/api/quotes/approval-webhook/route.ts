@@ -4,6 +4,11 @@ import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import {
+  isQuotePricingQuarantineError,
+  QUOTE_PRICING_QUARANTINED_CODE,
+} from "@/features/work-orders/lib/quotes/quotePricingQuarantine";
+import { checkQuotePricingQuarantine } from "@/features/work-orders/server/quotePricingQuarantine";
 
 export const runtime = "nodejs";
 
@@ -49,6 +54,7 @@ function errorStatus(message: string): number {
   }
   if (
     lower.includes("financially_locked") ||
+    isQuotePricingQuarantineError(message) ||
     lower.includes("current status") ||
     lower.includes("both approved and declined")
   ) {
@@ -214,6 +220,31 @@ export async function POST(req: Request) {
       declinedQuoteLineIds,
       signatureUrl,
     });
+
+  const quarantineCheck = await checkQuotePricingQuarantine({
+    supabase,
+    shopId: workOrder.shop_id,
+    workOrderId,
+    quoteLineIds: [...approvedQuoteLineIds, ...declinedQuoteLineIds],
+    workOrderLineIds: [...approvedLineIds, ...declinedLineIds],
+  });
+  if (!quarantineCheck.ok) {
+    const status =
+      quarantineCheck.reason === "quarantined"
+        ? 409
+        : quarantineCheck.reason === "quote_line_not_found"
+          ? 404
+          : 500;
+    return NextResponse.json(
+      {
+        error: quarantineCheck.error,
+        ...(quarantineCheck.reason === "quarantined"
+          ? { code: QUOTE_PRICING_QUARANTINED_CODE }
+          : {}),
+      } satisfies Json,
+      { status },
+    );
+  }
 
   const rpc = supabase as unknown as RpcClient;
   const { data, error } = await rpc.rpc(
