@@ -69,6 +69,7 @@ describe("workforce cleanup consolidation", () => {
       "Attendance",
       "Schedule",
       "Payroll",
+      "Certifications",
     ]);
   });
 

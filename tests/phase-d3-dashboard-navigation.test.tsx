@@ -131,9 +131,18 @@ describe("Phase D3 dashboard operational navigation", () => {
     expect(MOBILE_TILES.slice(0, 3).map((tile) => tile.title)).toEqual([
       "Shop Overview",
       "Work Order Board",
-      "Attendance & Activity",
+      "My Work Orders",
     ]);
-    expect(duplicateCount(MOBILE_TILES.map((tile) => tile.href), "/mobile/work-orders")).toBe(1);
+    expect(
+      MOBILE_TILES.filter((tile) => tile.href === "/mobile/work-orders").every(
+        (tile, index, matching) =>
+          matching.every(
+            (other, otherIndex) =>
+              index === otherIndex ||
+              !tile.roles.some((role) => other.roles.includes(role)),
+          ),
+      ),
+    ).toBe(true);
     expect(duplicateCount(MOBILE_TILES.map((tile) => tile.href), "/mobile/workforce/attendance")).toBe(1);
   });
 

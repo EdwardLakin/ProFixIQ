@@ -80,7 +80,7 @@ describe("ProFixIQ-Agent team authentication contract", () => {
     expect(bridgeMoveMigrationSource).toContain("'kind', 'profixiq_agent_bridge'");
     expect(bridgeMoveMigrationSource).toContain("shop_id = null");
     expect(bridgeMoveMigrationSource).toContain(
-      "drop table public.agent_bridge_credentials",
+      "drop table if exists public.agent_bridge_credentials",
     );
   });
 

@@ -13,6 +13,9 @@ const signaturePanel = read(
   "features/inspections/components/inspection/InspectionSignaturePanel.tsx",
 );
 const finalizeRoute = read("app/api/inspections/finalize/pdf/route.ts");
+const publishInspectionPdf = read(
+  "features/inspections/server/publishInspectionPdf.ts",
+);
 const findings = read("features/inspections/lib/inspection/findings/page.tsx");
 const desktopSettings = read("app/dashboard/tech/settings/page.tsx");
 const mobileSettings = read(
@@ -45,7 +48,7 @@ describe("inspection live autosave and saved signatures", () => {
     expect(loadRoute).toContain("locked: Boolean(inspectionRow?.locked)");
     expect(autosave).toContain('"postgres_changes"');
     expect(autosave).toContain('table: "inspections"');
-    expect(autosave).toContain("remoteShouldReplace");
+    expect(autosave).toContain("remoteInspectionShouldReplace");
     expect(migration).toContain(
       "alter publication supabase_realtime add table",
     );
@@ -106,8 +109,9 @@ describe("inspection live autosave and saved signatures", () => {
     expect(migration).toContain(
       "create or replace function public.finalize_inspection_pdf_atomic",
     );
-    expect(finalizeRoute).toContain('createHash("sha256")');
-    expect(finalizeRoute).toContain("upsert: false");
+    expect(finalizeRoute).toContain("publishInspectionPdf");
+    expect(publishInspectionPdf).toContain('createHash("sha256")');
+    expect(publishInspectionPdf).toContain("upsert: false");
     expect(finalizeRoute).toContain('"finalize_inspection_pdf_atomic"');
     expect(finalizeRoute).toContain("expectedSyncRevision");
     expect(finalizeRoute).not.toContain('.eq("updated_at", insp.updated_at)');

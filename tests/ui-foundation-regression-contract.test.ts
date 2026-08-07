@@ -36,7 +36,7 @@ describe("premium UI foundation regressions", () => {
       "orange",
     ]) {
       expect(globals).toContain(
-        `html[data-theme-mode="light"] [class*="rounded"][class~="text-${color}`,
+        `html[data-theme-mode="light"] [class*="rounded"][class*="text-${color}-"]`,
       );
     }
 

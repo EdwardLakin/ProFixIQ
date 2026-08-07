@@ -8,6 +8,9 @@ const migration = read(
 );
 const loadRoute = read("app/api/inspections/load/route.ts");
 const finalizeRoute = read("app/api/inspections/finalize/pdf/route.ts");
+const publishInspectionPdf = read(
+  "features/inspections/server/publishInspectionPdf.ts",
+);
 const reopenRoute = read("app/api/inspections/reopen/route.ts");
 
 describe("inspection release-blocker hardening", () => {
@@ -69,10 +72,11 @@ describe("inspection release-blocker hardening", () => {
   });
 
   it("keeps finalized PDF objects immutable and content addressed", () => {
-    expect(finalizeRoute).toContain('createHash("sha256")');
-    expect(finalizeRoute).toContain("_${pdfHash}.pdf");
-    expect(finalizeRoute).toContain("upsert: false");
-    expect(finalizeRoute).not.toContain("upsert: true");
+    expect(finalizeRoute).toContain("publishInspectionPdf");
+    expect(publishInspectionPdf).toContain('createHash("sha256")');
+    expect(publishInspectionPdf).toContain("_${sha256}.pdf");
+    expect(publishInspectionPdf).toContain("upsert: false");
+    expect(publishInspectionPdf).not.toContain("upsert: true");
   });
 
   it("uses the explicitly marked canonical row for finalization", () => {
