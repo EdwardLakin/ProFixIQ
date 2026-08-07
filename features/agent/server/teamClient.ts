@@ -7,12 +7,6 @@ const AGENT_SERVICE_URL = String(process.env.PROFIXIQ_AGENT_URL ?? "")
 const BRIDGE_INTEGRATION_ID = "7c2da329-5117-48c0-a1ee-d51b5d63827d";
 const BRIDGE_INTEGRATION_KIND = "profixiq_agent_bridge";
 
-const bridgeSupabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  { auth: { persistSession: false, autoRefreshToken: false } },
-);
-
 export type AgentTeamRequestStatus =
   | "submitted"
   | "in_progress"
@@ -216,6 +210,13 @@ function missionApprovalSummary(
 }
 
 async function readBridgeSecret(): Promise<string> {
+  const supabaseUrl = nullableString(process.env.NEXT_PUBLIC_SUPABASE_URL);
+  const serviceRoleKey = nullableString(process.env.SUPABASE_SERVICE_ROLE_KEY);
+  if (!supabaseUrl || !serviceRoleKey) return "";
+
+  const bridgeSupabase = createClient(supabaseUrl, serviceRoleKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
   const result = await bridgeSupabase
     .from("integrations")
     .select("config")
