@@ -194,6 +194,56 @@ export type Database = {
           },
         ]
       }
+      agent_human_approval_intents: {
+        Row: {
+          approval_kind: string
+          approver_user_id: string
+          consumed_at: string | null
+          created_at: string
+          engineering_case_id: string
+          expires_at: string
+          id: string
+          metadata: Json
+          mission_id: string | null
+          request_id: string
+          token_sha256: string
+        }
+        Insert: {
+          approval_kind: string
+          approver_user_id: string
+          consumed_at?: string | null
+          created_at?: string
+          engineering_case_id: string
+          expires_at: string
+          id?: string
+          metadata?: Json
+          mission_id?: string | null
+          request_id: string
+          token_sha256: string
+        }
+        Update: {
+          approval_kind?: string
+          approver_user_id?: string
+          consumed_at?: string | null
+          created_at?: string
+          engineering_case_id?: string
+          expires_at?: string
+          id?: string
+          metadata?: Json
+          mission_id?: string | null
+          request_id?: string
+          token_sha256?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_human_approval_intents_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "agent_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       agent_jobs: {
         Row: {
           attempts: number
@@ -3244,7 +3294,6 @@ export type Database = {
           shop_id: string | null
           shop_name: string
           snapshot: Json
-          updated_at: string
         }
         Insert: {
           country?: string
@@ -3255,7 +3304,6 @@ export type Database = {
           shop_id?: string | null
           shop_name: string
           snapshot?: Json
-          updated_at?: string
         }
         Update: {
           country?: string
@@ -3266,7 +3314,6 @@ export type Database = {
           shop_id?: string | null
           shop_name?: string
           snapshot?: Json
-          updated_at?: string
         }
         Relationships: [
           {
@@ -3372,10 +3419,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           delivered_at: string | null
-          email: string
-          error: string | null
           error_text: string | null
-          event_type: string
           id: string
           last_event_at: string | null
           last_event_type: string | null
@@ -3383,23 +3427,18 @@ export type Database = {
           provider: string
           provider_message_id: string | null
           sent_at: string | null
-          sg_event_id: string | null
           shop_id: string
           status: string
           subject: string | null
           template_id: string | null
           template_key: string
-          timestamp: string
           to_email: string
         }
         Insert: {
           created_at?: string
           created_by?: string | null
           delivered_at?: string | null
-          email: string
-          error?: string | null
           error_text?: string | null
-          event_type: string
           id?: string
           last_event_at?: string | null
           last_event_type?: string | null
@@ -3407,23 +3446,18 @@ export type Database = {
           provider?: string
           provider_message_id?: string | null
           sent_at?: string | null
-          sg_event_id?: string | null
           shop_id: string
           status?: string
           subject?: string | null
           template_id?: string | null
           template_key: string
-          timestamp: string
           to_email: string
         }
         Update: {
           created_at?: string
           created_by?: string | null
           delivered_at?: string | null
-          email?: string
-          error?: string | null
           error_text?: string | null
-          event_type?: string
           id?: string
           last_event_at?: string | null
           last_event_type?: string | null
@@ -3431,13 +3465,11 @@ export type Database = {
           provider?: string
           provider_message_id?: string | null
           sent_at?: string | null
-          sg_event_id?: string | null
           shop_id?: string
           status?: string
           subject?: string | null
           template_id?: string | null
           template_key?: string
-          timestamp?: string
           to_email?: string
         }
         Relationships: [
@@ -4023,6 +4055,13 @@ export type Database = {
             foreignKeyName: "fleet_defect_clarifications_shop_id_fkey"
             columns: ["shop_id"]
             isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_defect_clarifications_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
             referencedRelation: "shops"
             referencedColumns: ["id"]
           },
@@ -4223,6 +4262,13 @@ export type Database = {
             foreignKeyName: "fleet_driver_evidence_shop_id_fkey"
             columns: ["shop_id"]
             isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_driver_evidence_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
             referencedRelation: "shops"
             referencedColumns: ["id"]
           },
@@ -4315,7 +4361,6 @@ export type Database = {
           created_at: string
           created_by: string | null
           fleet_id: string
-          id: string
           role: string
           shop_id: string
           updated_at: string
@@ -4325,7 +4370,6 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           fleet_id: string
-          id?: string
           role?: string
           shop_id: string
           updated_at?: string
@@ -4335,7 +4379,6 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           fleet_id?: string
-          id?: string
           role?: string
           shop_id?: string
           updated_at?: string
@@ -4361,6 +4404,13 @@ export type Database = {
             columns: ["shop_id"]
             isOneToOne: false
             referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_members_user_fk"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -4998,6 +5048,13 @@ export type Database = {
             foreignKeyName: "fleet_pretrip_template_assignments_shop_id_fkey"
             columns: ["shop_id"]
             isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_pretrip_template_assignments_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
             referencedRelation: "shops"
             referencedColumns: ["id"]
           },
@@ -5488,8 +5545,8 @@ export type Database = {
           description: string | null
           fleet_id: string
           id: string
-          label: string
           intake_required: boolean
+          label: string
           marks_vehicle_attention: boolean
           notify_dispatcher: boolean
           reported_at: string
@@ -5517,8 +5574,8 @@ export type Database = {
           description?: string | null
           fleet_id: string
           id?: string
-          label: string
           intake_required?: boolean
+          label: string
           marks_vehicle_attention?: boolean
           notify_dispatcher?: boolean
           reported_at?: string
@@ -5546,8 +5603,8 @@ export type Database = {
           description?: string | null
           fleet_id?: string
           id?: string
-          label?: string
           intake_required?: boolean
+          label?: string
           marks_vehicle_attention?: boolean
           notify_dispatcher?: boolean
           reported_at?: string
@@ -7820,7 +7877,6 @@ export type Database = {
           currency: string
           customer_id: string | null
           discount_total: number
-          due_at: string | null
           due_date: string | null
           id: string
           invoice_number: string | null
@@ -7850,7 +7906,6 @@ export type Database = {
           currency?: string
           customer_id?: string | null
           discount_total?: number
-          due_at?: string | null
           due_date?: string | null
           id?: string
           invoice_number?: string | null
@@ -7880,7 +7935,6 @@ export type Database = {
           currency?: string
           customer_id?: string | null
           discount_total?: number
-          due_at?: string | null
           due_date?: string | null
           id?: string
           invoice_number?: string | null
@@ -9166,7 +9220,6 @@ export type Database = {
       messages: {
         Row: {
           attachments: Json
-          chat_id: string | null
           client_message_id: string | null
           content: string
           conversation_id: string | null
@@ -9184,7 +9237,6 @@ export type Database = {
         }
         Insert: {
           attachments?: Json
-          chat_id?: string | null
           client_message_id?: string | null
           content: string
           conversation_id?: string | null
@@ -9202,7 +9254,6 @@ export type Database = {
         }
         Update: {
           attachments?: Json
-          chat_id?: string | null
           client_message_id?: string | null
           content?: string
           conversation_id?: string | null
@@ -9219,13 +9270,6 @@ export type Database = {
           sent_at?: string | null
         }
         Relationships: [
-          {
-            foreignKeyName: "messages_chat_id_fkey"
-            columns: ["chat_id"]
-            isOneToOne: false
-            referencedRelation: "chats"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "messages_conversation_id_fkey"
             columns: ["conversation_id"]
@@ -11455,15 +11499,11 @@ export type Database = {
           customer_id: string | null
           description: string | null
           id: string
-          invoice_id: string | null
           invoice_version_id: string | null
           metadata: Json
           paid_at: string | null
           payment_event_id: string | null
-          payment_method: string | null
           platform_fee_cents: number
-          processor: string | null
-          processor_payment_id: string | null
           shop_id: string
           status: string
           stripe_charge_id: string | null
@@ -11484,15 +11524,11 @@ export type Database = {
           customer_id?: string | null
           description?: string | null
           id?: string
-          invoice_id?: string | null
           invoice_version_id?: string | null
           metadata?: Json
           paid_at?: string | null
           payment_event_id?: string | null
-          payment_method?: string | null
           platform_fee_cents?: number
-          processor?: string | null
-          processor_payment_id?: string | null
           shop_id: string
           status?: string
           stripe_charge_id?: string | null
@@ -11513,15 +11549,11 @@ export type Database = {
           customer_id?: string | null
           description?: string | null
           id?: string
-          invoice_id?: string | null
           invoice_version_id?: string | null
           metadata?: Json
           paid_at?: string | null
           payment_event_id?: string | null
-          payment_method?: string | null
           platform_fee_cents?: number
-          processor?: string | null
-          processor_payment_id?: string | null
           shop_id?: string
           status?: string
           stripe_charge_id?: string | null
@@ -11534,13 +11566,6 @@ export type Database = {
           work_order_line_id?: string | null
         }
         Relationships: [
-          {
-            foreignKeyName: "payments_invoice_id_fkey"
-            columns: ["invoice_id"]
-            isOneToOne: false
-            referencedRelation: "invoices"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "payments_invoice_version_id_fkey"
             columns: ["invoice_version_id"]
@@ -18270,6 +18295,9 @@ export type Database = {
           auto_generate_pdf: boolean | null
           auto_send_quote_email: boolean | null
           billable_user_count: number
+          billing_entitlement_override: string | null
+          billing_entitlement_updated_at: string
+          billing_grace_until: string | null
           business_name: string | null
           city: string | null
           country: string | null
@@ -18286,6 +18314,7 @@ export type Database = {
           invoice_footer: string | null
           invoice_terms: string | null
           labor_rate: number | null
+          location_type: string
           logo_url: string | null
           max_lead_days: number | null
           max_users: number | null
@@ -18347,6 +18376,9 @@ export type Database = {
           auto_generate_pdf?: boolean | null
           auto_send_quote_email?: boolean | null
           billable_user_count?: number
+          billing_entitlement_override?: string | null
+          billing_entitlement_updated_at?: string
+          billing_grace_until?: string | null
           business_name?: string | null
           city?: string | null
           country?: string | null
@@ -18363,6 +18395,7 @@ export type Database = {
           invoice_footer?: string | null
           invoice_terms?: string | null
           labor_rate?: number | null
+          location_type?: string
           logo_url?: string | null
           max_lead_days?: number | null
           max_users?: number | null
@@ -18424,6 +18457,9 @@ export type Database = {
           auto_generate_pdf?: boolean | null
           auto_send_quote_email?: boolean | null
           billable_user_count?: number
+          billing_entitlement_override?: string | null
+          billing_entitlement_updated_at?: string
+          billing_grace_until?: string | null
           business_name?: string | null
           city?: string | null
           country?: string | null
@@ -18440,6 +18476,7 @@ export type Database = {
           invoice_footer?: string | null
           invoice_terms?: string | null
           labor_rate?: number | null
+          location_type?: string
           logo_url?: string | null
           max_lead_days?: number | null
           max_users?: number | null
@@ -21868,8 +21905,6 @@ export type Database = {
           urgency: string | null
           user_id: string | null
           vehicle_id: string | null
-          void_note: string | null
-          void_reason: string | null
           voided_at: string | null
           voided_by: string | null
           voided_note: string | null
@@ -21934,8 +21969,6 @@ export type Database = {
           urgency?: string | null
           user_id?: string | null
           vehicle_id?: string | null
-          void_note?: string | null
-          void_reason?: string | null
           voided_at?: string | null
           voided_by?: string | null
           voided_note?: string | null
@@ -22000,8 +22033,6 @@ export type Database = {
           urgency?: string | null
           user_id?: string | null
           vehicle_id?: string | null
-          void_note?: string | null
-          void_reason?: string | null
           voided_at?: string | null
           voided_by?: string | null
           voided_note?: string | null
@@ -22705,13 +22736,11 @@ export type Database = {
           grand_total: number | null
           group_id: string | null
           id: string
-          inspection_item_id: string | null
           job_type: string
           labor_hours: number | null
           labor_rate: number | null
           labor_total: number | null
           line_type: string
-          menu_item_id: string | null
           metadata: Json | null
           notes: string | null
           parts_total: number | null
@@ -22756,13 +22785,11 @@ export type Database = {
           grand_total?: number | null
           group_id?: string | null
           id?: string
-          inspection_item_id?: string | null
           job_type?: string
           labor_hours?: number | null
           labor_rate?: number | null
           labor_total?: number | null
           line_type?: string
-          menu_item_id?: string | null
           metadata?: Json | null
           notes?: string | null
           parts_total?: number | null
@@ -22807,13 +22834,11 @@ export type Database = {
           grand_total?: number | null
           group_id?: string | null
           id?: string
-          inspection_item_id?: string | null
           job_type?: string
           labor_hours?: number | null
           labor_rate?: number | null
           labor_total?: number | null
           line_type?: string
-          menu_item_id?: string | null
           metadata?: Json | null
           notes?: string | null
           parts_total?: number | null
@@ -22836,20 +22861,6 @@ export type Database = {
           work_order_line_id?: string | null
         }
         Relationships: [
-          {
-            foreignKeyName: "work_order_quote_lines_inspection_item_id_fkey"
-            columns: ["inspection_item_id"]
-            isOneToOne: false
-            referencedRelation: "inspection_items"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "work_order_quote_lines_menu_item_id_fkey"
-            columns: ["menu_item_id"]
-            isOneToOne: false
-            referencedRelation: "menu_items"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "work_order_quote_lines_shop_id_fkey"
             columns: ["shop_id"]
@@ -24574,11 +24585,7 @@ export type Database = {
       }
       agent_can_start: { Args: never; Returns: boolean }
       agent_reject_action: {
-        Args: {
-          p_action_id: string
-          p_reason?: string
-          p_rejected_by?: string
-        }
+        Args: { p_action_id: string; p_reason?: string; p_rejected_by?: string }
         Returns: {
           approved_at: string | null
           approved_by: string | null
@@ -24992,10 +24999,6 @@ export type Database = {
         Args: { _recipients: string[]; _sender: string }
         Returns: string
       }
-      chat_post_message: {
-        Args: { _chat_id?: string; _content: string; _recipients: string[] }
-        Returns: string
-      }
       check_plan_limit: { Args: { _feature: string }; Returns: boolean }
       claim_financial_outbox_batch: {
         Args: {
@@ -25151,6 +25154,16 @@ export type Database = {
       }
       complete_stripe_webhook_event: {
         Args: { p_claim_token: string; p_event_id: string }
+        Returns: boolean
+      }
+      consume_agent_human_approval_intent: {
+        Args: {
+          p_approval_kind: string
+          p_approver_user_id: string
+          p_engineering_case_id: string
+          p_mission_id?: string
+          p_token_sha256: string
+        }
         Returns: boolean
       }
       consume_ai_route_quota: {
@@ -25592,6 +25605,17 @@ export type Database = {
       is_shop_member: { Args: { p_shop: string }; Returns: boolean }
       is_shop_member_v2: { Args: { shop_id: string }; Returns: boolean }
       is_staff_for_shop: { Args: { _shop: string }; Returns: boolean }
+      manage_fleet_driver_intake: {
+        Args: {
+          p_action: string
+          p_action_date?: string
+          p_defect_ids: string[]
+          p_reason?: string
+          p_resolution_code?: string
+          p_response_type?: string
+        }
+        Returns: Json
+      }
       manage_fleet_pm_program: {
         Args: {
           p_action: string
@@ -25608,17 +25632,6 @@ export type Database = {
           p_requires_fleet_approval: boolean
           p_tasks: Json
           p_vehicle_ids: string[]
-        }
-        Returns: Json
-      }
-      manage_fleet_driver_intake: {
-        Args: {
-          p_action: string
-          p_action_date?: string
-          p_defect_ids: string[]
-          p_reason?: string
-          p_resolution_code?: string
-          p_response_type?: string
         }
         Returns: Json
       }
@@ -25664,39 +25677,6 @@ export type Database = {
         }
         Returns: Json
       }
-      respond_fleet_defect_clarification: {
-        Args: {
-          p_clarification_id: string
-          p_evidence: Json
-          p_response_text?: string | null
-        }
-        Returns: Json
-      }
-      save_fleet_pretrip_template: {
-        Args: {
-          p_failure_config: Json
-          p_fleet_id: string
-          p_name: string
-          p_operation_key: string
-          p_sections: Json
-          p_vehicle_type: string
-        }
-        Returns: Json
-      }
-      submit_fleet_pretrip_report: {
-        Args: {
-          p_checklist: Json
-          p_evidence: Json
-          p_fleet_id: string
-          p_notes?: string | null
-          p_odometer_km?: number | null
-          p_report_id: string
-          p_template_assignment_id?: string | null
-          p_trailer_vehicle_id?: string | null
-          p_vehicle_id: string
-        }
-        Returns: Json
-      }
       mark_active: { Args: never; Returns: undefined }
       mark_all_portal_notifications_read: { Args: never; Returns: number }
       mark_financial_outbox_delivery_ambiguous: {
@@ -25718,11 +25698,7 @@ export type Database = {
         Returns: Json
       }
       match_learned_job_templates: {
-        Args: {
-          p_embedding: string
-          p_match_count?: number
-          p_shop_id: string
-        }
+        Args: { p_embedding: string; p_match_count?: number; p_shop_id: string }
         Returns: {
           confidence_score: number
           default_labor_hours: number
@@ -25736,11 +25712,7 @@ export type Database = {
         }[]
       }
       match_work_order_intelligence: {
-        Args: {
-          p_embedding: string
-          p_match_count?: number
-          p_shop_id: string
-        }
+        Args: { p_embedding: string; p_match_count?: number; p_shop_id: string }
         Returns: {
           cause: string
           complaint: string
@@ -26377,6 +26349,14 @@ export type Database = {
         }
         Returns: Json
       }
+      respond_fleet_defect_clarification: {
+        Args: {
+          p_clarification_id: string
+          p_evidence: Json
+          p_response_text: string
+        }
+        Returns: Json
+      }
       return_estimate_to_parts_atomic: {
         Args: {
           p_expected_revision: number
@@ -26411,6 +26391,17 @@ export type Database = {
           p_notes: string
           p_shop_id: string
           p_work_order_id: string
+        }
+        Returns: Json
+      }
+      save_fleet_pretrip_template: {
+        Args: {
+          p_failure_config: Json
+          p_fleet_id: string
+          p_name: string
+          p_operation_key: string
+          p_sections: Json
+          p_vehicle_type: string
         }
         Returns: Json
       }
@@ -26655,6 +26646,20 @@ export type Database = {
           p_idempotency_key: string
           p_shop_id: string
           p_work_order_id: string
+        }
+        Returns: Json
+      }
+      submit_fleet_pretrip_report: {
+        Args: {
+          p_checklist: Json
+          p_evidence: Json
+          p_fleet_id: string
+          p_notes: string
+          p_odometer_km: number
+          p_report_id: string
+          p_template_assignment_id: string
+          p_trailer_vehicle_id: string
+          p_vehicle_id: string
         }
         Returns: Json
       }
@@ -27434,3 +27439,4 @@ export const Constants = {
     },
   },
 } as const
+
