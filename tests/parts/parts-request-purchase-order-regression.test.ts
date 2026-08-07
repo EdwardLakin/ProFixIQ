@@ -121,6 +121,9 @@ describe("parts request purchase-order regression contract", () => {
     expect(migration).toContain("line.idempotency_key = p_idempotency_key");
     expect(migration).toContain("v_operation.result := v_operation.result");
     expect(migration).toContain("'_request', v_request_payload");
+    expect(migration).toContain(
+      "if v_operation_was_visible\n     and p_supplier_id is not null",
+    );
     expect(migration).toContain("'work_order_part_id', v_existing_wop_id");
     expect(migration).toContain("for update;");
     expect(migration).toContain("'draft'");

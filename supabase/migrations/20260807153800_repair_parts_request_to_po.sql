@@ -721,6 +721,17 @@ begin
       errcode = '42501',
       message = 'Purchase order supplier belongs to a different shop.';
   end if;
+  -- A committed operation key already owns its durable PO target. Report a
+  -- changed supplier as an idempotency conflict before the generic PO-target
+  -- validation so legacy receipts get the same stable replay contract as
+  -- receipts that already carry an explicit _request payload.
+  if v_operation_was_visible
+     and p_supplier_id is not null
+     and v_po.supplier_id is distinct from p_supplier_id then
+    raise exception using
+      errcode = '22023',
+      message = 'PARTS_ORDER_IDEMPOTENCY_CONFLICT';
+  end if;
   if v_po_id is not null
      and p_supplier_id is not null
      and v_po.supplier_id is distinct from p_supplier_id then
