@@ -1296,6 +1296,37 @@ select pg_temp.expect_ordered_attach_error(
   'PARTS_ORDERED_FREE_TEXT_ATTACH_BLOCKED'
 );
 
+select pg_temp.expect_free_text_receipt_error(
+  (
+    select line.po_id
+    from public.purchase_order_lines line
+    where line.part_request_item_id =
+      '75000000-0000-4000-8000-000000000003'
+  ),
+  (
+    select line.id
+    from public.purchase_order_lines line
+    where line.part_request_item_id =
+      '75000000-0000-4000-8000-000000000003'
+  ),
+  0.001,
+  '7a000000-0000-4000-8000-000000000001:parts-receipt:over-precision',
+  'PARTS_RECEIPT_QUANTITY_PRECISION'
+);
+
+do $$
+begin
+  if exists (
+    select 1
+    from public.parts_lifecycle_operations operation
+    where operation.idempotency_key =
+      '7a000000-0000-4000-8000-000000000001:parts-receipt:over-precision'
+  ) then
+    raise exception 'Over-precision receipt wrote an operation receipt';
+  end if;
+end;
+$$;
+
 insert into parts_request_to_po_results (attempt, result)
 select
   'manual_receipt_first',

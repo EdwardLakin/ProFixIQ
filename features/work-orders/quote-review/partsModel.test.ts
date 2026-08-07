@@ -200,6 +200,67 @@ describe("Quote Review parts model", () => {
     });
   });
 
+  it("preserves a procured zero-margin acquisition cost", () => {
+    const selected: CatalogPart = {
+      id: "part-1",
+      name: "Procured part",
+      sku: "PROCURED-1",
+      part_number: "PROCURED-1",
+      supplier: "Supplier",
+      cost: 40,
+      default_cost: 35,
+      price: 80,
+      default_price: 75,
+    };
+    const [part] = resolveQuoteLineParts({
+      line: quoteLine(),
+      liveItems: [
+        liveItem({
+          part_id: selected.id,
+          po_id: "po-1",
+          qty_ordered: 1,
+          unit_cost: 80,
+          quoted_price: 80,
+        }),
+      ],
+      selectedParts: new Map([[selected.id, selected]]),
+    });
+
+    expect(part).toMatchObject({
+      unitCost: 80,
+      unitSellPrice: 80,
+      costLineTotal: 80,
+      sellLineTotal: 80,
+    });
+  });
+
+  it("still rejects an unprocured legacy sell mirror as acquisition cost", () => {
+    const selected: CatalogPart = {
+      id: "part-1",
+      name: "Unprocured part",
+      sku: "UNPROCURED-1",
+      part_number: "UNPROCURED-1",
+      supplier: "Supplier",
+      cost: 40,
+      default_cost: 35,
+      price: 80,
+      default_price: 75,
+    };
+    const [part] = resolveQuoteLineParts({
+      line: quoteLine(),
+      liveItems: [
+        liveItem({
+          part_id: selected.id,
+          unit_cost: 80,
+          quoted_price: 80,
+        }),
+      ],
+      selectedParts: new Map([[selected.id, selected]]),
+    });
+
+    expect(part.unitCost).toBe(40);
+  });
+
   it("does not let a canceled live batch override active synced metadata", () => {
     const parts = resolveQuoteLineParts({
       line: quoteLine({

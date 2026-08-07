@@ -87,7 +87,7 @@ describe("inspection sign and portal approval regressions", () => {
     expect(selectCustomerVisibleQuoteParts(metadata, false)).toEqual(requested);
   });
 
-  it("hides quarantined protected item pricing instead of displaying $0 or stale parts", () => {
+  it("keeps quarantined descriptions while removing every customer item price", () => {
     const metadata = {
       parts: [{ description: "Legacy snapshot", qty: 1, unitPrice: 80 }],
       parts_quote: {
@@ -107,7 +107,36 @@ describe("inspection sign and portal approval regressions", () => {
       },
     };
 
-    expect(selectCustomerVisibleQuoteParts(metadata, true)).toEqual([]);
-    expect(selectCustomerVisibleQuoteParts(metadata, false)).toEqual([]);
+    const expected = [
+      {
+        description: "Protected item",
+        qty: 1,
+        unit_price: null,
+        line_total: null,
+        pricing_unavailable: true,
+      },
+    ];
+    expect(selectCustomerVisibleQuoteParts(metadata, true)).toEqual(expected);
+    expect(selectCustomerVisibleQuoteParts(metadata, false)).toEqual(expected);
+    expect(JSON.stringify(expected)).not.toContain("Legacy snapshot");
+    expect(JSON.stringify(expected)).not.toContain("80");
+  });
+
+  it("uses remediated canonical items even for non-estimate portal quotes", () => {
+    const remediated = [
+      { description: "Protected item", qty: 1, unit_price: 80, line_total: 80 },
+    ];
+    const metadata = {
+      parts: [{ description: "Stale snapshot", qty: 1 }],
+      parts_quote: {
+        items: remediated,
+        pricing_sanitization: {
+          customer_pricing_quarantined: false,
+          customer_pricing_remediated: true,
+        },
+      },
+    };
+
+    expect(selectCustomerVisibleQuoteParts(metadata, false)).toEqual(remediated);
   });
 });

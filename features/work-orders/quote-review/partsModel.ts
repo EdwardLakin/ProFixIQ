@@ -179,7 +179,16 @@ function fromLiveItem(item: PartRequestItem, selectedPart: CatalogPart | null): 
     selectedPart?.cost,
     selectedPart?.default_cost,
   );
-  const unitCost = sameMoney(requestUnitCost, unitSellPrice)
+  const procurementEstablished =
+    Boolean(safeString(item.po_id)) ||
+    Math.max(
+      asNumber(item.qty_ordered) ?? 0,
+      asNumber(item.qty_received) ?? 0,
+      0,
+    ) > 0;
+  const requestCostLooksLikeLegacySellMirror =
+    !procurementEstablished && sameMoney(requestUnitCost, unitSellPrice);
+  const unitCost = requestCostLooksLikeLegacySellMirror
     ? catalogUnitCost
     : requestUnitCost ?? catalogUnitCost;
   return {

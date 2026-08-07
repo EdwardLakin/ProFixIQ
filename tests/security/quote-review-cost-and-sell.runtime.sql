@@ -1450,6 +1450,138 @@ begin
 end;
 $$;
 
+-- A trusted, service-role-only remediation restores exact customer sell detail
+-- without changing the protected decision totals or lifecycle state.
+select set_config('request.jwt.claims', '', true);
+select set_config('request.jwt.claim.role', '', true);
+
+do $$
+declare
+  v_before public.work_order_quote_lines%rowtype;
+  v_after public.work_order_quote_lines%rowtype;
+  v_result jsonb;
+  v_replay jsonb;
+  v_conflict boolean := false;
+begin
+  select *
+    into strict v_before
+  from public.work_order_quote_lines
+  where id = '40400000-0000-4000-8000-000000000002';
+
+  v_result := public.remediate_quote_line_pricing_quarantine(
+    '40200000-0000-4000-8000-000000000001',
+    '40400000-0000-4000-8000-000000000002',
+    '40100000-0000-4000-8000-000000000001',
+    jsonb_build_array(jsonb_build_object(
+      'id', '40700000-0000-4000-8000-000000000003',
+      'description', 'Protected sent sentinel',
+      'qty', 1,
+      'unit_price', 40
+    )),
+    'quote-cost-sell-remediation-1',
+    'Runtime verified finalized customer pricing'
+  );
+
+  select *
+    into strict v_after
+  from public.work_order_quote_lines
+  where id = '40400000-0000-4000-8000-000000000002';
+
+  if coalesce((v_result ->> 'ok')::boolean, false) is not true
+     or coalesce((v_result ->> 'idempotent')::boolean, true) is not false then
+    raise exception 'Pricing remediation did not return a first-write result: %',
+      v_result;
+  end if;
+  if v_after.parts_total is distinct from v_before.parts_total
+     or v_after.subtotal is distinct from v_before.subtotal
+     or v_after.grand_total is distinct from v_before.grand_total
+     or v_after.status is distinct from v_before.status
+     or v_after.stage is distinct from v_before.stage
+     or v_after.sent_to_customer_at is distinct from v_before.sent_to_customer_at then
+    raise exception 'Pricing remediation changed durable decision state or totals';
+  end if;
+  if coalesce(
+    (v_after.metadata -> 'parts_quote' -> 'pricing_sanitization'
+      ->> 'customer_pricing_quarantined')::boolean,
+    true
+  ) is not false
+     or coalesce(
+       (v_after.metadata -> 'parts_quote' -> 'pricing_sanitization'
+         ->> 'customer_pricing_remediated')::boolean,
+       false
+     ) is not true then
+    raise exception 'Pricing remediation did not clear and audit quarantine: %',
+      v_after.metadata -> 'parts_quote' -> 'pricing_sanitization';
+  end if;
+  if v_after.metadata -> 'parts_quote' -> 'items' -> 0 ->> 'unit_price'
+       is distinct from '40'
+     or v_after.metadata -> 'parts_quote' -> 'items' -> 0 ->> 'line_total'
+       is distinct from '40' then
+    raise exception 'Pricing remediation did not restore exact customer sell detail: %',
+      v_after.metadata -> 'parts_quote' -> 'items';
+  end if;
+  if (v_after.metadata -> 'parts' -> 0) ?| array[
+    'unit_cost', 'unitCost', 'cost', 'default_cost',
+    'unit_price', 'unitPrice', 'price', 'line_total'
+  ] then
+    raise exception 'Pricing remediation leaked commercial values to legacy snapshots: %',
+      v_after.metadata -> 'parts';
+  end if;
+  if not exists (
+    select 1
+    from public.operational_events event
+    where event.shop_id = '40200000-0000-4000-8000-000000000001'
+      and event.event_type = 'quote.pricing_quarantine.remediated'
+      and event.entity_id = '40400000-0000-4000-8000-000000000002'
+      and event.idempotency_key =
+        'quote-pricing-remediation:quote-cost-sell-remediation-1'
+  ) then
+    raise exception 'Pricing remediation audit event is missing';
+  end if;
+
+  v_replay := public.remediate_quote_line_pricing_quarantine(
+    '40200000-0000-4000-8000-000000000001',
+    '40400000-0000-4000-8000-000000000002',
+    '40100000-0000-4000-8000-000000000001',
+    jsonb_build_array(jsonb_build_object(
+      'id', '40700000-0000-4000-8000-000000000003',
+      'description', 'Protected sent sentinel',
+      'qty', 1,
+      'unit_price', 40
+    )),
+    'quote-cost-sell-remediation-1',
+    'Runtime verified finalized customer pricing'
+  );
+  if coalesce((v_replay ->> 'idempotent')::boolean, false) is not true then
+    raise exception 'Pricing remediation exact replay was not idempotent: %',
+      v_replay;
+  end if;
+
+  begin
+    perform public.remediate_quote_line_pricing_quarantine(
+      '40200000-0000-4000-8000-000000000001',
+      '40400000-0000-4000-8000-000000000002',
+      '40100000-0000-4000-8000-000000000001',
+      jsonb_build_array(jsonb_build_object(
+        'description', 'Changed replay',
+        'qty', 1,
+        'unit_price', 40
+      )),
+      'quote-cost-sell-remediation-1',
+      'Runtime verified finalized customer pricing'
+    );
+  exception when invalid_parameter_value then
+    if sqlerrm not like '%QUOTE_PRICING_REMEDIATION_IDEMPOTENCY_CONFLICT%' then
+      raise;
+    end if;
+    v_conflict := true;
+  end;
+  if not v_conflict then
+    raise exception 'Changed pricing remediation replay did not conflict';
+  end if;
+end;
+$$;
+
 do $$
 begin
   if has_function_privilege(
@@ -1478,6 +1610,24 @@ begin
     'execute'
   ) then
     raise exception 'Service role unexpectedly has direct private sanitizer access';
+  end if;
+  if has_function_privilege(
+    'anon',
+    'public.remediate_quote_line_pricing_quarantine(uuid,uuid,uuid,jsonb,text,text)',
+    'execute'
+  ) or has_function_privilege(
+    'authenticated',
+    'public.remediate_quote_line_pricing_quarantine(uuid,uuid,uuid,jsonb,text,text)',
+    'execute'
+  ) then
+    raise exception 'Untrusted role can execute quote pricing remediation';
+  end if;
+  if not has_function_privilege(
+    'service_role',
+    'public.remediate_quote_line_pricing_quarantine(uuid,uuid,uuid,jsonb,text,text)',
+    'execute'
+  ) then
+    raise exception 'Service role cannot execute quote pricing remediation';
   end if;
 end;
 $$;

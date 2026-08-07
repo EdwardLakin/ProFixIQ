@@ -36,6 +36,7 @@ function client(input: {
   quoteLines?: unknown[];
   workOrderLines?: unknown[];
   rpcData?: unknown;
+  operationReceipt?: unknown;
 }) {
   const quoteQuery = query({ data: input.quoteLines ?? [], error: null });
   const workOrderQuery = query({
@@ -46,9 +47,23 @@ function client(input: {
     data: input.rpcData ?? { ok: true },
     error: null,
   }));
+  const receiptQuery = {
+    select: vi.fn(),
+    eq: vi.fn(),
+    maybeSingle: vi.fn(async () => ({
+      data:
+        input.operationReceipt === undefined
+          ? null
+          : { result: input.operationReceipt },
+      error: null,
+    })),
+  };
+  receiptQuery.select.mockReturnValue(receiptQuery);
+  receiptQuery.eq.mockReturnValue(receiptQuery);
   const from = vi.fn((table: string) => {
     if (table === "work_order_quote_lines") return quoteQuery;
     if (table === "work_order_lines") return workOrderQuery;
+    if (table === "quote_lifecycle_operation_keys") return receiptQuery;
     throw new Error(`Unexpected table: ${table}`);
   });
 
@@ -57,6 +72,7 @@ function client(input: {
     from,
     quoteQuery,
     workOrderQuery,
+    receiptQuery,
     rpc,
   };
 }
@@ -213,6 +229,7 @@ describe("quote pricing quarantine server guard", () => {
       actorUserId: "actor-a",
       decision: "approve",
       operationKey: "stable-key",
+      operationReceiptSupabase: mock.supabase,
     });
 
     expect(result).toMatchObject({
@@ -245,6 +262,7 @@ describe("quote pricing quarantine server guard", () => {
       actorUserId: "actor-a",
       decision: "approve",
       operationKey: "stable-key",
+      operationReceiptSupabase: mock.supabase,
     });
 
     expect(result.ok).toBe(true);
@@ -253,5 +271,51 @@ describe("quote pricing quarantine server guard", () => {
       "apply_portal_quote_decision_atomic",
       expect.objectContaining({ p_quote_line_ids: ["quote-clean"] }),
     );
+  });
+
+  it("returns a durable decision replay before checking a later quarantine", async () => {
+    const mock = client({
+      quoteLines: [
+        {
+          id: "quote-1",
+          work_order_line_id: "work-line-1",
+          source_work_order_line_id: null,
+          status: "converted",
+          metadata: quarantinedMetadata,
+        },
+      ],
+      operationReceipt: {
+        ok: true,
+        work_order_line_ids: ["work-line-1"],
+        approval_state: "approved",
+        part_relink: { partRequestsRelinked: 1 },
+      },
+    });
+
+    const result = await applyWorkOrderQuoteLineDecision({
+      supabase: mock.supabase,
+      quoteLineIds: ["quote-1"],
+      workOrderId: "work-order-a",
+      shopId: "shop-a",
+      customerId: "customer-a",
+      actorUserId: "actor-a",
+      decision: "approve",
+      operationKey: "stable-key",
+      operationReceiptSupabase: mock.supabase,
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      idempotent: true,
+      approvalState: "approved",
+      workOrderLineIds: ["work-line-1"],
+      partRelink: { partRequestsRelinked: 1 },
+    });
+    expect(mock.receiptQuery.eq).toHaveBeenCalledWith(
+      "operation_key",
+      "shop-a:quote-decision:stable-key",
+    );
+    expect(mock.quoteQuery.select).not.toHaveBeenCalled();
+    expect(mock.rpc).not.toHaveBeenCalled();
   });
 });

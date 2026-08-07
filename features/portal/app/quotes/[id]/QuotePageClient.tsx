@@ -125,8 +125,9 @@ type DirectPartRow = Pick<
 type QuotePartView = {
   name: string;
   qty: number;
-  unitPrice: number;
-  total: number;
+  unitPrice: number | null;
+  total: number | null;
+  pricingUnavailable: boolean;
   meta: string | null;
 };
 
@@ -261,18 +262,20 @@ function getQuoteParts(
     )
     .map((part) => {
       const qty = asNumber(part.qty ?? part.quantity ?? 1) || 1;
-      const unitPrice = asNumber(
+      const unitPrice = nullableNumber(
         part.unitPrice ?? part.unit_price ?? part.quoted_price ?? part.price,
       );
       const total =
         nullableNumber(
           part.totalPrice ?? part.total_price ?? part.line_total ?? part.total,
-        ) ?? qty * unitPrice;
+        ) ?? (unitPrice == null ? null : qty * unitPrice);
       return {
         name: getPartName(part),
         qty,
         unitPrice,
         total,
+        pricingUnavailable:
+          part.pricing_unavailable === true || unitPrice == null,
         meta: getPartMeta(part),
       };
     });
@@ -499,7 +502,7 @@ export default function QuotePageClient(): JSX.Element {
           laborHours * (nullableNumber(metadata.labor_rate) ?? laborRate);
         const partsAmount =
           nullableNumber(line.parts_total) ??
-          parts.reduce((sum, part) => sum + part.total, 0);
+          parts.reduce((sum, part) => sum + (part.total ?? 0), 0);
         const laborAmount = nullableNumber(line.labor_total) ?? computedLabor;
         const subtotalAmount =
           nullableNumber(line.subtotal) ?? laborAmount + partsAmount;
@@ -618,6 +621,7 @@ export default function QuotePageClient(): JSX.Element {
               qty,
               unitPrice,
               total: nullableNumber(part.total_price) ?? qty * unitPrice,
+              pricingUnavailable: false,
               meta:
                 [
                   safeTrim(part.manufacturer_snapshot),
@@ -628,7 +632,7 @@ export default function QuotePageClient(): JSX.Element {
             };
           });
         const partsAmount = directParts.reduce(
-          (sum, part) => sum + part.total,
+          (sum, part) => sum + (part.total ?? 0),
           0,
         );
         const totalAmount = laborAmount + partsAmount;
@@ -1095,11 +1099,15 @@ export default function QuotePageClient(): JSX.Element {
                               ) : null}
                               <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
                                 Qty {part.qty} ×{" "}
-                                {formatCurrency(part.unitPrice)}
+                                {part.pricingUnavailable
+                                  ? "Pricing unavailable"
+                                  : formatCurrency(part.unitPrice)}
                               </div>
                             </div>
                             <div className="text-sm font-medium text-[color:var(--theme-text-primary)]">
-                              {formatCurrency(part.total)}
+                              {part.pricingUnavailable
+                                ? "—"
+                                : formatCurrency(part.total)}
                             </div>
                           </div>
                         </div>

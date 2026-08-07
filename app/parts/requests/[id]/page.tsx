@@ -89,6 +89,7 @@ type UiItem = ItemRow & {
   // PO assignment UI
   ui_po_id?: string; // derived from it.po_id (if exists) else ""
   ui_supplier_id?: string; // for create/select (optional helper)
+  ui_acquisition_cost?: number; // explicit supplier cost for legacy ordering
 };
 
 type CreateInventoryDraft = {
@@ -2775,13 +2776,41 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                                     {/* PO column */}
                                     <td className="px-3 py-2 align-top">
                                       <div className="grid gap-2">
+                                        <label className="grid gap-1 text-[11px] text-[color:var(--theme-text-muted)]">
+                                          Acquisition unit cost
+                                          <input
+                                            aria-label={`Acquisition unit cost for ${String(it.description ?? "part")}`}
+                                            type="number"
+                                            min={0}
+                                            step={0.01}
+                                            className={`${inputBase} w-[220px] py-1.5 text-right text-xs`}
+                                            value={
+                                              it.ui_acquisition_cost == null
+                                                ? ""
+                                                : String(it.ui_acquisition_cost)
+                                            }
+                                            onChange={(e) => {
+                                              const raw = e.target.value;
+                                              updateItem(r.req.id, String(it.id), {
+                                                ui_acquisition_cost:
+                                                  raw === "" ? undefined : Number(raw),
+                                              });
+                                            }}
+                                            disabled={rowBusy}
+                                          />
+                                        </label>
                                         <select
                                           className={`${selectBase} w-[220px] py-1.5`}
                                           value={uiPoId}
                                           onChange={(e) => {
                                             const next = e.target.value || "";
                                             if (next) {
-                                              void createPoLineForItem(it, next, null);
+                                              void createPoLineForItem(
+                                                it,
+                                                next,
+                                                null,
+                                                it.ui_acquisition_cost ?? null,
+                                              );
                                             } else {
                                               void clearItemPoAssignment(it);
                                             }
@@ -2892,6 +2921,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                                                   it,
                                                   supplierId,
                                                   null,
+                                                  it.ui_acquisition_cost ?? null,
                                                 );
                                               }}
                                             >
