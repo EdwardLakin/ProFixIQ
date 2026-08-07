@@ -62,4 +62,28 @@ describe("canonical shop membership provisioning", () => {
     expect(migration).toContain("validate constraint profiles_role_canonical_check");
     expect(migration).toContain("else 'unknown'");
   });
+
+  it("uses canonical roles in post-migration database fixtures", () => {
+    const runtimePaths = [
+      "tests/security/p0-001-relation-boundaries.runtime.sql",
+      "tests/security/p0-002-rpc-privileges.runtime.sql",
+      "tests/security/p0-006-stripe-identity.runtime.sql",
+    ];
+    const historicalAliases = [
+      "tech",
+      "technician",
+      "service_advisor",
+      "service advisor",
+      "lead",
+      "leadhand",
+      "lead hand",
+    ];
+
+    for (const runtimePath of runtimePaths) {
+      const runtime = readFileSync(runtimePath, "utf8");
+      for (const alias of historicalAliases) {
+        expect(runtime).not.toContain(`    '${alias}',`);
+      }
+    }
+  });
 });
