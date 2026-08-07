@@ -356,6 +356,53 @@ html[data-theme-mode="light"] {
   color-scheme: light;
 }
 
+/* Legacy status pills were authored for the dark shell and use pale text
+   utilities. Keep their hue in light mode while restoring readable contrast. */
+html[data-theme-mode="light"] [class*="rounded"][class*="text-red-"] {
+  color: #991b1b !important;
+}
+html[data-theme-mode="light"] [class*="rounded"][class*="text-rose-"] {
+  color: #9f1239 !important;
+}
+html[data-theme-mode="light"] [class*="rounded"][class*="text-amber-"] {
+  color: #78350f !important;
+}
+html[data-theme-mode="light"] [class*="rounded"][class*="text-yellow-"] {
+  color: #713f12 !important;
+}
+html[data-theme-mode="light"] [class*="rounded"][class*="text-green-"] {
+  color: #14532d !important;
+}
+html[data-theme-mode="light"] [class*="rounded"][class*="text-emerald-"] {
+  color: #065f46 !important;
+}
+html[data-theme-mode="light"] [class*="rounded"][class*="text-cyan-"] {
+  color: #155e75 !important;
+}
+html[data-theme-mode="light"] [class*="rounded"][class*="text-sky-"] {
+  color: #075985 !important;
+}
+html[data-theme-mode="light"] [class*="rounded"][class*="text-blue-"] {
+  color: #1e40af !important;
+}
+html[data-theme-mode="light"] [class*="rounded"][class*="text-violet-"] {
+  color: #5b21b6 !important;
+}
+html[data-theme-mode="light"] [class*="rounded"][class*="text-purple-"] {
+  color: #6b21a8 !important;
+}
+html[data-theme-mode="light"] [class*="rounded"][class*="text-orange-"] {
+  color: #9a3412 !important;
+}
+
+html[data-theme-mode="light"] .accent-chip {
+  color: #9a3412;
+}
+
+html[data-theme-mode="light"] .app-shell-action {
+  color: var(--theme-text-primary);
+}
+
 /* Some older routes still carry hard-coded white form classes. Normalize all
    signed-in controls to semantic tokens in dark mode until those routes are
    migrated individually. Native colour/file controls are intentionally left alone. */

@@ -14,7 +14,7 @@ describe("approval-time menu parts release migration", () => {
     expect(migration).toContain(
       "on public.part_request_items(request_id, source_work_order_part_id)",
     );
-    expect(migration.match(/and source_work_order_part_id is null;/g)).toHaveLength(2);
+    expect(migration.match(/and source_work_order_part_id is null/g)).toHaveLength(2);
   });
 
   it("preserves the legacy line-level duplicate guards", () => {

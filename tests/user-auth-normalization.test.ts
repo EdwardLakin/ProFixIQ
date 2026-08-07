@@ -45,6 +45,13 @@ type ProfileUpsertPayload = {
   shop_id?: string | null;
 };
 
+type MembershipUpsertPayload = {
+  shop_id: string;
+  user_id: string;
+  role: string;
+  created_by: string;
+};
+
 type MockAdminOptions = {
   shopId?: string;
   adminId?: string;
@@ -53,6 +60,7 @@ type MockAdminOptions = {
   createdUserId?: string;
   canonicalRole?: "owner" | "admin";
   profileUpsertError?: string | null;
+  membershipUpsertError?: string | null;
   workforceUpsertError?: string | null;
   deleteUserError?: string | null;
 };
@@ -79,8 +87,16 @@ function buildCreateUserRouteMocks(options: MockAdminOptions = {}) {
   const profileUpsert = vi.fn(async (_payload: ProfileUpsertPayload) => ({
     error: options.profileUpsertError ? { message: options.profileUpsertError } : null,
   }));
+  const membershipUpsert = vi.fn(async (_payload: MembershipUpsertPayload) => ({
+    error: options.membershipUpsertError
+      ? { message: options.membershipUpsertError }
+      : null,
+  }));
   const workforceUpsert = vi.fn(async (_payload: Record<string, unknown>) => ({
     error: options.workforceUpsertError ? { message: options.workforceUpsertError } : null,
+  }));
+  const deleteRow = vi.fn(() => ({
+    eq: vi.fn(async () => ({ error: null })),
   }));
 
   const adminClient = {
@@ -118,11 +134,16 @@ function buildCreateUserRouteMocks(options: MockAdminOptions = {}) {
             }),
           }),
           upsert: profileUpsert,
+          delete: deleteRow,
         };
       }
 
       if (table === "people_workforce_profiles") {
-        return { upsert: workforceUpsert };
+        return { upsert: workforceUpsert, delete: deleteRow };
+      }
+
+      if (table === "shop_members") {
+        return { upsert: membershipUpsert, delete: deleteRow };
       }
 
       throw new Error(`Unexpected table ${table}`);
@@ -139,7 +160,16 @@ function buildCreateUserRouteMocks(options: MockAdminOptions = {}) {
   mocks.assertShopHasAvailableSeat.mockResolvedValue(undefined);
   mocks.sendUserInviteEmail.mockResolvedValue(undefined);
 
-  return { createUser, deleteUser, profileUpsert, workforceUpsert, shopId, adminId, createdUserId };
+  return {
+    createUser,
+    deleteUser,
+    profileUpsert,
+    membershipUpsert,
+    workforceUpsert,
+    shopId,
+    adminId,
+    createdUserId,
+  };
 }
 
 describe("shop user auth normalization", () => {
@@ -183,7 +213,14 @@ describe("shop user auth normalization", () => {
 
   it("creates username-only staff users with a synthetic auth email", async () => {
     const { POST } = await import("../app/api/admin/create-user/route");
-    const { createUser, profileUpsert, shopId, createdUserId } = buildCreateUserRouteMocks();
+    const {
+      createUser,
+      profileUpsert,
+      membershipUpsert,
+      shopId,
+      adminId,
+      createdUserId,
+    } = buildCreateUserRouteMocks();
     const password = " Temp Password 123 ";
 
     const response = await POST(jsonRequest({
@@ -209,6 +246,15 @@ describe("shop user auth normalization", () => {
         shop_id: shopId,
       }),
       { onConflict: "id" },
+    );
+    expect(membershipUpsert).toHaveBeenCalledWith(
+      {
+        shop_id: shopId,
+        user_id: createdUserId,
+        role: "mechanic",
+        created_by: adminId,
+      },
+      { onConflict: "shop_id,user_id" },
     );
     expect(payload).toEqual(expect.objectContaining({
       username: "downtowndiessamtech",
@@ -299,6 +345,21 @@ describe("shop user auth normalization", () => {
     expect(response.status).toBe(500);
     expect(payload.code).toBe("workforce_profile_seed_failed");
     expect(deleteUser).toHaveBeenCalledWith(createdUserId);
+  });
+
+  it("rolls back the auth account when canonical membership provisioning fails", async () => {
+    const { POST } = await import("../app/api/admin/create-user/route");
+    const { deleteUser, createdUserId, workforceUpsert } = buildCreateUserRouteMocks({
+      membershipUpsertError: "membership unavailable",
+    });
+    const response = await POST(jsonRequest({
+      username: "Sam Tech", password: "temporary-password", full_name: "Sam Tech", role: "mechanic",
+    }));
+    const payload = await response.json();
+    expect(response.status).toBe(500);
+    expect(payload.code).toBe("shop_membership_seed_failed");
+    expect(deleteUser).toHaveBeenCalledWith(createdUserId);
+    expect(workforceUpsert).not.toHaveBeenCalled();
   });
 
   it("reports an actionable partial-provisioning error when rollback fails", async () => {

@@ -6,7 +6,7 @@ import { shopLocalDateTimeToUtc } from "@/features/shared/lib/utils/shopDayWindo
 
 const source = (path: string) => readFileSync(path, "utf8");
 const migration = source(
-  "supabase/migrations/20260802040435_harden_estimate_review_contracts.sql",
+  "supabase/migrations/20260802050612_harden_estimate_review_contracts.sql",
 );
 const builder = source("features/estimates/components/EstimateBuilder.tsx");
 const workspace = source(
@@ -14,6 +14,9 @@ const workspace = source(
 );
 const estimateData = source("features/estimates/server/data.ts");
 const quoteSend = source("app/api/quotes/send/route.ts");
+const portalNotification = source(
+  "features/portal/server/upsertPortalNotification.ts",
+);
 const portalList = source("app/portal/quotes/page.tsx");
 
 function validEstimate(vin: string | null) {
@@ -76,7 +79,8 @@ describe("estimate builder review follow-ups", () => {
     expect(quoteSend).toContain(
       "estimate:quote_ready:${input.workOrderId}:revision:${input.revision}",
     );
-    expect(quoteSend).toContain('{ onConflict: "user_id,event_key" }');
+    expect(quoteSend).toContain("upsertPortalNotification");
+    expect(portalNotification).toContain('{ onConflict: "user_id,event_key" }');
   });
 
   it("filters and paginates estimates on the server", () => {

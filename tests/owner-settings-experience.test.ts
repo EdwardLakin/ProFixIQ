@@ -42,7 +42,7 @@ describe("owner settings experience", () => {
     expect(page).toContain('activeSection === "communications"');
     expect(page).toContain('activeSection === "team"');
     expect(page).toContain('activeSection === "billing"');
-    expect(page).toContain("#billing-stripe");
+    expect(page).toContain('"billing-stripe": "billing"');
   });
 
   it("keeps staff account creation available from owner settings", () => {

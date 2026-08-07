@@ -164,7 +164,7 @@ describe("owner intelligence authorization and AI boundaries", () => {
     expect(legacy).toContain(
       'import { POST as canonicalPost } from "../../ai/summarize-stats/route"',
     );
-    expect(legacy).toContain("return canonicalPost(request)");
+    expect(legacy).toContain("return canonicalPost(canonicalRequest)");
     expect(legacy).not.toContain("chat.completions");
   });
 });

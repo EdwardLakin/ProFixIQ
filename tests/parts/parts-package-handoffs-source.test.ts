@@ -39,7 +39,7 @@ describe("parts package handoff source contracts", () => {
   it("uses active canonical work_order_parts for work-order display before allocation", () => {
     expect(workOrderClient).toContain("loadCanonicalWorkOrderLineContext");
     expect(workOrderContext).toContain('.from("work_order_parts")');
-    expect(workOrderContext).toContain('.in("work_order_id", workOrderIds)');
+    expect(workOrderContext).toContain('.in("work_order_line_id", ids)');
     expect(workOrderContext).toContain('.eq("is_active", true)');
     expect(focusedJob).toContain("requiredParts");
     expect(focusedJob).toContain('.from("work_order_parts")');

@@ -8,7 +8,7 @@ describe("installable offline foundation", () => {
     const source = read("app/manifest.ts");
     expect(source).toContain('display: "standalone"');
     expect(source).toContain('start_url: "/launch?source=pwa"');
-    expect(source).toContain("icon-maskable-512.png");
+    expect(source).toContain('src: "/pwa-icons/icon-maskable-512"');
   });
 
   it("never runtime-caches authenticated API responses", () => {

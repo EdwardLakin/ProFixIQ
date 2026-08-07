@@ -44,9 +44,9 @@ describe("parts request RLS and legacy trigger reconciliation", () => {
   });
 
   it("allows canonical inventory selection route to persist through authorized server path", () => {
-    expect(inventoryRoute).toContain("requireShopScopedApiAccess({ requiredCapability: \"canManageWorkOrders\" })");
-    expect(inventoryRoute).toContain("part_id: partId");
-    expect(inventoryRoute).toContain("updatedItem.part_id !== partId");
+    expect(inventoryRoute).toContain('requiredCapability: "canManageParts"');
+    expect(inventoryRoute).toContain("part_id: part.id");
+    expect(inventoryRoute).toContain("Inventory selection did not persist.");
   });
 
   it("does not broaden INSERT policy in this migration", () => {
@@ -81,10 +81,10 @@ describe("parts request RLS and legacy trigger reconciliation", () => {
 
 describe("parts request inventory selection regression", () => {
   it("retains application capability authorization and verifies persisted selected part", () => {
-    expect(inventoryRoute).toContain("requireShopScopedApiAccess({ requiredCapability: \"canManageWorkOrders\" })");
-    expect(inventoryRoute).toContain(".eq(\"shop_id\", shopId)");
-    expect(inventoryRoute).toContain("part_id: partId");
-    expect(inventoryRoute).toContain("updatedItem.part_id !== partId");
+    expect(inventoryRoute).toContain('requiredCapability: "canManageParts"');
+    expect(inventoryRoute).toContain('.eq("shop_id", access.profile.shop_id)');
+    expect(inventoryRoute).toContain("part_id: part.id");
+    expect(inventoryRoute).toContain("if (updateError || !updatedItem)");
     expect(inventoryRoute).not.toContain("upsert_part_allocation_from_request_item");
     expect(inventoryRoute).not.toContain("parts_allocate_request_item");
   });
