@@ -1314,7 +1314,12 @@ select pg_temp.expect_free_text_receipt_error(
   'PARTS_RECEIPT_QUANTITY_PRECISION'
 );
 
-do $$
+-- The receipt attempt above must run as the authenticated shop actor. Inspect
+-- the protected operation ledger only after restoring the migration runner,
+-- then resume the authenticated flow for the remaining receipt assertions.
+reset role;
+
+do $
 begin
   if exists (
     select 1
@@ -1325,7 +1330,9 @@ begin
     raise exception 'Over-precision receipt wrote an operation receipt';
   end if;
 end;
-$$;
+$;
+
+set local role authenticated;
 
 insert into parts_request_to_po_results (attempt, result)
 select
