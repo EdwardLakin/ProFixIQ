@@ -1,10 +1,10 @@
-import AgentConsolePage from "@/features/agent/agent-console/app/agent/page";
-import { requireOpsOperatorPageAccess } from "@/features/ops/server/operator-access";
+import OpsDashboard from "@/features/ops/components/OpsDashboard";
+import { getOpsDashboardRequests } from "@/features/ops/server/get-dashboard";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default async function OpsPage() {
-  await requireOpsOperatorPageAccess();
-  return <AgentConsolePage />;
+  const requests = await getOpsDashboardRequests();
+  return <OpsDashboard requests={requests} />;
 }
