@@ -20,6 +20,7 @@ const signIn = read("features/auth/components/SignIn.tsx");
 const protectedRoutes = [
   read("app/api/agent/requests/route.ts"),
   read("app/api/agent/requests/[id]/route.ts"),
+  read("app/api/agent/requests/[id]/retry/route.ts"),
   read("app/api/agent/requests/[id]/reply/route.ts"),
   read("app/api/agent/requests/[id]/notify-discord/route.ts"),
 ];

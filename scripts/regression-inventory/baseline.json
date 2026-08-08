@@ -1123,26 +1123,6 @@
       "expiresOn": "2026-09-06"
     },
     {
-      "fingerprint": "245ebb8510d2db72d89d",
-      "rule": "missing-storage-bucket",
-      "severity": "error",
-      "domain": "ai-automation",
-      "file": "app/api/agent/requests/[id]/route.ts",
-      "subject": "agent_uploads",
-      "message": "Storage bucket agent_uploads is not provisioned by the migration chain",
-      "expiresOn": "2026-09-06"
-    },
-    {
-      "fingerprint": "518d9a4b98236c51f23d",
-      "rule": "missing-storage-bucket",
-      "severity": "error",
-      "domain": "ai-automation",
-      "file": "app/api/agent/requests/route.ts",
-      "subject": "agent_uploads",
-      "message": "Storage bucket agent_uploads is not provisioned by the migration chain",
-      "expiresOn": "2026-09-06"
-    },
-    {
       "fingerprint": "caa79ebe66b653edae8d",
       "rule": "missing-storage-bucket",
       "severity": "error",
@@ -1250,26 +1230,6 @@
       "file": "app/property/requests/[id]/page.tsx",
       "subject": "property_request_attachments",
       "message": "Storage bucket property_request_attachments is not provisioned by the migration chain",
-      "expiresOn": "2026-09-06"
-    },
-    {
-      "fingerprint": "b3ff7d5e0d6f1d92d497",
-      "rule": "missing-storage-bucket",
-      "severity": "error",
-      "domain": "ai-automation",
-      "file": "features/agent/agent-console/app/agent/page.tsx",
-      "subject": "agent_uploads",
-      "message": "Storage bucket agent_uploads is not provisioned by the migration chain",
-      "expiresOn": "2026-09-06"
-    },
-    {
-      "fingerprint": "29a554cdb5afaeee4d04",
-      "rule": "missing-storage-bucket",
-      "severity": "error",
-      "domain": "ai-automation",
-      "file": "features/agent/components/AgentRequestModal.tsx",
-      "subject": "agent_uploads",
-      "message": "Storage bucket agent_uploads is not provisioned by the migration chain",
       "expiresOn": "2026-09-06"
     },
     {

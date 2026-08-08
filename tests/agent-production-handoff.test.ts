@@ -10,11 +10,13 @@ describe("production agent request handoff", () => {
   const route = read("app/api/agent/requests/route.ts");
   const detailRoute = read("app/api/agent/requests/[id]/route.ts");
   const teamClient = read("features/agent/server/teamClient.ts");
+  const requestIntake = read("features/agent/server/requestIntake.ts");
   const consolePage = read("features/agent/agent-console/app/agent/page.tsx");
   const replyRoute = read("app/api/agent/requests/[id]/reply/route.ts");
 
   it("uses the canonical authenticated Agent team client", () => {
-    expect(route).toContain("agentTeamRequest<AgentServiceResponse>");
+    expect(route).toContain("submitAgentTeamRequest");
+    expect(requestIntake).toContain("agentTeamRequest<AgentServiceResponse>");
     expect(route).toContain("readAgentTeamCase(engineeringCaseId)");
     expect(route).toContain("projectAgentTeamCase");
     expect(teamClient).toContain("resolveAgentApiSecrets()");
