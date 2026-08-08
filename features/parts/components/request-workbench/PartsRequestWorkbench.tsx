@@ -10,10 +10,26 @@ import { InventoryPickerModal } from "./InventoryPickerModal";
 import { CreateInventoryItemModal } from "./CreateInventoryItemModal";
 import { OrderPartModal } from "./OrderPartModal";
 import { ReceivePartModal } from "./ReceivePartModal";
+import { SupplierQuoteRequestModal } from "./SupplierQuoteRequestModal";
+import { SupplierQuoteResponseModal } from "./SupplierQuoteResponseModal";
+import { SupplierQuoteLifecyclePanel } from "./SupplierQuoteLifecyclePanel";
 import type { CreateInventoryItemInput } from "./CreateInventoryItemModal";
 import type { OrderPartInput } from "./OrderPartModal";
 import { createInventoryDraftFromItem, createOrderDraftFromItem } from "./createWorkbenchDrafts";
-import type { AttachInventoryInput, PartsRequestInventoryResult, PartsRequestWorkbenchItem, PartsRequestWorkbenchModel, SaveItemInput } from "./types";
+import type {
+  AttachInventoryInput,
+  PartsRequestInventoryResult,
+  PartsRequestWorkbenchItem,
+  PartsRequestWorkbenchModel,
+  SaveItemInput,
+  SupplierQuoteChannel,
+  SupplierQuoteResponseInput,
+  SupplierQuoteResponseResult,
+  SupplierQuoteRequestInput,
+  SupplierQuoteRequestResult,
+  PurchaseOrderContactInput,
+  PurchaseOrderContactResult,
+} from "./types";
 
 type ActiveModal =
   | { type: "inventory"; itemId: string }
@@ -23,6 +39,28 @@ type ActiveModal =
   | { type: "confirmConflict"; itemId: string; partId?: string | null }
   | null;
 
+function canRequestSupplierQuote(item: PartsRequestWorkbenchItem): boolean {
+  const status = String(item.status ?? "requested").toLowerCase();
+  return (
+    !item.poId &&
+    item.supplierQuoteStatus !== "requested" &&
+    item.qty > 0 &&
+    ![
+      "cancelled",
+      "rejected",
+      "declined",
+      "ordered",
+      "partially_ordered",
+      "partially_received",
+      "received",
+      "consumed",
+      "partially_consumed",
+      "returned",
+      "partially_returned",
+    ].includes(status)
+  );
+}
+
 export function PartsRequestWorkbench({
   model,
   onSaveItem,
@@ -30,6 +68,9 @@ export function PartsRequestWorkbench({
   onAttachInventory,
   onOrderItem,
   onCommitPackage,
+  onRequestSupplierQuote,
+  onRecordSupplierQuote,
+  onContactPurchaseOrder,
   onSubmitOrder,
   onReceiveItem,
   onOpenReceiveDrawer,
@@ -46,6 +87,15 @@ export function PartsRequestWorkbench({
   onAttachInventory?: (input: AttachInventoryInput) => Promise<Partial<PartsRequestWorkbenchItem> | void> | Partial<PartsRequestWorkbenchItem> | void;
   onOrderItem?: (itemId: string) => Promise<void> | void;
   onCommitPackage?: () => Promise<void> | void;
+  onRequestSupplierQuote?: (
+    input: SupplierQuoteRequestInput,
+  ) => Promise<SupplierQuoteRequestResult>;
+  onRecordSupplierQuote?: (
+    input: SupplierQuoteResponseInput,
+  ) => Promise<SupplierQuoteResponseResult>;
+  onContactPurchaseOrder?: (
+    input: PurchaseOrderContactInput,
+  ) => Promise<PurchaseOrderContactResult>;
   onSubmitOrder?: (itemId: string, input: OrderPartInput) => Promise<void> | void;
   onReceiveItem?: (itemId: string) => Promise<void> | void;
   onOpenReceiveDrawer?: (itemId: string) => Promise<void> | void;
@@ -58,6 +108,17 @@ export function PartsRequestWorkbench({
 }): JSX.Element {
   const [items, setItems] = useState<PartsRequestWorkbenchItem[]>(model.items);
   const [defaultSupplierId, setDefaultSupplierId] = useState(model.defaultSupplierId ?? "");
+  const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
+  const [quoteModalOpen, setQuoteModalOpen] = useState(false);
+  const [quoteRequestBusy, setQuoteRequestBusy] =
+    useState<SupplierQuoteChannel | null>(null);
+  const [activeResponseQuoteId, setActiveResponseQuoteId] =
+    useState<string | null>(null);
+  const [quoteResponseBusy, setQuoteResponseBusy] = useState(false);
+  const [poContactBusy, setPoContactBusy] = useState<{
+    poId: string;
+    channel: SupplierQuoteChannel;
+  } | null>(null);
   const [activeModal, setActiveModal] = useState<ActiveModal>(null);
   const [inventoryQuery, setInventoryQuery] = useState("");
   const [selectedInventoryPartId, setSelectedInventoryPartId] = useState<string>("");
@@ -97,6 +158,24 @@ export function PartsRequestWorkbench({
   useEffect(() => {
     setItems(model.items);
   }, [model.items]);
+
+  const selectableItemIds = items
+    .filter(canRequestSupplierQuote)
+    .map((item) => item.id);
+  const selectableItemIdSet = new Set(selectableItemIds);
+  const selectedItemIdSet = new Set(selectedItemIds);
+  const selectedItems = items.filter(
+    (item) =>
+      selectedItemIdSet.has(item.id) && selectableItemIdSet.has(item.id),
+  );
+  const activeResponseBatch =
+    model.supplierQuoteRequests?.find(
+      (request) => request.id === activeResponseQuoteId,
+    ) ?? null;
+  const activeResponseItemIds = new Set(activeResponseBatch?.itemIds ?? []);
+  const activeResponseItems = items.filter((item) =>
+    activeResponseItemIds.has(item.id),
+  );
 
   function positiveNumber(value: string, label: string): number | null {
     const parsed = Number(value);
@@ -160,19 +239,52 @@ export function PartsRequestWorkbench({
         defaultSupplierId={defaultSupplierId}
         supplierOptions={model.supplierOptions}
         onDefaultSupplierChange={setDefaultSupplierId}
-        onCreatePo={() => {
-          const firstItem =
-            items.find((item) => !item.poId) ?? items[0];
-          if (firstItem) {
-            setOrderDraft(
-              createOrderDraftFromItem(firstItem, defaultSupplierId),
-            );
-            setActiveModal({ type: "order", itemId: firstItem.id });
-          }
-        }}
+        onRequestSupplierQuote={
+          onRequestSupplierQuote ? () => setQuoteModalOpen(true) : undefined
+        }
+        selectedCount={selectedItems.length}
+        requestQuoteDisabled={selectedItems.length === 0}
         onCommitPackage={onCommitPackage}
         commitPackageDisabled={items.length === 0}
         packageCommittedCount={model.packageCommittedCount}
+      />
+
+      <SupplierQuoteLifecyclePanel
+        quoteRequests={model.supplierQuoteRequests ?? []}
+        draftPurchaseOrders={model.draftPurchaseOrders ?? []}
+        busyPo={poContactBusy}
+        onRecordResponse={
+          onRecordSupplierQuote ? setActiveResponseQuoteId : undefined
+        }
+        onContactPurchaseOrder={
+          onContactPurchaseOrder
+            ? async (poId, channel) => {
+                if (poContactBusy) return;
+                setPoContactBusy({ poId, channel });
+                try {
+                  const result = await onContactPurchaseOrder({
+                    poId,
+                    channel,
+                    idempotencyKey: crypto.randomUUID(),
+                  });
+                  toast.success(
+                    channel === "email"
+                      ? `PO email prepared for ${result.supplierName}.`
+                      : `PO call opened for ${result.supplierName}.`,
+                  );
+                  if (result.launchUrl) window.location.assign(result.launchUrl);
+                } catch (error) {
+                  toast.error(
+                    error instanceof Error
+                      ? error.message
+                      : "Could not prepare the purchase order contact.",
+                  );
+                } finally {
+                  setPoContactBusy(null);
+                }
+              }
+            : undefined
+        }
       />
 
       <PartsRequestWorkbenchSummary items={items} />
@@ -180,7 +292,10 @@ export function PartsRequestWorkbench({
       <PartsRequestWorkbenchTable
         items={items}
         inventoryResults={inventoryResults}
+        selectedItemIds={selectedItemIds}
+        selectableItemIds={selectableItemIds}
         onItemsChange={setItems}
+        onSelectedItemIdsChange={setSelectedItemIds}
         onSave={saveItem}
         onUseInventory={async (itemId) => {
           setActiveModal({ type: "inventory", itemId });
@@ -209,6 +324,101 @@ export function PartsRequestWorkbench({
           await onClearMatch?.(itemId);
         }}
         onDelete={onDeleteItem}
+      />
+
+      <SupplierQuoteRequestModal
+        open={quoteModalOpen}
+        supplierId={defaultSupplierId}
+        supplierOptions={model.supplierOptions}
+        items={selectedItems}
+        busyChannel={quoteRequestBusy}
+        onSupplierChange={setDefaultSupplierId}
+        onClose={() => setQuoteModalOpen(false)}
+        onSubmit={async (channel) => {
+          if (!defaultSupplierId) {
+            toast.error("Select a supplier.");
+            return;
+          }
+          if (selectedItems.length === 0) {
+            toast.error("Select at least one part.");
+            return;
+          }
+          if (!onRequestSupplierQuote || quoteRequestBusy) return;
+
+          setQuoteRequestBusy(channel);
+          try {
+            const result = await onRequestSupplierQuote({
+              supplierId: defaultSupplierId,
+              itemIds: selectedItems.map((item) => item.id),
+              channel,
+              idempotencyKey: crypto.randomUUID(),
+            });
+
+            const requestedIds = new Set(selectedItems.map((item) => item.id));
+            const requestedAt = new Date().toISOString();
+            setItems((current) =>
+              current.map((item) =>
+                requestedIds.has(item.id)
+                  ? {
+                      ...item,
+                      supplierQuoteStatus: "requested",
+                      supplierQuoteRequestedAt: requestedAt,
+                    }
+                  : item,
+              ),
+            );
+            setSelectedItemIds([]);
+            setQuoteModalOpen(false);
+            toast.success(
+              channel === "email"
+                ? `Quote email prepared for ${result.supplier.name}.`
+                : `Quote call recorded for ${result.supplier.name}.`,
+            );
+            if (result.launchUrl) window.location.assign(result.launchUrl);
+          } catch (error) {
+            toast.error(
+              error instanceof Error
+                ? error.message
+                : "Could not request the supplier quote.",
+            );
+          } finally {
+            setQuoteRequestBusy(null);
+          }
+        }}
+      />
+
+      <SupplierQuoteResponseModal
+        open={activeResponseBatch != null}
+        supplierName={activeResponseBatch?.supplierName ?? "Supplier"}
+        items={activeResponseItems}
+        busy={quoteResponseBusy}
+        onClose={() => setActiveResponseQuoteId(null)}
+        onSubmit={async ({ items: responseItems, notes }) => {
+          if (!activeResponseBatch || !onRecordSupplierQuote || quoteResponseBusy) {
+            return;
+          }
+          setQuoteResponseBusy(true);
+          try {
+            await onRecordSupplierQuote({
+              quoteRequestId: activeResponseBatch.id,
+              items: responseItems,
+              notes,
+              idempotencyKey: crypto.randomUUID(),
+            });
+            setActiveResponseQuoteId(null);
+            toast.success(
+              `Supplier quote recorded for ${activeResponseBatch.supplierName}.`,
+            );
+          } catch (error) {
+            toast.error(
+              error instanceof Error
+                ? error.message
+                : "Could not record the supplier quote.",
+            );
+          } finally {
+            setQuoteResponseBusy(false);
+          }
+        }}
       />
 
       <ConfirmConflictDialog

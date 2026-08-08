@@ -1,6 +1,6 @@
 "use client";
 
-import React, { type ReactNode } from "react";
+import React, { type ReactNode, useId } from "react";
 
 export function WorkbenchModalFrame({
   open,
@@ -17,18 +17,29 @@ export function WorkbenchModalFrame({
   footer?: ReactNode;
   onClose?: () => void;
 }): JSX.Element | null {
+  const titleId = useId();
   if (!open) return null;
 
   return (
     <>
       <div className="fixed inset-0 z-[70] bg-[color:var(--theme-surface-overlay)] backdrop-blur-sm" onClick={onClose} />
-      <div className="fixed left-1/2 top-1/2 z-[71] max-h-[calc(100vh-32px)] w-[min(760px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] shadow-2xl">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="fixed left-1/2 top-1/2 z-[71] max-h-[calc(100vh-32px)] w-[min(760px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] shadow-2xl"
+      >
         <div className="flex items-start justify-between gap-3 border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-5 py-4">
           <div>
             <div className="text-xs uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">{eyebrow}</div>
-            <div className="mt-1 text-lg font-semibold text-[color:var(--theme-text-primary)]">{title}</div>
+            <div id={titleId} className="mt-1 text-lg font-semibold text-[color:var(--theme-text-primary)]">{title}</div>
           </div>
-          <button type="button" onClick={onClose} className="rounded-lg border border-[color:var(--theme-border-soft)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={!onClose}
+            className="rounded-lg border border-[color:var(--theme-border-soft)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)] disabled:cursor-not-allowed disabled:opacity-50"
+          >
             Close
           </button>
         </div>

@@ -176,7 +176,7 @@ describe("PartsRequestWorkbench inventory attach flow", () => {
     expect(attached.items[0]?.insights?.some((insight) => insight.kind === "no_stock")).toBe(true);
   });
 
-  it("opens Create PO for the first item that is not already assigned to a PO", async () => {
+  it("selects multiple parts and prepares one supplier quote request", async () => {
     const user = userEvent.setup();
     const twoItemModel = model("part-1");
     twoItemModel.defaultSupplierId = "supplier-1";
@@ -189,7 +189,7 @@ describe("PartsRequestWorkbench inventory attach flow", () => {
         id: "item-oil",
         description: "5W30 oil",
         qty: 6,
-        poId: "po-existing",
+        poId: null,
       },
       {
         ...twoItemModel.items[0],
@@ -199,18 +199,166 @@ describe("PartsRequestWorkbench inventory attach flow", () => {
         poId: null,
       },
     ];
+    const onRequestSupplierQuote = vi.fn(async () => ({
+      quoteRequestId: "quote-request-1",
+      workOrderNumber: "EL00118",
+      launchUrl: null,
+      supplier: {
+        id: "supplier-1",
+        name: "AutoValue Local",
+        email: "parts@autovalue.test",
+        phone: null,
+      },
+      draft: {
+        subject: "Quote request - EL00118",
+        message: "Please quote these parts.",
+      },
+    }));
 
-    render(<PartsRequestWorkbench model={twoItemModel} />);
+    render(
+      <PartsRequestWorkbench
+        model={twoItemModel}
+        onRequestSupplierQuote={onRequestSupplierQuote}
+      />,
+    );
 
-    await user.click(screen.getByRole("button", { name: "Create PO" }));
+    await user.click(screen.getByRole("checkbox", { name: "Select all parts" }));
+    await user.click(
+      screen.getByRole("button", { name: "Request Supplier Quote (2)" }),
+    );
 
-    expect(screen.getByText(/Order Part.*Oil filter/)).toBeInTheDocument();
-    expect(
-      screen.getByRole("spinbutton", { name: "Approved qty to order" }),
-    ).toHaveValue(1);
-    expect(
-      screen.getByRole("combobox", { name: "Supplier (new PO)" }),
-    ).toHaveValue("supplier-1");
+    expect(screen.getByRole("dialog", { name: /Request quote for 2 items/i })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Supplier" })).toHaveValue("supplier-1");
+    await user.click(screen.getByRole("button", { name: "Prepare quote email" }));
+
+    await waitFor(() =>
+      expect(onRequestSupplierQuote).toHaveBeenCalledWith(
+        expect.objectContaining({
+          supplierId: "supplier-1",
+          itemIds: ["item-oil", "item-filter"],
+          channel: "email",
+          idempotencyKey: expect.any(String),
+        }),
+      ),
+    );
+    expect(screen.queryByRole("button", { name: "Create PO" })).not.toBeInTheDocument();
+    expect(toast.success).toHaveBeenCalledWith(
+      "Quote email prepared for AutoValue Local.",
+    );
+  });
+
+  it("records one supplier response for the full quote batch", async () => {
+    const user = userEvent.setup();
+    const quoteModel = model(null);
+    quoteModel.items[0] = {
+      ...quoteModel.items[0],
+      supplierId: "supplier-1",
+      supplierQuoteStatus: "requested",
+      latestSupplierQuoteRequestId: "quote-request-1",
+      unitCost: null,
+      sellPrice: null,
+    };
+    quoteModel.supplierQuoteRequests = [
+      {
+        id: "quote-request-1",
+        supplierId: "supplier-1",
+        supplierName: "AutoValue Local",
+        status: "requested",
+        itemIds: ["item-1"],
+      },
+    ];
+    const onRecordSupplierQuote = vi.fn(async () => ({
+      quoteRequestId: "quote-request-1",
+      status: "received",
+    }));
+
+    render(
+      <PartsRequestWorkbench
+        model={quoteModel}
+        onRecordSupplierQuote={onRecordSupplierQuote}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "Record Supplier Quote" }),
+    );
+    await user.type(
+      screen.getByLabelText("Oil filter supplier unit cost"),
+      "12.50",
+    );
+    await user.type(
+      screen.getByLabelText("Oil filter customer sell price"),
+      "24.95",
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Record supplier quote" }),
+    );
+
+    await waitFor(() =>
+      expect(onRecordSupplierQuote).toHaveBeenCalledWith(
+        expect.objectContaining({
+          quoteRequestId: "quote-request-1",
+          idempotencyKey: expect.any(String),
+          items: [
+            expect.objectContaining({
+              partRequestItemId: "item-1",
+              quotedUnitCost: 12.5,
+              quotedSellPrice: 24.95,
+              status: "quoted",
+            }),
+          ],
+        }),
+      ),
+    );
+    expect(toast.success).toHaveBeenCalledWith(
+      "Supplier quote recorded for AutoValue Local.",
+    );
+  });
+
+  it("prompts the user to contact the supplier when an approved draft PO is ready", async () => {
+    const user = userEvent.setup();
+    const approvedModel = model(null);
+    approvedModel.items[0] = {
+      ...approvedModel.items[0],
+      status: "ordered",
+      poId: "po-1",
+      supplierQuoteStatus: "received",
+    };
+    approvedModel.draftPurchaseOrders = [
+      {
+        id: "po-1",
+        poNumber: "PO-1234ABCD",
+        status: "draft",
+        supplierId: "supplier-1",
+        supplierName: "AutoValue Local",
+        supplierEmail: "parts@autovalue.test",
+        supplierPhone: "7805550101",
+      },
+    ];
+    const onContactPurchaseOrder = vi.fn(async () => ({
+      poId: "po-1",
+      launchUrl: null,
+      supplierName: "AutoValue Local",
+    }));
+
+    render(
+      <PartsRequestWorkbench
+        model={approvedModel}
+        onContactPurchaseOrder={onContactPurchaseOrder}
+      />,
+    );
+
+    expect(screen.getByText(/Customer approved. Draft PO ready/i)).toBeInTheDocument();
+    expect(screen.getByText("PO PO-1234ABCD")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Email PO" }));
+
+    await waitFor(() =>
+      expect(onContactPurchaseOrder).toHaveBeenCalledWith({
+        poId: "po-1",
+        channel: "email",
+        idempotencyKey: expect.any(String),
+      }),
+    );
   });
 
   it("submits an existing PO without requiring or forwarding a redundant supplier", async () => {
@@ -226,6 +374,10 @@ describe("PartsRequestWorkbench inventory attach flow", () => {
         label: "PO existing • Canonical Supplier • open",
       },
     ];
+    existingPoModel.items[0] = {
+      ...existingPoModel.items[0],
+      status: "approved",
+    };
     const onSubmitOrder = vi.fn();
 
     render(
@@ -260,10 +412,15 @@ describe("PartsRequestWorkbench inventory attach flow", () => {
   it("still requires a supplier when creating a new PO", async () => {
     const user = userEvent.setup();
     const onSubmitOrder = vi.fn();
+    const approvedModel = model("part-1");
+    approvedModel.items[0] = {
+      ...approvedModel.items[0],
+      status: "approved",
+    };
 
     render(
       <PartsRequestWorkbench
-        model={model("part-1")}
+        model={approvedModel}
         onSubmitOrder={onSubmitOrder}
       />,
     );

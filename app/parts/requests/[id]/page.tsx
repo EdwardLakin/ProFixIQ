@@ -63,6 +63,8 @@ type PartTrustFields = Pick<
 type LocationRow = DB["public"]["Tables"]["stock_locations"]["Row"];
 type PurchaseOrderRow = DB["public"]["Tables"]["purchase_orders"]["Row"];
 type SupplierRow = DB["public"]["Tables"]["suppliers"]["Row"];
+type SupplierQuoteRequestRow =
+  DB["public"]["Tables"]["parts_supplier_quote_requests"]["Row"];
 
 type WorkOrderLineRow = DB["public"]["Tables"]["work_order_lines"]["Row"];
 type LineLite = Pick<WorkOrderLineRow, "id" | "complaint" | "description">;
@@ -109,6 +111,7 @@ type CreateInventoryDraft = {
 type RequestUi = {
   req: RequestRow;
   items: UiItem[];
+  quoteRequests: SupplierQuoteRequestRow[];
 };
 
 type DrawerItem = {
@@ -457,15 +460,33 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     const shopId = woRow.shop_id ?? null;
 
     const itemsByRequest: Record<string, ItemRow[]> = {};
+    const quoteRequestsByRequest: Record<string, SupplierQuoteRequestRow[]> = {};
     if (reqIds.length) {
-      const { data: items, error: itErr } = await supabase
-        .from("part_request_items")
-        .select("*")
-        .in("request_id", reqIds);
+      const [itemsResult, quoteRequestsResult] = await Promise.all([
+        supabase
+          .from("part_request_items")
+          .select("*")
+          .in("request_id", reqIds),
+        supabase
+          .from("parts_supplier_quote_requests")
+          .select("*")
+          .in("parts_request_id", reqIds)
+          .order("created_at", { ascending: false }),
+      ]);
+      const { data: items, error: itErr } = itemsResult;
       if (itErr) toast.error(itErr.message);
+      if (quoteRequestsResult.error) {
+        toast.error(quoteRequestsResult.error.message);
+      }
 
       for (const it of (items ?? []) as ItemRow[]) {
         (itemsByRequest[it.request_id] ||= []).push(it);
+      }
+      for (const quoteRequest of
+        (quoteRequestsResult.data ?? []) as SupplierQuoteRequestRow[]) {
+        (quoteRequestsByRequest[quoteRequest.parts_request_id] ||= []).push(
+          quoteRequest,
+        );
       }
     }
 
@@ -488,7 +509,11 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
           };
         });
 
-      return { req: r, items: uiItems };
+      return {
+        req: r,
+        items: uiItems,
+        quoteRequests: quoteRequestsByRequest[r.id] ?? [],
+      };
     });
 
     setRequests(uiRequests);
@@ -1807,6 +1832,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
           r.req.id !== reqId
             ? r
             : {
+                ...r,
                 req: {
                   ...r.req,
                   status:
@@ -2072,6 +2098,61 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                     : "";
 
                 if (PARTS_REQUEST_WORKBENCH_V2_LOCAL_FLAG || searchParams.get("workbenchV2") !== "0") {
+                  const workbenchQuoteRequests = r.quoteRequests.map(
+                    (quoteRequest) => {
+                      const supplier = suppliers.find(
+                        (candidate) =>
+                          String(candidate.id) === String(quoteRequest.supplier_id),
+                      );
+                      return {
+                        id: String(quoteRequest.id),
+                        supplierId: String(quoteRequest.supplier_id),
+                        supplierName:
+                          supplier?.name ||
+                          `Supplier ${String(quoteRequest.supplier_id).slice(0, 8)}`,
+                        status: String(quoteRequest.status),
+                        requestedAt: quoteRequest.requested_at,
+                        respondedAt: quoteRequest.responded_at,
+                        draftPoId: quoteRequest.draft_po_id,
+                        poGenerationError: quoteRequest.po_generation_error,
+                        itemIds: r.items
+                          .filter(
+                            (item) =>
+                              String(item.latest_supplier_quote_request_id ?? "") ===
+                              String(quoteRequest.id),
+                          )
+                          .map((item) => String(item.id)),
+                      };
+                    },
+                  );
+                  const workbenchDraftPurchaseOrders = workbenchQuoteRequests.flatMap(
+                    (quoteRequest) => {
+                      if (!quoteRequest.draftPoId) return [];
+                      const purchaseOrder = pos.find(
+                        (candidate) =>
+                          String(candidate.id) === String(quoteRequest.draftPoId),
+                      );
+                      if (!purchaseOrder) return [];
+                      const supplier = suppliers.find(
+                        (candidate) =>
+                          String(candidate.id) === String(purchaseOrder.supplier_id),
+                      );
+                      return [
+                        {
+                          id: String(purchaseOrder.id),
+                          poNumber: purchaseOrder.po_number,
+                          status: String(purchaseOrder.status),
+                          supplierId: String(purchaseOrder.supplier_id),
+                          supplierName:
+                            supplier?.name || quoteRequest.supplierName,
+                          supplierEmail: supplier?.email ?? null,
+                          supplierPhone: supplier?.phone ?? null,
+                          supplierContactedAt:
+                            purchaseOrder.supplier_contacted_at ?? null,
+                        },
+                      ];
+                    },
+                  );
                   const model = mapRequestToWorkbenchModel({
                     request: r.req as unknown as Record<string, unknown>,
                     items: r.items as unknown as Record<string, unknown>[],
@@ -2101,6 +2182,8 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                     conflictWarningByItemId,
                     addedToWorkOrderByItemId,
                     packageCommitWarningByItemId,
+                    supplierQuoteRequests: workbenchQuoteRequests,
+                    draftPurchaseOrders: workbenchDraftPurchaseOrders,
                   });
 
                   return (
@@ -2260,6 +2343,133 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                         }}
                         onCommitPackage={() => {
                           void commitPartsPackage(r.req.id);
+                        }}
+                        onRequestSupplierQuote={async (input) => {
+                          const res = await fetch(
+                            `/api/parts/requests/${r.req.id}/supplier-quote`,
+                            {
+                              method: "POST",
+                              headers: {
+                                "Content-Type": "application/json",
+                                "Idempotency-Key": input.idempotencyKey,
+                              },
+                              body: JSON.stringify(input),
+                            },
+                          );
+                          const body = (await res.json().catch(() => null)) as {
+                            ok?: boolean;
+                            error?: string;
+                            result?: { quote_request_id?: unknown } | null;
+                            workOrderNumber?: string;
+                            launchUrl?: string | null;
+                            supplier?: {
+                              id?: string;
+                              name?: string;
+                              email?: string | null;
+                              phone?: string | null;
+                            };
+                            draft?: { subject?: string; message?: string };
+                          } | null;
+
+                          if (!res.ok || !body?.ok || !body.supplier) {
+                            throw new Error(
+                              body?.error ||
+                                "Could not prepare the supplier quote request.",
+                            );
+                          }
+
+                          await load({ preserveContent: true });
+                          return {
+                            quoteRequestId:
+                              typeof body.result?.quote_request_id === "string"
+                                ? body.result.quote_request_id
+                                : null,
+                            workOrderNumber:
+                              body.workOrderNumber || woDisplay || "Work order",
+                            launchUrl: body.launchUrl ?? null,
+                            supplier: {
+                              id: body.supplier.id || input.supplierId,
+                              name: body.supplier.name || "Supplier",
+                              email: body.supplier.email ?? null,
+                              phone: body.supplier.phone ?? null,
+                            },
+                            draft: {
+                              subject: body.draft?.subject || "Supplier quote request",
+                              message: body.draft?.message || "",
+                            },
+                          };
+                        }}
+                        onRecordSupplierQuote={async (input) => {
+                          const res = await fetch(
+                            `/api/parts/requests/${r.req.id}/supplier-quote/${input.quoteRequestId}/response`,
+                            {
+                              method: "POST",
+                              headers: {
+                                "Content-Type": "application/json",
+                                "Idempotency-Key": input.idempotencyKey,
+                              },
+                              body: JSON.stringify(input),
+                            },
+                          );
+                          const body = (await res.json().catch(() => null)) as {
+                            ok?: boolean;
+                            error?: string;
+                            result?: {
+                              quote_request_id?: unknown;
+                              status?: unknown;
+                            } | null;
+                          } | null;
+                          if (!res.ok || !body?.ok) {
+                            throw new Error(
+                              body?.error ||
+                                "Could not record the supplier quote response.",
+                            );
+                          }
+
+                          await load({ preserveContent: true });
+                          return {
+                            quoteRequestId:
+                              typeof body.result?.quote_request_id === "string"
+                                ? body.result.quote_request_id
+                                : input.quoteRequestId,
+                            status:
+                              typeof body.result?.status === "string"
+                                ? body.result.status
+                                : "received",
+                          };
+                        }}
+                        onContactPurchaseOrder={async (input) => {
+                          const res = await fetch(
+                            `/api/parts/purchase-orders/${input.poId}/supplier-contact`,
+                            {
+                              method: "POST",
+                              headers: {
+                                "Content-Type": "application/json",
+                                "Idempotency-Key": input.idempotencyKey,
+                              },
+                              body: JSON.stringify(input),
+                            },
+                          );
+                          const body = (await res.json().catch(() => null)) as {
+                            ok?: boolean;
+                            error?: string;
+                            launchUrl?: string | null;
+                            supplier?: { name?: string } | null;
+                          } | null;
+                          if (!res.ok || !body?.ok) {
+                            throw new Error(
+                              body?.error ||
+                                "Could not prepare the purchase order contact.",
+                            );
+                          }
+
+                          await load({ preserveContent: true });
+                          return {
+                            poId: input.poId,
+                            launchUrl: body.launchUrl ?? null,
+                            supplierName:
+                              body.supplier?.name || "Supplier",
+                          };
                         }}
                         onSubmitOrder={async (itemId, input) => {
                           updateItem(r.req.id, itemId, {
