@@ -24,6 +24,7 @@ import { useActiveBrand } from "@/features/branding/hooks/useActiveBrand";
 import { isBillingAttentionStatus } from "@/features/stripe/lib/stripe/subscriptionStatus";
 import { isOutsideDesktopAppShell } from "@/features/shared/lib/routes/shellBoundaries";
 import OpsNotificationsBell from "@/features/shared/components/OpsNotificationsBell";
+import { isDefaultOpsOperatorEmail } from "@/features/ops/lib/operatorAccess";
 
 const HEADER_OFFSET_DESKTOP = "pt-14";
 
@@ -53,7 +54,7 @@ const ActionButton = ({
 
 type ProfileScope = Pick<
   Database["public"]["Tables"]["profiles"]["Row"],
-  "role" | "must_change_password" | "shop_id"
+  "email" | "role" | "must_change_password" | "shop_id"
 >;
 
 type ShopBillingScope = Pick<
@@ -99,8 +100,8 @@ export default function AppShell({
   const [userId, setUserId] = useState<string | null>(
     initialIdentity?.userId ?? null,
   );
-  const [userRole, setUserRole] = useState<string | null>(
-    initialIdentity?.role ?? null,
+  const [userEmail, setUserEmail] = useState<string | null>(
+    initialIdentity?.email ?? null,
   );
   const [mustChangePassword, setMustChangePassword] = useState(false);
   const [, setShopId] = useState<string | null>(
@@ -127,9 +128,7 @@ export default function AppShell({
   const isAppRoute =
     !initialOutsideDesktopShell && !isOutsideDesktopAppShell(pathname);
 
-  const canSeeAgentConsole =
-    !!userRole &&
-    ["owner", "manager", "admin", "advisor", "agent_admin"].includes(userRole);
+  const canSeeAgentConsole = isDefaultOpsOperatorEmail(userEmail);
   const isMobileWorkOrderDetail = /^\/mobile\/work-orders\/[^/]+$/i.test(
     pathname,
   );
@@ -173,17 +172,18 @@ export default function AppShell({
 
       const uid = session?.user?.id ?? null;
       setUserId(uid);
+      setUserEmail(session?.user?.email ?? initialIdentity?.email ?? null);
 
       if (!uid) return;
 
       try {
         const { data: profile } = await supabase
           .from("profiles")
-          .select("role, must_change_password, shop_id")
+          .select("email, role, must_change_password, shop_id")
           .eq("id", uid)
           .single<ProfileScope>();
 
-        if (profile?.role) setUserRole(profile.role as string);
+        setUserEmail(profile?.email ?? session?.user?.email ?? null);
         setMustChangePassword(!!profile?.must_change_password);
 
         const sid = (profile?.shop_id as string | null) ?? null;
@@ -258,7 +258,7 @@ export default function AppShell({
     })();
 
     return () => cleanup?.();
-  }, [supabase, isAppRoute]);
+  }, [supabase, isAppRoute, initialIdentity?.email]);
 
   useEffect(() => {
     if (!isAppRoute || !userId) {
@@ -571,10 +571,10 @@ export default function AppShell({
 
               {userId && canSeeAgentConsole ? (
                 <ActionButton
-                  onClick={() => router.push("/agent")}
-                  title="ProFixIQ Agent Console"
+                  onClick={() => router.push("/ops")}
+                  title="ProFixIQ Ops Console"
                 >
-                  <span>Agent Console</span>
+                  <span>Ops Console</span>
                 </ActionButton>
               ) : null}
 
