@@ -218,10 +218,10 @@ export function MyWorkforceCard({ mobile = false }: { mobile?: boolean }) {
         </button>
       </div>
 
-      {loading ? <p className="text-xs text-[color:var(--theme-text-muted)]">Loading workforce details…</p> : null}
+      {loading && !data ? <p className="text-xs text-[color:var(--theme-text-muted)]">Loading workforce details…</p> : null}
       {error ? <p className="rounded-lg border border-red-400/30 bg-red-500/10 p-2 text-xs text-red-200">{error}</p> : null}
 
-      {!loading && data ? (
+      {data ? (
         <>
           <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
             <Stat label="Clocked today" value={hours(data.today_evidence.gross_minutes)} />
