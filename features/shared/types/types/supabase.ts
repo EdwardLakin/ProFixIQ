@@ -9979,6 +9979,7 @@ export type Database = {
           created_at: string
           description: string
           id: string
+          latest_supplier_quote_request_id: string | null
           location_id: string | null
           markup_pct: number | null
           menu_item_id: string | null
@@ -10007,7 +10008,6 @@ export type Database = {
           supplier_quote_received_at: string | null
           supplier_quote_requested_at: string | null
           supplier_quote_status: string
-          latest_supplier_quote_request_id: string | null
           unit_cost: number | null
           unit_price: number | null
           updated_at: string
@@ -10021,6 +10021,7 @@ export type Database = {
           created_at?: string
           description: string
           id?: string
+          latest_supplier_quote_request_id?: string | null
           location_id?: string | null
           markup_pct?: number | null
           menu_item_id?: string | null
@@ -10049,7 +10050,6 @@ export type Database = {
           supplier_quote_received_at?: string | null
           supplier_quote_requested_at?: string | null
           supplier_quote_status?: string
-          latest_supplier_quote_request_id?: string | null
           unit_cost?: number | null
           unit_price?: number | null
           updated_at?: string
@@ -10063,6 +10063,7 @@ export type Database = {
           created_at?: string
           description?: string
           id?: string
+          latest_supplier_quote_request_id?: string | null
           location_id?: string | null
           markup_pct?: number | null
           menu_item_id?: string | null
@@ -10091,7 +10092,6 @@ export type Database = {
           supplier_quote_received_at?: string | null
           supplier_quote_requested_at?: string | null
           supplier_quote_status?: string
-          latest_supplier_quote_request_id?: string | null
           unit_cost?: number | null
           unit_price?: number | null
           updated_at?: string
@@ -11325,8 +11325,8 @@ export type Database = {
           po_generation_error: string | null
           po_ready_at: string | null
           requested_at: string
-          responded_by: string | null
           responded_at: string | null
+          responded_by: string | null
           response_idempotency_key: string | null
           response_notes: string | null
           shop_id: string
@@ -11351,8 +11351,8 @@ export type Database = {
           po_generation_error?: string | null
           po_ready_at?: string | null
           requested_at?: string
-          responded_by?: string | null
           responded_at?: string | null
+          responded_by?: string | null
           response_idempotency_key?: string | null
           response_notes?: string | null
           shop_id: string
@@ -11377,8 +11377,8 @@ export type Database = {
           po_generation_error?: string | null
           po_ready_at?: string | null
           requested_at?: string
-          responded_by?: string | null
           responded_at?: string | null
+          responded_by?: string | null
           response_idempotency_key?: string | null
           response_notes?: string | null
           shop_id?: string
@@ -11407,6 +11407,13 @@ export type Database = {
             foreignKeyName: "parts_supplier_quote_requests_shop_id_fkey"
             columns: ["shop_id"]
             isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "parts_supplier_quote_requests_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
             referencedRelation: "shops"
             referencedColumns: ["id"]
           },
@@ -11416,6 +11423,34 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "suppliers"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "parts_supplier_quote_requests_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_portal_invoices"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "parts_supplier_quote_requests_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_fleet"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "parts_supplier_quote_requests_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_portal"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "parts_supplier_quote_requests_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_shop"
+            referencedColumns: ["work_order_id"]
           },
           {
             foreignKeyName: "parts_supplier_quote_requests_work_order_id_fkey"
@@ -14302,11 +14337,11 @@ export type Database = {
           shop_id: string
           status: string
           subtotal: number | null
-          supplier_id: string
           supplier_contact_channel: string | null
           supplier_contact_idempotency_key: string | null
           supplier_contacted_at: string | null
           supplier_contacted_by: string | null
+          supplier_id: string
           supplier_quote_request_id: string | null
           tax_total: number | null
           total: number | null
@@ -14325,11 +14360,11 @@ export type Database = {
           shop_id: string
           status?: string
           subtotal?: number | null
-          supplier_id: string
           supplier_contact_channel?: string | null
           supplier_contact_idempotency_key?: string | null
           supplier_contacted_at?: string | null
           supplier_contacted_by?: string | null
+          supplier_id: string
           supplier_quote_request_id?: string | null
           tax_total?: number | null
           total?: number | null
@@ -14348,17 +14383,24 @@ export type Database = {
           shop_id?: string
           status?: string
           subtotal?: number | null
-          supplier_id?: string
           supplier_contact_channel?: string | null
           supplier_contact_idempotency_key?: string | null
           supplier_contacted_at?: string | null
           supplier_contacted_by?: string | null
+          supplier_id?: string
           supplier_quote_request_id?: string | null
           tax_total?: number | null
           total?: number | null
           work_order_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "purchase_orders_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "purchase_orders_supplier_quote_request_id_fkey"
             columns: ["supplier_quote_request_id"]
@@ -14367,11 +14409,32 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "purchase_orders_supplier_id_fkey"
-            columns: ["supplier_id"]
+            foreignKeyName: "purchase_orders_work_order_id_fkey"
+            columns: ["work_order_id"]
             isOneToOne: false
-            referencedRelation: "suppliers"
-            referencedColumns: ["id"]
+            referencedRelation: "v_portal_invoices"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "purchase_orders_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_fleet"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "purchase_orders_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_portal"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "purchase_orders_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_shop"
+            referencedColumns: ["work_order_id"]
           },
           {
             foreignKeyName: "purchase_orders_work_order_id_fkey"
@@ -26163,6 +26226,17 @@ export type Database = {
         }
         Returns: Json
       }
+      parts_create_po_line_for_request: {
+        Args: {
+          p_idempotency_key?: string
+          p_location_id?: string
+          p_po_id: string
+          p_qty: number
+          p_request_item_id: string
+          p_unit_cost?: number
+        }
+        Returns: Json
+      }
       parts_create_supplier_quote_request: {
         Args: {
           p_channel: string
@@ -26172,34 +26246,6 @@ export type Database = {
           p_request_id: string
           p_subject: string
           p_supplier_id: string
-        }
-        Returns: Json
-      }
-      parts_mark_purchase_order_contacted: {
-        Args: {
-          p_channel: string
-          p_idempotency_key: string
-          p_po_id: string
-        }
-        Returns: Json
-      }
-      parts_record_supplier_quote_response: {
-        Args: {
-          p_idempotency_key: string
-          p_items: Json
-          p_quote_request_id: string
-          p_response_notes: string
-        }
-        Returns: Json
-      }
-      parts_create_po_line_for_request: {
-        Args: {
-          p_idempotency_key?: string
-          p_location_id?: string
-          p_po_id: string
-          p_qty: number
-          p_request_item_id: string
-          p_unit_cost?: number
         }
         Returns: Json
       }
@@ -26260,6 +26306,10 @@ export type Database = {
         }
         Returns: string
       }
+      parts_mark_purchase_order_contacted: {
+        Args: { p_channel: string; p_idempotency_key: string; p_po_id: string }
+        Returns: Json
+      }
       parts_on_hand: {
         Args: { p_location_id?: string; p_part_id: string; p_shop_id: string }
         Returns: number
@@ -26299,6 +26349,15 @@ export type Database = {
       parts_reconcile_work_order_part: {
         Args: { p_work_order_part_id: string }
         Returns: undefined
+      }
+      parts_record_supplier_quote_response: {
+        Args: {
+          p_idempotency_key: string
+          p_items: Json
+          p_quote_request_id: string
+          p_response_notes: string
+        }
+        Returns: Json
       }
       parts_replace_request_item: {
         Args: {
@@ -27746,3 +27805,4 @@ export const Constants = {
     },
   },
 } as const
+

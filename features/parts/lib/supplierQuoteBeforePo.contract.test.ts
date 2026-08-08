@@ -5,6 +5,10 @@ const migration = readFileSync(
   "supabase/migrations/20260808180155_parts_supplier_quote_before_po.sql",
   "utf8",
 );
+const poIdentityMigration = readFileSync(
+  "supabase/migrations/20260808184344_align_supplier_quote_po_identity.sql",
+  "utf8",
+);
 const requestRoute = readFileSync(
   "app/api/parts/requests/[requestId]/supplier-quote/route.ts",
   "utf8",
@@ -67,6 +71,13 @@ describe("supplier quote before PO contract", () => {
     );
     expect(migration).toContain("on conflict (supplier_quote_request_id)");
     expect(migration).toContain("'draft'");
+  });
+
+  it("keeps secondary PO references aligned with the existing UUID identity", () => {
+    expect(poIdentityMigration).toContain(
+      "new.po_number := 'PO-' || upper(new.id::text)",
+    );
+    expect(poIdentityMigration).not.toContain("left(replace(new.id::text");
   });
 
   it("keeps the work order primary when prompting supplier PO contact", () => {
