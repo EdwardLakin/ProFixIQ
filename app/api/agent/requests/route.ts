@@ -6,60 +6,17 @@ import {
 import type { Database } from "@shared/types/types/supabase";
 import {
   AgentTeamRequestError,
-  agentTeamRequest,
   mapAgentTeamRequestStatus,
   projectAgentTeamCase,
   readAgentTeamCase,
   type AgentTeamProjection,
 } from "@/features/agent/server/teamClient";
+import {
+  submitAgentTeamRequest,
+  type AgentIntakeIntent,
+  type AgentServiceResponse,
+} from "@/features/agent/server/requestIntake";
 import { requireOpsOperatorApiAccess } from "@/features/ops/server/operator-access";
-
-type AgentGithubMeta = {
-  issueNumber?: number | null;
-  issueUrl?: string | null;
-  prNumber?: number | null;
-  prUrl?: string | null;
-  branchName?: string | null;
-  commitSha?: string | null;
-  fileUrl?: string | null;
-};
-
-type AgentLLMMeta = {
-  model?: string | null;
-  confidence?: number | null;
-  notes?: string | null;
-  commentary?: string | null;
-  summary?: string | null;
-};
-
-type AgentWorkerKick = {
-  attempted?: boolean;
-  ok?: boolean;
-  status?: number;
-};
-
-type AgentServiceResponse = {
-  ok?: boolean;
-  message?: string;
-  requestId?: string | null;
-  intent?: string | null;
-  request?: Record<string, unknown> | null;
-  engineeringCaseId?: string | null;
-  currentStage?: string | null;
-  status?: string | null;
-  intakeJobId?: string | null;
-  workerKick?: AgentWorkerKick | null;
-  github?: AgentGithubMeta | null;
-  llm?: AgentLLMMeta | null;
-  analysis?: AgentLLMMeta | null;
-};
-
-type AgentIntent =
-  | "feature_request"
-  | "bug_report"
-  | "inspection_catalog_add"
-  | "service_catalog_add"
-  | "refactor";
 
 type AgentRequestStatus =
   | "submitted"
@@ -72,7 +29,7 @@ type AgentRequestStatus =
 
 type AgentRequestRow = Database["public"]["Tables"]["agent_requests"]["Row"];
 
-const AGENT_INTENTS: AgentIntent[] = [
+const AGENT_INTENTS: AgentIntakeIntent[] = [
   "feature_request",
   "bug_report",
   "inspection_catalog_add",
@@ -80,7 +37,7 @@ const AGENT_INTENTS: AgentIntent[] = [
   "refactor",
 ];
 
-function normalizeIntent(raw: unknown): AgentIntent {
+function normalizeIntent(raw: unknown): AgentIntakeIntent {
   if (typeof raw === "string") {
     const match = AGENT_INTENTS.find((value) => value === raw);
     if (match) return match;
@@ -361,50 +318,21 @@ export async function POST(req: NextRequest) {
   let agentFailure: { status: number | null; detail: string } | null = null;
 
   try {
-    const endpoint = intent === "refactor" ? "/refactors" : "/feature-requests";
-    const payload = intent === "refactor"
-      ? {
-          requestId,
-          source: profile.role ?? "user",
-          reporterId: profile.id,
-          shopId: profile.shop_id,
-          title: `Refactor: ${description.slice(0, 80)}`,
-          description,
-          expectedBehavior,
-          actualBehavior,
-          route,
-          platform: browser,
-          context: contextForAgent,
-        }
-      : {
-          requestId,
-          source: profile.role ?? "user",
-          reporterId: profile.id,
-          shopId: profile.shop_id,
-          role: profile.role,
-          description,
-          intent,
-          expectedBehavior,
-          actualBehavior,
-          route,
-          browser,
-          platform: browser,
-          screenshots: signedScreenshotUrls,
-          context: contextForAgent,
-        };
-
-    agentResponse = await agentTeamRequest<AgentServiceResponse>(endpoint, {
-      method: "POST",
-      body: JSON.stringify(payload),
+    agentResponse = await submitAgentTeamRequest({
+      requestId,
+      source: profile.role ?? "user",
+      reporterId: profile.id,
+      shopId: profile.shop_id,
+      role: profile.role,
+      description,
+      intent,
+      expectedBehavior,
+      actualBehavior,
+      route,
+      browser,
+      screenshots: signedScreenshotUrls,
+      context: contextForAgent,
     });
-
-    if (!agentResponse.engineeringCaseId) {
-      throw new AgentTeamRequestError(
-        "ProFixIQ-Agent did not return an engineering case",
-        502,
-        "The Agent accepted the request without a durable engineeringCaseId.",
-      );
-    }
   } catch (error) {
     agentFailure = error instanceof AgentTeamRequestError
       ? { status: error.status, detail: error.detail }

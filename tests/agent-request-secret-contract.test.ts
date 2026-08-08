@@ -11,6 +11,10 @@ const requestRouteSource = readFileSync(
   join(process.cwd(), "app/api/agent/requests/route.ts"),
   "utf8",
 );
+const requestIntakeSource = readFileSync(
+  join(process.cwd(), "features/agent/server/requestIntake.ts"),
+  "utf8",
+);
 const controlRouteSource = readFileSync(
   join(process.cwd(), "app/api/agent/requests/[id]/route.ts"),
   "utf8",
@@ -94,7 +98,8 @@ describe("ProFixIQ-Agent team authentication contract", () => {
   });
 
   it("routes the complete UI control plane through the canonical Agent service", () => {
-    expect(requestRouteSource).toContain("agentTeamRequest<AgentServiceResponse>");
+    expect(requestRouteSource).toContain("submitAgentTeamRequest");
+    expect(requestIntakeSource).toContain("agentTeamRequest<AgentServiceResponse>");
     expect(requestRouteSource).toContain("readAgentTeamCase");
     expect(controlRouteSource).toContain("approveAgentTeamMission");
     expect(controlRouteSource).toContain("approveAgentTeamRelease");

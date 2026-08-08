@@ -10,6 +10,7 @@ import Card from "@shared/components/ui/Card";
 import { Badge } from "@shared/components/ui/badge";
 import { Separator } from "@shared/components/ui/separator";
 import { cn } from "@shared/lib/utils";
+import { isAgentRequestRetryVisible } from "@/features/agent/lib/requestRetry";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import {
   AgentMissionDetails,
@@ -136,6 +137,7 @@ export default function AgentConsolePage() {
   // reply UI
   const [replyText, setReplyText] = useState("");
   const [replySending, setReplySending] = useState(false);
+  const [retryingRequestId, setRetryingRequestId] = useState<string | null>(null);
 
   const selectedContext: AgentContext | null = selected?.normalized_json ?? null;
   const selectedTeam = useMemo<AgentTeamState | null>(() => {
@@ -238,6 +240,17 @@ export default function AgentConsolePage() {
   );
   const approvalLabel = missionAwaitingApproval ? "Approve Mission" : "Approve Release";
   const awaitingReporterInput = selectedTeam?.caseStatus === "blocked" && questions.length > 0;
+  const canRetry = selected
+    ? isAgentRequestRetryVisible({
+        requestStatus: selected.status,
+        caseStatus: selectedTeam?.caseStatus,
+        stepStatus: selectedTeam?.stepStatus,
+      })
+    : false;
+  const retryLabel = selectedTeam?.caseStatus === "blocked"
+    ? "Restart Investigation"
+    : "Retry Request";
+  const actionBusy = isPending || retryingRequestId === selected?.id;
 
   async function loadRequests() {
     try {
@@ -425,6 +438,44 @@ export default function AgentConsolePage() {
         window.alert("Notify Discord error (check logs).");
       }
     });
+  }
+
+  async function retryRequest(request: AgentRequest) {
+    const confirmed = window.confirm(
+      "Retry this request using its original description, context, and attachments? The existing engineering case will be reused when one exists.",
+    );
+    if (!confirmed) return;
+
+    setRetryingRequestId(request.id);
+    try {
+      const res = await fetch(`/api/agent/requests/${request.id}/retry`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const json = (await res.json().catch(() => null)) as {
+        request?: AgentRequest;
+        error?: string;
+        detail?: string;
+      } | null;
+
+      if (!res.ok || !json?.request) {
+        const message = json?.detail ?? json?.error ?? "Retry failed.";
+        console.error("Agent request retry failed", json);
+        window.alert(message);
+        return;
+      }
+
+      setRequests((previous) => previous.map((item) =>
+        item.id === json.request?.id ? json.request : item,
+      ));
+      setSelected(json.request);
+    } catch (err) {
+      console.error("Agent request retry error", err);
+      window.alert("Retry failed before the Agent could restart. Please try again.");
+    } finally {
+      setRetryingRequestId(null);
+    }
   }
 
   async function deleteRequest(request: AgentRequest) {
@@ -1016,15 +1067,31 @@ export default function AgentConsolePage() {
 
                 {/* ACTION BUTTONS */}
                 <div className="flex flex-wrap gap-2">
+                  {canRetry && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={!selected || actionBusy}
+                      className={cn(
+                        "border-orange-500/70 text-xs font-semibold text-orange-300 hover:bg-orange-600 hover:text-[color:var(--theme-text-on-accent)] disabled:opacity-50",
+                        actionBusy && "cursor-wait",
+                      )}
+                      onClick={() => selected && void retryRequest(selected)}
+                    >
+                      {retryingRequestId === selected?.id ? "Restarting…" : retryLabel}
+                    </Button>
+                  )}
+
                   {canApprove && (
                     <Button
                       type="button"
                       size="sm"
                       variant="outline"
-                      disabled={!selected || isPending}
+                      disabled={!selected || actionBusy}
                       className={cn(
                         "border-emerald-500/60 text-xs font-semibold text-emerald-300 hover:bg-emerald-600 hover:text-[color:var(--theme-text-on-accent)] disabled:opacity-50",
-                        isPending && "cursor-wait",
+                        actionBusy && "cursor-wait",
                       )}
                       onClick={() => selected && updateStatus("approve", selected)}
                     >
@@ -1036,10 +1103,10 @@ export default function AgentConsolePage() {
                     type="button"
                     size="sm"
                     variant="outline"
-                    disabled={!selected || isPending}
+                    disabled={!selected || actionBusy}
                     className={cn(
                       "border-red-500/70 text-xs font-semibold text-red-300 hover:bg-red-600 hover:text-[color:var(--theme-text-on-accent)] disabled:opacity-50",
-                      isPending && "cursor-wait",
+                      actionBusy && "cursor-wait",
                     )}
                     onClick={() => selected && updateStatus("reject", selected)}
                   >
@@ -1050,10 +1117,10 @@ export default function AgentConsolePage() {
                     type="button"
                     size="sm"
                     variant="outline"
-                    disabled={!selected || isPending}
+                    disabled={!selected || actionBusy}
                     className={cn(
                       "border-indigo-500/60 text-xs font-semibold text-indigo-200 hover:bg-indigo-600 hover:text-[color:var(--theme-text-on-accent)] disabled:opacity-50",
-                      isPending && "cursor-wait",
+                      actionBusy && "cursor-wait",
                     )}
                     onClick={() => selected && notifyDiscord(selected)}
                   >
@@ -1064,10 +1131,10 @@ export default function AgentConsolePage() {
                     type="button"
                     size="sm"
                     variant="outline"
-                    disabled={!selected || isPending}
+                    disabled={!selected || actionBusy}
                     className={cn(
                       "border-[color:var(--theme-border-soft)] text-xs font-semibold text-[color:var(--theme-text-secondary)] hover:bg-red-700 hover:text-[color:var(--theme-text-primary)] disabled:opacity-50",
-                      isPending && "cursor-wait",
+                      actionBusy && "cursor-wait",
                     )}
                     onClick={() => selected && deleteRequest(selected)}
                   >
