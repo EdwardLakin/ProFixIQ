@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useId, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { WorkbenchOption } from "./types";
 import { modalButton, modalInput, modalPrimaryButton } from "./WorkbenchModalFrame";
 
@@ -125,16 +126,16 @@ export function InventoryPickerModal({
     }
   }
 
-  return (
+  return createPortal(
     <>
-      <div className="fixed inset-0 z-[70] bg-[color:var(--theme-surface-overlay)] backdrop-blur-sm" onClick={onClose} />
+      <div className="fixed inset-0 z-[600] bg-[color:var(--theme-surface-overlay)] backdrop-blur-sm" onClick={onClose} />
       <div
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={descriptionId}
-        className="fixed left-1/2 top-1/2 z-[71] flex max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-1rem)] w-[min(920px,calc(100vw-env(safe-area-inset-left)-env(safe-area-inset-right)-1rem))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] shadow-2xl supports-[height:100dvh]:max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-1rem)]"
+        className="fixed inset-x-2 bottom-2 top-2 z-[610] flex min-h-0 flex-col overflow-hidden rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] shadow-2xl sm:inset-x-auto sm:bottom-auto sm:left-1/2 sm:top-1/2 sm:max-h-[calc(100dvh-2rem)] sm:w-[min(920px,calc(100vw-2rem))] sm:-translate-x-1/2 sm:-translate-y-1/2"
       >
         <div className="shrink-0 border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-4 py-3 sm:px-5">
           <div className="flex items-start justify-between gap-3">
@@ -228,6 +229,7 @@ export function InventoryPickerModal({
           </div>
         </div>
       </div>
-    </>
+    </>,
+    document.body,
   );
 }

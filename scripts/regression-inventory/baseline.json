@@ -243,16 +243,6 @@
       "expiresOn": "2026-09-06"
     },
     {
-      "fingerprint": "5188307ca5d91fab4160",
-      "rule": "missing-column",
-      "severity": "error",
-      "domain": "parts",
-      "file": "app/parts/receive/page.tsx",
-      "subject": "parts.import_confidence",
-      "message": "select references missing column parts.import_confidence",
-      "expiresOn": "2026-09-06"
-    },
-    {
       "fingerprint": "79b17e3dc7bc8b802735",
       "rule": "missing-column",
       "severity": "error",

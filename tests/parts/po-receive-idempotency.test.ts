@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 
 const migrationPath =
   "supabase/migrations/20260804054000_fix_po_partial_receive_idempotency.sql";
-const receivePagePath = "app/parts/po/[id]/receive/page.tsx";
+const receivePagePath = "features/parts/components/PurchaseOrderReceivePanel.tsx";
 const receiveRoutePath = "app/api/receive-scan/route.ts";
 
 describe("purchase-order receipt idempotency", () => {

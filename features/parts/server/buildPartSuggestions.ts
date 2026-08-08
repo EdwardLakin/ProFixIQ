@@ -200,7 +200,7 @@ export async function buildPartSuggestions(args: BuildArgs): Promise<CanonicalPa
         sourceType: "receiving_or_open_po",
         label: "Open receiving/PO",
         detail: `${openPoRows.length} request item(s) still pending receive on open PO(s).`,
-        href: "/parts/receive",
+        href: "/parts/receiving",
         strength: "weak",
       });
     }

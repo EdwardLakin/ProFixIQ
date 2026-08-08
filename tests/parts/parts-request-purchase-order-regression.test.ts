@@ -13,6 +13,10 @@ const followupMigration = readFileSync(
   "supabase/migrations/20260807214202_address_parts_quote_review_followups.sql",
   "utf8",
 );
+const identityMigration = readFileSync(
+  "supabase/migrations/20260808021602_materialize_request_backed_po_parts.sql",
+  "utf8",
+);
 const runtime = readFileSync(
   "tests/parts/parts-request-purchase-order.runtime.sql",
   "utf8",
@@ -34,7 +38,10 @@ const orderModal = readFileSync(
   "features/parts/components/request-workbench/OrderPartModal.tsx",
   "utf8",
 );
-const receivePage = readFileSync("app/parts/po/[id]/receive/page.tsx", "utf8");
+const receivePage = readFileSync(
+  "features/parts/components/PurchaseOrderReceivePanel.tsx",
+  "utf8",
+);
 const generatedTypes = readFileSync(
   "features/shared/types/types/supabase.ts",
   "utf8",
@@ -68,7 +75,7 @@ describe("parts request purchase-order regression contract", () => {
     );
   });
 
-  it("supports free-text lines without inventing inventory identity", () => {
+  it("materializes request-backed PO identity without requiring stock setup", () => {
     expect(innerRpc).toContain("if v_item.part_id is null then");
     expect(innerRpc).toContain("message = 'PARTS_ACQUISITION_COST_REQUIRED'");
     expect(innerRpc).toContain("v_wop_id := null");
@@ -78,6 +85,18 @@ describe("parts request purchase-order regression contract", () => {
     expect(orderModal).toContain("Use Attach Part or Add to Stock");
     expect(poLineRoute).toContain('code: "PARTS_ACQUISITION_COST_REQUIRED"');
     expect(poLineRoute).toContain("{ status: 409 }");
+    expect(identityMigration).toContain(
+      "function public.parts_materialize_request_po_line_before_insert",
+    );
+    expect(identityMigration).toContain(
+      "create trigger trg_parts_materialize_request_po_line",
+    );
+    expect(identityMigration).toContain(
+      "v_work_order_part_id := public.parts_ensure_work_order_part",
+    );
+    expect(identityMigration).toContain(
+      "'request_po_identity_materialization'",
+    );
   });
 
   it("keeps acquisition cost distinct from sell and persists only the cost field", () => {
@@ -223,7 +242,9 @@ describe("parts request purchase-order regression contract", () => {
     expect(runtime).toContain(
       "distinct staged acquisition cost did not beat catalog cost",
     );
-    expect(runtime).toContain("manual ordering fabricated a WOP");
+    expect(runtime).toContain(
+      "request-backed ordering did not create its WOP",
+    );
     expect(runtime).toContain("catalog_legacy_exact_replay");
     expect(runtime).toContain("multi_po_earlier_line_receipt");
     expect(runtime).toContain("generic_only_po_completion");

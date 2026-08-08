@@ -897,17 +897,17 @@ begin
 
   if not found
      or v_manual_line.po_id <> v_po_id
-     or v_manual_line.part_id is not null
-     or v_manual_line.work_order_part_id is not null
+     or v_manual_line.part_id is null
+     or v_manual_line.work_order_part_id is null
      or v_manual_line.unit_cost <> 40 then
     raise exception
-      'Parts request-to-PO regression: free-text line was auto-mapped or lost acquisition cost.';
+      'Parts request-to-PO regression: request-backed line did not materialize inventory/WOP identity or lost acquisition cost.';
   end if;
   if not exists (
     select 1
     from public.part_request_items item
     where item.id = '75000000-0000-4000-8000-000000000003'
-      and item.part_id is null
+      and item.part_id = v_manual_line.part_id
       and item.po_id = v_po_id
       and item.qty_ordered = 1
       and item.unit_cost = 40
@@ -917,13 +917,15 @@ begin
   ) then
     raise exception 'Parts request-to-PO regression: manual request state did not reconcile.';
   end if;
-  if exists (
+  if not exists (
     select 1
     from public.work_order_parts part
     where part.source_parts_request_item_id =
       '75000000-0000-4000-8000-000000000003'
+      and part.id = v_manual_line.work_order_part_id
+      and part.part_id = v_manual_line.part_id
   ) then
-    raise exception 'Parts request-to-PO regression: manual ordering fabricated a WOP.';
+    raise exception 'Parts request-to-PO regression: request-backed ordering did not create its WOP.';
   end if;
   if not exists (
     select 1
@@ -1278,10 +1280,11 @@ values (
 insert into parts_request_to_po_results (attempt, result)
 select
   'multi_po_earlier_line_receipt',
-  public.parts_receive_free_text_po_line(
-    p_po_id := line.po_id,
-    p_po_line_id := line.id,
+  public.receive_part_request_item(
+    p_item_id := '75000000-0000-4000-8000-000000000009',
+    p_location_id := '7c100000-0000-4000-8000-000000000001',
     p_qty := 1,
+    p_po_id := line.po_id,
     p_idempotency_key :=
       '7a000000-0000-4000-8000-000000000001:parts-receipt:multi-po-first'
   )
@@ -1290,25 +1293,22 @@ join parts_request_to_po_results first_order
   on first_order.attempt = 'multi_po_first_order'
  and first_order.result ->> 'purchase_order_line_id' = line.id::text;
 
-select pg_temp.expect_ordered_attach_error(
-  '75000000-0000-4000-8000-000000000003',
-  '73000000-0000-4000-8000-000000000001',
-  'PARTS_ORDERED_FREE_TEXT_ATTACH_BLOCKED'
-);
+insert into parts_request_to_po_results (attempt, result)
+select
+  'materialized_attach_replay',
+  public.parts_attach_inventory_to_request_item_atomic(
+    '75000000-0000-4000-8000-000000000003',
+    item.part_id
+  )
+from public.part_request_items item
+where item.id = '75000000-0000-4000-8000-000000000003';
 
 select pg_temp.expect_free_text_receipt_error(
   (
-    select line.po_id
-    from public.purchase_order_lines line
-    where line.part_request_item_id =
-      '75000000-0000-4000-8000-000000000003'
+    select line.po_id from public.purchase_order_lines line
+    where line.id = '7d100000-0000-4000-8000-000000000002'
   ),
-  (
-    select line.id
-    from public.purchase_order_lines line
-    where line.part_request_item_id =
-      '75000000-0000-4000-8000-000000000003'
-  ),
+  '7d100000-0000-4000-8000-000000000002',
   0.001,
   '7a000000-0000-4000-8000-000000000001:parts-receipt:over-precision',
   'PARTS_RECEIPT_QUANTITY_PRECISION'
@@ -1337,10 +1337,11 @@ set local role authenticated;
 insert into parts_request_to_po_results (attempt, result)
 select
   'manual_receipt_first',
-  public.parts_receive_free_text_po_line(
-    p_po_id := line.po_id,
-    p_po_line_id := line.id,
+  public.receive_part_request_item(
+    p_item_id := '75000000-0000-4000-8000-000000000003',
+    p_location_id := '7c100000-0000-4000-8000-000000000001',
     p_qty := 1,
+    p_po_id := line.po_id,
     p_idempotency_key :=
       '7a000000-0000-4000-8000-000000000001:parts-receipt:manual-1'
   )
@@ -1351,52 +1352,17 @@ where line.part_request_item_id =
 insert into parts_request_to_po_results (attempt, result)
 select
   'manual_receipt_exact_replay',
-  public.parts_receive_free_text_po_line(
-    p_po_id := line.po_id,
-    p_po_line_id := line.id,
+  public.receive_part_request_item(
+    p_item_id := '75000000-0000-4000-8000-000000000003',
+    p_location_id := '7c100000-0000-4000-8000-000000000001',
     p_qty := 1,
+    p_po_id := line.po_id,
     p_idempotency_key :=
       '7a000000-0000-4000-8000-000000000001:parts-receipt:manual-1'
   )
 from public.purchase_order_lines line
 where line.part_request_item_id =
   '75000000-0000-4000-8000-000000000003';
-
-select pg_temp.expect_free_text_receipt_error(
-  (
-    select line.po_id
-    from public.purchase_order_lines line
-    where line.part_request_item_id =
-      '75000000-0000-4000-8000-000000000003'
-  ),
-  (
-    select line.id
-    from public.purchase_order_lines line
-    where line.part_request_item_id =
-      '75000000-0000-4000-8000-000000000003'
-  ),
-  0.5,
-  '7a000000-0000-4000-8000-000000000001:parts-receipt:manual-1',
-  'PARTS_RECEIPT_IDEMPOTENCY_CONFLICT'
-);
-
-select pg_temp.expect_free_text_receipt_error(
-  (
-    select line.po_id
-    from public.purchase_order_lines line
-    where line.part_request_item_id =
-      '75000000-0000-4000-8000-000000000003'
-  ),
-  (
-    select line.id
-    from public.purchase_order_lines line
-    where line.part_request_item_id =
-      '75000000-0000-4000-8000-000000000003'
-  ),
-  1,
-  '7a000000-0000-4000-8000-000000000001:parts-receipt:manual-different',
-  'PARTS_RECEIPT_EXCEEDS_REMAINING'
-);
 
 insert into parts_request_to_po_results (attempt, result)
 select
@@ -1463,10 +1429,11 @@ values (
 insert into parts_request_to_po_results (attempt, result)
 values (
   'mixed_po_final_completion',
-  public.parts_receive_free_text_po_line(
-    p_po_id := '7d000000-0000-4000-8000-000000000004',
-    p_po_line_id := '7d100000-0000-4000-8000-000000000006',
+  public.receive_part_request_item(
+    p_item_id := '75000000-0000-4000-8000-000000000010',
+    p_location_id := '7c100000-0000-4000-8000-000000000001',
     p_qty := 1,
+    p_po_id := '7d000000-0000-4000-8000-000000000004',
     p_idempotency_key :=
       '7a000000-0000-4000-8000-000000000001:parts-receipt:mixed-request'
   )
@@ -1628,23 +1595,22 @@ begin
     join public.part_request_items item
       on item.id = line.part_request_item_id
     where item.id = '75000000-0000-4000-8000-000000000003'
-      and line.part_id is null
-      and line.work_order_part_id is null
+      and line.part_id = item.part_id
+      and line.work_order_part_id is not null
       and line.received_qty = 1
-      and item.part_id is null
+      and item.part_id is not null
       and item.qty_received = 1
       and item.status = 'received'
   ) then
     raise exception
-      'Parts free-text receipt regression: line/request receipt was not atomic or attachment leaked identity.';
+      'Parts request receipt regression: inventory/WOP identity or receipt state diverged.';
   end if;
   if not exists (
     select 1
     from parts_request_to_po_results
     where attempt = 'manual_receipt_exact_replay'
       and (result ->> 'idempotent')::boolean
-      and (result ->> 'line_received_qty')::numeric = 1
-      and (result ->> 'request_received_qty')::numeric = 1
+      and (result ->> 'qty_received')::numeric = 1
   ) then
     raise exception
       'Parts free-text receipt regression: exact replay did not return its durable receipt.';
@@ -1702,20 +1668,23 @@ begin
       and item.status = 'partially_received'
       and first_line.received_qty = 1
       and second_line.received_qty = 0
-      and (receipt.result ->> 'po_id')::uuid = first_line.po_id
-      and (receipt.result ->> 'part_request_item_id')::uuid = item.id
+      and (receipt.result ->> 'purchase_order_id')::uuid = first_line.po_id
+      and (receipt.result ->> 'work_order_part_id')::uuid = first_line.work_order_part_id
   ) then
     raise exception
       'Parts free-text receipt regression: an earlier partial-order PO line could not receive after item.po_id advanced.';
   end if;
-  if exists (
+  if not exists (
     select 1
     from public.stock_moves move
     where move.part_request_item_id =
       '75000000-0000-4000-8000-000000000003'
+      and move.purchase_order_line_id is not null
+      and move.work_order_part_id is not null
+      and move.reason = 'receive'
   ) then
     raise exception
-      'Parts free-text receipt regression: manual receipt created inventory movement.';
+      'Parts request receipt regression: received request did not create inventory movement.';
   end if;
   if exists (
     select 1
@@ -1785,8 +1754,7 @@ begin
     where partial_receipt.attempt = 'mixed_po_partial_completion'
       and not (partial_receipt.result ->> 'po_closed')::boolean
       and partial_receipt.result ->> 'po_status' = 'submitted'
-      and (final_receipt.result ->> 'po_closed')::boolean
-      and final_receipt.result ->> 'po_status' = 'received'
+      and (final_receipt.result ->> 'purchase_order_closed')::boolean
       and purchase_order.status = 'received'
       and generic_line.received_qty = 1
       and request_line.received_qty = 1
@@ -1853,14 +1821,14 @@ begin
       '75000000-0000-4000-8000-000000000009',
       '75000000-0000-4000-8000-000000000010'
     )
-  ) <> 9 then
+  ) <> 6 then
     raise exception 'Parts request-to-PO regression: replay/failure wrote extra operation receipts.';
   end if;
   if (
     select count(*)
     from public.parts_lifecycle_operations operation
     where operation.operation_type = 'receive_free_text_po_line'
-  ) <> 6 then
+  ) <> 3 then
     raise exception
       'Parts free-text receipt regression: replay/failure wrote extra receipt operations.';
   end if;

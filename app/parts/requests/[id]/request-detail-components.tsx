@@ -97,9 +97,6 @@ export function RequestProcurementPanel(): JSX.Element {
         <Link href="/parts/po" className={LINK_BTN}>
           → Open PO list
         </Link>
-        <Link href="/parts/po/receive" className={LINK_BTN}>
-          → Receive from PO
-        </Link>
       </div>
     </div>
   );
@@ -114,10 +111,7 @@ export function RequestReceivingPanel(): JSX.Element {
       </p>
       <div className="mt-3 flex flex-wrap gap-2 text-xs">
         <Link href="/parts/receiving" className={LINK_BTN}>
-          → View Request Inbox
-        </Link>
-        <Link href="/parts/receive" className={LINK_BTN}>
-          → Scan to Receive
+          → Open Receive Parts
         </Link>
       </div>
     </div>

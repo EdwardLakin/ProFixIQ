@@ -271,16 +271,8 @@ export const TILES: Tile[] = [
   },
   {
     href: "/parts/receiving",
-    title: "Receiving Inbox",
-    subtitle: "Partial receive & allocations",
-    roles: ["parts", "manager", "owner", "admin"],
-    scopes: ["parts", "all"],
-    section: "Parts",
-  },
-  {
-    href: "/parts/receive",
-    title: "Scan to Receive",
-    subtitle: "Barcode receiving",
+    title: "Receive Parts",
+    subtitle: "Requests, POs & barcode scan",
     roles: ["parts", "manager", "owner", "admin"],
     scopes: ["parts", "all"],
     section: "Parts",
@@ -297,17 +289,6 @@ export const TILES: Tile[] = [
     href: "/parts/po",
     title: "Purchase Orders",
     subtitle: "Create & manage POs",
-    roles: ["parts", "manager", "owner", "admin"],
-    scopes: ["parts", "all"],
-    section: "Parts",
-  },
-
-  // Optional: if you create a “choose PO then receive” landing page.
-  // If you don’t plan to build /parts/po/receive, delete this tile.
-  {
-    href: "/parts/po/receive",
-    title: "Receive from PO",
-    subtitle: "Receive + auto-allocate",
     roles: ["parts", "manager", "owner", "admin"],
     scopes: ["parts", "all"],
     section: "Parts",

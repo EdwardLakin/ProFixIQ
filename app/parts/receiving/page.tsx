@@ -62,6 +62,10 @@ async function resolveShopId(supabase: ReturnType<typeof createBrowserSupabase>)
 }
 
 const ReceiveDrawer = dynamic(() => import("@/features/parts/components/ReceiveDrawer"), { ssr: false });
+const ScanToReceivePanel = dynamic(
+  () => import("@/features/parts/components/ScanToReceivePanel").then((module) => module.ScanToReceivePanel),
+  { ssr: false },
+);
 
 export default function ReceivingInboxPage(): JSX.Element {
   const supabase = useMemo(() => createBrowserSupabase(), []);
@@ -82,6 +86,7 @@ export default function ReceivingInboxPage(): JSX.Element {
   const [nowTs, setNowTs] = useState<number>(Date.now());
   const [drawerOpen, setDrawerOpen] = useState<boolean>(false);
   const [drawerItem, setDrawerItem] = useState<ReceiveDrawerItem | null>(null);
+  const [scanOpen, setScanOpen] = useState<boolean>(false);
 
   const load = async (pageToLoad = page) => {
     setLoading(true);
@@ -244,11 +249,25 @@ export default function ReceivingInboxPage(): JSX.Element {
   return (
     <PageShell
       eyebrow="Parts · Receiving lens"
-      title="Receiving Inbox"
-      description="Shared receive flow for request items with consistent status and trust context."
+      title="Receive Parts"
+      description="Receive request items, purchase orders, or scanned stock from one screen."
       actions={<button onClick={() => void load(page)} className={ui.buttonSecondary}>Refresh</button>}
     >
       <div className="space-y-4 text-[color:var(--theme-text-primary)]">
+
+      <details
+        id="scan-to-receive"
+        className="desktop-panel-soft overflow-hidden"
+        open={scanOpen}
+        onToggle={(event) => setScanOpen(event.currentTarget.open)}
+      >
+        <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-[color:var(--theme-text-primary)] focus:outline-none focus:ring-2 focus:ring-inset focus:ring-sky-500/50">
+          Scan a barcode to receive
+        </summary>
+        <div className="border-t border-[color:var(--desktop-border)] p-4">
+          {scanOpen ? <ScanToReceivePanel /> : null}
+        </div>
+      </details>
 
       <div className="text-xs text-[color:var(--theme-text-muted)]">
         Last updated <span className="text-[color:var(--theme-text-secondary)]">{lastUpdated ? lastUpdated.toLocaleTimeString() : "—"}</span> · {lastUpdated && nowTs - lastUpdated.getTime() > 120000 ? <span className="text-[color:var(--theme-text-secondary)]">stale</span> : <span className="text-emerald-300">fresh</span>}
