@@ -26326,6 +26326,17 @@ export type Database = {
         }
         Returns: boolean
       }
+      remediate_quote_line_pricing_quarantine: {
+        Args: {
+          p_actor_user_id: string
+          p_items: Json
+          p_note?: string
+          p_operation_key: string
+          p_quote_line_id: string
+          p_shop_id: string
+        }
+        Returns: Json
+      }
       reopen_inspection: {
         Args: { p_inspection_id: string; p_reason: string }
         Returns: Json

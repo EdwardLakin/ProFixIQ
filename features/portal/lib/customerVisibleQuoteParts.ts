@@ -6,6 +6,45 @@ function metadataArray(
   return Array.isArray(value) ? value : [];
 }
 
+function record(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function sanitizedQuarantinedPart(value: unknown): Record<string, unknown> | null {
+  const item = record(value);
+  if (!item) return null;
+
+  const safeKeys = [
+    "id",
+    "request_id",
+    "description",
+    "name",
+    "selected_name",
+    "qty",
+    "quantity",
+    "part_number",
+    "partNumber",
+    "requested_part_number",
+    "sku",
+    "manufacturer",
+    "supplier",
+    "vendor",
+  ] as const;
+  const safe = Object.fromEntries(
+    safeKeys.flatMap((key) =>
+      item[key] == null ? [] : ([[key, item[key]]] as const),
+    ),
+  );
+  return {
+    ...safe,
+    unit_price: null,
+    line_total: null,
+    pricing_unavailable: true,
+  };
+}
+
 export function selectCustomerVisibleQuoteParts(
   metadata: Record<string, unknown>,
   allowCanonicalPartsQuote: boolean,
@@ -22,18 +61,26 @@ export function selectCustomerVisibleQuoteParts(
       ? (sanitization as Record<string, unknown>)
       : null;
 
-  // A protected decision can retain its finalized top-level total while legacy
-  // item pricing is quarantined for staff review. Never coerce those null item
-  // prices to a misleading customer-visible $0 or fall back to stale snapshots.
-  if (sanitizationRecord?.customer_pricing_quarantined === true) {
-    return [];
-  }
-
   const quotedParts = partsQuoteRecord
     ? metadataArray(partsQuoteRecord, "items")
     : [];
 
-  if (allowCanonicalPartsQuote && quotedParts.length > 0) {
+  // Keep the finalized descriptions and quantities visible, but rebuild every
+  // item from a strict non-price allowlist. This cannot leak the legacy price
+  // that caused quarantine and lets the portal say pricing is unavailable
+  // instead of presenting a contradictory zero-item quote.
+  if (sanitizationRecord?.customer_pricing_quarantined === true) {
+    const source = quotedParts.length > 0 ? quotedParts : requestedParts;
+    return source
+      .map(sanitizedQuarantinedPart)
+      .filter((part): part is Record<string, unknown> => part !== null);
+  }
+
+  if (
+    (allowCanonicalPartsQuote ||
+      sanitizationRecord?.customer_pricing_remediated === true) &&
+    quotedParts.length > 0
+  ) {
     return quotedParts;
   }
 

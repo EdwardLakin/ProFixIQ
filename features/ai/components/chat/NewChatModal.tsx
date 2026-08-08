@@ -5,10 +5,15 @@ import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { toast } from "sonner";
 import ModalShell from "@/features/shared/components/ModalShell";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import {
+  matchesChatRole,
+  workOrderChatRoleFilter,
+  type ChatRoleFilter,
+} from "./chatRoleFilter";
 
 const ROLE_OPTIONS = [
   { value: "all", label: "All roles" },
-  { value: "tech", label: "Tech" },
+  { value: "mechanic", label: "Mechanic" },
   { value: "advisor", label: "Advisor" },
   { value: "parts", label: "Parts" },
   { value: "foreman", label: "Foreman" },
@@ -76,7 +81,7 @@ export default function NewChatModal({
   const [users, setUsers] = useState<UserRow[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [search, setSearch] = useState("");
-  const [role, setRole] = useState<"all" | string>("all");
+  const [role, setRole] = useState<ChatRoleFilter>("all");
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
 
@@ -288,9 +293,7 @@ export default function NewChatModal({
     if (!currentUserRole) return;
 
     if (context_type === "work_order") {
-      if (currentUserRole === "tech") setRole("advisor");
-      else if (currentUserRole === "advisor") setRole("tech");
-      else setRole("all");
+      setRole(workOrderChatRoleFilter(currentUserRole) ?? "all");
     }
   }, [isOpen, context_type, currentUserRole]);
 
@@ -414,7 +417,7 @@ export default function NewChatModal({
   const filtered = useMemo(() => {
     const t = search.trim().toLowerCase();
     return users.filter((u) => {
-      if (role !== "all" && (u.role ?? "") !== role) return false;
+      if (!matchesChatRole(u.role, role)) return false;
       if (!t) return true;
       return (
         (u.full_name ?? "").toLowerCase().includes(t) ||

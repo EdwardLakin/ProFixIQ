@@ -77,6 +77,28 @@ describe("request-backed free-text PO receipt route", () => {
     });
   });
 
+  it("rejects receipt quantities beyond the request ledger precision", async () => {
+    const rpc = vi.fn();
+    mocks.requireShopScopedApiAccess.mockResolvedValue({
+      ok: true,
+      profile: { id: "actor-id", shop_id: SHOP_ID },
+      supabase: { rpc },
+    });
+
+    const response = await callRoute({
+      qty: 0.001,
+      idempotencyKey: "over-precision",
+    });
+    const payload = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(payload.error).toBe(
+      "Receipt quantity cannot use more than two decimal places.",
+    );
+    expect(mocks.requireShopScopedApiAccess).not.toHaveBeenCalled();
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
   it("returns a stable conflict for a database-enforced cross-shop target", async () => {
     const rpc = vi.fn(async () => ({
       data: null,

@@ -9,6 +9,10 @@ const receiptMigration = readFileSync(
   "supabase/migrations/20260807155907_harden_free_text_po_receipt_and_attachment.sql",
   "utf8",
 );
+const followupMigration = readFileSync(
+  "supabase/migrations/20260807214202_address_parts_quote_review_followups.sql",
+  "utf8",
+);
 const runtime = readFileSync(
   "tests/parts/parts-request-purchase-order.runtime.sql",
   "utf8",
@@ -103,6 +107,11 @@ describe("parts request purchase-order regression contract", () => {
     expect(requestPage).toMatch(
       /acquisitionCostOverride\s*\?\?\s*stagedAcquisitionCost\s*\?\?\s*catalogAcquisitionCost/,
     );
+    expect(requestPage).toContain("ui_acquisition_cost?: number");
+    expect(requestPage).toContain("Acquisition unit cost for");
+    expect(
+      requestPage.match(/it\.ui_acquisition_cost \?\? null/g),
+    ).toHaveLength(2);
   });
 
   it("binds idempotency to the full request and returns existing domain identity", () => {
@@ -276,5 +285,8 @@ describe("parts request purchase-order regression contract", () => {
     expect(generatedTypes).toContain(
       "parts_attach_inventory_to_request_item_atomic:",
     );
+    expect(followupMigration).toContain("PARTS_RECEIPT_QUANTITY_PRECISION");
+    expect(runtime).toContain("0.001");
+    expect(runtime).toContain("Over-precision receipt wrote an operation receipt");
   });
 });

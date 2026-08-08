@@ -27,6 +27,15 @@ export async function POST(
       { status: 400 },
     );
   }
+  if (Math.round(qty * 100) / 100 !== qty) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "Receipt quantity cannot use more than two decimal places.",
+      },
+      { status: 400 },
+    );
+  }
 
   const access = await requireShopScopedApiAccess({
     requiredCapability: "canManageParts",

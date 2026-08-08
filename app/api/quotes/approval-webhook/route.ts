@@ -2,7 +2,10 @@ import "server-only";
 
 import crypto from "node:crypto";
 import { NextResponse } from "next/server";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import {
+  createAdminSupabase,
+  createServerSupabaseRoute,
+} from "@/features/shared/lib/supabase/server";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import {
   isQuotePricingQuarantineError,
@@ -220,6 +223,25 @@ export async function POST(req: Request) {
       declinedQuoteLineIds,
       signatureUrl,
     });
+  const durableOperationKey = `${workOrder.shop_id}:approval-compat:${operationKey}`;
+  const { data: durableReceipt } = await createAdminSupabase()
+    .from("quote_lifecycle_operation_keys")
+    .select("result")
+    .eq("shop_id", workOrder.shop_id)
+    .eq("work_order_id", workOrderId)
+    .eq("operation_name", "approval_compatibility_bundle")
+    .eq("operation_key", durableOperationKey)
+    .maybeSingle<{ result: unknown }>();
+  if (
+    durableReceipt?.result &&
+    typeof durableReceipt.result === "object" &&
+    !Array.isArray(durableReceipt.result)
+  ) {
+    return NextResponse.json({
+      ...(durableReceipt.result as Record<string, unknown>),
+      idempotent: true,
+    });
+  }
 
   const quarantineCheck = await checkQuotePricingQuarantine({
     supabase,
@@ -259,7 +281,7 @@ export async function POST(req: Request) {
       p_approved_quote_line_ids: approvedQuoteLineIds,
       p_declined_quote_line_ids: declinedQuoteLineIds,
       p_signature_url: signatureUrl,
-      p_operation_key: `${workOrder.shop_id}:approval-compat:${operationKey}`,
+      p_operation_key: durableOperationKey,
       p_at: new Date().toISOString(),
     },
   );

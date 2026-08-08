@@ -27,6 +27,7 @@ import {
   type ResolvedQuotePart,
 } from "./partsModel";
 import { useTabs } from "@/features/shared/components/tabs/TabsProvider";
+import { PricingQuarantineRemediation } from "./PricingQuarantineRemediation";
 
 const COPPER = "#C57A4A";
 const SEND_READY_STAGES = new Set(["advisor_pending", "ready_to_send"]);
@@ -1057,6 +1058,13 @@ export default function QuoteReviewView(props: {
                                   ? "Finalized parts total is unavailable; do not treat it as $0."
                                   : `Finalized parts total: ${fmt(partsTotal)}`}
                               </div>
+                              <PricingQuarantineRemediation
+                                quoteLineId={line.id}
+                                quoteLineUpdatedAt={line.updated_at}
+                                finalizedPartsTotal={partsTotal}
+                                parts={partsByQuoteLine[line.id] ?? []}
+                                onRemediated={reload}
+                              />
                             </div>
                           ) : null}
 

@@ -44,11 +44,18 @@ describe("quote pricing quarantine server entry points", () => {
       "app/api/work-orders/quotes/[id]/approval/route.ts",
     );
 
-    expect(compatibility.indexOf("await checkQuotePricingQuarantine({")).toBeLessThan(
-      compatibility.indexOf(
-        'rpc.rpc(\n    "apply_approval_compatibility_bundle_atomic"',
-      ),
+    const compatibilityReplay = compatibility.indexOf(
+      '.eq("operation_name", "approval_compatibility_bundle")',
     );
+    const compatibilityGuard = compatibility.indexOf(
+      "await checkQuotePricingQuarantine({",
+    );
+    const compatibilityRpc = compatibility.indexOf(
+      'rpc.rpc(\n    "apply_approval_compatibility_bundle_atomic"',
+    );
+    expect(compatibilityReplay).toBeGreaterThan(-1);
+    expect(compatibilityReplay).toBeLessThan(compatibilityGuard);
+    expect(compatibilityGuard).toBeLessThan(compatibilityRpc);
     expect(lineDecision.indexOf("await checkQuotePricingQuarantine({")).toBeLessThan(
       lineDecision.indexOf('rpc.rpc("apply_portal_line_decision_atomic"'),
     );
