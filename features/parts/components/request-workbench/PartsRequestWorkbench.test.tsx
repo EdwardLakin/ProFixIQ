@@ -288,7 +288,8 @@ describe("PartsRequestWorkbench inventory picker mobile layout", () => {
     await user.click(screen.getByRole("button", { name: "Attach Part" }));
 
     const dialog = screen.getByRole("dialog", { name: /Attach Part — Oil filter/i });
-    expect(dialog).toHaveClass("max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-1rem)]");
+    expect(dialog).toHaveClass("inset-x-2", "bottom-2", "top-2", "min-h-0");
+    expect(dialog.parentElement).toBe(document.body);
     expect(dialog).toHaveClass("flex-col");
     expect(dialog).toHaveClass("overflow-hidden");
     expect(screen.getByRole("heading", { name: /Attach Part — Oil filter/i }).parentElement?.parentElement?.parentElement).toHaveClass("shrink-0");

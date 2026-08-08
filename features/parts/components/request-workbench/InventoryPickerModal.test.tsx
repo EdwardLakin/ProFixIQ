@@ -26,4 +26,28 @@ describe("InventoryPickerModal", () => {
 
     expect(screen.getByText("100 on hand")).toBeInTheDocument();
   });
+
+  it("portals the scrollable picker above application stacking contexts", () => {
+    render(
+      <div data-testid="app-stacking-context">
+        <InventoryPickerModal
+          open
+          results={Array.from({ length: 60 }, (_, index) => ({
+            value: `part-${index}`,
+            label: `Part ${index}`,
+            onHandQty: index,
+          }))}
+        />
+      </div>,
+    );
+
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.parentElement).toBe(document.body);
+    expect(dialog).toHaveClass("z-[610]", "min-h-0", "overflow-hidden");
+    expect(screen.getByTestId("inventory-picker-results-body")).toHaveClass(
+      "overflow-y-auto",
+      "overscroll-contain",
+    );
+    expect(screen.getByText("Showing 50 of 60 results. Refine search to narrow matches.")).toBeInTheDocument();
+  });
 });

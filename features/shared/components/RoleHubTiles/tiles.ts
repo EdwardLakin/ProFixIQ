@@ -150,11 +150,10 @@ export const TILES: Tile[] = [
     roles: ["parts", "manager", "owner", "admin"],
     scopes: ["parts", "all"],
   },
-  // NEW: Scan-to-Receive entry
   {
-    href: "/parts/receive",
-    title: "Scan to Receive",
-    subtitle: "Camera or manual entry",
+    href: "/parts/receiving",
+    title: "Receive Parts",
+    subtitle: "Requests, POs & barcode scan",
     roles: ["parts", "manager", "owner", "admin"],
     scopes: ["parts", "all"],
   },

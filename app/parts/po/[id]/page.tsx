@@ -2,12 +2,17 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import { useParams, useRouter } from "next/navigation";
-import Link from "next/link";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { toast } from "sonner";
 import type { Database } from "@shared/types/types/supabase";
 import { partIdentifierLabel, partOptionLabel, toPartDisplaySummary } from "@/features/parts/lib/part-display";
+
+const PurchaseOrderReceivePanel = dynamic(
+  () => import("@/features/parts/components/PurchaseOrderReceivePanel").then((module) => module.PurchaseOrderReceivePanel),
+  { ssr: false },
+);
 
 type DB = Database;
 
@@ -72,6 +77,7 @@ export default function PurchaseOrderDetailPage(): JSX.Element {
 
   const [busySaveHeader, setBusySaveHeader] = useState<boolean>(false);
   const [busyAddLine, setBusyAddLine] = useState<boolean>(false);
+  const [receiveOpen, setReceiveOpen] = useState<boolean>(false);
 
   // Header edit state
   const [supplierId, setSupplierId] = useState<string>("");
@@ -253,6 +259,7 @@ export default function PurchaseOrderDetailPage(): JSX.Element {
     });
 
     setLines(mapped);
+    setReceiveOpen(mapped.some((line) => n(line.ui_ordered) > n(line.ui_received)));
 
     setLoading(false);
     setLoadedOnce(true);
@@ -460,9 +467,9 @@ export default function PurchaseOrderDetailPage(): JSX.Element {
             ← Back
           </button>
 
-          <Link className={btnGhost} href={`/parts/po/${String(po.id)}/receive`}>
+          <a className={btnGhost} href="#receive" onClick={() => setReceiveOpen(true)}>
             Receive
-          </Link>
+          </a>
         </div>
 
         <button className={btnCopper} onClick={() => void saveHeader()} disabled={busySaveHeader} type="button">
@@ -717,12 +724,25 @@ export default function PurchaseOrderDetailPage(): JSX.Element {
             </div>
 
             <div className="border-t border-[color:var(--theme-border-soft)] px-4 py-3 text-[11px] text-[color:var(--theme-text-muted)]">
-              Receiving is done on the <span className="text-[color:var(--theme-text-primary)]">Receive PO</span> page and should increment the line’s received qty.
-              If your line columns are named differently, we’ll rename the insert + UI mapping to match your schema.
+              Receive this PO below. Request-backed lines keep their inventory and work-order links automatically.
             </div>
           </div>
         </div>
       </div>
+
+      <details
+        className={panel}
+        id="receive"
+        open={receiveOpen}
+        onToggle={(event) => setReceiveOpen(event.currentTarget.open)}
+      >
+        <summary className="cursor-pointer px-5 py-4 text-sm font-semibold text-[color:var(--theme-text-primary)] focus:outline-none focus:ring-2 focus:ring-inset focus:ring-sky-500/50">
+          Receive this purchase order
+        </summary>
+        <div className="border-t border-[color:var(--theme-border-soft)] p-5">
+          {receiveOpen ? <PurchaseOrderReceivePanel poId={String(po.id)} /> : null}
+        </div>
+      </details>
     </div>
   );
 }

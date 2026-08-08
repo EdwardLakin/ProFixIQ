@@ -13,7 +13,6 @@ import {
   Package,
   PackageCheck,
   Plus,
-  ScanLine,
   ShoppingCart,
   Tags,
   Truck,
@@ -540,7 +539,7 @@ export default function PartsDashboardPage(): JSX.Element {
           label="Open purchase orders"
           value={display(openPoCount)}
           hint="Draft, sent, or partial"
-          href="/parts/po/receive"
+          href="/parts/po"
           icon={ShoppingCart}
           tone="bg-green-600"
         />
@@ -780,12 +779,6 @@ export default function PartsDashboardPage(): JSX.Element {
                   icon: Truck,
                 },
                 {
-                  label: "Scan to receive",
-                  detail: "Receive by barcode or part number",
-                  href: "/parts/receive",
-                  icon: ScanLine,
-                },
-                {
                   label: "Manage inventory",
                   detail: "Search and maintain catalog stock",
                   href: "/parts/inventory",
@@ -794,7 +787,7 @@ export default function PartsDashboardPage(): JSX.Element {
                 {
                   label: "Review purchase orders",
                   detail: "Open, partial, and completed POs",
-                  href: "/parts/po/receive",
+                  href: "/parts/po",
                   icon: ShoppingCart,
                 },
               ].map(({ label, detail, href, icon: Icon }) => (
