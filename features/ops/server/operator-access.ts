@@ -5,7 +5,7 @@ import { NextResponse } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import type { Database } from "@shared/types/types/supabase";
 import {
-  defaultOpsOperatorEmails,
+  isDefaultOpsOperatorEmail,
   normalizeOpsOperatorEmail,
 } from "@/features/ops/lib/operatorAccess";
 
@@ -14,17 +14,8 @@ type OpsProfile = Pick<
   "id" | "email" | "full_name" | "role" | "agent_role" | "shop_id"
 >;
 
-function configuredOpsEmails(): Set<string> {
-  const configured = (process.env.PROFIXIQ_OPS_ALLOWED_EMAILS ?? "")
-    .split(",")
-    .map(normalizeOpsOperatorEmail)
-    .filter(Boolean);
-
-  return new Set([...defaultOpsOperatorEmails, ...configured]);
-}
-
 export function isOpsOperatorEmail(value: string | null | undefined): boolean {
-  return configuredOpsEmails().has(normalizeOpsOperatorEmail(value));
+  return isDefaultOpsOperatorEmail(value);
 }
 
 export async function resolveOpsOperatorAccess() {
