@@ -252,9 +252,13 @@ export default function AgentConsolePage() {
       const json = (await res.json()) as { requests: AgentRequest[] };
       setRequests(json.requests);
 
-      if (selected?.id) {
+      const requestedId = new URLSearchParams(window.location.search).get(
+        "request",
+      );
+      const selectedId = selected?.id ?? requestedId;
+      if (selectedId) {
         const nextSelected =
-          json.requests.find((r) => r.id === selected.id) ?? null;
+          json.requests.find((request) => request.id === selectedId) ?? null;
         setSelected(nextSelected);
       }
     } catch (err) {
