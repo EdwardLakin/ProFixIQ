@@ -62,6 +62,11 @@ function requestHostname(req: NextRequest): string {
   );
 }
 
+function isOpsHostname(hostname: string): boolean {
+  const normalized = hostname.split(":")[0]?.toLowerCase();
+  return normalized === "ops.profixiq.com" || normalized === "ops.localhost";
+}
+
 function productRequestUrl(
   req: NextRequest,
   path: string,
@@ -154,7 +159,9 @@ async function resolvePortalAccessServer(
 export async function middleware(req: NextRequest) {
   const requestPathname = req.nextUrl.pathname;
   const { search } = req.nextUrl;
-  const fleetProductRequest = isFleetProductHostname(requestHostname(req));
+  const hostname = requestHostname(req);
+  const fleetProductRequest = isFleetProductHostname(hostname);
+  const opsProductRequest = isOpsHostname(hostname);
   const mobileDeviceRequest = isMobileDeviceRequest(req);
 
   if (isStaticAssetPath(requestPathname)) {
@@ -202,11 +209,21 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(target);
   }
 
-  const pathname = fleetInternalPath ?? requestPathname;
+  const opsInternalPath =
+    opsProductRequest &&
+    (requestPathname === "/" ||
+      requestPathname === "/ops" ||
+      requestPathname === "/ops/")
+      ? "/ops"
+      : null;
+
+  const pathname = opsInternalPath ?? fleetInternalPath ?? requestPathname;
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set("x-next-pathname", pathname);
   if (fleetProductRequest) {
     requestHeaders.set("x-profixiq-product-host", "fleet");
+  } else if (opsProductRequest) {
+    requestHeaders.set("x-profixiq-product-host", "ops");
   }
 
   if (
@@ -223,8 +240,9 @@ export async function middleware(req: NextRequest) {
 
   const fleetRewriteTarget = req.nextUrl.clone();
   if (fleetInternalPath) fleetRewriteTarget.pathname = fleetInternalPath;
+  if (opsInternalPath) fleetRewriteTarget.pathname = opsInternalPath;
 
-  const res = fleetInternalPath
+  const res = fleetInternalPath || opsInternalPath
     ? NextResponse.rewrite(fleetRewriteTarget, {
         request: { headers: requestHeaders },
       })
@@ -569,6 +587,14 @@ export const config = {
       source: "/((?!_next/static|_next/image|favicon.ico).*)",
       has: [{ type: "host", value: "fleet.localhost" }],
     },
+    {
+      source: "/((?!_next/static|_next/image|favicon.ico).*)",
+      has: [{ type: "host", value: "ops.profixiq.com" }],
+    },
+    {
+      source: "/((?!_next/static|_next/image|favicon.ico).*)",
+      has: [{ type: "host", value: "ops.localhost" }],
+    },
     "/",
     "/sign-in",
     "/compare-plans",
@@ -593,6 +619,7 @@ export const config = {
     "/launch",
     "/offline/:path*",
     "/onboarding/:path*",
+    "/ops/:path*",
     "/dashboard/:path*",
     "/fleet/:path*",
     "/work-orders/:path*",

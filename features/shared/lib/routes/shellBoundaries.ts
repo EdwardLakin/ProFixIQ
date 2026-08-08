@@ -35,6 +35,7 @@ export function isOutsideDesktopAppShell(pathname: string): boolean {
   if (isStandalonePublicRoute(pathname)) return true;
   if (matchesRoutePrefix(pathname, "/portal")) return true;
   if (matchesRoutePrefix(pathname, "/mobile")) return true;
+  if (matchesRoutePrefix(pathname, "/ops")) return true;
   if (matchesRoutePrefix(pathname, "/coming-soon")) return true;
   return pathname === "/auth" || pathname.startsWith("/auth/");
 }

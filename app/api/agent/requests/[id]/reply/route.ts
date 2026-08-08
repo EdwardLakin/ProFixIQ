@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import { requireOpsOperatorApiAccess } from "@/features/ops/server/operator-access";
 import {
   AgentTeamRequestError,
   mapAgentTeamRequestStatus,
@@ -92,13 +92,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "message is required" }, { status: 400 });
   }
 
-  const supabase = createServerSupabaseRoute();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const access = await requireOpsOperatorApiAccess();
+  if (!access.ok) return access.response;
+  const { supabase, user } = access;
 
   const { data: row, error: selectError } = await supabase
     .from("agent_requests")

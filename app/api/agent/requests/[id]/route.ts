@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import { requireOpsOperatorApiAccess } from "@/features/ops/server/operator-access";
 import {
   AgentTeamRequestError,
   approveAgentTeamMission,
@@ -26,7 +26,6 @@ type PatchBody = {
   llm_notes?: string;
 };
 
-const APPROVER_ROLES = ["developer"];
 
 function getIdFromUrl(req: NextRequest): string | null {
   const url = new URL(req.url);
@@ -111,40 +110,6 @@ function projectionFromNormalized(value: unknown): AgentTeamProjection | null {
   };
 }
 
-async function requireDeveloperProfile() {
-  const supabase = createServerSupabaseRoute();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
-  }
-
-  const { data: profile, error: profileError } = await supabase
-    .from("profiles")
-    .select("id, role, agent_role")
-    .eq("id", user.id)
-    .single();
-
-  if (profileError || !profile) {
-    console.error("agent request profile error", profileError);
-    return {
-      error: NextResponse.json({ error: "Profile not found" }, { status: 400 }),
-    };
-  }
-
-  if (!APPROVER_ROLES.includes(profile.agent_role ?? "")) {
-    return {
-      error: NextResponse.json(
-        { error: "Forbidden – insufficient role to manage Agent team cases" },
-        { status: 403 },
-      ),
-    };
-  }
-
-  return { supabase, user, profile };
-}
-
 function agentErrorResponse(error: unknown) {
   if (error instanceof AgentTeamRequestError) {
     return NextResponse.json(
@@ -189,8 +154,8 @@ export async function PATCH(req: NextRequest) {
     );
   }
 
-  const access = await requireDeveloperProfile();
-  if (access.error) return access.error;
+  const access = await requireOpsOperatorApiAccess();
+  if (!access.ok) return access.response;
   const { supabase, user } = access;
 
   const { data: existing, error: existingError } = await supabase
@@ -323,8 +288,8 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: "Missing agent request id" }, { status: 400 });
   }
 
-  const access = await requireDeveloperProfile();
-  if (access.error) return access.error;
+  const access = await requireOpsOperatorApiAccess();
+  if (!access.ok) return access.response;
   const { supabase, user } = access;
 
   const { data: existing, error: existingError } = await supabase

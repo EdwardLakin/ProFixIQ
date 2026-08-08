@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
-import { createClient } from "@supabase/supabase-js";
+import {
+  createAdminSupabase,
+  createServerSupabaseRoute,
+} from "@/features/shared/lib/supabase/server";
 import type { Database } from "@shared/types/types/supabase";
 import {
   AgentTeamRequestError,
@@ -10,12 +12,7 @@ import {
   readAgentTeamCase,
   type AgentTeamProjection,
 } from "@/features/agent/server/teamClient";
-
-const supabaseAdmin = createClient<Database>(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  { auth: { persistSession: false } },
-);
+import { requireOpsOperatorApiAccess } from "@/features/ops/server/operator-access";
 
 type AgentGithubMeta = {
   issueNumber?: number | null;
@@ -171,7 +168,7 @@ async function syncAgentRequestRow(row: AgentRequestRow): Promise<AgentRequestRo
     const nextStatus = mapAgentTeamRequestStatus(projection);
     const synchronizedAt = new Date().toISOString();
 
-    const { data: updated, error } = await supabaseAdmin
+    const { data: updated, error } = await createAdminSupabase()
       .from("agent_requests")
       .update({
         status: nextStatus,
@@ -220,14 +217,9 @@ type CreateAgentRequestBody = {
 };
 
 export async function GET() {
-  const supabase = createServerSupabaseRoute();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const access = await requireOpsOperatorApiAccess();
+  if (!access.ok) return access.response;
+  const { supabase } = access;
 
   const { data, error } = await supabase
     .from("agent_requests")
@@ -293,7 +285,7 @@ export async function POST(req: NextRequest) {
 
   let signedAttachments: { path: string; url: string; name: string }[] = [];
   if (attachmentIds.length > 0) {
-    const { data, error } = await supabaseAdmin.storage
+    const { data, error } = await createAdminSupabase().storage
       .from("agent_uploads")
       .createSignedUrls(attachmentIds, 60 * 60 * 24 * 7);
 
