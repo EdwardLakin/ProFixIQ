@@ -94,7 +94,7 @@ describe("work-order paid closeout boundary", () => {
   it("reconciles direct technicians, shift display, approval audits, and PO closeout", () => {
     expect(boardHook).toContain("assigned_tech_id,assigned_to");
     expect(shiftTracker).toContain(
-      "applyShiftState(await fetchMobileShiftState(), true)",
+      "applyShiftState(await fetchMobileShiftState(), false)",
     );
     expect(migration).toContain("trg_work_order_line_approval_audit");
     expect(migration).toContain("insert into public.work_order_approvals(");
