@@ -62,6 +62,11 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
     return `${origin}/auth/callback${params.size ? `?${params.toString()}` : ""}`;
   }, [origin, searchParams]);
 
+  const isOpsSignIn = useMemo(
+    () => safeInternalRedirect(searchParams.get("redirect"), "") === "/ops",
+    [searchParams],
+  );
+
   useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -152,6 +157,27 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
     }
   }
 
+  async function handleOpsOAuthSignIn() {
+    if (loading) return;
+    setLoading(true);
+    setError("");
+    setNotice("");
+
+    try {
+      const { error: oauthError } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo: emailRedirectTo },
+      });
+      if (oauthError) {
+        setError(
+          "Google sign-in is not available yet. Use email and password for now.",
+        );
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
   const isSignIn = mode === "sign-in";
 
   return (
@@ -200,6 +226,18 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
         {error ? <AuthStatus tone="error">{error}</AuthStatus> : null}
         {notice ? <AuthStatus tone="success">{notice}</AuthStatus> : null}
       </div>
+
+      {isOpsSignIn && isSignIn ? (
+        <button
+          type="button"
+          disabled={loading}
+          onClick={handleOpsOAuthSignIn}
+          className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-4 py-3 text-sm font-bold text-[color:var(--theme-text-primary)] transition hover:border-[var(--accent-copper)] disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+          Continue with Google
+        </button>
+      ) : null}
 
       <form className="mt-5 space-y-4" onSubmit={handleSubmit}>
         <div>
