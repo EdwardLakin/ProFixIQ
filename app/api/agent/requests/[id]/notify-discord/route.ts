@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import { requireOpsOperatorApiAccess } from "@/features/ops/server/operator-access";
 import {
   AgentTeamRequestError,
   agentTeamRequest,
 } from "@/features/agent/server/teamClient";
 
-const APPROVER_ROLES = ["developer"];
 
 type PostBody = {
   message?: string;
@@ -34,28 +33,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Missing agent request id" }, { status: 400 });
   }
 
-  const supabase = createServerSupabaseRoute();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const { data: profile, error: profileError } = await supabase
-    .from("profiles")
-    .select("id, agent_role")
-    .eq("id", user.id)
-    .single();
-  if (profileError || !profile) {
-    return NextResponse.json({ error: "Profile not found" }, { status: 400 });
-  }
-  if (!APPROVER_ROLES.includes(profile.agent_role ?? "")) {
-    return NextResponse.json(
-      { error: "Forbidden – insufficient role to notify Discord" },
-      { status: 403 },
-    );
-  }
+  const access = await requireOpsOperatorApiAccess();
+  if (!access.ok) return access.response;
+  const { supabase } = access;
 
   const { data: requestRow, error: requestError } = await supabase
     .from("agent_requests")
