@@ -2,6 +2,7 @@
 
 import React from "react";
 import { SmartInsightBadges } from "./SmartInsightBadges";
+import { canonicalStatusLabel } from "../../lib/status-display";
 import type { PartsRequestInventoryResult, PartsRequestWorkbenchItem, SmartInsight } from "./types";
 
 function money(value: number | null): string {
@@ -14,9 +15,12 @@ function money(value: number | null): string {
 
 export function PartsRequestWorkbenchRow({
   item,
+  selected = false,
+  selectionDisabled = false,
   selectedPart,
   compactActions = false,
   onChange,
+  onSelectedChange,
   onSave,
   onUseInventory,
   onOrder,
@@ -28,9 +32,12 @@ export function PartsRequestWorkbenchRow({
   onOpenInsight,
 }: {
   item: PartsRequestWorkbenchItem;
+  selected?: boolean;
+  selectionDisabled?: boolean;
   selectedPart?: PartsRequestInventoryResult | null;
   compactActions?: boolean;
   onChange?: (item: PartsRequestWorkbenchItem) => void;
+  onSelectedChange?: (selected: boolean) => void;
   onSave?: (itemId: string) => void;
   onUseInventory?: (itemId: string) => void;
   onOrder?: (itemId: string) => void;
@@ -51,9 +58,27 @@ export function PartsRequestWorkbenchRow({
   const isAddedToWorkOrder = item.addedToWorkOrder === true;
   const displayedPartNumber = item.selectedPartNumber ?? selectedPart?.partNumber ?? selectedPart?.sku ?? item.requestedPartNumber ?? "";
   const displayedManufacturer = item.selectedManufacturer ?? selectedPart?.manufacturer ?? item.requestedManufacturer ?? "";
+  const normalizedStatus = String(item.status ?? "requested").toLowerCase();
+  const canOrder = ["approved", "partially_ordered"].includes(normalizedStatus);
+  const displayStatus =
+    item.supplierQuoteStatus === "requested"
+      ? "Supplier Quote Requested"
+      : item.supplierQuoteStatus === "received"
+        ? "Supplier Quote Received"
+        : canonicalStatusLabel(item.status);
 
   return (
     <tr className="border-t border-[color:var(--desktop-border)] align-top">
+      <td className="p-3">
+        <input
+          type="checkbox"
+          aria-label={`Select ${item.description}`}
+          checked={selected}
+          disabled={selectionDisabled}
+          onChange={(event) => onSelectedChange?.(event.target.checked)}
+          className="h-4 w-4 rounded border-[color:var(--desktop-border)] accent-emerald-600"
+        />
+      </td>
       <td className="p-2">
         <input
           className={input}
@@ -133,7 +158,7 @@ export function PartsRequestWorkbenchRow({
       <td className="p-2 text-sm font-medium text-[color:var(--theme-text-primary)]">{money(item.qty * Math.max(0, item.sellPrice ?? 0))}</td>
       <td className="p-2">
         <span className="rounded-full border border-sky-400/30 bg-sky-950/20 px-2 py-1 text-xs text-sky-100">
-          {item.status ?? "requested"}
+          {displayStatus}
         </span>
       </td>
       <td className="p-2">
@@ -200,7 +225,7 @@ export function PartsRequestWorkbenchRow({
             <option value="">Actions</option>
             <option value="save">Save</option>
             <option value="inventory">{hasSelectedPart ? "Change Part" : "Attach Part"}</option>
-            <option value="order">Order</option>
+            {canOrder ? <option value="order">Order</option> : null}
             {item.poId || item.qtyReceived ? <option value="receive">Receive</option> : null}
             <option value="stock">Add to Stock</option>
             {hasPossibleMismatch ? <option value="confirm">Confirm Match</option> : null}
@@ -211,7 +236,7 @@ export function PartsRequestWorkbenchRow({
           <div className="flex min-w-[12rem] flex-wrap gap-1.5">
             <button type="button" className={action} onClick={() => onSave?.(item.id)}>Save</button>
             {!isAddedToWorkOrder ? <button type="button" className={action} onClick={() => onUseInventory?.(item.id)}>{hasSelectedPart ? "Change Part" : "Attach Part"}</button> : null}
-            {!isAddedToWorkOrder ? <button type="button" className={action} onClick={() => onOrder?.(item.id)}>Order</button> : null}
+            {!isAddedToWorkOrder && canOrder ? <button type="button" className={action} onClick={() => onOrder?.(item.id)}>Order</button> : null}
             {isAddedToWorkOrder ? <span className="rounded-lg border border-emerald-400/25 bg-emerald-500/10 px-2.5 py-2 text-xs text-emerald-100">Saved to work order</span> : null}
             {item.poId || item.qtyReceived ? <button type="button" className={action} onClick={() => onReceive?.(item.id)}>Receive</button> : null}
             <select

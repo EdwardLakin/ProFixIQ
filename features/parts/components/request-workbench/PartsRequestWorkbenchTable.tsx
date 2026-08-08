@@ -7,7 +7,10 @@ import type { PartsRequestInventoryResult, PartsRequestWorkbenchItem, SmartInsig
 export function PartsRequestWorkbenchTable({
   items,
   inventoryResults = [],
+  selectedItemIds = [],
+  selectableItemIds = [],
   onItemsChange,
+  onSelectedItemIdsChange,
   onSave,
   onUseInventory,
   onOrder,
@@ -21,7 +24,10 @@ export function PartsRequestWorkbenchTable({
 }: {
   items: PartsRequestWorkbenchItem[];
   inventoryResults?: PartsRequestInventoryResult[];
+  selectedItemIds?: string[];
+  selectableItemIds?: string[];
   onItemsChange?: (items: PartsRequestWorkbenchItem[]) => void;
+  onSelectedItemIdsChange?: (itemIds: string[]) => void;
   onSave?: (itemId: string) => void;
   onUseInventory?: (itemId: string) => void;
   onOrder?: (itemId: string) => void;
@@ -33,6 +39,12 @@ export function PartsRequestWorkbenchTable({
   onDelete?: (itemId: string) => void;
   onOpenInsight?: (insight: SmartInsight) => void;
 }): JSX.Element {
+  const selected = new Set(selectedItemIds);
+  const selectable = new Set(selectableItemIds);
+  const allSelected =
+    selectableItemIds.length > 0 &&
+    selectableItemIds.every((itemId) => selected.has(itemId));
+
   function updateItem(next: PartsRequestWorkbenchItem): void {
     const previous = items.find((item) => item.id === next.id);
     if (previous && (
@@ -50,6 +62,20 @@ export function PartsRequestWorkbenchTable({
       <table className="min-w-[1040px] w-full text-left">
         <thead className="bg-[color:var(--theme-surface-subtle)] text-xs text-[color:var(--theme-text-secondary)]">
           <tr>
+            <th className="w-12 p-3 font-medium">
+              <input
+                type="checkbox"
+                aria-label="Select all parts"
+                checked={allSelected}
+                disabled={selectableItemIds.length === 0}
+                onChange={(event) =>
+                  onSelectedItemIdsChange?.(
+                    event.target.checked ? selectableItemIds : [],
+                  )
+                }
+                className="h-4 w-4 rounded border-[color:var(--desktop-border)] accent-emerald-600"
+              />
+            </th>
             <th className="p-3 font-medium">Description</th>
             <th className="p-3 font-medium">Part #</th>
             <th className="p-3 font-medium">Manufacturer</th>
@@ -66,7 +92,15 @@ export function PartsRequestWorkbenchTable({
             <PartsRequestWorkbenchRow
               key={item.id}
               item={item}
+              selected={selected.has(item.id)}
+              selectionDisabled={!selectable.has(item.id)}
               selectedPart={inventoryResults.find((part) => part.value === item.partId) ?? null}
+              onSelectedChange={(isSelected) => {
+                const next = new Set(selectedItemIds);
+                if (isSelected) next.add(item.id);
+                else next.delete(item.id);
+                onSelectedItemIdsChange?.([...next]);
+              }}
               onChange={updateItem}
               onSave={onSave}
               onUseInventory={onUseInventory}

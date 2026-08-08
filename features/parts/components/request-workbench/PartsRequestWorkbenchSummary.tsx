@@ -38,7 +38,7 @@ export function PartsRequestWorkbenchSummary({
 
   const stats = [
     ["Total items", items.length],
-    ["Waiting / needs order", waiting],
+    ["Needs quote / approval", waiting],
     ["Ordered", ordered],
     ["Partial / receiving", partial],
     ["Received", received],

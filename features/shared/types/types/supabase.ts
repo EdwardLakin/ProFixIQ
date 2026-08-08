@@ -10004,6 +10004,10 @@ export type Database = {
           source_row_id: string | null
           source_work_order_part_id: string | null
           status: Database["public"]["Enums"]["part_request_item_status"]
+          supplier_quote_received_at: string | null
+          supplier_quote_requested_at: string | null
+          supplier_quote_status: string
+          latest_supplier_quote_request_id: string | null
           unit_cost: number | null
           unit_price: number | null
           updated_at: string
@@ -10042,6 +10046,10 @@ export type Database = {
           source_row_id?: string | null
           source_work_order_part_id?: string | null
           status?: Database["public"]["Enums"]["part_request_item_status"]
+          supplier_quote_received_at?: string | null
+          supplier_quote_requested_at?: string | null
+          supplier_quote_status?: string
+          latest_supplier_quote_request_id?: string | null
           unit_cost?: number | null
           unit_price?: number | null
           updated_at?: string
@@ -10080,6 +10088,10 @@ export type Database = {
           source_row_id?: string | null
           source_work_order_part_id?: string | null
           status?: Database["public"]["Enums"]["part_request_item_status"]
+          supplier_quote_received_at?: string | null
+          supplier_quote_requested_at?: string | null
+          supplier_quote_status?: string
+          latest_supplier_quote_request_id?: string | null
           unit_cost?: number | null
           unit_price?: number | null
           updated_at?: string
@@ -10089,6 +10101,13 @@ export type Database = {
           work_order_line_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "part_request_items_latest_supplier_quote_request_id_fkey"
+            columns: ["latest_supplier_quote_request_id"]
+            isOneToOne: false
+            referencedRelation: "parts_supplier_quote_requests"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "part_request_items_location_id_fkey"
             columns: ["location_id"]
@@ -11214,6 +11233,192 @@ export type Database = {
           },
           {
             foreignKeyName: "parts_requests_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      parts_supplier_quote_request_items: {
+        Row: {
+          availability: string | null
+          created_at: string
+          description_snapshot: string
+          expected_at: string | null
+          id: string
+          part_request_item_id: string
+          qty_requested: number
+          quote_request_id: string
+          quoted_sell_price: number | null
+          quoted_unit_cost: number | null
+          requested_manufacturer_snapshot: string | null
+          requested_part_number_snapshot: string | null
+          status: string
+          supplier_part_number: string | null
+          updated_at: string
+        }
+        Insert: {
+          availability?: string | null
+          created_at?: string
+          description_snapshot: string
+          expected_at?: string | null
+          id?: string
+          part_request_item_id: string
+          qty_requested: number
+          quote_request_id: string
+          quoted_sell_price?: number | null
+          quoted_unit_cost?: number | null
+          requested_manufacturer_snapshot?: string | null
+          requested_part_number_snapshot?: string | null
+          status?: string
+          supplier_part_number?: string | null
+          updated_at?: string
+        }
+        Update: {
+          availability?: string | null
+          created_at?: string
+          description_snapshot?: string
+          expected_at?: string | null
+          id?: string
+          part_request_item_id?: string
+          qty_requested?: number
+          quote_request_id?: string
+          quoted_sell_price?: number | null
+          quoted_unit_cost?: number | null
+          requested_manufacturer_snapshot?: string | null
+          requested_part_number_snapshot?: string | null
+          status?: string
+          supplier_part_number?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "parts_supplier_quote_request_items_part_request_item_id_fkey"
+            columns: ["part_request_item_id"]
+            isOneToOne: false
+            referencedRelation: "part_request_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "parts_supplier_quote_request_items_quote_request_id_fkey"
+            columns: ["quote_request_id"]
+            isOneToOne: false
+            referencedRelation: "parts_supplier_quote_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      parts_supplier_quote_requests: {
+        Row: {
+          channel: string
+          created_at: string
+          created_by: string | null
+          draft_po_id: string | null
+          id: string
+          idempotency_key: string
+          message: string | null
+          parts_request_id: string
+          po_contact_channel: string | null
+          po_contacted_at: string | null
+          po_contacted_by: string | null
+          po_generation_error: string | null
+          po_ready_at: string | null
+          requested_at: string
+          responded_by: string | null
+          responded_at: string | null
+          response_idempotency_key: string | null
+          response_notes: string | null
+          shop_id: string
+          status: string
+          subject: string | null
+          supplier_id: string
+          updated_at: string
+          work_order_id: string
+        }
+        Insert: {
+          channel: string
+          created_at?: string
+          created_by?: string | null
+          draft_po_id?: string | null
+          id?: string
+          idempotency_key: string
+          message?: string | null
+          parts_request_id: string
+          po_contact_channel?: string | null
+          po_contacted_at?: string | null
+          po_contacted_by?: string | null
+          po_generation_error?: string | null
+          po_ready_at?: string | null
+          requested_at?: string
+          responded_by?: string | null
+          responded_at?: string | null
+          response_idempotency_key?: string | null
+          response_notes?: string | null
+          shop_id: string
+          status?: string
+          subject?: string | null
+          supplier_id: string
+          updated_at?: string
+          work_order_id: string
+        }
+        Update: {
+          channel?: string
+          created_at?: string
+          created_by?: string | null
+          draft_po_id?: string | null
+          id?: string
+          idempotency_key?: string
+          message?: string | null
+          parts_request_id?: string
+          po_contact_channel?: string | null
+          po_contacted_at?: string | null
+          po_contacted_by?: string | null
+          po_generation_error?: string | null
+          po_ready_at?: string | null
+          requested_at?: string
+          responded_by?: string | null
+          responded_at?: string | null
+          response_idempotency_key?: string | null
+          response_notes?: string | null
+          shop_id?: string
+          status?: string
+          subject?: string | null
+          supplier_id?: string
+          updated_at?: string
+          work_order_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "parts_supplier_quote_requests_draft_po_id_fkey"
+            columns: ["draft_po_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "parts_supplier_quote_requests_parts_request_id_fkey"
+            columns: ["parts_request_id"]
+            isOneToOne: false
+            referencedRelation: "part_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "parts_supplier_quote_requests_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "parts_supplier_quote_requests_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "parts_supplier_quote_requests_work_order_id_fkey"
             columns: ["work_order_id"]
             isOneToOne: false
             referencedRelation: "work_orders"
@@ -14091,14 +14296,21 @@ export type Database = {
           id: string
           notes: string | null
           ordered_at: string | null
+          po_number: string | null
           received_at: string | null
           shipping_total: number | null
           shop_id: string
           status: string
           subtotal: number | null
           supplier_id: string
+          supplier_contact_channel: string | null
+          supplier_contact_idempotency_key: string | null
+          supplier_contacted_at: string | null
+          supplier_contacted_by: string | null
+          supplier_quote_request_id: string | null
           tax_total: number | null
           total: number | null
+          work_order_id: string | null
         }
         Insert: {
           created_at?: string
@@ -14107,14 +14319,21 @@ export type Database = {
           id?: string
           notes?: string | null
           ordered_at?: string | null
+          po_number?: string | null
           received_at?: string | null
           shipping_total?: number | null
           shop_id: string
           status?: string
           subtotal?: number | null
           supplier_id: string
+          supplier_contact_channel?: string | null
+          supplier_contact_idempotency_key?: string | null
+          supplier_contacted_at?: string | null
+          supplier_contacted_by?: string | null
+          supplier_quote_request_id?: string | null
           tax_total?: number | null
           total?: number | null
+          work_order_id?: string | null
         }
         Update: {
           created_at?: string
@@ -14123,21 +14342,42 @@ export type Database = {
           id?: string
           notes?: string | null
           ordered_at?: string | null
+          po_number?: string | null
           received_at?: string | null
           shipping_total?: number | null
           shop_id?: string
           status?: string
           subtotal?: number | null
           supplier_id?: string
+          supplier_contact_channel?: string | null
+          supplier_contact_idempotency_key?: string | null
+          supplier_contacted_at?: string | null
+          supplier_contacted_by?: string | null
+          supplier_quote_request_id?: string | null
           tax_total?: number | null
           total?: number | null
+          work_order_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "purchase_orders_supplier_quote_request_id_fkey"
+            columns: ["supplier_quote_request_id"]
+            isOneToOne: false
+            referencedRelation: "parts_supplier_quote_requests"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "purchase_orders_supplier_id_fkey"
             columns: ["supplier_id"]
             isOneToOne: false
             referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_orders_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
             referencedColumns: ["id"]
           },
         ]
@@ -25923,6 +26163,35 @@ export type Database = {
         }
         Returns: Json
       }
+      parts_create_supplier_quote_request: {
+        Args: {
+          p_channel: string
+          p_idempotency_key: string
+          p_item_ids: string[]
+          p_message: string
+          p_request_id: string
+          p_subject: string
+          p_supplier_id: string
+        }
+        Returns: Json
+      }
+      parts_mark_purchase_order_contacted: {
+        Args: {
+          p_channel: string
+          p_idempotency_key: string
+          p_po_id: string
+        }
+        Returns: Json
+      }
+      parts_record_supplier_quote_response: {
+        Args: {
+          p_idempotency_key: string
+          p_items: Json
+          p_quote_request_id: string
+          p_response_notes: string
+        }
+        Returns: Json
+      }
       parts_create_po_line_for_request: {
         Args: {
           p_idempotency_key?: string
@@ -27477,4 +27746,3 @@ export const Constants = {
     },
   },
 } as const
-

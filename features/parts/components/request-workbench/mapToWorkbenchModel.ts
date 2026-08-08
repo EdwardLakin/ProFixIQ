@@ -2,6 +2,8 @@ import { buildWorkbenchInsights } from "./buildWorkbenchInsights";
 import type {
   PartsRequestWorkbenchItem,
   PartsRequestWorkbenchModel,
+  DraftPurchaseOrderPrompt,
+  SupplierQuoteWorkbenchBatch,
   WorkbenchOption,
 } from "./types";
 
@@ -51,10 +53,20 @@ export function mapRequestItemToWorkbenchItem(input: {
     selectedManufacturer: nullableText(selectedPart?.manufacturer ?? selectedPart?.supplier),
     qty,
     sellPrice,
+    unitCost:
+      item.unit_cost == null || item.unit_cost === ""
+        ? null
+        : num(item.unit_cost, 0),
     suggestedSellPrice: selectedPart?.price == null && selectedPart?.default_price == null ? null : num(selectedPart?.price ?? selectedPart?.default_price, 0),
     status: nullableText(item.status),
     partId: selectedPartId,
     poId: nullableText(item.ui_po_id ?? item.po_id),
+    supplierQuoteStatus: nullableText(item.supplier_quote_status),
+    supplierQuoteRequestedAt: nullableText(item.supplier_quote_requested_at),
+    supplierId: nullableText(item.vendor_id),
+    latestSupplierQuoteRequestId: nullableText(
+      item.latest_supplier_quote_request_id,
+    ),
     qtyReceived,
     qtyApproved,
     addedToWorkOrder: input.addedToWorkOrder === true,
@@ -90,6 +102,8 @@ export function mapRequestToWorkbenchModel(input: {
   conflictWarningByItemId?: Record<string, string>;
   addedToWorkOrderByItemId?: Record<string, boolean>;
   packageCommitWarningByItemId?: Record<string, string>;
+  supplierQuoteRequests?: SupplierQuoteWorkbenchBatch[];
+  draftPurchaseOrders?: DraftPurchaseOrderPrompt[];
 }): PartsRequestWorkbenchModel {
   const requestId = text(input.request.id);
   const requestLabel = text(
@@ -125,6 +139,8 @@ export function mapRequestToWorkbenchModel(input: {
       };
     }),
     packageCommittedCount: Object.values(input.addedToWorkOrderByItemId ?? {}).filter(Boolean).length,
+    supplierQuoteRequests: input.supplierQuoteRequests ?? [],
+    draftPurchaseOrders: input.draftPurchaseOrders ?? [],
     items: input.items.map((item) => {
       const itemId = text(item.id);
       return mapRequestItemToWorkbenchItem({

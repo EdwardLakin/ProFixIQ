@@ -7,6 +7,7 @@ import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import { v4 as uuidv4 } from "uuid";
 import { partOptionLabel, toPartDisplaySummary } from "@/features/parts/lib/part-display";
+import { purchaseOrderIdentity } from "@/features/parts/lib/purchaseOrderIdentity";
 
 type DB = Database;
 
@@ -16,6 +17,10 @@ type Supplier = DB["public"]["Tables"]["suppliers"]["Row"];
 type SupplierInsert = DB["public"]["Tables"]["suppliers"]["Insert"];
 type PurchaseOrderLineInsert = DB["public"]["Tables"]["purchase_order_lines"]["Insert"];
 type Part = DB["public"]["Tables"]["parts"]["Row"];
+type WorkOrderIdentity = Pick<
+  DB["public"]["Tables"]["work_orders"]["Row"],
+  "id" | "custom_id"
+>;
 
 type Status = PurchaseOrder["status"];
 
@@ -69,6 +74,8 @@ export default function PurchaseOrdersPage(): JSX.Element {
   const [pos, setPOs] = useState<PurchaseOrder[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [parts, setParts] = useState<Part[]>([]);
+  const [workOrders, setWorkOrders] = useState<WorkOrderIdentity[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const supplierNameById = useMemo(() => {
     const m = new Map<string, string>();
@@ -79,6 +86,34 @@ export default function PurchaseOrdersPage(): JSX.Element {
     }
     return m;
   }, [suppliers]);
+
+  const workOrderNumberById = useMemo(() => {
+    const result = new Map<string, string>();
+    for (const workOrder of workOrders) {
+      if (workOrder.custom_id?.trim()) {
+        result.set(workOrder.id, workOrder.custom_id.trim());
+      }
+    }
+    return result;
+  }, [workOrders]);
+
+  const filteredPOs = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return pos;
+    return pos.filter((po) => {
+      const supplierName = supplierNameById.get(po.supplier_id) ?? "";
+      const workOrderNumber = po.work_order_id
+        ? workOrderNumberById.get(po.work_order_id) ?? ""
+        : "";
+      return [
+        workOrderNumber,
+        po.po_number,
+        po.id,
+        supplierName,
+        po.status,
+      ].some((value) => String(value ?? "").toLowerCase().includes(query));
+    });
+  }, [pos, searchQuery, supplierNameById, workOrderNumberById]);
 
   // Modal state
   const [open, setOpen] = useState(false);
@@ -108,6 +143,27 @@ export default function PurchaseOrdersPage(): JSX.Element {
     setPOs((poRes.data as PurchaseOrder[]) ?? []);
     setSuppliers((supRes.data as Supplier[]) ?? []);
     setParts((partsRes.data as Part[]) ?? []);
+
+    const poRows = (poRes.data as PurchaseOrder[]) ?? [];
+    const workOrderIds = [
+      ...new Set(
+        poRows
+          .map((po) => po.work_order_id)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ];
+    if (workOrderIds.length === 0) {
+      setWorkOrders([]);
+      return;
+    }
+
+    const workOrderResult = await supabase
+      .from("work_orders")
+      .select("id,custom_id")
+      .eq("shop_id", sid)
+      .in("id", workOrderIds);
+    if (workOrderResult.error) setErrorMsg(workOrderResult.error.message);
+    setWorkOrders((workOrderResult.data as WorkOrderIdentity[]) ?? []);
   };
 
   useEffect(() => {
@@ -370,16 +426,26 @@ export default function PurchaseOrdersPage(): JSX.Element {
         <div className={`${panel} p-4 text-sm text-[color:var(--theme-text-secondary)]`}>No purchase orders yet.</div>
       ) : (
         <div className={`${panel} overflow-hidden`}>
-          <div className="flex items-center justify-between border-b border-[color:var(--theme-border-soft)] bg-gradient-to-r from-[color:var(--theme-surface-page)] via-[color:var(--theme-surface-panel)] to-[color:var(--theme-surface-page)] px-4 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[color:var(--theme-border-soft)] bg-gradient-to-r from-[color:var(--theme-surface-page)] via-[color:var(--theme-surface-panel)] to-[color:var(--theme-surface-page)] px-4 py-3">
             <div className="text-xs font-medium uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">Recent POs</div>
-            <div className="text-[11px] text-[color:var(--theme-text-muted)]">{pos.length} shown</div>
+            <div className="flex flex-wrap items-center gap-3">
+              <input
+                type="search"
+                aria-label="Search purchase orders"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Work order or PO #"
+                className="w-56 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-1.5 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)]"
+              />
+              <div className="text-[11px] text-[color:var(--theme-text-muted)]">{filteredPOs.length} shown</div>
+            </div>
           </div>
 
           <div className="overflow-auto">
             <table className="w-full min-w-[820px] text-sm">
               <thead>
                 <tr className="text-left text-[color:var(--theme-text-secondary)]">
-                  <th className="p-3">PO</th>
+                  <th className="p-3">Work order / PO</th>
                   <th className="p-3">Supplier</th>
                   <th className="p-3">Status</th>
                   <th className="p-3">Created</th>
@@ -387,15 +453,30 @@ export default function PurchaseOrdersPage(): JSX.Element {
                 </tr>
               </thead>
               <tbody>
-                {pos.map((po) => {
+                {filteredPOs.map((po) => {
                   const id = String(po.id);
                   const sId = String(po.supplier_id);
                   const sName = supplierNameById.get(sId) ?? sId.slice(0, 8);
                   const st = (po.status as string | null) ?? "—";
+                  const workOrderNumber = po.work_order_id
+                    ? workOrderNumberById.get(po.work_order_id) ?? null
+                    : null;
+                  const identity = purchaseOrderIdentity({
+                    id,
+                    poNumber: po.po_number,
+                    workOrderNumber,
+                  });
 
                   return (
                     <tr key={id} className="border-t border-[color:var(--theme-border-soft)] hover:bg-[color:var(--theme-surface-subtle)]">
-                      <td className="p-3 font-mono text-[color:var(--theme-text-primary)]">{id.slice(0, 8)}</td>
+                      <td className="p-3">
+                        <div className="font-semibold text-[color:var(--theme-text-primary)]">
+                          {identity.primary}
+                        </div>
+                        <div className="mt-0.5 text-xs text-[color:var(--theme-text-secondary)]">
+                          {identity.secondary}
+                        </div>
+                      </td>
                       <td className="p-3 text-[color:var(--theme-text-primary)]">{sName}</td>
                       <td className="p-3">
                         <span
