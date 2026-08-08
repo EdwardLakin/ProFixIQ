@@ -6,7 +6,7 @@ const migration = readFileSync(
   "utf8",
 );
 const poIdentityMigration = readFileSync(
-  "supabase/migrations/20260808184344_align_supplier_quote_po_identity.sql",
+  "supabase/migrations/20260808185538_align_supplier_quote_po_identity.sql",
   "utf8",
 );
 const requestRoute = readFileSync(
