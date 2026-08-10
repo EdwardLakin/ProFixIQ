@@ -17,6 +17,9 @@ const mobileProjection = read(
 const triggerOrder = read(
   "supabase/migrations/20260810165600_mobile_booking_dispatch_trigger_order.sql",
 );
+const bookingOwnership = read(
+  "supabase/migrations/20260810166000_dispatch_booking_ownership_invariant.sql",
+);
 const contract = read("features/scheduling/lib/service-visit-contract.ts");
 const commands = read("features/dispatch/server/commands.ts");
 const visitsApi = read("app/api/dispatch/visits/[id]/route.ts");
@@ -57,6 +60,17 @@ describe("Mobile dispatch operations", () => {
     expect(mobileProjection).toContain("mobile_booking_projection");
     expect(triggerOrder).toContain("bookings_zz_sync_mobile_dispatch_visit");
     expect(triggerOrder).toContain("Universal Scheduler must project a booking first");
+  });
+
+  it("persists booking ownership at dispatch so legacy booking writers cannot move it", () => {
+    expect(bookingOwnership).toContain("dispatch_owner_visit_id");
+    expect(bookingOwnership).toContain("dispatch_locked_starts_at");
+    expect(bookingOwnership).toContain("dispatch_locked_ends_at");
+    expect(bookingOwnership).toContain("dispatch_locked_status");
+    expect(bookingOwnership).toContain("bookings_dispatch_owned_state_ck");
+    expect(bookingOwnership).toContain("sync_dispatch_booking_ownership_lock");
+    expect(bookingOwnership).toContain("dispatch_locked_starts_at = case");
+    expect(bookingOwnership).toContain("dispatch_locked_status = case");
   });
 
   it("protects truck capacity and technician capacity independently", () => {
