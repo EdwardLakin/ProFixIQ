@@ -203,7 +203,7 @@ export const TILES: Tile[] = [
   },
 
   /* ---------------------------------------------------------------------- */
-  /* APPOINTMENTS                                                            */
+  /* APPOINTMENTS + DISPATCH                                                 */
   /* ---------------------------------------------------------------------- */
   {
     href: "/dashboard/appointments",
@@ -211,6 +211,14 @@ export const TILES: Tile[] = [
     subtitle: "Schedule & manage",
     roles: ["owner", "admin", "manager", "advisor", "lead_hand", "foreman"],
     scopes: ["appointments", "management", "all"],
+    section: "Operations",
+  },
+  {
+    href: "/dashboard/dispatch",
+    title: "Dispatch",
+    subtitle: "Service visits & field work",
+    roles: ["owner", "admin", "manager", "advisor", "lead_hand", "foreman"],
+    scopes: ["appointments", "work_orders", "management", "all"],
     section: "Operations",
   },
 

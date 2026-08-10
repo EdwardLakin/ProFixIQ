@@ -1736,6 +1736,10 @@ export type Database = {
           created_at: string
           created_by: string | null
           customer_id: string | null
+          dispatch_locked_ends_at: string | null
+          dispatch_locked_starts_at: string | null
+          dispatch_locked_status: string | null
+          dispatch_owner_visit_id: string | null
           ends_at: string
           id: string
           lifecycle_metadata: Json
@@ -1754,6 +1758,10 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           customer_id?: string | null
+          dispatch_locked_ends_at?: string | null
+          dispatch_locked_starts_at?: string | null
+          dispatch_locked_status?: string | null
+          dispatch_owner_visit_id?: string | null
           ends_at: string
           id?: string
           lifecycle_metadata?: Json
@@ -1772,6 +1780,10 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           customer_id?: string | null
+          dispatch_locked_ends_at?: string | null
+          dispatch_locked_starts_at?: string | null
+          dispatch_locked_status?: string | null
+          dispatch_owner_visit_id?: string | null
           ends_at?: string
           id?: string
           lifecycle_metadata?: Json
@@ -15467,6 +15479,91 @@ export type Database = {
           },
         ]
       }
+      service_visit_events: {
+        Row: {
+          actor_user_id: string | null
+          assigned_user_id: string | null
+          event_type: string
+          from_status: string | null
+          id: string
+          metadata: Json
+          occurred_at: string
+          service_vehicle_id: string | null
+          service_visit_id: string
+          shop_id: string
+          to_status: string | null
+        }
+        Insert: {
+          actor_user_id?: string | null
+          assigned_user_id?: string | null
+          event_type: string
+          from_status?: string | null
+          id?: string
+          metadata?: Json
+          occurred_at?: string
+          service_vehicle_id?: string | null
+          service_visit_id: string
+          shop_id: string
+          to_status?: string | null
+        }
+        Update: {
+          actor_user_id?: string | null
+          assigned_user_id?: string | null
+          event_type?: string
+          from_status?: string | null
+          id?: string
+          metadata?: Json
+          occurred_at?: string
+          service_vehicle_id?: string | null
+          service_visit_id?: string
+          shop_id?: string
+          to_status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_visit_events_actor_user_id_fkey"
+            columns: ["actor_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_visit_events_assigned_user_id_fkey"
+            columns: ["assigned_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_visit_events_service_vehicle_id_fkey"
+            columns: ["service_vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "service_vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_visit_events_service_visit_id_fkey"
+            columns: ["service_visit_id"]
+            isOneToOne: false
+            referencedRelation: "service_visits"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_visit_events_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_visit_events_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       service_visits: {
         Row: {
           actual_distance_km: number | null
@@ -15474,15 +15571,20 @@ export type Database = {
           arrived_at: string | null
           assigned_user_id: string | null
           booking_id: string | null
+          cancelled_at: string | null
           completed_at: string | null
           created_at: string
           created_by: string | null
           dispatch_notes: string | null
+          dispatched_at: string | null
           estimated_distance_km: number | null
           estimated_travel_minutes: number | null
           id: string
+          last_status_at: string | null
+          last_status_by: string | null
           lifecycle_metadata: Json
           mode: string
+          paused_at: string | null
           scheduled_end: string | null
           scheduled_start: string | null
           service_address_id: string | null
@@ -15491,6 +15593,7 @@ export type Database = {
           status: string
           travel_started_at: string | null
           updated_at: string
+          version: number
           work_order_id: string | null
           work_started_at: string | null
         }
@@ -15500,15 +15603,20 @@ export type Database = {
           arrived_at?: string | null
           assigned_user_id?: string | null
           booking_id?: string | null
+          cancelled_at?: string | null
           completed_at?: string | null
           created_at?: string
           created_by?: string | null
           dispatch_notes?: string | null
+          dispatched_at?: string | null
           estimated_distance_km?: number | null
           estimated_travel_minutes?: number | null
           id?: string
+          last_status_at?: string | null
+          last_status_by?: string | null
           lifecycle_metadata?: Json
           mode?: string
+          paused_at?: string | null
           scheduled_end?: string | null
           scheduled_start?: string | null
           service_address_id?: string | null
@@ -15517,6 +15625,7 @@ export type Database = {
           status?: string
           travel_started_at?: string | null
           updated_at?: string
+          version?: number
           work_order_id?: string | null
           work_started_at?: string | null
         }
@@ -15526,15 +15635,20 @@ export type Database = {
           arrived_at?: string | null
           assigned_user_id?: string | null
           booking_id?: string | null
+          cancelled_at?: string | null
           completed_at?: string | null
           created_at?: string
           created_by?: string | null
           dispatch_notes?: string | null
+          dispatched_at?: string | null
           estimated_distance_km?: number | null
           estimated_travel_minutes?: number | null
           id?: string
+          last_status_at?: string | null
+          last_status_by?: string | null
           lifecycle_metadata?: Json
           mode?: string
+          paused_at?: string | null
           scheduled_end?: string | null
           scheduled_start?: string | null
           service_address_id?: string | null
@@ -15543,6 +15657,7 @@ export type Database = {
           status?: string
           travel_started_at?: string | null
           updated_at?: string
+          version?: number
           work_order_id?: string | null
           work_started_at?: string | null
         }
@@ -15559,6 +15674,13 @@ export type Database = {
             columns: ["booking_id"]
             isOneToOne: false
             referencedRelation: "bookings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_visits_last_status_by_fkey"
+            columns: ["last_status_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
           {
@@ -26370,6 +26492,130 @@ export type Database = {
         }
         Returns: Json
       }
+      dispatch_actor_profile_id: {
+        Args: { p_actor_user_id: string; p_shop_id: string }
+        Returns: string
+      }
+      dispatch_assign_service_visit_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_assigned_user_id: string
+          p_expected_version: number
+          p_operation_key: string
+          p_service_vehicle_id: string
+          p_shop_id: string
+          p_visit_id: string
+        }
+        Returns: Json
+      }
+      dispatch_board_snapshot: {
+        Args: {
+          p_actor_user_id: string
+          p_shop_id: string
+          p_window_end: string
+          p_window_start: string
+        }
+        Returns: Json
+      }
+      dispatch_can_execute: {
+        Args: { p_actor_user_id: string; p_shop_id: string; p_visit_id: string }
+        Returns: boolean
+      }
+      dispatch_can_manage: {
+        Args: { p_actor_user_id: string; p_shop_id: string }
+        Returns: boolean
+      }
+      dispatch_create_service_visit_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_assigned_user_id: string
+          p_booking_id: string
+          p_dispatch_notes: string
+          p_estimated_distance_km: number
+          p_estimated_travel_minutes: number
+          p_mode: string
+          p_operation_key: string
+          p_scheduled_end: string
+          p_scheduled_start: string
+          p_service_address_id: string
+          p_service_vehicle_id: string
+          p_shop_id: string
+          p_work_order_id: string
+        }
+        Returns: Json
+      }
+      dispatch_mobile_active_snapshot: {
+        Args: { p_actor_user_id: string; p_shop_id: string }
+        Returns: Json
+      }
+      dispatch_record_visit_event: {
+        Args: {
+          p_actor_user_id: string
+          p_event_type: string
+          p_from_status?: string
+          p_metadata?: Json
+          p_to_status?: string
+          p_visit_id: string
+        }
+        Returns: undefined
+      }
+      dispatch_reschedule_service_visit_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_ends_at: string
+          p_expected_version: number
+          p_operation_key: string
+          p_shop_id: string
+          p_starts_at: string
+          p_visit_id: string
+        }
+        Returns: Json
+      }
+      dispatch_sync_event_status: {
+        Args: { p_visit_id: string }
+        Returns: undefined
+      }
+      dispatch_sync_primary_resource: {
+        Args: { p_visit_id: string }
+        Returns: undefined
+      }
+      dispatch_sync_technician_reservation: {
+        Args: { p_visit_id: string }
+        Returns: undefined
+      }
+      dispatch_transition_service_visit_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_actual_distance_km: number
+          p_actual_travel_minutes: number
+          p_expected_version: number
+          p_operation_key: string
+          p_shop_id: string
+          p_to_status: string
+          p_visit_id: string
+        }
+        Returns: Json
+      }
+      dispatch_update_service_visit_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_dispatch_notes: string
+          p_estimated_distance_km: number
+          p_estimated_travel_minutes: number
+          p_expected_version: number
+          p_operation_key: string
+          p_service_address_id: string
+          p_shop_id: string
+          p_visit_id: string
+          p_work_order_id: string
+        }
+        Returns: Json
+      }
+      dispatch_visit_history: {
+        Args: { p_actor_user_id: string; p_shop_id: string; p_visit_id: string }
+        Returns: Json
+      }
+      dispatch_visit_snapshot: { Args: { p_visit_id: string }; Returns: Json }
       estimate_actor_for_shop: {
         Args: { p_allowed_roles: string[]; p_shop_id: string }
         Returns: {
