@@ -79,9 +79,12 @@ export async function POST(req: NextRequest) {
 
   if (error || !data) {
     console.error("[fleet/request-builder/submit] rpc error", error);
+    const replayConflict = /operation key.*different.*payload/i.test(
+      error?.message ?? "",
+    );
     return NextResponse.json(
       { error: error?.message ?? "Failed to create fleet service request." },
-      { status: 500 },
+      { status: replayConflict ? 409 : 500 },
     );
   }
 

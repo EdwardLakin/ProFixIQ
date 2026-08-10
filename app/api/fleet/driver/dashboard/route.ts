@@ -9,6 +9,7 @@ import {
   normalizeFleetPretripTemplateSections,
   type FleetDriverDashboardPayload,
   type FleetDriverIssueStatus,
+  type FleetDriverIssueTimelineStep,
   type FleetPretripTemplate,
 } from "@/features/fleet/types/driverPortal";
 import {
@@ -33,13 +34,23 @@ function joinedRow(value: unknown): Row {
   return value && typeof value === "object" ? (value as Row) : {};
 }
 
-function issueStatus(row: Row): FleetDriverIssueStatus {
+const TERMINAL_SHOP_STATUSES = new Set([
+  "completed",
+  "closed",
+  "invoiced",
+  "paid",
+]);
+
+function issueStatus(row: Row, workOrder: Row): FleetDriverIssueStatus {
   if (text(row.resolved_at)) {
     return text(row.resolution_code) === "completed" || text(row.work_order_id)
       ? "completed"
       : "closed";
   }
-  if (text(row.work_order_id)) return "in_shop";
+  if (TERMINAL_SHOP_STATUSES.has(text(workOrder.status)?.toLowerCase() ?? "")) {
+    return "completed";
+  }
+  if (text(row.work_order_id) || text(workOrder.id)) return "in_shop";
   if (text(row.service_request_id)) return "scheduled";
   if (text(row.acknowledged_at) || text(row.state) === "acknowledged") {
     return "under_review";
@@ -191,6 +202,52 @@ export async function GET(request: Request) {
       );
     }
 
+    const defectRows = rows(defectResult.data);
+    const serviceRequestIds = Array.from(
+      new Set(
+        defectRows
+          .map((row) => text(row.service_request_id))
+          .filter((id): id is string => Boolean(id)),
+      ),
+    );
+    const serviceRequestResult = serviceRequestIds.length
+      ? await admin
+          .from("fleet_service_requests")
+          .select(
+            "id,submitted_at,created_at,updated_at,scheduled_for_date,work_order_id",
+          )
+          .eq("shop_id", scope.shopId)
+          .eq("fleet_id", fleetId)
+          .in("id", serviceRequestIds)
+      : { data: [] as unknown[], error: null };
+    if (serviceRequestResult.error) {
+      throw new Error(serviceRequestResult.error.message);
+    }
+    const serviceRequestRows = rows(serviceRequestResult.data);
+    const workOrderIds = Array.from(
+      new Set(
+        [
+          ...defectRows.map((row) => text(row.work_order_id)),
+          ...serviceRequestRows.map((row) => text(row.work_order_id)),
+        ].filter((id): id is string => Boolean(id)),
+      ),
+    );
+    const workOrderResult = workOrderIds.length
+      ? await admin
+          .from("work_orders")
+          .select("id,status,created_at,updated_at")
+          .eq("shop_id", scope.shopId)
+          .in("id", workOrderIds)
+      : { data: [] as unknown[], error: null };
+    if (workOrderResult.error) throw new Error(workOrderResult.error.message);
+
+    const serviceRequests = new Map(
+      serviceRequestRows.map((row) => [String(row.id), row]),
+    );
+    const workOrders = new Map(
+      rows(workOrderResult.data).map((row) => [String(row.id), row]),
+    );
+
     const enrollments = rows(enrollmentResult.data);
     const unitLabels = new Map<string, string>();
     const trailerOptions: FleetDriverDashboardPayload["trailers"] = [];
@@ -242,9 +299,41 @@ export async function GET(request: Request) {
       }
     }
 
-    const issues = rows(defectResult.data).map((defect) => {
+    const issues = defectRows.map((defect) => {
       const id = String(defect.id);
       const clarification = clarificationsByDefect.get(id);
+      const serviceRequest = text(defect.service_request_id)
+        ? (serviceRequests.get(String(defect.service_request_id)) ?? {})
+        : {};
+      const linkedWorkOrderId =
+        text(defect.work_order_id) ?? text(serviceRequest.work_order_id);
+      const workOrder = linkedWorkOrderId
+        ? (workOrders.get(linkedWorkOrderId) ?? {})
+        : {};
+      const status = issueStatus(defect, workOrder);
+      const reportedAt = String(defect.reported_at);
+      const acknowledgedAt = text(defect.acknowledged_at);
+      const scheduledAt =
+        text(serviceRequest.submitted_at) ?? text(serviceRequest.created_at);
+      const inShopAt = text(workOrder.created_at);
+      const completedAt =
+        text(defect.resolved_at) ??
+        (TERMINAL_SHOP_STATUSES.has(text(workOrder.status)?.toLowerCase() ?? "")
+          ? text(workOrder.updated_at)
+          : null);
+      const timeline: FleetDriverIssueTimelineStep[] = [
+        { status: "submitted", reachedAt: reportedAt },
+        { status: "under_review", reachedAt: acknowledgedAt },
+        { status: "scheduled", reachedAt: scheduledAt },
+        { status: "in_shop", reachedAt: inShopAt },
+        { status: "completed", reachedAt: completedAt },
+      ];
+      const lastUpdatedAt =
+        completedAt ??
+        text(workOrder.updated_at) ??
+        text(serviceRequest.updated_at) ??
+        acknowledgedAt ??
+        reportedAt;
       return {
         id,
         vehicleId: String(defect.vehicle_id),
@@ -259,12 +348,12 @@ export async function GET(request: Request) {
         ].includes(text(defect.severity) ?? "")
           ? text(defect.severity)
           : "recommend") as FleetDriverDashboardPayload["issues"][number]["severity"],
-        status: issueStatus(defect),
-        reportedAt: String(defect.reported_at),
-        acknowledgedAt: text(defect.acknowledged_at),
+        status,
+        reportedAt,
+        acknowledgedAt,
         resolvedAt: text(defect.resolved_at),
-        serviceRequestId: text(defect.service_request_id),
-        workOrderId: text(defect.work_order_id),
+        lastUpdatedAt,
+        timeline,
         clarification: clarification
           ? {
               id: String(clarification.id),

@@ -158,6 +158,7 @@ export default function FleetRequestBuilderPage() {
   const [lines, setLines] = useState<DraftLine[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [operationKey] = useState(() => crypto.randomUUID());
 
   useEffect(() => {
     let cancelled = false;
@@ -340,7 +341,10 @@ export default function FleetRequestBuilderPage() {
               : `${unitLabel(selectedUnit)} service request`,
           summary: lines.map((line) => line.description).join("; "),
           requestedForDate: requestedForDate || null,
-          operationKey: crypto.randomUUID(),
+          // Keep this key stable for the life of the draft. If the request is
+          // committed but the browser loses the response, retrying this exact
+          // draft returns the original request instead of creating a second.
+          operationKey,
           lines: lines.map(({ clientId: _clientId, ...line }) => line),
         }),
       });

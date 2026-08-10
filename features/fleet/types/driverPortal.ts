@@ -64,6 +64,16 @@ export type FleetDriverIssueStatus =
   | "completed"
   | "closed";
 
+export type FleetDriverIssueTimelineStatus = Exclude<
+  FleetDriverIssueStatus,
+  "closed"
+>;
+
+export type FleetDriverIssueTimelineStep = {
+  status: FleetDriverIssueTimelineStatus;
+  reachedAt: string | null;
+};
+
 export type FleetDriverIssue = {
   id: string;
   vehicleId: string;
@@ -75,8 +85,8 @@ export type FleetDriverIssue = {
   reportedAt: string;
   acknowledgedAt: string | null;
   resolvedAt: string | null;
-  serviceRequestId: string | null;
-  workOrderId: string | null;
+  lastUpdatedAt: string;
+  timeline: FleetDriverIssueTimelineStep[];
   clarification: FleetDriverClarification | null;
 };
 

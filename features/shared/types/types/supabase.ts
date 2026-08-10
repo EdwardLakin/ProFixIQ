@@ -5398,6 +5398,7 @@ export type Database = {
           fleet_id: string
           id: string
           operation_key: string | null
+          request_fingerprint: string | null
           requested_for_date: string | null
           scheduled_for_date: string | null
           severity: string
@@ -5418,6 +5419,7 @@ export type Database = {
           fleet_id: string
           id?: string
           operation_key?: string | null
+          request_fingerprint?: string | null
           requested_for_date?: string | null
           scheduled_for_date?: string | null
           severity: string
@@ -5438,6 +5440,7 @@ export type Database = {
           fleet_id?: string
           id?: string
           operation_key?: string | null
+          request_fingerprint?: string | null
           requested_for_date?: string | null
           scheduled_for_date?: string | null
           severity?: string

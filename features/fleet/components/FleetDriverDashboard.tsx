@@ -32,18 +32,23 @@ const STATUS_LABELS: Record<FleetDriverIssueStatus, string> = {
   closed: "Closed",
 };
 
-const TIMELINE: FleetDriverIssueStatus[] = [
-  "submitted",
-  "under_review",
-  "scheduled",
-  "in_shop",
-  "completed",
-];
-
 function dateTime(value: string): string {
   const date = new Date(value);
   return Number.isNaN(date.getTime())
     ? value
+    : date.toLocaleString(undefined, {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      });
+}
+
+function timelineTime(value: string | null): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? null
     : date.toLocaleString(undefined, {
         month: "short",
         day: "numeric",
@@ -62,27 +67,38 @@ function DriverIssueTimeline({ issue }: { issue: FleetDriverIssue }) {
     );
   }
 
-  const activeIndex = Math.max(0, TIMELINE.indexOf(issue.status));
+  const activeIndex = Math.max(
+    0,
+    issue.timeline.findIndex((step) => step.status === issue.status),
+  );
   return (
     <ol className="mt-4 grid grid-cols-5 gap-1" aria-label="Issue status">
-      {TIMELINE.map((status, index) => (
-        <li key={status} className="min-w-0 text-center">
-          <div
-            className={`mx-auto h-2.5 w-2.5 rounded-full ${
-              index <= activeIndex ? "bg-sky-400" : "bg-slate-400/25"
-            }`}
-          />
-          <div
-            className={`mt-1 truncate text-[9px] ${
-              index <= activeIndex
-                ? "text-[color:var(--theme-text-secondary)]"
-                : "text-[color:var(--theme-text-muted)]"
-            }`}
-          >
-            {STATUS_LABELS[status]}
-          </div>
-        </li>
-      ))}
+      {issue.timeline.map((step, index) => {
+        const reachedAt = timelineTime(step.reachedAt);
+        return (
+          <li key={step.status} className="min-w-0 text-center">
+            <div
+              className={`mx-auto h-2.5 w-2.5 rounded-full ${
+                index <= activeIndex ? "bg-sky-400" : "bg-slate-400/25"
+              }`}
+            />
+            <div
+              className={`mt-1 truncate text-[9px] ${
+                index <= activeIndex
+                  ? "text-[color:var(--theme-text-secondary)]"
+                  : "text-[color:var(--theme-text-muted)]"
+              }`}
+            >
+              {STATUS_LABELS[step.status]}
+            </div>
+            {reachedAt ? (
+              <div className="mt-0.5 hidden text-[8px] leading-tight text-[color:var(--theme-text-muted)] sm:block">
+                {reachedAt}
+              </div>
+            ) : null}
+          </li>
+        );
+      })}
     </ol>
   );
 }
@@ -454,8 +470,8 @@ export default function FleetDriverDashboard({
                       {issue.unitLabel} · {issue.label}
                     </div>
                     <div className="mt-1 flex items-center gap-1 text-[10px] text-[color:var(--theme-text-muted)]">
-                      <Clock3 className="h-3 w-3" />{" "}
-                      {dateTime(issue.reportedAt)}
+                      <Clock3 className="h-3 w-3" /> Updated{" "}
+                      {dateTime(issue.lastUpdatedAt)}
                     </div>
                   </div>
                   <span className="shrink-0 rounded-full bg-sky-400/10 px-2.5 py-1 text-[9px] font-semibold uppercase text-sky-600 dark:text-sky-200">
