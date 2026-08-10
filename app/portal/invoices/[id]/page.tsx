@@ -17,6 +17,7 @@ import {
   getCanonicalDocumentIdentity,
   overlayCanonicalDocumentIdentity,
 } from "@/features/invoices/server/canonicalDocumentIdentity";
+import { invoiceDisplayIdentity } from "@/features/invoices/lib/invoiceDisplayIdentity";
 
 export const dynamic = "force-dynamic";
 
@@ -85,9 +86,11 @@ export default async function PortalInvoicePage({
     const payable =
       ["issued", "partially_paid"].includes(selectedVersion.lifecycle_status) &&
       Number(selectedVersion.outstanding_total) >= 0.5;
-    const title = identity.invoiceNumber || "Invoice";
-    const workOrderNumber =
-      identity.workOrderNumber || `#${workOrderId.slice(0, 8)}`;
+    const displayIdentity = invoiceDisplayIdentity({
+      workOrderNumber: identity.workOrderNumber,
+      invoiceNumber: identity.invoiceNumber,
+      workOrderId,
+    });
 
     return (
       <div className="min-h-screen bg-background px-4 py-10 text-foreground">
@@ -112,9 +115,9 @@ export default async function PortalInvoicePage({
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <div className="text-xs uppercase tracking-[0.2em] text-[color:var(--theme-text-muted)]">Invoice</div>
-                <h1 className="mt-1 text-2xl font-semibold text-[color:var(--theme-text-primary)]">{title}</h1>
+                <h1 className="mt-1 text-2xl font-semibold text-[color:var(--theme-text-primary)]">{displayIdentity.primary}</h1>
                 <div className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
-                  Work order {workOrderNumber} · Issued {dateLabel(selectedVersion.issued_at)}
+                  {displayIdentity.secondary} · Issued {dateLabel(selectedVersion.issued_at)}
                 </div>
               </div>
               <div className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-2 text-sm capitalize text-[color:var(--theme-text-primary)]">

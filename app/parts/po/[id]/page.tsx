@@ -3,11 +3,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { toast } from "sonner";
 import type { Database } from "@shared/types/types/supabase";
 import { partIdentifierLabel, partOptionLabel, toPartDisplaySummary } from "@/features/parts/lib/part-display";
+import { purchaseOrderIdentity } from "@/features/parts/lib/purchaseOrderIdentity";
 
 const PurchaseOrderReceivePanel = dynamic(
   () => import("@/features/parts/components/PurchaseOrderReceivePanel").then((module) => module.PurchaseOrderReceivePanel),
@@ -74,6 +76,7 @@ export default function PurchaseOrderDetailPage(): JSX.Element {
   const [suppliers, setSuppliers] = useState<SupplierRow[]>([]);
   const [parts, setParts] = useState<PartRow[]>([]);
   const [lines, setLines] = useState<UiLine[]>([]);
+  const [workOrderNumber, setWorkOrderNumber] = useState<string | null>(null);
 
   const [busySaveHeader, setBusySaveHeader] = useState<boolean>(false);
   const [busyAddLine, setBusyAddLine] = useState<boolean>(false);
@@ -193,6 +196,20 @@ export default function PurchaseOrderDetailPage(): JSX.Element {
       setLines([]);
       setLoading(false);
       return;
+    }
+
+    const workOrderId = (poRow as PurchaseOrderRow).work_order_id;
+    if (workOrderId) {
+      const workOrderResult = await supabase
+        .from("work_orders")
+        .select("id,custom_id")
+        .eq("id", workOrderId)
+        .eq("shop_id", shopId)
+        .maybeSingle();
+      if (workOrderResult.error) toast.error(workOrderResult.error.message);
+      setWorkOrderNumber(workOrderResult.data?.custom_id?.trim() || null);
+    } else {
+      setWorkOrderNumber(null);
     }
 
     const [supRes, partsRes, linesRes] = await Promise.all([
@@ -455,6 +472,11 @@ export default function PurchaseOrderDetailPage(): JSX.Element {
   const poSupplierId = supplierId || ((po.supplier_id as string | null) ?? "");
   const supplierName = poSupplierId ? supplierNameById.get(poSupplierId) ?? "Unnamed supplier" : "—";
   const poStatus = (status || (po.status as string | null) || "open").toLowerCase();
+  const identity = purchaseOrderIdentity({
+    id: String(po.id),
+    poNumber: po.po_number,
+    workOrderNumber,
+  });
 
   return (
     <div className="space-y-4 p-6 text-[color:var(--theme-text-primary)]">
@@ -470,6 +492,12 @@ export default function PurchaseOrderDetailPage(): JSX.Element {
           <a className={btnGhost} href="#receive" onClick={() => setReceiveOpen(true)}>
             Receive
           </a>
+
+          {po.work_order_id ? (
+            <Link className={btnGhost} href={`/work-orders/${po.work_order_id}`}>
+              View Work Order
+            </Link>
+          ) : null}
         </div>
 
         <button className={btnCopper} onClick={() => void saveHeader()} disabled={busySaveHeader} type="button">
@@ -483,8 +511,9 @@ export default function PurchaseOrderDetailPage(): JSX.Element {
             <div className="min-w-0">
               <div className="text-[11px] uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">Purchase Order</div>
               <div className="mt-1 truncate text-2xl font-semibold text-[color:var(--theme-text-primary)]">
-                PO <span className="text-sky-200">{String(po.id).slice(0, 8)}</span>
+                {identity.primary}
               </div>
+              <div className="mt-1 text-sm font-medium text-sky-200">{identity.secondary}</div>
               <div className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">
                 Supplier: <span className="text-[color:var(--theme-text-primary)]">{supplierName}</span>
                 <span className="mx-2 text-[color:var(--theme-text-muted)]">·</span>
