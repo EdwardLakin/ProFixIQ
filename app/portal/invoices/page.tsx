@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
 import { requirePortalCustomerActor } from "@/features/portal/server/requirePortalActor";
 import { listCustomerVisibleInvoiceVersions } from "@/features/invoices/server/invoiceVersionQueries";
+import { invoiceDisplayIdentity } from "@/features/invoices/lib/invoiceDisplayIdentity";
 
 export const dynamic = "force-dynamic";
 
@@ -77,13 +78,13 @@ export default async function PortalInvoicesPage() {
           ) : (
             <div className="space-y-3">
               {versions.map((version) => {
-                const workOrderLabel =
-                  workOrderLabels.get(version.work_order_id) ||
-                  `Work order ${version.work_order_id.slice(0, 8)}`;
-                const invoiceLabel =
-                  (version.invoice_id
+                const identity = invoiceDisplayIdentity({
+                  workOrderNumber: workOrderLabels.get(version.work_order_id),
+                  invoiceNumber: version.invoice_id
                     ? invoiceLabels.get(version.invoice_id)
-                    : null) || "Invoice";
+                    : null,
+                  workOrderId: version.work_order_id,
+                });
                 return (
                   <Link
                     key={version.id}
@@ -92,9 +93,9 @@ export default async function PortalInvoicesPage() {
                   >
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div>
-                        <div className="font-semibold text-[color:var(--theme-text-primary)]">{invoiceLabel}</div>
+                        <div className="font-semibold text-[color:var(--theme-text-primary)]">{identity.primary}</div>
                         <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
-                          {workOrderLabel} • Version {version.version_number} • Issued {dateLabel(version.issued_at)}
+                          {identity.secondary} • Version {version.version_number} • Issued {dateLabel(version.issued_at)}
                         </div>
                         <div className="mt-1 text-xs capitalize text-[color:var(--theme-text-secondary)]">
                           {version.lifecycle_status.replaceAll("_", " ")}
