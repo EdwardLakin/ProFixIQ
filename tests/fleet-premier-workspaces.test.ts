@@ -175,11 +175,14 @@ describe("premier fleet workspaces", () => {
     const economics = source("app/api/fleet/unit-economics/route.ts");
 
     expect(driversPage).toContain("FleetDriversWorkspace");
-    expect(driversPage).toContain("FleetPortalAccessManager");
+    expect(driversPage).not.toContain("FleetPortalAccessManager");
+    expect(driversPage).not.toContain("driver-access");
     expect(driversPage).not.toContain("FleetModuleFoundation");
     expect(drivers).toContain('fetch("/api/fleet/enrollment"');
     expect(drivers).toContain("Drivers & assignments");
-    expect(drivers).toContain("Invite driver");
+    expect(drivers).not.toContain("Invite driver");
+    expect(drivers).toContain("Shop-issued Fleet access");
+    expect(drivers).toContain("Fleet Settings");
     expect(drivers).toContain("/assets/new");
 
     expect(reportsPage).toContain("FleetReportsWorkspace");
