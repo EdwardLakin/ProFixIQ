@@ -78,12 +78,16 @@ describe("Mobile V1 productization", () => {
     expect(setupUi).toContain("Solo operator");
     expect(setupUi).toContain("Truck carries inventory");
     expect(setupUi).toContain("Use dispatch/team assignment");
-    expect(setupUi).toContain("dispatchEnabled: soloMode ? false : dispatchEnabled");
+    expect(setupUi).toContain(
+      "dispatchEnabled: soloMode ? false : dispatchEnabled",
+    );
     expect(hardeningMigration).toContain("v_auto_assign boolean := false");
     expect(hardeningMigration).toContain(
       "coalesce(ms.solo_mode, false) or not coalesce(ms.dispatch_enabled, true)",
     );
-    expect(hardeningMigration).toContain("when v_auto_assign then v_profile.id");
+    expect(hardeningMigration).toContain(
+      "when v_auto_assign then v_profile.id",
+    );
   });
 
   it("queues ordered field transitions offline and rejects stale state at replay", () => {
@@ -108,7 +112,7 @@ describe("Mobile V1 productization", () => {
     expect(closeoutUi).toContain('fetch("/api/invoices/finalize"');
     expect(closeoutUi).toContain("<RecordManualPayment");
     expect(closeoutApi).toContain("createConnectedAccountInvoiceCheckout");
-    expect(closeoutApi).toContain('source: "staff_invoice_payment"');
+    expect(closeoutApi).toContain('purpose: "staff_invoice_payment"');
     expect(closeoutApi).toContain("payment_receipts");
     expect(access).toContain("canFieldOperatorAccessWorkOrder");
     expect(access).toContain('.eq("assigned_user_id", access.profile.id)');
