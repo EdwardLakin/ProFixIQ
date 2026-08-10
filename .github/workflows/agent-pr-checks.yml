@@ -6,13 +6,64 @@ on:
       - main
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: agent-pr-checks-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
+  sync_scheduler_types:
+    name: sync scheduler types
+    if: github.event.pull_request.head.ref == 'feature/mobile-service-foundation' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out scheduler branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/mobile-service-foundation
+          fetch-depth: 0
+
+      - name: Set up Supabase CLI
+        uses: supabase/setup-cli@v2
+        with:
+          version: latest
+
+      - name: Start clean local database
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -f supabase/config.toml ]]; then
+            supabase init
+          fi
+          supabase db start
+
+      - name: Regenerate committed database types
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase gen types typescript --local > features/shared/types/types/supabase.ts
+
+      - name: Commit exact generated types
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- features/shared/types/types/supabase.ts; then
+            echo "Generated types already match."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add features/shared/types/types/supabase.ts
+          git commit -m "Regenerate Supabase types for universal scheduler"
+          git push origin HEAD:feature/mobile-service-foundation
+
+      - name: Stop local Supabase
+        if: always()
+        shell: bash
+        run: supabase db stop --no-backup || true
+
   checks:
     name: checks
     runs-on: ubuntu-latest
@@ -85,9 +136,6 @@ jobs:
 
       - name: Build production application
         env:
-          # Pull requests do not receive production secrets. These values only
-          # let Next.js evaluate route modules while compiling; no network calls
-          # are made and deploys still use environment-scoped credentials.
           NEXT_PUBLIC_SUPABASE_URL: https://ci-build-placeholder.supabase.co
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-build-placeholder-anon-key
           SUPABASE_SERVICE_ROLE_KEY: ci-build-placeholder-service-role-key
