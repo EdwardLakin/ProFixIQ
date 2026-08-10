@@ -38,7 +38,7 @@ const tones: Record<Point["priority"], string> = {
 export default function FleetAISummary({
   shopId,
   fleetId,
-  routePrefix = "/fleet",
+  routePrefix = "/portal/fleet",
 }: FleetAISummaryProps) {
   const pathname = usePathname() ?? "";
   const productRoutes = !pathname.startsWith("/portal/fleet");

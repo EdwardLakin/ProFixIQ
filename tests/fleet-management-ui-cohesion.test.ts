@@ -4,15 +4,12 @@ import { describe, expect, it } from "vitest";
 const read = (path: string) => readFileSync(path, "utf8");
 
 describe("fleet management UI cohesion", () => {
-  it("keeps operational Fleet work out of the Shop sidebar", () => {
+  it("keeps operational Fleet work out of Shop", () => {
     const tiles = read("features/shared/config/tiles.ts");
-    const manageFleets = read("app/fleet/programs/page.tsx");
-    const addUnit = read(
-      "features/fleet/components/FleetUnitEnrollmentPage.tsx",
-    );
+    const legacyPrograms = read("app/fleet/programs/page.tsx");
+    const legacyUnits = read("app/fleet/units/page.tsx");
     const legacyAddUnit = read("app/fleet/units/new/page.tsx");
     const fleetProductAddUnit = read("app/portal/fleet/units/new/page.tsx");
-    const units = read("features/fleet/components/FleetUnitsPage.tsx");
 
     expect(tiles).toContain('title: "Fleet Access Invites"');
     expect(tiles).toContain('href: "/dashboard/owner/fleet-access"');
@@ -21,31 +18,21 @@ describe("fleet management UI cohesion", () => {
     expect(tiles).not.toContain('title: "Manage Fleets"');
     expect(tiles).not.toContain('title: "Fleet Service Requests"');
 
-    // Legacy direct routes remain during the compatibility window, but they are
-    // no longer part of Shop navigation.
-    expect(manageFleets).toContain('title="Manage fleets"');
-    expect(manageFleets).toContain('"Create fleet"');
-    expect(manageFleets).toContain("Existing fleets");
-    expect(manageFleets).not.toContain('title="Fleet programs"');
-    expect(manageFleets).not.toContain('"Create program"');
-
-    expect(addUnit).toContain("Create your first fleet");
-    expect(addUnit).toContain(
-      "/fleet/programs?returnTo=%2Ffleet%2Funits%2Fnew",
+    expect(legacyPrograms).toContain(
+      'redirect("/dashboard/owner/fleet-access")',
     );
-    expect(addUnit).not.toContain("Select a fleet program");
-    expect(legacyAddUnit).toContain('routePrefix="/fleet"');
-    expect(fleetProductAddUnit).toContain('routePrefix="/portal/fleet"');
-    expect(units).toContain("Every unit, one record");
-    expect(units).toContain('"/assets/new"');
-    expect(units).not.toContain("enrolled in fleet programs.");
+    expect(legacyUnits).toContain('new URL("/assets", FLEET_PRODUCT_ORIGIN)');
+    expect(legacyAddUnit).toContain(
+      'new URL("/assets/new", FLEET_PRODUCT_ORIGIN)',
+    );
+    expect(fleetProductAddUnit).toContain("FleetUnitEnrollmentPage");
   });
 
-  it("provides a complete no-fleet path from portal access to creation and back", () => {
+  it("creates the initial relationship inside the Shop invitation screen", () => {
     const portalAccess = read(
       "features/fleet/components/FleetPortalAccessManager.tsx",
     );
-    const manageFleets = read("app/fleet/programs/page.tsx");
+    const inviteRoute = read("app/api/portal/fleet/invites/route.ts");
     const shopInvitePage = read("app/dashboard/owner/fleet-access/page.tsx");
     const legacyInvitePage = read("app/fleet/portal-access/page.tsx");
 
@@ -54,19 +41,14 @@ describe("fleet management UI cohesion", () => {
     expect(legacyInvitePage).toContain(
       'redirect("/dashboard/owner/fleet-access")',
     );
-
-    expect(portalAccess).toContain(
-      '"/fleet/programs?returnTo=%2Ffleet%2Fportal-access"',
+    expect(portalAccess).toContain('action: "create_fleet"');
+    expect(portalAccess).toContain("Create the Fleet relationship");
+    expect(portalAccess).toContain("New relationship");
+    expect(portalAccess).not.toContain("/fleet/programs");
+    expect(inviteRoute).toContain('body?.action === "create_fleet"');
+    expect(inviteRoute).toContain("shop_id: access.profile.shop_id");
+    expect(inviteRoute).toContain(
+      'requiredCapability: "canInviteFleetMembers"',
     );
-    expect(portalAccess).toContain("Create a fleet before inviting members.");
-    expect(portalAccess).toContain("Manage fleets");
-    expect(portalAccess).toContain("Retry loading fleet access");
-    expect(portalAccess).toContain('htmlFor="fleet-portal-fleet"');
-
-    expect(manageFleets).toContain('if (returnTo === "/fleet/portal-access")');
-    expect(manageFleets).toContain(
-      "fleetId=${encodeURIComponent(inserted.id)}",
-    );
-    expect(manageFleets).toContain('if (returnTo === "/fleet/units/new")');
   });
 });

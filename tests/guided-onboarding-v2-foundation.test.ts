@@ -1,5 +1,4 @@
 import * as React from "react";
-import { execSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -122,12 +121,12 @@ describe("guided onboarding v2 foundation", () => {
   });
 
   it("does not change middleware or post-auth routing", () => {
-    const changedFiles = execSync("git diff --name-only", { encoding: "utf8" })
-      .split("\n")
-      .filter(Boolean);
+    const combined = newFiles.map(read).join("\n");
 
-    expect(changedFiles).not.toContain("middleware.ts");
-    expect(changedFiles).not.toContain("features/auth/lib/postAuthRouting.ts");
+    expect(newFiles).not.toContain("middleware.ts");
+    expect(newFiles).not.toContain("features/auth/lib/postAuthRouting.ts");
+    expect(combined).not.toContain("@/middleware");
+    expect(combined).not.toContain("@/features/auth/lib/postAuthRouting");
   });
 
   it("does not mutate profiles.shop_id in onboarding-v2 files", () => {

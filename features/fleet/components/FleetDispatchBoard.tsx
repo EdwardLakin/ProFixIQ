@@ -18,7 +18,7 @@ const card =
 
 export default function FleetDispatchBoard({
   uiContext,
-  routePrefix = "/fleet",
+  routePrefix = "/portal/fleet",
 }: {
   uiContext: FleetUiContext;
   routePrefix?: "/fleet" | "/portal/fleet";
@@ -78,7 +78,10 @@ export default function FleetDispatchBoard({
     };
   }, []);
 
-  const assignments = useMemo(() => data?.assignments ?? [], [data?.assignments]);
+  const assignments = useMemo(
+    () => data?.assignments ?? [],
+    [data?.assignments],
+  );
 
   const filteredAssignments = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -97,7 +100,9 @@ export default function FleetDispatchBoard({
   }, [assignments, stateFilter, search]);
 
   const total = assignments.length;
-  const pretripDue = assignments.filter((a) => a.state === "pretrip_due").length;
+  const pretripDue = assignments.filter(
+    (a) => a.state === "pretrip_due",
+  ).length;
   const enRoute = assignments.filter((a) => a.state === "en_route").length;
   const inShop = assignments.filter((a) => a.state === "in_shop").length;
 
@@ -109,7 +114,11 @@ export default function FleetDispatchBoard({
           className="pointer-events-none fixed inset-0 -z-10 bg-[var(--theme-gradient-panel)]"
         />
 
-        <div className={card + " relative overflow-hidden px-4 py-4 md:px-6 md:py-5"}>
+        <div
+          className={
+            card + " relative overflow-hidden px-4 py-4 md:px-6 md:py-5"
+          }
+        >
           <div
             aria-hidden
             className="pointer-events-none absolute inset-x-0 -top-10 h-24 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.22),transparent_65%)]"
@@ -134,11 +143,15 @@ export default function FleetDispatchBoard({
             <div className="flex flex-col gap-2 text-right text-[11px] text-[color:var(--theme-text-secondary)] md:items-end">
               <span>
                 Total assignments:{" "}
-                <span className="font-semibold text-[color:var(--theme-text-primary)]">{total}</span>
+                <span className="font-semibold text-[color:var(--theme-text-primary)]">
+                  {total}
+                </span>
               </span>
               <span>
                 Pre-trip due:{" "}
-                <span className="font-semibold text-amber-300">{pretripDue}</span>
+                <span className="font-semibold text-amber-300">
+                  {pretripDue}
+                </span>
               </span>
               <span>
                 En route:{" "}
@@ -155,26 +168,28 @@ export default function FleetDispatchBoard({
         <div className={card + " px-4 py-4 md:px-6 md:py-5"}>
           <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div className="flex flex-wrap gap-2 text-[11px]">
-              {(["all", "pretrip_due", "en_route", "in_shop"] as const).map((f) => (
-                <button
-                  key={f}
-                  type="button"
-                  onClick={() => setStateFilter(f)}
-                  className={`rounded-full px-3 py-1.5 font-semibold uppercase tracking-[0.16em] transition ${
-                    stateFilter === f
-                      ? "bg-[color:var(--accent-copper)] text-[color:var(--theme-text-on-accent)] shadow-[0_0_16px_rgba(193,102,59,0.7)]"
-                      : "border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-surface-panel)]"
-                  }`}
-                >
-                  {f === "all"
-                    ? "All"
-                    : f === "pretrip_due"
-                      ? "Pre-trip due"
-                      : f === "en_route"
-                        ? "En route"
-                        : "In shop"}
-                </button>
-              ))}
+              {(["all", "pretrip_due", "en_route", "in_shop"] as const).map(
+                (f) => (
+                  <button
+                    key={f}
+                    type="button"
+                    onClick={() => setStateFilter(f)}
+                    className={`rounded-full px-3 py-1.5 font-semibold uppercase tracking-[0.16em] transition ${
+                      stateFilter === f
+                        ? "bg-[color:var(--accent-copper)] text-[color:var(--theme-text-on-accent)] shadow-[0_0_16px_rgba(193,102,59,0.7)]"
+                        : "border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-surface-panel)]"
+                    }`}
+                  >
+                    {f === "all"
+                      ? "All"
+                      : f === "pretrip_due"
+                        ? "Pre-trip due"
+                        : f === "en_route"
+                          ? "En route"
+                          : "In shop"}
+                  </button>
+                ),
+              )}
             </div>
 
             <div className="flex items-center gap-2">
@@ -264,11 +279,7 @@ export default function FleetDispatchBoard({
   );
 }
 
-function DispatchStatePill({
-  state,
-}: {
-  state: DispatchAssignment["state"];
-}) {
+function DispatchStatePill({ state }: { state: DispatchAssignment["state"] }) {
   const map: Record<
     DispatchAssignment["state"],
     { label: string; className: string }

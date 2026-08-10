@@ -1,29 +1,9 @@
-import { redirect } from "next/navigation";
-import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
 import type { ReactNode } from "react";
-import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
-import FleetWorkspaceNav from "@/features/fleet/components/FleetWorkspaceNav";
 
-export default async function FleetLayout({
+export default function LegacyFleetLayout({
   children,
 }: {
   children: ReactNode;
 }) {
-  const supabase = createServerSupabaseRSC();
-  const actor = await resolveFleetActorContext(supabase);
-
-  if (!actor.userId) {
-    redirect("/sign-in?next=%2Ffleet");
-  }
-
-  if (!actor.isInternal) {
-    redirect(actor.capabilities.canAccessPortalFleetWrappers ? "/portal/fleet" : "/dashboard");
-  }
-
-  return (
-    <>
-      <FleetWorkspaceNav routePrefix="/fleet" />
-      {children}
-    </>
-  );
+  return children;
 }

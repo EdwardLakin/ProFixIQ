@@ -1,5 +1,13 @@
-import IntakeRouteClient from "@/features/work-orders/intake/screens/IntakeRouteClient";
+import { redirect } from "next/navigation";
+import { FLEET_PRODUCT_ORIGIN } from "@/features/fleet/lib/fleetProductRouting";
 
-export default function Page() {
-  return <IntakeRouteClient mode="fleet" />;
+type Props = { params: Promise<{ id: string }> };
+
+export default async function LegacyFleetWorkOrderIntakePage({
+  params,
+}: Props) {
+  const { id } = await params;
+  const target = new URL("/history", FLEET_PRODUCT_ORIGIN);
+  target.searchParams.set("workOrderId", id);
+  redirect(target.toString());
 }

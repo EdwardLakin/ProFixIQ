@@ -110,6 +110,26 @@ describe("Fleet product middleware boundary", () => {
     );
   });
 
+  it("moves old Shop Fleet operational URLs onto the Fleet product host", async () => {
+    const response = await middleware(
+      shopRequest("/fleet/units/unit-42?tab=history"),
+    );
+
+    expect(response.status).toBe(308);
+    expect(response.headers.get("location")).toBe(
+      "https://fleet.profixiq.com/assets/unit-42?tab=history",
+    );
+  });
+
+  it("keeps only Fleet relationship setup on the Shop host", async () => {
+    const response = await middleware(shopRequest("/fleet/programs"));
+
+    expect(response.status).toBe(308);
+    expect(response.headers.get("location")).toBe(
+      "https://profixiq.com/dashboard/owner/fleet-access",
+    );
+  });
+
   it("moves legacy Fleet sign-in off the Shop hostname", async () => {
     const response = await middleware(
       shopRequest("/portal/auth/fleet-sign-in?redirect=%2Fportal%2Ffleet"),

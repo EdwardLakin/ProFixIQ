@@ -11,84 +11,206 @@ import { getActiveBrandForRender } from "@/features/branding/server/getActiveBra
 function siteUrl(): string {
   const value = process.env.NEXT_PUBLIC_SITE_URL?.trim().replace(/\/$/, "");
   if (value) return /^https?:\/\//i.test(value) ? value : `https://${value}`;
-  return process.env.NODE_ENV === "production" ? "https://profixiq.com" : "http://localhost:3000";
+  return process.env.NODE_ENV === "production"
+    ? "https://profixiq.com"
+    : "http://localhost:3000";
 }
 
 export async function GET() {
-  const access = await requireShopScopedApiAccess({ requiredCapability: "canInviteFleetMembers" });
+  const access = await requireShopScopedApiAccess({
+    requiredCapability: "canInviteFleetMembers",
+  });
   if (!access.ok) return access.response;
   const [fleetsResult, invitesResult] = await Promise.all([
-    access.supabase.from("fleets").select("id, name").eq("shop_id", access.profile.shop_id).order("name"),
-    access.supabase
+    supabaseAdmin
+      .from("fleets")
+      .select("id, name")
+      .eq("shop_id", access.profile.shop_id)
+      .order("name"),
+    supabaseAdmin
       .from("fleet_portal_invites")
-      .select("id, fleet_id, email, role, expires_at, accepted_at, revoked_at, created_at")
+      .select(
+        "id, fleet_id, email, role, expires_at, accepted_at, revoked_at, created_at",
+      )
       .eq("shop_id", access.profile.shop_id)
       .order("created_at", { ascending: false })
       .limit(50),
   ]);
-  return NextResponse.json({ ok: true, fleets: fleetsResult.data ?? [], invites: invitesResult.data ?? [] });
+  if (fleetsResult.error || invitesResult.error) {
+    return NextResponse.json(
+      { error: "Fleet portal access could not be loaded." },
+      { status: 500 },
+    );
+  }
+  return NextResponse.json({
+    ok: true,
+    fleets: fleetsResult.data ?? [],
+    invites: invitesResult.data ?? [],
+  });
 }
 
 export async function POST(req: Request) {
-  const access = await requireShopScopedApiAccess({ requiredCapability: "canInviteFleetMembers" });
+  const access = await requireShopScopedApiAccess({
+    requiredCapability: "canInviteFleetMembers",
+  });
   if (!access.ok) return access.response;
-  const body = (await req.json().catch(() => null)) as { fleetId?: string; email?: string; role?: string } | null;
-  const fleetId = String(body?.fleetId ?? "").trim();
-  const email = String(body?.email ?? "").trim().toLowerCase();
-  const role = body?.role === "manager" || body?.role === "approver" ? body.role : "viewer";
-  if (!fleetId || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    return NextResponse.json({ error: "Fleet and a valid email are required." }, { status: 400 });
+  const body = (await req.json().catch(() => null)) as {
+    action?: string;
+    fleetId?: string;
+    email?: string;
+    role?: string;
+    name?: string;
+    contactName?: string;
+    contactEmail?: string;
+  } | null;
+
+  if (body?.action === "create_fleet") {
+    const name = String(body.name ?? "").trim();
+    const contactName = String(body.contactName ?? "").trim();
+    const contactEmail = String(body.contactEmail ?? "")
+      .trim()
+      .toLowerCase();
+    if (!name || name.length > 120) {
+      return NextResponse.json(
+        {
+          error: "Fleet name is required and must be 120 characters or fewer.",
+        },
+        { status: 400 },
+      );
+    }
+    if (contactEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)) {
+      return NextResponse.json(
+        { error: "Enter a valid fleet contact email." },
+        { status: 400 },
+      );
+    }
+
+    const { data: fleet, error } = await supabaseAdmin
+      .from("fleets")
+      .insert({
+        shop_id: access.profile.shop_id,
+        name,
+        contact_name: contactName || null,
+        contact_email: contactEmail || null,
+        notes: null,
+      })
+      .select("id, name")
+      .single();
+
+    if (error || !fleet) {
+      const duplicate = error?.code === "23505";
+      return NextResponse.json(
+        {
+          error: duplicate
+            ? "A Fleet relationship with this name already exists."
+            : "Fleet relationship could not be created.",
+        },
+        { status: duplicate ? 409 : 400 },
+      );
+    }
+
+    return NextResponse.json({ ok: true, fleet }, { status: 201 });
   }
 
-  const { data: fleet } = await access.supabase
+  const fleetId = String(body?.fleetId ?? "").trim();
+  const email = String(body?.email ?? "")
+    .trim()
+    .toLowerCase();
+  const role =
+    body?.role === "manager" || body?.role === "approver"
+      ? body.role
+      : "viewer";
+  if (!fleetId || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return NextResponse.json(
+      { error: "Fleet and a valid email are required." },
+      { status: 400 },
+    );
+  }
+
+  const { data: fleet } = await supabaseAdmin
     .from("fleets")
     .select("id, name, shop_id")
     .eq("id", fleetId)
     .eq("shop_id", access.profile.shop_id)
     .maybeSingle();
-  if (!fleet?.id) return NextResponse.json({ error: "Fleet not found." }, { status: 404 });
+  if (!fleet?.id)
+    return NextResponse.json({ error: "Fleet not found." }, { status: 404 });
 
-  await access.supabase
+  const { error: revokeError } = await supabaseAdmin
     .from("fleet_portal_invites")
     .update({ revoked_at: new Date().toISOString() })
+    .eq("shop_id", access.profile.shop_id)
     .eq("fleet_id", fleet.id)
     .eq("email", email)
     .is("accepted_at", null)
     .is("revoked_at", null);
+  if (revokeError) {
+    return NextResponse.json(
+      { error: "Invitation could not be prepared." },
+      { status: 500 },
+    );
+  }
 
   const rawToken = crypto.randomBytes(32).toString("base64url");
   const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
-  const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
-  const { error: insertError } = await access.supabase.from("fleet_portal_invites").insert({
-    shop_id: access.profile.shop_id,
-    fleet_id: fleet.id,
-    email,
-    role,
-    token_hash: tokenHash,
-    expires_at: expiresAt,
-    created_by: access.profile.id,
-  });
-  if (insertError) return NextResponse.json({ error: insertError.message }, { status: 400 });
+  const expiresAt = new Date(
+    Date.now() + 14 * 24 * 60 * 60 * 1000,
+  ).toISOString();
+  const { data: invite, error: insertError } = await supabaseAdmin
+    .from("fleet_portal_invites")
+    .insert({
+      shop_id: access.profile.shop_id,
+      fleet_id: fleet.id,
+      email,
+      role,
+      token_hash: tokenHash,
+      expires_at: expiresAt,
+      created_by: access.profile.id,
+    })
+    .select("id")
+    .single();
+  if (insertError || !invite) {
+    return NextResponse.json(
+      { error: "Invitation could not be created." },
+      { status: 400 },
+    );
+  }
 
   const portalLink = `${siteUrl()}/portal/auth/fleet-invite?token=${encodeURIComponent(rawToken)}`;
   const [{ data: shop }, brand] = await Promise.all([
-    supabaseAdmin.from("shops").select("name, shop_name").eq("id", access.profile.shop_id).maybeSingle(),
+    supabaseAdmin
+      .from("shops")
+      .select("name, shop_name")
+      .eq("id", access.profile.shop_id)
+      .maybeSingle(),
     getActiveBrandForRender(access.profile.shop_id),
   ]);
   const shopName = shop?.shop_name?.trim() || shop?.name?.trim() || "ProFixIQ";
-  await sendPortalInviteEmail({
-    shopId: access.profile.shop_id,
-    to: email,
-    portalLink,
-    shopName,
-    brandLogoUrl: brand?.logoUrl ?? null,
-    brandPrimaryColor: brand?.colors.primary ?? null,
-    brandSecondaryColor: brand?.colors.secondary ?? null,
-    createdBy: access.profile.id,
-    portalType: "fleet",
-    fleetName: fleet.name,
-    fleetRole: role,
-  });
+  try {
+    await sendPortalInviteEmail({
+      shopId: access.profile.shop_id,
+      to: email,
+      portalLink,
+      shopName,
+      brandLogoUrl: brand?.logoUrl ?? null,
+      brandPrimaryColor: brand?.colors.primary ?? null,
+      brandSecondaryColor: brand?.colors.secondary ?? null,
+      createdBy: access.profile.id,
+      portalType: "fleet",
+      fleetName: fleet.name,
+      fleetRole: role,
+    });
+  } catch {
+    await supabaseAdmin
+      .from("fleet_portal_invites")
+      .update({ revoked_at: new Date().toISOString() })
+      .eq("id", invite.id)
+      .eq("shop_id", access.profile.shop_id);
+    return NextResponse.json(
+      { error: "Invitation email could not be sent. Please try again." },
+      { status: 502 },
+    );
+  }
 
   return NextResponse.json({ ok: true, expiresAt });
 }

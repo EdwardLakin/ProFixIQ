@@ -28,7 +28,7 @@ type PretripReport = {
 
 export default function PretripReportsPage({
   uiContext,
-  routePrefix = "/fleet",
+  routePrefix = "/portal/fleet",
 }: {
   uiContext: FleetUiContext;
   routePrefix?: "/fleet" | "/portal/fleet";

@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
+import { FLEET_PRODUCT_ORIGIN } from "@/features/fleet/lib/fleetProductRouting";
 
 export default function LegacyFleetServiceRequestsPage() {
-  redirect("/work-orders/fleet-requests");
+  redirect(new URL("/requests", FLEET_PRODUCT_ORIGIN).toString());
 }

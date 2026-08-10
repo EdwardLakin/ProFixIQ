@@ -39,7 +39,7 @@ type ApiResponse = {
 export default function AssetDetailScreen({
   unitId,
   uiContext,
-  routePrefix = "/fleet",
+  routePrefix = "/portal/fleet",
 }: AssetDetailScreenProps) {
   const [unit, setUnit] = useState<FleetUnit | null>(null);
   const [issues, setIssues] = useState<FleetIssue[]>([]);

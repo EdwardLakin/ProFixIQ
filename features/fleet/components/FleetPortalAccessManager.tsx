@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { Building2, Loader2, MailPlus, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
@@ -25,12 +24,10 @@ type Invite = {
 
 type InvitePayload = {
   fleets?: Fleet[];
+  fleet?: Fleet;
   invites?: Invite[];
   error?: string;
 };
-
-const DEFAULT_CREATE_FLEET_HREF =
-  "/fleet/programs?returnTo=%2Ffleet%2Fportal-access";
 
 export default function FleetPortalAccessManager() {
   const [fleets, setFleets] = useState<Fleet[]>([]);
@@ -40,9 +37,14 @@ export default function FleetPortalAccessManager() {
   const [role, setRole] = useState<InviteRole>("viewer");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [showCreateFleet, setShowCreateFleet] = useState(false);
+  const [fleetName, setFleetName] = useState("");
+  const [fleetContactName, setFleetContactName] = useState("");
+  const [fleetContactEmail, setFleetContactEmail] = useState("");
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (preferredFleetId?: string) => {
     setLoading(true);
     setLoadError(null);
 
@@ -68,7 +70,7 @@ export default function FleetPortalAccessManager() {
         "fleetId",
       );
       setFleetId((current) => {
-        const preferred = current || requestedFleetId || "";
+        const preferred = preferredFleetId || current || requestedFleetId || "";
         return nextFleets.some((fleet) => fleet.id === preferred)
           ? preferred
           : (nextFleets[0]?.id ?? "");
@@ -120,6 +122,49 @@ export default function FleetPortalAccessManager() {
     }
   }
 
+  async function createFleet(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCreating(true);
+
+    try {
+      const response = await fetch("/api/portal/fleet/invites", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "create_fleet",
+          name: fleetName,
+          contactName: fleetContactName,
+          contactEmail: fleetContactEmail,
+        }),
+      });
+      const payload = (await response
+        .json()
+        .catch(() => null)) as InvitePayload | null;
+      if (!response.ok || !payload?.fleet) {
+        throw new Error(
+          payload?.error || "Fleet relationship could not be created.",
+        );
+      }
+
+      setFleetName("");
+      setFleetContactName("");
+      setFleetContactEmail("");
+      setShowCreateFleet(false);
+      await load(payload.fleet.id);
+      toast.success(
+        "Fleet relationship created. You can send the invitation now.",
+      );
+    } catch (value) {
+      toast.error(
+        value instanceof Error
+          ? value.message
+          : "Fleet relationship could not be created.",
+      );
+    } finally {
+      setCreating(false);
+    }
+  }
+
   return (
     <div className="mx-auto w-full max-w-6xl space-y-6 px-4 py-6 text-[color:var(--theme-text-primary)] xl:px-6">
       <header>
@@ -130,20 +175,30 @@ export default function FleetPortalAccessManager() {
           Invite & access
         </h1>
         <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">
-          Invite fleet managers, approvers, and drivers into the correct
+          Invite fleet managers, dispatchers, and drivers into the correct
           fleet-scoped portal.
         </p>
       </header>
 
       <div className="grid gap-5 lg:grid-cols-[360px_1fr]">
-        <form
-          onSubmit={send}
-          aria-busy={loading || sending}
+        <section
+          aria-busy={loading || sending || creating}
           className="space-y-4 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-5 shadow-[var(--theme-shadow-soft)]"
         >
-          <div className="flex items-center gap-2 font-semibold">
-            <MailPlus className="h-4 w-4 text-[var(--accent-copper)]" />
-            Send fleet invitation
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 font-semibold">
+              <MailPlus className="h-4 w-4 text-[var(--accent-copper)]" />
+              Fleet relationship & invitation
+            </div>
+            {!loading && fleets.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => setShowCreateFleet((current) => !current)}
+                className="text-xs font-semibold text-[var(--accent-copper)] hover:underline"
+              >
+                {showCreateFleet ? "Cancel" : "New relationship"}
+              </button>
+            ) : null}
           </div>
 
           {loading ? (
@@ -168,39 +223,66 @@ export default function FleetPortalAccessManager() {
                 Retry loading fleet access
               </button>
             </div>
-          ) : fleets.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-[color:var(--theme-border-soft)] p-5 text-center">
-              <p className="font-semibold">
-                Create a fleet before inviting members.
-              </p>
-              <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
-                Invitations are scoped to one fleet so members only see the
-                correct units and service records.
-              </p>
-              <Link
-                href={DEFAULT_CREATE_FLEET_HREF}
-                className="mt-4 inline-flex rounded-xl bg-[var(--accent-copper)] px-4 py-2.5 text-sm font-bold text-[color:var(--theme-text-on-accent)]"
-              >
-                Create fleet
-              </Link>
-            </div>
-          ) : (
-            <>
+          ) : showCreateFleet || fleets.length === 0 ? (
+            <form
+              onSubmit={createFleet}
+              className="space-y-4 rounded-xl border border-dashed border-[color:var(--theme-border-soft)] p-4"
+            >
               <div>
-                <div className="flex items-center justify-between gap-3">
-                  <label
-                    htmlFor="fleet-portal-fleet"
-                    className="text-xs font-semibold text-[color:var(--theme-text-secondary)]"
-                  >
-                    Fleet
-                  </label>
-                  <Link
-                    href="/fleet/programs"
-                    className="text-xs font-semibold text-[var(--accent-copper)] hover:underline"
-                  >
-                    Manage fleets
-                  </Link>
-                </div>
+                <p className="font-semibold">Create the Fleet relationship</p>
+                <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+                  This establishes the Shop connection. Workspace details,
+                  users, assets, and maintenance are managed inside Fleet.
+                </p>
+              </div>
+              <label className="block text-xs font-semibold text-[color:var(--theme-text-secondary)]">
+                Fleet name
+                <input
+                  required
+                  maxLength={120}
+                  value={fleetName}
+                  onChange={(event) => setFleetName(event.target.value)}
+                  placeholder="Northside Transport"
+                  className="mt-1.5 w-full rounded-xl border border-[color:var(--theme-input-border)] bg-[color:var(--theme-input-bg)] px-3 py-2.5 text-sm text-[color:var(--theme-input-text)]"
+                />
+              </label>
+              <label className="block text-xs font-semibold text-[color:var(--theme-text-secondary)]">
+                Primary contact <span className="font-normal">(optional)</span>
+                <input
+                  maxLength={120}
+                  value={fleetContactName}
+                  onChange={(event) => setFleetContactName(event.target.value)}
+                  className="mt-1.5 w-full rounded-xl border border-[color:var(--theme-input-border)] bg-[color:var(--theme-input-bg)] px-3 py-2.5 text-sm text-[color:var(--theme-input-text)]"
+                />
+              </label>
+              <label className="block text-xs font-semibold text-[color:var(--theme-text-secondary)]">
+                Contact email <span className="font-normal">(optional)</span>
+                <input
+                  type="email"
+                  maxLength={254}
+                  value={fleetContactEmail}
+                  onChange={(event) => setFleetContactEmail(event.target.value)}
+                  className="mt-1.5 w-full rounded-xl border border-[color:var(--theme-input-border)] bg-[color:var(--theme-input-bg)] px-3 py-2.5 text-sm text-[color:var(--theme-input-text)]"
+                />
+              </label>
+              <button
+                type="submit"
+                disabled={creating || !fleetName.trim()}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent-copper)] px-4 py-3 text-sm font-bold text-[color:var(--theme-text-on-accent)] disabled:opacity-60"
+              >
+                {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                {creating ? "Creating…" : "Create relationship"}
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={send} className="space-y-4">
+              <div>
+                <label
+                  htmlFor="fleet-portal-fleet"
+                  className="text-xs font-semibold text-[color:var(--theme-text-secondary)]"
+                >
+                  Fleet
+                </label>
                 <select
                   id="fleet-portal-fleet"
                   required
@@ -250,8 +332,8 @@ export default function FleetPortalAccessManager() {
                   }
                   className="mt-1.5 w-full rounded-xl border border-[color:var(--theme-input-border)] bg-[color:var(--theme-input-bg)] px-3 py-2.5 text-sm text-[color:var(--theme-input-text)]"
                 >
-                  <option value="viewer">Viewer / driver</option>
-                  <option value="approver">Approver / dispatcher</option>
+                  <option value="viewer">Driver</option>
+                  <option value="approver">Dispatcher</option>
                   <option value="manager">Fleet manager</option>
                 </select>
               </div>
@@ -268,9 +350,9 @@ export default function FleetPortalAccessManager() {
                 )}
                 {sending ? "Sending…" : "Send secure invitation"}
               </button>
-            </>
+            </form>
           )}
-        </form>
+        </section>
 
         <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-5 shadow-[var(--theme-shadow-soft)]">
           <div className="flex items-center gap-2 font-semibold">
