@@ -5,9 +5,10 @@ set local statement_timeout = '5min';
 set local check_function_bodies = false;
 
 -- Reassert the guard with explicit state variables and enforce it both before
--- and after booking mutations. The AFTER trigger is intentional: if any legacy
--- booking/scheduler trigger runs first, raising here still rolls the entire
--- statement and all trigger side effects back atomically.
+-- and after booking mutations. The durable release signal is dispatched_at,
+-- not only the current status label. The AFTER trigger is intentional: if any
+-- legacy booking/scheduler trigger runs first, raising here still rolls the
+-- entire statement and all trigger side effects back atomically.
 create or replace function public.guard_booking_after_dispatch_release()
 returns trigger
 language plpgsql
@@ -17,17 +18,18 @@ as $$
 declare
   v_visit_id uuid;
   v_visit_status text;
+  v_dispatched_at timestamptz;
   v_dispatch_reschedule_visit text;
   v_time_changed boolean;
   v_status_changed boolean;
 begin
-  select sv.id, sv.status
-    into v_visit_id, v_visit_status
+  select sv.id, sv.status, sv.dispatched_at
+    into v_visit_id, v_visit_status, v_dispatched_at
   from public.service_visits sv
   where sv.booking_id = old.id
   limit 1;
 
-  if v_visit_id is null or v_visit_status = 'scheduled' then
+  if v_visit_id is null or v_dispatched_at is null then
     return new;
   end if;
 
