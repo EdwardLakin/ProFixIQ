@@ -36,6 +36,17 @@ function iso(value: unknown): string | null {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
+function projectedRequestStatus(requestStatus: unknown, shopStatus: unknown) {
+  const current = clean(requestStatus)?.toLowerCase() ?? "open";
+  const repair = clean(shopStatus)?.toLowerCase() ?? "";
+  if (["completed", "closed", "invoiced", "paid"].includes(repair)) {
+    return "completed";
+  }
+  if (["cancelled", "canceled"].includes(repair)) return "cancelled";
+  if (repair) return "scheduled";
+  return current;
+}
+
 export async function POST(request: Request) {
   try {
     const supabase = createServerSupabaseRoute();
@@ -207,6 +218,7 @@ export async function POST(request: Request) {
       const needsApproval =
         Boolean(clean(workOrder.id)) &&
         (pendingApprovalsByWorkOrder.get(String(workOrder.id)) ?? 0) > 0;
+      const status = projectedRequestStatus(row.status, workOrder.status);
 
       return {
         id: String(row.id),
@@ -229,7 +241,7 @@ export async function POST(request: Request) {
         title: clean(row.title) ?? "Service request",
         summary: clean(row.summary) ?? "",
         severity: clean(row.severity) ?? "recommend",
-        status: clean(row.status)?.toLowerCase() ?? "open",
+        status,
         createdAt: iso(row.created_at) ?? new Date().toISOString(),
         updatedAt: iso(row.updated_at),
         requestedForDate: clean(row.requested_for_date),
