@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import { isExplicitMobileFieldOperator } from "@/features/mobile/service/server/access";
 import {
   getActiveInvoiceVersion,
   postPaymentEvent,
@@ -22,11 +24,23 @@ type Body = {
 };
 
 export async function POST(req: Request) {
-  const access = await requireShopScopedApiAccess({
-    requiredCapability: "canManageWorkOrders",
-    allowRoles: [...PAYMENT_ROLES],
-  });
+  const access = await requireShopScopedApiAccess();
   if (!access.ok) return access.response;
+  const actor = getActorCapabilities({ role: access.profile.role });
+  const standardPaymentAuthority =
+    PAYMENT_ROLES.includes(access.canonicalRole as (typeof PAYMENT_ROLES)[number]) &&
+    actor.canManageWorkOrders;
+  let mobileFieldAuthority = false;
+  if (!standardPaymentAuthority) {
+    try {
+      mobileFieldAuthority = await isExplicitMobileFieldOperator(access);
+    } catch {
+      return NextResponse.json({ error: "Unable to verify Mobile Service access." }, { status: 500 });
+    }
+  }
+  if (!standardPaymentAuthority && !mobileFieldAuthority) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   try {
     const body = (await req.json().catch(() => null)) as Body | null;
