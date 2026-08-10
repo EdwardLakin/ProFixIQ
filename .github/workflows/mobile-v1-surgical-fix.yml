@@ -1,0 +1,67 @@
+name: Mobile V1 Surgical Fix
+
+on:
+  push:
+    branches:
+      - agent/mobile-v1-productization
+    paths:
+      - ".github/workflows/mobile-v1-surgical-fix.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/mobile-v1-productization
+          fetch-depth: 1
+
+      - name: Apply exact Mobile V1 compile fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python <<'PY'
+          from pathlib import Path
+
+          shell = Path("features/mobile/service/MobileServiceShell.tsx")
+          text = shell.read_text()
+          old = '''  let serverResult: DispatchMutationResult | null = null;'''
+          new = '''  const serverState: { result: DispatchMutationResult | null } = { result: null };'''
+          if old not in text:
+              raise SystemExit("serverResult declaration not found")
+          text = text.replace(old, new, 1)
+          old = '''      serverResult = body;'''
+          new = '''      serverState.result = body;'''
+          if old not in text:
+              raise SystemExit("serverResult assignment not found")
+          text = text.replace(old, new, 1)
+          old = '''    visit: serverResult?.visit ?? optimisticTransition(visit, toStatus),'''
+          new = '''    visit: serverState.result?.visit ?? optimisticTransition(visit, toStatus),'''
+          if old not in text:
+              raise SystemExit("serverResult read not found")
+          text = text.replace(old, new, 1)
+          shell.write_text(text)
+
+          intake = Path("features/mobile/service/RapidServiceIntake.tsx")
+          text = intake.read_text()
+          old = '''import { ArrowLeft, Clock3, MapPin, Phone, Save, Search, UserRound, Wrench } from "lucide-react";'''
+          new = '''import { ArrowLeft, Clock3, MapPin, Save, Search, UserRound, Wrench } from "lucide-react";'''
+          if old not in text:
+              raise SystemExit("unused Phone import not found")
+          intake.write_text(text.replace(old, new, 1))
+          PY
+
+      - name: Commit and push fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add features/mobile/service/MobileServiceShell.tsx features/mobile/service/RapidServiceIntake.tsx
+          git commit -m "Fix Mobile V1 compile contracts"
+          git push origin HEAD:agent/mobile-v1-productization
