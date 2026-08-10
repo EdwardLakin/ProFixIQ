@@ -14,7 +14,9 @@ export function PartsRequestWorkbenchHeader({
   defaultSupplierId,
   supplierOptions,
   onDefaultSupplierChange,
-  onCreatePo,
+  onRequestSupplierQuote,
+  selectedCount,
+  requestQuoteDisabled,
   onCommitPackage,
   commitPackageDisabled,
   packageCommittedCount,
@@ -29,29 +31,38 @@ export function PartsRequestWorkbenchHeader({
   defaultSupplierId?: string | null;
   supplierOptions: WorkbenchOption[];
   onDefaultSupplierChange?: (supplierId: string) => void;
-  onCreatePo?: () => void;
+  onRequestSupplierQuote?: () => void;
+  selectedCount?: number;
+  requestQuoteDisabled?: boolean;
   onCommitPackage?: () => void;
   commitPackageDisabled?: boolean;
   packageCommittedCount?: number;
 }): JSX.Element {
   const meta = [
-    workOrderCustomId ? `Work Order: ${workOrderCustomId}` : null,
     jobContext,
     createdAt ? `Created ${createdAt}${createdBy ? ` by ${createdBy}` : ""}` : null,
   ].filter(Boolean);
+  const title = workOrderCustomId || `Parts Request ${requestLabel}`;
 
   return (
     <div className="flex flex-wrap items-start justify-between gap-4">
       <div className="min-w-0">
-        <div className="text-xs text-[color:var(--theme-text-secondary)]">Parts Requests › {requestLabel}</div>
+        <div className="text-xs text-[color:var(--theme-text-secondary)]">
+          Parts Requests › {workOrderCustomId || requestLabel}
+        </div>
         <div className="mt-3 flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-semibold text-[color:var(--theme-text-primary)]">Parts Request {requestLabel}</h1>
+          <h1 className="text-2xl font-semibold text-[color:var(--theme-text-primary)]">{title}</h1>
           {status ? (
             <span className="rounded-full border border-sky-400/35 bg-sky-950/25 px-3 py-1 text-xs font-medium text-sky-100">
               {status}
             </span>
           ) : null}
         </div>
+        {workOrderCustomId ? (
+          <div className="mt-1 text-sm font-medium text-[color:var(--theme-text-secondary)]">
+            Parts request · {requestLabel}
+          </div>
+        ) : null}
         <div className="mt-2 flex flex-wrap gap-2 text-sm text-[color:var(--theme-text-secondary)]">
           {meta.map((item) => (
             <span key={String(item)}>{item}</span>
@@ -73,9 +84,10 @@ export function PartsRequestWorkbenchHeader({
           className="rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)]"
           value={defaultSupplierId ?? ""}
           onChange={(event) => onDefaultSupplierChange?.(event.target.value)}
-          title="Default supplier"
+          title="Supplier for quote"
+          aria-label="Supplier for quote"
         >
-          <option value="">Default supplier</option>
+          <option value="">Supplier for quote</option>
           {supplierOptions.map((supplier) => (
             <option key={supplier.value} value={supplier.value}>
               {supplier.label}
@@ -100,13 +112,16 @@ export function PartsRequestWorkbenchHeader({
           </button>
         ) : null}
 
-        <button
-          type="button"
-          onClick={onCreatePo}
-          className="rounded-lg border border-orange-500/40 bg-orange-600/85 px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] hover:bg-orange-500"
-        >
-          Create PO
-        </button>
+        {onRequestSupplierQuote ? (
+          <button
+            type="button"
+            onClick={onRequestSupplierQuote}
+            disabled={requestQuoteDisabled}
+            className="rounded-lg border border-orange-500/40 bg-orange-600/85 px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] hover:bg-orange-500 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Request Supplier Quote{selectedCount ? ` (${selectedCount})` : ""}
+          </button>
+        ) : null}
       </div>
     </div>
   );
