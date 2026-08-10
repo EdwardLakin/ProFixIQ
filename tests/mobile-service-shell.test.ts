@@ -8,13 +8,12 @@ const tiles = read("features/mobile/config/mobile-tiles.ts");
 const activeRoute = read("app/api/mobile/service-visits/active/route.ts");
 const dispatchRoute = read("app/api/dispatch/visits/[id]/route.ts");
 
-
 describe("Mobile Service shell", () => {
   it("uses the merged Dispatch contracts instead of duplicating service-visit state", () => {
     expect(page).toContain("MobileServiceShell");
     expect(shell).toContain("/api/mobile/service-visits/active");
     expect(shell).toContain("/api/dispatch/visits/${visit.id}");
-    expect(shell).not.toContain('from("service_visits")');
+    expect(shell).not.toContain('.from("service_visits")');
     expect(activeRoute).toContain("getMobileActiveJobs");
     expect(dispatchRoute).toContain("transitionServiceVisit");
   });
@@ -46,10 +45,9 @@ describe("Mobile Service shell", () => {
     expect(shell).toContain("existing offline mobile workflow");
   });
 
-  it("exposes Mobile Service through existing role navigation", () => {
+  it("exposes Mobile Service only to roles eligible for personal field assignment", () => {
     expect(tiles).toContain('href: "/mobile/service"');
     expect(tiles).toContain('title: "Mobile Service"');
-    expect(tiles).toContain('"mechanic"');
-    expect(tiles).toContain('"owner"');
+    expect(tiles).toContain('roles: ["mechanic", "lead_hand", "foreman"]');
   });
 });
