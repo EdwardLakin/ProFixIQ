@@ -63,11 +63,16 @@ declare
   v_booking_id uuid;
   v_visit_id uuid;
   v_legacy_rejected boolean := false;
+  v_legacy_status_rejected boolean := false;
   v_late_blocked boolean := false;
   v_booking_start timestamptz;
   v_booking_end timestamptz;
   v_visit_start timestamptz;
   v_booking_status text;
+  v_locked_start timestamptz;
+  v_locked_end timestamptz;
+  v_locked_status text;
+  v_owner_visit_id uuid;
 begin
   v_booking := public.scheduler_apply_booking_command_atomic(
     'create', null,
@@ -115,13 +120,27 @@ begin
     raise exception 'Dispatch ownership assertion failed: dispatch handoff marker was not durable before booking mutation';
   end if;
 
+  select dispatch_owner_visit_id, dispatch_locked_starts_at,
+         dispatch_locked_ends_at, dispatch_locked_status
+    into v_owner_visit_id, v_locked_start, v_locked_end, v_locked_status
+  from public.bookings
+  where id = v_booking_id;
+
+  if v_owner_visit_id is distinct from v_visit_id
+     or v_locked_start is distinct from '2099-04-01 09:00:00+00'::timestamptz
+     or v_locked_end is distinct from '2099-04-01 10:00:00+00'::timestamptz
+     or v_locked_status is null then
+    raise exception 'Dispatch ownership assertion failed: booking ownership lock was not persisted at dispatch';
+  end if;
+
   begin
     update public.bookings
     set starts_at = '2099-04-01 12:00:00+00',
         ends_at = '2099-04-01 13:00:00+00'
     where id = v_booking_id;
-  exception when raise_exception then
-    v_legacy_rejected := true;
+  exception
+    when raise_exception or check_violation then
+      v_legacy_rejected := true;
   end;
 
   select starts_at, ends_at
@@ -133,11 +152,9 @@ begin
      or v_booking_end <> '2099-04-01 10:00:00+00'::timestamptz then
     raise exception 'Dispatch ownership assertion failed: legacy booking reschedule changed a dispatched appointment';
   end if;
-
-  -- The exact rejection mechanism is not the contract: an existing booking
-  -- guard may reject by exception or suppress the row update. The durable state
-  -- above is the business invariant. Keep the variable for diagnostic evidence.
-  perform v_legacy_rejected;
+  if not v_legacy_rejected then
+    raise exception 'Dispatch ownership assertion failed: legacy booking reschedule was not rejected';
+  end if;
 
   perform public.dispatch_reschedule_service_visit_atomic(
     '8b200000-0000-4000-8000-000000000001',
@@ -148,11 +165,36 @@ begin
     'dispatch-lock:canonical-reschedule'
   );
 
-  select starts_at into v_booking_start from public.bookings where id = v_booking_id;
-  select scheduled_start into v_visit_start from public.service_visits where id = v_visit_id;
+  select starts_at, dispatch_locked_starts_at, dispatch_locked_ends_at
+    into v_booking_start, v_locked_start, v_locked_end
+  from public.bookings
+  where id = v_booking_id;
+  select scheduled_start into v_visit_start
+  from public.service_visits
+  where id = v_visit_id;
+
   if v_booking_start <> '2099-04-01 10:00:00+00'::timestamptz
-     or v_visit_start <> '2099-04-01 10:00:00+00'::timestamptz then
-    raise exception 'Dispatch ownership assertion failed: canonical dispatch reschedule did not move booking and visit together';
+     or v_visit_start <> '2099-04-01 10:00:00+00'::timestamptz
+     or v_locked_start <> '2099-04-01 10:00:00+00'::timestamptz
+     or v_locked_end <> '2099-04-01 11:00:00+00'::timestamptz then
+    raise exception 'Dispatch ownership assertion failed: canonical dispatch reschedule did not move booking, visit, and lock together';
+  end if;
+
+  begin
+    update public.bookings
+    set status = 'cancelled'
+    where id = v_booking_id;
+  exception
+    when raise_exception or check_violation then
+      v_legacy_status_rejected := true;
+  end;
+
+  select status into v_booking_status
+  from public.bookings
+  where id = v_booking_id;
+  if lower(coalesce(v_booking_status, '')) = 'cancelled'
+     or not v_legacy_status_rejected then
+    raise exception 'Dispatch ownership assertion failed: legacy booking lifecycle changed after dispatch';
   end if;
 
   perform public.dispatch_transition_service_visit_atomic(
@@ -197,9 +239,13 @@ begin
     'dispatch-lock:completed'
   );
 
-  select status into v_booking_status from public.bookings where id = v_booking_id;
-  if lower(coalesce(v_booking_status, '')) <> 'completed' then
-    raise exception 'Dispatch ownership assertion failed: terminal visit did not mirror completed state to booking';
+  select status, dispatch_locked_status
+    into v_booking_status, v_locked_status
+  from public.bookings
+  where id = v_booking_id;
+  if lower(coalesce(v_booking_status, '')) <> 'completed'
+     or lower(coalesce(v_locked_status, '')) <> 'completed' then
+    raise exception 'Dispatch ownership assertion failed: terminal visit did not mirror completed state to booking lock';
   end if;
 end
 $$;
