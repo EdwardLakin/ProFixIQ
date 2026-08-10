@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
 concurrency:
   group: agent-pr-checks-${{ github.event.pull_request.number }}
@@ -17,42 +18,35 @@ jobs:
     name: sync scheduler types
     if: github.event.pull_request.head.ref == 'feature/mobile-service-foundation' && github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
     steps:
-      - name: Check out scheduler schema only
+      - name: Check out generated-types path
         uses: actions/checkout@v4
         with:
           ref: feature/mobile-service-foundation
           fetch-depth: 0
           sparse-checkout: |
-            supabase
             features/shared/types/types
           sparse-checkout-cone-mode: true
 
-      - name: Set up Supabase CLI
-        uses: supabase/setup-cli@v2
+      - name: Download exact clean-replay generated types
+        uses: actions/download-artifact@v4
         with:
-          version: latest
-
-      - name: Start clean local database
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ ! -f supabase/config.toml ]]; then
-            supabase init
-          fi
-          supabase db start
-
-      - name: Regenerate committed database types
-        shell: bash
-        run: |
-          set -euo pipefail
-          supabase gen types typescript --local > features/shared/types/types/supabase.ts
+          name: supabase-clean-replay-diagnostics
+          run-id: 31353538644
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: ${{ runner.temp }}/supabase-clean-replay-diagnostics
 
       - name: Commit exact generated types
         shell: bash
         run: |
           set -euo pipefail
+          GENERATED="$(find "$RUNNER_TEMP/supabase-clean-replay-diagnostics" -name generated.after.ts -print -quit)"
+          if [[ -z "$GENERATED" || ! -f "$GENERATED" ]]; then
+            echo "generated.after.ts was not found in the clean replay artifact"
+            exit 1
+          fi
+          cp "$GENERATED" features/shared/types/types/supabase.ts
           if git diff --quiet -- features/shared/types/types/supabase.ts; then
             echo "Generated types already match."
             exit 0
@@ -62,11 +56,6 @@ jobs:
           git add features/shared/types/types/supabase.ts
           git commit -m "Regenerate Supabase types for universal scheduler"
           git push origin HEAD:feature/mobile-service-foundation
-
-      - name: Stop local Supabase
-        if: always()
-        shell: bash
-        run: supabase db stop --no-backup || true
 
   checks:
     name: checks
