@@ -36,6 +36,19 @@ pnpm build
 pnpm audit:api-routes
 ```
 
+For every pull request that adds or changes a file under `supabase/migrations/`,
+run the canonical schema-contract check before publishing:
+
+```bash
+pnpm db:schema:check
+```
+
+If the migration intentionally changes the generated contract, run
+`pnpm db:schema:refresh`, review and commit
+`features/shared/types/types/supabase.ts`, then rerun
+`pnpm db:schema:check`. Do not open or update the pull request until that
+command passes.
+
 Additional database and QA scripts exist in `package.json`. Inspect them before use.
 
 Do not claim a command passed unless it was actually executed successfully.

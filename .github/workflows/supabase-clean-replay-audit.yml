@@ -14,11 +14,17 @@ on:
       - "features/shared/types/types/supabase.ts"
       - "package.json"
       - "scripts/generate-supabase-public-baseline.py"
+      - "scripts/check-supabase-schema-contract.sh"
+      - "scripts/verify-supabase-generated-types.sh"
       - "docs/supabase-recovery-and-schema-contract.md"
       - ".github/workflows/supabase-clean-replay-audit.yml"
 
 permissions:
   contents: read
+
+concurrency:
+  group: supabase-clean-replay-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   validate:
@@ -93,6 +99,13 @@ jobs:
         run: |
           set -euo pipefail
           supabase db start 2>&1 | tee supabase-db-start.log
+
+      - name: Verify generated types match the applied migration contract
+        shell: bash
+        env:
+          SUPABASE_GENERATED_TYPES_FILE: generated-supabase-types.ts
+          SUPABASE_TYPES_DIFF_FILE: supabase-generated-types.diff
+        run: bash scripts/verify-supabase-generated-types.sh --check
 
       - name: Reset and replay the full migration chain
         shell: bash
@@ -353,17 +366,6 @@ jobs:
             -f tests/security/p0-008-schema-reconciliation.runtime.sql \
             2>&1 | tee p0-008-schema-reconciliation-runtime.log
 
-      - name: Verify generated types match the clean migration replay
-        shell: bash
-        run: |
-          set -euo pipefail
-          supabase gen types typescript --local --schema public \
-            > generated-supabase-types.ts
-          diff -u \
-            features/shared/types/types/supabase.ts \
-            generated-supabase-types.ts \
-            2>&1 | tee p0-008-generated-types.diff
-
       - name: Verify bootstrap and existing-database baseline paths
         shell: bash
         env:
@@ -442,7 +444,7 @@ jobs:
             payroll-period-pipeline-runtime.log
             agent-human-approval-proof-runtime.log
             p0-008-schema-reconciliation-runtime.log
-            p0-008-generated-types.diff
+            supabase-generated-types.diff
             generated-supabase-types.ts
             supabase/config.toml
           if-no-files-found: warn
