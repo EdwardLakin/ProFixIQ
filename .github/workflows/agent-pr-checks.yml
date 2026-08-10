@@ -30,12 +30,16 @@ jobs:
           sparse-checkout-cone-mode: true
 
       - name: Download exact clean-replay generated types
-        uses: actions/download-artifact@v4
-        with:
-          name: supabase-clean-replay-diagnostics
-          run-id: 31353538644
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          path: ${{ runner.temp }}/supabase-clean-replay-diagnostics
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/supabase-clean-replay-diagnostics"
+          gh run download 31353538644 \
+            --repo EdwardLakin/ProFixIQ \
+            --name supabase-clean-replay-diagnostics \
+            --dir "$RUNNER_TEMP/supabase-clean-replay-diagnostics"
 
       - name: Commit exact generated types
         shell: bash
