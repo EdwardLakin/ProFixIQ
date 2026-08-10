@@ -185,7 +185,7 @@ async function transitionVisit(
   dependsOn: string[] = [],
 ): Promise<TransitionOutcome> {
   const mutationId = operationKey(visit.id, toStatus);
-  let serverResult: DispatchMutationResult | null = null;
+  const serverState: { result: DispatchMutationResult | null } = { result: null };
   const payload = {
     visitId: visit.id,
     fromStatus: visit.status,
@@ -229,12 +229,12 @@ async function transitionVisit(
         error.status = response.status;
         throw error;
       }
-      serverResult = body;
+      serverState.result = body;
     },
   });
 
   return {
-    visit: serverResult?.visit ?? optimisticTransition(visit, toStatus),
+    visit: serverState.result?.visit ?? optimisticTransition(visit, toStatus),
     queued: result.queued,
     mutationId,
   };
