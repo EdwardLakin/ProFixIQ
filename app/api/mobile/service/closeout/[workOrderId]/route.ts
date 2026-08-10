@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 
-import { createConnectedAccountInvoiceCheckout } from "@/features/stripe/lib/server/connected-account-checkout";
 import { getActiveInvoiceVersion } from "@/features/invoices/server/financialLifecycle";
-import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import {
   canFieldOperatorAccessWorkOrder,
   requireMobileServiceOperatorApiAccess,
 } from "@/features/mobile/service/server/access";
+import { createConnectedAccountInvoiceCheckout } from "@/features/stripe/lib/server/connected-account-checkout";
+import { createStripeClient } from "@/features/stripe/lib/stripe/client";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 type CheckoutBody = { action?: "checkout" };
 
@@ -108,6 +109,12 @@ export async function POST(
       { status: 400 },
     );
   }
+  if (!process.env.STRIPE_SECRET_KEY) {
+    return NextResponse.json(
+      { error: "Card payments are not configured." },
+      { status: 500 },
+    );
+  }
 
   const admin = createAdminSupabase();
   const invoiceVersion = await getActiveInvoiceVersion({
@@ -143,25 +150,6 @@ export async function POST(
     );
   }
 
-  const { data: shop, error: shopError } = await admin
-    .from("shops")
-    .select(
-      "stripe_account_id,stripe_charges_enabled,stripe_default_currency",
-    )
-    .eq("id", access.profile.shop_id)
-    .maybeSingle();
-  if (shopError || !shop)
-    return NextResponse.json(
-      { error: shopError?.message ?? "Shop not found." },
-      { status: 500 },
-    );
-  if (!shop.stripe_account_id || !shop.stripe_charges_enabled) {
-    return NextResponse.json(
-      { error: "Card payments are not enabled for this shop." },
-      { status: 409 },
-    );
-  }
-
   let customerEmail: string | null = null;
   if (workOrder.customer_id) {
     const customerResult = await admin
@@ -176,27 +164,29 @@ export async function POST(
   const siteUrl = (
     process.env.NEXT_PUBLIC_SITE_URL ?? new URL(request.url).origin
   ).replace(/\/$/, "");
+  const stripe = createStripeClient(process.env.STRIPE_SECRET_KEY);
+
   try {
-    const checkout = await createConnectedAccountInvoiceCheckout({
+    const session = await createConnectedAccountInvoiceCheckout({
+      stripe,
+      supabase: admin,
       shopId: access.profile.shop_id,
       workOrderId,
       invoiceVersionId: invoiceVersion.id,
-      invoiceId: invoiceVersion.invoice_id,
-      connectedAccountId: shop.stripe_account_id,
-      amount: Number(invoiceVersion.outstanding_total),
-      currency: String(
-        invoiceVersion.currency || shop.stripe_default_currency || "CAD",
-      ),
+      invoiceVersionNumber: invoiceVersion.version_number,
+      outstandingAmount: Number(invoiceVersion.outstanding_total),
+      currency: invoiceVersion.currency,
       customerEmail,
-      actorUserId: access.authUserId,
-      source: "staff_invoice_payment",
+      customerId: workOrder.customer_id,
+      createdBy: access.authUserId,
+      purpose: "staff_invoice_payment",
       successUrl: `${siteUrl}/mobile/service/closeout/${encodeURIComponent(workOrderId)}?payment=success&session_id={CHECKOUT_SESSION_ID}`,
       cancelUrl: `${siteUrl}/mobile/service/closeout/${encodeURIComponent(workOrderId)}?payment=cancelled`,
     });
     return NextResponse.json({
       ok: true,
-      url: checkout.url,
-      sessionId: checkout.sessionId,
+      url: session.url,
+      sessionId: session.id,
     });
   } catch (error) {
     return NextResponse.json(
