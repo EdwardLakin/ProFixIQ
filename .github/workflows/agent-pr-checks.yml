@@ -19,11 +19,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Check out scheduler branch
+      - name: Check out scheduler schema only
         uses: actions/checkout@v4
         with:
           ref: feature/mobile-service-foundation
           fetch-depth: 0
+          sparse-checkout: |
+            supabase
+            features/shared/types/types
+          sparse-checkout-cone-mode: true
 
       - name: Set up Supabase CLI
         uses: supabase/setup-cli@v2
