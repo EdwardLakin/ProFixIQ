@@ -1,0 +1,71 @@
+name: Merge Current Main and Regenerate Scheduler Types
+
+on:
+  push:
+    branches:
+      - feature/mobile-service-foundation
+
+permissions:
+  contents: write
+
+concurrency:
+  group: merge-current-main-and-regenerate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  merge_and_regenerate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out scheduler branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/mobile-service-foundation
+          fetch-depth: 0
+
+      - name: Configure git
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Merge current main as a whole
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git merge --no-edit -X theirs origin/main
+
+      - name: Set up Supabase CLI
+        uses: supabase/setup-cli@v2
+        with:
+          version: latest
+
+      - name: Start combined clean database
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -f supabase/config.toml ]]; then
+            supabase init
+          fi
+          supabase db start
+
+      - name: Regenerate combined schema types
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase gen types typescript --local > features/shared/types/types/supabase.ts
+          git add features/shared/types/types/supabase.ts
+          if ! git diff --cached --quiet; then
+            git commit -m "Regenerate Supabase types after current main merge"
+          fi
+
+      - name: Push cohesive merged branch
+        shell: bash
+        run: git push origin HEAD:feature/mobile-service-foundation
+
+      - name: Stop local Supabase
+        if: always()
+        shell: bash
+        run: supabase db stop --no-backup || true
