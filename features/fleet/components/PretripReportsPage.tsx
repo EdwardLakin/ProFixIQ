@@ -327,7 +327,8 @@ export default function PretripReportsPage({
                             </Link>
                           )}
 
-                        {uiContext.capabilities.canConvertRequests && (
+                        {(uiContext.capabilities.canCreateServiceRequests ||
+                          uiContext.experience === "external_dispatcher") && (
                           <Link
                             href={
                               uiContext.experience === "external_dispatcher"

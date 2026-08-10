@@ -357,9 +357,9 @@ export default function FleetRequestBuilderPage() {
 
       toast.success("Fleet service request sent to the shop.");
       router.replace(
-        pathname.startsWith("/fleet/")
-          ? "/fleet/service-requests"
-          : "/portal/fleet/service-requests",
+        pathname.startsWith("/portal/fleet")
+          ? "/portal/fleet/service-requests"
+          : "/requests",
       );
     } catch (error) {
       toast.error(

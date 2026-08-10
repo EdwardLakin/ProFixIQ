@@ -181,12 +181,12 @@ export default function AssetDetailScreen({
       allInspectionsLabel="All inspections"
       renderIssueActions={() => (
         <>
-          {uiContext.capabilities.canCreateFleetWorkOrders && (
+          {uiContext.capabilities.canCreateServiceRequests && (
             <Link
-              href={`/work-orders/create?unitId=${encodeURIComponent(unitId)}`}
+              href={`${routePrefix === "/portal/fleet" ? "/portal/fleet/request/build" : "/fleet/service-requests/new"}?unitId=${encodeURIComponent(unitId)}`}
               className="rounded-full bg-[color:var(--accent-copper)] px-3 py-1 text-[10px] font-semibold text-[color:var(--theme-text-on-accent)] shadow-[0_0_16px_rgba(193,102,59,0.7)] hover:opacity-95"
             >
-              Create work order
+              Request service
             </Link>
           )}
           <Link

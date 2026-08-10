@@ -7,10 +7,5 @@ export default async function PortalFleetServiceRequestsPage() {
   const uiContext = await requireFleetPortalActor();
   if (!uiContext.capabilities.canViewServiceRequests) redirect("/portal/fleet");
 
-  return (
-    <FleetServiceRequestsPage
-      uiContext={uiContext}
-      routePrefix="/portal/fleet"
-    />
-  );
+  return <FleetServiceRequestsPage uiContext={uiContext} />;
 }

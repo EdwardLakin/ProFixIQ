@@ -126,6 +126,14 @@ export const TILES: Tile[] = [
     section: "Operations",
   },
   {
+    href: "/work-orders/fleet-requests",
+    title: "Fleet Request Inbox",
+    subtitle: "Accept dispatcher-approved maintenance",
+    roles: ["advisor", "manager", "owner", "admin"],
+    scopes: ["work_orders", "all"],
+    section: "Operations",
+  },
+  {
     href: "/estimates",
     title: "Estimates",
     subtitle: "Build, price & send",

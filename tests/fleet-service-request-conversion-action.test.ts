@@ -2,19 +2,37 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { convertFleetServiceRequest } from "@/features/fleet/lib/convertFleetServiceRequest";
 
-const componentPath =
-  "features/fleet/components/FleetServiceRequestsPage.tsx";
+const componentPath = "features/fleet/components/ShopFleetRequestInbox.tsx";
 
 describe("fleet service-request conversion action", () => {
-  it("shows conversion only for internal actors with the exact capability and an open request", () => {
+  it("keeps conversion in the guarded Shop inbox and out of Fleet", () => {
     const source = readFileSync(componentPath, "utf8");
-    expect(source).toContain('routePrefix === "/fleet"');
-    expect(source).toContain("uiContext.isInternal");
-    expect(source).toContain(
-      "uiContext.capabilities.canConvertServiceRequestToWorkOrder",
+    const shopPage = readFileSync(
+      "app/work-orders/fleet-requests/page.tsx",
+      "utf8",
     );
-    expect(source).toContain('item.status === "open"');
-    expect(source).toContain("Create work order");
+    const fleetPage = readFileSync(
+      "features/fleet/components/FleetServiceRequestsPage.tsx",
+      "utf8",
+    );
+    const conversionRoute = readFileSync(
+      "app/api/fleet/service-requests/convert-to-work-order/route.ts",
+      "utf8",
+    );
+
+    expect(shopPage).toContain("requireShopPageAccess");
+    expect(shopPage).toContain("SHOP_FLEET_REQUEST_INTAKE_ROLES");
+    expect(source).toContain("convertFleetServiceRequest(item.id)");
+    expect(source).toContain("Accept into Shop");
+    expect(source).toContain("payload?.canManage");
+    expect(fleetPage).not.toContain("convertFleetServiceRequest");
+    expect(fleetPage).not.toContain("Create work order");
+    expect(conversionRoute).toContain("requireShopScopedApiAccess");
+    expect(conversionRoute).toContain("SHOP_FLEET_REQUEST_INTAKE_ROLES");
+    expect(conversionRoute).toContain("isFleetProductHostname(requestHost)");
+    expect(conversionRoute).toContain(
+      "Work orders are created in ProFixIQ Shop.",
+    );
   });
 
   it("posts the request id and returns the resulting work order", async () => {

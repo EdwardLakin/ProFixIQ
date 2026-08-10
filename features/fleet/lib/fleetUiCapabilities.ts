@@ -12,9 +12,7 @@ export type FleetUiCapabilities = {
   canManageUnits: boolean;
   canSubmitPretrip: boolean;
   canReviewPretripHistory: boolean;
-  canConvertRequests: boolean;
-  canConvertServiceRequestToWorkOrder: boolean;
-  canCreateFleetWorkOrders: boolean;
+  canCreateServiceRequests: boolean;
   canViewBroadFleetOperations: boolean;
   canAccessPortalFleetWrappers: boolean;
   canViewServiceRequests: boolean;
@@ -59,9 +57,9 @@ export function getFleetUiContext(actor: FleetActorContext): FleetUiContext {
     ? canManageInternalFleet
     : actor.actorType === "fleet_manager";
   const canViewDispatch = actor.capabilities.canRunFleetDispatchActions;
-  const canConvertRequests =
-    actor.capabilities.canConvertPretripToServiceRequest ||
-    actor.capabilities.canConvertServiceRequestToWorkOrder;
+  const canCreateServiceRequests = actor.isInternal
+    ? canManageInternalFleet
+    : actor.actorType === "fleet_manager";
 
   return {
     actorType: actor.actorType,
@@ -73,11 +71,7 @@ export function getFleetUiContext(actor: FleetActorContext): FleetUiContext {
       canManageUnits,
       canSubmitPretrip: actor.capabilities.canCreatePretripReports,
       canReviewPretripHistory: actor.actorType !== "none",
-      canConvertRequests,
-      canConvertServiceRequestToWorkOrder:
-        actor.capabilities.canConvertServiceRequestToWorkOrder,
-      canCreateFleetWorkOrders:
-        actor.capabilities.canConvertServiceRequestToWorkOrder,
+      canCreateServiceRequests,
       canViewBroadFleetOperations: actor.capabilities.canSeeFleetWideUnits,
       canAccessPortalFleetWrappers:
         actor.capabilities.canAccessPortalFleetWrappers,
