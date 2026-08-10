@@ -54,6 +54,15 @@ jobs:
           psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
             -f tests/dispatch/mobile-dispatch.runtime.sql
 
+      - name: Verify Dispatch owns bookings after release
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+            -f tests/dispatch/dispatch-booking-ownership.runtime.sql
+
       - name: Stop local Supabase
         if: always()
         shell: bash
