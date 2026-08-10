@@ -50,7 +50,8 @@ export type ServiceAddressInput = {
 };
 
 export type CreateServiceVisitInput = {
-  workOrderId: string;
+  bookingId?: string | null;
+  workOrderId?: string | null;
   mode: ServiceVisitMode;
   serviceAddressId?: string | null;
   scheduledStart?: string | null;
@@ -64,10 +65,13 @@ export type CreateServiceVisitInput = {
 
 export type ServiceVisitLifecyclePatch = {
   status: ServiceVisitStatus;
+  dispatchedAt?: string | null;
   travelStartedAt?: string | null;
   arrivedAt?: string | null;
   workStartedAt?: string | null;
+  pausedAt?: string | null;
   completedAt?: string | null;
+  cancelledAt?: string | null;
   actualTravelMinutes?: number | null;
   actualDistanceKm?: number | null;
 };
@@ -85,11 +89,23 @@ export function isActiveServiceVisitStatus(
   return ACTIVE_SERVICE_VISIT_STATUSES.includes(value);
 }
 
+export function assertServiceVisitAnchor(input: {
+  bookingId?: string | null;
+  workOrderId?: string | null;
+}): void {
+  if (!input.bookingId && !input.workOrderId) {
+    throw new Error("A service visit requires a booking or work order anchor.");
+  }
+}
+
 export function assertServiceVisitSchedule(
   scheduledStart?: string | null,
   scheduledEnd?: string | null,
 ): void {
-  if (!scheduledStart || !scheduledEnd) return;
+  if (!scheduledStart && !scheduledEnd) return;
+  if (!scheduledStart || !scheduledEnd) {
+    throw new Error("Service visit start and end must be provided together.");
+  }
 
   const start = Date.parse(scheduledStart);
   const end = Date.parse(scheduledEnd);
