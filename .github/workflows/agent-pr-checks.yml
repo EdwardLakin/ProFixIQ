@@ -6,61 +6,13 @@ on:
       - main
 
 permissions:
-  contents: write
-  actions: read
+  contents: read
 
 concurrency:
   group: agent-pr-checks-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
-  sync_scheduler_types:
-    name: sync scheduler types
-    if: github.event.pull_request.head.ref == 'feature/mobile-service-foundation' && github.actor != 'github-actions[bot]'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Check out generated-types path
-        uses: actions/checkout@v4
-        with:
-          ref: feature/mobile-service-foundation
-          fetch-depth: 0
-          sparse-checkout: |
-            features/shared/types/types
-          sparse-checkout-cone-mode: true
-
-      - name: Download current-head clean-replay generated types
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/supabase-clean-replay"
-          gh run download 31357228982 \
-            --repo EdwardLakin/ProFixIQ \
-            --name supabase-clean-replay-31357228982 \
-            --dir "$RUNNER_TEMP/supabase-clean-replay"
-
-      - name: Commit exact generated types
-        shell: bash
-        run: |
-          set -euo pipefail
-          GENERATED="$(find "$RUNNER_TEMP/supabase-clean-replay" -name generated-supabase-types.ts -print -quit)"
-          if [[ -z "$GENERATED" || ! -f "$GENERATED" ]]; then
-            echo "generated-supabase-types.ts was not found in the current-head clean replay artifact"
-            exit 1
-          fi
-          cp "$GENERATED" features/shared/types/types/supabase.ts
-          if git diff --quiet -- features/shared/types/types/supabase.ts; then
-            echo "Generated types already match."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add features/shared/types/types/supabase.ts
-          git commit -m "Regenerate Supabase types from current clean replay"
-          git push origin HEAD:feature/mobile-service-foundation
-
   checks:
     name: checks
     runs-on: ubuntu-latest
@@ -133,6 +85,9 @@ jobs:
 
       - name: Build production application
         env:
+          # Pull requests do not receive production secrets. These values only
+          # let Next.js evaluate route modules while compiling; no network calls
+          # are made and deploys still use environment-scoped credentials.
           NEXT_PUBLIC_SUPABASE_URL: https://ci-build-placeholder.supabase.co
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-build-placeholder-anon-key
           SUPABASE_SERVICE_ROLE_KEY: ci-build-placeholder-service-role-key
