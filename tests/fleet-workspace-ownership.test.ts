@@ -66,9 +66,18 @@ describe("Fleet workspace ownership", () => {
 
   it("keeps the relationship invitation entry point in Shop", () => {
     const shopInvitePage = read("app/dashboard/owner/fleet-access/page.tsx");
+    const driversPage = read("app/portal/fleet/drivers/page.tsx");
     const settings = read("app/portal/fleet/settings/page.tsx");
+    const shopInvite = read(
+      "features/fleet/components/FleetPortalAccessManager.tsx",
+    );
 
     expect(shopInvitePage).toContain("FleetPortalAccessManager");
+    expect(driversPage).not.toContain("FleetPortalAccessManager");
+    expect(driversPage).not.toContain("driver-access");
     expect(settings).not.toContain("FleetPortalAccessManager");
+    expect(shopInvite).not.toContain("embedded");
+    expect(shopInvite).not.toContain('routePrefix = "/fleet"');
+    expect(shopInvite).not.toContain('routePrefix === "/portal/fleet"');
   });
 });

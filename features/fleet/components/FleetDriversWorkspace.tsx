@@ -10,7 +10,6 @@ import {
   Route,
   Search,
   Truck,
-  UserPlus,
   UsersRound,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -72,10 +71,8 @@ function stateLabel(value: string): string {
 
 export default function FleetDriversWorkspace({
   actorLabel,
-  canInviteDrivers,
 }: {
   actorLabel: string;
-  canInviteDrivers: boolean;
 }) {
   const pathname = usePathname() ?? "";
   const internalRoutes = pathname.startsWith("/portal/fleet");
@@ -214,15 +211,6 @@ export default function FleetDriversWorkspace({
               <Route className="h-4 w-4" aria-hidden="true" />
               Assign assets
             </Link>
-            {canInviteDrivers ? (
-              <a
-                href="#driver-access"
-                className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-sky-300 px-3 py-2 text-xs font-semibold text-slate-950"
-              >
-                <UserPlus className="h-4 w-4" aria-hidden="true" />
-                Invite driver
-              </a>
-            ) : null}
           </div>
         </div>
       </header>
@@ -305,8 +293,9 @@ export default function FleetDriversWorkspace({
             <UsersRound className="mx-auto h-7 w-7 text-sky-300" />
             <h2 className="mt-3 font-semibold">No drivers match this view</h2>
             <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
-              Invite a driver, then assign an enrolled asset to activate daily
-              pre-trip tracking.
+              Drivers appear here after their Shop-issued Fleet access is
+              accepted. Manage existing Fleet roles in Fleet Settings, then
+              assign an enrolled asset to activate daily pre-trip tracking.
             </p>
           </div>
         ) : null}

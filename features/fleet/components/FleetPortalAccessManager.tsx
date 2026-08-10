@@ -32,27 +32,15 @@ type InvitePayload = {
 const DEFAULT_CREATE_FLEET_HREF =
   "/fleet/programs?returnTo=%2Ffleet%2Fportal-access";
 
-export default function FleetPortalAccessManager({
-  embedded = false,
-  routePrefix = "/fleet",
-  defaultRole = "viewer",
-}: {
-  embedded?: boolean;
-  routePrefix?: "/fleet" | "/portal/fleet";
-  defaultRole?: InviteRole;
-}) {
+export default function FleetPortalAccessManager() {
   const [fleets, setFleets] = useState<Fleet[]>([]);
   const [invites, setInvites] = useState<Invite[]>([]);
   const [fleetId, setFleetId] = useState("");
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState(defaultRole);
+  const [role, setRole] = useState<InviteRole>("viewer");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const createFleetHref =
-    routePrefix === "/portal/fleet" ? "/settings" : DEFAULT_CREATE_FLEET_HREF;
-  const manageFleetsHref =
-    routePrefix === "/portal/fleet" ? "/settings" : "/fleet/programs";
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -133,27 +121,19 @@ export default function FleetPortalAccessManager({
   }
 
   return (
-    <div
-      className={
-        embedded
-          ? "w-full space-y-6 text-[color:var(--theme-text-primary)]"
-          : "mx-auto w-full max-w-6xl space-y-6 px-4 py-6 text-[color:var(--theme-text-primary)] xl:px-6"
-      }
-    >
-      {!embedded ? (
-        <header>
-          <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-copper)]">
-            Fleet portal
-          </div>
-          <h1 className="mt-2 text-3xl font-semibold tracking-[-0.035em]">
-            Invite & access
-          </h1>
-          <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">
-            Invite fleet managers, approvers, and drivers into the correct
-            fleet-scoped portal.
-          </p>
-        </header>
-      ) : null}
+    <div className="mx-auto w-full max-w-6xl space-y-6 px-4 py-6 text-[color:var(--theme-text-primary)] xl:px-6">
+      <header>
+        <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-copper)]">
+          Fleet portal
+        </div>
+        <h1 className="mt-2 text-3xl font-semibold tracking-[-0.035em]">
+          Invite & access
+        </h1>
+        <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">
+          Invite fleet managers, approvers, and drivers into the correct
+          fleet-scoped portal.
+        </p>
+      </header>
 
       <div className="grid gap-5 lg:grid-cols-[360px_1fr]">
         <form
@@ -198,7 +178,7 @@ export default function FleetPortalAccessManager({
                 correct units and service records.
               </p>
               <Link
-                href={createFleetHref}
+                href={DEFAULT_CREATE_FLEET_HREF}
                 className="mt-4 inline-flex rounded-xl bg-[var(--accent-copper)] px-4 py-2.5 text-sm font-bold text-[color:var(--theme-text-on-accent)]"
               >
                 Create fleet
@@ -215,7 +195,7 @@ export default function FleetPortalAccessManager({
                     Fleet
                   </label>
                   <Link
-                    href={manageFleetsHref}
+                    href="/fleet/programs"
                     className="text-xs font-semibold text-[var(--accent-copper)] hover:underline"
                   >
                     Manage fleets
