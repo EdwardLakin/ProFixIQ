@@ -66,4 +66,4 @@ jobs:
       - name: Stop local Supabase
         if: always()
         shell: bash
-        run: supabase db stop --no-backup || true
+        run: supabase stop --no-backup || true
