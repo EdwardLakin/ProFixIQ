@@ -8,6 +8,15 @@ const migration = read(
 const assignmentGuard = read(
   "supabase/migrations/20260810165000_mobile_dispatch_assignment_guard.sql",
 );
+const scheduleGuard = read(
+  "supabase/migrations/20260810165200_mobile_dispatch_schedule_guard.sql",
+);
+const mobileProjection = read(
+  "supabase/migrations/20260810165500_mobile_booking_dispatch_projection.sql",
+);
+const triggerOrder = read(
+  "supabase/migrations/20260810165600_mobile_booking_dispatch_trigger_order.sql",
+);
 const contract = read("features/scheduling/lib/service-visit-contract.ts");
 const commands = read("features/dispatch/server/commands.ts");
 const visitsApi = read("app/api/dispatch/visits/[id]/route.ts");
@@ -15,6 +24,7 @@ const createVisitApi = read("app/api/dispatch/visits/route.ts");
 const boardApi = read("app/api/dispatch/board/route.ts");
 const mobileActiveApi = read("app/api/mobile/service-visits/active/route.ts");
 const boardUi = read("app/dashboard/dispatch/DispatchBoardClient.tsx");
+const tiles = read("features/shared/config/tiles.ts");
 
 describe("Mobile dispatch operations", () => {
   it("makes service visits command-owned while preserving read access", () => {
@@ -41,6 +51,14 @@ describe("Mobile dispatch operations", () => {
     expect(migration).toContain("Service visit changed since it was loaded.");
   });
 
+  it("projects mobile bookings into exactly one dispatch visit after scheduler sync", () => {
+    expect(mobileProjection).toContain("service_visits_booking_unique");
+    expect(mobileProjection).toContain("sync_mobile_booking_to_dispatch_visit");
+    expect(mobileProjection).toContain("mobile_booking_projection");
+    expect(triggerOrder).toContain("bookings_zz_sync_mobile_dispatch_visit");
+    expect(triggerOrder).toContain("Universal Scheduler must project a booking first");
+  });
+
   it("protects truck capacity and technician capacity independently", () => {
     expect(migration).toContain("dispatch_sync_primary_resource");
     expect(migration).toContain("dispatch_sync_technician_reservation");
@@ -57,6 +75,16 @@ describe("Mobile dispatch operations", () => {
     expect(assignmentGuard).toContain("new.assigned_user_id is null");
     expect(assignmentGuard).toContain(
       "A technician must be assigned before a service visit can be dispatched.",
+    );
+  });
+
+  it("prevents partial schedules and rescheduling after travel starts", () => {
+    expect(scheduleGuard).toContain("guard_service_visit_schedule_mutation");
+    expect(scheduleGuard).toContain(
+      "Service visit start and end must be provided together.",
+    );
+    expect(scheduleGuard).toContain(
+      "A service visit cannot be rescheduled after travel has started.",
     );
   });
 
@@ -91,6 +119,8 @@ describe("Mobile dispatch operations", () => {
     expect(boardUi).toContain("/api/dispatch/board");
     expect(boardUi).toContain("/api/dispatch/visits/");
     expect(boardUi).not.toContain("createBrowserSupabase");
+    expect(tiles).toContain('href: "/dashboard/dispatch"');
+    expect(tiles).toContain('title: "Dispatch"');
   });
 
   it("keeps truck tracking optional but technician ownership explicit", () => {
