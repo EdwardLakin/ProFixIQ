@@ -39,14 +39,17 @@ describe("Mobile Service shell", () => {
     expect(shell).toContain('transitionVisit(current, "dispatched")');
   });
 
-  it("keeps dispatch mutations online-only but preserves an actor-scoped last-known snapshot", () => {
+  it("keeps dispatch mutations online-only but preserves an authenticated actor-scoped snapshot", () => {
     expect(shell).toContain("SNAPSHOT_CACHE_KEY");
     expect(shell).toContain("window.localStorage.setItem");
     expect(shell).toContain("window.localStorage.getItem");
     expect(shell).toContain("online && !stale");
     expect(shell).toContain("existing offline mobile workflow");
     expect(scopeGate).toContain("getOfflineMutationScope");
-    expect(scopeGate).toContain("resolveOfflineMutationScope");
+    expect(scopeGate).toContain("supabase.auth.getSession");
+    expect(scopeGate).toContain("resolveCurrentActor");
+    expect(scopeGate).toContain("setOfflineMutationScope");
+    expect(scopeGate).toContain("cached?.userId === authUserId");
     expect(scopeGate).toContain("SNAPSHOT_SCOPE_KEY");
     expect(scopeGate).toContain("fail closed");
   });
