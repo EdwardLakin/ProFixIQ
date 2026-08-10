@@ -9,6 +9,9 @@ const migration = read(
 const invoicePreview = read(
   "features/work-orders/components/InvoicePreviewPageClient.tsx",
 );
+const invoiceDisplayIdentity = read(
+  "features/invoices/lib/invoiceDisplayIdentity.ts",
+);
 const portalInvoice = read("app/portal/invoices/[id]/page.tsx");
 const portalInvoiceList = read("app/portal/invoices/page.tsx");
 const billing = read("app/billing/page.tsx");
@@ -67,14 +70,22 @@ describe("customer document consistency", () => {
   });
 
   it("shows customer-facing identity and narratives throughout invoice views", () => {
-    expect(invoicePreview).toContain('{invoiceNumber || "Draft invoice"}');
+    expect(invoiceDisplayIdentity).toContain("workOrderNumber ||");
+    expect(invoiceDisplayIdentity).toContain("`Invoice ${invoiceNumber}`");
+    expect(invoicePreview).toContain("displayIdentity.primary");
+    expect(invoicePreview).toContain("displayIdentity.secondary");
     expect(invoicePreview).toContain('["Complaint", line.complaint]');
     expect(invoicePreview).toContain('["Cause", line.cause]');
     expect(invoicePreview).toContain('["Correction", line.correction]');
     expect(invoicePreview).toContain("inspectionPdfLoading || inspectionPdf");
-    expect(portalInvoice).toContain("identity.invoiceNumber");
+    expect(portalInvoice).toContain("displayIdentity.primary");
+    expect(portalInvoice).toContain("displayIdentity.secondary");
     expect(portalInvoice).toContain("Complaint:");
     expect(portalInvoiceList).toContain("invoiceLabels");
+    expect(portalInvoiceList).toContain("identity.primary");
+    expect(portalInvoiceList).toContain("identity.secondary");
+    expect(billing).toContain("identity.primary");
+    expect(billing).toContain("identity.secondary");
     expect(billing).toContain("resolved_shop_supplies_total");
     expect(billing).toContain("Shop supplies");
     expect(billing).toContain("resolved_tax_total");

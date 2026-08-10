@@ -8,6 +8,7 @@ import { format } from "date-fns";
 import { toast } from "sonner";
 import GuidedPageStepPanel from "@/features/onboarding-v2/components/GuidedPageStepPanel";
 import { InvoiceCsvImportCard } from "@/features/billing/components/InvoiceCsvImportCard";
+import { invoiceDisplayIdentity } from "@/features/invoices/lib/invoiceDisplayIdentity";
 
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -885,9 +886,9 @@ export default function BillingPage(): JSX.Element {
             <table className="w-full min-w-[920px] text-left text-sm">
               <thead className="border-b border-amber-500/15 text-xs uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">
                 <tr>
-                  <th className="px-5 py-3">Invoice</th>
+                  <th className="px-5 py-3">Work order / invoice</th>
                   <th className="px-5 py-3">Customer</th>
-                  <th className="px-5 py-3">Work order / VIN</th>
+                  <th className="px-5 py-3">VIN</th>
                   <th className="px-5 py-3">Status</th>
                   <th className="px-5 py-3 text-right">Total</th>
                   <th className="px-5 py-3">Issued</th>
@@ -911,11 +912,16 @@ export default function BillingPage(): JSX.Element {
                     (legacyCustomerId
                       ? `Unknown customer · ${legacyCustomerId}`
                       : "Unknown customer");
-                  const workOrderText =
-                    metadata?.work_order_number ??
-                    String(rawRow.work_order_number ?? "No work order number");
+                  const workOrderText = String(
+                    metadata?.work_order_number ?? rawRow.work_order_number ?? "",
+                  );
                   const vinText =
                     metadata?.vin ?? String(rawRow.vin ?? "No VIN");
+                  const identity = invoiceDisplayIdentity({
+                    workOrderNumber: workOrderText,
+                    invoiceNumber: invoice.invoice_number,
+                    workOrderId: invoice.work_order_id,
+                  });
 
                   return (
                     <Fragment key={invoice.id}>
@@ -929,8 +935,10 @@ export default function BillingPage(): JSX.Element {
                       >
                         <td className="px-5 py-4">
                           <div className="font-semibold text-[color:var(--theme-text-primary)]">
-                            {invoice.invoice_number ??
-                              `#${invoice.id.slice(0, 8)}`}
+                            {identity.primary}
+                          </div>
+                          <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
+                            {identity.secondary}
                           </div>
                           <div className="mt-1 inline-flex rounded-full border border-amber-400/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-100">
                             Read-only historical
@@ -945,10 +953,7 @@ export default function BillingPage(): JSX.Element {
                           ) : null}
                         </td>
                         <td className="px-5 py-4">
-                          <div>{workOrderText}</div>
-                          <div className="text-xs text-[color:var(--theme-text-muted)]">
-                            VIN {vinText}
-                          </div>
+                          <div>{vinText}</div>
                         </td>
                         <td className="px-5 py-4">
                           <span className="inline-flex rounded-full border border-amber-400/30 bg-amber-500/10 px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-amber-100">

@@ -15,6 +15,7 @@ import { WorkOrderInvoiceDownloadButton } from "@work-orders/components/WorkOrde
 import SyncInvoiceToQuickBooksButton from "@/features/integrations/quickbooks/components/SyncInvoiceToQuickBooksButton";
 import RecordManualPayment from "@/features/invoices/components/RecordManualPayment";
 import InvoicePricingEditor from "@/features/invoices/components/InvoicePricingEditor";
+import { invoiceDisplayIdentity } from "@/features/invoices/lib/invoiceDisplayIdentity";
 import { useTabs } from "@/features/shared/components/tabs/TabsProvider";
 
 type DB = Database;
@@ -347,11 +348,16 @@ export default function InvoicePreviewPageClient({
 
   const effectiveVehicleInfo = vehicleInfo ?? fVehicleInfo;
   const effectiveCustomerInfo = customerInfo ?? fCustomerInfo;
+  const displayIdentity = invoiceDisplayIdentity({
+    workOrderNumber: workOrderLabel,
+    invoiceNumber,
+    workOrderId,
+    draft: !invoiceNumber,
+  });
 
   useEffect(() => {
-    const label = invoiceNumber || workOrderLabel || "Draft invoice";
     updateActiveTab({
-      title: `Invoice · ${label}`,
+      title: `Invoice · ${displayIdentity.primary}`,
       subtitle:
         effectiveCustomerInfo?.name?.trim() ||
         effectiveCustomerInfo?.business_name?.trim() ||
@@ -364,12 +370,10 @@ export default function InvoicePreviewPageClient({
     activeInvoiceVersion?.lifecycle_status,
     effectiveCustomerInfo?.business_name,
     effectiveCustomerInfo?.name,
+    displayIdentity.primary,
     reviewLoading,
     reviewOk,
     updateActiveTab,
-    invoiceNumber,
-    workOrderId,
-    workOrderLabel,
   ]);
 
   const effectiveLines = useMemo(() => {
@@ -1035,13 +1039,11 @@ export default function InvoicePreviewPageClient({
             <div className="text-[0.7rem] uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">
               Invoice
               <span className="ml-2 rounded-full border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-[0.65rem] text-[color:var(--theme-text-primary)]">
-                {invoiceNumber || "Draft invoice"}
+                {displayIdentity.primary}
               </span>
-              {workOrderLabel ? (
-                <span className="ml-2 text-[0.65rem] normal-case tracking-normal text-[color:var(--theme-text-muted)]">
-                  Work order {workOrderLabel}
-                </span>
-              ) : null}
+              <span className="ml-2 text-[0.65rem] normal-case tracking-normal text-[color:var(--theme-text-muted)]">
+                {displayIdentity.secondary}
+              </span>
             </div>
 
             {loading ? (
@@ -1220,10 +1222,10 @@ export default function InvoicePreviewPageClient({
                   Document
                 </div>
                 <div className="mt-1 text-sm font-semibold text-[color:var(--theme-text-primary)]">
-                  {invoiceNumber || "Draft invoice"}
+                  {displayIdentity.primary}
                 </div>
                 <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
-                  {workOrderLabel ? `Work order ${workOrderLabel}` : "Work order number pending"}
+                  {displayIdentity.secondary}
                   {` · ${formatInvoiceDate(invoiceIssuedAt)}`}
                 </div>
               </div>
