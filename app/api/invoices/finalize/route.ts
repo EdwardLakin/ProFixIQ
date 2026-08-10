@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
-import { isExplicitMobileFieldOperator } from "@/features/mobile/service/server/access";
+import { canFieldOperatorAccessWorkOrder } from "@/features/mobile/service/server/access";
 import { reviewWorkOrder } from "../../work-orders/[id]/_lib/reviewWorkOrder";
 import { getActiveBrandForRender } from "@/features/branding/server/getActiveBrandForRender";
 import { attachInspectionReportToInvoice } from "@/features/invoices/server/attachInspectionReportToInvoice";
@@ -61,6 +61,15 @@ export async function POST(request: Request) {
     const access = await requireShopScopedApiAccess();
     if (!access.ok) return access.response;
 
+    const body = (await request.json().catch(() => null)) as Body | null;
+    workOrderId = body?.workOrderId?.trim() ?? "";
+    if (!workOrderId) {
+      return NextResponse.json(
+        { error: "Missing work order ID." },
+        { status: 400 },
+      );
+    }
+
     const actor = getActorCapabilities({ role: access.profile.role });
     const standardInvoiceAuthority =
       ["owner", "admin", "manager", "advisor", "service"].includes(
@@ -70,18 +79,9 @@ export async function POST(request: Request) {
       actor.canAuthorizeQuotes;
     const mobileFieldAuthority = standardInvoiceAuthority
       ? false
-      : await isExplicitMobileFieldOperator(access);
+      : await canFieldOperatorAccessWorkOrder(access, workOrderId);
     if (!standardInvoiceAuthority && !mobileFieldAuthority) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-
-    const body = (await request.json().catch(() => null)) as Body | null;
-    workOrderId = body?.workOrderId?.trim() ?? "";
-    if (!workOrderId) {
-      return NextResponse.json(
-        { error: "Missing work order ID." },
-        { status: 400 },
-      );
     }
 
     const { data: workOrder, error: workOrderError } = await admin
