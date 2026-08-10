@@ -64,7 +64,6 @@ jobs:
           features/fleet/components/FleetServiceRequestsPage.tsx
           features/fleet/components/FleetUnitDetailWorkspace.tsx
           features/fleet/components/FleetUnitsPage.tsx
-          features/fleet/components/FleetWorkspaceNav.tsx
           features/fleet/types/workspace.ts
           tests/fleet-premier-workspaces.test.ts
           tests/fleet-pm-calendar-management.test.ts
