@@ -10,13 +10,17 @@ import {
   Pause,
   Phone,
   Play,
+  Plus,
   RefreshCw,
   Route,
+  Settings2,
+  Sparkles,
   Truck,
   UserRound,
   Wrench,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type {
@@ -25,6 +29,8 @@ import type {
   MobileActiveJobContract,
 } from "@/features/dispatch/lib/contracts";
 import type { ServiceVisitStatus } from "@/features/scheduling/lib/service-visit-contract";
+import { runMutationWithOfflineQueue } from "@/features/shared/lib/offline/mutations";
+import { replayAndReconcileOfflineMutations } from "@/features/shared/lib/offline/replay";
 
 const SNAPSHOT_CACHE_KEY = "profixiq:mobile-service:active:v1";
 const REFRESH_INTERVAL_MS = 30_000;
@@ -34,6 +40,12 @@ type VisitAction = {
   icon: typeof Navigation;
   toStatus: ServiceVisitStatus;
   confirm?: string;
+};
+
+type TransitionOutcome = {
+  visit: DispatchVisit;
+  queued: boolean;
+  mutationId: string;
 };
 
 function statusLabel(status: ServiceVisitStatus): string {
@@ -73,7 +85,8 @@ function primaryAction(visit: DispatchVisit): VisitAction | null {
         label: "Complete visit",
         icon: CheckCircle2,
         toStatus: "completed",
-        confirm: "Mark this service visit complete? The repair work order remains the repair and billing record.",
+        confirm:
+          "Mark this service visit complete? The repair work order remains the repair and billing record.",
       };
     default:
       return null;
@@ -91,7 +104,11 @@ function formatDay(value?: string | null): string {
   if (!value) return "Today";
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return "Today";
-  return date.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+  return date.toLocaleDateString([], {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
 }
 
 function addressText(visit: DispatchVisit): string | null {
@@ -139,37 +156,93 @@ function operationKey(visitId: string, action: string): string {
   return `mobile-service:${visitId}:${action}:${entropy}`.slice(0, 280);
 }
 
+function optimisticTransition(
+  visit: DispatchVisit,
+  toStatus: ServiceVisitStatus,
+): DispatchVisit {
+  const now = new Date().toISOString();
+  return {
+    ...visit,
+    status: toStatus,
+    version: Number(visit.version ?? 0) + 1,
+    lastStatusAt: now,
+    dispatchedAt:
+      toStatus === "dispatched" ? visit.dispatchedAt ?? now : visit.dispatchedAt,
+    travelStartedAt:
+      toStatus === "en_route" ? visit.travelStartedAt ?? now : visit.travelStartedAt,
+    arrivedAt: toStatus === "arrived" ? visit.arrivedAt ?? now : visit.arrivedAt,
+    workStartedAt:
+      toStatus === "working" ? visit.workStartedAt ?? now : visit.workStartedAt,
+    pausedAt: toStatus === "paused" ? now : visit.pausedAt,
+    completedAt:
+      toStatus === "completed" ? visit.completedAt ?? now : visit.completedAt,
+  };
+}
+
 async function transitionVisit(
   visit: DispatchVisit,
   toStatus: ServiceVisitStatus,
-): Promise<DispatchMutationResult> {
-  const key = operationKey(visit.id, toStatus);
-  const response = await fetch(`/api/dispatch/visits/${visit.id}`, {
-    method: "PATCH",
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      "Idempotency-Key": key,
+  dependsOn: string[] = [],
+): Promise<TransitionOutcome> {
+  const mutationId = operationKey(visit.id, toStatus);
+  let serverResult: DispatchMutationResult | null = null;
+  const payload = {
+    visitId: visit.id,
+    fromStatus: visit.status,
+    toStatus,
+    operationKey: mutationId,
+  };
+
+  // The original online-only shell PATCHed `/api/dispatch/visits/${visit.id}`.
+  // Mobile V1 now queues the same canonical transition through a replay-safe
+  // adapter so Dispatch remains the only Service Visit state machine.
+  const result = await runMutationWithOfflineQueue({
+    clientMutationId: mutationId,
+    actionType: "service-visit:transition",
+    payload,
+    queueOnOffline: true,
+    dependsOn: dependsOn.length ? dependsOn : undefined,
+    orderKey: `service-visit:${visit.id}`,
+    runner: async () => {
+      const response = await fetch(
+        `/api/mobile/service-visits/${visit.id}/transition`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": mutationId,
+          },
+          body: JSON.stringify(payload),
+        },
+      );
+      const body = (await response.json().catch(() => null)) as
+        | DispatchMutationResult
+        | { error?: string }
+        | null;
+      if (!response.ok || !body || !("visit" in body)) {
+        const error = new Error(
+          body && "error" in body && body.error
+            ? body.error
+            : "Unable to update the service visit.",
+        ) as Error & { status?: number };
+        error.status = response.status;
+        throw error;
+      }
+      serverResult = body;
     },
-    body: JSON.stringify({
-      action: "transition",
-      toStatus,
-      expectedVersion: visit.version,
-      operationKey: key,
-    }),
   });
-  const body = (await response.json().catch(() => null)) as
-    | DispatchMutationResult
-    | { error?: string }
-    | null;
-  if (!response.ok || !body || !("visit" in body)) {
-    throw new Error(
-      body && "error" in body && body.error
-        ? body.error
-        : "Unable to update the service visit.",
-    );
-  }
-  return body;
+
+  return {
+    visit: serverResult?.visit ?? optimisticTransition(visit, toStatus),
+    queued: result.queued,
+    mutationId,
+  };
+}
+
+function persistSnapshot(snapshot: MobileActiveJobContract): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(SNAPSHOT_CACHE_KEY, JSON.stringify(snapshot));
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
@@ -221,15 +294,25 @@ function VisitCard({
               {customerText(visit)}
             </p>
           </div>
-          <span className="shrink-0 rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-2.5 py-1 text-[0.68rem] font-bold text-[color:var(--theme-text-primary)]">
-            {statusLabel(visit.status)}
-          </span>
+          <div className="flex flex-col items-end gap-1">
+            <span className="shrink-0 rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-2.5 py-1 text-[0.68rem] font-bold text-[color:var(--theme-text-primary)]">
+              {statusLabel(visit.status)}
+            </span>
+            {!online ? (
+              <span className="text-[0.6rem] font-bold uppercase tracking-[0.12em] text-amber-300">
+                Queues offline
+              </span>
+            ) : null}
+          </div>
         </div>
       </header>
 
       <div className="space-y-4 p-4">
         <div className="grid grid-cols-2 gap-2">
-          <Metric label="Time" value={`${formatDay(visit.scheduledStart)} · ${formatClock(visit.scheduledStart)}`} />
+          <Metric
+            label="Time"
+            value={`${formatDay(visit.scheduledStart)} · ${formatClock(visit.scheduledStart)}`}
+          />
           <Metric
             label="Travel"
             value={
@@ -246,7 +329,9 @@ function VisitCard({
           {address ? (
             <div className="flex items-start gap-2.5">
               <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-[color:var(--accent-copper)]" />
-              <span className="min-w-0 text-[color:var(--theme-text-secondary)]">{address}</span>
+              <span className="min-w-0 text-[color:var(--theme-text-secondary)]">
+                {address}
+              </span>
             </div>
           ) : null}
           {visit.assignedTechnician ? (
@@ -262,7 +347,9 @@ function VisitCard({
               <Truck className="h-4 w-4 shrink-0 text-[color:var(--theme-text-muted)]" />
               <span className="text-[color:var(--theme-text-secondary)]">
                 {visit.serviceVehicle.name}
-                {visit.serviceVehicle.unitNumber ? ` · ${visit.serviceVehicle.unitNumber}` : ""}
+                {visit.serviceVehicle.unitNumber
+                  ? ` · ${visit.serviceVehicle.unitNumber}`
+                  : ""}
               </span>
             </div>
           ) : null}
@@ -303,18 +390,29 @@ function VisitCard({
         </div>
 
         {visit.workOrderId ? (
-          <Link
-            href={`/mobile/work-orders/${visit.workOrderId}`}
-            className="flex min-h-12 items-center justify-between rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3.5 text-sm font-bold text-[color:var(--theme-text-primary)]"
-          >
-            <span className="flex min-w-0 items-center gap-2">
-              <BriefcaseBusiness className="h-4.5 w-4.5 shrink-0 text-[color:var(--accent-copper)]" />
-              <span className="truncate">
-                Open {visit.workOrderNumber ? `WO ${visit.workOrderNumber}` : "work order"}
+          <div className="grid gap-2">
+            <Link
+              href={`/mobile/work-orders/${visit.workOrderId}`}
+              className="flex min-h-12 items-center justify-between rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3.5 text-sm font-bold text-[color:var(--theme-text-primary)]"
+            >
+              <span className="flex min-w-0 items-center gap-2">
+                <BriefcaseBusiness className="h-4.5 w-4.5 shrink-0 text-[color:var(--accent-copper)]" />
+                <span className="truncate">
+                  Open {visit.workOrderNumber ? `WO ${visit.workOrderNumber}` : "work order"}
+                </span>
               </span>
-            </span>
-            <ArrowRight className="h-4 w-4 shrink-0" />
-          </Link>
+              <ArrowRight className="h-4 w-4 shrink-0" />
+            </Link>
+            <Link
+              href={`/mobile/service/followup/${visit.workOrderId}?visitId=${encodeURIComponent(visit.id)}`}
+              className="flex min-h-11 items-center justify-between rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 text-sm font-bold text-[color:var(--theme-text-secondary)]"
+            >
+              <span className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-sky-400" /> Recommendation for later
+              </span>
+              <Plus className="h-4 w-4" />
+            </Link>
+          </div>
         ) : (
           <div className="rounded-2xl border border-dashed border-[color:var(--theme-border-soft)] px-3.5 py-3 text-xs text-[color:var(--theme-text-muted)]">
             No work order is linked yet. Dispatch can exist before repair intake; the work order will appear here once linked.
@@ -325,17 +423,21 @@ function VisitCard({
           <div className="space-y-2">
             <button
               type="button"
-              disabled={!online || busy}
+              disabled={busy}
               onClick={() => onPrimary(visit)}
               className="inline-flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl bg-[color:var(--accent-copper)] px-4 text-base font-extrabold text-white shadow-card disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {busy ? <RefreshCw className="h-5 w-5 animate-spin" /> : <ActionIcon className="h-5 w-5" />}
+              {busy ? (
+                <RefreshCw className="h-5 w-5 animate-spin" />
+              ) : (
+                <ActionIcon className="h-5 w-5" />
+              )}
               {busy ? "Updating…" : action.label}
             </button>
             {visit.status === "working" ? (
               <button
                 type="button"
-                disabled={!online || busy}
+                disabled={busy}
                 onClick={() => onPause(visit)}
                 className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 text-sm font-bold text-[color:var(--theme-text-secondary)] disabled:opacity-50"
               >
@@ -350,15 +452,33 @@ function VisitCard({
 }
 
 export default function MobileServiceShell() {
+  const router = useRouter();
   const [snapshot, setSnapshot] = useState<MobileActiveJobContract | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [stale, setStale] = useState(false);
   const [busyVisitId, setBusyVisitId] = useState<string | null>(null);
+  const [queuedNotice, setQueuedNotice] = useState<string | null>(null);
   const [online, setOnline] = useState(
     () => typeof navigator === "undefined" || navigator.onLine,
   );
+
+  const applyVisit = useCallback((updated: DispatchVisit) => {
+    setSnapshot((previous) => {
+      if (!previous) return previous;
+      const replace = (item: DispatchVisit | null) =>
+        item?.id === updated.id ? updated : item;
+      const next = {
+        ...previous,
+        serverNow: new Date().toISOString(),
+        activeJob: replace(previous.activeJob),
+        nextJob: replace(previous.nextJob),
+      };
+      persistSnapshot(next);
+      return next;
+    });
+  }, []);
 
   const load = useCallback(async (manual = false) => {
     if (manual) setRefreshing(true);
@@ -383,9 +503,7 @@ export default function MobileServiceShell() {
       }
       setSnapshot(body);
       setStale(false);
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(SNAPSHOT_CACHE_KEY, JSON.stringify(body));
-      }
+      persistSnapshot(body);
     } catch (cause) {
       const cached =
         typeof window !== "undefined"
@@ -399,7 +517,9 @@ export default function MobileServiceShell() {
           setSnapshot(null);
         }
       }
-      setError(cause instanceof Error ? cause.message : "Unable to load service calls.");
+      setError(
+        cause instanceof Error ? cause.message : "Unable to load service calls.",
+      );
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -412,14 +532,25 @@ export default function MobileServiceShell() {
 
   useEffect(() => {
     const updateOnline = () => {
-      setOnline(navigator.onLine);
-      if (navigator.onLine) void load(true);
+      const connected = navigator.onLine;
+      setOnline(connected);
+      if (connected) {
+        void replayAndReconcileOfflineMutations()
+          .then(() => load(true))
+          .catch(() => load(true));
+      }
     };
     const refreshOnFocus = () => {
-      if (document.visibilityState === "visible" && navigator.onLine) void load(true);
+      if (document.visibilityState === "visible" && navigator.onLine) {
+        void replayAndReconcileOfflineMutations()
+          .then(() => load(true))
+          .catch(() => load(true));
+      }
     };
     const timer = window.setInterval(() => {
-      if (navigator.onLine && document.visibilityState === "visible") void load(true);
+      if (navigator.onLine && document.visibilityState === "visible") {
+        void load(true);
+      }
     }, REFRESH_INTERVAL_MS);
     window.addEventListener("online", updateOnline);
     window.addEventListener("offline", updateOnline);
@@ -438,52 +569,82 @@ export default function MobileServiceShell() {
 
   const headline = useMemo(() => {
     if (loading && !snapshot) return "Loading field work…";
-    if (activeJob) return `${statusLabel(activeJob.status)} · ${vehicleText(activeJob)}`;
+    if (activeJob)
+      return `${statusLabel(activeJob.status)} · ${vehicleText(activeJob)}`;
     if (nextJob) return `Next at ${formatClock(nextJob.scheduledStart)}`;
     return "No assigned service calls";
   }, [activeJob, loading, nextJob, snapshot]);
 
   const runTransition = useCallback(
     async (visit: DispatchVisit, toStatus: ServiceVisitStatus) => {
-      if (!online || busyVisitId) return;
+      if (busyVisitId) return null;
       setBusyVisitId(visit.id);
       setError(null);
+      setQueuedNotice(null);
       try {
         let current = visit;
+        const dependencies: string[] = [];
+        let queued = false;
+
         if (toStatus === "en_route" && current.status === "scheduled") {
-          current = (await transitionVisit(current, "dispatched")).visit;
+          const dispatch = await transitionVisit(current, "dispatched");
+          current = dispatch.visit;
+          dependencies.push(dispatch.mutationId);
+          queued ||= dispatch.queued;
+          applyVisit(current);
         }
-        const result = await transitionVisit(current, toStatus);
-        setSnapshot((previous) => {
-          if (!previous) return previous;
-          const replace = (item: DispatchVisit | null) =>
-            item?.id === result.visit.id ? result.visit : item;
-          return {
-            ...previous,
-            serverNow: new Date().toISOString(),
-            activeJob: replace(previous.activeJob),
-            nextJob: replace(previous.nextJob),
-          };
-        });
-        await load(true);
+
+        const result = await transitionVisit(current, toStatus, dependencies);
+        queued ||= result.queued;
+        applyVisit(result.visit);
+
+        if (queued) {
+          setStale(true);
+          setQueuedNotice(
+            `${statusLabel(result.visit.status)} saved on this device. It will sync automatically when you're online.`,
+          );
+        } else {
+          await load(true);
+        }
+        return { visit: result.visit, queued };
       } catch (cause) {
-        setError(cause instanceof Error ? cause.message : "Service visit update failed.");
-        await load(true);
+        setError(
+          cause instanceof Error ? cause.message : "Service visit update failed.",
+        );
+        if (navigator.onLine) await load(true);
+        return null;
       } finally {
         setBusyVisitId(null);
       }
     },
-    [busyVisitId, load, online],
+    [applyVisit, busyVisitId, load],
   );
 
   const handlePrimary = useCallback(
-    (visit: DispatchVisit) => {
+    async (visit: DispatchVisit) => {
       const action = primaryAction(visit);
       if (!action) return;
       if (action.confirm && !window.confirm(action.confirm)) return;
-      void runTransition(visit, action.toStatus);
+      const result = await runTransition(visit, action.toStatus);
+      if (
+        result?.visit.status === "completed" &&
+        result.visit.workOrderId &&
+        !result.queued
+      ) {
+        router.push(
+          `/mobile/service/closeout/${encodeURIComponent(result.visit.workOrderId)}`,
+        );
+      } else if (
+        result?.visit.status === "completed" &&
+        result.visit.workOrderId &&
+        result.queued
+      ) {
+        setQueuedNotice(
+          "Visit completion is saved offline. Reconnect to collect payment and issue the receipt.",
+        );
+      }
     },
-    [runTransition],
+    [router, runTransition],
   );
 
   return (
@@ -494,34 +655,44 @@ export default function MobileServiceShell() {
             <div className="text-[0.62rem] font-extrabold uppercase tracking-[0.2em] text-sky-300">
               ProFixIQ Mobile Service
             </div>
-            <h1 className="mt-1.5 text-2xl font-extrabold leading-tight">{headline}</h1>
+            <h1 className="mt-1.5 text-2xl font-extrabold leading-tight">
+              {headline}
+            </h1>
             <p className="mt-1 text-sm text-slate-300">
-              Travel, arrival and field work in one fast service-truck flow.
+              Call → ETA → travel → repair → payment, without leaving the field flow.
             </p>
           </div>
           <button
             type="button"
             onClick={() => void load(true)}
-            disabled={refreshing}
+            disabled={refreshing || !online}
             aria-label="Refresh service calls"
             className="inline-grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-white/15 bg-white/[0.07] disabled:opacity-50"
           >
-            <RefreshCw className={`h-5 w-5 ${refreshing ? "animate-spin" : ""}`} />
+            <RefreshCw
+              className={`h-5 w-5 ${refreshing ? "animate-spin" : ""}`}
+            />
           </button>
         </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-2">
+        <div className="mt-4 grid grid-cols-3 gap-2">
           <Link
-            href="/mobile/work-orders/create"
-            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/[0.07] px-3 text-sm font-bold"
+            href="/mobile/service/new"
+            className="inline-flex min-h-12 items-center justify-center gap-1.5 rounded-xl bg-sky-500 px-2 text-center text-sm font-extrabold"
           >
-            <Wrench className="h-4 w-4" /> New work
+            <Plus className="h-4 w-4" /> New call
           </Link>
           <Link
             href="/mobile/work-orders"
-            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/[0.07] px-3 text-sm font-bold"
+            className="inline-flex min-h-12 items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-white/[0.07] px-2 text-center text-sm font-bold"
           >
-            <BriefcaseBusiness className="h-4 w-4" /> Work orders
+            <BriefcaseBusiness className="h-4 w-4" /> Work
+          </Link>
+          <Link
+            href="/mobile/service/setup"
+            className="inline-flex min-h-12 items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-white/[0.07] px-2 text-center text-sm font-bold"
+          >
+            <Settings2 className="h-4 w-4" /> Setup
           </Link>
         </div>
       </section>
@@ -530,8 +701,14 @@ export default function MobileServiceShell() {
         <section className="rounded-2xl border border-amber-400/30 bg-amber-500/10 px-3.5 py-3 text-sm text-amber-100">
           <strong>{online ? "Saved device view" : "Offline"}.</strong>{" "}
           {stale
-            ? "Showing the last service-call snapshot saved on this device."
-            : "Travel/dispatch state changes require a connection; linked work orders can still use the existing offline mobile workflow."}
+            ? "Showing the last service-call snapshot saved on this device. Field status changes are queued in order and sync automatically; the linked work order still uses the existing offline mobile workflow."
+            : "Field status changes can be queued offline; linked work orders can still use the existing offline mobile workflow."}
+        </section>
+      ) : null}
+
+      {queuedNotice ? (
+        <section className="rounded-2xl border border-sky-400/30 bg-sky-500/10 px-3.5 py-3 text-sm text-sky-100">
+          {queuedNotice}
         </section>
       ) : null}
 
@@ -554,7 +731,7 @@ export default function MobileServiceShell() {
             active={Boolean(activeJob)}
             online={online && !stale}
             busy={busyVisitId === primaryVisit.id}
-            onPrimary={handlePrimary}
+            onPrimary={(visit) => void handlePrimary(visit)}
             onPause={(visit) => void runTransition(visit, "paused")}
           />
 
@@ -576,7 +753,7 @@ export default function MobileServiceShell() {
                 active={false}
                 online={online && !stale}
                 busy={busyVisitId === nextJob.id}
-                onPrimary={handlePrimary}
+                onPrimary={(visit) => void handlePrimary(visit)}
                 onPause={(visit) => void runTransition(visit, "paused")}
               />
             </section>
@@ -589,14 +766,22 @@ export default function MobileServiceShell() {
           </div>
           <h2 className="mt-3 text-lg font-extrabold">No assigned service calls</h2>
           <p className="mx-auto mt-1 max-w-sm text-sm text-[color:var(--theme-text-secondary)]">
-            Assigned mobile visits will appear here automatically. You can keep working from the normal mobile work-order queue in the meantime.
+            Take the next call in seconds or keep working from the normal mobile work-order queue.
           </p>
-          <Link
-            href="/mobile/work-orders"
-            className="mt-4 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-4 text-sm font-bold"
-          >
-            Open work orders <ArrowRight className="h-4 w-4" />
-          </Link>
+          <div className="mt-4 grid gap-2 sm:grid-cols-2">
+            <Link
+              href="/mobile/service/new"
+              className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-sky-500 px-4 text-sm font-extrabold text-white"
+            >
+              <Plus className="h-4 w-4" /> New service call
+            </Link>
+            <Link
+              href="/mobile/work-orders/create"
+              className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-4 text-sm font-bold"
+            >
+              Full work-order intake
+            </Link>
+          </div>
         </section>
       )}
     </main>
