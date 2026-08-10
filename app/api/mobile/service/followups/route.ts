@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
+import type { Database } from "@shared/types/types/supabase";
 
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+
+type FollowupRpcArgs =
+  Database["public"]["Functions"]["mobile_create_service_followup_atomic"]["Args"];
 
 type Body = {
   workOrderId?: string;
@@ -130,7 +134,11 @@ export async function POST(request: Request) {
     body?.operationKey?.trim() ||
     request.headers.get("idempotency-key")?.trim() ||
     "";
-  if (!body?.workOrderId?.trim() || !body.recommendation?.trim() || !operationKey) {
+  if (
+    !body?.workOrderId?.trim() ||
+    !body.recommendation?.trim() ||
+    !operationKey
+  ) {
     return NextResponse.json(
       { error: "Work order, recommendation, and operation key are required." },
       { status: 400 },
@@ -152,20 +160,22 @@ export async function POST(request: Request) {
     );
   }
 
+  const rpcArgs = {
+    p_shop_id: access.profile.shop_id,
+    p_work_order_id: body.workOrderId.trim(),
+    p_service_visit_id: body.serviceVisitId?.trim() || null,
+    p_recommendation: body.recommendation.trim(),
+    p_disposition: body.disposition ?? "quote_later",
+    p_estimated_amount: amount,
+    p_follow_up_at: followUpAt?.toISOString() ?? null,
+    p_notes: body.notes?.trim() || null,
+    p_actor_user_id: access.authUserId,
+    p_operation_key: operationKey,
+  } as unknown as FollowupRpcArgs;
+
   const { data, error } = await access.supabase.rpc(
     "mobile_create_service_followup_atomic",
-    {
-      p_shop_id: access.profile.shop_id,
-      p_work_order_id: body.workOrderId.trim(),
-      p_service_visit_id: body.serviceVisitId?.trim() || null,
-      p_recommendation: body.recommendation.trim(),
-      p_disposition: body.disposition ?? "quote_later",
-      p_estimated_amount: amount,
-      p_follow_up_at: followUpAt?.toISOString() ?? null,
-      p_notes: body.notes?.trim() || null,
-      p_actor_user_id: access.authUserId,
-      p_operation_key: operationKey,
-    },
+    rpcArgs,
   );
   if (error)
     return NextResponse.json(
