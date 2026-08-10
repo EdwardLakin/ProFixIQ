@@ -1,0 +1,35 @@
+name: Merge Current Main Now
+
+on:
+  push:
+    branches:
+      - feature/mobile-service-foundation
+
+permissions:
+  contents: write
+
+concurrency:
+  group: merge-current-main-now-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  merge:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out scheduler branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/mobile-service-foundation
+          fetch-depth: 0
+
+      - name: Merge current main and push
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git merge --no-edit -X theirs origin/main
+          git push origin HEAD:feature/mobile-service-foundation
