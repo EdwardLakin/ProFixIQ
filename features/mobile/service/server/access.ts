@@ -24,6 +24,23 @@ export async function isExplicitMobileFieldOperator(
   return Boolean(data);
 }
 
+export async function canFieldOperatorAccessWorkOrder(
+  access: ShopAccess,
+  workOrderId: string,
+): Promise<boolean> {
+  if (!(await isExplicitMobileFieldOperator(access))) return false;
+  const { data, error } = await access.supabase
+    .from("service_visits")
+    .select("id")
+    .eq("shop_id", access.profile.shop_id)
+    .eq("work_order_id", workOrderId)
+    .eq("assigned_user_id", access.profile.id)
+    .limit(1)
+    .maybeSingle<{ id: string }>();
+  if (error) throw new Error(error.message);
+  return Boolean(data);
+}
+
 export async function requireMobileServiceOperatorApiAccess() {
   const access = await requireShopScopedApiAccess();
   if (!access.ok) return access;
