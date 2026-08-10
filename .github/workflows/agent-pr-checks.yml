@@ -45,9 +45,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          GENERATED="$(find "$RUNNER_TEMP/supabase-clean-replay-diagnostics" -name generated.after.ts -print -quit)"
+          GENERATED="$(find "$RUNNER_TEMP/supabase-clean-replay-diagnostics" -name generated-supabase-types.ts -print -quit)"
           if [[ -z "$GENERATED" || ! -f "$GENERATED" ]]; then
-            echo "generated.after.ts was not found in the clean replay artifact"
+            echo "generated-supabase-types.ts was not found in the clean replay artifact"
             exit 1
           fi
           cp "$GENERATED" features/shared/types/types/supabase.ts
