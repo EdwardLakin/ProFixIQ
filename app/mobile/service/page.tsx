@@ -1,5 +1,5 @@
-import MobileServiceShell from "@/features/mobile/service/MobileServiceShell";
+import MobileServiceScopeGate from "@/features/mobile/service/MobileServiceScopeGate";
 
 export default function MobileServicePage() {
-  return <MobileServiceShell />;
+  return <MobileServiceScopeGate />;
 }
