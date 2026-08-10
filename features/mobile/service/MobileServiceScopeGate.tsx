@@ -2,11 +2,13 @@
 
 import { useEffect, useState } from "react";
 
+import { resolveCurrentActor } from "@/features/shared/lib/currentActor";
 import {
   getOfflineMutationScope,
-  resolveOfflineMutationScope,
+  setOfflineMutationScope,
   type OfflineMutationScope,
 } from "@/features/shared/lib/offline/mutations";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import MobileServiceShell from "./MobileServiceShell";
 
 const SNAPSHOT_CACHE_KEY = "profixiq:mobile-service:active:v1";
@@ -59,12 +61,30 @@ export default function MobileServiceScopeGate() {
     let active = true;
 
     void (async () => {
+      const supabase = createBrowserSupabase();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const authUserId = session?.user?.id?.trim() ?? "";
+
+      if (!authUserId) {
+        if (!active) return;
+        protectSnapshot(null);
+        setReady(true);
+        return;
+      }
+
       const cached = getOfflineMutationScope();
-      const scope =
-        cached ??
-        (typeof navigator !== "undefined" && navigator.onLine
-          ? await resolveOfflineMutationScope({})
-          : null);
+      let scope: OfflineMutationScope | null =
+        cached?.userId === authUserId ? cached : null;
+
+      if (!scope && typeof navigator !== "undefined" && navigator.onLine) {
+        const actor = await resolveCurrentActor(supabase);
+        if (actor.user?.id === authUserId && actor.shopId) {
+          scope = { userId: authUserId, shopId: actor.shopId };
+          setOfflineMutationScope(scope);
+        }
+      }
 
       if (!active) return;
       protectSnapshot(scope);
