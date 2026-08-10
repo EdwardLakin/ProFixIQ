@@ -80,4 +80,25 @@ describe("Fleet workspace ownership", () => {
     expect(shopInvite).not.toContain('routePrefix = "/fleet"');
     expect(shopInvite).not.toContain('routePrefix === "/portal/fleet"');
   });
+
+  it("keeps work-order creation in Shop after Fleet dispatch approves a request", () => {
+    const fleetRequests = read(
+      "features/fleet/components/FleetServiceRequestsPage.tsx",
+    );
+    const shopInbox = read(
+      "features/fleet/components/ShopFleetRequestInbox.tsx",
+    );
+    const shopPage = read("app/work-orders/fleet-requests/page.tsx");
+    const legacyPage = read("app/fleet/service-requests/page.tsx");
+    const dispatch = read("features/fleet/components/FleetDispatchBoard.tsx");
+
+    expect(fleetRequests).not.toContain("convertFleetServiceRequest");
+    expect(fleetRequests).not.toContain("Create work order");
+    expect(dispatch).not.toContain("New WO");
+    expect(dispatch).not.toContain("href={`/work-orders/create");
+    expect(shopInbox).toContain("convertFleetServiceRequest(item.id)");
+    expect(shopInbox).toContain("Accept into Shop");
+    expect(shopPage).toContain("requireShopPageAccess");
+    expect(legacyPage).toContain('redirect("/work-orders/fleet-requests")');
+  });
 });

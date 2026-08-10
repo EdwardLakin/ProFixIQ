@@ -31,7 +31,7 @@ export default function FleetIssueTables({
     ? "/requests/new"
     : routePrefix === "/portal/fleet"
       ? "/portal/fleet/request/build"
-      : "/work-orders/create";
+      : "/work-orders/fleet-requests";
   const unitHref = (unitId: string) =>
     productHostRoute
       ? `/assets/${encodeURIComponent(unitId)}`
@@ -60,7 +60,7 @@ export default function FleetIssueTables({
               still need a plan.
             </p>
           </div>
-          {uiContext.capabilities.canCreateFleetWorkOrders && (
+          {uiContext.capabilities.canCreateServiceRequests && (
             <Link
               href={requestHref}
               className="rounded-xl bg-[color:var(--accent-copper)] px-3 py-1.5 text-xs font-semibold text-[color:var(--theme-text-on-accent)] shadow-[0_0_18px_rgba(193,102,59,0.7)] hover:opacity-95"

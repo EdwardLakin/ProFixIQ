@@ -34,7 +34,6 @@ function dualRoleActor(): FleetActorContext {
       canSeeFleetWideUnits: true,
       canCreatePretripReports: true,
       canConvertPretripToServiceRequest: true,
-      canConvertServiceRequestToWorkOrder: true,
       canAccessFleetIntake: true,
       canAccessPortalFleetWrappers: true,
       canRunFleetDispatchActions: true,

@@ -173,7 +173,7 @@ export default function FleetUnitDetailWorkspace({
                 Today’s pre-trip
               </Link>
             ) : null}
-            {uiContext.capabilities.canCreateFleetWorkOrders ? (
+            {uiContext.capabilities.canCreateServiceRequests ? (
               <Link
                 href={
                   routePrefix === "/portal/fleet"

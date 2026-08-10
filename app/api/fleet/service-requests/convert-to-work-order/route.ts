@@ -1,7 +1,8 @@
 // app/api/fleet/service-requests/convert-to-work-order/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
-import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
+import { isFleetProductHostname } from "@/features/fleet/lib/fleetProductRouting";
+import { SHOP_FLEET_REQUEST_INTAKE_ROLES } from "@/features/fleet/lib/shopFleetRequestIntake";
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
 type ConvertBody = {
   serviceRequestId: string;
@@ -29,7 +30,23 @@ function firstConversionResult(value: unknown): ConversionResult | null {
 
 export async function POST(req: NextRequest) {
   try {
-    const supabase = createServerSupabaseRoute();
+    const requestHost =
+      req.headers.get("x-forwarded-host") ?? req.headers.get("host");
+    if (
+      req.headers.get("x-profixiq-product-host") === "fleet" ||
+      isFleetProductHostname(requestHost)
+    ) {
+      return NextResponse.json(
+        { error: "Work orders are created in ProFixIQ Shop." },
+        { status: 403 },
+      );
+    }
+
+    const access = await requireShopScopedApiAccess({
+      allowRoles: SHOP_FLEET_REQUEST_INTAKE_ROLES,
+    });
+    if (!access.ok) return access.response;
+
     const body = (await req.json().catch(() => null)) as ConvertBody | null;
 
     if (!body?.serviceRequestId) {
@@ -39,20 +56,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const serviceRequestId = body.serviceRequestId;
-    const actor = await resolveFleetActorContext(supabase);
-    if (!actor.userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    if (!actor.capabilities.canConvertServiceRequestToWorkOrder) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-
-    const { data, error } = await supabase.rpc(
+    const { data, error } = await access.supabase.rpc(
       "convert_fleet_service_request_to_work_order_atomic",
       {
-        p_service_request_id: serviceRequestId,
+        p_service_request_id: body.serviceRequestId,
       },
     );
 

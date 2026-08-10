@@ -87,11 +87,11 @@ describe("Codex review follow-up hardening", () => {
     expect(read("features/mobile/dashboard/MobileTechHome.tsx")).toContain(
       "if (detail?.queued || !navigator.onLine) return",
     );
-    expect(read("features/fleet/components/FleetServiceRequestsPage.tsx")).toContain(
-      "canConvertServiceRequestToWorkOrder",
+    expect(read("features/fleet/components/ShopFleetRequestInbox.tsx")).toContain(
+      "convertFleetServiceRequest(item.id)",
     );
-    expect(read("features/fleet/components/FleetServiceRequestsPage.tsx")).toContain(
-      'item.status === "open"',
+    expect(read("features/fleet/components/FleetServiceRequestsPage.tsx")).not.toContain(
+      "convertFleetServiceRequest",
     );
   });
 

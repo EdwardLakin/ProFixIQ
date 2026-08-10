@@ -1,10 +1,5 @@
-import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
-import FleetServiceRequestsPage from "@/features/fleet/components/FleetServiceRequestsPage";
-import { resolveFleetUiContext } from "@/features/fleet/lib/fleetUiCapabilities";
+import { redirect } from "next/navigation";
 
-export default async function FleetServiceRequestsRoutePage() {
-  const supabase = createServerSupabaseRSC();
-  const uiContext = await resolveFleetUiContext(supabase);
-
-  return <FleetServiceRequestsPage uiContext={uiContext} routePrefix="/fleet" />;
+export default function LegacyFleetServiceRequestsPage() {
+  redirect("/work-orders/fleet-requests");
 }

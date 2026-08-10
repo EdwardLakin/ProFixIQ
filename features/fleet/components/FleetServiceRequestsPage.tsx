@@ -13,52 +13,8 @@ import {
   WalletCards,
 } from "lucide-react";
 import type { FleetUiContext } from "@/features/fleet/lib/fleetUiCapabilities";
-import { convertFleetServiceRequest } from "@/features/fleet/lib/convertFleetServiceRequest";
 import { formatFleetDate } from "@/features/fleet/lib/fleetDate";
-
-type RequestItem = {
-  id: string;
-  fleetId: string;
-  fleetName: string;
-  vehicleId: string;
-  unitLabel: string;
-  vehicleDescription: string;
-  title: string;
-  summary: string;
-  severity: string;
-  status: string;
-  createdAt: string;
-  requestedForDate: string | null;
-  scheduledForDate: string | null;
-  sourcePmDueEventId: string | null;
-  workOrder: {
-    id: string;
-    reference: string;
-    status: string;
-    approvalState: string | null;
-    needsApproval: boolean;
-    scheduledAt: string | null;
-    expectedCompletionAt: string | null;
-    paymentStatus: string;
-    outstandingBalance: number;
-  } | null;
-  shopProgress: {
-    status: string;
-    scheduledAt: string | null;
-    expectedCompletionAt: string | null;
-  } | null;
-};
-
-type Payload = {
-  canManage: boolean;
-  summary: {
-    open: number;
-    scheduled: number;
-    awaitingApproval: number;
-    completed: number;
-  };
-  requests: RequestItem[];
-};
+import type { FleetServiceRequestsPayload } from "@/features/fleet/types/serviceRequests";
 
 type Filter = "active" | "approval" | "scheduled" | "completed" | "all";
 
@@ -93,20 +49,18 @@ function statusTone(status: string) {
 
 export default function FleetServiceRequestsPage({
   uiContext,
-  routePrefix,
 }: {
   uiContext: FleetUiContext;
-  routePrefix: "/fleet" | "/portal/fleet";
 }) {
   const pathname = usePathname() ?? "";
-  const productRoutes =
-    routePrefix === "/portal/fleet" && !pathname.startsWith("/portal/fleet");
+  const productRoutes = !pathname.startsWith("/portal/fleet");
   const isDispatcher = uiContext.experience === "external_dispatcher";
-  const [payload, setPayload] = useState<Payload | null>(null);
+  const [payload, setPayload] = useState<FleetServiceRequestsPayload | null>(
+    null,
+  );
   const [filter, setFilter] = useState<Filter>("active");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [convertingId, setConvertingId] = useState<string | null>(null);
 
   async function load(signal?: AbortSignal) {
     setLoading(true);
@@ -119,9 +73,9 @@ export default function FleetServiceRequestsPage({
         cache: "no-store",
         signal,
       });
-      const body = (await response.json().catch(() => ({}))) as Payload & {
-        error?: string;
-      };
+      const body = (await response
+        .json()
+        .catch(() => ({}))) as FleetServiceRequestsPayload & { error?: string };
       if (!response.ok)
         throw new Error(body.error || "Unable to load requests");
       setPayload(body);
@@ -141,21 +95,6 @@ export default function FleetServiceRequestsPage({
     void load(controller.signal);
     return () => controller.abort();
   }, []);
-
-  async function convertToWorkOrder(item: RequestItem) {
-    setConvertingId(item.id);
-    setError(null);
-
-    try {
-      const workOrderId = await convertFleetServiceRequest(item.id);
-      window.location.assign(`/work-orders/${encodeURIComponent(workOrderId)}`);
-    } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : "Unable to create work order",
-      );
-      setConvertingId(null);
-    }
-  }
 
   const visible = useMemo(() => {
     const requests = payload?.requests ?? [];
@@ -188,15 +127,13 @@ export default function FleetServiceRequestsPage({
 
   const buildHref = productRoutes
     ? "/requests/new"
-    : routePrefix === "/portal/fleet"
-      ? "/portal/fleet/request/build"
-      : "/fleet/service-requests/new";
+    : "/portal/fleet/request/build";
   const assetHref = (vehicleId: string) =>
     productRoutes
       ? `/assets/${encodeURIComponent(vehicleId)}`
-      : `${routePrefix}/units/${encodeURIComponent(vehicleId)}`;
+      : `/portal/fleet/units/${encodeURIComponent(vehicleId)}`;
   const billingHref = (workOrderId: string) =>
-    `${productRoutes ? "/history" : `${routePrefix}/billing`}?workOrderId=${encodeURIComponent(workOrderId)}`;
+    `${productRoutes ? "/history" : "/portal/fleet/billing"}?workOrderId=${encodeURIComponent(workOrderId)}`;
 
   return (
     <main className="mx-auto w-full max-w-6xl space-y-5 px-4 py-6 text-[color:var(--theme-text-primary)]">
@@ -216,7 +153,7 @@ export default function FleetServiceRequestsPage({
               : "One timeline from fleet request to shop schedule, approval, completion, and payment."}
           </p>
         </div>
-        {uiContext.capabilities.canCreateFleetWorkOrders ? (
+        {!isDispatcher && uiContext.capabilities.canCreateServiceRequests ? (
           <Link
             href={buildHref}
             className="inline-flex items-center gap-2 rounded-xl bg-sky-300 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-sky-200"
@@ -378,24 +315,9 @@ export default function FleetServiceRequestsPage({
                   <span className="rounded-lg border border-[color:var(--theme-border-soft)] px-3 py-2 text-xs">
                     {item.workOrder.reference}
                   </span>
-                ) : routePrefix === "/fleet" &&
-                  uiContext.isInternal &&
-                  uiContext.capabilities.canConvertServiceRequestToWorkOrder &&
-                  item.status === "open" ? (
-                  <button
-                    type="button"
-                    disabled={convertingId !== null}
-                    onClick={() => void convertToWorkOrder(item)}
-                    className="inline-flex items-center gap-2 rounded-lg border border-sky-300/30 px-3 py-2 text-xs font-medium text-sky-300 hover:bg-sky-300/10 disabled:cursor-wait disabled:opacity-60"
-                  >
-                    <ClipboardList size={14} />
-                    {convertingId === item.id
-                      ? "Creating work order..."
-                      : "Create work order"}
-                  </button>
                 ) : (
                   <span className="text-xs text-[color:var(--theme-text-muted)]">
-                    Awaiting shop conversion
+                    Awaiting Shop intake
                   </span>
                 )}
                 {!isDispatcher &&

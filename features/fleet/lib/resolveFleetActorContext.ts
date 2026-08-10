@@ -28,7 +28,6 @@ export type FleetActorCapabilities = {
   canSeeFleetWideUnits: boolean;
   canCreatePretripReports: boolean;
   canConvertPretripToServiceRequest: boolean;
-  canConvertServiceRequestToWorkOrder: boolean;
   canAccessFleetIntake: boolean;
   canAccessPortalFleetWrappers: boolean;
   canRunFleetDispatchActions: boolean;
@@ -92,7 +91,6 @@ export async function resolveFleetActorContext(
         canSeeFleetWideUnits: false,
         canCreatePretripReports: false,
         canConvertPretripToServiceRequest: false,
-        canConvertServiceRequestToWorkOrder: false,
         canAccessFleetIntake: false,
         canAccessPortalFleetWrappers: false,
         canRunFleetDispatchActions: false,
@@ -203,7 +201,6 @@ export async function resolveFleetActorContext(
         isInternal ||
         actorType === "fleet_manager" ||
         actorType === "fleet_dispatcher",
-      canConvertServiceRequestToWorkOrder: isInternal,
       canAccessFleetIntake: isInternal || isFleetActor,
       canAccessPortalFleetWrappers: hasFleetPortalMembership,
       canRunFleetDispatchActions:

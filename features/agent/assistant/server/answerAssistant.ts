@@ -1134,7 +1134,7 @@ async function answerFleetDomain(args: {
   const links: AssistantLink[] = [
     ...openRequests.slice(0, 3).map((row) => ({
       label: `Fleet request • ${row.title || row.summary} • ${row.status}`,
-      href: `/fleet/service-requests`,
+      href: `/work-orders/fleet-requests`,
     })),
     ...workOrders.slice(0, 3).map((row) => ({
       label: row.custom_id
@@ -1169,7 +1169,7 @@ async function answerFleetDomain(args: {
         type: "fleet_unit" as const,
         id: vehicleId,
         label: row.title || row.summary,
-        href: "/fleet/service-requests",
+        href: "/work-orders/fleet-requests",
       })),
       ...workOrders.slice(0, 2).map((row) => ({
         type: "work_order" as const,

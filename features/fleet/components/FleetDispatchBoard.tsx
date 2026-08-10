@@ -245,14 +245,6 @@ export default function FleetDispatchBoard({
                           : "—"}
                       </td>
                       <td className="px-3 py-1.5 text-right text-[11px]">
-                        {uiContext.capabilities.canCreateFleetWorkOrders && (
-                          <Link
-                            href={`/work-orders/create?unitId=${encodeURIComponent(a.unitId)}`}
-                            className="rounded-full border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-panel)]"
-                          >
-                            New WO
-                          </Link>
-                        )}
                         <Link
                           href={`${routePrefix}/units/${encodeURIComponent(a.unitId)}`}
                           className="rounded-full border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-panel)]"

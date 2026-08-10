@@ -21,6 +21,7 @@ const OWNER_SECTION_OVERRIDES_BY_HREF: Record<string, string> = {
   "/work-orders/board": "Dashboard",
   "/dashboard/workforce/attendance": "Workforce",
   "/work-orders/create?autostart=1": "Operations",
+  "/work-orders/fleet-requests": "Operations",
   "/estimates": "Operations",
   "/work-orders/view": "Operations",
   "/work-orders/quote-review": "Operations",
