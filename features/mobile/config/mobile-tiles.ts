@@ -85,6 +85,13 @@ export const MOBILE_TILES: MobileTile[] = [
     scopes: ["home", "jobs", "work_orders", "all"],
   },
   {
+    href: "/mobile/service",
+    title: "Mobile Service",
+    subtitle: "Travel, active calls and next job",
+    roles: ["mechanic", "lead_hand", "foreman"],
+    scopes: ["home", "jobs", "work_orders", "all"],
+  },
+  {
     href: "/mobile/workforce/attendance",
     title: "Attendance & Activity",
     subtitle: "Live staff and job time",

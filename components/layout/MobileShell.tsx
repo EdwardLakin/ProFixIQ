@@ -16,6 +16,7 @@ type Props = {
 function getTitleFromPath(pathname: string): string {
   if (!pathname.startsWith("/mobile")) return "ProFixIQ";
   if (pathname === "/mobile") return "Home";
+  if (pathname.startsWith("/mobile/service")) return "Mobile Service";
   if (pathname.startsWith("/mobile/jobs/")) return "Focused job";
   if (pathname.startsWith("/mobile/work-orders/create")) return "Create work order";
   if (/^\/mobile\/work-orders\/[^/]+/.test(pathname)) return "Work order";
