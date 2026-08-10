@@ -14980,6 +14980,652 @@ export type Database = {
           },
         ]
       }
+      scheduler_operation_keys: {
+        Row: {
+          actor_user_id: string | null
+          created_at: string
+          id: string
+          operation_key: string
+          operation_name: string
+          result: Json
+          shop_id: string
+        }
+        Insert: {
+          actor_user_id?: string | null
+          created_at?: string
+          id?: string
+          operation_key: string
+          operation_name: string
+          result: Json
+          shop_id: string
+        }
+        Update: {
+          actor_user_id?: string | null
+          created_at?: string
+          id?: string
+          operation_key?: string
+          operation_name?: string
+          result?: Json
+          shop_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheduler_operation_keys_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduler_operation_keys_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scheduling_events: {
+        Row: {
+          booking_id: string | null
+          created_at: string
+          created_by: string | null
+          ends_at: string
+          id: string
+          metadata: Json
+          mode: string
+          service_visit_id: string | null
+          shop_id: string
+          source_id: string | null
+          source_kind: string
+          starts_at: string
+          status: string
+          title: string | null
+          updated_at: string
+          work_order_id: string | null
+        }
+        Insert: {
+          booking_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          ends_at: string
+          id?: string
+          metadata?: Json
+          mode?: string
+          service_visit_id?: string | null
+          shop_id: string
+          source_id?: string | null
+          source_kind?: string
+          starts_at: string
+          status?: string
+          title?: string | null
+          updated_at?: string
+          work_order_id?: string | null
+        }
+        Update: {
+          booking_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          ends_at?: string
+          id?: string
+          metadata?: Json
+          mode?: string
+          service_visit_id?: string | null
+          shop_id?: string
+          source_id?: string | null
+          source_kind?: string
+          starts_at?: string
+          status?: string
+          title?: string | null
+          updated_at?: string
+          work_order_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheduling_events_booking_id_fkey"
+            columns: ["booking_id"]
+            isOneToOne: false
+            referencedRelation: "bookings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduling_events_service_visit_id_fkey"
+            columns: ["service_visit_id"]
+            isOneToOne: false
+            referencedRelation: "service_visits"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduling_events_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduling_events_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduling_events_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_portal_invoices"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "scheduling_events_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_fleet"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "scheduling_events_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_portal"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "scheduling_events_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_shop"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "scheduling_events_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scheduling_reservations: {
+        Row: {
+          created_at: string
+          ends_at: string
+          event_id: string
+          id: string
+          reservation_role: string
+          resource_id: string
+          shop_id: string
+          starts_at: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          ends_at: string
+          event_id: string
+          id?: string
+          reservation_role?: string
+          resource_id: string
+          shop_id: string
+          starts_at: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          ends_at?: string
+          event_id?: string
+          id?: string
+          reservation_role?: string
+          resource_id?: string
+          shop_id?: string
+          starts_at?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheduling_reservations_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "scheduling_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduling_reservations_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "scheduling_resources"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduling_reservations_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduling_reservations_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scheduling_resources: {
+        Row: {
+          active: boolean
+          code: string
+          created_at: string
+          id: string
+          is_fallback: boolean
+          metadata: Json
+          mode: string
+          name: string
+          profile_id: string | null
+          public_bookable: boolean
+          resource_type: string
+          service_vehicle_id: string | null
+          shop_id: string
+          sort_order: number
+          stock_location_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          code: string
+          created_at?: string
+          id?: string
+          is_fallback?: boolean
+          metadata?: Json
+          mode?: string
+          name: string
+          profile_id?: string | null
+          public_bookable?: boolean
+          resource_type: string
+          service_vehicle_id?: string | null
+          shop_id: string
+          sort_order?: number
+          stock_location_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          code?: string
+          created_at?: string
+          id?: string
+          is_fallback?: boolean
+          metadata?: Json
+          mode?: string
+          name?: string
+          profile_id?: string | null
+          public_bookable?: boolean
+          resource_type?: string
+          service_vehicle_id?: string | null
+          shop_id?: string
+          sort_order?: number
+          stock_location_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheduling_resources_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduling_resources_service_vehicle_id_fkey"
+            columns: ["service_vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "service_vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduling_resources_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduling_resources_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduling_resources_stock_location_id_fkey"
+            columns: ["stock_location_id"]
+            isOneToOne: false
+            referencedRelation: "stock_locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      service_addresses: {
+        Row: {
+          access_notes: string | null
+          address_line1: string
+          address_line2: string | null
+          city: string | null
+          country_code: string
+          created_at: string
+          created_by: string | null
+          customer_id: string | null
+          id: string
+          label: string | null
+          latitude: number | null
+          longitude: number | null
+          postal_code: string | null
+          province_state: string | null
+          shop_id: string
+          updated_at: string
+        }
+        Insert: {
+          access_notes?: string | null
+          address_line1: string
+          address_line2?: string | null
+          city?: string | null
+          country_code?: string
+          created_at?: string
+          created_by?: string | null
+          customer_id?: string | null
+          id?: string
+          label?: string | null
+          latitude?: number | null
+          longitude?: number | null
+          postal_code?: string | null
+          province_state?: string | null
+          shop_id: string
+          updated_at?: string
+        }
+        Update: {
+          access_notes?: string | null
+          address_line1?: string
+          address_line2?: string | null
+          city?: string | null
+          country_code?: string
+          created_at?: string
+          created_by?: string | null
+          customer_id?: string | null
+          id?: string
+          label?: string | null
+          latitude?: number | null
+          longitude?: number | null
+          postal_code?: string | null
+          province_state?: string | null
+          shop_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_addresses_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_addresses_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_addresses_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      service_vehicles: {
+        Row: {
+          active: boolean
+          capabilities: Json
+          created_at: string
+          created_by: string | null
+          id: string
+          name: string
+          primary_user_id: string | null
+          shop_id: string
+          stock_location_id: string | null
+          unit_number: string | null
+          updated_at: string
+          vehicle_id: string | null
+        }
+        Insert: {
+          active?: boolean
+          capabilities?: Json
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name: string
+          primary_user_id?: string | null
+          shop_id: string
+          stock_location_id?: string | null
+          unit_number?: string | null
+          updated_at?: string
+          vehicle_id?: string | null
+        }
+        Update: {
+          active?: boolean
+          capabilities?: Json
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name?: string
+          primary_user_id?: string | null
+          shop_id?: string
+          stock_location_id?: string | null
+          unit_number?: string | null
+          updated_at?: string
+          vehicle_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_vehicles_primary_user_id_fkey"
+            columns: ["primary_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_vehicles_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_vehicles_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_vehicles_stock_location_id_fkey"
+            columns: ["stock_location_id"]
+            isOneToOne: false
+            referencedRelation: "stock_locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_vehicles_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      service_visits: {
+        Row: {
+          actual_distance_km: number | null
+          actual_travel_minutes: number | null
+          arrived_at: string | null
+          assigned_user_id: string | null
+          booking_id: string | null
+          completed_at: string | null
+          created_at: string
+          created_by: string | null
+          dispatch_notes: string | null
+          estimated_distance_km: number | null
+          estimated_travel_minutes: number | null
+          id: string
+          lifecycle_metadata: Json
+          mode: string
+          scheduled_end: string | null
+          scheduled_start: string | null
+          service_address_id: string | null
+          service_vehicle_id: string | null
+          shop_id: string
+          status: string
+          travel_started_at: string | null
+          updated_at: string
+          work_order_id: string | null
+          work_started_at: string | null
+        }
+        Insert: {
+          actual_distance_km?: number | null
+          actual_travel_minutes?: number | null
+          arrived_at?: string | null
+          assigned_user_id?: string | null
+          booking_id?: string | null
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          dispatch_notes?: string | null
+          estimated_distance_km?: number | null
+          estimated_travel_minutes?: number | null
+          id?: string
+          lifecycle_metadata?: Json
+          mode?: string
+          scheduled_end?: string | null
+          scheduled_start?: string | null
+          service_address_id?: string | null
+          service_vehicle_id?: string | null
+          shop_id: string
+          status?: string
+          travel_started_at?: string | null
+          updated_at?: string
+          work_order_id?: string | null
+          work_started_at?: string | null
+        }
+        Update: {
+          actual_distance_km?: number | null
+          actual_travel_minutes?: number | null
+          arrived_at?: string | null
+          assigned_user_id?: string | null
+          booking_id?: string | null
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          dispatch_notes?: string | null
+          estimated_distance_km?: number | null
+          estimated_travel_minutes?: number | null
+          id?: string
+          lifecycle_metadata?: Json
+          mode?: string
+          scheduled_end?: string | null
+          scheduled_start?: string | null
+          service_address_id?: string | null
+          service_vehicle_id?: string | null
+          shop_id?: string
+          status?: string
+          travel_started_at?: string | null
+          updated_at?: string
+          work_order_id?: string | null
+          work_started_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_visits_assigned_user_id_fkey"
+            columns: ["assigned_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_visits_booking_id_fkey"
+            columns: ["booking_id"]
+            isOneToOne: false
+            referencedRelation: "bookings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_visits_service_address_id_fkey"
+            columns: ["service_address_id"]
+            isOneToOne: false
+            referencedRelation: "service_addresses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_visits_service_vehicle_id_fkey"
+            columns: ["service_vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "service_vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_visits_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_visits_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_visits_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_portal_invoices"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "service_visits_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_fleet"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "service_visits_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_portal"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "service_visits_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_shop"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "service_visits_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       shift_corrections: {
         Row: {
           actor_profile_id: string
@@ -26846,6 +27492,94 @@ export type Database = {
           p_media_id: string
           p_overlay: Json
           p_visibility: string
+        }
+        Returns: Json
+      }
+      scheduler_actor_matches: {
+        Args: { p_actor_user_id: string }
+        Returns: boolean
+      }
+      scheduler_apply_booking_command_atomic: {
+        Args: {
+          p_action: string
+          p_actor_mode: string
+          p_actor_user_id: string
+          p_at?: string
+          p_booking_id: string
+          p_customer_id: string
+          p_ends_at: string
+          p_mode?: string
+          p_notes: string
+          p_operation_key: string
+          p_reason?: string
+          p_resource_id?: string
+          p_shop_id: string
+          p_starts_at: string
+          p_vehicle_id: string
+        }
+        Returns: Json
+      }
+      scheduler_assign_event_resource_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_event_id: string
+          p_operation_key: string
+          p_resource_id: string
+          p_shop_id: string
+        }
+        Returns: Json
+      }
+      scheduler_availability_snapshot: {
+        Args: {
+          p_mode?: string
+          p_public_only?: boolean
+          p_resource_id?: string
+          p_shop_id: string
+          p_window_end: string
+          p_window_start: string
+        }
+        Returns: Json
+      }
+      scheduler_can_manage: { Args: { p_shop_id: string }; Returns: boolean }
+      scheduler_list_events: {
+        Args: {
+          p_ends_at: string
+          p_mode?: string
+          p_shop_id: string
+          p_starts_at: string
+        }
+        Returns: Json
+      }
+      scheduler_list_resources: { Args: { p_shop_id: string }; Returns: Json }
+      scheduler_pick_resource: {
+        Args: {
+          p_ends_at: string
+          p_exclude_event_id?: string
+          p_mode: string
+          p_preferred_resource_id?: string
+          p_public_only?: boolean
+          p_shop_id: string
+          p_starts_at: string
+        }
+        Returns: string
+      }
+      scheduler_rebalance_fallback_reservations: {
+        Args: { p_mode: string; p_shop_id: string }
+        Returns: number
+      }
+      scheduler_same_shop: { Args: { p_shop_id: string }; Returns: boolean }
+      scheduler_upsert_resource: {
+        Args: {
+          p_active: boolean
+          p_actor_user_id: string
+          p_code: string
+          p_mode: string
+          p_name: string
+          p_public_bookable: boolean
+          p_resource_id: string
+          p_resource_type: string
+          p_shop_id: string
+          p_sort_order?: number
         }
         Returns: Json
       }

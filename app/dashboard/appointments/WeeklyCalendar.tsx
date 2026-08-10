@@ -1,6 +1,7 @@
 // app/dashboard/appointments/WeeklyCalendar.tsx
 "use client";
 
+import Link from "next/link";
 import { useMemo } from "react";
 import type { Booking } from "./page";
 import { Button } from "@shared/components/ui/Button";
@@ -17,7 +18,6 @@ function pad2(n: number) {
   return n < 10 ? `0${n}` : `${n}`;
 }
 
-// Local date key (prevents UTC drift that can happen with toISOString())
 function dayKeyLocal(d: Date) {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
@@ -38,7 +38,6 @@ function safeStr(v: unknown) {
 }
 
 function displayCustomerName(b: Booking): string {
-  // keep compatibility with any older/extra fields without ts-ignore
   const rec = b as unknown as Record<string, unknown>;
   const fromExtra =
     safeStr(rec["customer_full_name"]) ||
@@ -46,6 +45,16 @@ function displayCustomerName(b: Booking): string {
     safeStr(rec["name"]);
 
   return safeStr(b.customer_name) || fromExtra || "Customer";
+}
+
+function schedulingResource(b: Booking): { name: string; type: string } | null {
+  const rec = b as unknown as Record<string, unknown>;
+  const name = safeStr(rec["scheduler_resource_name"]);
+  if (!name) return null;
+  return {
+    name,
+    type: safeStr(rec["scheduler_resource_type"]) || "resource",
+  };
 }
 
 function statusPill(status?: string | null) {
@@ -65,7 +74,6 @@ function bookingCardStyle(status?: string | null) {
   if (s === "confirmed") {
     return "border-emerald-500/25 bg-emerald-50/70 hover:bg-emerald-50 dark:bg-emerald-950/20 dark:hover:bg-emerald-950/30";
   }
-  // pending
   return "border-amber-500/30 bg-amber-50/70 hover:bg-amber-50 dark:bg-amber-950/20 dark:hover:bg-amber-950/30";
 }
 
@@ -106,128 +114,148 @@ export default function WeeklyCalendar({
   const todayKey = dayKeyLocal(new Date());
 
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
-      {days.map((d) => {
-        const k = dayKeyLocal(d);
-        const dayBookings = grouped.get(k) ?? [];
-        const isToday = todayKey === k;
+    <div className="space-y-3">
+      <div className="flex justify-end">
+        <Link
+          href="/dashboard/appointments/resources"
+          className="inline-flex items-center rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-1.5 text-xs font-medium text-[color:var(--theme-text-primary)] hover:bg-[color:var(--desktop-item-bg)]"
+        >
+          Manage bays & capacity
+        </Link>
+      </div>
 
-        const activeCount = dayBookings.filter(
-          (b) => (b.status || "pending").toLowerCase() !== "cancelled",
-        ).length;
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        {days.map((d) => {
+          const k = dayKeyLocal(d);
+          const dayBookings = grouped.get(k) ?? [];
+          const isToday = todayKey === k;
 
-        return (
-          <div
-            key={k}
-            className="flex min-h-[240px] min-w-0 flex-col gap-2 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-xs text-[color:var(--theme-text-primary)] shadow-sm"
-          >
-            {/* Day header */}
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant={isToday ? "default" : "outline"}
-                size="sm"
-                onClick={() => onSelectDay(k)}
-                className="flex w-full items-center justify-between rounded-xl px-2 py-1 text-[0.75rem]"
-              >
-                <span className="font-medium">
-                  {d.toLocaleDateString(undefined, {
-                    weekday: "short",
-                    month: "short",
-                    day: "numeric",
-                  })}
-                </span>
+          const activeCount = dayBookings.filter(
+            (b) => (b.status || "pending").toLowerCase() !== "cancelled",
+          ).length;
 
-                <span className="flex items-center gap-2">
-                  {isToday ? (
-                    <span className="rounded-full bg-[color:var(--desktop-item-bg)] px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-[0.12em]">
-                      Today
-                    </span>
-                  ) : null}
-
-                  <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-2 py-0.5 text-[0.65rem] text-[color:var(--theme-text-primary)]">
-                    {activeCount}
+          return (
+            <div
+              key={k}
+              className="flex min-h-[240px] min-w-0 flex-col gap-2 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-xs text-[color:var(--theme-text-primary)] shadow-sm"
+            >
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant={isToday ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => onSelectDay(k)}
+                  className="flex w-full items-center justify-between rounded-xl px-2 py-1 text-[0.75rem]"
+                >
+                  <span className="font-medium">
+                    {d.toLocaleDateString(undefined, {
+                      weekday: "short",
+                      month: "short",
+                      day: "numeric",
+                    })}
                   </span>
-                </span>
-              </Button>
-            </div>
 
-            {/* Appointments list */}
-            <div className="flex-1 space-y-1.5">
-              {loading && dayBookings.length === 0 ? (
-                <div className="space-y-2">
-                  <div className="h-9 w-full animate-pulse rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)]" />
-                  <div className="h-9 w-full animate-pulse rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)]" />
-                </div>
-              ) : dayBookings.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2 py-2 text-[0.65rem] text-[color:var(--theme-text-muted)]">
-                  No appointments
-                </div>
-              ) : (
-                dayBookings.map((b) => {
-                  const s = (b.status || "pending").toLowerCase();
-                  const isCancelled = s === "cancelled";
+                  <span className="flex items-center gap-2">
+                    {isToday ? (
+                      <span className="rounded-full bg-[color:var(--desktop-item-bg)] px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-[0.12em]">
+                        Today
+                      </span>
+                    ) : null}
 
-                  return (
-                    <Button
-                      key={b.id}
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => onSelectBooking(b)}
-                      className={
-                        "flex w-full flex-col items-start gap-1 rounded-xl border px-2 py-2 text-left text-[0.7rem] " +
-                        bookingCardStyle(b.status)
-                      }
-                    >
-                      <div className="flex w-full items-center justify-between gap-2">
-                        <div
-                          className={
-                            "truncate font-semibold " +
-                            (isCancelled
-                              ? "text-[color:var(--theme-text-secondary)] line-through"
-                              : "text-[color:var(--theme-text-primary)]")
-                          }
-                        >
-                          {displayCustomerName(b)}
-                        </div>
+                    <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-2 py-0.5 text-[0.65rem] text-[color:var(--theme-text-primary)]">
+                      {activeCount}
+                    </span>
+                  </span>
+                </Button>
+              </div>
 
-                        <div className="flex items-center gap-2">
-                          <span
+              <div className="flex-1 space-y-1.5">
+                {loading && dayBookings.length === 0 ? (
+                  <div className="space-y-2">
+                    <div className="h-9 w-full animate-pulse rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)]" />
+                    <div className="h-9 w-full animate-pulse rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)]" />
+                  </div>
+                ) : dayBookings.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2 py-2 text-[0.65rem] text-[color:var(--theme-text-muted)]">
+                    No appointments
+                  </div>
+                ) : (
+                  dayBookings.map((b) => {
+                    const s = (b.status || "pending").toLowerCase();
+                    const isCancelled = s === "cancelled";
+                    const resource = schedulingResource(b);
+
+                    return (
+                      <Button
+                        key={b.id}
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onSelectBooking(b)}
+                        className={
+                          "flex w-full flex-col items-start gap-1 rounded-xl border px-2 py-2 text-left text-[0.7rem] " +
+                          bookingCardStyle(b.status)
+                        }
+                      >
+                        <div className="flex w-full items-center justify-between gap-2">
+                          <div
                             className={
-                              "inline-flex items-center rounded-full border px-2 py-0.5 text-[0.6rem] uppercase tracking-[0.14em] " +
-                              statusPill(b.status)
-                            }
-                          >
-                            {b.status || "pending"}
-                          </span>
-
-                          <span
-                            className={
-                              "whitespace-nowrap text-[0.6rem] " +
+                              "truncate font-semibold " +
                               (isCancelled
-                                ? "text-[color:var(--theme-text-secondary)]"
+                                ? "text-[color:var(--theme-text-secondary)] line-through"
                                 : "text-[color:var(--theme-text-primary)]")
                             }
                           >
-                            {timeLabel(b.starts_at, b.ends_at)}
-                          </span>
-                        </div>
-                      </div>
+                            {displayCustomerName(b)}
+                          </div>
 
-                      {b.notes ? (
-                        <div className="line-clamp-2 text-[0.62rem] text-[color:var(--theme-text-secondary)]">
-                          {b.notes}
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={
+                                "inline-flex items-center rounded-full border px-2 py-0.5 text-[0.6rem] uppercase tracking-[0.14em] " +
+                                statusPill(b.status)
+                              }
+                            >
+                              {b.status || "pending"}
+                            </span>
+
+                            <span
+                              className={
+                                "whitespace-nowrap text-[0.6rem] " +
+                                (isCancelled
+                                  ? "text-[color:var(--theme-text-secondary)]"
+                                  : "text-[color:var(--theme-text-primary)]")
+                              }
+                            >
+                              {timeLabel(b.starts_at, b.ends_at)}
+                            </span>
+                          </div>
                         </div>
-                      ) : null}
-                    </Button>
-                  );
-                })
-              )}
+
+                        {resource ? (
+                          <div className="inline-flex max-w-full items-center gap-1 rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-2 py-0.5 text-[0.58rem] text-[color:var(--theme-text-secondary)]">
+                            <span className="truncate">{resource.name}</span>
+                            <span aria-hidden>·</span>
+                            <span className="uppercase tracking-[0.08em]">
+                              {resource.type.replaceAll("_", " ")}
+                            </span>
+                          </div>
+                        ) : null}
+
+                        {b.notes ? (
+                          <div className="line-clamp-2 text-[0.62rem] text-[color:var(--theme-text-secondary)]">
+                            {b.notes}
+                          </div>
+                        ) : null}
+                      </Button>
+                    );
+                  })
+                )}
+              </div>
             </div>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 }

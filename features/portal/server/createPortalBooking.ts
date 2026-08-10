@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
+import { validateSchedulingSlot } from "@/features/scheduling/server/availability";
 
 type DB = Database;
 type BookingActorMode = "customer-only" | "allow-staff";
@@ -35,13 +36,14 @@ function clean(value: unknown): string {
 
 function statusFor(message: string): number {
   const lower = message.toLowerCase();
-  if (lower.includes("overlap")) return 409;
+  if (lower.includes("overlap") || lower.includes("resource") || lower.includes("available")) return 409;
   if (lower.includes("not found")) return 404;
   if (
     lower.includes("not authorized") ||
     lower.includes("another shop") ||
     lower.includes("actor mismatch") ||
-    lower.includes("does not belong")
+    lower.includes("does not belong") ||
+    lower.includes("owned by")
   ) {
     return 403;
   }
@@ -73,6 +75,19 @@ export async function createPortalBooking({
     return { ok: false, error: "A stable operation key is required", status: 400 };
   }
 
+  const start = new Date(startsAt);
+  const end = new Date(endsAt);
+  const durationMinutes = (end.getTime() - start.getTime()) / 60_000;
+  if (
+    !Number.isFinite(start.getTime()) ||
+    !Number.isFinite(end.getTime()) ||
+    !Number.isInteger(durationMinutes) ||
+    durationMinutes < 5 ||
+    durationMinutes > 480
+  ) {
+    return { ok: false, error: "Valid booking times are required", status: 400 };
+  }
+
   const { data: shop, error: shopError } = await supabase
     .from("shops")
     .select("id")
@@ -95,6 +110,18 @@ export async function createPortalBooking({
       return { ok: false, error: "Customer profile not found for this user", status: 404 };
     }
     customerId = customer.id;
+
+    const slot = await validateSchedulingSlot({
+      supabase,
+      shopId: shop.id,
+      startsAt,
+      endsAt,
+      slotMinutes: durationMinutes,
+      mode: "shop",
+      publicOnly: true,
+      requireOnlineBooking: true,
+    });
+    if (!slot.ok) return slot;
   }
 
   if (!customerId) {

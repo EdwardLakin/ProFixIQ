@@ -72,7 +72,7 @@ async function getAuthedContext(
   };
 }
 
-function operationKey(req: Request, body?: PatchBody): string {
+function suppliedOperationKey(req: Request, body?: PatchBody): string {
   return (
     req.headers.get("Idempotency-Key")?.trim() ||
     body?.idempotencyKey?.trim() ||
@@ -80,15 +80,43 @@ function operationKey(req: Request, body?: PatchBody): string {
   );
 }
 
+function lifecycleOperationKey(args: {
+  supplied: string;
+  shopId: string;
+  bookingId: string;
+  action: string;
+  startsAt?: string | null;
+  endsAt?: string | null;
+}): string {
+  return (
+    args.supplied ||
+    [
+      "compat",
+      args.shopId,
+      args.bookingId,
+      args.action,
+      args.startsAt ?? "",
+      args.endsAt ?? "",
+    ].join(":")
+  ).slice(0, 300);
+}
+
 function rpcStatus(message: string): number {
   const lower = message.toLowerCase();
   if (lower.includes("not found")) return 404;
-  if (lower.includes("not authorized") || lower.includes("another shop"))
+  if (
+    lower.includes("not authorized") ||
+    lower.includes("another shop") ||
+    lower.includes("owned by")
+  ) {
     return 403;
+  }
   if (
     lower.includes("terminal") ||
     lower.includes("overlap") ||
-    lower.includes("work-order-linked")
+    lower.includes("resource") ||
+    lower.includes("available") ||
+    lower.includes("only pending")
   ) {
     return 409;
   }
@@ -99,7 +127,7 @@ async function runLifecycleCommand(args: {
   supabase: ReturnType<typeof createServerSupabaseRoute>;
   bookingId: string;
   actorUserId: string;
-  action: "reschedule" | "cancel";
+  action: "reschedule" | "cancel" | "confirm" | "complete";
   startsAt?: string | null;
   endsAt?: string | null;
   notes?: string | null;
@@ -138,18 +166,18 @@ export async function PATCH(
   if ("error" in auth) return auth.error;
 
   const body = (await req.json().catch(() => ({}))) as PatchBody;
-  const isReschedule =
-    body.starts_at !== undefined || body.ends_at !== undefined;
-  const isCancel = body.status === "cancelled";
+  const isReschedule = body.starts_at !== undefined || body.ends_at !== undefined;
+  const lifecycleAction = isReschedule
+    ? "reschedule"
+    : body.status === "cancelled"
+      ? "cancel"
+      : body.status === "confirmed"
+        ? "confirm"
+        : body.status === "completed"
+          ? "complete"
+          : null;
 
-  if (isReschedule || isCancel) {
-    const key = operationKey(req, body);
-    if (!key) {
-      return NextResponse.json(
-        { error: "A stable Idempotency-Key is required." },
-        { status: 400 },
-      );
-    }
+  if (lifecycleAction) {
     if (isReschedule && (!body.starts_at || !body.ends_at)) {
       return NextResponse.json(
         { error: "Both starts_at and ends_at are required for rescheduling" },
@@ -157,29 +185,58 @@ export async function PATCH(
       );
     }
 
+    const key = lifecycleOperationKey({
+      supplied: suppliedOperationKey(req, body),
+      shopId: auth.profile.shop_id,
+      bookingId: id,
+      action: lifecycleAction,
+      startsAt: body.starts_at,
+      endsAt: body.ends_at,
+    });
+
     const { data, error } = await runLifecycleCommand({
       supabase,
       bookingId: id,
       actorUserId: auth.profile.id,
-      action: isCancel ? "cancel" : "reschedule",
+      action: lifecycleAction,
       startsAt: body.starts_at,
       endsAt: body.ends_at,
       notes: body.notes,
       reason: body.reason,
-      operationKey: `${auth.profile.shop_id}:staff-booking:${key}`,
+      operationKey: key,
     });
 
     if (error) {
       const message = [error.message, error.details, error.hint]
         .filter(Boolean)
         .join(" — ");
-      return NextResponse.json(
-        { error: message },
-        { status: rpcStatus(message) },
-      );
+      return NextResponse.json({ error: message }, { status: rpcStatus(message) });
     }
 
-    return NextResponse.json(data);
+    const result = (data ?? {}) as {
+      booking?: DB["public"]["Tables"]["bookings"]["Row"];
+    };
+    const updated = result.booking;
+    let confirmationNotification: "not_requested" | "sent" | "skipped" =
+      "not_requested";
+    if (lifecycleAction === "confirm" && updated) {
+      try {
+        confirmationNotification = (await notifyBookingConfirmation(
+          supabase,
+          updated,
+        ))
+          ? "sent"
+          : "skipped";
+      } catch (notificationError) {
+        confirmationNotification = "skipped";
+        console.error("booking confirmation notification failed", notificationError);
+      }
+    }
+
+    return NextResponse.json({
+      ...(updated ?? result),
+      confirmation_notification: confirmationNotification,
+    });
   }
 
   const { data: existing, error: existingErr } = await supabase
@@ -195,30 +252,7 @@ export async function PATCH(
     return NextResponse.json({ error: "Booking not found" }, { status: 404 });
   }
 
-  const currentStatus = existing.status ?? "pending";
-  const requestedStatus = body.status;
-  const transitionAllowed =
-    !requestedStatus ||
-    requestedStatus === currentStatus ||
-    (currentStatus === "pending" && requestedStatus === "confirmed") ||
-    (currentStatus === "confirmed" && requestedStatus === "completed");
-  if (!transitionAllowed) {
-    return NextResponse.json(
-      {
-        error: `Cannot move appointment from ${currentStatus} to ${requestedStatus}`,
-      },
-      { status: 409 },
-    );
-  }
-
   const update: DB["public"]["Tables"]["bookings"]["Update"] = {};
-  if (
-    body.status === "pending" ||
-    body.status === "confirmed" ||
-    body.status === "completed"
-  ) {
-    update.status = body.status;
-  }
   if (body.notes !== undefined) update.notes = body.notes;
   if (body.customer_id !== undefined) {
     if (!body.customer_id) {
@@ -246,10 +280,7 @@ export async function PATCH(
   }
 
   if (Object.keys(update).length === 0) {
-    return NextResponse.json(
-      { error: "No valid fields to update" },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
   }
 
   const { data: updated, error: updateErr } = await supabase
@@ -268,30 +299,7 @@ export async function PATCH(
   if (!updated) {
     return NextResponse.json({ error: "Booking not found" }, { status: 404 });
   }
-
-  let confirmationNotification: "not_requested" | "sent" | "skipped" =
-    "not_requested";
-  if (body.status === "confirmed" && currentStatus !== "confirmed") {
-    try {
-      confirmationNotification = (await notifyBookingConfirmation(
-        supabase,
-        updated,
-      ))
-        ? "sent"
-        : "skipped";
-    } catch (notificationError) {
-      confirmationNotification = "skipped";
-      console.error(
-        "booking confirmation notification failed",
-        notificationError,
-      );
-    }
-  }
-
-  return NextResponse.json({
-    ...updated,
-    confirmation_notification: confirmationNotification,
-  });
+  return NextResponse.json(updated);
 }
 
 export async function DELETE(
@@ -307,13 +315,12 @@ export async function DELETE(
   const auth = await getAuthedContext(supabase);
   if ("error" in auth) return auth.error;
 
-  const key = req.headers.get("Idempotency-Key")?.trim() ?? "";
-  if (!key) {
-    return NextResponse.json(
-      { error: "A stable Idempotency-Key is required." },
-      { status: 400 },
-    );
-  }
+  const key = lifecycleOperationKey({
+    supplied: req.headers.get("Idempotency-Key")?.trim() ?? "",
+    shopId: auth.profile.shop_id,
+    bookingId: id,
+    action: "cancel",
+  });
 
   const { data, error } = await runLifecycleCommand({
     supabase,
@@ -321,17 +328,14 @@ export async function DELETE(
     actorUserId: auth.profile.id,
     action: "cancel",
     reason: "Cancelled from staff scheduling",
-    operationKey: `${auth.profile.shop_id}:staff-booking-delete:${key}`,
+    operationKey: key,
   });
 
   if (error) {
     const message = [error.message, error.details, error.hint]
       .filter(Boolean)
       .join(" — ");
-    return NextResponse.json(
-      { error: message },
-      { status: rpcStatus(message) },
-    );
+    return NextResponse.json({ error: message }, { status: rpcStatus(message) });
   }
 
   return NextResponse.json(data);
