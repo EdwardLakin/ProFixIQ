@@ -38,7 +38,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/supabase-clean-replay-diagnostics"
           gh run download 31353538644 \
             --repo EdwardLakin/ProFixIQ \
-            --name supabase-clean-replay-diagnostics \
+            --name supabase-clean-replay-31353538644 \
             --dir "$RUNNER_TEMP/supabase-clean-replay-diagnostics"
 
       - name: Commit exact generated types
