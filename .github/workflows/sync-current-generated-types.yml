@@ -1,0 +1,61 @@
+name: Sync Current Generated Supabase Types
+
+on:
+  push:
+    branches:
+      - feature/mobile-service-foundation
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: sync-current-generated-types-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out generated types path
+        uses: actions/checkout@v4
+        with:
+          ref: feature/mobile-service-foundation
+          fetch-depth: 0
+          sparse-checkout: |
+            features/shared/types/types
+          sparse-checkout-cone-mode: true
+
+      - name: Download exact generated types from latest failed validation
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/generated-types"
+          gh run download 31357228980 \
+            --repo EdwardLakin/ProFixIQ \
+            --name operational-observability-supabase-types \
+            --dir "$RUNNER_TEMP/generated-types"
+
+      - name: Commit exact generated types
+        shell: bash
+        run: |
+          set -euo pipefail
+          GENERATED="$(find "$RUNNER_TEMP/generated-types" -name generated-operational-supabase-types.ts -print -quit)"
+          if [[ -z "$GENERATED" || ! -f "$GENERATED" ]]; then
+            echo "generated-operational-supabase-types.ts was not found"
+            exit 1
+          fi
+          cp "$GENERATED" features/shared/types/types/supabase.ts
+          if git diff --quiet -- features/shared/types/types/supabase.ts; then
+            echo "Generated types already match."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add features/shared/types/types/supabase.ts
+          git commit -m "Regenerate Supabase types after main sync"
+          git push origin HEAD:feature/mobile-service-foundation
