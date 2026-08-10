@@ -12,6 +12,20 @@ function bad(msg: string, code = 400) {
   return NextResponse.json({ error: msg }, { status: code });
 }
 
+function legacyStaffOperationKey(userId: string, body: CreatePortalBookingInput): string {
+  return [
+    "legacy-staff-booking",
+    userId,
+    body.shopSlug,
+    body.customerId ?? "customer",
+    body.vehicleId ?? "vehicle",
+    body.startsAt,
+    body.endsAt,
+  ]
+    .join(":")
+    .slice(0, 300);
+}
+
 export async function POST(req: Request) {
   try {
     const supabase = createServerSupabaseRoute();
@@ -35,11 +49,19 @@ export async function POST(req: Request) {
       return bad("This legacy endpoint is staff-only", 403);
     }
 
-    const body = (await req.json()) as CreatePortalBookingInput;
+    const body = (await req.json().catch(() => null)) as CreatePortalBookingInput | null;
+    if (!body) return bad("Invalid JSON body", 400);
+
+    const operationKey =
+      req.headers.get("Idempotency-Key")?.trim() ||
+      body.operationKey?.trim() ||
+      body.idempotencyKey?.trim() ||
+      legacyStaffOperationKey(user.id, body);
+
     const result = await createPortalBooking({
       supabase,
       userId: user.id,
-      input: body,
+      input: { ...body, operationKey },
       actorMode: "allow-staff",
     });
 
