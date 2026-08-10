@@ -3,6 +3,7 @@ import {
   isFleetProductHostname,
   isFleetProductSharedPath,
   normalizeRequestHostname,
+  resolveLegacyFleetRedirect,
   toFleetInternalHref,
   toFleetInternalPath,
   toFleetPublicHref,
@@ -77,5 +78,49 @@ describe("Fleet product domain routing", () => {
     expect(isFleetProductSharedPath("/manifest.webmanifest")).toBe(false);
     expect(isFleetProductSharedPath("/portal")).toBe(false);
     expect(isFleetProductSharedPath("/dashboard")).toBe(false);
+  });
+
+  it.each([
+    ["/fleet", { destination: "fleet", href: "/" }],
+    ["/fleet/tower", { destination: "fleet", href: "/" }],
+    ["/fleet/dispatch", { destination: "fleet", href: "/" }],
+    ["/fleet/units", { destination: "fleet", href: "/assets" }],
+    [
+      "/fleet/units/unit-42?tab=history",
+      { destination: "fleet", href: "/assets/unit-42?tab=history" },
+    ],
+    [
+      "/fleet/pretrip/unit-42",
+      { destination: "fleet", href: "/pre-trips/start/unit-42" },
+    ],
+    [
+      "/fleet/service-requests/new?unitId=unit-42",
+      { destination: "fleet", href: "/requests/new?unitId=unit-42" },
+    ],
+    [
+      "/fleet/work-orders/work-order-42/intake",
+      { destination: "fleet", href: "/history?workOrderId=work-order-42" },
+    ],
+    [
+      "/fleet/programs",
+      { destination: "shop", href: "/dashboard/owner/fleet-access" },
+    ],
+    [
+      "/fleet/portal-access?fleetId=fleet-42",
+      {
+        destination: "shop",
+        href: "/dashboard/owner/fleet-access?fleetId=fleet-42",
+      },
+    ],
+  ])("retires the Shop Fleet path %s", (href, expected) => {
+    expect(resolveLegacyFleetRedirect(href)).toEqual(expected);
+  });
+
+  it("does not treat lookalike or absolute URLs as legacy Fleet routes", () => {
+    expect(resolveLegacyFleetRedirect("/fleetish/units")).toBeNull();
+    expect(
+      resolveLegacyFleetRedirect("https://attacker.test/fleet"),
+    ).toBeNull();
+    expect(resolveLegacyFleetRedirect("//attacker.test/fleet")).toBeNull();
   });
 });

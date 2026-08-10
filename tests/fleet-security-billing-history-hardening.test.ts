@@ -21,7 +21,7 @@ describe("Fleet security, billing, and history hardening", () => {
   });
 
   it("links Fleet requests to a canonical same-shop customer", () => {
-    const fleetPrograms = read("app/fleet/programs/page.tsx");
+    const fleetInvites = read("app/api/portal/fleet/invites/route.ts");
 
     expect(migration).toContain("add column if not exists customer_id uuid");
     expect(migration).toContain("ensure_fleet_customer_account_trigger");
@@ -35,10 +35,9 @@ describe("Fleet security, billing, and history hardening", () => {
       "Structured request lines must match the request scope",
     );
     expect(customerIndexMigration).toContain("on public.fleets (customer_id)");
-    expect(fleetPrograms).toContain(
-      'type FleetCreateInsert = Omit<FleetInsert, "customer_id">',
-    );
-    expect(fleetPrograms).toContain(".insert(insertPayload as FleetInsert)");
+    expect(fleetInvites).toContain('.from("fleets")');
+    expect(fleetInvites).toContain("shop_id: access.profile.shop_id");
+    expect(fleetInvites).toContain('body?.action === "create_fleet"');
   });
 
   it("requires assigned drivers and derives their identity from the profile", () => {
@@ -65,11 +64,13 @@ describe("Fleet security, billing, and history hardening", () => {
 
   it("keeps shop navigation separate and bases history on finalized invoices", () => {
     const layout = read("app/fleet/layout.tsx");
+    const middleware = read("middleware.ts");
     const tiles = read("features/shared/config/tiles.ts");
     const history = read("app/api/fleet/units/[unitId]/workspace/route.ts");
 
-    expect(layout).toContain("if (!actor.isInternal)");
-    expect(layout).toContain('"/portal/fleet"');
+    expect(layout).toContain("return children");
+    expect(layout).not.toContain("FleetWorkspaceNav");
+    expect(middleware).toContain("resolveLegacyFleetRedirect");
     expect(tiles).toContain('roles: ["owner", "admin", "manager", "advisor"]');
     expect(history).toContain('.from("invoice_versions")');
     expect(history).toContain('"issued", "partially_paid", "paid"');

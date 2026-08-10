@@ -1,9 +1,6 @@
-import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
-import PretripReportsPage from "@/features/fleet/components/PretripReportsPage";
-import { resolveFleetUiContext } from "@/features/fleet/lib/fleetUiCapabilities";
+import { redirect } from "next/navigation";
+import { FLEET_PRODUCT_ORIGIN } from "@/features/fleet/lib/fleetProductRouting";
 
-export default async function FleetPretripHistoryPage() {
-  const supabase = createServerSupabaseRSC();
-  const uiContext = await resolveFleetUiContext(supabase);
-  return <PretripReportsPage uiContext={uiContext} routePrefix="/fleet" />;
+export default function LegacyFleetPretripHistoryPage() {
+  redirect(new URL("/pre-trips", FLEET_PRODUCT_ORIGIN).toString());
 }

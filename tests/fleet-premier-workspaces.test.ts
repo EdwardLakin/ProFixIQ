@@ -158,7 +158,8 @@ describe("premier fleet workspaces", () => {
     const dispatch = source("features/fleet/components/FleetDispatchBoard.tsx");
 
     expect(legacy).toContain("redirect");
-    expect(legacy).toContain("/fleet/units/");
+    expect(legacy).toContain("FLEET_PRODUCT_ORIGIN");
+    expect(legacy).toContain("/assets/");
     expect(units).toContain("Fleet-wide pre-trip history");
     expect(dispatch).not.toContain("/fleet/assets/");
   });

@@ -1,5 +1,6 @@
-import FleetUnitEnrollmentPage from "@/features/fleet/components/FleetUnitEnrollmentPage";
+import { redirect } from "next/navigation";
+import { FLEET_PRODUCT_ORIGIN } from "@/features/fleet/lib/fleetProductRouting";
 
 export default function LegacyFleetUnitEnrollmentPage() {
-  return <FleetUnitEnrollmentPage routePrefix="/fleet" />;
+  redirect(new URL("/assets/new", FLEET_PRODUCT_ORIGIN).toString());
 }

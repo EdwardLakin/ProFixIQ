@@ -49,7 +49,7 @@ function StatusPill({ status }: { status: FleetUnitListItem["status"] }) {
 
 export default function FleetUnitsPage({
   uiContext,
-  routePrefix = "/fleet",
+  routePrefix = "/portal/fleet",
 }: Props) {
   const pathname = usePathname() ?? "";
   const productRoutes =

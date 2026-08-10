@@ -52,7 +52,7 @@ function vehicleLabel(vehicle: Vehicle | undefined) {
 }
 
 export default function FleetUnitEnrollmentPage({
-  routePrefix = "/fleet",
+  routePrefix = "/portal/fleet",
 }: {
   routePrefix?: "/fleet" | "/portal/fleet";
 }) {

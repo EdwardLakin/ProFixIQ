@@ -56,7 +56,7 @@ function currencyValues<T extends number | null>(
 export default function FleetUnitEconomicsPanel({
   shopId,
   fleetId,
-  routePrefix = "/fleet",
+  routePrefix = "/portal/fleet",
 }: {
   shopId?: string | null;
   fleetId?: string | null;

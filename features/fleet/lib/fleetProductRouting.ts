@@ -10,6 +10,11 @@ type FleetRouteMapping = {
   internalPath: string;
 };
 
+export type LegacyFleetRedirect = {
+  destination: "fleet" | "shop";
+  href: string;
+};
+
 const FLEET_ROUTE_MAPPINGS: readonly FleetRouteMapping[] = [
   {
     publicPath: "/requests/new",
@@ -99,6 +104,77 @@ function mapFleetHref(
   const mappedPathname = mapper(parsed.pathname);
   if (!mappedPathname) return null;
   return `${mappedPathname}${parsed.search}${parsed.hash}`;
+}
+
+function legacyFleetPath(pathname: string): string | null {
+  const normalized = normalizePathname(pathname);
+  if (
+    normalized === "/fleet/portal-access" ||
+    normalized === "/fleet/programs"
+  ) {
+    return null;
+  }
+  if (normalized === "/fleet" || normalized === "/fleet/tower") return "/";
+  if (normalized === "/fleet/dispatch") return "/";
+
+  const intakeMatch = normalized.match(
+    /^\/fleet\/work-orders\/([^/]+)\/intake$/,
+  );
+  if (intakeMatch?.[1]) {
+    return `/history?workOrderId=${encodeURIComponent(intakeMatch[1])}`;
+  }
+
+  const mappings = [
+    ["/fleet/service-requests/new", "/requests/new"],
+    ["/fleet/service-requests", "/requests"],
+    ["/fleet/pretrip-history", "/pre-trips"],
+    ["/fleet/pretrip", "/pre-trips/start"],
+    ["/fleet/assets", "/assets"],
+    ["/fleet/units", "/assets"],
+    ["/fleet/maintenance", "/maintenance"],
+    ["/fleet/billing", "/history"],
+  ] as const;
+
+  for (const [legacyBase, publicBase] of mappings) {
+    const mapped = replaceRouteBase(normalized, legacyBase, publicBase);
+    if (mapped) return mapped;
+  }
+
+  return normalized.startsWith("/fleet/") ? "/" : null;
+}
+
+/**
+ * Retire the old Shop-hosted Fleet workspace without breaking bookmarks.
+ * Relationship creation/invitation remains in Shop; every operational path
+ * moves to the clean Fleet product surface.
+ */
+export function resolveLegacyFleetRedirect(
+  href: string | null | undefined,
+): LegacyFleetRedirect | null {
+  const candidate = String(href ?? "").trim();
+  if (!candidate.startsWith("/") || candidate.startsWith("//")) return null;
+
+  const parsed = new URL(candidate, "https://legacy-fleet.invalid");
+  const pathname = normalizePathname(parsed.pathname);
+  if (pathname === "/fleet/portal-access" || pathname === "/fleet/programs") {
+    return {
+      destination: "shop",
+      href: `/dashboard/owner/fleet-access${parsed.search}${parsed.hash}`,
+    };
+  }
+
+  const mapped = legacyFleetPath(pathname);
+  if (!mapped) return null;
+
+  const target = new URL(mapped, "https://fleet-routing.invalid");
+  for (const [key, value] of parsed.searchParams) {
+    if (!target.searchParams.has(key)) target.searchParams.append(key, value);
+  }
+  target.hash = parsed.hash;
+  return {
+    destination: "fleet",
+    href: `${target.pathname}${target.search}${target.hash}`,
+  };
 }
 
 export function normalizeRequestHostname(

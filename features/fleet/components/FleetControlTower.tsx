@@ -85,7 +85,7 @@ export default function FleetControlTower({
   shopId,
   fleetId,
   uiContext,
-  routePrefix = "/fleet",
+  routePrefix = "/portal/fleet",
 }: Props) {
   const pathname = usePathname() ?? "";
   const productRoutes =

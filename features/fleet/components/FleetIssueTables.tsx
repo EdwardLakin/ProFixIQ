@@ -21,7 +21,7 @@ export default function FleetIssueTables({
   assignments,
   uiContext,
   fleetId = null,
-  routePrefix = "/fleet",
+  routePrefix = "/portal/fleet",
 }: Props) {
   const pathname = usePathname() ?? "";
   const productHostRoute =

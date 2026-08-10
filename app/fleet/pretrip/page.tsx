@@ -1,14 +1,6 @@
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
+import { redirect } from "next/navigation";
+import { FLEET_PRODUCT_ORIGIN } from "@/features/fleet/lib/fleetProductRouting";
 
-import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
-import PretripReportsPage from "@/features/fleet/components/PretripReportsPage";
-import { resolveFleetUiContext } from "@/features/fleet/lib/fleetUiCapabilities";
-
-
-export default async function Page() {
-  const supabase = createServerSupabaseRSC();
-  const uiContext = await resolveFleetUiContext(supabase);
-
-  return <PretripReportsPage uiContext={uiContext} />;
+export default function LegacyFleetPretripPage() {
+  redirect(new URL("/pre-trips/start", FLEET_PRODUCT_ORIGIN).toString());
 }

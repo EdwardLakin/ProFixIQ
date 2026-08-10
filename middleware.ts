@@ -19,6 +19,7 @@ import {
   toFleetInternalPath,
   toFleetPublicHref,
   toFleetPublicPath,
+  resolveLegacyFleetRedirect,
 } from "@/features/fleet/lib/fleetProductRouting";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import {
@@ -169,6 +170,21 @@ export async function middleware(req: NextRequest) {
   }
 
   if (!fleetProductRequest) {
+    const legacyFleetRedirect = resolveLegacyFleetRedirect(
+      `${requestPathname}${search}`,
+    );
+    if (legacyFleetRedirect) {
+      const target = new URL(
+        legacyFleetRedirect.href,
+        legacyFleetRedirect.destination === "fleet"
+          ? FLEET_PRODUCT_ORIGIN
+          : req.url,
+      );
+      return NextResponse.redirect(target, 308);
+    }
+  }
+
+  if (!fleetProductRequest) {
     const publicFleetPath = toFleetPublicPath(requestPathname);
     const isLegacyFleetWorkspace =
       requestPathname === "/portal/fleet" ||
@@ -242,11 +258,12 @@ export async function middleware(req: NextRequest) {
   if (fleetInternalPath) fleetRewriteTarget.pathname = fleetInternalPath;
   if (opsInternalPath) fleetRewriteTarget.pathname = opsInternalPath;
 
-  const res = fleetInternalPath || opsInternalPath
-    ? NextResponse.rewrite(fleetRewriteTarget, {
-        request: { headers: requestHeaders },
-      })
-    : NextResponse.next({ request: { headers: requestHeaders } });
+  const res =
+    fleetInternalPath || opsInternalPath
+      ? NextResponse.rewrite(fleetRewriteTarget, {
+          request: { headers: requestHeaders },
+        })
+      : NextResponse.next({ request: { headers: requestHeaders } });
 
   if (pathname.startsWith("/api")) {
     if (!hasSupabasePublicEnv()) return res;

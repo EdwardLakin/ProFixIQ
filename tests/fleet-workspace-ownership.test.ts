@@ -99,6 +99,7 @@ describe("Fleet workspace ownership", () => {
     expect(shopInbox).toContain("convertFleetServiceRequest(item.id)");
     expect(shopInbox).toContain("Accept into Shop");
     expect(shopPage).toContain("requireShopPageAccess");
-    expect(legacyPage).toContain('redirect("/work-orders/fleet-requests")');
+    expect(legacyPage).toContain("FLEET_PRODUCT_ORIGIN");
+    expect(legacyPage).toContain('new URL("/requests"');
   });
 });
