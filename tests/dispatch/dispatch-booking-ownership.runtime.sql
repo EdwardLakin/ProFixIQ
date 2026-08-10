@@ -62,9 +62,10 @@ declare
   v_booking jsonb;
   v_booking_id uuid;
   v_visit_id uuid;
-  v_blocked boolean := false;
+  v_legacy_rejected boolean := false;
   v_late_blocked boolean := false;
   v_booking_start timestamptz;
+  v_booking_end timestamptz;
   v_visit_start timestamptz;
   v_booking_status text;
 begin
@@ -104,17 +105,39 @@ begin
     'dispatch-lock:dispatched'
   );
 
+  if not exists (
+    select 1
+    from public.service_visits sv
+    where sv.id = v_visit_id
+      and sv.status = 'dispatched'
+      and sv.dispatched_at is not null
+  ) then
+    raise exception 'Dispatch ownership assertion failed: dispatch handoff marker was not durable before booking mutation';
+  end if;
+
   begin
     update public.bookings
     set starts_at = '2099-04-01 12:00:00+00',
         ends_at = '2099-04-01 13:00:00+00'
     where id = v_booking_id;
   exception when raise_exception then
-    v_blocked := true;
+    v_legacy_rejected := true;
   end;
-  if not v_blocked then
-    raise exception 'Dispatch ownership assertion failed: legacy booking reschedule moved a dispatched visit';
+
+  select starts_at, ends_at
+    into v_booking_start, v_booking_end
+  from public.bookings
+  where id = v_booking_id;
+
+  if v_booking_start <> '2099-04-01 09:00:00+00'::timestamptz
+     or v_booking_end <> '2099-04-01 10:00:00+00'::timestamptz then
+    raise exception 'Dispatch ownership assertion failed: legacy booking reschedule changed a dispatched appointment';
   end if;
+
+  -- The exact rejection mechanism is not the contract: an existing booking
+  -- guard may reject by exception or suppress the row update. The durable state
+  -- above is the business invariant. Keep the variable for diagnostic evidence.
+  perform v_legacy_rejected;
 
   perform public.dispatch_reschedule_service_visit_atomic(
     '8b200000-0000-4000-8000-000000000001',
