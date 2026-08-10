@@ -5,6 +5,9 @@ const read = (path: string) => readFileSync(path, "utf8");
 const migration = read(
   "supabase/migrations/20260810164500_mobile_dispatch_operations.sql",
 );
+const assignmentGuard = read(
+  "supabase/migrations/20260810165000_mobile_dispatch_assignment_guard.sql",
+);
 const contract = read("features/scheduling/lib/service-visit-contract.ts");
 const commands = read("features/dispatch/server/commands.ts");
 const visitsApi = read("app/api/dispatch/visits/[id]/route.ts");
@@ -44,6 +47,17 @@ describe("Mobile dispatch operations", () => {
     expect(migration).toContain("reservation_role = 'technician'");
     expect(migration).toContain("resource_type = 'technician'");
     expect(migration).toContain("resource_type = 'service_vehicle'");
+  });
+
+  it("requires technician ownership before a visit becomes active dispatch", () => {
+    expect(assignmentGuard).toContain("guard_service_visit_dispatch_assignment");
+    expect(assignmentGuard).toContain(
+      "new.status in ('dispatched','en_route','arrived','working','paused','completed')",
+    );
+    expect(assignmentGuard).toContain("new.assigned_user_id is null");
+    expect(assignmentGuard).toContain(
+      "A technician must be assigned before a service visit can be dispatched.",
+    );
   });
 
   it("keeps dispatch status separate from work-order repair status", () => {
