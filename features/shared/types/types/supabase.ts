@@ -9979,6 +9979,7 @@ export type Database = {
           created_at: string
           description: string
           id: string
+          latest_supplier_quote_request_id: string | null
           location_id: string | null
           markup_pct: number | null
           menu_item_id: string | null
@@ -10004,6 +10005,9 @@ export type Database = {
           source_row_id: string | null
           source_work_order_part_id: string | null
           status: Database["public"]["Enums"]["part_request_item_status"]
+          supplier_quote_received_at: string | null
+          supplier_quote_requested_at: string | null
+          supplier_quote_status: string
           unit_cost: number | null
           unit_price: number | null
           updated_at: string
@@ -10017,6 +10021,7 @@ export type Database = {
           created_at?: string
           description: string
           id?: string
+          latest_supplier_quote_request_id?: string | null
           location_id?: string | null
           markup_pct?: number | null
           menu_item_id?: string | null
@@ -10042,6 +10047,9 @@ export type Database = {
           source_row_id?: string | null
           source_work_order_part_id?: string | null
           status?: Database["public"]["Enums"]["part_request_item_status"]
+          supplier_quote_received_at?: string | null
+          supplier_quote_requested_at?: string | null
+          supplier_quote_status?: string
           unit_cost?: number | null
           unit_price?: number | null
           updated_at?: string
@@ -10055,6 +10063,7 @@ export type Database = {
           created_at?: string
           description?: string
           id?: string
+          latest_supplier_quote_request_id?: string | null
           location_id?: string | null
           markup_pct?: number | null
           menu_item_id?: string | null
@@ -10080,6 +10089,9 @@ export type Database = {
           source_row_id?: string | null
           source_work_order_part_id?: string | null
           status?: Database["public"]["Enums"]["part_request_item_status"]
+          supplier_quote_received_at?: string | null
+          supplier_quote_requested_at?: string | null
+          supplier_quote_status?: string
           unit_cost?: number | null
           unit_price?: number | null
           updated_at?: string
@@ -10089,6 +10101,13 @@ export type Database = {
           work_order_line_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "part_request_items_latest_supplier_quote_request_id_fkey"
+            columns: ["latest_supplier_quote_request_id"]
+            isOneToOne: false
+            referencedRelation: "parts_supplier_quote_requests"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "part_request_items_location_id_fkey"
             columns: ["location_id"]
@@ -11214,6 +11233,227 @@ export type Database = {
           },
           {
             foreignKeyName: "parts_requests_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      parts_supplier_quote_request_items: {
+        Row: {
+          availability: string | null
+          created_at: string
+          description_snapshot: string
+          expected_at: string | null
+          id: string
+          part_request_item_id: string
+          qty_requested: number
+          quote_request_id: string
+          quoted_sell_price: number | null
+          quoted_unit_cost: number | null
+          requested_manufacturer_snapshot: string | null
+          requested_part_number_snapshot: string | null
+          status: string
+          supplier_part_number: string | null
+          updated_at: string
+        }
+        Insert: {
+          availability?: string | null
+          created_at?: string
+          description_snapshot: string
+          expected_at?: string | null
+          id?: string
+          part_request_item_id: string
+          qty_requested: number
+          quote_request_id: string
+          quoted_sell_price?: number | null
+          quoted_unit_cost?: number | null
+          requested_manufacturer_snapshot?: string | null
+          requested_part_number_snapshot?: string | null
+          status?: string
+          supplier_part_number?: string | null
+          updated_at?: string
+        }
+        Update: {
+          availability?: string | null
+          created_at?: string
+          description_snapshot?: string
+          expected_at?: string | null
+          id?: string
+          part_request_item_id?: string
+          qty_requested?: number
+          quote_request_id?: string
+          quoted_sell_price?: number | null
+          quoted_unit_cost?: number | null
+          requested_manufacturer_snapshot?: string | null
+          requested_part_number_snapshot?: string | null
+          status?: string
+          supplier_part_number?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "parts_supplier_quote_request_items_part_request_item_id_fkey"
+            columns: ["part_request_item_id"]
+            isOneToOne: false
+            referencedRelation: "part_request_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "parts_supplier_quote_request_items_quote_request_id_fkey"
+            columns: ["quote_request_id"]
+            isOneToOne: false
+            referencedRelation: "parts_supplier_quote_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      parts_supplier_quote_requests: {
+        Row: {
+          channel: string
+          created_at: string
+          created_by: string | null
+          draft_po_id: string | null
+          id: string
+          idempotency_key: string
+          message: string | null
+          parts_request_id: string
+          po_contact_channel: string | null
+          po_contacted_at: string | null
+          po_contacted_by: string | null
+          po_generation_error: string | null
+          po_ready_at: string | null
+          requested_at: string
+          responded_at: string | null
+          responded_by: string | null
+          response_idempotency_key: string | null
+          response_notes: string | null
+          shop_id: string
+          status: string
+          subject: string | null
+          supplier_id: string
+          updated_at: string
+          work_order_id: string
+        }
+        Insert: {
+          channel: string
+          created_at?: string
+          created_by?: string | null
+          draft_po_id?: string | null
+          id?: string
+          idempotency_key: string
+          message?: string | null
+          parts_request_id: string
+          po_contact_channel?: string | null
+          po_contacted_at?: string | null
+          po_contacted_by?: string | null
+          po_generation_error?: string | null
+          po_ready_at?: string | null
+          requested_at?: string
+          responded_at?: string | null
+          responded_by?: string | null
+          response_idempotency_key?: string | null
+          response_notes?: string | null
+          shop_id: string
+          status?: string
+          subject?: string | null
+          supplier_id: string
+          updated_at?: string
+          work_order_id: string
+        }
+        Update: {
+          channel?: string
+          created_at?: string
+          created_by?: string | null
+          draft_po_id?: string | null
+          id?: string
+          idempotency_key?: string
+          message?: string | null
+          parts_request_id?: string
+          po_contact_channel?: string | null
+          po_contacted_at?: string | null
+          po_contacted_by?: string | null
+          po_generation_error?: string | null
+          po_ready_at?: string | null
+          requested_at?: string
+          responded_at?: string | null
+          responded_by?: string | null
+          response_idempotency_key?: string | null
+          response_notes?: string | null
+          shop_id?: string
+          status?: string
+          subject?: string | null
+          supplier_id?: string
+          updated_at?: string
+          work_order_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "parts_supplier_quote_requests_draft_po_id_fkey"
+            columns: ["draft_po_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "parts_supplier_quote_requests_parts_request_id_fkey"
+            columns: ["parts_request_id"]
+            isOneToOne: false
+            referencedRelation: "part_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "parts_supplier_quote_requests_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "parts_supplier_quote_requests_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "parts_supplier_quote_requests_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "parts_supplier_quote_requests_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_portal_invoices"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "parts_supplier_quote_requests_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_fleet"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "parts_supplier_quote_requests_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_portal"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "parts_supplier_quote_requests_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_shop"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "parts_supplier_quote_requests_work_order_id_fkey"
             columns: ["work_order_id"]
             isOneToOne: false
             referencedRelation: "work_orders"
@@ -14091,14 +14331,21 @@ export type Database = {
           id: string
           notes: string | null
           ordered_at: string | null
+          po_number: string | null
           received_at: string | null
           shipping_total: number | null
           shop_id: string
           status: string
           subtotal: number | null
+          supplier_contact_channel: string | null
+          supplier_contact_idempotency_key: string | null
+          supplier_contacted_at: string | null
+          supplier_contacted_by: string | null
           supplier_id: string
+          supplier_quote_request_id: string | null
           tax_total: number | null
           total: number | null
+          work_order_id: string | null
         }
         Insert: {
           created_at?: string
@@ -14107,14 +14354,21 @@ export type Database = {
           id?: string
           notes?: string | null
           ordered_at?: string | null
+          po_number?: string | null
           received_at?: string | null
           shipping_total?: number | null
           shop_id: string
           status?: string
           subtotal?: number | null
+          supplier_contact_channel?: string | null
+          supplier_contact_idempotency_key?: string | null
+          supplier_contacted_at?: string | null
+          supplier_contacted_by?: string | null
           supplier_id: string
+          supplier_quote_request_id?: string | null
           tax_total?: number | null
           total?: number | null
+          work_order_id?: string | null
         }
         Update: {
           created_at?: string
@@ -14123,14 +14377,21 @@ export type Database = {
           id?: string
           notes?: string | null
           ordered_at?: string | null
+          po_number?: string | null
           received_at?: string | null
           shipping_total?: number | null
           shop_id?: string
           status?: string
           subtotal?: number | null
+          supplier_contact_channel?: string | null
+          supplier_contact_idempotency_key?: string | null
+          supplier_contacted_at?: string | null
+          supplier_contacted_by?: string | null
           supplier_id?: string
+          supplier_quote_request_id?: string | null
           tax_total?: number | null
           total?: number | null
+          work_order_id?: string | null
         }
         Relationships: [
           {
@@ -14138,6 +14399,48 @@ export type Database = {
             columns: ["supplier_id"]
             isOneToOne: false
             referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_orders_supplier_quote_request_id_fkey"
+            columns: ["supplier_quote_request_id"]
+            isOneToOne: false
+            referencedRelation: "parts_supplier_quote_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_orders_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_portal_invoices"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "purchase_orders_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_fleet"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "purchase_orders_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_portal"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "purchase_orders_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_shop"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "purchase_orders_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
             referencedColumns: ["id"]
           },
         ]
@@ -14670,6 +14973,652 @@ export type Database = {
           },
           {
             foreignKeyName: "quote_lines_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scheduler_operation_keys: {
+        Row: {
+          actor_user_id: string | null
+          created_at: string
+          id: string
+          operation_key: string
+          operation_name: string
+          result: Json
+          shop_id: string
+        }
+        Insert: {
+          actor_user_id?: string | null
+          created_at?: string
+          id?: string
+          operation_key: string
+          operation_name: string
+          result: Json
+          shop_id: string
+        }
+        Update: {
+          actor_user_id?: string | null
+          created_at?: string
+          id?: string
+          operation_key?: string
+          operation_name?: string
+          result?: Json
+          shop_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheduler_operation_keys_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduler_operation_keys_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scheduling_events: {
+        Row: {
+          booking_id: string | null
+          created_at: string
+          created_by: string | null
+          ends_at: string
+          id: string
+          metadata: Json
+          mode: string
+          service_visit_id: string | null
+          shop_id: string
+          source_id: string | null
+          source_kind: string
+          starts_at: string
+          status: string
+          title: string | null
+          updated_at: string
+          work_order_id: string | null
+        }
+        Insert: {
+          booking_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          ends_at: string
+          id?: string
+          metadata?: Json
+          mode?: string
+          service_visit_id?: string | null
+          shop_id: string
+          source_id?: string | null
+          source_kind?: string
+          starts_at: string
+          status?: string
+          title?: string | null
+          updated_at?: string
+          work_order_id?: string | null
+        }
+        Update: {
+          booking_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          ends_at?: string
+          id?: string
+          metadata?: Json
+          mode?: string
+          service_visit_id?: string | null
+          shop_id?: string
+          source_id?: string | null
+          source_kind?: string
+          starts_at?: string
+          status?: string
+          title?: string | null
+          updated_at?: string
+          work_order_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheduling_events_booking_id_fkey"
+            columns: ["booking_id"]
+            isOneToOne: false
+            referencedRelation: "bookings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduling_events_service_visit_id_fkey"
+            columns: ["service_visit_id"]
+            isOneToOne: false
+            referencedRelation: "service_visits"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduling_events_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduling_events_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduling_events_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_portal_invoices"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "scheduling_events_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_fleet"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "scheduling_events_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_portal"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "scheduling_events_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_shop"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "scheduling_events_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scheduling_reservations: {
+        Row: {
+          created_at: string
+          ends_at: string
+          event_id: string
+          id: string
+          reservation_role: string
+          resource_id: string
+          shop_id: string
+          starts_at: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          ends_at: string
+          event_id: string
+          id?: string
+          reservation_role?: string
+          resource_id: string
+          shop_id: string
+          starts_at: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          ends_at?: string
+          event_id?: string
+          id?: string
+          reservation_role?: string
+          resource_id?: string
+          shop_id?: string
+          starts_at?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheduling_reservations_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "scheduling_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduling_reservations_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "scheduling_resources"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduling_reservations_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduling_reservations_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scheduling_resources: {
+        Row: {
+          active: boolean
+          code: string
+          created_at: string
+          id: string
+          is_fallback: boolean
+          metadata: Json
+          mode: string
+          name: string
+          profile_id: string | null
+          public_bookable: boolean
+          resource_type: string
+          service_vehicle_id: string | null
+          shop_id: string
+          sort_order: number
+          stock_location_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          code: string
+          created_at?: string
+          id?: string
+          is_fallback?: boolean
+          metadata?: Json
+          mode?: string
+          name: string
+          profile_id?: string | null
+          public_bookable?: boolean
+          resource_type: string
+          service_vehicle_id?: string | null
+          shop_id: string
+          sort_order?: number
+          stock_location_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          code?: string
+          created_at?: string
+          id?: string
+          is_fallback?: boolean
+          metadata?: Json
+          mode?: string
+          name?: string
+          profile_id?: string | null
+          public_bookable?: boolean
+          resource_type?: string
+          service_vehicle_id?: string | null
+          shop_id?: string
+          sort_order?: number
+          stock_location_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheduling_resources_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduling_resources_service_vehicle_id_fkey"
+            columns: ["service_vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "service_vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduling_resources_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduling_resources_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduling_resources_stock_location_id_fkey"
+            columns: ["stock_location_id"]
+            isOneToOne: false
+            referencedRelation: "stock_locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      service_addresses: {
+        Row: {
+          access_notes: string | null
+          address_line1: string
+          address_line2: string | null
+          city: string | null
+          country_code: string
+          created_at: string
+          created_by: string | null
+          customer_id: string | null
+          id: string
+          label: string | null
+          latitude: number | null
+          longitude: number | null
+          postal_code: string | null
+          province_state: string | null
+          shop_id: string
+          updated_at: string
+        }
+        Insert: {
+          access_notes?: string | null
+          address_line1: string
+          address_line2?: string | null
+          city?: string | null
+          country_code?: string
+          created_at?: string
+          created_by?: string | null
+          customer_id?: string | null
+          id?: string
+          label?: string | null
+          latitude?: number | null
+          longitude?: number | null
+          postal_code?: string | null
+          province_state?: string | null
+          shop_id: string
+          updated_at?: string
+        }
+        Update: {
+          access_notes?: string | null
+          address_line1?: string
+          address_line2?: string | null
+          city?: string | null
+          country_code?: string
+          created_at?: string
+          created_by?: string | null
+          customer_id?: string | null
+          id?: string
+          label?: string | null
+          latitude?: number | null
+          longitude?: number | null
+          postal_code?: string | null
+          province_state?: string | null
+          shop_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_addresses_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_addresses_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_addresses_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      service_vehicles: {
+        Row: {
+          active: boolean
+          capabilities: Json
+          created_at: string
+          created_by: string | null
+          id: string
+          name: string
+          primary_user_id: string | null
+          shop_id: string
+          stock_location_id: string | null
+          unit_number: string | null
+          updated_at: string
+          vehicle_id: string | null
+        }
+        Insert: {
+          active?: boolean
+          capabilities?: Json
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name: string
+          primary_user_id?: string | null
+          shop_id: string
+          stock_location_id?: string | null
+          unit_number?: string | null
+          updated_at?: string
+          vehicle_id?: string | null
+        }
+        Update: {
+          active?: boolean
+          capabilities?: Json
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name?: string
+          primary_user_id?: string | null
+          shop_id?: string
+          stock_location_id?: string | null
+          unit_number?: string | null
+          updated_at?: string
+          vehicle_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_vehicles_primary_user_id_fkey"
+            columns: ["primary_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_vehicles_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_vehicles_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_vehicles_stock_location_id_fkey"
+            columns: ["stock_location_id"]
+            isOneToOne: false
+            referencedRelation: "stock_locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_vehicles_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      service_visits: {
+        Row: {
+          actual_distance_km: number | null
+          actual_travel_minutes: number | null
+          arrived_at: string | null
+          assigned_user_id: string | null
+          booking_id: string | null
+          completed_at: string | null
+          created_at: string
+          created_by: string | null
+          dispatch_notes: string | null
+          estimated_distance_km: number | null
+          estimated_travel_minutes: number | null
+          id: string
+          lifecycle_metadata: Json
+          mode: string
+          scheduled_end: string | null
+          scheduled_start: string | null
+          service_address_id: string | null
+          service_vehicle_id: string | null
+          shop_id: string
+          status: string
+          travel_started_at: string | null
+          updated_at: string
+          work_order_id: string | null
+          work_started_at: string | null
+        }
+        Insert: {
+          actual_distance_km?: number | null
+          actual_travel_minutes?: number | null
+          arrived_at?: string | null
+          assigned_user_id?: string | null
+          booking_id?: string | null
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          dispatch_notes?: string | null
+          estimated_distance_km?: number | null
+          estimated_travel_minutes?: number | null
+          id?: string
+          lifecycle_metadata?: Json
+          mode?: string
+          scheduled_end?: string | null
+          scheduled_start?: string | null
+          service_address_id?: string | null
+          service_vehicle_id?: string | null
+          shop_id: string
+          status?: string
+          travel_started_at?: string | null
+          updated_at?: string
+          work_order_id?: string | null
+          work_started_at?: string | null
+        }
+        Update: {
+          actual_distance_km?: number | null
+          actual_travel_minutes?: number | null
+          arrived_at?: string | null
+          assigned_user_id?: string | null
+          booking_id?: string | null
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          dispatch_notes?: string | null
+          estimated_distance_km?: number | null
+          estimated_travel_minutes?: number | null
+          id?: string
+          lifecycle_metadata?: Json
+          mode?: string
+          scheduled_end?: string | null
+          scheduled_start?: string | null
+          service_address_id?: string | null
+          service_vehicle_id?: string | null
+          shop_id?: string
+          status?: string
+          travel_started_at?: string | null
+          updated_at?: string
+          work_order_id?: string | null
+          work_started_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_visits_assigned_user_id_fkey"
+            columns: ["assigned_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_visits_booking_id_fkey"
+            columns: ["booking_id"]
+            isOneToOne: false
+            referencedRelation: "bookings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_visits_service_address_id_fkey"
+            columns: ["service_address_id"]
+            isOneToOne: false
+            referencedRelation: "service_addresses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_visits_service_vehicle_id_fkey"
+            columns: ["service_vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "service_vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_visits_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_visits_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_visits_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_portal_invoices"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "service_visits_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_fleet"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "service_visits_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_portal"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "service_visits_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_shop"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "service_visits_work_order_id_fkey"
             columns: ["work_order_id"]
             isOneToOne: false
             referencedRelation: "work_orders"
@@ -25934,6 +26883,18 @@ export type Database = {
         }
         Returns: Json
       }
+      parts_create_supplier_quote_request: {
+        Args: {
+          p_channel: string
+          p_idempotency_key: string
+          p_item_ids: string[]
+          p_message: string
+          p_request_id: string
+          p_subject: string
+          p_supplier_id: string
+        }
+        Returns: Json
+      }
       parts_dismiss_empty_request_atomic: {
         Args: {
           p_actor_user_id: string
@@ -25991,6 +26952,10 @@ export type Database = {
         }
         Returns: string
       }
+      parts_mark_purchase_order_contacted: {
+        Args: { p_channel: string; p_idempotency_key: string; p_po_id: string }
+        Returns: Json
+      }
       parts_on_hand: {
         Args: { p_location_id?: string; p_part_id: string; p_shop_id: string }
         Returns: number
@@ -26030,6 +26995,15 @@ export type Database = {
       parts_reconcile_work_order_part: {
         Args: { p_work_order_part_id: string }
         Returns: undefined
+      }
+      parts_record_supplier_quote_response: {
+        Args: {
+          p_idempotency_key: string
+          p_items: Json
+          p_quote_request_id: string
+          p_response_notes: string
+        }
+        Returns: Json
       }
       parts_replace_request_item: {
         Args: {
@@ -26518,6 +27492,94 @@ export type Database = {
           p_media_id: string
           p_overlay: Json
           p_visibility: string
+        }
+        Returns: Json
+      }
+      scheduler_actor_matches: {
+        Args: { p_actor_user_id: string }
+        Returns: boolean
+      }
+      scheduler_apply_booking_command_atomic: {
+        Args: {
+          p_action: string
+          p_actor_mode: string
+          p_actor_user_id: string
+          p_at?: string
+          p_booking_id: string
+          p_customer_id: string
+          p_ends_at: string
+          p_mode?: string
+          p_notes: string
+          p_operation_key: string
+          p_reason?: string
+          p_resource_id?: string
+          p_shop_id: string
+          p_starts_at: string
+          p_vehicle_id: string
+        }
+        Returns: Json
+      }
+      scheduler_assign_event_resource_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_event_id: string
+          p_operation_key: string
+          p_resource_id: string
+          p_shop_id: string
+        }
+        Returns: Json
+      }
+      scheduler_availability_snapshot: {
+        Args: {
+          p_mode?: string
+          p_public_only?: boolean
+          p_resource_id?: string
+          p_shop_id: string
+          p_window_end: string
+          p_window_start: string
+        }
+        Returns: Json
+      }
+      scheduler_can_manage: { Args: { p_shop_id: string }; Returns: boolean }
+      scheduler_list_events: {
+        Args: {
+          p_ends_at: string
+          p_mode?: string
+          p_shop_id: string
+          p_starts_at: string
+        }
+        Returns: Json
+      }
+      scheduler_list_resources: { Args: { p_shop_id: string }; Returns: Json }
+      scheduler_pick_resource: {
+        Args: {
+          p_ends_at: string
+          p_exclude_event_id?: string
+          p_mode: string
+          p_preferred_resource_id?: string
+          p_public_only?: boolean
+          p_shop_id: string
+          p_starts_at: string
+        }
+        Returns: string
+      }
+      scheduler_rebalance_fallback_reservations: {
+        Args: { p_mode: string; p_shop_id: string }
+        Returns: number
+      }
+      scheduler_same_shop: { Args: { p_shop_id: string }; Returns: boolean }
+      scheduler_upsert_resource: {
+        Args: {
+          p_active: boolean
+          p_actor_user_id: string
+          p_code: string
+          p_mode: string
+          p_name: string
+          p_public_bookable: boolean
+          p_resource_id: string
+          p_resource_type: string
+          p_shop_id: string
+          p_sort_order?: number
         }
         Returns: Json
       }
