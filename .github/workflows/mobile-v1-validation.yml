@@ -14,8 +14,10 @@ on:
       - "features/mobile/config/mobile-tiles.ts"
       - "features/shared/lib/offline/replay.ts"
       - "supabase/migrations/20260810225000_mobile_v1_productization.sql"
+      - "supabase/migrations/20260810225100_mobile_v1_dispatch_followup_hardening.sql"
       - "tests/mobile-v1-productization.test.ts"
       - "tests/mobile/mobile-v1-fake-day.runtime.sql"
+      - "tests/mobile/mobile-v1-team-dispatch.runtime.sql"
       - ".github/workflows/mobile-v1-validation.yml"
 
 permissions:
@@ -81,7 +83,7 @@ jobs:
             sudo apt-get install -y postgresql-client
           fi
 
-      - name: Run fake Mobile Service day
+      - name: Run fake Mobile Service days
         shell: bash
         env:
           DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
@@ -89,6 +91,8 @@ jobs:
           set -euo pipefail
           psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
             -f tests/mobile/mobile-v1-fake-day.runtime.sql
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+            -f tests/mobile/mobile-v1-team-dispatch.runtime.sql
 
       - name: Stop local Supabase
         if: always()
