@@ -1736,6 +1736,10 @@ export type Database = {
           created_at: string
           created_by: string | null
           customer_id: string | null
+          dispatch_locked_ends_at: string | null
+          dispatch_locked_starts_at: string | null
+          dispatch_locked_status: string | null
+          dispatch_owner_visit_id: string | null
           ends_at: string
           id: string
           lifecycle_metadata: Json
@@ -1754,6 +1758,10 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           customer_id?: string | null
+          dispatch_locked_ends_at?: string | null
+          dispatch_locked_starts_at?: string | null
+          dispatch_locked_status?: string | null
+          dispatch_owner_visit_id?: string | null
           ends_at: string
           id?: string
           lifecycle_metadata?: Json
@@ -1772,6 +1780,10 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           customer_id?: string | null
+          dispatch_locked_ends_at?: string | null
+          dispatch_locked_starts_at?: string | null
+          dispatch_locked_status?: string | null
+          dispatch_owner_visit_id?: string | null
           ends_at?: string
           id?: string
           lifecycle_metadata?: Json
