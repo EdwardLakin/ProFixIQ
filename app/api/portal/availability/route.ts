@@ -30,9 +30,19 @@ export async function GET(request: NextRequest) {
       requireOnlineBooking: true,
     });
 
-    return NextResponse.json(availability, {
-      headers: { "Cache-Control": "private, no-store" },
-    });
+    // Preserve the public portal contract and do not expose internal bay/truck
+    // resource identities. Resource-level capacity remains server-side truth.
+    return NextResponse.json(
+      {
+        tz: availability.tz,
+        disabled: availability.disabled,
+        slots: availability.slots.map((slot) => ({
+          start: slot.start,
+          end: slot.end,
+        })),
+      },
+      { headers: { "Cache-Control": "private, no-store" } },
+    );
   } catch (error) {
     return NextResponse.json(
       {
