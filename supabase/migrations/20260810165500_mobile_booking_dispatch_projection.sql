@@ -23,6 +23,7 @@ declare
   v_actor_profile_id uuid;
   v_times_changed boolean := false;
   v_status_changed boolean := false;
+  v_work_order_linked boolean := false;
 begin
   if new.shop_id is null then return new; end if;
 
@@ -95,6 +96,32 @@ begin
     return new;
   end if;
 
+  -- Work-order identity is allowed to arrive after dispatch. A mobile call may be
+  -- booked and released before the durable WO is created. Link it once, but never
+  -- replace an already-linked WO through booking projection.
+  if v_visit.work_order_id is null and new.work_order_id is not null then
+    update public.service_visits
+    set work_order_id = new.work_order_id,
+        version = version + 1,
+        updated_at = now()
+    where id = v_visit.id
+    returning * into v_visit;
+    v_work_order_linked := true;
+
+    insert into public.service_visit_events(
+      shop_id, service_visit_id, event_type, from_status, to_status,
+      actor_user_id, assigned_user_id, service_vehicle_id, metadata
+    ) values (
+      new.shop_id, v_visit.id, 'updated', v_visit.status, v_visit.status,
+      null, v_visit.assigned_user_id, v_visit.service_vehicle_id,
+      jsonb_build_object(
+        'source', 'mobile_booking_projection',
+        'booking_id', new.id,
+        'work_order_id', new.work_order_id
+      )
+    );
+  end if;
+
   -- Once dispatch has released the visit, physical execution owns its timeline.
   -- Before that point, staff/customer booking reschedules remain synchronized.
   if v_visit.status = 'scheduled' then
@@ -114,8 +141,7 @@ begin
       v_status_changed := true;
     else
       update public.service_visits
-      set work_order_id = coalesce(work_order_id, new.work_order_id),
-          scheduled_start = new.starts_at,
+      set scheduled_start = new.starts_at,
           scheduled_end = new.ends_at,
           version = case when v_times_changed then version + 1 else version end,
           updated_at = case when v_times_changed then now() else updated_at end
@@ -151,6 +177,8 @@ begin
     end if;
   end if;
 
+  -- Keep variable intentional for diagnostics and future projection evidence.
+  perform v_work_order_linked;
   return new;
 end;
 $$;
