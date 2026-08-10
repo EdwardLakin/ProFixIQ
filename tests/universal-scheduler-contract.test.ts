@@ -8,6 +8,15 @@ const foundation = read(
 const cutover = read(
   "supabase/migrations/20260810031500_universal_scheduler_cutover.sql",
 );
+const hardening = read(
+  "supabase/migrations/20260810032000_universal_scheduler_hardening.sql",
+);
+const newShopCapacity = read(
+  "supabase/migrations/20260810032500_scheduler_new_shop_capacity.sql",
+);
+const security = read(
+  "supabase/migrations/20260810033000_universal_scheduler_security_and_rebalance.sql",
+);
 const availability = read("features/scheduling/server/availability.ts");
 const validation = read("features/scheduling/server/validateBookingSlot.ts");
 const publicAvailability = read("app/api/portal/availability/route.ts");
@@ -21,6 +30,9 @@ const shopAssistantScheduling = read(
 const portalRequestStart = read("app/api/portal/request/start/route.ts");
 const resourceRoute = read("app/api/scheduling/resources/route.ts");
 const eventsRoute = read("app/api/scheduling/events/route.ts");
+const assignResourceRoute = read(
+  "app/api/scheduling/events/[id]/resource/route.ts",
+);
 
 describe("Universal Scheduler cutover", () => {
   it("keeps the mobile visit domain separate from the scheduler replacement", () => {
@@ -53,6 +65,8 @@ describe("Universal Scheduler cutover", () => {
     expect(cutover).toContain("stock_location_id uuid references public.stock_locations");
     expect(cutover).toContain("sync_service_vehicle_scheduling_resource");
     expect(cutover).toContain("sync_profile_scheduling_resource");
+    expect(newShopCapacity).toContain("shops_sync_default_scheduling_resource");
+    expect(security).toContain("scheduler_rebalance_fallback_reservations");
   });
 
   it("keeps bookings and work orders as compatibility projections of scheduler state", () => {
@@ -90,6 +104,7 @@ describe("Universal Scheduler cutover", () => {
     expect(availability).toContain("availableResourceIds");
     expect(validation).toContain("validateSchedulingSlot");
     expect(createBooking).toContain("validateSchedulingSlot");
+    expect(hardening).toContain("created_actor_mode");
   });
 
   it("preserves old callers while removing old scheduling semantics", () => {
@@ -108,16 +123,20 @@ describe("Universal Scheduler cutover", () => {
     );
   });
 
-  it("exposes canonical resource, event, and internal availability APIs", () => {
+  it("exposes canonical resource, event, assignment, and availability APIs", () => {
     expect(resourceRoute).toContain("scheduler_list_resources");
     expect(resourceRoute).toContain("scheduler_upsert_resource");
     expect(eventsRoute).toContain("scheduler_list_events");
+    expect(assignResourceRoute).toContain(
+      "scheduler_assign_event_resource_atomic",
+    );
+    expect(security).toContain("scheduler_assign_event_resource_atomic");
     expect(read("app/api/scheduling/availability/route.ts")).toContain(
       "getSchedulingAvailability",
     );
   });
 
-  it("keeps scheduling records shop-scoped and command-owned", () => {
+  it("keeps scheduling records shop-scoped and actor-bound", () => {
     expect(cutover).toContain(
       "alter table public.scheduling_resources enable row level security",
     );
@@ -129,5 +148,9 @@ describe("Universal Scheduler cutover", () => {
     );
     expect(cutover).toContain("grant select on public.scheduling_resources");
     expect(cutover).toContain("scheduler_same_shop");
+    expect(security).toContain("scheduler_actor_matches");
+    expect(security).toContain(
+      "Scheduling actor does not match the authenticated caller.",
+    );
   });
 });

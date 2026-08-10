@@ -93,6 +93,11 @@ values
 on conflict (id) do nothing;
 
 set local role service_role;
+select set_config(
+  'request.jwt.claims',
+  '{"role":"service_role"}',
+  true
+);
 
 do $$
 declare
@@ -242,6 +247,15 @@ begin
   if v_rescheduled_resource = v_a_resource then
     raise exception 'Universal scheduler assertion failed: automatic reschedule did not hop to the free bay';
   end if;
+
+  -- Explicit assignment can move the event back only when the target is free.
+  perform public.scheduler_assign_event_resource_atomic(
+    '9b000000-0000-4000-8000-000000000001',
+    v_a_event,
+    v_rescheduled_resource,
+    '9a000000-0000-4000-8000-000000000001',
+    'scheduler-runtime:assign:a'
+  );
 
   -- Both real bays are public here; the compatibility fallback must not appear
   -- in public availability once real capacity exists.
