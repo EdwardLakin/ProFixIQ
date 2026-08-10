@@ -28,13 +28,8 @@ insert into public.shops (
 values (
   '8b100000-0000-4000-8000-000000000001',
   '8a100000-0000-4000-8000-000000000001',
-  'Dispatch Runtime Shop',
-  'Dispatch Runtime Shop',
-  10,
-  true,
-  0,
-  365,
-  'repair_facility'
+  'Dispatch Runtime Shop', 'Dispatch Runtime Shop', 10,
+  true, 0, 365, 'repair_facility'
 )
 on conflict (id) do nothing;
 
@@ -68,15 +63,16 @@ declare
   v_booking_a jsonb;
   v_booking_b jsonb;
   v_booking_c jsonb;
+  v_booking_d jsonb;
   v_booking_a_id uuid;
   v_booking_b_id uuid;
   v_booking_c_id uuid;
-  v_visit_a jsonb;
-  v_visit_b jsonb;
-  v_visit_c jsonb;
+  v_booking_d_id uuid;
   v_visit_a_id uuid;
   v_visit_b_id uuid;
   v_visit_c_id uuid;
+  v_visit_d_id uuid;
+  v_create_result jsonb;
   v_truck_a uuid;
   v_truck_b uuid;
   v_board jsonb;
@@ -88,61 +84,62 @@ declare
   v_b_start timestamptz;
   v_b_end timestamptz;
 begin
+  -- Mobile bookings are the normal intake path. They must materialize exactly
+  -- one unassigned Service Visit after the scheduler event is established.
   v_booking_a := public.scheduler_apply_booking_command_atomic(
-    'create', null,
-    '8b100000-0000-4000-8000-000000000001',
-    '8c100000-0000-4000-8000-000000000001',
-    null,
-    '2099-03-01 09:00:00+00', '2099-03-01 10:00:00+00',
-    'Mobile visit A',
+    'create', null, '8b100000-0000-4000-8000-000000000001',
+    '8c100000-0000-4000-8000-000000000001', null,
+    '2099-03-01 09:00:00+00', '2099-03-01 10:00:00+00', 'Mobile visit A',
     '8a100000-0000-4000-8000-000000000001', 'staff',
-    'dispatch-runtime:booking:a', null,
-    '2099-01-01 00:00:00+00', 'mobile', null
+    'dispatch-runtime:booking:a', null, '2099-01-01 00:00:00+00', 'mobile', null
   );
   v_booking_b := public.scheduler_apply_booking_command_atomic(
-    'create', null,
-    '8b100000-0000-4000-8000-000000000001',
-    '8c100000-0000-4000-8000-000000000001',
-    null,
-    '2099-03-01 09:00:00+00', '2099-03-01 10:00:00+00',
-    'Mobile visit B',
+    'create', null, '8b100000-0000-4000-8000-000000000001',
+    '8c100000-0000-4000-8000-000000000001', null,
+    '2099-03-01 09:00:00+00', '2099-03-01 10:00:00+00', 'Mobile visit B',
     '8a100000-0000-4000-8000-000000000001', 'staff',
-    'dispatch-runtime:booking:b', null,
-    '2099-01-01 00:00:00+00', 'mobile', null
+    'dispatch-runtime:booking:b', null, '2099-01-01 00:00:00+00', 'mobile', null
   );
   v_booking_c := public.scheduler_apply_booking_command_atomic(
-    'create', null,
-    '8b100000-0000-4000-8000-000000000001',
-    '8c100000-0000-4000-8000-000000000001',
-    null,
-    '2099-03-01 13:00:00+00', '2099-03-01 14:00:00+00',
-    'Mobile visit C',
+    'create', null, '8b100000-0000-4000-8000-000000000001',
+    '8c100000-0000-4000-8000-000000000001', null,
+    '2099-03-01 13:00:00+00', '2099-03-01 14:00:00+00', 'Mobile visit C',
     '8a100000-0000-4000-8000-000000000001', 'staff',
-    'dispatch-runtime:booking:c', null,
-    '2099-01-01 00:00:00+00', 'mobile', null
+    'dispatch-runtime:booking:c', null, '2099-01-01 00:00:00+00', 'mobile', null
   );
+
   v_booking_a_id := (v_booking_a -> 'booking' ->> 'id')::uuid;
   v_booking_b_id := (v_booking_b -> 'booking' ->> 'id')::uuid;
   v_booking_c_id := (v_booking_c -> 'booking' ->> 'id')::uuid;
 
-  v_visit_a := public.dispatch_create_service_visit_atomic(
-    '8b100000-0000-4000-8000-000000000001', v_booking_a_id, null, 'mobile',
-    null, null, null, null, null, 'Call A', 20, 12.5,
-    '8a100000-0000-4000-8000-000000000001', 'dispatch-runtime:visit:a'
+  select id into v_visit_a_id from public.service_visits where booking_id = v_booking_a_id;
+  select id into v_visit_b_id from public.service_visits where booking_id = v_booking_b_id;
+  select id into v_visit_c_id from public.service_visits where booking_id = v_booking_c_id;
+  if v_visit_a_id is null or v_visit_b_id is null or v_visit_c_id is null then
+    raise exception 'Dispatch assertion failed: mobile bookings did not materialize service visits';
+  end if;
+  if (select count(*) from public.service_visits where booking_id in (v_booking_a_id, v_booking_b_id, v_booking_c_id)) <> 3 then
+    raise exception 'Dispatch assertion failed: mobile booking projection was not one-to-one';
+  end if;
+
+  -- Explicit create remains available for non-mobile-booking consumers.
+  v_booking_d := public.scheduler_apply_booking_command_atomic(
+    'create', null, '8b100000-0000-4000-8000-000000000001',
+    '8c100000-0000-4000-8000-000000000001', null,
+    '2099-03-05 09:00:00+00', '2099-03-05 10:00:00+00', 'Shop visit D',
+    '8a100000-0000-4000-8000-000000000001', 'staff',
+    'dispatch-runtime:booking:d', null, '2099-01-01 00:00:00+00', 'shop', null
   );
-  v_visit_b := public.dispatch_create_service_visit_atomic(
-    '8b100000-0000-4000-8000-000000000001', v_booking_b_id, null, 'mobile',
-    null, null, null, null, null, 'Call B', 15, 9.0,
-    '8a100000-0000-4000-8000-000000000001', 'dispatch-runtime:visit:b'
+  v_booking_d_id := (v_booking_d -> 'booking' ->> 'id')::uuid;
+  v_create_result := public.dispatch_create_service_visit_atomic(
+    '8b100000-0000-4000-8000-000000000001', v_booking_d_id, null, 'shop',
+    null, null, null, null, null, 'Shop visit', null, null,
+    '8a100000-0000-4000-8000-000000000001', 'dispatch-runtime:visit:d'
   );
-  v_visit_c := public.dispatch_create_service_visit_atomic(
-    '8b100000-0000-4000-8000-000000000001', v_booking_c_id, null, 'mobile',
-    null, null, null, null, null, 'Call C', 10, 5.0,
-    '8a100000-0000-4000-8000-000000000001', 'dispatch-runtime:visit:c'
-  );
-  v_visit_a_id := (v_visit_a -> 'visit' ->> 'id')::uuid;
-  v_visit_b_id := (v_visit_b -> 'visit' ->> 'id')::uuid;
-  v_visit_c_id := (v_visit_c -> 'visit' ->> 'id')::uuid;
+  v_visit_d_id := (v_create_result -> 'visit' ->> 'id')::uuid;
+  if v_visit_d_id is null then
+    raise exception 'Dispatch assertion failed: canonical create RPC did not create a service visit';
+  end if;
 
   v_board := public.dispatch_board_snapshot(
     '8b100000-0000-4000-8000-000000000001',
@@ -150,45 +147,42 @@ begin
     '2099-03-01 00:00:00+00', '2099-03-02 00:00:00+00'
   );
   if jsonb_array_length(v_board -> 'visits') <> 3 then
-    raise exception 'Dispatch assertion failed: board did not return three active visits';
+    raise exception 'Dispatch assertion failed: board did not return three active mobile visits';
   end if;
   if (
-    select count(*)
-    from jsonb_array_elements(v_board -> 'visits') x
-    where x ->> 'assignedTechnician' is null
+    select count(*) from jsonb_array_elements(v_board -> 'visits') x
+    where x -> 'assignedTechnician' is null
   ) <> 3 then
-    raise exception 'Dispatch assertion failed: new visits were not unassigned';
+    raise exception 'Dispatch assertion failed: new mobile visits were not unassigned';
   end if;
 
   select sr.service_vehicle_id into v_truck_a
   from public.scheduling_events e
-  join public.scheduling_reservations r
-    on r.event_id = e.id and r.reservation_role = 'primary'
+  join public.scheduling_reservations r on r.event_id = e.id and r.reservation_role = 'primary'
   join public.scheduling_resources sr on sr.id = r.resource_id
   where e.service_visit_id = v_visit_a_id;
 
   select sr.service_vehicle_id into v_truck_b
   from public.scheduling_events e
-  join public.scheduling_reservations r
-    on r.event_id = e.id and r.reservation_role = 'primary'
+  join public.scheduling_reservations r on r.event_id = e.id and r.reservation_role = 'primary'
   join public.scheduling_resources sr on sr.id = r.resource_id
   where e.service_visit_id = v_visit_b_id;
 
   if v_truck_a is null or v_truck_b is null or v_truck_a = v_truck_b then
-    raise exception 'Dispatch assertion failed: simultaneous mobile visits did not reserve distinct service trucks';
+    raise exception 'Dispatch assertion failed: simultaneous mobile visits did not reserve distinct trucks';
   end if;
 
   perform public.dispatch_assign_service_visit_atomic(
     '8b100000-0000-4000-8000-000000000001', v_visit_a_id,
-    '8a100000-0000-4000-8000-000000000002', v_truck_a,
-    null, '8a100000-0000-4000-8000-000000000001', 'dispatch-runtime:assign:a'
+    '8a100000-0000-4000-8000-000000000002', v_truck_a, null,
+    '8a100000-0000-4000-8000-000000000001', 'dispatch-runtime:assign:a'
   );
 
   begin
     perform public.dispatch_assign_service_visit_atomic(
       '8b100000-0000-4000-8000-000000000001', v_visit_b_id,
-      '8a100000-0000-4000-8000-000000000002', v_truck_b,
-      null, '8a100000-0000-4000-8000-000000000001', 'dispatch-runtime:assign:b-conflict'
+      '8a100000-0000-4000-8000-000000000002', v_truck_b, null,
+      '8a100000-0000-4000-8000-000000000001', 'dispatch-runtime:assign:b-conflict'
     );
   exception when exclusion_violation then
     v_conflict := true;
@@ -199,14 +193,13 @@ begin
 
   perform public.dispatch_assign_service_visit_atomic(
     '8b100000-0000-4000-8000-000000000001', v_visit_b_id,
-    '8a100000-0000-4000-8000-000000000003', v_truck_b,
-    null, '8a100000-0000-4000-8000-000000000001', 'dispatch-runtime:assign:b'
+    '8a100000-0000-4000-8000-000000000003', v_truck_b, null,
+    '8a100000-0000-4000-8000-000000000001', 'dispatch-runtime:assign:b'
   );
-
   perform public.dispatch_assign_service_visit_atomic(
     '8b100000-0000-4000-8000-000000000001', v_visit_c_id,
-    '8a100000-0000-4000-8000-000000000002', null,
-    null, '8a100000-0000-4000-8000-000000000001', 'dispatch-runtime:assign:c'
+    '8a100000-0000-4000-8000-000000000002', null, null,
+    '8a100000-0000-4000-8000-000000000001', 'dispatch-runtime:assign:c'
   );
 
   perform public.dispatch_transition_service_visit_atomic(
@@ -232,14 +225,10 @@ begin
 
   if not exists (
     select 1 from public.service_visits sv
-    where sv.id = v_visit_a_id
-      and sv.status = 'completed'
-      and sv.dispatched_at is not null
-      and sv.travel_started_at is not null
-      and sv.arrived_at is not null
-      and sv.work_started_at is not null
-      and sv.completed_at is not null
-      and sv.actual_travel_minutes is not null
+    where sv.id = v_visit_a_id and sv.status = 'completed'
+      and sv.dispatched_at is not null and sv.travel_started_at is not null
+      and sv.arrived_at is not null and sv.work_started_at is not null
+      and sv.completed_at is not null and sv.actual_travel_minutes is not null
       and sv.actual_distance_km = 12.8
   ) then
     raise exception 'Dispatch assertion failed: lifecycle timestamps/travel metrics were not stamped';
@@ -254,16 +243,14 @@ begin
 
   select r.status into v_primary_status
   from public.scheduling_events e
-  join public.scheduling_reservations r
-    on r.event_id = e.id and r.reservation_role = 'primary'
+  join public.scheduling_reservations r on r.event_id = e.id and r.reservation_role = 'primary'
   where e.service_visit_id = v_visit_a_id;
   select r.status into v_tech_status
   from public.scheduling_events e
-  join public.scheduling_reservations r
-    on r.event_id = e.id and r.reservation_role = 'technician'
+  join public.scheduling_reservations r on r.event_id = e.id and r.reservation_role = 'technician'
   where e.service_visit_id = v_visit_a_id;
   if v_primary_status <> 'completed' or v_tech_status <> 'completed' then
-    raise exception 'Dispatch assertion failed: completed visit did not release scheduler reservations';
+    raise exception 'Dispatch assertion failed: completed visit did not complete scheduler reservations';
   end if;
 
   v_mobile := public.dispatch_mobile_active_snapshot(
@@ -274,7 +261,7 @@ begin
     raise exception 'Dispatch assertion failed: completed job remained active for technician';
   end if;
   if (v_mobile -> 'nextJob' ->> 'id')::uuid <> v_visit_c_id then
-    raise exception 'Dispatch assertion failed: technician next-job contract did not return visit C';
+    raise exception 'Dispatch assertion failed: next-job contract did not return visit C';
   end if;
 
   perform public.dispatch_reschedule_service_visit_atomic(
@@ -285,8 +272,7 @@ begin
 
   select r.starts_at, r.ends_at into v_b_start, v_b_end
   from public.scheduling_events e
-  join public.scheduling_reservations r
-    on r.event_id = e.id and r.reservation_role = 'technician'
+  join public.scheduling_reservations r on r.event_id = e.id and r.reservation_role = 'technician'
   where e.service_visit_id = v_visit_b_id;
   if v_b_start <> '2099-03-01 11:00:00+00'::timestamptz
      or v_b_end <> '2099-03-01 12:00:00+00'::timestamptz then
