@@ -5,6 +5,25 @@ import { NextResponse } from "next/server";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
+type ShopAccess = Extract<
+  Awaited<ReturnType<typeof requireShopScopedApiAccess>>,
+  { ok: true }
+>;
+
+export async function isExplicitMobileFieldOperator(
+  access: ShopAccess,
+): Promise<boolean> {
+  const { data, error } = await access.supabase
+    .from("mobile_field_operators")
+    .select("profile_id")
+    .eq("shop_id", access.profile.shop_id)
+    .eq("profile_id", access.profile.id)
+    .eq("enabled", true)
+    .maybeSingle<{ profile_id: string }>();
+  if (error) throw new Error(error.message);
+  return Boolean(data);
+}
+
 export async function requireMobileServiceOperatorApiAccess() {
   const access = await requireShopScopedApiAccess();
   if (!access.ok) return access;
@@ -18,15 +37,10 @@ export async function requireMobileServiceOperatorApiAccess() {
     "service",
   ].includes(access.canonicalRole);
 
-  const { data: fieldOperator, error } = await access.supabase
-    .from("mobile_field_operators")
-    .select("profile_id")
-    .eq("shop_id", access.profile.shop_id)
-    .eq("profile_id", access.profile.id)
-    .eq("enabled", true)
-    .maybeSingle<{ profile_id: string }>();
-
-  if (error) {
+  let isFieldOperator = false;
+  try {
+    isFieldOperator = await isExplicitMobileFieldOperator(access);
+  } catch {
     return {
       ok: false as const,
       response: NextResponse.json(
@@ -36,7 +50,6 @@ export async function requireMobileServiceOperatorApiAccess() {
     };
   }
 
-  const isFieldOperator = Boolean(fieldOperator);
   if (!managementRole && !isFieldOperator && !actor.canManageScheduling) {
     return {
       ok: false as const,
