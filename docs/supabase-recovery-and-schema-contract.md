@@ -23,27 +23,28 @@ RLS policies, grants, function search paths, and replay behavior.
 
 ## Clean replay and type verification
 
+Before publishing any pull request that changes a migration, run:
+
 ```bash
-supabase start
-supabase db reset --local --no-seed
-psql postgresql://postgres:postgres@127.0.0.1:54322/postgres \
-  -X -v ON_ERROR_STOP=1 \
-  -f tests/security/p0-008-schema-reconciliation.runtime.sql
-supabase gen types typescript --local --schema public \
-  > generated-supabase-types.ts
-diff -u features/shared/types/types/supabase.ts generated-supabase-types.ts
+pnpm db:schema:check
 ```
 
-Run the existing P0 runtime SQL tests on the same clean database. The
-`Supabase Clean Replay Validation` workflow performs the complete sequence and
-uploads replay logs plus `generated-supabase-types.ts` when a check fails.
+This command starts the local database when needed, replays every migration, and
+compares locally generated public-schema types with the committed contract. The
+database is never linked to or pushed to production.
 
-To intentionally refresh the committed contract, first complete a clean replay,
-then run:
+Run the existing P0 runtime SQL tests on the same clean database when the change
+touches their invariants. The `Supabase Clean Replay Validation` workflow runs
+the complete integration sequence. It now verifies the generated contract
+immediately after the first successful migration apply, so stale types fail
+before the longer reset and runtime suite.
+
+To intentionally refresh the committed contract, run:
 
 ```bash
-pnpm typegen
+pnpm db:schema:refresh
 git diff -- features/shared/types/types/supabase.ts
+pnpm db:schema:check
 ```
 
 Review the generated diff with the migration that caused it. A linked-project
