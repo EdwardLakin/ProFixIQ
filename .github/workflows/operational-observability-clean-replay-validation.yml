@@ -2,7 +2,7 @@ name: Operational Observability Clean Replay
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     paths:
       - "features/shared/types/types/supabase.ts"
       - "supabase/migrations/20260802101400_ai_operating_intelligence_substrate_reconciliation.sql"
