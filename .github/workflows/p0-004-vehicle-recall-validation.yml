@@ -2,7 +2,7 @@ name: P0-004 Vehicle Recall Validation
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     paths:
       - "app/api/recalls/fetch/**"
       - "app/vehicle/VinCaptureModal.tsx"

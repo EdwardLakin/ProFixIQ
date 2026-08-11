@@ -2,7 +2,7 @@ name: Phase 6 Technician Mobile Reliability
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     paths:
       - "features/shared/lib/offline/**"
       - "features/work-orders/lib/jobPunchTransitionsClient.ts"
