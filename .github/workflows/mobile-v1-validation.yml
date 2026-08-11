@@ -21,11 +21,14 @@ on:
       - "supabase/migrations/20260811020100_mobile_v1_rapid_intake_identity_hardening.sql"
       - "supabase/migrations/20260811020200_mobile_v1_followup_authorization_alignment.sql"
       - "supabase/migrations/20260811020300_mobile_v1_second_codex_review_hardening.sql"
+      - "supabase/migrations/20260811145500_mobile_v1_end_to_end_repair_hardening.sql"
       - "tests/mobile-v1-productization.test.ts"
+      - "tests/mobile-v1-post-merge-hardening.test.ts"
       - "tests/mobile/mobile-v1-fake-day.runtime.sql"
       - "tests/mobile/mobile-v1-team-dispatch.runtime.sql"
       - "tests/mobile/mobile-v1-codex-hardening.runtime.sql"
       - "tests/mobile/mobile-v1-second-codex-hardening.runtime.sql"
+      - "tests/mobile/mobile-v1-post-merge-hardening.runtime.sql"
       - ".github/workflows/mobile-v1-validation.yml"
 
 permissions:
@@ -64,6 +67,7 @@ jobs:
         run: >-
           pnpm exec vitest run
           tests/mobile-v1-productization.test.ts
+          tests/mobile-v1-post-merge-hardening.test.ts
           tests/mobile-service-shell.test.ts
           tests/mobile-native-route-audit.test.ts
           tests/phase-d3-dashboard-navigation.test.tsx
@@ -111,6 +115,9 @@ jobs:
             echo "=== Second Codex Mobile V1 day ==="
             psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
               -f tests/mobile/mobile-v1-second-codex-hardening.runtime.sql
+            echo "=== Post-merge end-to-end Mobile V1 day ==="
+            psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+              -f tests/mobile/mobile-v1-post-merge-hardening.runtime.sql
           } 2>&1 | tee "$RUNNER_TEMP/mobile-v1-runtime.log"
 
       - name: Upload Mobile V1 runtime diagnostics

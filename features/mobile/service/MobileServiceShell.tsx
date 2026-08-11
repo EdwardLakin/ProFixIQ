@@ -318,6 +318,9 @@ function VisitCard({
   const directions = directionsHref(visit);
   const phone = visit.customer?.phone?.trim() || null;
   const ActionIcon = action?.icon ?? ArrowRight;
+  const workOrderRequired =
+    !visit.workOrderId &&
+    (action?.toStatus === "working" || action?.toStatus === "completed");
 
   return (
     <article className="overflow-hidden rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] shadow-card">
@@ -480,7 +483,7 @@ function VisitCard({
           <div className="space-y-2">
             <button
               type="button"
-              disabled={busy}
+              disabled={busy || workOrderRequired}
               onClick={() => onPrimary(visit)}
               className="inline-flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl bg-[color:var(--accent-copper)] px-4 text-base font-extrabold text-white shadow-card disabled:cursor-not-allowed disabled:opacity-50"
             >
@@ -489,8 +492,17 @@ function VisitCard({
               ) : (
                 <ActionIcon className="h-5 w-5" />
               )}
-              {busy ? "Updating…" : action.label}
+              {busy
+                ? "Updating…"
+                : workOrderRequired
+                  ? "Create work order first"
+                  : action.label}
             </button>
+            {workOrderRequired ? (
+              <p className="text-center text-xs text-[color:var(--theme-text-muted)]">
+                Create the work order before starting or completing repair.
+              </p>
+            ) : null}
             {visit.status === "working" ? (
               <button
                 type="button"

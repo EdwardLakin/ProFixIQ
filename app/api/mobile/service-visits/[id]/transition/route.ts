@@ -83,13 +83,23 @@ export async function POST(
   if (error) {
     const stale =
       error.code === "40001" || /STATE_CHANGED|VERSION_CHANGED/i.test(error.message);
+    const workOrderRequired = /linked work order is required/i.test(error.message);
     return NextResponse.json(
       {
         error: stale
           ? "This service call changed on another device. Refresh before continuing."
-          : error.message,
+          : workOrderRequired
+            ? "Create the work order before starting or completing repair."
+            : error.message,
       },
-      { status: error.code === "42501" ? 403 : stale ? 409 : 400 },
+      {
+        status:
+          error.code === "42501"
+            ? 403
+            : stale || workOrderRequired
+              ? 409
+              : 400,
+      },
     );
   }
   return NextResponse.json(data);

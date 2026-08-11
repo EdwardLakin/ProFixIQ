@@ -28,7 +28,11 @@ export async function canFieldOperatorAccessWorkOrder(
   access: ShopAccess,
   workOrderId: string,
 ): Promise<boolean> {
-  if (!(await isExplicitMobileFieldOperator(access))) return false;
+  const actor = getActorCapabilities({ role: access.profile.role });
+  const fieldAuthorized =
+    actor.canPerformAssignedWork || (await isExplicitMobileFieldOperator(access));
+  if (!fieldAuthorized) return false;
+
   const { data, error } = await access.supabase
     .from("service_visits")
     .select("id")
@@ -67,7 +71,12 @@ export async function requireMobileServiceOperatorApiAccess() {
     };
   }
 
-  if (!managementRole && !isFieldOperator && !actor.canManageScheduling) {
+  if (
+    !managementRole &&
+    !isFieldOperator &&
+    !actor.canPerformAssignedWork &&
+    !actor.canManageScheduling
+  ) {
     return {
       ok: false as const,
       response: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
