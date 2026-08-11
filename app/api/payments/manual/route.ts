@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import { canFieldOperatorAccessWorkOrder } from "@/features/mobile/service/server/access";
 import {
   getActiveInvoiceVersion,
   postPaymentEvent,
@@ -9,7 +11,14 @@ import {
 
 type DB = Database;
 const PAYMENT_ROLES = ["owner", "admin", "manager", "advisor", "service"] as const;
-const METHODS = new Set(["cash", "cheque", "terminal", "eft", "financing", "other"]);
+const METHODS = new Set([
+  "cash",
+  "cheque",
+  "terminal",
+  "eft",
+  "financing",
+  "other",
+]);
 
 type Body = {
   workOrderId?: string;
@@ -22,10 +31,7 @@ type Body = {
 };
 
 export async function POST(req: Request) {
-  const access = await requireShopScopedApiAccess({
-    requiredCapability: "canManageWorkOrders",
-    allowRoles: [...PAYMENT_ROLES],
-  });
+  const access = await requireShopScopedApiAccess();
   if (!access.ok) return access.response;
 
   try {
@@ -34,17 +40,45 @@ export async function POST(req: Request) {
     const method = body?.method?.trim().toLowerCase() ?? "";
     const amount = Number(body?.amount);
     const idempotencyKey =
-      body?.idempotencyKey?.trim() || req.headers.get("idempotency-key")?.trim() || "";
+      body?.idempotencyKey?.trim() ||
+      req.headers.get("idempotency-key")?.trim() ||
+      "";
 
-    if (!workOrderId) return NextResponse.json({ error: "Missing workOrderId" }, { status: 400 });
+    if (!workOrderId)
+      return NextResponse.json(
+        { error: "Missing workOrderId" },
+        { status: 400 },
+      );
+
+    const actor = getActorCapabilities({ role: access.profile.role });
+    const standardPaymentAuthority =
+      PAYMENT_ROLES.includes(
+        access.canonicalRole as (typeof PAYMENT_ROLES)[number],
+      ) && actor.canManageWorkOrders;
+    const mobileFieldAuthority = standardPaymentAuthority
+      ? false
+      : await canFieldOperatorAccessWorkOrder(access, workOrderId);
+    if (!standardPaymentAuthority && !mobileFieldAuthority) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     if (!METHODS.has(method)) {
-      return NextResponse.json({ error: "Unsupported payment method" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Unsupported payment method" },
+        { status: 400 },
+      );
     }
     if (!Number.isFinite(amount) || amount <= 0) {
-      return NextResponse.json({ error: "Payment amount must be greater than zero" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Payment amount must be greater than zero" },
+        { status: 400 },
+      );
     }
     if (!idempotencyKey) {
-      return NextResponse.json({ error: "An idempotency key is required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "An idempotency key is required" },
+        { status: 400 },
+      );
     }
 
     const admin = createClient<DB>(
@@ -57,10 +91,16 @@ export async function POST(req: Request) {
       shopId: access.profile.shop_id,
     });
     if (!invoiceVersion) {
-      return NextResponse.json({ error: "No finalized invoice found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "No finalized invoice found" },
+        { status: 404 },
+      );
     }
     if (!["issued", "partially_paid"].includes(invoiceVersion.lifecycle_status)) {
-      return NextResponse.json({ error: "This invoice is not payable" }, { status: 409 });
+      return NextResponse.json(
+        { error: "This invoice is not payable" },
+        { status: 409 },
+      );
     }
     if (amount > Number(invoiceVersion.outstanding_total) + 0.01) {
       return NextResponse.json(
@@ -71,7 +111,10 @@ export async function POST(req: Request) {
 
     const occurredAt = body?.receivedAt ? new Date(body.receivedAt) : new Date();
     if (Number.isNaN(occurredAt.getTime())) {
-      return NextResponse.json({ error: "Invalid receivedAt timestamp" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Invalid receivedAt timestamp" },
+        { status: 400 },
+      );
     }
 
     const result = await postPaymentEvent({
@@ -96,7 +139,8 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true, ...result });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Failed to post payment";
+    const message =
+      error instanceof Error ? error.message : "Failed to post payment";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

@@ -1,0 +1,128 @@
+name: Mobile V1 Validation
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "app/mobile/service/**"
+      - "app/api/mobile/service/**"
+      - "app/api/mobile/service-visits/**"
+      - "app/api/invoices/finalize/route.ts"
+      - "app/api/payments/manual/route.ts"
+      - "features/invoices/components/RecordManualPayment.tsx"
+      - "features/mobile/service/**"
+      - "features/mobile/config/mobile-tiles.ts"
+      - "features/shared/lib/offline/mutations.ts"
+      - "features/shared/lib/offline/replay.ts"
+      - "supabase/migrations/20260810225000_mobile_v1_productization.sql"
+      - "supabase/migrations/20260810225100_mobile_v1_dispatch_followup_hardening.sql"
+      - "supabase/migrations/20260811020000_mobile_v1_codex_review_hardening.sql"
+      - "supabase/migrations/20260811020100_mobile_v1_rapid_intake_identity_hardening.sql"
+      - "supabase/migrations/20260811020200_mobile_v1_followup_authorization_alignment.sql"
+      - "supabase/migrations/20260811020300_mobile_v1_second_codex_review_hardening.sql"
+      - "tests/mobile-v1-productization.test.ts"
+      - "tests/mobile/mobile-v1-fake-day.runtime.sql"
+      - "tests/mobile/mobile-v1-team-dispatch.runtime.sql"
+      - "tests/mobile/mobile-v1-codex-hardening.runtime.sql"
+      - "tests/mobile/mobile-v1-second-codex-hardening.runtime.sql"
+      - ".github/workflows/mobile-v1-validation.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-v1-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Check out pull request
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.8.1
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Mobile V1 source contracts
+        run: >-
+          pnpm exec vitest run
+          tests/mobile-v1-productization.test.ts
+          tests/mobile-service-shell.test.ts
+          tests/mobile-native-route-audit.test.ts
+          tests/phase-d3-dashboard-navigation.test.tsx
+
+      - name: Set up Supabase CLI
+        uses: supabase/setup-cli@v2
+        with:
+          version: 2.101.0
+          github-token: ${{ github.token }}
+
+      - name: Start clean local database
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -f supabase/config.toml ]]; then
+            supabase init
+          fi
+          supabase db start
+
+      - name: Ensure PostgreSQL client
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+
+      - name: Run fake Mobile Service days
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -o pipefail
+          {
+            echo "=== Solo Mobile V1 fake day ==="
+            psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+              -f tests/mobile/mobile-v1-fake-day.runtime.sql
+            echo "=== Team Dispatch Mobile V1 fake day ==="
+            psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+              -f tests/mobile/mobile-v1-team-dispatch.runtime.sql
+            echo "=== Codex adversarial Mobile V1 day ==="
+            psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+              -f tests/mobile/mobile-v1-codex-hardening.runtime.sql
+            echo "=== Second Codex Mobile V1 day ==="
+            psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+              -f tests/mobile/mobile-v1-second-codex-hardening.runtime.sql
+          } 2>&1 | tee "$RUNNER_TEMP/mobile-v1-runtime.log"
+
+      - name: Upload Mobile V1 runtime diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-v1-runtime-${{ github.run_id }}
+          path: ${{ runner.temp }}/mobile-v1-runtime.log
+          if-no-files-found: ignore
+          retention-days: 5
+
+      - name: Stop local Supabase
+        if: always()
+        shell: bash
+        run: supabase stop --no-backup || true

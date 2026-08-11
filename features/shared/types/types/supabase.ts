@@ -9308,6 +9308,62 @@ export type Database = {
           },
         ]
       }
+      mobile_field_operators: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          enabled: boolean
+          profile_id: string
+          shop_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          enabled?: boolean
+          profile_id: string
+          shop_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          enabled?: boolean
+          profile_id?: string
+          shop_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mobile_field_operators_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mobile_field_operators_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mobile_field_operators_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mobile_field_operators_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       mobile_operation_keys: {
         Row: {
           actor_user_id: string | null
@@ -9404,6 +9460,252 @@ export type Database = {
             columns: ["work_order_line_id"]
             isOneToOne: false
             referencedRelation: "work_order_lines"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mobile_service_followups: {
+        Row: {
+          converted_work_order_id: string | null
+          created_at: string
+          customer_id: string | null
+          dismissed_at: string | null
+          disposition: string
+          estimated_amount: number | null
+          follow_up_at: string | null
+          id: string
+          notes: string | null
+          quoted_at: string | null
+          recommendation: string
+          recommended_at: string
+          recommended_by: string | null
+          service_visit_id: string | null
+          shop_id: string
+          status: string
+          updated_at: string
+          vehicle_id: string | null
+          work_order_id: string
+        }
+        Insert: {
+          converted_work_order_id?: string | null
+          created_at?: string
+          customer_id?: string | null
+          dismissed_at?: string | null
+          disposition?: string
+          estimated_amount?: number | null
+          follow_up_at?: string | null
+          id?: string
+          notes?: string | null
+          quoted_at?: string | null
+          recommendation: string
+          recommended_at?: string
+          recommended_by?: string | null
+          service_visit_id?: string | null
+          shop_id: string
+          status?: string
+          updated_at?: string
+          vehicle_id?: string | null
+          work_order_id: string
+        }
+        Update: {
+          converted_work_order_id?: string | null
+          created_at?: string
+          customer_id?: string | null
+          dismissed_at?: string | null
+          disposition?: string
+          estimated_amount?: number | null
+          follow_up_at?: string | null
+          id?: string
+          notes?: string | null
+          quoted_at?: string | null
+          recommendation?: string
+          recommended_at?: string
+          recommended_by?: string | null
+          service_visit_id?: string | null
+          shop_id?: string
+          status?: string
+          updated_at?: string
+          vehicle_id?: string | null
+          work_order_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mobile_service_followups_converted_work_order_id_fkey"
+            columns: ["converted_work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_portal_invoices"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "mobile_service_followups_converted_work_order_id_fkey"
+            columns: ["converted_work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_fleet"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "mobile_service_followups_converted_work_order_id_fkey"
+            columns: ["converted_work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_portal"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "mobile_service_followups_converted_work_order_id_fkey"
+            columns: ["converted_work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_shop"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "mobile_service_followups_converted_work_order_id_fkey"
+            columns: ["converted_work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mobile_service_followups_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mobile_service_followups_recommended_by_fkey"
+            columns: ["recommended_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mobile_service_followups_service_visit_id_fkey"
+            columns: ["service_visit_id"]
+            isOneToOne: false
+            referencedRelation: "service_visits"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mobile_service_followups_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mobile_service_followups_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mobile_service_followups_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mobile_service_followups_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_portal_invoices"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "mobile_service_followups_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_fleet"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "mobile_service_followups_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_portal"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "mobile_service_followups_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_shop"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "mobile_service_followups_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mobile_service_settings: {
+        Row: {
+          configured_by: string | null
+          created_at: string
+          default_visit_minutes: number
+          dispatch_enabled: boolean
+          field_operator_count_target: number
+          onboarding_completed_at: string | null
+          service_model: string
+          service_vehicles_enabled: boolean
+          shop_id: string
+          solo_mode: boolean
+          truck_inventory_enabled: boolean
+          updated_at: string
+        }
+        Insert: {
+          configured_by?: string | null
+          created_at?: string
+          default_visit_minutes?: number
+          dispatch_enabled?: boolean
+          field_operator_count_target?: number
+          onboarding_completed_at?: string | null
+          service_model?: string
+          service_vehicles_enabled?: boolean
+          shop_id: string
+          solo_mode?: boolean
+          truck_inventory_enabled?: boolean
+          updated_at?: string
+        }
+        Update: {
+          configured_by?: string | null
+          created_at?: string
+          default_visit_minutes?: number
+          dispatch_enabled?: boolean
+          field_operator_count_target?: number
+          onboarding_completed_at?: string | null
+          service_model?: string
+          service_vehicles_enabled?: boolean
+          shop_id?: string
+          solo_mode?: boolean
+          truck_inventory_enabled?: boolean
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mobile_service_settings_configured_by_fkey"
+            columns: ["configured_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mobile_service_settings_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: true
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mobile_service_settings_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: true
+            referencedRelation: "shops"
             referencedColumns: ["id"]
           },
         ]
@@ -26946,6 +27248,117 @@ export type Database = {
           p_payload: Json
           p_shop_id: string
           p_vehicle_id: string
+        }
+        Returns: Json
+      }
+      mobile_actor_is_field_operator: {
+        Args: { p_actor_user_id: string; p_shop_id: string }
+        Returns: boolean
+      }
+      mobile_can_manage_followups: {
+        Args: { p_actor_user_id: string; p_shop_id: string }
+        Returns: boolean
+      }
+      mobile_can_manage_work_orders: {
+        Args: { p_actor_user_id: string; p_shop_id: string }
+        Returns: boolean
+      }
+      mobile_configure_service_v1_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_default_visit_minutes: number
+          p_dispatch_enabled: boolean
+          p_enable_current_actor_field_operator: boolean
+          p_field_operator_count_target: number
+          p_service_model: string
+          p_service_vehicle_name: string
+          p_service_vehicle_unit_number: string
+          p_service_vehicles_enabled: boolean
+          p_shop_id: string
+          p_solo_mode: boolean
+          p_truck_inventory_enabled: boolean
+        }
+        Returns: Json
+      }
+      mobile_create_service_call_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_address_line1: string
+          p_city: string
+          p_concern: string
+          p_currency: string
+          p_customer_id: string
+          p_customer_name: string
+          p_duration_minutes: number
+          p_operation_key: string
+          p_phone: string
+          p_postal_code: string
+          p_province_state: string
+          p_quoted_price: number
+          p_service_mode: string
+          p_shop_id: string
+          p_starts_at: string
+          p_vehicle_id: string
+          p_vehicle_make: string
+          p_vehicle_model: string
+          p_vehicle_plate: string
+          p_vehicle_year: number
+        }
+        Returns: Json
+      }
+      mobile_create_service_followup_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_disposition: string
+          p_estimated_amount: number
+          p_follow_up_at: string
+          p_notes: string
+          p_operation_key: string
+          p_recommendation: string
+          p_service_visit_id: string
+          p_shop_id: string
+          p_work_order_id: string
+        }
+        Returns: Json
+      }
+      mobile_dispatch_profile_eligible: {
+        Args: { p_profile_id: string; p_shop_id: string }
+        Returns: boolean
+      }
+      mobile_is_field_operator: {
+        Args: { p_profile_id: string; p_shop_id: string }
+        Returns: boolean
+      }
+      mobile_is_shop_member: { Args: { p_shop_id: string }; Returns: boolean }
+      mobile_materialize_service_visit_work_order_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_operation_key: string
+          p_shop_id: string
+          p_visit_id: string
+        }
+        Returns: Json
+      }
+      mobile_replay_service_visit_transition_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_expected_version: number
+          p_from_status: string
+          p_operation_key: string
+          p_shop_id: string
+          p_to_status: string
+          p_visit_id: string
+        }
+        Returns: Json
+      }
+      mobile_update_service_followup_status_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_converted_work_order_id: string
+          p_followup_id: string
+          p_operation_key: string
+          p_shop_id: string
+          p_status: string
         }
         Returns: Json
       }
