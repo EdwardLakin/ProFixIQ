@@ -819,6 +819,22 @@ export async function runMutationWithOfflineQueue<T>(args: {
       status,
     });
 
+  const dependencyPending =
+    args.dependsOn?.some((id) => {
+      const dependency = queueCache.find(
+        (item) => item.clientMutationId === id && scopeMatches(item, scope),
+      );
+      return Boolean(dependency && dependency.status !== "synced");
+    }) ?? false;
+
+  // A dependent command cannot bypass an earlier queued command merely because
+  // connectivity returned between taps. Keep it queued until replay has synced
+  // every predecessor in the chain.
+  if (dependencyPending) {
+    await queueEntry();
+    return { queued: true, conflicted: false };
+  }
+
   if (queueOnOffline && !navigator.onLine) {
     await queueEntry();
     return { queued: true, conflicted: false };

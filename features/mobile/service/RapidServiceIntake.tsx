@@ -210,7 +210,7 @@ export default function RapidServiceIntake() {
         );
       }
       router.replace(
-        `/mobile/service?created=1&visitId=${encodeURIComponent(body.serviceVisitId)}`,
+        `/mobile/service/call/${encodeURIComponent(body.serviceVisitId)}`,
       );
     } catch (cause) {
       setError(
