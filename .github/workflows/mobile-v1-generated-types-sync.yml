@@ -1,0 +1,50 @@
+name: Mobile V1 Generated Type Sync
+
+on:
+  push:
+    branches:
+      - agent/mobile-v1-productization
+    paths:
+      - ".github/workflows/mobile-v1-generated-types-sync.yml"
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/mobile-v1-productization
+          fetch-depth: 1
+
+      - name: Download exact Clean Replay generated types
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/mobile-v1-types
+          gh run download 31452666457 \
+            -R EdwardLakin/ProFixIQ \
+            -n supabase-clean-replay-31452666457 \
+            -D /tmp/mobile-v1-types
+          test -s /tmp/mobile-v1-types/generated-supabase-types.ts
+          cp /tmp/mobile-v1-types/generated-supabase-types.ts \
+            features/shared/types/types/supabase.ts
+          git diff --check
+
+      - name: Commit exact generated contract
+        shell: bash
+        run: |
+          if git diff --quiet -- features/shared/types/types/supabase.ts; then
+            echo "Generated types already match"
+            exit 0
+          fi
+          git config user.name "chatgpt-codex-connector[bot]"
+          git config user.email "199175422+chatgpt-codex-connector[bot]@users.noreply.github.com"
+          git add features/shared/types/types/supabase.ts
+          git commit -m "Sync Mobile V1 Codex hardening Supabase types"
+          git push origin HEAD:agent/mobile-v1-productization
