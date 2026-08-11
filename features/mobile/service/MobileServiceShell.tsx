@@ -186,10 +186,29 @@ function optimisticTransition(
 async function transitionVisit(
   visit: DispatchVisit,
   toStatus: ServiceVisitStatus,
-  dependsOn: string[] = [],
+  dependsOn?: string[],
 ): Promise<TransitionOutcome> {
   const mutationId = operationKey(visit.id, toStatus);
   const serverState: { result: DispatchMutationResult | null } = { result: null };
+
+  let resolvedDependencies = dependsOn;
+  if (resolvedDependencies === undefined) {
+    await hydrateOfflineMutationQueue();
+    const orderKey = `service-visit:${visit.id}`;
+    const previous = listPendingMutations()
+      .filter(
+        (mutation) =>
+          mutation.actionType === "service-visit:transition" &&
+          mutation.orderKey === orderKey,
+      )
+      .sort(
+        (a, b) =>
+          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+      )
+      .at(-1);
+    resolvedDependencies = previous ? [previous.clientMutationId] : [];
+  }
+
   const payload = {
     visitId: visit.id,
     fromStatus: visit.status,
@@ -206,7 +225,8 @@ async function transitionVisit(
     actionType: "service-visit:transition",
     payload,
     queueOnOffline: true,
-    dependsOn: dependsOn.length ? dependsOn : undefined,
+    dependsOn:
+      resolvedDependencies.length > 0 ? resolvedDependencies : undefined,
     orderKey: `service-visit:${visit.id}`,
     runner: async () => {
       const response = await fetch(
@@ -607,35 +627,18 @@ export default function MobileServiceShell() {
       setQueuedNotice(null);
       try {
         let current = visit;
-        await hydrateOfflineMutationQueue();
-        const orderKey = `service-visit:${visit.id}`;
-        const previous = listPendingMutations()
-          .filter(
-            (mutation) =>
-              mutation.actionType === "service-visit:transition" &&
-              mutation.orderKey === orderKey,
-          )
-          .sort(
-            (a, b) =>
-              new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-          )
-          .at(-1);
-        let dependencies = previous ? [previous.clientMutationId] : [];
         let queued = false;
+        let result: TransitionOutcome;
 
         if (toStatus === "en_route" && current.status === "scheduled") {
-          const dispatch = await transitionVisit(
-            current,
-            "dispatched",
-            dependencies,
-          );
+          const dispatch = await transitionVisit(current, "dispatched");
           current = dispatch.visit;
-          dependencies = [dispatch.mutationId];
           queued ||= dispatch.queued;
           applyVisit(current);
+          result = await transitionVisit(current, toStatus, [dispatch.mutationId]);
+        } else {
+          result = await transitionVisit(current, toStatus);
         }
-
-        const result = await transitionVisit(current, toStatus, dependencies);
         queued ||= result.queued;
         applyVisit(result.visit);
 
