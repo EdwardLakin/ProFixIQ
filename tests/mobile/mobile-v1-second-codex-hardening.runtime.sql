@@ -192,6 +192,39 @@ $$;
 
 reset role;
 
+-- The Mobile handoff exception must stay narrow. The service role is authorized
+-- to link the booking to the canonical work order, but it must not become a
+-- general customer-booking editor. Run as postgres to bypass RLS while retaining
+-- the authenticated service JWT claims so this assertion exercises the trigger
+-- itself rather than an unrelated policy boundary.
+do $$
+declare
+  v_visit_id uuid := current_setting('mobile_second.visit_id')::uuid;
+  v_booking_id uuid;
+  v_denied boolean := false;
+begin
+  select sv.booking_id into v_booking_id
+  from public.service_visits sv
+  where sv.id = v_visit_id;
+
+  begin
+    update public.bookings
+    set notes = 'forbidden service-role booking edit'
+    where id = v_booking_id;
+  exception when others then
+    if position('Booking does not belong to the current customer' in sqlerrm) > 0 then
+      v_denied := true;
+    else
+      raise;
+    end if;
+  end;
+
+  if not v_denied then
+    raise exception 'Second review failed: Mobile WO creator gained general booking mutation authority';
+  end if;
+end;
+$$;
+
 -- Build a mismatched customer/vehicle/work order under postgres so conversion
 -- integrity can be tested independently of user-facing creation flows.
 insert into public.customers(
