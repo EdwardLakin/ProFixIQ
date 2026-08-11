@@ -42,8 +42,13 @@ update public.profiles
 set shop_id = '9b100000-0000-4000-8000-000000000001'
 where id = '9a100000-0000-4000-8000-000000000001';
 
-set local role service_role;
-select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+select set_config('request.jwt.claim.role', 'authenticated', true);
+select set_config(
+  'request.jwt.claim.sub',
+  '9a100000-0000-4000-8000-000000000001',
+  true
+);
+set local role authenticated;
 
 do $$
 declare
@@ -240,6 +245,7 @@ begin
 end;
 $$;
 
+reset role;
 rollback;
 
 select 'mobile_v1_fake_day_ok' as result;
