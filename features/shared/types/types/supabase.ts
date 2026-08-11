@@ -27312,19 +27312,44 @@ export type Database = {
         }
         Returns: Json
       }
+      mobile_dispatch_profile_eligible: {
+        Args: { p_profile_id: string; p_shop_id: string }
+        Returns: boolean
+      }
       mobile_is_field_operator: {
         Args: { p_profile_id: string; p_shop_id: string }
         Returns: boolean
       }
       mobile_is_shop_member: { Args: { p_shop_id: string }; Returns: boolean }
+      mobile_materialize_service_visit_work_order_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_operation_key: string
+          p_shop_id: string
+          p_visit_id: string
+        }
+        Returns: Json
+      }
       mobile_replay_service_visit_transition_atomic: {
         Args: {
           p_actor_user_id: string
+          p_expected_version: number
           p_from_status: string
           p_operation_key: string
           p_shop_id: string
           p_to_status: string
           p_visit_id: string
+        }
+        Returns: Json
+      }
+      mobile_update_service_followup_status_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_converted_work_order_id: string
+          p_followup_id: string
+          p_operation_key: string
+          p_shop_id: string
+          p_status: string
         }
         Returns: Json
       }
