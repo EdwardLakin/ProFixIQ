@@ -26151,11 +26151,7 @@ export type Database = {
       }
       agent_can_start: { Args: never; Returns: boolean }
       agent_reject_action: {
-        Args: {
-          p_action_id: string
-          p_reason?: string
-          p_rejected_by?: string
-        }
+        Args: { p_action_id: string; p_reason?: string; p_rejected_by?: string }
         Returns: {
           approved_at: string | null
           approved_by: string | null
@@ -27017,11 +27013,7 @@ export type Database = {
         Returns: Json
       }
       dispatch_can_execute: {
-        Args: {
-          p_actor_user_id: string
-          p_shop_id: string
-          p_visit_id: string
-        }
+        Args: { p_actor_user_id: string; p_shop_id: string; p_visit_id: string }
         Returns: boolean
       }
       dispatch_can_manage: {
@@ -27115,11 +27107,7 @@ export type Database = {
         Returns: Json
       }
       dispatch_visit_history: {
-        Args: {
-          p_actor_user_id: string
-          p_shop_id: string
-          p_visit_id: string
-        }
+        Args: { p_actor_user_id: string; p_shop_id: string; p_visit_id: string }
         Returns: Json
       }
       dispatch_visit_snapshot: { Args: { p_visit_id: string }; Returns: Json }
@@ -27400,11 +27388,7 @@ export type Database = {
         Returns: Json
       }
       match_learned_job_templates: {
-        Args: {
-          p_embedding: string
-          p_match_count?: number
-          p_shop_id: string
-        }
+        Args: { p_embedding: string; p_match_count?: number; p_shop_id: string }
         Returns: {
           confidence_score: number
           default_labor_hours: number
@@ -27418,11 +27402,7 @@ export type Database = {
         }[]
       }
       match_work_order_intelligence: {
-        Args: {
-          p_embedding: string
-          p_match_count?: number
-          p_shop_id: string
-        }
+        Args: { p_embedding: string; p_match_count?: number; p_shop_id: string }
         Returns: {
           cause: string
           complaint: string
@@ -29427,3 +29407,4 @@ export const Constants = {
     },
   },
 } as const
+
