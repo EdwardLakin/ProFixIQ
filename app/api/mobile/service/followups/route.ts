@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { Database } from "@shared/types/types/supabase";
 
-import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { requireMobileServiceOperatorApiAccess } from "@/features/mobile/service/server/access";
 
 type FollowupRpcArgs =
   Database["public"]["Functions"]["mobile_create_service_followup_atomic"]["Args"];
@@ -33,7 +33,7 @@ type FollowupRow = {
 };
 
 export async function GET(request: Request) {
-  const access = await requireShopScopedApiAccess();
+  const access = await requireMobileServiceOperatorApiAccess();
   if (!access.ok) return access.response;
   const workOrderId =
     new URL(request.url).searchParams.get("workOrderId")?.trim() || "";
@@ -127,7 +127,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const access = await requireShopScopedApiAccess();
+  const access = await requireMobileServiceOperatorApiAccess();
   if (!access.ok) return access.response;
   const body = (await request.json().catch(() => null)) as Body | null;
   const operationKey =
