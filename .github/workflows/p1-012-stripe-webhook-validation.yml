@@ -2,6 +2,7 @@ name: P1-012 Stripe Webhook Validation
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "app/api/stripe/webhook/**"
       - "app/api/stripe/checkout/webhook/**"
@@ -22,8 +23,13 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: p1-012-stripe-webhook-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   validate:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
