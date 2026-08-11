@@ -15,6 +15,7 @@ type IntakeBody = {
   vehicleMake?: string | null;
   vehicleModel?: string | null;
   vehiclePlate?: string | null;
+  serviceMode?: "shop" | "mobile" | null;
   addressLine1?: string;
   city?: string | null;
   provinceState?: string | null;
@@ -154,9 +155,16 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
+  if (body.serviceMode && !["shop", "mobile"].includes(body.serviceMode)) {
+    return NextResponse.json(
+      { error: "Service mode must be shop or mobile." },
+      { status: 400 },
+    );
+  }
 
-  // The RPC keeps p_currency for migration-signature compatibility, but the
-  // database derives country and currency from the authorized shop record.
+  // Country/currency and the allowed service mode are enforced by the database
+  // from the authorized shop's Mobile configuration. `serviceMode` is only the
+  // per-call choice used when that configuration is `both`.
   const rpcArgs = {
     p_shop_id: access.profile.shop_id,
     p_customer_id: body.customerId?.trim() || null,
@@ -177,6 +185,7 @@ export async function POST(request: Request) {
     p_duration_minutes: durationMinutes,
     p_quoted_price: quotedPrice,
     p_currency: "",
+    p_service_mode: body.serviceMode ?? null,
     p_actor_user_id: access.authUserId,
     p_operation_key: operationKey,
   } as unknown as IntakeRpcArgs;
