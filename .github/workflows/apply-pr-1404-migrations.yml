@@ -1,0 +1,127 @@
+name: Apply PR 1404 production migrations
+
+on:
+  push:
+    branches:
+      - agent/mobile-v1-productization
+    paths:
+      - .github/workflows/apply-pr-1404-migrations.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apply-pr-1404-production-migrations
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout PR 1404 branch
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v2
+        with:
+          version: 2.101.0
+
+      - name: Login to Supabase
+        run: supabase login --token "$SUPABASE_ACCESS_TOKEN"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Link production project
+        run: |
+          set -euo pipefail
+          test "$SUPABASE_PROJECT_REF" = "scjjkmuwadwkaaqjoigx"
+          supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
+        env:
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+
+      - name: Build protected production database URL
+        shell: bash
+        env:
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from urllib.parse import quote, urlsplit, urlunsplit
+
+          path = Path("supabase/.temp/pooler-url")
+          if not path.exists():
+              raise SystemExit("Supabase CLI did not create supabase/.temp/pooler-url")
+          raw = path.read_text().strip()
+          parsed = urlsplit(raw)
+          if not parsed.hostname or not parsed.username:
+              raise SystemExit("Unable to parse linked Supabase pooler URL")
+          password = quote(os.environ["SUPABASE_DB_PASSWORD"], safe="")
+          username = quote(parsed.username, safe=".")
+          host = parsed.hostname
+          port = f":{parsed.port}" if parsed.port else ""
+          netloc = f"{username}:{password}@{host}{port}"
+          url = urlunsplit((parsed.scheme or "postgresql", netloc, parsed.path or "/postgres", parsed.query, parsed.fragment))
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as fh:
+              fh.write(f"DB_URL={url}\n")
+          PY
+
+      - name: Ensure PostgreSQL client
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+
+      - name: Apply exact PR 1404 migrations in order
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          migrations=(
+            "20260810225000:mobile_v1_productization"
+            "20260810225100:mobile_v1_dispatch_followup_hardening"
+            "20260811020000:mobile_v1_codex_review_hardening"
+            "20260811020100:mobile_v1_rapid_intake_identity_hardening"
+            "20260811020200:mobile_v1_followup_authorization_alignment"
+            "20260811020300:mobile_v1_second_codex_review_hardening"
+            "20260811020400:mobile_v1_booking_handoff_authorization"
+            "20260811020500:mobile_v1_service_visit_handoff_alignment"
+          )
+
+          for spec in "${migrations[@]}"; do
+            version="${spec%%:*}"
+            name="${spec#*:}"
+            file="supabase/migrations/${version}_${name}.sql"
+
+            test -f "$file"
+
+            already="$(psql "$DB_URL" -X -At -v ON_ERROR_STOP=1 -v version="$version" -c "select count(*) from supabase_migrations.schema_migrations where version = :'version';")"
+            if [ "$already" = "1" ]; then
+              echo "SKIP $version $name (already recorded)"
+              continue
+            fi
+            if [ "$already" != "0" ]; then
+              echo "Unexpected migration-history count for $version: $already" >&2
+              exit 1
+            fi
+
+            echo "APPLY $version $name"
+            psql "$DB_URL" -X -v ON_ERROR_STOP=1 -f "$file"
+            psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+              -v version="$version" -v migration_name="$name" \
+              -c "insert into supabase_migrations.schema_migrations(version, statements, name, created_by) values (:'version', array[]::text[], :'migration_name', 'chatgpt-pr-1404');"
+          done
+
+      - name: Verify all PR 1404 versions are recorded
+        shell: bash
+        run: |
+          set -euo pipefail
+          count="$(psql "$DB_URL" -X -At -v ON_ERROR_STOP=1 -c "select count(*) from supabase_migrations.schema_migrations where version in ('20260810225000','20260810225100','20260811020000','20260811020100','20260811020200','20260811020300','20260811020400','20260811020500');")"
+          test "$count" = "8"
+          echo "Verified all 8 PR 1404 migrations in production history."
