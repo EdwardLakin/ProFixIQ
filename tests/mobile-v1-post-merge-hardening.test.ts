@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 const read = (path: string) => readFileSync(path, "utf8");
 
 const migration = read(
-  "supabase/migrations/20260811145500_mobile_v1_end_to_end_repair_hardening.sql",
+  "supabase/migrations/20260811160152_mobile_v1_end_to_end_repair_hardening.sql",
 );
 const access = read("features/mobile/service/server/access.ts");
 const shell = read("features/mobile/service/MobileServiceShell.tsx");
