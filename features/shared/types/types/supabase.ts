@@ -27255,6 +27255,14 @@ export type Database = {
         Args: { p_actor_user_id: string; p_shop_id: string }
         Returns: boolean
       }
+      mobile_can_manage_followups: {
+        Args: { p_actor_user_id: string; p_shop_id: string }
+        Returns: boolean
+      }
+      mobile_can_manage_work_orders: {
+        Args: { p_actor_user_id: string; p_shop_id: string }
+        Returns: boolean
+      }
       mobile_configure_service_v1_atomic: {
         Args: {
           p_actor_user_id: string
@@ -27287,6 +27295,7 @@ export type Database = {
           p_postal_code: string
           p_province_state: string
           p_quoted_price: number
+          p_service_mode: string
           p_shop_id: string
           p_starts_at: string
           p_vehicle_id: string
