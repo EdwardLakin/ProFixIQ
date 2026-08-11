@@ -44,13 +44,21 @@ jobs:
           ]
 
           root = Path(".github/workflows")
-          draft_if = "    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}\n"
+          expr_open = "$" + "{{"
+          expr_close = "}}"
+          draft_if = (
+              "    if: " + expr_open
+              + " github.event_name != 'pull_request' || github.event.pull_request.draft == false "
+              + expr_close + "\n"
+          )
+          concurrency_expr = (
+              expr_open + " github.event.pull_request.number || github.ref " + expr_close
+          )
 
           for name in targets:
               path = root / name
               text = path.read_text()
 
-              # Ensure ready_for_review is an activity that can trigger the final domain gate.
               lines = text.splitlines(keepends=True)
               for i, line in enumerate(lines):
                   if line == "  pull_request:\n":
@@ -69,7 +77,6 @@ jobs:
 
               text = "".join(lines)
 
-              # Cancel an older generation for the same PR as soon as a new head arrives.
               if "\nconcurrency:\n" not in text:
                   marker = "\njobs:\n"
                   if marker not in text:
@@ -77,22 +84,17 @@ jobs:
                   slug = name.removesuffix(".yml").replace("_", "-")
                   block = (
                       "\nconcurrency:\n"
-                      f"  group: {slug}-${{{{ github.event.pull_request.number || github.ref }}}}\n"
-                      "  cancel-in-progress: true\n"
+                      + f"  group: {slug}-" + concurrency_expr + "\n"
+                      + "  cancel-in-progress: true\n"
                   )
                   text = text.replace(marker, block + marker, 1)
 
-              # Domain jobs are expensive and noisy. Keep them dormant during draft iteration.
               lines = text.splitlines(keepends=True)
-              try:
-                  jobs_index = next(i for i, line in enumerate(lines) if line == "jobs:\n")
-              except StopIteration:
-                  raise RuntimeError(f"No jobs block after patch in {name}")
-
-              job_starts = []
-              for i in range(jobs_index + 1, len(lines)):
-                  if re.match(r"^  [A-Za-z0-9_-]+:\s*$", lines[i]):
-                      job_starts.append(i)
+              jobs_index = next(i for i, line in enumerate(lines) if line == "jobs:\n")
+              job_starts = [
+                  i for i in range(jobs_index + 1, len(lines))
+                  if re.match(r"^  [A-Za-z0-9_-]+:\s*$", lines[i])
+              ]
 
               offset = 0
               for original_i in job_starts:
