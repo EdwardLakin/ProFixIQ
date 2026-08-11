@@ -193,6 +193,32 @@ export default function ProFixIQLanding() {
       <main>
         <LandingHero />
 
+        <section className="border-b border-[color:var(--marketing-border)] bg-white py-12 sm:py-16">
+          <div className="mx-auto max-w-[1400px] px-5 sm:px-8">
+            <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+              <div>
+                <div className="marketing-eyebrow">Choose your workspace</div>
+                <h2 className="mt-3 text-3xl font-semibold tracking-[-0.035em] sm:text-4xl">One sign-in system. Clear operational boundaries.</h2>
+              </div>
+              <p className="max-w-xl text-sm leading-6 text-[color:var(--marketing-muted)]">Shop Mobile is for work in the bay. Field Service is a separately enabled, explicitly assigned dispatch workspace. Fleet Maintenance is a dedicated fleet workspace.</p>
+            </div>
+            <div className="mt-8 grid gap-4 lg:grid-cols-3">
+              {[
+                { title: "Shop Operations", body: "Run repair operations, the customer journey, and Shop Mobile for authorized shop roles.", href: "/sign-in", action: "Shop sign-in", icon: Wrench },
+                { title: "Field Service", body: "Dispatch and complete off-site service visits. Requires a Field Service-enabled shop and operator assignment.", href: "/mobile/sign-in?redirect=%2Fmobile%2Fservice", action: "Field Service sign-in", icon: Building2 },
+                { title: "Fleet Maintenance", body: "Manage fleet assets, maintenance, approvals, and repair history in the fleet workspace.", href: "https://fleet.profixiq.com/sign-in", action: "Fleet sign-in", icon: Users },
+              ].map(({ title, body, href, action, icon: Icon }) => (
+                <article key={title} className="flex flex-col rounded-2xl border border-[color:var(--marketing-border)] bg-[color:var(--marketing-stone)] p-6">
+                  <Icon size={22} className="text-[color:var(--marketing-copper-dark)]" />
+                  <h3 className="mt-6 text-xl font-bold">{title}</h3>
+                  <p className="mt-3 flex-1 text-sm leading-6 text-[color:var(--marketing-muted)]">{body}</p>
+                  <Link href={href} className="mt-6 inline-flex items-center gap-2 text-sm font-bold text-[color:var(--marketing-copper-dark)]">{action} <ArrowRight size={15} /></Link>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+
         <section id="workflow" className="scroll-mt-24 border-b border-[color:var(--marketing-border)] bg-white py-20 sm:py-28">
           <div className="mx-auto max-w-[1400px] px-5 sm:px-8">
             <div className="grid gap-8 lg:grid-cols-[0.75fr_1.25fr] lg:items-end">
