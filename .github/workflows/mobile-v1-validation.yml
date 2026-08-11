@@ -18,6 +18,7 @@ on:
       - "supabase/migrations/20260810225100_mobile_v1_dispatch_followup_hardening.sql"
       - "supabase/migrations/20260811020000_mobile_v1_codex_review_hardening.sql"
       - "supabase/migrations/20260811020100_mobile_v1_rapid_intake_identity_hardening.sql"
+      - "supabase/migrations/20260811020200_mobile_v1_followup_authorization_alignment.sql"
       - "tests/mobile-v1-productization.test.ts"
       - "tests/mobile/mobile-v1-fake-day.runtime.sql"
       - "tests/mobile/mobile-v1-team-dispatch.runtime.sql"
