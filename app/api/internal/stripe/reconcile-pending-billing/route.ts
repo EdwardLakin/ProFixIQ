@@ -4,13 +4,19 @@ import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { requireInternalApiSecret } from "@/features/shared/lib/server/api-route-guard";
 import { reconcileShopSubscriptionSeats } from "@/features/stripe/lib/server/subscription-seat-reconciliation";
 import { resolveStripePriceContract } from "@/features/stripe/lib/server/stripe-price-contract";
+import { PRODUCT_PACKAGE_BILLING_MODEL } from "@/features/stripe/lib/stripe/product-packages";
+import { resolveProductPackagePriceContract } from "@/features/stripe/lib/server/product-package-price-contract";
+import { reconcileProductPackageSubscription } from "@/features/stripe/lib/server/product-package-reconciliation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 function authorize(req: Request) {
   const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret && req.headers.get("authorization") === `Bearer ${cronSecret}`) {
+  if (
+    cronSecret &&
+    req.headers.get("authorization") === `Bearer ${cronSecret}`
+  ) {
     return { ok: true } as const;
   }
   return requireInternalApiSecret({
@@ -27,14 +33,17 @@ export async function GET(req: Request) {
 
   const secretKey = String(process.env.STRIPE_SECRET_KEY ?? "").trim();
   if (!secretKey) {
-    return NextResponse.json({ error: "Missing STRIPE_SECRET_KEY" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Missing STRIPE_SECRET_KEY" },
+      { status: 500 },
+    );
   }
 
   const supabase = createAdminSupabase();
   const stripe = createStripeClient(secretKey);
   const { data: shops, error } = await supabase
     .from("shops")
-    .select("id")
+    .select("id, stripe_pricing_model")
     .eq("stripe_billing_sync_required", true)
     .not("stripe_subscription_id", "is", null)
     .order("updated_at", { ascending: true })
@@ -55,9 +64,23 @@ export async function GET(req: Request) {
     });
   }
 
-  let priceContract;
+  let legacyPriceContract;
+  let packagePriceContract;
   try {
-    priceContract = await resolveStripePriceContract(stripe);
+    if (
+      pendingShops.some(
+        (shop) => shop.stripe_pricing_model === PRODUCT_PACKAGE_BILLING_MODEL,
+      )
+    ) {
+      packagePriceContract = await resolveProductPackagePriceContract(stripe);
+    }
+    if (
+      pendingShops.some(
+        (shop) => shop.stripe_pricing_model !== PRODUCT_PACKAGE_BILLING_MODEL,
+      )
+    ) {
+      legacyPriceContract = await resolveStripePriceContract(stripe);
+    }
   } catch (priceError) {
     return NextResponse.json(
       {
@@ -79,12 +102,20 @@ export async function GET(req: Request) {
 
   for (const shop of pendingShops) {
     try {
-      const result = await reconcileShopSubscriptionSeats({
-        stripe,
-        supabase,
-        shopId: shop.id,
-        priceContract,
-      });
+      const result =
+        shop.stripe_pricing_model === PRODUCT_PACKAGE_BILLING_MODEL
+          ? await reconcileProductPackageSubscription({
+              stripe,
+              supabase,
+              shopId: shop.id,
+              priceContract: packagePriceContract,
+            })
+          : await reconcileShopSubscriptionSeats({
+              stripe,
+              supabase,
+              shopId: shop.id,
+              priceContract: legacyPriceContract,
+            });
       results.push({ shop_id: shop.id, ok: true, state: result.state });
     } catch (reconcileError) {
       results.push({

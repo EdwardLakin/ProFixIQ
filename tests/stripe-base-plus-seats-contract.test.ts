@@ -155,10 +155,13 @@ describe("ProFixIQ base plus seats billing contract", () => {
     expect(source).not.toContain("STRIPE_PRICE_ADDITIONAL_SEAT_MONTHLY");
   });
 
-  it("does not expose legacy capped plans or price IDs to new checkout", async () => {
+  it("keeps legacy checkout compatible without exposing capped plans or price IDs", async () => {
     const source = await readFile(CHECKOUT, "utf8");
     expect(source).toContain('planKey: z.enum(["starter", "unlimited"])');
-    expect(source).toContain("resolveStripePlanPriceId(stripe, parsed.data.planKey)");
+    expect(source).toContain(
+      "resolveStripePlanPriceId(stripe, selection.legacyPlanKey)",
+    );
+    expect(source).toContain("resolveProductPackagePriceId");
     expect(source).not.toContain('"pro", "unlimited"');
     expect(source).not.toContain("STRIPE_FOUNDING_COUPON_ID");
     expect(source).not.toContain("STRIPE_PRICE_BASE_MONTHLY");
@@ -170,14 +173,16 @@ describe("ProFixIQ base plus seats billing contract", () => {
     expect(source).toContain("Expected exactly one active Stripe price");
     expect(source).toContain('price.currency !== "cad"');
     expect(source).toContain('price.metadata?.app !== "profixiq"');
-    expect(source).toContain('price.metadata?.billing_model !== "base_plus_seats_v2"');
+    expect(source).toContain(
+      'price.metadata?.billing_model !== "base_plus_seats_v2"',
+    );
   });
 
   it("reconciles pending seat changes on a protected worker", async () => {
     const source = await readFile(CRON, "utf8");
     expect(source).toContain('eq("stripe_billing_sync_required", true)');
     expect(source).toContain("resolveStripePriceContract(stripe)");
-    expect(source).toContain("priceContract,");
+    expect(source).toContain("priceContract: legacyPriceContract");
     expect(source).toContain("reconcileShopSubscriptionSeats");
     expect(source).toContain("CRON_SECRET");
   });

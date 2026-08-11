@@ -12,6 +12,7 @@ import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import {
   getProfileStripeArtifacts,
   resolveCanonicalPlanFromSubscription,
+  resolveProductPackageFromSubscription,
   toCanonicalShopBillingUpdate,
 } from "@/features/stripe/lib/server/canonical-shop-billing";
 import { collectCustomerSubscriptionDiagnostics } from "@/features/stripe/lib/server/subscription-discovery";
@@ -36,6 +37,7 @@ type NormalizedSubscriptionPayload = {
   current_period_end: string | null;
   trial_end: string | null;
   resolved_plan?: string | null;
+  resolved_package?: string | null;
   linkage_needed?: boolean;
   linkage_state?:
     | "no_subscription_found"
@@ -141,6 +143,7 @@ function normalizeSubscription(subscription: Stripe.Subscription): NormalizedSub
     current_period_end: unixToIsoOrNull(subscription.current_period_end ?? null),
     trial_end: unixToIsoOrNull(subscription.trial_end ?? null),
     resolved_plan: resolveCanonicalPlanFromSubscription(subscription),
+    resolved_package: resolveProductPackageFromSubscription(subscription),
   };
 }
 

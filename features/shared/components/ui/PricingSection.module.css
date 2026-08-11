@@ -26,6 +26,8 @@
   --pricing-notice-bg: #eef3f9;
   --pricing-notice-border: #dbe4ef;
   --pricing-notice-text: #5d6b7b;
+  --pricing-boundary-bg: #f7f9fc;
+  --pricing-boundary-border: #dbe4ef;
   color-scheme: light;
 }
 
@@ -48,6 +50,8 @@
   --pricing-notice-bg: #091426;
   --pricing-notice-border: #243b61;
   --pricing-notice-text: #c3d2e8;
+  --pricing-boundary-bg: #091426;
+  --pricing-boundary-border: #243b61;
   color-scheme: dark;
 }
 
@@ -131,4 +135,10 @@
   border-color: var(--pricing-notice-border);
   background: var(--pricing-notice-bg);
   color: var(--pricing-notice-text);
+}
+
+.boundary {
+  border-color: var(--pricing-boundary-border);
+  background: var(--pricing-boundary-bg);
+  color: var(--pricing-primary-text);
 }

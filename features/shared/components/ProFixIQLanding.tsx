@@ -25,7 +25,7 @@ import LandingHero from "@shared/components/ui/LandingHero";
 import PricingSection from "@shared/components/ui/PricingSection";
 import Footer from "@shared/components/ui/Footer";
 import LandingChatbot from "@/features/landing/LandingChatbot";
-import type { PlanKey } from "@/features/stripe/lib/stripe/constants";
+import type { ProductPackageKey } from "@/features/stripe/lib/stripe/product-packages";
 import { ProFixIQMark, ProFixIQWordmark } from "@shared/components/brand/ProFixIQBrand";
 
 type Interval = "monthly" | "yearly";
@@ -149,18 +149,18 @@ export default function ProFixIQLanding() {
   };
 
   const startCheckout = async ({
-    planKey,
+    packageKey,
     interval,
     checkoutAttemptId,
   }: {
-    planKey: PlanKey;
+    packageKey: ProductPackageKey;
     interval: Interval;
     checkoutAttemptId: string;
   }) => {
     const response = await fetch("/api/stripe/checkout", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ flow: "acquisition", planKey, interval, checkoutAttemptId }),
+      body: JSON.stringify({ flow: "acquisition", packageKey, interval, checkoutAttemptId }),
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data?.url) throw new Error(String(data?.error ?? data?.details ?? "Unable to start checkout"));
@@ -205,8 +205,8 @@ export default function ProFixIQLanding() {
             <div className="mt-8 grid gap-4 lg:grid-cols-3">
               {[
                 { title: "Shop Operations", body: "Run repair operations, the customer journey, and Shop Mobile for authorized shop roles.", href: "/sign-in", action: "Shop sign-in", icon: Wrench },
-                { title: "Field Service", body: "Dispatch and complete off-site service visits. Requires a Field Service-enabled shop and operator assignment.", href: "/mobile/sign-in?redirect=%2Fmobile%2Fservice", action: "Field Service sign-in", icon: Building2 },
-                { title: "Fleet Maintenance", body: "Manage fleet assets, maintenance, approvals, and repair history in the fleet workspace.", href: "https://fleet.profixiq.com/sign-in", action: "Fleet sign-in", icon: Users },
+                { title: "Field Service", body: "Dispatch and complete off-site service visits with explicit operator access and service-truck capacity.", href: "/field-service", action: "Explore Field Service", icon: Building2 },
+                { title: "Fleet Maintenance", body: "Give participating fleets an owned workspace for assets, maintenance, approvals, and history.", href: "/fleet-maintenance", action: "Explore Fleet Maintenance", icon: Users },
               ].map(({ title, body, href, action, icon: Icon }) => (
                 <article key={title} className="flex flex-col rounded-2xl border border-[color:var(--marketing-border)] bg-[color:var(--marketing-stone)] p-6">
                   <Icon size={22} className="text-[color:var(--marketing-copper-dark)]" />
@@ -249,10 +249,10 @@ export default function ProFixIQLanding() {
         </section>
 
         <section id="modules" className="border-y border-[color:var(--marketing-border)] py-20 sm:py-24">
-          <div className="mx-auto max-w-[1400px] px-5 sm:px-8"><div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between"><div><div className="marketing-eyebrow">Complete platform</div><h2 className="marketing-heading mt-4 max-w-2xl">Everything included. No feature tax.</h2></div><p className="max-w-lg text-base leading-7 text-[color:var(--marketing-muted)]">Choose a plan by team size. The operating system stays complete at every level.</p></div><div className="mt-12 grid gap-4 md:grid-cols-2 xl:grid-cols-4">{modules.map(({ title, items, icon: Icon }) => <div key={title} className="rounded-2xl border border-[color:var(--marketing-border)] bg-white p-6 shadow-sm"><Icon size={21} className="text-[color:var(--marketing-copper-dark)]" /><h3 className="mt-8 text-lg font-bold">{title}</h3><p className="mt-3 text-sm leading-6 text-[color:var(--marketing-muted)]">{items}</p></div>)}</div></div>
+          <div className="mx-auto max-w-[1400px] px-5 sm:px-8"><div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between"><div><div className="marketing-eyebrow">Complete platform</div><h2 className="marketing-heading mt-4 max-w-2xl">One operating system. Clear product boundaries.</h2></div><p className="max-w-lg text-base leading-7 text-[color:var(--marketing-muted)]">Choose the operation you run today. Complete Operations brings every workspace together with owner-controlled access.</p></div><div className="mt-12 grid gap-4 md:grid-cols-2 xl:grid-cols-4">{modules.map(({ title, items, icon: Icon }) => <div key={title} className="rounded-2xl border border-[color:var(--marketing-border)] bg-white p-6 shadow-sm"><Icon size={21} className="text-[color:var(--marketing-copper-dark)]" /><h3 className="mt-8 text-lg font-bold">{title}</h3><p className="mt-3 text-sm leading-6 text-[color:var(--marketing-muted)]">{items}</p></div>)}</div></div>
         </section>
 
-        <section id="pricing" className="scroll-mt-24 bg-white py-20 sm:py-28"><div className="mx-auto max-w-[1400px] px-5 sm:px-8"><div className="mx-auto max-w-3xl text-center"><div className="marketing-eyebrow">Simple pricing</div><h2 className="marketing-heading mt-4">One complete product. Sized for your shop.</h2><p className="mt-5 text-lg leading-8 text-[color:var(--marketing-muted)]">All core features are included. Plans scale by the number of active users at each location.</p></div><div className="mt-12"><PricingSection surface="light" onCheckout={startCheckout} onStartFree={() => { window.location.href = "/compare-plans"; }} /></div></div></section>
+        <section id="pricing" className="scroll-mt-24 bg-white py-20 sm:py-28"><div className="mx-auto max-w-[1400px] px-5 sm:px-8"><div className="mx-auto max-w-3xl text-center"><div className="marketing-eyebrow">Product-based pricing</div><h2 className="marketing-heading mt-4">Pay for the operation you run.</h2><p className="mt-5 text-lg leading-8 text-[color:var(--marketing-muted)]">No per-user charge. Add service-truck or fleet-asset capacity only where the product creates more operational value.</p></div><div className="mt-12"><PricingSection surface="light" onCheckout={startCheckout} onStartFree={() => { window.location.href = "/compare-plans"; }} /></div></div></section>
       </main>
 
       <LandingChatbot />

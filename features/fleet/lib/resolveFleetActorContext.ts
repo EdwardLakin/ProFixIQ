@@ -122,19 +122,39 @@ export async function resolveFleetActorContext(
     "fleet_id" | "shop_id" | "role"
   >[];
 
+  const [shopEntitlement, ...fleetEntitlements] = await Promise.all([
+    typedProfile?.shop_id
+      ? supabase.rpc("profixiq_shop_has_product_access", {
+          p_capability: "fleet_maintenance",
+          p_shop_id: typedProfile.shop_id,
+        })
+      : Promise.resolve({ data: false, error: null }),
+    ...typedMemberships.map((membership) =>
+      supabase.rpc("profixiq_fleet_has_product_access", {
+        p_fleet_id: membership.fleet_id,
+      }),
+    ),
+  ]);
+
+  const entitledMemberships = typedMemberships.filter(
+    (_membership, index) => fleetEntitlements[index]?.data === true,
+  );
+  const shopHasFleetProduct =
+    !shopEntitlement.error && shopEntitlement.data === true;
+
   const requestedFleetId = options?.requestedFleetId ?? null;
   const membershipFleetIds = uniqueStrings(
-    typedMemberships.map((m) => m.fleet_id),
+    entitledMemberships.map((m) => m.fleet_id),
   );
 
   const membershipRow = requestedFleetId
-    ? (typedMemberships.find((m) => m.fleet_id === requestedFleetId) ?? null)
-    : (typedMemberships[0] ?? null);
+    ? (entitledMemberships.find((m) => m.fleet_id === requestedFleetId) ?? null)
+    : (entitledMemberships[0] ?? null);
 
   const membershipRole =
-    membershipRow?.role ?? typedMemberships[0]?.role ?? null;
+    membershipRow?.role ?? entitledMemberships[0]?.role ?? null;
   const membershipShopId =
-    membershipRow?.shop_id ?? typedMemberships[0]?.shop_id ?? null;
+    membershipRow?.shop_id ?? entitledMemberships[0]?.shop_id ?? null;
 
   const profileRole = typedProfile?.role ?? null;
   const canonicalRole = canonicalizeRole(profileRole);
@@ -148,6 +168,8 @@ export async function resolveFleetActorContext(
   );
   // A dual-role user can enter the fleet portal only when they have an explicit fleet membership.
   const hasFleetPortalMembership = fleetTier !== "none";
+  const hasFleetProductAccess =
+    hasFleetPortalMembership && (!internalRole || shopHasFleetProduct);
 
   const actorType: FleetActorType = internalRole
     ? "internal_staff"
@@ -181,30 +203,36 @@ export async function resolveFleetActorContext(
     profileShopId: typedProfile?.shop_id ?? null,
     shopId: typedProfile?.shop_id ?? membershipShopId ?? null,
     fleetIds: membershipFleetIds,
-    fleetMemberships: typedMemberships.map((membership) => ({
+    fleetMemberships: entitledMemberships.map((membership) => ({
       fleetId: membership.fleet_id,
       shopId: membership.shop_id,
       role: membership.role,
     })),
     primaryFleetId:
-      membershipRow?.fleet_id ?? typedMemberships[0]?.fleet_id ?? null,
+      membershipRow?.fleet_id ?? entitledMemberships[0]?.fleet_id ?? null,
     membershipRole,
     isInternal,
     isFleetActor,
     capabilities: {
       canSeeFleetWideUnits:
-        isInternal ||
+        hasFleetProductAccess &&
+        (isInternal ||
         actorType === "fleet_manager" ||
-        actorType === "fleet_dispatcher",
-      canCreatePretripReports: isInternal || actorType === "fleet_driver",
+          actorType === "fleet_dispatcher"),
+      canCreatePretripReports:
+        hasFleetProductAccess && (isInternal || actorType === "fleet_driver"),
       canConvertPretripToServiceRequest:
-        isInternal ||
+        hasFleetProductAccess &&
+        (isInternal ||
         actorType === "fleet_manager" ||
-        actorType === "fleet_dispatcher",
-      canAccessFleetIntake: isInternal || isFleetActor,
-      canAccessPortalFleetWrappers: hasFleetPortalMembership,
+          actorType === "fleet_dispatcher"),
+      canAccessFleetIntake:
+        hasFleetProductAccess && (isInternal || isFleetActor),
+      canAccessPortalFleetWrappers:
+        hasFleetProductAccess && hasFleetPortalMembership,
       canRunFleetDispatchActions:
-        canManageInternalFleet || actorCaps.canManageFleetApprovals,
+        hasFleetProductAccess &&
+        (canManageInternalFleet || actorCaps.canManageFleetApprovals),
       canOverrideShopScope: false,
     },
   };

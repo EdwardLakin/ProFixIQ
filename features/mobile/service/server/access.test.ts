@@ -10,6 +10,7 @@ describe("resolveMobileFieldServiceAccess", () => {
         onboardingCompletedAt: new Date().toISOString(),
         isFieldOperator: false,
         canonicalRole: "mechanic",
+        productEntitled: true,
       }),
     ).toMatchObject({
       fieldServiceEnabled: true,
@@ -24,6 +25,7 @@ describe("resolveMobileFieldServiceAccess", () => {
         onboardingCompletedAt: new Date().toISOString(),
         isFieldOperator: true,
         canonicalRole: "mechanic",
+        productEntitled: true,
       }).canAccessFieldService,
     ).toBe(false);
     expect(
@@ -32,7 +34,20 @@ describe("resolveMobileFieldServiceAccess", () => {
         onboardingCompletedAt: new Date().toISOString(),
         isFieldOperator: true,
         canonicalRole: "mechanic",
+        productEntitled: true,
       }).canAccessFieldService,
     ).toBe(true);
+  });
+
+  it("requires the paid Field Service product entitlement", () => {
+    expect(
+      resolveMobileFieldServiceAccess({
+        serviceModel: "mobile",
+        onboardingCompletedAt: new Date().toISOString(),
+        isFieldOperator: true,
+        canonicalRole: "mechanic",
+        productEntitled: false,
+      }).canAccessFieldService,
+    ).toBe(false);
   });
 });

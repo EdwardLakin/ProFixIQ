@@ -61,6 +61,7 @@ vi.mock("@supabase/ssr", () => ({
         }),
       },
       from: (table: string) => new MockQuery(table),
+      rpc: async () => ({ data: true, error: null }),
     };
   },
 }));

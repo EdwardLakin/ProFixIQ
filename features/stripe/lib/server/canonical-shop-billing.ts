@@ -11,6 +11,13 @@ import {
 } from "@/features/stripe/lib/stripe/constants";
 import { ADDITIONAL_SEAT_LOOKUP_KEY } from "@/features/stripe/lib/stripe/billing-model";
 import {
+  PRODUCT_PACKAGE_BILLING_MODEL,
+  PRODUCT_PACKAGE_KEYS,
+  PRODUCT_PACKAGE_LOOKUP_KEYS,
+  normalizeProductPackageKey,
+  type ProductPackageKey,
+} from "@/features/stripe/lib/stripe/product-packages";
+import {
   normalizeCanonicalPlan,
   type CanonicalPlan,
 } from "@/features/stripe/lib/stripe/plan-normalization";
@@ -18,7 +25,12 @@ import { collectCustomerSubscriptionDiagnostics } from "@/features/stripe/lib/se
 
 type DB = Database;
 type ShopBillingUpdate = DB["public"]["Tables"]["shops"]["Update"] & {
-  stripe_pricing_model?: "legacy" | "base_plus_seats_v2" | null;
+  stripe_pricing_model?:
+    | "legacy"
+    | "base_plus_seats_v2"
+    | typeof PRODUCT_PACKAGE_BILLING_MODEL
+    | null;
+  subscription_package?: ProductPackageKey | null;
 };
 
 type ProfileStripeArtifacts = {
@@ -39,13 +51,20 @@ function toShopStripeStatus(v: unknown): StripeSubscriptionStatus | null {
 }
 
 function normalize(value: unknown): string {
-  return String(value ?? "").trim().toLowerCase();
+  return String(value ?? "")
+    .trim()
+    .toLowerCase();
 }
 
-function planFromLookupKey(lookupKey: string | null | undefined): CanonicalPlan | null {
+function planFromLookupKey(
+  lookupKey: string | null | undefined,
+): CanonicalPlan | null {
   const value = normalize(lookupKey);
   if (!value || value === ADDITIONAL_SEAT_LOOKUP_KEY) return null;
-  if (value === PLAN_LOOKUP_KEYS.unlimited || value === LEGACY_PLAN_LOOKUP_KEYS.unlimited) {
+  if (
+    value === PLAN_LOOKUP_KEYS.unlimited ||
+    value === LEGACY_PLAN_LOOKUP_KEYS.unlimited
+  ) {
     return "unlimited";
   }
   if (
@@ -60,17 +79,18 @@ function planFromLookupKey(lookupKey: string | null | undefined): CanonicalPlan 
 
 function envPriceIds(names: readonly string[]): Set<string> {
   return new Set(
-    names
-      .map((name) => String(process.env[name] ?? "").trim())
-      .filter(Boolean),
+    names.map((name) => String(process.env[name] ?? "").trim()).filter(Boolean),
   );
 }
 
-function planFromPriceId(priceId: string | null | undefined): CanonicalPlan | null {
+function planFromPriceId(
+  priceId: string | null | undefined,
+): CanonicalPlan | null {
   const value = String(priceId ?? "").trim();
   if (!value) return null;
 
-  if (envPriceIds(["STRIPE_PRICE_UNLIMITED_MONTHLY"]).has(value)) return "unlimited";
+  if (envPriceIds(["STRIPE_PRICE_UNLIMITED_MONTHLY"]).has(value))
+    return "unlimited";
   if (
     envPriceIds([
       "STRIPE_PRICE_BASE_MONTHLY",
@@ -83,7 +103,9 @@ function planFromPriceId(priceId: string | null | undefined): CanonicalPlan | nu
   return null;
 }
 
-function planFromPriceNickname(nickname: string | null | undefined): CanonicalPlan | null {
+function planFromPriceNickname(
+  nickname: string | null | undefined,
+): CanonicalPlan | null {
   const value = normalize(nickname);
   if (!value || value.includes("seat")) return null;
   if (value.includes("unlimited")) return "unlimited";
@@ -107,6 +129,34 @@ function isV2Price(price: Stripe.Price): boolean {
   );
 }
 
+function packageFromLookupKey(
+  lookupKey: string | null | undefined,
+): ProductPackageKey | null {
+  const normalized = normalize(lookupKey);
+  for (const packageKey of PRODUCT_PACKAGE_KEYS) {
+    if (normalized === PRODUCT_PACKAGE_LOOKUP_KEYS[packageKey])
+      return packageKey;
+  }
+  return null;
+}
+
+export function resolveProductPackageFromSubscription(
+  subscription: Stripe.Subscription,
+): ProductPackageKey | null {
+  const metadataPackage = normalizeProductPackageKey(
+    subscription.metadata?.package_key,
+  );
+  if (metadataPackage) return metadataPackage;
+
+  for (const item of subscription.items.data) {
+    const packageKey =
+      normalizeProductPackageKey(item.price.metadata?.package_key) ??
+      packageFromLookupKey(item.price.lookup_key);
+    if (packageKey) return packageKey;
+  }
+  return null;
+}
+
 export function resolveCanonicalPlanFromSubscription(
   subscription: Stripe.Subscription,
 ): CanonicalPlan | null {
@@ -123,7 +173,9 @@ export function resolveCanonicalPlanFromSubscription(
     if (resolved === "starter") starterFound = true;
   }
 
-  return starterFound ? "starter" : normalizeCanonicalPlan(subscription.metadata?.plan_key);
+  return starterFound
+    ? "starter"
+    : normalizeCanonicalPlan(subscription.metadata?.plan_key);
 }
 
 export function toCanonicalShopBillingUpdate(args: {
@@ -132,11 +184,15 @@ export function toCanonicalShopBillingUpdate(args: {
   checkoutSessionId?: string | null;
 }): ShopBillingUpdate {
   const { customerId, subscription, checkoutSessionId } = args;
-  const resolvedPlan = normalizeCanonicalPlan(
+  const resolvedPlan =
+    normalizeCanonicalPlan(
     resolveCanonicalPlanFromSubscription(subscription),
-  );
-  const pricingModel =
-    subscription.metadata?.pricing_model === "base_plus_seats_v2" ||
+    ) ?? "starter";
+  const subscriptionPackage =
+    resolveProductPackageFromSubscription(subscription);
+  const pricingModel = subscriptionPackage
+    ? PRODUCT_PACKAGE_BILLING_MODEL
+    : subscription.metadata?.pricing_model === "base_plus_seats_v2" ||
     subscription.items.data.some((item) => isV2Price(item.price))
       ? "base_plus_seats_v2"
       : "legacy";
@@ -146,10 +202,15 @@ export function toCanonicalShopBillingUpdate(args: {
     stripe_subscription_id: subscription.id,
     stripe_subscription_status: toShopStripeStatus(subscription.status),
     stripe_trial_end: unixToIsoOrNull(subscription.trial_end ?? null),
-    stripe_current_period_end: unixToIsoOrNull(subscription.current_period_end ?? null),
+    stripe_current_period_end: unixToIsoOrNull(
+      subscription.current_period_end ?? null,
+    ),
     stripe_pricing_model: pricingModel,
+    subscription_package: subscriptionPackage,
     plan: resolvedPlan,
-    ...(checkoutSessionId ? { stripe_checkout_session_id: checkoutSessionId } : {}),
+    ...(checkoutSessionId
+      ? { stripe_checkout_session_id: checkoutSessionId }
+      : {}),
   } as ShopBillingUpdate;
 }
 
@@ -159,7 +220,9 @@ export async function getProfileStripeArtifacts(
 ): Promise<ProfileStripeArtifacts | null> {
   const { data, error } = await supabase
     .from("profiles")
-    .select("shop_id, stripe_customer_id, stripe_subscription_id, stripe_checkout_session_id")
+    .select(
+      "shop_id, stripe_customer_id, stripe_subscription_id, stripe_checkout_session_id",
+    )
     .eq("id", userId)
     .maybeSingle<ProfileStripeArtifacts>();
 
@@ -194,9 +257,13 @@ export async function syncCanonicalShopBilling(params: {
 
   if (webhookEvent) {
     if (!customerId) {
-      throw new Error("Stripe subscription webhook is missing its customer identity");
+      throw new Error(
+        "Stripe subscription webhook is missing its customer identity",
+      );
     }
-    const { data, error } = await supabase.rpc("apply_stripe_subscription_webhook_snapshot", {
+    const { data, error } = await supabase.rpc(
+      "apply_stripe_subscription_webhook_snapshot",
+      {
       p_shop_id: shopId,
       p_customer_id: customerId,
       p_subscription_id: sub.id,
@@ -207,10 +274,12 @@ export async function syncCanonicalShopBilling(params: {
         stripe_trial_end: update.stripe_trial_end ?? null,
         stripe_current_period_end: update.stripe_current_period_end ?? null,
         stripe_pricing_model: update.stripe_pricing_model ?? null,
+          subscription_package: update.subscription_package ?? null,
         plan: update.plan ?? null,
         stripe_checkout_session_id: checkoutSessionId ?? null,
       },
-    });
+      },
+    );
     if (error) throw new Error(error.message);
     return { applied: data === true };
   }
@@ -234,16 +303,30 @@ export async function reconcileShopBillingFromUser(params: {
   if (!profile) return { linked: false, reason: "profile_not_found" };
 
   let profileCustomerId = String(profile.stripe_customer_id ?? "").trim();
-  let profileSubscriptionId = String(profile.stripe_subscription_id ?? "").trim();
-  const profileCheckoutSessionId = String(profile.stripe_checkout_session_id ?? "").trim();
+  let profileSubscriptionId = String(
+    profile.stripe_subscription_id ?? "",
+  ).trim();
+  const profileCheckoutSessionId = String(
+    profile.stripe_checkout_session_id ?? "",
+  ).trim();
 
-  if (!profileCustomerId && !profileSubscriptionId && profileCheckoutSessionId) {
-    const checkoutSession = await stripe.checkout.sessions.retrieve(profileCheckoutSessionId);
+  if (
+    !profileCustomerId &&
+    !profileSubscriptionId &&
+    profileCheckoutSessionId
+  ) {
+    const checkoutSession = await stripe.checkout.sessions.retrieve(
+      profileCheckoutSessionId,
+    );
     if (checkoutSession.mode === "subscription") {
       profileCustomerId =
-        (typeof checkoutSession.customer === "string" ? checkoutSession.customer : "") || "";
+        (typeof checkoutSession.customer === "string"
+          ? checkoutSession.customer
+          : "") || "";
       profileSubscriptionId =
-        (typeof checkoutSession.subscription === "string" ? checkoutSession.subscription : "") || "";
+        (typeof checkoutSession.subscription === "string"
+          ? checkoutSession.subscription
+          : "") || "";
     }
   }
 
@@ -255,7 +338,10 @@ export async function reconcileShopBillingFromUser(params: {
   let subscriptionId = profileSubscriptionId;
 
   if (!subscriptionId && customerId) {
-    const diagnostics = await collectCustomerSubscriptionDiagnostics({ stripe, customerId });
+    const diagnostics = await collectCustomerSubscriptionDiagnostics({
+      stripe,
+      customerId,
+    });
     if (diagnostics.managed_subscription_ids.length === 1) {
       subscriptionId = diagnostics.managed_subscription_ids[0] ?? "";
     } else if (
@@ -270,14 +356,15 @@ export async function reconcileShopBillingFromUser(params: {
     }
   }
 
-  if (!subscriptionId) return { linked: false, reason: "no_subscription_found" };
+  if (!subscriptionId)
+    return { linked: false, reason: "no_subscription_found" };
 
   const subscription = await stripe.subscriptions.retrieve(subscriptionId);
   customerId =
     customerId ||
     (typeof subscription.customer === "string"
       ? subscription.customer
-      : subscription.customer?.id ?? null);
+      : (subscription.customer?.id ?? null));
 
   if (customerId) {
     await stripe.customers.update(

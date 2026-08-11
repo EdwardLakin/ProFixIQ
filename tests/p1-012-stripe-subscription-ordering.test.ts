@@ -75,6 +75,7 @@ describe("P1-012 Stripe subscription ordering", () => {
             1_787_788_800 * 1000,
           ).toISOString(),
           stripe_pricing_model: "legacy",
+          subscription_package: null,
           plan: "starter",
           stripe_checkout_session_id: null,
         },

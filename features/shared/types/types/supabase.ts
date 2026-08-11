@@ -19738,6 +19738,7 @@ export type Database = {
           stripe_subscription_id: string | null
           stripe_subscription_status: string | null
           stripe_trial_end: string | null
+          subscription_package: string | null
           supplies_percent: number | null
           tax_rate: number | null
           timezone: string | null
@@ -19819,6 +19820,7 @@ export type Database = {
           stripe_subscription_id?: string | null
           stripe_subscription_status?: string | null
           stripe_trial_end?: string | null
+          subscription_package?: string | null
           supplies_percent?: number | null
           tax_rate?: number | null
           timezone?: string | null
@@ -19900,6 +19902,7 @@ export type Database = {
           stripe_subscription_id?: string | null
           stripe_subscription_status?: string | null
           stripe_trial_end?: string | null
+          subscription_package?: string | null
           supplies_percent?: number | null
           tax_rate?: number | null
           timezone?: string | null
@@ -27844,6 +27847,10 @@ export type Database = {
       profixiq_can_finalize_workforce: { Args: never; Returns: boolean }
       profixiq_can_manage_workforce: { Args: never; Returns: boolean }
       profixiq_current_role: { Args: never; Returns: string }
+      profixiq_fleet_has_product_access: {
+        Args: { p_fleet_id: string }
+        Returns: boolean
+      }
       profixiq_has_portal_customer_shop: {
         Args: { p_shop_id: string }
         Returns: boolean
@@ -27862,6 +27869,10 @@ export type Database = {
       }
       profixiq_is_portal_customer_work_order: {
         Args: { p_work_order_id: string }
+        Returns: boolean
+      }
+      profixiq_shop_has_product_access: {
+        Args: { p_capability: string; p_shop_id: string }
         Returns: boolean
       }
       profixiq_workforce_profile_id: { Args: never; Returns: string }

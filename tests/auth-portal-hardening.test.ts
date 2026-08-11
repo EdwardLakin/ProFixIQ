@@ -58,10 +58,16 @@ describe("authentication and portal hardening", () => {
       'const hasFleetPortalMembership = fleetTier !== "none";',
     );
     expect(fleetActorResolver).toContain(
-      "canAccessPortalFleetWrappers: hasFleetPortalMembership",
+      "canAccessPortalFleetWrappers:\n        hasFleetProductAccess && hasFleetPortalMembership",
     );
     expect(fleetActorResolver).not.toContain(
       "canAccessPortalFleetWrappers: isFleetActor",
+    );
+    expect(fleetActorResolver).toContain(
+      "entitledMemberships[0]?.fleet_id ?? null",
+    );
+    expect(fleetActorResolver).not.toContain(
+      "typedMemberships[0]?.fleet_id ?? null",
     );
     expect(middleware).toContain("isFleetPortalAuthPage");
     expect(middleware).toContain("PORTAL_SIGN_IN[surface]");
