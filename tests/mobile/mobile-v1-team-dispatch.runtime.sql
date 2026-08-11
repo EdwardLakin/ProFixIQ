@@ -71,7 +71,7 @@ begin
     null, 2022, 'Freightliner', 'Cascadia', 'TEAM0299',
     '456 Dispatch Road', 'Calgary', 'AB', 'T2P 2J9',
     'No-start in yard',
-    '2099-08-10 19:00:00+00', 90, null, 'USD',
+    '2099-08-10 19:00:00+00', 90, null, 'USD', 'mobile',
     '9a200000-0000-4000-8000-000000000001',
     'mobile-v1:team-dispatch:intake:1'
   );

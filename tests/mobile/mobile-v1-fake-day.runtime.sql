@@ -118,7 +118,7 @@ begin
     null, 2017, 'Ford', 'Expedition', 'MOB0199',
     '123 Test Avenue', 'Denver', 'CO', '80202',
     'Rear tire leaking after road debris',
-    '2099-08-10 17:30:00+00', 60, 189.50, 'CAD',
+    '2099-08-10 17:30:00+00', 60, 189.50, 'CAD', 'mobile',
     '9a100000-0000-4000-8000-000000000001',
     'mobile-v1:fake-day:intake:1'
   );
@@ -163,7 +163,7 @@ begin
     null, 2017, 'Ford', 'Expedition', 'MOB0199',
     '123 Test Avenue', 'Denver', 'CO', '80202',
     'Rear tire leaking after road debris',
-    '2099-08-10 17:30:00+00', 60, 189.50, 'CAD',
+    '2099-08-10 17:30:00+00', 60, 189.50, 'CAD', 'mobile',
     '9a100000-0000-4000-8000-000000000001',
     'mobile-v1:fake-day:intake:1'
   );

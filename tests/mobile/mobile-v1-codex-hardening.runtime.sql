@@ -72,7 +72,7 @@ begin
     null, 'John Smith', '403-555-0002',
     null, 2020, 'Ford', 'F-150', 'DUPLATE',
     '1 Identity Way', 'Calgary', 'AB', 'T2P 1A1',
-    'Flat tire', '2099-08-12 10:00:00+00', 60, null, 'USD',
+    'Flat tire', '2099-08-12 10:00:00+00', 60, null, 'USD', 'mobile',
     '9a300000-0000-4000-8000-000000000001',
     'mobile-v1:hardening:same-name'
   );
@@ -97,7 +97,7 @@ begin
       null, 'Different Customer', '403-555-0003',
       null, 2020, 'Ford', 'F-150', 'DUPLATE',
       '2 Identity Way', 'Calgary', 'AB', 'T2P 1A2',
-      'Battery issue', '2099-08-12 12:00:00+00', 60, null, 'CAD',
+      'Battery issue', '2099-08-12 12:00:00+00', 60, null, 'CAD', 'mobile',
       '9a300000-0000-4000-8000-000000000001',
       'mobile-v1:hardening:plate-conflict'
     );
