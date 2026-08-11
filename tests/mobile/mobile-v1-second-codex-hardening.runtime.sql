@@ -21,15 +21,17 @@ set user_id = excluded.user_id,
 insert into public.shops (
   id, owner_id, business_name, name, user_limit,
   accepts_online_booking, min_notice_minutes, max_lead_days,
-  location_type, country
+  location_type, country, billing_entitlement_override
 )
 values (
   '9b400000-0000-4000-8000-000000000001',
   '9a400000-0000-4000-8000-000000000001',
   'Second Review Runtime', 'Second Review Runtime', 10,
-  true, 0, 365, 'repair_facility', 'US'
+  true, 0, 365, 'repair_facility', 'US', 'internal_demo'
 )
-on conflict (id) do update set country = 'US';
+on conflict (id) do update
+set country = 'US',
+    billing_entitlement_override = 'internal_demo';
 
 update public.profiles
 set shop_id = '9b400000-0000-4000-8000-000000000001'
