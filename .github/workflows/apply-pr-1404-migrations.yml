@@ -20,7 +20,7 @@ jobs:
     timeout-minutes: 15
     env:
       PROJECT_REF: scjjkmuwadwkaaqjoigx
-      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
     steps:
       - name: Checkout PR 1404 branch
         uses: actions/checkout@v4
@@ -30,29 +30,32 @@ jobs:
         with:
           version: 2.101.0
 
-      - name: Login to Supabase
+      - name: Build direct production database URL
         shell: bash
         run: |
           set -euo pipefail
-          test -n "$SUPABASE_ACCESS_TOKEN"
-          supabase login --token "$SUPABASE_ACCESS_TOKEN"
+          test -n "$SUPABASE_DB_PASSWORD"
+          encoded_password="$(python3 - <<'PY'
+          import os, urllib.parse
+          print(urllib.parse.quote(os.environ['SUPABASE_DB_PASSWORD'], safe=''))
+          PY
+          )"
+          database_url="postgresql://postgres:${encoded_password}@db.${PROJECT_REF}.supabase.co:5432/postgres?sslmode=require"
+          echo "::add-mask::$database_url"
+          echo "DATABASE_URL=$database_url" >> "$GITHUB_ENV"
 
-      - name: Link exact production project
+      - name: Show repository migrations after current production baseline
         shell: bash
         run: |
           set -euo pipefail
-          supabase link --project-ref "$PROJECT_REF"
-
-      - name: Show linked migration history
-        shell: bash
-        run: |
-          set -euo pipefail
-          supabase migration list --linked
+          find supabase/migrations -maxdepth 1 -type f -name '*.sql' -printf '%f\n' \
+            | sort \
+            | awk '$0 > "20260810166000_"'
 
       - name: Dry-run exact pending migration plan
         shell: bash
         run: |
           set -euo pipefail
-          supabase db push --linked --dry-run 2>&1 | tee /tmp/pr1404-dry-run.log
+          supabase db push --db-url "$DATABASE_URL" --include-all --dry-run 2>&1 | tee /tmp/pr1404-dry-run.log
           echo "--- planned migration filenames ---"
           grep -oE '[0-9]{14}_[A-Za-z0-9_]+\.sql' /tmp/pr1404-dry-run.log | sort -u || true
