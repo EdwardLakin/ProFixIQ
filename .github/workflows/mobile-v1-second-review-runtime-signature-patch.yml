@@ -1,0 +1,58 @@
+name: Mobile V1 Second Review Runtime Signature Patch
+
+on:
+  push:
+    branches:
+      - agent/mobile-v1-productization
+    paths:
+      - ".github/workflows/mobile-v1-second-review-runtime-signature-patch.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/mobile-v1-productization
+          fetch-depth: 1
+
+      - name: Add service mode to existing rapid-intake runtime calls
+        shell: bash
+        run: |
+          python - <<'PY'
+          import re
+          from pathlib import Path
+
+          paths = [
+            Path("tests/mobile/mobile-v1-fake-day.runtime.sql"),
+            Path("tests/mobile/mobile-v1-team-dispatch.runtime.sql"),
+            Path("tests/mobile/mobile-v1-codex-hardening.runtime.sql"),
+          ]
+          actor = r"('9a[0-9a-fA-F-]{34,36}')"
+          pattern = re.compile(r"('(CAD|USD)')\s*,\s*\n(\s*)" + actor)
+          total = 0
+          for path in paths:
+            text = path.read_text()
+            def repl(match):
+              nonlocal_dummy = None
+              return f"{match.group(1)}, 'mobile',\n{match.group(3)}{match.group(4)}"
+            new_text, count = pattern.subn(repl, text)
+            if count == 0:
+              raise SystemExit(f"No rapid-intake signature replacements in {path}")
+            path.write_text(new_text)
+            total += count
+          print(f"Updated {total} rapid-intake runtime calls")
+          PY
+          git diff --check
+
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name "chatgpt-codex-connector[bot]"
+          git config user.email "199175422+chatgpt-codex-connector[bot]@users.noreply.github.com"
+          git add tests/mobile/mobile-v1-fake-day.runtime.sql tests/mobile/mobile-v1-team-dispatch.runtime.sql tests/mobile/mobile-v1-codex-hardening.runtime.sql
+          git commit -m "Pass service mode through Mobile V1 runtimes"
+          git push origin HEAD:agent/mobile-v1-productization
