@@ -29,7 +29,11 @@ import type {
   MobileActiveJobContract,
 } from "@/features/dispatch/lib/contracts";
 import type { ServiceVisitStatus } from "@/features/scheduling/lib/service-visit-contract";
-import { runMutationWithOfflineQueue } from "@/features/shared/lib/offline/mutations";
+import {
+  hydrateOfflineMutationQueue,
+  listPendingMutations,
+  runMutationWithOfflineQueue,
+} from "@/features/shared/lib/offline/mutations";
 import { replayAndReconcileOfflineMutations } from "@/features/shared/lib/offline/replay";
 
 const SNAPSHOT_CACHE_KEY = "profixiq:mobile-service:active:v1";
@@ -190,6 +194,7 @@ async function transitionVisit(
     visitId: visit.id,
     fromStatus: visit.status,
     toStatus,
+    expectedVersion: Number(visit.version ?? 0),
     operationKey: mutationId,
   };
 
@@ -265,6 +270,7 @@ function VisitCard({
   busy,
   onPrimary,
   onPause,
+  onCreateWorkOrder,
 }: {
   visit: DispatchVisit;
   active: boolean;
@@ -272,6 +278,7 @@ function VisitCard({
   busy: boolean;
   onPrimary: (visit: DispatchVisit) => void;
   onPause: (visit: DispatchVisit) => void;
+  onCreateWorkOrder: (visit: DispatchVisit) => void;
 }) {
   const action = primaryAction(visit);
   const address = addressText(visit);
@@ -414,8 +421,25 @@ function VisitCard({
             </Link>
           </div>
         ) : (
-          <div className="rounded-2xl border border-dashed border-[color:var(--theme-border-soft)] px-3.5 py-3 text-xs text-[color:var(--theme-text-muted)]">
-            No work order is linked yet. Dispatch can exist before repair intake; the work order will appear here once linked.
+          <div className="space-y-2 rounded-2xl border border-dashed border-[color:var(--theme-border-soft)] px-3.5 py-3">
+            <p className="text-xs text-[color:var(--theme-text-muted)]">
+              This call is scheduled, but repair intake has not started yet.
+            </p>
+            {visit.bookingId ? (
+              <button
+                type="button"
+                disabled={!online || busy}
+                onClick={() => onCreateWorkOrder(visit)}
+                className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-sky-500 px-3 text-sm font-extrabold text-white disabled:opacity-40"
+              >
+                <BriefcaseBusiness className="h-4 w-4" />
+                {online ? "Create work order & start repair" : "Reconnect to start repair"}
+              </button>
+            ) : (
+              <p className="text-xs text-[color:var(--theme-text-muted)]">
+                This visit has no booking identity. Use full work-order intake.
+              </p>
+            )}
           </div>
         )}
 
@@ -583,13 +607,30 @@ export default function MobileServiceShell() {
       setQueuedNotice(null);
       try {
         let current = visit;
-        const dependencies: string[] = [];
+        await hydrateOfflineMutationQueue();
+        const orderKey = `service-visit:${visit.id}`;
+        const previous = listPendingMutations()
+          .filter(
+            (mutation) =>
+              mutation.actionType === "service-visit:transition" &&
+              mutation.orderKey === orderKey,
+          )
+          .sort(
+            (a, b) =>
+              new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+          )
+          .at(-1);
+        let dependencies = previous ? [previous.clientMutationId] : [];
         let queued = false;
 
         if (toStatus === "en_route" && current.status === "scheduled") {
-          const dispatch = await transitionVisit(current, "dispatched");
+          const dispatch = await transitionVisit(
+            current,
+            "dispatched",
+            dependencies,
+          );
           current = dispatch.visit;
-          dependencies.push(dispatch.mutationId);
+          dependencies = [dispatch.mutationId];
           queued ||= dispatch.queued;
           applyVisit(current);
         }
@@ -618,6 +659,50 @@ export default function MobileServiceShell() {
       }
     },
     [applyVisit, busyVisitId, load],
+  );
+
+  const createWorkOrder = useCallback(
+    async (visit: DispatchVisit) => {
+      if (busyVisitId || !navigator.onLine) return;
+      setBusyVisitId(visit.id);
+      setError(null);
+      setQueuedNotice(null);
+      const opKey = operationKey(visit.id, "create-work-order");
+      try {
+        const response = await fetch(
+          `/api/mobile/service-visits/${visit.id}/work-order`,
+          {
+            method: "POST",
+            credentials: "include",
+            headers: {
+              "Content-Type": "application/json",
+              "Idempotency-Key": opKey,
+            },
+            body: JSON.stringify({ operationKey: opKey }),
+          },
+        );
+        const body = (await response.json().catch(() => null)) as
+          | { workOrderId?: string; visit?: DispatchVisit; error?: string }
+          | null;
+        if (!response.ok || !body?.workOrderId) {
+          throw new Error(body?.error || "Work order could not be created.");
+        }
+        if (body.visit) applyVisit(body.visit);
+        await load(true);
+        router.push(
+          `/mobile/work-orders/${encodeURIComponent(body.workOrderId)}`,
+        );
+      } catch (cause) {
+        setError(
+          cause instanceof Error
+            ? cause.message
+            : "Work order could not be created.",
+        );
+      } finally {
+        setBusyVisitId(null);
+      }
+    },
+    [applyVisit, busyVisitId, load, router],
   );
 
   const handlePrimary = useCallback(
@@ -733,6 +818,7 @@ export default function MobileServiceShell() {
             busy={busyVisitId === primaryVisit.id}
             onPrimary={(visit) => void handlePrimary(visit)}
             onPause={(visit) => void runTransition(visit, "paused")}
+            onCreateWorkOrder={(visit) => void createWorkOrder(visit)}
           />
 
           {activeJob && nextJob && activeJob.id !== nextJob.id ? (
@@ -755,6 +841,7 @@ export default function MobileServiceShell() {
                 busy={busyVisitId === nextJob.id}
                 onPrimary={(visit) => void handlePrimary(visit)}
                 onPause={(visit) => void runTransition(visit, "paused")}
+                onCreateWorkOrder={(visit) => void createWorkOrder(visit)}
               />
             </section>
           ) : null}
