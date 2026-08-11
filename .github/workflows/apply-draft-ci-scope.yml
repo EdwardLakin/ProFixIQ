@@ -1,0 +1,124 @@
+name: Apply Draft CI Scope
+
+on:
+  push:
+    branches:
+      - ci/scope-pr-validation
+    paths:
+      - ".github/workflows/apply-draft-ci-scope.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ci/scope-pr-validation
+          fetch-depth: 0
+
+      - name: Gate expensive PR workflows while draft
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          targets = [
+              "p1-012-stripe-webhook-validation.yml",
+              "operational-observability-validation.yml",
+              "phase-6-technician-mobile-reliability.yml",
+              "p0-007-financial-outbox-validation.yml",
+              "p0-005-ai-route-validation.yml",
+              "supabase-clean-replay-validation.yml",
+              "p0-004-vehicle-recall-validation.yml",
+              "operational-observability-clean-replay-validation.yml",
+              "mobile-command-validation.yml",
+              "p0-006-stripe-identity-validation.yml",
+              "universal-scheduler-validation.yml",
+              "mobile-dispatch-validation.yml",
+          ]
+
+          root = Path(".github/workflows")
+          draft_if = "    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}\n"
+
+          for name in targets:
+              path = root / name
+              text = path.read_text()
+
+              # Ensure ready_for_review is an activity that can trigger the final domain gate.
+              lines = text.splitlines(keepends=True)
+              for i, line in enumerate(lines):
+                  if line == "  pull_request:\n":
+                      if i + 1 < len(lines) and lines[i + 1].lstrip().startswith("types:"):
+                          current = lines[i + 1]
+                          if "ready_for_review" not in current:
+                              if "[" in current and "]" in current:
+                                  lines[i + 1] = current.replace("]", ", ready_for_review]")
+                              else:
+                                  raise RuntimeError(f"Unsupported pull_request types syntax in {name}")
+                      else:
+                          lines.insert(i + 1, "    types: [opened, synchronize, reopened, ready_for_review]\n")
+                      break
+              else:
+                  raise RuntimeError(f"No pull_request trigger found in {name}")
+
+              text = "".join(lines)
+
+              # Cancel an older generation for the same PR as soon as a new head arrives.
+              if "\nconcurrency:\n" not in text:
+                  marker = "\njobs:\n"
+                  if marker not in text:
+                      raise RuntimeError(f"No jobs block in {name}")
+                  slug = name.removesuffix(".yml").replace("_", "-")
+                  block = (
+                      "\nconcurrency:\n"
+                      f"  group: {slug}-${{{{ github.event.pull_request.number || github.ref }}}}\n"
+                      "  cancel-in-progress: true\n"
+                  )
+                  text = text.replace(marker, block + marker, 1)
+
+              # Domain jobs are expensive and noisy. Keep them dormant during draft iteration.
+              lines = text.splitlines(keepends=True)
+              try:
+                  jobs_index = next(i for i, line in enumerate(lines) if line == "jobs:\n")
+              except StopIteration:
+                  raise RuntimeError(f"No jobs block after patch in {name}")
+
+              job_starts = []
+              for i in range(jobs_index + 1, len(lines)):
+                  if re.match(r"^  [A-Za-z0-9_-]+:\s*$", lines[i]):
+                      job_starts.append(i)
+
+              offset = 0
+              for original_i in job_starts:
+                  i = original_i + offset
+                  next_i = len(lines)
+                  for j in range(i + 1, len(lines)):
+                      if re.match(r"^  [A-Za-z0-9_-]+:\s*$", lines[j]):
+                          next_i = j
+                          break
+                  if any(re.match(r"^    if:\s*", lines[j]) for j in range(i + 1, next_i)):
+                      continue
+                  lines.insert(i + 1, draft_if)
+                  offset += 1
+
+              path.write_text("".join(lines))
+          PY
+
+      - name: Commit scoped workflows
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/workflows
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "Scope expensive PR validation to ready reviews"
+          git push origin HEAD:ci/scope-pr-validation
