@@ -40,7 +40,7 @@ jobs:
               "phase-6-technician-mobile-reliability.yml",
               "p0-007-financial-outbox-validation.yml",
               "p0-005-ai-route-validation.yml",
-              "supabase-clean-replay-validation.yml",
+              "supabase-clean-replay-audit.yml",
               "p0-004-vehicle-recall-validation.yml",
               "operational-observability-clean-replay-validation.yml",
               "mobile-command-validation.yml",
