@@ -88,11 +88,24 @@ jobs:
         env:
           DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
         run: |
-          set -euo pipefail
-          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
-            -f tests/mobile/mobile-v1-fake-day.runtime.sql
-          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
-            -f tests/mobile/mobile-v1-team-dispatch.runtime.sql
+          set -o pipefail
+          {
+            echo "=== Solo Mobile V1 fake day ==="
+            psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+              -f tests/mobile/mobile-v1-fake-day.runtime.sql
+            echo "=== Team Dispatch Mobile V1 fake day ==="
+            psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+              -f tests/mobile/mobile-v1-team-dispatch.runtime.sql
+          } 2>&1 | tee "$RUNNER_TEMP/mobile-v1-runtime.log"
+
+      - name: Upload Mobile V1 runtime diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-v1-runtime-${{ github.run_id }}
+          path: ${{ runner.temp }}/mobile-v1-runtime.log
+          if-no-files-found: ignore
+          retention-days: 5
 
       - name: Stop local Supabase
         if: always()
