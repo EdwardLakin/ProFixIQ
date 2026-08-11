@@ -63,7 +63,8 @@ jobs:
       - name: Set up Supabase CLI
         uses: supabase/setup-cli@v2
         with:
-          version: latest
+          version: 2.101.0
+          github-token: ${{ github.token }}
 
       - name: Start clean local database
         shell: bash
