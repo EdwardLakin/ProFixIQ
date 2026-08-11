@@ -9,6 +9,17 @@ const fixture = vi.hoisted(() => ({
     } | null,
     error: null as { code?: string } | null,
   },
+  customerResult: {
+    data: {
+      id: "11111111-1111-4111-8111-111111111111",
+      name: "Northside Transport",
+      business_name: "Northside Transport",
+      first_name: "Morgan",
+      last_name: "Lee",
+      email: "fleet@example.com",
+    } as Record<string, string | null> | null,
+    error: null as { code?: string } | null,
+  },
 }));
 
 vi.mock("@/features/shared/lib/server/admin-access", () => ({
@@ -24,6 +35,18 @@ vi.mock("@/features/shared/lib/server/admin-access", () => ({
 vi.mock("@/features/shared/lib/supabase/admin", () => ({
   supabaseAdmin: {
     from: vi.fn((table: string) => {
+      if (table === "customers") {
+        const builder = {
+          select() {
+            return builder;
+          },
+          eq() {
+            return builder;
+          },
+          maybeSingle: async () => fixture.customerResult,
+        };
+        return builder;
+      }
       if (table !== "fleets") throw new Error(`Unexpected table: ${table}`);
       return {
         insert(payload: Record<string, unknown>) {
@@ -66,6 +89,17 @@ describe("Fleet relationship creation", () => {
       data: { id: "fleet-1", name: "Northside Transport" },
       error: null,
     };
+    fixture.customerResult = {
+      data: {
+        id: "11111111-1111-4111-8111-111111111111",
+        name: "Northside Transport",
+        business_name: "Northside Transport",
+        first_name: "Morgan",
+        last_name: "Lee",
+        email: "fleet@example.com",
+      },
+      error: null,
+    };
   });
 
   it("uses the authenticated Shop scope and ignores client tenant claims", async () => {
@@ -99,6 +133,38 @@ describe("Fleet relationship creation", () => {
     );
 
     expect(response.status).toBe(400);
+    expect(fixture.insertPayload).toBeNull();
+  });
+
+  it("links a same-Shop customer without creating a duplicate customer", async () => {
+    const customerId = "11111111-1111-4111-8111-111111111111";
+    const response = await POST(
+      createRequest({
+        action: "create_fleet",
+        customerId,
+        name: "",
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    expect(fixture.insertPayload).toMatchObject({
+      shop_id: "shop-1",
+      customer_id: customerId,
+      name: "Northside Transport",
+    });
+  });
+
+  it("rejects a customer outside the authenticated Shop scope", async () => {
+    fixture.customerResult = { data: null, error: null };
+    const response = await POST(
+      createRequest({
+        action: "create_fleet",
+        customerId: "22222222-2222-4222-8222-222222222222",
+        name: "Foreign Fleet",
+      }),
+    );
+
+    expect(response.status).toBe(404);
     expect(fixture.insertPayload).toBeNull();
   });
 

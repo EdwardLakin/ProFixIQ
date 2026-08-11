@@ -7,6 +7,16 @@ import { toast } from "sonner";
 type Fleet = {
   id: string;
   name: string;
+  customer_id: string;
+};
+
+type CustomerCandidate = {
+  id: string;
+  name: string | null;
+  business_name: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
 };
 
 type InviteRole = "viewer" | "approver" | "manager";
@@ -26,6 +36,7 @@ type InvitePayload = {
   fleets?: Fleet[];
   fleet?: Fleet;
   invites?: Invite[];
+  customerCandidate?: CustomerCandidate | null;
   error?: string;
 };
 
@@ -43,13 +54,21 @@ export default function FleetPortalAccessManager() {
   const [fleetContactName, setFleetContactName] = useState("");
   const [fleetContactEmail, setFleetContactEmail] = useState("");
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [customerCandidate, setCustomerCandidate] =
+    useState<CustomerCandidate | null>(null);
 
   const load = useCallback(async (preferredFleetId?: string) => {
     setLoading(true);
     setLoadError(null);
 
     try {
-      const response = await fetch("/api/portal/fleet/invites", {
+      const requestedCustomerId = new URLSearchParams(
+        window.location.search,
+      ).get("customerId");
+      const endpoint = requestedCustomerId
+        ? `/api/portal/fleet/invites?customerId=${encodeURIComponent(requestedCustomerId)}`
+        : "/api/portal/fleet/invites";
+      const response = await fetch(endpoint, {
         cache: "no-store",
       });
       const payload = (await response
@@ -65,12 +84,37 @@ export default function FleetPortalAccessManager() {
       const nextFleets = payload?.fleets ?? [];
       setFleets(nextFleets);
       setInvites(payload?.invites ?? []);
+      setCustomerCandidate(payload?.customerCandidate ?? null);
+
+      const connectedFleet = requestedCustomerId
+        ? nextFleets.find((fleet) => fleet.customer_id === requestedCustomerId)
+        : null;
+      if (payload?.customerCandidate && !connectedFleet) {
+        const candidate = payload.customerCandidate;
+        setFleetName(
+          candidate.business_name?.trim() || candidate.name?.trim() || "",
+        );
+        setFleetContactName(
+          [candidate.first_name, candidate.last_name]
+            .filter(Boolean)
+            .join(" ") ||
+            candidate.name?.trim() ||
+            "",
+        );
+        setFleetContactEmail(candidate.email ?? "");
+        setShowCreateFleet(true);
+      }
 
       const requestedFleetId = new URLSearchParams(window.location.search).get(
         "fleetId",
       );
       setFleetId((current) => {
-        const preferred = preferredFleetId || current || requestedFleetId || "";
+        const preferred =
+          preferredFleetId ||
+          connectedFleet?.id ||
+          current ||
+          requestedFleetId ||
+          "";
         return nextFleets.some((fleet) => fleet.id === preferred)
           ? preferred
           : (nextFleets[0]?.id ?? "");
@@ -132,6 +176,7 @@ export default function FleetPortalAccessManager() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "create_fleet",
+          customerId: customerCandidate?.id,
           name: fleetName,
           contactName: fleetContactName,
           contactEmail: fleetContactEmail,
@@ -234,6 +279,17 @@ export default function FleetPortalAccessManager() {
                   This establishes the Shop connection. Workspace details,
                   users, assets, and maintenance are managed inside Fleet.
                 </p>
+                {customerCandidate ? (
+                  <p className="mt-2 rounded-lg border border-[var(--accent-copper-soft)]/45 bg-[color:var(--theme-surface-inset)] px-3 py-2 text-xs text-[color:var(--theme-text-primary)]">
+                    Connecting the existing customer file for{" "}
+                    <span className="font-semibold">
+                      {customerCandidate.business_name ||
+                        customerCandidate.name ||
+                        "this customer"}
+                    </span>
+                    . No duplicate customer will be created.
+                  </p>
+                ) : null}
               </div>
               <label className="block text-xs font-semibold text-[color:var(--theme-text-secondary)]">
                 Fleet name

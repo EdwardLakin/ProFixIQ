@@ -2787,6 +2787,164 @@ export type Database = {
         }
         Relationships: []
       }
+      customer_contacts: {
+        Row: {
+          active: boolean
+          can_approve: boolean
+          can_view_billing: boolean
+          created_at: string
+          created_by: string | null
+          customer_id: string
+          display_name: string | null
+          email: string | null
+          first_name: string | null
+          id: string
+          is_primary: boolean
+          last_name: string | null
+          phone: string | null
+          portal_user_id: string | null
+          role: string
+          shop_id: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          can_approve?: boolean
+          can_view_billing?: boolean
+          created_at?: string
+          created_by?: string | null
+          customer_id: string
+          display_name?: string | null
+          email?: string | null
+          first_name?: string | null
+          id?: string
+          is_primary?: boolean
+          last_name?: string | null
+          phone?: string | null
+          portal_user_id?: string | null
+          role?: string
+          shop_id: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          can_approve?: boolean
+          can_view_billing?: boolean
+          created_at?: string
+          created_by?: string | null
+          customer_id?: string
+          display_name?: string | null
+          email?: string | null
+          first_name?: string | null
+          id?: string
+          is_primary?: boolean
+          last_name?: string | null
+          phone?: string | null
+          portal_user_id?: string | null
+          role?: string
+          shop_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_contacts_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_contacts_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_contacts_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      customer_locations: {
+        Row: {
+          active: boolean
+          address: string | null
+          city: string | null
+          country: string
+          created_at: string
+          created_by: string | null
+          customer_id: string
+          id: string
+          is_primary: boolean
+          location_type: string
+          name: string
+          postal_code: string | null
+          province: string | null
+          shop_id: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          address?: string | null
+          city?: string | null
+          country?: string
+          created_at?: string
+          created_by?: string | null
+          customer_id: string
+          id?: string
+          is_primary?: boolean
+          location_type?: string
+          name: string
+          postal_code?: string | null
+          province?: string | null
+          shop_id: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          address?: string | null
+          city?: string | null
+          country?: string
+          created_at?: string
+          created_by?: string | null
+          customer_id?: string
+          id?: string
+          is_primary?: boolean
+          location_type?: string
+          name?: string
+          postal_code?: string | null
+          province?: string | null
+          shop_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_locations_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_locations_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_locations_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       customer_portal_invites: {
         Row: {
           acceptance_metadata: Json
@@ -2993,11 +3151,15 @@ export type Database = {
       }
       customers: {
         Row: {
+          account_type: string
+          active: boolean
           address: string | null
           business_name: string | null
           city: string | null
           created_at: string | null
+          created_by: string | null
           customer_since: string | null
+          default_bill_to_customer_id: string | null
           email: string | null
           external_id: string | null
           first_name: string | null
@@ -3008,6 +3170,7 @@ export type Database = {
           last_name: string | null
           name: string | null
           notes: string | null
+          parent_customer_id: string | null
           phone: string | null
           phone_number: string | null
           postal_code: string | null
@@ -3021,11 +3184,15 @@ export type Database = {
           vehicle: string | null
         }
         Insert: {
+          account_type?: string
+          active?: boolean
           address?: string | null
           business_name?: string | null
           city?: string | null
           created_at?: string | null
+          created_by?: string | null
           customer_since?: string | null
+          default_bill_to_customer_id?: string | null
           email?: string | null
           external_id?: string | null
           first_name?: string | null
@@ -3036,6 +3203,7 @@ export type Database = {
           last_name?: string | null
           name?: string | null
           notes?: string | null
+          parent_customer_id?: string | null
           phone?: string | null
           phone_number?: string | null
           postal_code?: string | null
@@ -3049,11 +3217,15 @@ export type Database = {
           vehicle?: string | null
         }
         Update: {
+          account_type?: string
+          active?: boolean
           address?: string | null
           business_name?: string | null
           city?: string | null
           created_at?: string | null
+          created_by?: string | null
           customer_since?: string | null
+          default_bill_to_customer_id?: string | null
           email?: string | null
           external_id?: string | null
           first_name?: string | null
@@ -3064,6 +3236,7 @@ export type Database = {
           last_name?: string | null
           name?: string | null
           notes?: string | null
+          parent_customer_id?: string | null
           phone?: string | null
           phone_number?: string | null
           postal_code?: string | null
@@ -3077,6 +3250,20 @@ export type Database = {
           vehicle?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "customers_default_bill_to_customer_id_fkey"
+            columns: ["default_bill_to_customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customers_parent_customer_id_fkey"
+            columns: ["parent_customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "customers_shop_id_fkey"
             columns: ["shop_id"]
@@ -25964,7 +26151,11 @@ export type Database = {
       }
       agent_can_start: { Args: never; Returns: boolean }
       agent_reject_action: {
-        Args: { p_action_id: string; p_reason?: string; p_rejected_by?: string }
+        Args: {
+          p_action_id: string
+          p_reason?: string
+          p_rejected_by?: string
+        }
         Returns: {
           approved_at: string | null
           approved_by: string | null
@@ -26826,7 +27017,11 @@ export type Database = {
         Returns: Json
       }
       dispatch_can_execute: {
-        Args: { p_actor_user_id: string; p_shop_id: string; p_visit_id: string }
+        Args: {
+          p_actor_user_id: string
+          p_shop_id: string
+          p_visit_id: string
+        }
         Returns: boolean
       }
       dispatch_can_manage: {
@@ -26920,7 +27115,11 @@ export type Database = {
         Returns: Json
       }
       dispatch_visit_history: {
-        Args: { p_actor_user_id: string; p_shop_id: string; p_visit_id: string }
+        Args: {
+          p_actor_user_id: string
+          p_shop_id: string
+          p_visit_id: string
+        }
         Returns: Json
       }
       dispatch_visit_snapshot: { Args: { p_visit_id: string }; Returns: Json }
@@ -27201,7 +27400,11 @@ export type Database = {
         Returns: Json
       }
       match_learned_job_templates: {
-        Args: { p_embedding: string; p_match_count?: number; p_shop_id: string }
+        Args: {
+          p_embedding: string
+          p_match_count?: number
+          p_shop_id: string
+        }
         Returns: {
           confidence_score: number
           default_labor_hours: number
@@ -27215,7 +27418,11 @@ export type Database = {
         }[]
       }
       match_work_order_intelligence: {
-        Args: { p_embedding: string; p_match_count?: number; p_shop_id: string }
+        Args: {
+          p_embedding: string
+          p_match_count?: number
+          p_shop_id: string
+        }
         Returns: {
           cause: string
           complaint: string
@@ -29220,4 +29427,3 @@ export const Constants = {
     },
   },
 } as const
-
