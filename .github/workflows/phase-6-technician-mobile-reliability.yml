@@ -2,6 +2,7 @@ name: Phase 6 Technician Mobile Reliability
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "features/shared/lib/offline/**"
       - "features/work-orders/lib/jobPunchTransitionsClient.ts"
@@ -21,8 +22,13 @@ on:
       - ".github/workflows/phase-6-technician-mobile-reliability.yml"
   workflow_dispatch:
 
+concurrency:
+  group: phase-6-technician-mobile-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   validate:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
