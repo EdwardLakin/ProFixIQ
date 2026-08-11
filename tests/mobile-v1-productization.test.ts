@@ -8,16 +8,31 @@ const migration = read(
 const hardeningMigration = read(
   "supabase/migrations/20260810225100_mobile_v1_dispatch_followup_hardening.sql",
 );
+const codexHardening = read(
+  "supabase/migrations/20260811020000_mobile_v1_codex_review_hardening.sql",
+);
+const identityHardening = read(
+  "supabase/migrations/20260811020100_mobile_v1_rapid_intake_identity_hardening.sql",
+);
 const shell = read("features/mobile/service/MobileServiceShell.tsx");
+const mutations = read("features/shared/lib/offline/mutations.ts");
 const replay = read("features/shared/lib/offline/replay.ts");
+const transitionApi = read(
+  "app/api/mobile/service-visits/[id]/transition/route.ts",
+);
 const intakeApi = read("app/api/mobile/service/intake/route.ts");
 const intakeUi = read("features/mobile/service/RapidServiceIntake.tsx");
+const handoffUi = read("features/mobile/service/MobileServiceCallHandoff.tsx");
+const workOrderHandoffApi = read(
+  "app/api/mobile/service-visits/[id]/work-order/route.ts",
+);
 const setupUi = read("features/mobile/service/MobileServiceSetup.tsx");
 const closeoutApi = read(
   "app/api/mobile/service/closeout/[workOrderId]/route.ts",
 );
 const closeoutUi = read("features/mobile/service/MobileServiceCloseout.tsx");
 const followupApi = read("app/api/mobile/service/followups/route.ts");
+const followupStatusApi = read("app/api/mobile/service/followups/[id]/route.ts");
 const followupUi = read("features/mobile/service/MobileServiceFollowup.tsx");
 const followupQueue = read(
   "features/mobile/service/MobileServiceFollowupQueue.tsx",
@@ -26,32 +41,48 @@ const access = read("features/mobile/service/server/access.ts");
 const tiles = read("features/mobile/config/mobile-tiles.ts");
 
 describe("Mobile V1 productization", () => {
-  it("keeps the canonical role intact while adding explicit field execution capability", () => {
+  it("keeps canonical roles intact while making explicit field operators schedulable and dispatchable", () => {
     expect(migration).toContain(
       "create table if not exists public.mobile_field_operators",
     );
     expect(migration).toContain("public.mobile_is_field_operator");
-    expect(migration).toContain("sync_mobile_field_operator_resource");
-    expect(migration).toContain("public.dispatch_can_execute");
     expect(migration).not.toContain("update public.profiles\n  set role");
+    expect(codexHardening).toContain("mobile_dispatch_profile_eligible");
+    expect(codexHardening).toContain(
+      "or public.mobile_is_field_operator(p_shop_id, p.id)",
+    );
+    expect(codexHardening).toContain("create or replace function public.dispatch_board_snapshot");
+    expect(codexHardening).toContain("'fieldOperator'");
+    expect(codexHardening).toContain("if tg_op = 'DELETE' then return old; end if;");
     expect(setupUi).toContain("I perform field work");
     expect(setupUi).toContain("your owner/admin role does not change");
     expect(tiles).toContain('roles: ["mechanic", "lead_hand", "foreman"]');
     expect(tiles).toContain('roles: ["owner", "admin"]');
   });
 
-  it("uses one rapid intake to create canonical customer, vehicle, booking and visit records", () => {
+  it("uses rapid intake without unsafe customer, vehicle, or locale inference", () => {
     expect(intakeApi).toContain("mobile_create_service_call_atomic");
     expect(migration).toContain("insert into public.customers");
     expect(migration).toContain("insert into public.vehicles");
     expect(migration).toContain("insert into public.bookings");
-    expect(migration).toContain("'service_mode', 'mobile'");
-    expect(migration).toContain("'quoted_price', p_quoted_price");
     expect(migration).not.toContain("insert into public.work_orders(");
+    expect(identityHardening).toContain(
+      "Phone is the only implicit customer identity",
+    );
+    expect(identityHardening).not.toContain(
+      "lower(trim(coalesce(c.name, ''))) = lower(trim(p_customer_name))",
+    );
+    expect(identityHardening).toContain("VEHICLE_PLATE_OWNERSHIP_CONFLICT");
+    expect(identityHardening).toContain("select lower(trim(coalesce(s.country, 'US'))) into v_shop_country");
+    expect(identityHardening).toContain("v_currency := 'USD'");
+    expect(identityHardening).toContain("v_country_code := 'CA'");
+    expect(intakeApi).toContain('p_currency: ""');
+    expect(intakeApi).not.toContain('|| "CAD"');
     expect(intakeUi).toContain(
       "Capture the conversation, not a work-order form.",
     );
     expect(intakeUi).toContain("Save call · ETA");
+    expect(intakeUi).toContain("/mobile/service/call/");
     for (const field of [
       "customerName",
       "phone",
@@ -65,7 +96,21 @@ describe("Mobile V1 productization", () => {
     }
   });
 
-  it("configures solo/mobile/both operation, team dispatch, and canonical truck inventory", () => {
+  it("provides an explicit booking-to-work-order handoff before repair", () => {
+    expect(codexHardening).toContain(
+      "mobile_materialize_service_visit_work_order_atomic",
+    );
+    expect(codexHardening).toContain("update public.bookings");
+    expect(codexHardening).toContain("work_order_id = v_work_order.id");
+    expect(workOrderHandoffApi).toContain(
+      "mobile_materialize_service_visit_work_order_atomic",
+    );
+    expect(handoffUi).toContain("Service call saved");
+    expect(handoffUi).toContain("Start repair");
+    expect(shell).toContain("Create work order & start repair");
+  });
+
+  it("configures solo/mobile/both operation and reconciles canonical truck inventory", () => {
     expect(migration).toContain(
       "create table if not exists public.mobile_service_settings",
     );
@@ -78,33 +123,27 @@ describe("Mobile V1 productization", () => {
     expect(setupUi).toContain("Solo operator");
     expect(setupUi).toContain("Truck carries inventory");
     expect(setupUi).toContain("Use dispatch/team assignment");
-    expect(setupUi).toContain(
-      "dispatchEnabled: soloMode ? false : dispatchEnabled",
-    );
     expect(hardeningMigration).toContain("v_auto_assign boolean := false");
-    expect(hardeningMigration).toContain(
-      "coalesce(ms.solo_mode, false) or not coalesce(ms.dispatch_enabled, true)",
-    );
-    expect(hardeningMigration).toContain(
-      "when v_auto_assign then v_profile.id",
-    );
+    expect(codexHardening).toContain("mobile_normalize_service_settings");
+    expect(codexHardening).toContain("mobile_reconcile_service_vehicle_setting");
+    expect(codexHardening).toContain("stock_location_id = null");
+    expect(codexHardening).toContain("active = false");
   });
 
-  it("queues ordered field transitions offline and rejects stale state at replay", () => {
+  it("chains every queued field transition and rejects stale ABA replay by version", () => {
     expect(shell).toContain("runMutationWithOfflineQueue");
     expect(shell).toContain('actionType: "service-visit:transition"');
     expect(shell).toContain('orderKey: `service-visit:${visit.id}`');
-    expect(shell).toContain("dependsOn");
-    expect(shell).toContain("Field status changes are queued in order");
+    expect(shell).toContain("hydrateOfflineMutationQueue");
+    expect(shell).toContain("listPendingMutations");
+    expect(shell).toContain("expectedVersion: Number(visit.version ?? 0)");
+    expect(mutations).toContain("const dependencyPending");
+    expect(mutations).toContain("dependency.status !== \"synced\"");
     expect(replay).toContain('"service-visit:transition"');
-    expect(replay).toContain(
-      "/api/mobile/service-visits/${visitId}/transition",
-    );
-    expect(migration).toContain(
-      "mobile_replay_service_visit_transition_atomic",
-    );
-    expect(migration).toContain("SERVICE_VISIT_STATE_CHANGED");
-    expect(migration).toContain("v_visit.status <> lower(p_from_status)");
+    expect(replay).toContain("expectedVersion");
+    expect(transitionApi).toContain("p_expected_version: expectedVersion");
+    expect(codexHardening).toContain("SERVICE_VISIT_VERSION_CHANGED");
+    expect(codexHardening).toContain("v_visit.version <> p_expected_version");
   });
 
   it("keeps field payment on the existing invoice, Stripe and payment-ledger contracts", () => {
@@ -118,7 +157,7 @@ describe("Mobile V1 productization", () => {
     expect(access).toContain('.eq("assigned_user_id", access.profile.id)');
   });
 
-  it("captures future work off today's invoice and keeps it actionable", () => {
+  it("keeps field recommendations assigned-scoped and gives the follow-up queue a lifecycle", () => {
     expect(migration).toContain(
       "create table if not exists public.mobile_service_followups",
     );
@@ -126,14 +165,20 @@ describe("Mobile V1 productization", () => {
     expect(hardeningMigration).toContain(
       "mobile_service_followups_scoped_select",
     );
-    expect(followupUi).toContain("Keeps it off today's invoice.");
-    expect(followupUi).toContain("Quote later");
-    expect(followupUi).toContain("Contact later");
-    expect(followupUi).toContain("Monitor");
-    expect(followupUi).toContain(
-      "The current repair and invoice are unchanged.",
+    expect(codexHardening).toContain("mobile_guard_service_followup_insert");
+    expect(codexHardening).toContain(
+      "Field recommendations require an assigned Service Visit.",
     );
+    expect(codexHardening).toContain(
+      "mobile_update_service_followup_status_atomic",
+    );
+    expect(followupUi).toContain("Keeps it off today's invoice.");
     expect(followupApi).toContain('.eq("status", "open")');
+    expect(followupStatusApi).toContain(
+      "mobile_update_service_followup_status_atomic",
+    );
+    expect(followupQueue).toContain('updateStatus(item, "quoted")');
+    expect(followupQueue).toContain('updateStatus(item, "dismissed")');
     expect(followupQueue).toContain("Opportunities captured in the field");
     expect(tiles).toContain('href: "/mobile/service/followups"');
   });
@@ -144,11 +189,14 @@ describe("Mobile V1 productization", () => {
       "app/mobile/service/setup/page.tsx",
       "app/mobile/service/followups/page.tsx",
       "app/mobile/service/followup/[workOrderId]/page.tsx",
+      "app/mobile/service/call/[visitId]/page.tsx",
       "app/mobile/service/closeout/[workOrderId]/page.tsx",
       "app/api/mobile/service/intake/route.ts",
       "app/api/mobile/service/settings/route.ts",
       "app/api/mobile/service/followups/route.ts",
+      "app/api/mobile/service/followups/[id]/route.ts",
       "app/api/mobile/service-visits/[id]/transition/route.ts",
+      "app/api/mobile/service-visits/[id]/work-order/route.ts",
       "app/api/mobile/service/closeout/[workOrderId]/route.ts",
     ]) {
       expect(existsSync(path), path).toBe(true);
