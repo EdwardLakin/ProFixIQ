@@ -79,6 +79,10 @@ export default function RapidServiceIntake() {
   const [etaMinutes, setEtaMinutes] = useState(30);
   const [quotedPrice, setQuotedPrice] = useState("");
   const [durationMinutes, setDurationMinutes] = useState(60);
+  const [configuredServiceModel, setConfiguredServiceModel] = useState<
+    "shop" | "mobile" | "both"
+  >("mobile");
+  const [serviceMode, setServiceMode] = useState<"shop" | "mobile">("mobile");
   const [customerId, setCustomerId] = useState<string | null>(null);
   const [vehicleId, setVehicleId] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<SuggestedCustomer[]>([]);
@@ -94,6 +98,11 @@ export default function RapidServiceIntake() {
       .then((body) => {
         const value = Number(body?.settings?.default_visit_minutes);
         if (Number.isFinite(value) && value >= 5) setDurationMinutes(value);
+        const model = body?.settings?.service_model;
+        if (model === "shop" || model === "mobile" || model === "both") {
+          setConfiguredServiceModel(model);
+          if (model !== "both") setServiceMode(model);
+        }
       })
       .catch(() => undefined);
   }, []);
@@ -138,9 +147,19 @@ export default function RapidServiceIntake() {
       (vehicleId != null ||
         vehicle.trim().length > 0 ||
         plate.trim().length > 0) &&
-      address.trim().length > 0 &&
+      (serviceMode === "shop" || address.trim().length > 0) &&
       concern.trim().length > 0,
-    [address, busy, concern, customerName, phone, plate, vehicle, vehicleId],
+    [
+      address,
+      busy,
+      concern,
+      customerName,
+      phone,
+      plate,
+      serviceMode,
+      vehicle,
+      vehicleId,
+    ],
   );
 
   function selectCustomer(
@@ -182,10 +201,12 @@ export default function RapidServiceIntake() {
           vehicleMake: parsedVehicle.make,
           vehicleModel: parsedVehicle.model,
           vehiclePlate: plate.trim() || null,
-          addressLine1: address.trim(),
-          city: city.trim() || null,
-          provinceState: province.trim() || null,
-          postalCode: postal.trim() || null,
+          serviceMode,
+          addressLine1: serviceMode === "mobile" ? address.trim() : null,
+          city: serviceMode === "mobile" ? city.trim() || null : null,
+          provinceState:
+            serviceMode === "mobile" ? province.trim() || null : null,
+          postalCode: serviceMode === "mobile" ? postal.trim() || null : null,
           concern: concern.trim(),
           startsAt,
           durationMinutes,
@@ -328,7 +349,40 @@ export default function RapidServiceIntake() {
         />
       </section>
 
-      <section className="space-y-3 rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4 shadow-card">
+      {configuredServiceModel === "both" ? (
+        <section className="space-y-3 rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4 shadow-card">
+          <div className="text-xs font-extrabold uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">
+            Service location
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setServiceMode("mobile")}
+              className={`min-h-12 rounded-2xl border px-3 text-sm font-extrabold ${
+                serviceMode === "mobile"
+                  ? "border-sky-400 bg-sky-500/15 text-sky-200"
+                  : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)]"
+              }`}
+            >
+              We go there
+            </button>
+            <button
+              type="button"
+              onClick={() => setServiceMode("shop")}
+              className={`min-h-12 rounded-2xl border px-3 text-sm font-extrabold ${
+                serviceMode === "shop"
+                  ? "border-sky-400 bg-sky-500/15 text-sky-200"
+                  : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)]"
+              }`}
+            >
+              Customer comes here
+            </button>
+          </div>
+        </section>
+      ) : null}
+
+      {serviceMode === "mobile" ? (
+        <section className="space-y-3 rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4 shadow-card">
         <div className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">
           <MapPin className="h-4 w-4" /> Where
         </div>
@@ -361,6 +415,16 @@ export default function RapidServiceIntake() {
           />
         </div>
       </section>
+      ) : (
+        <section className="rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4 shadow-card">
+          <div className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">
+            <MapPin className="h-4 w-4" /> At the shop
+          </div>
+          <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">
+            This call uses shop scheduling/capacity. No customer service address is required.
+          </p>
+        </section>
+      )}
 
       <section className="space-y-3 rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4 shadow-card">
         <div className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">
