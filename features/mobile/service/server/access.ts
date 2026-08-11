@@ -76,8 +76,11 @@ export async function canFieldOperatorAccessWorkOrder(
   access: ShopAccess,
   workOrderId: string,
 ): Promise<boolean> {
+  const actor = getActorCapabilities({ role: access.profile.role });
   const fieldAccess = await getMobileFieldServiceAccess(access);
-  if (!fieldAccess.canAccessFieldService) return false;
+  const fieldAuthorized =
+    fieldAccess.canAccessFieldService && actor.canPerformAssignedWork;
+  if (!fieldAuthorized) return false;
 
   const { data, error } = await access.supabase
     .from("service_visits")
