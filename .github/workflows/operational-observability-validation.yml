@@ -2,6 +2,7 @@ name: Operational Observability Validation
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "app/api/dashboard/operational-observability/**"
       - "app/api/internal/observability/**"
@@ -26,8 +27,13 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: operational-observability-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   application:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     name: application
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -74,6 +80,7 @@ jobs:
           tests/operational-observability-ui-alerts.test.ts
 
   database:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     name: database
     runs-on: ubuntu-latest
     timeout-minutes: 35

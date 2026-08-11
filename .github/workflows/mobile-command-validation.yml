@@ -5,6 +5,7 @@ on:
     branches:
       - ui/mobile-command-refactor
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "app/mobile/**"
       - "components/layout/MobileBottomNav.tsx"
@@ -19,8 +20,13 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: mobile-command-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   validate:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:

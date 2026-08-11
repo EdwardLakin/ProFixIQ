@@ -2,6 +2,7 @@ name: P0-007 Financial Outbox Validation
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "app/api/internal/financial-outbox/**"
       - "app/api/webhooks/sendgrid/**"
@@ -20,8 +21,13 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: p0-007-financial-outbox-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   validate:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
