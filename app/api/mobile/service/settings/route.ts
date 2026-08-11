@@ -41,10 +41,11 @@ async function readSettings(
       .maybeSingle(),
     access.supabase
       .from("service_vehicles")
-      .select("id,name,unit_number,stock_location_id,active")
+      .select("id,name,unit_number,stock_location_id,active,capabilities")
       .eq("shop_id", access.profile.shop_id)
       .eq("primary_user_id", access.profile.id)
       .eq("active", true)
+      .contains("capabilities", { mobile_v1: true })
       .order("created_at", { ascending: true })
       .limit(1)
       .maybeSingle(),
