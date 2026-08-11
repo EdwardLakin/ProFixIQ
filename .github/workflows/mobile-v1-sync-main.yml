@@ -1,0 +1,30 @@
+name: Mobile V1 Sync Main
+
+on:
+  push:
+    branches:
+      - agent/mobile-v1-productization
+    paths:
+      - ".github/workflows/mobile-v1-sync-main.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/mobile-v1-productization
+          fetch-depth: 0
+
+      - name: Merge current main into Mobile V1 branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "chatgpt-codex-connector[bot]"
+          git config user.email "199175422+chatgpt-codex-connector[bot]@users.noreply.github.com"
+          git fetch origin main
+          git merge --no-edit origin/main
+          git push origin HEAD:agent/mobile-v1-productization
