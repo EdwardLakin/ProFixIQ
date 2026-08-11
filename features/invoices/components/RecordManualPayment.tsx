@@ -17,6 +17,7 @@ type Props = {
   currency: "CAD" | "USD";
   outstandingTotal: number;
   disabled?: boolean;
+  mobileViewportSafe?: boolean;
   onPosted?: (invoiceVersion: InvoiceVersionSummary) => void;
 };
 
@@ -41,6 +42,7 @@ export default function RecordManualPayment({
   currency,
   outstandingTotal,
   disabled = false,
+  mobileViewportSafe = false,
   onPosted,
 }: Props): JSX.Element {
   const [open, setOpen] = useState(false);
@@ -120,6 +122,10 @@ export default function RecordManualPayment({
     );
   }
 
+  const panelClass = mobileViewportSafe
+    ? "fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] top-auto z-[70] mx-auto max-h-[calc(100dvh-1.5rem-env(safe-area-inset-bottom))] w-auto max-w-md overflow-y-auto rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] p-4 shadow-[var(--theme-shadow-strong)]"
+    : "absolute right-0 top-11 z-40 w-[min(22rem,calc(100vw-2rem))] rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] p-4 shadow-[var(--theme-shadow-strong)]";
+
   return (
     <div className="relative">
       <button
@@ -132,7 +138,7 @@ export default function RecordManualPayment({
       </button>
 
       {open ? (
-        <div className="absolute right-0 top-11 z-40 w-[min(22rem,calc(100vw-2rem))] rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] p-4 shadow-[var(--theme-shadow-strong)]">
+        <div className={panelClass}>
           <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
             Record external payment
           </div>
