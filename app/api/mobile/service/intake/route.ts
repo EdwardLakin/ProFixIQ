@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { Database } from "@shared/types/types/supabase";
 
-import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { requireMobileServiceOperatorApiAccess } from "@/features/mobile/service/server/access";
 
 type IntakeRpcArgs =
   Database["public"]["Functions"]["mobile_create_service_call_atomic"]["Args"];
@@ -36,7 +36,7 @@ function safeSearch(value: string): string {
 }
 
 export async function GET(request: Request) {
-  const access = await requireShopScopedApiAccess();
+  const access = await requireMobileServiceOperatorApiAccess();
   if (!access.ok) return access.response;
 
   const q = safeSearch(new URL(request.url).searchParams.get("q") ?? "");
@@ -109,7 +109,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const access = await requireShopScopedApiAccess();
+  const access = await requireMobileServiceOperatorApiAccess();
   if (!access.ok) return access.response;
   const body = (await request.json().catch(() => null)) as IntakeBody | null;
   if (!body) {

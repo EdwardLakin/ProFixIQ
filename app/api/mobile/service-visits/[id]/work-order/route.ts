@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { requireMobileServiceOperatorApiAccess } from "@/features/mobile/service/server/access";
 
 type RpcResult = {
   data: unknown;
@@ -16,7 +16,7 @@ export async function POST(
   request: Request,
   context: { params: Promise<{ id: string }> },
 ) {
-  const access = await requireShopScopedApiAccess();
+  const access = await requireMobileServiceOperatorApiAccess();
   if (!access.ok) return access.response;
 
   const { id } = await context.params;

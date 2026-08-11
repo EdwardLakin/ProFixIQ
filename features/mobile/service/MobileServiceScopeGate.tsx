@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import { resolveCurrentActor } from "@/features/shared/lib/currentActor";
 import {
@@ -56,6 +57,7 @@ function protectSnapshot(scope: OfflineMutationScope | null): void {
 
 export default function MobileServiceScopeGate() {
   const [ready, setReady] = useState(false);
+  const router = useRouter();
 
   useEffect(() => {
     let active = true;
@@ -71,6 +73,20 @@ export default function MobileServiceScopeGate() {
         if (!active) return;
         protectSnapshot(null);
         setReady(true);
+        return;
+      }
+
+      const fieldAccessResponse = await fetch("/api/mobile/field-service/access", {
+        credentials: "include",
+        cache: "no-store",
+      });
+      const fieldAccess = (await fieldAccessResponse.json().catch(() => null)) as
+        | { canAccessFieldService?: boolean; canConfigure?: boolean }
+        | null;
+      if (!active) return;
+      if (!fieldAccessResponse.ok || !fieldAccess?.canAccessFieldService) {
+        protectSnapshot(null);
+        router.replace(fieldAccess?.canConfigure ? "/mobile/service/setup" : "/mobile");
         return;
       }
 
@@ -91,17 +107,17 @@ export default function MobileServiceScopeGate() {
       setReady(true);
     })().catch(() => {
       if (!active) return;
-      // If identity cannot be established, fail closed: do not render another
-      // actor's cached service-call snapshot.
+      // If access cannot be established, fail closed: do not render another
+      // actor's cached service-call snapshot or the Field Service shell.
       window.localStorage.removeItem(SNAPSHOT_CACHE_KEY);
       window.localStorage.removeItem(SNAPSHOT_SCOPE_KEY);
-      setReady(true);
+      router.replace("/mobile");
     });
 
     return () => {
       active = false;
     };
-  }, []);
+  }, [router]);
 
   if (!ready) {
     return (

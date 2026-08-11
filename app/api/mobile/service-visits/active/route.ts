@@ -1,17 +1,11 @@
 import { NextResponse } from "next/server";
 import { getMobileActiveJobs } from "@/features/dispatch/server/commands";
 import { dispatchErrorResponse } from "@/features/dispatch/server/http";
-import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
-import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import { requireMobileServiceOperatorApiAccess } from "@/features/mobile/service/server/access";
 
 export async function GET() {
-  const access = await requireShopScopedApiAccess();
+  const access = await requireMobileServiceOperatorApiAccess();
   if (!access.ok) return access.response;
-
-  const actor = getActorCapabilities({ role: access.profile.role });
-  if (!actor.canPerformAssignedWork && !actor.canManageScheduling) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
 
   try {
     const snapshot = await getMobileActiveJobs({

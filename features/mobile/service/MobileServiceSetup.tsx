@@ -84,7 +84,7 @@ export default function MobileServiceSetup() {
       } | null;
       if (!response.ok) {
         throw new Error(
-          body?.error || "Mobile Service setup could not be saved.",
+          body?.error || "Field Service setup could not be saved.",
         );
       }
       router.replace("/mobile/service?setup=complete");
@@ -92,7 +92,7 @@ export default function MobileServiceSetup() {
       setError(
         cause instanceof Error
           ? cause.message
-          : "Mobile Service setup could not be saved.",
+          : "Field Service setup could not be saved.",
       );
     } finally {
       setBusy(false);
@@ -110,7 +110,7 @@ export default function MobileServiceSetup() {
         </Link>
         <div>
           <div className="text-[0.62rem] font-extrabold uppercase tracking-[0.2em] text-sky-300">
-            Mobile V1 setup
+            Field Service setup
           </div>
           <h1 className="text-xl font-extrabold">How do you work?</h1>
         </div>
@@ -278,7 +278,7 @@ export default function MobileServiceSetup() {
 
       {!canConfigure ? (
         <div className="rounded-2xl border border-amber-400/30 bg-amber-500/10 p-3 text-sm text-amber-200">
-          Only an owner or admin can change Mobile Service setup.
+          Only an owner or admin can change Field Service setup.
         </div>
       ) : null}
       {error ? (

@@ -567,7 +567,7 @@ export default function MobileServiceShell() {
         throw new Error(
           body && "error" in body && body.error
             ? body.error
-            : "Unable to load mobile service calls.",
+            : "Unable to load Field Service calls.",
         );
       }
       setSnapshot(body);
@@ -837,7 +837,7 @@ export default function MobileServiceShell() {
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="text-[0.62rem] font-extrabold uppercase tracking-[0.2em] text-sky-300">
-              ProFixIQ Mobile Service
+              ProFixIQ Field Service
             </div>
             <h1 className="mt-1.5 text-2xl font-extrabold leading-tight">
               {headline}

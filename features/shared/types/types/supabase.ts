@@ -27251,6 +27251,10 @@ export type Database = {
         }
         Returns: Json
       }
+      mobile_actor_has_field_service_access: {
+        Args: { p_actor_user_id: string; p_shop_id: string }
+        Returns: boolean
+      }
       mobile_actor_is_field_operator: {
         Args: { p_actor_user_id: string; p_shop_id: string }
         Returns: boolean
@@ -27338,6 +27342,10 @@ export type Database = {
           p_visit_id: string
         }
         Returns: Json
+      }
+      mobile_profile_has_field_service_access: {
+        Args: { p_profile_id: string; p_shop_id: string }
+        Returns: boolean
       }
       mobile_replay_service_visit_transition_atomic: {
         Args: {

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import type { ServiceVisitStatus } from "@/features/scheduling/lib/service-visit-contract";
-import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { requireMobileServiceOperatorApiAccess } from "@/features/mobile/service/server/access";
 
 const STATUSES = new Set<ServiceVisitStatus>([
   "scheduled",
@@ -35,7 +35,7 @@ export async function POST(
   request: Request,
   context: { params: Promise<{ id: string }> },
 ) {
-  const access = await requireShopScopedApiAccess();
+  const access = await requireMobileServiceOperatorApiAccess();
   if (!access.ok) return access.response;
   const { id } = await context.params;
   const body = (await request.json().catch(() => null)) as Body | null;

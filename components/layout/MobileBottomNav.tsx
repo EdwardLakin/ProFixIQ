@@ -188,6 +188,7 @@ export function MobileBottomNav({ open, onClose }: Props) {
   const [userId, setUserId] = useState<string | null>(null);
   const [profileName, setProfileName] = useState<string>("Team member");
   const [role, setRole] = useState<MobileRole | null>(null);
+  const [canAccessFieldService, setCanAccessFieldService] = useState(false);
   const [messageUnreadCount, setMessageUnreadCount] = useState(0);
   const [signingOut, setSigningOut] = useState(false);
   const [install, setInstall] = useState<InstallAvailability>({
@@ -208,6 +209,7 @@ export function MobileBottomNav({ open, onClose }: Props) {
       if (!id) {
         setRole(null);
         setProfileName("Team member");
+        setCanAccessFieldService(false);
         return;
       }
 
@@ -223,6 +225,17 @@ export function MobileBottomNav({ open, onClose }: Props) {
         (allowedRole === "unknown" ? null : allowedRole) as MobileRole | null,
       );
       setProfileName(profile?.full_name?.trim() || "Team member");
+
+      const fieldAccessResponse = await fetch("/api/mobile/field-service/access", {
+        credentials: "include",
+        cache: "no-store",
+      }).catch(() => null);
+      const fieldAccess = (await fieldAccessResponse?.json().catch(() => null)) as
+        | { canAccessFieldService?: boolean }
+        | null;
+      setCanAccessFieldService(
+        Boolean(fieldAccessResponse?.ok && fieldAccess?.canAccessFieldService),
+      );
     };
 
     void load();
@@ -311,7 +324,12 @@ export function MobileBottomNav({ open, onClose }: Props) {
       ];
     }
 
-    const dynamic = getMobileTilesForRole(role, ["all"]).map((tile) => ({
+    const dynamic = getMobileTilesForRole(role, ["all"])
+      .filter(
+        (tile) =>
+          !tile.href.startsWith("/mobile/service") || canAccessFieldService,
+      )
+      .map((tile) => ({
       href: tile.href,
       label: tile.title,
       icon: iconForHref(tile.href),
@@ -327,7 +345,7 @@ export function MobileBottomNav({ open, onClose }: Props) {
       (item, index, items) =>
         items.findIndex((candidate) => candidate.href === item.href) === index,
     );
-  }, [messageUnreadCount, role]);
+  }, [canAccessFieldService, messageUnreadCount, role]);
 
   const utilityItems = useMemo<NavItem[]>(() => {
     if (role === "mechanic") return [];

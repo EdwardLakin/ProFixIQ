@@ -18,6 +18,14 @@ export default function MobileSignInPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = useMemo(() => createBrowserSupabase(), []);
+  const fieldServiceDestination = searchParams.get("redirect")?.startsWith("/mobile/service");
+  const productLabel = fieldServiceDestination ? "Field Service" : "Shop Mobile";
+  const heroTitle = fieldServiceDestination
+    ? "Your field work, in your pocket."
+    : "The shop floor, in your pocket.";
+  const heroDescription = fieldServiceDestination
+    ? "For approved field operators handling dispatched service visits from a phone or tablet."
+    : "Capture inspections, evidence, time, and service progress from the bay without losing the thread of the work order.";
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -64,9 +72,9 @@ export default function MobileSignInPage() {
 
   return (
     <AuthShell
-      productLabel="Mobile companion"
-      heroTitle="The shop floor, in your pocket."
-      heroDescription="Capture inspections, evidence, time, and service progress from the bay without losing the thread of the work order."
+      productLabel={productLabel}
+      heroTitle={heroTitle}
+      heroDescription={heroDescription}
       highlights={["Touch-ready", "Role protected", "Offline resilient"]}
     >
       <div className="mb-6">
@@ -74,13 +82,15 @@ export default function MobileSignInPage() {
           <Smartphone className="h-5 w-5" aria-hidden />
         </div>
         <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-copper)]">
-          Mobile companion
+          {productLabel}
         </div>
         <h1 className="mt-2 text-3xl font-semibold tracking-[-0.035em] text-[color:var(--theme-text-primary)]">
-          Sign in for the shop floor
+          {fieldServiceDestination ? "Sign in for Field Service" : "Sign in for Shop Mobile"}
         </h1>
         <p className="mt-2 text-sm leading-6 text-[color:var(--theme-text-secondary)]">
-          For authorized shop roles using a phone or tablet in the bay.
+          {fieldServiceDestination
+            ? "Only assigned Field Service operators can open dispatched service work."
+            : "For authorized shop roles using a phone or tablet in the bay."}
         </p>
       </div>
 
@@ -152,7 +162,7 @@ export default function MobileSignInPage() {
           className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent-copper)] px-4 py-3.5 text-sm font-bold text-[color:var(--theme-text-on-accent)] transition hover:brightness-105 disabled:opacity-60"
         >
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-          {loading ? "Signing in…" : "Open mobile companion"}
+          {loading ? "Signing in…" : `Open ${productLabel}`}
         </button>
       </form>
 
@@ -166,7 +176,7 @@ export default function MobileSignInPage() {
       </div>
 
       <p className="mt-5 text-center text-xs leading-5 text-[color:var(--theme-text-muted)]">
-        Signing in here always returns you to the role-specific mobile workspace.
+        Signing in here always returns you to the role-specific workspace you selected.
       </p>
     </AuthShell>
   );

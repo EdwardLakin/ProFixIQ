@@ -54,9 +54,9 @@ describe("Mobile Service shell", () => {
     expect(scopeGate).toContain("fail closed");
   });
 
-  it("exposes Mobile Service only to roles eligible for personal field assignment", () => {
+  it("exposes Field Service only to roles eligible for personal field assignment", () => {
     expect(tiles).toContain('href: "/mobile/service"');
-    expect(tiles).toContain('title: "Mobile Service"');
+    expect(tiles).toContain('title: "Field Service"');
     expect(tiles).toContain('roles: ["mechanic", "lead_hand", "foreman"]');
   });
 });
