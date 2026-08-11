@@ -15,6 +15,8 @@ import { resolveProductPackagePriceContract } from "../features/stripe/lib/serve
 
 const MIGRATION =
   "supabase/migrations/20260811200504_product_package_entitlements.sql";
+const ENTITLEMENT_SCOPE_MIGRATION =
+  "supabase/migrations/20260811202000_scope_product_entitlement_rpcs.sql";
 const CHECKOUT = "app/api/stripe/checkout/route.ts";
 const RECONCILER =
   "features/stripe/lib/server/product-package-reconciliation.ts";
@@ -156,12 +158,14 @@ describe("ProFixIQ product package billing contract", () => {
   });
 
   it("binds Checkout and database gates to package identity", async () => {
-    const [checkout, migration, reconciler, worker] = await Promise.all([
+    const [checkout, migration, scopeMigration, reconciler, worker] =
+      await Promise.all([
       readFile(CHECKOUT, "utf8"),
       readFile(MIGRATION, "utf8"),
+      readFile(ENTITLEMENT_SCOPE_MIGRATION, "utf8"),
       readFile(RECONCILER, "utf8"),
       readFile(WORKER, "utf8"),
-    ]);
+      ]);
     expect(checkout).toContain("packageKey: z.enum(PRODUCT_PACKAGE_KEYS)");
     expect(checkout).toContain("package_key: selection.packageKey");
     expect(checkout).not.toContain("payment_method_types");
@@ -177,6 +181,10 @@ describe("ProFixIQ product package billing contract", () => {
     expect(migration).toContain(
       "where shop.id in (v_old_shop_id, v_new_shop_id)",
     );
+    expect(scopeMigration).toContain("auth.role() = 'service_role'");
+    expect(scopeMigration).toContain("profile.user_id = auth.uid()");
+    expect(scopeMigration).toContain("member.user_id = auth.uid()");
+    expect(scopeMigration).toContain("member.fleet_id = fleet.id");
     expect(reconciler).toContain("additionalServiceTruckPriceId");
     expect(reconciler).toContain("additionalFleetAssetPriceId");
     expect(reconciler).toContain('packageKey === "fleet_maintenance"');
