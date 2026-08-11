@@ -176,15 +176,23 @@ const handlers: Record<string, OfflineMutationRunner> = {
     const visitId = text(payload.visitId);
     const fromStatus = text(payload.fromStatus);
     const toStatus = text(payload.toStatus);
+    const expectedVersion = Number(payload.expectedVersion);
     const operationKey = text(payload.operationKey) || mutation.clientMutationId;
-    if (!visitId || !fromStatus || !toStatus || !operationKey) {
+    if (
+      !visitId ||
+      !fromStatus ||
+      !toStatus ||
+      !Number.isInteger(expectedVersion) ||
+      expectedVersion < 0 ||
+      !operationKey
+    ) {
       return {
         conflicted: "Service-call transition is missing required offline data.",
       };
     }
     await apiPost(
       `/api/mobile/service-visits/${visitId}/transition`,
-      { fromStatus, toStatus, operationKey },
+      { fromStatus, toStatus, expectedVersion, operationKey },
       operationKey,
     );
   },
