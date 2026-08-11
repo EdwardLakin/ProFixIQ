@@ -15,9 +15,9 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  apply:
+  plan:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     env:
       PROJECT_REF: scjjkmuwadwkaaqjoigx
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
@@ -25,111 +25,34 @@ jobs:
       - name: Checkout PR 1404 branch
         uses: actions/checkout@v4
 
-      - name: Verify Management API access
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v2
+        with:
+          version: 2.101.0
+
+      - name: Login to Supabase
         shell: bash
         run: |
           set -euo pipefail
           test -n "$SUPABASE_ACCESS_TOKEN"
-          payload='{"query":"select current_database() as database_name"}'
-          response="$(curl --silent --show-error --fail-with-body \
-            -X POST "https://api.supabase.com/v1/projects/${PROJECT_REF}/database/query" \
-            -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
-            -H "Content-Type: application/json" \
-            --data "$payload")"
-          echo "$response" | jq -e 'type == "array" and length == 1' >/dev/null
-          echo "Supabase Management API production query access verified."
+          supabase login --token "$SUPABASE_ACCESS_TOKEN"
 
-      - name: Apply exact PR 1404 migrations atomically
+      - name: Link exact production project
         shell: bash
         run: |
           set -euo pipefail
+          supabase link --project-ref "$PROJECT_REF"
 
-          api_sql() {
-            local sql="$1"
-            jq -n --arg query "$sql" '{query:$query}' | \
-              curl --silent --show-error --fail-with-body \
-                -X POST "https://api.supabase.com/v1/projects/${PROJECT_REF}/database/query" \
-                -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
-                -H "Content-Type: application/json" \
-                --data-binary @-
-          }
-
-          api_file() {
-            local file="$1"
-            jq -Rs '{query:.}' "$file" | \
-              curl --silent --show-error --fail-with-body \
-                -X POST "https://api.supabase.com/v1/projects/${PROJECT_REF}/database/query" \
-                -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
-                -H "Content-Type: application/json" \
-                --data-binary @-
-          }
-
-          migrations=(
-            "20260810225000:mobile_v1_productization"
-            "20260810225100:mobile_v1_dispatch_followup_hardening"
-            "20260811020000:mobile_v1_codex_review_hardening"
-            "20260811020100:mobile_v1_rapid_intake_identity_hardening"
-            "20260811020200:mobile_v1_followup_authorization_alignment"
-            "20260811020300:mobile_v1_second_codex_review_hardening"
-            "20260811020400:mobile_v1_booking_handoff_authorization"
-            "20260811020500:mobile_v1_service_visit_handoff_alignment"
-          )
-
-          for spec in "${migrations[@]}"; do
-            version="${spec%%:*}"
-            name="${spec#*:}"
-            file="supabase/migrations/${version}_${name}.sql"
-            test -f "$file"
-
-            response="$(api_sql "select count(*)::int as count from supabase_migrations.schema_migrations where version = '${version}'")"
-            already="$(echo "$response" | jq -r '.[0].count')"
-            if [ "$already" = "1" ]; then
-              echo "SKIP $version $name (already recorded)"
-              continue
-            fi
-            test "$already" = "0"
-
-            python - "$file" "$version" "$name" <<'PY'
-          import re
-          import sys
-          from pathlib import Path
-
-          path = Path(sys.argv[1])
-          version = sys.argv[2]
-          name = sys.argv[3]
-          text = path.read_text(encoding="utf-8")
-          commits = list(re.finditer(r"(?im)^\s*commit;\s*$", text))
-          if not commits:
-              raise SystemExit(f"{path} has no terminal COMMIT")
-          final = commits[-1]
-          if text[final.end():].strip():
-              raise SystemExit(f"{path} has content after terminal COMMIT")
-          history = (
-              "insert into supabase_migrations.schema_migrations"
-              "(version, statements, name, created_by) values ("
-              f"'{version}', array[]::text[], '{name}', 'chatgpt-pr-1404');\n"
-              "commit;\n"
-          )
-          Path("/tmp/pr1404-migration.sql").write_text(
-              text[:final.start()] + history,
-              encoding="utf-8",
-          )
-          PY
-
-            echo "APPLY $version $name"
-            api_file /tmp/pr1404-migration.sql >/tmp/pr1404-response.json
-            jq -e 'type == "array"' /tmp/pr1404-response.json >/dev/null
-            echo "DONE  $version $name"
-          done
-
-      - name: Verify all PR 1404 versions and core objects
+      - name: Show linked migration history
         shell: bash
         run: |
           set -euo pipefail
-          sql="select count(*)::int as migration_count, to_regclass('public.mobile_service_settings') is not null as settings_ok, to_regclass('public.mobile_field_operators') is not null as operators_ok, to_regclass('public.mobile_service_followups') is not null as followups_ok from supabase_migrations.schema_migrations where version in ('20260810225000','20260810225100','20260811020000','20260811020100','20260811020200','20260811020300','20260811020400','20260811020500')"
-          response="$(jq -n --arg query "$sql" '{query:$query}' | curl --silent --show-error --fail-with-body \
-            -X POST "https://api.supabase.com/v1/projects/${PROJECT_REF}/database/query" \
-            -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
-            -H "Content-Type: application/json" --data-binary @-)"
-          echo "$response" | jq -e '.[0].migration_count == 8 and .[0].settings_ok == true and .[0].operators_ok == true and .[0].followups_ok == true' >/dev/null
-          echo "Verified all 8 PR 1404 migrations and core Mobile V1 objects in production."
+          supabase migration list --linked
+
+      - name: Dry-run exact pending migration plan
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase db push --linked --dry-run 2>&1 | tee /tmp/pr1404-dry-run.log
+          echo "--- planned migration filenames ---"
+          grep -oE '[0-9]{14}_[A-Za-z0-9_]+\.sql' /tmp/pr1404-dry-run.log | sort -u || true
