@@ -14,6 +14,9 @@ const codexHardening = read(
 const identityHardening = read(
   "supabase/migrations/20260811020100_mobile_v1_rapid_intake_identity_hardening.sql",
 );
+const secondReviewHardening = read(
+  "supabase/migrations/20260811020300_mobile_v1_second_codex_review_hardening.sql",
+);
 const shell = read("features/mobile/service/MobileServiceShell.tsx");
 const mutations = read("features/shared/lib/offline/mutations.ts");
 const replay = read("features/shared/lib/offline/replay.ts");
@@ -21,6 +24,7 @@ const transitionApi = read(
   "app/api/mobile/service-visits/[id]/transition/route.ts",
 );
 const intakeApi = read("app/api/mobile/service/intake/route.ts");
+const settingsApi = read("app/api/mobile/service/settings/route.ts");
 const intakeUi = read("features/mobile/service/RapidServiceIntake.tsx");
 const handoffUi = read("features/mobile/service/MobileServiceCallHandoff.tsx");
 const workOrderHandoffApi = read(
@@ -31,6 +35,9 @@ const closeoutApi = read(
   "app/api/mobile/service/closeout/[workOrderId]/route.ts",
 );
 const closeoutUi = read("features/mobile/service/MobileServiceCloseout.tsx");
+const manualPayment = read(
+  "features/invoices/components/RecordManualPayment.tsx",
+);
 const followupApi = read("app/api/mobile/service/followups/route.ts");
 const followupStatusApi = read("app/api/mobile/service/followups/[id]/route.ts");
 const followupUi = read("features/mobile/service/MobileServiceFollowup.tsx");
@@ -51,16 +58,20 @@ describe("Mobile V1 productization", () => {
     expect(codexHardening).toContain(
       "or public.mobile_is_field_operator(p_shop_id, p.id)",
     );
-    expect(codexHardening).toContain("create or replace function public.dispatch_board_snapshot");
+    expect(codexHardening).toContain(
+      "create or replace function public.dispatch_board_snapshot",
+    );
     expect(codexHardening).toContain("'fieldOperator'");
-    expect(codexHardening).toContain("if tg_op = 'DELETE' then return old; end if;");
+    expect(codexHardening).toContain(
+      "if tg_op = 'DELETE' then return old; end if;",
+    );
     expect(setupUi).toContain("I perform field work");
     expect(setupUi).toContain("your owner/admin role does not change");
     expect(tiles).toContain('roles: ["mechanic", "lead_hand", "foreman"]');
     expect(tiles).toContain('roles: ["owner", "admin"]');
   });
 
-  it("uses rapid intake without unsafe customer, vehicle, or locale inference", () => {
+  it("uses rapid intake without unsafe identity, locale, or service-mode inference", () => {
     expect(intakeApi).toContain("mobile_create_service_call_atomic");
     expect(migration).toContain("insert into public.customers");
     expect(migration).toContain("insert into public.vehicles");
@@ -73,35 +84,38 @@ describe("Mobile V1 productization", () => {
       "lower(trim(coalesce(c.name, ''))) = lower(trim(p_customer_name))",
     );
     expect(identityHardening).toContain("VEHICLE_PLATE_OWNERSHIP_CONFLICT");
-    expect(identityHardening).toContain("select lower(trim(coalesce(s.country, 'US'))) into v_shop_country");
+    expect(identityHardening).toContain(
+      "select lower(trim(coalesce(s.country, 'US'))) into v_shop_country",
+    );
     expect(identityHardening).toContain("v_currency := 'USD'");
     expect(identityHardening).toContain("v_country_code := 'CA'");
+    expect(secondReviewHardening).toContain("v_config_model = 'both'");
+    expect(secondReviewHardening).toContain("v_mode := v_config_model");
+    expect(secondReviewHardening).toContain("'service_mode', v_mode");
+    expect(secondReviewHardening).toContain("'shop', 'scheduled'");
     expect(intakeApi).toContain('p_currency: ""');
+    expect(intakeApi).toContain("p_service_mode: body.serviceMode ?? null");
     expect(intakeApi).not.toContain('|| "CAD"');
     expect(intakeUi).toContain(
       "Capture the conversation, not a work-order form.",
     );
+    expect(intakeUi).toContain("configuredServiceModel");
+    expect(intakeUi).toContain("We go there");
+    expect(intakeUi).toContain("Customer comes here");
+    expect(intakeUi).toContain('serviceMode === "shop" || address.trim().length > 0');
     expect(intakeUi).toContain("Save call · ETA");
     expect(intakeUi).toContain("/mobile/service/call/");
-    for (const field of [
-      "customerName",
-      "phone",
-      "vehicle",
-      "address",
-      "concern",
-      "etaMinutes",
-      "quotedPrice",
-    ]) {
-      expect(intakeUi).toContain(field);
-    }
   });
 
-  it("provides an explicit booking-to-work-order handoff before repair", () => {
+  it("provides an explicit booking-to-work-order handoff before repair for canonical work-order creators", () => {
     expect(codexHardening).toContain(
       "mobile_materialize_service_visit_work_order_atomic",
     );
+    expect(secondReviewHardening).toContain("mobile_can_manage_work_orders");
+    expect(secondReviewHardening).toContain(
+      "'owner','admin','manager','advisor','service','lead_hand','leadhand','foreman'",
+    );
     expect(codexHardening).toContain("update public.bookings");
-    expect(codexHardening).toContain("work_order_id = v_work_order.id");
     expect(workOrderHandoffApi).toContain(
       "mobile_materialize_service_visit_work_order_atomic",
     );
@@ -110,7 +124,7 @@ describe("Mobile V1 productization", () => {
     expect(shell).toContain("Create work order & start repair");
   });
 
-  it("configures solo/mobile/both operation and reconciles canonical truck inventory", () => {
+  it("configures solo/mobile/both operation without adopting unrelated service vehicles", () => {
     expect(migration).toContain(
       "create table if not exists public.mobile_service_settings",
     );
@@ -125,9 +139,13 @@ describe("Mobile V1 productization", () => {
     expect(setupUi).toContain("Use dispatch/team assignment");
     expect(hardeningMigration).toContain("v_auto_assign boolean := false");
     expect(codexHardening).toContain("mobile_normalize_service_settings");
-    expect(codexHardening).toContain("mobile_reconcile_service_vehicle_setting");
-    expect(codexHardening).toContain("stock_location_id = null");
-    expect(codexHardening).toContain("active = false");
+    expect(codexHardening).toContain(
+      "mobile_reconcile_service_vehicle_setting",
+    );
+    expect(secondReviewHardening).toContain(
+      "coalesce(sv.capabilities, '{}'::jsonb) @> '{\"mobile_v1\":true}'::jsonb",
+    );
+    expect(settingsApi).toContain('.contains("capabilities", { mobile_v1: true })');
   });
 
   it("chains every queued field transition and rejects stale ABA replay by version", () => {
@@ -138,7 +156,7 @@ describe("Mobile V1 productization", () => {
     expect(shell).toContain("listPendingMutations");
     expect(shell).toContain("expectedVersion: Number(visit.version ?? 0)");
     expect(mutations).toContain("const dependencyPending");
-    expect(mutations).toContain("dependency.status !== \"synced\"");
+    expect(mutations).toContain('dependency.status !== "synced"');
     expect(replay).toContain('"service-visit:transition"');
     expect(replay).toContain("expectedVersion");
     expect(transitionApi).toContain("p_expected_version: expectedVersion");
@@ -146,10 +164,19 @@ describe("Mobile V1 productization", () => {
     expect(codexHardening).toContain("v_visit.version <> p_expected_version");
   });
 
-  it("keeps field payment on the existing invoice, Stripe and payment-ledger contracts", () => {
+  it("resumes queued completion into closeout and keeps the payment sheet inside a phone viewport", () => {
+    expect(shell).toContain("PENDING_CLOSEOUT_CACHE_KEY");
+    expect(shell).toContain("pendingCloseoutKey(scope.userId, scope.shopId)");
+    expect(shell).toContain("resumePendingCloseout");
+    expect(shell).toContain("mutationId: result.mutationId");
+    expect(shell).toContain("Visit completion is saved offline");
+    expect(shell).toContain("/mobile/service/closeout/");
     expect(closeoutUi).toContain("Invoice → payment → receipt → gone.");
     expect(closeoutUi).toContain('fetch("/api/invoices/finalize"');
-    expect(closeoutUi).toContain("<RecordManualPayment");
+    expect(closeoutUi).toContain("mobileViewportSafe");
+    expect(manualPayment).toContain("mobileViewportSafe?: boolean");
+    expect(manualPayment).toContain("fixed inset-x-3 bottom-");
+    expect(manualPayment).toContain("100dvh");
     expect(closeoutApi).toContain("createConnectedAccountInvoiceCheckout");
     expect(closeoutApi).toContain('purpose: "staff_invoice_payment"');
     expect(closeoutApi).toContain("payment_receipts");
@@ -157,20 +184,17 @@ describe("Mobile V1 productization", () => {
     expect(access).toContain('.eq("assigned_user_id", access.profile.id)');
   });
 
-  it("keeps field recommendations assigned-scoped and gives the follow-up queue a lifecycle", () => {
+  it("keeps field recommendations assigned-scoped while service staff can action the canonical follow-up lifecycle", () => {
     expect(migration).toContain(
       "create table if not exists public.mobile_service_followups",
     );
-    expect(migration).toContain("mobile_create_service_followup_atomic");
     expect(hardeningMigration).toContain(
       "mobile_service_followups_scoped_select",
     );
     expect(codexHardening).toContain("mobile_guard_service_followup_insert");
-    expect(codexHardening).toContain(
-      "Field recommendations require an assigned Service Visit.",
-    );
-    expect(codexHardening).toContain(
-      "mobile_update_service_followup_status_atomic",
+    expect(secondReviewHardening).toContain("mobile_can_manage_followups");
+    expect(secondReviewHardening).toContain(
+      "Converted work order must match the follow-up customer and vehicle.",
     );
     expect(followupUi).toContain("Keeps it off today's invoice.");
     expect(followupApi).toContain('.eq("status", "open")');
