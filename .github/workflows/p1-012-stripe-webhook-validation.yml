@@ -2,7 +2,7 @@ name: P1-012 Stripe Webhook Validation
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     paths:
       - "app/api/stripe/webhook/**"
       - "app/api/stripe/checkout/webhook/**"
