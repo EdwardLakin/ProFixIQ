@@ -30,6 +30,7 @@ import type {
 } from "@/features/dispatch/lib/contracts";
 import type { ServiceVisitStatus } from "@/features/scheduling/lib/service-visit-contract";
 import {
+  getOfflineMutationScope,
   hydrateOfflineMutationQueue,
   listPendingMutations,
   runMutationWithOfflineQueue,
@@ -37,7 +38,19 @@ import {
 import { replayAndReconcileOfflineMutations } from "@/features/shared/lib/offline/replay";
 
 const SNAPSHOT_CACHE_KEY = "profixiq:mobile-service:active:v1";
+const PENDING_CLOSEOUT_CACHE_KEY =
+  "profixiq:mobile-service:pending-closeout:v1";
 const REFRESH_INTERVAL_MS = 30_000;
+
+type PendingCloseout = {
+  workOrderId: string;
+  visitId: string;
+  mutationId: string;
+};
+
+function pendingCloseoutKey(userId: string, shopId: string): string {
+  return `${PENDING_CLOSEOUT_CACHE_KEY}:${userId}:${shopId}`;
+}
 
 type VisitAction = {
   label: string;
@@ -570,9 +583,60 @@ export default function MobileServiceShell() {
     }
   }, []);
 
+  const resumePendingCloseout = useCallback(async (): Promise<boolean> => {
+    if (typeof window === "undefined" || !navigator.onLine) return false;
+    await hydrateOfflineMutationQueue();
+    const scope = getOfflineMutationScope();
+    if (!scope) return false;
+    const key = pendingCloseoutKey(scope.userId, scope.shopId);
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return false;
+
+    let pendingCloseout: PendingCloseout;
+    try {
+      pendingCloseout = JSON.parse(raw) as PendingCloseout;
+    } catch {
+      window.localStorage.removeItem(key);
+      return false;
+    }
+
+    if (!pendingCloseout.workOrderId || !pendingCloseout.visitId || !pendingCloseout.mutationId) {
+      window.localStorage.removeItem(key);
+      return false;
+    }
+
+    const mutation = listPendingMutations().find(
+      (item) => item.clientMutationId === pendingCloseout.mutationId,
+    );
+    if (mutation) {
+      if (mutation.status === "conflicted") {
+        setQueuedNotice(
+          "Visit completion needs review before payment. Refresh the service call and resolve the sync conflict.",
+        );
+      }
+      return false;
+    }
+
+    window.localStorage.removeItem(key);
+    router.push(
+      `/mobile/service/closeout/${encodeURIComponent(pendingCloseout.workOrderId)}`,
+    );
+    return true;
+  }, [router]);
+
   useEffect(() => {
-    void load();
-  }, [load]);
+    void (async () => {
+      if (navigator.onLine) {
+        try {
+          await replayAndReconcileOfflineMutations();
+          if (await resumePendingCloseout()) return;
+        } catch {
+          // Fall through to the normal service-call refresh.
+        }
+      }
+      await load();
+    })();
+  }, [load, resumePendingCloseout]);
 
   useEffect(() => {
     const updateOnline = () => {
@@ -580,14 +644,18 @@ export default function MobileServiceShell() {
       setOnline(connected);
       if (connected) {
         void replayAndReconcileOfflineMutations()
-          .then(() => load(true))
+          .then(async () => {
+            if (!(await resumePendingCloseout())) await load(true);
+          })
           .catch(() => load(true));
       }
     };
     const refreshOnFocus = () => {
       if (document.visibilityState === "visible" && navigator.onLine) {
         void replayAndReconcileOfflineMutations()
-          .then(() => load(true))
+          .then(async () => {
+            if (!(await resumePendingCloseout())) await load(true);
+          })
           .catch(() => load(true));
       }
     };
@@ -605,7 +673,7 @@ export default function MobileServiceShell() {
       window.removeEventListener("offline", updateOnline);
       document.removeEventListener("visibilitychange", refreshOnFocus);
     };
-  }, [load]);
+  }, [load, resumePendingCloseout]);
 
   const activeJob = snapshot?.activeJob ?? null;
   const nextJob = snapshot?.nextJob ?? null;
@@ -650,7 +718,11 @@ export default function MobileServiceShell() {
         } else {
           await load(true);
         }
-        return { visit: result.visit, queued };
+        return {
+          visit: result.visit,
+          queued,
+          mutationId: result.mutationId,
+        };
       } catch (cause) {
         setError(
           cause instanceof Error ? cause.message : "Service visit update failed.",
@@ -727,6 +799,18 @@ export default function MobileServiceShell() {
         result.visit.workOrderId &&
         result.queued
       ) {
+        await hydrateOfflineMutationQueue();
+        const scope = getOfflineMutationScope();
+        if (scope) {
+          window.localStorage.setItem(
+            pendingCloseoutKey(scope.userId, scope.shopId),
+            JSON.stringify({
+              workOrderId: result.visit.workOrderId,
+              visitId: result.visit.id,
+              mutationId: result.mutationId,
+            } satisfies PendingCloseout),
+          );
+        }
         setQueuedNotice(
           "Visit completion is saved offline. Reconnect to collect payment and issue the receipt.",
         );
