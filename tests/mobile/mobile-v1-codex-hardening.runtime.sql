@@ -171,15 +171,19 @@ reset role;
 -- Deleting a profile must be allowed to cascade through mobile_field_operators
 -- without the child AFTER DELETE trigger trying to reload the already-deleted
 -- parent profile.
-delete from public.profiles
-where id = '9a300000-0000-4000-8000-000000000002';
+do $$
+begin
+  delete from public.profiles
+  where id = '9a300000-0000-4000-8000-000000000002';
 
-if exists (
-  select 1 from public.profiles
-  where id = '9a300000-0000-4000-8000-000000000002'
-) then
-  raise exception 'Mobile V1 hardening failed: profile cascade delete rolled back';
-end if;
+  if exists (
+    select 1 from public.profiles
+    where id = '9a300000-0000-4000-8000-000000000002'
+  ) then
+    raise exception 'Mobile V1 hardening failed: profile cascade delete rolled back';
+  end if;
+end;
+$$;
 
 rollback;
 
