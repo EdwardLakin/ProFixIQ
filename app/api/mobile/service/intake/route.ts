@@ -23,12 +23,15 @@ type IntakeBody = {
   startsAt?: string;
   durationMinutes?: number;
   quotedPrice?: number | null;
-  currency?: string;
   operationKey?: string;
 };
 
 function safeSearch(value: string): string {
-  return value.trim().replace(/[%,()]/g, " ").replace(/\s+/g, " ").slice(0, 80);
+  return value
+    .trim()
+    .replace(/[%,()]/g, " ")
+    .replace(/\s+/g, " ")
+    .slice(0, 80);
 }
 
 export async function GET(request: Request) {
@@ -57,8 +60,9 @@ export async function GET(request: Request) {
 
   const [byName, byPhone] = await Promise.all([nameQuery, phoneQuery]);
   const error = byName.error || byPhone.error;
-  if (error)
+  if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 
   const customerMap = new Map<
     string,
@@ -69,8 +73,9 @@ export async function GET(request: Request) {
       phone_number: string | null;
     }
   >();
-  for (const row of [...(byName.data ?? []), ...(byPhone.data ?? [])])
+  for (const row of [...(byName.data ?? []), ...(byPhone.data ?? [])]) {
     customerMap.set(row.id, row);
+  }
   const customers = [...customerMap.values()].slice(0, 8);
   const ids = customers.map((customer) => customer.id);
 
@@ -83,11 +88,12 @@ export async function GET(request: Request) {
         .order("created_at", { ascending: false })
         .limit(30)
     : { data: [], error: null };
-  if (vehiclesResult.error)
+  if (vehiclesResult.error) {
     return NextResponse.json(
       { error: vehiclesResult.error.message },
       { status: 500 },
     );
+  }
 
   return NextResponse.json({
     customers: customers.map((customer) => ({
@@ -105,22 +111,24 @@ export async function POST(request: Request) {
   const access = await requireShopScopedApiAccess();
   if (!access.ok) return access.response;
   const body = (await request.json().catch(() => null)) as IntakeBody | null;
-  if (!body)
+  if (!body) {
     return NextResponse.json(
       { error: "Invalid intake payload." },
       { status: 400 },
     );
+  }
 
   const operationKey =
     body.operationKey?.trim() ||
     request.headers.get("idempotency-key")?.trim() ||
     "";
   const startsAt = body.startsAt ? new Date(body.startsAt) : null;
-  if (!operationKey)
+  if (!operationKey) {
     return NextResponse.json(
       { error: "An idempotency key is required." },
       { status: 400 },
     );
+  }
   if (!startsAt || Number.isNaN(startsAt.getTime())) {
     return NextResponse.json(
       { error: "A valid arrival time is required." },
@@ -147,10 +155,8 @@ export async function POST(request: Request) {
     );
   }
 
-  // PostgreSQL function arguments are nullable unless constrained inside the
-  // function, while generated Supabase RPC Args do not encode that nullability.
-  // Runtime validation above and the RPC itself define the intentional nullable
-  // fields; keep the function name/signature generated and cast only the args.
+  // The RPC keeps p_currency for migration-signature compatibility, but the
+  // database derives country and currency from the authorized shop record.
   const rpcArgs = {
     p_shop_id: access.profile.shop_id,
     p_customer_id: body.customerId?.trim() || null,
@@ -170,7 +176,7 @@ export async function POST(request: Request) {
     p_starts_at: startsAt.toISOString(),
     p_duration_minutes: durationMinutes,
     p_quoted_price: quotedPrice,
-    p_currency: body.currency?.trim().toUpperCase() || "CAD",
+    p_currency: "",
     p_actor_user_id: access.authUserId,
     p_operation_key: operationKey,
   } as unknown as IntakeRpcArgs;
