@@ -85,7 +85,7 @@ describe("PricingSection theme contract", () => {
     ).toHaveAttribute("data-surface", "light");
     expect(
       screen.getAllByRole("button", { name: "Start 14-day free trial" }),
-    ).toHaveLength(2);
+    ).toHaveLength(4);
   });
 
   it("keeps text readable on both explicit card surfaces", () => {
@@ -117,12 +117,15 @@ describe("PricingSection theme contract", () => {
     expect(pricingStyles).toContain(".divider");
     expect(pricingStyles).toContain(".featureIcon");
     expect(pricingStyles).toContain(".notice");
+    expect(pricingStyles).toContain(".boundary");
     expect(pricingSource).not.toContain("var(--marketing-");
     expect(pricingSource).not.toContain("bg-white");
   });
 
   it("pins the landing and compare-plans callers to their intended themes", () => {
-    expect(landingSource).toMatch(/<PricingSection surface="light"/);
+    expect(landingSource).toMatch(
+      /<PricingSection[\s\S]{0,100}surface="light"/,
+    );
     expect(comparePlansSource).toMatch(/<PricingSection\s+surface="dark"/);
   });
 });

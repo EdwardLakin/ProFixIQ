@@ -22,9 +22,11 @@ export function resolveMobileFieldServiceAccess(input: {
   onboardingCompletedAt: string | null | undefined;
   isFieldOperator: boolean;
   canonicalRole: string;
+  productEntitled: boolean;
 }): MobileFieldServiceAccess {
   const fieldServiceEnabled = Boolean(
-    input.onboardingCompletedAt &&
+    input.productEntitled &&
+      input.onboardingCompletedAt &&
       ["mobile", "both"].includes(input.serviceModel ?? ""),
   );
   const canConfigure = ["owner", "admin"].includes(input.canonicalRole);
@@ -40,22 +42,29 @@ export function resolveMobileFieldServiceAccess(input: {
 export async function getMobileFieldServiceAccess(
   access: ShopAccess,
 ): Promise<MobileFieldServiceAccess> {
-  const [settingsResult, operatorResult] = await Promise.all([
-    access.supabase
-      .from("mobile_service_settings")
-      .select("service_model,onboarding_completed_at")
-      .eq("shop_id", access.profile.shop_id)
-      .maybeSingle(),
-    access.supabase
-      .from("mobile_field_operators")
-      .select("profile_id")
-      .eq("shop_id", access.profile.shop_id)
-      .eq("profile_id", access.profile.id)
-      .eq("enabled", true)
-      .maybeSingle<{ profile_id: string }>(),
-  ]);
+  const [settingsResult, operatorResult, entitlementResult] = await Promise.all(
+    [
+      access.supabase
+        .from("mobile_service_settings")
+        .select("service_model,onboarding_completed_at")
+        .eq("shop_id", access.profile.shop_id)
+        .maybeSingle(),
+      access.supabase
+        .from("mobile_field_operators")
+        .select("profile_id")
+        .eq("shop_id", access.profile.shop_id)
+        .eq("profile_id", access.profile.id)
+        .eq("enabled", true)
+        .maybeSingle<{ profile_id: string }>(),
+      access.supabase.rpc("profixiq_shop_has_product_access", {
+        p_capability: "field_service",
+        p_shop_id: access.profile.shop_id,
+      }),
+    ],
+  );
 
-  const error = settingsResult.error || operatorResult.error;
+  const error =
+    settingsResult.error || operatorResult.error || entitlementResult.error;
   if (error) throw new Error(error.message);
 
   return resolveMobileFieldServiceAccess({
@@ -63,6 +72,7 @@ export async function getMobileFieldServiceAccess(
     onboardingCompletedAt: settingsResult.data?.onboarding_completed_at,
     isFieldOperator: Boolean(operatorResult.data),
     canonicalRole: access.canonicalRole,
+    productEntitled: entitlementResult.data === true,
   });
 }
 
@@ -122,13 +132,11 @@ export async function requireMobileServiceOperatorApiAccess() {
     ...access,
     actor: getActorCapabilities({ role: access.profile.role }),
     isFieldOperator: fieldAccess.isFieldOperator,
-    managementRole: fieldAccess.canAccessFieldService && [
-      "owner",
-      "admin",
-      "manager",
-      "advisor",
-      "service",
-    ].includes(access.canonicalRole),
+    managementRole:
+      fieldAccess.canAccessFieldService &&
+      ["owner", "admin", "manager", "advisor", "service"].includes(
+        access.canonicalRole,
+      ),
     fieldServiceEnabled: fieldAccess.fieldServiceEnabled,
   };
 }

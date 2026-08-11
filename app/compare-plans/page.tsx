@@ -18,18 +18,19 @@ export default function ComparePlansPage() {
   const searchParams = useSearchParams();
   const demoId = searchParams.get("demoId");
   const intakeId = searchParams.get("intakeId");
-  const activationContext = parseActivationContextFromSearchParams(searchParams);
+  const activationContext =
+    parseActivationContextFromSearchParams(searchParams);
   useEffect(() => {
     if (!activationContext) return;
     persistActivationContext(activationContext);
   }, [activationContext]);
 
   const handleCheckout = async ({
-    planKey,
+    packageKey,
     interval,
     checkoutAttemptId,
   }: {
-    planKey: string;
+    packageKey: string;
     interval: Interval;
     checkoutAttemptId: string;
   }) => {
@@ -39,7 +40,7 @@ export default function ComparePlansPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           flow: "acquisition",
-          planKey,
+          packageKey,
           interval,
           checkoutAttemptId,
         }),
@@ -60,7 +61,9 @@ export default function ComparePlansPage() {
       toast.error("No checkout URL returned");
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : "Unexpected error starting checkout.";
+        err instanceof Error
+          ? err.message
+          : "Unexpected error starting checkout.";
       toast.error(message);
     }
   };
@@ -85,17 +88,25 @@ export default function ComparePlansPage() {
               className="mt-2 text-3xl text-[color:var(--theme-text-primary)] sm:text-4xl"
               style={{ fontFamily: "var(--font-blackops)" }}
             >
-              Choose your Complete plan
+              Choose your operation
             </h1>
             <p className="mt-2 max-w-2xl text-sm text-[color:var(--theme-text-secondary)]">
-              Accounts are created after checkout — we don&apos;t allow sign-up without a
-              plan.
+              Start with a clear product boundary, then add capacity only where
+              your operation grows.
             </p>
 
             {demoId ? (
               <p className="mt-2 text-[11px] text-[color:var(--theme-text-muted)]">
-                Resume activation context is saved. Reference: <span className="text-[color:var(--theme-text-secondary)]">{demoId}</span>
-                {intakeId ? <span className="text-[color:var(--theme-text-secondary)]"> • Intake: {intakeId}</span> : null}
+                Resume activation context is saved. Reference:{" "}
+                <span className="text-[color:var(--theme-text-secondary)]">
+                  {demoId}
+                </span>
+                {intakeId ? (
+                  <span className="text-[color:var(--theme-text-secondary)]">
+                    {" "}
+                    • Intake: {intakeId}
+                  </span>
+                ) : null}
               </p>
             ) : null}
           </div>
@@ -111,7 +122,9 @@ export default function ComparePlansPage() {
         <div className="rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 backdrop-blur-xl md:p-6">
           {demoId ? (
             <div className="mb-4 rounded-2xl border border-cyan-500/30 bg-cyan-500/10 px-4 py-3 text-xs text-cyan-100">
-              Your shop preview is ready to resume. Nothing has been written yet, and activation will carry this analysis into guided import setup.
+              Your shop preview is ready to resume. Nothing has been written
+              yet, and activation will carry this analysis into guided import
+              setup.
             </div>
           ) : null}
           <PricingSection
@@ -130,7 +143,8 @@ export default function ComparePlansPage() {
             What happens after checkout?
           </div>
           <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
-            After payment, we&apos;ll continue activation and start your real import based on this preview context.
+            After payment, we&apos;ll continue activation and start your real
+            import based on this preview context.
           </p>
           <p className="mt-2 text-[11px] text-[color:var(--theme-text-muted)]">
             Cancel anytime. Taxes billed per your Stripe setup.

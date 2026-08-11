@@ -12,6 +12,12 @@ import { OWNER_PIN_PURPOSES } from "@/features/shared/lib/server/owner-pin";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import type { PlanKey } from "@/features/stripe/lib/stripe/constants";
 import { createStripeClient } from "@/features/stripe/lib/stripe/client";
+import {
+  PRODUCT_PACKAGE_BILLING_MODEL,
+  PRODUCT_PACKAGE_KEYS,
+  type ProductPackageKey,
+} from "@/features/stripe/lib/stripe/product-packages";
+import { resolveProductPackagePriceId } from "@/features/stripe/lib/server/product-package-price-contract";
 import { resolveStripePlanPriceId } from "@/features/stripe/lib/server/stripe-price-contract";
 import {
   attachStripeAcquisitionCheckout,
@@ -29,7 +35,9 @@ const REQUEST_MAX_BYTES = 8 * 1024;
 
 const checkoutSchema = z
   .object({
-    planKey: z.enum(["starter", "unlimited"]),
+    packageKey: z.enum(PRODUCT_PACKAGE_KEYS).optional(),
+    // Rolling-deploy compatibility for pre-package clients and subscriptions.
+    planKey: z.enum(["starter", "unlimited"]).optional(),
     checkoutAttemptId: z.string().uuid().optional(),
     flow: z.enum(["acquisition", "owner"]).optional(),
     source: z.enum(["pricing_cta"]).optional(),
@@ -46,7 +54,29 @@ const checkoutSchema = z
     demoId: z.string().nullable().optional(),
     intakeId: z.string().nullable().optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    if (Boolean(value.packageKey) === Boolean(value.planKey)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Choose exactly one subscription package",
+      });
+    }
+  });
+
+type CheckoutSelection =
+  | {
+      packageKey: ProductPackageKey;
+      legacyPlanKey: null;
+      acquisitionPlanKey: PlanKey;
+      pricingModel: typeof PRODUCT_PACKAGE_BILLING_MODEL;
+    }
+  | {
+      packageKey: null;
+      legacyPlanKey: PlanKey;
+      acquisitionPlanKey: PlanKey;
+      pricingModel: "base_plus_seats_v2";
+    };
 
 type ShopScope = Pick<
   DB["public"]["Tables"]["shops"]["Row"],
@@ -91,7 +121,11 @@ function configuredTrialDays(): number {
 }
 
 function automaticTaxEnabled(): boolean {
-  return String(process.env.STRIPE_AUTOMATIC_TAX_ENABLED ?? "").trim().toLowerCase() === "true";
+  return (
+    String(process.env.STRIPE_AUTOMATIC_TAX_ENABLED ?? "")
+      .trim()
+      .toLowerCase() === "true"
+  );
 }
 
 function integrationIdentifier(prefix: string): string {
@@ -99,7 +133,9 @@ function integrationIdentifier(prefix: string): string {
 }
 
 function ownerTrialEligible(shop: ShopScope): boolean {
-  const status = String(shop.stripe_subscription_status ?? "").trim().toLowerCase();
+  const status = String(shop.stripe_subscription_status ?? "")
+    .trim()
+    .toLowerCase();
   return (
     !String(shop.stripe_subscription_id ?? "").trim() &&
     !shop.stripe_trial_end &&
@@ -135,14 +171,17 @@ async function createCustomerIfMissing(input: {
     .from("shops")
     .update({ stripe_customer_id: customer.id })
     .eq("id", input.shop.id);
-  if (error) throw new Error(`shop customer persistence failed (${error.code ?? "unknown"})`);
+  if (error)
+    throw new Error(
+      `shop customer persistence failed (${error.code ?? "unknown"})`,
+    );
   return customer.id;
 }
 
 function acquisitionMetadata(input: {
   intentId: string;
   nonce: string;
-  planKey: PlanKey;
+  selection: CheckoutSelection;
   priceId: string;
   trialDays: number;
 }): Stripe.MetadataParam {
@@ -152,12 +191,47 @@ function acquisitionMetadata(input: {
     source: "pricing_cta",
     acquisition_intent_id: input.intentId,
     acquisition_nonce: input.nonce,
-    plan_key: input.planKey,
+    plan_key: input.selection.acquisitionPlanKey,
+    ...(input.selection.packageKey
+      ? { package_key: input.selection.packageKey }
+      : {}),
     price_id: input.priceId,
-    pricing_model: "base_plus_seats_v2",
+    pricing_model: input.selection.pricingModel,
     trial_enabled: input.trialDays > 0 ? "true" : "false",
     trial_days: String(input.trialDays),
   };
+}
+
+function resolveCheckoutSelection(input: {
+  packageKey?: ProductPackageKey;
+  planKey?: PlanKey;
+}): CheckoutSelection {
+  if (input.packageKey) {
+    return {
+      packageKey: input.packageKey,
+      legacyPlanKey: null,
+      // The acquisition ledger keeps the historical canonical plan alias while
+      // package_key carries the new commercial entitlement.
+      acquisitionPlanKey: "starter",
+      pricingModel: PRODUCT_PACKAGE_BILLING_MODEL,
+    };
+  }
+
+  return {
+    packageKey: null,
+    legacyPlanKey: input.planKey ?? "starter",
+    acquisitionPlanKey: input.planKey ?? "starter",
+    pricingModel: "base_plus_seats_v2",
+  };
+}
+
+async function resolveCheckoutPriceId(
+  stripe: Stripe,
+  selection: CheckoutSelection,
+): Promise<string> {
+  return selection.packageKey
+    ? resolveProductPackagePriceId(stripe, selection.packageKey)
+    : resolveStripePlanPriceId(stripe, selection.legacyPlanKey);
 }
 
 function buildCheckoutParams(input: {
@@ -195,21 +269,29 @@ export async function POST(req: Request) {
     const bodyResult = await readBoundedJson(req, REQUEST_MAX_BYTES);
     if (!bodyResult.ok) {
       return noStoreJson(
-        { error: bodyResult.reason === "too_large" ? "Request too large" : "Invalid request" },
+        {
+          error:
+            bodyResult.reason === "too_large"
+              ? "Request too large"
+              : "Invalid request",
+        },
         bodyResult.reason === "too_large" ? 413 : 400,
       );
     }
     const parsed = checkoutSchema.safeParse(bodyResult.value);
-    if (!parsed.success) return noStoreJson({ error: "Invalid checkout request" }, 400);
+    if (!parsed.success)
+      return noStoreJson({ error: "Invalid checkout request" }, 400);
 
     const isAcquisition =
-      parsed.data.flow === "acquisition" || parsed.data.source === "pricing_cta";
+      parsed.data.flow === "acquisition" ||
+      parsed.data.source === "pricing_cta";
     if (parsed.data.flow === "owner" && parsed.data.source === "pricing_cta") {
       return noStoreJson({ error: "Invalid checkout flow" }, 400);
     }
 
     const stripe = createStripeClient(mustEnv("STRIPE_SECRET_KEY"));
-    const priceId = await resolveStripePlanPriceId(stripe, parsed.data.planKey);
+    const selection = resolveCheckoutSelection(parsed.data);
+    const priceId = await resolveCheckoutPriceId(stripe, selection);
     const baseUrl = getBaseUrl();
     const trialDays = configuredTrialDays();
     const attemptId = parsed.data.checkoutAttemptId ?? randomUUID();
@@ -220,7 +302,7 @@ export async function POST(req: Request) {
         admin,
         requestKey: `acq:${attemptId}`,
         nonce: randomBytes(32).toString("hex"),
-        planKey: parsed.data.planKey,
+        planKey: selection.acquisitionPlanKey,
         priceId,
         trialDays,
         foundingDiscountApplied: false,
@@ -231,9 +313,15 @@ export async function POST(req: Request) {
         return noStoreJson({ error: "Checkout attempt expired" }, 409);
       }
       if (intent.checkoutSessionId) {
-        const existing = await stripe.checkout.sessions.retrieve(intent.checkoutSessionId);
+        const existing = await stripe.checkout.sessions.retrieve(
+          intent.checkoutSessionId,
+        );
         if (existing.status === "open" && existing.url) {
-          return noStoreJson({ ok: true, sessionId: existing.id, url: existing.url });
+          return noStoreJson({
+            ok: true,
+            sessionId: existing.id,
+            url: existing.url,
+          });
         }
         if (existing.status === "complete") {
           return noStoreJson({
@@ -242,13 +330,16 @@ export async function POST(req: Request) {
             url: successUrl.replace("{CHECKOUT_SESSION_ID}", existing.id),
           });
         }
-        return noStoreJson({ error: "Checkout attempt is no longer active" }, 409);
+        return noStoreJson(
+          { error: "Checkout attempt is no longer active" },
+          409,
+        );
       }
 
       const metadata = acquisitionMetadata({
         intentId: intent.id,
         nonce: intent.nonce,
-        planKey: parsed.data.planKey,
+        selection,
         priceId,
         trialDays,
       });
@@ -278,7 +369,10 @@ export async function POST(req: Request) {
       allowRoles: ["owner", "admin"],
       requireOwnerPin: true,
       ownerPinRequest: req,
-      ownerPinAllowedPurposes: [OWNER_PIN_PURPOSES.BILLING, OWNER_PIN_PURPOSES.PRIVILEGED],
+      ownerPinAllowedPurposes: [
+        OWNER_PIN_PURPOSES.BILLING,
+        OWNER_PIN_PURPOSES.PRIVILEGED,
+      ],
     });
     if (!access.ok) return access.response;
 
@@ -306,9 +400,10 @@ export async function POST(req: Request) {
       supabase_user_id: access.profile.id,
       purpose: "profixiq_subscription",
       source: "owner_settings",
-      plan_key: parsed.data.planKey,
+      plan_key: selection.acquisitionPlanKey,
+      ...(selection.packageKey ? { package_key: selection.packageKey } : {}),
       price_id: priceId,
-      pricing_model: "base_plus_seats_v2",
+      pricing_model: selection.pricingModel,
       trial_enabled: enableTrial ? "true" : "false",
       trial_days: enableTrial ? String(trialDays) : "0",
     };

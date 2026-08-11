@@ -55,8 +55,12 @@ describe("P0-006 Stripe identity boundary", () => {
       "supabase/migrations/20260802170000_stripe_billing_model_connect_correction.sql",
     );
 
+    expect(checkout).toContain("resolveCheckoutPriceId(stripe, selection)");
     expect(checkout).toContain(
-      "resolveStripePlanPriceId(stripe, parsed.data.planKey)",
+      "resolveProductPackagePriceId(stripe, selection.packageKey)",
+    );
+    expect(checkout).toContain(
+      "resolveStripePlanPriceId(stripe, selection.legacyPlanKey)",
     );
     expect(checkout).not.toContain("STRIPE_PRICE_BASE_MONTHLY");
     expect(checkout).toContain("configuredTrialDays()");
