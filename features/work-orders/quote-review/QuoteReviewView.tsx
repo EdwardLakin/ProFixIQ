@@ -787,698 +787,116 @@ export default function QuoteReviewView(props: {
     setSaving(true);
     try {
       for (const line of dirty) {
-        const laborHours = quoteLineLaborHours(line);
-        const laborTotal = quoteLineLaborTotal(line, laborRate);
-        const partsTotal = quoteLinePartsTotal(line);
-        if (partsTotal == null) {
-          toast.error(
-            "This protected quote needs manual pricing review and cannot be recalculated as $0.",
-          );
-          return false;
-        }
-        const subtotal = laborTotal + partsTotal;
-        const metadata = {
-          ...quoteMetadata(line),
-          labor_rate: quoteLineLaborRate(line, laborRate),
-        } as Json;
+        const laborHoÛ≠ª∂âûÀk∫wµÁ[èè‹‹[èààù[Bà‹\ùú›\Y\àœ»\ùùô[ô‹à»‹[èî›\Y\éà‹[à€\‹”ò[YOHù^Vÿ€€‹éùò\äK][YK]^\ö[X\ûJWHèû‹\ùú›\Y\àœ»\ùùô[ô‹üO‹‹[èè‹‹[èààù[Bà‹öX⁄[ô‘]X\ò[ù[ôY»
+à‹[à€\‹”ò[YOHôõ€ù\Ÿ[ZXõ€^X[Xô\ãLLèê›\úô[ù‹\ò][€ò[öX⁄[ô»Y[à8†%]\»õ›Hö[ò[^ôY›\›€Y\àX⁄\⁄[€ãè‹‹[èÇà
+Hà
+àÇà‹[èû‹\ù€‹›Xô[
+\ù
+_O‹‹[èÇà‹[èû‹\ùŸ[Xô[
+\ù
+_O‹‹[èÇà‹\ùò€‹›[ôU›[OHù[»‹[èê€‹›[ôNà‹[à€\‹”ò[YOHù^Vÿ€€‹éùò\äK][YK]^\ö[X\ûJWHèûŸõ]
+\ùò€‹›[ôU›[
+_O‹‹[èè‹‹[èààù[Bà‹\ùúŸ[[ôU›[OHù[»‹[èîŸ[[ôNà‹[à€\‹”ò[YOHù^Vÿ€€‹éùò\äK][YK]^\ö[X\ûJWHèûŸõ]
+\ùúŸ[[ôU›[
+_O‹‹[èè‹‹[èààù[BàœÇà
+_Bà‹\ùú›]\»»‹[èî›]\Œà‹[à€\‹”ò[YOHù^Vÿ€€‹éùò\äK][YK]^\ö[X\ûJWHèû‹›]\”Xô[
+\ùú›]\ _O‹‹[èè‹‹[èààù[BàŸ]èÇà‹ô\]Y\›»
+àHôYè^ÿ‹\ùÀ‹ô\]Y\›À…‹ô\]Y\›öYXH€\‹”ò[YOHõ]Là[õ[ôKYõ^õ›[ôY[»õ‹ô\àõ‹ô\ã\⁄ﬁKLÃÃÕHôÀ\⁄ﬁKMÃLLãçHKLKçH^^»õ€ù\Ÿ[ZXõ€^\⁄ﬁKLL›ô\éòôÀ\⁄ﬁKMÃMHèÇàöY]»\ù»ô\]Y\›8†%‹\ù‘ô\]Y\›Xô[
+[ôK[ô^
+_BàÿOÇà
+Hàù[BàŸ]èÇà
+N¬àJ_BàŸ]èÇà
+Hà
+à]à€\‹”ò[YOHõ]Làõ›[ôY[»õ‹ô\àõ‹ô\ãVÿ€€‹éùò\äKY\⁄›‹Xõ‹ô\äWHôÀVÿ€€‹éùò\äK][YK\›\ôòXŸKZ[úŸ]
+WHLà^Vÿ€€‹éùò\äK][YK]^\ŸX€€ô\ûJWHèÇà]èî\ùŒà‹[à€\‹”ò[YOHù^Vÿ€€‹éùò\äK][YK]^\ö[X\ûJWHèìõ€ôO‹‹[èèŸ]èÇà]èî\ù»ô\]Y\›à‹[à€\‹”ò[YOHù^Vÿ€€‹éùò\äK][YK]^\ö[X\ûJWHèìõ›ô\]Z\ôY‹‹[èèŸ]èÇàŸ]èÇà
+_BàŸ]èÇÇà‹€›\òŸ\Àõ[ô›à»
+à]à€\‹”ò[YOHõ]L»õ›[ôY^õ‹ô\àõ‹ô\ãVÿ€€‹éùò\äKY\⁄›‹Xõ‹ô\äWHôÀVÿ€€‹éùò\äK][YK\›\ôòXŸKZ[úŸ]
+WHL»^^»^Vÿ€€‹éùò\äK][YK]^\ŸX€€ô\ûJWHèÇà€›\òŸH[ú‹X›[€àY]Y]Nà‹[à€\‹”ò[YOHù^Vÿ€€‹éùò\äK][YK]^\ö[X\ûJWHèû‹€›\òŸ\Àöõ⁄[äà8†(àä_O‹‹[èÇàŸ]èÇà
+Hàù[BÇà‹›‹Àõ[ô›à»
+à]à€\‹”ò[YOHõ]L»õ^õ^]‹ò\ÿ\LàèÇà‹›‹ÀõX\
 
-        const patch: QuoteLineUpdate = {
-          description: line.description,
-          ai_complaint: line.ai_complaint,
-          ai_cause: line.ai_cause,
-          ai_correction: line.ai_correction,
-          notes: line.notes,
-          est_labor_hours: line.est_labor_hours,
-          labor_hours: laborHours,
-          labor_rate: quoteLineLaborRate(line, laborRate),
-          labor_total: laborTotal,
-          parts_total: partsTotal,
-          subtotal,
-          grand_total: subtotal,
-          status: line.status,
-          stage: line.stage,
-          metadata,
-          updated_at: new Date().toISOString(),
-        };
+\õ
+HOà
+àHŸ^O^›\õHôYè^›\õH\ôŸ]Hóÿõ[ö»àô[Hõõ‹ôYô\úô\àà€\‹”ò[YOHúõ›[ôY[»õ‹ô\àõ‹ô\ã\⁄ﬁKLÃÃÕHôÀ\⁄ﬁKMÃLLãçHKLKçH^^»õ€ù\Ÿ[ZXõ€^\⁄ﬁKLL›ô\éòôÀ\⁄ﬁKMÃMHèÇà]öY[òŸH›¬àÿOÇà
+J_BàŸ]èÇà
+Hàù[BÇà]à€\‹”ò[YOHõ]L»õ^õ^]‹ò\ÿ\LàèÇàù]€à\OHòù]€àà\ÿXõY^ÿ€€[Y\ò⁄X[Y][ô—\ÿXõYH€ê€X⁄œ^ 
+HOàŸ]‹[ë]Z[ 
+ô]äHOà
+»ããúô]ã€[ôKöYNà\ô]ñ€[ôKöYHJJ_H€\‹”ò[YOHô\⁄›‹Xùã\ŸX€€ô\ûHõ›[ôY^L»KLà^^»õ€ù\Ÿ[ZXõ€^Vÿ€€‹éùò\äK][YK]^\ö[X\ûJWH\ÿXõYõ‹X⁄]KMHèÇà€‹[ë]Z[÷€[ôKöYH»íYHY]‹àààëY]][›H[ôHüBàÿù]€èÇàù]€à\OHòù]€àà\ÿXõY^ÿ€€[Y\ò⁄X[Y][ô—\ÿXõYH€ê€X⁄œ^ 
+HOàX\ö‘ôX€€[Y[ôYôXYJ[ôJ_H€\‹”ò[YOHô\⁄›‹Xùã\ŸX€€ô\ûHõ›[ôY^L»KLà^^»õ€ù\Ÿ[ZXõ€^Vÿ€€‹éùò\äK][YK]^\ö[X\ûJWH\ÿXõYõ‹X⁄]KMHèÇàôX€€\]HôXYH›]Bàÿù]€èÇà»[[ôKúŸ[ù›◊ÿ›\›€Y\óÿ]	âàÿ[îŸ[ô[ôJ[ôJH»‹[à€\‹”ò[YOHúõ›[ôY^õ‹ô\àõ‹ô\ãY[Y\ò[LÃÃÕHôÀY[Y\ò[MÃLL»KLà^^»õ€ù\Ÿ[ZXõ€^Y[Y\ò[LLèï⁄[Ÿ[ô‹‹[èààù[Bà»X€€[Y\ò⁄X[Y][ô—\ÿXõY»Çàù]€à\OHòù]€àà\ÿXõY^»Xÿ[îŸ[ô[ôJ[ôJH	âàZ\‘Ÿ[ùõ‹ëX⁄\⁄[€ä[ôJ_H€ê€X⁄œ^ 
+HOà‹[ëX⁄\⁄[€ëX[Ÿ [ôKò\õ›ôHä_H€\‹”ò[YOHúõ›[ôY^õ‹ô\àõ‹ô\ãY[Y\ò[LÃÕôÀY[Y\ò[MLÃMHL»KLà^^»õ€ù\Ÿ[ZXõ€^Y[Y\ò[LL\ÿXõYõ‹X⁄]KMHèê\õ›ôOÿù]€èÇàù]€à\OHòù]€àà€ê€X⁄œ^ 
+HOà‹[ëX⁄\⁄[€ëX[Ÿ [ôKôYô\àä_H€\‹”ò[YOHúõ›[ôY^õ‹ô\àõ‹ô\ãVÿ€€‹éùò\äK][YKXõ‹ô\ã\€Ÿù
+WHôÀVÿ€€‹éùò\äK][YK\›\ôòXŸK\›XùJWHL»KLà^^»õ€ù\Ÿ[ZXõ€^Vÿ€€‹éùò\äK][YK]^\ö[X\ûJWHèëYô\èÿù]€èÇàù]€à\OHòù]€àà€ê€X⁄œ^ 
+HOà‹[ëX⁄\⁄[€ëX[Ÿ [ôKôX€[ôHä_H€\‹”ò[YOHúõ›[ôY^õ‹ô\àõ‹ô\ã\ôYMÕHôÀ\ôYMLÃLL»KLà^^»õ€ù\Ÿ[ZXõ€^\ôYLLèëX€[ôOÿù]€èÇàœààù[BàŸ]èÇÇà€‹[ë]Z[÷€[ôKöYH	âàX€€[Y\ò⁄X[Y][ô—\ÿXõY»
+à]à€\‹”ò[YOHô\⁄›‹\[ô[\€Ÿù]L»MèÇà]à€\‹”ò[YO^Ÿ[XôYY»ô‹öYÿ\L»ààô‹öYÿ\L»Yô‹öYX€€ÀLàüOÇàXô[€\‹”ò[YOHù^^»^Vÿ€€‹éùò\äK][YK]^\ŸX€€ô\ûJWHèÇà]H»\ÿ‹ö\[€Çà[ú]ò[YO^€[ôKô\ÿ‹ö\[€àœ»àüH€ê⁄[ôŸO^ JHOà]⁄][›S[ôJ[ôKöY»\ÿ‹ö\[€éàKù\ôŸ]ùò[YHJ_H€\‹”ò[YO^⁄[ú]€ﬂHœÇà€Xô[ÇàXô[€\‹”ò[YOHù^^»^Vÿ€€‹éùò\äK][YK]^\ŸX€€ô\ûJWHèÇà€€\Z[ùà[ú]ò[YO^€[ôKòZWÿ€€\Z[ùœ»àüH€ê⁄[ôŸO^ JHOà]⁄][›S[ôJ[ôKöY»ZWÿ€€\Z[ùàKù\ôŸ]ùò[YHJ_H€\‹”ò[YO^⁄[ú]€ﬂHœÇà€Xô[ÇàXô[€\‹”ò[YOHù^^»^Vÿ€€‹éùò\äK][YK]^\ŸX€€ô\ûJWHèÇàX⁄öX⁄X[àõ›\¬à[ú]ò[YO^›X⁄õ›\ﬂH€ê⁄[ôŸO^ JHOà]⁄][›S[ôSY]Y]J[ôK»X⁄öX⁄X[ó€õ›\ŒàKù\ôŸ]ùò[YHJ_H€\‹”ò[YO^⁄[ú]€ﬂHœÇà€Xô[ÇàXô[€\‹”ò[YOHù^^»^Vÿ€€‹éùò\äK][YK]^\ŸX€€ô\ûJWHèÇàYö\€‹àõ›\¬à[ú]ò[YO^€[ôKõõ›\»œ»àüH€ê⁄[ôŸO^ JHOà]⁄][›S[ôJ[ôKöY»õ›\ŒàKù\ôŸ]ùò[YHJ_H€\‹”ò[YO^⁄[ú]€ﬂHœÇà€Xô[ÇàXô[€\‹”ò[YOHù^^»^Vÿ€€‹éùò\äK][YK]^\ŸX€€ô\ûJWHèÇàXõ‹à›\ú¬à[ú][ú][ŸOHôX⁄[X[àò[YO^‘›ö[ô Xõ‹í›\ú _H€ê⁄[ôŸO^ JHOà]⁄][›S[ôJ[ôKöY»Xõ‹ó⁄›\úŒà\”ù[Xô\äKù\ôŸ]ùò[YJHœ»\›€Xõ‹ó⁄›\úŒà\”ù[Xô\äKù\ôŸ]ùò[YJHœ»J_H€\‹”ò[YO^⁄[ú]€ﬂHœÇà€Xô[ÇàXô[€\‹”ò[YOHù^^»^Vÿ€€‹éùò\äK][YK]^\ŸX€€ô\ûJWHèÇàXõ‹àò]Bà[ú][ú][ŸOHôX⁄[X[àò[YO^‘›ö[ô [ôSXõ‹îò]J_H€ê⁄[ôŸO^ JHOà]⁄][›S[ôJ[ôKöY»€Xõ‹îò]QòYùà\”ù[Xô\äKù\ôŸ]ùò[YJHœ»J_H€\‹”ò[YO^⁄[ú]€ﬂHœÇà€Xô[ÇàXô[€\‹”ò[YOHù^^»^Vÿ€€‹éùò\äK][YK]^\ŸX€€ô\ûJWHèÇàXõ‹à[[›[ùà[ú][ú][ŸOHôX⁄[X[àò[YO^‘›ö[ô Xõ‹ï›[
+_H€ê⁄[ôŸO^ JHOà]⁄][›S[ôJ[ôKöY»Xõ‹ó››[à\”ù[Xô\äKù\ôŸ]ùò[YJHœ»J_H€\‹”ò[YO^⁄[ú]€ﬂHœÇà€Xô[ÇàXô[€\‹”ò[YOHù^^»^Vÿ€€‹éùò\äK][YK]^\ŸX€€ô\ûJWHèÇà\ù»Ÿ[›[
+ÿ[›[]Y
+Bà[ú]àò[YO^‹\ù’›[OHù[»ààà›ö[ô \ù’›[
+_BàXŸZ€\èHìX[ùX[ô]öY]»ô\]Z\ôYÇàôXY€õBà\öXKY\ÿ‹öXôYûO^ÿ\ùÀ\Ÿ[Z[I€[ôKöYXBà€\‹”ò[YO^ÿ	⁄[ú]€ﬂH›\ú€‹ã[õ›X[›ŸY‹X⁄]KNBàœÇà‹[àY^ÿ\ùÀ\Ÿ[Z[I€[ôKöYXH€\‹”ò[YOHõ]LHõÿ⁄»^VÃL\H^Vÿ€€‹éùò\äK][YK]^[]]Y
+WHèÇàY]XX⁄][Iò\‹Œ‹»Ÿ[öXŸH[àH[öŸY\ù»ô\]Y\›»][›Hô]öY]»ôXÿ[›[]\»\»›[Çà‹‹[èÇà€Xô[ÇàXô[€\‹”ò[YOHù^^»^Vÿ€€‹éùò\äK][YK]^\ŸX€€ô\ûJWHèÇà›]\¬àŸ[X›ò[YO^€[ôKú›]\»œ»àüH€ê⁄[ôŸO^ JHOà]⁄][›S[ôJ[ôKöY»›]\ŒàKù\ôŸ]ùò[YHJ_H€\‹”ò[YO^⁄[ú]€ﬂOÇà‹[€àò[YOHú[ô[ô◊‹\ù»èú[ô[ô»\ùœ€‹[€èÇà‹[€àò[YOHú][›YèúôXYH»][›Y€‹[€èÇà‹[€àò[YOHúŸ[ùèúŸ[ù€‹[€èÇà‹Ÿ[X›Çà€Xô[ÇàXô[€\‹”ò[YOHù^^»^Vÿ€€‹éùò\äK][YK]^\ŸX€€ô\ûJWHèÇà›YŸBàŸ[X›ò[YO^€[ôKú›YŸHœ»àüH€ê⁄[ôŸO^ JHOà]⁄][›S[ôJ[ôKöY»›YŸNàKù\ôŸ]ùò[YHJ_H€\‹”ò[YO^⁄[ú]€ﬂOÇà‹[€àò[YOHòYö\€‹ó‹[ô[ô»èòYö\€‹à[ô[ôœ€‹[€èÇà‹[€àò[YOHúôXYW›◊‹Ÿ[ôèúôXYH»Ÿ[ô€‹[€èÇà‹[€àò[YOHúŸ[ùèúŸ[ù€‹[€èÇà‹Ÿ[X›Çà€Xô[ÇàŸ]èÇàŸ]èÇà
+Hàù[BàŸ]èÇàŸ]èÇà
+N¬àJ_BàŸ]èÇà
+_BàŸ]èÇÇà›€‹ö”[ô\Àõ[ô›à»
+à]à€\‹”ò[YO^ÿ	ÿÿ\ôH]MOÇà]à€\‹”ò[YO^ÿõ‹ô\ãXà	Ÿ]öY\üH	‹YHKL»^\€Hõ€ù\Ÿ[ZXõ€^Vÿ€€‹éùò\äK][YK]^\ö[X\ûJWXOÇàX›]ôH\õ›ôY»[ò⁄XõH€‹ö¬àŸ]èÇà]à€\‹”ò[YOHô]öYK^H]öYKVÿ€€‹éùò\äKY\⁄›‹Xõ‹ô\äWHèÇà›€‹ö”[ô\ÀõX\
 
-        const { error } = await supabase
-          .from("work_order_quote_lines")
-          .update(patch)
-          .eq("id", line.id)
-          .eq("shop_id", wo.shop_id)
-          .eq("work_order_id", woId);
-        if (error) throw error;
-      }
+[ôJHOà
+à]àŸ^O^€[ôKöYH€\‹”ò[YO^ÿ	‹YHKL»^\€XOÇà]à€\‹”ò[YOHôõ€ù\Ÿ[ZXõ€^Vÿ€€‹éùò\äK][YK]^\ö[X\ûJWHèû‹ÿYôUö[J[ôKô\ÿ‹ö\[€äH[ôH	€[ôKõ[ôW€õ»œ»àüXOŸ]èÇà]à€\‹”ò[YOHõ]LH^^»^Vÿ€€‹éùò\äK][YK]^\ŸX€€ô\ûJWHèî›]\Œà‹›]\”Xô[
+[ôKú›]\ _H8†(à\õ›ò[à‹›]\”Xô[
+[ôKò\õ›ò[‹›]J_H8†(à[ò⁄XõNà€[ôKú[ò⁄XõH»ûY\»ààõõ»üOŸ]èÇàŸ]èÇà
+J_BàŸ]èÇàŸ]èÇà
+Hàù[BàŸ]èÇÇà]à€\‹”ò[YO^Ÿ[XôYY»àààú‹XŸK^KMüOÇà]à€\‹”ò[YO^ÿÿ\ôOÇà]à€\‹”ò[YO^ÿõ‹ô\ãXà	Ÿ]öY\üH	‹YHKL»^\€Hõ€ù\Ÿ[ZXõ€^Vÿ€€‹éùò\äK][YK]^\ö[X\ûJWXOî][›HôXY[ô\‹œŸ]èÇà]à€\‹”ò[YO^ÿ	‹YHKM^\€H^Vÿ€€‹éùò\äK][YK]^\ŸX€€ô\ûJWXOÇà]à€\‹”ò[YOHôõ^][\ÀXŸ[ù\àù\›YûKXô]ŸY[àèè‹[èîôXYH»Ÿ[ô‹‹[èè‹[à€\‹”ò[YOHôõ€ù\Ÿ[ZXõ€^Vÿ€€‹éùò\äK][YK]^\ö[X\ûJWHèû‹][›U›[ÀúŸ[ôXõ_O‹‹[èèŸ]èÇà]à€\‹”ò[YOHõ]Làõ^][\ÀXŸ[ù\àù\›YûKXô]ŸY[àèè‹[èî[ô[ô»\ùœ‹‹[èè‹[à€\‹”ò[YOHôõ€ù\Ÿ[ZXõ€^Vÿ€€‹éùò\äK][YK]^\ö[X\ûJWHèû‹][›U›[Àú[ô[ô‘\ùﬂO‹‹[èèŸ]èÇà]à€\‹”ò[YOHõ]Làõ^][\ÀXŸ[ù\àù\›YûKXô]ŸY[àèè‹[èîŸ[ù‹‹[èè‹[à€\‹”ò[YOHôõ€ù\Ÿ[ZXõ€^Vÿ€€‹éùò\äK][YK]^\ö[X\ûJWHèû‹][›U›[ÀúŸ[ùO‹‹[èèŸ]èÇà]à€\‹”ò[YO^ÿ]L»õ^][\ÀXŸ[ù\àù\›YûKXô]ŸY[àõ‹ô\ã]	Ÿ]öY\üHLÿOè‹[èìXõ‹è‹‹[èè‹[à€\‹”ò[YOHôõ€ù[YY][H^Vÿ€€‹éùò\äK][YK]^\ö[X\ûJWHèûŸõ]
+][›U›[ÀõXõ‹ä_O‹‹[èèŸ]èÇà]à€\‹”ò[YOHõ]Làõ^][\ÀXŸ[ù\àù\›YûKXô]ŸY[àèè‹[èû‹][›U›[Àú\ù‘öX⁄[ô‘]X\ò[ù[ôY»î\ù»
+õ›X›Y
+Hààî\ù»üO‹‹[èè‹[à€\‹”ò[YOHôõ€ù[YY][H^Vÿ€€‹éùò\äK][YK]^\ö[X\ûJWHèû‹][›U›[Àú\ù’›[[ò]òZ[XõH»ìX[ùX[ô]öY]»ààõ]
+][›U›[Àú\ù _O‹‹[èèŸ]èÇà‹][›U›[Àú\ù‘öX⁄[ô‘]X\ò[ù[ôY»]à€\‹”ò[YOHõ]LH^^»^X[Xô\ãLLèîõ›X›Yö[ò[^ôY›[»\ôHô]Z[ôY»]X\ò[ù[ôY][HöX⁄[ô»\»^€YYèŸ]èààù[Bà]à€\‹”ò[YOHõ]Làõ^][\ÀXŸ[ù\àù\›YûKXô]ŸY[àèè‹[èî⁄‹›\Y\œ‹‹[èè‹[à€\‹”ò[YOHôõ€ù[YY][H^Vÿ€€‹éùò\äK][YK]^\ö[X\ûJWHèûŸõ]
+][›U›[Àú⁄‹›\Y\Àò[[›[ù
+_O‹‹[èèŸ]èÇà]à€\‹”ò[YOHõ]LH^^»^Vÿ€€‹éùò\äK][YK]^[]]Y
+WHèû‹⁄‹›\Y\‘›[[X\ûU^
+][›U›[Àú⁄‹›\Y\ _OŸ]èÇà]à€\‹”ò[YO^ÿ]L»õ^][\ÀXŸ[ù\àù\›YûKXô]ŸY[àõ‹ô\ã]	Ÿ]öY\üHLÿOè‹[à€\‹”ò[YOHôõ€ù\Ÿ[ZXõ€^Vÿ€€‹éùò\äK][YK]^\ö[X\ûJWHèë‹ò[ô›[‹‹[èè‹[à€\‹”ò[YOHù^[»õ€ùXõ€à›[O^ﬁ»€€‹éà”‘Tà_Oû‹][›U›[Àô‹ò[ô›[[ò]òZ[XõH»ìX[ùX[ô]öY]»ààõ]
+][›U›[Àù›[
+_O‹‹[èèŸ]èÇà]à€\‹”ò[YO^ÿ]Mõ‹ô\ã]	Ÿ]öY\üHLÿOÇà]à€\‹”ò[YOHù^^»õ€ù\Ÿ[ZXõ€\\òÿ\ŸHòX⁄⁄[ôÀVÃåM[WH^Vÿ€€‹éùò\äK][YK]^\ŸX€€ô\ûJWHèî⁄‹›\Y\»›ô\úöYOŸ]èÇàŸ[X›àò[YO^‹›\Y\—[òXõYòYùOHù[»ôYò][àà›\Y\—[òXõYòYù»õ€àààõŸôàüBà€ê⁄[ôŸO^ JHOàŸ]›\Y\—[òXõYòYù
+Kù\ôŸ]ùò[YHOOHôYò][à»ù[àKù\ôŸ]ùò[YHOOHõ€àä_Bà€\‹”ò[YOHõ]LàÀYù[õ›[ôY[»õ‹ô\àõ‹ô\ãVÿ€€‹éùò\äKY\⁄›‹Xõ‹ô\äWHôÀVÿ€€‹éùò\äKY\⁄›‹Z][KXô WHL»KLà^\€H^Vÿ€€‹éùò\äK][YK]^\ö[X\ûJWH›][ôK[õ€ôHÇàÇà‹[€àò[YOHôYò][èï\ŸH⁄‹Yò][€‹[€èÇà‹[€àò[YOHõ€àèí[ò€YH⁄‹›\Y\œ€‹[€èÇà‹[€àò[YOHõŸôàèîô[[›ôH⁄‹›\Y\œ€‹[€èÇà‹Ÿ[X›Çà[ú]àò[YO^‹›\Y\–[[›[ùòYùBà€ê⁄[ôŸO^ JHOàŸ]›\Y\–[[›[ùòYù
+Kù\ôŸ]ùò[YJ_BàXŸZ€\èHì‹[€ò[ö^Y›ô\úöYH[[›[ùÇà€\‹”ò[YOHõ]LàÀYù[õ›[ôY[»õ‹ô\àõ‹ô\ãVÿ€€‹éùò\äKY\⁄›‹Xõ‹ô\äWHôÀVÿ€€‹éùò\äKY\⁄›‹Z][KXô WHL»KLà^\€H^Vÿ€€‹éùò\äK][YK]^\ö[X\ûJWH›][ôK[õ€ôHXŸZ€\éù^Vÿ€€‹éùò\äK][YK]^[]]Y
+WHÇàœÇà]à€\‹”ò[YOHõ]Là‹öY‹öYX€€ÀLàÿ\LàèÇàù]€à\OHòù]€àà€ê€X⁄œ^ 
+HOàõ⁄Yÿ]ôT›\Y\”›ô\úöYJ
+_H\ÿXõY^‹ÿ]ö[ô‘›\Y\”›ô\úöY_H€\‹”ò[YOHô\⁄›‹Xùã\ŸX€€ô\ûHõ›[ôY[»L»KLà^^»õ€ù\Ÿ[ZXõ€\ÿXõYõ‹X⁄]KMåèÇà‹ÿ]ö[ô‘›\Y\”›ô\úöYH»îÿ]ö[ô¯†)àààîÿ]ôH›ô\úöYHüBàÿù]€èÇàù]€à\OHòù]€àà€ê€X⁄œ^‹ô\Ÿ]›\Y\”›ô\úöY_H€\‹”ò[YOHúõ›[ôY[»õ‹ô\àõ‹ô\ãVÿ€€‹éùò\äK][YKXõ‹ô\ã\€Ÿù
+WHôÀVÿ€€‹éùò\äK][YK\›\ôòXŸK\›XùJWHL»KLà^^»õ€ù\Ÿ[ZXõ€^Vÿ€€‹éùò\äK][YK]^\ö[X\ûJWH›ô\éòôÀVÿ€€‹éùò\äK][YK\›\ôòXŸK\›XùJWHèîô\Ÿ]òYùÿù]€èÇàŸ]èÇàŸ]èÇàù]€à€ê€X⁄œ^ 
+HOàõ⁄Yÿ]ôP[\ùJ
+_H\ÿXõY^‹ÿ]ö[ôﬂH€\‹”ò[YOHô\⁄›‹Xùã\ö[X\ûH]MÀYù[õ›[ôY^MKLà^\€Hõ€ù\Ÿ[ZXõ€\ÿXõYõ‹X⁄]KMåèÇà‹ÿ]ö[ô»»îÿ]ö[ô¯†)àààîÿ]ôH⁄[ôŸ\»üBàÿù]€èÇàŸ]èÇàŸ]èÇÇà]à€\‹”ò[YO^ÿÿ\ôOÇà]à€\‹”ò[YO^ÿõ‹ô\ãXà	Ÿ]öY\üH	‹YHKL»^\€Hõ€ù\Ÿ[ZXõ€^Vÿ€€‹éùò\äK][YK]^\ö[X\ûJWXOîŸ[ô»›\›€Y\èŸ]èÇà]à€\‹”ò[YO^ÿ	‹YHKM^\€H^Vÿ€€‹éùò\äK][YK]^\ŸX€€ô\ûJWXOÇàŸ[ô»€õHÿ[õ€öXÿ[€‹ö◊€‹ô\ó‹][›W€[ô\»]\ôHôXYH»Ÿ[ôà[ô[ô»\ùÀX€[ôYYô\úôY\õ›ôY[ô€€ùô\ùY[ô\»\ôHõ›Ÿ[ùÇà‹][›U›[ÀúŸ[ôXõHOOH»
+à]à€\‹”ò[YOHõ]L»õ›[ôY^õ‹ô\àõ‹ô\ãX[Xô\ãLÃÃÕHôÀX[Xô\ãMÃLL»^X[Xô\ãLLèìõ»ôXYHÿ[õ€öXÿ[][›H[ô\»\ôH]òZ[XõH»Ÿ[ôèŸ]èÇà
+Hàù[Bà€Z\‹⁄[ô–›\›€Y\ë[XZ[Ÿ[ôõÿ⁄Ÿ\à»
+à]à€\‹”ò[YOHõ]L»õ›[ôY^õ‹ô\àõ‹ô\ã\⁄ﬁKMÃÕHôÀ\⁄ﬁKMLÃLL»èÇà]à€\‹”ò[YOHù^^»õ€ù\Ÿ[ZXõ€\\òÿ\ŸHòX⁄⁄[ôÀVÃåM[WH^\⁄ﬁKLLèêõÿ⁄ŸYŸ]èÇà]à€\‹”ò[YOHõ]LH^\€Hõ€ù\Ÿ[ZXõ€^\⁄ﬁKLLèû‹Ÿ[ôõÿ⁄Ÿ\àœ»ê›\›€Y\à[XZ[ô\]Z\ôY»Ÿ[ô][›HüOŸ]èÇà]à€\‹”ò[YOHõ]Làõ^õ^X€€ÿ\Là€Nôõ^\õ›»èÇà[ú]\OHô[XZ[àò[YO^‹[ô[ô–›\›€Y\ë[XZ[H€ê⁄[ôŸO^ JHOàŸ][ô[ô–›\›€Y\ë[XZ[
+Kù\ôŸ]ùò[YJ_HXŸZ€\èHò›\›€Y\ê[XZ[ò€€Hà€\‹”ò[YOHùÀYù[õ›[ôY[»õ‹ô\àõ‹ô\ãVÿ€€‹éùò\äKY\⁄›‹Xõ‹ô\äWHôÀVÿ€€‹éùò\äKY\⁄›‹Z][KXô WHL»KLà^\€H^Vÿ€€‹éùò\äK][YK]^\ö[X\ûJWH›][ôK[õ€ôHXŸZ€\éù^Vÿ€€‹éùò\äK][YK]^[]]Y
+WHõÿ›\Œòõ‹ô\ã\⁄ﬁKLÃÕÃàœÇàù]€à\OHòù]€àà€ê€X⁄œ^ 
+HOàõ⁄Yÿ]ôP›\›€Y\ë[XZ[[õ[ôJ
+_H\ÿXõY^‹ÿ]ö[ô–›\›€Y\ë[XZ[H€\‹”ò[YOHúõ›[ôY[»õ‹ô\àõ‹ô\ãX[Xô\ãLÃÕHôÀX[Xô\ãMÃMHL»KLà^\€Hõ€ù\Ÿ[ZXõ€^\⁄ﬁKLL›ô\éòôÀX[Xô\ãMÃå\ÿXõYõ‹X⁄]KMåèÇà‹ÿ]ö[ô–›\›€Y\ë[XZ[»îÿ]ö[ô¯†)àààîÿ]ôH[XZ[üBàÿù]€èÇàŸ]èÇàŸ]èÇà
+Hàù[Bàù]€à€ê€X⁄œ^ 
+HOàõ⁄YŸ[ô][›U–›\›€Y\äò[ŸJ_H\ÿXõY^‹Ÿ[ô[ô»ÿ]ö[ô–›\›€Y\ë[XZ[][›U›[ÀúŸ[ôXõHOOHH€\‹”ò[YOHô\⁄›‹Xùã\ŸX€€ô\ûH]L»ÀYù[õ›[ôY^MKLà^\€Hõ€ù\Ÿ[ZXõ€^Vÿ€€‹éùò\äK][YK]^\ö[X\ûJWH\ÿXõYõ‹X⁄]KMåèÇà‹Ÿ[ô[ô»»îŸ[ô[ô¯†)àààîŸ[ôôXYH][›H[ô\»üBàÿù]€èÇà‹][›U›[ÀúŸ[ùà»
+àù]€à€ê€X⁄œ^ 
+HOàõ⁄YŸ[ô][›U–›\›€Y\äùYJ_H\ÿXõY^‹Ÿ[ô[ô»ÿ]ö[ô–›\›€Y\ë[XZ[Z\‹⁄[ô–›\›€Y\ë[XZ[H€\‹”ò[YOHô\⁄›‹Xùã\ŸX€€ô\ûH]LàÀYù[õ›[ôY^MKLà^\€Hõ€ù\Ÿ[ZXõ€^Vÿ€€‹éùò\äK][YK]^\ö[X\ûJWH\ÿXõYõ‹X⁄]KMåèÇà‹Ÿ[ô[ô»»îŸ[ô[ô¯†)àààîô\Ÿ[ô][›HüBàÿù]€èÇà
+Hàù[Bà]à€\‹”ò[YOHõ]L»^^»^Vÿ€€‹éùò\äK][YK]^[]]Y
+WHèî‹ù[[ö»⁄[ôNà‹[à€\‹”ò[YOHù^Vÿ€€‹éùò\äK][YK]^\ŸX€€ô\ûJWHèã‹‹ù[‹][›\Àﬁ›€“YO‹‹[èèŸ]èÇà]à€\‹”ò[YOHõ]Là^^»^Vÿ€€‹éùò\äK][YK]^[]]Y
+WHèê›\›€Y\à‹ù[X⁄\⁄[€ú»[ô⁄‹\ôX€‹ôY€ôHX⁄\⁄[€ú»\ŸHHÿ[YHÿ[õ€öXÿ[\õ›ò[YôXﬁX€KèŸ]èÇàŸ]èÇàŸ]èÇÇà]à€\‹”ò[YO^ÿÿ\ôOÇà]à€\‹”ò[YO^ÿõ‹ô\ãXà	Ÿ]öY\üH	‹YHKL»^\€Hõ€ù\Ÿ[ZXõ€^Vÿ€€‹éùò\äK][YK]^\ö[X\ûJWXOî]ZX⁄»YõÿèŸ]èÇà]à€\‹”ò[YO^ÿ	‹YHKM^\€H^Vÿ€€‹éùò\äK][YK]^\ŸX€€ô\ûJWXOÇàYX›]ôH€‹ö»€õH⁄[à[ù[ù[€ò[HôYYYà[ú‹X›[€àôX€€[Y[ô][€ú»⁄›[›^H[àÿ[õ€öXÿ[][›H[ô\»[ù[›\›€Y\à\õ›ò[€X]\öX[^ò][€ãÇàù]€à\OHòù]€àà€ê€X⁄œ^€‹[êYõÿï⁄]ôYö[H€\‹”ò[YOHô\⁄›‹Xùã\ö[X\ûH]L»ÀYù[õ›[ôY^MKLà^\€Hõ€ù\Ÿ[ZXõ€èä»Yõÿà[ôOÿù]€èÇàŸ]èÇàŸ]èÇàŸ]èÇàŸ]èÇÇà»Y[XôYY	âà]à€\‹”ò[YOHõ]Mà^^»^Vÿ€€‹éùò\äK][YK]^[]]Y
+WHèï€‹ö»‹ô\àQà›€ÀöYH8†(à›]\Œà‹›]\”Xô[
+€Àú›]\ _OŸ]èüBÇàŸX⁄\⁄[€ëX[Ÿ»»
+à]à€\‹”ò[YOHôö^Y[úŸ]LãVÃLHõ^][\ÀXŸ[ù\àù\›YûKXŸ[ù\àôÀXõX⁄ÀÕçHMàõ€OHôX[Ÿ»à\öXK[[Ÿ[HùùYHà\öXK[Xô[YûOHú⁄‹YX⁄\⁄[€ã]]HèÇà]à€\‹”ò[YOHùÀYù[X^]À[»õ›[ôYLûõ‹ô\àõ‹ô\ãVÿ€€‹éùò\äKY\⁄›‹Xõ‹ô\äWHôÀVÿ€€‹éùò\äK][YK\›\ôòXŸK[›ô\õ^JWHMH⁄Y›ÀLûèÇà]à€\‹”ò[YOHù^^»õ€ù\Ÿ[ZXõ€\\òÿ\ŸHòX⁄⁄[ôÀVÃåN[WH^Vÿ€€‹éùò\äK][YK]^[]]Y
+WHèê€\‹⁄X»⁄‹\õ›ò[Ÿ]èÇààYHú⁄‹YX⁄\⁄[€ã]]Hà€\‹”ò[YOHõ]Là^[»õ€ù\Ÿ[ZXõ€^Vÿ€€‹éùò\äK][YK]^\ö[X\ûJWHèîôX€‹ô‹›]\”Xô[
+X⁄\⁄[€ëX[ŸÀôX⁄\⁄[€ä_H8†%‹ÿYôUö[JX⁄\⁄[€ëX[ŸÀõ[ôKô\ÿ‹ö\[€äHú][›H[ôHüO⁄èÇà€\‹”ò[YOHõ]Là^\€H^Vÿ€€‹éùò\äK][YK]^\ŸX€€ô\ûJWHèï\ŸH\»Yù\à€€ôö\õZ[ô»H›\›€Y\âò\‹Œ‹»X⁄\⁄[€à›]⁄YHH‹ù[àHYö\€‹ã€€ùX›Y]Ÿ[YK[ôõ›H\ôHô]Z[ôY⁄]H][›Kè‹ÇàXô[€\‹”ò[YOHõ]Mõÿ⁄»^^»õ€ù[YY][H^Vÿ€€‹éùò\äK][YK]^\ŸX€€ô\ûJWHèÇà›\›€Y\à€€ùX›Y]ŸàŸ[X›ò[YO^ŸX⁄\⁄[€ê€€ùX›H€ê⁄[ôŸO^ ]ô[ù
+HOàŸ]X⁄\⁄[€ê€€ùX›
+]ô[ùù\ôŸ]ùò[YH\»€€ùX›Y]Ÿ
+_H€\‹”ò[YO^⁄[ú]€ﬂOÇà‹[€àò[YOHú€ôHèî€ôHÿ[€‹[€èè‹[€àò[YOHö[ó‹\ú€€àèí[à\ú€€è€‹[€èè‹[€àò[YOHô[XZ[èë[XZ[€‹[€èè‹[€àò[YOHõ›\àèì›\è€‹[€èÇà‹Ÿ[X›Çà€Xô[ÇàXô[€\‹”ò[YOHõ]L»õÿ⁄»^^»õ€ù[YY][H^Vÿ€€‹éùò\äK][YK]^\ŸX€€ô\ûJWHèÇàYö\€‹àõ›H
+‹[€ò[
+Bà^\ôXHò[YO^ŸX⁄\⁄[€ìõ›_H€ê⁄[ôŸO^ ]ô[ù
+HOàŸ]X⁄\⁄[€ìõ›J]ô[ùù\ôŸ]ùò[YKú€XŸJL
+J_Hõ›‹œ^ÃﬂHXŸZ€\èHë^[\Nà\õ›ôYûH€ôH⁄]ò[ZYH]éåMHKàà€\‹”ò[YO^⁄[ú]€ﬂHœÇà€Xô[Çà]à€\‹”ò[YOHõ]MHõ^õ^]‹ò\ù\›YûKY[ôÿ\LàèÇàù]€à\OHòù]€àà\ÿXõY^ŸX⁄\⁄[€îÿ]ö[ôﬂH€ê€X⁄œ^ 
+HOàŸ]X⁄\⁄[€ëX[Ÿ ù[
+_H€\‹”ò[YOHô\⁄›‹Xùã\ŸX€€ô\ûHõ›[ôY^MKLà^\€Hõ€ù\Ÿ[ZXõ€\ÿXõYõ‹X⁄]KMLèêÿ[òŸ[ÿù]€èÇàù]€à\OHòù]€àà\ÿXõY^ŸX⁄\⁄[€îÿ]ö[ôﬂH€ê€X⁄œ^ 
+HOàõ⁄Y€€ôö\õT⁄‹X⁄\⁄[€ä
+_H€\‹”ò[YO^ŸX⁄\⁄[€ëX[ŸÀôX⁄\⁄[€àOOHôX€[ôHà»úõ›[ôY^õ‹ô\àõ‹ô\ã\ôYMÕHôÀ\ôYMLÃMHMKLà^\€Hõ€ù\Ÿ[ZXõ€^\ôYLL\ÿXõYõ‹X⁄]KMLààô\⁄›‹Xùã\ö[X\ûHõ›[ôY^MKLà^\€Hõ€ù\Ÿ[ZXõ€\ÿXõYõ‹X⁄]KMLüOûŸX⁄\⁄[€îÿ]ö[ô»»îôX€‹ô[ô¯†)ààà€€ôö\õH	‹›]\”Xô[
+X⁄\⁄[€ëX[ŸÀôX⁄\⁄[€ä_XOÿù]€èÇàŸ]èÇàŸ]èÇàŸ]èÇà
+Hàù[BÇàYõÿì[Ÿ[à\”‹[è^ÿYõÿì‹[üBà€ê€‹ŸO^ 
+HOàŸ]Yõÿì‹[äò[ŸJ_Bà€‹ö”‹ô\íY^›€ÀöYBàôZX€RY^›€ÀùôZX€W⁄YBà⁄‹Y^›€Àú⁄‹⁄YBàX⁄Y^ÿ›\úô[ù\Ÿ\íYBà€íõÿêYY^ 
+HOà¬àŸ]Yõÿì‹[äò[ŸJN¬àõ⁄Yô[ÿY
 
-      const pricingResponse = await fetch(
-        `/api/work-orders/${woId}/customer-pricing`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ quoteLineIds: dirty.map((line) => line.id) }),
-        },
-      );
-      const pricingPayload = (await pricingResponse.json().catch(() => null)) as {
-        error?: string;
-      } | null;
-      if (!pricingResponse.ok) {
-        throw new Error(
-          pricingPayload?.error ?? "Customer pricing could not be resolved.",
-        );
-      }
-
-      toast.success("Quote lines saved.");
-      await reload();
-      return true;
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to save quote lines.");
-      return false;
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  function openDecisionDialog(line: EditableQuoteLine, decision: QuoteDecision) {
-    setDecisionContact("phone");
-    setDecisionNote("");
-    setDecisionDialog({ line, decision });
-  }
-
-  async function confirmShopDecision() {
-    if (!decisionDialog || decisionSaving) return;
-    setDecisionSaving(true);
-    try {
-      if (quoteLines.some((line) => line._dirty)) {
-        const saved = await saveAllDirty();
-        if (!saved) return;
-      }
-      const response = await fetch(`/api/work-orders/quotes/${decisionDialog.line.id}/authorize`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ decision: decisionDialog.decision, contactMethod: decisionContact, note: decisionNote, operationKey: crypto.randomUUID() }),
-      });
-      const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-      if (!response.ok) throw new Error(payload?.error ?? "Could not record the shop decision.");
-      const pastTense = decisionDialog.decision === "approve" ? "approved" : decisionDialog.decision === "decline" ? "declined" : "deferred";
-      toast.success(`Quote line ${pastTense} by the shop.`);
-      setDecisionDialog(null);
-      await reload();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not record the shop decision.");
-    } finally {
-      setDecisionSaving(false);
-    }
-  }
-
-  async function saveSuppliesOverride() {
-    if (!wo?.shop_id || savingSuppliesOverride) return;
-    const amountOverride = suppliesAmountDraft.trim() ? asNumber(suppliesAmountDraft) : null;
-    if (suppliesAmountDraft.trim() && amountOverride == null) {
-      toast.error("Enter a valid shop supplies override amount.");
-      return;
-    }
-
-    setSavingSuppliesOverride(true);
-    try {
-      const { error } = await supabase
-        .from("work_orders")
-        .update({
-          shop_supplies_enabled_override: suppliesEnabledDraft,
-          shop_supplies_amount_override: amountOverride,
-          updated_at: new Date().toISOString(),
-        } as DB["public"]["Tables"]["work_orders"]["Update"])
-        .eq("id", wo.id)
-        .eq("shop_id", wo.shop_id);
-      if (error) throw error;
-      toast.success("Shop supplies override saved.");
-      await reload();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to save shop supplies override.");
-    } finally {
-      setSavingSuppliesOverride(false);
-    }
-  }
-
-  function resetSuppliesOverride() {
-    setSuppliesEnabledDraft(null);
-    setSuppliesAmountDraft("");
-  }
-
-  async function saveCustomerEmailInline() {
-    if (!wo?.customer_id) {
-      toast.error("No customer linked to this work order.");
-      return;
-    }
-    const nextEmail = safeTrim(pendingCustomerEmail);
-    if (!nextEmail || !isValidEmail(nextEmail)) {
-      toast.error("Enter a valid customer email.");
-      return;
-    }
-
-    setSavingCustomerEmail(true);
-    try {
-      const { error } = await supabase.from("customers").update({ email: nextEmail }).eq("id", wo.customer_id);
-      if (error) throw error;
-      setSendBlocker(null);
-      toast.success("Customer email saved.");
-      await reload();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to save customer email.");
-    } finally {
-      setSavingCustomerEmail(false);
-    }
-  }
-
-  async function sendQuoteToCustomer(resend = false) {
-    if (!woId || sending) return;
-    setSending(true);
-    try {
-      const saved = await saveAllDirty();
-      if (!saved) return;
-
-      const res = await fetch(`/api/work-orders/${woId}/send-quote`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(resend ? { "x-profix-resend": "1" } : {}),
-        },
-        body: JSON.stringify({}),
-      });
-      const json = (await res.json().catch(() => null)) as { ok?: boolean; error?: string; detail?: string } | null;
-
-      if (!res.ok || !json?.ok) {
-        const message = safeTrim(json?.error ?? json?.detail ?? "Failed to send quote.");
-        if (message.toLowerCase().includes("email")) setSendBlocker("Customer email required to send quote");
-        toast.error(message);
-        return;
-      }
-
-      setSendBlocker(null);
-      toast.success(resend ? "Quote resent to customer." : "Quote sent to customer using canonical quote lines.");
-      await reload();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to send quote.");
-    } finally {
-      setSending(false);
-    }
-  }
-
-  function openAddJobWithPrefill() {
-    if (typeof window !== "undefined") {
-      sessionStorage.setItem(
-        "addJobModal:prefill",
-        JSON.stringify({ jobName: "", notes: "", laborHours: null, partsPaste: "", parts: null }),
-      );
-    }
-    setAddJobOpen(true);
-  }
-
-  if (!woId) return <div className="p-6 text-red-300">Missing work order id.</div>;
-  if (loading && !loadedOnce) return <div className="p-6 text-[color:var(--theme-text-secondary)]">Loading‚Ä¶</div>;
-  if (!wo) return <div className="p-6 text-red-300">Work order not found.</div>;
-
-  const outerCls = embedded ? "min-h-full w-full px-0 py-0 text-foreground" : "min-h-screen px-4 py-6 text-foreground";
-  const containerCls = embedded ? "mx-auto w-full max-w-none" : "mx-auto max-w-7xl";
-  const padX = embedded ? "px-3" : "px-5";
-  const padY = embedded ? "py-3" : "py-4";
-  const mainGridCls = embedded ? "mt-3 grid gap-3" : "mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.6fr)_380px]";
-  const actionBtnCls = embedded ? `${ui.buttonSecondary} px-3 py-1.5 text-xs disabled:opacity-60` : `${ui.buttonSecondary} px-4 py-2 text-sm disabled:opacity-60`;
-  const saveBtnCls = embedded ? `${ui.buttonPrimary} px-3 py-1.5 text-xs disabled:opacity-60` : `${ui.buttonPrimary} px-4 py-2 text-sm disabled:opacity-60`;
-
-  return (
-    <div className={outerCls} style={{ ["--copper" as never]: COPPER }}>
-      <div className={containerCls}>
-        {loading ? (
-          <div className="mb-2 rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-xs text-[color:var(--theme-text-secondary)]">
-            Refreshing canonical quote lines‚Ä¶
-          </div>
-        ) : null}
-
-        <div className={embedded ? "mb-2 flex flex-wrap items-center justify-between gap-2" : "mb-4 flex flex-wrap items-center justify-between gap-3"}>
-          {!embedded && (
-            <button onClick={() => router.back()} className="text-sm text-[color:var(--copper)] hover:underline">
-              ‚Üê Back
-            </button>
-          )}
-          <div className="flex flex-wrap items-center gap-2">
-            <button onClick={() => void sendQuoteToCustomer(false)} disabled={sending || quoteTotals.sendable === 0} className={actionBtnCls} title="Email the ready canonical quote lines to the customer">
-              {sending ? "Sending‚Ä¶" : "Send Quote"}
-            </button>
-            {quoteTotals.sent > 0 ? (
-              <button onClick={() => void sendQuoteToCustomer(true)} disabled={sending || missingCustomerEmail} className={actionBtnCls} title="Resend the current customer portal quote email">
-                {sending ? "Sending‚Ä¶" : "Resend Quote"}
-              </button>
-            ) : null}
-            <button onClick={() => void saveAllDirty()} disabled={saving} className={saveBtnCls} title="Save canonical quote line changes">
-              {saving ? "Saving‚Ä¶" : "Save"}
-            </button>
-            {!embedded && (
-              <a href={`/work-orders/${woId}`} className="desktop-btn-secondary rounded-full px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)]" title="Open the work order">
-                Open WO
-              </a>
-            )}
-          </div>
-        </div>
-
-        <div className={`${card} ${padX} ${padY}`}>
-          <div className={embedded ? "grid gap-3" : "grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(320px,1.15fr)_auto]"}>
-            <div className="min-w-0">
-              <div className="text-xs uppercase tracking-[0.25em] text-[color:var(--theme-text-secondary)]">Advisor quote review</div>
-              <div className={embedded ? "mt-1 text-xl font-semibold text-[color:var(--theme-text-primary)]" : "mt-1 text-2xl font-semibold text-[color:var(--theme-text-primary)]"}>
-                <span className="text-[color:var(--theme-text-primary)]">#</span>
-                <span style={{ color: COPPER }}>{wo.custom_id ? wo.custom_id : wo.id.slice(0, 8)}</span>
-              </div>
-              <div className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">Canonical quote lines: {quoteLines.length} ‚Ä¢ Active work lines: {workLines.length}</div>
-            </div>
-
-            <div className="desktop-panel-soft w-full px-4 py-3">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-muted)]">Customer contact</div>
-              <div className={embedded ? "mt-2 grid gap-2" : "mt-2 grid gap-2 sm:grid-cols-3"}>
-                <div className="min-w-0">
-                  <div className="text-[11px] text-[color:var(--theme-text-muted)]">Name</div>
-                  <div className="truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">{customerDisplayName(customer)}</div>
-                </div>
-                <div className="min-w-0">
-                  <div className="text-[11px] text-[color:var(--theme-text-muted)]">Phone</div>
-                  {tel ? <a href={`tel:${tel}`} className="truncate text-sm font-semibold text-[color:var(--copper)] hover:underline">{customerPhone}</a> : <div className="truncate text-sm font-semibold text-[color:var(--theme-text-secondary)]">‚Äî</div>}
-                </div>
-                <div className="min-w-0">
-                  <div className="text-[11px] text-[color:var(--theme-text-muted)]">Email</div>
-                  {customerEmail ? <a href={`mailto:${customerEmail}`} className="block break-all text-sm font-semibold leading-tight text-[color:var(--copper)] hover:underline">{customerEmail}</a> : <div className="truncate text-sm font-semibold text-[color:var(--theme-text-secondary)]">‚Äî</div>}
-                </div>
-              </div>
-            </div>
-
-            <div className={embedded ? "text-left" : "text-right self-start"}>
-              <div className="text-xs uppercase tracking-[0.2em] text-[color:var(--theme-text-muted)]">Shop labor rate</div>
-              <div className="mt-1 text-lg font-semibold text-[color:var(--theme-text-primary)]">{fmt(laborRate)}/hr</div>
-            </div>
-          </div>
-        </div>
-
-        <div className={mainGridCls}>
-          <div>
-            <div className={card}>
-              <div className={`border-b ${divider} ${padX} py-3 text-sm font-semibold text-[color:var(--theme-text-primary)]`}>
-                Canonical quote lines
-              </div>
-              {quoteLines.length === 0 ? (
-                <div className={`${padX} py-4 text-sm text-[color:var(--theme-text-secondary)]`}>
-                  No canonical quote lines exist for this work order yet. Phase 5B does not create temporary work_order_lines for portal visibility; customer portal rendering remains Phase 5C.
-                </div>
-              ) : (
-                <div className="divide-y divide-[color:var(--desktop-border)]">
-                  {quoteLines.map((line, index) => {
-                    const workflow = workflowDisplay(line);
-                    const partsWorkflow = partsWorkflowLabel(line);
-                    const partsSummary = partsQuoteSummary(line);
-                    const meta = quoteMetadata(line);
-                    const photos = [...jsonStringArray(meta.photo_urls), ...jsonStringArray(meta.evidence_urls)];
-                    const techNotes = jsonString(meta.technician_notes) || jsonString(meta.tech_notes) || safeTrim(line.ai_cause);
-                    const laborHours = quoteLineLaborHours(line);
-                    const lineLaborRate = quoteLineLaborRate(line, laborRate);
-                    const laborTotal = quoteLineLaborTotal(line, laborRate);
-                    const partsTotal = quoteLinePartsTotal(line);
-                    const total = quoteLineTotal(line, laborRate);
-                    const sources = sourceSummary(line);
-                    const historyInsight = historyInsights[line.id];
-                    const finalDecision = isFinalDecision(line);
-                    const pricingQuarantined =
-                      partsSummary?.customerPricingQuarantined === true;
-                    const dedicatedPricing = customerPricingSummary(line);
-                    const commercialEditingDisabled =
-                      finalDecision || pricingQuarantined;
-                    const finalizedLineTotalUnavailable =
-                      pricingQuarantined &&
-                      partsTotal == null &&
-                      asNumber(line.grand_total) == null &&
-                      asNumber(line.subtotal) == null;
-
-                    return (
-                      <div key={line.id} className={`${padX} py-4`}>
-                        <div className="desktop-panel-soft p-4">
-                          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                            <div className="min-w-0 flex-1">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">Quote line {index + 1}</div>
-                                <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${badgeClass(workflow.tone)}`}>{workflow.label}</span>
-                                {partsWorkflow ? <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${badgeClass(partsWorkflow.tone)}`}>{partsWorkflow.label}</span> : null}
-                                {dedicatedPricing ? <span className="rounded-full border border-emerald-300/35 bg-emerald-400/10 px-2.5 py-1 text-[11px] font-semibold capitalize text-emerald-100">{customerPricingLabel(dedicatedPricing)}</span> : null}
-                                {line._dirty ? <span className="rounded-full border border-amber-300/40 bg-amber-400/10 px-2.5 py-1 text-[11px] font-semibold text-amber-100">Unsaved</span> : null}
-                              </div>
-                              <h3 className="mt-2 text-base font-semibold text-[color:var(--theme-text-primary)]">{safeTrim(line.description) || "Untitled quote line"}</h3>
-                              {safeTrim(line.ai_complaint) ? <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">Complaint: {line.ai_complaint}</p> : null}
-                              {safeTrim(line.notes) ? <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">Notes: {line.notes}</p> : null}
-                              {techNotes ? <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">Technician notes: {techNotes}</p> : null}
-                              <p className="mt-2 text-xs text-[color:var(--theme-text-muted)]">{workflow.detail}</p>
-                            </div>
-                            <div className="min-w-[180px] rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--theme-surface-inset)] p-3 text-sm">
-                              <div className="flex justify-between gap-4"><span className="text-[color:var(--theme-text-secondary)]">Labor</span><span className="font-semibold text-[color:var(--theme-text-primary)]">{fmt(laborTotal)}</span></div>
-                              <div className="mt-1 flex justify-between gap-4"><span className="text-[color:var(--theme-text-secondary)]">{pricingQuarantined ? "Parts (finalized)" : "Parts"}</span><span className="font-semibold text-[color:var(--theme-text-primary)]">{partsTotal == null ? "Manual review" : fmt(partsTotal)}</span></div>
-                              <div className={`mt-2 flex justify-between gap-4 border-t ${divider} pt-2`}><span className="text-[color:var(--theme-text-secondary)]">Total</span><span className="font-bold" style={{ color: COPPER }}>{finalizedLineTotalUnavailable ? "Manual review" : fmt(total)}</span></div>
-                            </div>
-                          </div>
-
-                          <div className="mt-3 grid gap-2 text-xs text-[color:var(--theme-text-secondary)] sm:grid-cols-2 lg:grid-cols-4">
-                            <div>Stage: <span className="text-[color:var(--theme-text-primary)]">{statusLabel(line.stage)}</span></div>
-                            <div>Status: <span className="text-[color:var(--theme-text-primary)]">{statusLabel(line.status)}</span></div>
-                            <div>Labor hours: <span className="text-[color:var(--theme-text-primary)]">{laborHours}</span></div>
-                            <div>Labor rate: <span className="text-[color:var(--theme-text-primary)]">{fmt(lineLaborRate)}/hr</span></div>
-                          </div>
-
-                          {pricingQuarantined ? (
-                            <div role="alert" className="mt-3 rounded-xl border border-amber-300/40 bg-amber-400/10 p-3 text-xs text-amber-50">
-                              <div className="font-semibold uppercase tracking-[0.16em]">Manual pricing review required</div>
-                              <div className="mt-1">
-                                This protected quote keeps its finalized decision total. Current Parts Request pricing is hidden because it is not the finalized customer decision.
-                              </div>
-                              <div className="mt-1 font-semibold">
-                                {partsTotal == null
-                                  ? "Finalized parts total is unavailable; do not treat it as $0."
-                                  : `Finalized parts total: ${fmt(partsTotal)}`}
-                              </div>
-                              <PricingQuarantineRemediation
-                                quoteLineId={line.id}
-                                quoteLineUpdatedAt={line.updated_at}
-                                finalizedPartsTotal={partsTotal}
-                                parts={partsByQuoteLine[line.id] ?? []}
-                                onRemediated={reload}
-                              />
-                            </div>
-                          ) : null}
-
-                          {historyInsight ? (
-                            <div className="mt-3 rounded-xl border border-sky-300/30 bg-sky-400/10 p-3 text-xs">
-                              <div className="flex flex-wrap items-start justify-between gap-2">
-                                <div>
-                                  <div className="font-semibold uppercase tracking-[0.16em] text-sky-100">Relevant vehicle history</div>
-                                  <div className="mt-1 text-[color:var(--theme-text-primary)]">Completed {historyDistanceLabel(historyInsight)}{historyInsight.workOrderNumber ? ` on WO ${historyInsight.workOrderNumber}` : " on a prior work order"}.</div>
-                                  <div className="mt-1 text-[color:var(--theme-text-secondary)]">{historyInsight.description}</div>
-                                </div>
-                                <a href={`/work-orders/${historyInsight.workOrderId}`} className="rounded-lg border border-sky-300/35 px-2.5 py-1.5 font-semibold text-sky-100 hover:bg-sky-400/10">View prior WO</a>
-                              </div>
-                            </div>
-                          ) : historyLoading ? <div className="mt-3 text-xs text-[color:var(--theme-text-muted)]">Checking relevant vehicle history‚Ä¶</div> : null}
-
-                          <div className="mt-3 rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--theme-surface-inset)] p-3 text-xs text-[color:var(--theme-text-secondary)]">
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                              <div className="font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">Required parts</div>
-                              <div className="flex flex-wrap items-center gap-2">
-                                {partsSummary ? <div className="text-[color:var(--theme-text-secondary)]">Sync: <span className="text-[color:var(--theme-text-primary)]">{partsSummary.customerPricingQuarantined ? "manual review ‚Ä¢ customer item pricing quarantined" : <>{partsSummary.pendingCount > 0 ? "pending" : "quoted"} ‚Ä¢ {partsSummary.quotedCount}/{partsSummary.requiredCount} quoted ‚Ä¢ {partsSummary.partsTotal == null ? "total pending" : fmt(partsSummary.partsTotal)}</>}</span></div> : null}
-                                {(partsByQuoteLine[line.id] ?? []).length > 0 ? <button type="button" onClick={() => setOpenParts((prev) => ({ ...prev, [line.id]: !prev[line.id] }))} className="rounded-lg border border-[color:var(--desktop-border)] px-2.5 py-1.5 font-semibold text-[color:var(--theme-text-primary)]">{openParts[line.id] ? "Hide parts" : `View ${(partsByQuoteLine[line.id] ?? []).length} parts`}</button> : null}
-                              </div>
-                            </div>
-                            {(partsByQuoteLine[line.id] ?? []).length > 0 && openParts[line.id] ? (
-                              <div className="mt-2 space-y-2">
-                                {(partsByQuoteLine[line.id] ?? []).map((part) => {
-                                  const request = part.requestId ? (requestsByQuoteLine[line.id] ?? []).find((candidate) => candidate.id === part.requestId) ?? null : null;
-                                  const selected = selectedPartLabel(part);
-                                  return (
-                                    <div key={`${part.source}:${part.requestItemId ?? part.requestId ?? part.description}`} className="rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--theme-surface-inset)] p-2">
-                                      {selected ? (
-                                        <>
-                                          <div className="text-[color:var(--theme-text-primary)]">Requested: <span className="font-semibold text-[color:var(--theme-text-primary)]">{part.description} √ó {part.quantity}</span></div>
-                                          <div className="mt-1 text-[color:var(--theme-text-secondary)]">Selected: <span className="text-[color:var(--theme-text-primary)]">{selected}</span></div>
-                                        </>
-                                      ) : (
-                                        <div className="font-semibold text-[color:var(--theme-text-primary)]">{part.description} √ó {part.quantity}</div>
-                                      )}
-                                      <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[color:var(--theme-text-secondary)]">
-                                        {part.requestedPartNumber ? <span>Requested part #: <span className="text-[color:var(--theme-text-primary)]">{part.requestedPartNumber}</span></span> : null}
-                                        {part.manufacturer ? <span>Manufacturer: <span className="text-[color:var(--theme-text-primary)]">{part.manufacturer}</span></span> : null}
-                                        {part.supplier ?? part.vendor ? <span>Supplier: <span className="text-[color:var(--theme-text-primary)]">{part.supplier ?? part.vendor}</span></span> : null}
-                                        {pricingQuarantined ? (
-                                          <span className="font-semibold text-amber-100">Current operational pricing hidden ‚Äî it is not the finalized customer decision.</span>
-                                        ) : (
-                                          <>
-                                            <span>{partCostLabel(part)}</span>
-                                            <span>{partSellLabel(part)}</span>
-                                            {part.costLineTotal != null ? <span>Cost line: <span className="text-[color:var(--theme-text-primary)]">{fmt(part.costLineTotal)}</span></span> : null}
-                                            {part.sellLineTotal != null ? <span>Sell line: <span className="text-[color:var(--theme-text-primary)]">{fmt(part.sellLineTotal)}</span></span> : null}
-                                          </>
-                                        )}
-                                        {part.status ? <span>Status: <span className="text-[color:var(--theme-text-primary)]">{statusLabel(part.status)}</span></span> : null}
-                                      </div>
-                                      {request ? (
-                                        <a href={`/parts/requests/${request.id}`} className="mt-2 inline-flex rounded-lg border border-sky-300/35 bg-sky-400/10 px-2.5 py-1.5 text-xs font-semibold text-sky-100 hover:bg-sky-400/15">
-                                          View Parts Request ‚Äî {partsRequestLabel(line, index)}
-                                        </a>
-                                      ) : null}
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            ) : (
-                              <div className="mt-2 rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--theme-surface-inset)] p-2 text-[color:var(--theme-text-secondary)]">
-                                <div>Parts: <span className="text-[color:var(--theme-text-primary)]">None</span></div>
-                                <div>Parts Request: <span className="text-[color:var(--theme-text-primary)]">Not required</span></div>
-                              </div>
-                            )}
-                          </div>
-
-                          {sources.length > 0 ? (
-                            <div className="mt-3 rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--theme-surface-inset)] p-3 text-xs text-[color:var(--theme-text-secondary)]">
-                              Source inspection metadata: <span className="text-[color:var(--theme-text-primary)]">{sources.join(" ‚Ä¢ ")}</span>
-                            </div>
-                          ) : null}
-
-                          {photos.length > 0 ? (
-                            <div className="mt-3 flex flex-wrap gap-2">
-                              {photos.map((url) => (
-                                <a key={url} href={url} target="_blank" rel="noreferrer" className="rounded-lg border border-sky-300/35 bg-sky-400/10 px-2.5 py-1.5 text-xs font-semibold text-sky-100 hover:bg-sky-400/15">
-                                  Evidence photo
-                                </a>
-                              ))}
-                            </div>
-                          ) : null}
-
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            <button type="button" disabled={commercialEditingDisabled} onClick={() => setOpenDetails((prev) => ({ ...prev, [line.id]: !prev[line.id] }))} className="desktop-btn-secondary rounded-xl px-3 py-2 text-xs font-semibold text-[color:var(--theme-text-primary)] disabled:opacity-45">
-                              {openDetails[line.id] ? "Hide editor" : "Edit quote line"}
-                            </button>
-                            <button type="button" disabled={commercialEditingDisabled} onClick={() => markRecommendedReady(line)} className="desktop-btn-secondary rounded-xl px-3 py-2 text-xs font-semibold text-[color:var(--theme-text-primary)] disabled:opacity-45">
-                              Recompute ready state
-                            </button>
-                            {!line.sent_to_customer_at && canSendLine(line) ? <span className="rounded-xl border border-emerald-300/35 bg-emerald-400/10 px-3 py-2 text-xs font-semibold text-emerald-100">Will send</span> : null}
-                            {!commercialEditingDisabled ? <>
-                              <button type="button" disabled={!canSendLine(line) && !isSentForDecision(line)} onClick={() => openDecisionDialog(line, "approve")} className="rounded-xl border border-emerald-300/40 bg-emerald-500/15 px-3 py-2 text-xs font-semibold text-emerald-100 disabled:opacity-45">Approve</button>
-                              <button type="button" onClick={() => openDecisionDialog(line, "defer")} className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-2 text-xs font-semibold text-[color:var(--theme-text-primary)]">Defer</button>
-                              <button type="button" onClick={() => openDecisionDialog(line, "decline")} className="rounded-xl border border-red-400/45 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-100">Decline</button>
-                            </> : null}
-                          </div>
-
-                          {openDetails[line.id] && !commercialEditingDisabled ? (
-                            <div className="desktop-panel-soft mt-3 p-4">
-                              <div className={embedded ? "grid gap-3" : "grid gap-3 md:grid-cols-2"}>
-                                <label className="text-xs text-[color:var(--theme-text-secondary)]">
-                                  Title / description
-                                  <input value={line.description ?? ""} onChange={(e) => patchQuoteLine(line.id, { description: e.target.value })} className={inputCls} />
-                                </label>
-                                <label className="text-xs text-[color:var(--theme-text-secondary)]">
-                                  Complaint
-                                  <input value={line.ai_complaint ?? ""} onChange={(e) => patchQuoteLine(line.id, { ai_complaint: e.target.value })} className={inputCls} />
-                                </label>
-                                <label className="text-xs text-[color:var(--theme-text-secondary)]">
-                                  Technician notes
-                                  <input value={techNotes} onChange={(e) => patchQuoteLineMetadata(line, { technician_notes: e.target.value })} className={inputCls} />
-                                </label>
-                                <label className="text-xs text-[color:var(--theme-text-secondary)]">
-                                  Advisor notes
-                                  <input value={line.notes ?? ""} onChange={(e) => patchQuoteLine(line.id, { notes: e.target.value })} className={inputCls} />
-                                </label>
-                                <label className="text-xs text-[color:var(--theme-text-secondary)]">
-                                  Labor hours
-                                  <input inputMode="decimal" value={String(laborHours)} onChange={(e) => patchQuoteLine(line.id, { labor_hours: asNumber(e.target.value) ?? 0, est_labor_hours: asNumber(e.target.value) ?? 0 })} className={inputCls} />
-                                </label>
-                                <label className="text-xs text-[color:var(--theme-text-secondary)]">
-                                  Labor rate
-                                  <input inputMode="decimal" value={String(lineLaborRate)} onChange={(e) => patchQuoteLine(line.id, { _laborRateDraft: asNumber(e.target.value) ?? 0 })} className={inputCls} />
-                                </label>
-                                <label className="text-xs text-[color:var(--theme-text-secondary)]">
-                                  Labor amount
-                                  <input inputMode="decimal" value={String(laborTotal)} onChange={(e) => patchQuoteLine(line.id, { labor_total: asNumber(e.target.value) ?? 0 })} className={inputCls} />
-                                </label>
-                                <label className="text-xs text-[color:var(--theme-text-secondary)]">
-                                  Parts sell total (calculated)
-                                  <input
-                                    value={partsTotal == null ? "" : String(partsTotal)}
-                                    placeholder="Manual review required"
-                                    readOnly
-                                    aria-describedby={`parts-sell-help-${line.id}`}
-                                    className={`${inputCls} cursor-not-allowed opacity-80`}
-                                  />
-                                  <span id={`parts-sell-help-${line.id}`} className="mt-1 block text-[11px] text-[color:var(--theme-text-muted)]">
-                                    Edit each item&apos;s sell price in the linked Parts Request; Quote Review recalculates this total.
-                                  </span>
-                                </label>
-                                <label className="text-xs text-[color:var(--theme-text-secondary)]">
-                                  Status
-                                  <select value={line.status ?? ""} onChange={(e) => patchQuoteLine(line.id, { status: e.target.value })} className={inputCls}>
-                                    <option value="pending_parts">pending parts</option>
-                                    <option value="quoted">ready / quoted</option>
-                                    <option value="sent">sent</option>
-                                  </select>
-                                </label>
-                                <label className="text-xs text-[color:var(--theme-text-secondary)]">
-                                  Stage
-                                  <select value={line.stage ?? ""} onChange={(e) => patchQuoteLine(line.id, { stage: e.target.value })} className={inputCls}>
-                                    <option value="advisor_pending">advisor pending</option>
-                                    <option value="ready_to_send">ready to send</option>
-                                    <option value="sent">sent</option>
-                                  </select>
-                                </label>
-                              </div>
-                            </div>
-                          ) : null}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {workLines.length > 0 ? (
-              <div className={`${card} mt-4`}>
-                <div className={`border-b ${divider} ${padX} py-3 text-sm font-semibold text-[color:var(--theme-text-primary)]`}>
-                  Active approved / punchable work
-                </div>
-                <div className="divide-y divide-[color:var(--desktop-border)]">
-                  {workLines.map((line) => (
-                    <div key={line.id} className={`${padX} py-3 text-sm`}>
-                      <div className="font-semibold text-[color:var(--theme-text-primary)]">{safeTrim(line.description) || `Line ${line.line_no ?? ""}`}</div>
-                      <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">Status: {statusLabel(line.status)} ‚Ä¢ Approval: {statusLabel(line.approval_state)} ‚Ä¢ Punchable: {line.punchable ? "yes" : "no"}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-          </div>
-
-          <div className={embedded ? "" : "space-y-4"}>
-            <div className={card}>
-              <div className={`border-b ${divider} ${padX} py-3 text-sm font-semibold text-[color:var(--theme-text-primary)]`}>Quote readiness</div>
-              <div className={`${padX} py-4 text-sm text-[color:var(--theme-text-secondary)]`}>
-                <div className="flex items-center justify-between"><span>Ready to send</span><span className="font-semibold text-[color:var(--theme-text-primary)]">{quoteTotals.sendable}</span></div>
-                <div className="mt-2 flex items-center justify-between"><span>Pending parts</span><span className="font-semibold text-[color:var(--theme-text-primary)]">{quoteTotals.pendingParts}</span></div>
-                <div className="mt-2 flex items-center justify-between"><span>Sent</span><span className="font-semibold text-[color:var(--theme-text-primary)]">{quoteTotals.sent}</span></div>
-                <div className={`mt-3 flex items-center justify-between border-t ${divider} pt-3`}><span>Labor</span><span className="font-medium text-[color:var(--theme-text-primary)]">{fmt(quoteTotals.labor)}</span></div>
-                <div className="mt-2 flex items-center justify-between"><span>{quoteTotals.partsPricingQuarantined ? "Parts (protected)" : "Parts"}</span><span className="font-medium text-[color:var(--theme-text-primary)]">{quoteTotals.partsTotalUnavailable ? "Manual review" : fmt(quoteTotals.parts)}</span></div>
-                {quoteTotals.partsPricingQuarantined ? <div className="mt-1 text-xs text-amber-100">Protected finalized totals are retained; quarantined item pricing is excluded.</div> : null}
-                <div className="mt-2 flex items-center justify-between"><span>Shop supplies</span><span className="font-medium text-[color:var(--theme-text-primary)]">{fmt(quoteTotals.shopSupplies.amount)}</span></div>
-                <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">{shopSuppliesSummaryText(quoteTotals.shopSupplies)}</div>
-                <div className={`mt-3 flex items-center justify-between border-t ${divider} pt-3`}><span className="font-semibold text-[color:var(--theme-text-primary)]">Grand total</span><span className="text-lg font-bold" style={{ color: COPPER }}>{quoteTotals.grandTotalUnavailable ? "Manual review" : fmt(quoteTotals.total)}</span></div>
-                <div className={`mt-4 border-t ${divider} pt-3`}>
-                  <div className="text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">Shop supplies override</div>
-                  <select
-                    value={suppliesEnabledDraft == null ? "default" : suppliesEnabledDraft ? "on" : "off"}
-                    onChange={(e) => setSuppliesEnabledDraft(e.target.value === "default" ? null : e.target.value === "on")}
-                    className="mt-2 w-full rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none"
-                  >
-                    <option value="default">Use shop default</option>
-                    <option value="on">Include shop supplies</option>
-                    <option value="off">Remove shop supplies</option>
-                  </select>
-                  <input
-                    value={suppliesAmountDraft}
-                    onChange={(e) => setSuppliesAmountDraft(e.target.value)}
-                    placeholder="Optional fixed override amount"
-                    className="mt-2 w-full rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none placeholder:text-[color:var(--theme-text-muted)]"
-                  />
-                  <div className="mt-2 grid grid-cols-2 gap-2">
-                    <button type="button" onClick={() => void saveSuppliesOverride()} disabled={savingSuppliesOverride} className="desktop-btn-secondary rounded-lg px-3 py-2 text-xs font-semibold disabled:opacity-60">
-                      {savingSuppliesOverride ? "Saving‚Ä¶" : "Save override"}
-                    </button>
-                    <button type="button" onClick={resetSuppliesOverride} className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-2 text-xs font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]">Reset draft</button>
-                  </div>
-                </div>
-                <button onClick={() => void saveAllDirty()} disabled={saving} className="desktop-btn-primary mt-4 w-full rounded-xl px-4 py-2 text-sm font-semibold disabled:opacity-60">
-                  {saving ? "Saving‚Ä¶" : "Save changes"}
-                </button>
-              </div>
-            </div>
-
-            <div className={card}>
-              <div className={`border-b ${divider} ${padX} py-3 text-sm font-semibold text-[color:var(--theme-text-primary)]`}>Send to customer</div>
-              <div className={`${padX} py-4 text-sm text-[color:var(--theme-text-secondary)]`}>
-                Sends only canonical work_order_quote_lines that are ready to send. Pending parts, declined, deferred, approved, and converted lines are not sent.
-                {quoteTotals.sendable === 0 ? (
-                  <div className="mt-3 rounded-xl border border-amber-300/35 bg-amber-400/10 p-3 text-amber-100">No ready canonical quote lines are available to send.</div>
-                ) : null}
-                {missingCustomerEmail || sendBlocker ? (
-                  <div className="mt-3 rounded-xl border border-sky-400/35 bg-sky-500/10 p-3">
-                    <div className="text-xs font-semibold uppercase tracking-[0.14em] text-sky-100">Blocked</div>
-                    <div className="mt-1 text-sm font-semibold text-sky-100">{sendBlocker ?? "Customer email required to send quote"}</div>
-                    <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-                      <input type="email" value={pendingCustomerEmail} onChange={(e) => setPendingCustomerEmail(e.target.value)} placeholder="customer@email.com" className="w-full rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none placeholder:text-[color:var(--theme-text-muted)] focus:border-sky-300/70" />
-                      <button type="button" onClick={() => void saveCustomerEmailInline()} disabled={savingCustomerEmail} className="rounded-lg border border-amber-300/45 bg-amber-400/15 px-3 py-2 text-sm font-semibold text-sky-100 hover:bg-amber-400/20 disabled:opacity-60">
-                        {savingCustomerEmail ? "Saving‚Ä¶" : "Save email"}
-                      </button>
-                    </div>
-                  </div>
-                ) : null}
-                <button onClick={() => void sendQuoteToCustomer(false)} disabled={sending || savingCustomerEmail || quoteTotals.sendable === 0} className="desktop-btn-secondary mt-3 w-full rounded-xl px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] disabled:opacity-60">
-                  {sending ? "Sending‚Ä¶" : "Send ready quote lines"}
-                </button>
-                {quoteTotals.sent > 0 ? (
-                  <button onClick={() => void sendQuoteToCustomer(true)} disabled={sending || savingCustomerEmail || missingCustomerEmail} className="desktop-btn-secondary mt-2 w-full rounded-xl px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] disabled:opacity-60">
-                    {sending ? "Sending‚Ä¶" : "Resend quote"}
-                  </button>
-                ) : null}
-                <div className="mt-3 text-xs text-[color:var(--theme-text-muted)]">Portal link will be: <span className="text-[color:var(--theme-text-secondary)]">/portal/quotes/{woId}</span></div>
-                <div className="mt-2 text-xs text-[color:var(--theme-text-muted)]">Customer portal decisions and shop-recorded phone decisions use the same canonical approval lifecycle.</div>
-              </div>
-            </div>
-
-            <div className={card}>
-              <div className={`border-b ${divider} ${padX} py-3 text-sm font-semibold text-[color:var(--theme-text-primary)]`}>Quick add job</div>
-              <div className={`${padX} py-4 text-sm text-[color:var(--theme-text-secondary)]`}>
-                Add active work only when intentionally needed. Inspection recommendations should stay in canonical quote lines until customer approval/materialization.
-                <button type="button" onClick={openAddJobWithPrefill} className="desktop-btn-primary mt-3 w-full rounded-xl px-4 py-2 text-sm font-semibold">+ Add job line</button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {!embedded && <div className="mt-6 text-xs text-[color:var(--theme-text-muted)]">Work Order ID: {wo.id} ‚Ä¢ Status: {statusLabel(wo.status)}</div>}
-
-        {decisionDialog ? (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/65 p-4" role="dialog" aria-modal="true" aria-labelledby="shop-decision-title">
-            <div className="w-full max-w-lg rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--theme-surface-overlay)] p-5 shadow-2xl">
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">Classic shop approval</div>
-              <h2 id="shop-decision-title" className="mt-2 text-lg font-semibold text-[color:var(--theme-text-primary)]">Record {statusLabel(decisionDialog.decision)} ‚Äî {safeTrim(decisionDialog.line.description) || "quote line"}</h2>
-              <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">Use this after confirming the customer&apos;s decision outside the portal. The advisor, contact method, time, and note are retained with the quote.</p>
-              <label className="mt-4 block text-xs font-medium text-[color:var(--theme-text-secondary)]">
-                Customer contact method
-                <select value={decisionContact} onChange={(event) => setDecisionContact(event.target.value as ContactMethod)} className={inputCls}>
-                  <option value="phone">Phone call</option><option value="in_person">In person</option><option value="email">Email</option><option value="other">Other</option>
-                </select>
-              </label>
-              <label className="mt-3 block text-xs font-medium text-[color:var(--theme-text-secondary)]">
-                Advisor note (optional)
-                <textarea value={decisionNote} onChange={(event) => setDecisionNote(event.target.value.slice(0, 1000))} rows={3} placeholder="Example: Approved by phone with Jamie at 2:15 PM." className={inputCls} />
-              </label>
-              <div className="mt-5 flex flex-wrap justify-end gap-2">
-                <button type="button" disabled={decisionSaving} onClick={() => setDecisionDialog(null)} className="desktop-btn-secondary rounded-xl px-4 py-2 text-sm font-semibold disabled:opacity-50">Cancel</button>
-                <button type="button" disabled={decisionSaving} onClick={() => void confirmShopDecision()} className={decisionDialog.decision === "decline" ? "rounded-xl border border-red-400/45 bg-red-500/15 px-4 py-2 text-sm font-semibold text-red-100 disabled:opacity-50" : "desktop-btn-primary rounded-xl px-4 py-2 text-sm font-semibold disabled:opacity-50"}>{decisionSaving ? "Recording‚Ä¶" : `Confirm ${statusLabel(decisionDialog.decision)}`}</button>
-              </div>
-            </div>
-          </div>
-        ) : null}
-
-        <AddJobModal
-          isOpen={addJobOpen}
-          onClose={() => setAddJobOpen(false)}
-          workOrderId={wo.id}
-          vehicleId={wo.vehicle_id}
-          shopId={wo.shop_id}
-          techId={currentUserId}
-          onJobAdded={() => {
-            setAddJobOpen(false);
-            void reload();
-          }}
-        />
-      </div>
-    </div>
-  );
-}
+N¬à_BàœÇàŸ]èÇàŸ]èÇà
+N¬üB

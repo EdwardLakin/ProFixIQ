@@ -806,12 +806,52 @@ export async function POST(req: Request) {
       : body?.quoteTotal;
     let sendableQuoteLineIds: string[] = [];
 
+    const requestAllowsResend = req.headers.get("x-profix-resend") === "1";
+    const { data: pricingCandidateRowsRaw, error: pricingCandidateError } =
+      await supabaseAdmin
+        .from("work_order_quote_lines")
+        .select(
+          "id, status, stage, sent_to_customer_at, approved_at, declined_at, work_order_line_id",
+        )
+        .eq("shop_id", wo.shop_id)
+        .eq("work_order_id", workOrderId);
+    if (pricingCandidateError) {
+      return NextResponse.json(
+        {
+          ok: false,
+          trace,
+          error: "Failed to identify quote lines ready for pricing",
+          detail: pricingCandidateError.message,
+        },
+        { status: 500 },
+      );
+    }
+
+    const pricingQuoteLineIds = (pricingCandidateRowsRaw ?? [])
+      .filter(
+        (line) =>
+          isSendableQuoteLine(line) ||
+          (requestAllowsResend && isResendableQuoteLine(line)),
+      )
+      .map((line) => line.id);
+    if (pricingQuoteLineIds.length === 0) {
+      return NextResponse.json(
+        {
+          ok: false,
+          trace,
+          error:
+            "No canonical quote lines are ready to send. Mark advisor-reviewed lines ready_to_send/quoted after parts pricing is complete.",
+        },
+        { status: 409 },
+      );
+    }
+
     const { error: customerPricingError } = await supabaseAdmin.rpc(
       "apply_customer_pricing_v2_to_quote_atomic" as never,
       {
         p_shop_id: wo.shop_id,
         p_work_order_id: workOrderId,
-        p_quote_line_ids: [],
+        p_quote_line_ids: pricingQuoteLineIds,
         p_actor_user_id: access.authUserId,
         p_at: new Date().toISOString(),
       } as never,
@@ -833,6 +873,35 @@ export async function POST(req: Request) {
           detail,
         },
         { status: 409 },
+      );
+    }
+
+    const {
+      data: resolvedSuppliesOverrides,
+      error: resolvedSuppliesOverrideError,
+    } = await supabaseAdmin
+      .from("work_orders")
+      .select(
+        "shop_supplies_enabled_override, shop_supplies_amount_override",
+      )
+      .eq("id", workOrderId)
+      .eq("shop_id", wo.shop_id)
+      .maybeSingle<
+        Pick<
+          WorkOrderRow,
+          | "shop_supplies_enabled_override"
+          | "shop_supplies_amount_override"
+        >
+      >();
+    if (resolvedSuppliesOverrideError) {
+      return NextResponse.json(
+        {
+          ok: false,
+          trace,
+          error: "Failed to load resolved customer fee",
+          detail: resolvedSuppliesOverrideError.message,
+        },
+        { status: 500 },
       );
     }
 
@@ -881,7 +950,6 @@ export async function POST(req: Request) {
       >
     >;
 
-    const requestAllowsResend = req.headers.get("x-profix-resend") === "1";
     const estimateHasApprovedLines = Boolean(
       wo.estimate_number && quoteLineRows.some(isApprovedQuoteLine),
     );
@@ -946,7 +1014,9 @@ export async function POST(req: Request) {
         shopForSupplies as Parameters<typeof resolveShopSuppliesSettings>[0],
       ),
       override: resolveShopSuppliesOverride(
-        wo as Parameters<typeof resolveShopSuppliesOverride>[0],
+        (resolvedSuppliesOverrides ?? wo) as Parameters<
+          typeof resolveShopSuppliesOverride
+        >[0],
       ),
     });
     const hasPersistedLineTax = sendableQuoteLines.some(

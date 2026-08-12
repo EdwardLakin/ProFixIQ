@@ -455,6 +455,8 @@ declare
   v_resolution_hash text;
   v_skip_v1 boolean := false;
   v_fee_changed boolean := false;
+  v_has_fee_targets boolean := false;
+  v_manual_supplies_override boolean := false;
   v_v2_applied jsonb := '[]'::jsonb;
   v_v2_unchanged jsonb := '[]'::jsonb;
 begin
@@ -510,6 +512,31 @@ begin
     raise exception using errcode = 'P0002', message = 'One or more quote lines were not found for this work order.';
   end if;
 
+  select exists (
+    select 1
+    from public.work_order_quote_lines quote_line
+    where quote_line.shop_id = p_shop_id
+      and quote_line.work_order_id = p_work_order_id
+      and (
+        coalesce(cardinality(p_quote_line_ids), 0) = 0
+        or quote_line.id = any(p_quote_line_ids)
+      )
+      and not public.quote_line_pricing_is_protected(
+        quote_line.status::text, quote_line.stage::text,
+        quote_line.sent_to_customer_at, quote_line.sent_at,
+        quote_line.approved_at, quote_line.declined_at,
+        quote_line.deferred_at, quote_line.converted_at,
+        quote_line.work_order_line_id
+      )
+  ) into v_has_fee_targets;
+
+  v_manual_supplies_override :=
+    v_work_order.customer_pricing_fee_agreement_id is null
+    and (
+      v_work_order.shop_supplies_enabled_override is not null
+      or v_work_order.shop_supplies_amount_override is not null
+    );
+
   select agreement.* into v_agreement
   from public.customer_pricing_agreements agreement
   where agreement.shop_id = p_shop_id
@@ -533,7 +560,8 @@ begin
     v_base_result := public.apply_customer_pricing_to_quote_atomic(
       p_shop_id, p_work_order_id, p_quote_line_ids, p_actor_user_id, v_now
     );
-    if v_work_order.customer_pricing_fee_agreement_id is not null then
+    if v_has_fee_targets
+       and v_work_order.customer_pricing_fee_agreement_id is not null then
       update public.work_orders
       set shop_supplies_enabled_override = null,
           shop_supplies_amount_override = null,
@@ -577,6 +605,13 @@ begin
     and (
       coalesce(cardinality(p_quote_line_ids), 0) = 0
       or quote_line.id = any(p_quote_line_ids)
+    )
+    and not public.quote_line_pricing_is_protected(
+      quote_line.status::text, quote_line.stage::text,
+      quote_line.sent_to_customer_at, quote_line.sent_at,
+      quote_line.approved_at, quote_line.declined_at,
+      quote_line.deferred_at, quote_line.converted_at,
+      quote_line.work_order_line_id
     );
 
   if v_skip_v1 then
@@ -604,6 +639,16 @@ begin
       order by quote_line.created_at, quote_line.id
       for update
     loop
+      if public.quote_line_pricing_is_protected(
+        v_line.status::text, v_line.stage::text,
+        v_line.sent_to_customer_at, v_line.sent_at,
+        v_line.approved_at, v_line.declined_at,
+        v_line.deferred_at, v_line.converted_at,
+        v_line.work_order_line_id
+      ) then
+        continue;
+      end if;
+
       select snapshot.* into v_previous
       from public.pricing_resolution_snapshots snapshot
       where snapshot.id = v_line.customer_pricing_snapshot_id
@@ -864,7 +909,14 @@ begin
         ),
         updated_at = v_now
     where quote_line.shop_id = p_shop_id
-      and quote_line.work_order_id = p_work_order_id;
+      and quote_line.work_order_id = p_work_order_id
+      and not public.quote_line_pricing_is_protected(
+        quote_line.status::text, quote_line.stage::text,
+        quote_line.sent_to_customer_at, quote_line.sent_at,
+        quote_line.approved_at, quote_line.declined_at,
+        quote_line.deferred_at, quote_line.converted_at,
+        quote_line.work_order_line_id
+      );
   end if;
 
   select round(coalesce(sum(
@@ -873,8 +925,16 @@ begin
   from public.work_order_quote_lines quote_line
   where quote_line.shop_id = p_shop_id
     and quote_line.work_order_id = p_work_order_id
-    and lower(coalesce(quote_line.status::text, '')) not in (
-      'cancelled', 'canceled', 'rejected', 'declined', 'voided'
+    and (
+      coalesce(cardinality(p_quote_line_ids), 0) = 0
+      or quote_line.id = any(p_quote_line_ids)
+    )
+    and not public.quote_line_pricing_is_protected(
+      quote_line.status::text, quote_line.stage::text,
+      quote_line.sent_to_customer_at, quote_line.sent_at,
+      quote_line.approved_at, quote_line.declined_at,
+      quote_line.deferred_at, quote_line.converted_at,
+      quote_line.work_order_line_id
     );
 
   v_fee_total := round(case v_agreement.customer_fee_type
@@ -887,7 +947,13 @@ begin
     v_fee_total := least(v_fee_total, v_agreement.customer_fee_cap);
   end if;
 
-  if v_agreement.customer_fee_type = 'none' then
+  if not v_has_fee_targets then
+    v_fee_total := coalesce(v_work_order.customer_pricing_fee_total, 0);
+  elsif v_manual_supplies_override then
+    -- An advisor explicitly owns the canonical supplies override. Agreement
+    -- fees remain visible in the contract, but must not silently replace it.
+    null;
+  elsif v_agreement.customer_fee_type = 'none' then
     if v_work_order.customer_pricing_fee_agreement_id is not null then
       v_fee_changed := true;
       update public.work_orders
@@ -928,6 +994,7 @@ begin
       'agreement_id', v_agreement.id,
       'quote_lines', v_v2_applied,
       'customer_fee_type', v_agreement.customer_fee_type,
+      'customer_fee_managed', not v_manual_supplies_override,
       'customer_fee_base', v_fee_base,
       'customer_fee_total', v_fee_total
     )
@@ -938,6 +1005,7 @@ begin
     'v2_applied', v_v2_applied,
     'v2_unchanged', v_v2_unchanged,
     'customer_fee_type', v_agreement.customer_fee_type,
+    'customer_fee_managed', not v_manual_supplies_override,
     'customer_fee_total', v_fee_total
   );
 end;

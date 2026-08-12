@@ -68,6 +68,10 @@ describe("customer Pricing V2", () => {
     expect(migration).toContain("v_v2_unchanged");
     expect(migration).toContain("tax_total = 0");
     expect(migration).toContain("if v_previous_part is null then continue");
+    expect(migration).toContain("v_has_fee_targets");
+    expect(migration).toContain("not public.quote_line_pricing_is_protected");
+    expect(quoteSend).toContain("p_quote_line_ids: pricingQuoteLineIds");
+    expect(quoteSend).toContain("resolvedSuppliesOverrides ?? wo");
   });
 
   it("exposes usable controls and contract-expiry warnings in the account center", () => {
@@ -78,5 +82,7 @@ describe("customer Pricing V2", () => {
     expect(accountPanel).toContain("Contract expiry:");
     expect(accountPanel).toContain("key={tier.id}");
     expect(accountPanel).toContain('draft.customerFeeType !== "percentage"');
+    expect(quoteReview).toContain("customer_pricing_fee_agreement_id: null");
+    expect(migration).toContain("v_manual_supplies_override");
   });
 });
