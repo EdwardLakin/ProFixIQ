@@ -19,10 +19,44 @@ export type CustomerPricingAgreement = {
   laborRate: number | null;
   laborDiscountPercent: number;
   partsDiscountPercent: number;
+  partsMarkupMatrix?: PartsMarkupTier[];
+  minimumPartsMarginPercent?: number;
+  customerFeeType?: CustomerFeeType;
+  customerFeeValue?: number;
+  customerFeeCap?: number | null;
+  expiryWarningDays?: number;
   effectiveFrom: string;
   effectiveUntil: string | null;
   createdAt: string;
 };
+
+export type PartsMarkupTier = {
+  costFrom: number;
+  costTo: number | null;
+  markupPercent: number;
+};
+
+export type CustomerFeeType = "none" | "flat" | "percentage";
+
+export type V2PartPricingResolution = {
+  cost: number | null;
+  baseUnitPrice: number;
+  matrixMarkupPercent: number | null;
+  matrixUnitPrice: number;
+  discountPercent: number;
+  discountedUnitPrice: number;
+  minimumMarginPercent: number;
+  marginFloorUnitPrice: number | null;
+  resolvedUnitPrice: number;
+  floorApplied: boolean;
+  provenance: "matrix" | "base_sell";
+};
+
+export type ContractExpiryStatus =
+  | "no_expiry"
+  | "active"
+  | "expiring_soon"
+  | "expired";
 
 export type ApprovedManualPricingOverride = {
   approved: boolean;
@@ -50,6 +84,131 @@ export type CustomerPricingResolution = {
 
 function money(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function boundedPercent(value: number): number {
+  return Math.min(100, nonNegative(value));
+}
+
+export function validatePartsMarkupMatrix(
+  tiers: PartsMarkupTier[],
+): boolean {
+  if (tiers.length > 50) return false;
+  let previousUpper: number | null = null;
+  return tiers.every((tier, index) => {
+    const from = nonNegative(tier.costFrom);
+    const to = tier.costTo == null ? null : nonNegative(tier.costTo);
+    const valid =
+      Number.isFinite(tier.costFrom) &&
+      Number.isFinite(tier.markupPercent) &&
+      tier.costFrom === from &&
+      tier.markupPercent >= 0 &&
+      tier.markupPercent <= 1000 &&
+      (to == null || (Number.isFinite(tier.costTo) && to >= from)) &&
+      (index === 0 ? from === 0 : previousUpper != null && from > previousUpper);
+    previousUpper = to;
+    return valid && (index === tiers.length - 1 || to != null);
+  });
+}
+
+function matrixTierForCost(
+  tiers: PartsMarkupTier[],
+  cost: number,
+): PartsMarkupTier | null {
+  if (!validatePartsMarkupMatrix(tiers)) return null;
+  return (
+    tiers.find(
+      (tier) =>
+        cost >= tier.costFrom && (tier.costTo == null || cost <= tier.costTo),
+    ) ?? null
+  );
+}
+
+export function resolveV2PartPricing(input: {
+  unitCost: number | null;
+  baseUnitPrice: number;
+  matrix: PartsMarkupTier[];
+  partsDiscountPercent: number;
+  minimumPartsMarginPercent: number;
+}): V2PartPricingResolution {
+  const cost =
+    input.unitCost == null || !Number.isFinite(input.unitCost)
+      ? null
+      : money(nonNegative(input.unitCost));
+  const baseUnitPrice = money(nonNegative(input.baseUnitPrice));
+  const tier = cost == null ? null : matrixTierForCost(input.matrix, cost);
+  const matrixUnitPrice = money(
+    tier && cost != null
+      ? cost * (1 + boundedPercent(tier.markupPercent) / 100)
+      : baseUnitPrice,
+  );
+  const discountPercent = boundedPercent(input.partsDiscountPercent);
+  const discountedUnitPrice = money(
+    matrixUnitPrice * (1 - discountPercent / 100),
+  );
+  const minimumMarginPercent = Math.min(
+    99.99,
+    boundedPercent(input.minimumPartsMarginPercent),
+  );
+  const marginFloorUnitPrice =
+    cost == null || minimumMarginPercent <= 0
+      ? null
+      : money(cost / (1 - minimumMarginPercent / 100));
+  const resolvedUnitPrice = money(
+    Math.max(discountedUnitPrice, marginFloorUnitPrice ?? 0),
+  );
+
+  return {
+    cost,
+    baseUnitPrice,
+    matrixMarkupPercent: tier?.markupPercent ?? null,
+    matrixUnitPrice,
+    discountPercent,
+    discountedUnitPrice,
+    minimumMarginPercent,
+    marginFloorUnitPrice,
+    resolvedUnitPrice,
+    floorApplied:
+      marginFloorUnitPrice != null && marginFloorUnitPrice > discountedUnitPrice,
+    provenance: tier ? "matrix" : "base_sell",
+  };
+}
+
+export function resolveCustomerFee(input: {
+  type: CustomerFeeType;
+  value: number;
+  cap?: number | null;
+  laborAndPartsSubtotal: number;
+}): number {
+  const value = nonNegative(input.value);
+  const subtotal = money(nonNegative(input.laborAndPartsSubtotal));
+  const calculated =
+    input.type === "flat"
+      ? value
+      : input.type === "percentage"
+        ? subtotal * (boundedPercent(value) / 100)
+        : 0;
+  const cap =
+    input.cap == null || !Number.isFinite(input.cap)
+      ? null
+      : nonNegative(input.cap);
+  return money(cap == null ? calculated : Math.min(calculated, cap));
+}
+
+export function contractExpiryStatus(input: {
+  effectiveUntil: string | null;
+  at: string;
+  warningDays: number;
+}): ContractExpiryStatus {
+  if (!input.effectiveUntil) return "no_expiry";
+  const end = Date.parse(`${input.effectiveUntil.slice(0, 10)}T00:00:00Z`);
+  const at = Date.parse(`${dateOnly(input.at)}T00:00:00Z`);
+  if (!Number.isFinite(end) || !Number.isFinite(at)) return "active";
+  if (end < at) return "expired";
+  const daysRemaining = Math.ceil((end - at) / 86_400_000);
+  return daysRemaining <= Math.max(0, Math.floor(input.warningDays))
+    ? "expiring_soon"
+    : "active";
 }
 
 function nonNegative(value: number): number {

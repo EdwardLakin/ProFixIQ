@@ -40,10 +40,10 @@ describe("customer-specific pricing engine contracts", () => {
     expect(quoteReview).toContain(
       "`/api/work-orders/${woId}/customer-pricing`",
     );
-    expect(quoteSend).toContain("apply_customer_pricing_to_quote_atomic");
+    expect(quoteSend).toContain("apply_customer_pricing_v2_to_quote_atomic");
     expect(
-      quoteSend.indexOf("apply_customer_pricing_to_quote_atomic"),
-    ).toBeLessThan(quoteSend.indexOf('from("work_order_quote_lines")'));
+      quoteSend.indexOf("apply_customer_pricing_v2_to_quote_atomic"),
+    ).toBeLessThan(quoteSend.indexOf("const { data: quoteLineRowsRaw"));
   });
 
   it("allows authenticated security-invoker pricing reads to normalize roles", () => {

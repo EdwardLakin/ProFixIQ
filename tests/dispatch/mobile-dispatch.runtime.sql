@@ -23,15 +23,16 @@ set user_id = excluded.user_id,
 insert into public.shops (
   id, owner_id, business_name, name, user_limit,
   accepts_online_booking, min_notice_minutes, max_lead_days,
-  location_type
+  location_type, billing_entitlement_override
 )
 values (
   '8b100000-0000-4000-8000-000000000001',
   '8a100000-0000-4000-8000-000000000001',
   'Dispatch Runtime Shop', 'Dispatch Runtime Shop', 10,
-  true, 0, 365, 'repair_facility'
+  true, 0, 365, 'repair_facility', 'internal_demo'
 )
-on conflict (id) do nothing;
+on conflict (id) do update
+set billing_entitlement_override = 'internal_demo';
 
 update public.profiles
 set shop_id = '8b100000-0000-4000-8000-000000000001'
@@ -41,6 +42,49 @@ where id in (
   '8a100000-0000-4000-8000-000000000003'
 );
 
+-- Mobile-mode Dispatch requires both the Field Service product entitlement
+-- and explicit operator assignment. Keep this runtime fixture aligned with
+-- the production authorization boundary instead of bypassing it through the
+-- service-role session used below.
+insert into public.mobile_service_settings (
+  shop_id, service_model, solo_mode, dispatch_enabled,
+  service_vehicles_enabled, field_operator_count_target,
+  onboarding_completed_at, configured_by
+)
+values (
+  '8b100000-0000-4000-8000-000000000001', 'mobile', false, true,
+  true, 3, now(), '8a100000-0000-4000-8000-000000000001'
+)
+on conflict (shop_id) do update
+set service_model = 'mobile',
+    solo_mode = false,
+    dispatch_enabled = true,
+    service_vehicles_enabled = true,
+    field_operator_count_target = 3,
+    onboarding_completed_at = now(),
+    configured_by = '8a100000-0000-4000-8000-000000000001';
+
+insert into public.mobile_field_operators (
+  shop_id, profile_id, enabled, created_by
+)
+values
+  (
+    '8b100000-0000-4000-8000-000000000001',
+    '8a100000-0000-4000-8000-000000000001', true,
+    '8a100000-0000-4000-8000-000000000001'
+  ),
+  (
+    '8b100000-0000-4000-8000-000000000001',
+    '8a100000-0000-4000-8000-000000000002', true,
+    '8a100000-0000-4000-8000-000000000001'
+  ),
+  (
+    '8b100000-0000-4000-8000-000000000001',
+    '8a100000-0000-4000-8000-000000000003', true,
+    '8a100000-0000-4000-8000-000000000001'
+  )
+on conflict (shop_id, profile_id) do update set enabled = true;
+
 insert into public.customers (id, shop_id, first_name, last_name, email, phone)
 values (
   '8c100000-0000-4000-8000-000000000001',
@@ -48,6 +92,17 @@ values (
   'Mobile', 'Customer', 'mobile-customer@example.com', '4035550101'
 )
 on conflict (id) do nothing;
+
+insert into public.vehicles (id, shop_id, customer_id, year, make, model, vin)
+values (
+  '8c200000-0000-4000-8000-000000000001',
+  '8b100000-0000-4000-8000-000000000001',
+  '8c100000-0000-4000-8000-000000000001',
+  2024, 'Test', 'Mobile Service Unit', '1FTFW1E50NFA00001'
+)
+on conflict (id) do update
+set shop_id = excluded.shop_id,
+    customer_id = excluded.customer_id;
 
 insert into public.service_vehicles (id, shop_id, name, unit_number, active)
 values
@@ -73,6 +128,8 @@ declare
   v_visit_c_id uuid;
   v_visit_d_id uuid;
   v_create_result jsonb;
+  v_handoff jsonb;
+  v_work_order_id uuid;
   v_truck_a uuid;
   v_truck_b uuid;
   v_board jsonb;
@@ -88,7 +145,8 @@ begin
   -- one unassigned Service Visit after the scheduler event is established.
   v_booking_a := public.scheduler_apply_booking_command_atomic(
     'create', null, '8b100000-0000-4000-8000-000000000001',
-    '8c100000-0000-4000-8000-000000000001', null,
+    '8c100000-0000-4000-8000-000000000001',
+    '8c200000-0000-4000-8000-000000000001',
     '2099-03-01 09:00:00+00', '2099-03-01 10:00:00+00', 'Mobile visit A',
     '8a100000-0000-4000-8000-000000000001', 'staff',
     'dispatch-runtime:booking:a', null, '2099-01-01 00:00:00+00', 'mobile', null
@@ -214,6 +272,24 @@ begin
     '8b100000-0000-4000-8000-000000000001', v_visit_a_id, 'arrived', null, 12.8, null,
     '8a100000-0000-4000-8000-000000000002', 'dispatch-runtime:a:arrived'
   );
+
+  -- Arrival may precede repair creation, but physical work must always be
+  -- anchored to the canonical work order before the visit enters `working`.
+  v_handoff := public.mobile_materialize_service_visit_work_order_atomic(
+    '8b100000-0000-4000-8000-000000000001', v_visit_a_id,
+    '8a100000-0000-4000-8000-000000000002',
+    'dispatch-runtime:a:work-order'
+  );
+  v_work_order_id := (v_handoff ->> 'workOrderId')::uuid;
+  if v_work_order_id is null or not exists (
+    select 1 from public.service_visits visit
+    where visit.id = v_visit_a_id
+      and visit.shop_id = '8b100000-0000-4000-8000-000000000001'
+      and visit.work_order_id = v_work_order_id
+  ) then
+    raise exception 'Dispatch assertion failed: arrived visit did not materialize its canonical work order';
+  end if;
+
   perform public.dispatch_transition_service_visit_atomic(
     '8b100000-0000-4000-8000-000000000001', v_visit_a_id, 'working', null, null, null,
     '8a100000-0000-4000-8000-000000000002', 'dispatch-runtime:a:working'

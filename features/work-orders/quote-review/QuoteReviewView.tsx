@@ -74,6 +74,7 @@ type QuoteMetadata = {
   parts_quote?: Json;
   labor_rate?: Json;
   customer_pricing?: Json;
+  customer_pricing_v2?: Json;
   technician_notes?: Json;
   tech_notes?: Json;
 };
@@ -266,12 +267,21 @@ function customerPricingSummary(line: Pick<QuoteLine, "metadata">): {
   resolvedLaborRate: number | null;
   laborDiscountPercent: number;
   partsDiscountPercent: number;
+  matrixTierCount: number;
+  minimumPartsMarginPercent: number;
+  marginFloorAdjustmentTotal: number;
 } | null {
   const value = quoteMetadata(line).customer_pricing;
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const record = value as Record<string, Json>;
   const sourceType = jsonString(record.source_type);
   if (!sourceType || sourceType === "shop_default") return null;
+  const v2Value = quoteMetadata(line).customer_pricing_v2;
+  const v2 =
+    v2Value && typeof v2Value === "object" && !Array.isArray(v2Value)
+      ? (v2Value as Record<string, Json>)
+      : null;
+  const matrix = v2?.parts_matrix;
   return {
     sourceType,
     agreementName: jsonString(record.agreement_name) || null,
@@ -279,6 +289,11 @@ function customerPricingSummary(line: Pick<QuoteLine, "metadata">): {
     resolvedLaborRate: jsonNumber(record.resolved_labor_rate),
     laborDiscountPercent: jsonNumber(record.labor_discount_percent) ?? 0,
     partsDiscountPercent: jsonNumber(record.parts_discount_percent) ?? 0,
+    matrixTierCount: Array.isArray(matrix) ? matrix.length : 0,
+    minimumPartsMarginPercent:
+      jsonNumber(v2?.minimum_parts_margin_percent) ?? 0,
+    marginFloorAdjustmentTotal:
+      jsonNumber(v2?.margin_floor_adjustment_total) ?? 0,
   };
 }
 
@@ -294,6 +309,12 @@ function customerPricingLabel(summary: NonNullable<ReturnType<typeof customerPri
         : null,
     summary.partsDiscountPercent > 0
       ? `${summary.partsDiscountPercent}% parts`
+      : null,
+    summary.matrixTierCount > 0
+      ? `${summary.matrixTierCount}-tier matrix`
+      : null,
+    summary.minimumPartsMarginPercent > 0
+      ? `${summary.minimumPartsMarginPercent}% margin floor${summary.marginFloorAdjustmentTotal > 0 ? ` (+${fmt(summary.marginFloorAdjustmentTotal)} protected)` : ""}`
       : null,
   ].filter(Boolean);
   return `${summary.agreementName || source}${terms.length > 0 ? ` · ${terms.join(" · ")}` : ""}`;
