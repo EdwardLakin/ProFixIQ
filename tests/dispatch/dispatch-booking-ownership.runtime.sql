@@ -21,15 +21,16 @@ set user_id = excluded.user_id,
 insert into public.shops (
   id, owner_id, business_name, name, user_limit,
   accepts_online_booking, min_notice_minutes, max_lead_days,
-  location_type
+  location_type, billing_entitlement_override
 )
 values (
   '8b200000-0000-4000-8000-000000000001',
   '8a200000-0000-4000-8000-000000000001',
   'Dispatch Ownership Shop', 'Dispatch Ownership Shop', 10,
-  true, 0, 365, 'repair_facility'
+  true, 0, 365, 'repair_facility', 'internal_demo'
 )
-on conflict (id) do nothing;
+on conflict (id) do update
+set billing_entitlement_override = 'internal_demo';
 
 update public.profiles
 set shop_id = '8b200000-0000-4000-8000-000000000001'
@@ -38,6 +39,40 @@ where id in (
   '8a200000-0000-4000-8000-000000000002'
 );
 
+insert into public.mobile_service_settings (
+  shop_id, service_model, solo_mode, dispatch_enabled,
+  service_vehicles_enabled, field_operator_count_target,
+  onboarding_completed_at, configured_by
+)
+values (
+  '8b200000-0000-4000-8000-000000000001', 'mobile', false, true,
+  true, 2, now(), '8a200000-0000-4000-8000-000000000001'
+)
+on conflict (shop_id) do update
+set service_model = 'mobile',
+    solo_mode = false,
+    dispatch_enabled = true,
+    service_vehicles_enabled = true,
+    field_operator_count_target = 2,
+    onboarding_completed_at = now(),
+    configured_by = '8a200000-0000-4000-8000-000000000001';
+
+insert into public.mobile_field_operators (
+  shop_id, profile_id, enabled, created_by
+)
+values
+  (
+    '8b200000-0000-4000-8000-000000000001',
+    '8a200000-0000-4000-8000-000000000001', true,
+    '8a200000-0000-4000-8000-000000000001'
+  ),
+  (
+    '8b200000-0000-4000-8000-000000000001',
+    '8a200000-0000-4000-8000-000000000002', true,
+    '8a200000-0000-4000-8000-000000000001'
+  )
+on conflict (shop_id, profile_id) do update set enabled = true;
+
 insert into public.customers (id, shop_id, first_name, last_name, email)
 values (
   '8c200000-0000-4000-8000-000000000001',
@@ -45,6 +80,17 @@ values (
   'Dispatch', 'Lock', 'dispatch-lock-customer@example.com'
 )
 on conflict (id) do nothing;
+
+insert into public.vehicles (id, shop_id, customer_id, year, make, model, vin)
+values (
+  '8c210000-0000-4000-8000-000000000001',
+  '8b200000-0000-4000-8000-000000000001',
+  '8c200000-0000-4000-8000-000000000001',
+  2024, 'Test', 'Dispatch Ownership Unit', '1FTFW1E50NFB00001'
+)
+on conflict (id) do update
+set shop_id = excluded.shop_id,
+    customer_id = excluded.customer_id;
 
 insert into public.service_vehicles (id, shop_id, name, unit_number, active)
 values (
@@ -73,12 +119,14 @@ declare
   v_locked_end timestamptz;
   v_locked_status text;
   v_owner_visit_id uuid;
+  v_handoff jsonb;
+  v_work_order_id uuid;
 begin
   v_booking := public.scheduler_apply_booking_command_atomic(
     'create', null,
     '8b200000-0000-4000-8000-000000000001',
     '8c200000-0000-4000-8000-000000000001',
-    null,
+    '8c210000-0000-4000-8000-000000000001',
     '2099-04-01 09:00:00+00', '2099-04-01 10:00:00+00',
     'Dispatch ownership test',
     '8a200000-0000-4000-8000-000000000001', 'staff',
@@ -226,6 +274,23 @@ begin
     '8a200000-0000-4000-8000-000000000002',
     'dispatch-lock:arrived'
   );
+
+  v_handoff := public.mobile_materialize_service_visit_work_order_atomic(
+    '8b200000-0000-4000-8000-000000000001',
+    v_visit_id,
+    '8a200000-0000-4000-8000-000000000002',
+    'dispatch-lock:work-order'
+  );
+  v_work_order_id := (v_handoff ->> 'workOrderId')::uuid;
+  if v_work_order_id is null or not exists (
+    select 1 from public.service_visits visit
+    where visit.id = v_visit_id
+      and visit.shop_id = '8b200000-0000-4000-8000-000000000001'
+      and visit.work_order_id = v_work_order_id
+  ) then
+    raise exception 'Dispatch ownership assertion failed: arrived visit did not materialize its canonical work order';
+  end if;
+
   perform public.dispatch_transition_service_visit_atomic(
     '8b200000-0000-4000-8000-000000000001',
     v_visit_id, 'working', null, null, null,
