@@ -16,7 +16,10 @@ function siteUrl(): string {
     : "http://localhost:3000";
 }
 
-export async function GET() {
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export async function GET(req: Request) {
   const access = await requireShopScopedApiAccess({
     requiredCapability: "canInviteFleetMembers",
   });
@@ -24,7 +27,7 @@ export async function GET() {
   const [fleetsResult, invitesResult] = await Promise.all([
     supabaseAdmin
       .from("fleets")
-      .select("id, name")
+      .select("id, name, customer_id")
       .eq("shop_id", access.profile.shop_id)
       .order("name"),
     supabaseAdmin
@@ -42,10 +45,38 @@ export async function GET() {
       { status: 500 },
     );
   }
+
+  const customerId = new URL(req.url).searchParams.get("customerId")?.trim();
+  if (customerId && !UUID_PATTERN.test(customerId)) {
+    return NextResponse.json(
+      { error: "Customer reference is invalid." },
+      { status: 400 },
+    );
+  }
+  const customerCandidate = customerId
+    ? await supabaseAdmin
+        .from("customers")
+        .select(
+          "id, name, business_name, first_name, last_name, email, account_type",
+        )
+        .eq("id", customerId)
+        .eq("shop_id", access.profile.shop_id)
+        .maybeSingle()
+    : null;
+  if (customerCandidate?.error) {
+    return NextResponse.json(
+      { error: "Customer relationship could not be loaded." },
+      { status: 500 },
+    );
+  }
+  if (customerId && !customerCandidate?.data) {
+    return NextResponse.json({ error: "Customer not found." }, { status: 404 });
+  }
   return NextResponse.json({
     ok: true,
     fleets: fleetsResult.data ?? [],
     invites: invitesResult.data ?? [],
+    customerCandidate: customerCandidate?.data ?? null,
   });
 }
 
@@ -62,12 +93,49 @@ export async function POST(req: Request) {
     name?: string;
     contactName?: string;
     contactEmail?: string;
+    customerId?: string;
   } | null;
 
   if (body?.action === "create_fleet") {
-    const name = String(body.name ?? "").trim();
-    const contactName = String(body.contactName ?? "").trim();
-    const contactEmail = String(body.contactEmail ?? "")
+    const customerId = String(body.customerId ?? "").trim();
+    if (customerId && !UUID_PATTERN.test(customerId)) {
+      return NextResponse.json(
+        { error: "Customer reference is invalid." },
+        { status: 400 },
+      );
+    }
+
+    const customerResult = customerId
+      ? await supabaseAdmin
+          .from("customers")
+          .select("id, name, business_name, first_name, last_name, email")
+          .eq("id", customerId)
+          .eq("shop_id", access.profile.shop_id)
+          .maybeSingle()
+      : null;
+    if (customerResult?.error) {
+      return NextResponse.json(
+        { error: "Customer relationship could not be verified." },
+        { status: 500 },
+      );
+    }
+    if (customerId && !customerResult?.data) {
+      return NextResponse.json(
+        { error: "Customer not found." },
+        { status: 404 },
+      );
+    }
+
+    const customer = customerResult?.data ?? null;
+    const name =
+      String(body.name ?? "").trim() ||
+      customer?.business_name?.trim() ||
+      customer?.name?.trim() ||
+      "";
+    const contactName =
+      String(body.contactName ?? "").trim() ||
+      [customer?.first_name, customer?.last_name].filter(Boolean).join(" ");
+    const contactEmail = String(body.contactEmail ?? customer?.email ?? "")
       .trim()
       .toLowerCase();
     if (!name || name.length > 120) {
@@ -89,6 +157,7 @@ export async function POST(req: Request) {
       .from("fleets")
       .insert({
         shop_id: access.profile.shop_id,
+        ...(customerId ? { customer_id: customerId } : {}),
         name,
         contact_name: contactName || null,
         contact_email: contactEmail || null,

@@ -15,6 +15,7 @@ import { format } from "date-fns";
 import { checkVehicleDuplicates } from "@/features/shared/lib/vehicles/duplicateCheck";
 import GuidedPageStepPanel from "@/features/onboarding-v2/components/GuidedPageStepPanel";
 import { CustomerCsvImportCard } from "@/features/customers/components/CustomerCsvImportCard";
+import { CustomerAccountDetails } from "@/features/customers/components/CustomerAccountDetails";
 import { ImportedHistoryRecordCard } from "@/features/work-orders/components/ImportedHistoryRecordCard";
 import { usePersistentGuidedOnboardingQuery } from "@/features/onboarding-v2/guided/persistence";
 import { useTabs } from "@/features/shared/components/tabs/TabsProvider";
@@ -66,9 +67,17 @@ type CustomerSearchRow = Pick<
   | "phone_number"
   | "created_at"
   | "customer_since"
+  | "account_type"
+  | "is_fleet"
+  | "active"
 >;
 
-type NewCustomerType = "individual" | "business" | "fleet";
+type NewCustomerType = "individual" | "business" | "fleet" | "enterprise";
+type CustomerDirectoryFilter = "all" | NewCustomerType;
+type FleetConnection = Pick<
+  DB["public"]["Tables"]["fleets"]["Row"],
+  "id" | "name" | "active"
+>;
 
 type NewCustomerDraft = {
   customerType: NewCustomerType;
@@ -175,6 +184,27 @@ function customerSearchHaystack(c: CustomerSearchRow): string {
     )
     .join(" ")
     .toLowerCase();
+}
+
+const CUSTOMER_TYPE_LABELS: Record<NewCustomerType, string> = {
+  individual: "Individual",
+  business: "Business",
+  fleet: "Fleet",
+  enterprise: "Enterprise",
+};
+
+function customerAccountType(
+  customer: Pick<Customer, "account_type" | "is_fleet" | "business_name">,
+): NewCustomerType {
+  if (customer.is_fleet) return "fleet";
+  if (
+    customer.account_type === "business" ||
+    customer.account_type === "fleet" ||
+    customer.account_type === "enterprise"
+  ) {
+    return customer.account_type;
+  }
+  return customer.business_name?.trim() ? "business" : "individual";
 }
 
 function sortCustomerRows(rows: CustomerSearchRow[]): CustomerSearchRow[] {
@@ -519,7 +549,9 @@ function TopBar({
         </span>
         Back
       </button>
-      <div className="text-[10px] text-[color:var(--theme-text-muted)]">{rightLabel}</div>
+      <div className="text-[10px] text-[color:var(--theme-text-muted)]">
+        {rightLabel}
+      </div>
     </div>
   );
 }
@@ -633,6 +665,8 @@ export default function CustomerProfilePage(): JSX.Element {
   const [searching, setSearching] = useState<boolean>(false);
   const [results, setResults] = useState<CustomerSearchRow[]>([]);
   const [directoryRows, setDirectoryRows] = useState<CustomerSearchRow[]>([]);
+  const [directoryFilter, setDirectoryFilter] =
+    useState<CustomerDirectoryFilter>("all");
   const [directoryLoaded, setDirectoryLoaded] = useState(false);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -648,6 +682,9 @@ export default function CustomerProfilePage(): JSX.Element {
   ] = useState(false);
   const [newCustomer, setNewCustomer] =
     useState<NewCustomerDraft>(EMPTY_NEW_CUSTOMER);
+  const [fleetConnections, setFleetConnections] = useState<FleetConnection[]>(
+    [],
+  );
   const { updateActiveTab } = useTabs();
 
   useEffect(() => {
@@ -729,7 +766,7 @@ export default function CustomerProfilePage(): JSX.Element {
         const { data: cust, error: custErr } = await supabase
           .from("customers")
           .select(
-            "id, shop_id, first_name, last_name, name, business_name, email, phone, phone_number, created_at, customer_since, address, city, province, postal_code",
+            "id, shop_id, first_name, last_name, name, business_name, email, phone, phone_number, created_at, customer_since, address, city, province, postal_code, account_type, is_fleet, active",
           )
           .eq("id", customerId)
           .maybeSingle();
@@ -744,12 +781,22 @@ export default function CustomerProfilePage(): JSX.Element {
           setImportedHistory([]);
           setRawVehicleMedia([]);
           setMedia([]);
+          setFleetConnections([]);
           setViewError("Customer not found / not visible.");
           setLoading(false);
           return;
         }
 
         setCustomer(cust as Customer);
+
+        const { data: connectedFleets, error: connectedFleetsError } =
+          await supabase
+            .from("fleets")
+            .select("id, name, active")
+            .eq("customer_id", customerId)
+            .order("name");
+        if (connectedFleetsError) throw connectedFleetsError;
+        setFleetConnections((connectedFleets ?? []) as FleetConnection[]);
 
         const { data: vs, error: vsErr } = await supabase
           .from("vehicles")
@@ -1044,7 +1091,8 @@ export default function CustomerProfilePage(): JSX.Element {
     const businessName = strOrNull(newCustomer.businessName);
     const isBusinessLike =
       newCustomer.customerType === "business" ||
-      newCustomer.customerType === "fleet";
+      newCustomer.customerType === "fleet" ||
+      newCustomer.customerType === "enterprise";
     const displayName = isBusinessLike ? businessName : customerName;
 
     if (!displayName) {
@@ -1073,7 +1121,9 @@ export default function CustomerProfilePage(): JSX.Element {
 
       const insertRecord: DB["public"]["Tables"]["customers"]["Insert"] = {
         shop_id: shopId,
-        user_id: user.id,
+        user_id: null,
+        created_by: user.id,
+        account_type: newCustomer.customerType,
         is_fleet: newCustomer.customerType === "fleet",
         name: displayName,
         business_name: isBusinessLike ? businessName : null,
@@ -1137,7 +1187,7 @@ export default function CustomerProfilePage(): JSX.Element {
       const { data, error } = await supabase
         .from("customers")
         .select(
-          "id, shop_id, first_name, last_name, name, business_name, email, phone, phone_number, created_at, customer_since",
+          "id, shop_id, first_name, last_name, name, business_name, email, phone, phone_number, created_at, customer_since, account_type, is_fleet, active",
         )
         .eq("shop_id", shopId);
 
@@ -1163,11 +1213,17 @@ export default function CustomerProfilePage(): JSX.Element {
 
   const runSearch = useCallback(() => {
     const q = query.trim().toLowerCase();
+    const typedRows =
+      directoryFilter === "all"
+        ? directoryRows
+        : directoryRows.filter(
+            (row) => customerAccountType(row) === directoryFilter,
+          );
     const rows = q
-      ? directoryRows.filter((row) => customerSearchHaystack(row).includes(q))
-      : directoryRows;
+      ? typedRows.filter((row) => customerSearchHaystack(row).includes(q))
+      : typedRows;
     setResults(sortCustomerRows(rows).slice(0, 20));
-  }, [directoryRows, query]);
+  }, [directoryFilter, directoryRows, query]);
 
   // Optional: prime query from ?q= ONCE (do not keep syncing, avoids focus/typing weirdness)
   useEffect(() => {
@@ -1195,7 +1251,7 @@ export default function CustomerProfilePage(): JSX.Element {
     }, 150);
 
     return () => window.clearTimeout(t);
-  }, [query, isDirectoryMode, sp, directoryLoaded, runSearch]);
+  }, [query, directoryFilter, isDirectoryMode, sp, directoryLoaded, runSearch]);
 
   // ------------------ Upload ------------------
   const handleUpload = useCallback(
@@ -1279,6 +1335,7 @@ export default function CustomerProfilePage(): JSX.Element {
         typeof r["business_name"] === "string"
           ? (r["business_name"] as string)
           : "",
+      account_type: customerAccountType(customer),
       email: customer.email ?? null,
       phone: customer.phone ?? null,
       phone_number: customer.phone_number ?? null,
@@ -1313,6 +1370,11 @@ export default function CustomerProfilePage(): JSX.Element {
         typeof custDraft["business_name"] === "string"
           ? (custDraft["business_name"] as string) || null
           : null,
+      account_type:
+        typeof custDraft["account_type"] === "string"
+          ? custDraft["account_type"]
+          : "individual",
+      is_fleet: custDraft["account_type"] === "fleet",
       email: typeof custDraft["email"] === "string" ? custDraft["email"] : null,
       phone: typeof custDraft["phone"] === "string" ? custDraft["phone"] : null,
       phone_number:
@@ -1656,7 +1718,9 @@ export default function CustomerProfilePage(): JSX.Element {
           >
             ← Back
           </button>
-          <div className="text-xs text-[color:var(--theme-text-muted)]">Customers</div>
+          <div className="text-xs text-[color:var(--theme-text-muted)]">
+            Customers
+          </div>
         </div>
 
         <GuidedPageStepPanel
@@ -1753,9 +1817,34 @@ export default function CustomerProfilePage(): JSX.Element {
             </div>
           </div>
 
+          <div
+            className="mt-4 flex flex-wrap gap-2"
+            aria-label="Filter customer files by account type"
+          >
+            {(
+              ["all", "individual", "business", "fleet", "enterprise"] as const
+            ).map((filter) => (
+              <button
+                key={filter}
+                type="button"
+                aria-pressed={directoryFilter === filter}
+                onClick={() => setDirectoryFilter(filter)}
+                className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                  directoryFilter === filter
+                    ? "border-[var(--accent-copper)] bg-[var(--accent-copper)] text-[color:var(--theme-text-on-accent)]"
+                    : "border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] text-[color:var(--theme-text-secondary)] hover:border-[var(--accent-copper-soft)]"
+                }`}
+              >
+                {filter === "all" ? "All" : CUSTOMER_TYPE_LABELS[filter]}
+              </button>
+            ))}
+          </div>
+
           <div className="mt-4">
             {results.length === 0 ? (
-              <div className={`${CARD_INNER} p-3 text-sm text-[color:var(--theme-text-secondary)]`}>
+              <div
+                className={`${CARD_INNER} p-3 text-sm text-[color:var(--theme-text-secondary)]`}
+              >
                 {searching
                   ? "Searching…"
                   : directoryRows.length === 0
@@ -1776,6 +1865,11 @@ export default function CustomerProfilePage(): JSX.Element {
                         <div className="min-w-0">
                           <div className="truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">
                             {bestCustomerDisplayName(r)}
+                          </div>
+                          <div className="mt-1">
+                            <span className="inline-flex rounded-full border border-[var(--accent-copper-soft)]/45 bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-[var(--accent-copper)]">
+                              {CUSTOMER_TYPE_LABELS[customerAccountType(r)]}
+                            </span>
                           </div>
                           <div className="mt-0.5 truncate text-[11px] text-[color:var(--theme-text-secondary)]">
                             {r.business_name?.trim() &&
@@ -1866,6 +1960,9 @@ export default function CustomerProfilePage(): JSX.Element {
                   <option value="individual">Individual</option>
                   <option value="business">Business</option>
                   <option value="fleet">Fleet</option>
+                  <option value="enterprise">
+                    Enterprise / multi-location
+                  </option>
                 </select>
               </label>
 
@@ -2102,6 +2199,23 @@ export default function CustomerProfilePage(): JSX.Element {
                           {title}
                         </h1>
 
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <span className="inline-flex rounded-full border border-[var(--accent-copper-soft)]/45 bg-[color:var(--theme-surface-inset)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--accent-copper)]">
+                            {
+                              CUSTOMER_TYPE_LABELS[
+                                customerAccountType(customer)
+                              ]
+                            }
+                          </span>
+                          {fleetConnections.length > 0 ? (
+                            <span className="inline-flex rounded-full border border-emerald-500/35 bg-emerald-950/25 px-2.5 py-1 text-[10px] font-semibold text-emerald-200">
+                              {fleetConnections.length === 1
+                                ? `Fleet connected · ${fleetConnections[0]?.name}`
+                                : `${fleetConnections.length} Fleet workspaces connected`}
+                            </span>
+                          ) : null}
+                        </div>
+
                         {biz && (customer.first_name || customer.last_name) ? (
                           <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
                             {fmtName(customer)}
@@ -2158,6 +2272,23 @@ export default function CustomerProfilePage(): JSX.Element {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
+                  {customerAccountType(customer) !== "individual" ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        router.push(
+                          fleetConnections[0]?.id
+                            ? `/dashboard/owner/fleet-access?fleetId=${fleetConnections[0].id}`
+                            : `/dashboard/owner/fleet-access?customerId=${customer.id}`,
+                        )
+                      }
+                      className="rounded-xl border border-[var(--accent-copper-soft)]/55 bg-[color:var(--desktop-item-bg)] px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] hover:border-[var(--accent-copper)]"
+                    >
+                      {fleetConnections.length > 0
+                        ? "Manage Fleet access"
+                        : "Connect Fleet workspace"}
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     onClick={() => setEditCustomerOpen(true)}
@@ -2184,6 +2315,12 @@ export default function CustomerProfilePage(): JSX.Element {
                 </div>
               </div>
             </div>
+            {customer.shop_id ? (
+              <CustomerAccountDetails
+                customerId={customer.id}
+                shopId={customer.shop_id}
+              />
+            ) : null}
             {/* Vehicles */}
             <div className={`${CARD_BASE} p-4`}>
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -2662,11 +2799,15 @@ export default function CustomerProfilePage(): JSX.Element {
         }
       >
         {!viewerItem ? (
-          <div className={`${CARD_INNER} p-3 text-sm text-[color:var(--theme-text-secondary)]`}>
+          <div
+            className={`${CARD_INNER} p-3 text-sm text-[color:var(--theme-text-secondary)]`}
+          >
             No file selected.
           </div>
         ) : !viewerItem.displayUrl ? (
-          <div className={`${CARD_INNER} p-3 text-sm text-[color:var(--theme-text-secondary)]`}>
+          <div
+            className={`${CARD_INNER} p-3 text-sm text-[color:var(--theme-text-secondary)]`}
+          >
             This file doesn’t have a viewable URL yet (likely a private bucket
             without a signed URL).
           </div>
@@ -2678,7 +2819,9 @@ export default function CustomerProfilePage(): JSX.Element {
             className="w-full rounded-xl"
           />
         ) : (
-          <div className={`${CARD_INNER} p-3 text-sm text-[color:var(--theme-text-secondary)]`}>
+          <div
+            className={`${CARD_INNER} p-3 text-sm text-[color:var(--theme-text-secondary)]`}
+          >
             Document ready. Use “Open in new tab”.
           </div>
         )}
@@ -2708,6 +2851,26 @@ export default function CustomerProfilePage(): JSX.Element {
           </>
         }
       >
+        <div className="mb-3 space-y-1">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
+            Account type
+          </div>
+          <select
+            value={String(custDraft["account_type"] ?? "individual")}
+            onChange={(event) =>
+              setCustDraft((draft) => ({
+                ...draft,
+                account_type: event.target.value,
+              }))
+            }
+            className="w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
+          >
+            <option value="individual">Individual</option>
+            <option value="business">Business</option>
+            <option value="fleet">Fleet</option>
+            <option value="enterprise">Enterprise / multi-location</option>
+          </select>
+        </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {(
             [
@@ -2765,7 +2928,9 @@ export default function CustomerProfilePage(): JSX.Element {
         }
       >
         {!selectedVehicle ? (
-          <div className={`${CARD_INNER} p-3 text-sm text-[color:var(--theme-text-secondary)]`}>
+          <div
+            className={`${CARD_INNER} p-3 text-sm text-[color:var(--theme-text-secondary)]`}
+          >
             No vehicle selected.
           </div>
         ) : (
@@ -2854,7 +3019,9 @@ export default function CustomerProfilePage(): JSX.Element {
         }
       >
         {!customer ? (
-          <div className={`${CARD_INNER} p-3 text-sm text-[color:var(--theme-text-secondary)]`}>
+          <div
+            className={`${CARD_INNER} p-3 text-sm text-[color:var(--theme-text-secondary)]`}
+          >
             No customer loaded.
           </div>
         ) : (
