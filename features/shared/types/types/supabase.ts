@@ -3141,22 +3141,22 @@ export type Database = {
           created_at: string
           created_by: string
           currency: string
+          customer_fee_cap: number | null
+          customer_fee_type: string
+          customer_fee_value: number
           customer_id: string
           effective_from: string
           effective_until: string | null
+          expiry_warning_days: number
           id: string
           labor_discount_percent: number
           labor_rate: number | null
+          minimum_parts_margin_percent: number
           name: string
           notes: string | null
           operation_key: string
           parts_discount_percent: number
           parts_markup_matrix: Json
-          minimum_parts_margin_percent: number
-          customer_fee_type: string
-          customer_fee_value: number
-          customer_fee_cap: number | null
-          expiry_warning_days: number
           retired_at: string | null
           retired_by: string | null
           retired_reason: string | null
@@ -3172,22 +3172,22 @@ export type Database = {
           created_at?: string
           created_by: string
           currency?: string
+          customer_fee_cap?: number | null
+          customer_fee_type?: string
+          customer_fee_value?: number
           customer_id: string
           effective_from?: string
           effective_until?: string | null
+          expiry_warning_days?: number
           id?: string
           labor_discount_percent?: number
           labor_rate?: number | null
+          minimum_parts_margin_percent?: number
           name: string
           notes?: string | null
           operation_key: string
           parts_discount_percent?: number
           parts_markup_matrix?: Json
-          minimum_parts_margin_percent?: number
-          customer_fee_type?: string
-          customer_fee_value?: number
-          customer_fee_cap?: number | null
-          expiry_warning_days?: number
           retired_at?: string | null
           retired_by?: string | null
           retired_reason?: string | null
@@ -3203,22 +3203,22 @@ export type Database = {
           created_at?: string
           created_by?: string
           currency?: string
+          customer_fee_cap?: number | null
+          customer_fee_type?: string
+          customer_fee_value?: number
           customer_id?: string
           effective_from?: string
           effective_until?: string | null
+          expiry_warning_days?: number
           id?: string
           labor_discount_percent?: number
           labor_rate?: number | null
+          minimum_parts_margin_percent?: number
           name?: string
           notes?: string | null
           operation_key?: string
           parts_discount_percent?: number
           parts_markup_matrix?: Json
-          minimum_parts_margin_percent?: number
-          customer_fee_type?: string
-          customer_fee_value?: number
-          customer_fee_cap?: number | null
-          expiry_warning_days?: number
           retired_at?: string | null
           retired_by?: string | null
           retired_reason?: string | null
@@ -24999,10 +24999,10 @@ export type Database = {
           customer_approval_signature_url: string | null
           customer_approved_by: string | null
           customer_id: string | null
+          customer_name: string | null
           customer_pricing_fee_agreement_id: string | null
           customer_pricing_fee_resolved_at: string | null
           customer_pricing_fee_total: number | null
-          customer_name: string | null
           customer_signature_url: string | null
           estimate_authorized_at: string | null
           estimate_converted_at: string | null
@@ -25088,10 +25088,10 @@ export type Database = {
           customer_approval_signature_url?: string | null
           customer_approved_by?: string | null
           customer_id?: string | null
+          customer_name?: string | null
           customer_pricing_fee_agreement_id?: string | null
           customer_pricing_fee_resolved_at?: string | null
           customer_pricing_fee_total?: number | null
-          customer_name?: string | null
           customer_signature_url?: string | null
           estimate_authorized_at?: string | null
           estimate_converted_at?: string | null
@@ -25177,10 +25177,10 @@ export type Database = {
           customer_approval_signature_url?: string | null
           customer_approved_by?: string | null
           customer_id?: string | null
+          customer_name?: string | null
           customer_pricing_fee_agreement_id?: string | null
           customer_pricing_fee_resolved_at?: string | null
           customer_pricing_fee_total?: number | null
-          customer_name?: string | null
           customer_signature_url?: string | null
           estimate_authorized_at?: string | null
           estimate_converted_at?: string | null
@@ -25255,17 +25255,17 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "work_orders_customer_pricing_fee_agreement_id_fkey"
-            columns: ["customer_pricing_fee_agreement_id"]
-            isOneToOne: false
-            referencedRelation: "customer_pricing_agreements"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "work_orders_customer_id_fkey"
             columns: ["customer_id"]
             isOneToOne: false
             referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_orders_customer_pricing_fee_agreement_id_fkey"
+            columns: ["customer_pricing_fee_agreement_id"]
+            isOneToOne: false
+            referencedRelation: "customer_pricing_agreements"
             referencedColumns: ["id"]
           },
           {
@@ -27483,6 +27483,9 @@ export type Database = {
           customer_approved_by: string | null
           customer_id: string | null
           customer_name: string | null
+          customer_pricing_fee_agreement_id: string | null
+          customer_pricing_fee_resolved_at: string | null
+          customer_pricing_fee_total: number | null
           customer_signature_url: string | null
           estimate_authorized_at: string | null
           estimate_converted_at: string | null
@@ -30058,3 +30061,4 @@ export const Constants = {
     },
   },
 } as const
+
