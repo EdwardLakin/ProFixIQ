@@ -806,6 +806,36 @@ export async function POST(req: Request) {
       : body?.quoteTotal;
     let sendableQuoteLineIds: string[] = [];
 
+    const { error: customerPricingError } = await supabaseAdmin.rpc(
+      "apply_customer_pricing_to_quote_atomic" as never,
+      {
+        p_shop_id: wo.shop_id,
+        p_work_order_id: workOrderId,
+        p_quote_line_ids: [],
+        p_actor_user_id: access.authUserId,
+        p_at: new Date().toISOString(),
+      } as never,
+    );
+    if (customerPricingError) {
+      const detail = [
+        customerPricingError.message,
+        customerPricingError.details,
+        customerPricingError.hint,
+      ]
+        .filter(Boolean)
+        .join(" — ");
+      return NextResponse.json(
+        {
+          ok: false,
+          trace,
+          error:
+            "Customer-specific pricing could not be frozen for this quote.",
+          detail,
+        },
+        { status: 409 },
+      );
+    }
+
     const { data: quoteLineRowsRaw, error: quoteLinesErr } = await supabaseAdmin
       .from("work_order_quote_lines")
       .select(

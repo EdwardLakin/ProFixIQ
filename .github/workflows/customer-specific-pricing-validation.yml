@@ -1,0 +1,71 @@
+name: Customer-specific Pricing Validation
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "app/api/customers/**/pricing/**"
+      - "app/api/work-orders/**/customer-pricing/**"
+      - "app/api/quotes/send/route.ts"
+      - "features/customers/components/CustomerPricingPanel.tsx"
+      - "features/customers/components/CustomerAccountDetails.tsx"
+      - "features/pricing/**"
+      - "features/work-orders/quote-review/QuoteReviewView.tsx"
+      - "supabase/migrations/20260812022359_customer_specific_pricing_engine.sql"
+      - "tests/customer-specific-pricing-engine.test.ts"
+      - "tests/pricing/customer-specific-pricing.runtime.sql"
+      - ".github/workflows/customer-specific-pricing-validation.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: customer-specific-pricing-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.8.1
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Pricing source and resolver tests
+        run: >-
+          pnpm exec vitest run
+          features/pricing/lib/customerPricing.test.ts
+          tests/customer-specific-pricing-engine.test.ts
+      - name: Pricing lint
+        run: >-
+          pnpm exec eslint
+          app/api/customers/[id]/pricing/route.ts
+          app/api/work-orders/[id]/customer-pricing/route.ts
+          features/customers/components/CustomerPricingPanel.tsx
+          features/customers/components/CustomerAccountDetails.tsx
+          features/pricing/lib/customerPricing.ts
+          features/pricing/lib/customerPricing.test.ts
+      - name: Set up Supabase CLI
+        uses: supabase/setup-cli@v2
+        with:
+          version: 2.101.0
+          github-token: ${{ github.token }}
+      - name: Start clean local database
+        run: supabase db start
+      - name: Run customer pricing runtime
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: >-
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1
+          -f tests/pricing/customer-specific-pricing.runtime.sql
+      - name: Stop local Supabase
+        if: always()
+        run: supabase stop --no-backup || true

@@ -73,6 +73,7 @@ type QuoteMetadata = {
   parts?: Json;
   parts_quote?: Json;
   labor_rate?: Json;
+  customer_pricing?: Json;
   technician_notes?: Json;
   tech_notes?: Json;
 };
@@ -256,6 +257,46 @@ function partsQuoteSummary(line: Pick<QuoteLine, "metadata">): {
     partsTotal: jsonNumber(record.parts_total),
     ...sanitization,
   };
+}
+
+function customerPricingSummary(line: Pick<QuoteLine, "metadata">): {
+  sourceType: string;
+  agreementName: string | null;
+  baseLaborRate: number | null;
+  resolvedLaborRate: number | null;
+  laborDiscountPercent: number;
+  partsDiscountPercent: number;
+} | null {
+  const value = quoteMetadata(line).customer_pricing;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, Json>;
+  const sourceType = jsonString(record.source_type);
+  if (!sourceType || sourceType === "shop_default") return null;
+  return {
+    sourceType,
+    agreementName: jsonString(record.agreement_name) || null,
+    baseLaborRate: jsonNumber(record.base_labor_rate),
+    resolvedLaborRate: jsonNumber(record.resolved_labor_rate),
+    laborDiscountPercent: jsonNumber(record.labor_discount_percent) ?? 0,
+    partsDiscountPercent: jsonNumber(record.parts_discount_percent) ?? 0,
+  };
+}
+
+function customerPricingLabel(summary: NonNullable<ReturnType<typeof customerPricingSummary>>): string {
+  const source = summary.sourceType.replaceAll("_", " ");
+  const terms = [
+    summary.resolvedLaborRate != null &&
+    summary.baseLaborRate != null &&
+    summary.resolvedLaborRate !== summary.baseLaborRate
+      ? `labor ${fmt(summary.resolvedLaborRate)}/hr`
+      : summary.laborDiscountPercent > 0
+        ? `${summary.laborDiscountPercent}% labor`
+        : null,
+    summary.partsDiscountPercent > 0
+      ? `${summary.partsDiscountPercent}% parts`
+      : null,
+  ].filter(Boolean);
+  return `${summary.agreementName || source}${terms.length > 0 ? ` · ${terms.join(" · ")}` : ""}`;
 }
 
 function partsWorkflowLabel(line: EditableQuoteLine): { label: string; tone: "warn" | "ok" | "info" } | null {
@@ -509,6 +550,23 @@ export default function QuoteReviewView(props: {
     const shopId = woRow?.shop_id ?? null;
 
     if (shopId) {
+      const pricingResponse = await fetch(
+        `/api/work-orders/${woId}/customer-pricing`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ quoteLineIds: [] }),
+        },
+      );
+      if (!pricingResponse.ok && pricingResponse.status !== 403) {
+        const pricingPayload = (await pricingResponse
+          .json()
+          .catch(() => null)) as { error?: string } | null;
+        toast.error(
+          pricingPayload?.error ?? "Customer pricing could not be resolved.",
+        );
+      }
+
       const [{ data: shopRow, error: shopErr }, { data: qRows, error: qErr }, { data: wlRows, error: wlErr }] = await Promise.all([
         supabase.from("shops").select("*").eq("id", shopId).maybeSingle(),
         supabase
@@ -731,6 +789,7 @@ export default function QuoteReviewView(props: {
           notes: line.notes,
           est_labor_hours: line.est_labor_hours,
           labor_hours: laborHours,
+          labor_rate: quoteLineLaborRate(line, laborRate),
           labor_total: laborTotal,
           parts_total: partsTotal,
           subtotal,
@@ -748,6 +807,23 @@ export default function QuoteReviewView(props: {
           .eq("shop_id", wo.shop_id)
           .eq("work_order_id", woId);
         if (error) throw error;
+      }
+
+      const pricingResponse = await fetch(
+        `/api/work-orders/${woId}/customer-pricing`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ quoteLineIds: dirty.map((line) => line.id) }),
+        },
+      );
+      const pricingPayload = (await pricingResponse.json().catch(() => null)) as {
+        error?: string;
+      } | null;
+      if (!pricingResponse.ok) {
+        throw new Error(
+          pricingPayload?.error ?? "Customer pricing could not be resolved.",
+        );
       }
 
       toast.success("Quote lines saved.");
@@ -1008,6 +1084,7 @@ export default function QuoteReviewView(props: {
                     const finalDecision = isFinalDecision(line);
                     const pricingQuarantined =
                       partsSummary?.customerPricingQuarantined === true;
+                    const dedicatedPricing = customerPricingSummary(line);
                     const commercialEditingDisabled =
                       finalDecision || pricingQuarantined;
                     const finalizedLineTotalUnavailable =
@@ -1025,6 +1102,7 @@ export default function QuoteReviewView(props: {
                                 <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">Quote line {index + 1}</div>
                                 <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${badgeClass(workflow.tone)}`}>{workflow.label}</span>
                                 {partsWorkflow ? <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${badgeClass(partsWorkflow.tone)}`}>{partsWorkflow.label}</span> : null}
+                                {dedicatedPricing ? <span className="rounded-full border border-emerald-300/35 bg-emerald-400/10 px-2.5 py-1 text-[11px] font-semibold capitalize text-emerald-100">{customerPricingLabel(dedicatedPricing)}</span> : null}
                                 {line._dirty ? <span className="rounded-full border border-amber-300/40 bg-amber-400/10 px-2.5 py-1 text-[11px] font-semibold text-amber-100">Unsaved</span> : null}
                               </div>
                               <h3 className="mt-2 text-base font-semibold text-[color:var(--theme-text-primary)]">{safeTrim(line.description) || "Untitled quote line"}</h3>

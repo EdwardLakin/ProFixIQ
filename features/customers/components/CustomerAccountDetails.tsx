@@ -5,6 +5,7 @@ import { Building2, Loader2, MapPin, Plus, UserRound } from "lucide-react";
 import { toast } from "sonner";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@/features/shared/types/types/supabase";
+import { CustomerPricingPanel } from "@/features/customers/components/CustomerPricingPanel";
 
 type Contact = Database["public"]["Tables"]["customer_contacts"]["Row"];
 type Location = Database["public"]["Tables"]["customer_locations"]["Row"];
@@ -136,7 +137,9 @@ export function CustomerAccountDetails({ customerId, shopId }: Props) {
   }
 
   return (
-    <section className="rounded-2xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--desktop-panel-bg-soft)] p-4 shadow-[var(--theme-shadow-medium)] backdrop-blur-xl">
+    <div className="space-y-4">
+      <CustomerPricingPanel customerId={customerId} />
+      <section className="rounded-2xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--desktop-panel-bg-soft)] p-4 shadow-[var(--theme-shadow-medium)] backdrop-blur-xl">
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--accent-copper)]">
@@ -409,6 +412,7 @@ export function CustomerAccountDetails({ customerId, shopId }: Props) {
           </div>
         </div>
       </div>
-    </section>
+      </section>
+    </div>
   );
 }
