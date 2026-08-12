@@ -58,6 +58,41 @@ create index work_orders_customer_pricing_fee_agreement_idx
   on public.work_orders (customer_pricing_fee_agreement_id)
   where customer_pricing_fee_agreement_id is not null;
 
+-- The canonical supplies override remains advisor-editable. If any direct
+-- writer changes it without advancing the resolver timestamp, that edit takes
+-- ownership and the agreement attribution must be cleared atomically.
+create or replace function private.clear_customer_pricing_fee_attribution_on_manual_supplies_override()
+returns trigger
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+begin
+  if (
+       new.shop_supplies_enabled_override
+         is distinct from old.shop_supplies_enabled_override
+       or new.shop_supplies_amount_override
+         is distinct from old.shop_supplies_amount_override
+     )
+     and new.customer_pricing_fee_agreement_id is not null
+     and new.customer_pricing_fee_resolved_at
+       is not distinct from old.customer_pricing_fee_resolved_at then
+    new.customer_pricing_fee_agreement_id := null;
+    new.customer_pricing_fee_total := null;
+    new.customer_pricing_fee_resolved_at := null;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists work_orders_clear_customer_pricing_fee_on_manual_supplies_override
+  on public.work_orders;
+create trigger work_orders_clear_customer_pricing_fee_on_manual_supplies_override
+before update of shop_supplies_enabled_override, shop_supplies_amount_override
+on public.work_orders
+for each row
+execute function private.clear_customer_pricing_fee_attribution_on_manual_supplies_override();
+
 create or replace function private.valid_parts_markup_matrix(p_matrix jsonb)
 returns boolean
 language sql

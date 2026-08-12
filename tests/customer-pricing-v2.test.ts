@@ -82,7 +82,9 @@ describe("customer Pricing V2", () => {
     expect(accountPanel).toContain("Contract expiry:");
     expect(accountPanel).toContain("key={tier.id}");
     expect(accountPanel).toContain('draft.customerFeeType !== "percentage"');
-    expect(quoteReview).toContain("customer_pricing_fee_agreement_id: null");
+    expect(migration).toContain(
+      "work_orders_clear_customer_pricing_fee_on_manual_supplies_override",
+    );
     expect(migration).toContain("v_manual_supplies_override");
   });
 });
