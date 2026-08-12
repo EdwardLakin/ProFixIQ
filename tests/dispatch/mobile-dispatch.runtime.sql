@@ -93,6 +93,17 @@ values (
 )
 on conflict (id) do nothing;
 
+insert into public.vehicles (id, shop_id, customer_id, year, make, model, vin)
+values (
+  '8c200000-0000-4000-8000-000000000001',
+  '8b100000-0000-4000-8000-000000000001',
+  '8c100000-0000-4000-8000-000000000001',
+  2024, 'Test', 'Mobile Service Unit', '1FTFW1E50NFA00001'
+)
+on conflict (id) do update
+set shop_id = excluded.shop_id,
+    customer_id = excluded.customer_id;
+
 insert into public.service_vehicles (id, shop_id, name, unit_number, active)
 values
   ('8d100000-0000-4000-8000-000000000001', '8b100000-0000-4000-8000-000000000001', 'Service Truck 1', 'ST-1', true),
@@ -134,7 +145,8 @@ begin
   -- one unassigned Service Visit after the scheduler event is established.
   v_booking_a := public.scheduler_apply_booking_command_atomic(
     'create', null, '8b100000-0000-4000-8000-000000000001',
-    '8c100000-0000-4000-8000-000000000001', null,
+    '8c100000-0000-4000-8000-000000000001',
+    '8c200000-0000-4000-8000-000000000001',
     '2099-03-01 09:00:00+00', '2099-03-01 10:00:00+00', 'Mobile visit A',
     '8a100000-0000-4000-8000-000000000001', 'staff',
     'dispatch-runtime:booking:a', null, '2099-01-01 00:00:00+00', 'mobile', null
