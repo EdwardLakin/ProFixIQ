@@ -43,6 +43,46 @@ function percent(value: unknown): number | null {
   return numberValue != null && numberValue <= 100 ? numberValue : null;
 }
 
+type MatrixTier = {
+  cost_from: number;
+  cost_to: number | null;
+  markup_percent: number;
+};
+
+function partsMarkupMatrix(value: unknown): MatrixTier[] | null {
+  if (value == null) return [];
+  if (!Array.isArray(value) || value.length > 50) return null;
+  let previousUpper: number | null = null;
+  const tiers: MatrixTier[] = [];
+  for (let index = 0; index < value.length; index += 1) {
+    const raw = value[index];
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+    const row = raw as Record<string, unknown>;
+    const costFrom = moneyOrNull(row.costFrom);
+    const costTo = moneyOrNull(row.costTo);
+    const markupPercent = moneyOrNull(row.markupPercent);
+    if (
+      costFrom == null ||
+      markupPercent == null ||
+      markupPercent > 1000 ||
+      (index === 0 && costFrom !== 0) ||
+      (index > 0 && (previousUpper == null || costFrom <= previousUpper)) ||
+      (row.costTo != null && row.costTo !== "" && costTo == null) ||
+      (costTo != null && costTo < costFrom) ||
+      (index < value.length - 1 && costTo == null)
+    ) {
+      return null;
+    }
+    tiers.push({
+      cost_from: costFrom,
+      cost_to: costTo,
+      markup_percent: markupPercent,
+    });
+    previousUpper = costTo;
+  }
+  return tiers;
+}
+
 function errorMessage(error: {
   message: string;
   details?: string | null;
@@ -128,6 +168,14 @@ export async function POST(request: Request, context: RouteContext) {
   const laborRate = moneyOrNull(body?.laborRate);
   const laborDiscountPercent = percent(body?.laborDiscountPercent);
   const partsDiscountPercent = percent(body?.partsDiscountPercent);
+  const matrix = partsMarkupMatrix(body?.partsMarkupMatrix);
+  const minimumPartsMarginPercent = percent(
+    body?.minimumPartsMarginPercent,
+  );
+  const customerFeeType = boundedText(body?.customerFeeType, 20) ?? "none";
+  const customerFeeValue = moneyOrNull(body?.customerFeeValue ?? 0);
+  const customerFeeCap = moneyOrNull(body?.customerFeeCap);
+  const expiryWarningDays = Number(body?.expiryWarningDays ?? 30);
   const effectiveFrom = optionalDate(body?.effectiveFrom);
   const effectiveUntil = optionalDate(body?.effectiveUntil);
   const approvalReason = boundedText(body?.approvalReason, 500);
@@ -146,6 +194,19 @@ export async function POST(request: Request, context: RouteContext) {
     !["CAD", "USD"].includes(currency) ||
     laborDiscountPercent == null ||
     partsDiscountPercent == null ||
+    matrix == null ||
+    minimumPartsMarginPercent == null ||
+    minimumPartsMarginPercent >= 100 ||
+    !["none", "flat", "percentage"].includes(customerFeeType) ||
+    customerFeeValue == null ||
+    (customerFeeType === "percentage" && customerFeeValue > 100) ||
+    (customerFeeType === "none" && customerFeeValue !== 0) ||
+    (body?.customerFeeCap != null &&
+      body.customerFeeCap !== "" &&
+      customerFeeCap == null) ||
+    !Number.isInteger(expiryWarningDays) ||
+    expiryWarningDays < 0 ||
+    expiryWarningDays > 365 ||
     !effectiveFrom ||
     (body?.effectiveUntil && !effectiveUntil) ||
     !approvalReason ||
@@ -173,7 +234,10 @@ export async function POST(request: Request, context: RouteContext) {
   if (
     laborRate == null &&
     laborDiscountPercent === 0 &&
-    partsDiscountPercent === 0
+    partsDiscountPercent === 0 &&
+    matrix.length === 0 &&
+    minimumPartsMarginPercent === 0 &&
+    customerFeeType === "none"
   ) {
     return NextResponse.json(
       { error: "At least one customer pricing adjustment is required." },
@@ -182,7 +246,7 @@ export async function POST(request: Request, context: RouteContext) {
   }
 
   const { data, error } = await access.supabase.rpc(
-    "create_customer_pricing_agreement_atomic" as never,
+    "create_customer_pricing_agreement_v2_atomic" as never,
     {
       p_shop_id: access.profile.shop_id,
       p_customer_id: id,
@@ -192,6 +256,12 @@ export async function POST(request: Request, context: RouteContext) {
       p_labor_rate: laborRate,
       p_labor_discount_percent: laborDiscountPercent,
       p_parts_discount_percent: partsDiscountPercent,
+      p_parts_markup_matrix: matrix,
+      p_minimum_parts_margin_percent: minimumPartsMarginPercent,
+      p_customer_fee_type: customerFeeType,
+      p_customer_fee_value: customerFeeValue,
+      p_customer_fee_cap: customerFeeCap,
+      p_expiry_warning_days: expiryWarningDays,
       p_effective_from: effectiveFrom,
       p_effective_until: effectiveUntil,
       p_approval_reason: approvalReason,

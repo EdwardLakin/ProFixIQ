@@ -41,7 +41,7 @@ export async function POST(request: Request, context: RouteContext) {
   }
 
   const { data, error } = await access.supabase.rpc(
-    "apply_customer_pricing_to_quote_atomic" as never,
+    "apply_customer_pricing_v2_to_quote_atomic" as never,
     {
       p_shop_id: access.profile.shop_id,
       p_work_order_id: workOrderId,

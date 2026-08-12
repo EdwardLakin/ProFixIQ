@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   CUSTOMER_PRICING_PRECEDENCE,
+  contractExpiryStatus,
+  resolveCustomerFee,
   resolveCustomerPricing,
+  resolveV2PartPricing,
   selectEffectiveCustomerPricingAgreement,
+  validatePartsMarkupMatrix,
   type CustomerPricingAgreement,
 } from "./customerPricing";
 
@@ -117,5 +121,104 @@ describe("customer pricing precedence", () => {
       resolvedLaborTotal: 160,
       resolvedPartsTotal: 70,
     });
+  });
+});
+
+describe("Pricing V2 rules", () => {
+  const matrix = [
+    { costFrom: 0, costTo: 49.99, markupPercent: 100 },
+    { costFrom: 50, costTo: 199.99, markupPercent: 60 },
+    { costFrom: 200, costTo: null, markupPercent: 35 },
+  ];
+
+  it("selects the cost band before applying a customer discount", () => {
+    expect(validatePartsMarkupMatrix(matrix)).toBe(true);
+    expect(
+      resolveV2PartPricing({
+        unitCost: 100,
+        baseUnitPrice: 140,
+        matrix,
+        partsDiscountPercent: 10,
+        minimumPartsMarginPercent: 20,
+      }),
+    ).toMatchObject({
+      matrixMarkupPercent: 60,
+      matrixUnitPrice: 160,
+      discountedUnitPrice: 144,
+      resolvedUnitPrice: 144,
+      floorApplied: false,
+      provenance: "matrix",
+    });
+  });
+
+  it("protects the minimum parts margin after discounts", () => {
+    expect(
+      resolveV2PartPricing({
+        unitCost: 100,
+        baseUnitPrice: 110,
+        matrix: [],
+        partsDiscountPercent: 20,
+        minimumPartsMarginPercent: 25,
+      }),
+    ).toMatchObject({
+      discountedUnitPrice: 88,
+      marginFloorUnitPrice: 133.33,
+      resolvedUnitPrice: 133.33,
+      floorApplied: true,
+    });
+  });
+
+  it("does not invent margin evidence when cost is unknown", () => {
+    expect(
+      resolveV2PartPricing({
+        unitCost: null,
+        baseUnitPrice: 200,
+        matrix,
+        partsDiscountPercent: 5,
+        minimumPartsMarginPercent: 30,
+      }),
+    ).toMatchObject({
+      cost: null,
+      matrixMarkupPercent: null,
+      marginFloorUnitPrice: null,
+      resolvedUnitPrice: 190,
+      floorApplied: false,
+      provenance: "base_sell",
+    });
+  });
+
+  it("calculates capped flat and percentage customer fees", () => {
+    expect(
+      resolveCustomerFee({
+        type: "percentage",
+        value: 6,
+        cap: 50,
+        laborAndPartsSubtotal: 1000,
+      }),
+    ).toBe(50);
+    expect(
+      resolveCustomerFee({
+        type: "flat",
+        value: 32.5,
+        laborAndPartsSubtotal: 1000,
+      }),
+    ).toBe(32.5);
+  });
+
+  it("classifies contract expiry using the agreement warning window", () => {
+    expect(
+      contractExpiryStatus({
+        effectiveUntil: "2026-09-01",
+        at: "2026-08-12T18:00:00Z",
+        warningDays: 30,
+      }),
+    ).toBe("expiring_soon");
+    expect(
+      contractExpiryStatus({
+        effectiveUntil: "2026-08-01",
+        at: "2026-08-12T18:00:00Z",
+        warningDays: 30,
+      }),
+    ).toBe("expired");
   });
 });

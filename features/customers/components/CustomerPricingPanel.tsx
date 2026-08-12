@@ -9,6 +9,8 @@ import {
   Loader2,
   Plus,
   ShieldCheck,
+  TriangleAlert,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -26,12 +28,30 @@ type PricingAgreement = {
   labor_rate: number | null;
   labor_discount_percent: number;
   parts_discount_percent: number;
+  parts_markup_matrix: MatrixTier[];
+  minimum_parts_margin_percent: number;
+  customer_fee_type: "none" | "flat" | "percentage";
+  customer_fee_value: number;
+  customer_fee_cap: number | null;
+  expiry_warning_days: number;
   effective_from: string;
   effective_until: string | null;
   approval_reason: string;
   notes: string | null;
   retired_reason: string | null;
   created_at: string;
+};
+
+type MatrixTier = {
+  cost_from: number;
+  cost_to: number | null;
+  markup_percent: number;
+};
+
+type MatrixTierDraft = {
+  costFrom: string;
+  costTo: string;
+  markupPercent: string;
 };
 
 type PricingSummary = {
@@ -56,6 +76,12 @@ type Draft = {
   laborRate: string;
   laborDiscountPercent: string;
   partsDiscountPercent: string;
+  partsMarkupMatrix: MatrixTierDraft[];
+  minimumPartsMarginPercent: string;
+  customerFeeType: "none" | "flat" | "percentage";
+  customerFeeValue: string;
+  customerFeeCap: string;
+  expiryWarningDays: string;
   effectiveFrom: string;
   effectiveUntil: string;
   approvalReason: string;
@@ -78,6 +104,12 @@ function emptyDraft(sourceType: AgreementSource): Draft {
     laborRate: "",
     laborDiscountPercent: "",
     partsDiscountPercent: "",
+    partsMarkupMatrix: [],
+    minimumPartsMarginPercent: "",
+    customerFeeType: "none",
+    customerFeeValue: "",
+    customerFeeCap: "",
+    expiryWarningDays: "30",
     effectiveFrom: today(),
     effectiveUntil: "",
     approvalReason: "",
@@ -103,7 +135,26 @@ function agreementTerms(agreement: PricingAgreement): string[] {
   if (agreement.parts_discount_percent > 0) {
     terms.push(`${agreement.parts_discount_percent}% off parts sell price`);
   }
+  if (agreement.parts_markup_matrix?.length > 0) {
+    terms.push(`${agreement.parts_markup_matrix.length}-tier parts matrix`);
+  }
+  if (agreement.minimum_parts_margin_percent > 0) {
+    terms.push(`${agreement.minimum_parts_margin_percent}% minimum parts margin`);
+  }
+  if (agreement.customer_fee_type !== "none") {
+    terms.push(
+      agreement.customer_fee_type === "flat"
+        ? `${agreement.currency} $${agreement.customer_fee_value.toFixed(2)} customer fee`
+        : `${agreement.customer_fee_value}% customer fee${agreement.customer_fee_cap != null ? ` (max $${agreement.customer_fee_cap.toFixed(2)})` : ""}`,
+    );
+  }
   return terms;
+}
+
+function daysUntil(date: string): number {
+  const end = Date.parse(`${date.slice(0, 10)}T00:00:00Z`);
+  const now = Date.parse(`${today()}T00:00:00Z`);
+  return Math.ceil((end - now) / 86_400_000);
 }
 
 function effectiveWindow(agreement: PricingAgreement): string {
@@ -195,6 +246,24 @@ export function CustomerPricingPanel({ customerId }: Props) {
               ? Number(draft.laborDiscountPercent || 0)
               : 0,
           partsDiscountPercent: Number(draft.partsDiscountPercent || 0),
+          partsMarkupMatrix: draft.partsMarkupMatrix.map((tier) => ({
+            costFrom: Number(tier.costFrom),
+            costTo: tier.costTo === "" ? null : Number(tier.costTo),
+            markupPercent: Number(tier.markupPercent),
+          })),
+          minimumPartsMarginPercent: Number(
+            draft.minimumPartsMarginPercent || 0,
+          ),
+          customerFeeType: draft.customerFeeType,
+          customerFeeValue:
+            draft.customerFeeType === "none"
+              ? 0
+              : Number(draft.customerFeeValue || 0),
+          customerFeeCap:
+            draft.customerFeeCap === ""
+              ? null
+              : Number(draft.customerFeeCap),
+          expiryWarningDays: Number(draft.expiryWarningDays || 30),
           effectiveFrom: draft.effectiveFrom,
           effectiveUntil: draft.effectiveUntil || null,
           approvalReason: draft.approvalReason,
@@ -265,6 +334,13 @@ export function CustomerPricingPanel({ customerId }: Props) {
 
   const effective = summary?.effective_agreement ?? null;
   const agreements = summary?.agreements ?? [];
+  const expiringAgreements = agreements.filter((agreement) => {
+    if (agreement.status !== "active" || !agreement.effective_until) {
+      return false;
+    }
+    const remaining = daysUntil(agreement.effective_until);
+    return remaining >= 0 && remaining <= agreement.expiry_warning_days;
+  });
 
   return (
     <section className="overflow-hidden rounded-2xl border border-[color:var(--accent-copper-soft)]/45 bg-[radial-gradient(circle_at_top_right,rgba(197,122,74,0.16),transparent_38%),color:var(--desktop-panel-bg-soft)] shadow-[var(--theme-shadow-medium)] backdrop-blur-xl">
@@ -301,6 +377,23 @@ export function CustomerPricingPanel({ customerId }: Props) {
           ) : null}
         </div>
       </div>
+
+      {expiringAgreements.length > 0 ? (
+        <div className="border-b border-amber-300/25 bg-amber-400/10 px-4 py-3 sm:px-5">
+          <div className="flex items-start gap-2 text-xs text-amber-100">
+            <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+            <div>
+              <span className="font-bold">Contract expiry:</span>{" "}
+              {expiringAgreements
+                .map(
+                  (agreement) =>
+                    `${agreement.name} ends in ${daysUntil(agreement.effective_until!)} day(s)`,
+                )
+                .join(" · ")}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <div className="grid gap-4 p-4 sm:p-5 xl:grid-cols-[1.15fr_0.85fr]">
         <div className="rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--theme-surface-inset)] p-4">
@@ -497,6 +590,196 @@ export function CustomerPricingPanel({ customerId }: Props) {
             </label>
           </div>
 
+          <div className="mt-4 rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <div className="text-xs font-semibold text-[color:var(--theme-text-primary)]">
+                  Parts matrix
+                </div>
+                <p className="mt-0.5 text-[11px] text-[color:var(--theme-text-muted)]">
+                  Cost bands set sell markup before any customer discount. Leave
+                  empty to preserve the quoted base sell price.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  setDraft((current) => ({
+                    ...current,
+                    partsMarkupMatrix: [
+                      ...current.partsMarkupMatrix,
+                      {
+                        costFrom:
+                          current.partsMarkupMatrix.length === 0 ? "0" : "",
+                        costTo: "",
+                        markupPercent: "",
+                      },
+                    ],
+                  }))
+                }
+                className="rounded-lg border border-[var(--accent-copper-soft)]/45 px-2.5 py-1.5 text-[11px] font-semibold text-[var(--accent-copper)]"
+              >
+                Add cost band
+              </button>
+            </div>
+            {draft.partsMarkupMatrix.length > 0 ? (
+              <div className="mt-3 space-y-2">
+                {draft.partsMarkupMatrix.map((tier, index) => (
+                  <div
+                    key={`${index}-${tier.costFrom}`}
+                    className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2"
+                  >
+                    <input
+                      required
+                      inputMode="decimal"
+                      aria-label={`Tier ${index + 1} cost from`}
+                      placeholder="Cost from"
+                      value={tier.costFrom}
+                      onChange={(event) =>
+                        setDraft((current) => ({
+                          ...current,
+                          partsMarkupMatrix: current.partsMarkupMatrix.map(
+                            (item, itemIndex) =>
+                              itemIndex === index
+                                ? { ...item, costFrom: event.target.value }
+                                : item,
+                          ),
+                        }))
+                      }
+                      className={inputClass}
+                    />
+                    <input
+                      required={index < draft.partsMarkupMatrix.length - 1}
+                      inputMode="decimal"
+                      aria-label={`Tier ${index + 1} cost to`}
+                      placeholder={
+                        index === draft.partsMarkupMatrix.length - 1
+                          ? "No maximum"
+                          : "Cost to"
+                      }
+                      value={tier.costTo}
+                      onChange={(event) =>
+                        setDraft((current) => ({
+                          ...current,
+                          partsMarkupMatrix: current.partsMarkupMatrix.map(
+                            (item, itemIndex) =>
+                              itemIndex === index
+                                ? { ...item, costTo: event.target.value }
+                                : item,
+                          ),
+                        }))
+                      }
+                      className={inputClass}
+                    />
+                    <input
+                      required
+                      inputMode="decimal"
+                      aria-label={`Tier ${index + 1} markup percent`}
+                      placeholder="Markup %"
+                      value={tier.markupPercent}
+                      onChange={(event) =>
+                        setDraft((current) => ({
+                          ...current,
+                          partsMarkupMatrix: current.partsMarkupMatrix.map(
+                            (item, itemIndex) =>
+                              itemIndex === index
+                                ? {
+                                    ...item,
+                                    markupPercent: event.target.value,
+                                  }
+                                : item,
+                          ),
+                        }))
+                      }
+                      className={inputClass}
+                    />
+                    <button
+                      type="button"
+                      aria-label={`Remove tier ${index + 1}`}
+                      onClick={() =>
+                        setDraft((current) => ({
+                          ...current,
+                          partsMarkupMatrix: current.partsMarkupMatrix.filter(
+                            (_, itemIndex) => itemIndex !== index,
+                          ),
+                        }))
+                      }
+                      className="rounded-xl border border-[color:var(--desktop-border)] px-2 text-[color:var(--theme-text-secondary)]"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <label className="text-xs text-[color:var(--theme-text-secondary)]">
+              Minimum parts margin %
+              <input
+                inputMode="decimal"
+                value={draft.minimumPartsMarginPercent}
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    minimumPartsMarginPercent: event.target.value,
+                  }))
+                }
+                placeholder="Example: 25"
+                className={`mt-1 ${inputClass}`}
+              />
+            </label>
+            <label className="text-xs text-[color:var(--theme-text-secondary)]">
+              Customer fee
+              <select
+                value={draft.customerFeeType}
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    customerFeeType: event.target.value as Draft["customerFeeType"],
+                  }))
+                }
+                className={`mt-1 ${inputClass}`}
+              >
+                <option value="none">No customer fee</option>
+                <option value="flat">Flat amount</option>
+                <option value="percentage">Percent of labor + parts</option>
+              </select>
+            </label>
+            <label className="text-xs text-[color:var(--theme-text-secondary)]">
+              Fee {draft.customerFeeType === "percentage" ? "%" : "amount"}
+              <input
+                disabled={draft.customerFeeType === "none"}
+                required={draft.customerFeeType !== "none"}
+                inputMode="decimal"
+                value={draft.customerFeeValue}
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    customerFeeValue: event.target.value,
+                  }))
+                }
+                className={`mt-1 ${inputClass} disabled:opacity-45`}
+              />
+            </label>
+            <label className="text-xs text-[color:var(--theme-text-secondary)]">
+              Fee cap (optional)
+              <input
+                disabled={draft.customerFeeType !== "percentage"}
+                inputMode="decimal"
+                value={draft.customerFeeCap}
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    customerFeeCap: event.target.value,
+                  }))
+                }
+                className={`mt-1 ${inputClass} disabled:opacity-45`}
+              />
+            </label>
+          </div>
+
           <div className="mt-3 grid gap-3 md:grid-cols-2">
             <label className="text-xs text-[color:var(--theme-text-secondary)]">
               Effective from
@@ -523,6 +806,23 @@ export function CustomerPricingPanel({ customerId }: Props) {
                   setDraft((current) => ({
                     ...current,
                     effectiveUntil: event.target.value,
+                  }))
+                }
+                className={`mt-1 ${inputClass}`}
+              />
+            </label>
+            <label className="text-xs text-[color:var(--theme-text-secondary)]">
+              Expiry warning days
+              <input
+                required
+                type="number"
+                min={0}
+                max={365}
+                value={draft.expiryWarningDays}
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    expiryWarningDays: event.target.value,
                   }))
                 }
                 className={`mt-1 ${inputClass}`}
