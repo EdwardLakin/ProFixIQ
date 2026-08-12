@@ -23,15 +23,16 @@ set user_id = excluded.user_id,
 insert into public.shops (
   id, owner_id, business_name, name, user_limit,
   accepts_online_booking, min_notice_minutes, max_lead_days,
-  location_type
+  location_type, billing_entitlement_override
 )
 values (
   '8b100000-0000-4000-8000-000000000001',
   '8a100000-0000-4000-8000-000000000001',
   'Dispatch Runtime Shop', 'Dispatch Runtime Shop', 10,
-  true, 0, 365, 'repair_facility'
+  true, 0, 365, 'repair_facility', 'internal_demo'
 )
-on conflict (id) do nothing;
+on conflict (id) do update
+set billing_entitlement_override = 'internal_demo';
 
 update public.profiles
 set shop_id = '8b100000-0000-4000-8000-000000000001'
@@ -40,6 +41,49 @@ where id in (
   '8a100000-0000-4000-8000-000000000002',
   '8a100000-0000-4000-8000-000000000003'
 );
+
+-- Mobile-mode Dispatch requires both the Field Service product entitlement
+-- and explicit operator assignment. Keep this runtime fixture aligned with
+-- the production authorization boundary instead of bypassing it through the
+-- service-role session used below.
+insert into public.mobile_service_settings (
+  shop_id, service_model, solo_mode, dispatch_enabled,
+  service_vehicles_enabled, field_operator_count_target,
+  onboarding_completed_at, configured_by
+)
+values (
+  '8b100000-0000-4000-8000-000000000001', 'mobile', false, true,
+  true, 3, now(), '8a100000-0000-4000-8000-000000000001'
+)
+on conflict (shop_id) do update
+set service_model = 'mobile',
+    solo_mode = false,
+    dispatch_enabled = true,
+    service_vehicles_enabled = true,
+    field_operator_count_target = 3,
+    onboarding_completed_at = now(),
+    configured_by = '8a100000-0000-4000-8000-000000000001';
+
+insert into public.mobile_field_operators (
+  shop_id, profile_id, enabled, created_by
+)
+values
+  (
+    '8b100000-0000-4000-8000-000000000001',
+    '8a100000-0000-4000-8000-000000000001', true,
+    '8a100000-0000-4000-8000-000000000001'
+  ),
+  (
+    '8b100000-0000-4000-8000-000000000001',
+    '8a100000-0000-4000-8000-000000000002', true,
+    '8a100000-0000-4000-8000-000000000001'
+  ),
+  (
+    '8b100000-0000-4000-8000-000000000001',
+    '8a100000-0000-4000-8000-000000000003', true,
+    '8a100000-0000-4000-8000-000000000001'
+  )
+on conflict (shop_id, profile_id) do update set enabled = true;
 
 insert into public.customers (id, shop_id, first_name, last_name, email, phone)
 values (
