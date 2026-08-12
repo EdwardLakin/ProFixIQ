@@ -1,14 +1,6 @@
 import type { InspectionReport } from "@/features/inspections/lib/inspection/report";
 import InspectionPhotoGallery from "@/features/inspections/components/inspection/InspectionPhotoGallery";
 
-const labels = {
-  ok: "Pass",
-  fail: "Needs attention",
-  recommend: "Recommended",
-  na: "Not applicable",
-  not_checked: "Not checked",
-} as const;
-
 export function InspectionReportView({
   report,
   technicianName,
@@ -18,6 +10,38 @@ export function InspectionReportView({
   technicianName: string | null;
   finalizedAt: string | null;
 }) {
+  const genericPassed = Math.max(0, report.totals.ok - report.totals.noDefect);
+  const genericFailed = Math.max(
+    0,
+    report.totals.failed - report.totals.majorDefects,
+  );
+  const genericRecommended = Math.max(
+    0,
+    report.totals.recommended - report.totals.minorDefects,
+  );
+  const hasDefectClassification = report.totals.defectItems > 0;
+  const genericRowsPresent =
+    !hasDefectClassification ||
+    genericPassed > 0 ||
+    genericFailed > 0 ||
+    genericRecommended > 0;
+  const summaryTiles: Array<[string, number]> = [["Checked", report.totals.checked]];
+  if (genericRowsPresent) {
+    summaryTiles.push(
+      ["Passed", genericPassed],
+      ["Attention", genericFailed],
+      ["Recommended", genericRecommended],
+    );
+  }
+  if (hasDefectClassification) {
+    summaryTiles.push(
+      ["No defect", report.totals.noDefect],
+      ["Major", report.totals.majorDefects],
+      ["Minor", report.totals.minorDefects],
+    );
+  }
+  summaryTiles.push(["N/A", report.totals.notApplicable]);
+
   return (
     <article className="space-y-6">
       <header className="rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-6">
@@ -38,16 +62,10 @@ export function InspectionReportView({
         </div>
       </header>
 
-      <section className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-        {[
-          ["Checked", report.totals.checked],
-          ["Passed", report.totals.ok],
-          ["Attention", report.totals.failed],
-          ["Recommended", report.totals.recommended],
-          ["N/A", report.totals.notApplicable],
-        ].map(([label, value]) => (
+      <section className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-5">
+        {summaryTiles.map(([label, value]) => (
           <div
-            key={String(label)}
+            key={label}
             className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4"
           >
             <div className="text-xs uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">
@@ -72,11 +90,14 @@ export function InspectionReportView({
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <h3 className="font-semibold">{item.label}</h3>
                   <span className="rounded-full border border-[color:var(--theme-border-soft)] px-3 py-1 text-xs font-semibold">
-                    {labels[item.status]}
+                    {item.statusLabel}
                   </span>
                 </div>
                 {item.value ? (
-                  <div className="mt-2 text-sm">Measurement: {item.value}</div>
+                  <div className="mt-2 text-sm">
+                    Measurement: {item.value}
+                    {item.unit ? ` ${item.unit}` : ""}
+                  </div>
                 ) : null}
                 {item.note ? (
                   <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">

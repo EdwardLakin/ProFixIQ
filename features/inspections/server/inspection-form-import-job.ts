@@ -4,8 +4,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database } from "@shared/types/types/supabase";
 import {
+  INSPECTION_FORM_IMPORT_FORMAT_VERSION,
   normalizeInspectionFormImportSummary,
   normalizeInspectionFormSections,
+  normalizeInspectionFormSectionsV2,
   selectRunnableInspectionFormSections,
   type InspectionFormSection,
 } from "@/features/inspections/lib/form-import";
@@ -31,6 +33,7 @@ type PagePayload = {
   storagePath: string;
   originalName: string;
   mime: string;
+  formatVersion?: number;
   extractedText?: string;
   parsedSections?: InspectionFormSection[];
 };
@@ -55,10 +58,15 @@ function asPagePayload(value: unknown): PagePayload | null {
   const originalName = String(row.originalName ?? "").trim();
   const mime = String(row.mime ?? "").trim();
   if (!storagePath || !originalName || !mime) return null;
+  const rawFormatVersion = Number(row.formatVersion);
   return {
     storagePath,
     originalName,
     mime,
+    formatVersion:
+      Number.isInteger(rawFormatVersion) && rawFormatVersion > 0
+        ? rawFormatVersion
+        : undefined,
     extractedText:
       typeof row.extractedText === "string" ? row.extractedText : undefined,
     parsedSections: normalizeInspectionFormSections(row.parsedSections),
@@ -94,7 +102,7 @@ async function parsePage(
             type: "text",
             text: [
               "Read this single page of a customer vehicle inspection form.",
-              '{"extracted_text":"...","sections":[{"title":"...","items":[{"item":"...","unit":null,"field_type":"check"}]}]}.',
+              `Return {"format_version":${INSPECTION_FORM_IMPORT_FORMAT_VERSION},"extracted_text":"...","sections":[{"title":"...","items":[{"item":"...","unit":null,"field_type":"check"}]}]}.`,
               "field_type is REQUIRED for every item and must be one of: check, defect, measurement, text, instruction, identity, signature, trip, branding.",
               "Classification rules:",
               "- check: a real vehicle/component condition row intended to be marked pass/fail/okay/not-applicable.",
@@ -127,12 +135,15 @@ async function parsePage(
   if (!content) throw new Error("The form reader returned no result.");
 
   const result = JSON.parse(content) as VisionResult;
-  const sections = normalizeInspectionFormSections(result.sections);
-  if (!sections.length) {
-    throw new Error("No readable form elements were found on this page.");
+  const sections = normalizeInspectionFormSectionsV2(result.sections);
+  if (!sections) {
+    throw new Error(
+      "The form reader returned an invalid structured result. Every detected row must be classified before this page can be imported.",
+    );
   }
 
   return {
+    formatVersion: INSPECTION_FORM_IMPORT_FORMAT_VERSION,
     extractedText:
       typeof result.extracted_text === "string"
         ? result.extracted_text.trim()
@@ -162,11 +173,17 @@ async function finalizeJob(
       message: page.error_message || "This page could not be read.",
     }));
 
-  const sections = successful.flatMap((page) => {
+  // Apply the format contract per persisted page. A page completed by an older
+  // worker remains legacy even when a later page is V2, which makes rolling
+  // deployments lossless instead of dropping the earlier page's rows.
+  const draftSections = successful.flatMap((page) => {
     const payload = asPagePayload(page.raw_row);
-    return payload?.parsedSections ?? [];
+    if (!payload?.parsedSections?.length) return [];
+    return selectRunnableInspectionFormSections(
+      payload.parsedSections,
+      payload.formatVersion ?? 1,
+    );
   });
-  const draftSections = selectRunnableInspectionFormSections(sections);
   const extractedText = successful
     .map((page) => asPagePayload(page.raw_row)?.extractedText || "")
     .filter(Boolean)

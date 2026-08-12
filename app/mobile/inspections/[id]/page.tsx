@@ -7,12 +7,24 @@ import { toast } from "sonner";
 import GenericInspectionScreen from "@/features/inspections/screens/GenericInspectionScreen";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
-type SectionItem = { item: string; unit?: string | null };
+type SectionItem = {
+  item: string;
+  unit?: string | null;
+  fieldType?: string | null;
+};
 type Section = { title: string; items: SectionItem[] };
 
 const HYD_ITEM_RE = /^(LF|RF|LR|RR)\s+/i;
 const AIR_ITEM_RE =
   /^(Steer\s*\d*|Drive\s*\d+|Tag|Trailer\s*\d+)\s+(Left|Right)\s+/i;
+
+function hasImportedFormClassification(sections: Section[]): boolean {
+  return (sections ?? []).some((section) =>
+    (section.items ?? []).some(
+      (item) => typeof item.fieldType === "string" && item.fieldType.trim().length > 0,
+    ),
+  );
+}
 
 function looksLikeCornerTitle(title: string | undefined | null): boolean {
   if (!title) return false;
@@ -96,6 +108,7 @@ function prepareSectionsWithCornerGrid(
   gridParam: string | null,
 ): Section[] {
   const source = Array.isArray(sections) ? sections : [];
+  if (hasImportedFormClassification(source)) return source;
   if (source.some((section) => looksLikeCornerTitle(section.title))) {
     return source;
   }

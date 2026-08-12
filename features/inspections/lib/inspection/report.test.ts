@@ -36,7 +36,7 @@ function session(): InspectionSession {
       {
         title: "Brakes",
         items: [
-          { item: "Front pads", status: "ok", value: "8 mm" },
+          { item: "Front pads", status: "ok", value: "8", unit: "mm" },
           {
             item: "Rear pads",
             status: "fail",
@@ -54,11 +54,19 @@ function session(): InspectionSession {
 }
 
 describe("assembleInspectionReport", () => {
-  it("preserves technician evidence and recommendations", () => {
+  it("preserves technician evidence, measurements and recommendations", () => {
     const report = assembleInspectionReport(session());
+    expect(report.sections[0].items[0]).toMatchObject({
+      label: "Front pads",
+      status: "ok",
+      statusLabel: "Pass",
+      value: "8",
+      unit: "mm",
+    });
     expect(report.sections[0].items[1]).toMatchObject({
       label: "Rear pads",
       status: "fail",
+      statusLabel: "Needs attention",
       note: "Below service limit",
       recommendations: ["Replace rear pads"],
       photoUrls: ["https://example.test/evidence.jpg"],
@@ -72,6 +80,39 @@ describe("assembleInspectionReport", () => {
       failed: 1,
       recommended: 1,
       notApplicable: 1,
+      defectItems: 0,
+      noDefect: 0,
+      majorDefects: 0,
+      minorDefects: 0,
+    });
+  });
+
+  it("preserves imported minor and major defect semantics", () => {
+    const source = session();
+    source.sections = [
+      {
+        title: "Defect checklist",
+        items: [
+          { item: "Steering", status: "ok", fieldType: "defect" },
+          { item: "Suspension", status: "fail", fieldType: "defect" },
+          { item: "Tires", status: "recommend", fieldType: "defect" },
+          { item: "Wipers", status: "na", fieldType: "defect" },
+        ],
+      },
+    ] as unknown as InspectionSession["sections"];
+
+    const report = assembleInspectionReport(source);
+    expect(report.sections[0].items.map((item) => item.statusLabel)).toEqual([
+      "No defect",
+      "Major defect",
+      "Minor defect",
+      "Not applicable",
+    ]);
+    expect(report.totals).toMatchObject({
+      defectItems: 4,
+      noDefect: 1,
+      majorDefects: 1,
+      minorDefects: 1,
     });
   });
 

@@ -3,11 +3,12 @@
 "use client";
 
 import type React from "react";
-import { useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import type {
   InspectionItem,
   InspectionItemStatus,
 } from "@inspections/lib/inspection/types";
+import { InspectionFormCtx } from "@inspections/lib/inspection/ui/InspectionFormContext";
 import StatusButtons from "./StatusButtons";
 import PhotoUploadButton from "./PhotoUploadButton";
 
@@ -97,6 +98,7 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
     showStatusControls = true,
     showEvidenceFields = false,
   } = props;
+  const formContext = useContext(InspectionFormCtx);
 
   const label = getItemLabel(item);
   const nameLower = label.toLowerCase();
@@ -112,15 +114,16 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
     nameLower.includes("labor hours") ||
     nameLower.includes("hours");
 
-  const measurementValue =
-    isImportedMeasurement && !onUpdateValue
-      ? getNotesValue(item)
-      : String(item.value ?? "");
+  const measurementValue = String(item.value ?? "");
+  const canPersistImportedMeasurement =
+    !isImportedMeasurement || Boolean(onUpdateValue || formContext?.updateItem);
   const updateMeasurementValue = (value: string) => {
     if (onUpdateValue) {
       onUpdateValue(sectionIndex, itemIndex, value);
-    } else if (isImportedMeasurement) {
-      onUpdateNote(sectionIndex, itemIndex, value);
+      return;
+    }
+    if (isImportedMeasurement && formContext?.updateItem) {
+      formContext.updateItem(sectionIndex, itemIndex, { value });
     }
   };
 
@@ -219,11 +222,12 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
                   type="number"
                   inputMode="decimal"
                   value={measurementValue}
+                  disabled={!canPersistImportedMeasurement}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                     updateMeasurementValue(e.target.value)
                   }
                   placeholder="Value"
-                  className="h-9 w-24 rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-1 text-[12px] text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/60"
+                  className="h-9 w-24 rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-1 text-[12px] text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/60 disabled:opacity-60"
                 />
                 <input
                   type="text"
@@ -341,11 +345,12 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
               type="number"
               inputMode="decimal"
               value={measurementValue}
+              disabled={!canPersistImportedMeasurement}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                 updateMeasurementValue(e.target.value)
               }
               placeholder="Value"
-              className="w-24 rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-1 text-[12px] text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/60"
+              className="w-24 rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-1 text-[12px] text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/60 disabled:opacity-60"
             />
             <input
               type="text"
