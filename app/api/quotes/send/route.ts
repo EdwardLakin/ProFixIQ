@@ -807,7 +807,7 @@ export async function POST(req: Request) {
     let sendableQuoteLineIds: string[] = [];
 
     const { error: customerPricingError } = await supabaseAdmin.rpc(
-      "apply_customer_pricing_to_quote_atomic" as never,
+      "apply_customer_pricing_v2_to_quote_atomic" as never,
       {
         p_shop_id: wo.shop_id,
         p_work_order_id: workOrderId,

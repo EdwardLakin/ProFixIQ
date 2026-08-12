@@ -204,6 +204,7 @@ export async function POST(request: Request, context: RouteContext) {
     (body?.customerFeeCap != null &&
       body.customerFeeCap !== "" &&
       customerFeeCap == null) ||
+    (customerFeeType !== "percentage" && customerFeeCap != null) ||
     !Number.isInteger(expiryWarningDays) ||
     expiryWarningDays < 0 ||
     expiryWarningDays > 365 ||

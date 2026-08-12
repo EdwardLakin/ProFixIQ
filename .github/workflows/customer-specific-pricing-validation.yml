@@ -13,7 +13,9 @@ on:
       - "features/pricing/**"
       - "features/work-orders/quote-review/QuoteReviewView.tsx"
       - "supabase/migrations/20260812022359_customer_specific_pricing_engine.sql"
+      - "supabase/migrations/20260812140518_customer_pricing_v2.sql"
       - "tests/customer-specific-pricing-engine.test.ts"
+      - "tests/customer-pricing-v2.test.ts"
       - "tests/pricing/customer-specific-pricing.runtime.sql"
       - ".github/workflows/customer-specific-pricing-validation.yml"
 
@@ -44,10 +46,12 @@ jobs:
           pnpm exec vitest run
           features/pricing/lib/customerPricing.test.ts
           tests/customer-specific-pricing-engine.test.ts
+          tests/customer-pricing-v2.test.ts
       - name: Pricing lint
         run: >-
           pnpm exec eslint
           app/api/customers/[id]/pricing/route.ts
+          app/api/quotes/send/route.ts
           app/api/work-orders/[id]/customer-pricing/route.ts
           features/customers/components/CustomerPricingPanel.tsx
           features/customers/components/CustomerAccountDetails.tsx

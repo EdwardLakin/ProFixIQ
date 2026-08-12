@@ -49,6 +49,7 @@ type MatrixTier = {
 };
 
 type MatrixTierDraft = {
+  id: string;
   costFrom: string;
   costTo: string;
   markupPercent: string;
@@ -260,6 +261,7 @@ export function CustomerPricingPanel({ customerId }: Props) {
               ? 0
               : Number(draft.customerFeeValue || 0),
           customerFeeCap:
+            draft.customerFeeType !== "percentage" ||
             draft.customerFeeCap === ""
               ? null
               : Number(draft.customerFeeCap),
@@ -609,6 +611,7 @@ export function CustomerPricingPanel({ customerId }: Props) {
                     partsMarkupMatrix: [
                       ...current.partsMarkupMatrix,
                       {
+                        id: crypto.randomUUID(),
                         costFrom:
                           current.partsMarkupMatrix.length === 0 ? "0" : "",
                         costTo: "",
@@ -626,7 +629,7 @@ export function CustomerPricingPanel({ customerId }: Props) {
               <div className="mt-3 space-y-2">
                 {draft.partsMarkupMatrix.map((tier, index) => (
                   <div
-                    key={`${index}-${tier.costFrom}`}
+                    key={tier.id}
                     className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2"
                   >
                     <input
@@ -738,6 +741,10 @@ export function CustomerPricingPanel({ customerId }: Props) {
                   setDraft((current) => ({
                     ...current,
                     customerFeeType: event.target.value as Draft["customerFeeType"],
+                    customerFeeCap:
+                      event.target.value === "percentage"
+                        ? current.customerFeeCap
+                        : "",
                   }))
                 }
                 className={`mt-1 ${inputClass}`}

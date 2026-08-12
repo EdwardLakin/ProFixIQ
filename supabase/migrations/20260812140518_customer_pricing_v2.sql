@@ -25,7 +25,10 @@ alter table public.customer_pricing_agreements
       and (customer_fee_type <> 'none' or customer_fee_value = 0)
     ),
   add constraint customer_pricing_agreements_customer_fee_cap_check
-    check (customer_fee_cap is null or customer_fee_cap >= 0),
+    check (
+      customer_fee_cap is null
+      or (customer_fee_type = 'percentage' and customer_fee_cap >= 0)
+    ),
   add constraint customer_pricing_agreements_expiry_warning_days_check
     check (expiry_warning_days between 0 and 365);
 
@@ -306,9 +309,10 @@ begin
   end if;
   if v_fee_type not in ('none', 'flat', 'percentage')
      or v_fee_value < 0
-     or (v_fee_type = 'percentage' and v_fee_value > 100)
-     or (v_fee_type = 'none' and v_fee_value <> 0)
-     or v_fee_cap < 0 then
+      or (v_fee_type = 'percentage' and v_fee_value > 100)
+      or (v_fee_type = 'none' and v_fee_value <> 0)
+      or v_fee_cap < 0
+      or (v_fee_type <> 'percentage' and v_fee_cap is not null) then
     raise exception using errcode = '22023', message = 'Customer fee settings are invalid.';
   end if;
   if v_warning_days not between 0 and 365 then
@@ -423,10 +427,12 @@ set search_path = ''
 as $$
 declare
   v_base_result jsonb;
+  v_actor_role text;
   v_work_order public.work_orders%rowtype;
   v_agreement public.customer_pricing_agreements%rowtype;
   v_line public.work_order_quote_lines%rowtype;
   v_previous public.pricing_resolution_snapshots%rowtype;
+  v_current_snapshot public.pricing_resolution_snapshots%rowtype;
   v_snapshot public.pricing_resolution_snapshots%rowtype;
   v_item public.part_request_items%rowtype;
   v_previous_part jsonb;
@@ -447,23 +453,61 @@ declare
   v_fee_total numeric := 0;
   v_fee_base numeric := 0;
   v_resolution_hash text;
+  v_skip_v1 boolean := false;
+  v_fee_changed boolean := false;
   v_v2_applied jsonb := '[]'::jsonb;
+  v_v2_unchanged jsonb := '[]'::jsonb;
 begin
-  v_base_result := public.apply_customer_pricing_to_quote_atomic(
-    p_shop_id,
-    p_work_order_id,
-    p_quote_line_ids,
-    p_actor_user_id,
-    v_now
-  );
+  if auth.role() <> 'service_role'
+     and ((select auth.uid()) is null or (select auth.uid()) is distinct from p_actor_user_id) then
+    raise exception using errcode = '42501', message = 'PRICING_ACTOR_MISMATCH';
+  end if;
+
+  select public.canonical_shop_membership_role(profile.role::text)
+    into v_actor_role
+  from public.profiles profile
+  where profile.shop_id = p_shop_id
+    and (profile.id = p_actor_user_id or profile.user_id = p_actor_user_id)
+  order by case when profile.user_id = p_actor_user_id then 0 else 1 end
+  limit 1;
+
+  if coalesce(v_actor_role, '') not in (
+    'owner', 'admin', 'manager', 'advisor', 'service', 'foreman'
+  ) then
+    raise exception using errcode = '42501', message = 'QUOTE_PRICING_ROLE_REQUIRED';
+  end if;
 
   select work_order.* into v_work_order
   from public.work_orders work_order
   where work_order.id = p_work_order_id and work_order.shop_id = p_shop_id
   for update;
 
-  if not found or v_work_order.customer_id is null then
-    return v_base_result || jsonb_build_object('pricing_v2', false);
+  if not found then
+    raise exception using errcode = 'P0002', message = 'Work order not found for shop.';
+  end if;
+  if v_work_order.customer_id is null then
+    return jsonb_build_object(
+      'ok', true, 'agreement', null, 'pricing_v2', false,
+      'applied', '[]'::jsonb, 'unchanged', '[]'::jsonb,
+      'skipped', jsonb_build_array(jsonb_build_object('reason', 'no_customer'))
+    );
+  end if;
+  if public.work_order_is_financially_locked(p_shop_id, p_work_order_id) then
+    raise exception using errcode = '55000', message = 'FINANCIALLY_LOCKED: customer pricing cannot change after invoice finalization.';
+  end if;
+  if coalesce(cardinality(p_quote_line_ids), 0) > 0
+     and (
+       select count(distinct quote_line.id)
+       from public.work_order_quote_lines quote_line
+       where quote_line.shop_id = p_shop_id
+         and quote_line.work_order_id = p_work_order_id
+         and quote_line.id = any(p_quote_line_ids)
+     ) <> (
+       select count(distinct requested.id)
+       from unnest(p_quote_line_ids) requested(id)
+       where requested.id is not null
+     ) then
+    raise exception using errcode = 'P0002', message = 'One or more quote lines were not found for this work order.';
   end if;
 
   select agreement.* into v_agreement
@@ -486,6 +530,9 @@ begin
   limit 1;
 
   if not found then
+    v_base_result := public.apply_customer_pricing_to_quote_atomic(
+      p_shop_id, p_work_order_id, p_quote_line_ids, p_actor_user_id, v_now
+    );
     if v_work_order.customer_pricing_fee_agreement_id is not null then
       update public.work_orders
       set shop_supplies_enabled_override = null,
@@ -497,6 +544,50 @@ begin
       where id = p_work_order_id and shop_id = p_shop_id;
     end if;
     return v_base_result || jsonb_build_object('pricing_v2', false, 'customer_fee_total', 0);
+  end if;
+
+  -- Repeated Quote Review loads must not let V1 temporarily undo an existing
+  -- V2 matrix/floor result. If every target line already has a V2 snapshot for
+  -- this immutable agreement and labor inputs are unchanged, V2 can resolve
+  -- directly from its stored base sell provenance.
+  select coalesce(bool_and(
+    snapshot.id is not null
+    and snapshot.agreement_id is not distinct from v_agreement.id
+    and coalesce(snapshot.input_snapshot -> 'pricing_v2' ->> 'version', '') = '2'
+    and round(coalesce(quote_line.labor_rate, 0), 2)
+      is not distinct from snapshot.resolved_labor_rate
+    and round(coalesce(quote_line.labor_total, 0), 2)
+      is not distinct from snapshot.resolved_labor_total
+    and greatest(
+      coalesce(quote_line.labor_hours, 0),
+      coalesce(quote_line.est_labor_hours, 0), 0
+    ) is not distinct from case
+      when coalesce(snapshot.input_snapshot ->> 'labor_hours', '') ~ '^[0-9]+([.][0-9]+)?$'
+        then (snapshot.input_snapshot ->> 'labor_hours')::numeric
+      else null
+    end
+  ), false) into v_skip_v1
+  from public.work_order_quote_lines quote_line
+  left join public.pricing_resolution_snapshots snapshot
+    on snapshot.id = quote_line.customer_pricing_snapshot_id
+   and snapshot.shop_id = quote_line.shop_id
+   and snapshot.quote_line_id = quote_line.id
+  where quote_line.shop_id = p_shop_id
+    and quote_line.work_order_id = p_work_order_id
+    and (
+      coalesce(cardinality(p_quote_line_ids), 0) = 0
+      or quote_line.id = any(p_quote_line_ids)
+    );
+
+  if v_skip_v1 then
+    v_base_result := jsonb_build_object(
+      'ok', true, 'agreement', to_jsonb(v_agreement),
+      'applied', '[]'::jsonb, 'unchanged', '[]'::jsonb, 'skipped', '[]'::jsonb
+    );
+  else
+    v_base_result := public.apply_customer_pricing_to_quote_atomic(
+      p_shop_id, p_work_order_id, p_quote_line_ids, p_actor_user_id, v_now
+    );
   end if;
 
   if jsonb_array_length(v_agreement.parts_markup_matrix) > 0
@@ -520,6 +611,21 @@ begin
 
       if not found or v_previous.agreement_id is distinct from v_agreement.id then
         continue;
+      end if;
+      v_current_snapshot := v_previous;
+
+      if coalesce(v_previous.input_snapshot -> 'pricing_v2' ->> 'version', '') = '2'
+         and v_previous.supersedes_snapshot_id is not null then
+        select snapshot.* into v_previous
+        from public.pricing_resolution_snapshots snapshot
+        where snapshot.id = v_previous.supersedes_snapshot_id
+          and snapshot.shop_id = p_shop_id
+          and snapshot.quote_line_id = v_line.id;
+        if not found then
+          raise exception using errcode = '55000',
+            message = 'PRICING_V2_BASE_SNAPSHOT_MISSING',
+            detail = format('Quote line %s has no immutable V1 base snapshot.', v_line.id);
+        end if;
       end if;
 
       v_part_prices := '[]'::jsonb;
@@ -554,8 +660,8 @@ begin
         where part.value ->> 'request_item_id' = v_item.id::text
         limit 1;
 
-        if v_previous_part is null
-           or coalesce(v_previous_part ->> 'base_unit_price', '') !~ '^[0-9]+([.][0-9]+)?$' then
+        if v_previous_part is null then continue; end if;
+        if coalesce(v_previous_part ->> 'base_unit_price', '') !~ '^[0-9]+([.][0-9]+)?$' then
           raise exception using errcode = '55000',
             message = 'PRICING_V2_PROVENANCE_MISSING',
             detail = format('Part request item %s has no immutable base sell price.', v_item.id);
@@ -640,20 +746,8 @@ begin
       end loop;
 
       if jsonb_array_length(v_part_prices) = 0 then
-        if coalesce(v_previous.base_parts_total, 0) > 0 then
-          raise exception using errcode = '55000',
-            message = 'PRICING_V2_REQUIRES_CANONICAL_PART_ITEMS',
-            detail = format('Quote line %s has parts totals without canonical request items.', v_line.id);
-        end if;
         continue;
       end if;
-
-      update public.work_order_quote_lines
-      set parts_total = v_resolved_parts_total,
-          subtotal = round(coalesce(labor_total, 0) + v_resolved_parts_total, 2),
-          grand_total = round(coalesce(labor_total, 0) + v_resolved_parts_total + coalesce(tax_total, 0), 2),
-          updated_at = v_now
-      where id = v_line.id and shop_id = p_shop_id;
 
       v_provenance := jsonb_build_object(
         'version', 2,
@@ -663,9 +757,39 @@ begin
         'minimum_parts_margin_percent', v_agreement.minimum_parts_margin_percent,
         'parts_discount_percent', v_agreement.parts_discount_percent,
         'margin_floor_adjustment_total', v_floor_adjustment_total,
-        'resolved_at', v_now,
         'resolved_by', p_actor_user_id
       );
+
+      if coalesce(v_line.metadata -> 'customer_pricing_v2', '{}'::jsonb)
+           - 'snapshot_id' - 'resolved_at'
+           = v_provenance
+         and round(coalesce(v_line.parts_total, 0), 2) = v_resolved_parts_total
+         and not exists (
+           select 1
+           from jsonb_array_elements(v_part_prices) part(value)
+           join public.part_request_items item
+             on item.id = (part.value ->> 'request_item_id')::uuid
+            and item.shop_id = p_shop_id
+           where round(coalesce(item.quoted_price, item.unit_price, 0), 2)
+             is distinct from (part.value ->> 'resolved_unit_price')::numeric
+         ) then
+        v_v2_unchanged := v_v2_unchanged || jsonb_build_array(jsonb_build_object(
+          'quote_line_id', v_line.id,
+          'snapshot_id', v_line.customer_pricing_snapshot_id,
+          'resolved_parts_total', v_resolved_parts_total
+        ));
+        continue;
+      end if;
+
+      update public.work_order_quote_lines
+      set parts_total = v_resolved_parts_total,
+          subtotal = round(coalesce(labor_total, 0) + v_resolved_parts_total, 2),
+          tax_total = 0,
+          grand_total = round(coalesce(labor_total, 0) + v_resolved_parts_total, 2),
+          updated_at = v_now
+      where id = v_line.id and shop_id = p_shop_id;
+
+      v_provenance := v_provenance || jsonb_build_object('resolved_at', v_now);
 
       update public.work_order_quote_lines
       set metadata = jsonb_set(
@@ -678,7 +802,7 @@ begin
       v_resolution_hash := encode(
         extensions.digest(
           convert_to(jsonb_build_object(
-            'prior_snapshot_id', v_previous.id,
+            'prior_snapshot_id', v_current_snapshot.id,
             'parts', v_part_prices,
             'provenance', v_provenance,
             'resolved_parts_total', v_resolved_parts_total
@@ -698,7 +822,7 @@ begin
         resolved_at, created_at
       ) values (
         p_shop_id, v_previous.customer_id, p_work_order_id, v_line.id,
-        v_agreement.id, v_previous.id, v_previous.source_type,
+        v_agreement.id, v_current_snapshot.id, v_previous.source_type,
         v_previous.precedence_rank, v_previous.currency,
         v_previous.base_labor_rate, v_previous.resolved_labor_rate,
         v_previous.labor_discount_percent, v_previous.base_labor_total,
@@ -722,11 +846,25 @@ begin
       v_v2_applied := v_v2_applied || jsonb_build_array(jsonb_build_object(
         'quote_line_id', v_line.id,
         'snapshot_id', v_snapshot.id,
-        'supersedes_snapshot_id', v_previous.id,
+        'supersedes_snapshot_id', v_current_snapshot.id,
         'resolved_parts_total', v_resolved_parts_total,
         'margin_floor_adjustment_total', v_floor_adjustment_total
       ));
     end loop;
+  end if;
+
+  -- Any persisted line tax was calculated against the pre-V2 taxable base.
+  -- Invalidate the whole quote together so the canonical send path
+  -- recomputes tax once from the final labor, parts, and customer-fee totals.
+  if jsonb_array_length(v_v2_applied) > 0 then
+    update public.work_order_quote_lines quote_line
+    set tax_total = 0,
+        grand_total = round(
+          coalesce(quote_line.labor_total, 0) + coalesce(quote_line.parts_total, 0), 2
+        ),
+        updated_at = v_now
+    where quote_line.shop_id = p_shop_id
+      and quote_line.work_order_id = p_work_order_id;
   end if;
 
   select round(coalesce(sum(
@@ -744,12 +882,14 @@ begin
     when 'percentage' then v_fee_base * v_agreement.customer_fee_value / 100
     else 0
   end, 2);
-  if v_agreement.customer_fee_cap is not null then
+  if v_agreement.customer_fee_type = 'percentage'
+     and v_agreement.customer_fee_cap is not null then
     v_fee_total := least(v_fee_total, v_agreement.customer_fee_cap);
   end if;
 
   if v_agreement.customer_fee_type = 'none' then
     if v_work_order.customer_pricing_fee_agreement_id is not null then
+      v_fee_changed := true;
       update public.work_orders
       set shop_supplies_enabled_override = null,
           shop_supplies_amount_override = null,
@@ -760,19 +900,28 @@ begin
       where id = p_work_order_id and shop_id = p_shop_id;
     end if;
   else
-    update public.work_orders
-    set shop_supplies_enabled_override = true,
-        shop_supplies_amount_override = v_fee_total,
-        customer_pricing_fee_agreement_id = v_agreement.id,
-        customer_pricing_fee_total = v_fee_total,
-        customer_pricing_fee_resolved_at = v_now,
-        updated_at = v_now
-    where id = p_work_order_id and shop_id = p_shop_id;
+    v_fee_changed := v_work_order.customer_pricing_fee_agreement_id
+        is distinct from v_agreement.id
+      or round(coalesce(v_work_order.customer_pricing_fee_total, -1), 2)
+        is distinct from v_fee_total
+      or v_work_order.shop_supplies_enabled_override is distinct from true
+      or round(coalesce(v_work_order.shop_supplies_amount_override, -1), 2)
+        is distinct from v_fee_total;
+    if v_fee_changed then
+      update public.work_orders
+      set shop_supplies_enabled_override = true,
+          shop_supplies_amount_override = v_fee_total,
+          customer_pricing_fee_agreement_id = v_agreement.id,
+          customer_pricing_fee_total = v_fee_total,
+          customer_pricing_fee_resolved_at = v_now,
+          updated_at = v_now
+      where id = p_work_order_id and shop_id = p_shop_id;
+    end if;
   end if;
 
   insert into public.operational_events (
     shop_id, event_type, actor_user_id, entity_type, entity_id, source, metadata
-  ) values (
+  ) select
     p_shop_id, 'customer_pricing.v2_resolved', p_actor_user_id,
     'work_order', p_work_order_id, 'customer_pricing_engine',
     jsonb_build_object(
@@ -782,11 +931,12 @@ begin
       'customer_fee_base', v_fee_base,
       'customer_fee_total', v_fee_total
     )
-  );
+  where jsonb_array_length(v_v2_applied) > 0 or v_fee_changed;
 
   return v_base_result || jsonb_build_object(
     'pricing_v2', true,
     'v2_applied', v_v2_applied,
+    'v2_unchanged', v_v2_unchanged,
     'customer_fee_type', v_agreement.customer_fee_type,
     'customer_fee_total', v_fee_total
   );

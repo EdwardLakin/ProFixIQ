@@ -15,6 +15,7 @@ const accountPanel = read(
 const quoteReview = read(
   "features/work-orders/quote-review/QuoteReviewView.tsx",
 );
+const quoteSend = read("app/api/quotes/send/route.ts");
 
 describe("customer Pricing V2", () => {
   it("versions matrices, fees, margins, and expiry settings with agreements", () => {
@@ -63,6 +64,10 @@ describe("customer Pricing V2", () => {
     expect(migration).toContain("shop_supplies_amount_override = v_fee_total");
     expect(migration).toContain("customer_pricing_fee_agreement_id");
     expect(quoteReview).toContain("marginFloorAdjustmentTotal");
+    expect(quoteSend).toContain('"apply_customer_pricing_v2_to_quote_atomic"');
+    expect(migration).toContain("v_v2_unchanged");
+    expect(migration).toContain("tax_total = 0");
+    expect(migration).toContain("if v_previous_part is null then continue");
   });
 
   it("exposes usable controls and contract-expiry warnings in the account center", () => {
@@ -71,5 +76,7 @@ describe("customer Pricing V2", () => {
     expect(accountPanel).toContain("Customer fee");
     expect(accountPanel).toContain("Expiry warning days");
     expect(accountPanel).toContain("Contract expiry:");
+    expect(accountPanel).toContain("key={tier.id}");
+    expect(accountPanel).toContain('draft.customerFeeType !== "percentage"');
   });
 });
