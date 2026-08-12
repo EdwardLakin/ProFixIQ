@@ -318,6 +318,34 @@ begin
 end;
 $$;
 
+-- The Account Center reads Pricing through this security-invoker summary.
+set local role authenticated;
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"51100000-0000-4000-8000-000000000001","role":"authenticated"}',
+  true
+);
+
+do $$
+declare
+  v_summary jsonb;
+begin
+  v_summary := public.get_customer_pricing_account_summary(
+    '51200000-0000-4000-8000-000000000001',
+    '51300000-0000-4000-8000-000000000001',
+    now()
+  );
+  if not coalesce((v_summary ->> 'ok')::boolean, false)
+     or jsonb_array_length(v_summary -> 'agreements') <> 2 then
+    raise exception 'Authenticated Account Center pricing summary failed: %', v_summary;
+  end if;
+end;
+$$;
+
+reset role;
+select set_config('request.jwt.claims', '', true);
+select set_config('request.jwt.claim.role', '', true);
+
 select public.retire_customer_pricing_agreement_atomic(
   '51200000-0000-4000-8000-000000000001',
   (

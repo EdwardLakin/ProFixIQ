@@ -5,6 +5,10 @@ const migration = readFileSync(
   "supabase/migrations/20260812022359_customer_specific_pricing_engine.sql",
   "utf8",
 );
+const roleNormalizerGrant = readFileSync(
+  "supabase/migrations/20260812061000_restore_authenticated_role_normalizer.sql",
+  "utf8",
+);
 const quoteReview = readFileSync(
   "features/work-orders/quote-review/QuoteReviewView.tsx",
   "utf8",
@@ -40,5 +44,13 @@ describe("customer-specific pricing engine contracts", () => {
     expect(
       quoteSend.indexOf("apply_customer_pricing_to_quote_atomic"),
     ).toBeLessThan(quoteSend.indexOf('from("work_order_quote_lines")'));
+  });
+
+  it("allows authenticated security-invoker pricing reads to normalize roles", () => {
+    expect(roleNormalizerGrant).toContain(
+      "grant execute on function public.canonical_shop_membership_role(text)",
+    );
+    expect(roleNormalizerGrant).toContain("to authenticated, service_role");
+    expect(roleNormalizerGrant).toContain("from public, anon");
   });
 });
