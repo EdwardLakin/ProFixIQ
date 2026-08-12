@@ -35,9 +35,7 @@ import { MobileJobLineAdd } from "@/features/work-orders/mobile/MobileJobLineAdd
 import NewWorkOrderLineForm from "@/features/work-orders/components/NewWorkOrderLineForm";
 import { useWorkOrderDraft } from "app/work-orders/state/useWorkOrderDraft";
 import VinCaptureModal from "app/vehicle/VinCaptureModal";
-import {
-  setOfflineMutationScope,
-} from "@/features/shared/lib/offline/mutations";
+import { setOfflineMutationScope } from "@/features/shared/lib/offline/mutations";
 import {
   createAdvisorDraftId,
   getCurrentAdvisorWorkOrderDraft,
@@ -57,6 +55,7 @@ import {
   resolveAndSubmitDependentPartsDrafts,
 } from "@/features/parts/offline/partsRequestDrafts";
 import { requestVehicleRecallEnrichment } from "@/features/vehicles/lib/requestRecallEnrichment";
+import { createCustomerAccount } from "@/features/customers/lib/customerAccountCommands";
 
 type DB = Database;
 type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -871,43 +870,22 @@ export default function MobileCreateWorkOrderPage() {
 
     const phone = strOrNull(customer.phone);
     const email = strOrNull(customer.email);
-
-    if (phone || email) {
-      let q = supabase
-        .from("customers")
-        .select("*")
-        .eq("shop_id", shopId)
-        .limit(1);
-      if (phone) q = q.ilike("phone", phone);
-      else if (email) q = q.ilike("email", email);
-
-      const { data: found, error: fErr } = await q;
-      if (fErr) throw fErr;
-      if (found?.length) {
-        setCustomer((prev) => ({ ...prev, id: found[0].id }));
-        return found[0] as CustomerRow;
-      }
-    }
-
-    const { data: inserted, error: insErr } = await supabase
-      .from("customers")
-      .insert({
-        shop_id: shopId,
-        first_name: strOrNull(customer.first_name),
-        last_name: strOrNull(customer.last_name),
-        phone: phone,
-        email: email,
-      })
-      .select("*")
-      .single();
-
-    if (insErr || !inserted) {
-      throw new Error(insErr?.message ?? "Failed to create customer.");
-    }
-
-    setCustomer((prev) => ({ ...prev, id: inserted.id }));
-    return inserted as CustomerRow;
-  }, [customer, shopId, supabase]);
+    const name = [customer.first_name, customer.last_name]
+      .map((value) => value?.trim())
+      .filter(Boolean)
+      .join(" ");
+    const result = await createCustomerAccount({
+      accountType: "individual",
+      name: name || phone || email || "Walk-in Customer",
+      phone,
+      email,
+      vin: vehicle.vin,
+      matchExisting: true,
+    });
+    const resolved = result.customer as CustomerRow;
+    setCustomer((prev) => ({ ...prev, id: resolved.id }));
+    return resolved;
+  }, [customer, shopId, supabase, vehicle.vin]);
 
   const ensureVehicle = useCallback(
     async (cust: CustomerRow): Promise<VehicleRow> => {

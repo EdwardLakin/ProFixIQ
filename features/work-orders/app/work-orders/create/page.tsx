@@ -43,6 +43,7 @@ import {
   requireMutableWorkOrder,
   STALE_CREATE_WORK_ORDER_MESSAGE,
 } from "@/features/work-orders/lib/client/validateMutableWorkOrder";
+import { createCustomerAccount } from "@/features/customers/lib/customerAccountCommands";
 
 // 👇 inspection modal, client-only
 const InspectionModal = dynamic(
@@ -620,9 +621,7 @@ export default function CreateWorkOrderPage() {
   const hasValidatedWorkOrder = Boolean(
     wo?.id && validatedWorkOrderId === wo.id,
   );
-  const isPersistedWorkOrderPending = Boolean(
-    wo?.id && !hasValidatedWorkOrder,
-  );
+  const isPersistedWorkOrderPending = Boolean(wo?.id && !hasValidatedWorkOrder);
 
   // ✅ inspection modal state
   const [inspectionOpen, setInspectionOpen] = useState(false);
@@ -939,14 +938,7 @@ export default function CreateWorkOrderPage() {
     return () => {
       cancelled = true;
     };
-  }, [
-    getOrLinkShopId,
-    setError,
-    setLines,
-    setWo,
-    supabase,
-    wo?.id,
-  ]);
+  }, [getOrLinkShopId, setError, setLines, setWo, supabase, wo?.id]);
 
   // ✅ advisor ownership helper
 
@@ -1312,69 +1304,43 @@ export default function CreateWorkOrderPage() {
       }
     }
 
-    if (normalizedEmail) {
-      const { data: foundByEmail, error: emailErr } = await supabase
+    const personalName = [customer.first_name, customer.last_name]
+      .map((value) => value?.trim())
+      .filter(Boolean)
+      .join(" ");
+    const businessName = strOrNull(customer.business_name ?? null);
+    const result = await createCustomerAccount({
+      accountType: businessName ? "business" : "individual",
+      name:
+        personalName ||
+        businessName ||
+        normalizedPhone ||
+        normalizedEmail ||
+        "Walk-in Customer",
+      businessName,
+      email: normalizedEmail,
+      phone: normalizedPhone,
+      address: customer.address,
+      city: customer.city,
+      province: customer.province,
+      postalCode: customer.postal_code,
+      vin: vehicle.vin,
+      matchExisting: true,
+    });
+    let resolved = result.customer as CustomerRowWithBusiness;
+    if (result.matched_existing) {
+      const { data: patched, error: patchError } = await supabase
         .from("customers")
-        .select("*")
+        .update(buildImplicitCustomerPatch(customerPatch))
+        .eq("id", resolved.id)
         .eq("shop_id", shopId)
-        .eq("email", normalizedEmail)
-        .limit(1);
-
-      if (emailErr) throw emailErr;
-      if (foundByEmail?.length) {
-        const row = foundByEmail[0] as CustomerRowWithBusiness;
-        setCustomerId(row.id);
-
-        const { data: patched, error: patchErr } = await supabase
-          .from("customers")
-          .update(buildImplicitCustomerPatch(customerPatch))
-          .eq("id", row.id)
-          .eq("shop_id", shopId)
-          .select("*")
-          .single();
-
-        if (patchErr) throw patchErr;
-        return (patched ?? row) as CustomerRowWithBusiness;
-      }
-    }
-
-    if (normalizedPhone) {
-      const { data: foundByPhone, error: phoneErr } = await supabase
-        .from("customers")
         .select("*")
-        .eq("shop_id", shopId)
-        .eq("phone", normalizedPhone)
-        .limit(1);
-
-      if (phoneErr) throw phoneErr;
-      if (foundByPhone?.length) {
-        const row = foundByPhone[0] as CustomerRowWithBusiness;
-        setCustomerId(row.id);
-
-        const { data: patched, error: patchErr } = await supabase
-          .from("customers")
-          .update(buildImplicitCustomerPatch(customerPatch))
-          .eq("id", row.id)
-          .eq("shop_id", shopId)
-          .select("*")
-          .single();
-
-        if (patchErr) throw patchErr;
-        return (patched ?? row) as CustomerRowWithBusiness;
-      }
+        .single();
+      if (patchError) throw patchError;
+      resolved = (patched ?? resolved) as CustomerRowWithBusiness;
     }
-
-    const { data: inserted, error: insErr } = await supabase
-      .from("customers")
-      .insert(customerWrite)
-      .select("*")
-      .single();
-
-    if (insErr || !inserted)
-      throw new Error(insErr?.message ?? "Failed to create customer");
-
-    setCustomerId(inserted.id);
-    return inserted as CustomerRowWithBusiness;
+    setCustomerId(resolved.id);
+    return resolved;
   }
 
   // ✅ when a vehicle exists, UPDATE it with the form values so edits persist
@@ -2032,7 +1998,9 @@ export default function CreateWorkOrderPage() {
         return;
       }
       if (!liveLine) {
-        toast.error("This work-order line no longer exists. The list was refreshed.");
+        toast.error(
+          "This work-order line no longer exists. The list was refreshed.",
+        );
         await fetchLines();
         return;
       }
@@ -2616,9 +2584,7 @@ export default function CreateWorkOrderPage() {
                     const id = await handleSaveCustomerVehicle();
                     if (id) await maybeOpenIntakeAfterSave(id);
                   }}
-                  disabled={
-                    savingCv || loading || isPersistedWorkOrderPending
-                  }
+                  disabled={savingCv || loading || isPersistedWorkOrderPending}
                   className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-[color:var(--brand-primary)] px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(23,71,255,0.2)] transition hover:brightness-110 disabled:opacity-60"
                 >
                   {savingCv
@@ -2741,7 +2707,7 @@ export default function CreateWorkOrderPage() {
 
             {/* Create-flow maintenance suggestions */}
             <CreateFlowMaintenanceSelector
-              workOrderId={hasValidatedWorkOrder ? wo?.id ?? null : null}
+              workOrderId={hasValidatedWorkOrder ? (wo?.id ?? null) : null}
               vehicleId={vehicleIdProp}
               enabled={hasValidatedWorkOrder && !!customerId && !!vehicleIdProp}
               selectedServiceCodes={selectedMaintenanceCodes}

@@ -2787,6 +2787,77 @@ export type Database = {
         }
         Relationships: []
       }
+      customer_account_merges: {
+        Row: {
+          created_at: string
+          id: string
+          merged_by: string
+          moved_record_counts: Json
+          operation_key: string
+          reason: string
+          shop_id: string
+          source_customer_id: string
+          source_snapshot: Json
+          target_customer_id: string
+          target_snapshot: Json
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          merged_by: string
+          moved_record_counts?: Json
+          operation_key: string
+          reason: string
+          shop_id: string
+          source_customer_id: string
+          source_snapshot?: Json
+          target_customer_id: string
+          target_snapshot?: Json
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          merged_by?: string
+          moved_record_counts?: Json
+          operation_key?: string
+          reason?: string
+          shop_id?: string
+          source_customer_id?: string
+          source_snapshot?: Json
+          target_customer_id?: string
+          target_snapshot?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_account_merges_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_account_merges_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_account_merges_source_customer_id_fkey"
+            columns: ["source_customer_id"]
+            isOneToOne: true
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_account_merges_target_customer_id_fkey"
+            columns: ["target_customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       customer_contacts: {
         Row: {
           active: boolean
@@ -3214,37 +3285,76 @@ export type Database = {
       }
       customer_settings: {
         Row: {
+          account_hold_reason: string | null
+          account_status: string
+          billing_notes: string | null
           comm_email_enabled: boolean
           comm_sms_enabled: boolean
           customer_id: string
+          customer_reference: string | null
           language: string | null
           marketing_opt_in: boolean
+          payment_terms: string
+          payment_terms_days: number
           preferred_contact: string | null
+          primary_approval_contact_id: string | null
+          primary_billing_contact_id: string | null
+          po_required: boolean
+          shop_id: string | null
+          tax_exempt: boolean
+          tax_exemption_reference: string | null
           timezone: string | null
           units: string | null
           updated_at: string
+          updated_by: string | null
         }
         Insert: {
+          account_hold_reason?: string | null
+          account_status?: string
+          billing_notes?: string | null
           comm_email_enabled?: boolean
           comm_sms_enabled?: boolean
           customer_id: string
+          customer_reference?: string | null
           language?: string | null
           marketing_opt_in?: boolean
+          payment_terms?: string
+          payment_terms_days?: number
           preferred_contact?: string | null
+          primary_approval_contact_id?: string | null
+          primary_billing_contact_id?: string | null
+          po_required?: boolean
+          shop_id?: string | null
+          tax_exempt?: boolean
+          tax_exemption_reference?: string | null
           timezone?: string | null
           units?: string | null
           updated_at?: string
+          updated_by?: string | null
         }
         Update: {
+          account_hold_reason?: string | null
+          account_status?: string
+          billing_notes?: string | null
           comm_email_enabled?: boolean
           comm_sms_enabled?: boolean
           customer_id?: string
+          customer_reference?: string | null
           language?: string | null
           marketing_opt_in?: boolean
+          payment_terms?: string
+          payment_terms_days?: number
           preferred_contact?: string | null
+          primary_approval_contact_id?: string | null
+          primary_billing_contact_id?: string | null
+          po_required?: boolean
+          shop_id?: string | null
+          tax_exempt?: boolean
+          tax_exemption_reference?: string | null
           timezone?: string | null
           units?: string | null
           updated_at?: string
+          updated_by?: string | null
         }
         Relationships: [
           {
@@ -3254,6 +3364,34 @@ export type Database = {
             referencedRelation: "customers"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "customer_settings_primary_approval_contact_id_fkey"
+            columns: ["primary_approval_contact_id"]
+            isOneToOne: false
+            referencedRelation: "customer_contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_settings_primary_billing_contact_id_fkey"
+            columns: ["primary_billing_contact_id"]
+            isOneToOne: false
+            referencedRelation: "customer_contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_settings_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_settings_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
         ]
       }
       customers: {
@@ -3261,6 +3399,9 @@ export type Database = {
           account_type: string
           active: boolean
           address: string | null
+          archive_reason: string | null
+          archived_at: string | null
+          archived_by: string | null
           business_name: string | null
           city: string | null
           created_at: string | null
@@ -3271,10 +3412,17 @@ export type Database = {
           external_id: string | null
           first_name: string | null
           id: string
+          identity_email: string | null
+          identity_name: string | null
+          identity_phone: string | null
           import_confidence: number | null
           import_notes: string | null
           is_fleet: boolean
           last_name: string | null
+          merge_reason: string | null
+          merged_at: string | null
+          merged_by: string | null
+          merged_into_customer_id: string | null
           name: string | null
           notes: string | null
           parent_customer_id: string | null
@@ -3294,6 +3442,9 @@ export type Database = {
           account_type?: string
           active?: boolean
           address?: string | null
+          archive_reason?: string | null
+          archived_at?: string | null
+          archived_by?: string | null
           business_name?: string | null
           city?: string | null
           created_at?: string | null
@@ -3304,10 +3455,17 @@ export type Database = {
           external_id?: string | null
           first_name?: string | null
           id?: string
+          identity_email?: string | null
+          identity_name?: string | null
+          identity_phone?: string | null
           import_confidence?: number | null
           import_notes?: string | null
           is_fleet?: boolean
           last_name?: string | null
+          merge_reason?: string | null
+          merged_at?: string | null
+          merged_by?: string | null
+          merged_into_customer_id?: string | null
           name?: string | null
           notes?: string | null
           parent_customer_id?: string | null
@@ -3327,6 +3485,9 @@ export type Database = {
           account_type?: string
           active?: boolean
           address?: string | null
+          archive_reason?: string | null
+          archived_at?: string | null
+          archived_by?: string | null
           business_name?: string | null
           city?: string | null
           created_at?: string | null
@@ -3337,10 +3498,17 @@ export type Database = {
           external_id?: string | null
           first_name?: string | null
           id?: string
+          identity_email?: string | null
+          identity_name?: string | null
+          identity_phone?: string | null
           import_confidence?: number | null
           import_notes?: string | null
           is_fleet?: boolean
           last_name?: string | null
+          merge_reason?: string | null
+          merged_at?: string | null
+          merged_by?: string | null
+          merged_into_customer_id?: string | null
           name?: string | null
           notes?: string | null
           parent_customer_id?: string | null
@@ -3360,6 +3528,13 @@ export type Database = {
           {
             foreignKeyName: "customers_default_bill_to_customer_id_fkey"
             columns: ["default_bill_to_customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customers_merged_into_customer_id_fkey"
+            columns: ["merged_into_customer_id"]
             isOneToOne: false
             referencedRelation: "customers"
             referencedColumns: ["id"]
@@ -26528,6 +26703,16 @@ export type Database = {
         }
         Returns: Json
       }
+      archive_customer_account_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_customer_id: string
+          p_operation_key: string
+          p_reason: string
+          p_shop_id: string
+        }
+        Returns: Json
+      }
       apply_job_punch_transition_atomic: {
         Args: {
           p_action: string
@@ -27084,6 +27269,27 @@ export type Database = {
         }
         Returns: string
       }
+      create_customer_account_atomic: {
+        Args: {
+          p_account_type: string
+          p_actor_user_id?: string
+          p_address?: string
+          p_allow_duplicate?: boolean
+          p_business_name?: string
+          p_city?: string
+          p_email?: string
+          p_match_existing?: boolean
+          p_name: string
+          p_notes?: string
+          p_operation_key?: string
+          p_phone?: string
+          p_postal_code?: string
+          p_province?: string
+          p_shop_id: string
+          p_vin?: string
+        }
+        Returns: Json
+      }
       create_customer_pricing_agreement_atomic: {
         Args: {
           p_actor_user_id: string
@@ -27531,8 +27737,29 @@ export type Database = {
         }
         Returns: Json
       }
+      find_customer_account_duplicates: {
+        Args: {
+          p_actor_user_id?: string
+          p_business_name?: string
+          p_email?: string
+          p_exclude_customer_id?: string
+          p_name?: string
+          p_phone?: string
+          p_shop_id: string
+          p_vin?: string
+        }
+        Returns: Json
+      }
       first_segment_uuid: { Args: { p: string }; Returns: string }
       fleet_defect_descriptor: { Args: { p_key: string }; Returns: Json }
+      get_customer_account_center: {
+        Args: {
+          p_actor_user_id?: string
+          p_customer_id: string
+          p_shop_id: string
+        }
+        Returns: Json
+      }
       get_customer_pricing_account_summary: {
         Args: { p_at?: string; p_customer_id: string; p_shop_id: string }
         Returns: Json
@@ -27751,6 +27978,17 @@ export type Database = {
           p_payload: Json
           p_shop_id: string
           p_vehicle_id: string
+        }
+        Returns: Json
+      }
+      merge_customer_accounts_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_operation_key: string
+          p_reason: string
+          p_shop_id: string
+          p_source_customer_id: string
+          p_target_customer_id: string
         }
         Returns: Json
       }
@@ -29035,6 +29273,26 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      update_customer_commercial_controls_atomic: {
+        Args: {
+          p_account_hold_reason: string
+          p_account_status: string
+          p_actor_user_id: string
+          p_billing_notes: string
+          p_customer_id: string
+          p_customer_reference: string
+          p_operation_key: string
+          p_payment_terms: string
+          p_payment_terms_days: number
+          p_po_required: boolean
+          p_primary_approval_contact_id: string
+          p_primary_billing_contact_id: string
+          p_shop_id: string
+          p_tax_exempt: boolean
+          p_tax_exemption_reference: string
+        }
+        Returns: Json
+      }
       update_menu_item_with_parts_intake: {
         Args: {
           p_actor_auth_user_id: string
@@ -29730,4 +29988,3 @@ export const Constants = {
     },
   },
 } as const
-
