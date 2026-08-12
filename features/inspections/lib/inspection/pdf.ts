@@ -29,6 +29,7 @@ type FindingRow = {
   sectionTitle: string;
   itemLabel: string;
   status: InspectionItemStatus | undefined;
+  fieldType?: string;
   value?: string;
   unit?: string;
   notes?: string;
@@ -88,8 +89,22 @@ function compactCsv(parts: Array<string | undefined>): string {
     .join(", ");
 }
 
-function statusLabel(status: InspectionItemStatus | undefined): string {
+function itemFieldType(item: InspectionItem): string {
+  const value = (item as InspectionItem & { fieldType?: unknown }).fieldType;
+  return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+function statusLabel(
+  status: InspectionItemStatus | undefined,
+  fieldType?: string,
+): string {
   if (!status) return "—";
+  if (fieldType === "defect") {
+    if (status === "ok") return "NO DEFECT";
+    if (status === "fail") return "MAJOR DEFECT";
+    if (status === "recommend") return "MINOR DEFECT";
+    if (status === "na") return "N/A";
+  }
   if (status === "ok") return "OK";
   if (status === "fail") return "FAIL";
   if (status === "recommend") return "RECOMMEND";
@@ -150,6 +165,10 @@ function collectFindings(sections: InspectionSection[]): {
   failCount: number;
   recommendCount: number;
   naCount: number;
+  defectItemCount: number;
+  noDefectCount: number;
+  majorDefectCount: number;
+  minorDefectCount: number;
 } {
   const failRows: FindingRow[] = [];
   const recommendRows: FindingRow[] = [];
@@ -159,6 +178,10 @@ function collectFindings(sections: InspectionSection[]): {
   let failCount = 0;
   let recommendCount = 0;
   let naCount = 0;
+  let defectItemCount = 0;
+  let noDefectCount = 0;
+  let majorDefectCount = 0;
+  let minorDefectCount = 0;
 
   for (let sectionIndex = 0; sectionIndex < sections.length; sectionIndex += 1) {
     const section = sections[sectionIndex];
@@ -168,15 +191,24 @@ function collectFindings(sections: InspectionSection[]): {
     const items = Array.isArray(section.items) ? section.items : [];
     for (const item of items) {
       const status = item.status;
+      const fieldType = itemFieldType(item);
       if (status === "ok") okCount += 1;
       else if (status === "fail") failCount += 1;
       else if (status === "recommend") recommendCount += 1;
       else if (status === "na") naCount += 1;
 
+      if (fieldType === "defect") {
+        defectItemCount += 1;
+        if (status === "ok") noDefectCount += 1;
+        else if (status === "fail") majorDefectCount += 1;
+        else if (status === "recommend") minorDefectCount += 1;
+      }
+
       const row: FindingRow = {
         sectionTitle,
         itemLabel: getItemLabel(item),
         status,
+        fieldType,
         value: normalizeOptionalText(item.value),
         unit: normalizeOptionalText(item.unit),
         notes: normalizeOptionalText(item.notes ?? item.note),
@@ -204,6 +236,10 @@ function collectFindings(sections: InspectionSection[]): {
     failCount,
     recommendCount,
     naCount,
+    defectItemCount,
+    noDefectCount,
+    majorDefectCount,
+    minorDefectCount,
   };
 }
 
@@ -465,8 +501,8 @@ export async function generateInspectionPDF(
       color: COLOR_TEXT,
     });
 
-    drawText(statusLabel(row.status), PAGE_W - MARGIN_X - 90, y - 30, {
-      size: 10,
+    drawText(statusLabel(row.status, row.fieldType), PAGE_W - MARGIN_X - 110, y - 30, {
+      size: 9,
       bold: true,
       color: badgeColor,
     });
@@ -535,7 +571,17 @@ export async function generateInspectionPDF(
     failCount,
     recommendCount,
     naCount,
+    defectItemCount,
+    noDefectCount,
+    majorDefectCount,
+    minorDefectCount,
   } = collectFindings(sections);
+  const genericOkCount = Math.max(0, okCount - noDefectCount);
+  const genericFailCount = Math.max(0, failCount - majorDefectCount);
+  const genericRecommendCount = Math.max(
+    0,
+    recommendCount - minorDefectCount,
+  );
 
   const shopName = safeStr(brand?.shopName).trim() || "ProFixIQ";
   const templateName = safeStr(session.templateName).trim() || "—";
@@ -627,33 +673,51 @@ export async function generateInspectionPDF(
 
   drawSectionHeader("Overview");
 
+  const summaryTiles: Array<{ title: string; value: number; fill: PdfRgb }> = [];
+  const hasDefectClassification = defectItemCount > 0;
+  const hasGenericStatuses =
+    !hasDefectClassification ||
+    genericOkCount > 0 ||
+    genericFailCount > 0 ||
+    genericRecommendCount > 0;
+
+  if (hasDefectClassification) {
+    summaryTiles.push(
+      { title: "NO DEFECT", value: noDefectCount, fill: rgb(0.12, 0.55, 0.3) },
+      { title: "MAJOR", value: majorDefectCount, fill: rgb(0.78, 0.18, 0.18) },
+      { title: "MINOR", value: minorDefectCount, fill: COLOR_PRIMARY },
+    );
+  }
+  if (hasGenericStatuses) {
+    summaryTiles.push(
+      { title: "FAIL", value: genericFailCount, fill: rgb(0.78, 0.18, 0.18) },
+      { title: "RECOMMEND", value: genericRecommendCount, fill: COLOR_PRIMARY },
+      { title: "OK", value: genericOkCount, fill: rgb(0.12, 0.55, 0.3) },
+    );
+  }
+  summaryTiles.push({ title: "N/A", value: naCount, fill: rgb(0.47, 0.5, 0.56) });
+
   const tileGap = 10;
-  const tileWidth = (CONTENT_W - tileGap * 3) / 4;
-
-  drawSummaryTile(MARGIN_X, tileWidth, "FAIL", String(failCount), rgb(0.78, 0.18, 0.18));
-  drawSummaryTile(
-    MARGIN_X + tileWidth + tileGap,
-    tileWidth,
-    "RECOMMEND",
-    String(recommendCount),
-    COLOR_PRIMARY,
-  );
-  drawSummaryTile(
-    MARGIN_X + (tileWidth + tileGap) * 2,
-    tileWidth,
-    "OK",
-    String(okCount),
-    rgb(0.12, 0.55, 0.3),
-  );
-  drawSummaryTile(
-    MARGIN_X + (tileWidth + tileGap) * 3,
-    tileWidth,
-    "N/A",
-    String(naCount),
-    rgb(0.47, 0.5, 0.56),
-  );
-
-  y -= 60;
+  const tilesPerRow = 4;
+  const tileWidth = (CONTENT_W - tileGap * (tilesPerRow - 1)) / tilesPerRow;
+  const summaryRowCount = Math.ceil(summaryTiles.length / tilesPerRow);
+  ensureSpace(summaryRowCount * 60);
+  for (let index = 0; index < summaryTiles.length; index += 1) {
+    const column = index % tilesPerRow;
+    const row = Math.floor(index / tilesPerRow);
+    const baseY = y;
+    y = baseY - row * 60;
+    const tile = summaryTiles[index];
+    drawSummaryTile(
+      MARGIN_X + column * (tileWidth + tileGap),
+      tileWidth,
+      tile.title,
+      String(tile.value),
+      tile.fill,
+    );
+    y = baseY;
+  }
+  y -= summaryRowCount * 60;
 
   drawMetaRow("Shop", shopName);
   drawMetaRow("Template", templateName);
@@ -698,7 +762,9 @@ export async function generateInspectionPDF(
 
   if (!hasActionable) {
     drawWrappedParagraph(
-      "No failures or recommended items were captured in this inspection.",
+      hasDefectClassification
+        ? "No major or minor defects were captured in this inspection."
+        : "No failures or recommended items were captured in this inspection.",
       {
         widthChars: 82,
         size: 10,
@@ -723,12 +789,21 @@ export async function generateInspectionPDF(
   drawRule();
   drawSectionHeader("Appendix");
   drawMetaRow("Sections", String(sections.length));
-  drawMetaRow("Fail Items", String(failCount));
-  drawMetaRow("Recommended Items", String(recommendCount));
-  drawMetaRow("OK Items", String(okCount));
+  if (hasDefectClassification) {
+    drawMetaRow("No Defect Items", String(noDefectCount));
+    drawMetaRow("Major Defects", String(majorDefectCount));
+    drawMetaRow("Minor Defects", String(minorDefectCount));
+  }
+  if (hasGenericStatuses) {
+    drawMetaRow("Fail Items", String(genericFailCount));
+    drawMetaRow("Recommended Items", String(genericRecommendCount));
+    drawMetaRow("OK Items", String(genericOkCount));
+  }
   drawMetaRow("N/A Items", String(naCount));
   drawWrappedParagraph(
-    "Rendering Mode: Actionable findings only. OK and N/A checklist items are summarized, not fully listed.",
+    hasDefectClassification
+      ? "Rendering Mode: Actionable findings only. No-defect and N/A checklist items are summarized, not fully listed."
+      : "Rendering Mode: Actionable findings only. OK and N/A checklist items are summarized, not fully listed.",
     {
       widthChars: 82,
       size: 10,

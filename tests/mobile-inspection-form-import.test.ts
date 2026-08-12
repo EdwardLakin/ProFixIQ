@@ -122,7 +122,12 @@ describe("mobile inspection form imports", () => {
     const worker = read(
       "features/inspections/server/inspection-form-import-job.ts",
     );
+    const formImport = read("features/inspections/lib/form-import.ts");
     const runPage = read("features/inspections/app/inspection/run/page.tsx");
+    const sharedGrid = read(
+      "features/inspections/lib/inspection/prepareSectionsWithCornerGrid.ts",
+    );
+    const mobileRunner = read("app/mobile/inspections/[id]/page.tsx");
     const statusButtons = read(
       "features/inspections/lib/inspection/StatusButtons.tsx",
     );
@@ -130,15 +135,38 @@ describe("mobile inspection form imports", () => {
       "features/inspections/lib/inspection/InspectionItemCard.tsx",
     );
 
-    expect(worker).toContain("selectRunnableInspectionFormSections");
+    expect(worker).toContain("formatVersion");
+    expect(worker).toContain("normalizeInspectionFormSectionsV2");
     expect(worker).toContain("field_type is REQUIRED");
     expect(worker).toContain("Never append handwritten or filled-in sample values");
     expect(worker).not.toContain("replaceFleetTireSectionWithGrid");
+    expect(formImport).toContain("INSPECTION_FORM_IMPORT_FORMAT_VERSION = 2");
     expect(runPage).toContain('mergedParams.grid = "none"');
-    expect(runPage).toContain('resolvedGridOverride = importedFleetForm ? "none"');
+    expect(sharedGrid).toContain("hasImportedFormClassification");
+    expect(sharedGrid).toContain("return s0");
+    expect(mobileRunner).toContain("hasImportedFormClassification");
     expect(statusButtons).toContain('toLowerCase() === "defect"');
     expect(statusButtons).toContain('? "Major" : "Fail"');
     expect(statusButtons).toContain('? "Minor" : "Rec"');
     expect(itemCard).toContain('toLowerCase() === "measurement"');
+    expect(itemCard).toContain("formContext.updateItem");
+    expect(itemCard).not.toContain("onUpdateNote(sectionIndex, itemIndex, value)");
+  });
+
+  it("keeps import semantics through template editing and report output", () => {
+    const editRouter = read(
+      "features/inspections/components/InspectionTemplateEditRouter.tsx",
+    );
+    const route = read("app/inspections/custom-draft/page.tsx");
+    const report = read("features/inspections/lib/inspection/report.ts");
+    const pdf = read("features/inspections/lib/inspection/pdf.ts");
+
+    expect(route).toContain("InspectionTemplateEditRouter");
+    expect(editRouter).toContain("fieldType");
+    expect(editRouter).toContain('data.tags.includes("customer-form")');
+    expect(report).toContain("Major defect");
+    expect(report).toContain("Minor defect");
+    expect(pdf).toContain("MAJOR DEFECT");
+    expect(pdf).toContain("MINOR DEFECT");
   });
 });

@@ -1,11 +1,26 @@
 // features/inspections/lib/inspection/prepareSectionsWithCornerGrid.ts
 
-export type CornerGridItem = { item?: string; unit?: string | null; name?: string | null };
+export type CornerGridItem = {
+  item?: string;
+  unit?: string | null;
+  name?: string | null;
+  fieldType?: string | null;
+};
 export type CornerGridSection = { title: string; items: CornerGridItem[] };
 
 const HYD_ITEM_RE = /^(LF|RF|LR|RR)\s+/i;
 const AIR_ITEM_RE =
   /^(Steer\s*\d*|Drive\s*\d+|Rear\s*\d+|Tag|Trailer\s*\d+)\s+(Left|Right)\s+/i;
+
+function hasImportedFormClassification<T extends CornerGridSection>(
+  sections: T[],
+): boolean {
+  return sections.some((section) =>
+    (section.items ?? []).some(
+      (item) => typeof item.fieldType === "string" && item.fieldType.trim().length > 0,
+    ),
+  );
+}
 
 // Brake/corner-only signals (NOT tires)
 function isBrakeCornerMetric(label: string): boolean {
@@ -191,6 +206,11 @@ export function prepareSectionsWithCornerGrid<T extends CornerGridSection>(
   gridParam: string | null,
 ): T[] {
   const s0 = Array.isArray(sections) ? sections : [];
+
+  // Classified Fleet Form Import rows describe the customer's source form.
+  // They are authoritative: never strip or inject brake/corner grids around
+  // them, even when a caller passes grid=none.
+  if (hasImportedFormClassification(s0)) return s0;
 
   // ✅ Fix bad upstream titles BEFORE we do the early “has corner grid” check.
   const s = normalizeMisTitledCornerSections(s0);

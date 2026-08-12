@@ -5,6 +5,8 @@ export type InspectionFormImportState =
   | "failed"
   | "approved";
 
+export const INSPECTION_FORM_IMPORT_FORMAT_VERSION = 2;
+
 export type InspectionFormFieldType =
   | "check"
   | "defect"
@@ -153,27 +155,64 @@ export function normalizeInspectionFormSections(
 }
 
 /**
- * Convert structural OCR into the subset that the canonical inspection runner
- * can execute. New imports are classified by the vision model, so branding,
- * legal copy, identity fields, signatures, free-text summary boxes and trip
- * logs are intentionally excluded instead of being turned into OK/FAIL rows.
- *
- * Old already-processed imports did not carry fieldType. Preserve those rows so
- * reviewing an existing job does not destructively rewrite historical data.
+ * Strict V2 structural OCR contract. Every returned row must carry a recognized
+ * classification. This deliberately rejects partially or wholly unclassified
+ * model output instead of silently falling back to the legacy "every row is an
+ * inspection item" behavior.
+ */
+export function normalizeInspectionFormSectionsV2(
+  value: unknown,
+): InspectionFormSection[] | null {
+  if (!Array.isArray(value)) return null;
+
+  const sections: InspectionFormSection[] = [];
+  let sourceItemCount = 0;
+
+  for (const sectionValue of value) {
+    const section = record(sectionValue);
+    const title = text(section.title) || "Section";
+    const rawItems = Array.isArray(section.items) ? section.items : [];
+    const items: InspectionFormItem[] = [];
+
+    for (const itemValue of rawItems) {
+      sourceItemCount += 1;
+      const item = record(itemValue);
+      const label = text(item.item ?? item.label ?? item.name);
+      const fieldType = normalizeInspectionFormFieldType(
+        item.fieldType ?? item.field_type ?? item.kind,
+      );
+      if (!label || !fieldType) return null;
+      items.push({
+        item: label,
+        unit: nullableText(item.unit),
+        fieldType,
+      });
+    }
+
+    if (items.length) sections.push({ title, items });
+  }
+
+  return sourceItemCount > 0 && sections.length > 0 ? sections : null;
+}
+
+/**
+ * Convert one persisted OCR page into the subset the canonical inspection
+ * runner can execute. The persisted page format version is authoritative:
+ * legacy pages preserve unclassified rows for rolling-deploy compatibility,
+ * while V2 pages require and filter by structural classifications.
  */
 export function selectRunnableInspectionFormSections(
   value: unknown,
+  formatVersion = 1,
 ): InspectionFormSection[] {
   const sections = normalizeInspectionFormSections(value);
-  const hasClassifiedItems = sections.some((section) =>
-    section.items.some((item) => Boolean(item.fieldType)),
-  );
+  const classified = formatVersion >= INSPECTION_FORM_IMPORT_FORMAT_VERSION;
 
   return sections
     .map((section) => ({
       ...section,
       items: section.items.filter((item) => {
-        if (!hasClassifiedItems) return true;
+        if (!classified) return true;
         return Boolean(
           item.fieldType &&
             RUNNABLE_INSPECTION_FORM_FIELD_TYPES.has(item.fieldType),

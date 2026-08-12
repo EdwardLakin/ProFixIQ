@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  INSPECTION_FORM_IMPORT_FORMAT_VERSION,
   normalizeInspectionFormSections,
+  normalizeInspectionFormSectionsV2,
   selectRunnableInspectionFormSections,
 } from "../features/inspections/lib/form-import";
+import { prepareSectionsWithCornerGrid } from "../features/inspections/lib/inspection/prepareSectionsWithCornerGrid";
 
 describe("inspection form import shaping", () => {
   it("keeps Rundle-style defect rows and removes filled/admin paper-form content", () => {
@@ -90,7 +93,10 @@ describe("inspection form import shaping", () => {
       fieldType: "identity",
     });
 
-    const runnable = selectRunnableInspectionFormSections(source);
+    const runnable = selectRunnableInspectionFormSections(
+      source,
+      INSPECTION_FORM_IMPORT_FORMAT_VERSION,
+    );
     expect(runnable).toEqual([
       {
         title: "Defect checklist",
@@ -123,16 +129,19 @@ describe("inspection form import shaping", () => {
   });
 
   it("keeps physical measurements but rejects administrative readings", () => {
-    const runnable = selectRunnableInspectionFormSections([
-      {
-        title: "Measurements",
-        items: [
-          { item: "Brake lining thickness", unit: "mm", kind: "measurement" },
-          { item: "Push rod travel", unit: "in", kind: "measurement" },
-          { item: "Odometer Reading", unit: "km", kind: "identity" },
-        ],
-      },
-    ]);
+    const runnable = selectRunnableInspectionFormSections(
+      [
+        {
+          title: "Measurements",
+          items: [
+            { item: "Brake lining thickness", unit: "mm", kind: "measurement" },
+            { item: "Push rod travel", unit: "in", kind: "measurement" },
+            { item: "Odometer Reading", unit: "km", kind: "identity" },
+          ],
+        },
+      ],
+      INSPECTION_FORM_IMPORT_FORMAT_VERSION,
+    );
 
     expect(runnable).toEqual([
       {
@@ -151,6 +160,83 @@ describe("inspection form import shaping", () => {
         ],
       },
     ]);
+  });
+
+  it("rejects new OCR pages when any row lacks a valid classification", () => {
+    expect(
+      normalizeInspectionFormSectionsV2([
+        {
+          title: "Header",
+          items: [
+            { item: "Rundle College Society", field_type: "branding" },
+            { item: "Attention to Excellence" },
+          ],
+        },
+      ]),
+    ).toBeNull();
+
+    expect(
+      normalizeInspectionFormSectionsV2([
+        {
+          title: "Checklist",
+          items: [{ item: "Brakes", field_type: "deefct" }],
+        },
+      ]),
+    ).toBeNull();
+  });
+
+  it("preserves old pages during rolling deployments while filtering V2 pages", () => {
+    const legacyPage = selectRunnableInspectionFormSections([
+      {
+        title: "Legacy checks",
+        items: [{ item: "Brakes" }, { item: "Lights" }],
+      },
+    ]);
+    const v2Page = selectRunnableInspectionFormSections(
+      [
+        {
+          title: "New page",
+          items: [
+            { item: "Rundle College", field_type: "branding" },
+            { item: "Steering", field_type: "defect" },
+          ],
+        },
+      ],
+      INSPECTION_FORM_IMPORT_FORMAT_VERSION,
+    );
+
+    expect([...legacyPage, ...v2Page]).toEqual([
+      {
+        title: "Legacy checks",
+        items: [
+          { item: "Brakes", unit: null },
+          { item: "Lights", unit: null },
+        ],
+      },
+      {
+        title: "New page",
+        items: [{ item: "Steering", unit: null, fieldType: "defect" }],
+      },
+    ]);
+  });
+
+  it("never strips or injects grids around classified source brake measurements", () => {
+    const source = [
+      {
+        title: "Brake Measurements",
+        items: [
+          { item: "LF Brake Pad", unit: "mm", fieldType: "measurement" },
+          {
+            item: "Steer 1 Left Push Rod Travel",
+            unit: "in",
+            fieldType: "measurement",
+          },
+        ],
+      },
+    ];
+
+    expect(prepareSectionsWithCornerGrid(source, "truck", null)).toEqual(source);
+    expect(prepareSectionsWithCornerGrid(source, "truck", "none")).toEqual(source);
   });
 
   it("preserves old unclassified imports for backward-compatible review", () => {
