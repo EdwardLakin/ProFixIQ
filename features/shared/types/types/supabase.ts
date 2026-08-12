@@ -2733,60 +2733,6 @@ export type Database = {
           },
         ]
       }
-      customer_bookings: {
-        Row: {
-          created_at: string | null
-          customer_email: string | null
-          customer_name: string | null
-          customer_phone: string | null
-          id: string
-          labor_hours_estimated: number | null
-          preferred_date: string | null
-          preferred_time: string | null
-          selected_services: Json | null
-          shop_id: string | null
-          status: string | null
-          vehicle_make: string | null
-          vehicle_model: string | null
-          vehicle_year: string | null
-          vin: string | null
-        }
-        Insert: {
-          created_at?: string | null
-          customer_email?: string | null
-          customer_name?: string | null
-          customer_phone?: string | null
-          id?: string
-          labor_hours_estimated?: number | null
-          preferred_date?: string | null
-          preferred_time?: string | null
-          selected_services?: Json | null
-          shop_id?: string | null
-          status?: string | null
-          vehicle_make?: string | null
-          vehicle_model?: string | null
-          vehicle_year?: string | null
-          vin?: string | null
-        }
-        Update: {
-          created_at?: string | null
-          customer_email?: string | null
-          customer_name?: string | null
-          customer_phone?: string | null
-          id?: string
-          labor_hours_estimated?: number | null
-          preferred_date?: string | null
-          preferred_time?: string | null
-          selected_services?: Json | null
-          shop_id?: string | null
-          status?: string | null
-          vehicle_make?: string | null
-          vehicle_model?: string | null
-          vehicle_year?: string | null
-          vin?: string | null
-        }
-        Relationships: []
-      }
       customer_account_merges: {
         Row: {
           created_at: string
@@ -2857,6 +2803,60 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      customer_bookings: {
+        Row: {
+          created_at: string | null
+          customer_email: string | null
+          customer_name: string | null
+          customer_phone: string | null
+          id: string
+          labor_hours_estimated: number | null
+          preferred_date: string | null
+          preferred_time: string | null
+          selected_services: Json | null
+          shop_id: string | null
+          status: string | null
+          vehicle_make: string | null
+          vehicle_model: string | null
+          vehicle_year: string | null
+          vin: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          customer_email?: string | null
+          customer_name?: string | null
+          customer_phone?: string | null
+          id?: string
+          labor_hours_estimated?: number | null
+          preferred_date?: string | null
+          preferred_time?: string | null
+          selected_services?: Json | null
+          shop_id?: string | null
+          status?: string | null
+          vehicle_make?: string | null
+          vehicle_model?: string | null
+          vehicle_year?: string | null
+          vin?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          customer_email?: string | null
+          customer_name?: string | null
+          customer_phone?: string | null
+          id?: string
+          labor_hours_estimated?: number | null
+          preferred_date?: string | null
+          preferred_time?: string | null
+          selected_services?: Json | null
+          shop_id?: string | null
+          status?: string | null
+          vehicle_make?: string | null
+          vehicle_model?: string | null
+          vehicle_year?: string | null
+          vin?: string | null
+        }
+        Relationships: []
       }
       customer_contacts: {
         Row: {
@@ -3296,10 +3296,10 @@ export type Database = {
           marketing_opt_in: boolean
           payment_terms: string
           payment_terms_days: number
+          po_required: boolean
           preferred_contact: string | null
           primary_approval_contact_id: string | null
           primary_billing_contact_id: string | null
-          po_required: boolean
           shop_id: string | null
           tax_exempt: boolean
           tax_exemption_reference: string | null
@@ -3320,10 +3320,10 @@ export type Database = {
           marketing_opt_in?: boolean
           payment_terms?: string
           payment_terms_days?: number
+          po_required?: boolean
           preferred_contact?: string | null
           primary_approval_contact_id?: string | null
           primary_billing_contact_id?: string | null
-          po_required?: boolean
           shop_id?: string | null
           tax_exempt?: boolean
           tax_exemption_reference?: string | null
@@ -3344,10 +3344,10 @@ export type Database = {
           marketing_opt_in?: boolean
           payment_terms?: string
           payment_terms_days?: number
+          po_required?: boolean
           preferred_contact?: string | null
           primary_approval_contact_id?: string | null
           primary_billing_contact_id?: string | null
-          po_required?: boolean
           shop_id?: string | null
           tax_exempt?: boolean
           tax_exemption_reference?: string | null
@@ -26703,16 +26703,6 @@ export type Database = {
         }
         Returns: Json
       }
-      archive_customer_account_atomic: {
-        Args: {
-          p_actor_user_id: string
-          p_customer_id: string
-          p_operation_key: string
-          p_reason: string
-          p_shop_id: string
-        }
-        Returns: Json
-      }
       apply_job_punch_transition_atomic: {
         Args: {
           p_action: string
@@ -26908,6 +26898,16 @@ export type Database = {
         Args: {
           p_actor_profile_id: string
           p_period_id: string
+          p_shop_id: string
+        }
+        Returns: Json
+      }
+      archive_customer_account_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_customer_id: string
+          p_operation_key: string
+          p_reason: string
           p_shop_id: string
         }
         Returns: Json
@@ -29988,3 +29988,4 @@ export const Constants = {
     },
   },
 } as const
+
