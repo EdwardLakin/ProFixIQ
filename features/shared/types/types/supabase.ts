@@ -27751,6 +27751,22 @@ export type Database = {
         Returns: Json
       }
       first_segment_uuid: { Args: { p: string }; Returns: string }
+      fleet_actor_can_manage_scope: {
+        Args: { p_fleet_id: string; p_shop_id: string }
+        Returns: boolean
+      }
+      fleet_actor_can_read_fleet: {
+        Args: { p_fleet_id: string; p_shop_id: string }
+        Returns: boolean
+      }
+      fleet_actor_can_read_member: {
+        Args: {
+          p_fleet_id: string
+          p_member_user_id: string
+          p_shop_id: string
+        }
+        Returns: boolean
+      }
       fleet_defect_descriptor: { Args: { p_key: string }; Returns: Json }
       get_customer_account_center: {
         Args: {
@@ -29988,4 +30004,3 @@ export const Constants = {
     },
   },
 } as const
-

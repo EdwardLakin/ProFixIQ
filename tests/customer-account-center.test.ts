@@ -5,6 +5,9 @@ const read = (path: string) => readFileSync(path, "utf8");
 const migration = read(
   "supabase/migrations/20260812050000_unified_customer_account_center.sql",
 );
+const fleetPolicyRepair = read(
+  "supabase/migrations/20260812060000_repair_fleet_access_policy_recursion.sql",
+);
 const accountCenter = read(
   "features/customers/components/CustomerAccountDetails.tsx",
 );
@@ -66,5 +69,30 @@ describe("unified Customer Account Center", () => {
     expect(accountCenter).toContain("Outstanding");
     expect(accountCenter).toContain("Merge duplicate");
     expect(accountCenter).toContain("<CustomerPricingPanel");
+  });
+
+  it("keeps long customer forms usable within a desktop viewport", () => {
+    expect(directory).toContain("max-h-[calc(100dvh-1.5rem)]");
+    expect(directory).toContain("min-h-0 overflow-y-auto");
+    expect(directory).toContain("shrink-0 items-center");
+  });
+
+  it("keeps a canonical customer visible when optional service data fails", () => {
+    expect(directory).toContain("let customerWasLoaded = false");
+    expect(directory).toContain("if (!customerWasLoaded) setCustomer(null)");
+    expect(directory).toContain(
+      "Customer account loaded, but related service data could not be loaded.",
+    );
+  });
+
+  it("breaks Fleet policy recursion without broadening Fleet access", () => {
+    expect(fleetPolicyRepair).toContain("fleet_actor_can_read_fleet");
+    expect(fleetPolicyRepair).toContain("fleet_actor_can_read_member");
+    expect(fleetPolicyRepair).toContain("fleet_actor_can_manage_scope");
+    expect(fleetPolicyRepair).toContain("security definer");
+    expect(fleetPolicyRepair).toContain("profile.user_id = (select auth.uid())");
+    expect(fleetPolicyRepair).not.toMatch(
+      /create policy fleets_actor_select[\s\S]*?from public\.fleet_members/i,
+    );
   });
 });

@@ -474,8 +474,8 @@ function Modal({ title, open, onClose, children, footer }: ModalProps) {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="w-full max-w-2xl rounded-2xl border border-[color:var(--desktop-border)] bg-[var(--theme-gradient-panel)] shadow-[var(--theme-shadow-medium)]">
-        <div className="flex items-center justify-between gap-3 border-b border-[color:var(--desktop-border)] px-4 py-3">
+      <div className="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-[color:var(--desktop-border)] bg-[var(--theme-gradient-panel)] shadow-[var(--theme-shadow-medium)]">
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[color:var(--desktop-border)] px-4 py-3">
           <div className="min-w-0">
             <div className="truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">
               {title}
@@ -489,9 +489,9 @@ function Modal({ title, open, onClose, children, footer }: ModalProps) {
             Close
           </button>
         </div>
-        <div className="px-4 py-4">{children}</div>
+        <div className="min-h-0 overflow-y-auto px-4 py-4">{children}</div>
         {footer ? (
-          <div className="flex items-center justify-end gap-2 border-t border-[color:var(--desktop-border)] px-4 py-3">
+          <div className="flex shrink-0 items-center justify-end gap-2 border-t border-[color:var(--desktop-border)] px-4 py-3">
             {footer}
           </div>
         ) : null}
@@ -746,6 +746,7 @@ export default function CustomerProfilePage(): JSX.Element {
     async (customerId: string) => {
       setLoading(true);
       setViewError(null);
+      let customerWasLoaded = false;
 
       try {
         const { data: cust, error: custErr } = await supabase
@@ -779,6 +780,7 @@ export default function CustomerProfilePage(): JSX.Element {
         }
 
         setCustomer(cust as unknown as Customer);
+        customerWasLoaded = true;
 
         const { data: connectedFleets, error: connectedFleetsError } =
           await supabase
@@ -930,8 +932,12 @@ export default function CustomerProfilePage(): JSX.Element {
       } catch (e: unknown) {
         const msg =
           e instanceof Error ? e.message : "Failed to load customer file.";
-        setViewError(msg);
-        setCustomer(null);
+        setViewError(
+          customerWasLoaded
+            ? `Customer account loaded, but related service data could not be loaded. ${msg}`
+            : msg,
+        );
+        if (!customerWasLoaded) setCustomer(null);
         setVehicles([]);
         setSelectedVehicleId(null);
         setWorkOrders([]);

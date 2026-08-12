@@ -296,6 +296,80 @@ begin
 end;
 $$;
 
+insert into public.fleets (
+  id, shop_id, customer_id, name, created_by
+)
+select
+  '61300000-0000-4000-8000-000000000001',
+  '61200000-0000-4000-8000-000000000001',
+  customer.id,
+  'Account Center Runtime Fleet',
+  '61100000-0000-4000-8000-000000000001'
+from public.customers customer
+where customer.shop_id = '61200000-0000-4000-8000-000000000001'
+  and customer.email = 'billing@morgan.example';
+
+-- A different-Shop actor is denied before any explicit Fleet membership.
+set local role authenticated;
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"61100000-0000-4000-8000-000000000002","role":"authenticated"}',
+  true
+);
+
+do $$
+begin
+  if exists (
+    select 1 from public.fleets
+    where id = '61300000-0000-4000-8000-000000000001'
+  ) then
+    raise exception 'Cross-Shop non-member read a Fleet workspace.';
+  end if;
+end;
+$$;
+
+reset role;
+select set_config('request.jwt.claims', '', true);
+select set_config('request.jwt.claim.role', '', true);
+
+insert into public.fleet_members (
+  fleet_id, shop_id, user_id, role, created_by
+) values (
+  '61300000-0000-4000-8000-000000000001',
+  '61200000-0000-4000-8000-000000000001',
+  '61100000-0000-4000-8000-000000000002',
+  'viewer',
+  '61100000-0000-4000-8000-000000000001'
+);
+
+-- Shop staff can read the Fleet and its membership rows without RLS recursion.
+set local role authenticated;
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"61100000-0000-4000-8000-000000000001","role":"authenticated"}',
+  true
+);
+
+do $$
+begin
+  if not exists (
+    select 1 from public.fleets
+    where id = '61300000-0000-4000-8000-000000000001'
+  ) or not exists (
+    select 1 from public.fleet_members
+    where fleet_id = '61300000-0000-4000-8000-000000000001'
+      and user_id = '61100000-0000-4000-8000-000000000002'
+  ) then
+    raise exception 'Shop staff could not read the linked Fleet relationship.';
+  end if;
+end;
+$$;
+
+reset role;
+select set_config('request.jwt.claims', '', true);
+select set_config('request.jwt.claim.role', '', true);
+
+-- An explicit Fleet member can read that Fleet and their own membership row.
 set local role authenticated;
 select set_config(
   'request.jwt.claims',
@@ -307,6 +381,17 @@ do $$
 declare
   v_denied boolean := false;
 begin
+  if not exists (
+    select 1 from public.fleets
+    where id = '61300000-0000-4000-8000-000000000001'
+  ) or not exists (
+    select 1 from public.fleet_members
+    where fleet_id = '61300000-0000-4000-8000-000000000001'
+      and user_id = '61100000-0000-4000-8000-000000000002'
+  ) then
+    raise exception 'Explicit Fleet member could not read their Fleet scope.';
+  end if;
+
   begin
     perform public.find_customer_account_duplicates(
       '61200000-0000-4000-8000-000000000001',
