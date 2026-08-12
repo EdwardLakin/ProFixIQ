@@ -3063,6 +3063,113 @@ export type Database = {
           },
         ]
       }
+      customer_pricing_agreements: {
+        Row: {
+          approval_reason: string
+          approved_by: string
+          created_at: string
+          created_by: string
+          currency: string
+          customer_id: string
+          effective_from: string
+          effective_until: string | null
+          id: string
+          labor_discount_percent: number
+          labor_rate: number | null
+          name: string
+          notes: string | null
+          operation_key: string
+          parts_discount_percent: number
+          retired_at: string | null
+          retired_by: string | null
+          retired_reason: string | null
+          shop_id: string
+          source_type: string
+          status: string
+          supersedes_agreement_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          approval_reason: string
+          approved_by: string
+          created_at?: string
+          created_by: string
+          currency?: string
+          customer_id: string
+          effective_from?: string
+          effective_until?: string | null
+          id?: string
+          labor_discount_percent?: number
+          labor_rate?: number | null
+          name: string
+          notes?: string | null
+          operation_key: string
+          parts_discount_percent?: number
+          retired_at?: string | null
+          retired_by?: string | null
+          retired_reason?: string | null
+          shop_id: string
+          source_type: string
+          status?: string
+          supersedes_agreement_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          approval_reason?: string
+          approved_by?: string
+          created_at?: string
+          created_by?: string
+          currency?: string
+          customer_id?: string
+          effective_from?: string
+          effective_until?: string | null
+          id?: string
+          labor_discount_percent?: number
+          labor_rate?: number | null
+          name?: string
+          notes?: string | null
+          operation_key?: string
+          parts_discount_percent?: number
+          retired_at?: string | null
+          retired_by?: string | null
+          retired_reason?: string | null
+          shop_id?: string
+          source_type?: string
+          status?: string
+          supersedes_agreement_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_pricing_agreements_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_pricing_agreements_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_pricing_agreements_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_pricing_agreements_supersedes_agreement_id_fkey"
+            columns: ["supersedes_agreement_id"]
+            isOneToOne: false
+            referencedRelation: "customer_pricing_agreements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       customer_quotes: {
         Row: {
           created_at: string | null
@@ -13315,6 +13422,168 @@ export type Database = {
           },
           {
             foreignKeyName: "portal_notifications_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pricing_resolution_snapshots: {
+        Row: {
+          agreement_id: string | null
+          base_labor_rate: number
+          base_labor_total: number
+          base_parts_total: number
+          created_at: string
+          currency: string
+          customer_id: string
+          id: string
+          input_snapshot: Json
+          labor_discount_percent: number
+          part_prices: Json
+          parts_discount_percent: number
+          precedence_rank: number
+          quote_line_id: string
+          resolution_hash: string
+          resolved_at: string
+          resolved_by: string
+          resolved_labor_rate: number
+          resolved_labor_total: number
+          resolved_parts_total: number
+          result_snapshot: Json
+          shop_id: string
+          source_type: string
+          supersedes_snapshot_id: string | null
+          work_order_id: string
+        }
+        Insert: {
+          agreement_id?: string | null
+          base_labor_rate: number
+          base_labor_total: number
+          base_parts_total: number
+          created_at?: string
+          currency: string
+          customer_id: string
+          id?: string
+          input_snapshot?: Json
+          labor_discount_percent: number
+          part_prices?: Json
+          parts_discount_percent: number
+          precedence_rank: number
+          quote_line_id: string
+          resolution_hash: string
+          resolved_at?: string
+          resolved_by: string
+          resolved_labor_rate: number
+          resolved_labor_total: number
+          resolved_parts_total: number
+          result_snapshot?: Json
+          shop_id: string
+          source_type: string
+          supersedes_snapshot_id?: string | null
+          work_order_id: string
+        }
+        Update: {
+          agreement_id?: string | null
+          base_labor_rate?: number
+          base_labor_total?: number
+          base_parts_total?: number
+          created_at?: string
+          currency?: string
+          customer_id?: string
+          id?: string
+          input_snapshot?: Json
+          labor_discount_percent?: number
+          part_prices?: Json
+          parts_discount_percent?: number
+          precedence_rank?: number
+          quote_line_id?: string
+          resolution_hash?: string
+          resolved_at?: string
+          resolved_by?: string
+          resolved_labor_rate?: number
+          resolved_labor_total?: number
+          resolved_parts_total?: number
+          result_snapshot?: Json
+          shop_id?: string
+          source_type?: string
+          supersedes_snapshot_id?: string | null
+          work_order_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pricing_resolution_snapshots_agreement_id_fkey"
+            columns: ["agreement_id"]
+            isOneToOne: false
+            referencedRelation: "customer_pricing_agreements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pricing_resolution_snapshots_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pricing_resolution_snapshots_quote_line_id_fkey"
+            columns: ["quote_line_id"]
+            isOneToOne: false
+            referencedRelation: "work_order_quote_lines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pricing_resolution_snapshots_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pricing_resolution_snapshots_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pricing_resolution_snapshots_supersedes_snapshot_id_fkey"
+            columns: ["supersedes_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "pricing_resolution_snapshots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pricing_resolution_snapshots_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_portal_invoices"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "pricing_resolution_snapshots_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_fleet"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "pricing_resolution_snapshots_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_portal"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "pricing_resolution_snapshots_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_shop"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "pricing_resolution_snapshots_work_order_id_fkey"
             columns: ["work_order_id"]
             isOneToOne: false
             referencedRelation: "work_orders"
@@ -24288,6 +24557,7 @@ export type Database = {
           converted_at: string | null
           created_at: string
           created_by: string | null
+          customer_pricing_snapshot_id: string | null
           decision: string | null
           decline_reason: string | null
           declined_at: string | null
@@ -24337,6 +24607,7 @@ export type Database = {
           converted_at?: string | null
           created_at?: string
           created_by?: string | null
+          customer_pricing_snapshot_id?: string | null
           decision?: string | null
           decline_reason?: string | null
           declined_at?: string | null
@@ -24386,6 +24657,7 @@ export type Database = {
           converted_at?: string | null
           created_at?: string
           created_by?: string | null
+          customer_pricing_snapshot_id?: string | null
           decision?: string | null
           decline_reason?: string | null
           declined_at?: string | null
@@ -24427,6 +24699,13 @@ export type Database = {
           work_order_line_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "work_order_quote_lines_customer_pricing_snapshot_id_fkey"
+            columns: ["customer_pricing_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "pricing_resolution_snapshots"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "work_order_quote_lines_shop_id_fkey"
             columns: ["shop_id"]
@@ -26211,6 +26490,16 @@ export type Database = {
         }
         Returns: Json
       }
+      apply_customer_pricing_to_quote_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_at?: string
+          p_quote_line_ids: string[]
+          p_shop_id: string
+          p_work_order_id: string
+        }
+        Returns: Json
+      }
       apply_customer_quote_decision_atomic: {
         Args: {
           p_actor_user_id: string
@@ -26795,6 +27084,26 @@ export type Database = {
         }
         Returns: string
       }
+      create_customer_pricing_agreement_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_approval_reason: string
+          p_at?: string
+          p_currency: string
+          p_customer_id: string
+          p_effective_from: string
+          p_effective_until: string
+          p_labor_discount_percent: number
+          p_labor_rate: number
+          p_name: string
+          p_notes: string
+          p_operation_key: string
+          p_parts_discount_percent: number
+          p_shop_id: string
+          p_source_type: string
+        }
+        Returns: Json
+      }
       create_estimate_atomic: {
         Args: {
           p_customer: Json
@@ -27224,6 +27533,10 @@ export type Database = {
       }
       first_segment_uuid: { Args: { p: string }; Returns: string }
       fleet_defect_descriptor: { Args: { p_key: string }; Returns: Json }
+      get_customer_pricing_account_summary: {
+        Args: { p_at?: string; p_customer_id: string; p_shop_id: string }
+        Returns: Json
+      }
       get_fleet_defect_queue: { Args: { p_fleet_id?: string }; Returns: Json }
       get_invoice_net_issued_parts: {
         Args: { p_shop_id: string; p_work_order_id: string }
@@ -28234,6 +28547,16 @@ export type Database = {
           p_clarification_id: string
           p_evidence: Json
           p_response_text: string
+        }
+        Returns: Json
+      }
+      retire_customer_pricing_agreement_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_agreement_id: string
+          p_at?: string
+          p_reason: string
+          p_shop_id: string
         }
         Returns: Json
       }
