@@ -117,4 +117,28 @@ describe("mobile inspection form imports", () => {
       read("features/inspections/components/FleetFormImportCard.tsx"),
     ).not.toContain("sessionStorage");
   });
+
+  it("shapes imported paper forms without inventing ProFixIQ grids", () => {
+    const worker = read(
+      "features/inspections/server/inspection-form-import-job.ts",
+    );
+    const runPage = read("features/inspections/app/inspection/run/page.tsx");
+    const statusButtons = read(
+      "features/inspections/lib/inspection/StatusButtons.tsx",
+    );
+    const itemCard = read(
+      "features/inspections/lib/inspection/InspectionItemCard.tsx",
+    );
+
+    expect(worker).toContain("selectRunnableInspectionFormSections");
+    expect(worker).toContain("field_type is REQUIRED");
+    expect(worker).toContain("Never append handwritten or filled-in sample values");
+    expect(worker).not.toContain("replaceFleetTireSectionWithGrid");
+    expect(runPage).toContain('mergedParams.grid = "none"');
+    expect(runPage).toContain('resolvedGridOverride = importedFleetForm ? "none"');
+    expect(statusButtons).toContain('toLowerCase() === "defect"');
+    expect(statusButtons).toContain('? "Major" : "Fail"');
+    expect(statusButtons).toContain('? "Minor" : "Rec"');
+    expect(itemCard).toContain('toLowerCase() === "measurement"');
+  });
 });

@@ -28,6 +28,10 @@ type StatusButtonsProps = {
   wrap?: boolean;
 };
 
+type ImportedFormItem = InspectionItem & {
+  fieldType?: string | null;
+};
+
 /**
  * Glassy, metallic status pills with clear status colors:
  * - OK        → green
@@ -52,6 +56,10 @@ export default function StatusButtons(_props: StatusButtonsProps) {
   } = _props as StatusButtonsProps;
 
   const selected = item.status;
+  const isDefectClassification =
+    String((item as ImportedFormItem).fieldType ?? "")
+      .trim()
+      .toLowerCase() === "defect";
 
   const size = compact
     ? "h-8 px-2.5 text-[10px]"
@@ -135,9 +143,9 @@ export default function StatusButtons(_props: StatusButtonsProps) {
         onClick={() => choose("ok")}
         onKeyDown={(e) => keyActivate("ok", e)}
         aria-pressed={selected === "ok"}
-        title="Mark OK"
+        title={isDefectClassification ? "Mark no defect" : "Mark OK"}
       >
-        OK
+        {isDefectClassification ? "None" : "OK"}
       </button>
 
       <button
@@ -147,9 +155,9 @@ export default function StatusButtons(_props: StatusButtonsProps) {
         onClick={() => choose("fail")}
         onKeyDown={(e) => keyActivate("fail", e)}
         aria-pressed={selected === "fail"}
-        title="Mark FAIL"
+        title={isDefectClassification ? "Mark major defect" : "Mark FAIL"}
       >
-        Fail
+        {isDefectClassification ? "Major" : "Fail"}
       </button>
 
       <button
@@ -159,9 +167,9 @@ export default function StatusButtons(_props: StatusButtonsProps) {
         onClick={() => choose("recommend")}
         onKeyDown={(e) => keyActivate("recommend", e)}
         aria-pressed={selected === "recommend"}
-        title="Mark Recommend"
+        title={isDefectClassification ? "Mark minor defect" : "Mark Recommend"}
       >
-        Rec
+        {isDefectClassification ? "Minor" : "Rec"}
       </button>
 
       <button

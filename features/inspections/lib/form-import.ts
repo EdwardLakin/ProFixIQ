@@ -5,9 +5,21 @@ export type InspectionFormImportState =
   | "failed"
   | "approved";
 
+export type InspectionFormFieldType =
+  | "check"
+  | "defect"
+  | "measurement"
+  | "text"
+  | "instruction"
+  | "identity"
+  | "signature"
+  | "trip"
+  | "branding";
+
 export type InspectionFormItem = {
   item: string;
   unit?: string | null;
+  fieldType?: InspectionFormFieldType;
 };
 
 export type InspectionFormSection = {
@@ -52,6 +64,24 @@ export type InspectionFormImportView = {
   approvedAt: string | null;
 };
 
+const INSPECTION_FORM_FIELD_TYPES = new Set<InspectionFormFieldType>([
+  "check",
+  "defect",
+  "measurement",
+  "text",
+  "instruction",
+  "identity",
+  "signature",
+  "trip",
+  "branding",
+]);
+
+const RUNNABLE_INSPECTION_FORM_FIELD_TYPES = new Set<InspectionFormFieldType>([
+  "check",
+  "defect",
+  "measurement",
+]);
+
 function record(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null
     ? (value as Record<string, unknown>)
@@ -67,6 +97,33 @@ function nullableText(value: unknown): string | null {
   return valueText || null;
 }
 
+function normalizeInspectionFormFieldType(
+  value: unknown,
+): InspectionFormFieldType | undefined {
+  const normalized = text(value).toLowerCase().replaceAll("-", "_");
+  if (!normalized) return undefined;
+  const aliases: Record<string, InspectionFormFieldType> = {
+    checklist: "check",
+    pass_fail: "check",
+    condition: "check",
+    defect_check: "defect",
+    defect_classification: "defect",
+    numeric: "measurement",
+    number: "measurement",
+    textarea: "text",
+    free_text: "text",
+    header: "branding",
+    admin: "identity",
+    administrative: "identity",
+    certification: "signature",
+    trip_log: "trip",
+  };
+  const candidate = aliases[normalized] ?? normalized;
+  return INSPECTION_FORM_FIELD_TYPES.has(candidate as InspectionFormFieldType)
+    ? (candidate as InspectionFormFieldType)
+    : undefined;
+}
+
 export function normalizeInspectionFormSections(
   value: unknown,
 ): InspectionFormSection[] {
@@ -80,11 +137,50 @@ export function normalizeInspectionFormSections(
     for (const itemValue of rawItems) {
       const item = record(itemValue);
       const label = text(item.item ?? item.label ?? item.name);
-      if (label) items.push({ item: label, unit: nullableText(item.unit) });
+      if (!label) continue;
+      const fieldType = normalizeInspectionFormFieldType(
+        item.fieldType ?? item.field_type ?? item.kind,
+      );
+      items.push({
+        item: label,
+        unit: nullableText(item.unit),
+        ...(fieldType ? { fieldType } : {}),
+      });
     }
     if (items.length) sections.push({ title, items });
   }
   return sections;
+}
+
+/**
+ * Convert structural OCR into the subset that the canonical inspection runner
+ * can execute. New imports are classified by the vision model, so branding,
+ * legal copy, identity fields, signatures, free-text summary boxes and trip
+ * logs are intentionally excluded instead of being turned into OK/FAIL rows.
+ *
+ * Old already-processed imports did not carry fieldType. Preserve those rows so
+ * reviewing an existing job does not destructively rewrite historical data.
+ */
+export function selectRunnableInspectionFormSections(
+  value: unknown,
+): InspectionFormSection[] {
+  const sections = normalizeInspectionFormSections(value);
+  const hasClassifiedItems = sections.some((section) =>
+    section.items.some((item) => Boolean(item.fieldType)),
+  );
+
+  return sections
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((item) => {
+        if (!hasClassifiedItems) return true;
+        return Boolean(
+          item.fieldType &&
+            RUNNABLE_INSPECTION_FORM_FIELD_TYPES.has(item.fieldType),
+        );
+      }),
+    }))
+    .filter((section) => section.items.length > 0);
 }
 
 export function inspectionFormImportState(

@@ -13,8 +13,18 @@ import Card from "@/features/shared/components/ui/Card";
 type DB = Database;
 type TemplateRow = DB["public"]["Tables"]["inspection_templates"]["Row"];
 
-type SectionItem = { item: string; unit?: string | null };
+type SectionItem = {
+  item: string;
+  unit?: string | null;
+  fieldType?: string | null;
+};
 type Section = { title: string; items: SectionItem[] };
+
+function isImportedFleetForm(sections: Section[]): boolean {
+  return sections.some((section) =>
+    (section.items ?? []).some((item) => Boolean(item.fieldType)),
+  );
+}
 
 export default function RunInspectionPage() {
   const sp = useSearchParams();
@@ -53,6 +63,7 @@ export default function RunInspectionPage() {
       }
 
       const title = stagedTitle || "Inspection";
+      const importedFleetForm = isImportedFleetForm(sections);
 
       const currentParams: Record<string, string> = {};
       sp.forEach((value, key) => {
@@ -77,10 +88,17 @@ export default function RunInspectionPage() {
         sessionStorage.getItem("inspection:vehicleType") ||
         "";
 
-      const grid =
-        mergedParams.grid ||
-        gridOverride ||
-        sessionStorage.getItem("customInspection:gridMode");
+      const grid = importedFleetForm
+        ? "none"
+        : mergedParams.grid ||
+          gridOverride ||
+          sessionStorage.getItem("customInspection:gridMode");
+
+      if (importedFleetForm) {
+        // Fleet form imports describe the customer's source form. Never inject
+        // ProFixIQ's generic brake/corner grid unless it was actually imported.
+        mergedParams.grid = "none";
+      }
 
       // ✅ Single canonical normalizer (shared with other flows)
       const normalizedSections = prepareSectionsWithCornerGrid(
@@ -127,12 +145,14 @@ export default function RunInspectionPage() {
       const rawSections = (data.sections ?? []) as Section[];
       const title = data.template_name ?? "Inspection";
       const vehicleType = String(data.vehicle_type ?? "");
+      const importedFleetForm = isImportedFleetForm(rawSections);
+      const resolvedGridOverride = importedFleetForm ? "none" : gridOverride;
 
       // ✅ Single canonical normalizer (shared with other flows)
       const sections = prepareSectionsWithCornerGrid(
         rawSections,
         vehicleType,
-        gridOverride,
+        resolvedGridOverride,
       ) as unknown as Section[];
 
       if (typeof window !== "undefined") {
@@ -145,6 +165,7 @@ export default function RunInspectionPage() {
         params.template = params.template || "generic";
         params.vehicleType = vehicleType;
         params.mode = params.mode || "run";
+        if (importedFleetForm) params.grid = "none";
 
         sessionStorage.setItem("inspection:sections", JSON.stringify(sections));
         sessionStorage.setItem("inspection:title", title);
