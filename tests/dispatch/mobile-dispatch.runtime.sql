@@ -117,6 +117,8 @@ declare
   v_visit_c_id uuid;
   v_visit_d_id uuid;
   v_create_result jsonb;
+  v_handoff jsonb;
+  v_work_order_id uuid;
   v_truck_a uuid;
   v_truck_b uuid;
   v_board jsonb;
@@ -258,6 +260,24 @@ begin
     '8b100000-0000-4000-8000-000000000001', v_visit_a_id, 'arrived', null, 12.8, null,
     '8a100000-0000-4000-8000-000000000002', 'dispatch-runtime:a:arrived'
   );
+
+  -- Arrival may precede repair creation, but physical work must always be
+  -- anchored to the canonical work order before the visit enters `working`.
+  v_handoff := public.mobile_materialize_service_visit_work_order_atomic(
+    '8b100000-0000-4000-8000-000000000001', v_visit_a_id,
+    '8a100000-0000-4000-8000-000000000002',
+    'dispatch-runtime:a:work-order'
+  );
+  v_work_order_id := (v_handoff ->> 'workOrderId')::uuid;
+  if v_work_order_id is null or not exists (
+    select 1 from public.service_visits visit
+    where visit.id = v_visit_a_id
+      and visit.shop_id = '8b100000-0000-4000-8000-000000000001'
+      and visit.work_order_id = v_work_order_id
+  ) then
+    raise exception 'Dispatch assertion failed: arrived visit did not materialize its canonical work order';
+  end if;
+
   perform public.dispatch_transition_service_visit_atomic(
     '8b100000-0000-4000-8000-000000000001', v_visit_a_id, 'working', null, null, null,
     '8a100000-0000-4000-8000-000000000002', 'dispatch-runtime:a:working'
