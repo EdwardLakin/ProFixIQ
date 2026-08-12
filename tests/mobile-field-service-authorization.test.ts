@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const migration = readFileSync(
-  "supabase/migrations/20260811192500_make_field_service_authorization_mode_aware.sql",
+  "supabase/migrations/20260811191825_make_field_service_authorization_mode_aware.sql",
   "utf8",
 );
 
