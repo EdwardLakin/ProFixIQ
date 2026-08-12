@@ -7,13 +7,15 @@ describe("create work order customer and vehicle persistence", () => {
     "utf8",
   );
 
-  it("writes the complete customer form for inserts and existing records", () => {
+  it("writes the complete customer form for canonical creates and existing records", () => {
     expect(page).toContain("const customerWrite = buildCustomerInsert(customer, shopId)");
     expect(page).toContain("const { shop_id: _shopId, ...customerPatch } = customerWrite");
     expect(page).not.toContain("const needsPatch =");
     expect(page).toContain(".update(customerPatch)");
     expect(page).toContain(".update(buildImplicitCustomerPatch(customerPatch))");
-    expect(page).toContain(".insert(customerWrite)");
+    expect(page).toContain("createCustomerAccount({");
+    expect(page).toContain("matchExisting: true");
+    expect(page).not.toContain(".insert(customerWrite)");
   });
 
   it("writes every vehicle field, including cleared values", () => {

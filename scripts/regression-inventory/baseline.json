@@ -1643,16 +1643,6 @@
       "expiresOn": "2026-09-06"
     },
     {
-      "fingerprint": "b6bb8e4ddbc1a8c054a3",
-      "rule": "dynamic-mutation-payload",
-      "severity": "warning",
-      "domain": "core",
-      "file": "features/customers/app/customers/[id]/page.tsx",
-      "subject": "customers",
-      "message": "insert payload for customers cannot be checked statically",
-      "expiresOn": "2026-09-06"
-    },
-    {
       "fingerprint": "dc5c4f0c0cc5368d8301",
       "rule": "dynamic-mutation-payload",
       "severity": "warning",
@@ -1670,16 +1660,6 @@
       "file": "features/customers/app/customers/[id]/page.tsx",
       "subject": "vehicles",
       "message": "update payload for vehicles cannot be checked statically",
-      "expiresOn": "2026-09-06"
-    },
-    {
-      "fingerprint": "330cef63b0d5264c45a9",
-      "rule": "dynamic-mutation-payload",
-      "severity": "warning",
-      "domain": "core",
-      "file": "features/customers/app/customers/[id]/page.tsx",
-      "subject": "vehicles",
-      "message": "insert payload for vehicles cannot be checked statically",
       "expiresOn": "2026-09-06"
     },
     {
@@ -2080,16 +2060,6 @@
       "file": "features/work-orders/app/work-orders/create/page.tsx",
       "subject": "customers",
       "message": "update payload for customers cannot be checked statically",
-      "expiresOn": "2026-09-06"
-    },
-    {
-      "fingerprint": "d1cac181c12226673afb",
-      "rule": "dynamic-mutation-payload",
-      "severity": "warning",
-      "domain": "work-orders",
-      "file": "features/work-orders/app/work-orders/create/page.tsx",
-      "subject": "customers",
-      "message": "insert payload for customers cannot be checked statically",
       "expiresOn": "2026-09-06"
     },
     {

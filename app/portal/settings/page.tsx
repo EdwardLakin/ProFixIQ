@@ -9,8 +9,25 @@ import type { Database } from "@shared/types/types/supabase";
 import LinkButton from "@shared/components/ui/LinkButton";
 
 type Customer = Database["public"]["Tables"]["customers"]["Row"];
-type SettingsRow = Database["public"]["Tables"]["customer_settings"]["Row"];
-type SettingsInsert = Database["public"]["Tables"]["customer_settings"]["Insert"];
+type PortalSettingsKey =
+  | "customer_id"
+  | "comm_email_enabled"
+  | "comm_sms_enabled"
+  | "marketing_opt_in"
+  | "preferred_contact"
+  | "units"
+  | "language"
+  | "timezone"
+  | "updated_at";
+type PortalSettingsInsertKey = Exclude<PortalSettingsKey, "updated_at">;
+type SettingsRow = Pick<
+  Database["public"]["Tables"]["customer_settings"]["Row"],
+  PortalSettingsKey
+>;
+type SettingsInsert = Pick<
+  Database["public"]["Tables"]["customer_settings"]["Insert"],
+  PortalSettingsInsertKey
+>;
 
 const COPPER = "var(--accent-copper)";
 

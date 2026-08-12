@@ -10,6 +10,7 @@ on:
       - "tests/parts/*.runtime.sql"
       - "tests/parts/*.runtime.sh"
       - "tests/security/*.runtime.sql"
+      - "tests/customers/*.runtime.sql"
       - "db/sql/schema.sql"
       - "features/shared/types/types/supabase.ts"
       - "package.json"
@@ -165,6 +166,20 @@ jobs:
           psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
             -f tests/security/quote-review-cost-and-sell.runtime.sql \
             2>&1 | tee quote-review-cost-and-sell-runtime.log
+
+      - name: Execute Customer Account Center runtime integration
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+            -f tests/customers/unified-customer-account-center.runtime.sql \
+            2>&1 | tee customer-account-center-runtime.log
 
       - name: Execute P0 relation-boundary runtime integration
         shell: bash

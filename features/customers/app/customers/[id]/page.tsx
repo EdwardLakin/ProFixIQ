@@ -16,6 +16,11 @@ import { checkVehicleDuplicates } from "@/features/shared/lib/vehicles/duplicate
 import GuidedPageStepPanel from "@/features/onboarding-v2/components/GuidedPageStepPanel";
 import { CustomerCsvImportCard } from "@/features/customers/components/CustomerCsvImportCard";
 import { CustomerAccountDetails } from "@/features/customers/components/CustomerAccountDetails";
+import {
+  createCustomerAccount as createCanonicalCustomerAccount,
+  CustomerDuplicateReviewError,
+  type CustomerDuplicateCandidate,
+} from "@/features/customers/lib/customerAccountCommands";
 import { ImportedHistoryRecordCard } from "@/features/work-orders/components/ImportedHistoryRecordCard";
 import { usePersistentGuidedOnboardingQuery } from "@/features/onboarding-v2/guided/persistence";
 import { useTabs } from "@/features/shared/components/tabs/TabsProvider";
@@ -431,32 +436,6 @@ function importedHistorySummary(row: ImportedHistory): string | null {
   return strOrNull(row.description) ?? strOrNull(row.notes);
 }
 
-function normalizeEmail(v: string | null | undefined): string | null {
-  const email = strOrNull(v);
-  return email ? email.toLowerCase() : null;
-}
-
-function normalizePhone(v: string | null | undefined): string | null {
-  const raw = strOrNull(v);
-  if (!raw) return null;
-  const digits = raw.replace(/\D/g, "");
-  return digits || raw;
-}
-
-function splitCustomerName(name: string): {
-  firstName: string | null;
-  lastName: string | null;
-} {
-  const clean = strOrNull(name);
-  if (!clean) return { firstName: null, lastName: null };
-  const parts = clean.split(/\s+/).filter(Boolean);
-  if (parts.length === 1) return { firstName: parts[0], lastName: null };
-  return {
-    firstName: parts.slice(0, -1).join(" "),
-    lastName: parts.at(-1) ?? null,
-  };
-}
-
 /** Storage buckets (from your screenshot set). We don't store bucket in DB, so we "probe" candidates. */
 const BUCKET_PHOTOS_PRIMARY = "vehicle-photos";
 const BUCKET_DOCS_PRIMARY = "vehicle-docs";
@@ -495,8 +474,8 @@ function Modal({ title, open, onClose, children, footer }: ModalProps) {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="w-full max-w-2xl rounded-2xl border border-[color:var(--desktop-border)] bg-[var(--theme-gradient-panel)] shadow-[var(--theme-shadow-medium)]">
-        <div className="flex items-center justify-between gap-3 border-b border-[color:var(--desktop-border)] px-4 py-3">
+      <div className="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-[color:var(--desktop-border)] bg-[var(--theme-gradient-panel)] shadow-[var(--theme-shadow-medium)]">
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[color:var(--desktop-border)] px-4 py-3">
           <div className="min-w-0">
             <div className="truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">
               {title}
@@ -510,9 +489,9 @@ function Modal({ title, open, onClose, children, footer }: ModalProps) {
             Close
           </button>
         </div>
-        <div className="px-4 py-4">{children}</div>
+        <div className="min-h-0 overflow-y-auto px-4 py-4">{children}</div>
         {footer ? (
-          <div className="flex items-center justify-end gap-2 border-t border-[color:var(--desktop-border)] px-4 py-3">
+          <div className="flex shrink-0 items-center justify-end gap-2 border-t border-[color:var(--desktop-border)] px-4 py-3">
             {footer}
           </div>
         ) : null}
@@ -657,6 +636,9 @@ export default function CustomerProfilePage(): JSX.Element {
 
   // Edit modals
   const [editCustomerOpen, setEditCustomerOpen] = useState(false);
+  const [editCustomerDuplicates, setEditCustomerDuplicates] = useState<
+    CustomerDuplicateCandidate[]
+  >([]);
   const [editVehicleOpen, setEditVehicleOpen] = useState(false);
   const [addVehicleOpen, setAddVehicleOpen] = useState(false);
 
@@ -676,6 +658,9 @@ export default function CustomerProfilePage(): JSX.Element {
   const [createCustomerError, setCreateCustomerError] = useState<string | null>(
     null,
   );
+  const [duplicateCandidates, setDuplicateCandidates] = useState<
+    CustomerDuplicateCandidate[]
+  >([]);
   const [
     customerImportPlaceholderVisible,
     setCustomerImportPlaceholderVisible,
@@ -761,12 +746,13 @@ export default function CustomerProfilePage(): JSX.Element {
     async (customerId: string) => {
       setLoading(true);
       setViewError(null);
+      let customerWasLoaded = false;
 
       try {
         const { data: cust, error: custErr } = await supabase
           .from("customers")
           .select(
-            "id, shop_id, first_name, last_name, name, business_name, email, phone, phone_number, created_at, customer_since, address, city, province, postal_code, account_type, is_fleet, active",
+            "id, shop_id, first_name, last_name, name, business_name, email, phone, phone_number, created_at, customer_since, address, city, province, postal_code, account_type, is_fleet, active, merged_into_customer_id",
           )
           .eq("id", customerId)
           .maybeSingle();
@@ -787,7 +773,14 @@ export default function CustomerProfilePage(): JSX.Element {
           return;
         }
 
-        setCustomer(cust as Customer);
+        if (cust.merged_into_customer_id) {
+          router.replace(`/customers/${cust.merged_into_customer_id}`);
+          setLoading(false);
+          return;
+        }
+
+        setCustomer(cust as unknown as Customer);
+        customerWasLoaded = true;
 
         const { data: connectedFleets, error: connectedFleetsError } =
           await supabase
@@ -939,8 +932,12 @@ export default function CustomerProfilePage(): JSX.Element {
       } catch (e: unknown) {
         const msg =
           e instanceof Error ? e.message : "Failed to load customer file.";
-        setViewError(msg);
-        setCustomer(null);
+        setViewError(
+          customerWasLoaded
+            ? `Customer account loaded, but related service data could not be loaded. ${msg}`
+            : msg,
+        );
+        if (!customerWasLoaded) setCustomer(null);
         setVehicles([]);
         setSelectedVehicleId(null);
         setWorkOrders([]);
@@ -951,7 +948,7 @@ export default function CustomerProfilePage(): JSX.Element {
         setLoading(false);
       }
     },
-    [supabase],
+    [router, supabase],
   );
 
   useEffect(() => {
@@ -1084,82 +1081,61 @@ export default function CustomerProfilePage(): JSX.Element {
     [supabase],
   );
 
-  const createCustomer = useCallback(async () => {
-    setCreateCustomerError(null);
+  const createCustomer = useCallback(
+    async (allowDuplicate = false) => {
+      setCreateCustomerError(null);
+      setDuplicateCandidates([]);
 
-    const customerName = strOrNull(newCustomer.customerName);
-    const businessName = strOrNull(newCustomer.businessName);
-    const isBusinessLike =
-      newCustomer.customerType === "business" ||
-      newCustomer.customerType === "fleet" ||
-      newCustomer.customerType === "enterprise";
-    const displayName = isBusinessLike ? businessName : customerName;
+      const customerName = strOrNull(newCustomer.customerName);
+      const businessName = strOrNull(newCustomer.businessName);
+      const isBusinessLike =
+        newCustomer.customerType === "business" ||
+        newCustomer.customerType === "fleet" ||
+        newCustomer.customerType === "enterprise";
+      const displayName = isBusinessLike ? businessName : customerName;
 
-    if (!displayName) {
-      setCreateCustomerError(
-        isBusinessLike
-          ? "Business name is required."
-          : "Customer name is required.",
-      );
-      return;
-    }
-
-    setCreatingCustomer(true);
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user?.id)
-        throw new Error("You must be signed in to create a customer.");
-
-      const shopId = await getOrLinkShopId(user.id);
-      if (!shopId) throw new Error("Your profile isn’t linked to a shop yet.");
-
-      const splitName = splitCustomerName(customerName ?? "");
-      const normalizedPhone = normalizePhone(newCustomer.phone);
-
-      const insertRecord: DB["public"]["Tables"]["customers"]["Insert"] = {
-        shop_id: shopId,
-        user_id: null,
-        created_by: user.id,
-        account_type: newCustomer.customerType,
-        is_fleet: newCustomer.customerType === "fleet",
-        name: displayName,
-        business_name: isBusinessLike ? businessName : null,
-        first_name: isBusinessLike ? splitName.firstName : splitName.firstName,
-        last_name: isBusinessLike ? splitName.lastName : splitName.lastName,
-        phone: normalizedPhone,
-        phone_number: normalizedPhone,
-        email: normalizeEmail(newCustomer.email),
-        address: strOrNull(newCustomer.address),
-        city: strOrNull(newCustomer.city),
-        province: strOrNull(newCustomer.province),
-        postal_code: strOrNull(newCustomer.postalCode),
-        notes: strOrNull(newCustomer.notes),
-      };
-
-      const { data, error } = await supabase
-        .from("customers")
-        .insert(insertRecord)
-        .select("id")
-        .single();
-
-      if (error || !data?.id) {
-        throw new Error(error?.message ?? "Failed to create customer.");
+      if (!displayName) {
+        setCreateCustomerError(
+          isBusinessLike
+            ? "Business name is required."
+            : "Customer name is required.",
+        );
+        return;
       }
 
-      setCreateCustomerOpen(false);
-      setNewCustomer(EMPTY_NEW_CUSTOMER);
-      router.push(`/customers/${data.id}`);
-    } catch (e: unknown) {
-      setCreateCustomerError(
-        e instanceof Error ? e.message : "Failed to create customer.",
-      );
-    } finally {
-      setCreatingCustomer(false);
-    }
-  }, [getOrLinkShopId, newCustomer, router, supabase]);
+      setCreatingCustomer(true);
+      try {
+        const result = await createCanonicalCustomerAccount({
+          accountType: newCustomer.customerType,
+          name: customerName,
+          businessName: isBusinessLike ? businessName : null,
+          phone: newCustomer.phone,
+          email: newCustomer.email,
+          address: newCustomer.address,
+          city: newCustomer.city,
+          province: newCustomer.province,
+          postalCode: newCustomer.postalCode,
+          notes: newCustomer.notes,
+          allowDuplicate,
+        });
+
+        setCreateCustomerOpen(false);
+        setNewCustomer(EMPTY_NEW_CUSTOMER);
+        router.push(`/customers/${result.customer?.id}`);
+      } catch (e: unknown) {
+        if (e instanceof CustomerDuplicateReviewError) {
+          setDuplicateCandidates(e.candidates);
+          return;
+        }
+        setCreateCustomerError(
+          e instanceof Error ? e.message : "Failed to create customer.",
+        );
+      } finally {
+        setCreatingCustomer(false);
+      }
+    },
+    [newCustomer, router],
+  );
 
   // ------------------ Directory search ------------------
   const loadDirectoryRows = useCallback(async () => {
@@ -1350,62 +1326,93 @@ export default function CustomerProfilePage(): JSX.Element {
     });
   }, [customer]);
 
-  const saveCustomer = useCallback(async () => {
-    if (!customer) return;
+  const saveCustomer = useCallback(
+    async (allowOverlap = false) => {
+      if (!customer) return;
 
-    const updateRecord: Record<string, unknown> = {
-      first_name:
-        typeof custDraft["first_name"] === "string"
-          ? custDraft["first_name"]
-          : null,
-      last_name:
-        typeof custDraft["last_name"] === "string"
-          ? custDraft["last_name"]
-          : null,
-      name:
-        typeof custDraft["name"] === "string"
-          ? (custDraft["name"] as string) || null
-          : null,
-      business_name:
-        typeof custDraft["business_name"] === "string"
-          ? (custDraft["business_name"] as string) || null
-          : null,
-      account_type:
-        typeof custDraft["account_type"] === "string"
-          ? custDraft["account_type"]
-          : "individual",
-      is_fleet: custDraft["account_type"] === "fleet",
-      email: typeof custDraft["email"] === "string" ? custDraft["email"] : null,
-      phone: typeof custDraft["phone"] === "string" ? custDraft["phone"] : null,
-      phone_number:
-        typeof custDraft["phone_number"] === "string"
-          ? custDraft["phone_number"]
-          : null,
-    };
+      const updateRecord: Record<string, unknown> = {
+        first_name:
+          typeof custDraft["first_name"] === "string"
+            ? custDraft["first_name"]
+            : null,
+        last_name:
+          typeof custDraft["last_name"] === "string"
+            ? custDraft["last_name"]
+            : null,
+        name:
+          typeof custDraft["name"] === "string"
+            ? (custDraft["name"] as string) || null
+            : null,
+        business_name:
+          typeof custDraft["business_name"] === "string"
+            ? (custDraft["business_name"] as string) || null
+            : null,
+        account_type:
+          typeof custDraft["account_type"] === "string"
+            ? custDraft["account_type"]
+            : "individual",
+        is_fleet: custDraft["account_type"] === "fleet",
+        email:
+          typeof custDraft["email"] === "string" ? custDraft["email"] : null,
+        phone:
+          typeof custDraft["phone"] === "string" ? custDraft["phone"] : null,
+        phone_number:
+          typeof custDraft["phone_number"] === "string"
+            ? custDraft["phone_number"]
+            : null,
+      };
 
-    // Optional fields (if your schema has them, they'll save; if not, Supabase will error and we show it)
-    if (typeof custDraft["address"] === "string")
-      updateRecord["address"] = custDraft["address"] || null;
-    if (typeof custDraft["city"] === "string")
-      updateRecord["city"] = custDraft["city"] || null;
-    if (typeof custDraft["province"] === "string")
-      updateRecord["province"] = custDraft["province"] || null;
-    if (typeof custDraft["postal_code"] === "string")
-      updateRecord["postal_code"] = custDraft["postal_code"] || null;
+      // Optional fields (if your schema has them, they'll save; if not, Supabase will error and we show it)
+      if (typeof custDraft["address"] === "string")
+        updateRecord["address"] = custDraft["address"] || null;
+      if (typeof custDraft["city"] === "string")
+        updateRecord["city"] = custDraft["city"] || null;
+      if (typeof custDraft["province"] === "string")
+        updateRecord["province"] = custDraft["province"] || null;
+      if (typeof custDraft["postal_code"] === "string")
+        updateRecord["postal_code"] = custDraft["postal_code"] || null;
 
-    const { error } = await supabase
-      .from("customers")
-      .update(updateRecord as DB["public"]["Tables"]["customers"]["Update"])
-      .eq("id", customer.id);
+      if (!allowOverlap) {
+        const params = new URLSearchParams({ excludeCustomerId: customer.id });
+        const values: Array<[string, unknown]> = [
+          ["name", updateRecord["name"]],
+          ["businessName", updateRecord["business_name"]],
+          ["email", updateRecord["email"]],
+          ["phone", updateRecord["phone"]],
+        ];
+        for (const [key, value] of values) {
+          if (typeof value === "string" && value.trim()) {
+            params.set(key, value.trim());
+          }
+        }
+        const response = await fetch(`/api/customers/accounts?${params}`, {
+          cache: "no-store",
+        });
+        const payload = (await response.json().catch(() => null)) as {
+          duplicateCandidates?: CustomerDuplicateCandidate[];
+        } | null;
+        if ((payload?.duplicateCandidates?.length ?? 0) > 0) {
+          setEditCustomerDuplicates(payload?.duplicateCandidates ?? []);
+          return;
+        }
+      }
 
-    if (error) {
-      setViewError(error.message);
-      return;
-    }
+      const { error } = await supabase
+        .from("customers")
+        .update(updateRecord as DB["public"]["Tables"]["customers"]["Update"])
+        .eq("id", customer.id);
 
-    setEditCustomerOpen(false);
-    await fetchCustomerFile(customer.id);
-  }, [customer, custDraft, fetchCustomerFile, supabase]);
+      if (error) {
+        setViewError(error.message);
+        return;
+      }
+
+      setEditCustomerOpen(false);
+      setEditCustomerDuplicates([]);
+      await fetchCustomerFile(customer.id);
+    },
+    [customer, custDraft, fetchCustomerFile, supabase],
+  );
 
   // ------------------ Edit Vehicle ------------------
   const [vehDraft, setVehDraft] = useState<Record<string, unknown>>({});
@@ -1923,7 +1930,7 @@ export default function CustomerProfilePage(): JSX.Element {
               </button>
               <button
                 type="button"
-                onClick={() => void createCustomer()}
+                onClick={() => void createCustomer(false)}
                 disabled={creatingCustomer}
                 className="rounded-xl bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-on-accent)] shadow-[0_0_22px_rgba(212,118,49,0.75)] hover:brightness-110 disabled:opacity-60"
               >
@@ -1941,6 +1948,44 @@ export default function CustomerProfilePage(): JSX.Element {
             {createCustomerError ? (
               <div className="whitespace-pre-wrap rounded-xl border border-red-500/35 bg-red-950/50 p-3 text-sm text-red-200">
                 {createCustomerError}
+              </div>
+            ) : null}
+
+            {duplicateCandidates.length > 0 ? (
+              <div className="rounded-xl border border-amber-400/40 bg-amber-950/30 p-3">
+                <div className="text-sm font-semibold text-amber-100">
+                  Possible duplicate accounts
+                </div>
+                <p className="mt-1 text-xs leading-5 text-amber-100/75">
+                  Open an existing account when it is the same customer. Create
+                  another only when you have confirmed these are separate
+                  records.
+                </p>
+                <div className="mt-3 space-y-2">
+                  {duplicateCandidates.map((candidate) => (
+                    <button
+                      key={candidate.id}
+                      type="button"
+                      onClick={() => router.push(`/customers/${candidate.id}`)}
+                      className="w-full rounded-lg border border-amber-300/25 bg-black/15 p-2 text-left text-xs text-amber-50 hover:border-amber-300/60"
+                    >
+                      <span className="font-semibold">
+                        {candidate.display_name}
+                      </span>
+                      <span className="ml-2 text-amber-100/65">
+                        Matched {candidate.reasons.join(", ")}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void createCustomer(true)}
+                  disabled={creatingCustomer}
+                  className="mt-3 rounded-lg border border-amber-300/40 px-3 py-2 text-xs font-semibold text-amber-50 hover:bg-amber-200/10 disabled:opacity-60"
+                >
+                  Confirm separate customer
+                </button>
               </div>
             ) : null}
 
@@ -2843,7 +2888,7 @@ export default function CustomerProfilePage(): JSX.Element {
             </button>
             <button
               type="button"
-              onClick={() => void saveCustomer()}
+              onClick={() => void saveCustomer(false)}
               className="rounded-xl bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2 text-[12px] font-semibold text-[color:var(--theme-text-on-accent)] shadow-[0_0_22px_rgba(212,118,49,0.75)] hover:brightness-110"
             >
               Save
@@ -2851,6 +2896,26 @@ export default function CustomerProfilePage(): JSX.Element {
           </>
         }
       >
+        {editCustomerDuplicates.length > 0 ? (
+          <div className="mb-3 rounded-xl border border-amber-400/40 bg-amber-950/30 p-3 text-xs text-amber-100">
+            <div className="font-semibold">Possible duplicate accounts</div>
+            <div className="mt-2 space-y-1">
+              {editCustomerDuplicates.map((candidate) => (
+                <div key={candidate.id}>
+                  {candidate.display_name} · matched{" "}
+                  {candidate.reasons.join(", ")}
+                </div>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => void saveCustomer(true)}
+              className="mt-3 rounded-lg border border-amber-300/40 px-3 py-2 font-semibold"
+            >
+              Confirm these are separate accounts
+            </button>
+          </div>
+        ) : null}
         <div className="mb-3 space-y-1">
           <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
             Account type

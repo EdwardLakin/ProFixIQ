@@ -39,9 +39,9 @@ describe("customer account foundation", () => {
   });
 
   it("separates a staff creator from the customer portal identity", () => {
-    expect(customerPage).toContain("user_id: null");
-    expect(customerPage).toContain("created_by: user.id");
-    expect(customerPage).toContain("account_type: newCustomer.customerType");
+    expect(customerPage).toContain("createCanonicalCustomerAccount");
+    expect(customerPage).toContain("accountType: newCustomer.customerType");
+    expect(customerPage).not.toContain('.from("customers")\n        .insert');
   });
 
   it("links Fleet to an explicitly verified existing customer", () => {
