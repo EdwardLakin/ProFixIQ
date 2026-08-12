@@ -6,9 +6,9 @@ import type { Database } from "@shared/types/types/supabase";
 import {
   normalizeInspectionFormImportSummary,
   normalizeInspectionFormSections,
+  selectRunnableInspectionFormSections,
   type InspectionFormSection,
 } from "@/features/inspections/lib/form-import";
-import { replaceFleetTireSectionWithGrid } from "@/features/inspections/lib/fleet/replaceFleetTireSectionWithGrid";
 import { getOpenAIClient } from "@/features/shared/lib/server/openai";
 import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
 
@@ -85,7 +85,7 @@ async function parsePage(
       {
         role: "system",
         content:
-          "You perform OCR on vehicle inspection forms. Return strict JSON only and preserve every visible section and checklist row.",
+          "You perform structural OCR on vehicle and fleet inspection forms. Return strict JSON only. Preserve visible content, but classify every form element so administrative text is never converted into an inspection checklist row.",
       },
       {
         role: "user",
@@ -94,8 +94,21 @@ async function parsePage(
             type: "text",
             text: [
               "Read this single page of a customer vehicle inspection form.",
-              'Return {"extracted_text":"...","sections":[{"title":"...","items":[{"item":"...","unit":null}]}]}.',
-              "Keep printed order. Include fill-in fields and measurement rows. Do not invent content.",
+              '{"extracted_text":"...","sections":[{"title":"...","items":[{"item":"...","unit":null,"field_type":"check"}]}]}.',
+              "field_type is REQUIRED for every item and must be one of: check, defect, measurement, text, instruction, identity, signature, trip, branding.",
+              "Classification rules:",
+              "- check: a real vehicle/component condition row intended to be marked pass/fail/okay/not-applicable.",
+              "- defect: a real vehicle/component checklist row where the source form classifies defects as minor/major, V/X, or equivalent. If a source legend defines minor and major defects, use defect for all rows governed by that legend.",
+              "- measurement: a physical component inspection measurement such as brake lining, push-rod travel, tire pressure, tread depth, or rotor/drum measurement. Do NOT classify odometer, engine hours, trip distance, dates, or administrative readings as measurement.",
+              "- text: a standalone free-text response box such as a general defect-details paragraph.",
+              "- instruction: legal, regulatory, safety, explanatory, or procedural wording that the person reads but does not inspect.",
+              "- identity: vehicle/unit/VIN/licence plate/location/odometer/driver/person/date/time fields and similar record metadata.",
+              "- signature: printed-name, signature, certification, attestation, completion, or sign-off fields.",
+              "- trip: trip log/table fields such as driver, odometer start/finish, kilometres driven, route, or observations for a trip.",
+              "- branding: organization names, logos, slogans, mottos, addresses, or decorative headings that are not inspection sections.",
+              "Keep printed order and printed section titles. Do not invent content.",
+              "For label/value pairs, return the reusable printed label only. Never append handwritten or filled-in sample values to the item label.",
+              "Do not turn organization names, slogans, instructions, legal statements, filled answers, vehicle identifiers, signature lines, completion fields, or trip tables into check/defect rows.",
               `Vehicle type hint: ${hints.vehicleType || "unknown"}`,
               `Duty class hint: ${hints.dutyClass || "unknown"}`,
               `Template title hint: ${hints.title || "unknown"}`,
@@ -116,7 +129,7 @@ async function parsePage(
   const result = JSON.parse(content) as VisionResult;
   const sections = normalizeInspectionFormSections(result.sections);
   if (!sections.length) {
-    throw new Error("No readable inspection rows were found on this page.");
+    throw new Error("No readable form elements were found on this page.");
   }
 
   return {
@@ -153,16 +166,7 @@ async function finalizeJob(
     const payload = asPagePayload(page.raw_row);
     return payload?.parsedSections ?? [];
   });
-  const draftSections = replaceFleetTireSectionWithGrid({
-    sections,
-    vehicleType: hints.vehicleType,
-    dutyClass:
-      hints.dutyClass === "light" ||
-      hints.dutyClass === "medium" ||
-      hints.dutyClass === "heavy"
-        ? hints.dutyClass
-        : "",
-  });
+  const draftSections = selectRunnableInspectionFormSections(sections);
   const extractedText = successful
     .map((page) => asPagePayload(page.raw_row)?.extractedText || "")
     .filter(Boolean)
@@ -174,7 +178,7 @@ async function finalizeJob(
       .update({
         status: "failed",
         failed_count: failedPages.length || pages.length,
-        error_message: "No uploaded pages contained readable inspection rows.",
+        error_message: "No uploaded pages contained reusable inspection rows.",
         completed_at: new Date().toISOString(),
         summary: { ...hints, state: "failed", failedPages },
       })
