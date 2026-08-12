@@ -8,6 +8,10 @@ const migration = read(
 const fleetPolicyRepair = read(
   "supabase/migrations/20260812060000_repair_fleet_access_policy_recursion.sql",
 );
+const customerAccountHardening = read(
+  "supabase/migrations/20260812062000_harden_customer_account_advisors.sql",
+);
+const generatedTypes = read("features/shared/types/types/supabase.ts");
 const accountCenter = read(
   "features/customers/components/CustomerAccountDetails.tsx",
 );
@@ -93,6 +97,37 @@ describe("unified Customer Account Center", () => {
     expect(fleetPolicyRepair).toContain("profile.user_id = (select auth.uid())");
     expect(fleetPolicyRepair).not.toMatch(
       /create policy fleets_actor_select[\s\S]*?from public\.fleet_members/i,
+    );
+  });
+
+  it("keeps privileged Fleet predicates outside the Data API surface", () => {
+    expect(customerAccountHardening).toContain(
+      "create schema if not exists rls_helpers",
+    );
+    expect(customerAccountHardening).toContain(
+      "alter default privileges for role postgres in schema rls_helpers",
+    );
+    expect(customerAccountHardening).toContain(
+      "using (rls_helpers.fleet_actor_can_read_fleet(id, shop_id))",
+    );
+    expect(customerAccountHardening).toContain(
+      "drop function public.fleet_actor_can_read_fleet(uuid, uuid)",
+    );
+    expect(generatedTypes).not.toContain("fleet_actor_can_read_fleet:");
+  });
+
+  it("indexes Customer Account audit foreign keys used during retention", () => {
+    expect(customerAccountHardening).toContain(
+      "customer_account_operations_actor_idx",
+    );
+    expect(customerAccountHardening).toContain(
+      "customer_account_operations_customer_idx",
+    );
+    expect(customerAccountHardening).toContain(
+      "customer_account_merges_merged_by_idx",
+    );
+    expect(customerAccountHardening).toContain(
+      "customer_account_merges_target_customer_idx",
     );
   });
 });
