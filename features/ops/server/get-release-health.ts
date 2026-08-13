@@ -1,7 +1,7 @@
 import "server-only";
 
+import { agentTeamRequest } from "@/features/agent/server/teamClient";
 import { requireOpsOperatorPageAccess } from "@/features/ops/server/operator-access";
-import { resolveAgentApiSecrets } from "@/features/shared/lib/server/agent-api-secrets";
 
 const GITHUB_REPOSITORY = "EdwardLakin/ProFixIQ";
 const GITHUB_API = `https://api.github.com/repos/${GITHUB_REPOSITORY}`;
@@ -127,7 +127,7 @@ export type OpsReleaseHealthSnapshot = {
     requiredForRelease: boolean | null;
     releaseMigrationCount: number;
     repoCount: number;
-    appliedCount: number;
+    appliedCount: number | null;
     pending: string[];
     drift: string[];
     latestRepoVersion: string | null;
@@ -255,46 +255,22 @@ async function agentReleaseEvidence(since: string): Promise<AgentReleaseEvidence
     };
   }
 
-  const secret = resolveAgentApiSecrets().primary;
-  if (!secret) {
-    return {
-      agent: await publicAgentRuntime(baseUrl),
-      database: { state: "degraded", data: null },
-    };
-  }
-
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 18_000);
   try {
-    const response = await fetch(
-      `${baseUrl}/ops/release-evidence?since=${encodeURIComponent(since)}`,
+    const payload = await agentTeamRequest<AgentReleaseEvidencePayload>(
+      `/ops/release-evidence?since=${encodeURIComponent(since)}`,
       {
         method: "GET",
-        cache: "no-store",
         signal: controller.signal,
-        headers: {
-          accept: "application/json",
-          "x-agent-api-secret": secret,
-        },
+        headers: { accept: "application/json" },
       },
     );
-    const raw = await response.text();
-    let payload: AgentReleaseEvidencePayload | null = null;
-    try {
-      const parsed = JSON.parse(raw) as unknown;
-      payload = isRecord(parsed) ? parsed as AgentReleaseEvidencePayload : null;
-    } catch {
-      payload = null;
-    }
 
-    if (!payload) {
-      return {
-        agent: await publicAgentRuntime(baseUrl),
-        database: { state: "degraded", data: null },
-      };
-    }
-
-    const agent = normalizeAgentRuntime(payload.runtime);
+    const privilegedAgent = normalizeAgentRuntime(payload.runtime);
+    const agent = privilegedAgent.generationVerified
+      ? privilegedAgent
+      : await publicAgentRuntime(baseUrl);
     const database = payload.database;
     const databaseError = text(database?.error);
     const migrations = Array.isArray(database?.migrations)
@@ -304,8 +280,7 @@ async function agentReleaseEvidence(since: string): Promise<AgentReleaseEvidence
           return version && name ? [{ version, name }] : [];
         })
       : [];
-    const databaseHealthy = response.ok
-      && payload.status === "ok"
+    const databaseHealthy = payload.status === "ok"
       && database?.configured === true
       && !databaseError;
 
@@ -421,11 +396,17 @@ export async function getOpsReleaseHealth(): Promise<OpsReleaseHealthSnapshot> {
     const version = migrationVersion(item.name);
     return version ? [version] : [];
   });
+  const databaseEvidenceAvailable = infrastructure.database.state === "healthy"
+    && infrastructure.database.data !== null;
   const appliedVersions = infrastructure.database.data?.migrations.map((migration) => migration.version) ?? [];
   const repoSet = new Set(repoVersions);
   const appliedSet = new Set(appliedVersions);
-  const pending = repoVersions.filter((version) => !appliedSet.has(version)).sort();
-  const drift = appliedVersions.filter((version) => !repoSet.has(version)).sort();
+  const pending = databaseEvidenceAvailable
+    ? repoVersions.filter((version) => !appliedSet.has(version)).sort()
+    : [];
+  const drift = databaseEvidenceAvailable
+    ? appliedVersions.filter((version) => !repoSet.has(version)).sort()
+    : [];
   const migrationsRequired = parentSha ? releaseMigrationFiles.length > 0 : null;
 
   let migrationStatus: OpsReleaseHealthSnapshot["migrations"]["status"] = "unknown";
@@ -530,11 +511,11 @@ export async function getOpsReleaseHealth(): Promise<OpsReleaseHealthSnapshot> {
       requiredForRelease: migrationsRequired,
       releaseMigrationCount: releaseMigrationFiles.length,
       repoCount: repoVersions.length,
-      appliedCount: appliedVersions.length,
+      appliedCount: databaseEvidenceAvailable ? appliedVersions.length : null,
       pending,
       drift,
       latestRepoVersion: latest(repoVersions),
-      latestAppliedVersion: latest(appliedVersions),
+      latestAppliedVersion: databaseEvidenceAvailable ? latest(appliedVersions) : null,
       supabaseCheck: supabaseCheck?.conclusion ?? null,
     },
     pullRequests: {

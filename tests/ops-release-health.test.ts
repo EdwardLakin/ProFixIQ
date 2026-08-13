@@ -28,12 +28,14 @@ describe("Ops deployments and release health", () => {
     expect(server).toContain("vercelCheck");
   });
 
-  it("keeps privileged production database inspection behind the authenticated Agent boundary", () => {
+  it("reuses the canonical Agent bridge client for privileged release evidence", () => {
     const server = source("features/ops/server/get-release-health.ts");
-    expect(server).toContain("resolveAgentApiSecrets");
+    expect(server).toContain('import { agentTeamRequest } from "@/features/agent/server/teamClient"');
+    expect(server).toContain("agentTeamRequest<AgentReleaseEvidencePayload>");
     expect(server).toContain("/ops/release-evidence?since=");
-    expect(server).toContain('"x-agent-api-secret": secret');
     expect(server).toContain("publicAgentRuntime");
+    expect(server).not.toContain("resolveAgentApiSecrets");
+    expect(server).not.toContain('"x-agent-api-secret": secret');
     expect(server).not.toContain("ops_release_database_snapshot");
     expect(server).not.toContain("SUPABASE_SERVICE_ROLE_KEY");
     expect(server).not.toContain("PROFIXIQ_SUPABASE_MANAGEMENT_TOKEN");
@@ -41,12 +43,20 @@ describe("Ops deployments and release health", () => {
     expect(server).not.toContain("createClient(");
   });
 
-  it("reports migration parity and release failures from sanitized Agent evidence", () => {
+  it("never turns unavailable database evidence into false migration drift", () => {
     const server = source("features/ops/server/get-release-health.ts");
-    expect(server).toContain("pending = repoVersions.filter");
-    expect(server).toContain("drift = appliedVersions.filter");
+    const component = source("features/ops/components/OpsReleaseHealth.tsx");
+    expect(server).toContain('const databaseEvidenceAvailable = infrastructure.database.state === "healthy"');
+    expect(server).toContain("const pending = databaseEvidenceAvailable");
+    expect(server).toContain("const drift = databaseEvidenceAvailable");
+    expect(server).toContain("appliedCount: databaseEvidenceAvailable ? appliedVersions.length : null");
     expect(server).toContain('migrationStatus = "pending"');
     expect(server).toContain('migrationStatus = "drift"');
+    expect(component).toContain('snapshot.migrations.appliedCount ?? "Unavailable"');
+  });
+
+  it("reports release failures from sanitized Agent evidence", () => {
+    const server = source("features/ops/server/get-release-health.ts");
     expect(server).toContain("failuresSince");
     expect(server).toContain("unresolvedFailures");
     expect(server).toContain("latestFailureAt");

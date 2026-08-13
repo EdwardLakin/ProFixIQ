@@ -218,7 +218,7 @@ export default function OpsReleaseHealth({ snapshot }: { snapshot: OpsReleaseHea
           <div className="mt-4 grid gap-2 text-xs">
             <div className="flex justify-between gap-3"><span className="text-[color:var(--theme-text-muted)]">Status</span><span className="font-semibold">{migrationStatusLabel(snapshot.migrations.status)}</span></div>
             <div className="flex justify-between gap-3"><span className="text-[color:var(--theme-text-muted)]">Release migrations</span><span className="font-mono">{snapshot.migrations.releaseMigrationCount}</span></div>
-            <div className="flex justify-between gap-3"><span className="text-[color:var(--theme-text-muted)]">Main / production</span><span className="font-mono">{snapshot.migrations.repoCount} / {snapshot.migrations.appliedCount}</span></div>
+            <div className="flex justify-between gap-3"><span className="text-[color:var(--theme-text-muted)]">Main / production</span><span className="font-mono">{snapshot.migrations.repoCount} / {snapshot.migrations.appliedCount ?? "Unavailable"}</span></div>
             <div className="flex justify-between gap-3"><span className="text-[color:var(--theme-text-muted)]">Supabase check</span><span className="font-mono">{snapshot.migrations.supabaseCheck ?? "Unavailable"}</span></div>
           </div>
         </article>
