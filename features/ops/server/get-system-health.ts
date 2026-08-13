@@ -91,6 +91,20 @@ function normalizeAgentRuntime(value: unknown): OpsRuntimeGeneration | null {
   };
 }
 
+function agentDetails(
+  responseStatus: number,
+  runtime: OpsRuntimeGeneration | null,
+  generationVerifiable: boolean,
+): Array<{ label: string; value: string }> {
+  return [
+    { label: "HTTP", value: String(responseStatus) },
+    { label: "Generation", value: generationVerifiable ? "Verified" : "Unverified" },
+    { label: "Commit", value: shortSha(runtime?.commitSha ?? null) },
+    { label: "Deployment", value: runtime?.deploymentId ?? "Unavailable" },
+    { label: "Fingerprint", value: runtime?.fingerprint ? runtime.fingerprint.slice(0, 16) : "Unavailable" },
+  ];
+}
+
 async function agentHealth(): Promise<OpsHealthService> {
   const baseUrl = text(process.env.PROFIXIQ_AGENT_URL)?.replace(/\/+$/, "") ?? null;
   if (!baseUrl) {
@@ -127,32 +141,39 @@ async function agentHealth(): Promise<OpsHealthService> {
     const runtime = normalizeAgentRuntime(payload?.runtime);
     const serviceStatus = text(payload?.status);
     const generationVerifiable = runtime?.verifiable === true;
-    const state: OpsHealthState = response.ok && serviceStatus === "ok" && generationVerifiable
-      ? "healthy"
-      : !payload
-        ? "down"
-        : "degraded";
-    const summary = state === "healthy"
-      ? "Agent worker and deployment generation are verifiable."
-      : state === "down"
-        ? `Agent health returned HTTP ${response.status} without a valid health payload.`
-        : !generationVerifiable
-          ? "Agent is reachable, but its deployment generation is not yet verifiable."
-          : text(payload?.error) ?? `Agent health returned HTTP ${response.status}.`;
+    const details = agentDetails(response.status, runtime, generationVerifiable);
+
+    if (response.ok && serviceStatus === "ok" && generationVerifiable) {
+      return {
+        key: "agent",
+        label: "ProFixIQ Agent",
+        state: "healthy",
+        summary: "Agent worker and deployment generation are verifiable.",
+        latencyMs,
+        details,
+      };
+    }
+
+    if (!payload) {
+      return {
+        key: "agent",
+        label: "ProFixIQ Agent",
+        state: "down",
+        summary: `Agent health returned HTTP ${response.status} without a valid health payload.`,
+        latencyMs,
+        details,
+      };
+    }
 
     return {
       key: "agent",
       label: "ProFixIQ Agent",
-      state,
-      summary,
+      state: "degraded",
+      summary: !generationVerifiable
+        ? "Agent is reachable, but its deployment generation is not yet verifiable."
+        : text(payload.error) ?? `Agent health returned HTTP ${response.status}.`,
       latencyMs,
-      details: [
-        { label: "HTTP", value: String(response.status) },
-        { label: "Generation", value: generationVerifiable ? "Verified" : "Unverified" },
-        { label: "Commit", value: shortSha(runtime?.commitSha ?? null) },
-        { label: "Deployment", value: runtime?.deploymentId ?? "Unavailable" },
-        { label: "Fingerprint", value: runtime?.fingerprint ? runtime.fingerprint.slice(0, 16) : "Unavailable" },
-      ],
+      details,
     };
   } catch (error) {
     const latencyMs = Date.now() - started;
