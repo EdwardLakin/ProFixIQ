@@ -34,8 +34,16 @@ const ROLE_OPTIONS: Array<{ value: UserRole; label: string }> = [
   { value: "owner", label: "Owner" },
   { value: "admin", label: "Admin" },
   { value: "manager", label: "Manager" },
+  { value: "foreman", label: "Foreman" },
+  { value: "lead_hand", label: "Lead Hand" },
   { value: "advisor", label: "Advisor" },
-  { value: "mechanic", label: "Mechanic" },
+  { value: "service", label: "Service" },
+  { value: "parts", label: "Parts" },
+  { value: "mechanic", label: "Mechanic / Technician" },
+  { value: "dispatcher", label: "Dispatcher" },
+  { value: "driver", label: "Driver" },
+  { value: "fleet_manager", label: "Fleet Manager" },
+  { value: "customer", label: "Customer" },
 ];
 
 function safeMsg(e: unknown, fallback: string): string {

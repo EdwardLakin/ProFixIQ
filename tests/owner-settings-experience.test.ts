@@ -70,6 +70,27 @@ describe("owner settings experience", () => {
     expect(resendInviteRoute).toContain("tempPassword: null");
   });
 
+  it("keeps every creatable operational role filterable and editable", () => {
+    for (const role of [
+      "owner",
+      "admin",
+      "manager",
+      "foreman",
+      "lead_hand",
+      "advisor",
+      "service",
+      "parts",
+      "mechanic",
+      "dispatcher",
+      "driver",
+      "fleet_manager",
+    ]) {
+      expect(usersList).toContain(`value: "${role}"`);
+    }
+
+    expect(usersList).toContain('{ value: "customer", label: "Customer" }');
+  });
+
   it("shows the actual actor and protects unsaved changes", () => {
     expect(header).toContain("roleLabel");
     expect(header).toContain("shopName");
