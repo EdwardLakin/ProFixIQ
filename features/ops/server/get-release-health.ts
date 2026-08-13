@@ -398,9 +398,7 @@ export async function getOpsReleaseHealth(): Promise<OpsReleaseHealthSnapshot> {
   });
   const databaseEvidenceAvailable = infrastructure.database.state === "healthy"
     && infrastructure.database.data !== null;
-  const appliedVersions = databaseEvidenceAvailable
-    ? infrastructure.database.data.migrations.map((migration) => migration.version)
-    : [];
+  const appliedVersions = infrastructure.database.data?.migrations.map((migration) => migration.version) ?? [];
   const repoSet = new Set(repoVersions);
   const appliedSet = new Set(appliedVersions);
   const pending = databaseEvidenceAvailable
