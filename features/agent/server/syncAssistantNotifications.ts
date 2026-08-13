@@ -186,7 +186,7 @@ export async function syncAssistantNotifications(params: {
 
   let existingQuery = supabase
     .from("assistant_notifications")
-    .select("id, fingerprint, first_seen_at, status")
+    .select("id, fingerprint, first_seen_at, status, acknowledged_at, acknowledged_by")
     .eq("shop_id", shopId)
     .eq("source", source);
 
@@ -202,7 +202,13 @@ export async function syncAssistantNotifications(params: {
 
   const existingByFingerprint = new Map<
     string,
-    { id: string; first_seen_at: string; status: AssistantNotificationStatus }
+    {
+      id: string;
+      first_seen_at: string;
+      status: AssistantNotificationStatus;
+      acknowledged_at: string | null;
+      acknowledged_by: string | null;
+    }
   >();
 
   for (const row of existingRows ?? []) {
@@ -210,6 +216,8 @@ export async function syncAssistantNotifications(params: {
       id: row.id,
       first_seen_at: row.first_seen_at,
       status: normalizeAssistantNotificationStatus(row.status),
+      acknowledged_at: row.acknowledged_at ?? null,
+      acknowledged_by: row.acknowledged_by ?? null,
     });
   }
 
@@ -248,6 +256,14 @@ export async function syncAssistantNotifications(params: {
       },
       first_seen_at: existing?.first_seen_at ?? now,
       last_seen_at: now,
+      acknowledged_at:
+        existing?.status === "acknowledged"
+          ? existing.acknowledged_at
+          : null,
+      acknowledged_by:
+        existing?.status === "acknowledged"
+          ? existing.acknowledged_by
+          : null,
       resolved_at: null,
       updated_at: now,
     };
