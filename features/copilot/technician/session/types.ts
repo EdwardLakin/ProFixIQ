@@ -19,6 +19,8 @@ export const REPAIR_EVENT_TYPES = [
   "session.resumed",
   "session.paused",
   "session.closed",
+  "conversation.user",
+  "conversation.assistant",
   "task.changed",
   "complaint.recorded",
   "observation.recorded",
@@ -44,6 +46,14 @@ export type RepairSessionEvent = {
   eventType: RepairEventType;
   source: RepairEventSource;
   payload: Record<string, unknown>;
+  occurredAt: string;
+};
+
+export type RepairConversationTurn = {
+  eventId: string;
+  role: "user" | "assistant";
+  text: string;
+  turnId?: string;
   occurredAt: string;
 };
 
@@ -123,6 +133,7 @@ export type RepairContextState = {
   mode: RepairSessionMode;
   currentTask: string | null;
   complaint: string | null;
+  conversation: RepairConversationTurn[];
   observations: RepairObservation[];
   measurements: RepairMeasurement[];
   dtcs: RepairDtc[];
