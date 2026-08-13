@@ -1,0 +1,75 @@
+import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+
+function source(path: string): string {
+  return readFileSync(path, "utf8");
+}
+
+describe("Ops deployments and release health", () => {
+  it("adds a force-dynamic owner Ops deployments route", () => {
+    const page = source("app/ops/deployments/page.tsx");
+    const server = source("features/ops/server/get-release-health.ts");
+    expect(page).toContain('export const dynamic = "force-dynamic"');
+    expect(page).toContain("getOpsReleaseHealth");
+    expect(page).toContain("<OpsReleaseHealth snapshot={snapshot} />");
+    expect(server).toContain("await requireOpsOperatorPageAccess()");
+  });
+
+  it("correlates Vercel runtime identity with GitHub main, PRs, CI, and migration inventory", () => {
+    const server = source("features/ops/server/get-release-health.ts");
+    expect(server).toContain("VERCEL_GIT_COMMIT_SHA");
+    expect(server).toContain("VERCEL_DEPLOYMENT_ID");
+    expect(server).toContain('githubJson<GithubCommit>("/commits/main")');
+    expect(server).toContain('"/pulls?state=open&base=main&per_page=100&sort=updated&direction=desc"');
+    expect(server).toContain("/check-runs?per_page=100");
+    expect(server).toContain('"/contents/supabase/migrations?ref=main"');
+    expect(server).toContain("behindMain");
+    expect(server).toContain("deploymentSucceeded");
+    expect(server).toContain("vercelCheck");
+  });
+
+  it("keeps privileged production database inspection behind the authenticated Agent boundary", () => {
+    const server = source("features/ops/server/get-release-health.ts");
+    expect(server).toContain("resolveAgentApiSecrets");
+    expect(server).toContain("/ops/release-evidence?since=");
+    expect(server).toContain('"x-agent-api-secret": secret');
+    expect(server).toContain("publicAgentRuntime");
+    expect(server).not.toContain("ops_release_database_snapshot");
+    expect(server).not.toContain("SUPABASE_SERVICE_ROLE_KEY");
+    expect(server).not.toContain("PROFIXIQ_SUPABASE_MANAGEMENT_TOKEN");
+    expect(server).not.toContain("api.supabase.com");
+    expect(server).not.toContain("createClient(");
+  });
+
+  it("reports migration parity and release failures from sanitized Agent evidence", () => {
+    const server = source("features/ops/server/get-release-health.ts");
+    expect(server).toContain("pending = repoVersions.filter");
+    expect(server).toContain("drift = appliedVersions.filter");
+    expect(server).toContain('migrationStatus = "pending"');
+    expect(server).toContain('migrationStatus = "drift"');
+    expect(server).toContain("failuresSince");
+    expect(server).toContain("unresolvedFailures");
+    expect(server).toContain("latestFailureAt");
+  });
+
+  it("surfaces Deployments in desktop/mobile Ops navigation and the Overview control surfaces", () => {
+    const shell = source("features/ops/components/OpsShell.tsx");
+    const dashboard = source("features/ops/components/OpsDashboard.tsx");
+    expect(shell).toContain('{ href: "/ops/deployments", label: "Deployments", icon: GitBranch }');
+    expect(shell.match(/aria-label="Operations navigation"/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(dashboard).toContain('href: "/ops/system-health"');
+    expect(dashboard).toContain('href: "/ops/deployments"');
+    expect(dashboard).toContain('href: "/ops/agent-control"');
+    expect(dashboard).toContain("Operations control surfaces");
+  });
+
+  it("keeps the release page read-only and explicit about evidence sources", () => {
+    const component = source("features/ops/components/OpsReleaseHealth.tsx");
+    expect(component).toContain("Deployments &amp; release health");
+    expect(component).toContain("This page is read-only");
+    expect(component).toContain("Open PRs waiting on main");
+    expect(component).toContain("Migration release state");
+    expect(component).toContain("Failures since release");
+    expect(component).toContain("Release evidence sources");
+  });
+});

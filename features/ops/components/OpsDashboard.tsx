@@ -1,11 +1,13 @@
 import Link from "next/link";
 import {
+  Activity,
   AlertTriangle,
   ArrowRight,
   Bot,
   CheckCircle2,
   CircleDot,
   Database,
+  GitBranch,
   GitPullRequest,
   ShieldCheck,
 } from "lucide-react";
@@ -74,6 +76,26 @@ export default function OpsDashboard({
       tone: "text-rose-300",
     },
   ];
+  const controlSurfaces = [
+    {
+      href: "/ops/system-health",
+      label: "System Health",
+      detail: "Live service and generation checks",
+      icon: Activity,
+    },
+    {
+      href: "/ops/deployments",
+      label: "Deployments",
+      detail: "Production SHA, CI and migration parity",
+      icon: GitBranch,
+    },
+    {
+      href: "/ops/agent-control",
+      label: "Agent Work",
+      detail: "Cases, approvals, retries and execution",
+      icon: Bot,
+    },
+  ] as const;
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
@@ -119,6 +141,25 @@ export default function OpsDashboard({
               {metric.detail}
             </p>
           </div>
+        ))}
+      </section>
+
+      <section className="grid gap-3 sm:grid-cols-3" aria-label="Operations control surfaces">
+        {controlSurfaces.map(({ href, label, detail, icon: Icon }) => (
+          <Link
+            key={href}
+            href={href}
+            className="group flex items-center gap-3 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 shadow-card transition hover:border-orange-500/40 hover:bg-orange-500/5"
+          >
+            <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-orange-500/10 text-orange-400">
+              <Icon className="h-5 w-5" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-bold">{label}</p>
+              <p className="mt-0.5 text-xs text-[color:var(--theme-text-secondary)]">{detail}</p>
+            </div>
+            <ArrowRight className="h-4 w-4 shrink-0 text-[color:var(--theme-text-muted)] transition group-hover:translate-x-0.5 group-hover:text-orange-400" />
+          </Link>
         ))}
       </section>
 
