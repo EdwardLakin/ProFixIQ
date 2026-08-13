@@ -20,6 +20,15 @@ jobs:
           version: 2.101.0
           github-token: ${{ github.token }}
 
+      - name: Initialize ephemeral Supabase configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -f supabase/config.toml ]]; then
+            supabase init
+          fi
+          supabase --version
+
       - name: Replay migrations and verify generated types
         shell: bash
         run: bash scripts/check-supabase-schema-contract.sh --check
