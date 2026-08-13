@@ -1,4 +1,4 @@
-import { Boxes, ChevronRight, PackageCheck, PackageOpen } from "lucide-react";
+import { Boxes, ChevronRight, PackageCheck, PackageOpen, Truck } from "lucide-react";
 import Link from "next/link";
 
 import MobilePartsWorkflow from "@/features/parts/mobile/MobilePartsWorkflow";
@@ -54,6 +54,23 @@ export default function MobilePartsPage() {
             </span>
             <span className="mt-1 block text-xs text-[color:var(--theme-text-secondary)]">
               Release to tech
+            </span>
+          </span>
+          <ChevronRight className="h-4 w-4 shrink-0 text-[color:var(--accent-copper)]" />
+        </Link>
+        <Link
+          href="/mobile/parts/truck"
+          className="mobile-command-row col-span-2 flex min-h-[5rem] items-center gap-3 border p-3"
+        >
+          <span className="inline-grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-sky-500/10 text-sky-600 dark:text-sky-300">
+            <Truck aria-hidden className="h-5 w-5" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-bold text-[color:var(--theme-text-primary)]">
+              Truck inventory
+            </span>
+            <span className="mt-1 block text-xs text-[color:var(--theme-text-secondary)]">
+              Assigned Field Service vehicle stock
             </span>
           </span>
           <ChevronRight className="h-4 w-4 shrink-0 text-[color:var(--accent-copper)]" />
