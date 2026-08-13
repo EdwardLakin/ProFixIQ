@@ -28,6 +28,7 @@
   "git": {
     "deploymentEnabled": {
       "main": true,
+      "agent/mobile-truck-inventory-read": true,
       "*": false
     }
   }
