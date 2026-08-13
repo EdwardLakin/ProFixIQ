@@ -186,13 +186,22 @@ export default function OpsDashboard({
         </section>
 
         <section className="space-y-3">
-          <h2 className="text-xs font-bold uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
-            Control plane health
-          </h2>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-xs font-bold uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
+              Operations signals
+            </h2>
+            <Link
+              href="/ops/system-health"
+              className="inline-flex items-center gap-1 text-[11px] font-bold text-orange-300 transition hover:text-orange-200"
+            >
+              Live health
+              <ArrowRight className="h-3 w-3" />
+            </Link>
+          </div>
           {[
             {
               icon: Database,
-              label: "Agent database",
+              label: "Agent requests",
               detail: `${metrics.total} requests available`,
             },
             {
