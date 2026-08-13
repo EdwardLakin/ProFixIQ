@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
-import { Bot, Gauge, LogOut, Menu, ShieldCheck, X } from "lucide-react";
+import { Activity, Bot, Gauge, LogOut, Menu, ShieldCheck, X } from "lucide-react";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { cn } from "@shared/lib/utils";
 
 const NAVIGATION = [
   { href: "/ops", label: "Overview", icon: Gauge },
+  { href: "/ops/system-health", label: "System Health", icon: Activity },
   { href: "/ops/agent-control", label: "Agent Control", icon: Bot },
 ] as const;
 
