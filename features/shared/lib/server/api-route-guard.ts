@@ -27,9 +27,19 @@ export function requireInternalApiSecret(options: {
   envSecretName: string;
   headerName: string;
   routeLabel: string;
+  bearerEnvSecretName?: string;
 }):
   | { ok: true }
   | { ok: false; response: NextResponse } {
+  const bearerSecret = options.bearerEnvSecretName
+    ? process.env[options.bearerEnvSecretName]
+    : undefined;
+  const authorization = options.request.headers.get("authorization");
+
+  if (bearerSecret && authorization === `Bearer ${bearerSecret}`) {
+    return { ok: true };
+  }
+
   const configuredSecret = process.env[options.envSecretName];
 
   if (!configuredSecret) {
