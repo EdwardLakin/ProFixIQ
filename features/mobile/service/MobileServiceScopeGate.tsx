@@ -1,5 +1,7 @@
 "use client";
 
+import { Boxes } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -107,8 +109,6 @@ export default function MobileServiceScopeGate() {
       setReady(true);
     })().catch(() => {
       if (!active) return;
-      // If access cannot be established, fail closed: do not render another
-      // actor's cached service-call snapshot or the Field Service shell.
       window.localStorage.removeItem(SNAPSHOT_CACHE_KEY);
       window.localStorage.removeItem(SNAPSHOT_SCOPE_KEY);
       router.replace("/mobile");
@@ -127,5 +127,23 @@ export default function MobileServiceScopeGate() {
     );
   }
 
-  return <MobileServiceShell />;
+  return (
+    <>
+      <div className="mx-auto w-full max-w-3xl px-3 pt-3 sm:px-4">
+        <Link
+          href="/mobile/service/truck-inventory"
+          className="flex min-h-12 items-center justify-between rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-4 text-sm font-extrabold text-[color:var(--theme-text-primary)] shadow-card"
+        >
+          <span className="inline-flex items-center gap-2">
+            <Boxes className="h-4 w-4 text-[color:var(--accent-copper)]" />
+            Truck inventory
+          </span>
+          <span className="text-xs text-[color:var(--theme-text-muted)]">
+            Receive · transfer · scan/use
+          </span>
+        </Link>
+      </div>
+      <MobileServiceShell />
+    </>
+  );
 }
