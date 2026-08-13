@@ -72,6 +72,28 @@ describe("GET /api/internal/observability/health", () => {
     });
   });
 
+  it("uses the shared guard with Vercel cron bearer authorization enabled", async () => {
+    createAdminSupabaseMock.mockReturnValue(
+      createSupabase({ projectionError: null }),
+    );
+
+    const { GET } = await import(
+      "../app/api/internal/observability/health/route"
+    );
+    const response = await GET(
+      new Request("https://example.test/api/internal/observability/health"),
+    );
+
+    expect(response.status).toBe(200);
+    expect(requireInternalApiSecretMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        envSecretName: "INTERNAL_CRON_SECRET",
+        headerName: "x-internal-cron-secret",
+        bearerEnvSecretName: "CRON_SECRET",
+      }),
+    );
+  });
+
   it("rejects requests that fail the internal secret guard", async () => {
     requireInternalApiSecretMock.mockReturnValue({
       ok: false,

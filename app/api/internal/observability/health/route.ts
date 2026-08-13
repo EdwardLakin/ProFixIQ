@@ -18,29 +18,16 @@ type ProjectionWarning = {
   message: string;
 };
 
-function parseBearerSecret(request: Request): string | null {
-  const authorization = request.headers.get("authorization")?.trim();
-  if (!authorization) return null;
-  const [scheme, token] = authorization.split(/\s+/, 2);
-  return scheme?.toLowerCase() === "bearer" && token ? token : null;
-}
-
 function authorizeInternalRequest(
   request: Request,
 ): { ok: true } | { ok: false; response: NextResponse } {
-  const internalGate = requireInternalApiSecret({
+  return requireInternalApiSecret({
     request,
     envSecretName: "INTERNAL_CRON_SECRET",
     headerName: "x-internal-cron-secret",
     routeLabel: "internal/observability/health",
+    bearerEnvSecretName: "CRON_SECRET",
   });
-
-  const configuredSecret = process.env.INTERNAL_CRON_SECRET;
-  const bearerAuthorized =
-    !!configuredSecret && parseBearerSecret(request) === configuredSecret;
-
-  if (internalGate.ok || bearerAuthorized) return { ok: true };
-  return { ok: false, response: internalGate.response };
 }
 
 function projectionUnavailable(error: unknown): boolean {

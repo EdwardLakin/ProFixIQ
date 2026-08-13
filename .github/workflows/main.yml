@@ -1,46 +1,34 @@
-name: Dump Supabase Schema
+name: Nightly Supabase Schema Contract
 
 on:
   workflow_dispatch: {}
   schedule:
-    - cron: "0 7 * * *"  # Runs daily at 07:00 UTC
+    - cron: "0 7 * * *"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  dump:
+  verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install PostgreSQL client (pg_dump)
-        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - uses: supabase/setup-cli@v2
+        with:
+          version: 2.101.0
+          github-token: ${{ github.token }}
 
-      - name: Dump schema.sql from Supabase
-        env:
-          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      - name: Initialize ephemeral Supabase configuration
+        shell: bash
         run: |
           set -euo pipefail
-          if [ -z "${DB_URL:-}" ]; then
-            echo "❌ Missing SUPABASE_DB_URL secret" && exit 1
+          if [[ ! -f supabase/config.toml ]]; then
+            supabase init
           fi
-          mkdir -p supabase
-          pg_dump "$DB_URL" \
-            --schema-only \
-            --no-owner \
-            --no-privileges \
-            --quote-all-identifiers \
-            > supabase/schema.sql
+          supabase --version
 
-      - name: Commit and push if changed
-        run: |
-          if ! git diff --quiet; then
-            git config user.name "schema-bot"
-            git config user.email "schema-bot@example.com"
-            git add supabase/schema.sql
-            git commit -m "chore(schema): update schema.sql via pg_dump"
-            git push
-          else
-            echo "No schema changes."
-          fi
+      - name: Replay migrations and verify generated types
+        shell: bash
+        run: bash scripts/check-supabase-schema-contract.sh --check

@@ -27,12 +27,26 @@ export function requireInternalApiSecret(options: {
   envSecretName: string;
   headerName: string;
   routeLabel: string;
+  bearerEnvSecretName?: string;
 }):
   | { ok: true }
   | { ok: false; response: NextResponse } {
+  const bearerSecret = options.bearerEnvSecretName
+    ? process.env[options.bearerEnvSecretName]
+    : undefined;
   const configuredSecret = process.env[options.envSecretName];
+  const authorization = options.request.headers.get("authorization");
+  const providedSecret = options.request.headers.get(options.headerName);
 
-  if (!configuredSecret) {
+  if (bearerSecret && authorization === `Bearer ${bearerSecret}`) {
+    return { ok: true };
+  }
+
+  if (configuredSecret && providedSecret === configuredSecret) {
+    return { ok: true };
+  }
+
+  if (!bearerSecret && !configuredSecret) {
     return {
       ok: false,
       response: NextResponse.json(
@@ -42,14 +56,8 @@ export function requireInternalApiSecret(options: {
     };
   }
 
-  const providedSecret = options.request.headers.get(options.headerName);
-
-  if (!providedSecret || providedSecret !== configuredSecret) {
-    return {
-      ok: false,
-      response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
-    };
-  }
-
-  return { ok: true };
+  return {
+    ok: false,
+    response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+  };
 }

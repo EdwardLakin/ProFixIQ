@@ -2,11 +2,12 @@ name: Dump Supabase Schema + Types
 on:
   workflow_dispatch: {}
   schedule:
-    - cron: "17 4 * * *"   # nightly 04:17 UTC
+    - cron: "17 4 * * *"   # retained for history; scheduled job is skipped below
 permissions:
   contents: write
 jobs:
   dump:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
