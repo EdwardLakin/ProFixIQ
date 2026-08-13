@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
-const getServerSupabaseMock = vi.fn();
-const getOpsNotificationsMock = vi.fn();
+const { getServerSupabaseMock, getOpsNotificationsMock } = vi.hoisted(() => ({
+  getServerSupabaseMock: vi.fn(),
+  getOpsNotificationsMock: vi.fn(),
+}));
 
 vi.mock("@/features/agent/server/supabase", () => ({
   getServerSupabase: getServerSupabaseMock,
