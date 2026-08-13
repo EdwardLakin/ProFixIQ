@@ -27,7 +27,15 @@ function quantity(value: number | string | null | undefined): number {
 
 export async function GET() {
   const access = await requireMobileServiceOperatorApiAccess();
-  if (!access.ok) return access.response;
+  if (!access.ok) {
+    if (access.response.status === 403) {
+      return NextResponse.json(
+        { error: "Truck inventory is available to assigned Field Service operators." },
+        { status: 403 },
+      );
+    }
+    return access.response;
+  }
 
   try {
     const snapshot = await getMobileActiveJobs({
