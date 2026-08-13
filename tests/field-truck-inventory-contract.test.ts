@@ -110,8 +110,10 @@ describe("Field Service truck inventory", () => {
     expect(migration).toContain("public.parts_return_to_stock(");
     expect(useApi).toContain("requireMobileServiceOperatorApiAccess");
     expect(useApi).toContain("field_use_truck_part_atomic");
-    expect(inventoryUi).toContain("Use {quantityLabel(quantity)} on call");
-    expect(inventoryUi).toContain("Return {quantityLabel(returnable)} to truck");
+    expect(inventoryUi).toContain("handleUse(part.partId)");
+    expect(inventoryUi).toMatch(/Use\s+\{quantityLabel\(quantity\)\}\s+on call/);
+    expect(inventoryUi).toContain("handleReturn(use)");
+    expect(inventoryUi).toContain("Return ${quantityLabel(returnable)} to truck");
     expect(inventoryUi).not.toContain("Create stock item");
     expect(inventoryUi).not.toContain("Map it in Parts");
   });
