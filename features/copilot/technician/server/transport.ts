@@ -28,12 +28,17 @@ export async function sendCopilotServerCommand<T>(input: {
       payload: { authUserId: input.authUserId, action: input.action, ...input.args } as Json,
       metadata: {} as Json,
     })
-    .select("metadata")
+    .select("id,metadata")
     .single();
 
   if (response.error) throw new Error(response.error.message);
   const metadata = asObject(response.data.metadata);
   const commandError = asObject(metadata.copilotCommandError);
+  const result = metadata.copilotCommandResult as T;
+
+  void admin.from("ai_action_events").delete().eq("id", response.data.id);
+
   if (commandError.message) throw new Error(String(commandError.message));
-  return metadata.copilotCommandResult as T;
+  if (result == null) throw new Error("Technician CoPilot command returned no result.");
+  return result;
 }
