@@ -11,8 +11,8 @@ const realtime = vi.hoisted(() => ({
   onStateChange: null as null | ((state: "idle" | "connecting" | "listening" | "error") => void),
 }));
 
-vi.mock("@/features/shared/voice/useRealtimeTranscription", () => ({
-  useRealtimeTranscription: (
+vi.mock("@/features/copilot/technician/voice/useTechnicianRealtimeVoice", () => ({
+  useTechnicianRealtimeVoice: (
     onFinal: (text: string) => void,
     _wake: (text: string) => string | null,
     options?: {
@@ -303,3 +303,4 @@ describe("Technician CoPilot voice interaction gateway", () => {
     expect(realtime.start).toHaveBeenCalledTimes(2);
   });
 });
+

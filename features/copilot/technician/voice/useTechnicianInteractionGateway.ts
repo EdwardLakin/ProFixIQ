@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  useRealtimeTranscription,
-  type RealtimeTranscriptionState,
-} from "@/features/shared/voice/useRealtimeTranscription";
+  useTechnicianRealtimeVoice,
+  type TechnicianRealtimeVoiceState,
+} from "./useTechnicianRealtimeVoice";
 
 export type TechnicianVoicePhase =
   | "idle"
@@ -70,7 +70,7 @@ export function useTechnicianInteractionGateway({
   }, []);
 
   const handleTransportState = useCallback(
-    (state: RealtimeTranscriptionState) => {
+    (state: TechnicianRealtimeVoiceState) => {
       if (!activeRef.current) {
         setVoicePhase("idle");
         return;
@@ -172,7 +172,7 @@ export function useTechnicianInteractionGateway({
     [invalidateGeneration, setVoicePhase],
   );
 
-  const realtime = useRealtimeTranscription(
+  const realtime = useTechnicianRealtimeVoice(
     handleFinalTranscript,
     (text) => normalizedTranscript(text),
     {
@@ -336,3 +336,4 @@ export function useTechnicianInteractionGateway({
     interrupt,
   };
 }
+

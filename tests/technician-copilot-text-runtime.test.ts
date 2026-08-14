@@ -4,7 +4,6 @@ import type { RepairSessionEvent } from "@/features/copilot/technician/session/t
 
 const mocks = vi.hoisted(() => ({
   listTechnicianWorkCandidates: vi.fn(),
-  loadTechnicianWorkCandidateForWorkOrder: vi.fn(),
   decideTechnicianCopilotTurn: vi.fn(),
   extractTechnicianDocumentationTurn: vi.fn(),
   sendCopilotServerCommand: vi.fn(),
@@ -17,8 +16,6 @@ vi.mock("@/features/copilot/technician/server/assignedWork", async () => {
   return {
     ...actual,
     listTechnicianWorkCandidates: mocks.listTechnicianWorkCandidates,
-    loadTechnicianWorkCandidateForWorkOrder:
-      mocks.loadTechnicianWorkCandidateForWorkOrder,
   };
 });
 
@@ -76,7 +73,6 @@ describe("Technician CoPilot persistent text runtime", () => {
     finalReasoningContext = null;
 
     mocks.listTechnicianWorkCandidates.mockResolvedValue([candidate]);
-    mocks.loadTechnicianWorkCandidateForWorkOrder.mockResolvedValue(candidate);
 
     mocks.decideTechnicianCopilotTurn.mockImplementation(
       async (input: Record<string, unknown>) => {
@@ -347,20 +343,10 @@ describe("Technician CoPilot persistent text runtime", () => {
       ]),
     );
 
-    // Candidate discovery is needed only for the first start turn. The five
-    // established-session turns use the bounded one-WO loader instead.
-    expect(mocks.listTechnicianWorkCandidates).toHaveBeenCalledTimes(1);
     expect(mocks.listTechnicianWorkCandidates).toHaveBeenCalledWith({
       supabase: expect.anything(),
       shopId: "shop-1",
       technicianIds: ["auth-tech", "profile-tech"],
-    });
-    expect(mocks.loadTechnicianWorkCandidateForWorkOrder).toHaveBeenCalledTimes(5);
-    expect(mocks.loadTechnicianWorkCandidateForWorkOrder).toHaveBeenLastCalledWith({
-      supabase: expect.anything(),
-      shopId: "shop-1",
-      technicianIds: ["auth-tech", "profile-tech"],
-      workOrderId: "wo-ford",
     });
 
     const actions = mocks.sendCopilotServerCommand.mock.calls.map(
@@ -376,3 +362,4 @@ describe("Technician CoPilot persistent text runtime", () => {
     );
   });
 });
+

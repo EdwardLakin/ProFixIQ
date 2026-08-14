@@ -7,7 +7,7 @@ import type {
   RepairSessionStatus,
 } from "@/features/copilot/technician/session/types";
 import { projectTechnicianContext } from "@/features/copilot/technician/session/projectTechnicianContext";
-import { loadTechnicianWorkCandidateForWorkOrder } from "@/features/copilot/technician/server/assignedWork";
+import { listTechnicianWorkCandidates } from "@/features/copilot/technician/server/assignedWork";
 import {
   requireTechnicianCopilotAccess,
   TechnicianCopilotAccessError,
@@ -40,13 +40,15 @@ async function snapshot(
     action: "session.read",
     args: { sessionId },
   });
+  const candidates = await listTechnicianWorkCandidates({
+    supabase: access.supabase,
+    shopId: access.shopId,
+    technicianIds: [access.authUserId, access.profileId],
+  });
   const workOrder = envelope.session
-    ? await loadTechnicianWorkCandidateForWorkOrder({
-        supabase: access.supabase,
-        shopId: access.shopId,
-        technicianIds: [access.authUserId, access.profileId],
-        workOrderId: envelope.session.workOrderId,
-      })
+    ? candidates.find(
+        (candidate) => candidate.id === envelope.session?.workOrderId,
+      ) ?? null
     : null;
   const context = envelope.session
     ? projectTechnicianContext({
@@ -62,10 +64,7 @@ async function snapshot(
 function capabilities(
   access: Awaited<ReturnType<typeof requireTechnicianCopilotAccess>>,
 ) {
-  return {
-    documentation: access.capabilities.documentation,
-    voice: access.capabilities.voice,
-  };
+  return { documentation: access.capabilities.documentation };
 }
 
 export async function GET(request: NextRequest) {

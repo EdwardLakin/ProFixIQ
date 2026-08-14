@@ -12,7 +12,6 @@ import {
 import { projectTechnicianContext } from "../session/projectTechnicianContext";
 import {
   listTechnicianWorkCandidates,
-  loadTechnicianWorkCandidateForWorkOrder,
   type TechnicianWorkCandidate,
   type TechnicianWorkScope,
 } from "./assignedWork";
@@ -191,28 +190,12 @@ export async function runTechnicianCopilotTurn(input: {
     documentation: input.identity.documentationEnabled,
     voice: input.identity.voiceEnabled,
   };
-  const workScope: TechnicianWorkScope = {
+  const candidates = await listTechnicianWorkCandidates({
     supabase: input.identity.supabase,
     shopId: input.identity.shopId,
     technicianIds: [input.identity.authUserId, input.identity.profileId],
-  };
-
-  // Read the durable Repair Session first. Discovery across assignment history
-  // is only needed before a session exists; established sessions use a bounded
-  // lookup of their single work order while the private session read continues
-  // to recheck canonical technician assignment on every turn.
+  });
   let envelope = await read(input.identity, input.sessionId);
-  let candidates: TechnicianWorkCandidate[] = [];
-  let activeWorkOrder: TechnicianWorkCandidate | null = null;
-  if (envelope.session) {
-    activeWorkOrder = await loadTechnicianWorkCandidateForWorkOrder({
-      ...workScope,
-      workOrderId: envelope.session.workOrderId,
-    });
-  } else {
-    candidates = await listTechnicianWorkCandidates(workScope);
-  }
-
   let context = envelope.session
     ? projectTechnicianContext({
         repairSessionId: envelope.session.id,
@@ -236,7 +219,7 @@ export async function runTechnicianCopilotTurn(input: {
       sessionId: envelope.session.id,
       reply: existingAssistant.text,
       context,
-      workOrder: activeWorkOrder,
+      workOrder: candidateFor(candidates, envelope.session.workOrderId),
       capabilities,
       replayed: true,
     };
@@ -284,7 +267,6 @@ export async function runTechnicianCopilotTurn(input: {
       },
     );
     envelope = await read(input.identity, started.sessionId);
-    activeWorkOrder = selected;
   }
 
   const session = envelope.session;
@@ -312,6 +294,7 @@ export async function runTechnicianCopilotTurn(input: {
     });
   }
 
+  const activeWorkOrder = candidateFor(candidates, session.workOrderId);
   const existingComplaint = complaintFor(activeWorkOrder);
   if (
     existingComplaint &&
@@ -410,3 +393,4 @@ export async function runTechnicianCopilotTurn(input: {
     replayed: Boolean(existingAssistant),
   };
 }
+

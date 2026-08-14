@@ -13,57 +13,38 @@ const componentSource = readFileSync(
   "features/copilot/technician/components/TechnicianTextCopilot.tsx",
   "utf8",
 );
-const realtimeSource = readFileSync(
+const gatewaySource = readFileSync(
+  "features/copilot/technician/voice/useTechnicianInteractionGateway.ts",
+  "utf8",
+);
+const inspectionRealtimeSource = readFileSync(
   "features/inspections/lib/inspection/useRealtimeVoice.ts",
   "utf8",
 );
 
-describe("Technician CoPilot Realtime voice bridge contract", () => {
+describe("Technician CoPilot Realtime voice bridge boundaries", () => {
   it("requires the explicit technician voice capability before a voice turn", () => {
     expect(routeSource).toContain('body.inputMode === "voice"');
     expect(routeSource).toContain("!access.capabilities.voice");
     expect(routeSource).toContain("technician_copilot_voice_disabled");
   });
 
-  it("persists spoken technician turns through the same repair-session runtime with voice provenance", () => {
+  it("persists spoken turns through the Repair Session runtime with voice provenance", () => {
     expect(runtimeSource).toContain('type TechnicianTurnSource = "ui" | "voice"');
     expect(runtimeSource).toContain("origin: inputSource");
     expect(runtimeSource).toContain("inputMode: inputSource");
     expect(runtimeSource).toContain('eventType: "conversation.user"');
   });
 
-  it("does not reconnect the legacy command-style VoiceProvider", () => {
+  it("keeps the CoPilot transport isolated from inspection and legacy command voice", () => {
+    expect(gatewaySource).toContain('from "./useTechnicianRealtimeVoice"');
+    expect(gatewaySource).not.toContain("useRealtimeVoice");
+    expect(gatewaySource).not.toContain("useRealtimeTranscription");
+    expect(inspectionRealtimeSource).not.toContain(
+      "useTechnicianInteractionGateway",
+    );
     expect(componentSource).toContain("useTechnicianInteractionGateway");
     expect(componentSource).not.toContain("VoiceProvider");
     expect(componentSource).not.toContain("buildGoal");
-  });
-
-  it("owns Realtime resources per startup generation so stale cleanup cannot tear down a replacement", () => {
-    expect(realtimeSource).toContain("type RealtimeSessionResources");
-    expect(realtimeSource).toContain("activeSessionRef");
-    expect(realtimeSource).toContain("sessionIsCurrent(session)");
-    expect(realtimeSource).toContain("cleanupSession(session)");
-    expect(realtimeSource).toContain("activeSessionRef.current === session");
-    expect(realtimeSource).toContain("stale startup owns only `session`");
-  });
-
-  it("resets a failed current startup so voice can be started again", () => {
-    expect(realtimeSource).toContain("activeSessionRef.current = null");
-    expect(realtimeSource).toContain("stoppedRef.current = true");
-    expect(realtimeSource).toContain("throw caught instanceof Error");
-  });
-
-  it("treats a closing or closed paused socket as recoverable without revoking gateway ownership", () => {
-    expect(realtimeSource).toContain(
-      "socket.readyState !== WebSocket.OPEN &&",
-    );
-    expect(realtimeSource).toContain(
-      "socket.readyState !== WebSocket.CONNECTING",
-    );
-    expect(realtimeSource).toContain("detachCurrentSession(session)");
-    expect(realtimeSource).toContain("cleanupSession(session)");
-    expect(realtimeSource).toContain("Do not emit terminal `idle` here");
-    expect(realtimeSource).not.toContain('if (wasCurrent) setState("idle")');
-    expect(realtimeSource).toContain("return false;");
   });
 });

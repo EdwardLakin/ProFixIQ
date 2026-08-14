@@ -2,13 +2,13 @@
 
 ## Scope
 
-Phase 4 attaches the proven technician Repair Session collaborator to the existing OpenAI Realtime transcription transport without reintroducing the legacy voice-command architecture.
+Phase 4 attaches the proven technician Repair Session collaborator to a CoPilot-owned OpenAI Realtime transcription transport without reintroducing the legacy voice-command architecture or changing existing inspection and dictation consumers.
 
 The runtime path is:
 
 ```text
 Technician microphone
-  -> existing OpenAI Realtime transcription transport
+  -> CoPilot-owned OpenAI Realtime transcription transport
   -> server VAD final utterance
   -> Technician Interaction Gateway
   -> authenticated Technician CoPilot chat API
@@ -30,7 +30,7 @@ This first bridge is deliberately turn-based duplex.
 1. Technician explicitly starts voice mode.
 2. Realtime transcription owns the microphone while the technician speaks.
 3. Server VAD finalizes an utterance.
-4. The gateway stops microphone capture before the CoPilot turn is executed.
+4. The gateway pauses microphone capture before the CoPilot turn is executed.
 5. The finalized transcript is submitted to `/api/copilot/technician/chat` with `inputMode = voice`.
 6. The existing CoPilot runtime rebuilds Repair Session context, reasons, and runs silent documentation exactly as it does for text.
 7. The technician utterance is persisted as `conversation.user` with event source `voice`.
@@ -86,7 +86,7 @@ The generic Realtime token endpoint remains a transport primitive used elsewhere
 
 Phase 4 does not route through the legacy `VoiceProvider`, command phrase rewrites, wake-word command gate, or generic ops-agent planner.
 
-The existing inspection Realtime hook is reused behind a new shared transcription seam so the CoPilot does not directly depend on inspection UI semantics. Moving the proven low-level transport into a fully shared audio package can happen later without changing this gateway contract.
+The CoPilot owns its Realtime transport under `features/copilot/technician/voice`. It does not import, wrap, or modify the existing inspection Realtime hook. This intentional isolation keeps the first collaborator rollout from changing inspection or ordinary dictation behavior. A later consolidation can happen only after both paths have direct browser/device regression coverage.
 
 ## Safety and rollback
 
@@ -95,7 +95,8 @@ The existing inspection Realtime hook is reused behind a new shared transcriptio
 - Existing text CoPilot and silent documentation behavior remains available when voice is off.
 - Voice defaults disabled until its capability flag is explicitly enabled.
 - Disabling `technician_copilot_voice` removes the voice surface without invalidating Repair Session data.
-- Existing inspection and dictation voice consumers remain unchanged.
+- Existing inspection and dictation voice consumers remain byte-for-byte unchanged from `main`.
+- Technician assignment discovery and Repair Session snapshot hydration remain unchanged from the text collaborator baseline.
 
 ## Acceptance path
 
@@ -129,3 +130,4 @@ After this bridge is proven on-device, the next voice slice is true hands-free d
 - latency and transcription-quality evaluation in noisy bays.
 
 That slice must preserve the same Technician Interaction Gateway and Repair Session contracts established here.
+
