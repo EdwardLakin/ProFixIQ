@@ -209,7 +209,7 @@ export function TechnicianTextCopilot() {
   async function send(event: FormEvent) {
     event.preventDefault();
     const text = message.trim();
-    if (!text || busy) return;
+    if (!text || busy || voice.active) return;
     setMessage("");
     try {
       await sendTurn(text, "ui");
@@ -417,14 +417,18 @@ export function TechnicianTextCopilot() {
             value={message}
             onChange={(event) => setMessage(event.target.value)}
             placeholder={
-              sessionId ? "Talk to your CoPilot…" : "Start a job naturally…"
+              voice.active
+                ? "Stop voice mode to type…"
+                : sessionId
+                  ? "Talk to your CoPilot…"
+                  : "Start a job naturally…"
             }
             className="min-w-0 flex-1 rounded-xl border bg-background px-4 py-3 text-base outline-none focus:ring-2 focus:ring-ring"
-            disabled={busy}
+            disabled={busy || voice.active}
           />
           <button
             type="submit"
-            disabled={busy || !message.trim()}
+            disabled={busy || voice.active || !message.trim()}
             className="rounded-xl bg-primary px-5 py-3 font-medium text-primary-foreground disabled:opacity-50"
           >
             {busy ? "…" : "Send"}
