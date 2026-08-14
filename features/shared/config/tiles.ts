@@ -31,6 +31,7 @@ export type Tile = {
   scopes: Scope[];
   section?: string; // sidebar grouping label
   allowedEmails?: string[];
+  requiresTechnicianCopilot?: boolean;
 };
 
 export function canShowTileForEmail(
@@ -73,6 +74,15 @@ export const TILES: Tile[] = [
     title: "Tech Job Queue",
     subtitle: "My assigned work",
     roles: ["mechanic", "manager", "owner", "admin", "lead_hand", "foreman"],
+    scopes: ["tech", "all"],
+    section: "Tech",
+  },
+  {
+    href: "/copilot/technician",
+    title: "Technician CoPilot",
+    subtitle: "Voice and text repair collaborator",
+    requiresTechnicianCopilot: true,
+    roles: ["mechanic"],
     scopes: ["tech", "all"],
     section: "Tech",
   },

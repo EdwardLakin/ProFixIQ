@@ -9,6 +9,7 @@ import {
   Clock3,
   Gauge,
   MessageCircle,
+  Mic2,
   Wrench,
 } from "lucide-react";
 import Link from "next/link";
@@ -17,6 +18,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { MobileRole } from "@/features/mobile/config/mobile-tiles";
 import { fetchMobileShiftState } from "@/features/mobile/shifts/client";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import { useTechnicianCopilotAvailability } from "@/features/copilot/technician/client/useTechnicianCopilotAvailability";
 import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
@@ -115,12 +117,15 @@ function focusedJobHref(job: MobileTechJob): string {
 
 export function MobileTechHome({
   techName,
-  role: _role,
+  role,
   stats,
   jobs,
   loadingStats = false,
 }: Props) {
   const supabase = useMemo(() => createBrowserSupabase(), []);
+  const technicianCopilotAvailable = useTechnicianCopilotAvailability(
+    role === "mechanic",
+  );
   const [userId, setUserId] = useState<string | null>(null);
   const [shiftStatus, setShiftStatus] = useState<ShiftStatus>("none");
   const [shiftStart, setShiftStart] = useState<string | null>(null);
@@ -485,6 +490,14 @@ export function MobileTechHome({
             detail="Start or continue"
             icon={ClipboardCheck}
           />
+          {technicianCopilotAvailable ? (
+            <ActionTile
+              href="/mobile/copilot/technician"
+              title="Technician CoPilot"
+              detail="Voice repair collaborator"
+              icon={Mic2}
+            />
+          ) : null}
         </div>
       </section>
 

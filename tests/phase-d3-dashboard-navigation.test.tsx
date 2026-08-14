@@ -91,6 +91,7 @@ describe("Phase D3 dashboard operational navigation", () => {
 
     expect(mechanicTitles).toEqual(expect.arrayContaining([
       "Tech Job Queue",
+      "Technician CoPilot",
       "Team Chat",
       "Tech Settings",
       "My Performance",
@@ -98,6 +99,12 @@ describe("Phase D3 dashboard operational navigation", () => {
     expect(mechanicTitles).not.toContain("Shop Overview");
     expect(mechanicTitles).not.toContain("My Parts Requests");
     expect(mechanicTitles).not.toContain("History");
+    expect(mechanicHrefs).toContain("/copilot/technician");
+    expect(ROUTE_META["/copilot/technician"].roles).toContain("mechanic");
+    expect(
+      TILES.find((tile) => tile.href === "/copilot/technician")
+        ?.requiresTechnicianCopilot,
+    ).toBe(true);
     expect(mechanicHrefs).not.toContain("/parts/requests?mine=1");
     expect(mechanicHrefs).not.toContain("/work-orders/history");
     expect(ROUTE_META["/work-orders/history"].roles).not.toContain("mechanic");

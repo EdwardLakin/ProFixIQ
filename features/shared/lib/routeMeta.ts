@@ -585,6 +585,11 @@ export const ROUTE_META: Record<string, RouteMeta> = {
       "tech",
     ],
   },
+  "/copilot/technician": {
+    title: () => "Technician CoPilot",
+    icon: "🎙️",
+    roles: ["mechanic", "tech"],
+  },
   "/tech/queue": {
     title: () => "Tech Job Queue",
     icon: "🧰",
