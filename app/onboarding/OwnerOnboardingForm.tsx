@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   appendActivationContextToHref,
-  readActivationContextFromSearchParams,
+  parseActivationContextFromSearchParams,
 } from "@/features/integrations/shopBoost/activationContext";
 import {
   defaultShopTimezone,
@@ -95,7 +95,7 @@ export default function OwnerOnboardingForm() {
       // from another signup/browser session must never redirect an ordinary
       // owner into activation. The current context is forwarded explicitly so
       // the Shop Boost page receives the same analysis identity.
-      const activationContext = readActivationContextFromSearchParams(
+      const activationContext = parseActivationContextFromSearchParams(
         new URLSearchParams(window.location.search),
       );
       const destination = activationContext
