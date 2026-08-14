@@ -290,6 +290,7 @@ describe("Technician CoPilot persistent text runtime", () => {
           profileId: "profile-tech",
           shopId: "shop-1",
           documentationEnabled: true,
+          voiceEnabled: false,
           supabase: {} as never,
         },
         message,
