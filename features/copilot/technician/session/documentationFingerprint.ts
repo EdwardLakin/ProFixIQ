@@ -23,6 +23,20 @@ export type SilentDocumentationEvent = {
 };
 
 const TYPE_SET = new Set<string>(SILENT_DOCUMENTATION_EVENT_TYPES);
+const GLOBAL_FACT_TYPES = new Set<SilentDocumentationEventType>([
+  "observation.recorded",
+  "diagnostic.finding",
+]);
+const COMPONENT_EVENT_TYPES = new Set<SilentDocumentationEventType>([
+  "component.removed",
+  "component.installed",
+  "component.disconnected",
+  "component.connected",
+]);
+const FLUID_EVENT_TYPES = new Set<SilentDocumentationEventType>([
+  "fluid.drained",
+  "fluid.filled",
+]);
 
 const FINGERPRINT_FIELDS: Record<SilentDocumentationEventType, string[]> = {
   "task.changed": ["task"],
@@ -99,15 +113,66 @@ function existingFingerprint(event: RepairSessionEvent): string | null {
   );
 }
 
+function componentEntityKey(details: Record<string, unknown>): string | null {
+  const component = normalized(details.component);
+  if (!component) return null;
+  return `${normalized(details.location)}:${component}`;
+}
+
+function fluidEntityKey(details: Record<string, unknown>): string | null {
+  const fluid = normalized(details.fluid);
+  if (!fluid) return null;
+  return `${normalized(details.system)}:${fluid}`;
+}
+
+function turnFingerprint(
+  sourceTurnId: unknown,
+  fingerprint: string,
+): string | null {
+  const turnId = normalized(sourceTurnId);
+  return turnId ? `${turnId}:${fingerprint}` : null;
+}
+
 export function dedupeDocumentationEvents(
   existingEvents: readonly RepairSessionEvent[],
   candidates: readonly SilentDocumentationEvent[],
 ): SilentDocumentationEvent[] {
-  const fingerprints = new Set(
-    existingEvents
-      .map(existingFingerprint)
-      .filter((value): value is string => Boolean(value)),
-  );
+  const globalFactFingerprints = new Set<string>();
+  const turnFingerprints = new Set<string>();
+  const batchFingerprints = new Set<string>();
+  const componentStates = new Map<string, SilentDocumentationEventType>();
+  const fluidStates = new Map<string, SilentDocumentationEventType>();
+  let latestTaskFingerprint: string | null = null;
+
+  for (const event of existingEvents) {
+    if (!TYPE_SET.has(event.eventType)) continue;
+    const type = event.eventType as SilentDocumentationEventType;
+    const fingerprint = existingFingerprint(event);
+    if (!fingerprint) continue;
+
+    if (GLOBAL_FACT_TYPES.has(type)) {
+      globalFactFingerprints.add(fingerprint);
+    }
+
+    const existingTurnFingerprint = turnFingerprint(
+      event.payload?.sourceTurnId,
+      fingerprint,
+    );
+    if (existingTurnFingerprint) {
+      turnFingerprints.add(existingTurnFingerprint);
+    }
+
+    if (type === "task.changed") {
+      latestTaskFingerprint = fingerprint;
+    } else if (COMPONENT_EVENT_TYPES.has(type)) {
+      const key = componentEntityKey(event.payload ?? {});
+      if (key) componentStates.set(key, type);
+    } else if (FLUID_EVENT_TYPES.has(type)) {
+      const key = fluidEntityKey(event.payload ?? {});
+      if (key) fluidStates.set(key, type);
+    }
+  }
+
   const accepted: SilentDocumentationEvent[] = [];
 
   for (const candidate of candidates) {
@@ -115,8 +180,63 @@ export function dedupeDocumentationEvents(
       candidate.type,
       candidate.details,
     );
-    if (fingerprints.has(fingerprint)) continue;
-    fingerprints.add(fingerprint);
+    if (batchFingerprints.has(fingerprint)) continue;
+
+    const candidateTurnFingerprint = turnFingerprint(
+      candidate.details.sourceTurnId,
+      fingerprint,
+    );
+    if (
+      candidateTurnFingerprint &&
+      turnFingerprints.has(candidateTurnFingerprint)
+    ) {
+      continue;
+    }
+
+    if (
+      GLOBAL_FACT_TYPES.has(candidate.type) &&
+      globalFactFingerprints.has(fingerprint)
+    ) {
+      continue;
+    }
+
+    if (
+      candidate.type === "task.changed" &&
+      latestTaskFingerprint === fingerprint
+    ) {
+      continue;
+    }
+
+    const componentKey = COMPONENT_EVENT_TYPES.has(candidate.type)
+      ? componentEntityKey(candidate.details)
+      : null;
+    if (
+      componentKey &&
+      componentStates.get(componentKey) === candidate.type
+    ) {
+      continue;
+    }
+
+    const fluidKey = FLUID_EVENT_TYPES.has(candidate.type)
+      ? fluidEntityKey(candidate.details)
+      : null;
+    if (fluidKey && fluidStates.get(fluidKey) === candidate.type) {
+      continue;
+    }
+
+    batchFingerprints.add(fingerprint);
+    if (candidateTurnFingerprint) {
+      turnFingerprints.add(candidateTurnFingerprint);
+    }
+    if (GLOBAL_FACT_TYPES.has(candidate.type)) {
+      globalFactFingerprints.add(fingerprint);
+    }
+    if (candidate.type === "task.changed") {
+      latestTaskFingerprint = fingerprint;
+    }
+    if (componentKey) componentStates.set(componentKey, candidate.type);
+    if (fluidKey) fluidStates.set(fluidKey, candidate.type);
+
     accepted.push({
       type: candidate.type,
       details: {
