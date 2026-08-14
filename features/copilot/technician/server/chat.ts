@@ -37,9 +37,15 @@ type Session = {
 
 type Envelope = { session: Session | null; events: RepairSessionEvent[] };
 
+type CopilotCommand =
+  | "session.read"
+  | "session.start"
+  | "event.append"
+  | "documentation.append";
+
 function command<T>(
   identity: CopilotIdentity,
-  action: "session.read" | "session.start" | "event.append",
+  action: CopilotCommand,
   args: Record<string, unknown>,
 ) {
   return sendCopilotServerCommand<T>({
@@ -95,14 +101,39 @@ async function append(
   });
 }
 
+async function appendDocumentationTurn(
+  identity: CopilotIdentity,
+  input: {
+    sessionId: string;
+    turnId: string;
+    events: SilentDocumentationEvent[];
+  },
+) {
+  return command<{
+    turnId: string;
+    sourceTurnId: string;
+    eventCount: number;
+    replayed: boolean;
+  }>(identity, "documentation.append", {
+    sessionId: input.sessionId,
+    sourceTurnId: input.turnId,
+    operationId: deriveCopilotOperationId(
+      input.turnId,
+      "documentation-turn",
+    ),
+    events: input.events,
+    occurredAt: new Date().toISOString(),
+  });
+}
+
 async function extractDocumentation(input: {
   enabled: boolean;
   message: string;
   turnId: string;
   context: ReturnType<typeof projectTechnicianContext>;
   workOrder: TechnicianWorkCandidate | null;
-}): Promise<SilentDocumentationEvent[]> {
-  if (!input.enabled) return [];
+}): Promise<{ events: SilentDocumentationEvent[]; completed: boolean }> {
+  if (!input.enabled) return { events: [], completed: false };
   try {
     const extraction = await extractTechnicianDocumentationTurn({
       message: input.message,
@@ -110,24 +141,27 @@ async function extractDocumentation(input: {
       workOrder: input.workOrder,
       repairContext: input.context,
     });
-    return extraction.events.map((event) => ({
-      type: event.type,
-      details: {
-        ...event.details,
-        sourceTurnId: input.turnId,
-        sourceText: input.message,
-        captureMode: "silent_documentation_v1",
-        captureModel: extraction.model,
-        capturePromptVersion: extraction.promptVersion,
-        captureProviderMode: extraction.providerMode,
-      },
-    }));
+    return {
+      completed: true,
+      events: extraction.events.map((event) => ({
+        type: event.type,
+        details: {
+          ...event.details,
+          sourceTurnId: input.turnId,
+          sourceText: input.message,
+          captureMode: "silent_documentation_v1",
+          captureModel: extraction.model,
+          capturePromptVersion: extraction.promptVersion,
+          captureProviderMode: extraction.providerMode,
+        },
+      })),
+    };
   } catch (error) {
     console.error("[technician-copilot] silent documentation failed", {
       turnId: input.turnId,
       error: error instanceof Error ? error.message : String(error),
     });
-    return [];
+    return { events: [], completed: false };
   }
 }
 
@@ -258,7 +292,7 @@ export async function runTechnicianCopilotTurn(input: {
     events: envelope.events,
   });
 
-  const [decision, documentationCandidates] = await Promise.all([
+  const [decision, documentationExtraction] = await Promise.all([
     decideTechnicianCopilotTurn({
       message: input.message,
       activeSession: {
@@ -279,17 +313,13 @@ export async function runTechnicianCopilotTurn(input: {
 
   const documentationEvents = dedupeDocumentationEvents(
     envelope.events,
-    documentationCandidates,
+    documentationExtraction.events,
   );
-  for (const event of documentationEvents) {
-    const fingerprint = String(event.details.documentationFingerprint ?? "event");
-    await append(input.identity, {
+  if (documentationExtraction.completed) {
+    await appendDocumentationTurn(input.identity, {
       sessionId: session.id,
-      eventType: event.type,
       turnId: input.turnId,
-      suffix: `documentation-${fingerprint}`,
-      origin: "copilot",
-      details: event.details,
+      events: documentationEvents,
     });
   }
 
@@ -309,10 +339,13 @@ export async function runTechnicianCopilotTurn(input: {
     status: session.status,
     events: finalEnvelope.events,
   });
+  const persistedAssistant = finalContext.conversation.find(
+    (turn) => turn.turnId === input.turnId && turn.role === "assistant",
+  );
 
   return {
     sessionId: session.id,
-    reply: decision.reply,
+    reply: persistedAssistant?.text ?? decision.reply,
     context: finalContext,
     workOrder: activeWorkOrder,
     capabilities,
