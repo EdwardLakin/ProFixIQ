@@ -109,6 +109,7 @@ describe("Technician CoPilot voice interaction gateway", () => {
     });
     expect(result.current.phase).toBe("listening");
     expect(realtime.start).toHaveBeenCalledTimes(1);
+    expect(realtime.resume).not.toHaveBeenCalled();
 
     act(() => {
       realtime.onFinal?.("Rear U-joint has play.");
@@ -121,6 +122,11 @@ describe("Technician CoPilot voice interaction gateway", () => {
     expect(realtime.pause).toHaveBeenCalledTimes(1);
     expect(realtime.stop).not.toHaveBeenCalled();
     expect(speech.speak).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      realtime.onFinal?.("Late buffered transcript");
+    });
+    expect(onUtterance).toHaveBeenCalledTimes(1);
 
     const utterance = speech.speak.mock.calls[0]?.[0] as unknown as
       | FakeSpeechSynthesisUtterance
