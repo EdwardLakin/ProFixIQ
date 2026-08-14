@@ -11,6 +11,7 @@ import {
   hashOwnerPin,
   isValidOwnerPin,
   normalizeOwnerPin,
+  verifyOwnerPin,
 } from "@/features/shared/lib/server/owner-pin-crypto";
 import {
   createAdminSupabase,
@@ -24,6 +25,7 @@ import { createStripeClient } from "@/features/stripe/lib/stripe/client";
 import { reconcileShopBillingFromUser } from "@/features/stripe/lib/server/canonical-shop-billing";
 
 const COUNTRIES = new Set<ShopCountryCode>(["US", "CA"]);
+const PENDING_BOOTSTRAP_RPC = "bootstrap_owner_pending_v2" as const;
 
 type Body = {
   businessName?: unknown;
@@ -52,6 +54,30 @@ function readBootstrapShopId(value: unknown): string | null {
   return typeof first.shop_id === "string" ? first.shop_id : null;
 }
 
+async function verifyExistingOwnerPin(args: {
+  userId: string;
+  shopId: string;
+  pin: string;
+}): Promise<boolean> {
+  const admin = createAdminSupabase();
+  const { data: shop, error } = await admin
+    .from("shops")
+    .select("owner_id,owner_pin_hash")
+    .eq("id", args.shopId)
+    .maybeSingle();
+
+  if (
+    error ||
+    !shop ||
+    shop.owner_id !== args.userId ||
+    !shop.owner_pin_hash
+  ) {
+    return false;
+  }
+
+  return verifyOwnerPin(args.pin, shop.owner_pin_hash);
+}
+
 async function reconcileAcquiredBilling(args: {
   userId: string;
   shopId: string;
@@ -72,7 +98,8 @@ async function reconcileAcquiredBilling(args: {
   } catch (error) {
     return {
       ok: false,
-      reason: error instanceof Error ? error.message : "billing_reconciliation_failed",
+      reason:
+        error instanceof Error ? error.message : "billing_reconciliation_failed",
     };
   }
 }
@@ -83,9 +110,6 @@ async function finalizeOwnerOnboarding(args: {
 }): Promise<{ ok: true } | { ok: false; reason: string }> {
   const admin = createAdminSupabase();
 
-  // Re-read the shop after canonical Stripe reconciliation. Completion is a
-  // separate durable transition and is allowed only after the shop has the
-  // canonical billing identity/status/pricing/plan written by that reconciler.
   const { data: shop, error: shopError } = await admin
     .from("shops")
     .select(
@@ -148,6 +172,33 @@ function completionUnavailable(reason: string) {
   );
 }
 
+function invalidExistingOwnerPin() {
+  return NextResponse.json(
+    { ok: false, error: "Owner PIN is incorrect." },
+    { status: 401 },
+  );
+}
+
+function bootstrapUpgradeUnavailable() {
+  return NextResponse.json(
+    {
+      ok: false,
+      error:
+        "Shop setup is being upgraded. Try again in a moment before continuing.",
+    },
+    { status: 503 },
+  );
+}
+
+function isPendingBootstrapRpcUnavailable(error: {
+  code?: string | null;
+  message?: string | null;
+} | null): boolean {
+  if (!error) return false;
+  if (error.code === "PGRST202") return true;
+  return String(error.message ?? "").includes(PENDING_BOOTSTRAP_RPC);
+}
+
 function successfulBootstrapResponse(args: {
   userId: string;
   shopId: string;
@@ -208,18 +259,26 @@ export async function POST(request: Request) {
 
     if (profileError || !profile) {
       return NextResponse.json(
-        { ok: false, error: "Your owner profile is not ready. Sign out and sign in again." },
+        {
+          ok: false,
+          error: "Your owner profile is not ready. Sign out and sign in again.",
+        },
         { status: 409 },
       );
     }
 
-    // Completed-owner retries repair canonical billing if necessary and refresh
-    // the privileged PIN session just like the first successful bootstrap.
     if (
       profile.shop_id &&
       profile.role === "owner" &&
       profile.completed_onboarding
     ) {
+      const pinVerified = await verifyExistingOwnerPin({
+        userId: user.id,
+        shopId: profile.shop_id,
+        pin,
+      });
+      if (!pinVerified) return invalidExistingOwnerPin();
+
       const billing = await reconcileAcquiredBilling({
         userId: user.id,
         shopId: profile.shop_id,
@@ -232,15 +291,18 @@ export async function POST(request: Request) {
       });
     }
 
-    // A Stripe/finalization failure after the shop transaction leaves an
-    // explicit pending owner state: owner + shop + completed_onboarding=false.
-    // Retry billing/finalization directly instead of trying to create or recover
-    // the shop again.
     if (
       profile.shop_id &&
       profile.role === "owner" &&
       !profile.completed_onboarding
     ) {
+      const pinVerified = await verifyExistingOwnerPin({
+        userId: user.id,
+        shopId: profile.shop_id,
+        pin,
+      });
+      if (!pinVerified) return invalidExistingOwnerPin();
+
       const billing = await reconcileAcquiredBilling({
         userId: user.id,
         shopId: profile.shop_id,
@@ -316,7 +378,7 @@ export async function POST(request: Request) {
 
     const ownerPinHash = await hashOwnerPin(pin);
     const { data: rows, error: bootstrapError } = await supabase.rpc(
-      "bootstrap_owner_atomic",
+      PENDING_BOOTSTRAP_RPC,
       {
         p_business_name: businessName,
         p_shop_name: shopName,
@@ -332,6 +394,9 @@ export async function POST(request: Request) {
     const shopId = readBootstrapShopId(rows);
 
     if (bootstrapError || !shopId) {
+      if (isPendingBootstrapRpcUnavailable(bootstrapError)) {
+        return bootstrapUpgradeUnavailable();
+      }
       console.error("owner onboarding bootstrap failed", {
         userId: user.id,
         code: bootstrapError?.code ?? null,
@@ -342,10 +407,17 @@ export async function POST(request: Request) {
       );
     }
 
-    // The DB transaction intentionally leaves completed_onboarding=false. First
-    // hydrate canonical billing, then finalize the owner profile as a separate
-    // durable step. Any failure remains recoverable through the pending-owner
-    // branch above and middleware keeps that owner inside onboarding.
+    // The v2 RPC may have created/recovered the shop for this request or
+    // returned an already-owned shop after another concurrent request won the
+    // profile row lock. Every path must prove the submitted PIN matches the
+    // persisted owner_pin_hash before billing/finalization/privilege issuance.
+    const persistedPinVerified = await verifyExistingOwnerPin({
+      userId: user.id,
+      shopId,
+      pin,
+    });
+    if (!persistedPinVerified) return invalidExistingOwnerPin();
+
     const billing = await reconcileAcquiredBilling({ userId: user.id, shopId });
     if (!billing.ok) return billingUnavailable(billing.reason);
 
