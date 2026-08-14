@@ -336,4 +336,3 @@ export function useTechnicianInteractionGateway({
     interrupt,
   };
 }
-

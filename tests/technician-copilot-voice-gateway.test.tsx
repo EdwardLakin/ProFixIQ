@@ -303,4 +303,3 @@ describe("Technician CoPilot voice interaction gateway", () => {
     expect(realtime.start).toHaveBeenCalledTimes(2);
   });
 });
-

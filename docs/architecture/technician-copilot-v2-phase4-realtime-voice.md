@@ -130,4 +130,3 @@ After this bridge is proven on-device, the next voice slice is true hands-free d
 - latency and transcription-quality evaluation in noisy bays.
 
 That slice must preserve the same Technician Interaction Gateway and Repair Session contracts established here.
-
