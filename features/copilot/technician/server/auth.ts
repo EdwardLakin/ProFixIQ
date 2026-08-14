@@ -58,6 +58,21 @@ export async function requireTechnicianCopilotAccess() {
     );
   }
 
+  // The work-order RLS contract is shop-scoped. Establish the same security
+  // context used by the canonical technician offline/runtime surfaces before
+  // any CoPilot capability or assigned-work query is allowed to run.
+  const { error: shopContextError } = await supabase.rpc(
+    "set_current_shop_id",
+    { p_shop_id: profile.shop_id },
+  );
+  if (shopContextError) {
+    throw new TechnicianCopilotAccessError(
+      500,
+      "shop_security_context_failed",
+      "Shop security context could not be initialized.",
+    );
+  }
+
   const capabilities = await getTechnicianCopilotCapabilities(
     supabase,
     profile.shop_id,
