@@ -15,6 +15,31 @@ describe("acquisition auth handoff", () => {
     expect(route).not.toContain("if (!profile?.shop_id) return deny();");
   });
 
+  it("upgrades a portal identity only through the acquisition claim path", () => {
+    const route = read("app/api/auth/sign-in/route.ts");
+    const signIn = read("features/auth/components/SignIn.tsx");
+    const signInClient = read("features/auth/lib/signInClient.ts");
+    const linkUser = read(
+      "features/stripe/api/stripe/checkout/link-user/route.ts",
+    );
+
+    expect(route).toContain("acquisitionSessionId?: string");
+    expect(route).toContain(
+      'surface === "shop" && /^cs_[A-Za-z0-9_]+$/.test(acquisitionSessionId)',
+    );
+    expect(route).toContain("!hasAcquisitionContext");
+    expect(signIn).toContain(
+      'searchParams.get("flow")?.trim() === "acquisition"',
+    );
+    expect(signIn).toContain("acquisitionSessionId,");
+    expect(signInClient).toContain("acquisitionSessionId?: string");
+    expect(linkUser).toContain("admin.auth.admin.updateUserById");
+    expect(linkUser).toContain("profixiq_portal_only: false");
+    expect(linkUser.indexOf("if (!claim.claimed)")).toBeLessThan(
+      linkUser.indexOf("profixiq_portal_only: false"),
+    );
+  });
+
   it("preserves acquisition context through forgot-password and recovery", () => {
     const signIn = read("features/auth/components/SignIn.tsx");
     const forgotPassword = read("app/forgot-password/page.tsx");
