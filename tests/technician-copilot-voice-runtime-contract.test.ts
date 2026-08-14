@@ -13,6 +13,10 @@ const componentSource = readFileSync(
   "features/copilot/technician/components/TechnicianTextCopilot.tsx",
   "utf8",
 );
+const realtimeSource = readFileSync(
+  "features/inspections/lib/inspection/useRealtimeVoice.ts",
+  "utf8",
+);
 
 describe("Technician CoPilot Realtime voice bridge contract", () => {
   it("requires the explicit technician voice capability before a voice turn", () => {
@@ -32,5 +36,13 @@ describe("Technician CoPilot Realtime voice bridge contract", () => {
     expect(componentSource).toContain("useTechnicianInteractionGateway");
     expect(componentSource).not.toContain("VoiceProvider");
     expect(componentSource).not.toContain("buildGoal");
+  });
+
+  it("makes Realtime startup cancellable without leaving late microphone resources alive", () => {
+    expect(realtimeSource).toContain("startupGenerationRef");
+    expect(realtimeSource).toContain("startupIsCurrent");
+    expect(realtimeSource).toContain("stopStream(stream)");
+    expect(realtimeSource).toContain("Never early-return here");
+    expect(realtimeSource).toContain("cleanupResources();");
   });
 });
