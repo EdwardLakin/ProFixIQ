@@ -82,6 +82,18 @@ Example:
 
 Those are related but not duplicate facts.
 
+## Database contract
+
+Phase 2 intentionally restricts the private event append function to an explicit event-type whitelist. Phase 3 adds `diagnostic.finding`, so it includes one additive migration that replaces the existing function with the same authorization, assignment, lifecycle, origin, payload-size, and idempotency controls while adding that event type.
+
+The migration does not:
+
+- Add a public table or column.
+- Change RLS policies.
+- Grant browser access to the `copilot` schema.
+- Mutate canonical work-order records.
+- Change existing event semantics.
+
 ## Feature flags
 
 The existing `technician_copilot_text` capability remains the umbrella gate.
@@ -113,15 +125,13 @@ The projected repair note is clearly labeled as a session draft. Canonical docum
 
 ## Rollback
 
-No database migration is required. The existing private Repair Session event ledger already supports additive event types.
-
-Rollback options:
+The application remains independently rollback-safe:
 
 1. Disable `technician_copilot_documentation` for a technician or shop.
 2. Disable `technician_copilot_text` to remove the complete preview.
-3. Revert the application release; all stored events remain valid generic Repair Session events.
+3. Revert the application release; existing work-order and technician screens continue unchanged.
 
-Existing work-order, mobile, inspection, parts, labor, and voice workflows remain unchanged.
+The additive database migration may safely remain after an application rollback. It only permits a private event type and does not require the application to use it. Stored generic Repair Session events remain readable and do not affect canonical work orders.
 
 ## Acceptance path
 
