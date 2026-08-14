@@ -7,7 +7,7 @@ import type {
   RepairSessionStatus,
 } from "@/features/copilot/technician/session/types";
 import { projectTechnicianContext } from "@/features/copilot/technician/session/projectTechnicianContext";
-import { listTechnicianWorkCandidates } from "@/features/copilot/technician/server/assignedWork";
+import { loadTechnicianWorkCandidateForWorkOrder } from "@/features/copilot/technician/server/assignedWork";
 import {
   requireTechnicianCopilotAccess,
   TechnicianCopilotAccessError,
@@ -40,15 +40,13 @@ async function snapshot(
     action: "session.read",
     args: { sessionId },
   });
-  const candidates = await listTechnicianWorkCandidates({
-    supabase: access.supabase,
-    shopId: access.shopId,
-    technicianIds: [access.authUserId, access.profileId],
-  });
   const workOrder = envelope.session
-    ? candidates.find(
-        (candidate) => candidate.id === envelope.session?.workOrderId,
-      ) ?? null
+    ? await loadTechnicianWorkCandidateForWorkOrder({
+        supabase: access.supabase,
+        shopId: access.shopId,
+        technicianIds: [access.authUserId, access.profileId],
+        workOrderId: envelope.session.workOrderId,
+      })
     : null;
   const context = envelope.session
     ? projectTechnicianContext({
