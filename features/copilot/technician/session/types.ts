@@ -19,11 +19,14 @@ export const REPAIR_EVENT_TYPES = [
   "session.resumed",
   "session.paused",
   "session.closed",
+  "conversation.user",
+  "conversation.assistant",
   "task.changed",
   "complaint.recorded",
   "observation.recorded",
   "measurement.recorded",
   "dtc.observed",
+  "diagnostic.finding",
   "evidence.attached",
   "component.removed",
   "component.installed",
@@ -47,31 +50,52 @@ export type RepairSessionEvent = {
   occurredAt: string;
 };
 
-export type RepairObservation = {
+export type RepairDocumentationProvenance = {
+  confidence?: number;
+  sourceTurnId?: string;
+  sourceText?: string;
+  captureMode?: string;
+  documentationFingerprint?: string;
+};
+
+export type RepairObservation = RepairDocumentationProvenance & {
   eventId: string;
   text: string;
   category?: string;
+  assessment?: "abnormal" | "normal" | "unknown";
+  system?: string;
   component?: string;
   location?: string;
   occurredAt: string;
 };
 
-export type RepairMeasurement = {
+export type RepairMeasurement = RepairDocumentationProvenance & {
   eventId: string;
   label: string;
   value: string;
   unit?: string;
+  condition?: string;
   component?: string;
   location?: string;
   occurredAt: string;
 };
 
-export type RepairDtc = {
+export type RepairDtc = RepairDocumentationProvenance & {
   eventId: string;
   code: string;
   status?: string;
   module?: string;
   description?: string;
+  occurredAt: string;
+};
+
+export type RepairDiagnosticFinding = RepairDocumentationProvenance & {
+  eventId: string;
+  text: string;
+  disposition: "suspected" | "confirmed" | "ruled_out" | "normal";
+  system?: string;
+  component?: string;
+  location?: string;
   occurredAt: string;
 };
 
@@ -126,6 +150,7 @@ export type RepairContextState = {
   observations: RepairObservation[];
   measurements: RepairMeasurement[];
   dtcs: RepairDtc[];
+  findings: RepairDiagnosticFinding[];
   evidence: RepairEvidence[];
   components: Record<string, RepairComponentMemory>;
   fluids: Record<string, RepairFluidMemory>;
