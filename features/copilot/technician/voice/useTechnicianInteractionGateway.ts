@@ -20,6 +20,7 @@ export type TechnicianVoiceTurnResult = {
 
 type TechnicianInteractionGatewayOptions = {
   enabled: boolean;
+  autoStart?: boolean;
   onUtterance: (text: string) => Promise<TechnicianVoiceTurnResult>;
 };
 
@@ -37,6 +38,7 @@ function normalizedTranscript(text: string): string | null {
 
 export function useTechnicianInteractionGateway({
   enabled,
+  autoStart = false,
   onUtterance,
 }: TechnicianInteractionGatewayOptions) {
   const [phase, setPhase] = useState<TechnicianVoicePhase>("idle");
@@ -45,6 +47,7 @@ export function useTechnicianInteractionGateway({
   const [error, setError] = useState<string | null>(null);
 
   const activeRef = useRef(false);
+  const autoStartAttemptedRef = useRef(false);
   const phaseRef = useRef<TechnicianVoicePhase>("idle");
   const generationRef = useRef(0);
   const inFlightRef = useRef(false);
@@ -289,6 +292,12 @@ export function useTechnicianInteractionGateway({
     setError(null);
     await startListeningRef.current();
   }, [enabled, invalidateGeneration]);
+
+  useEffect(() => {
+    if (!enabled || !autoStart || autoStartAttemptedRef.current) return;
+    autoStartAttemptedRef.current = true;
+    void start();
+  }, [autoStart, enabled, start]);
 
   const stop = useCallback(() => {
     invalidateGeneration();

@@ -5,6 +5,10 @@ const routeSource = readFileSync(
   "app/api/copilot/technician/chat/route.ts",
   "utf8",
 );
+const sessionRouteSource = readFileSync(
+  "app/api/copilot/technician/session/route.ts",
+  "utf8",
+);
 const runtimeSource = readFileSync(
   "features/copilot/technician/server/chat.ts",
   "utf8",
@@ -23,6 +27,12 @@ const inspectionRealtimeSource = readFileSync(
 );
 
 describe("Technician CoPilot Realtime voice bridge boundaries", () => {
+  it("returns the resolved voice capability to the call surface", () => {
+    expect(sessionRouteSource).toContain(
+      "voice: access.capabilities.voice",
+    );
+  });
+
   it("requires the explicit technician voice capability before a voice turn", () => {
     expect(routeSource).toContain('body.inputMode === "voice"');
     expect(routeSource).toContain("!access.capabilities.voice");

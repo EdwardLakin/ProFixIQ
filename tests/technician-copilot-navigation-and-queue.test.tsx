@@ -1,42 +1,39 @@
 import React from "react";
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { render, renderHook, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   buildTechQueueWorkOrderMap,
   TechQueueWorkOrderLabel,
 } from "@/features/work-orders/components/TechQueueWorkOrderLabel";
 import { TILES } from "@/features/shared/config/tiles";
-import { resolveTechnicianCopilotTextAvailability } from "@/features/copilot/technician/client/useTechnicianCopilotAvailability";
+import { useTechnicianCopilotAvailability } from "@/features/copilot/technician/client/useTechnicianCopilotAvailability";
 
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
 describe("Technician CoPilot navigation rollout", () => {
-  it("requires the persisted text capability before showing the tile", () => {
-    const technicianId = "0db0aece-ea7c-43d9-9598-9034c5c32dd2";
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("uses the canonical server access gate before showing the tile", async () => {
+    const request = vi.fn(async () => ({ ok: true }));
+    vi.stubGlobal("fetch", request);
+
     const tile = TILES.find(
       (candidate) => candidate.href === "/copilot/technician",
     );
+    const { result } = renderHook(() =>
+      useTechnicianCopilotAvailability(true),
+    );
 
     expect(tile?.requiresTechnicianCopilot).toBe(true);
-    expect(
-      resolveTechnicianCopilotTextAvailability(
-        [{ capability: "technician_copilot_text", enabled: true }],
-        technicianId,
-      ),
-    ).toBe(true);
-    expect(
-      resolveTechnicianCopilotTextAvailability(
-        [
-          { capability: "technician_copilot_text", enabled: true },
-          {
-            capability: `technician_copilot_text:${technicianId}`,
-            enabled: false,
-          },
-        ],
-        technicianId,
-      ),
-    ).toBe(false);
+    expect(result.current).toBe(false);
+    await waitFor(() => expect(result.current).toBe(true));
+    expect(request).toHaveBeenCalledWith(
+      "/api/copilot/technician/session?accessOnly=1",
+      { cache: "no-store" },
+    );
   });
 });
 

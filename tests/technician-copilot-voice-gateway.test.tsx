@@ -96,6 +96,31 @@ describe("Technician CoPilot voice interaction gateway", () => {
     Reflect.deleteProperty(window, "speechSynthesis");
   });
 
+  it("starts one call automatically when voice access becomes available", async () => {
+    const onUtterance = vi.fn(async () => ({ reply: null }));
+    const { result, rerender } = renderHook(
+      ({ enabled }) =>
+        useTechnicianInteractionGateway({
+          enabled,
+          autoStart: true,
+          onUtterance,
+        }),
+      { initialProps: { enabled: false } },
+    );
+
+    expect(realtime.start).not.toHaveBeenCalled();
+
+    rerender({ enabled: true });
+
+    await waitFor(() => {
+      expect(result.current.phase).toBe("listening");
+    });
+    expect(realtime.start).toHaveBeenCalledTimes(1);
+
+    rerender({ enabled: true });
+    expect(realtime.start).toHaveBeenCalledTimes(1);
+  });
+
   it("pauses the live Realtime session for a CoPilot turn, speaks the persisted reply, then resumes it", async () => {
     const onUtterance = vi.fn(async (text: string) => ({
       reply: `Reply to ${text}`,

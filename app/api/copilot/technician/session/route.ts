@@ -64,11 +64,19 @@ async function snapshot(
 function capabilities(
   access: Awaited<ReturnType<typeof requireTechnicianCopilotAccess>>,
 ) {
-  return { documentation: access.capabilities.documentation };
+  return {
+    documentation: access.capabilities.documentation,
+    voice: access.capabilities.voice,
+  };
 }
 
 export async function GET(request: NextRequest) {
   try {
+    if (request.nextUrl.searchParams.get("accessOnly") === "1") {
+      const access = await requireTechnicianCopilotAccess();
+      return NextResponse.json({ capabilities: capabilities(access) });
+    }
+
     const result = await snapshot(request);
     return NextResponse.json({
       session: result.envelope.session,
