@@ -122,4 +122,40 @@ comment on function copilot.technician_event_append_internal(
 ) is
   'Technician-authorized private Repair Session event append boundary, including Phase-3 explicit diagnostic findings.';
 
+do $phase3_contract_postcheck$
+declare
+  v_signature constant text :=
+    'copilot.technician_event_append_internal(uuid,uuid,text,text,uuid,jsonb,timestamptz)';
+  v_function regprocedure;
+  v_definition text;
+begin
+  v_function := to_regprocedure(v_signature);
+  if v_function is null then
+    raise exception 'Technician CoPilot Phase-3 postcheck failed: append function missing';
+  end if;
+
+  select pg_get_functiondef(v_function)
+    into v_definition;
+
+  if position('''diagnostic.finding''' in v_definition) = 0 then
+    raise exception 'Technician CoPilot Phase-3 postcheck failed: diagnostic finding is not allowed';
+  end if;
+
+  if position('copilot.technician_is_assigned' in v_definition) = 0
+    or position('copilot.technician_profile_id' in v_definition) = 0
+    or position('copilot.append_repair_event_internal' in v_definition) = 0
+  then
+    raise exception 'Technician CoPilot Phase-3 postcheck failed: authorization or idempotent append boundary changed';
+  end if;
+
+  if has_schema_privilege('anon', 'copilot', 'USAGE')
+    or has_schema_privilege('authenticated', 'copilot', 'USAGE')
+    or has_function_privilege('anon', v_signature, 'EXECUTE')
+    or has_function_privilege('authenticated', v_signature, 'EXECUTE')
+  then
+    raise exception 'Technician CoPilot Phase-3 postcheck failed: private runtime exposed to browser roles';
+  end if;
+end
+$phase3_contract_postcheck$;
+
 commit;
