@@ -58,6 +58,22 @@ export async function requireTechnicianCopilotAccess() {
     );
   }
 
+  // current_shop_id() resolves from the authenticated profile directly. This
+  // compatibility RPC is still useful as an explicit ownership assertion: it
+  // rejects a profile/shop mismatch before CoPilot capability or assigned-work
+  // reads begin, without relying on its transaction-local setting afterward.
+  const { error: shopContextError } = await supabase.rpc(
+    "set_current_shop_id",
+    { p_shop_id: profile.shop_id },
+  );
+  if (shopContextError) {
+    throw new TechnicianCopilotAccessError(
+      500,
+      "shop_security_context_failed",
+      "Shop security context could not be initialized.",
+    );
+  }
+
   const capabilities = await getTechnicianCopilotCapabilities(
     supabase,
     profile.shop_id,

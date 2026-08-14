@@ -35,4 +35,32 @@ describe("Technician CoPilot assigned-work context", () => {
     );
     expect(assignedWorkSource).not.toContain("customer_concern");
   });
+
+  it("derives candidates from canonical technician assignment paths before loading work orders", () => {
+    const directAssignmentIndex = assignedWorkSource.indexOf(
+      '.from("work_order_lines")',
+    );
+    const sharedAssignmentIndex = assignedWorkSource.indexOf(
+      '.from("work_order_line_technicians")',
+    );
+    const workOrderIndex = assignedWorkSource.indexOf('.from("work_orders")');
+
+    expect(directAssignmentIndex).toBeGreaterThanOrEqual(0);
+    expect(sharedAssignmentIndex).toBeGreaterThanOrEqual(0);
+    expect(workOrderIndex).toBeGreaterThan(directAssignmentIndex);
+    expect(workOrderIndex).toBeGreaterThan(sharedAssignmentIndex);
+    expect(assignedWorkSource).toContain("assigned_tech_id.eq.");
+    expect(assignedWorkSource).toContain("assigned_to.eq.");
+    expect(assignedWorkSource).toContain('.eq("shop_id", input.shopId)');
+    expect(assignedWorkSource).toContain('.eq("line_type", "job")');
+  });
+
+  it("exposes only assigned line IDs as startable CoPilot lines", () => {
+    expect(assignedWorkSource).toContain(
+      "if (assignedLineIds.has(line.id)) value.assignedIds.push(line.id);",
+    );
+    expect(assignedWorkSource).toContain(
+      ".filter((candidate) => candidate.lineIds.length > 0)",
+    );
+  });
 });

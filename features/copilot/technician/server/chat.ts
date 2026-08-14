@@ -13,6 +13,7 @@ import { projectTechnicianContext } from "../session/projectTechnicianContext";
 import {
   listTechnicianWorkCandidates,
   type TechnicianWorkCandidate,
+  type TechnicianWorkScope,
 } from "./assignedWork";
 import { extractTechnicianDocumentationTurn } from "./documentation";
 import { decideTechnicianCopilotTurn } from "./model";
@@ -24,7 +25,7 @@ export type CopilotIdentity = {
   profileId: string;
   shopId: string;
   documentationEnabled: boolean;
-  supabase: Parameters<typeof listTechnicianWorkCandidates>[0];
+  supabase: TechnicianWorkScope["supabase"];
 };
 
 type Session = {
@@ -178,9 +179,11 @@ export async function runTechnicianCopilotTurn(input: {
   const capabilities = {
     documentation: input.identity.documentationEnabled,
   };
-  const candidates = await listTechnicianWorkCandidates(
-    input.identity.supabase,
-  );
+  const candidates = await listTechnicianWorkCandidates({
+    supabase: input.identity.supabase,
+    shopId: input.identity.shopId,
+    technicianIds: [input.identity.authUserId, input.identity.profileId],
+  });
   let envelope = await read(input.identity, input.sessionId);
   let context = envelope.session
     ? projectTechnicianContext({

@@ -40,7 +40,11 @@ async function snapshot(
     action: "session.read",
     args: { sessionId },
   });
-  const candidates = await listTechnicianWorkCandidates(access.supabase);
+  const candidates = await listTechnicianWorkCandidates({
+    supabase: access.supabase,
+    shopId: access.shopId,
+    technicianIds: [access.authUserId, access.profileId],
+  });
   const workOrder = envelope.session
     ? candidates.find(
         (candidate) => candidate.id === envelope.session?.workOrderId,
