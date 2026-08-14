@@ -203,4 +203,65 @@ describe("Technician CoPilot voice interaction gateway", () => {
     expect(result.current.active).toBe(true);
     expect(result.current.phase).toBe("listening");
   });
+
+  it("tears down a Realtime startup that completes after the technician stopped voice", async () => {
+    const pendingStart = deferred<void>();
+    realtime.start.mockImplementation(async () => {
+      await pendingStart.promise;
+      realtime.connected = true;
+      realtime.onStateChange?.("listening");
+    });
+
+    const { result } = renderHook(() =>
+      useTechnicianInteractionGateway({
+        enabled: true,
+        onUtterance: vi.fn(async () => ({ reply: null })),
+      }),
+    );
+
+    let startPromise: Promise<void> | undefined;
+    act(() => {
+      startPromise = result.current.start();
+    });
+    await waitFor(() => expect(result.current.phase).toBe("connecting"));
+
+    act(() => {
+      result.current.stop();
+    });
+    expect(result.current.active).toBe(false);
+    expect(result.current.phase).toBe("idle");
+
+    await act(async () => {
+      pendingStart.resolve();
+      await startPromise;
+    });
+
+    expect(result.current.active).toBe(false);
+    expect(result.current.phase).toBe("idle");
+    expect(realtime.stop).toHaveBeenCalledTimes(2);
+  });
+
+  it("deactivates voice mode when the live Realtime transport closes unexpectedly", async () => {
+    const { result } = renderHook(() =>
+      useTechnicianInteractionGateway({
+        enabled: true,
+        onUtterance: vi.fn(async () => ({ reply: null })),
+      }),
+    );
+
+    await act(async () => {
+      await result.current.start();
+    });
+    expect(result.current.active).toBe(true);
+    expect(result.current.phase).toBe("listening");
+
+    act(() => {
+      realtime.connected = false;
+      realtime.onStateChange?.("idle");
+    });
+
+    expect(result.current.active).toBe(false);
+    expect(result.current.phase).toBe("idle");
+    expect(result.current.error).toContain("Voice connection ended");
+  });
 });
