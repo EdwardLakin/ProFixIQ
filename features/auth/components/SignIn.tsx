@@ -62,6 +62,27 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
     return `${origin}/auth/callback${params.size ? `?${params.toString()}` : ""}`;
   }, [origin, searchParams]);
 
+  const forgotPasswordHref = useMemo(() => {
+    const params = new URLSearchParams();
+    const email = identifier.trim().toLowerCase();
+    const redirect = safeInternalRedirect(searchParams.get("redirect"), "");
+    const sessionId = searchParams.get("session_id")?.trim();
+    const flow = searchParams.get("flow")?.trim();
+    const demoId = searchParams.get("demoId")?.trim();
+    const intakeId = searchParams.get("intakeId")?.trim();
+    const activationContext = searchParams.get("activationContext")?.trim();
+
+    if (email.includes("@")) params.set("email", email);
+    if (redirect) params.set("redirect", redirect);
+    if (sessionId) params.set("session_id", sessionId);
+    if (flow) params.set("flow", flow);
+    if (demoId) params.set("demoId", demoId);
+    if (intakeId) params.set("intakeId", intakeId);
+    if (activationContext) params.set("activationContext", activationContext);
+
+    return `/forgot-password${params.size ? `?${params.toString()}` : ""}`;
+  }, [identifier, searchParams]);
+
   const isOpsSignIn = useMemo(
     () => safeInternalRedirect(searchParams.get("redirect"), "") === "/ops",
     [searchParams],
@@ -138,7 +159,10 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
         return;
       }
       if (!data.session) {
-        setNotice("Check your email to verify the account, then continue into shop setup.");
+        setPassword("");
+        setNotice(
+          "If this is a new account, check its inbox for the verification link. If you already have an account, choose Sign in—another confirmation email will not be sent.",
+        );
         return;
       }
       const claim = await claimStripeAcquisitionAfterAuth(searchParams);
@@ -262,7 +286,7 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
               Password
             </label>
             {isSignIn ? (
-              <Link href="/forgot-password" className="text-xs font-semibold text-[var(--accent-copper)] hover:underline">
+              <Link href={forgotPasswordHref} className="text-xs font-semibold text-[var(--accent-copper)] hover:underline">
                 Forgot password?
               </Link>
             ) : null}
