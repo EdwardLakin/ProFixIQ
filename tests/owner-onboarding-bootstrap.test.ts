@@ -16,7 +16,6 @@ const mocks = vi.hoisted(() => {
     adminFrom,
     adminShopMaybeSingle: vi.fn(),
     adminShopLookupLimit: vi.fn(),
-    adminPendingProfileMaybeSingle: vi.fn(),
     adminCompleteProfileMaybeSingle: vi.fn(),
     admin: { from: adminFrom },
     stripe: { kind: "stripe" },
@@ -127,10 +126,6 @@ describe("owner onboarding bootstrap", () => {
       },
       error: null,
     });
-    mocks.adminPendingProfileMaybeSingle.mockResolvedValue({
-      data: { id: "owner-user-1", completed_onboarding: false },
-      error: null,
-    });
     mocks.adminCompleteProfileMaybeSingle.mockResolvedValue({
       data: { id: "owner-user-1", completed_onboarding: true },
       error: null,
@@ -149,15 +144,12 @@ describe("owner onboarding bootstrap", () => {
       }
       if (table === "profiles") {
         return {
-          update: vi.fn((patch: { completed_onboarding?: boolean }) => ({
+          update: vi.fn(() => ({
             eq: vi.fn(() => ({
               eq: vi.fn(() => ({
                 eq: vi.fn(() => ({
                   select: vi.fn(() => ({
-                    maybeSingle:
-                      patch.completed_onboarding === false
-                        ? mocks.adminPendingProfileMaybeSingle
-                        : mocks.adminCompleteProfileMaybeSingle,
+                    maybeSingle: mocks.adminCompleteProfileMaybeSingle,
                   })),
                 })),
               })),
@@ -297,7 +289,6 @@ describe("owner onboarding bootstrap", () => {
       "4826",
       "hashed-existing-owner-pin",
     );
-    expect(mocks.adminPendingProfileMaybeSingle).toHaveBeenCalled();
     expect(mocks.reconcileShopBillingFromUser).toHaveBeenCalledWith({
       stripe: mocks.stripe,
       supabase: mocks.admin,
@@ -364,12 +355,12 @@ describe("owner onboarding bootstrap", () => {
       "9999",
       "hashed-existing-owner-pin",
     );
-    expect(mocks.adminPendingProfileMaybeSingle).not.toHaveBeenCalled();
     expect(mocks.reconcileShopBillingFromUser).not.toHaveBeenCalled();
+    expect(mocks.adminCompleteProfileMaybeSingle).not.toHaveBeenCalled();
     expect(mocks.setOwnerPinVerifiedCookie).not.toHaveBeenCalled();
   });
 
-  it("fails closed with onboarding pending when billing is unresolved", async () => {
+  it("fails closed with the database-owned pending state when billing is unresolved", async () => {
     mocks.reconcileShopBillingFromUser.mockResolvedValue({
       linked: false,
       reason: "no_subscription_found",
@@ -379,7 +370,6 @@ describe("owner onboarding bootstrap", () => {
     const response = await POST(request());
 
     expect(response.status).toBe(503);
-    expect(mocks.adminPendingProfileMaybeSingle).toHaveBeenCalled();
     expect(mocks.adminCompleteProfileMaybeSingle).not.toHaveBeenCalled();
     expect(mocks.setOwnerPinVerifiedCookie).not.toHaveBeenCalled();
   });
@@ -402,7 +392,6 @@ describe("owner onboarding bootstrap", () => {
     const response = await POST(request());
 
     expect(response.status).toBe(503);
-    expect(mocks.adminPendingProfileMaybeSingle).toHaveBeenCalled();
     expect(mocks.adminCompleteProfileMaybeSingle).not.toHaveBeenCalled();
     expect(mocks.setOwnerPinVerifiedCookie).not.toHaveBeenCalled();
   });
@@ -505,6 +494,18 @@ describe("owner onboarding bootstrap", () => {
     expect(response.status).toBe(401);
     expect(mocks.reconcileShopBillingFromUser).not.toHaveBeenCalled();
     expect(mocks.setOwnerPinVerifiedCookie).not.toHaveBeenCalled();
+  });
+
+  it("never performs a second completed_onboarding=false write after the atomic pending transition", () => {
+    const route = readFileSync(
+      "app/api/onboarding/bootstrap-owner/route.ts",
+      "utf8",
+    );
+
+    expect(route).not.toContain("update({ completed_onboarding: false })");
+    expect(route).toContain(
+      "a duplicate request must never\n    // reopen an owner another request has already finalized successfully",
+    );
   });
 
   it("keeps the same RPC type shape while supporting old-app and new-app completion semantics", () => {
