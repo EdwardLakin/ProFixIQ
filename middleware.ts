@@ -104,13 +104,6 @@ type PortalAccess = {
   fleet: boolean;
 };
 
-function isShopBoostOrchestratedRole(role: string | null | undefined): boolean {
-  const normalized = String(role ?? "")
-    .trim()
-    .toLowerCase();
-  return normalized === "owner" || normalized === "admin";
-}
-
 function createMiddlewareSupabase(req: NextRequest, res: NextResponse) {
   const { supabaseUrl, supabaseAnonKey } = readSupabasePublicEnv("middleware");
   return createServerClient<Database>(supabaseUrl, supabaseAnonKey, {
@@ -234,6 +227,9 @@ export async function middleware(req: NextRequest) {
       : null;
 
   const pathname = opsInternalPath ?? fleetInternalPath ?? requestPathname;
+  const isGuidedOnboardingPath =
+    pathname === "/dashboard/onboarding-v2" ||
+    pathname.startsWith("/dashboard/onboarding-v2/");
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set("x-next-pathname", pathname);
   if (fleetProductRequest) {
@@ -333,7 +329,6 @@ export async function middleware(req: NextRequest) {
   }
 
   let completed = false;
-  let needsShopBoostIntake = false;
   let canUseMobile = false;
   const isPortalOnlyAccount = user?.app_metadata?.profixiq_portal_only === true;
 
@@ -350,24 +345,8 @@ export async function middleware(req: NextRequest) {
       const capabilities = getActorCapabilities({ role: profile?.role });
       canUseMobile =
         capabilities.isKnownRole && capabilities.canonicalRole !== "customer";
-
-      if (
-        profile?.completed_onboarding &&
-        profile?.shop_id &&
-        isShopBoostOrchestratedRole(profile.role)
-      ) {
-        const { data: intake } = await supabase
-          .from("shop_boost_intakes")
-          .select("id")
-          .eq("shop_id", profile.shop_id)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        needsShopBoostIntake = !intake?.id;
-      }
     } catch {
       completed = false;
-      needsShopBoostIntake = false;
       canUseMobile = false;
     }
   }
@@ -386,11 +365,9 @@ export async function middleware(req: NextRequest) {
       req,
       !completed
         ? "/onboarding"
-        : needsShopBoostIntake
-          ? "/onboarding/shop-boost"
-          : mobileDeviceRequest
-            ? "/mobile"
-            : "/dashboard",
+        : mobileDeviceRequest
+          ? "/mobile"
+          : "/dashboard",
       fleetProductRequest,
     );
     return redirectWithResponseHeaders(target, res);
@@ -420,11 +397,9 @@ export async function middleware(req: NextRequest) {
 
       const defaultAuthenticatedPath = !completed
         ? "/onboarding"
-        : needsShopBoostIntake
-          ? "/onboarding/shop-boost"
-          : isMobileSignIn || mobileDeviceRequest
-            ? "/mobile"
-            : "/dashboard";
+        : isMobileSignIn || mobileDeviceRequest
+          ? "/mobile"
+          : "/dashboard";
       const to = redirectParam ?? defaultAuthenticatedPath;
       const target = productRequestUrl(req, to, fleetProductRequest);
       return redirectWithResponseHeaders(target, res);
@@ -535,8 +510,8 @@ export async function middleware(req: NextRequest) {
   if (
     mobileDeviceRequest &&
     completed &&
-    !needsShopBoostIntake &&
     !isPortal &&
+    !isGuidedOnboardingPath &&
     !pathname.startsWith("/mobile")
   ) {
     const requestedHref = `${pathname}${search}`;
