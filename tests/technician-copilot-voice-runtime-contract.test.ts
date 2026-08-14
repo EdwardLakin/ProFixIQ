@@ -53,7 +53,7 @@ describe("Technician CoPilot Realtime voice bridge contract", () => {
     expect(realtimeSource).toContain("throw caught instanceof Error");
   });
 
-  it("treats a closing or closed paused socket as dead instead of re-enabling its microphone", () => {
+  it("treats a closing or closed paused socket as recoverable without revoking gateway ownership", () => {
     expect(realtimeSource).toContain(
       "socket.readyState !== WebSocket.OPEN &&",
     );
@@ -62,6 +62,8 @@ describe("Technician CoPilot Realtime voice bridge contract", () => {
     );
     expect(realtimeSource).toContain("detachCurrentSession(session)");
     expect(realtimeSource).toContain("cleanupSession(session)");
+    expect(realtimeSource).toContain("Do not emit terminal `idle` here");
+    expect(realtimeSource).not.toContain('if (wasCurrent) setState("idle")');
     expect(realtimeSource).toContain("return false;");
   });
 });
