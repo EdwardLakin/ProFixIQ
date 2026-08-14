@@ -1,10 +1,16 @@
--- Harden the already-deployed first-shop bootstrap without rewriting migration
--- history. The API constrains new shops to supported US/Canada zones; the DB
--- independently requires the supplied timezone to exist in the installed IANA
--- catalog, refuses ambiguous historical recovery, and deliberately leaves the
--- owner incomplete until canonical billing reconciliation succeeds server-side.
+-- Expand phase for first-shop owner bootstrap hardening.
+--
+-- IMPORTANT ROLLING-DEPLOYMENT CONTRACT:
+-- - The already-deployed public.bootstrap_owner_atomic(...) function is left
+--   completely untouched so the currently deployed application remains valid
+--   if this migration lands before the new application.
+-- - The new application calls bootstrap_owner_pending_v2(...), which leaves
+--   completed_onboarding=false until the server has reconciled canonical Stripe
+--   billing and explicitly finalizes the owner profile.
+-- - A later contract migration may retire/repoint bootstrap_owner_atomic only
+--   after every deployed application version has moved to the v2 function.
 
-create or replace function public.bootstrap_owner_atomic(
+create or replace function public.bootstrap_owner_pending_v2(
   p_business_name text,
   p_shop_name text,
   p_street text,
@@ -70,12 +76,12 @@ begin
     raise exception 'Profile not found';
   end if;
 
-  -- A completed owner retry is read-only and idempotent. Pending owners are
-  -- recovered by the server route's billing/finalization path rather than by
-  -- invoking this shop-creation transition again.
+  -- Concurrent or exact retries are read-only once the profile already points
+  -- at a shop owned by the caller. Pending and completed owners are both
+  -- returned. The server route must verify the submitted PIN against the
+  -- persisted owner_pin_hash before billing/finalization/cookie issuance.
   if v_profile.shop_id is not null then
     if v_profile.role = 'owner'
-      and coalesce(v_profile.completed_onboarding, false)
       and exists (
         select 1
         from public.shops as existing_shop
@@ -168,10 +174,9 @@ begin
     v_created := true;
   end if;
 
-  -- Assign owner/shop identity atomically, but leave onboarding incomplete.
-  -- The server route reconciles Stripe into the canonical shop first and only
-  -- then flips completed_onboarding=true. A billing failure therefore cannot
-  -- route the owner into the operational application with null/legacy access.
+  -- Assign owner/shop identity atomically but deliberately leave onboarding
+  -- pending. Canonical billing must be reconciled server-side before the route
+  -- may flip completed_onboarding=true.
   update public.profiles as p
     set role = 'owner',
         shop_id = v_target_shop_id,
@@ -242,7 +247,7 @@ begin
 end;
 $$;
 
-revoke all on function public.bootstrap_owner_atomic(
+revoke all on function public.bootstrap_owner_pending_v2(
   text,
   text,
   text,
@@ -254,7 +259,7 @@ revoke all on function public.bootstrap_owner_atomic(
   text
 ) from public, anon;
 
-grant execute on function public.bootstrap_owner_atomic(
+grant execute on function public.bootstrap_owner_pending_v2(
   text,
   text,
   text,
