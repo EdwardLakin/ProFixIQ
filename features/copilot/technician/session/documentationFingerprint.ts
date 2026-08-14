@@ -27,6 +27,10 @@ const GLOBAL_FACT_TYPES = new Set<SilentDocumentationEventType>([
   "observation.recorded",
   "diagnostic.finding",
 ]);
+const OCCURRENCE_EVENT_TYPES = new Set<SilentDocumentationEventType>([
+  "measurement.recorded",
+  "dtc.observed",
+]);
 const COMPONENT_EVENT_TYPES = new Set<SilentDocumentationEventType>([
   "component.removed",
   "component.installed",
@@ -138,8 +142,8 @@ export function dedupeDocumentationEvents(
   candidates: readonly SilentDocumentationEvent[],
 ): SilentDocumentationEvent[] {
   const globalFactFingerprints = new Set<string>();
-  const turnFingerprints = new Set<string>();
-  const batchFingerprints = new Set<string>();
+  const persistedTurnFingerprints = new Set<string>();
+  const batchOccurrenceFingerprints = new Set<string>();
   const componentStates = new Map<string, SilentDocumentationEventType>();
   const fluidStates = new Map<string, SilentDocumentationEventType>();
   let latestTaskFingerprint: string | null = null;
@@ -159,7 +163,7 @@ export function dedupeDocumentationEvents(
       fingerprint,
     );
     if (existingTurnFingerprint) {
-      turnFingerprints.add(existingTurnFingerprint);
+      persistedTurnFingerprints.add(existingTurnFingerprint);
     }
 
     if (type === "task.changed") {
@@ -180,15 +184,14 @@ export function dedupeDocumentationEvents(
       candidate.type,
       candidate.details,
     );
-    if (batchFingerprints.has(fingerprint)) continue;
-
     const candidateTurnFingerprint = turnFingerprint(
       candidate.details.sourceTurnId,
       fingerprint,
     );
+
     if (
       candidateTurnFingerprint &&
-      turnFingerprints.has(candidateTurnFingerprint)
+      persistedTurnFingerprints.has(candidateTurnFingerprint)
     ) {
       continue;
     }
@@ -196,6 +199,13 @@ export function dedupeDocumentationEvents(
     if (
       GLOBAL_FACT_TYPES.has(candidate.type) &&
       globalFactFingerprints.has(fingerprint)
+    ) {
+      continue;
+    }
+
+    if (
+      OCCURRENCE_EVENT_TYPES.has(candidate.type) &&
+      batchOccurrenceFingerprints.has(fingerprint)
     ) {
       continue;
     }
@@ -224,12 +234,11 @@ export function dedupeDocumentationEvents(
       continue;
     }
 
-    batchFingerprints.add(fingerprint);
-    if (candidateTurnFingerprint) {
-      turnFingerprints.add(candidateTurnFingerprint);
-    }
     if (GLOBAL_FACT_TYPES.has(candidate.type)) {
       globalFactFingerprints.add(fingerprint);
+    }
+    if (OCCURRENCE_EVENT_TYPES.has(candidate.type)) {
+      batchOccurrenceFingerprints.add(fingerprint);
     }
     if (candidate.type === "task.changed") {
       latestTaskFingerprint = fingerprint;
