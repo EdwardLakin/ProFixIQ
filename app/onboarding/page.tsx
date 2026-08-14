@@ -15,11 +15,14 @@ export default async function OwnerOnboardingPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("shop_id, completed_onboarding")
+    .select("shop_id, role, completed_onboarding")
     .eq("id", user.id)
     .maybeSingle();
 
-  if (profile?.shop_id || profile?.completed_onboarding) {
+  // A shop_id can exist while first-shop billing reconciliation is still
+  // pending. Only the explicit completion marker may release an owner from the
+  // setup surface; the bootstrap API's pending-owner branch handles retries.
+  if (profile?.completed_onboarding) {
     redirect("/dashboard");
   }
 
