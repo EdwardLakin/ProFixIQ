@@ -182,6 +182,56 @@ describe("Technician CoPilot silent documentation", () => {
     ]);
   });
 
+  it("preserves repeated state transitions inside one compound technician turn", () => {
+    const result = dedupeDocumentationEvents([], [
+      {
+        type: "task.changed",
+        details: { task: "driveline inspection", sourceTurnId: "compound" },
+      },
+      {
+        type: "task.changed",
+        details: { task: "front brake inspection", sourceTurnId: "compound" },
+      },
+      {
+        type: "task.changed",
+        details: { task: "driveline inspection", sourceTurnId: "compound" },
+      },
+      {
+        type: "component.removed",
+        details: {
+          component: "wheel",
+          location: "left front",
+          sourceTurnId: "compound",
+        },
+      },
+      {
+        type: "component.installed",
+        details: {
+          component: "wheel",
+          location: "left front",
+          sourceTurnId: "compound",
+        },
+      },
+      {
+        type: "component.removed",
+        details: {
+          component: "wheel",
+          location: "left front",
+          sourceTurnId: "compound",
+        },
+      },
+    ]);
+
+    expect(result.map((event) => event.type)).toEqual([
+      "task.changed",
+      "task.changed",
+      "task.changed",
+      "component.removed",
+      "component.installed",
+      "component.removed",
+    ]);
+  });
+
   it("keeps repeated measurements and DTC observations from new turns while suppressing a partial-turn replay", () => {
     const existing = [
       repairEvent(1, "measurement.recorded", {
