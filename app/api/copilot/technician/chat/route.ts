@@ -25,6 +25,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const inputSource = body.inputMode === "voice" ? "voice" : "ui";
+    if (inputSource === "voice" && !access.capabilities.voice) {
+      return NextResponse.json(
+        {
+          error: "Technician CoPilot voice is not enabled.",
+          code: "technician_copilot_voice_disabled",
+        },
+        { status: 404 },
+      );
+    }
+
     const turnId =
       typeof body.turnId === "string" && body.turnId.trim()
         ? body.turnId.trim().slice(0, 128)
@@ -38,11 +49,13 @@ export async function POST(request: NextRequest) {
         profileId: access.profileId,
         shopId: access.shopId,
         documentationEnabled: access.capabilities.documentation,
+        voiceEnabled: access.capabilities.voice,
         supabase: access.supabase,
       },
       message,
       turnId,
       sessionId,
+      inputSource,
     });
 
     return NextResponse.json({ ...result, turnId });

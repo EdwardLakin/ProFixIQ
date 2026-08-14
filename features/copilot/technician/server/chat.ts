@@ -25,6 +25,7 @@ export type CopilotIdentity = {
   profileId: string;
   shopId: string;
   documentationEnabled: boolean;
+  voiceEnabled: boolean;
   supabase: TechnicianWorkScope["supabase"];
 };
 
@@ -47,6 +48,8 @@ type CopilotCommand =
   | "session.start"
   | "event.append"
   | "documentation.append";
+
+type TechnicianTurnSource = "ui" | "voice";
 
 function command<T>(
   identity: CopilotIdentity,
@@ -92,7 +95,7 @@ async function append(
     eventType: string;
     turnId: string;
     suffix: string;
-    origin: "ui" | "copilot" | "system";
+    origin: "ui" | "voice" | "copilot" | "system";
     details: Record<string, unknown>;
   },
 ) {
@@ -175,9 +178,17 @@ export async function runTechnicianCopilotTurn(input: {
   message: string;
   turnId: string;
   sessionId?: string | null;
+  inputSource?: TechnicianTurnSource;
 }) {
+  const inputSource: TechnicianTurnSource =
+    input.inputSource === "voice" ? "voice" : "ui";
+  if (inputSource === "voice" && !input.identity.voiceEnabled) {
+    throw new Error("Technician CoPilot voice is not enabled.");
+  }
+
   const capabilities = {
     documentation: input.identity.documentationEnabled,
+    voice: input.identity.voiceEnabled,
   };
   const candidates = await listTechnicianWorkCandidates({
     supabase: input.identity.supabase,
@@ -274,8 +285,12 @@ export async function runTechnicianCopilotTurn(input: {
       eventType: "conversation.user",
       turnId: input.turnId,
       suffix: "user",
-      origin: "ui",
-      details: { text: input.message, turnId: input.turnId },
+      origin: inputSource,
+      details: {
+        text: input.message,
+        turnId: input.turnId,
+        inputMode: inputSource,
+      },
     });
   }
 
