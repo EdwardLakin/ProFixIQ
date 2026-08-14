@@ -35,7 +35,15 @@ type AssignedLine = { id: string; work_order_id: string };
 type SharedAssignment = {
   work_order_line_id: string;
   technician_id: string;
-  assigned_at?: string | null;
+};
+type ActiveSharedAssignmentRow = {
+  work_order_line_id: string;
+  technician_id: string;
+  assigned_at: string | null;
+  work_order_lines:
+    | { id: string; work_order_id: string }
+    | Array<{ id: string; work_order_id: string }>
+    | null;
 };
 type WorkOrderCandidateRow = Pick<
   Database["public"]["Tables"]["work_orders"]["Row"],
@@ -75,7 +83,6 @@ const ACTIVE_LINE_DB_STATUSES = getWorkOrderLineStatusDbFilter(
   ACTIVE_CANONICAL_LINE_STATUSES,
 );
 const PRESESSION_ASSIGNMENT_LIMIT = 250;
-const SHARED_ASSIGNMENT_PAGE_SIZE = 250;
 
 function object(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -104,6 +111,14 @@ function directAssignmentFilter(technicianIds: readonly string[]): string {
 function timestamp(value: string | null): number {
   const parsed = value ? Date.parse(value) : Number.NaN;
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function sharedLine(
+  value: ActiveSharedAssignmentRow["work_order_lines"],
+): AssignedLine | null {
+  const row = Array.isArray(value) ? value[0] : value;
+  if (!row?.id || !row.work_order_id) return null;
+  return { id: row.id, work_order_id: row.work_order_id };
 }
 
 function buildCandidate(input: {
@@ -146,50 +161,30 @@ async function collectActiveSharedLines(input: {
   shopId: string;
   technicianIds: string[];
 }): Promise<AssignedLine[]> {
-  const activeById = new Map<string, AssignedLine>();
-  let offset = 0;
+  // The !inner relation applies canonical active-line filters inside PostgREST
+  // before LIMIT, so years of completed assignment mappings cannot turn a cold
+  // "What do I have?" request into an unbounded history scan.
+  const { data, error } = await input.supabase
+    .from("work_order_line_technicians")
+    .select(
+      "work_order_line_id,technician_id,assigned_at,work_order_lines!inner(id,work_order_id)",
+    )
+    .in("technician_id", input.technicianIds)
+    .eq("work_order_lines.shop_id", input.shopId)
+    .eq("work_order_lines.line_type", "job")
+    .in("work_order_lines.status", ACTIVE_LINE_DB_STATUSES)
+    .order("assigned_at", { ascending: false })
+    .order("work_order_line_id", { ascending: false })
+    .order("technician_id", { ascending: false })
+    .limit(PRESESSION_ASSIGNMENT_LIMIT);
+  if (error) throw new Error(error.message);
 
-  while (activeById.size < PRESESSION_ASSIGNMENT_LIMIT) {
-    const { data, error } = await input.supabase
-      .from("work_order_line_technicians")
-      .select("work_order_line_id,technician_id,assigned_at")
-      .in("technician_id", input.technicianIds)
-      .order("assigned_at", { ascending: false })
-      .order("work_order_line_id", { ascending: false })
-      .order("technician_id", { ascending: false })
-      .range(offset, offset + SHARED_ASSIGNMENT_PAGE_SIZE - 1);
-    if (error) throw new Error(error.message);
-
-    const page = (data ?? []) as SharedAssignment[];
-    if (!page.length) break;
-
-    const pageLineIds = uniqueIds(page.map((row) => row.work_order_line_id));
-    const activeLines = await loadRowsForIdChunks<AssignedLine>(
-      pageLineIds,
-      (ids, from, to) =>
-        input.supabase
-          .from("work_order_lines")
-          .select("id,work_order_id")
-          .eq("shop_id", input.shopId)
-          .eq("line_type", "job")
-          .in("status", ACTIVE_LINE_DB_STATUSES)
-          .in("id", ids)
-          .order("updated_at", { ascending: false })
-          .order("id", { ascending: false })
-          .range(from, to),
-      { idChunkSize: 100, pageSize: 250 },
-    );
-
-    for (const line of activeLines) {
-      if (activeById.size >= PRESESSION_ASSIGNMENT_LIMIT) break;
-      activeById.set(line.id, line);
-    }
-
-    if (page.length < SHARED_ASSIGNMENT_PAGE_SIZE) break;
-    offset += SHARED_ASSIGNMENT_PAGE_SIZE;
+  const byId = new Map<string, AssignedLine>();
+  for (const row of (data ?? []) as unknown as ActiveSharedAssignmentRow[]) {
+    const line = sharedLine(row.work_order_lines);
+    if (line) byId.set(line.id, line);
   }
-
-  return [...activeById.values()];
+  return [...byId.values()];
 }
 
 /**
@@ -270,10 +265,9 @@ export async function loadTechnicianWorkCandidateForWorkOrder(
 
 /**
  * Bounded pre-session discovery for natural questions such as "What have I
- * got?". Direct assignments are bounded by recent active line activity. Shared
- * assignments are paged until a bounded set of active lines is collected, so a
- * recent block of completed historical mappings cannot hide older actionable
- * work. Established Repair Sessions never use this discovery path.
+ * got?". Direct and shared assignments are both filtered to canonical active
+ * job statuses before their 250-row caps. Established Repair Sessions never use
+ * this discovery path.
  */
 export async function listTechnicianWorkCandidates(
   input: TechnicianWorkScope,
