@@ -41,7 +41,7 @@ describe("owner onboarding Codex hardening", () => {
   });
 
   it("routes Shop Boost only from provenance on the current acquisition URL", () => {
-    expect(ownerFormSource).toContain("readActivationContextFromSearchParams");
+    expect(ownerFormSource).toContain("parseActivationContextFromSearchParams");
     expect(ownerFormSource).toContain("appendActivationContextToHref");
     expect(ownerFormSource).not.toContain("readPersistedActivationContext");
     expect(ownerFormSource).toContain('"/onboarding/shop-boost"');
