@@ -98,29 +98,6 @@ async function inspectOwnedShopRecovery(userId: string): Promise<
   return { ok: true };
 }
 
-async function markOwnerBootstrapPending(args: {
-  userId: string;
-  shopId: string;
-}): Promise<{ ok: true } | { ok: false; reason: string }> {
-  const admin = createAdminSupabase();
-  const { data: profile, error } = await admin
-    .from("profiles")
-    .update({ completed_onboarding: false })
-    .eq("id", args.userId)
-    .eq("shop_id", args.shopId)
-    .eq("role", "owner")
-    .select("id,completed_onboarding")
-    .maybeSingle();
-
-  if (error || !profile || profile.completed_onboarding !== false) {
-    return {
-      ok: false,
-      reason: error?.message ?? "owner_pending_state_not_persisted",
-    };
-  }
-  return { ok: true };
-}
-
 async function reconcileAcquiredBilling(args: {
   userId: string;
   shopId: string;
@@ -504,20 +481,17 @@ export async function POST(request: Request) {
       );
     }
 
-    // The hardened DB stores only the real PIN hash and leaves the owner pending
-    // atomically. A concurrent retry still has to prove its submitted PIN before
-    // this request may touch billing or privileged state.
+    // The hardened DB stores only the real PIN hash and owns the atomic pending
+    // transition. A concurrent read-only retry still has to prove its submitted
+    // PIN before this request may touch billing or privileged state. Do not write
+    // completed_onboarding=false again here: a duplicate request must never
+    // reopen an owner another request has already finalized successfully.
     const persistedPinVerified = await verifyExistingOwnerPin({
       userId: user.id,
       shopId,
       pin,
     });
     if (!persistedPinVerified) return invalidExistingOwnerPin();
-
-    // Reassert the pending state through the server boundary. This is idempotent
-    // with the hardened RPC and fails closed if profile ownership drifted.
-    const pending = await markOwnerBootstrapPending({ userId: user.id, shopId });
-    if (!pending.ok) return pendingStateUnavailable(pending.reason);
 
     const billing = await reconcileAcquiredBilling({ userId: user.id, shopId });
     if (!billing.ok) return billingUnavailable(billing.reason);
