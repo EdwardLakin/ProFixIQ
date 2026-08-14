@@ -187,6 +187,7 @@ export function TechnicianTextCopilot() {
 
   const voice = useTechnicianInteractionGateway({
     enabled: voiceEnabled,
+    autoStart: true,
     onUtterance: handleVoiceUtterance,
   });
 

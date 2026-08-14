@@ -43,7 +43,6 @@ function getTitleFromPath(pathname: string): string {
 }
 
 function isImmersiveRoute(pathname: string): boolean {
-  if (pathname === "/mobile/copilot/technician") return true;
   if (pathname.startsWith("/mobile/jobs/")) return true;
   if (pathname === "/mobile/inspections/import") return false;
   return /^\/mobile\/inspections\/[^/]+$/.test(pathname);
