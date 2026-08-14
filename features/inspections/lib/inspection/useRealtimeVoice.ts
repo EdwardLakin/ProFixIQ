@@ -144,6 +144,7 @@ export function useRealtimeVoice(
 
   const lastPulseAtRef = useRef<number>(0);
   const stoppedRef = useRef<boolean>(false);
+  const pausedRef = useRef<boolean>(false);
 
   // Track live transcript, mainly for debug
   const liveRef = useRef<string>("");
@@ -179,6 +180,7 @@ export function useRealtimeVoice(
     if (wsRef.current) return;
 
     stoppedRef.current = false;
+    pausedRef.current = false;
     liveRef.current = "";
     setState("connecting");
 
@@ -266,7 +268,9 @@ export function useRealtimeVoice(
     ws.onopen = () => {
       if (stoppedRef.current) return;
 
-      setState("listening");
+      if (!pausedRef.current) {
+        setState("listening");
+      }
 
       ws.send(
         JSON.stringify({
@@ -297,7 +301,7 @@ export function useRealtimeVoice(
 
     // Send audio chunks
     worklet.port.onmessage = (e: MessageEvent) => {
-      if (stoppedRef.current) return;
+      if (stoppedRef.current || pausedRef.current) return;
 
       const data = e.data as unknown;
       if (!(data instanceof Float32Array)) return;
@@ -409,9 +413,41 @@ export function useRealtimeVoice(
     };
   }
 
+  function pause(): boolean {
+    if (stoppedRef.current || !wsRef.current) return false;
+    pausedRef.current = true;
+    liveRef.current = "";
+    try {
+      mediaStreamRef.current?.getTracks().forEach((track) => {
+        track.enabled = false;
+      });
+    } catch {}
+    return true;
+  }
+
+  function resume(): boolean {
+    const socket = wsRef.current;
+    if (stoppedRef.current || !socket) return false;
+
+    pausedRef.current = false;
+    try {
+      mediaStreamRef.current?.getTracks().forEach((track) => {
+        track.enabled = true;
+      });
+    } catch {}
+
+    if (socket.readyState === WebSocket.OPEN) {
+      setState("listening");
+    } else if (socket.readyState === WebSocket.CONNECTING) {
+      setState("connecting");
+    }
+    return true;
+  }
+
   function stop(): void {
     if (stoppedRef.current) return;
     stoppedRef.current = true;
+    pausedRef.current = false;
 
     try {
       workletRef.current?.disconnect();
@@ -453,6 +489,7 @@ export function useRealtimeVoice(
   useEffect(() => {
     return () => {
       stoppedRef.current = true;
+      pausedRef.current = false;
 
       try {
         workletRef.current?.disconnect();
@@ -485,5 +522,5 @@ export function useRealtimeVoice(
     };
   }, []);
 
-  return { start, stop };
+  return { start, pause, resume, stop };
 }
