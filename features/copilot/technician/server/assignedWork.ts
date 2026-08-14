@@ -2,6 +2,7 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/features/shared/types/types/supabase";
+import { loadRowsForIdChunks } from "@/features/work-orders/lib/data/loadCanonicalWorkOrderLineContext";
 
 export type TechnicianWorkCandidate = {
   id: string;
@@ -27,6 +28,25 @@ export type TechnicianWorkScope = {
 };
 
 type AssignedLine = { id: string; work_order_id: string };
+type SharedAssignment = { work_order_line_id: string };
+type WorkOrderCandidateRow = Pick<
+  Database["public"]["Tables"]["work_orders"]["Row"],
+  | "id"
+  | "custom_id"
+  | "status"
+  | "notes"
+  | "intake_json"
+  | "vehicle_year"
+  | "vehicle_make"
+  | "vehicle_model"
+  | "vehicle_vin"
+  | "vehicle_unit_number"
+  | "updated_at"
+>;
+type WorkOrderLineSummary = Pick<
+  Database["public"]["Tables"]["work_order_lines"]["Row"],
+  "id" | "work_order_id" | "complaint"
+>;
 
 function object(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -52,6 +72,11 @@ function directAssignmentFilter(technicianIds: readonly string[]): string {
     .join(",");
 }
 
+function timestamp(value: string | null): number {
+  const parsed = value ? Date.parse(value) : Number.NaN;
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 export function readCanonicalWorkOrderConcern(intakeJson: unknown): string | null {
   const intake = object(intakeJson);
   const concern = object(intake?.concern);
@@ -70,43 +95,56 @@ export async function listTechnicianWorkCandidates(
   const technicianIds = uniqueIds(input.technicianIds);
   if (!input.shopId || technicianIds.length === 0) return [];
 
-  // Discover assignment identity first. This intentionally mirrors the
-  // canonical technician work surfaces instead of asking for the newest shop
-  // work orders and assuming RLS alone defines the candidate list.
-  const [directResult, sharedResult] = await Promise.all([
-    input.supabase
-      .from("work_order_lines")
-      .select("id,work_order_id")
-      .eq("shop_id", input.shopId)
-      .eq("line_type", "job")
-      .or(directAssignmentFilter(technicianIds)),
-    input.supabase
-      .from("work_order_line_technicians")
-      .select("work_order_line_id")
-      .in("technician_id", technicianIds),
+  // Assignment history can grow indefinitely for a long-tenured technician.
+  // Page every assignment read deterministically instead of relying on the
+  // PostgREST response-row cap, and chunk downstream identity filters so a
+  // lifetime history never becomes one oversized `.in(...)` request.
+  const [directAssignments, sharedAssignments] = await Promise.all([
+    loadRowsForIdChunks<AssignedLine>(
+      technicianIds,
+      (ids, from, to) =>
+        input.supabase
+          .from("work_order_lines")
+          .select("id,work_order_id")
+          .eq("shop_id", input.shopId)
+          .eq("line_type", "job")
+          .or(directAssignmentFilter(ids))
+          .order("id", { ascending: true })
+          .range(from, to),
+      { idChunkSize: 25, pageSize: 250 },
+    ),
+    loadRowsForIdChunks<SharedAssignment>(
+      technicianIds,
+      (ids, from, to) =>
+        input.supabase
+          .from("work_order_line_technicians")
+          .select("work_order_line_id")
+          .in("technician_id", ids)
+          .order("work_order_line_id", { ascending: true })
+          .range(from, to),
+      { idChunkSize: 25, pageSize: 250 },
+    ),
   ]);
 
-  if (directResult.error) throw new Error(directResult.error.message);
-  if (sharedResult.error) throw new Error(sharedResult.error.message);
-
   const sharedLineIds = uniqueIds(
-    (sharedResult.data ?? []).map((row) => row.work_order_line_id),
+    sharedAssignments.map((row) => row.work_order_line_id),
+  );
+  const sharedLines = await loadRowsForIdChunks<AssignedLine>(
+    sharedLineIds,
+    (ids, from, to) =>
+      input.supabase
+        .from("work_order_lines")
+        .select("id,work_order_id")
+        .eq("shop_id", input.shopId)
+        .eq("line_type", "job")
+        .in("id", ids)
+        .order("id", { ascending: true })
+        .range(from, to),
+    { idChunkSize: 100, pageSize: 250 },
   );
 
-  let sharedLines: AssignedLine[] = [];
-  if (sharedLineIds.length > 0) {
-    const sharedLinesResult = await input.supabase
-      .from("work_order_lines")
-      .select("id,work_order_id")
-      .eq("shop_id", input.shopId)
-      .eq("line_type", "job")
-      .in("id", sharedLineIds);
-    if (sharedLinesResult.error) throw new Error(sharedLinesResult.error.message);
-    sharedLines = sharedLinesResult.data ?? [];
-  }
-
   const assignedById = new Map<string, AssignedLine>();
-  for (const row of [...(directResult.data ?? []), ...sharedLines]) {
+  for (const row of [...directAssignments, ...sharedLines]) {
     assignedById.set(row.id, row);
   }
   const assignedLines = [...assignedById.values()];
@@ -115,35 +153,53 @@ export async function listTechnicianWorkCandidates(
   const workOrderIds = uniqueIds(
     assignedLines.map((line) => line.work_order_id),
   );
-  const workOrders = await input.supabase
-    .from("work_orders")
-    .select(
-      "id,custom_id,status,notes,intake_json,vehicle_year,vehicle_make,vehicle_model,vehicle_vin,vehicle_unit_number,updated_at",
+  const allWorkOrders = await loadRowsForIdChunks<WorkOrderCandidateRow>(
+    workOrderIds,
+    (ids, from, to) =>
+      input.supabase
+        .from("work_orders")
+        .select(
+          "id,custom_id,status,notes,intake_json,vehicle_year,vehicle_make,vehicle_model,vehicle_vin,vehicle_unit_number,updated_at",
+        )
+        .eq("shop_id", input.shopId)
+        .in("id", ids)
+        .or("type.neq.historical_import,type.is.null")
+        .order("updated_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(from, to),
+    { idChunkSize: 100, pageSize: 100 },
+  );
+
+  const rows = allWorkOrders
+    .sort(
+      (left, right) =>
+        timestamp(right.updated_at) - timestamp(left.updated_at) ||
+        right.id.localeCompare(left.id),
     )
-    .eq("shop_id", input.shopId)
-    .in("id", workOrderIds)
-    .or("type.neq.historical_import,type.is.null")
-    .order("updated_at", { ascending: false })
-    .limit(30);
-  if (workOrders.error) throw new Error(workOrders.error.message);
-  const rows = workOrders.data ?? [];
+    .slice(0, 30);
   if (!rows.length) return [];
 
   const visibleWorkOrderIds = rows.map((row) => row.id);
-  const lines = await input.supabase
-    .from("work_order_lines")
-    .select("id,work_order_id,complaint")
-    .eq("shop_id", input.shopId)
-    .eq("line_type", "job")
-    .in("work_order_id", visibleWorkOrderIds);
-  if (lines.error) throw new Error(lines.error.message);
+  const lines = await loadRowsForIdChunks<WorkOrderLineSummary>(
+    visibleWorkOrderIds,
+    (ids, from, to) =>
+      input.supabase
+        .from("work_order_lines")
+        .select("id,work_order_id,complaint")
+        .eq("shop_id", input.shopId)
+        .eq("line_type", "job")
+        .in("work_order_id", ids)
+        .order("id", { ascending: true })
+        .range(from, to),
+    { idChunkSize: 30, pageSize: 250 },
+  );
 
   const assignedLineIds = new Set(assignedLines.map((line) => line.id));
   const byWorkOrder = new Map<
     string,
     { assignedIds: string[]; complaints: string[] }
   >();
-  for (const line of lines.data ?? []) {
+  for (const line of lines) {
     const value = byWorkOrder.get(line.work_order_id) ?? {
       assignedIds: [],
       complaints: [],
