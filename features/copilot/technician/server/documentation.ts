@@ -6,6 +6,9 @@ import type {
   SilentDocumentationEventType,
 } from "../session/documentationFingerprint";
 
+export const TECHNICIAN_DOCUMENTATION_PROMPT_VERSION =
+  "technician_copilot_documentation_v1";
+
 const EVENT_TYPES = new Set<SilentDocumentationEventType>([
   "task.changed",
   "observation.recorded",
@@ -32,6 +35,12 @@ export type DocumentationExtraction = {
   events: SilentDocumentationEvent[];
 };
 
+export type DocumentationExtractionResult = DocumentationExtraction & {
+  model: string;
+  providerMode: "ai" | "fallback";
+  promptVersion: typeof TECHNICIAN_DOCUMENTATION_PROMPT_VERSION;
+};
+
 function object(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -42,6 +51,13 @@ function text(value: unknown, maxLength = 500): string | null {
   if (typeof value !== "string") return null;
   const cleaned = value.trim().replace(/\s+/g, " ").slice(0, maxLength);
   return cleaned || null;
+}
+
+function scalarText(value: unknown, maxLength = 500): string | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value).slice(0, maxLength);
+  }
+  return text(value, maxLength);
 }
 
 function optionalText(
@@ -84,7 +100,7 @@ function normalizeDetails(
 
   if (type === "measurement.recorded") {
     const label = text(source.label, 240);
-    const value = text(source.value, 120);
+    const value = scalarText(source.value, 120);
     if (!label || !value) return null;
     const details: Record<string, unknown> = { label, value };
     optionalText(details, source, "unit", 40);
@@ -179,8 +195,9 @@ const SYSTEM = `You are the silent documentation engine for the ProFixIQ Technic
 Your job is to convert only NEW facts explicitly stated in the technician's current message into structured repair-session events.
 The current message is the factual source. Repair context is supplied only to resolve references such as a component, location, or active task. Never re-extract old context as new documentation.
 Do not document questions, hypothetical ideas, future plans, CoPilot suggestions, customer claims not repeated as technician findings, or actions the technician did not say were completed.
+Selecting, starting, pausing, resuming, or switching jobs is workflow navigation, not task.changed. A task event requires an explicit repair activity, system, or component being inspected, diagnosed, or repaired.
 Do not infer a diagnosis from evidence. Use diagnostic.finding only when the technician explicitly states a conclusion, confirms a cause, rules something out, or says a component/system is normal.
-Use observation.recorded for direct visual, tactile, audible, or functional facts. Use task.changed when the technician states what they are checking or working on.
+Use observation.recorded for direct visual, tactile, audible, or functional facts. Use task.changed when the technician states what repair activity they are performing.
 Measurements require an explicit value. DTCs require an explicit code. Component and fluid state events require an explicit physical action.
 Prefer one strongest event for a statement rather than duplicating the same fact as both an observation and a finding.
 Do not write canonical work-order notes, labor, parts, approvals, billing, customer messages, or status changes.
@@ -194,7 +211,9 @@ Allowed event types and required details:
 - component.removed / installed / disconnected / connected: {component,location?}
 - fluid.drained / filled: {fluid,system?}`;
 
-export async function extractTechnicianDocumentationTurn(input: unknown) {
+export async function extractTechnicianDocumentationTurn(
+  input: unknown,
+): Promise<DocumentationExtractionResult> {
   const result = await runOpenAIStructuredJson<DocumentationExtraction>({
     purpose: "extraction",
     feature: "technician_copilot_documentation",
@@ -207,5 +226,10 @@ export async function extractTechnicianDocumentationTurn(input: unknown) {
     maxOutputTokens: 1000,
     temperature: 0,
   });
-  return result.output;
+  return {
+    ...result.output,
+    model: result.model,
+    providerMode: result.mode,
+    promptVersion: TECHNICIAN_DOCUMENTATION_PROMPT_VERSION,
+  };
 }
