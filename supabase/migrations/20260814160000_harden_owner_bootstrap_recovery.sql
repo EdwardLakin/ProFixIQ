@@ -1,16 +1,18 @@
--- Expand phase for first-shop owner bootstrap hardening.
+-- Harden the deployed first-shop owner bootstrap without changing its public
+-- signature or generated Supabase type shape.
 --
--- IMPORTANT ROLLING-DEPLOYMENT CONTRACT:
--- - The already-deployed public.bootstrap_owner_atomic(...) function is left
---   completely untouched so the currently deployed application remains valid
---   if this migration lands before the new application.
--- - The new application calls bootstrap_owner_pending_v2(...), which leaves
---   completed_onboarding=false until the server has reconciled canonical Stripe
---   billing and explicitly finalizes the owner profile.
--- - A later contract migration may retire/repoint bootstrap_owner_atomic only
---   after every deployed application version has moved to the v2 function.
+-- ROLLING-DEPLOYMENT CONTRACT:
+-- - Migration first is safe: older application versions continue calling the
+--   same bootstrap_owner_atomic(...) signature and retain the historical
+--   completed_onboarding=true success semantic.
+-- - Application first is fail-closed: the new route verifies the persisted PIN,
+--   immediately marks the acquisition owner pending, reconciles canonical Stripe
+--   billing, then sets completed_onboarding=true only after billing is durable.
+--   Middleware/onboarding also treats missing canonical shop billing as pending,
+--   covering the brief legacy-RPC compatibility window.
+-- - No second public RPC is introduced, so generated database types do not drift.
 
-create or replace function public.bootstrap_owner_pending_v2(
+create or replace function public.bootstrap_owner_atomic(
   p_business_name text,
   p_shop_name text,
   p_street text,
@@ -76,10 +78,10 @@ begin
     raise exception 'Profile not found';
   end if;
 
-  -- Concurrent or exact retries are read-only once the profile already points
-  -- at a shop owned by the caller. Pending and completed owners are both
-  -- returned. The server route must verify the submitted PIN against the
-  -- persisted owner_pin_hash before billing/finalization/cookie issuance.
+  -- Exact/concurrent retries are read-only once the profile points at a shop
+  -- actually owned by the caller. Both pending and completed owner states are
+  -- accepted. The server verifies the submitted PIN against the persisted shop
+  -- hash before billing, completion, or privileged-cookie issuance.
   if v_profile.shop_id is not null then
     if v_profile.role = 'owner'
       and exists (
@@ -117,8 +119,9 @@ begin
     raise exception 'Owner bootstrap not allowed';
   end if;
 
-  -- Never infer commercial identity from recency. One historical owner-created
-  -- shop can be recovered safely; two or more require explicit resolution.
+  -- Never infer commercial identity from recency. Exactly one historical
+  -- owner-created shop can be recovered; multiple candidates require explicit
+  -- resolution rather than silently mutating whichever row was newest.
   select count(*)
     into v_owned_shop_count
   from public.shops as s
@@ -174,13 +177,14 @@ begin
     v_created := true;
   end if;
 
-  -- Assign owner/shop identity atomically but deliberately leave onboarding
-  -- pending. Canonical billing must be reconciled server-side before the route
-  -- may flip completed_onboarding=true.
+  -- Preserve the deployed RPC's completion semantic for migration-first rolling
+  -- compatibility. The new application immediately demotes this acquisition
+  -- transition to pending before Stripe reconciliation and only finalizes after
+  -- canonical shop billing is verified.
   update public.profiles as p
     set role = 'owner',
         shop_id = v_target_shop_id,
-        completed_onboarding = false
+        completed_onboarding = true
   where p.id = v_uid
     and p.shop_id is null
     and p.role is null
@@ -247,7 +251,7 @@ begin
 end;
 $$;
 
-revoke all on function public.bootstrap_owner_pending_v2(
+revoke all on function public.bootstrap_owner_atomic(
   text,
   text,
   text,
@@ -259,7 +263,7 @@ revoke all on function public.bootstrap_owner_pending_v2(
   text
 ) from public, anon;
 
-grant execute on function public.bootstrap_owner_pending_v2(
+grant execute on function public.bootstrap_owner_atomic(
   text,
   text,
   text,
