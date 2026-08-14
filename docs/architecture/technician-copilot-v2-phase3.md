@@ -9,9 +9,10 @@ Technician message
   ├─> CoPilot reasoning model ─> natural response
   └─> Silent documentation model
         ├─> strict event validation
+        ├─> explicit numeric confidence gate
         ├─> provenance enrichment
         ├─> semantic fingerprinting
-        ├─> replay-safe deduplication
+        ├─> turn-scoped atomic finalization
         └─> ordered Repair Session events
 
 Repair Session events
@@ -44,6 +45,8 @@ The documentation engine may capture only:
 
 The engine must not convert questions, plans, hypotheses, CoPilot suggestions, workflow navigation, or unstated inferences into technician facts.
 
+Each extracted event must include a finite numeric confidence value from `0` through `1`. Missing, string, non-finite, or out-of-range confidence is rejected. The persistence boundary independently requires confidence of at least `0.6`.
+
 ## Provenance
 
 Every Phase-3 documentation event carries:
@@ -56,7 +59,7 @@ captureModel
 capturePromptVersion = technician_copilot_documentation_v1
 captureProviderMode
 confidence
-semantic documentationFingerprint
+documentationFingerprint
 ```
 
 The event ledger remains authoritative. The repair note and timeline are deterministic projections and can be rebuilt from the ledger at any time. Model and prompt provenance remain attached to the source event even when the projected repair note changes later.
@@ -65,8 +68,7 @@ The event ledger remains authoritative. The repair note and timeline are determi
 
 A semantic fingerprint is generated from the event type and its material fields. The deduplication policy distinguishes durable facts from repeatable repair occurrences:
 
-- A partial retry of the same `sourceTurnId` cannot append the same event twice.
-- Stable narrative facts such as the same observation or diagnostic finding are deduplicated across the session.
+- A stable narrative fact such as the same observation or diagnostic finding is deduplicated across the session.
 - Measurements and DTC observations are occurrence evidence and may be captured again in a later turn.
 - Task, component, and fluid events represent state transitions. An identical consecutive state is suppressed, but the same state is accepted after an intervening transition. This preserves valid sequences such as `removed → installed → removed` or `driveline → brakes → driveline`.
 
@@ -82,17 +84,31 @@ Example:
 
 Those are related but not duplicate facts.
 
+## Turn-scoped atomicity
+
+Semantic fingerprints are not used as persistence operation IDs. The complete normalized result for one `sourceTurnId` is submitted through one private `documentation.append` command.
+
+The database then:
+
+1. Revalidates technician identity, active session ownership, and work-order assignment.
+2. Reserves `(session_id, source_turn_id)` in a private receipt table.
+3. Appends every normalized event in ordered, deterministic slots derived from one turn operation ID.
+4. Commits the receipt and all event rows in one transaction.
+
+Concurrent or retried requests therefore cannot persist two different model interpretations for the same technician turn. The losing request waits for the winning transaction and receives a replay result. A valid extraction that contains no events still creates a zero-event receipt, while a failed extraction attempt is not finalized.
+
 ## Database contract
 
-Phase 3 includes two forward migrations:
+Phase 3 includes three forward migrations:
 
 1. The private technician append function gains `diagnostic.finding` while retaining the Phase-2 technician identity, assignment, lifecycle, origin, payload-size, and idempotency controls.
 2. The existing `ai_automation_capability_settings` check constraint is expanded so the documented shop-level and technician-scoped CoPilot flags can actually be stored. Technician overrides are limited to the two known flag names followed by a UUID profile ID; this is not an unrestricted capability namespace.
+3. A private source-turn receipt table and technician-authorized atomic documentation batch function are added, and the existing service-only command bridge gains `documentation.append`.
 
 The migrations do not:
 
 - Add a public table or column.
-- Change RLS policies or grants.
+- Change canonical work-order RLS policies or grants.
 - Grant browser access to the `copilot` schema.
 - Mutate canonical work-order records.
 - Change existing event semantics.
@@ -141,7 +157,7 @@ The application remains independently rollback-safe:
 2. Disable `technician_copilot_text` to remove the complete preview.
 3. Revert the application release; existing work-order and technician screens continue unchanged.
 
-The additive database migrations may safely remain after an application rollback. One permits a private Repair Session event type; the other only permits narrowly named rollout settings. Neither requires the application to use them, and generic Repair Session events do not affect canonical work orders.
+The additive database migrations may safely remain after an application rollback. They permit a private event type, narrowly named rollout settings, and a private turn receipt/atomic append boundary. None requires the application to use it, and generic Repair Session events do not affect canonical work orders.
 
 ## Acceptance path
 
@@ -162,3 +178,14 @@ Expected structured state:
 - Timeline ordered by event sequence.
 - Draft repair note built from the structured state.
 - No canonical work-order mutation.
+
+## Concurrency acceptance path
+
+Submit the same `turnId` twice at the same time with different mocked extraction outputs.
+
+Expected result:
+
+- One `repair_session_documentation_turns` receipt.
+- One coherent set of documentation events from the winning extraction.
+- No mixed or contradictory event set.
+- Both requests return the persisted assistant response.
