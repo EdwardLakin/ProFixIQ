@@ -12,22 +12,54 @@ type ResetResponse = {
   details?: string;
 };
 
+type SearchParamsReader = {
+  get(name: string): string | null;
+};
+
+const CONTINUATION_KEYS = [
+  "redirect",
+  "session_id",
+  "flow",
+  "demoId",
+  "intakeId",
+  "activationContext",
+] as const;
+
+function buildContinuationParams(
+  searchParams: SearchParamsReader,
+  email: string,
+): URLSearchParams {
+  const params = new URLSearchParams();
+  for (const key of CONTINUATION_KEYS) {
+    const value = searchParams.get(key)?.trim();
+    if (value) params.set(key, value);
+  }
+
+  const normalizedEmail = email.trim().toLowerCase();
+  if (normalizedEmail.includes("@")) params.set("email", normalizedEmail);
+  return params;
+}
+
 export default function ForgotPasswordPage() {
   const router = useRouter();
   const sp = useSearchParams();
 
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(
+    () => sp.get("email")?.trim().toLowerCase() ?? "",
+  );
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
   const goBack = () => {
-    const redirect = sp.get("redirect");
-    const tail = redirect ? `?redirect=${encodeURIComponent(redirect)}` : "";
+    const params = buildContinuationParams(sp, email);
+    const redirect = params.get("redirect");
     const signInPath = redirect?.startsWith("/mobile")
       ? "/mobile/sign-in"
       : "/sign-in";
-    router.push(`${signInPath}${tail}`);
+    router.push(
+      `${signInPath}${params.size ? `?${params.toString()}` : ""}`,
+    );
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -45,7 +77,10 @@ export default function ForgotPasswordPage() {
     }
 
     try {
-      const res = await fetch("/api/auth/send-reset", {
+      const continuation = buildContinuationParams(sp, trimmed);
+      const setPasswordRedirect = `/auth/set-password${continuation.size ? `?${continuation.toString()}` : ""}`;
+      const resetEndpoint = `/api/auth/send-reset?redirect=${encodeURIComponent(setPasswordRedirect)}`;
+      const res = await fetch(resetEndpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
