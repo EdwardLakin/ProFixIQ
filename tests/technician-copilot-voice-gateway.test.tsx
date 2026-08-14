@@ -40,7 +40,7 @@ class FakeSpeechSynthesisUtterance {
 
 const speech = {
   cancel: vi.fn(),
-  speak: vi.fn(),
+  speak: vi.fn((_utterance: SpeechSynthesisUtterance) => undefined),
 };
 
 function deferred<T>() {
@@ -58,6 +58,7 @@ describe("Technician CoPilot voice interaction gateway", () => {
     realtime.onStateChange = null;
     realtime.start.mockImplementation(async () => {
       realtime.onStateChange?.("listening");
+      return undefined;
     });
     realtime.stop.mockImplementation(() => {
       realtime.onStateChange?.("idle");
@@ -103,7 +104,7 @@ describe("Technician CoPilot voice interaction gateway", () => {
     expect(realtime.stop).toHaveBeenCalledTimes(1);
     expect(speech.speak).toHaveBeenCalledTimes(1);
 
-    const utterance = speech.speak.mock.calls[0]?.[0] as
+    const utterance = speech.speak.mock.calls[0]?.[0] as unknown as
       | FakeSpeechSynthesisUtterance
       | undefined;
     expect(utterance?.text).toBe("Reply to Rear U-joint has play.");
