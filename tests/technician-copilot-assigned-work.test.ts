@@ -55,6 +55,17 @@ describe("Technician CoPilot assigned-work context", () => {
     expect(assignedWorkSource).toContain('.eq("line_type", "job")');
   });
 
+  it("pages lifetime assignment history and chunks downstream work-order filters", () => {
+    expect(assignedWorkSource).toContain("loadRowsForIdChunks<AssignedLine>");
+    expect(assignedWorkSource).toContain("loadRowsForIdChunks<SharedAssignment>");
+    expect(assignedWorkSource).toContain('.order("work_order_line_id", { ascending: true })');
+    expect(assignedWorkSource).toContain(".range(from, to)");
+    expect(assignedWorkSource).toContain("{ idChunkSize: 25, pageSize: 250 }");
+    expect(assignedWorkSource).toContain("loadRowsForIdChunks<WorkOrderCandidateRow>");
+    expect(assignedWorkSource).toContain("{ idChunkSize: 100, pageSize: 100 }");
+    expect(assignedWorkSource).toContain(".slice(0, 30)");
+  });
+
   it("exposes only assigned line IDs as startable CoPilot lines", () => {
     expect(assignedWorkSource).toContain(
       "if (assignedLineIds.has(line.id)) value.assignedIds.push(line.id);",
