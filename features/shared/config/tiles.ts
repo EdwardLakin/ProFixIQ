@@ -77,6 +77,14 @@ export const TILES: Tile[] = [
     section: "Tech",
   },
   {
+    href: "/copilot/technician",
+    title: "Technician CoPilot",
+    subtitle: "Voice and text repair collaborator",
+    roles: ["mechanic"],
+    scopes: ["tech", "all"],
+    section: "Tech",
+  },
+  {
     href: "/parts/requests?mine=1",
     title: "My Parts Requests",
     subtitle: "Requests involving me",
