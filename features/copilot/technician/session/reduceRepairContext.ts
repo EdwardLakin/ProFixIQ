@@ -168,10 +168,10 @@ export function applyRepairEvent(
         ...provenance(payload),
       };
       const status = clean(payload.status);
-      const module = clean(payload.module);
+      const dtcModule = clean(payload.module);
       const description = clean(payload.description);
       if (status) dtc.status = status;
-      if (module) dtc.module = module;
+      if (dtcModule) dtc.module = dtcModule;
       if (description) dtc.description = description;
       next.dtcs = [...state.dtcs, dtc];
     }
