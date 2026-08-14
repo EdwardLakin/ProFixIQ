@@ -508,9 +508,14 @@ export function useRealtimeVoice(
       socket.readyState !== WebSocket.OPEN &&
       socket.readyState !== WebSocket.CONNECTING
     ) {
-      const wasCurrent = detachCurrentSession(session);
+      detachCurrentSession(session);
       cleanupSession(session);
-      if (wasCurrent) setState("idle");
+
+      // A dead paused socket is a recoverable transport replacement signal.
+      // Do not emit terminal `idle` here: the Technician Interaction Gateway is
+      // already in `connecting` and will immediately establish a replacement
+      // transport after resume() returns false. Emitting idle synchronously
+      // would incorrectly revoke gateway ownership while the replacement starts.
       return false;
     }
 
