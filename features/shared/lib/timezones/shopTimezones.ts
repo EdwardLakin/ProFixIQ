@@ -81,6 +81,14 @@ export function isSupportedShopTimezone(
   return TIMEZONES_BY_COUNTRY[country].includes(timezone);
 }
 
+export function shopCountryForTimezone(
+  timezone: string,
+): ShopCountryCode | null {
+  if (CANADA_SHOP_TIMEZONES.includes(timezone)) return "CA";
+  if (US_SHOP_TIMEZONES.includes(timezone)) return "US";
+  return null;
+}
+
 export function defaultShopTimezone(country: ShopCountryCode): string {
   return country === "CA" ? "America/Edmonton" : "America/Denver";
 }
