@@ -23,6 +23,13 @@ type TechnicianInteractionGatewayOptions = {
   onUtterance: (text: string) => Promise<TechnicianVoiceTurnResult>;
 };
 
+type RealtimeTransport = {
+  start: () => Promise<void>;
+  pause?: () => boolean;
+  resume?: () => boolean;
+  stop: () => void;
+};
+
 function normalizedTranscript(text: string): string | null {
   const value = text.trim();
   return value || null;
@@ -42,9 +49,7 @@ export function useTechnicianInteractionGateway({
   const generationRef = useRef(0);
   const inFlightRef = useRef(false);
   const onUtteranceRef = useRef(onUtterance);
-  const realtimeRef = useRef<{ start: () => Promise<void>; stop: () => void } | null>(
-    null,
-  );
+  const realtimeRef = useRef<RealtimeTransport | null>(null);
   const startListeningRef = useRef<() => Promise<void>>(async () => undefined);
   const speakReplyRef = useRef<(text: string) => void>(() => undefined);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
@@ -89,7 +94,10 @@ export function useTechnicianInteractionGateway({
       void (async () => {
         inFlightRef.current = true;
         setHeardTranscript(text);
-        realtimeRef.current?.stop();
+        const paused = realtimeRef.current?.pause?.() ?? false;
+        if (!paused) {
+          realtimeRef.current?.stop();
+        }
         setVoicePhase("thinking");
         setError(null);
 
@@ -156,6 +164,9 @@ export function useTechnicianInteractionGateway({
     setHeardTranscript("");
     setVoicePhase("connecting");
     try {
+      if (realtimeRef.current?.resume?.()) {
+        return;
+      }
       await realtimeRef.current?.start();
     } catch (caught) {
       if (
