@@ -3,8 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
-import { safeInternalRedirect } from "@/features/auth/lib/safeRedirect";
+import { resolvePostAuthDestination } from "@/features/auth/lib/postAuthRouting";
 import { activatePasswordProfile } from "@/features/auth/lib/passwordActivation";
+import { claimStripeAcquisitionAfterAuth } from "@/features/stripe/lib/client/claim-acquisition";
 import { Button } from "@shared/components/ui/Button";
 import { Input } from "@shared/components/ui/input";
 
@@ -82,17 +83,28 @@ export default function SetPasswordPage() {
       return false;
     }
 
+    const claim = await claimStripeAcquisitionAfterAuth(searchParams);
+    if (!claim.linked) {
+      setStatusTone("error");
+      setStatusMessage(
+        "Your password was updated, but the trial could not be linked. Retry account activation from the checkout confirmation link.",
+      );
+      return false;
+    }
+
     setStatusTone("success");
     setStatusMessage(
       isPortalActivation
         ? "Portal password created. Opening your portal..."
-        : "Password updated. Redirecting...",
+        : claim.required
+          ? "Password updated. Opening shop setup..."
+          : "Password updated. Redirecting...",
     );
-    const redirect = safeInternalRedirect(
-      searchParams.get("redirect"),
-      getReturnPath(role),
-      ["/dashboard", "/onboarding", "/portal", "/fleet", "/mobile"],
-    );
+    const redirect = await resolvePostAuthDestination({
+      supabase,
+      searchParams,
+      defaultDashboardHref: claim.required ? "/onboarding" : getReturnPath(role),
+    });
     window.setTimeout(() => window.location.replace(redirect), 700);
     return true;
   }
