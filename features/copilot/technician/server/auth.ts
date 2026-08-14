@@ -58,9 +58,10 @@ export async function requireTechnicianCopilotAccess() {
     );
   }
 
-  // The work-order RLS contract is shop-scoped. Establish the same security
-  // context used by the canonical technician offline/runtime surfaces before
-  // any CoPilot capability or assigned-work query is allowed to run.
+  // current_shop_id() resolves from the authenticated profile directly. This
+  // compatibility RPC is still useful as an explicit ownership assertion: it
+  // rejects a profile/shop mismatch before CoPilot capability or assigned-work
+  // reads begin, without relying on its transaction-local setting afterward.
   const { error: shopContextError } = await supabase.rpc(
     "set_current_shop_id",
     { p_shop_id: profile.shop_id },
