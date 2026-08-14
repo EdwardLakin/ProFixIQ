@@ -42,7 +42,7 @@ The documentation engine may capture only:
 - Explicit component removal, installation, disconnection, and reconnection.
 - Explicit fluid drain and fill state.
 
-The engine must not convert questions, plans, hypotheses, CoPilot suggestions, or unstated inferences into technician facts.
+The engine must not convert questions, plans, hypotheses, CoPilot suggestions, workflow navigation, or unstated inferences into technician facts.
 
 ## Provenance
 
@@ -52,11 +52,14 @@ Every Phase-3 documentation event carries:
 sourceTurnId
 sourceText
 captureMode = silent_documentation_v1
+captureModel
+capturePromptVersion = technician_copilot_documentation_v1
+captureProviderMode
 confidence
 semantic documentationFingerprint
 ```
 
-The event ledger remains authoritative. The repair note and timeline are deterministic projections and can be rebuilt from the ledger at any time.
+The event ledger remains authoritative. The repair note and timeline are deterministic projections and can be rebuilt from the ledger at any time. Model and prompt provenance remain attached to the source event even when the projected repair note changes later.
 
 ## Deduplication and repeatable events
 
