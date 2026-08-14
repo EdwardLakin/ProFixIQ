@@ -122,6 +122,9 @@ export function useTechnicianInteractionGateway({
           ) {
             return;
           }
+          try {
+            realtimeRef.current?.stop();
+          } catch {}
           invalidateGeneration();
           activeRef.current = false;
           setModeActive(false);
@@ -175,6 +178,9 @@ export function useTechnicianInteractionGateway({
       ) {
         return;
       }
+      try {
+        realtimeRef.current?.stop();
+      } catch {}
       invalidateGeneration();
       activeRef.current = false;
       setModeActive(false);
