@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { readPersistedActivationContext } from "@/features/integrations/shopBoost/activationContext";
+import {
+  appendActivationContextToHref,
+  readActivationContextFromSearchParams,
+} from "@/features/integrations/shopBoost/activationContext";
 import {
   defaultShopTimezone,
   getSupportedShopTimezones,
@@ -87,17 +90,21 @@ export default function OwnerOnboardingForm() {
         return;
       }
 
-      // Shop Boost is an explicit acquisition handoff, not something middleware
-      // should infer from a missing intake row. Only a browser that actually
-      // carries a valid persisted analysis context enters the activation path.
-      const activationContext = readPersistedActivationContext(
+      // Only provenance carried by this acquisition URL may select Shop Boost.
+      // Do not consult the unscoped localStorage fallback here: an old analysis
+      // from another signup/browser session must never redirect an ordinary
+      // owner into activation. The current context is forwarded explicitly so
+      // the Shop Boost page receives the same analysis identity.
+      const activationContext = readActivationContextFromSearchParams(
         new URLSearchParams(window.location.search),
       );
-      window.location.assign(
-        activationContext
-          ? "/onboarding/shop-boost"
-          : payload.destination || "/dashboard/onboarding-v2",
-      );
+      const destination = activationContext
+        ? appendActivationContextToHref(
+            "/onboarding/shop-boost",
+            activationContext,
+          )
+        : payload.destination || "/dashboard/onboarding-v2";
+      window.location.assign(destination);
     } catch {
       setError("We could not create your shop. Check your connection and try again.");
     } finally {
@@ -132,100 +139,43 @@ export default function OwnerOnboardingForm() {
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
               <label className="space-y-1.5 text-sm font-medium">
                 <span>Business name</span>
-                <input
-                  name="businessName"
-                  type="text"
-                  autoComplete="organization"
-                  required
-                  maxLength={120}
-                  className={fieldClassName}
-                />
+                <input name="businessName" type="text" autoComplete="organization" required maxLength={120} className={fieldClassName} />
               </label>
               <label className="space-y-1.5 text-sm font-medium">
                 <span>Shop name</span>
-                <input
-                  name="shopName"
-                  type="text"
-                  maxLength={120}
-                  placeholder="Defaults to business name"
-                  className={fieldClassName}
-                />
+                <input name="shopName" type="text" maxLength={120} placeholder="Defaults to business name" className={fieldClassName} />
               </label>
             </div>
           </section>
 
           <section aria-labelledby="location-heading">
-            <h2 id="location-heading" className="text-lg font-semibold">
-              Primary location
-            </h2>
+            <h2 id="location-heading" className="text-lg font-semibold">Primary location</h2>
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
               <label className="space-y-1.5 text-sm font-medium sm:col-span-2">
                 <span>Street address</span>
-                <input
-                  name="street"
-                  type="text"
-                  autoComplete="street-address"
-                  required
-                  maxLength={200}
-                  className={fieldClassName}
-                />
+                <input name="street" type="text" autoComplete="street-address" required maxLength={200} className={fieldClassName} />
               </label>
               <label className="space-y-1.5 text-sm font-medium">
                 <span>City</span>
-                <input
-                  name="city"
-                  type="text"
-                  autoComplete="address-level2"
-                  required
-                  maxLength={100}
-                  className={fieldClassName}
-                />
+                <input name="city" type="text" autoComplete="address-level2" required maxLength={100} className={fieldClassName} />
               </label>
               <label className="space-y-1.5 text-sm font-medium">
                 <span>{country === "CA" ? "Province" : "State"}</span>
-                <input
-                  name="province"
-                  type="text"
-                  autoComplete="address-level1"
-                  required
-                  maxLength={80}
-                  className={fieldClassName}
-                />
+                <input name="province" type="text" autoComplete="address-level1" required maxLength={80} className={fieldClassName} />
               </label>
               <label className="space-y-1.5 text-sm font-medium">
                 <span>{country === "CA" ? "Postal code" : "ZIP code"}</span>
-                <input
-                  name="postalCode"
-                  type="text"
-                  autoComplete="postal-code"
-                  required
-                  maxLength={16}
-                  className={fieldClassName}
-                />
+                <input name="postalCode" type="text" autoComplete="postal-code" required maxLength={16} className={fieldClassName} />
               </label>
               <label className="space-y-1.5 text-sm font-medium">
                 <span>Country</span>
-                <select
-                  value={country}
-                  onChange={(event) =>
-                    changeCountry(event.target.value as ShopCountryCode)
-                  }
-                  className={fieldClassName}
-                >
-                  {COUNTRIES.map((item) => (
-                    <option key={item.value} value={item.value}>
-                      {item.label}
-                    </option>
-                  ))}
+                <select value={country} onChange={(event) => changeCountry(event.target.value as ShopCountryCode)} className={fieldClassName}>
+                  {COUNTRIES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
                 </select>
               </label>
               <label className="space-y-1.5 text-sm font-medium sm:col-span-2">
                 <span>Timezone</span>
-                <select
-                  value={timezone}
-                  onChange={(event) => setTimezone(event.target.value)}
-                  className={fieldClassName}
-                >
+                <select value={timezone} onChange={(event) => setTimezone(event.target.value)} className={fieldClassName}>
                   {timezoneOptions.map((item) => (
                     <option key={item} value={item}>
                       {item.replace("America/", "").replace("Pacific/", "").replaceAll("_", " ")}
@@ -237,54 +187,23 @@ export default function OwnerOnboardingForm() {
           </section>
 
           <section aria-labelledby="owner-pin-heading">
-            <h2 id="owner-pin-heading" className="text-lg font-semibold">
-              Owner PIN
-            </h2>
-            <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
-              Use 4 to 8 digits. This protects sensitive owner actions inside the shop.
-            </p>
+            <h2 id="owner-pin-heading" className="text-lg font-semibold">Owner PIN</h2>
+            <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">Use 4 to 8 digits. This protects sensitive owner actions inside the shop.</p>
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
               <label className="space-y-1.5 text-sm font-medium">
                 <span>Owner PIN</span>
-                <input
-                  name="pin"
-                  type="password"
-                  inputMode="numeric"
-                  autoComplete="new-password"
-                  pattern="[0-9]{4,8}"
-                  required
-                  className={fieldClassName}
-                />
+                <input name="pin" type="password" inputMode="numeric" autoComplete="new-password" pattern="[0-9]{4,8}" required className={fieldClassName} />
               </label>
               <label className="space-y-1.5 text-sm font-medium">
                 <span>Confirm owner PIN</span>
-                <input
-                  name="pinConfirmation"
-                  type="password"
-                  inputMode="numeric"
-                  autoComplete="new-password"
-                  pattern="[0-9]{4,8}"
-                  required
-                  className={fieldClassName}
-                />
+                <input name="pinConfirmation" type="password" inputMode="numeric" autoComplete="new-password" pattern="[0-9]{4,8}" required className={fieldClassName} />
               </label>
             </div>
           </section>
 
-          {error ? (
-            <p
-              role="alert"
-              className="rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-200"
-            >
-              {error}
-            </p>
-          ) : null}
+          {error ? <p role="alert" className="rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</p> : null}
 
-          <button
-            type="submit"
-            disabled={submitting}
-            className="inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-[var(--accent-copper)] px-5 py-3 text-sm font-semibold text-[color:var(--theme-text-on-accent)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
-          >
+          <button type="submit" disabled={submitting} className="inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-[var(--accent-copper)] px-5 py-3 text-sm font-semibold text-[color:var(--theme-text-on-accent)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto">
             {submitting ? "Creating shop…" : "Create shop and continue"}
           </button>
         </form>
