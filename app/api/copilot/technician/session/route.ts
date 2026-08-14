@@ -64,7 +64,10 @@ async function snapshot(
 function capabilities(
   access: Awaited<ReturnType<typeof requireTechnicianCopilotAccess>>,
 ) {
-  return { documentation: access.capabilities.documentation };
+  return {
+    documentation: access.capabilities.documentation,
+    voice: access.capabilities.voice,
+  };
 }
 
 export async function GET(request: NextRequest) {
