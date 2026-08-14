@@ -113,7 +113,7 @@ export async function handleStripeCheckoutLinkUser(req: Request) {
       if (identityUpgradeError) {
         console.error("stripe_acquisition_identity_upgrade_failed", {
           userId: user.id,
-          code: identityUpgradeError.code,
+          message: identityUpgradeError.message,
         });
         return noStoreJson({ error: "Account upgrade unavailable" }, 503);
       }
