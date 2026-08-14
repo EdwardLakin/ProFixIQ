@@ -1,7 +1,8 @@
 -- Harden the already-deployed first-shop bootstrap without rewriting migration
 -- history. The API constrains new shops to supported US/Canada zones; the DB
 -- independently requires the supplied timezone to exist in the installed IANA
--- catalog and refuses to guess when multiple historical owner shops exist.
+-- catalog, refuses ambiguous historical recovery, and deliberately leaves the
+-- owner incomplete until canonical billing reconciliation succeeds server-side.
 
 create or replace function public.bootstrap_owner_atomic(
   p_business_name text,
@@ -69,8 +70,9 @@ begin
     raise exception 'Profile not found';
   end if;
 
-  -- A completed owner retry is read-only and idempotent. Any other assigned
-  -- account must use normal shop membership/admin flows and cannot self-promote.
+  -- A completed owner retry is read-only and idempotent. Pending owners are
+  -- recovered by the server route's billing/finalization path rather than by
+  -- invoking this shop-creation transition again.
   if v_profile.shop_id is not null then
     if v_profile.role = 'owner'
       and coalesce(v_profile.completed_onboarding, false)
@@ -166,12 +168,14 @@ begin
     v_created := true;
   end if;
 
-  -- Assign the caller before RLS-dependent shop profile/member writes. Every
-  -- statement remains in this transaction and rolls back together on failure.
+  -- Assign owner/shop identity atomically, but leave onboarding incomplete.
+  -- The server route reconciles Stripe into the canonical shop first and only
+  -- then flips completed_onboarding=true. A billing failure therefore cannot
+  -- route the owner into the operational application with null/legacy access.
   update public.profiles as p
     set role = 'owner',
         shop_id = v_target_shop_id,
-        completed_onboarding = true
+        completed_onboarding = false
   where p.id = v_uid
     and p.shop_id is null
     and p.role is null
