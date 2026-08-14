@@ -38,11 +38,18 @@ describe("Technician CoPilot Realtime voice bridge contract", () => {
     expect(componentSource).not.toContain("buildGoal");
   });
 
-  it("makes Realtime startup cancellable without leaving late microphone resources alive", () => {
-    expect(realtimeSource).toContain("startupGenerationRef");
-    expect(realtimeSource).toContain("startupIsCurrent");
-    expect(realtimeSource).toContain("stopStream(stream)");
-    expect(realtimeSource).toContain("Never early-return here");
-    expect(realtimeSource).toContain("cleanupResources();");
+  it("owns Realtime resources per startup generation so stale cleanup cannot tear down a replacement", () => {
+    expect(realtimeSource).toContain("type RealtimeSessionResources");
+    expect(realtimeSource).toContain("activeSessionRef");
+    expect(realtimeSource).toContain("sessionIsCurrent(session)");
+    expect(realtimeSource).toContain("cleanupSession(session)");
+    expect(realtimeSource).toContain("activeSessionRef.current === session");
+    expect(realtimeSource).toContain("stale startup owns only `session`");
+  });
+
+  it("resets a failed current startup so voice can be started again", () => {
+    expect(realtimeSource).toContain("activeSessionRef.current = null");
+    expect(realtimeSource).toContain("stoppedRef.current = true");
+    expect(realtimeSource).toContain("throw caught instanceof Error");
   });
 });
