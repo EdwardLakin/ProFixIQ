@@ -4,6 +4,7 @@ const STANDALONE_PUBLIC_PREFIXES = [
   "/signup",
   "/sign-up",
   "/sign-in",
+  "/onboarding",
   "/forgot-password",
   "/auth/reset",
   "/auth/set-password",

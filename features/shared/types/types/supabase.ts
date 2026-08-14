@@ -27023,6 +27023,23 @@ export type Database = {
         }
         Returns: Json
       }
+      bootstrap_owner_atomic: {
+        Args: {
+          p_business_name: string
+          p_city: string
+          p_country: string
+          p_owner_pin_hash: string
+          p_postal_code: string
+          p_province: string
+          p_shop_name: string
+          p_street: string
+          p_timezone: string
+        }
+        Returns: {
+          created_shop: boolean
+          shop_id: string
+        }[]
+      }
       can_access_conversation: {
         Args: { actor_user_id?: string; target_conversation_id: string }
         Returns: boolean
