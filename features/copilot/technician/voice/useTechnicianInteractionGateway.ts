@@ -89,7 +89,14 @@ export function useTechnicianInteractionGateway({
   const handleFinalTranscript = useCallback(
     (rawText: string) => {
       const text = normalizedTranscript(rawText);
-      if (!text || !activeRef.current || inFlightRef.current) return;
+      if (
+        !text ||
+        !activeRef.current ||
+        inFlightRef.current ||
+        phaseRef.current !== "listening"
+      ) {
+        return;
+      }
       const generation = generationRef.current;
 
       void (async () => {
