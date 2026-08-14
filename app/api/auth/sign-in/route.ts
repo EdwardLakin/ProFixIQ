@@ -17,7 +17,12 @@ import {
 } from "@/features/users/lib/username";
 
 type AccessSurface = "shop" | "mobile" | "customer" | "fleet";
-type Body = { identifier?: string; password?: string; surface?: AccessSurface };
+type Body = {
+  identifier?: string;
+  password?: string;
+  surface?: AccessSurface;
+  acquisitionSessionId?: string;
+};
 
 type RateLimitResult = ReturnType<typeof enforceAuthRateLimit>;
 
@@ -97,6 +102,9 @@ export async function POST(req: Request) {
     body?.surface === "fleet"
       ? body.surface
       : "shop";
+  const acquisitionSessionId = String(body?.acquisitionSessionId ?? "").trim();
+  const hasAcquisitionContext =
+    surface === "shop" && /^cs_[A-Za-z0-9_]+$/.test(acquisitionSessionId);
 
   if (!identifier || !password) {
     return NextResponse.json(
@@ -151,7 +159,8 @@ export async function POST(req: Request) {
 
   if (
     (surface === "shop" || surface === "mobile") &&
-    signedInUser.app_metadata?.profixiq_portal_only === true
+    signedInUser.app_metadata?.profixiq_portal_only === true &&
+    !hasAcquisitionContext
   ) {
     return deny();
   }
