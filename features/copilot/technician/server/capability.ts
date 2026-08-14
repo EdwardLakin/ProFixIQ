@@ -6,6 +6,7 @@ import type { Database } from "@/features/shared/types/types/supabase";
 export type TechnicianCopilotCapabilities = {
   text: boolean;
   documentation: boolean;
+  voice: boolean;
 };
 
 type CapabilityRow = {
@@ -39,8 +40,10 @@ export function resolveTechnicianCopilotCapabilities(
       "technician_copilot_documentation",
       technicianId,
     ) ?? text;
+  const voice =
+    configuredValue(rows, "technician_copilot_voice", technicianId) ?? false;
 
-  return { text, documentation };
+  return { text, documentation, voice };
 }
 
 export async function getTechnicianCopilotCapabilities(
@@ -53,6 +56,8 @@ export async function getTechnicianCopilotCapabilities(
     `technician_copilot_text:${technicianId}`,
     "technician_copilot_documentation",
     `technician_copilot_documentation:${technicianId}`,
+    "technician_copilot_voice",
+    `technician_copilot_voice:${technicianId}`,
   ];
   const result = await supabase
     .from("ai_automation_capability_settings")
@@ -60,7 +65,7 @@ export async function getTechnicianCopilotCapabilities(
     .eq("shop_id", shopId)
     .in("capability", names);
 
-  if (result.error) return { text: false, documentation: false };
+  if (result.error) return { text: false, documentation: false, voice: false };
   return resolveTechnicianCopilotCapabilities(
     (result.data ?? []) as CapabilityRow[],
     technicianId,
