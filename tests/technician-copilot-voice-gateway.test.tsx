@@ -204,10 +204,15 @@ describe("Technician CoPilot voice interaction gateway", () => {
     expect(result.current.phase).toBe("listening");
   });
 
-  it("tears down a Realtime startup that completes after the technician stopped voice", async () => {
-    const pendingStart = deferred<void>();
+  it("does not let stale startup A stop a replacement startup B", async () => {
+    const startupA = deferred<void>();
+    let startCall = 0;
     realtime.start.mockImplementation(async () => {
-      await pendingStart.promise;
+      startCall += 1;
+      if (startCall === 1) {
+        await startupA.promise;
+        return;
+      }
       realtime.connected = true;
       realtime.onStateChange?.("listening");
     });
@@ -219,26 +224,30 @@ describe("Technician CoPilot voice interaction gateway", () => {
       }),
     );
 
-    let startPromise: Promise<void> | undefined;
+    let staleStartPromise: Promise<void> | undefined;
     act(() => {
-      startPromise = result.current.start();
+      staleStartPromise = result.current.start();
     });
     await waitFor(() => expect(result.current.phase).toBe("connecting"));
 
-    act(() => {
-      result.current.stop();
-    });
-    expect(result.current.active).toBe(false);
-    expect(result.current.phase).toBe("idle");
+    act(() => result.current.stop());
+    expect(realtime.stop).toHaveBeenCalledTimes(1);
 
     await act(async () => {
-      pendingStart.resolve();
-      await startPromise;
+      await result.current.start();
+    });
+    expect(result.current.active).toBe(true);
+    expect(result.current.phase).toBe("listening");
+    expect(realtime.start).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      startupA.resolve();
+      await staleStartPromise;
     });
 
-    expect(result.current.active).toBe(false);
-    expect(result.current.phase).toBe("idle");
-    expect(realtime.stop).toHaveBeenCalledTimes(2);
+    expect(realtime.stop).toHaveBeenCalledTimes(1);
+    expect(result.current.active).toBe(true);
+    expect(result.current.phase).toBe("listening");
   });
 
   it("deactivates voice mode when the live Realtime transport closes unexpectedly", async () => {
@@ -263,5 +272,34 @@ describe("Technician CoPilot voice interaction gateway", () => {
     expect(result.current.active).toBe(false);
     expect(result.current.phase).toBe("idle");
     expect(result.current.error).toContain("Voice connection ended");
+  });
+
+  it("allows a fresh start after a current Realtime startup failure", async () => {
+    realtime.start
+      .mockRejectedValueOnce(new Error("permission denied"))
+      .mockImplementationOnce(async () => {
+        realtime.connected = true;
+        realtime.onStateChange?.("listening");
+      });
+
+    const { result } = renderHook(() =>
+      useTechnicianInteractionGateway({
+        enabled: true,
+        onUtterance: vi.fn(async () => ({ reply: null })),
+      }),
+    );
+
+    await act(async () => {
+      await result.current.start();
+    });
+    expect(result.current.active).toBe(false);
+    expect(result.current.phase).toBe("error");
+
+    await act(async () => {
+      await result.current.start();
+    });
+    expect(result.current.active).toBe(true);
+    expect(result.current.phase).toBe("listening");
+    expect(realtime.start).toHaveBeenCalledTimes(2);
   });
 });
