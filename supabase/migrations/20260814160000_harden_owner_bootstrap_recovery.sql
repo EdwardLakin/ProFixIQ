@@ -2,14 +2,15 @@
 -- signature or generated Supabase type shape.
 --
 -- ROLLING-DEPLOYMENT CONTRACT:
--- - Migration first is safe: older application versions continue calling the
---   same bootstrap_owner_atomic(...) signature and retain the historical
+-- - Old app + old DB: existing behavior.
+-- - Old app + new DB: raw PIN hashes retain the historical
 --   completed_onboarding=true success semantic.
--- - Application first is fail-closed: the new route verifies the persisted PIN,
---   immediately marks the acquisition owner pending, reconciles canonical Stripe
---   billing, then sets completed_onboarding=true only after billing is durable.
---   Middleware/onboarding also treats missing canonical shop billing as pending,
---   covering the brief legacy-RPC compatibility window.
+-- - New app + old DB: a harmless contract probe fails before any bootstrap
+--   mutation, so the new app returns 503 instead of calling the old body.
+-- - New app + new DB: the route prefixes the already-string PIN-hash argument
+--   with a private protocol marker. This function strips the marker before
+--   storing the real hash and atomically leaves completed_onboarding=false.
+--   The server then reconciles canonical Stripe billing and explicitly finalizes.
 -- - No second public RPC is introduced, so generated database types do not drift.
 
 create or replace function public.bootstrap_owner_atomic(
@@ -37,10 +38,31 @@ declare
   v_target_shop_id uuid;
   v_created boolean := false;
   v_owned_shop_count bigint := 0;
+  v_pending_protocol boolean := false;
+  v_effective_owner_pin_hash text;
+  v_pending_marker constant text := 'profixiq-owner-bootstrap-pending-v2:';
 begin
   v_uid := auth.uid();
   if v_uid is null then
     raise exception 'Unauthorized';
+  end if;
+
+  -- Harmless readiness probe used by the new application before it sends the
+  -- pending protocol marker. The previously deployed function rejects the
+  -- sentinel country, so app-first deployment fails closed without mutation.
+  if p_business_name = '__profixiq_owner_bootstrap_v2_probe__'
+    and p_shop_name = '__probe__'
+    and p_street = '__probe__'
+    and p_city = '__probe__'
+    and p_province = '__probe__'
+    and p_postal_code = '__probe__'
+    and p_country = '__PROBE__'
+    and p_timezone = 'Etc/UTC'
+    and p_owner_pin_hash = '__probe__'
+  then
+    return query
+    select '00000000-0000-4000-8000-000000000002'::uuid, false;
+    return;
   end if;
 
   if nullif(trim(coalesce(p_business_name, '')), '') is null
@@ -54,6 +76,17 @@ begin
     or nullif(trim(coalesce(p_owner_pin_hash, '')), '') is null
   then
     raise exception 'Missing required fields';
+  end if;
+
+  v_pending_protocol := left(p_owner_pin_hash, length(v_pending_marker)) = v_pending_marker;
+  v_effective_owner_pin_hash := case
+    when v_pending_protocol
+      then substr(p_owner_pin_hash, length(v_pending_marker) + 1)
+    else p_owner_pin_hash
+  end;
+
+  if nullif(trim(coalesce(v_effective_owner_pin_hash, '')), '') is null then
+    raise exception 'Missing owner PIN hash';
   end if;
 
   if upper(trim(p_country)) not in ('US', 'CA') then
@@ -168,7 +201,7 @@ begin
       trim(p_postal_code),
       upper(trim(p_country)),
       trim(p_timezone),
-      p_owner_pin_hash,
+      v_effective_owner_pin_hash,
       null,
       null
     )
@@ -177,14 +210,13 @@ begin
     v_created := true;
   end if;
 
-  -- Preserve the deployed RPC's completion semantic for migration-first rolling
-  -- compatibility. The new application immediately demotes this acquisition
-  -- transition to pending before Stripe reconciliation and only finalizes after
-  -- canonical shop billing is verified.
+  -- Raw hashes preserve the old app's completion contract. The new app sends
+  -- the marker only after the readiness probe proves this function understands
+  -- it, so its first-shop transition is pending atomically.
   update public.profiles as p
     set role = 'owner',
         shop_id = v_target_shop_id,
-        completed_onboarding = true
+        completed_onboarding = not v_pending_protocol
   where p.id = v_uid
     and p.shop_id is null
     and p.role is null
@@ -205,7 +237,7 @@ begin
         postal_code = trim(p_postal_code),
         country = upper(trim(p_country)),
         timezone = trim(p_timezone),
-        owner_pin_hash = p_owner_pin_hash,
+        owner_pin_hash = v_effective_owner_pin_hash,
         owner_pin = null,
         pin = null,
         owner_id = v_uid,
