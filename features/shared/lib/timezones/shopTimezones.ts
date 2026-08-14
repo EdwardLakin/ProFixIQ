@@ -84,8 +84,8 @@ export function isSupportedShopTimezone(
 export function shopCountryForTimezone(
   timezone: string,
 ): ShopCountryCode | null {
-  if (CANADA_SHOP_TIMEZONES.includes(timezone)) return "CA";
-  if (US_SHOP_TIMEZONES.includes(timezone)) return "US";
+  if ((CANADA_SHOP_TIMEZONES as readonly string[]).includes(timezone)) return "CA";
+  if ((US_SHOP_TIMEZONES as readonly string[]).includes(timezone)) return "US";
   return null;
 }
 
