@@ -28,7 +28,10 @@ export type TechnicianWorkScope = {
 };
 
 type AssignedLine = { id: string; work_order_id: string };
-type SharedAssignment = { work_order_line_id: string };
+type SharedAssignment = {
+  work_order_line_id: string;
+  technician_id: string;
+};
 type WorkOrderCandidateRow = Pick<
   Database["public"]["Tables"]["work_orders"]["Row"],
   | "id"
@@ -45,8 +48,15 @@ type WorkOrderCandidateRow = Pick<
 >;
 type WorkOrderLineSummary = Pick<
   Database["public"]["Tables"]["work_order_lines"]["Row"],
-  "id" | "work_order_id" | "complaint"
+  | "id"
+  | "work_order_id"
+  | "complaint"
+  | "assigned_tech_id"
+  | "assigned_to"
 >;
+
+const WORK_ORDER_SELECT =
+  "id,custom_id,status,notes,intake_json,vehicle_year,vehicle_make,vehicle_model,vehicle_vin,vehicle_unit_number,updated_at" as const;
 
 function object(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -77,6 +87,27 @@ function timestamp(value: string | null): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function buildCandidate(input: {
+  row: WorkOrderCandidateRow;
+  assignedLineIds: Iterable<string>;
+  complaints: Iterable<string>;
+}): TechnicianWorkCandidate {
+  return {
+    id: input.row.id,
+    customId: input.row.custom_id,
+    status: input.row.status,
+    concern: readCanonicalWorkOrderConcern(input.row.intake_json),
+    description: text(input.row.notes),
+    vehicleYear: input.row.vehicle_year,
+    vehicleMake: input.row.vehicle_make,
+    vehicleModel: input.row.vehicle_model,
+    vehicleVin: input.row.vehicle_vin,
+    vehicleUnitNumber: input.row.vehicle_unit_number,
+    lineIds: uniqueIds([...input.assignedLineIds]),
+    lineComplaints: [...new Set([...input.complaints].map((value) => value.trim()).filter(Boolean))],
+  };
+}
+
 export function readCanonicalWorkOrderConcern(intakeJson: unknown): string | null {
   const intake = object(intakeJson);
   const concern = object(intake?.concern);
@@ -89,16 +120,97 @@ export function readCanonicalWorkOrderConcern(intakeJson: unknown): string | nul
   return values.length ? [...new Set(values)].join(" | ") : null;
 }
 
+/**
+ * Loads only the active Repair Session's work order. `session.read` already
+ * rechecks assignment in the private CoPilot boundary; this targeted loader
+ * keeps conversational context current without rescanning a technician's
+ * lifetime assignment history on every turn.
+ */
+export async function loadTechnicianWorkCandidateForWorkOrder(
+  input: TechnicianWorkScope & { workOrderId: string },
+): Promise<TechnicianWorkCandidate | null> {
+  const technicianIds = uniqueIds(input.technicianIds);
+  if (!input.shopId || technicianIds.length === 0 || !input.workOrderId) {
+    return null;
+  }
+  const technicianIdSet = new Set(technicianIds);
+
+  const lines = await loadRowsForIdChunks<WorkOrderLineSummary>(
+    [input.workOrderId],
+    (workOrderIds, from, to) =>
+      input.supabase
+        .from("work_order_lines")
+        .select(
+          "id,work_order_id,complaint,assigned_tech_id,assigned_to",
+        )
+        .eq("shop_id", input.shopId)
+        .eq("line_type", "job")
+        .in("work_order_id", workOrderIds)
+        .order("id", { ascending: true })
+        .range(from, to),
+    { idChunkSize: 1, pageSize: 250 },
+  );
+  if (!lines.length) return null;
+
+  const lineIds = lines.map((line) => line.id);
+  const sharedAssignments = await loadRowsForIdChunks<SharedAssignment>(
+    lineIds,
+    (ids, from, to) =>
+      input.supabase
+        .from("work_order_line_technicians")
+        .select("work_order_line_id,technician_id")
+        .in("work_order_line_id", ids)
+        .in("technician_id", technicianIds)
+        .order("work_order_line_id", { ascending: true })
+        .order("technician_id", { ascending: true })
+        .range(from, to),
+    { idChunkSize: 100, pageSize: 250 },
+  );
+  const sharedLineIds = new Set(
+    sharedAssignments.map((row) => row.work_order_line_id),
+  );
+
+  const assignedLineIds = lines
+    .filter(
+      (line) =>
+        (line.assigned_tech_id && technicianIdSet.has(line.assigned_tech_id)) ||
+        (line.assigned_to && technicianIdSet.has(line.assigned_to)) ||
+        sharedLineIds.has(line.id),
+    )
+    .map((line) => line.id);
+  if (!assignedLineIds.length) return null;
+
+  const workOrder = await input.supabase
+    .from("work_orders")
+    .select(WORK_ORDER_SELECT)
+    .eq("shop_id", input.shopId)
+    .eq("id", input.workOrderId)
+    .or("type.neq.historical_import,type.is.null")
+    .maybeSingle();
+  if (workOrder.error) throw new Error(workOrder.error.message);
+  if (!workOrder.data) return null;
+
+  return buildCandidate({
+    row: workOrder.data,
+    assignedLineIds,
+    complaints: lines
+      .map((line) => line.complaint?.trim() ?? "")
+      .filter(Boolean),
+  });
+}
+
+/**
+ * Discovery path used only before a Repair Session exists. Assignment history
+ * is paged deterministically so the PostgREST row cap cannot silently hide an
+ * assigned job. Once a session exists, callers must use the bounded targeted
+ * loader above instead of repeating this lifetime discovery scan.
+ */
 export async function listTechnicianWorkCandidates(
   input: TechnicianWorkScope,
 ): Promise<TechnicianWorkCandidate[]> {
   const technicianIds = uniqueIds(input.technicianIds);
   if (!input.shopId || technicianIds.length === 0) return [];
 
-  // Assignment history can grow indefinitely for a long-tenured technician.
-  // Page every assignment read deterministically instead of relying on the
-  // PostgREST response-row cap, and chunk downstream identity filters so a
-  // lifetime history never becomes one oversized `.in(...)` request.
   const [directAssignments, sharedAssignments] = await Promise.all([
     loadRowsForIdChunks<AssignedLine>(
       technicianIds,
@@ -118,9 +230,10 @@ export async function listTechnicianWorkCandidates(
       (ids, from, to) =>
         input.supabase
           .from("work_order_line_technicians")
-          .select("work_order_line_id")
+          .select("work_order_line_id,technician_id")
           .in("technician_id", ids)
           .order("work_order_line_id", { ascending: true })
+          .order("technician_id", { ascending: true })
           .range(from, to),
       { idChunkSize: 25, pageSize: 250 },
     ),
@@ -158,9 +271,7 @@ export async function listTechnicianWorkCandidates(
     (ids, from, to) =>
       input.supabase
         .from("work_orders")
-        .select(
-          "id,custom_id,status,notes,intake_json,vehicle_year,vehicle_make,vehicle_model,vehicle_vin,vehicle_unit_number,updated_at",
-        )
+        .select(WORK_ORDER_SELECT)
         .eq("shop_id", input.shopId)
         .in("id", ids)
         .or("type.neq.historical_import,type.is.null")
@@ -185,7 +296,7 @@ export async function listTechnicianWorkCandidates(
     (ids, from, to) =>
       input.supabase
         .from("work_order_lines")
-        .select("id,work_order_id,complaint")
+        .select("id,work_order_id,complaint,assigned_tech_id,assigned_to")
         .eq("shop_id", input.shopId)
         .eq("line_type", "job")
         .in("work_order_id", ids)
@@ -215,20 +326,11 @@ export async function listTechnicianWorkCandidates(
         assignedIds: [],
         complaints: [],
       };
-      return {
-        id: row.id,
-        customId: row.custom_id,
-        status: row.status,
-        concern: readCanonicalWorkOrderConcern(row.intake_json),
-        description: text(row.notes),
-        vehicleYear: row.vehicle_year,
-        vehicleMake: row.vehicle_make,
-        vehicleModel: row.vehicle_model,
-        vehicleVin: row.vehicle_vin,
-        vehicleUnitNumber: row.vehicle_unit_number,
-        lineIds: linesForOrder.assignedIds,
-        lineComplaints: [...new Set(linesForOrder.complaints)],
-      } satisfies TechnicianWorkCandidate;
+      return buildCandidate({
+        row,
+        assignedLineIds: linesForOrder.assignedIds,
+        complaints: linesForOrder.complaints,
+      });
     })
     .filter((candidate) => candidate.lineIds.length > 0);
 }
