@@ -1,8 +1,20 @@
 import "server-only";
 
-import type { RepairSessionEvent, RepairSessionMode, RepairSessionStatus } from "../session/types";
+import type {
+  RepairSessionEvent,
+  RepairSessionMode,
+  RepairSessionStatus,
+} from "../session/types";
+import {
+  dedupeDocumentationEvents,
+  type SilentDocumentationEvent,
+} from "../session/documentationFingerprint";
 import { projectTechnicianContext } from "../session/projectTechnicianContext";
-import { listTechnicianWorkCandidates, type TechnicianWorkCandidate } from "./assignedWork";
+import {
+  listTechnicianWorkCandidates,
+  type TechnicianWorkCandidate,
+} from "./assignedWork";
+import { extractTechnicianDocumentationTurn } from "./documentation";
 import { decideTechnicianCopilotTurn } from "./model";
 import { deriveCopilotOperationId } from "./operationId";
 import { sendCopilotServerCommand } from "./transport";
@@ -11,6 +23,7 @@ export type CopilotIdentity = {
   authUserId: string;
   profileId: string;
   shopId: string;
+  documentationEnabled: boolean;
   supabase: Parameters<typeof listTechnicianWorkCandidates>[0];
 };
 
@@ -24,7 +37,11 @@ type Session = {
 
 type Envelope = { session: Session | null; events: RepairSessionEvent[] };
 
-function command<T>(identity: CopilotIdentity, action: "session.read" | "session.start" | "event.append", args: Record<string, unknown>) {
+function command<T>(
+  identity: CopilotIdentity,
+  action: "session.read" | "session.start" | "event.append",
+  args: Record<string, unknown>,
+) {
   return sendCopilotServerCommand<T>({
     authUserId: identity.authUserId,
     profileId: identity.profileId,
@@ -35,27 +52,39 @@ function command<T>(identity: CopilotIdentity, action: "session.read" | "session
 }
 
 function read(identity: CopilotIdentity, sessionId?: string | null) {
-  return command<Envelope>(identity, "session.read", { sessionId: sessionId ?? null });
+  return command<Envelope>(identity, "session.read", {
+    sessionId: sessionId ?? null,
+  });
 }
 
-function candidateFor(candidates: TechnicianWorkCandidate[], id: string | null | undefined) {
-  return id ? candidates.find((candidate) => candidate.id === id) ?? null : null;
+function candidateFor(
+  candidates: TechnicianWorkCandidate[],
+  id: string | null | undefined,
+) {
+  return id
+    ? candidates.find((candidate) => candidate.id === id) ?? null
+    : null;
 }
 
 function complaintFor(candidate: TechnicianWorkCandidate | null): string | null {
   if (!candidate) return null;
-  const values = [candidate.concern, ...candidate.lineComplaints].map((value) => value?.trim()).filter(Boolean) as string[];
+  const values = [candidate.concern, ...candidate.lineComplaints]
+    .map((value) => value?.trim())
+    .filter(Boolean) as string[];
   return values.length ? [...new Set(values)].join(" | ") : null;
 }
 
-async function append(identity: CopilotIdentity, input: {
-  sessionId: string;
-  eventType: string;
-  turnId: string;
-  suffix: string;
-  origin: "ui" | "copilot" | "system";
-  details: Record<string, unknown>;
-}) {
+async function append(
+  identity: CopilotIdentity,
+  input: {
+    sessionId: string;
+    eventType: string;
+    turnId: string;
+    suffix: string;
+    origin: "ui" | "copilot" | "system";
+    details: Record<string, unknown>;
+  },
+) {
   return command(identity, "event.append", {
     sessionId: input.sessionId,
     eventType: input.eventType,
@@ -66,13 +95,51 @@ async function append(identity: CopilotIdentity, input: {
   });
 }
 
+async function extractDocumentation(input: {
+  enabled: boolean;
+  message: string;
+  turnId: string;
+  context: ReturnType<typeof projectTechnicianContext>;
+  workOrder: TechnicianWorkCandidate | null;
+}): Promise<SilentDocumentationEvent[]> {
+  if (!input.enabled) return [];
+  try {
+    const extraction = await extractTechnicianDocumentationTurn({
+      message: input.message,
+      turnId: input.turnId,
+      workOrder: input.workOrder,
+      repairContext: input.context,
+    });
+    return extraction.events.map((event) => ({
+      type: event.type,
+      details: {
+        ...event.details,
+        sourceTurnId: input.turnId,
+        sourceText: input.message,
+        captureMode: "silent_documentation_v1",
+      },
+    }));
+  } catch (error) {
+    console.error("[technician-copilot] silent documentation failed", {
+      turnId: input.turnId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return [];
+  }
+}
+
 export async function runTechnicianCopilotTurn(input: {
   identity: CopilotIdentity;
   message: string;
   turnId: string;
   sessionId?: string | null;
 }) {
-  const candidates = await listTechnicianWorkCandidates(input.identity.supabase);
+  const capabilities = {
+    documentation: input.identity.documentationEnabled,
+  };
+  const candidates = await listTechnicianWorkCandidates(
+    input.identity.supabase,
+  );
   let envelope = await read(input.identity, input.sessionId);
   let context = envelope.session
     ? projectTechnicianContext({
@@ -92,6 +159,7 @@ export async function runTechnicianCopilotTurn(input: {
       reply: existingAssistant.text,
       context,
       workOrder: candidateFor(candidates, envelope.session.workOrderId),
+      capabilities,
       replayed: true,
     };
   }
@@ -102,28 +170,53 @@ export async function runTechnicianCopilotTurn(input: {
       activeSession: null,
       assignedWork: candidates,
     });
-    const selected = decision.mode === "start" ? candidateFor(candidates, decision.workOrderId) : null;
+    const selected =
+      decision.mode === "start"
+        ? candidateFor(candidates, decision.workOrderId)
+        : null;
     if (!selected) {
-      return { sessionId: null, reply: decision.reply, context: null, workOrder: null, replayed: false };
+      return {
+        sessionId: null,
+        reply: decision.reply,
+        context: null,
+        workOrder: null,
+        capabilities,
+        replayed: false,
+      };
     }
 
-    const lineId = decision.workOrderLineId && selected.lineIds.includes(decision.workOrderLineId)
-      ? decision.workOrderLineId
-      : selected.lineIds.length === 1 ? selected.lineIds[0] : null;
-    const started = await command<{ sessionId: string }>(input.identity, "session.start", {
-      workOrderId: selected.id,
-      workOrderLineId: lineId,
-      mode: "shop",
-      operationId: deriveCopilotOperationId(input.turnId, "session-start"),
-    });
+    const lineId =
+      decision.workOrderLineId &&
+      selected.lineIds.includes(decision.workOrderLineId)
+        ? decision.workOrderLineId
+        : selected.lineIds.length === 1
+          ? selected.lineIds[0]
+          : null;
+    const started = await command<{ sessionId: string }>(
+      input.identity,
+      "session.start",
+      {
+        workOrderId: selected.id,
+        workOrderLineId: lineId,
+        mode: "shop",
+        operationId: deriveCopilotOperationId(
+          input.turnId,
+          "session-start",
+        ),
+      },
+    );
     envelope = await read(input.identity, started.sessionId);
   }
 
   const session = envelope.session;
-  if (!session) throw new Error("Technician CoPilot could not establish a repair session.");
+  if (!session) {
+    throw new Error("Technician CoPilot could not establish a repair session.");
+  }
 
   const userAlreadyStored = envelope.events.some(
-    (event) => event.eventType === "conversation.user" && event.payload?.turnId === input.turnId,
+    (event) =>
+      event.eventType === "conversation.user" &&
+      event.payload?.turnId === input.turnId,
   );
   if (!userAlreadyStored) {
     await append(input.identity, {
@@ -138,7 +231,12 @@ export async function runTechnicianCopilotTurn(input: {
 
   const activeWorkOrder = candidateFor(candidates, session.workOrderId);
   const existingComplaint = complaintFor(activeWorkOrder);
-  if (existingComplaint && !envelope.events.some((event) => event.eventType === "complaint.recorded")) {
+  if (
+    existingComplaint &&
+    !envelope.events.some(
+      (event) => event.eventType === "complaint.recorded",
+    )
+  ) {
     await append(input.identity, {
       sessionId: session.id,
       eventType: "complaint.recorded",
@@ -157,20 +255,36 @@ export async function runTechnicianCopilotTurn(input: {
     events: envelope.events,
   });
 
-  const decision = await decideTechnicianCopilotTurn({
-    message: input.message,
-    activeSession: { id: session.id, workOrderId: session.workOrderId },
-    workOrder: activeWorkOrder,
-    repairContext: context,
-  });
+  const [decision, documentationCandidates] = await Promise.all([
+    decideTechnicianCopilotTurn({
+      message: input.message,
+      activeSession: {
+        id: session.id,
+        workOrderId: session.workOrderId,
+      },
+      workOrder: activeWorkOrder,
+      repairContext: context,
+    }),
+    extractDocumentation({
+      enabled: input.identity.documentationEnabled,
+      message: input.message,
+      turnId: input.turnId,
+      context,
+      workOrder: activeWorkOrder,
+    }),
+  ]);
 
-  for (let index = 0; index < decision.events.length; index += 1) {
-    const event = decision.events[index];
+  const documentationEvents = dedupeDocumentationEvents(
+    envelope.events,
+    documentationCandidates,
+  );
+  for (const event of documentationEvents) {
+    const fingerprint = String(event.details.documentationFingerprint ?? "event");
     await append(input.identity, {
       sessionId: session.id,
       eventType: event.type,
       turnId: input.turnId,
-      suffix: `memory-${index}-${event.type}`,
+      suffix: `documentation-${fingerprint}`,
       origin: "copilot",
       details: event.details,
     });
@@ -198,6 +312,7 @@ export async function runTechnicianCopilotTurn(input: {
     reply: decision.reply,
     context: finalContext,
     workOrder: activeWorkOrder,
+    capabilities,
     replayed: false,
   };
 }
