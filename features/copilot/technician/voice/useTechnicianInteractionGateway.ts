@@ -48,6 +48,7 @@ export function useTechnicianInteractionGateway({
   const phaseRef = useRef<TechnicianVoicePhase>("idle");
   const generationRef = useRef(0);
   const inFlightRef = useRef(false);
+  const transportStartedRef = useRef(false);
   const onUtteranceRef = useRef(onUtterance);
   const realtimeRef = useRef<RealtimeTransport | null>(null);
   const startListeningRef = useRef<() => Promise<void>>(async () => undefined);
@@ -97,6 +98,7 @@ export function useTechnicianInteractionGateway({
         const paused = realtimeRef.current?.pause?.() ?? false;
         if (!paused) {
           realtimeRef.current?.stop();
+          transportStartedRef.current = false;
         }
         setVoicePhase("thinking");
         setError(null);
@@ -125,6 +127,7 @@ export function useTechnicianInteractionGateway({
           try {
             realtimeRef.current?.stop();
           } catch {}
+          transportStartedRef.current = false;
           invalidateGeneration();
           activeRef.current = false;
           setModeActive(false);
@@ -151,6 +154,7 @@ export function useTechnicianInteractionGateway({
       onStateChange: handleTransportState,
       onError: (message) => {
         if (!activeRef.current) return;
+        transportStartedRef.current = false;
         invalidateGeneration();
         activeRef.current = false;
         setModeActive(false);
@@ -167,10 +171,14 @@ export function useTechnicianInteractionGateway({
     setHeardTranscript("");
     setVoicePhase("connecting");
     try {
-      if (realtimeRef.current?.resume?.()) {
+      if (
+        transportStartedRef.current &&
+        realtimeRef.current?.resume?.()
+      ) {
         return;
       }
       await realtimeRef.current?.start();
+      transportStartedRef.current = true;
     } catch (caught) {
       if (
         !activeRef.current ||
@@ -181,6 +189,7 @@ export function useTechnicianInteractionGateway({
       try {
         realtimeRef.current?.stop();
       } catch {}
+      transportStartedRef.current = false;
       invalidateGeneration();
       activeRef.current = false;
       setModeActive(false);
@@ -262,6 +271,7 @@ export function useTechnicianInteractionGateway({
     try {
       realtimeRef.current?.stop();
     } catch {}
+    transportStartedRef.current = false;
     if (typeof window !== "undefined") {
       window.speechSynthesis?.cancel();
     }
