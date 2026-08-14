@@ -39,6 +39,33 @@ type Body = {
   pin?: unknown;
 };
 
+type BootstrapRpcArgs = {
+  p_business_name: string;
+  p_shop_name: string;
+  p_street: string;
+  p_city: string;
+  p_province: string;
+  p_postal_code: string;
+  p_country: string;
+  p_timezone: string;
+  p_owner_pin_hash: string;
+};
+
+type BootstrapRpcRow = {
+  shop_id: string;
+  created_shop: boolean;
+};
+
+type BootstrapRpcError = {
+  code?: string | null;
+  message?: string | null;
+};
+
+type BootstrapRpcResult = {
+  data: BootstrapRpcRow[] | null;
+  error: BootstrapRpcError | null;
+};
+
 function clean(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -190,10 +217,9 @@ function bootstrapUpgradeUnavailable() {
   );
 }
 
-function isPendingBootstrapRpcUnavailable(error: {
-  code?: string | null;
-  message?: string | null;
-} | null): boolean {
+function isPendingBootstrapRpcUnavailable(
+  error: BootstrapRpcError | null,
+): boolean {
   if (!error) return false;
   if (error.code === "PGRST202") return true;
   return String(error.message ?? "").includes(PENDING_BOOTSTRAP_RPC);
@@ -377,20 +403,28 @@ export async function POST(request: Request) {
     }
 
     const ownerPinHash = await hashOwnerPin(pin);
-    const { data: rows, error: bootstrapError } = await supabase.rpc(
-      PENDING_BOOTSTRAP_RPC,
-      {
-        p_business_name: businessName,
-        p_shop_name: shopName,
-        p_street: street,
-        p_city: city,
-        p_province: province,
-        p_postal_code: postalCode,
-        p_country: country,
-        p_timezone: timezone,
-        p_owner_pin_hash: ownerPinHash,
-      },
-    );
+    const rpcPayload: BootstrapRpcArgs = {
+      p_business_name: businessName,
+      p_shop_name: shopName,
+      p_street: street,
+      p_city: city,
+      p_province: province,
+      p_postal_code: postalCode,
+      p_country: country,
+      p_timezone: timezone,
+      p_owner_pin_hash: ownerPinHash,
+    };
+    // The expand migration intentionally introduces this RPC before generated
+    // Supabase types know about it. Keep the untyped seam narrow and explicit,
+    // matching the repository's compatibility pattern for forward RPCs.
+    const { data: rows, error: bootstrapError } = await (
+      supabase as never as {
+        rpc: (
+          fn: typeof PENDING_BOOTSTRAP_RPC,
+          args: BootstrapRpcArgs,
+        ) => Promise<BootstrapRpcResult>;
+      }
+    ).rpc(PENDING_BOOTSTRAP_RPC, rpcPayload);
     const shopId = readBootstrapShopId(rows);
 
     if (bootstrapError || !shopId) {
@@ -407,10 +441,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // The v2 RPC may have created/recovered the shop for this request or
-    // returned an already-owned shop after another concurrent request won the
-    // profile row lock. Every path must prove the submitted PIN matches the
-    // persisted owner_pin_hash before billing/finalization/privilege issuance.
     const persistedPinVerified = await verifyExistingOwnerPin({
       userId: user.id,
       shopId,
