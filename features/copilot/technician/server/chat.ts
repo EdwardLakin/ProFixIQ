@@ -117,6 +117,9 @@ async function extractDocumentation(input: {
         sourceTurnId: input.turnId,
         sourceText: input.message,
         captureMode: "silent_documentation_v1",
+        captureModel: extraction.model,
+        capturePromptVersion: extraction.promptVersion,
+        captureProviderMode: extraction.providerMode,
       },
     }));
   } catch (error) {
