@@ -84,15 +84,19 @@ Those are related but not duplicate facts.
 
 ## Database contract
 
-Phase 2 intentionally restricts the private event append function to an explicit event-type whitelist. Phase 3 adds `diagnostic.finding`, so it includes one additive migration that replaces the existing function with the same authorization, assignment, lifecycle, origin, payload-size, and idempotency controls while adding that event type.
+Phase 3 includes two forward migrations:
 
-The migration does not:
+1. The private technician append function gains `diagnostic.finding` while retaining the Phase-2 technician identity, assignment, lifecycle, origin, payload-size, and idempotency controls.
+2. The existing `ai_automation_capability_settings` check constraint is expanded so the documented shop-level and technician-scoped CoPilot flags can actually be stored. Technician overrides are limited to the two known flag names followed by a UUID profile ID; this is not an unrestricted capability namespace.
+
+The migrations do not:
 
 - Add a public table or column.
-- Change RLS policies.
+- Change RLS policies or grants.
 - Grant browser access to the `copilot` schema.
 - Mutate canonical work-order records.
 - Change existing event semantics.
+- Broaden the separate AI automation evidence capability vocabulary.
 
 ## Feature flags
 
@@ -103,6 +107,12 @@ Phase 3 adds an optional override:
 ```text
 technician_copilot_documentation
 technician_copilot_documentation:<profile-id>
+```
+
+The capability registry also accepts the Phase-2 technician-specific text override:
+
+```text
+technician_copilot_text:<profile-id>
 ```
 
 Resolution order is technician-specific setting, then shop setting, then inheritance from the text pilot. An explicit false documentation setting disables silent documentation without disabling the text collaborator.
@@ -131,7 +141,7 @@ The application remains independently rollback-safe:
 2. Disable `technician_copilot_text` to remove the complete preview.
 3. Revert the application release; existing work-order and technician screens continue unchanged.
 
-The additive database migration may safely remain after an application rollback. It only permits a private event type and does not require the application to use it. Stored generic Repair Session events remain readable and do not affect canonical work orders.
+The additive database migrations may safely remain after an application rollback. One permits a private Repair Session event type; the other only permits narrowly named rollout settings. Neither requires the application to use them, and generic Repair Session events do not affect canonical work orders.
 
 ## Acceptance path
 
