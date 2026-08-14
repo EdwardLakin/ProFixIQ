@@ -4,6 +4,7 @@ export async function signInWithIdentifier(input: {
   identifier: string;
   password: string;
   surface: SignInSurface;
+  acquisitionSessionId?: string;
 }): Promise<{ ok: true; destination: string } | { ok: false; error: string }> {
   const response = await fetch("/api/auth/sign-in", {
     method: "POST",
