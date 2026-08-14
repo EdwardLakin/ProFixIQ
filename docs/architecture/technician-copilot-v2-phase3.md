@@ -11,7 +11,7 @@ Technician message
         ├─> strict event validation
         ├─> provenance enrichment
         ├─> semantic fingerprinting
-        ├─> cross-turn deduplication
+        ├─> replay-safe deduplication
         └─> ordered Repair Session events
 
 Repair Session events
@@ -58,9 +58,14 @@ semantic documentationFingerprint
 
 The event ledger remains authoritative. The repair note and timeline are deterministic projections and can be rebuilt from the ledger at any time.
 
-## Deduplication
+## Deduplication and repeatable events
 
-A semantic fingerprint is generated from the event type and its material fields. Repeating the same finding in another turn does not create another structured fact. A later explicit diagnostic conclusion remains distinct from the original observation.
+A semantic fingerprint is generated from the event type and its material fields. The deduplication policy distinguishes durable facts from repeatable repair occurrences:
+
+- A partial retry of the same `sourceTurnId` cannot append the same event twice.
+- Stable narrative facts such as the same observation or diagnostic finding are deduplicated across the session.
+- Measurements and DTC observations are occurrence evidence and may be captured again in a later turn.
+- Task, component, and fluid events represent state transitions. An identical consecutive state is suppressed, but the same state is accepted after an intervening transition. This preserves valid sequences such as `removed → installed → removed` or `driveline → brakes → driveline`.
 
 Example:
 
