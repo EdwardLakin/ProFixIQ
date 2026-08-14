@@ -95,7 +95,9 @@ The database then:
 3. Appends every normalized event in ordered, deterministic slots derived from one turn operation ID.
 4. Commits the receipt and all event rows in one transaction.
 
-Concurrent or retried requests therefore cannot persist two different model interpretations for the same technician turn. The losing request waits for the winning transaction and receives a replay result. A valid extraction that contains no events still creates a zero-event receipt, while a failed extraction attempt is not finalized.
+Concurrent or retried requests therefore cannot persist two different model interpretations for the same technician turn. The losing request waits for the winning transaction and receives a replay result. A valid extraction that contains no events still creates a zero-event receipt, while a failed extraction or persistence attempt is not finalized.
+
+The private session read projects finalized `sourceTurnId` receipts back to the server. When an assistant response already exists but its documentation receipt does not, a retry keeps the persisted response, reruns only the silent extraction path, and attempts finalization again. Documentation persistence failures are logged and isolated from the active collaborator response. Once the receipt exists, ordinary same-turn replay returns immediately without another model call.
 
 ## Database contract
 
@@ -103,7 +105,7 @@ Phase 3 includes three forward migrations:
 
 1. The private technician append function gains `diagnostic.finding` while retaining the Phase-2 technician identity, assignment, lifecycle, origin, payload-size, and idempotency controls.
 2. The existing `ai_automation_capability_settings` check constraint is expanded so the documented shop-level and technician-scoped CoPilot flags can actually be stored. Technician overrides are limited to the two known flag names followed by a UUID profile ID; this is not an unrestricted capability namespace.
-3. A private source-turn receipt table and technician-authorized atomic documentation batch function are added, and the existing service-only command bridge gains `documentation.append`.
+3. A private source-turn receipt table and technician-authorized atomic documentation batch function are added, the private session read projects finalized turn IDs for retry recovery, and the existing service-only command bridge gains `documentation.append`.
 
 The migrations do not:
 

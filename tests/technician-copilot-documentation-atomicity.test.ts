@@ -29,6 +29,14 @@ describe("Technician CoPilot turn-scoped documentation atomicity", () => {
     expect(chat).toContain("if (documentationExtraction.completed)");
   });
 
+  it("recovers unfinished documentation without replacing a persisted reply", () => {
+    expect(chat).toContain("documentationTurns?: string[]");
+    expect(chat).toContain("documentationAlreadyFinalized");
+    expect(chat).toContain("Promise.resolve(existingAssistant.text)");
+    expect(chat).toContain("silent documentation persistence failed");
+    expect(chat).toContain("replayed: Boolean(existingAssistant)");
+  });
+
   it("reserves each source turn once and appends its event slots atomically", () => {
     expect(migration).toContain(
       "create table if not exists copilot.repair_session_documentation_turns",
@@ -38,6 +46,13 @@ describe("Technician CoPilot turn-scoped documentation atomicity", () => {
     expect(migration).toContain("event_count between 0 and 12");
     expect(migration).toContain(":documentation-slot:");
     expect(migration).toContain("copilot.append_repair_event_internal(");
+    expect(migration).toContain(
+      "create or replace function copilot.technician_session_read_internal",
+    );
+    expect(migration).toContain("'documentationTurns'");
+    expect(migration).toContain(
+      "from copilot.repair_session_documentation_turns dt",
+    );
   });
 
   it("keeps the batch behind the technician assignment and private command boundary", () => {

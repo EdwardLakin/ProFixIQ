@@ -34,6 +34,114 @@ create index if not exists repair_session_documentation_turns_technician_idx
 revoke all on table copilot.repair_session_documentation_turns
   from public, anon, authenticated;
 
+create or replace function copilot.technician_session_read_internal(
+  p_auth_user_id uuid,
+  p_session_id uuid
+)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public, copilot, pg_temp
+as $$
+declare
+  v_profile_id uuid;
+  v_session copilot.repair_sessions%rowtype;
+  v_events jsonb;
+  v_documentation_turns jsonb;
+begin
+  v_profile_id := copilot.technician_profile_id(p_auth_user_id);
+
+  if p_session_id is null then
+    select rs.*
+      into v_session
+    from copilot.repair_sessions rs
+    where rs.technician_id = v_profile_id
+      and rs.status = 'active'
+    order by rs.last_activity_at desc
+    limit 1;
+  else
+    select rs.*
+      into v_session
+    from copilot.repair_sessions rs
+    where rs.id = p_session_id
+      and rs.technician_id = v_profile_id;
+  end if;
+
+  if not found then
+    return jsonb_build_object(
+      'session', null,
+      'events', '[]'::jsonb,
+      'documentationTurns', '[]'::jsonb
+    );
+  end if;
+
+  if not copilot.technician_is_assigned(
+    p_auth_user_id,
+    v_profile_id,
+    v_session.shop_id,
+    v_session.work_order_id,
+    null
+  ) then
+    raise exception 'copilot_work_order_assignment_required'
+      using errcode = '42501';
+  end if;
+
+  select coalesce(
+    jsonb_agg(
+      jsonb_build_object(
+        'id', e.id,
+        'repairSessionId', e.session_id,
+        'eventSeq', e.event_seq,
+        'eventType', e.event_type,
+        'source', c.origin,
+        'payload', c.details,
+        'operationId', c.operation_id,
+        'occurredAt', e.occurred_at
+      )
+      order by e.event_seq
+    ),
+    '[]'::jsonb
+  )
+    into v_events
+  from copilot.repair_session_events e
+  join copilot.repair_session_event_context c
+    on c.event_id = e.id
+  where e.session_id = v_session.id;
+
+  select coalesce(
+    jsonb_agg(dt.source_turn_id order by dt.created_at, dt.id),
+    '[]'::jsonb
+  )
+    into v_documentation_turns
+  from copilot.repair_session_documentation_turns dt
+  where dt.session_id = v_session.id;
+
+  return jsonb_build_object(
+    'session',
+    jsonb_build_object(
+      'id', v_session.id,
+      'shopId', v_session.shop_id,
+      'technicianId', v_session.technician_id,
+      'workOrderId', v_session.work_order_id,
+      'activeWorkOrderLineId', v_session.active_work_order_line_id,
+      'vehicleId', v_session.vehicle_id,
+      'serviceVisitId', v_session.service_visit_id,
+      'mode', v_session.mode,
+      'status', v_session.status,
+      'currentTask', v_session.current_task,
+      'contextVersion', v_session.context_version,
+      'lastEventSeq', v_session.last_event_seq,
+      'startedAt', v_session.started_at,
+      'lastActivityAt', v_session.last_activity_at,
+      'endedAt', v_session.ended_at
+    ),
+    'events', v_events,
+    'documentationTurns', v_documentation_turns
+  );
+end;
+$$;
+
 create or replace function copilot.technician_documentation_append_internal(
   p_auth_user_id uuid,
   p_session_id uuid,
@@ -424,6 +532,8 @@ declare
     'copilot.technician_documentation_append_internal(uuid,uuid,text,uuid,jsonb,timestamptz)';
   v_append_function regprocedure;
   v_append_definition text;
+  v_read_function regprocedure;
+  v_read_definition text;
   v_command_function regprocedure;
   v_command_definition text;
 begin
@@ -458,6 +568,25 @@ begin
     or position('jsonb_array_length(p_events) > 12' in v_append_definition) = 0
   then
     raise exception 'Technician CoPilot atomic documentation postcheck failed: authorization or turn atomicity changed';
+  end if;
+
+  v_read_function := to_regprocedure(
+    'copilot.technician_session_read_internal(uuid,uuid)'
+  );
+  if v_read_function is null then
+    raise exception 'Technician CoPilot atomic documentation postcheck failed: session read function missing';
+  end if;
+
+  select pg_get_functiondef(v_read_function)
+    into v_read_definition;
+
+  if position(
+    'copilot.repair_session_documentation_turns'
+    in v_read_definition
+  ) = 0
+    or position('documentationTurns' in v_read_definition) = 0
+  then
+    raise exception 'Technician CoPilot atomic documentation postcheck failed: documentation receipt projection missing';
   end if;
 
   v_command_function := to_regprocedure(

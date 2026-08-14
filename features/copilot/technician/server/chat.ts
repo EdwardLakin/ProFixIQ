@@ -35,7 +35,11 @@ type Session = {
   status: RepairSessionStatus;
 };
 
-type Envelope = { session: Session | null; events: RepairSessionEvent[] };
+type Envelope = {
+  session: Session | null;
+  events: RepairSessionEvent[];
+  documentationTurns?: string[];
+};
 
 type CopilotCommand =
   | "session.read"
@@ -190,7 +194,13 @@ export async function runTechnicianCopilotTurn(input: {
   const existingAssistant = context?.conversation.find(
     (turn) => turn.turnId === input.turnId && turn.role === "assistant",
   );
-  if (existingAssistant && envelope.session) {
+  const documentationAlreadyFinalized =
+    envelope.documentationTurns?.includes(input.turnId) ?? false;
+  if (
+    existingAssistant &&
+    envelope.session &&
+    (!input.identity.documentationEnabled || documentationAlreadyFinalized)
+  ) {
     return {
       sessionId: envelope.session.id,
       reply: existingAssistant.text,
@@ -292,16 +302,19 @@ export async function runTechnicianCopilotTurn(input: {
     events: envelope.events,
   });
 
-  const [decision, documentationExtraction] = await Promise.all([
-    decideTechnicianCopilotTurn({
-      message: input.message,
-      activeSession: {
-        id: session.id,
-        workOrderId: session.workOrderId,
-      },
-      workOrder: activeWorkOrder,
-      repairContext: context,
-    }),
+  const replyPromise = existingAssistant
+    ? Promise.resolve(existingAssistant.text)
+    : decideTechnicianCopilotTurn({
+        message: input.message,
+        activeSession: {
+          id: session.id,
+          workOrderId: session.workOrderId,
+        },
+        workOrder: activeWorkOrder,
+        repairContext: context,
+      }).then((decision) => decision.reply);
+  const [reply, documentationExtraction] = await Promise.all([
+    replyPromise,
     extractDocumentation({
       enabled: input.identity.documentationEnabled,
       message: input.message,
@@ -316,11 +329,21 @@ export async function runTechnicianCopilotTurn(input: {
     documentationExtraction.events,
   );
   if (documentationExtraction.completed) {
-    await appendDocumentationTurn(input.identity, {
-      sessionId: session.id,
-      turnId: input.turnId,
-      events: documentationEvents,
-    });
+    try {
+      await appendDocumentationTurn(input.identity, {
+        sessionId: session.id,
+        turnId: input.turnId,
+        events: documentationEvents,
+      });
+    } catch (error) {
+      console.error(
+        "[technician-copilot] silent documentation persistence failed",
+        {
+          turnId: input.turnId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
+    }
   }
 
   await append(input.identity, {
@@ -329,7 +352,7 @@ export async function runTechnicianCopilotTurn(input: {
     turnId: input.turnId,
     suffix: "assistant",
     origin: "copilot",
-    details: { text: decision.reply, turnId: input.turnId },
+    details: { text: reply, turnId: input.turnId },
   });
 
   const finalEnvelope = await read(input.identity, session.id);
@@ -345,10 +368,10 @@ export async function runTechnicianCopilotTurn(input: {
 
   return {
     sessionId: session.id,
-    reply: persistedAssistant?.text ?? decision.reply,
+    reply: persistedAssistant?.text ?? reply,
     context: finalContext,
     workOrder: activeWorkOrder,
     capabilities,
-    replayed: false,
+    replayed: Boolean(existingAssistant),
   };
 }
