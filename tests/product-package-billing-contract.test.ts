@@ -169,6 +169,10 @@ describe("ProFixIQ product package billing contract", () => {
     expect(checkout).toContain("packageKey: z.enum(PRODUCT_PACKAGE_KEYS)");
     expect(checkout).toContain("package_key: selection.packageKey");
     expect(checkout).not.toContain("payment_method_types");
+    expect(checkout).toContain("payment_method_collection");
+    expect(checkout).toContain('"if_required"');
+    expect(checkout).toContain("missing_payment_method");
+    expect(checkout).toContain('"cancel"');
     expect(migration).toContain("profixiq_shop_has_product_access");
     expect(migration).toContain("profixiq_fleet_has_product_access");
     expect(migration).toContain("mobile_profile_has_field_service_access");

@@ -251,12 +251,21 @@ function buildCheckoutParams(input: {
     success_url: input.successUrl,
     cancel_url: input.cancelUrl,
     allow_promotion_codes: true,
+    payment_method_collection:
+      input.trialDays > 0 ? "if_required" : "always",
     ...(input.clientReferenceId
       ? { client_reference_id: input.clientReferenceId }
       : {}),
     ...(automaticTaxEnabled() ? { automatic_tax: { enabled: true } } : {}),
     subscription_data: {
-      ...(input.trialDays > 0 ? { trial_period_days: input.trialDays } : {}),
+      ...(input.trialDays > 0
+        ? {
+            trial_period_days: input.trialDays,
+            trial_settings: {
+              end_behavior: { missing_payment_method: "cancel" },
+            },
+          }
+        : {}),
       metadata: input.metadata,
     },
     metadata: input.metadata,
