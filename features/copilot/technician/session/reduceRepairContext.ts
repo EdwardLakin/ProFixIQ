@@ -114,12 +114,12 @@ export function applyRepairEvent(
   } else if (event.eventType === "observation.recorded") {
     const text = clean(payload.text);
     if (text) {
-      const observation = {
+      const observation: RepairContextState["observations"][number] = {
         eventId: event.id,
         text,
         occurredAt: event.occurredAt,
         ...provenance(payload),
-      } satisfies RepairContextState["observations"][number];
+      };
       const category = clean(payload.category);
       const assessment =
         payload.assessment === "abnormal" ||
@@ -141,13 +141,13 @@ export function applyRepairEvent(
     const label = clean(payload.label);
     const value = clean(payload.value);
     if (label && value) {
-      const measurement = {
+      const measurement: RepairContextState["measurements"][number] = {
         eventId: event.id,
         label,
         value,
         occurredAt: event.occurredAt,
         ...provenance(payload),
-      } satisfies RepairContextState["measurements"][number];
+      };
       const unit = clean(payload.unit);
       const condition = clean(payload.condition);
       const component = clean(payload.component);
@@ -161,12 +161,12 @@ export function applyRepairEvent(
   } else if (event.eventType === "dtc.observed") {
     const code = clean(payload.code);
     if (code) {
-      const dtc = {
+      const dtc: RepairContextState["dtcs"][number] = {
         eventId: event.id,
         code: code.toUpperCase(),
         occurredAt: event.occurredAt,
         ...provenance(payload),
-      } satisfies RepairContextState["dtcs"][number];
+      };
       const status = clean(payload.status);
       const module = clean(payload.module);
       const description = clean(payload.description);
@@ -179,13 +179,13 @@ export function applyRepairEvent(
     const text = clean(payload.text);
     const disposition = findingDisposition(payload.disposition);
     if (text && disposition) {
-      const finding = {
+      const finding: RepairContextState["findings"][number] = {
         eventId: event.id,
         text,
         disposition,
         occurredAt: event.occurredAt,
         ...provenance(payload),
-      } satisfies RepairContextState["findings"][number];
+      };
       const system = clean(payload.system);
       const component = clean(payload.component);
       const location = clean(payload.location);
@@ -198,12 +198,12 @@ export function applyRepairEvent(
     const evidenceId = clean(payload.evidenceId);
     const kind = clean(payload.kind);
     if (evidenceId && kind) {
-      const evidence = {
+      const evidence: RepairContextState["evidence"][number] = {
         eventId: event.id,
         evidenceId,
         kind,
         occurredAt: event.occurredAt,
-      } satisfies RepairContextState["evidence"][number];
+      };
       const label = clean(payload.label);
       if (label) evidence.label = label;
       next.evidence = [...state.evidence, evidence];
