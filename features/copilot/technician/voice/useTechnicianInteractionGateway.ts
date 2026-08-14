@@ -34,7 +34,7 @@ export function useTechnicianInteractionGateway({
 }: TechnicianInteractionGatewayOptions) {
   const [phase, setPhase] = useState<TechnicianVoicePhase>("idle");
   const [modeActive, setModeActive] = useState(false);
-  const [partialTranscript, setPartialTranscript] = useState("");
+  const [heardTranscript, setHeardTranscript] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const activeRef = useRef(false);
@@ -81,7 +81,7 @@ export function useTechnicianInteractionGateway({
 
       void (async () => {
         inFlightRef.current = true;
-        setPartialTranscript("");
+        setHeardTranscript(text);
         realtimeRef.current?.stop();
         setVoicePhase("thinking");
         setError(null);
@@ -125,14 +125,13 @@ export function useTechnicianInteractionGateway({
         setVoicePhase("error");
         setError(message);
       },
-      onPartialTranscript: setPartialTranscript,
     },
   );
   realtimeRef.current = realtime;
 
   const startListening = useCallback(async () => {
     if (!enabled || !activeRef.current) return;
-    setPartialTranscript("");
+    setHeardTranscript("");
     setVoicePhase("connecting");
     try {
       await realtimeRef.current?.start();
@@ -201,7 +200,7 @@ export function useTechnicianInteractionGateway({
   const stop = useCallback(() => {
     activeRef.current = false;
     setModeActive(false);
-    setPartialTranscript("");
+    setHeardTranscript("");
     inFlightRef.current = false;
     try {
       realtimeRef.current?.stop();
@@ -233,7 +232,7 @@ export function useTechnicianInteractionGateway({
   return {
     phase,
     active: modeActive,
-    partialTranscript,
+    heardTranscript,
     error,
     start,
     stop,
