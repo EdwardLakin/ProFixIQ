@@ -1,10 +1,6 @@
-// /useRealtimeVoice.ts (FULL FILE REPLACEMENT)
-// ✅ Revert-style baseline (more reliable):
-// - NO wake arming during DELTAS
-// - NO wakeDebounce
-// - Only evaluate wake word on COMPLETED transcript
-// - Keeps audio pulse + iOS audio graph keep-alive
-// - Optional debug logging
+// /useRealtimeVoice.ts
+// Shared OpenAI Realtime transcription transport used by inspections and the
+// Technician CoPilot. Wake/command evaluation remains final-transcript only.
 
 "use client";
 
@@ -19,22 +15,19 @@ type RealtimeVoiceOptions = {
   /** Called when WS connects / stops / errors */
   onStateChange?: (state: VoiceState) => void;
 
-  /**
-   * Called when we detect audio activity OR transcript delta.
-   * Use this to flash your "• audio" indicator.
-   */
+  /** Called when we detect audio activity OR transcript delta. */
   onPulse?: () => void;
 
   /** Optional: surface error message to UI */
   onError?: (message: string) => void;
 
-  /** RMS threshold for "audio activity" pulse */
-  audioPulseThreshold?: number; // default 0.02-ish
+  /** RMS threshold for audio activity. */
+  audioPulseThreshold?: number;
 
-  /** minimum ms between pulses */
-  pulseDebounceMs?: number; // default 250
+  /** Minimum ms between pulses. */
+  pulseDebounceMs?: number;
 
-  /** Optional debug logs */
+  /** Optional debug logs. */
   debug?: boolean;
 };
 
@@ -104,7 +97,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-// Realtime can emit different but valid event type names.
+function stopStream(stream: MediaStream | null | undefined): void {
+  try {
+    stream?.getTracks().forEach((track) => track.stop());
+  } catch {}
+}
+
 const TRANSCRIPTION_DELTA_TYPES = new Set<string>([
   "conversation.item.input_audio_transcription.delta",
   "input_audio_transcription.delta",
@@ -121,9 +119,9 @@ const TRANSCRIPTION_COMPLETE_TYPES = new Set<string>([
 ]);
 
 function getStringField(obj: Record<string, unknown>, keys: string[]): string {
-  for (const k of keys) {
-    const v = obj[k];
-    if (typeof v === "string" && v.trim()) return v;
+  for (const key of keys) {
+    const value = obj[key];
+    if (typeof value === "string" && value.trim()) return value;
   }
   return "";
 }
@@ -138,18 +136,14 @@ export function useRealtimeVoice(
   const audioCtxRef = useRef<AudioContext | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const workletRef = useRef<AudioWorkletNode | null>(null);
-
-  // Keep the graph alive on iOS by connecting to destination (muted)
   const zeroGainRef = useRef<GainNode | null>(null);
 
-  const lastPulseAtRef = useRef<number>(0);
-  const stoppedRef = useRef<boolean>(false);
-  const pausedRef = useRef<boolean>(false);
+  const lastPulseAtRef = useRef(0);
+  const stoppedRef = useRef(true);
+  const pausedRef = useRef(false);
+  const startupGenerationRef = useRef(0);
+  const liveRef = useRef("");
 
-  // Track live transcript, mainly for debug
-  const liveRef = useRef<string>("");
-
-  // Avoid stale closures: keep latest callbacks in refs
   const handleTranscriptRef = useRef<HandleTranscriptFn>(handleTranscript);
   const maybeHandleWakeWordRef = useRef<(text: string) => string | null>(
     maybeHandleWakeWord,
@@ -163,8 +157,8 @@ export function useRealtimeVoice(
     maybeHandleWakeWordRef.current = maybeHandleWakeWord;
   }, [maybeHandleWakeWord]);
 
-  const setState = (s: VoiceState) => {
-    opts?.onStateChange?.(s);
+  const setState = (state: VoiceState) => {
+    opts?.onStateChange?.(state);
   };
 
   const pulse = () => {
@@ -176,38 +170,82 @@ export function useRealtimeVoice(
     opts?.onPulse?.();
   };
 
-  async function start(): Promise<void> {
-    if (wsRef.current) return;
+  function cleanupResources(): void {
+    try {
+      workletRef.current?.disconnect();
+    } catch {}
+    workletRef.current = null;
 
+    try {
+      zeroGainRef.current?.disconnect();
+    } catch {}
+    zeroGainRef.current = null;
+
+    const socket = wsRef.current;
+    wsRef.current = null;
+    try {
+      if (
+        socket &&
+        (socket.readyState === WebSocket.OPEN ||
+          socket.readyState === WebSocket.CONNECTING)
+      ) {
+        socket.close();
+      }
+    } catch {}
+
+    stopStream(mediaStreamRef.current);
+    mediaStreamRef.current = null;
+
+    const audioContext = audioCtxRef.current;
+    audioCtxRef.current = null;
+    try {
+      void audioContext?.close();
+    } catch {}
+
+    liveRef.current = "";
+  }
+
+  async function start(): Promise<void> {
+    if (!stoppedRef.current || wsRef.current) return;
+
+    const generation = startupGenerationRef.current + 1;
+    startupGenerationRef.current = generation;
     stoppedRef.current = false;
     pausedRef.current = false;
     liveRef.current = "";
     setState("connecting");
 
-    // Get an ephemeral token. This happens before requesting microphone access,
-    // so token/auth failures are not misreported as microphone failures.
-    let r: Response;
+    const startupIsCurrent = () =>
+      !stoppedRef.current && startupGenerationRef.current === generation;
+
+    let response: Response;
     try {
-      r = await fetch("/api/openai/realtime-token", {
+      response = await fetch("/api/openai/realtime-token", {
         method: "GET",
         cache: "no-store",
         credentials: "same-origin",
       });
     } catch {
+      if (!startupIsCurrent()) return;
       const message = "Voice could not reach the server. Check your connection.";
       setState("error");
       opts?.onError?.(message);
       throw new Error(message);
     }
 
-    if (!r.ok) {
-      const message = await getRealtimeTokenError(r);
+    if (!startupIsCurrent()) return;
+
+    if (!response.ok) {
+      const message = await getRealtimeTokenError(response);
+      if (!startupIsCurrent()) return;
       setState("error");
       opts?.onError?.(message);
       throw new Error(message);
     }
 
-    const tokenResp = (await r.json()) as RealtimeTokenResponse;
+    const tokenResp = (await response.json()) as RealtimeTokenResponse;
+    if (!startupIsCurrent()) return;
+
     const token = typeof tokenResp.token === "string" ? tokenResp.token : "";
     const sessionTranscriptionModel =
       typeof tokenResp.transcriptionModel === "string" &&
@@ -215,13 +253,12 @@ export function useRealtimeVoice(
         ? tokenResp.transcriptionModel.trim()
         : transcriptionModel;
     if (!token) {
-      setState("error");
       const message = "Voice service returned an invalid token. Try again.";
+      setState("error");
       opts?.onError?.(message);
       throw new Error(message);
     }
 
-    // Mic
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: {
         channelCount: 1,
@@ -230,9 +267,17 @@ export function useRealtimeVoice(
         autoGainControl: true,
       },
     });
+    if (!startupIsCurrent()) {
+      stopStream(stream);
+      return;
+    }
     mediaStreamRef.current = stream;
 
-    // WebAudio (24kHz)
+    if (!startupIsCurrent()) {
+      cleanupResources();
+      return;
+    }
+
     const audioCtx = new AudioContext({ sampleRate: 24000 });
     audioCtxRef.current = audioCtx;
 
@@ -240,17 +285,24 @@ export function useRealtimeVoice(
       try {
         await audioCtx.resume();
       } catch {
-        // keep going
+        // Keep going; AudioWorklet setup below will surface a real failure.
+      }
+      if (!startupIsCurrent()) {
+        cleanupResources();
+        return;
       }
     }
 
     await audioCtx.audioWorklet.addModule("/voice/pcm-processor.js");
+    if (!startupIsCurrent()) {
+      cleanupResources();
+      return;
+    }
 
     const source = audioCtx.createMediaStreamSource(stream);
     const worklet = new AudioWorkletNode(audioCtx, "pcm-processor");
     workletRef.current = worklet;
 
-    // Keep audio graph alive by connecting to destination (muted)
     const zeroGain = audioCtx.createGain();
     zeroGain.gain.value = 0;
     zeroGainRef.current = zeroGain;
@@ -259,14 +311,26 @@ export function useRealtimeVoice(
     worklet.connect(zeroGain);
     zeroGain.connect(audioCtx.destination);
 
+    if (!startupIsCurrent()) {
+      cleanupResources();
+      return;
+    }
+
     const ws = new WebSocket(
       "wss://api.openai.com/v1/realtime?intent=transcription",
       ["realtime", `openai-insecure-api-key.${token}`],
     );
+    if (!startupIsCurrent()) {
+      try {
+        ws.close();
+      } catch {}
+      cleanupResources();
+      return;
+    }
     wsRef.current = ws;
 
     ws.onopen = () => {
-      if (stoppedRef.current) return;
+      if (!startupIsCurrent()) return;
 
       if (!pausedRef.current) {
         setState("listening");
@@ -285,7 +349,6 @@ export function useRealtimeVoice(
                   model: sessionTranscriptionModel,
                   language: "en",
                 },
-                // Keep these modest; if you had a known-good set before, use it.
                 turn_detection: {
                   type: "server_vad",
                   threshold: 0.45,
@@ -299,36 +362,28 @@ export function useRealtimeVoice(
       );
     };
 
-    // Send audio chunks
-    worklet.port.onmessage = (e: MessageEvent) => {
-      if (stoppedRef.current || pausedRef.current) return;
+    worklet.port.onmessage = (event: MessageEvent) => {
+      if (!startupIsCurrent() || pausedRef.current) return;
 
-      const data = e.data as unknown;
+      const data = event.data as unknown;
       if (!(data instanceof Float32Array)) return;
-
-      const float32 = data;
-      const level = rms(float32);
 
       const threshold =
         typeof opts?.audioPulseThreshold === "number"
           ? opts.audioPulseThreshold
           : 0.02;
+      if (rms(data) >= threshold) pulse();
 
-      if (level >= threshold) {
-        pulse();
+      const pcm16 = new Int16Array(data.length);
+      for (let i = 0; i < data.length; i++) {
+        const sample = Math.max(-1, Math.min(1, data[i]));
+        pcm16[i] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
       }
 
-      // Float32 [-1,1] -> PCM16
-      const pcm16 = new Int16Array(float32.length);
-      for (let i = 0; i < float32.length; i++) {
-        const s = Math.max(-1, Math.min(1, float32[i]));
-        pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
-      }
+      const socket = wsRef.current;
+      if (!socket || socket.readyState !== WebSocket.OPEN) return;
 
-      const sock = wsRef.current;
-      if (!sock || sock.readyState !== WebSocket.OPEN) return;
-
-      sock.send(
+      socket.send(
         JSON.stringify({
           type: "input_audio_buffer.append",
           audio: base64FromArrayBuffer(pcm16.buffer),
@@ -336,13 +391,12 @@ export function useRealtimeVoice(
       );
     };
 
-    ws.onmessage = (evt) => {
-      if (stoppedRef.current) return;
-      if (typeof evt.data !== "string") return;
+    ws.onmessage = (event) => {
+      if (!startupIsCurrent() || typeof event.data !== "string") return;
 
       let msgUnknown: unknown;
       try {
-        msgUnknown = JSON.parse(evt.data);
+        msgUnknown = JSON.parse(event.data);
       } catch {
         return;
       }
@@ -358,7 +412,6 @@ export function useRealtimeVoice(
       if (TRANSCRIPTION_DELTA_TYPES.has(type)) {
         const delta = getStringField(msgUnknown, ["delta", "transcript", "text"]);
         if (!delta) return;
-
         liveRef.current += delta;
         pulse();
         return;
@@ -370,16 +423,11 @@ export function useRealtimeVoice(
           "text",
           "final",
         ]).trim();
-
-        // reset live buffer
         liveRef.current = "";
-
         if (!finalText) return;
 
-        // ✅ Only decide wake/command from the FINAL transcript
         const cmd = (maybeHandleWakeWordRef.current(finalText) ?? "").trim();
         if (!cmd) return;
-
         handleTranscriptRef.current(cmd);
         return;
       }
@@ -387,28 +435,27 @@ export function useRealtimeVoice(
       if (type === "error") {
         const errObjUnknown = msgUnknown.error;
         const errObj = isRecord(errObjUnknown) ? errObjUnknown : null;
-        const msgText =
+        const message =
           (errObj && typeof errObj.message === "string" && errObj.message) ||
           "Realtime voice error";
 
         // eslint-disable-next-line no-console
         console.error("[RealtimeVoice] error", msgUnknown);
-
         setState("error");
-        opts?.onError?.(msgText);
+        opts?.onError?.(message);
         stop();
       }
     };
 
     ws.onerror = () => {
-      if (stoppedRef.current) return;
+      if (!startupIsCurrent()) return;
       setState("error");
       opts?.onError?.("WebSocket error");
       stop();
     };
 
     ws.onclose = () => {
-      if (stoppedRef.current) return;
+      if (!startupIsCurrent()) return;
       stop();
     };
   }
@@ -445,80 +492,22 @@ export function useRealtimeVoice(
   }
 
   function stop(): void {
-    if (stoppedRef.current) return;
+    // Never early-return here. A previously requested getUserMedia()/AudioWorklet
+    // startup can finish after Stop was pressed; unconditional cleanup ensures
+    // any resource that reached a ref is still torn down.
+    startupGenerationRef.current += 1;
     stoppedRef.current = true;
     pausedRef.current = false;
-
-    try {
-      workletRef.current?.disconnect();
-    } catch {}
-    workletRef.current = null;
-
-    try {
-      zeroGainRef.current?.disconnect();
-    } catch {}
-    zeroGainRef.current = null;
-
-    const sock = wsRef.current;
-    wsRef.current = null;
-    try {
-      if (
-        sock &&
-        (sock.readyState === WebSocket.OPEN ||
-          sock.readyState === WebSocket.CONNECTING)
-      ) {
-        sock.close();
-      }
-    } catch {}
-
-    try {
-      mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
-    } catch {}
-    mediaStreamRef.current = null;
-
-    const ctx = audioCtxRef.current;
-    audioCtxRef.current = null;
-    try {
-      void ctx?.close();
-    } catch {}
-
-    liveRef.current = "";
+    cleanupResources();
     setState("idle");
   }
 
   useEffect(() => {
     return () => {
+      startupGenerationRef.current += 1;
       stoppedRef.current = true;
       pausedRef.current = false;
-
-      try {
-        workletRef.current?.disconnect();
-      } catch {}
-      workletRef.current = null;
-
-      try {
-        zeroGainRef.current?.disconnect();
-      } catch {}
-      zeroGainRef.current = null;
-
-      const socket = wsRef.current;
-      wsRef.current = null;
-      try {
-        socket?.close();
-      } catch {}
-
-      try {
-        mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
-      } catch {}
-      mediaStreamRef.current = null;
-
-      const audioContext = audioCtxRef.current;
-      audioCtxRef.current = null;
-      try {
-        void audioContext?.close();
-      } catch {}
-
-      liveRef.current = "";
+      cleanupResources();
     };
   }, []);
 
