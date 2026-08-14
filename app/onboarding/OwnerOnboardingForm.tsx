@@ -1,22 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { readPersistedActivationContext } from "@/features/integrations/shopBoost/activationContext";
+import {
+  defaultShopTimezone,
+  getSupportedShopTimezones,
+  isSupportedShopTimezone,
+  shopCountryForTimezone,
+  type ShopCountryCode,
+} from "@/features/shared/lib/timezones/shopTimezones";
 
 const COUNTRIES = [
   { value: "US", label: "United States" },
   { value: "CA", label: "Canada" },
-] as const;
-
-const TIMEZONES = [
-  "America/New_York",
-  "America/Chicago",
-  "America/Denver",
-  "America/Edmonton",
-  "America/Phoenix",
-  "America/Los_Angeles",
-  "America/Vancouver",
-  "America/Toronto",
-  "America/Halifax",
 ] as const;
 
 type BootstrapResponse = {
@@ -26,17 +22,29 @@ type BootstrapResponse = {
 };
 
 export default function OwnerOnboardingForm() {
-  const [country, setCountry] = useState<"US" | "CA">("US");
-  const [timezone, setTimezone] = useState<string>("America/Denver");
+  const [country, setCountry] = useState<ShopCountryCode>("US");
+  const [timezone, setTimezone] = useState<string>(defaultShopTimezone("US"));
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const timezoneOptions = useMemo(
+    () => getSupportedShopTimezones(country),
+    [country],
+  );
 
   useEffect(() => {
     const detected = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    if ((TIMEZONES as readonly string[]).includes(detected)) {
-      setTimezone(detected);
-    }
+    const detectedCountry = shopCountryForTimezone(detected);
+    if (!detectedCountry) return;
+    setCountry(detectedCountry);
+    setTimezone(detected);
   }, []);
+
+  function changeCountry(nextCountry: ShopCountryCode) {
+    setCountry(nextCountry);
+    if (!isSupportedShopTimezone(nextCountry, timezone)) {
+      setTimezone(defaultShopTimezone(nextCountry));
+    }
+  }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -79,7 +87,17 @@ export default function OwnerOnboardingForm() {
         return;
       }
 
-      window.location.assign(payload.destination || "/dashboard/onboarding-v2");
+      // Shop Boost is an explicit acquisition handoff, not something middleware
+      // should infer from a missing intake row. Only a browser that actually
+      // carries a valid persisted analysis context enters the activation path.
+      const activationContext = readPersistedActivationContext(
+        new URLSearchParams(window.location.search),
+      );
+      window.location.assign(
+        activationContext
+          ? "/onboarding/shop-boost"
+          : payload.destination || "/dashboard/onboarding-v2",
+      );
     } catch {
       setError("We could not create your shop. Check your connection and try again.");
     } finally {
@@ -189,7 +207,9 @@ export default function OwnerOnboardingForm() {
                 <span>Country</span>
                 <select
                   value={country}
-                  onChange={(event) => setCountry(event.target.value as "US" | "CA")}
+                  onChange={(event) =>
+                    changeCountry(event.target.value as ShopCountryCode)
+                  }
                   className={fieldClassName}
                 >
                   {COUNTRIES.map((item) => (
@@ -206,9 +226,9 @@ export default function OwnerOnboardingForm() {
                   onChange={(event) => setTimezone(event.target.value)}
                   className={fieldClassName}
                 >
-                  {TIMEZONES.map((item) => (
+                  {timezoneOptions.map((item) => (
                     <option key={item} value={item}>
-                      {item.replace("America/", "").replaceAll("_", " ")}
+                      {item.replace("America/", "").replace("Pacific/", "").replaceAll("_", " ")}
                     </option>
                   ))}
                 </select>
