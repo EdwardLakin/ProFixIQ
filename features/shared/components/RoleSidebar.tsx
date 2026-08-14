@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import { useTechnicianCopilotAvailability } from "@/features/copilot/technician/client/useTechnicianCopilotAvailability";
 import {
   TILES,
   canShowTileForEmail,
@@ -67,6 +68,9 @@ export default function RoleSidebar({
   const [userEmail, setUserEmail] = useState<string | null>(initialEmail);
   const [scopeFilter] = useState<Scope | "all">("all");
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
+  const technicianCopilotAvailable = useTechnicianCopilotAvailability(
+    role === "mechanic",
+  );
 
   useEffect(() => {
     (async () => {
@@ -92,11 +96,15 @@ export default function RoleSidebar({
 
     const filteredTiles = TILES.filter((t) => t.roles.includes(role))
       .filter((t) => t.scopes.includes("all") || t.scopes.includes(scopeFilter))
-      .filter((t) => canShowTileForEmail(t, userEmail));
+      .filter((t) => canShowTileForEmail(t, userEmail))
+      .filter(
+        (t) =>
+          !t.requiresTechnicianCopilot || technicianCopilotAvailable,
+      );
 
     if (role === "owner") return getOwnerSidebarTiles(filteredTiles);
     return filteredTiles;
-  }, [role, scopeFilter, userEmail]);
+  }, [role, scopeFilter, technicianCopilotAvailable, userEmail]);
 
   const canonicalActiveTile = useMemo(
     () => getCanonicalActiveTile(pathname, tiles),

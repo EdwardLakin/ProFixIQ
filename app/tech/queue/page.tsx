@@ -15,6 +15,45 @@ type WorkOrderSlim = Pick<
   DB["public"]["Tables"]["work_orders"]["Row"],
   "id" | "custom_id" | "type"
 >;
+type WorkOrderDisplayMap = Record<
+  string,
+  { id: string; custom_id: string | null }
+>;
+
+export function buildTechQueueWorkOrderMap(
+  rows: readonly WorkOrderSlim[],
+): WorkOrderDisplayMap {
+  return Object.fromEntries(
+    rows
+      .filter((row) => row.type !== "historical_import")
+      .map((row) => [
+        row.id,
+        { id: row.id, custom_id: row.custom_id ?? null },
+      ]),
+  );
+}
+
+export function TechQueueWorkOrderLabel({
+  workOrderId,
+  workOrderMap,
+}: {
+  workOrderId: string | null;
+  workOrderMap: WorkOrderDisplayMap;
+}) {
+  const customId = workOrderId
+    ? workOrderMap[workOrderId]?.custom_id
+    : null;
+  return (
+    <>
+      {customId
+        ? customId
+        : workOrderId
+          ? `WO #${workOrderId.slice(0, 8)}`
+          : "Work order"}
+    </>
+  );
+}
+
 type PartRequest = DB["public"]["Tables"]["part_requests"]["Row"];
 type PartRequestMini = Pick<PartRequest, "job_id" | "work_order_id">;
 
@@ -153,9 +192,8 @@ export default function TechQueuePage() {
   });
 
   const [lines, setLines] = useState<Line[]>([]);
-  const [workOrderMap, setWorkOrderMap] = useState<
-    Record<string, { id: string; custom_id: string | null }>
-  >({});
+  const [workOrderMap, setWorkOrderMap] =
+    useState<WorkOrderDisplayMap>({});
 
   // active job / work order highlighting
   const [activeLineId, setActiveLineId] = useState<string | null>(null);
@@ -260,11 +298,14 @@ export default function TechQueuePage() {
           .select("id, custom_id, type")
           .in("id", woIds);
 
+        const workOrders = (wos ?? []) as WorkOrderSlim[];
         woTypeMap = {};
-        (wos ?? []).forEach((wo) => {
-          const row = wo as WorkOrderSlim;
+        workOrders.forEach((row) => {
           woTypeMap[row.id] = row.type ?? null;
         });
+        setWorkOrderMap(buildTechQueueWorkOrderMap(workOrders));
+      } else {
+        setWorkOrderMap({});
       }
 
       const activeQueue = raw.filter((l) => !isCompletedLike(l.status) && woTypeMap[l.work_order_id ?? ""] !== "historical_import");
@@ -282,25 +323,7 @@ export default function TechQueuePage() {
       setActiveLineId(punched?.id ?? null);
       setActiveWorkOrderId(punched?.work_order_id ?? null);
 
-      // 5) fetch work orders for display labels
-      if (woIds.length > 0) {
-        const { data: wos } = await supabase
-          .from("work_orders")
-          .select("id, custom_id, type")
-          .in("id", woIds);
-
-        const map: Record<string, { id: string; custom_id: string | null }> =
-          {};
-        (wos ?? []).forEach((wo) => {
-          const row = wo as WorkOrderSlim;
-          map[row.id] = { id: row.id, custom_id: row.custom_id ?? null };
-        });
-        setWorkOrderMap(map);
-      } else {
-        setWorkOrderMap({});
-      }
-
-      // 6) fetch open part requests for this tech in this shop (involved)
+      // 5) fetch open part requests for this tech in this shop (involved)
       const { data: prs, error: prErr } = await supabase
         .from("part_requests")
         .select(
@@ -482,16 +505,6 @@ export default function TechQueuePage() {
         {filteredLines.map((line) => {
           const bucket = toBucket(line);
           const priority = toPriority(line);
-          const wo = line.work_order_id
-            ? workOrderMap[line.work_order_id]
-            : null;
-
-          const woLabel = wo?.custom_id
-            ? wo.custom_id
-            : line.work_order_id
-              ? `WO #${line.work_order_id.slice(0, 8)}`
-              : "Work order";
-
           const title = (line.description || line.complaint || "Untitled job")
             .trim();
 
@@ -531,7 +544,10 @@ export default function TechQueuePage() {
               <div className="flex items-center justify-between gap-3 pl-3">
                 <div className="min-w-0">
                   <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
-                    {woLabel}
+                    <TechQueueWorkOrderLabel
+                      workOrderId={line.work_order_id}
+                      workOrderMap={workOrderMap}
+                    />
                     {isSameWorkOrder ? (
                       <span className="ml-2 text-[10px] text-[color:var(--theme-text-secondary)]">
                         • Same WO

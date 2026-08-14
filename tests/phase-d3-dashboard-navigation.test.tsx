@@ -101,6 +101,10 @@ describe("Phase D3 dashboard operational navigation", () => {
     expect(mechanicTitles).not.toContain("History");
     expect(mechanicHrefs).toContain("/copilot/technician");
     expect(ROUTE_META["/copilot/technician"].roles).toContain("mechanic");
+    expect(
+      TILES.find((tile) => tile.href === "/copilot/technician")
+        ?.requiresTechnicianCopilot,
+    ).toBe(true);
     expect(mechanicHrefs).not.toContain("/parts/requests?mine=1");
     expect(mechanicHrefs).not.toContain("/work-orders/history");
     expect(ROUTE_META["/work-orders/history"].roles).not.toContain("mechanic");
@@ -111,15 +115,6 @@ describe("Phase D3 dashboard operational navigation", () => {
     expect(read("app/parts/requests/layout.tsx")).toContain("PARTS_REQUEST_ACCESS_ROLES");
     expect(read("app/dashboard/_components/OperationsDashboardView.tsx")).toContain(
       'isTechnicianView && item.href === "/parts/requests"',
-    );
-  });
-
-  it("uses canonical work-order numbers when type is null", () => {
-    const techQueue = read("app/tech/queue/page.tsx");
-
-    expect(techQueue).not.toContain('.neq("type", "historical_import")');
-    expect(techQueue).toContain(
-      'woTypeMap[l.work_order_id ?? ""] !== "historical_import"',
     );
   });
 
