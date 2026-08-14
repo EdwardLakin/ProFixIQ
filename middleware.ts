@@ -341,7 +341,14 @@ export async function middleware(req: NextRequest) {
         .limit(1)
         .maybeSingle();
 
-      completed = !!profile?.completed_onboarding || !!profile?.shop_id;
+      const normalizedRole = String(profile?.role ?? "").trim().toLowerCase();
+      const pendingOwnerBootstrap =
+        normalizedRole === "owner" &&
+        Boolean(profile?.shop_id) &&
+        !profile?.completed_onboarding;
+      completed = pendingOwnerBootstrap
+        ? false
+        : Boolean(profile?.completed_onboarding || profile?.shop_id);
       const capabilities = getActorCapabilities({ role: profile?.role });
       canUseMobile =
         capabilities.isKnownRole && capabilities.canonicalRole !== "customer";
