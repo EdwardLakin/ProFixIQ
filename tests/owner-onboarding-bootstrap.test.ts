@@ -1,16 +1,22 @@
 import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({
-  getUser: vi.fn(),
-  maybeSingle: vi.fn(),
-  rpc: vi.fn(),
-  hashOwnerPin: vi.fn(),
-  setOwnerPinVerifiedCookie: vi.fn((response: Response) => response),
-  admin: { kind: "admin" },
-  stripe: { kind: "stripe" },
-  reconcileShopBillingFromUser: vi.fn(),
-}));
+const mocks = vi.hoisted(() => {
+  const adminFrom = vi.fn();
+  return {
+    getUser: vi.fn(),
+    maybeSingle: vi.fn(),
+    rpc: vi.fn(),
+    hashOwnerPin: vi.fn(),
+    setOwnerPinVerifiedCookie: vi.fn((response: Response) => response),
+    adminFrom,
+    adminShopMaybeSingle: vi.fn(),
+    adminProfileMaybeSingle: vi.fn(),
+    admin: { from: adminFrom },
+    stripe: { kind: "stripe" },
+    reconcileShopBillingFromUser: vi.fn(),
+  };
+});
 
 vi.mock("@/features/shared/lib/supabase/server", () => ({
   createServerSupabaseRoute: () => ({
@@ -68,6 +74,7 @@ describe("owner onboarding bootstrap", () => {
     vi.clearAllMocks();
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     process.env.STRIPE_SECRET_KEY = "sk_test_owner_bootstrap";
+
     mocks.getUser.mockResolvedValue({
       data: { user: { id: "owner-user-1" } },
       error: null,
@@ -94,13 +101,55 @@ describe("owner onboarding bootstrap", () => {
       error: null,
     });
     mocks.reconcileShopBillingFromUser.mockResolvedValue({ linked: true });
+    mocks.adminShopMaybeSingle.mockResolvedValue({
+      data: {
+        id: "11111111-1111-4111-8111-111111111111",
+        owner_id: "owner-user-1",
+        stripe_subscription_id: "sub_trial_owner",
+        stripe_subscription_status: "trialing",
+        stripe_pricing_model: "product_packages_v1",
+        plan: "complete",
+      },
+      error: null,
+    });
+    mocks.adminProfileMaybeSingle.mockResolvedValue({
+      data: { id: "owner-user-1", completed_onboarding: true },
+      error: null,
+    });
+    mocks.adminFrom.mockImplementation((table: string) => {
+      if (table === "shops") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({ maybeSingle: mocks.adminShopMaybeSingle })),
+          })),
+        };
+      }
+      if (table === "profiles") {
+        return {
+          update: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  select: vi.fn(() => ({
+                    maybeSingle: mocks.adminProfileMaybeSingle,
+                  })),
+                })),
+              })),
+            })),
+          })),
+        };
+      }
+      throw new Error(`Unexpected admin table: ${table}`);
+    });
   });
 
-  it("restores a real /onboarding page instead of the production 404", () => {
+  it("restores a real /onboarding page and keeps pending owners there", () => {
     const page = readFileSync("app/onboarding/page.tsx", "utf8");
     const form = readFileSync("app/onboarding/OwnerOnboardingForm.tsx", "utf8");
 
     expect(page).toContain("<OwnerOnboardingForm />");
+    expect(page).toContain("if (profile?.completed_onboarding)");
+    expect(page).not.toContain("profile?.shop_id || profile?.completed_onboarding");
     expect(form).toContain('fetch("/api/onboarding/bootstrap-owner"');
     expect(form).toContain("Create shop and continue");
   });
@@ -116,7 +165,7 @@ describe("owner onboarding bootstrap", () => {
     expect(mocks.reconcileShopBillingFromUser).not.toHaveBeenCalled();
   });
 
-  it("rejects assigned staff before the privileged RPC", async () => {
+  it("rejects assigned non-owner staff before the privileged RPC", async () => {
     mocks.maybeSingle.mockResolvedValue({
       data: {
         shop_id: "22222222-2222-4222-8222-222222222222",
@@ -134,7 +183,7 @@ describe("owner onboarding bootstrap", () => {
     expect(mocks.rpc).not.toHaveBeenCalled();
   });
 
-  it("validates the PIN and supported region before hashing", async () => {
+  it("validates the PIN and supported region before a new shop is hashed", async () => {
     const { POST } = await import("../app/api/onboarding/bootstrap-owner/route");
 
     const invalidPin = await POST(request({ pin: "12ab" }));
@@ -181,7 +230,7 @@ describe("owner onboarding bootstrap", () => {
     expect(mocks.reconcileShopBillingFromUser).not.toHaveBeenCalled();
   });
 
-  it("derives owner scope, bootstraps atomically, and immediately hydrates acquired billing", async () => {
+  it("bootstraps, hydrates billing, then durably completes onboarding before success", async () => {
     const { POST } = await import("../app/api/onboarding/bootstrap-owner/route");
 
     const response = await POST(request());
@@ -212,6 +261,8 @@ describe("owner onboarding bootstrap", () => {
       userId: "owner-user-1",
       shopId: "11111111-1111-4111-8111-111111111111",
     });
+    expect(mocks.adminShopMaybeSingle).toHaveBeenCalled();
+    expect(mocks.adminProfileMaybeSingle).toHaveBeenCalled();
     expect(mocks.setOwnerPinVerifiedCookie).toHaveBeenCalledWith(
       expect.any(Response),
       {
@@ -222,7 +273,7 @@ describe("owner onboarding bootstrap", () => {
     );
   });
 
-  it("fails closed instead of admitting a newly created shop with unresolved billing", async () => {
+  it("fails closed with onboarding still incomplete when billing is unresolved", async () => {
     mocks.reconcileShopBillingFromUser.mockResolvedValue({
       linked: false,
       reason: "no_subscription_found",
@@ -232,10 +283,56 @@ describe("owner onboarding bootstrap", () => {
     const response = await POST(request());
 
     expect(response.status).toBe(503);
+    expect(mocks.adminProfileMaybeSingle).not.toHaveBeenCalled();
     expect(mocks.setOwnerPinVerifiedCookie).not.toHaveBeenCalled();
   });
 
-  it("reconciles acquired billing again on an exact completed-owner retry", async () => {
+  it("fails closed when canonical billing was not actually persisted", async () => {
+    mocks.adminShopMaybeSingle.mockResolvedValue({
+      data: {
+        id: "11111111-1111-4111-8111-111111111111",
+        owner_id: "owner-user-1",
+        stripe_subscription_id: null,
+        stripe_subscription_status: null,
+        stripe_pricing_model: null,
+        plan: null,
+      },
+      error: null,
+    });
+    const { POST } = await import("../app/api/onboarding/bootstrap-owner/route");
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(503);
+    expect(mocks.adminProfileMaybeSingle).not.toHaveBeenCalled();
+    expect(mocks.setOwnerPinVerifiedCookie).not.toHaveBeenCalled();
+  });
+
+  it("repairs a pending owner bootstrap without recreating the shop", async () => {
+    mocks.maybeSingle.mockResolvedValue({
+      data: {
+        shop_id: "11111111-1111-4111-8111-111111111111",
+        role: "owner",
+        completed_onboarding: false,
+        stripe_checkout_complete: true,
+        stripe_customer_id: "cus_trial_owner",
+        stripe_subscription_id: "sub_trial_owner",
+      },
+      error: null,
+    });
+    const { POST } = await import("../app/api/onboarding/bootstrap-owner/route");
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(200);
+    expect(mocks.rpc).not.toHaveBeenCalled();
+    expect(mocks.hashOwnerPin).not.toHaveBeenCalled();
+    expect(mocks.reconcileShopBillingFromUser).toHaveBeenCalled();
+    expect(mocks.adminProfileMaybeSingle).toHaveBeenCalled();
+    expect(mocks.setOwnerPinVerifiedCookie).toHaveBeenCalled();
+  });
+
+  it("reconciles billing and refreshes the PIN cookie on an exact completed-owner retry", async () => {
     mocks.maybeSingle.mockResolvedValue({
       data: {
         shop_id: "11111111-1111-4111-8111-111111111111",
@@ -254,6 +351,13 @@ describe("owner onboarding bootstrap", () => {
     expect(response.status).toBe(200);
     expect(mocks.rpc).not.toHaveBeenCalled();
     expect(mocks.reconcileShopBillingFromUser).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: "owner-user-1",
+        shopId: "11111111-1111-4111-8111-111111111111",
+      }),
+    );
+    expect(mocks.setOwnerPinVerifiedCookie).toHaveBeenCalledWith(
+      expect.any(Response),
       expect.objectContaining({
         userId: "owner-user-1",
         shopId: "11111111-1111-4111-8111-111111111111",
@@ -280,7 +384,7 @@ describe("owner onboarding bootstrap", () => {
     expect(migration).toContain("to authenticated");
   });
 
-  it("hardens deployed bootstrap recovery with IANA validation and ambiguity rejection", () => {
+  it("hardens recovery and leaves new owner onboarding pending until billing succeeds", () => {
     const migration = readFileSync(
       "supabase/migrations/20260814160000_harden_owner_bootstrap_recovery.sql",
       "utf8",
@@ -291,6 +395,7 @@ describe("owner onboarding bootstrap", () => {
     expect(migration).toContain("if v_owned_shop_count > 1 then");
     expect(migration).toContain("Ambiguous owner shop recovery");
     expect(migration).not.toContain("order by s.created_at desc");
+    expect(migration).toContain("completed_onboarding = false");
     expect(migration).toContain("security definer");
     expect(migration).toContain("set search_path = public");
     expect(migration).toContain("to authenticated");
