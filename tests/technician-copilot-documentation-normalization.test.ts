@@ -42,6 +42,36 @@ describe("Technician CoPilot documentation normalization", () => {
     ]);
   });
 
+  it("rejects missing, malformed, non-finite, and out-of-range confidence", () => {
+    const details = { text: "Rear U-joint has play." };
+    const result = validateTechnicianDocumentationExtraction({
+      events: [
+        { type: "observation.recorded", details },
+        { type: "observation.recorded", confidence: "0.95", details },
+        { type: "observation.recorded", confidence: Number.NaN, details },
+        {
+          type: "observation.recorded",
+          confidence: Number.POSITIVE_INFINITY,
+          details,
+        },
+        { type: "observation.recorded", confidence: -0.1, details },
+        { type: "observation.recorded", confidence: 1.1, details },
+        { type: "observation.recorded", confidence: 0.59, details },
+        { type: "observation.recorded", confidence: 0.6, details },
+      ],
+    });
+
+    expect(result.events).toEqual([
+      {
+        type: "observation.recorded",
+        details: {
+          text: "Rear U-joint has play.",
+          confidence: 0.6,
+        },
+      },
+    ]);
+  });
+
   it("keeps conversation events in the canonical repair-session vocabulary", () => {
     expect(REPAIR_EVENT_TYPES).toContain("conversation.user");
     expect(REPAIR_EVENT_TYPES).toContain("conversation.assistant");
