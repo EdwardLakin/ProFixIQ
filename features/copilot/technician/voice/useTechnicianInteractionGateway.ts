@@ -75,15 +75,38 @@ export function useTechnicianInteractionGateway({
         setVoicePhase("idle");
         return;
       }
+
+      if (state === "idle") {
+        transportStartedRef.current = false;
+
+        // A transport can close while capture is intentionally paused for an
+        // in-flight CoPilot turn. Keep that turn alive; its normal resume path
+        // will establish a replacement transport. A close while actively
+        // listening/connecting, however, ends voice mode so typed input is not
+        // left disabled behind a dead socket.
+        if (
+          phaseRef.current === "thinking" ||
+          phaseRef.current === "speaking"
+        ) {
+          return;
+        }
+
+        invalidateGeneration();
+        activeRef.current = false;
+        setModeActive(false);
+        setVoicePhase("idle");
+        setError("Voice connection ended. Start voice to reconnect.");
+        return;
+      }
+
       if (phaseRef.current === "thinking" || phaseRef.current === "speaking") {
         return;
       }
       if (state === "connecting") setVoicePhase("connecting");
       else if (state === "listening") setVoicePhase("listening");
       else if (state === "error") setVoicePhase("error");
-      else setVoicePhase("idle");
     },
-    [setVoicePhase],
+    [invalidateGeneration, setVoicePhase],
   );
 
   const handleFinalTranscript = useCallback(
@@ -102,12 +125,15 @@ export function useTechnicianInteractionGateway({
       void (async () => {
         inFlightRef.current = true;
         setHeardTranscript(text);
+        // Set the turn state before touching transport. If pause is unavailable
+        // and stop emits idle synchronously, the idle transition is understood
+        // as an intentional turn pause rather than an unexpected disconnect.
+        setVoicePhase("thinking");
         const paused = realtimeRef.current?.pause?.() ?? false;
         if (!paused) {
           realtimeRef.current?.stop();
           transportStartedRef.current = false;
         }
-        setVoicePhase("thinking");
         setError(null);
 
         try {
@@ -184,13 +210,30 @@ export function useTechnicianInteractionGateway({
       ) {
         return;
       }
+
       await realtimeRef.current?.start();
+
+      // Stop/restart can happen while the token or microphone permission await
+      // is pending. Never adopt a transport that completed for an invalidated
+      // voice generation; tear it down even though the underlying transport is
+      // also cancellation-safe.
+      if (!activeRef.current || generationRef.current !== generation) {
+        try {
+          realtimeRef.current?.stop();
+        } catch {}
+        transportStartedRef.current = false;
+        return;
+      }
       transportStartedRef.current = true;
     } catch (caught) {
       if (
         !activeRef.current ||
         generationRef.current !== generation
       ) {
+        try {
+          realtimeRef.current?.stop();
+        } catch {}
+        transportStartedRef.current = false;
         return;
       }
       try {
