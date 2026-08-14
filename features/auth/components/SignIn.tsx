@@ -119,10 +119,15 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
 
     try {
       if (mode === "sign-in") {
+        const acquisitionSessionId =
+          searchParams.get("flow")?.trim() === "acquisition"
+            ? searchParams.get("session_id")?.trim() || undefined
+            : undefined;
         const result = await signInWithIdentifier({
           identifier,
           password,
           surface: "shop",
+          acquisitionSessionId,
         });
         if (!result.ok) {
           setError(result.error);

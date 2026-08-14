@@ -102,6 +102,23 @@ export async function handleStripeCheckoutLinkUser(req: Request) {
       );
     }
 
+    if (user.app_metadata?.profixiq_portal_only === true) {
+      const { error: identityUpgradeError } =
+        await admin.auth.admin.updateUserById(user.id, {
+          app_metadata: {
+            ...user.app_metadata,
+            profixiq_portal_only: false,
+          },
+        });
+      if (identityUpgradeError) {
+        console.error("stripe_acquisition_identity_upgrade_failed", {
+          userId: user.id,
+          message: identityUpgradeError.message,
+        });
+        return noStoreJson({ error: "Account upgrade unavailable" }, 503);
+      }
+    }
+
     const identityMetadata = {
       acquisition_intent_id: metadata.intentId,
       shop_id: claim.shopId ?? "",
