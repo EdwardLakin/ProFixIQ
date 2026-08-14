@@ -31,6 +31,12 @@ create index if not exists repair_session_documentation_turns_technician_idx
     created_at desc
   );
 
+create index if not exists repair_session_documentation_turns_shop_idx
+  on copilot.repair_session_documentation_turns (
+    shop_id,
+    created_at desc
+  );
+
 revoke all on table copilot.repair_session_documentation_turns
   from public, anon, authenticated;
 

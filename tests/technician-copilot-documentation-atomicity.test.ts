@@ -44,6 +44,9 @@ describe("Technician CoPilot turn-scoped documentation atomicity", () => {
     expect(migration).toContain("unique (session_id, source_turn_id)");
     expect(migration).toContain("on conflict do nothing");
     expect(migration).toContain("event_count between 0 and 12");
+    expect(migration).toContain(
+      "repair_session_documentation_turns_shop_idx",
+    );
     expect(migration).toContain(":documentation-slot:");
     expect(migration).toContain("copilot.append_repair_event_internal(");
     expect(migration).toContain(
