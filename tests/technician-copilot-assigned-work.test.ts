@@ -7,6 +7,10 @@ const assignedWorkSource = readFileSync(
   "features/copilot/technician/server/assignedWork.ts",
   "utf8",
 );
+const chatSource = readFileSync(
+  "features/copilot/technician/server/chat.ts",
+  "utf8",
+);
 
 describe("Technician CoPilot assigned-work context", () => {
   it("reads the canonical structured intake concern", () => {
@@ -36,34 +40,43 @@ describe("Technician CoPilot assigned-work context", () => {
     expect(assignedWorkSource).not.toContain("customer_concern");
   });
 
-  it("derives candidates from canonical technician assignment paths before loading work orders", () => {
-    const directAssignmentIndex = assignedWorkSource.indexOf(
-      '.from("work_order_lines")',
-    );
-    const sharedAssignmentIndex = assignedWorkSource.indexOf(
-      '.from("work_order_line_technicians")',
-    );
-    const workOrderIndex = assignedWorkSource.indexOf('.from("work_orders")');
-
-    expect(directAssignmentIndex).toBeGreaterThanOrEqual(0);
-    expect(sharedAssignmentIndex).toBeGreaterThanOrEqual(0);
-    expect(workOrderIndex).toBeGreaterThan(directAssignmentIndex);
-    expect(workOrderIndex).toBeGreaterThan(sharedAssignmentIndex);
+  it("derives candidates from canonical direct and shared technician assignment paths", () => {
     expect(assignedWorkSource).toContain("assigned_tech_id.eq.");
     expect(assignedWorkSource).toContain("assigned_to.eq.");
+    expect(assignedWorkSource).toContain('.from("work_order_line_technicians")');
     expect(assignedWorkSource).toContain('.eq("shop_id", input.shopId)');
     expect(assignedWorkSource).toContain('.eq("line_type", "job")');
   });
 
-  it("pages lifetime assignment history and chunks downstream work-order filters", () => {
-    expect(assignedWorkSource).toContain("loadRowsForIdChunks<AssignedLine>");
-    expect(assignedWorkSource).toContain("loadRowsForIdChunks<SharedAssignment>");
-    expect(assignedWorkSource).toContain('.order("work_order_line_id", { ascending: true })');
-    expect(assignedWorkSource).toContain(".range(from, to)");
-    expect(assignedWorkSource).toContain("{ idChunkSize: 25, pageSize: 250 }");
-    expect(assignedWorkSource).toContain("loadRowsForIdChunks<WorkOrderCandidateRow>");
-    expect(assignedWorkSource).toContain("{ idChunkSize: 100, pageSize: 100 }");
+  it("bounds pre-session discovery to operational assignments instead of scanning lifetime history", () => {
+    expect(assignedWorkSource).toContain("ACTIVE_LINE_STATUSES");
+    expect(assignedWorkSource).toContain("PRESESSION_ASSIGNMENT_LIMIT = 250");
+    expect(assignedWorkSource).toContain('.order("updated_at", { ascending: false })');
+    expect(assignedWorkSource).toContain('.order("assigned_at", { ascending: false })');
+    expect(assignedWorkSource).toContain(".limit(PRESESSION_ASSIGNMENT_LIMIT)");
     expect(assignedWorkSource).toContain(".slice(0, 30)");
+  });
+
+  it("uses a unique composite ordering for shared assignment identity", () => {
+    expect(assignedWorkSource).toContain(
+      '.order("work_order_line_id", { ascending: false })',
+    );
+    expect(assignedWorkSource).toContain(
+      '.order("technician_id", { ascending: false })',
+    );
+    expect(assignedWorkSource).toContain(
+      '.order("technician_id", { ascending: true })',
+    );
+  });
+
+  it("uses a bounded single-work-order loader after a Repair Session exists", () => {
+    expect(assignedWorkSource).toContain(
+      "export async function loadTechnicianWorkCandidateForWorkOrder",
+    );
+    expect(chatSource).toContain("let envelope = await read(input.identity, input.sessionId)");
+    expect(chatSource).toContain("if (envelope.session) {");
+    expect(chatSource).toContain("loadTechnicianWorkCandidateForWorkOrder({");
+    expect(chatSource).toContain("} else {\n    candidates = await listTechnicianWorkCandidates(workScope);");
   });
 
   it("exposes only assigned line IDs as startable CoPilot lines", () => {
