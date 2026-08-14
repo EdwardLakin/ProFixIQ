@@ -12,6 +12,11 @@ const ownerFormSource = readFileSync(
   "app/onboarding/OwnerOnboardingForm.tsx",
   "utf8",
 );
+const ownerPageSource = readFileSync("app/onboarding/page.tsx", "utf8");
+const bootstrapRouteSource = readFileSync(
+  "app/api/onboarding/bootstrap-owner/route.ts",
+  "utf8",
+);
 const guidedSettingsSource = readFileSync(
   "features/onboarding-v2/components/ShopSettingsSetupModal.tsx",
   "utf8",
@@ -35,8 +40,10 @@ describe("owner onboarding Codex hardening", () => {
     expect(getSupportedShopTimezones("CA").length).toBeGreaterThan(20);
   });
 
-  it("routes Shop Boost only from explicit persisted acquisition provenance", () => {
-    expect(ownerFormSource).toContain("readPersistedActivationContext");
+  it("routes Shop Boost only from provenance on the current acquisition URL", () => {
+    expect(ownerFormSource).toContain("readActivationContextFromSearchParams");
+    expect(ownerFormSource).toContain("appendActivationContextToHref");
+    expect(ownerFormSource).not.toContain("readPersistedActivationContext");
     expect(ownerFormSource).toContain('"/onboarding/shop-boost"');
     expect(middlewareSource).not.toContain("needsShopBoostIntake");
     expect(middlewareSource).not.toContain('from("shop_boost_intakes")');
@@ -48,7 +55,17 @@ describe("owner onboarding Codex hardening", () => {
     expect(middlewareSource).toContain("!isGuidedOnboardingPath");
   });
 
-  it("reuses the verified HTTP-only owner PIN session in guided Shop Settings", () => {
+  it("keeps an owner with a created shop but incomplete billing inside onboarding", () => {
+    expect(middlewareSource).toContain("pendingOwnerBootstrap");
+    expect(middlewareSource).toContain('normalizedRole === "owner"');
+    expect(middlewareSource).toContain("completed = pendingOwnerBootstrap");
+    expect(ownerPageSource).toContain("if (profile?.completed_onboarding)");
+    expect(ownerPageSource).not.toContain("profile?.shop_id || profile?.completed_onboarding");
+    expect(bootstrapRouteSource).toContain("finalizeOwnerOnboarding");
+    expect(bootstrapRouteSource).toContain("canonical_billing_not_ready");
+  });
+
+  it("reuses the verified HTTP-only owner PIN session in guided Shop Settings and retries refreshes", () => {
     expect(pinVerifySource).toContain("export async function GET(req: Request)");
     expect(pinVerifySource).toContain("getOwnerPinCookieFromRequest");
     expect(pinVerifySource).toContain("verifyOwnerPinToken");
@@ -60,13 +77,26 @@ describe("owner onboarding Codex hardening", () => {
     );
     expect(guidedSettingsSource).toContain("pinStatus.verified");
     expect(guidedSettingsSource).toContain("setPinExpiresAt(pinStatus.expiresAt)");
+    expect(bootstrapRouteSource).toContain("successfulBootstrapResponse");
+    expect(bootstrapRouteSource).toContain("replayed: true");
   });
 
-  it("uses the same timezone contract in first-shop and guided settings surfaces", () => {
+  it("treats shop and hours as mandatory load state while PIN status remains optional", () => {
+    expect(guidedSettingsSource).toContain("settingsReady");
+    expect(guidedSettingsSource).toContain("setSettingsReady(false)");
+    expect(guidedSettingsSource).toContain("setSettingsReady(true)");
+    expect(guidedSettingsSource).toContain("Unable to load shop hours.");
+    expect(guidedSettingsSource).toContain("PIN status is optional convenience only");
+    expect(guidedSettingsSource).toContain("saving || loading || !settingsReady");
+  });
+
+  it("uses the shared timezone contract but preserves an existing unmatched stored timezone", () => {
     expect(ownerFormSource).toContain("getSupportedShopTimezones");
     expect(ownerFormSource).toContain("isSupportedShopTimezone");
     expect(guidedSettingsSource).toContain("getSupportedShopTimezones");
     expect(guidedSettingsSource).toContain("isSupportedShopTimezone");
+    expect(guidedSettingsSource).toContain("if (timezone && !supported.includes(timezone))");
+    expect(guidedSettingsSource).toContain("setTimezone(storedTimezone || defaultShopTimezone(shopCountry))");
     expect(guidedSettingsSource).not.toContain("const TIMEZONES = [");
   });
 });
