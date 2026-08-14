@@ -1,6 +1,15 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import {
+  FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import { Mic, Square, VolumeX } from "lucide-react";
+
+import { useTechnicianInteractionGateway } from "@/features/copilot/technician/voice/useTechnicianInteractionGateway";
 
 type Turn = {
   eventId: string;
@@ -57,15 +66,26 @@ type Snapshot = {
   session?: { id: string } | null;
   context: Context | null;
   workOrder: WorkOrder | null;
-  capabilities?: { documentation: boolean };
+  capabilities?: { documentation: boolean; voice?: boolean };
   reply?: string;
   error?: string;
 };
+
+type InputMode = "ui" | "voice";
 
 function timeLabel(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function voiceStatus(phase: ReturnType<typeof useTechnicianInteractionGateway>["phase"]) {
+  if (phase === "connecting") return "Connecting microphone…";
+  if (phase === "listening") return "Listening…";
+  if (phase === "thinking") return "CoPilot is thinking…";
+  if (phase === "speaking") return "CoPilot is replying…";
+  if (phase === "error") return "Voice stopped";
+  return "Voice ready";
 }
 
 export function TechnicianTextCopilot() {
@@ -106,6 +126,70 @@ export function TechnicianTextCopilot() {
   const sessionId = snapshot.session?.id ?? snapshot.sessionId ?? null;
   const documentationEnabled =
     snapshot.capabilities?.documentation !== false;
+  const voiceEnabled = snapshot.capabilities?.voice === true;
+
+  const sendTurn = useCallback(
+    async (text: string, inputMode: InputMode): Promise<Snapshot> => {
+      const normalized = text.trim();
+      if (!normalized) {
+        throw new Error("CoPilot turn is empty.");
+      }
+      if (busy) {
+        throw new Error("CoPilot is already processing a turn.");
+      }
+
+      setBusy(true);
+      setError(null);
+      try {
+        const response = await fetch("/api/copilot/technician/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message: normalized,
+            sessionId,
+            turnId: crypto.randomUUID(),
+            inputMode,
+          }),
+        });
+        const body = (await response.json()) as Snapshot;
+        if (!response.ok) {
+          throw new Error(body.error || "CoPilot could not process that turn.");
+        }
+        setSnapshot((current) => ({
+          ...current,
+          ...body,
+          session:
+            body.session ??
+            (body.sessionId ? { id: body.sessionId } : current.session),
+        }));
+        return body;
+      } catch (reason) {
+        const message =
+          reason instanceof Error
+            ? reason.message
+            : "CoPilot could not process that turn.";
+        setError(message);
+        throw reason instanceof Error ? reason : new Error(message);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [busy, sessionId],
+  );
+
+  const handleVoiceUtterance = useCallback(
+    async (text: string) => {
+      const result = await sendTurn(text, "voice");
+      return { reply: result.reply };
+    },
+    [sendTurn],
+  );
+
+  const voice = useTechnicianInteractionGateway({
+    enabled: voiceEnabled,
+    onUtterance: handleVoiceUtterance,
+  });
+
   const vehicleLabel = useMemo(() => {
     const workOrder = snapshot.workOrder;
     if (!workOrder) return null;
@@ -126,38 +210,11 @@ export function TechnicianTextCopilot() {
     event.preventDefault();
     const text = message.trim();
     if (!text || busy) return;
-    setBusy(true);
-    setError(null);
     setMessage("");
     try {
-      const response = await fetch("/api/copilot/technician/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: text,
-          sessionId,
-          turnId: crypto.randomUUID(),
-        }),
-      });
-      const body = (await response.json()) as Snapshot;
-      if (!response.ok) {
-        throw new Error(body.error || "CoPilot could not process that turn.");
-      }
-      setSnapshot((current) => ({
-        ...current,
-        ...body,
-        session:
-          body.session ??
-          (body.sessionId ? { id: body.sessionId } : current.session),
-      }));
-    } catch (reason) {
-      setError(
-        reason instanceof Error
-          ? reason.message
-          : "CoPilot could not process that turn.",
-      );
-    } finally {
-      setBusy(false);
+      await sendTurn(text, "ui");
+    } catch {
+      // sendTurn already surfaced the user-facing error.
     }
   }
 
@@ -175,12 +232,12 @@ export function TechnicianTextCopilot() {
     <main className="mx-auto flex min-h-[100dvh] max-w-4xl flex-col gap-4 p-4 pb-28">
       <header className="rounded-2xl border bg-card p-4 shadow-sm">
         <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Phase 3 Preview · Text + silent documentation
+          Phase 4 Preview · Text + realtime voice + silent documentation
         </div>
         <h1 className="mt-1 text-2xl font-semibold">Technician CoPilot</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Work naturally. The CoPilot collaborates in the conversation while a
-          separate engine quietly structures the repair record.
+          Work naturally. Text and voice use the same persistent Repair Session
+          while the documentation engine quietly structures the repair record.
         </p>
         {vehicleLabel ? (
           <div className="mt-3 rounded-xl bg-muted px-3 py-2 text-sm font-medium">
@@ -188,6 +245,62 @@ export function TechnicianTextCopilot() {
           </div>
         ) : null}
       </header>
+
+      {voiceEnabled ? (
+        <section className="rounded-2xl border bg-card p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Voice collaborator
+              </div>
+              <div className="mt-1 text-sm font-medium" aria-live="polite">
+                {voiceStatus(voice.phase)}
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Realtime transcription feeds the same CoPilot turn runtime. The
+                mic pauses while the persisted reply is spoken, then resumes.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={busy && !voice.active}
+                onClick={() =>
+                  voice.active ? voice.stop() : void voice.start()
+                }
+                className="inline-flex items-center gap-2 rounded-xl border bg-background px-4 py-2 text-sm font-medium disabled:opacity-50"
+              >
+                {voice.active ? (
+                  <Square className="h-4 w-4" aria-hidden />
+                ) : (
+                  <Mic className="h-4 w-4" aria-hidden />
+                )}
+                {voice.active ? "Stop voice" : "Start voice"}
+              </button>
+              {voice.phase === "speaking" ? (
+                <button
+                  type="button"
+                  onClick={voice.interrupt}
+                  className="inline-flex items-center gap-2 rounded-xl border bg-background px-4 py-2 text-sm font-medium"
+                >
+                  <VolumeX className="h-4 w-4" aria-hidden />
+                  Interrupt reply
+                </button>
+              ) : null}
+            </div>
+          </div>
+          {voice.heardTranscript ? (
+            <div className="mt-3 rounded-xl bg-muted px-3 py-2 text-sm">
+              Heard: “{voice.heardTranscript}”
+            </div>
+          ) : null}
+          {voice.error ? (
+            <div className="mt-3 text-sm text-destructive" role="alert">
+              {voice.error}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
 
       {!documentationEnabled ? (
         <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
