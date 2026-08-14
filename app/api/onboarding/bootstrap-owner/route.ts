@@ -77,16 +77,93 @@ async function reconcileAcquiredBilling(args: {
   }
 }
 
+async function finalizeOwnerOnboarding(args: {
+  userId: string;
+  shopId: string;
+}): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const admin = createAdminSupabase();
+
+  // Re-read the shop after canonical Stripe reconciliation. Completion is a
+  // separate durable transition and is allowed only after the shop has the
+  // canonical billing identity/status/pricing/plan written by that reconciler.
+  const { data: shop, error: shopError } = await admin
+    .from("shops")
+    .select(
+      "id,owner_id,stripe_subscription_id,stripe_subscription_status,stripe_pricing_model,plan",
+    )
+    .eq("id", args.shopId)
+    .maybeSingle();
+  if (shopError || !shop) {
+    return { ok: false, reason: shopError?.message ?? "shop_not_found" };
+  }
+  if (
+    shop.owner_id !== args.userId ||
+    !shop.stripe_subscription_id ||
+    !shop.stripe_subscription_status ||
+    !shop.stripe_pricing_model ||
+    !shop.plan
+  ) {
+    return { ok: false, reason: "canonical_billing_not_ready" };
+  }
+
+  const { data: profile, error: profileError } = await admin
+    .from("profiles")
+    .update({ completed_onboarding: true })
+    .eq("id", args.userId)
+    .eq("shop_id", args.shopId)
+    .eq("role", "owner")
+    .select("id,completed_onboarding")
+    .maybeSingle();
+  if (profileError || !profile?.completed_onboarding) {
+    return {
+      ok: false,
+      reason: profileError?.message ?? "owner_completion_not_persisted",
+    };
+  }
+
+  return { ok: true };
+}
+
 function billingUnavailable(reason: string) {
   console.error("owner onboarding billing reconciliation failed", { reason });
   return NextResponse.json(
     {
       ok: false,
       error:
-        "Your shop was created, but billing access could not be finalized. Try again before continuing.",
+        "Your shop is saved, but billing access is not ready yet. Try again before continuing.",
     },
     { status: 503 },
   );
+}
+
+function completionUnavailable(reason: string) {
+  console.error("owner onboarding completion failed", { reason });
+  return NextResponse.json(
+    {
+      ok: false,
+      error:
+        "Your shop and billing are saved, but setup could not be finalized. Try again.",
+    },
+    { status: 503 },
+  );
+}
+
+function successfulBootstrapResponse(args: {
+  userId: string;
+  shopId: string;
+  replayed?: boolean;
+}) {
+  const response = NextResponse.json({
+    ok: true,
+    shopId: args.shopId,
+    destination: "/dashboard/onboarding-v2",
+    ...(args.replayed ? { replayed: true } : {}),
+  });
+  return setOwnerPinVerifiedCookie(response, {
+    userId: args.userId,
+    shopId: args.shopId,
+    purpose: OWNER_PIN_PURPOSES.PRIVILEGED,
+  });
 }
 
 export async function POST(request: Request) {
@@ -113,6 +190,94 @@ export async function POST(request: Request) {
       );
     }
 
+    const pin = normalizeOwnerPin(clean(body.pin));
+    if (!isValidOwnerPin(pin)) {
+      return NextResponse.json(
+        { ok: false, error: "Owner PIN must be 4 to 8 digits." },
+        { status: 400 },
+      );
+    }
+
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select(
+        "shop_id, role, completed_onboarding, stripe_checkout_complete, stripe_customer_id, stripe_subscription_id",
+      )
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (profileError || !profile) {
+      return NextResponse.json(
+        { ok: false, error: "Your owner profile is not ready. Sign out and sign in again." },
+        { status: 409 },
+      );
+    }
+
+    // Completed-owner retries repair canonical billing if necessary and refresh
+    // the privileged PIN session just like the first successful bootstrap.
+    if (
+      profile.shop_id &&
+      profile.role === "owner" &&
+      profile.completed_onboarding
+    ) {
+      const billing = await reconcileAcquiredBilling({
+        userId: user.id,
+        shopId: profile.shop_id,
+      });
+      if (!billing.ok) return billingUnavailable(billing.reason);
+      return successfulBootstrapResponse({
+        userId: user.id,
+        shopId: profile.shop_id,
+        replayed: true,
+      });
+    }
+
+    // A Stripe/finalization failure after the shop transaction leaves an
+    // explicit pending owner state: owner + shop + completed_onboarding=false.
+    // Retry billing/finalization directly instead of trying to create or recover
+    // the shop again.
+    if (
+      profile.shop_id &&
+      profile.role === "owner" &&
+      !profile.completed_onboarding
+    ) {
+      const billing = await reconcileAcquiredBilling({
+        userId: user.id,
+        shopId: profile.shop_id,
+      });
+      if (!billing.ok) return billingUnavailable(billing.reason);
+
+      const finalized = await finalizeOwnerOnboarding({
+        userId: user.id,
+        shopId: profile.shop_id,
+      });
+      if (!finalized.ok) return completionUnavailable(finalized.reason);
+
+      return successfulBootstrapResponse({
+        userId: user.id,
+        shopId: profile.shop_id,
+        replayed: true,
+      });
+    }
+
+    if (profile.shop_id || profile.role || profile.completed_onboarding) {
+      return NextResponse.json(
+        { ok: false, error: "This account is not eligible to create a new shop." },
+        { status: 403 },
+      );
+    }
+
+    if (
+      !profile.stripe_checkout_complete ||
+      !profile.stripe_customer_id ||
+      !profile.stripe_subscription_id
+    ) {
+      return NextResponse.json(
+        { ok: false, error: "Complete trial setup before creating your shop." },
+        { status: 403 },
+      );
+    }
+
     const businessName = clean(body.businessName);
     const shopName = clean(body.shopName) || businessName;
     const street = clean(body.street);
@@ -121,7 +286,6 @@ export async function POST(request: Request) {
     const postalCode = clean(body.postalCode);
     const country = clean(body.country).toUpperCase();
     const timezone = clean(body.timezone);
-    const pin = normalizeOwnerPin(clean(body.pin));
 
     if (
       invalidLength(businessName, 120) ||
@@ -147,65 +311,6 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { ok: false, error: "Choose a supported timezone for this country." },
         { status: 400 },
-      );
-    }
-
-    if (!isValidOwnerPin(pin)) {
-      return NextResponse.json(
-        { ok: false, error: "Owner PIN must be 4 to 8 digits." },
-        { status: 400 },
-      );
-    }
-
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select(
-        "shop_id, role, completed_onboarding, stripe_checkout_complete, stripe_customer_id, stripe_subscription_id",
-      )
-      .eq("id", user.id)
-      .maybeSingle();
-
-    if (profileError || !profile) {
-      return NextResponse.json(
-        { ok: false, error: "Your owner profile is not ready. Sign out and sign in again." },
-        { status: 409 },
-      );
-    }
-
-    if (
-      profile.shop_id &&
-      profile.role === "owner" &&
-      profile.completed_onboarding
-    ) {
-      const billing = await reconcileAcquiredBilling({
-        userId: user.id,
-        shopId: profile.shop_id,
-      });
-      if (!billing.ok) return billingUnavailable(billing.reason);
-
-      return NextResponse.json({
-        ok: true,
-        shopId: profile.shop_id,
-        destination: "/dashboard/onboarding-v2",
-        replayed: true,
-      });
-    }
-
-    if (profile.shop_id || profile.role || profile.completed_onboarding) {
-      return NextResponse.json(
-        { ok: false, error: "This account is not eligible to create a new shop." },
-        { status: 403 },
-      );
-    }
-
-    if (
-      !profile.stripe_checkout_complete ||
-      !profile.stripe_customer_id ||
-      !profile.stripe_subscription_id
-    ) {
-      return NextResponse.json(
-        { ok: false, error: "Complete trial setup before creating your shop." },
-        { status: 403 },
       );
     }
 
@@ -237,23 +342,20 @@ export async function POST(request: Request) {
       );
     }
 
-    // Checkout/account claiming can occur before the first shop exists. Now
-    // that the canonical shop has been created, immediately hydrate its package,
-    // pricing model, subscription status, plan and Stripe identity. Do not let a
-    // Complete/Field/Fleet purchaser enter the app with legacy/null access.
+    // The DB transaction intentionally leaves completed_onboarding=false. First
+    // hydrate canonical billing, then finalize the owner profile as a separate
+    // durable step. Any failure remains recoverable through the pending-owner
+    // branch above and middleware keeps that owner inside onboarding.
     const billing = await reconcileAcquiredBilling({ userId: user.id, shopId });
     if (!billing.ok) return billingUnavailable(billing.reason);
 
-    const response = NextResponse.json({
-      ok: true,
-      shopId,
-      destination: "/dashboard/onboarding-v2",
-    });
-    return setOwnerPinVerifiedCookie(response, {
+    const finalized = await finalizeOwnerOnboarding({
       userId: user.id,
       shopId,
-      purpose: OWNER_PIN_PURPOSES.PRIVILEGED,
     });
+    if (!finalized.ok) return completionUnavailable(finalized.reason);
+
+    return successfulBootstrapResponse({ userId: user.id, shopId });
   } catch (error) {
     console.error("owner onboarding bootstrap unexpected failure", {
       name: error instanceof Error ? error.name : "UnknownError",
