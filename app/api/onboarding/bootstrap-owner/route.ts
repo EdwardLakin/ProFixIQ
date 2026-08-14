@@ -25,6 +25,9 @@ import { createStripeClient } from "@/features/stripe/lib/stripe/client";
 import { reconcileShopBillingFromUser } from "@/features/stripe/lib/server/canonical-shop-billing";
 
 const COUNTRIES = new Set<ShopCountryCode>(["US", "CA"]);
+const OWNER_BOOTSTRAP_CONTRACT_PROBE_SHOP_ID =
+  "00000000-0000-4000-8000-000000000002";
+const OWNER_BOOTSTRAP_PENDING_MARKER = "profixiq-owner-bootstrap-pending-v2:";
 
 type Body = {
   businessName?: unknown;
@@ -219,6 +222,17 @@ function pendingStateUnavailable(reason: string) {
       ok: false,
       error:
         "Your shop is saved, but setup could not be secured for billing. Try again.",
+    },
+    { status: 503 },
+  );
+}
+
+function bootstrapUpgradeUnavailable() {
+  return NextResponse.json(
+    {
+      ok: false,
+      error:
+        "Shop setup is being upgraded. Try again in a moment before continuing.",
     },
     { status: 503 },
   );
@@ -426,10 +440,34 @@ export async function POST(request: Request) {
       );
     }
 
-    // App-first deployments can briefly run against the previous RPC body,
-    // which recovered the newest historical owner shop. Fail closed before the
-    // RPC if the caller has more than one owned shop so no old database version
-    // can make that ambiguous selection.
+    // App-first deployment must never call the previous bootstrap body. The
+    // hardened same-signature function recognizes this harmless sentinel; the
+    // previous function rejects its country before any mutation. A failed probe
+    // therefore means "wait for the DB expand step" and fails closed.
+    const { data: probeRows, error: probeError } = await supabase.rpc(
+      "bootstrap_owner_atomic",
+      {
+        p_business_name: "__profixiq_owner_bootstrap_v2_probe__",
+        p_shop_name: "__probe__",
+        p_street: "__probe__",
+        p_city: "__probe__",
+        p_province: "__probe__",
+        p_postal_code: "__probe__",
+        p_country: "__PROBE__",
+        p_timezone: "Etc/UTC",
+        p_owner_pin_hash: "__probe__",
+      },
+    );
+    if (
+      probeError ||
+      readBootstrapShopId(probeRows) !== OWNER_BOOTSTRAP_CONTRACT_PROBE_SHOP_ID
+    ) {
+      return bootstrapUpgradeUnavailable();
+    }
+
+    // Even after the readiness probe, explicitly reject ambiguous historical
+    // recovery in the application so a rollback to the previous DB body cannot
+    // ever select "newest shop wins" for this request.
     const recovery = await inspectOwnedShopRecovery(user.id);
     if (!recovery.ok) {
       if (recovery.reason === "ambiguous_owner_shop_recovery") {
@@ -450,7 +488,7 @@ export async function POST(request: Request) {
         p_postal_code: postalCode,
         p_country: country,
         p_timezone: timezone,
-        p_owner_pin_hash: ownerPinHash,
+        p_owner_pin_hash: `${OWNER_BOOTSTRAP_PENDING_MARKER}${ownerPinHash}`,
       },
     );
     const shopId = readBootstrapShopId(rows);
@@ -466,10 +504,9 @@ export async function POST(request: Request) {
       );
     }
 
-    // A concurrent request or an app-first deployment can receive a shop from
-    // the legacy-compatible RPC after it has set completed_onboarding=true.
-    // Never mutate billing/state for this request until the submitted PIN proves
-    // it owns the persisted shop chosen by the atomic transition.
+    // The hardened DB stores only the real PIN hash and leaves the owner pending
+    // atomically. A concurrent retry still has to prove its submitted PIN before
+    // this request may touch billing or privileged state.
     const persistedPinVerified = await verifyExistingOwnerPin({
       userId: user.id,
       shopId,
@@ -477,6 +514,8 @@ export async function POST(request: Request) {
     });
     if (!persistedPinVerified) return invalidExistingOwnerPin();
 
+    // Reassert the pending state through the server boundary. This is idempotent
+    // with the hardened RPC and fails closed if profile ownership drifted.
     const pending = await markOwnerBootstrapPending({ userId: user.id, shopId });
     if (!pending.ok) return pendingStateUnavailable(pending.reason);
 
