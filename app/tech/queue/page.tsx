@@ -287,8 +287,7 @@ export default function TechQueuePage() {
         const { data: wos } = await supabase
           .from("work_orders")
           .select("id, custom_id, type")
-          .in("id", woIds)
-          .neq("type", "historical_import");
+          .in("id", woIds);
 
         const map: Record<string, { id: string; custom_id: string | null }> =
           {};
