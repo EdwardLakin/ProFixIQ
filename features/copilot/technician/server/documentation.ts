@@ -70,9 +70,10 @@ function optionalText(
   if (value) target[field] = value;
 }
 
-function confidence(value: unknown): number {
-  if (typeof value !== "number" || !Number.isFinite(value)) return 0.75;
-  return Math.max(0, Math.min(1, value));
+function confidence(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  if (value < 0 || value > 1) return null;
+  return value;
 }
 
 function normalizeDetails(
@@ -175,7 +176,7 @@ export function validateTechnicianDocumentationExtraction(
     }
 
     const eventConfidence = confidence(event?.confidence);
-    if (eventConfidence < 0.6) continue;
+    if (eventConfidence === null || eventConfidence < 0.6) continue;
     const details = normalizeDetails(
       rawType as SilentDocumentationEventType,
       object(event?.details) ?? {},
