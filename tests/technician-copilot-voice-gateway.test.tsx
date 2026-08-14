@@ -2,7 +2,10 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const realtime = vi.hoisted(() => ({
+  connected: false,
   start: vi.fn(async () => undefined),
+  pause: vi.fn(() => false),
+  resume: vi.fn(() => false),
   stop: vi.fn(),
   onFinal: null as null | ((text: string) => void),
   onStateChange: null as null | ((state: "idle" | "connecting" | "listening" | "error") => void),
@@ -20,7 +23,12 @@ vi.mock("@/features/shared/voice/useRealtimeTranscription", () => ({
   ) => {
     realtime.onFinal = onFinal;
     realtime.onStateChange = options?.onStateChange ?? null;
-    return { start: realtime.start, stop: realtime.stop };
+    return {
+      start: realtime.start,
+      pause: realtime.pause,
+      resume: realtime.resume,
+      stop: realtime.stop,
+    };
   },
 }));
 
@@ -54,13 +62,22 @@ function deferred<T>() {
 describe("Technician CoPilot voice interaction gateway", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    realtime.connected = false;
     realtime.onFinal = null;
     realtime.onStateChange = null;
     realtime.start.mockImplementation(async () => {
+      realtime.connected = true;
       realtime.onStateChange?.("listening");
       return undefined;
     });
+    realtime.pause.mockImplementation(() => realtime.connected);
+    realtime.resume.mockImplementation(() => {
+      if (!realtime.connected) return false;
+      realtime.onStateChange?.("listening");
+      return true;
+    });
     realtime.stop.mockImplementation(() => {
+      realtime.connected = false;
       realtime.onStateChange?.("idle");
     });
 
@@ -79,7 +96,7 @@ describe("Technician CoPilot voice interaction gateway", () => {
     Reflect.deleteProperty(window, "speechSynthesis");
   });
 
-  it("pauses transcription for a CoPilot turn, speaks the persisted reply, then resumes", async () => {
+  it("pauses the live Realtime session for a CoPilot turn, speaks the persisted reply, then resumes it", async () => {
     const onUtterance = vi.fn(async (text: string) => ({
       reply: `Reply to ${text}`,
     }));
@@ -101,7 +118,8 @@ describe("Technician CoPilot voice interaction gateway", () => {
       expect(onUtterance).toHaveBeenCalledWith("Rear U-joint has play.");
       expect(result.current.phase).toBe("speaking");
     });
-    expect(realtime.stop).toHaveBeenCalledTimes(1);
+    expect(realtime.pause).toHaveBeenCalledTimes(1);
+    expect(realtime.stop).not.toHaveBeenCalled();
     expect(speech.speak).toHaveBeenCalledTimes(1);
 
     const utterance = speech.speak.mock.calls[0]?.[0] as unknown as
@@ -114,12 +132,13 @@ describe("Technician CoPilot voice interaction gateway", () => {
     });
 
     await waitFor(() => {
-      expect(realtime.start).toHaveBeenCalledTimes(2);
+      expect(realtime.resume).toHaveBeenCalledTimes(1);
+      expect(realtime.start).toHaveBeenCalledTimes(1);
       expect(result.current.phase).toBe("listening");
     });
   });
 
-  it("lets the technician interrupt a spoken reply without feeding that audio back into the CoPilot", async () => {
+  it("lets the technician interrupt a spoken reply and resume the same Realtime session", async () => {
     const onUtterance = vi.fn(async () => ({ reply: "Long spoken response" }));
     const { result } = renderHook(() =>
       useTechnicianInteractionGateway({ enabled: true, onUtterance }),
@@ -139,7 +158,8 @@ describe("Technician CoPilot voice interaction gateway", () => {
 
     expect(speech.cancel).toHaveBeenCalled();
     await waitFor(() => {
-      expect(realtime.start).toHaveBeenCalledTimes(2);
+      expect(realtime.resume).toHaveBeenCalledTimes(1);
+      expect(realtime.start).toHaveBeenCalledTimes(1);
       expect(result.current.phase).toBe("listening");
     });
   });
@@ -166,6 +186,7 @@ describe("Technician CoPilot voice interaction gateway", () => {
       await result.current.start();
     });
     expect(result.current.phase).toBe("listening");
+    expect(realtime.start).toHaveBeenCalledTimes(2);
 
     await act(async () => {
       firstTurn.resolve({ reply: "This reply is stale" });
