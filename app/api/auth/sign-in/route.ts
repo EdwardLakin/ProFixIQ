@@ -193,7 +193,14 @@ export async function POST(req: Request) {
     .eq("id", signedInUser.id)
     .maybeSingle();
 
-  if (!profile?.shop_id) return deny();
+  if (!profile) return deny();
+
+  if (!profile.shop_id) {
+    if (surface === "shop" && !profile.role) {
+      return NextResponse.json({ ok: true, destination: "/onboarding" });
+    }
+    return deny();
+  }
 
   if (surface === "mobile") {
     const capabilities = getActorCapabilities({ role: profile.role });
