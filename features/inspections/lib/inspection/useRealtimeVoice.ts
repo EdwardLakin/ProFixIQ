@@ -504,6 +504,16 @@ export function useRealtimeVoice(
     const socket = session?.ws ?? null;
     if (stoppedRef.current || !session || !socket) return false;
 
+    if (
+      socket.readyState !== WebSocket.OPEN &&
+      socket.readyState !== WebSocket.CONNECTING
+    ) {
+      const wasCurrent = detachCurrentSession(session);
+      cleanupSession(session);
+      if (wasCurrent) setState("idle");
+      return false;
+    }
+
     session.paused = false;
     try {
       session.mediaStream?.getTracks().forEach((track) => {
@@ -513,7 +523,7 @@ export function useRealtimeVoice(
 
     if (socket.readyState === WebSocket.OPEN) {
       setState("listening");
-    } else if (socket.readyState === WebSocket.CONNECTING) {
+    } else {
       setState("connecting");
     }
     return true;
