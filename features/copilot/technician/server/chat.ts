@@ -12,6 +12,7 @@ import {
 import { projectTechnicianContext } from "../session/projectTechnicianContext";
 import {
   listTechnicianWorkCandidates,
+  loadTechnicianWorkCandidateForWorkOrder,
   type TechnicianWorkCandidate,
   type TechnicianWorkScope,
 } from "./assignedWork";
@@ -19,6 +20,15 @@ import { extractTechnicianDocumentationTurn } from "./documentation";
 import { decideTechnicianCopilotTurn } from "./model";
 import { deriveCopilotOperationId } from "./operationId";
 import { sendCopilotServerCommand } from "./transport";
+
+export class TechnicianCopilotConflictError extends Error {
+  readonly status = 409;
+
+  constructor(public readonly code: string, message: string) {
+    super(message);
+    this.name = "TechnicianCopilotConflictError";
+  }
+}
 
 export type CopilotIdentity = {
   authUserId: string;
@@ -80,12 +90,84 @@ function candidateFor(
     : null;
 }
 
+async function candidateForSession(
+  identity: CopilotIdentity,
+  session: Session,
+  discovered: TechnicianWorkCandidate[],
+): Promise<TechnicianWorkCandidate | null> {
+  const discoveredCandidate = candidateFor(discovered, session.workOrderId);
+  if (discoveredCandidate) return discoveredCandidate;
+
+  return loadTechnicianWorkCandidateForWorkOrder({
+    supabase: identity.supabase,
+    shopId: identity.shopId,
+    technicianIds: [identity.authUserId, identity.profileId],
+    workOrderId: session.workOrderId,
+  });
+}
+
 function complaintFor(candidate: TechnicianWorkCandidate | null): string | null {
   if (!candidate) return null;
   const values = [candidate.concern, ...candidate.lineComplaints]
     .map((value) => value?.trim())
     .filter(Boolean) as string[];
   return values.length ? [...new Set(values)].join(" | ") : null;
+}
+
+function storedTurnSource(event: RepairSessionEvent): TechnicianTurnSource {
+  return event.payload?.inputMode === "voice" ? "voice" : "ui";
+}
+
+function storedTurnText(event: RepairSessionEvent): string {
+  return typeof event.payload?.text === "string" ? event.payload.text.trim() : "";
+}
+
+function assertActiveSession(session: Session | null): asserts session is Session {
+  if (!session || session.status !== "active") {
+    throw new TechnicianCopilotConflictError(
+      "technician_copilot_session_stale",
+      "This CoPilot tab is no longer the active repair session. Reload before continuing.",
+    );
+  }
+}
+
+function bindTurnToPersistedInput(input: {
+  envelope: Envelope;
+  turnId: string;
+  requestedMessage: string;
+  requestedSource: TechnicianTurnSource;
+}): { message: string; source: TechnicianTurnSource; alreadyStored: boolean } {
+  const stored = input.envelope.events.find(
+    (event) =>
+      event.eventType === "conversation.user" &&
+      event.payload?.turnId === input.turnId,
+  );
+  if (!stored) {
+    return {
+      message: input.requestedMessage,
+      source: input.requestedSource,
+      alreadyStored: false,
+    };
+  }
+
+  const persistedMessage = storedTurnText(stored);
+  const persistedSource = storedTurnSource(stored);
+  if (
+    !persistedMessage ||
+    persistedMessage !== input.requestedMessage ||
+    persistedSource !== input.requestedSource
+  ) {
+    throw new TechnicianCopilotConflictError(
+      "technician_copilot_turn_conflict",
+      "This CoPilot turn ID is already bound to different input.",
+    );
+  }
+
+  return {
+    message: persistedMessage,
+    source: persistedSource,
+    alreadyStored: true,
+  };
 }
 
 async function append(
@@ -180,6 +262,7 @@ export async function runTechnicianCopilotTurn(input: {
   sessionId?: string | null;
   inputSource?: TechnicianTurnSource;
 }) {
+  const requestedMessage = input.message.trim();
   const inputSource: TechnicianTurnSource =
     input.inputSource === "voice" ? "voice" : "ui";
   if (inputSource === "voice" && !input.identity.voiceEnabled) {
@@ -190,12 +273,20 @@ export async function runTechnicianCopilotTurn(input: {
     documentation: input.identity.documentationEnabled,
     voice: input.identity.voiceEnabled,
   };
+
   const candidates = await listTechnicianWorkCandidates({
     supabase: input.identity.supabase,
     shopId: input.identity.shopId,
     technicianIds: [input.identity.authUserId, input.identity.profileId],
   });
   let envelope = await read(input.identity, input.sessionId);
+  if (input.sessionId && !envelope.session) {
+    throw new TechnicianCopilotConflictError(
+      "technician_copilot_session_stale",
+      "This CoPilot tab no longer owns an active repair session. Reload before continuing.",
+    );
+  }
+
   let context = envelope.session
     ? projectTechnicianContext({
         repairSessionId: envelope.session.id,
@@ -204,12 +295,30 @@ export async function runTechnicianCopilotTurn(input: {
         events: envelope.events,
       })
     : null;
+  if (envelope.session) assertActiveSession(envelope.session);
 
-  const existingAssistant = context?.conversation.find(
+  let activeWorkOrder = envelope.session
+    ? await candidateForSession(input.identity, envelope.session, candidates)
+    : null;
+  if (envelope.session && !activeWorkOrder) {
+    throw new TechnicianCopilotConflictError(
+      "technician_copilot_work_not_actionable",
+      "The active CoPilot work order is no longer assigned and actionable.",
+    );
+  }
+
+  let boundTurn = bindTurnToPersistedInput({
+    envelope,
+    turnId: input.turnId,
+    requestedMessage,
+    requestedSource: inputSource,
+  });
+  let existingAssistant = context?.conversation.find(
     (turn) => turn.turnId === input.turnId && turn.role === "assistant",
   );
-  const documentationAlreadyFinalized =
+  let documentationAlreadyFinalized =
     envelope.documentationTurns?.includes(input.turnId) ?? false;
+
   if (
     existingAssistant &&
     envelope.session &&
@@ -219,7 +328,7 @@ export async function runTechnicianCopilotTurn(input: {
       sessionId: envelope.session.id,
       reply: existingAssistant.text,
       context,
-      workOrder: candidateFor(candidates, envelope.session.workOrderId),
+      workOrder: activeWorkOrder,
       capabilities,
       replayed: true,
     };
@@ -227,7 +336,7 @@ export async function runTechnicianCopilotTurn(input: {
 
   if (!envelope.session) {
     const decision = await decideTechnicianCopilotTurn({
-      message: input.message,
+      message: requestedMessage,
       activeSession: null,
       assignedWork: candidates,
     });
@@ -267,19 +376,31 @@ export async function runTechnicianCopilotTurn(input: {
       },
     );
     envelope = await read(input.identity, started.sessionId);
+    assertActiveSession(envelope.session);
+    activeWorkOrder = selected;
+    context = projectTechnicianContext({
+      repairSessionId: envelope.session.id,
+      mode: envelope.session.mode,
+      status: envelope.session.status,
+      events: envelope.events,
+    });
+    boundTurn = bindTurnToPersistedInput({
+      envelope,
+      turnId: input.turnId,
+      requestedMessage,
+      requestedSource: inputSource,
+    });
+    existingAssistant = context.conversation.find(
+      (turn) => turn.turnId === input.turnId && turn.role === "assistant",
+    );
+    documentationAlreadyFinalized =
+      envelope.documentationTurns?.includes(input.turnId) ?? false;
   }
 
   const session = envelope.session;
-  if (!session) {
-    throw new Error("Technician CoPilot could not establish a repair session.");
-  }
+  assertActiveSession(session);
 
-  const userAlreadyStored = envelope.events.some(
-    (event) =>
-      event.eventType === "conversation.user" &&
-      event.payload?.turnId === input.turnId,
-  );
-  if (!userAlreadyStored) {
+  if (!boundTurn.alreadyStored) {
     await append(input.identity, {
       sessionId: session.id,
       eventType: "conversation.user",
@@ -287,14 +408,13 @@ export async function runTechnicianCopilotTurn(input: {
       suffix: "user",
       origin: inputSource,
       details: {
-        text: input.message,
+        text: boundTurn.message,
         turnId: input.turnId,
         inputMode: inputSource,
       },
     });
   }
 
-  const activeWorkOrder = candidateFor(candidates, session.workOrderId);
   const existingComplaint = complaintFor(activeWorkOrder);
   if (
     existingComplaint &&
@@ -313,17 +433,24 @@ export async function runTechnicianCopilotTurn(input: {
   }
 
   envelope = await read(input.identity, session.id);
+  assertActiveSession(envelope.session);
   context = projectTechnicianContext({
     repairSessionId: session.id,
     mode: session.mode,
     status: session.status,
     events: envelope.events,
   });
+  if (!context) {
+    throw new TechnicianCopilotConflictError(
+      "technician_copilot_session_stale",
+      "The active CoPilot context could not be restored. Reload before continuing.",
+    );
+  }
 
   const replyPromise = existingAssistant
     ? Promise.resolve(existingAssistant.text)
     : decideTechnicianCopilotTurn({
-        message: input.message,
+        message: boundTurn.message,
         activeSession: {
           id: session.id,
           workOrderId: session.workOrderId,
@@ -335,7 +462,7 @@ export async function runTechnicianCopilotTurn(input: {
     replyPromise,
     extractDocumentation({
       enabled: input.identity.documentationEnabled,
-      message: input.message,
+      message: boundTurn.message,
       turnId: input.turnId,
       context,
       workOrder: activeWorkOrder,
@@ -346,7 +473,11 @@ export async function runTechnicianCopilotTurn(input: {
     envelope.events,
     documentationExtraction.events,
   );
-  if (documentationExtraction.completed) {
+  if (
+    input.identity.documentationEnabled &&
+    !documentationAlreadyFinalized &&
+    documentationExtraction.completed
+  ) {
     try {
       await appendDocumentationTurn(input.identity, {
         sessionId: session.id,
@@ -364,16 +495,19 @@ export async function runTechnicianCopilotTurn(input: {
     }
   }
 
-  await append(input.identity, {
-    sessionId: session.id,
-    eventType: "conversation.assistant",
-    turnId: input.turnId,
-    suffix: "assistant",
-    origin: "copilot",
-    details: { text: reply, turnId: input.turnId },
-  });
+  if (!existingAssistant) {
+    await append(input.identity, {
+      sessionId: session.id,
+      eventType: "conversation.assistant",
+      turnId: input.turnId,
+      suffix: "assistant",
+      origin: "copilot",
+      details: { text: reply, turnId: input.turnId },
+    });
+  }
 
   const finalEnvelope = await read(input.identity, session.id);
+  assertActiveSession(finalEnvelope.session);
   const finalContext = projectTechnicianContext({
     repairSessionId: session.id,
     mode: session.mode,
