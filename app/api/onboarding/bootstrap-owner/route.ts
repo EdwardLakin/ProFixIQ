@@ -25,7 +25,6 @@ import { createStripeClient } from "@/features/stripe/lib/stripe/client";
 import { reconcileShopBillingFromUser } from "@/features/stripe/lib/server/canonical-shop-billing";
 
 const COUNTRIES = new Set<ShopCountryCode>(["US", "CA"]);
-const PENDING_BOOTSTRAP_RPC = "bootstrap_owner_pending_v2" as const;
 
 type Body = {
   businessName?: unknown;
@@ -37,33 +36,6 @@ type Body = {
   country?: unknown;
   timezone?: unknown;
   pin?: unknown;
-};
-
-type BootstrapRpcArgs = {
-  p_business_name: string;
-  p_shop_name: string;
-  p_street: string;
-  p_city: string;
-  p_province: string;
-  p_postal_code: string;
-  p_country: string;
-  p_timezone: string;
-  p_owner_pin_hash: string;
-};
-
-type BootstrapRpcRow = {
-  shop_id: string;
-  created_shop: boolean;
-};
-
-type BootstrapRpcError = {
-  code?: string | null;
-  message?: string | null;
-};
-
-type BootstrapRpcResult = {
-  data: BootstrapRpcRow[] | null;
-  error: BootstrapRpcError | null;
 };
 
 function clean(value: unknown): string {
@@ -103,6 +75,47 @@ async function verifyExistingOwnerPin(args: {
   }
 
   return verifyOwnerPin(args.pin, shop.owner_pin_hash);
+}
+
+async function inspectOwnedShopRecovery(userId: string): Promise<
+  | { ok: true }
+  | { ok: false; reason: "lookup_failed" | "ambiguous_owner_shop_recovery" }
+> {
+  const admin = createAdminSupabase();
+  const { data, error } = await admin
+    .from("shops")
+    .select("id")
+    .eq("owner_id", userId)
+    .limit(2);
+
+  if (error) return { ok: false, reason: "lookup_failed" };
+  if ((data?.length ?? 0) > 1) {
+    return { ok: false, reason: "ambiguous_owner_shop_recovery" };
+  }
+  return { ok: true };
+}
+
+async function markOwnerBootstrapPending(args: {
+  userId: string;
+  shopId: string;
+}): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const admin = createAdminSupabase();
+  const { data: profile, error } = await admin
+    .from("profiles")
+    .update({ completed_onboarding: false })
+    .eq("id", args.userId)
+    .eq("shop_id", args.shopId)
+    .eq("role", "owner")
+    .select("id,completed_onboarding")
+    .maybeSingle();
+
+  if (error || !profile || profile.completed_onboarding !== false) {
+    return {
+      ok: false,
+      reason: error?.message ?? "owner_pending_state_not_persisted",
+    };
+  }
+  return { ok: true };
 }
 
 async function reconcileAcquiredBilling(args: {
@@ -199,6 +212,18 @@ function completionUnavailable(reason: string) {
   );
 }
 
+function pendingStateUnavailable(reason: string) {
+  console.error("owner onboarding pending transition failed", { reason });
+  return NextResponse.json(
+    {
+      ok: false,
+      error:
+        "Your shop is saved, but setup could not be secured for billing. Try again.",
+    },
+    { status: 503 },
+  );
+}
+
 function invalidExistingOwnerPin() {
   return NextResponse.json(
     { ok: false, error: "Owner PIN is incorrect." },
@@ -206,23 +231,15 @@ function invalidExistingOwnerPin() {
   );
 }
 
-function bootstrapUpgradeUnavailable() {
+function ambiguousOwnerRecovery() {
   return NextResponse.json(
     {
       ok: false,
       error:
-        "Shop setup is being upgraded. Try again in a moment before continuing.",
+        "More than one historical shop is linked to this owner. Resolve the shop identity before continuing setup.",
     },
-    { status: 503 },
+    { status: 409 },
   );
-}
-
-function isPendingBootstrapRpcUnavailable(
-  error: BootstrapRpcError | null,
-): boolean {
-  if (!error) return false;
-  if (error.code === "PGRST202") return true;
-  return String(error.message ?? "").includes(PENDING_BOOTSTRAP_RPC);
 }
 
 function successfulBootstrapResponse(args: {
@@ -310,6 +327,13 @@ export async function POST(request: Request) {
         shopId: profile.shop_id,
       });
       if (!billing.ok) return billingUnavailable(billing.reason);
+
+      const finalized = await finalizeOwnerOnboarding({
+        userId: user.id,
+        shopId: profile.shop_id,
+      });
+      if (!finalized.ok) return completionUnavailable(finalized.reason);
+
       return successfulBootstrapResponse({
         userId: user.id,
         shopId: profile.shop_id,
@@ -402,35 +426,36 @@ export async function POST(request: Request) {
       );
     }
 
-    const ownerPinHash = await hashOwnerPin(pin);
-    const rpcPayload: BootstrapRpcArgs = {
-      p_business_name: businessName,
-      p_shop_name: shopName,
-      p_street: street,
-      p_city: city,
-      p_province: province,
-      p_postal_code: postalCode,
-      p_country: country,
-      p_timezone: timezone,
-      p_owner_pin_hash: ownerPinHash,
-    };
-    // The expand migration intentionally introduces this RPC before generated
-    // Supabase types know about it. Keep the untyped seam narrow and explicit,
-    // matching the repository's compatibility pattern for forward RPCs.
-    const { data: rows, error: bootstrapError } = await (
-      supabase as never as {
-        rpc: (
-          fn: typeof PENDING_BOOTSTRAP_RPC,
-          args: BootstrapRpcArgs,
-        ) => Promise<BootstrapRpcResult>;
+    // App-first deployments can briefly run against the previous RPC body,
+    // which recovered the newest historical owner shop. Fail closed before the
+    // RPC if the caller has more than one owned shop so no old database version
+    // can make that ambiguous selection.
+    const recovery = await inspectOwnedShopRecovery(user.id);
+    if (!recovery.ok) {
+      if (recovery.reason === "ambiguous_owner_shop_recovery") {
+        return ambiguousOwnerRecovery();
       }
-    ).rpc(PENDING_BOOTSTRAP_RPC, rpcPayload);
+      return pendingStateUnavailable(recovery.reason);
+    }
+
+    const ownerPinHash = await hashOwnerPin(pin);
+    const { data: rows, error: bootstrapError } = await supabase.rpc(
+      "bootstrap_owner_atomic",
+      {
+        p_business_name: businessName,
+        p_shop_name: shopName,
+        p_street: street,
+        p_city: city,
+        p_province: province,
+        p_postal_code: postalCode,
+        p_country: country,
+        p_timezone: timezone,
+        p_owner_pin_hash: ownerPinHash,
+      },
+    );
     const shopId = readBootstrapShopId(rows);
 
     if (bootstrapError || !shopId) {
-      if (isPendingBootstrapRpcUnavailable(bootstrapError)) {
-        return bootstrapUpgradeUnavailable();
-      }
       console.error("owner onboarding bootstrap failed", {
         userId: user.id,
         code: bootstrapError?.code ?? null,
@@ -441,12 +466,19 @@ export async function POST(request: Request) {
       );
     }
 
+    // A concurrent request or an app-first deployment can receive a shop from
+    // the legacy-compatible RPC after it has set completed_onboarding=true.
+    // Never mutate billing/state for this request until the submitted PIN proves
+    // it owns the persisted shop chosen by the atomic transition.
     const persistedPinVerified = await verifyExistingOwnerPin({
       userId: user.id,
       shopId,
       pin,
     });
     if (!persistedPinVerified) return invalidExistingOwnerPin();
+
+    const pending = await markOwnerBootstrapPending({ userId: user.id, shopId });
+    if (!pending.ok) return pendingStateUnavailable(pending.reason);
 
     const billing = await reconcileAcquiredBilling({ userId: user.id, shopId });
     if (!billing.ok) return billingUnavailable(billing.reason);
