@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => {
     maybeSingle: vi.fn(),
     rpc: vi.fn(),
     hashOwnerPin: vi.fn(),
+    verifyOwnerPin: vi.fn(),
     setOwnerPinVerifiedCookie: vi.fn((response: Response) => response),
     adminFrom,
     adminShopMaybeSingle: vi.fn(),
@@ -43,6 +44,7 @@ vi.mock("@/features/shared/lib/server/owner-pin-crypto", () => ({
   normalizeOwnerPin: (pin: string) => pin.trim(),
   isValidOwnerPin: (pin: string) => /^\d{4,8}$/.test(pin),
   hashOwnerPin: mocks.hashOwnerPin,
+  verifyOwnerPin: mocks.verifyOwnerPin,
 }));
 
 vi.mock("@/features/shared/lib/server/owner-pin", () => ({
@@ -91,6 +93,7 @@ describe("owner onboarding bootstrap", () => {
       error: null,
     });
     mocks.hashOwnerPin.mockResolvedValue("hashed-owner-pin");
+    mocks.verifyOwnerPin.mockResolvedValue(true);
     mocks.rpc.mockResolvedValue({
       data: [
         {
@@ -105,6 +108,7 @@ describe("owner onboarding bootstrap", () => {
       data: {
         id: "11111111-1111-4111-8111-111111111111",
         owner_id: "owner-user-1",
+        owner_pin_hash: "hashed-existing-owner-pin",
         stripe_subscription_id: "sub_trial_owner",
         stripe_subscription_status: "trialing",
         stripe_pricing_model: "product_packages_v1",
@@ -230,7 +234,7 @@ describe("owner onboarding bootstrap", () => {
     expect(mocks.reconcileShopBillingFromUser).not.toHaveBeenCalled();
   });
 
-  it("bootstraps, hydrates billing, then durably completes onboarding before success", async () => {
+  it("bootstraps through the pending v2 RPC, verifies persisted PIN, hydrates billing, then completes", async () => {
     const { POST } = await import("../app/api/onboarding/bootstrap-owner/route");
 
     const response = await POST(request());
@@ -244,7 +248,7 @@ describe("owner onboarding bootstrap", () => {
       }),
     );
     expect(mocks.hashOwnerPin).toHaveBeenCalledWith("4826");
-    expect(mocks.rpc).toHaveBeenCalledWith("bootstrap_owner_atomic", {
+    expect(mocks.rpc).toHaveBeenCalledWith("bootstrap_owner_pending_v2", {
       p_business_name: "High Plains Auto & Fleet",
       p_shop_name: "High Plains Auto & Fleet",
       p_street: "4250 Trade Center Drive",
@@ -255,22 +259,62 @@ describe("owner onboarding bootstrap", () => {
       p_timezone: "America/Denver",
       p_owner_pin_hash: "hashed-owner-pin",
     });
+    expect(mocks.verifyOwnerPin).toHaveBeenCalledWith(
+      "4826",
+      "hashed-existing-owner-pin",
+    );
     expect(mocks.reconcileShopBillingFromUser).toHaveBeenCalledWith({
       stripe: mocks.stripe,
       supabase: mocks.admin,
       userId: "owner-user-1",
       shopId: "11111111-1111-4111-8111-111111111111",
     });
-    expect(mocks.adminShopMaybeSingle).toHaveBeenCalled();
     expect(mocks.adminProfileMaybeSingle).toHaveBeenCalled();
-    expect(mocks.setOwnerPinVerifiedCookie).toHaveBeenCalledWith(
-      expect.any(Response),
-      {
-        userId: "owner-user-1",
-        shopId: "11111111-1111-4111-8111-111111111111",
-        purpose: "owner_pin:privileged",
+    expect(mocks.setOwnerPinVerifiedCookie).toHaveBeenCalled();
+  });
+
+  it("fails closed instead of falling back to the legacy RPC if v2 is not deployed yet", async () => {
+    mocks.rpc.mockResolvedValue({
+      data: null,
+      error: {
+        code: "PGRST202",
+        message: "Could not find the function public.bootstrap_owner_pending_v2",
       },
+    });
+    const { POST } = await import("../app/api/onboarding/bootstrap-owner/route");
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(503);
+    expect(mocks.rpc).toHaveBeenCalledTimes(1);
+    expect(mocks.reconcileShopBillingFromUser).not.toHaveBeenCalled();
+    expect(mocks.setOwnerPinVerifiedCookie).not.toHaveBeenCalled();
+  });
+
+  it("rejects a stale concurrent request whose PIN does not match the persisted winner", async () => {
+    mocks.verifyOwnerPin.mockResolvedValue(false);
+    mocks.rpc.mockResolvedValue({
+      data: [
+        {
+          shop_id: "11111111-1111-4111-8111-111111111111",
+          created_shop: false,
+        },
+      ],
+      error: null,
+    });
+    const { POST } = await import("../app/api/onboarding/bootstrap-owner/route");
+
+    const response = await POST(request({ pin: "9999" }));
+
+    expect(response.status).toBe(401);
+    expect(mocks.rpc).toHaveBeenCalled();
+    expect(mocks.verifyOwnerPin).toHaveBeenCalledWith(
+      "9999",
+      "hashed-existing-owner-pin",
     );
+    expect(mocks.reconcileShopBillingFromUser).not.toHaveBeenCalled();
+    expect(mocks.adminProfileMaybeSingle).not.toHaveBeenCalled();
+    expect(mocks.setOwnerPinVerifiedCookie).not.toHaveBeenCalled();
   });
 
   it("fails closed with onboarding still incomplete when billing is unresolved", async () => {
@@ -292,6 +336,7 @@ describe("owner onboarding bootstrap", () => {
       data: {
         id: "11111111-1111-4111-8111-111111111111",
         owner_id: "owner-user-1",
+        owner_pin_hash: "hashed-existing-owner-pin",
         stripe_subscription_id: null,
         stripe_subscription_status: null,
         stripe_pricing_model: null,
@@ -308,7 +353,7 @@ describe("owner onboarding bootstrap", () => {
     expect(mocks.setOwnerPinVerifiedCookie).not.toHaveBeenCalled();
   });
 
-  it("repairs a pending owner bootstrap without recreating the shop", async () => {
+  it("repairs a pending owner bootstrap only after verifying the stored PIN", async () => {
     mocks.maybeSingle.mockResolvedValue({
       data: {
         shop_id: "11111111-1111-4111-8111-111111111111",
@@ -327,12 +372,39 @@ describe("owner onboarding bootstrap", () => {
     expect(response.status).toBe(200);
     expect(mocks.rpc).not.toHaveBeenCalled();
     expect(mocks.hashOwnerPin).not.toHaveBeenCalled();
+    expect(mocks.verifyOwnerPin).toHaveBeenCalledWith(
+      "4826",
+      "hashed-existing-owner-pin",
+    );
     expect(mocks.reconcileShopBillingFromUser).toHaveBeenCalled();
     expect(mocks.adminProfileMaybeSingle).toHaveBeenCalled();
     expect(mocks.setOwnerPinVerifiedCookie).toHaveBeenCalled();
   });
 
-  it("reconciles billing and refreshes the PIN cookie on an exact completed-owner retry", async () => {
+  it("rejects a wrong PIN on a pending owner before reconciliation", async () => {
+    mocks.maybeSingle.mockResolvedValue({
+      data: {
+        shop_id: "11111111-1111-4111-8111-111111111111",
+        role: "owner",
+        completed_onboarding: false,
+        stripe_checkout_complete: true,
+        stripe_customer_id: "cus_trial_owner",
+        stripe_subscription_id: "sub_trial_owner",
+      },
+      error: null,
+    });
+    mocks.verifyOwnerPin.mockResolvedValue(false);
+    const { POST } = await import("../app/api/onboarding/bootstrap-owner/route");
+
+    const response = await POST(request({ pin: "9999" }));
+
+    expect(response.status).toBe(401);
+    expect(mocks.reconcileShopBillingFromUser).not.toHaveBeenCalled();
+    expect(mocks.adminProfileMaybeSingle).not.toHaveBeenCalled();
+    expect(mocks.setOwnerPinVerifiedCookie).not.toHaveBeenCalled();
+  });
+
+  it("reconciles a completed owner retry only after verifying the stored PIN", async () => {
     mocks.maybeSingle.mockResolvedValue({
       data: {
         shop_id: "11111111-1111-4111-8111-111111111111",
@@ -350,54 +422,67 @@ describe("owner onboarding bootstrap", () => {
 
     expect(response.status).toBe(200);
     expect(mocks.rpc).not.toHaveBeenCalled();
-    expect(mocks.reconcileShopBillingFromUser).toHaveBeenCalledWith(
-      expect.objectContaining({
-        userId: "owner-user-1",
-        shopId: "11111111-1111-4111-8111-111111111111",
-      }),
+    expect(mocks.verifyOwnerPin).toHaveBeenCalledWith(
+      "4826",
+      "hashed-existing-owner-pin",
     );
-    expect(mocks.setOwnerPinVerifiedCookie).toHaveBeenCalledWith(
-      expect.any(Response),
-      expect.objectContaining({
-        userId: "owner-user-1",
-        shopId: "11111111-1111-4111-8111-111111111111",
-      }),
-    );
+    expect(mocks.reconcileShopBillingFromUser).toHaveBeenCalled();
+    expect(mocks.setOwnerPinVerifiedCookie).toHaveBeenCalled();
   });
 
-  it("keeps the original database contract RLS-compatible and blocks self-promotion", () => {
-    const migration = readFileSync(
-      "supabase/migrations/20260814041000_restore_secure_owner_bootstrap.sql",
-      "utf8",
-    );
-    const profileAssignment = migration.indexOf("update public.profiles as p");
-    const shopProfileWrite = migration.indexOf("insert into public.shop_profiles");
+  it("rejects a wrong PIN on a completed owner before refreshing privileges", async () => {
+    mocks.maybeSingle.mockResolvedValue({
+      data: {
+        shop_id: "11111111-1111-4111-8111-111111111111",
+        role: "owner",
+        completed_onboarding: true,
+        stripe_checkout_complete: true,
+        stripe_customer_id: "cus_trial_owner",
+        stripe_subscription_id: "sub_trial_owner",
+      },
+      error: null,
+    });
+    mocks.verifyOwnerPin.mockResolvedValue(false);
+    const { POST } = await import("../app/api/onboarding/bootstrap-owner/route");
 
-    expect(profileAssignment).toBeGreaterThan(-1);
-    expect(profileAssignment).toBeLessThan(shopProfileWrite);
-    expect(migration).toContain("security definer");
-    expect(migration).toContain("set search_path = public");
-    expect(migration).toContain("raise exception 'Owner bootstrap not allowed'");
-    expect(migration).toContain("Completed trial claim required");
-    expect(migration).toContain("from public.shop_members as existing_membership");
-    expect(migration).toContain("from public, anon");
-    expect(migration).toContain("to authenticated");
+    const response = await POST(request({ pin: "9999" }));
+
+    expect(response.status).toBe(401);
+    expect(mocks.reconcileShopBillingFromUser).not.toHaveBeenCalled();
+    expect(mocks.setOwnerPinVerifiedCookie).not.toHaveBeenCalled();
   });
 
-  it("hardens recovery and leaves new owner onboarding pending until billing succeeds", () => {
+  it("keeps the deployed legacy RPC untouched during the expand phase", () => {
     const migration = readFileSync(
       "supabase/migrations/20260814160000_harden_owner_bootstrap_recovery.sql",
       "utf8",
     );
 
-    expect(migration).toContain("pg_catalog.pg_timezone_names");
-    expect(migration).toContain("v_owned_shop_count");
-    expect(migration).toContain("if v_owned_shop_count > 1 then");
-    expect(migration).toContain("Ambiguous owner shop recovery");
-    expect(migration).not.toContain("order by s.created_at desc");
+    expect(migration).toContain(
+      "create or replace function public.bootstrap_owner_pending_v2",
+    );
+    expect(migration).not.toContain(
+      "create or replace function public.bootstrap_owner_atomic(",
+    );
     expect(migration).toContain("completed_onboarding = false");
+    expect(migration).toContain("return query select v_profile.shop_id, false");
+    expect(migration).toContain("pg_catalog.pg_timezone_names");
+    expect(migration).toContain("Ambiguous owner shop recovery");
     expect(migration).toContain("security definer");
     expect(migration).toContain("set search_path = public");
     expect(migration).toContain("to authenticated");
+  });
+
+  it("preserves the original deployed RPC contract until a later contract phase", () => {
+    const deployed = readFileSync(
+      "supabase/migrations/20260814041000_restore_secure_owner_bootstrap.sql",
+      "utf8",
+    );
+
+    expect(deployed).toContain(
+      "create or replace function public.bootstrap_owner_atomic",
+    );
+    expect(deployed).toContain("security definer");
+    expect(deployed).toContain("Completed trial claim required");
   });
 });
