@@ -12,20 +12,18 @@ import {
   isValidOwnerPin,
   normalizeOwnerPin,
 } from "@/features/shared/lib/server/owner-pin-crypto";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import {
+  createAdminSupabase,
+  createServerSupabaseRoute,
+} from "@/features/shared/lib/supabase/server";
+import {
+  isSupportedShopTimezone,
+  type ShopCountryCode,
+} from "@/features/shared/lib/timezones/shopTimezones";
+import { createStripeClient } from "@/features/stripe/lib/stripe/client";
+import { reconcileShopBillingFromUser } from "@/features/stripe/lib/server/canonical-shop-billing";
 
-const COUNTRIES = new Set(["US", "CA"]);
-const TIMEZONES = new Set([
-  "America/New_York",
-  "America/Chicago",
-  "America/Denver",
-  "America/Edmonton",
-  "America/Phoenix",
-  "America/Los_Angeles",
-  "America/Vancouver",
-  "America/Toronto",
-  "America/Halifax",
-]);
+const COUNTRIES = new Set<ShopCountryCode>(["US", "CA"]);
 
 type Body = {
   businessName?: unknown;
@@ -52,6 +50,43 @@ function readBootstrapShopId(value: unknown): string | null {
   const first: unknown = value[0];
   if (!first || typeof first !== "object" || !("shop_id" in first)) return null;
   return typeof first.shop_id === "string" ? first.shop_id : null;
+}
+
+async function reconcileAcquiredBilling(args: {
+  userId: string;
+  shopId: string;
+}): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const secretKey = String(process.env.STRIPE_SECRET_KEY ?? "").trim();
+  if (!secretKey) return { ok: false, reason: "stripe_not_configured" };
+
+  try {
+    const result = await reconcileShopBillingFromUser({
+      stripe: createStripeClient(secretKey),
+      supabase: createAdminSupabase(),
+      userId: args.userId,
+      shopId: args.shopId,
+    });
+    return result.linked
+      ? { ok: true }
+      : { ok: false, reason: result.reason ?? "billing_not_linked" };
+  } catch (error) {
+    return {
+      ok: false,
+      reason: error instanceof Error ? error.message : "billing_reconciliation_failed",
+    };
+  }
+}
+
+function billingUnavailable(reason: string) {
+  console.error("owner onboarding billing reconciliation failed", { reason });
+  return NextResponse.json(
+    {
+      ok: false,
+      error:
+        "Your shop was created, but billing access could not be finalized. Try again before continuing.",
+    },
+    { status: 503 },
+  );
 }
 
 export async function POST(request: Request) {
@@ -102,9 +137,15 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!COUNTRIES.has(country) || !TIMEZONES.has(timezone)) {
+    if (!COUNTRIES.has(country as ShopCountryCode)) {
       return NextResponse.json(
-        { ok: false, error: "Choose a supported country and timezone." },
+        { ok: false, error: "Choose a supported country." },
+        { status: 400 },
+      );
+    }
+    if (!isSupportedShopTimezone(country as ShopCountryCode, timezone)) {
+      return NextResponse.json(
+        { ok: false, error: "Choose a supported timezone for this country." },
         { status: 400 },
       );
     }
@@ -136,8 +177,15 @@ export async function POST(request: Request) {
       profile.role === "owner" &&
       profile.completed_onboarding
     ) {
+      const billing = await reconcileAcquiredBilling({
+        userId: user.id,
+        shopId: profile.shop_id,
+      });
+      if (!billing.ok) return billingUnavailable(billing.reason);
+
       return NextResponse.json({
         ok: true,
+        shopId: profile.shop_id,
         destination: "/dashboard/onboarding-v2",
         replayed: true,
       });
@@ -188,6 +236,13 @@ export async function POST(request: Request) {
         { status: 500 },
       );
     }
+
+    // Checkout/account claiming can occur before the first shop exists. Now
+    // that the canonical shop has been created, immediately hydrate its package,
+    // pricing model, subscription status, plan and Stripe identity. Do not let a
+    // Complete/Field/Fleet purchaser enter the app with legacy/null access.
+    const billing = await reconcileAcquiredBilling({ userId: user.id, shopId });
+    if (!billing.ok) return billingUnavailable(billing.reason);
 
     const response = NextResponse.json({
       ok: true,
