@@ -47,6 +47,13 @@ function invalidLength(value: string, maximum: number): boolean {
   return value.length === 0 || value.length > maximum;
 }
 
+function readBootstrapShopId(value: unknown): string | null {
+  if (!Array.isArray(value)) return null;
+  const first: unknown = value[0];
+  if (!first || typeof first !== "object" || !("shop_id" in first)) return null;
+  return typeof first.shop_id === "string" ? first.shop_id : null;
+}
+
 export async function POST(request: Request) {
   const supabase = createServerSupabaseRoute();
 
@@ -169,7 +176,7 @@ export async function POST(request: Request) {
         p_owner_pin_hash: ownerPinHash,
       },
     );
-    const shopId = rows?.[0]?.shop_id ?? null;
+    const shopId = readBootstrapShopId(rows);
 
     if (bootstrapError || !shopId) {
       console.error("owner onboarding bootstrap failed", {
