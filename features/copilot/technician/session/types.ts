@@ -19,6 +19,8 @@ export const REPAIR_EVENT_TYPES = [
   "session.resumed",
   "session.paused",
   "session.closed",
+  "conversation.user",
+  "conversation.assistant",
   "task.changed",
   "complaint.recorded",
   "observation.recorded",
