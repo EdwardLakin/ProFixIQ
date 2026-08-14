@@ -8,6 +8,22 @@ import {
 import { projectTechnicianContext } from "@/features/copilot/technician/session/projectTechnicianContext";
 import type { RepairSessionEvent } from "@/features/copilot/technician/session/types";
 
+function repairEvent(
+  eventSeq: number,
+  eventType: string,
+  payload: Record<string, unknown>,
+): RepairSessionEvent {
+  return {
+    id: `event-${eventSeq}`,
+    repairSessionId: "session-1",
+    eventSeq,
+    eventType,
+    source: "copilot",
+    payload,
+    occurredAt: `2026-08-14T00:${String(eventSeq).padStart(2, "0")}:00Z`,
+  };
+}
+
 describe("Technician CoPilot silent documentation", () => {
   it("normalizes explicit repair facts and rejects weak or incomplete events", () => {
     const result = validateTechnicianDocumentationExtraction({
@@ -109,6 +125,125 @@ describe("Technician CoPilot silent documentation", () => {
         result[0]?.details ?? {},
       ),
     );
+  });
+
+  it("allows tasks and physical states to repeat after an intervening transition", () => {
+    const existing = [
+      repairEvent(1, "task.changed", { task: "driveline inspection" }),
+      repairEvent(2, "task.changed", { task: "front brake inspection" }),
+      repairEvent(3, "component.removed", {
+        component: "wheel",
+        location: "left front",
+      }),
+      repairEvent(4, "component.installed", {
+        component: "wheel",
+        location: "left front",
+      }),
+      repairEvent(5, "fluid.drained", {
+        fluid: "coolant",
+        system: "engine cooling",
+      }),
+      repairEvent(6, "fluid.filled", {
+        fluid: "coolant",
+        system: "engine cooling",
+      }),
+    ];
+
+    const result = dedupeDocumentationEvents(existing, [
+      {
+        type: "task.changed",
+        details: {
+          task: "driveline inspection",
+          sourceTurnId: "turn-next",
+        },
+      },
+      {
+        type: "component.removed",
+        details: {
+          component: "wheel",
+          location: "left front",
+          sourceTurnId: "turn-next",
+        },
+      },
+      {
+        type: "fluid.drained",
+        details: {
+          fluid: "coolant",
+          system: "engine cooling",
+          sourceTurnId: "turn-next",
+        },
+      },
+    ]);
+
+    expect(result.map((event) => event.type)).toEqual([
+      "task.changed",
+      "component.removed",
+      "fluid.drained",
+    ]);
+  });
+
+  it("keeps repeated measurements and DTC observations from new turns while suppressing a partial-turn replay", () => {
+    const existing = [
+      repairEvent(1, "measurement.recorded", {
+        label: "signal voltage",
+        value: "4.8",
+        unit: "V",
+        sourceTurnId: "turn-1",
+      }),
+      repairEvent(2, "dtc.observed", {
+        code: "P0299",
+        module: "PCM",
+        status: "current",
+        sourceTurnId: "turn-1",
+      }),
+    ];
+
+    const newTurn = dedupeDocumentationEvents(existing, [
+      {
+        type: "measurement.recorded",
+        details: {
+          label: "signal voltage",
+          value: "4.8",
+          unit: "V",
+          sourceTurnId: "turn-2",
+        },
+      },
+      {
+        type: "dtc.observed",
+        details: {
+          code: "P0299",
+          module: "PCM",
+          status: "current",
+          sourceTurnId: "turn-2",
+        },
+      },
+    ]);
+    expect(newTurn.map((event) => event.type)).toEqual([
+      "measurement.recorded",
+      "dtc.observed",
+    ]);
+
+    const replay = dedupeDocumentationEvents(existing, [
+      {
+        type: "measurement.recorded",
+        details: {
+          label: "signal voltage",
+          value: "4.8",
+          unit: "V",
+          sourceTurnId: "turn-1",
+        },
+      },
+      {
+        type: "dtc.observed",
+        details: {
+          code: "P0299",
+          module: "PCM",
+          status: "current",
+          sourceTurnId: "turn-1",
+        },
+      },
+    ]);
+    expect(replay).toEqual([]);
   });
 
   it("projects a draft repair note and intelligent timeline without canonical writes", () => {
