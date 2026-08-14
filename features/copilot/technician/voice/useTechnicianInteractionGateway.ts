@@ -39,6 +39,7 @@ export function useTechnicianInteractionGateway({
 
   const activeRef = useRef(false);
   const phaseRef = useRef<TechnicianVoicePhase>("idle");
+  const generationRef = useRef(0);
   const inFlightRef = useRef(false);
   const onUtteranceRef = useRef(onUtterance);
   const realtimeRef = useRef<{ start: () => Promise<void>; stop: () => void } | null>(
@@ -56,6 +57,11 @@ export function useTechnicianInteractionGateway({
   useEffect(() => {
     onUtteranceRef.current = onUtterance;
   }, [onUtterance]);
+
+  const invalidateGeneration = useCallback(() => {
+    generationRef.current += 1;
+    inFlightRef.current = false;
+  }, []);
 
   const handleTransportState = useCallback(
     (state: RealtimeTranscriptionState) => {
@@ -78,6 +84,7 @@ export function useTechnicianInteractionGateway({
     (rawText: string) => {
       const text = normalizedTranscript(rawText);
       if (!text || !activeRef.current || inFlightRef.current) return;
+      const generation = generationRef.current;
 
       void (async () => {
         inFlightRef.current = true;
@@ -88,7 +95,12 @@ export function useTechnicianInteractionGateway({
 
         try {
           const result = await onUtteranceRef.current(text);
-          if (!activeRef.current) return;
+          if (
+            !activeRef.current ||
+            generationRef.current !== generation
+          ) {
+            return;
+          }
           const reply = normalizedTranscript(result.reply ?? "");
           if (reply) {
             speakReplyRef.current(reply);
@@ -96,7 +108,13 @@ export function useTechnicianInteractionGateway({
             await startListeningRef.current();
           }
         } catch (caught) {
-          if (!activeRef.current) return;
+          if (
+            !activeRef.current ||
+            generationRef.current !== generation
+          ) {
+            return;
+          }
+          invalidateGeneration();
           activeRef.current = false;
           setModeActive(false);
           setVoicePhase("error");
@@ -106,11 +124,13 @@ export function useTechnicianInteractionGateway({
               : "Technician CoPilot could not process that voice turn.",
           );
         } finally {
-          inFlightRef.current = false;
+          if (generationRef.current === generation) {
+            inFlightRef.current = false;
+          }
         }
       })();
     },
-    [setVoicePhase],
+    [invalidateGeneration, setVoicePhase],
   );
 
   const realtime = useRealtimeTranscription(
@@ -120,6 +140,7 @@ export function useTechnicianInteractionGateway({
       onStateChange: handleTransportState,
       onError: (message) => {
         if (!activeRef.current) return;
+        invalidateGeneration();
         activeRef.current = false;
         setModeActive(false);
         setVoicePhase("error");
@@ -131,12 +152,19 @@ export function useTechnicianInteractionGateway({
 
   const startListening = useCallback(async () => {
     if (!enabled || !activeRef.current) return;
+    const generation = generationRef.current;
     setHeardTranscript("");
     setVoicePhase("connecting");
     try {
       await realtimeRef.current?.start();
     } catch (caught) {
-      if (!activeRef.current) return;
+      if (
+        !activeRef.current ||
+        generationRef.current !== generation
+      ) {
+        return;
+      }
+      invalidateGeneration();
       activeRef.current = false;
       setModeActive(false);
       setVoicePhase("error");
@@ -144,12 +172,13 @@ export function useTechnicianInteractionGateway({
         caught instanceof Error ? caught.message : "Realtime voice could not start.",
       );
     }
-  }, [enabled, setVoicePhase]);
+  }, [enabled, invalidateGeneration, setVoicePhase]);
   startListeningRef.current = startListening;
 
   const speakReply = useCallback(
     (text: string) => {
       if (!activeRef.current) return;
+      const generation = generationRef.current;
       if (
         typeof window === "undefined" ||
         typeof window.speechSynthesis === "undefined" ||
@@ -167,16 +196,25 @@ export function useTechnicianInteractionGateway({
       setVoicePhase("speaking");
 
       const resume = () => {
-        if (utteranceRef.current === utterance) {
-          utteranceRef.current = null;
+        if (
+          utteranceRef.current !== utterance ||
+          !activeRef.current ||
+          generationRef.current !== generation
+        ) {
+          return;
         }
-        if (activeRef.current) {
-          void startListeningRef.current();
-        }
+        utteranceRef.current = null;
+        void startListeningRef.current();
       };
 
       utterance.onend = resume;
       utterance.onerror = () => {
+        if (
+          utteranceRef.current !== utterance ||
+          generationRef.current !== generation
+        ) {
+          return;
+        }
         setError("Spoken reply could not play. Continuing in listening mode.");
         resume();
       };
@@ -188,20 +226,22 @@ export function useTechnicianInteractionGateway({
 
   const start = useCallback(async () => {
     if (!enabled || activeRef.current) return;
+    invalidateGeneration();
     if (typeof window !== "undefined") {
       window.speechSynthesis?.cancel();
     }
+    utteranceRef.current = null;
     activeRef.current = true;
     setModeActive(true);
     setError(null);
     await startListeningRef.current();
-  }, [enabled]);
+  }, [enabled, invalidateGeneration]);
 
   const stop = useCallback(() => {
+    invalidateGeneration();
     activeRef.current = false;
     setModeActive(false);
     setHeardTranscript("");
-    inFlightRef.current = false;
     try {
       realtimeRef.current?.stop();
     } catch {}
@@ -210,15 +250,18 @@ export function useTechnicianInteractionGateway({
     }
     utteranceRef.current = null;
     setVoicePhase("idle");
-  }, [setVoicePhase]);
+  }, [invalidateGeneration, setVoicePhase]);
 
   const interrupt = useCallback(() => {
     if (!activeRef.current || phaseRef.current !== "speaking") return;
+    const currentUtterance = utteranceRef.current;
+    utteranceRef.current = null;
     if (typeof window !== "undefined") {
       window.speechSynthesis?.cancel();
     }
-    utteranceRef.current = null;
-    void startListeningRef.current();
+    if (currentUtterance && activeRef.current) {
+      void startListeningRef.current();
+    }
   }, []);
 
   useEffect(() => {
