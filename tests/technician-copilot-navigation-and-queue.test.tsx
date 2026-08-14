@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildTechQueueWorkOrderMap,
   TechQueueWorkOrderLabel,
-} from "../app/tech/queue/page";
+} from "@/features/work-orders/components/TechQueueWorkOrderLabel";
 import { TILES } from "@/features/shared/config/tiles";
 import { resolveTechnicianCopilotTextAvailability } from "@/features/copilot/technician/client/useTechnicianCopilotAvailability";
 

@@ -6,6 +6,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import {
+  buildTechQueueWorkOrderMap,
+  TechQueueWorkOrderLabel,
+  type WorkOrderDisplayMap,
+} from "@/features/work-orders/components/TechQueueWorkOrderLabel";
 import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
@@ -15,45 +20,6 @@ type WorkOrderSlim = Pick<
   DB["public"]["Tables"]["work_orders"]["Row"],
   "id" | "custom_id" | "type"
 >;
-type WorkOrderDisplayMap = Record<
-  string,
-  { id: string; custom_id: string | null }
->;
-
-export function buildTechQueueWorkOrderMap(
-  rows: readonly WorkOrderSlim[],
-): WorkOrderDisplayMap {
-  return Object.fromEntries(
-    rows
-      .filter((row) => row.type !== "historical_import")
-      .map((row) => [
-        row.id,
-        { id: row.id, custom_id: row.custom_id ?? null },
-      ]),
-  );
-}
-
-export function TechQueueWorkOrderLabel({
-  workOrderId,
-  workOrderMap,
-}: {
-  workOrderId: string | null;
-  workOrderMap: WorkOrderDisplayMap;
-}) {
-  const customId = workOrderId
-    ? workOrderMap[workOrderId]?.custom_id
-    : null;
-  return (
-    <>
-      {customId
-        ? customId
-        : workOrderId
-          ? `WO #${workOrderId.slice(0, 8)}`
-          : "Work order"}
-    </>
-  );
-}
-
 type PartRequest = DB["public"]["Tables"]["part_requests"]["Row"];
 type PartRequestMini = Pick<PartRequest, "job_id" | "work_order_id">;
 
