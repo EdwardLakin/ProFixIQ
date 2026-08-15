@@ -31,6 +31,8 @@ declare
   v_operation_name text;
   v_existing_actor_id uuid;
   v_existing_line_id uuid;
+  v_existing_action_type text;
+  v_existing_entity_type text;
   v_existing_result jsonb;
   v_payload jsonb;
   v_result jsonb;
@@ -105,7 +107,29 @@ begin
       from public.workforce_operation_keys wok
       where wok.shop_id = v_shop_id
         and wok.operation_key = v_operation_key
-        and wok.operation_name like 'job_punch:%'
+    ) then
+      raise exception 'copilot_operation_id_conflict' using errcode = '23505';
+    end if;
+
+    select
+      receipt.actor_user_id,
+      receipt.entity_id,
+      receipt.action_type,
+      receipt.entity_type
+      into
+        v_existing_actor_id,
+        v_existing_line_id,
+        v_existing_action_type,
+        v_existing_entity_type
+    from public.offline_mutation_receipts receipt
+    where receipt.shop_id = v_shop_id
+      and receipt.operation_key = v_operation_key;
+
+    if found and (
+      v_existing_actor_id is distinct from v_profile_id
+      or v_existing_line_id is distinct from p_work_order_line_id
+      or v_existing_action_type is distinct from 'save_story_draft'
+      or v_existing_entity_type is distinct from 'work_order_line'
     ) then
       raise exception 'copilot_operation_id_conflict' using errcode = '23505';
     end if;
@@ -130,7 +154,6 @@ begin
       from public.workforce_operation_keys wok
       where wok.shop_id = v_shop_id
         and wok.operation_key = v_operation_key
-        and wok.operation_name like 'job_punch:%'
         and (
           wok.operation_name is distinct from v_operation_name
           or wok.actor_user_id is distinct from v_profile_id

@@ -260,7 +260,7 @@ function safeFailure(action: ExecutableAction, message: string): string {
         : action.type === "job.release_hold"
           ? "release the hold"
           : "save the job story";
-  return `I couldn't ${verb} because the job state changed. Review the line and try again.`;
+  return `I couldn't confirm whether I could ${verb}. Refresh the job before trying again.`;
 }
 
 export async function executeTechnicianCopilotAction(input: {
@@ -271,27 +271,34 @@ export async function executeTechnicianCopilotAction(input: {
   expectedLineUpdatedAt?: string | null;
 }): Promise<TechnicianCopilotActionResult> {
   const { action, line } = input.prepared;
+  const command = {
+    authUserId: input.identity.authUserId,
+    profileId: input.identity.profileId,
+    shopId: input.identity.shopId,
+    action: "job.action" as const,
+    args: {
+      sessionId: input.sessionId,
+      workOrderLineId: line.id,
+      jobAction: action.type,
+      operationId: input.operationId,
+      reason: action.type === "job.hold" ? action.reason : null,
+      cause: action.type === "job.story.save" ? action.cause : null,
+      correction: action.type === "job.story.save" ? action.correction : null,
+      expectedLineUpdatedAt:
+        input.expectedLineUpdatedAt === undefined
+          ? line.updatedAt
+          : input.expectedLineUpdatedAt,
+    },
+  };
+
   try {
-    await sendCopilotServerCommand<Record<string, unknown>>({
-      authUserId: input.identity.authUserId,
-      profileId: input.identity.profileId,
-      shopId: input.identity.shopId,
-      action: "job.action",
-      args: {
-        sessionId: input.sessionId,
-        workOrderLineId: line.id,
-        jobAction: action.type,
-        operationId: input.operationId,
-        reason: action.type === "job.hold" ? action.reason : null,
-        cause: action.type === "job.story.save" ? action.cause : null,
-        correction:
-          action.type === "job.story.save" ? action.correction : null,
-        expectedLineUpdatedAt:
-          input.expectedLineUpdatedAt === undefined
-            ? line.updatedAt
-            : input.expectedLineUpdatedAt,
-      },
-    });
+    try {
+      await sendCopilotServerCommand<Record<string, unknown>>(command);
+    } catch {
+      // The action RPC is durably idempotent. Repeating the identical command
+      // resolves an unknown HTTP outcome without duplicating the mutation.
+      await sendCopilotServerCommand<Record<string, unknown>>(command);
+    }
   } catch (error) {
     console.error("[technician-copilot] canonical job action failed", {
       action: action.type,

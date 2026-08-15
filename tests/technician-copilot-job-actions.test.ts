@@ -220,6 +220,37 @@ describe("Technician CoPilot canonical job actions", () => {
     expect(result.reply).toBe("Saved the cause for Brake inspection.");
   });
 
+  it("replays the same durable operation after an unknown transport outcome", async () => {
+    const prepared = prepareTechnicianCopilotAction({
+      action: { type: "job.start", workOrderLineId: workOrder.lines[0].id },
+      activeWorkOrder: workOrder,
+      assignedWork: [workOrder],
+      activeWorkOrderLineId: workOrder.lines[0].id,
+    });
+    if (prepared.kind !== "execute") throw new Error("Expected executable action");
+
+    mocks.sendCopilotServerCommand
+      .mockRejectedValueOnce(new Error("Network response was lost"))
+      .mockResolvedValueOnce({ ok: true, idempotent: true });
+
+    const result = await executeTechnicianCopilotAction({
+      identity: {
+        authUserId: "00000000-0000-4000-8000-000000000011",
+        profileId: "00000000-0000-4000-8000-000000000010",
+        shopId: "00000000-0000-4000-8000-000000000001",
+      },
+      sessionId: "00000000-0000-4000-8000-000000000300",
+      prepared,
+      operationId: "00000000-0000-5000-a000-000000000309",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(mocks.sendCopilotServerCommand).toHaveBeenCalledTimes(2);
+    expect(mocks.sendCopilotServerCommand.mock.calls[0][0]).toEqual(
+      mocks.sendCopilotServerCommand.mock.calls[1][0],
+    );
+  });
+
   it("returns a safe retry response when another device changed the story", async () => {
     const prepared = prepareTechnicianCopilotAction({
       action: {
@@ -234,7 +265,7 @@ describe("Technician CoPilot canonical job actions", () => {
     });
     if (prepared.kind !== "execute") throw new Error("Expected executable action");
 
-    mocks.sendCopilotServerCommand.mockRejectedValueOnce(
+    mocks.sendCopilotServerCommand.mockRejectedValue(
       new Error("OFFLINE_VERSION_CONFLICT: server-only details"),
     );
     const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});

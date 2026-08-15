@@ -27,6 +27,13 @@ describe("Technician CoPilot private job-action bridge", () => {
     expect(migration).toContain("public.apply_offline_line_mutation_atomic(");
     expect(migration).toContain("when 'job.action' then");
     expect(migration).toContain("from public.workforce_operation_keys wok");
+    expect(migration).toContain("from public.offline_mutation_receipts receipt");
+    expect(migration).toContain(
+      "v_existing_action_type is distinct from 'save_story_draft'",
+    );
+    expect(migration).toContain(
+      "v_existing_entity_type is distinct from 'work_order_line'",
+    );
     expect(migration).toContain(
       "wok.operation_name is distinct from v_operation_name",
     );

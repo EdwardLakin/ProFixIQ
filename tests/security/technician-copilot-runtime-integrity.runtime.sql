@@ -505,6 +505,46 @@ begin
   from public.work_order_lines wol
   where wol.id = 'a1438000-0000-4000-8000-000000000202';
 
+  insert into public.offline_mutation_receipts (
+    shop_id,
+    actor_user_id,
+    operation_key,
+    action_type,
+    payload_hash,
+    entity_type,
+    entity_id,
+    result
+  )
+  values (
+    'a1438000-0000-4000-8000-000000000010',
+    'a1438000-0000-4000-8000-000000000002',
+    'technician-copilot:a1438000-0000-5000-a000-000000000408',
+    'save_story_draft',
+    'runtime-cross-line-operation-key',
+    'work_order_line',
+    'a1438000-0000-4000-8000-000000000204',
+    '{}'::jsonb
+  );
+
+  begin
+    perform copilot.technician_job_action_internal(
+      'a1438000-0000-4000-8000-000000000002',
+      v_active_session_id,
+      'a1438000-0000-4000-8000-000000000202',
+      'job.story.save',
+      'a1438000-0000-5000-a000-000000000408',
+      null,
+      'Must not replay another line',
+      null,
+      v_line_updated_at
+    );
+    raise exception 'CoPilot job-action assertion failed: cross-line story receipt was replayed';
+  exception when sqlstate '23505' then
+    if sqlerrm <> 'copilot_operation_id_conflict' then
+      raise;
+    end if;
+  end;
+
   begin
     perform copilot.technician_job_action_internal(
       'a1438000-0000-4000-8000-000000000002',
