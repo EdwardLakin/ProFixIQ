@@ -34,9 +34,12 @@ describe("Technician CoPilot turn-scoped documentation atomicity", () => {
   it("recovers unfinished documentation without replacing a persisted reply", () => {
     expect(chat).toContain("documentationTurns?: string[]");
     expect(chat).toContain("documentationAlreadyFinalized");
-    expect(chat).toContain("Promise.resolve(existingAssistant.text)");
+    expect(chat).toContain("existingAssistant?.text ??");
+    expect(chat).toContain("storedAction?.result?.reply ??");
     expect(chat).toContain("silent documentation persistence failed");
-    expect(chat).toContain("replayed: Boolean(existingAssistant)");
+    expect(chat).toContain(
+      "replayed: Boolean(existingAssistant || replayedActionResult)",
+    );
   });
 
   it("reserves each source turn once and appends its event slots atomically", () => {

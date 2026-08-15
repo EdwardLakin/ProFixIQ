@@ -5,6 +5,29 @@
 
 begin;
 
+-- Production already has this canonical status-normalization trigger, but the
+-- clean replay chain did not recreate it. The job-punch RPC writes the legacy
+-- `in_progress` spelling and relies on this trigger to persist canonical
+-- `active`. Restore it only where it is missing; production remains unchanged.
+do $migration$
+begin
+  if not exists (
+    select 1
+    from pg_trigger t
+    where t.tgrelid = 'public.work_order_lines'::regclass
+      and t.tgname = 'trg_normalize_work_order_line_status'
+      and not t.tgisinternal
+  ) then
+    execute $trigger$
+      create trigger trg_normalize_work_order_line_status
+      before insert or update of status on public.work_order_lines
+      for each row
+      execute function public.normalize_work_order_line_status()
+    $trigger$;
+  end if;
+end;
+$migration$;
+
 create or replace function copilot.technician_job_action_internal(
   p_auth_user_id uuid,
   p_session_id uuid,

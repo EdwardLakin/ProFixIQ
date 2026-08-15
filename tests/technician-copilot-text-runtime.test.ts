@@ -4,6 +4,7 @@ import type { RepairSessionEvent } from "@/features/copilot/technician/session/t
 
 const mocks = vi.hoisted(() => ({
   listTechnicianWorkCandidates: vi.fn(),
+  loadTechnicianWorkCandidateForWorkOrder: vi.fn(),
   decideTechnicianCopilotTurn: vi.fn(),
   extractTechnicianDocumentationTurn: vi.fn(),
   sendCopilotServerCommand: vi.fn(),
@@ -16,6 +17,8 @@ vi.mock("@/features/copilot/technician/server/assignedWork", async () => {
   return {
     ...actual,
     listTechnicianWorkCandidates: mocks.listTechnicianWorkCandidates,
+    loadTechnicianWorkCandidateForWorkOrder:
+      mocks.loadTechnicianWorkCandidateForWorkOrder,
   };
 });
 
@@ -87,6 +90,7 @@ describe("Technician CoPilot persistent text runtime", () => {
     finalReasoningContext = null;
 
     mocks.listTechnicianWorkCandidates.mockResolvedValue([candidate]);
+    mocks.loadTechnicianWorkCandidateForWorkOrder.mockResolvedValue(candidate);
 
     mocks.decideTechnicianCopilotTurn.mockImplementation(
       async (input: Record<string, unknown>) => {
