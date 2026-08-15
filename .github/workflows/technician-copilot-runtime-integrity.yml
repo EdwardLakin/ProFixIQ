@@ -1,0 +1,86 @@
+name: Technician CoPilot Runtime Integrity
+
+on:
+  pull_request:
+    paths:
+      - "supabase/migrations/20260814223500_technician_copilot_runtime_integrity.sql"
+      - "tests/security/technician-copilot-runtime-integrity.runtime.sql"
+      - ".github/workflows/technician-copilot-runtime-integrity.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: technician-copilot-runtime-integrity-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v2
+        with:
+          version: 2.101.0
+          github-token: ${{ github.token }}
+
+      - name: Initialize ephemeral Supabase configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -f supabase/config.toml ]]; then
+            supabase init
+          fi
+          supabase --version
+
+      - name: Start fresh local Supabase
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase db start 2>&1 | tee supabase-db-start.log
+
+      - name: Replay complete migration chain
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase db reset --local --no-seed --debug \
+            2>&1 | tee supabase-db-reset.log
+
+      - name: Execute Technician CoPilot lifecycle runtime integration
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+            -f tests/security/technician-copilot-runtime-integrity.runtime.sql \
+            2>&1 | tee technician-copilot-runtime-integrity.log
+
+      - name: Verify runtime test leaves no committed fixture rows
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          remaining="$(psql "$DB_URL" -Atv ON_ERROR_STOP=1 -c "
+            select
+              (select count(*) from copilot.repair_sessions where shop_id = 'a1438000-0000-4000-8000-000000000010')
+              +
+              (select count(*) from copilot.repair_session_events e join copilot.repair_sessions rs on rs.id = e.repair_session_id where rs.shop_id = 'a1438000-0000-4000-8000-000000000010');
+          ")"
+          if [[ "$remaining" != "0" ]]; then
+            echo "Technician CoPilot runtime integration leaked $remaining fixture rows"
+            exit 1
+          fi
+
+      - name: Stop local Supabase
+        if: always()
+        shell: bash
+        run: supabase stop --no-backup || true
