@@ -57,7 +57,10 @@ describe("Technician CoPilot assigned-work context", () => {
 
   it("exposes only assigned line IDs as startable CoPilot lines", () => {
     expect(assignedWorkSource).toContain(
-      "if (assignedLineIds.has(line.id)) value.assignedIds.push(line.id);",
+      "if (assignedLineIds.has(line.id)) {",
+    );
+    expect(assignedWorkSource).toContain(
+      "value.assignedLines.push(toTechnicianWorkLine(line));",
     );
     expect(assignedWorkSource).toContain(
       ".filter((candidate) => candidate.lineIds.length > 0)",

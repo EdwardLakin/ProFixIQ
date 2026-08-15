@@ -9,15 +9,18 @@ function asObject(value: unknown): Record<string, unknown> {
     : {};
 }
 
+export type CopilotServerCommandAction =
+  | "session.read"
+  | "session.start"
+  | "event.append"
+  | "documentation.append"
+  | "job.action";
+
 export async function sendCopilotServerCommand<T>(input: {
   authUserId: string;
   profileId: string;
   shopId: string;
-  action:
-    | "session.read"
-    | "session.start"
-    | "event.append"
-    | "documentation.append";
+  action: CopilotServerCommandAction;
   args: Record<string, unknown>;
 }): Promise<T> {
   const admin = createAdminSupabase();

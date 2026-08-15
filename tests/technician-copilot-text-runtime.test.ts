@@ -4,6 +4,7 @@ import type { RepairSessionEvent } from "@/features/copilot/technician/session/t
 
 const mocks = vi.hoisted(() => ({
   listTechnicianWorkCandidates: vi.fn(),
+  loadTechnicianWorkCandidateForWorkOrder: vi.fn(),
   decideTechnicianCopilotTurn: vi.fn(),
   extractTechnicianDocumentationTurn: vi.fn(),
   sendCopilotServerCommand: vi.fn(),
@@ -16,6 +17,8 @@ vi.mock("@/features/copilot/technician/server/assignedWork", async () => {
   return {
     ...actual,
     listTechnicianWorkCandidates: mocks.listTechnicianWorkCandidates,
+    loadTechnicianWorkCandidateForWorkOrder:
+      mocks.loadTechnicianWorkCandidateForWorkOrder,
   };
 });
 
@@ -46,6 +49,20 @@ const candidate = {
   vehicleVin: null,
   vehicleUnitNumber: "214",
   lineIds: ["line-driveline"],
+  lines: [
+    {
+      id: "line-driveline",
+      complaint: "Driveline vibration at 80 km/h",
+      description: null,
+      status: "awaiting",
+      cause: null,
+      correction: null,
+      holdReason: null,
+      priority: 1,
+      createdAt: "2026-08-14T13:00:00Z",
+      updatedAt: "2026-08-14T13:30:00Z",
+    },
+  ],
   lineComplaints: ["Driveline vibration at 80 km/h"],
 };
 
@@ -73,6 +90,7 @@ describe("Technician CoPilot persistent text runtime", () => {
     finalReasoningContext = null;
 
     mocks.listTechnicianWorkCandidates.mockResolvedValue([candidate]);
+    mocks.loadTechnicianWorkCandidateForWorkOrder.mockResolvedValue(candidate);
 
     mocks.decideTechnicianCopilotTurn.mockImplementation(
       async (input: Record<string, unknown>) => {
@@ -84,6 +102,17 @@ describe("Technician CoPilot persistent text runtime", () => {
             mode: "start",
             workOrderId: candidate.id,
             workOrderLineId: "line-driveline",
+            action: { type: "job.start", workOrderLineId: "line-driveline" },
+            reply: "Starting the Ford.",
+          };
+        }
+
+        if (message === "Start the Ford." && activeSession) {
+          return {
+            mode: "reply",
+            workOrderId: null,
+            workOrderLineId: "line-driveline",
+            action: { type: "job.start", workOrderLineId: "line-driveline" },
             reply: "Starting the Ford.",
           };
         }
@@ -107,6 +136,7 @@ describe("Technician CoPilot persistent text runtime", () => {
             mode: "reply",
             workOrderId: null,
             workOrderLineId: null,
+            action: { type: "none" },
             reply: `We're on the ${context.currentTask}. The rear U-joint is ${uJoint?.assessment}; the carrier bearing is ${carrier?.assessment}.`,
           };
         }
@@ -124,6 +154,7 @@ describe("Technician CoPilot persistent text runtime", () => {
           mode: "reply",
           workOrderId: null,
           workOrderLineId: null,
+          action: { type: "none" },
           reply: replies[message] ?? "I'm with you.",
         };
       },
@@ -264,6 +295,14 @@ describe("Technician CoPilot persistent text runtime", () => {
           };
         }
 
+        if (input.action === "job.action") {
+          return {
+            ok: true,
+            copilotAction: input.args.jobAction,
+            workOrderLineId: input.args.workOrderLineId,
+          };
+        }
+
         throw new Error(`Unexpected command: ${input.action}`);
       },
     );
@@ -358,7 +397,46 @@ describe("Technician CoPilot persistent text runtime", () => {
         "session.start",
         "event.append",
         "documentation.append",
+        "job.action",
       ]),
     );
+  });
+
+  it("does not execute a completed spoken action twice when the turn is replayed", async () => {
+    const first = await runTechnicianCopilotTurn({
+      identity: {
+        authUserId: "auth-tech",
+        profileId: "profile-tech",
+        shopId: "shop-1",
+        documentationEnabled: true,
+        voiceEnabled: true,
+        supabase: {} as never,
+      },
+      message: "Start the Ford.",
+      turnId: "turn-start-replay",
+      inputSource: "voice",
+    });
+    const replay = await runTechnicianCopilotTurn({
+      identity: {
+        authUserId: "auth-tech",
+        profileId: "profile-tech",
+        shopId: "shop-1",
+        documentationEnabled: true,
+        voiceEnabled: true,
+        supabase: {} as never,
+      },
+      message: "Start the Ford.",
+      turnId: "turn-start-replay",
+      sessionId: first.sessionId,
+      inputSource: "voice",
+    });
+
+    const jobActions = mocks.sendCopilotServerCommand.mock.calls.filter(
+      ([call]) => call.action === "job.action",
+    );
+    expect(jobActions).toHaveLength(1);
+    expect(first.reply).toContain("Started Driveline vibration");
+    expect(replay.reply).toBe(first.reply);
+    expect(replay.replayed).toBe(true);
   });
 });
