@@ -4,10 +4,15 @@ import type { TechnicianWorkCandidate } from "@/features/copilot/technician/serv
 
 const mocks = vi.hoisted(() => ({
   sendCopilotServerCommand: vi.fn(),
+  learnFromCompletedWorkOrderLine: vi.fn(),
 }));
 
 vi.mock("@/features/copilot/technician/server/transport", () => ({
   sendCopilotServerCommand: mocks.sendCopilotServerCommand,
+}));
+
+vi.mock("@/features/work-orders/server/completeWorkOrderLine", () => ({
+  learnFromCompletedWorkOrderLine: mocks.learnFromCompletedWorkOrderLine,
 }));
 
 import {
@@ -64,6 +69,7 @@ describe("Technician CoPilot canonical job actions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.sendCopilotServerCommand.mockResolvedValue({ ok: true });
+    mocks.learnFromCompletedWorkOrderLine.mockResolvedValue({ ok: true });
   });
 
   it("answers what's next from assigned line state without claiming or mutating work", () => {
@@ -187,6 +193,7 @@ describe("Technician CoPilot canonical job actions", () => {
       authUserId: "00000000-0000-4000-8000-000000000011",
       profileId: "00000000-0000-4000-8000-000000000010",
       shopId: "00000000-0000-4000-8000-000000000001",
+      supabase: {} as never,
     };
     await executeTechnicianCopilotAction({
       identity,
@@ -204,7 +211,9 @@ describe("Technician CoPilot canonical job actions", () => {
     const first = mocks.sendCopilotServerCommand.mock.calls[0][0];
     const replay = mocks.sendCopilotServerCommand.mock.calls[1][0];
     expect(first).toMatchObject({
-      ...identity,
+      authUserId: identity.authUserId,
+      profileId: identity.profileId,
+      shopId: identity.shopId,
       action: "job.action",
       args: {
         sessionId: "00000000-0000-4000-8000-000000000300",
@@ -237,6 +246,7 @@ describe("Technician CoPilot canonical job actions", () => {
         authUserId: "00000000-0000-4000-8000-000000000011",
         profileId: "00000000-0000-4000-8000-000000000010",
         shopId: "00000000-0000-4000-8000-000000000001",
+        supabase: {} as never,
       },
       sessionId: "00000000-0000-4000-8000-000000000300",
       prepared,
@@ -283,6 +293,7 @@ describe("Technician CoPilot canonical job actions", () => {
         authUserId: "00000000-0000-4000-8000-000000000011",
         profileId: "00000000-0000-4000-8000-000000000010",
         shopId: "00000000-0000-4000-8000-000000000001",
+        supabase: {} as never,
       },
       sessionId: "00000000-0000-4000-8000-000000000300",
       prepared,
@@ -307,6 +318,11 @@ describe("Technician CoPilot canonical job actions", () => {
       eventLabel: "Completed job",
       eventDetail: "Brake inspection",
     });
+    expect(mocks.learnFromCompletedWorkOrderLine).toHaveBeenCalledWith({
+      supabase: expect.anything(),
+      lineId: activeWorkOrder.lines[0].id,
+      actorUserId: "00000000-0000-4000-8000-000000000011",
+    });
   });
 
   it("replays the same durable operation after an unknown transport outcome", async () => {
@@ -327,6 +343,7 @@ describe("Technician CoPilot canonical job actions", () => {
         authUserId: "00000000-0000-4000-8000-000000000011",
         profileId: "00000000-0000-4000-8000-000000000010",
         shopId: "00000000-0000-4000-8000-000000000001",
+        supabase: {} as never,
       },
       sessionId: "00000000-0000-4000-8000-000000000300",
       prepared,
@@ -363,6 +380,7 @@ describe("Technician CoPilot canonical job actions", () => {
         authUserId: "00000000-0000-4000-8000-000000000011",
         profileId: "00000000-0000-4000-8000-000000000010",
         shopId: "00000000-0000-4000-8000-000000000001",
+        supabase: {} as never,
       },
       sessionId: "00000000-0000-4000-8000-000000000300",
       prepared,
@@ -376,5 +394,52 @@ describe("Technician CoPilot canonical job actions", () => {
         "That job story changed on another device. Review the latest cause and correction, then try again.",
     });
     expect(result.reply).not.toContain("server-only details");
+  });
+
+  it("requires explicit inspection signing without exposing database details", async () => {
+    const activeWorkOrder: TechnicianWorkCandidate = {
+      ...workOrder,
+      lines: workOrder.lines.map((line, index) =>
+        index === 0 ? { ...line, status: "in_progress" } : line,
+      ),
+    };
+    const prepared = prepareTechnicianCopilotAction({
+      action: {
+        type: "job.complete",
+        workOrderLineId: activeWorkOrder.lines[0].id,
+        cause: null,
+        correction: null,
+      },
+      activeWorkOrder,
+      assignedWork: [activeWorkOrder],
+      activeWorkOrderLineId: activeWorkOrder.lines[0].id,
+    });
+    if (prepared.kind !== "execute") throw new Error("Expected executable action");
+
+    mocks.sendCopilotServerCommand.mockRejectedValue(
+      new Error(
+        "INSPECTION_COMPLETION_REQUIRED: internal inspection identifier 123",
+      ),
+    );
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
+    const result = await executeTechnicianCopilotAction({
+      identity: {
+        authUserId: "00000000-0000-4000-8000-000000000011",
+        profileId: "00000000-0000-4000-8000-000000000010",
+        shopId: "00000000-0000-4000-8000-000000000001",
+        supabase: {} as never,
+      },
+      sessionId: "00000000-0000-4000-8000-000000000300",
+      prepared,
+      operationId: "00000000-0000-5000-a000-000000000311",
+    });
+    errorLog.mockRestore();
+
+    expect(result).toEqual({
+      ok: false,
+      reply: "Complete and sign the inspection before I can finish that job.",
+    });
+    expect(result.reply).not.toContain("123");
+    expect(mocks.learnFromCompletedWorkOrderLine).not.toHaveBeenCalled();
   });
 });

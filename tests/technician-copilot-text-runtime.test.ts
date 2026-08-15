@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   decideTechnicianCopilotTurn: vi.fn(),
   extractTechnicianDocumentationTurn: vi.fn(),
   sendCopilotServerCommand: vi.fn(),
+  learnFromCompletedWorkOrderLine: vi.fn(),
 }));
 
 vi.mock("@/features/copilot/technician/server/assignedWork", async () => {
@@ -33,6 +34,10 @@ vi.mock("@/features/copilot/technician/server/documentation", () => ({
 
 vi.mock("@/features/copilot/technician/server/transport", () => ({
   sendCopilotServerCommand: mocks.sendCopilotServerCommand,
+}));
+
+vi.mock("@/features/work-orders/server/completeWorkOrderLine", () => ({
+  learnFromCompletedWorkOrderLine: mocks.learnFromCompletedWorkOrderLine,
 }));
 
 import { runTechnicianCopilotTurn } from "@/features/copilot/technician/server/chat";
@@ -71,7 +76,7 @@ type RuntimeSession = {
   workOrderId: string;
   activeWorkOrderLineId: string | null;
   mode: "shop";
-  status: "active";
+  status: "active" | "closed";
 };
 
 describe("Technician CoPilot persistent text runtime", () => {
@@ -88,6 +93,7 @@ describe("Technician CoPilot persistent text runtime", () => {
     documentationTurns = [];
     eventCounter = 0;
     finalReasoningContext = null;
+    mocks.learnFromCompletedWorkOrderLine.mockResolvedValue({ ok: true });
 
     mocks.listTechnicianWorkCandidates.mockResolvedValue([candidate]);
     mocks.loadTechnicianWorkCandidateForWorkOrder.mockResolvedValue(candidate);
@@ -114,6 +120,21 @@ describe("Technician CoPilot persistent text runtime", () => {
             workOrderLineId: "line-driveline",
             action: { type: "job.start", workOrderLineId: "line-driveline" },
             reply: "Starting the Ford.",
+          };
+        }
+
+        if (message === "Complete the Ford." && activeSession) {
+          return {
+            mode: "reply",
+            workOrderId: null,
+            workOrderLineId: "line-driveline",
+            action: {
+              type: "job.complete",
+              workOrderLineId: "line-driveline",
+              cause: "Failed rear U-joint",
+              correction: "Replaced rear U-joint",
+            },
+            reply: "Completing the Ford.",
           };
         }
 
@@ -254,10 +275,21 @@ describe("Technician CoPilot persistent text runtime", () => {
               workOrderId: session.workOrderId,
               workOrderLineId: session.activeWorkOrderLineId,
             });
+          } else if (typeof input.args.workOrderLineId === "string") {
+            session.activeWorkOrderLineId = input.args.workOrderLineId;
           }
           return { sessionId: session.id, replayed: false };
         }
 
+        if (input.action === "session.close") {
+          if (!session) throw new Error("Test session is not active");
+          appendEvent("session.closed", "system", {
+            reason: input.args.reason,
+          });
+          session.status = "closed";
+          session.activeWorkOrderLineId = null;
+          return { sessionId: session.id, status: "closed", replayed: false };
+        }
         if (input.action === "event.append") {
           return appendEvent(
             String(input.args.eventType),
@@ -438,5 +470,206 @@ describe("Technician CoPilot persistent text runtime", () => {
     expect(first.reply).toContain("Started Driveline vibration");
     expect(replay.reply).toBe(first.reply);
     expect(replay.replayed).toBe(true);
+  });
+
+  it("recovers a persisted completion turn after the line leaves the actionable queue", async () => {
+    const started = await runTechnicianCopilotTurn({
+      identity: {
+        authUserId: "auth-tech",
+        profileId: "profile-tech",
+        shopId: "shop-1",
+        documentationEnabled: true,
+        voiceEnabled: true,
+        supabase: {} as never,
+      },
+      message: "Start the Ford.",
+      turnId: "turn-start-before-completion",
+      inputSource: "voice",
+    });
+
+    const completionCandidate = {
+      ...candidate,
+      lines: [
+        {
+          ...candidate.lines[0],
+          status: "in_progress",
+          cause: "Failed rear U-joint",
+          correction: "Replaced rear U-joint",
+        },
+      ],
+    };
+    let completionCommitted = false;
+    let dropFirstActionResult = true;
+    mocks.listTechnicianWorkCandidates.mockImplementation(async () =>
+      completionCommitted ? [] : [completionCandidate],
+    );
+    mocks.loadTechnicianWorkCandidateForWorkOrder.mockImplementation(
+      async () => (completionCommitted ? null : completionCandidate),
+    );
+
+    const baseCommand = mocks.sendCopilotServerCommand.getMockImplementation();
+    if (!baseCommand) throw new Error("Missing command test harness");
+    mocks.sendCopilotServerCommand.mockImplementation(async (input: {
+      action: string;
+      args: Record<string, unknown>;
+    }) => {
+      if (
+        input.action === "job.action" &&
+        input.args.jobAction === "job.complete"
+      ) {
+        completionCommitted = true;
+      }
+      if (
+        input.action === "event.append" &&
+        input.args.eventType === "action.completed" &&
+        dropFirstActionResult
+      ) {
+        dropFirstActionResult = false;
+        throw new Error("Response connection dropped after completion commit");
+      }
+      return baseCommand(input);
+    });
+
+    await expect(
+      runTechnicianCopilotTurn({
+        identity: {
+          authUserId: "auth-tech",
+          profileId: "profile-tech",
+          shopId: "shop-1",
+          documentationEnabled: true,
+          voiceEnabled: true,
+          supabase: {} as never,
+        },
+        message: "Complete the Ford.",
+        turnId: "turn-complete-retry",
+        sessionId: started.sessionId,
+        inputSource: "voice",
+      }),
+    ).rejects.toThrow("Response connection dropped");
+
+    const recovered = await runTechnicianCopilotTurn({
+      identity: {
+        authUserId: "auth-tech",
+        profileId: "profile-tech",
+        shopId: "shop-1",
+        documentationEnabled: true,
+        voiceEnabled: true,
+        supabase: {} as never,
+      },
+      message: "Complete the Ford.",
+      turnId: "turn-complete-retry",
+      sessionId: started.sessionId,
+      inputSource: "voice",
+    });
+
+    expect(recovered.reply).toContain("Completed Driveline vibration");
+    expect(recovered.sessionId).toBeNull();
+    expect(recovered.session).toBeNull();
+    expect(
+      mocks.sendCopilotServerCommand.mock.calls.filter(
+        ([call]) =>
+          call.action === "job.action" &&
+          call.args.jobAction === "job.complete",
+      ),
+    ).toHaveLength(2);
+    expect(
+      mocks.sendCopilotServerCommand.mock.calls.some(
+        ([call]) => call.action === "session.close",
+      ),
+    ).toBe(true);
+  });
+
+  it("re-anchors the repair session when another assigned line remains", async () => {
+    const started = await runTechnicianCopilotTurn({
+      identity: {
+        authUserId: "auth-tech",
+        profileId: "profile-tech",
+        shopId: "shop-1",
+        documentationEnabled: true,
+        voiceEnabled: true,
+        supabase: {} as never,
+      },
+      message: "Start the Ford.",
+      turnId: "turn-start-before-reanchor",
+      inputSource: "voice",
+    });
+    const remainingLine = {
+      ...candidate.lines[0],
+      id: "line-road-test",
+      complaint: "Final road test",
+      status: "awaiting",
+      cause: null,
+      correction: null,
+    };
+    const beforeCompletion = {
+      ...candidate,
+      lineIds: ["line-driveline", remainingLine.id],
+      lines: [
+        {
+          ...candidate.lines[0],
+          status: "in_progress",
+          cause: "Failed rear U-joint",
+          correction: "Replaced rear U-joint",
+        },
+        remainingLine,
+      ],
+    };
+    const afterCompletion = {
+      ...beforeCompletion,
+      lineIds: [remainingLine.id],
+      lines: [remainingLine],
+    };
+    let completionCommitted = false;
+    mocks.listTechnicianWorkCandidates.mockResolvedValue([beforeCompletion]);
+    mocks.loadTechnicianWorkCandidateForWorkOrder.mockImplementation(
+      async () => (completionCommitted ? afterCompletion : beforeCompletion),
+    );
+    const baseCommand = mocks.sendCopilotServerCommand.getMockImplementation();
+    if (!baseCommand) throw new Error("Missing command test harness");
+    mocks.sendCopilotServerCommand.mockImplementation(async (input: {
+      action: string;
+      args: Record<string, unknown>;
+    }) => {
+      if (
+        input.action === "job.action" &&
+        input.args.jobAction === "job.complete"
+      ) {
+        completionCommitted = true;
+      }
+      return baseCommand(input);
+    });
+
+    const completed = await runTechnicianCopilotTurn({
+      identity: {
+        authUserId: "auth-tech",
+        profileId: "profile-tech",
+        shopId: "shop-1",
+        documentationEnabled: true,
+        voiceEnabled: true,
+        supabase: {} as never,
+      },
+      message: "Complete the Ford.",
+      turnId: "turn-complete-reanchor",
+      sessionId: started.sessionId,
+      inputSource: "voice",
+    });
+
+    expect(completed.sessionId).toBe("session-ford");
+    expect(completed.session).toMatchObject({
+      status: "active",
+      activeWorkOrderLineId: remainingLine.id,
+    });
+    expect(
+      mocks.sendCopilotServerCommand.mock.calls.some(
+        ([call]) =>
+          call.action === "session.start" &&
+          call.args.workOrderLineId === remainingLine.id,
+      ),
+    ).toBe(true);
+    expect(
+      mocks.sendCopilotServerCommand.mock.calls.some(
+        ([call]) => call.action === "session.close",
+      ),
+    ).toBe(false);
   });
 });

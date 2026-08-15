@@ -1,10 +1,12 @@
 import "server-only";
 
 import { normalizeWorkOrderLineStatus } from "@/features/work-orders/lib/line-status";
+import { learnFromCompletedWorkOrderLine } from "@/features/work-orders/server/completeWorkOrderLine";
 import type { TechnicianCopilotAction } from "./actionContract";
 import type {
   TechnicianWorkCandidate,
   TechnicianWorkLine,
+  TechnicianWorkScope,
 } from "./assignedWork";
 import { sendCopilotServerCommand } from "./transport";
 
@@ -12,6 +14,7 @@ type CopilotMutationIdentity = {
   authUserId: string;
   profileId: string;
   shopId: string;
+  supabase: TechnicianWorkScope["supabase"];
 };
 
 type ExecutableAction = Exclude<
@@ -36,7 +39,7 @@ export type TechnicianCopilotActionResult = {
   eventDetail?: string;
 };
 
-function lineLabel(line: TechnicianWorkLine): string {
+export function technicianWorkLineLabel(line: TechnicianWorkLine): string {
   return line.complaint ?? line.description ?? `job ${line.id.slice(0, 8)}`;
 }
 
@@ -53,7 +56,7 @@ function statusLabel(value: string | null): string {
 function choiceReply(lines: readonly TechnicianWorkLine[]): string {
   const choices = lines
     .slice(0, 4)
-    .map((line) => lineLabel(line))
+    .map((line) => technicianWorkLineLabel(line))
     .join(", ");
   return `Which job line do you mean: ${choices}?`;
 }
@@ -113,7 +116,7 @@ export function describeNextTechnicianWork(
   const next = choices[0];
   if (!next) return "You don't have another assigned job line right now.";
 
-  const label = lineLabel(next.line);
+  const label = technicianWorkLineLabel(next.line);
   const order = workOrderLabel(next.workOrder);
   const status = normalizeWorkOrderLineStatus(next.line.status);
   if (status === "in_progress") {
@@ -169,7 +172,7 @@ export function prepareTechnicianCopilotAction(input: {
   if (input.action.type === "job.hold" && !input.action.reason) {
     return {
       kind: "reply",
-      reply: `What is the hold reason for ${lineLabel(line)}?`,
+      reply: `What is the hold reason for ${technicianWorkLineLabel(line)}?`,
     };
   }
 
@@ -181,7 +184,7 @@ export function prepareTechnicianCopilotAction(input: {
   ) {
     return {
       kind: "reply",
-      reply: `${lineLabel(line)} is not currently on hold.`,
+      reply: `${technicianWorkLineLabel(line)} is not currently on hold.`,
     };
   }
 
@@ -192,7 +195,7 @@ export function prepareTechnicianCopilotAction(input: {
     if (!line.updatedAt) {
       return {
         kind: "reply",
-        reply: `I couldn't verify the latest job story for ${lineLabel(line)}. Refresh the work order and try again.`,
+        reply: `I couldn't verify the latest job story for ${technicianWorkLineLabel(line)}. Refresh the work order and try again.`,
       };
     }
     const cause = input.action.cause ?? line.cause;
@@ -203,7 +206,7 @@ export function prepareTechnicianCopilotAction(input: {
     ) {
       return {
         kind: "reply",
-        reply: `Start ${lineLabel(line)} before completing it.`,
+        reply: `Start ${technicianWorkLineLabel(line)} before completing it.`,
       };
     }
     if (input.action.type === "job.complete" && (!cause || !correction)) {
@@ -215,13 +218,13 @@ export function prepareTechnicianCopilotAction(input: {
             : "correction";
       return {
         kind: "reply",
-        reply: `What ${missing} should I record before completing ${lineLabel(line)}?`,
+        reply: `What ${missing} should I record before completing ${technicianWorkLineLabel(line)}?`,
       };
     }
     if (!cause && !correction) {
       return {
         kind: "reply",
-        reply: `What cause or correction should I add to ${lineLabel(line)}?`,
+        reply: `What cause or correction should I add to ${technicianWorkLineLabel(line)}?`,
       };
     }
     return {
@@ -273,6 +276,9 @@ function safeFailure(action: ExecutableAction, message: string): string {
   if (normalized.includes("labor time must be greater than 0")) {
     return "Labor time must be entered before I can complete that job.";
   }
+  if (normalized.includes("inspection_completion_required")) {
+    return "Complete and sign the inspection before I can finish that job.";
+  }
   if (
     normalized.includes("copilot_job_not_active") ||
     normalized.includes("copilot_job_punch_not_active")
@@ -307,14 +313,23 @@ function safeFailure(action: ExecutableAction, message: string): string {
   return `I couldn't confirm whether I could ${verb}. Refresh the job before trying again.`;
 }
 
-export async function executeTechnicianCopilotAction(input: {
+export type BoundTechnicianCopilotAction = {
+  action: ExecutableAction;
+  lineId: string;
+  lineLabel: string;
+  lineCause: string | null;
+  lineCorrection: string | null;
+  lineUpdatedAt: string | null;
+};
+
+export async function executeBoundTechnicianCopilotAction(input: {
   identity: CopilotMutationIdentity;
   sessionId: string;
-  prepared: Extract<PreparedTechnicianCopilotAction, { kind: "execute" }>;
+  bound: BoundTechnicianCopilotAction;
   operationId: string;
   expectedLineUpdatedAt?: string | null;
 }): Promise<TechnicianCopilotActionResult> {
-  const { action, line } = input.prepared;
+  const { action } = input.bound;
   const command = {
     authUserId: input.identity.authUserId,
     profileId: input.identity.profileId,
@@ -322,7 +337,7 @@ export async function executeTechnicianCopilotAction(input: {
     action: "job.action" as const,
     args: {
       sessionId: input.sessionId,
-      workOrderLineId: line.id,
+      workOrderLineId: input.bound.lineId,
       jobAction: action.type,
       operationId: input.operationId,
       reason: action.type === "job.hold" ? action.reason : null,
@@ -336,7 +351,7 @@ export async function executeTechnicianCopilotAction(input: {
           : null,
       expectedLineUpdatedAt:
         input.expectedLineUpdatedAt === undefined
-          ? line.updatedAt
+          ? input.bound.lineUpdatedAt
           : input.expectedLineUpdatedAt,
     },
   };
@@ -352,7 +367,7 @@ export async function executeTechnicianCopilotAction(input: {
   } catch (error) {
     console.error("[technician-copilot] canonical job action failed", {
       action: action.type,
-      workOrderLineId: line.id,
+      workOrderLineId: input.bound.lineId,
       error: error instanceof Error ? error.message : String(error),
     });
     return {
@@ -364,7 +379,15 @@ export async function executeTechnicianCopilotAction(input: {
     };
   }
 
-  const label = lineLabel(line);
+  if (action.type === "job.complete") {
+    await learnFromCompletedWorkOrderLine({
+      supabase: input.identity.supabase,
+      lineId: input.bound.lineId,
+      actorUserId: input.identity.authUserId,
+    });
+  }
+
+  const label = input.bound.lineLabel;
   if (action.type === "job.start") {
     return {
       ok: true,
@@ -399,8 +422,8 @@ export async function executeTechnicianCopilotAction(input: {
   }
 
   const saved = [
-    action.cause !== line.cause ? "cause" : null,
-    action.correction !== line.correction ? "correction" : null,
+    action.cause !== input.bound.lineCause ? "cause" : null,
+    action.correction !== input.bound.lineCorrection ? "correction" : null,
   ]
     .filter(Boolean)
     .join(" and ");
@@ -410,4 +433,28 @@ export async function executeTechnicianCopilotAction(input: {
     eventLabel: "Saved job story",
     eventDetail: label,
   };
+}
+
+export async function executeTechnicianCopilotAction(input: {
+  identity: CopilotMutationIdentity;
+  sessionId: string;
+  prepared: Extract<PreparedTechnicianCopilotAction, { kind: "execute" }>;
+  operationId: string;
+  expectedLineUpdatedAt?: string | null;
+}): Promise<TechnicianCopilotActionResult> {
+  const { action, line } = input.prepared;
+  return executeBoundTechnicianCopilotAction({
+    identity: input.identity,
+    sessionId: input.sessionId,
+    operationId: input.operationId,
+    expectedLineUpdatedAt: input.expectedLineUpdatedAt,
+    bound: {
+      action,
+      lineId: line.id,
+      lineLabel: technicianWorkLineLabel(line),
+      lineCause: line.cause,
+      lineCorrection: line.correction,
+      lineUpdatedAt: line.updatedAt,
+    },
+  });
 }

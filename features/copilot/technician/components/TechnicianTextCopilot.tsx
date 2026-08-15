@@ -159,8 +159,11 @@ export function TechnicianTextCopilot() {
           ...current,
           ...body,
           session:
-            body.session ??
-            (body.sessionId ? { id: body.sessionId } : current.session),
+            Object.prototype.hasOwnProperty.call(body, "session")
+              ? body.session
+              : body.sessionId
+                ? { id: body.sessionId }
+                : current.session,
         }));
         return body;
       } catch (reason) {

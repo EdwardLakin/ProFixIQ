@@ -2,8 +2,7 @@ export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
-import { applyJobPunchTransition } from "@/features/work-orders/server/applyJobPunchTransition";
-import { upsertMenuRepairItemFromCompletedLine } from "@/features/menu-repair-items/server/upsertMenuRepairItemFromCompletedLine";
+import { completeWorkOrderLine } from "@/features/work-orders/server/completeWorkOrderLine";
 
 type Body = {
   cause?: string | null;
@@ -51,56 +50,18 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const result = await applyJobPunchTransition({
+  const result = await completeWorkOrderLine({
     supabase,
     lineId: id,
-    action: "finish",
     technicianId: user.id,
-    options: {
-      operationKey,
-      finish: {
-        cause: body.cause,
-        correction: body.correction,
-      },
-    },
+    actorUserId: user.id,
+    operationKey,
+    cause: body.cause,
+    correction: body.correction,
   });
 
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: result.status });
-  }
-
-  let menuRepairLearned = false;
-
-  const { data: completedLine, error: completedLineError } = await supabase
-    .from("work_order_lines")
-    .select("id, shop_id")
-    .eq("id", id)
-    .maybeSingle<{ id: string; shop_id: string | null }>();
-
-  if (completedLineError || !completedLine?.shop_id) {
-    console.error("[work-orders] completed repair memory update failed", {
-      workOrderLineId: id,
-      error:
-        completedLineError?.message ?? "Completed line is missing shop context",
-    });
-  } else {
-    try {
-      await upsertMenuRepairItemFromCompletedLine({
-        supabase,
-        shopId: completedLine.shop_id,
-        workOrderLineId: completedLine.id,
-        actorUserId: user.id,
-      });
-      menuRepairLearned = true;
-    } catch (learningError) {
-      console.error("[work-orders] completed repair memory update failed", {
-        workOrderLineId: id,
-        error:
-          learningError instanceof Error
-            ? learningError.message
-            : "Completed repair memory update failed",
-      });
-    }
   }
 
   const payload =
@@ -109,6 +70,6 @@ export async function POST(req: NextRequest) {
       : { success: true };
   return NextResponse.json({
     ...payload,
-    menuRepairLearning: { ok: menuRepairLearned },
+    menuRepairLearning: result.menuRepairLearning,
   });
 }

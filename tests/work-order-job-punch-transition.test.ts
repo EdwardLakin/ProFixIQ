@@ -141,4 +141,25 @@ describe("applyJobPunchTransition atomic boundary", () => {
       error: "FINANCIALLY_LOCKED: invoice issued",
     });
   });
+
+  it("maps unsigned inspection completion to a retryable conflict", async () => {
+    const db = new FakeSupabase();
+    db.rpcError = {
+      message:
+        "INSPECTION_COMPLETION_REQUIRED: complete and sign the inspection before finishing this job.",
+    };
+
+    const result = await applyJobPunchTransition({
+      supabase: db as never,
+      lineId: "line-1",
+      action: "finish",
+      technicianId: "tech-1",
+      options: { operationKey: "finish-1" },
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      status: 409,
+    });
+  });
 });

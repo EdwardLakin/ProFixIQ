@@ -61,6 +61,7 @@ function cleanString(value: unknown): string | null {
 function errorStatus(message: string): number {
   const normalized = message.toLowerCase();
   if (normalized.includes("not found")) return 404;
+  if (normalized.includes("inspection_completion_required")) return 409;
   if (
     normalized.includes("financially_locked") ||
     normalized.includes("shift_shop_mismatch") ||

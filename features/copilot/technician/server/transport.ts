@@ -12,6 +12,7 @@ function asObject(value: unknown): Record<string, unknown> {
 export type CopilotServerCommandAction =
   | "session.read"
   | "session.start"
+  | "session.close"
   | "event.append"
   | "documentation.append"
   | "job.action";

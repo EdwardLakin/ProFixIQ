@@ -117,6 +117,9 @@ describe("completed repair memory", () => {
 
   it("keeps completion authoritative and repair learning fail-open", () => {
     const finishRoute = read("app/api/work-orders/lines/[id]/finish/route.ts");
+    const completionService = read(
+      "features/work-orders/server/completeWorkOrderLine.ts",
+    );
     const completedHelper = read(
       "features/menu-repair-items/server/upsertMenuRepairItemFromCompletedLine.ts",
     );
@@ -124,10 +127,13 @@ describe("completed repair memory", () => {
       "app/api/work-orders/quotes/add-from-menu-repair/route.ts",
     );
 
-    expect(finishRoute.indexOf("await applyJobPunchTransition")).toBeLessThan(
-      finishRoute.indexOf("await upsertMenuRepairItemFromCompletedLine"),
+    expect(finishRoute).toContain("await completeWorkOrderLine");
+    expect(
+      completionService.indexOf("await applyJobPunchTransition"),
+    ).toBeLessThan(
+      completionService.indexOf("await learnFromCompletedWorkOrderLine"),
     );
-    expect(finishRoute).toContain("completed repair memory update failed");
+    expect(completionService).toContain("completed repair memory update failed");
     expect(completedHelper).toContain('.from("work_order_parts")');
     expect(completedHelper).toContain('.from("menu_repair_item_pricing_parts")');
     expect(completedHelper).toContain("completedNetQuantity");
