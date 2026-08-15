@@ -5,9 +5,29 @@ import {
   requireTechnicianCopilotAccess,
   TechnicianCopilotAccessError,
 } from "@/features/copilot/technician/server/auth";
-import { runTechnicianCopilotTurn } from "@/features/copilot/technician/server/chat";
+import {
+  runTechnicianCopilotTurn,
+  TechnicianCopilotConflictError,
+} from "@/features/copilot/technician/server/chat";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 export const runtime = "nodejs";
+
+function runtimeConflict(error: unknown): TechnicianCopilotConflictError | null {
+  if (error instanceof TechnicianCopilotConflictError) return error;
+  const message = error instanceof Error ? error.message : "";
+  if (
+    message === "copilot_session_not_active" ||
+    message === "copilot_work_order_not_actionable" ||
+    message === "copilot_work_order_assignment_required"
+  ) {
+    return new TechnicianCopilotConflictError(
+      "technician_copilot_session_stale",
+      "The active CoPilot repair context changed. Reload before continuing.",
+    );
+  }
+  return null;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -50,7 +70,7 @@ export async function POST(request: NextRequest) {
         shopId: access.shopId,
         documentationEnabled: access.capabilities.documentation,
         voiceEnabled: access.capabilities.voice,
-        supabase: access.supabase,
+        supabase: createAdminSupabase(),
       },
       message,
       turnId,
@@ -64,6 +84,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: error.message, code: error.code },
         { status: error.status },
+      );
+    }
+    const conflict = runtimeConflict(error);
+    if (conflict) {
+      return NextResponse.json(
+        { error: conflict.message, code: conflict.code },
+        { status: conflict.status },
       );
     }
     console.error("[technician-copilot] chat failed", error);

@@ -26,7 +26,9 @@ describe("Technician CoPilot turn-scoped documentation atomicity", () => {
   it("finalizes only successful extraction attempts, including valid empty results", () => {
     expect(chat).toContain("completed: true");
     expect(chat).toContain("completed: false");
-    expect(chat).toContain("if (documentationExtraction.completed)");
+    expect(chat).toContain("documentationExtraction.completed");
+    expect(chat).toContain("!documentationAlreadyFinalized");
+    expect(chat).toContain("await appendDocumentationTurn");
   });
 
   it("recovers unfinished documentation without replacing a persisted reply", () => {
