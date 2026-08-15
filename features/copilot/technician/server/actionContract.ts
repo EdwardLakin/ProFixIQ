@@ -5,6 +5,7 @@ export const TECHNICIAN_COPILOT_ACTION_TYPES = [
   "job.hold",
   "job.release_hold",
   "job.story.save",
+  "job.complete",
 ] as const;
 
 export type TechnicianCopilotActionType =
@@ -22,6 +23,12 @@ export type TechnicianCopilotAction =
   | { type: "job.release_hold"; workOrderLineId: string | null }
   | {
       type: "job.story.save";
+      workOrderLineId: string | null;
+      cause: string | null;
+      correction: string | null;
+    }
+  | {
+      type: "job.complete";
       workOrderLineId: string | null;
       cause: string | null;
       correction: string | null;
@@ -59,6 +66,7 @@ export function parseTechnicianCopilotAction(
         reason: text(value?.reason, 500),
       };
     case "job.story.save":
+    case "job.complete":
       return {
         type,
         workOrderLineId,

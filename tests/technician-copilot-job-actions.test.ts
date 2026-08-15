@@ -136,6 +136,44 @@ describe("Technician CoPilot canonical job actions", () => {
     });
   });
 
+  it("requires the technician to be punched into a job before completing it", () => {
+    const prepared = prepareTechnicianCopilotAction({
+      action: {
+        type: "job.complete",
+        workOrderLineId: workOrder.lines[0].id,
+        cause: null,
+        correction: null,
+      },
+      activeWorkOrder: workOrder,
+      assignedWork: [workOrder],
+      activeWorkOrderLineId: workOrder.lines[0].id,
+    });
+
+    expect(prepared).toEqual({
+      kind: "reply",
+      reply: "Start Brake inspection before completing it.",
+    });
+  });
+
+  it("asks only for the missing story facts before completing an active job", () => {
+    const prepared = prepareTechnicianCopilotAction({
+      action: {
+        type: "job.complete",
+        workOrderLineId: workOrder.lines[1].id,
+        cause: "Loose rear U-joint",
+        correction: null,
+      },
+      activeWorkOrder: workOrder,
+      assignedWork: [workOrder],
+      activeWorkOrderLineId: workOrder.lines[1].id,
+    });
+
+    expect(prepared).toEqual({
+      kind: "reply",
+      reply: "What correction should I record before completing Road test?",
+    });
+  });
+
   it("starts through the canonical atomic job-labor service with a stable replay key", async () => {
     const prepared = prepareTechnicianCopilotAction({
       action: { type: "job.start", workOrderLineId: workOrder.lines[0].id },
@@ -218,6 +256,57 @@ describe("Technician CoPilot canonical job actions", () => {
       }),
     );
     expect(result.reply).toBe("Saved the cause for Brake inspection.");
+  });
+
+  it("completes through the canonical finish transition with the current story and version", async () => {
+    const activeWorkOrder: TechnicianWorkCandidate = {
+      ...workOrder,
+      lines: workOrder.lines.map((line, index) =>
+        index === 0 ? { ...line, status: "in_progress" } : line,
+      ),
+    };
+    const prepared = prepareTechnicianCopilotAction({
+      action: {
+        type: "job.complete",
+        workOrderLineId: activeWorkOrder.lines[0].id,
+        cause: null,
+        correction: null,
+      },
+      activeWorkOrder,
+      assignedWork: [activeWorkOrder],
+      activeWorkOrderLineId: activeWorkOrder.lines[0].id,
+    });
+    if (prepared.kind !== "execute") throw new Error("Expected executable action");
+
+    const result = await executeTechnicianCopilotAction({
+      identity: {
+        authUserId: "00000000-0000-4000-8000-000000000011",
+        profileId: "00000000-0000-4000-8000-000000000010",
+        shopId: "00000000-0000-4000-8000-000000000001",
+      },
+      sessionId: "00000000-0000-4000-8000-000000000300",
+      prepared,
+      operationId: "00000000-0000-5000-a000-000000000310",
+    });
+
+    expect(mocks.sendCopilotServerCommand).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "job.action",
+        args: expect.objectContaining({
+          jobAction: "job.complete",
+          workOrderLineId: activeWorkOrder.lines[0].id,
+          cause: "Front pads below specification",
+          correction: "Replace front brake pads",
+          expectedLineUpdatedAt: activeWorkOrder.lines[0].updatedAt,
+        }),
+      }),
+    );
+    expect(result).toEqual({
+      ok: true,
+      reply: "Completed Brake inspection and stopped your job timer.",
+      eventLabel: "Completed job",
+      eventDetail: "Brake inspection",
+    });
   });
 
   it("replays the same durable operation after an unknown transport outcome", async () => {

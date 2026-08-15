@@ -185,7 +185,10 @@ export function prepareTechnicianCopilotAction(input: {
     };
   }
 
-  if (input.action.type === "job.story.save") {
+  if (
+    input.action.type === "job.story.save" ||
+    input.action.type === "job.complete"
+  ) {
     if (!line.updatedAt) {
       return {
         kind: "reply",
@@ -194,6 +197,27 @@ export function prepareTechnicianCopilotAction(input: {
     }
     const cause = input.action.cause ?? line.cause;
     const correction = input.action.correction ?? line.correction;
+    if (
+      input.action.type === "job.complete" &&
+      normalizeWorkOrderLineStatus(line.status) !== "in_progress"
+    ) {
+      return {
+        kind: "reply",
+        reply: `Start ${lineLabel(line)} before completing it.`,
+      };
+    }
+    if (input.action.type === "job.complete" && (!cause || !correction)) {
+      const missing =
+        !cause && !correction
+          ? "cause and correction"
+          : !cause
+            ? "cause"
+            : "correction";
+      return {
+        kind: "reply",
+        reply: `What ${missing} should I record before completing ${lineLabel(line)}?`,
+      };
+    }
     if (!cause && !correction) {
       return {
         kind: "reply",
@@ -240,6 +264,24 @@ function safeFailure(action: ExecutableAction, message: string): string {
   ) {
     return "That job story changed on another device. Review the latest cause and correction, then try again.";
   }
+  if (normalized.includes("cause is required")) {
+    return "The cause is still required before I can complete that job.";
+  }
+  if (normalized.includes("correction is required")) {
+    return "The correction is still required before I can complete that job.";
+  }
+  if (normalized.includes("labor time must be greater than 0")) {
+    return "Labor time must be entered before I can complete that job.";
+  }
+  if (
+    normalized.includes("copilot_job_not_active") ||
+    normalized.includes("copilot_job_punch_not_active")
+  ) {
+    return "You need to be punched into that job before I can complete it.";
+  }
+  if (normalized.includes("other_technicians_still_punched_in")) {
+    return "Another technician is still punched into that job, so I can't complete it yet.";
+  }
   if (normalized.includes("job_not_on_hold")) {
     return "That job is no longer on hold. Review its current state before trying again.";
   }
@@ -259,7 +301,9 @@ function safeFailure(action: ExecutableAction, message: string): string {
         ? "put the job on hold"
         : action.type === "job.release_hold"
           ? "release the hold"
-          : "save the job story";
+          : action.type === "job.complete"
+            ? "complete the job"
+            : "save the job story";
   return `I couldn't confirm whether I could ${verb}. Refresh the job before trying again.`;
 }
 
@@ -282,8 +326,14 @@ export async function executeTechnicianCopilotAction(input: {
       jobAction: action.type,
       operationId: input.operationId,
       reason: action.type === "job.hold" ? action.reason : null,
-      cause: action.type === "job.story.save" ? action.cause : null,
-      correction: action.type === "job.story.save" ? action.correction : null,
+      cause:
+        action.type === "job.story.save" || action.type === "job.complete"
+          ? action.cause
+          : null,
+      correction:
+        action.type === "job.story.save" || action.type === "job.complete"
+          ? action.correction
+          : null,
       expectedLineUpdatedAt:
         input.expectedLineUpdatedAt === undefined
           ? line.updatedAt
@@ -336,6 +386,14 @@ export async function executeTechnicianCopilotAction(input: {
       ok: true,
       reply: `Released the hold on ${label}. It is back in awaiting.`,
       eventLabel: "Released job hold",
+      eventDetail: label,
+    };
+  }
+  if (action.type === "job.complete") {
+    return {
+      ok: true,
+      reply: `Completed ${label} and stopped your job timer.`,
+      eventLabel: "Completed job",
       eventDetail: label,
     };
   }
