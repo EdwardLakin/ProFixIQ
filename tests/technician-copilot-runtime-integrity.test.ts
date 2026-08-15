@@ -1,8 +1,12 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const migration = readFileSync(
   "supabase/migrations/20260814223500_technician_copilot_runtime_integrity.sql",
+  "utf8",
+);
+const cleanupMigration = readFileSync(
+  "supabase/migrations/20260815024500_technician_copilot_command_envelope_cleanup.sql",
   "utf8",
 );
 const assignedWork = readFileSync(
@@ -27,6 +31,10 @@ const transport = readFileSync(
 );
 const runtimeIntegration = readFileSync(
   "tests/security/technician-copilot-runtime-integrity.runtime.sql",
+  "utf8",
+);
+const cleanReplayWorkflow = readFileSync(
+  ".github/workflows/supabase-clean-replay-audit.yml",
   "utf8",
 );
 
@@ -85,12 +93,32 @@ describe("Technician CoPilot runtime integrity rescue", () => {
     expect(chatRoute).toContain("{ status: conflict.status }");
   });
 
-  it("awaits command-row cleanup on every exit path", () => {
-    expect(transport).toContain("} finally {");
-    expect(transport).toContain("const cleanup = await admin");
-    expect(transport).not.toContain(
-      'void admin.from("ai_action_events").delete()',
+  it("keeps command envelopes ephemeral without widening service-role DELETE", () => {
+    expect(transport).not.toContain('.from("ai_action_events")\n        .delete()');
+    expect(cleanupMigration).toContain(
+      "create or replace function copilot.cleanup_ai_action_command_after_insert()",
     );
+    expect(cleanupMigration).toContain(
+      "create trigger technician_copilot_ai_action_command_cleanup\nafter insert on public.ai_action_events",
+    );
+    expect(cleanupMigration).toContain(
+      "where id = new.id\n    and source = 'technician_copilot_command'",
+    );
+    expect(cleanupMigration).toContain(
+      "has_table_privilege('service_role', 'public.ai_action_events', 'DELETE')",
+    );
+    expect(runtimeIntegration).toContain(
+      "command envelope persisted after RETURNING",
+    );
+  });
+
+  it("runs the lifecycle integration from the existing required clean-replay gate", () => {
+    expect(cleanReplayWorkflow).toContain(
+      "-f tests/security/technician-copilot-runtime-integrity.runtime.sql",
+    );
+    expect(
+      existsSync(".github/workflows/technician-copilot-runtime-integrity.yml"),
+    ).toBe(false);
   });
 
   it("ships an executable transaction-level lifecycle integration", () => {

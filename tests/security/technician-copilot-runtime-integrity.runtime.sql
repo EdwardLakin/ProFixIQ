@@ -267,6 +267,67 @@ begin
 end
 $technician_copilot_runtime_lifecycle$;
 
+do $technician_copilot_command_transport$
+declare
+  v_active_session_id uuid;
+  v_command_id uuid;
+  v_metadata jsonb;
+begin
+  select rs.id
+    into v_active_session_id
+  from copilot.repair_sessions rs
+  where rs.technician_id = 'a1438000-0000-4000-8000-000000000002'
+    and rs.status = 'active';
+
+  with command as (
+    insert into public.ai_action_events (
+      shop_id,
+      event_type,
+      actor_id,
+      actor_role,
+      source,
+      payload,
+      metadata
+    )
+    values (
+      'a1438000-0000-4000-8000-000000000010',
+      'technician_copilot_command',
+      'a1438000-0000-4000-8000-000000000002',
+      'mechanic',
+      'technician_copilot_command',
+      jsonb_build_object(
+        'authUserId', 'a1438000-0000-4000-8000-000000000002',
+        'action', 'session.read'
+      ),
+      '{}'::jsonb
+    )
+    returning id, metadata
+  )
+  select c.id, c.metadata
+    into v_command_id, v_metadata
+  from command c;
+
+  if v_command_id is null
+    or v_metadata #>> '{copilotCommandResult,session,id}' <> v_active_session_id::text
+    or nullif(v_metadata #>> '{copilotCommandError,message}', '') is not null
+  then
+    raise exception 'CoPilot runtime assertion failed: command bridge did not return the active session';
+  end if;
+
+  if exists (
+    select 1
+    from public.ai_action_events e
+    where e.id = v_command_id
+  ) then
+    raise exception 'CoPilot runtime assertion failed: command envelope persisted after RETURNING';
+  end if;
+
+  if has_table_privilege('service_role', 'public.ai_action_events', 'DELETE') then
+    raise exception 'CoPilot runtime assertion failed: command cleanup widened service-role DELETE';
+  end if;
+end
+$technician_copilot_command_transport$;
+
 do $technician_copilot_runtime_schema$
 begin
   if exists (
