@@ -1,24 +1,19 @@
 "use client";
 
-import { useMemo } from "react";
-import { SessionContextProvider } from "@supabase/auth-helpers-react";
+import type { ReactNode } from "react";
+import { SessionProvider } from "@/features/shared/lib/supabase/session-context";
 import type { Session } from "@supabase/supabase-js";
-import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
 export default function Providers({
   children,
   initialSession,
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
   initialSession: Session | null;
 }) {
-  const supabase = useMemo(() => createBrowserSupabase(), []);
   return (
-    <SessionContextProvider
-      supabaseClient={supabase}
-      initialSession={initialSession}
-    >
+    <SessionProvider initialSession={initialSession}>
       {children}
-    </SessionContextProvider>
+    </SessionProvider>
   );
 }

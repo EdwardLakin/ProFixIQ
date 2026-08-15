@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useMemo } from "react";
-import { useSession } from "@supabase/auth-helpers-react";
+import { useSession } from "@/features/shared/lib/supabase/session-context";
 import { usePathname } from "next/navigation";
 import { TabsProvider } from "./TabsProvider";
 import TabsBar from "./TabsBar";
