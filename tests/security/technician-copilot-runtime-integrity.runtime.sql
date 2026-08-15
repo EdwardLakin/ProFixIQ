@@ -391,6 +391,8 @@ declare
   v_start_replay jsonb;
   v_story jsonb;
   v_story_replay jsonb;
+  v_complete jsonb;
+  v_complete_replay jsonb;
   v_line_updated_at timestamptz;
 begin
   select rs.id
@@ -648,6 +650,95 @@ begin
       raise;
     end if;
   end;
+
+  update public.work_order_lines
+  set labor_time = 1.0,
+      updated_at = now()
+  where id = 'a1438000-0000-4000-8000-000000000202';
+
+  perform copilot.technician_job_action_internal(
+    'a1438000-0000-4000-8000-000000000002',
+    v_active_session_id,
+    'a1438000-0000-4000-8000-000000000202',
+    'job.release_hold',
+    'a1438000-0000-5000-a000-000000000409'
+  );
+  perform copilot.technician_job_action_internal(
+    'a1438000-0000-4000-8000-000000000002',
+    v_active_session_id,
+    'a1438000-0000-4000-8000-000000000202',
+    'job.start',
+    'a1438000-0000-5000-a000-000000000410'
+  );
+
+  select wol.updated_at
+    into v_line_updated_at
+  from public.work_order_lines wol
+  where wol.id = 'a1438000-0000-4000-8000-000000000202';
+
+  begin
+    perform copilot.technician_job_action_internal(
+      'a1438000-0000-4000-8000-000000000002',
+      v_active_session_id,
+      'a1438000-0000-4000-8000-000000000202',
+      'job.complete',
+      'a1438000-0000-5000-a000-000000000411',
+      null,
+      'Confirmed seized inner pad',
+      'Clean and lubricate bracket',
+      v_line_updated_at - interval '1 second'
+    );
+    raise exception 'CoPilot job-completion assertion failed: stale completion succeeded';
+  exception when sqlstate '55000' then
+    if sqlerrm <> 'copilot_line_version_conflict' then
+      raise;
+    end if;
+  end;
+
+  v_complete := copilot.technician_job_action_internal(
+    'a1438000-0000-4000-8000-000000000002',
+    v_active_session_id,
+    'a1438000-0000-4000-8000-000000000202',
+    'job.complete',
+    'a1438000-0000-5000-a000-000000000412',
+    null,
+    'Confirmed seized inner pad',
+    'Clean and lubricate bracket',
+    v_line_updated_at
+  );
+  v_complete_replay := copilot.technician_job_action_internal(
+    'a1438000-0000-4000-8000-000000000002',
+    v_active_session_id,
+    'a1438000-0000-4000-8000-000000000202',
+    'job.complete',
+    'a1438000-0000-5000-a000-000000000412',
+    null,
+    'Confirmed seized inner pad',
+    'Clean and lubricate bracket',
+    v_line_updated_at
+  );
+
+  if coalesce((v_complete ->> 'idempotent')::boolean, true)
+    or not coalesce((v_complete_replay ->> 'idempotent')::boolean, false)
+    or v_complete ->> 'copilotAction' <> 'job.complete'
+    or not exists (
+      select 1
+      from public.work_order_lines wol
+      where wol.id = 'a1438000-0000-4000-8000-000000000202'
+        and lower(wol.status::text) = 'completed'
+        and wol.cause = 'Confirmed seized inner pad'
+        and wol.correction = 'Clean and lubricate bracket'
+    )
+    or exists (
+      select 1
+      from public.work_order_line_labor_segments segment
+      where segment.work_order_line_id = 'a1438000-0000-4000-8000-000000000202'
+        and segment.technician_id = 'a1438000-0000-4000-8000-000000000002'
+        and segment.ended_at is null
+    )
+  then
+    raise exception 'CoPilot job-completion assertion failed: completion or replay was incoherent';
+  end if;
 end
 $technician_copilot_job_actions$;
 
