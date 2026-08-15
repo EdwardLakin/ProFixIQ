@@ -1,9 +1,9 @@
 begin;
 
-set local lock_timeout = '5s';
-set local statement_timeout = '10min';
-set local check_function_bodies = false;
-
+-- The preview branch already applied the initial Field truck movement migration.
+-- Reinstall both commands so request hashing remains safe with the hardened
+-- search path and an exact receipt replay reaches the canonical idempotency
+-- check before the selected PO line's remaining-quantity guard.
 create or replace function public.field_transfer_stock_to_truck_atomic(
   p_shop_id uuid,
   p_service_vehicle_id uuid,
@@ -472,6 +472,5 @@ begin
   );
 end;
 $$;
-
 
 commit;
