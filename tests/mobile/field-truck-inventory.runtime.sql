@@ -153,6 +153,7 @@ declare
   v_count integer;
   v_before numeric;
   v_after numeric;
+  v_truck_before_transfer numeric;
 begin
   perform public.mobile_configure_service_v1_atomic(
     v_shop_id,
@@ -288,6 +289,11 @@ begin
   end if;
 
   -- Seed MAIN and prove a transfer is one paired, exact-once operation.
+  v_truck_before_transfer := public.parts_on_hand(
+    v_shop_id,
+    v_part_id,
+    v_truck_location_id
+  );
   perform public.apply_stock_move(
     v_part_id,
     v_source_location_id,
@@ -306,7 +312,8 @@ begin
     'field-runtime:transfer'
   );
   if public.parts_on_hand(v_shop_id, v_part_id, v_source_location_id) <> 2
-     or public.parts_on_hand(v_shop_id, v_part_id, v_truck_location_id) <> 3 then
+     or public.parts_on_hand(v_shop_id, v_part_id, v_truck_location_id)
+       <> v_truck_before_transfer + 1 then
     raise exception 'Field truck runtime failed: paired transfer quantities are wrong';
   end if;
   v_transfer_replay := public.field_transfer_stock_to_truck_atomic(
@@ -320,7 +327,8 @@ begin
   );
   if coalesce((v_transfer_replay ->> 'idempotent')::boolean, false) is not true
      or public.parts_on_hand(v_shop_id, v_part_id, v_source_location_id) <> 2
-     or public.parts_on_hand(v_shop_id, v_part_id, v_truck_location_id) <> 3 then
+     or public.parts_on_hand(v_shop_id, v_part_id, v_truck_location_id)
+       <> v_truck_before_transfer + 1 then
     raise exception 'Field truck runtime failed: transfer replay changed inventory';
   end if;
   select count(*) into v_count
