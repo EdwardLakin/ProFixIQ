@@ -117,6 +117,13 @@ values
   )
 on conflict (id) do nothing;
 
+-- The existing line-status refresh trigger recalculates a parent work order
+-- after line insertion. Reassert the terminal parent state after the assigned
+-- line exists so this fixture actually exercises CoPilot's terminal-work guard.
+update public.work_orders
+set status = 'completed'
+where id = 'a1438000-0000-4000-8000-000000000103';
+
 set constraints all immediate;
 
 do $technician_copilot_runtime_lifecycle$
