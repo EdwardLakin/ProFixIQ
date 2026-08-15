@@ -7,18 +7,22 @@ import {
   createServerSupabaseRoute,
 } from "@/features/shared/lib/supabase/server";
 import { createStripeClient } from "@/features/stripe/lib/stripe/client";
+import { isStripeSubscriptionAccessBearing } from "@/features/stripe/lib/stripe/subscriptionStatus";
 import { reconcileShopBillingFromUser } from "@/features/stripe/lib/server/canonical-shop-billing";
 import {
   claimStripeAcquisitionIntent,
   getStripeCheckoutEmail,
   getStripeCheckoutPriceId,
+  getStripeCheckoutSubscription,
   isCompletedStripeAcquisitionSession,
   readStripeAcquisitionMetadata,
   toStripeId,
 } from "@/features/stripe/lib/server/stripe-acquisition-intent";
 
 const REQUEST_MAX_BYTES = 2 * 1024;
-const requestSchema = z.object({ sessionId: z.string().regex(/^cs_[A-Za-z0-9_]+$/) }).strict();
+const requestSchema = z
+  .object({ sessionId: z.string().regex(/^cs_[A-Za-z0-9_]+$/) })
+  .strict();
 
 function noStoreJson(body: unknown, status = 200) {
   return NextResponse.json(body, {
@@ -28,8 +32,13 @@ function noStoreJson(body: unknown, status = 200) {
 }
 
 function claimFailureStatus(reason: string): number {
-  if (reason === "email_mismatch" || reason === "billing_role_required") return 403;
-  if (reason.includes("conflict") || reason.includes("linked") || reason === "intent_consumed") {
+  if (reason === "email_mismatch" || reason === "billing_role_required")
+    return 403;
+  if (
+    reason.includes("conflict") ||
+    reason.includes("linked") ||
+    reason === "intent_consumed"
+  ) {
     return 409;
   }
   return 400;
@@ -49,25 +58,38 @@ export async function handleStripeCheckoutLinkUser(req: Request) {
     const bounded = await readBoundedJson(req, REQUEST_MAX_BYTES);
     if (!bounded.ok) {
       return noStoreJson(
-        { error: bounded.reason === "too_large" ? "Request too large" : "Invalid request" },
+        {
+          error:
+            bounded.reason === "too_large"
+              ? "Request too large"
+              : "Invalid request",
+        },
         bounded.reason === "too_large" ? 413 : 400,
       );
     }
     const parsed = requestSchema.safeParse(bounded.value);
-    if (!parsed.success) return noStoreJson({ error: "Invalid checkout session" }, 400);
+    if (!parsed.success)
+      return noStoreJson({ error: "Invalid checkout session" }, 400);
 
     const stripe = createStripeClient(secretKey);
-    const session = await stripe.checkout.sessions.retrieve(parsed.data.sessionId, {
-      expand: ["subscription", "customer"],
-    });
+    const session = await stripe.checkout.sessions.retrieve(
+      parsed.data.sessionId,
+      {
+        expand: ["subscription", "customer"],
+      },
+    );
     const metadata = readStripeAcquisitionMetadata(session.metadata);
     if (!metadata || !isCompletedStripeAcquisitionSession(session)) {
-      return noStoreJson({ error: "Checkout is not eligible for account linking" }, 400);
+      return noStoreJson(
+        { error: "Checkout is not eligible for account linking" },
+        400,
+      );
     }
 
-    const [priceId, checkoutEmail] = await Promise.all([
+    const [priceId, checkoutEmail, subscription] = await Promise.all([
       getStripeCheckoutPriceId(stripe, session.id),
       getStripeCheckoutEmail(stripe, session),
+      getStripeCheckoutSubscription(stripe, session),
     ]);
     const customerId = toStripeId(session.customer, "cus_");
     const subscriptionId = toStripeId(session.subscription, "sub_");
@@ -76,9 +98,14 @@ export async function handleStripeCheckoutLinkUser(req: Request) {
       priceId !== metadata.priceId ||
       !checkoutEmail ||
       !customerId ||
-      !subscriptionId
+      !subscriptionId ||
+      !subscription ||
+      !isStripeSubscriptionAccessBearing(subscription.status)
     ) {
-      return noStoreJson({ error: "Checkout identity could not be verified" }, 400);
+      return noStoreJson(
+        { error: "Checkout identity could not be verified" },
+        400,
+      );
     }
 
     const admin = createAdminSupabase();
@@ -128,17 +155,17 @@ export async function handleStripeCheckoutLinkUser(req: Request) {
     await stripe.customers.update(
       customerId,
       { metadata: identityMetadata },
-      { idempotencyKey: `profixiq:acquisition-customer-link:${metadata.intentId}:${user.id}` },
+      {
+        idempotencyKey: `profixiq:acquisition-customer-link:${metadata.intentId}:${user.id}`,
+      },
     );
 
-    const currentSubscription =
-      typeof session.subscription === "object" && session.subscription
-        ? session.subscription
-        : await stripe.subscriptions.retrieve(subscriptionId);
     await stripe.subscriptions.update(
       subscriptionId,
-      { metadata: { ...(currentSubscription.metadata ?? {}), ...identityMetadata } },
-      { idempotencyKey: `profixiq:acquisition-subscription-link:${metadata.intentId}:${user.id}` },
+      { metadata: { ...(subscription.metadata ?? {}), ...identityMetadata } },
+      {
+        idempotencyKey: `profixiq:acquisition-subscription-link:${metadata.intentId}:${user.id}`,
+      },
     );
 
     if (claim.shopId) {

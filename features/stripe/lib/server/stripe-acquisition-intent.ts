@@ -81,11 +81,14 @@ export function readStripeAcquisitionMetadata(
   return { intentId, nonce, planKey, priceId };
 }
 
-export function isCompletedStripeAcquisitionSession(session: Stripe.Checkout.Session): boolean {
+export function isCompletedStripeAcquisitionSession(
+  session: Stripe.Checkout.Session,
+): boolean {
   return (
     session.mode === "subscription" &&
     session.status === "complete" &&
-    (session.payment_status === "paid" || session.payment_status === "no_payment_required") &&
+    (session.payment_status === "paid" ||
+      session.payment_status === "no_payment_required") &&
     Boolean(toStripeId(session.customer, "cus_")) &&
     Boolean(toStripeId(session.subscription, "sub_"))
   );
@@ -95,7 +98,9 @@ export async function getStripeCheckoutPriceId(
   stripe: Stripe,
   sessionId: string,
 ): Promise<string | null> {
-  const items = await stripe.checkout.sessions.listLineItems(sessionId, { limit: 2 });
+  const items = await stripe.checkout.sessions.listLineItems(sessionId, {
+    limit: 2,
+  });
   if (items.data.length !== 1 || items.data[0]?.quantity !== 1) return null;
   return toStripeId(items.data[0]?.price, "price_");
 }
@@ -104,11 +109,19 @@ export async function getStripeCheckoutEmail(
   stripe: Stripe,
   session: Stripe.Checkout.Session,
 ): Promise<string | null> {
-  const checkoutEmail = String(session.customer_details?.email ?? "").trim().toLowerCase();
+  const checkoutEmail = String(session.customer_details?.email ?? "")
+    .trim()
+    .toLowerCase();
   if (checkoutEmail) return checkoutEmail;
 
-  if (session.customer && typeof session.customer === "object" && !("deleted" in session.customer)) {
-    const expandedEmail = String(session.customer.email ?? "").trim().toLowerCase();
+  if (
+    session.customer &&
+    typeof session.customer === "object" &&
+    !("deleted" in session.customer)
+  ) {
+    const expandedEmail = String(session.customer.email ?? "")
+      .trim()
+      .toLowerCase();
     if (expandedEmail) return expandedEmail;
   }
 
@@ -116,7 +129,23 @@ export async function getStripeCheckoutEmail(
   if (!customerId) return null;
   const customer = await stripe.customers.retrieve(customerId);
   if ("deleted" in customer && customer.deleted) return null;
-  return String(customer.email ?? "").trim().toLowerCase() || null;
+  return (
+    String(customer.email ?? "")
+      .trim()
+      .toLowerCase() || null
+  );
+}
+
+export async function getStripeCheckoutSubscription(
+  stripe: Stripe,
+  session: Stripe.Checkout.Session,
+): Promise<Stripe.Subscription | null> {
+  if (session.subscription && typeof session.subscription === "object") {
+    return session.subscription;
+  }
+
+  const subscriptionId = toStripeId(session.subscription, "sub_");
+  return subscriptionId ? stripe.subscriptions.retrieve(subscriptionId) : null;
 }
 
 export async function beginStripeAcquisitionIntent(input: {
@@ -128,17 +157,25 @@ export async function beginStripeAcquisitionIntent(input: {
   trialDays: number;
   foundingDiscountApplied: boolean;
 }): Promise<BegunStripeAcquisitionIntent> {
-  const { data, error } = await input.admin.rpc("begin_stripe_acquisition_intent", {
-    p_founding_discount_applied: input.foundingDiscountApplied,
-    p_nonce: input.nonce,
-    p_plan_key: input.planKey,
-    p_request_key: input.requestKey,
-    p_stripe_price_id: input.priceId,
-    p_trial_days: input.trialDays,
-  });
-  if (error) throw new Error(`acquisition intent unavailable (${error.code ?? "unknown"})`);
+  const { data, error } = await input.admin.rpc(
+    "begin_stripe_acquisition_intent",
+    {
+      p_founding_discount_applied: input.foundingDiscountApplied,
+      p_nonce: input.nonce,
+      p_plan_key: input.planKey,
+      p_request_key: input.requestKey,
+      p_stripe_price_id: input.priceId,
+      p_trial_days: input.trialDays,
+    },
+  );
+  if (error)
+    throw new Error(
+      `acquisition intent unavailable (${error.code ?? "unknown"})`,
+    );
 
-  const row = Array.isArray(data) ? (data[0] as BeginIntentRow | undefined) : undefined;
+  const row = Array.isArray(data)
+    ? (data[0] as BeginIntentRow | undefined)
+    : undefined;
   if (!row?.intent_id || !row.intent_nonce) {
     throw new Error("acquisition intent unavailable (empty_result)");
   }
@@ -156,13 +193,18 @@ export async function attachStripeAcquisitionCheckout(input: {
   nonce: string;
   checkoutSessionId: string;
 }): Promise<void> {
-  const { data, error } = await input.admin.rpc("attach_stripe_acquisition_checkout", {
-    p_checkout_session_id: input.checkoutSessionId,
-    p_intent_id: input.intentId,
-    p_nonce: input.nonce,
-  });
+  const { data, error } = await input.admin.rpc(
+    "attach_stripe_acquisition_checkout",
+    {
+      p_checkout_session_id: input.checkoutSessionId,
+      p_intent_id: input.intentId,
+      p_nonce: input.nonce,
+    },
+  );
   if (error || data !== true) {
-    throw new Error(`acquisition checkout attachment failed (${error?.code ?? "rejected"})`);
+    throw new Error(
+      `acquisition checkout attachment failed (${error?.code ?? "rejected"})`,
+    );
   }
 }
 
@@ -176,18 +218,24 @@ export async function recordStripeAcquisitionCompletion(input: {
   eventId: string;
   eventCreatedAt: string;
 }): Promise<boolean> {
-  const { data, error } = await input.admin.rpc("record_stripe_acquisition_completion", {
-    p_checkout_email: input.checkoutEmail,
-    p_checkout_session_id: input.checkoutSessionId,
-    p_customer_id: input.customerId,
-    p_event_created_at: input.eventCreatedAt,
-    p_event_id: input.eventId,
-    p_intent_id: input.metadata.intentId,
-    p_nonce: input.metadata.nonce,
-    p_stripe_price_id: input.metadata.priceId,
-    p_subscription_id: input.subscriptionId,
-  });
-  if (error) throw new Error(`acquisition completion unavailable (${error.code ?? "unknown"})`);
+  const { data, error } = await input.admin.rpc(
+    "record_stripe_acquisition_completion",
+    {
+      p_checkout_email: input.checkoutEmail,
+      p_checkout_session_id: input.checkoutSessionId,
+      p_customer_id: input.customerId,
+      p_event_created_at: input.eventCreatedAt,
+      p_event_id: input.eventId,
+      p_intent_id: input.metadata.intentId,
+      p_nonce: input.metadata.nonce,
+      p_stripe_price_id: input.metadata.priceId,
+      p_subscription_id: input.subscriptionId,
+    },
+  );
+  if (error)
+    throw new Error(
+      `acquisition completion unavailable (${error.code ?? "unknown"})`,
+    );
   return data === true;
 }
 
@@ -200,19 +248,27 @@ export async function claimStripeAcquisitionIntent(input: {
   checkoutEmail: string;
   userId: string;
 }): Promise<ClaimedStripeAcquisitionIntent> {
-  const { data, error } = await input.admin.rpc("claim_stripe_acquisition_intent", {
-    p_checkout_email: input.checkoutEmail,
-    p_checkout_session_id: input.checkoutSessionId,
-    p_customer_id: input.customerId,
-    p_intent_id: input.metadata.intentId,
-    p_nonce: input.metadata.nonce,
-    p_stripe_price_id: input.metadata.priceId,
-    p_subscription_id: input.subscriptionId,
-    p_user_id: input.userId,
-  });
-  if (error) throw new Error(`acquisition claim unavailable (${error.code ?? "unknown"})`);
+  const { data, error } = await input.admin.rpc(
+    "claim_stripe_acquisition_intent",
+    {
+      p_checkout_email: input.checkoutEmail,
+      p_checkout_session_id: input.checkoutSessionId,
+      p_customer_id: input.customerId,
+      p_intent_id: input.metadata.intentId,
+      p_nonce: input.metadata.nonce,
+      p_stripe_price_id: input.metadata.priceId,
+      p_subscription_id: input.subscriptionId,
+      p_user_id: input.userId,
+    },
+  );
+  if (error)
+    throw new Error(
+      `acquisition claim unavailable (${error.code ?? "unknown"})`,
+    );
 
-  const row = Array.isArray(data) ? (data[0] as ClaimIntentRow | undefined) : undefined;
+  const row = Array.isArray(data)
+    ? (data[0] as ClaimIntentRow | undefined)
+    : undefined;
   if (!row?.claimed) {
     return { claimed: false, reason: row?.denial_reason ?? "claim_rejected" };
   }

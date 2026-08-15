@@ -2,22 +2,30 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { readPersistedActivationContext } from "@/features/integrations/shopBoost/activationContext";
+import { useSearchParams } from "next/navigation";
+import { parseActivationContextFromSearchParams } from "@/features/integrations/shopBoost/activationContext";
 
 type ActivationResponse =
   | { ok: true; redirectTo: string; guidedSessionId: string; intakeId: string; status: string }
   | { ok: false; error: string };
 
 export default function ShopBoostOnboardingHandoffPage() {
+  const searchParams = useSearchParams();
   const [message, setMessage] = useState("Preparing your analyzed shop…");
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
 
   const activate = useCallback(async () => {
     setError(null);
-    const context = readPersistedActivationContext();
+
+    // The owner onboarding handoff forwards the exact acquisition context in
+    // the URL. Treat that URL as the authoritative handoff evidence instead of
+    // falling back to unrelated/stale browser storage from another analysis.
+    const context = parseActivationContextFromSearchParams(searchParams);
     if (!context) {
-      setError("Your saved analysis context could not be found. Return to Instant Shop Analysis to resume it.");
+      setError(
+        "Your analysis handoff could not be verified. Return to Instant Shop Analysis to resume it.",
+      );
       return;
     }
 
@@ -29,10 +37,16 @@ export default function ShopBoostOnboardingHandoffPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ demoId: context.demoId, intakeId: context.intakeId }),
       });
-      const payload = (await response.json().catch(() => null)) as ActivationResponse | null;
+      const payload = (await response.json().catch(() => null)) as
+        | ActivationResponse
+        | null;
 
       if (!response.ok || !payload?.ok) {
-        setError(payload && !payload.ok ? payload.error : "We could not activate this analysis.");
+        setError(
+          payload && !payload.ok
+            ? payload.error
+            : "We could not activate this analysis.",
+        );
         return;
       }
 
@@ -45,7 +59,7 @@ export default function ShopBoostOnboardingHandoffPage() {
           : "We could not activate this analysis.",
       );
     }
-  }, []);
+  }, [searchParams]);
 
   useEffect(() => {
     void activate();
@@ -57,13 +71,18 @@ export default function ShopBoostOnboardingHandoffPage() {
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-copper)]">
           Instant Shop Analysis
         </p>
-        <h1 className="mt-3 text-2xl font-semibold">Building your real ProFixIQ workspace</h1>
+        <h1 className="mt-3 text-2xl font-semibold">
+          Building your real ProFixIQ workspace
+        </h1>
         {!error ? (
           <>
             <div className="mx-auto mt-6 h-12 w-12 animate-spin rounded-full border-4 border-[color:var(--theme-border-soft)] border-t-[var(--accent-copper)]" />
-            <p className="mt-5 text-sm text-[color:var(--theme-text-secondary)]">{message}</p>
+            <p className="mt-5 text-sm text-[color:var(--theme-text-secondary)]">
+              {message}
+            </p>
             <p className="mt-2 text-xs text-[color:var(--theme-text-muted)]">
-              Customers, vehicles, history, invoices, and parts are being connected to guided onboarding.
+              Customers, vehicles, history, invoices, and parts are being
+              connected to guided onboarding.
             </p>
           </>
         ) : (

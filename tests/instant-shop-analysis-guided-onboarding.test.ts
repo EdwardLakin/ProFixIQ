@@ -76,7 +76,7 @@ describe("instant shop analysis guided onboarding handoff", () => {
     expect(handoff).not.toContain("importSummary?: ShopBoostImportSummary");
   });
 
-  it("binds activation to the unlocked email and provides a retry-safe handoff page", () => {
+  it("binds activation to the unlocked email and provides a retry-safe url-bound handoff page", () => {
     const activation = read("app/api/demo/shop-boost/activate/route.ts");
     const claim = read("app/api/demo/shop-boost/claim/route.ts");
     const handoffPage = read("app/onboarding/shop-boost/page.tsx");
@@ -92,7 +92,9 @@ describe("instant shop analysis guided onboarding handoff", () => {
     expect(activation).toContain("ensureStorageCopy");
     expect(activation).toContain("demoRow.shop_id !== shopId");
     expect(handoffPage).toContain('fetch("/api/demo/shop-boost/activate"');
-    expect(handoffPage).toContain("readPersistedActivationContext");
+    expect(handoffPage).toContain("parseActivationContextFromSearchParams");
+    expect(handoffPage).toContain("useSearchParams");
+    expect(handoffPage).not.toContain("readPersistedActivationContext");
     expect(signIn).toContain("resolvePostAuthDestination");
     expect(signIn).toContain('searchParams.get("activationContext")');
     expect(signIn).toContain('params.set("activationContext", activationContext)');

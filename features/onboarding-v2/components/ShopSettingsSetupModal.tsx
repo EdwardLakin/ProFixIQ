@@ -6,10 +6,22 @@ import { Input } from "@/features/shared/components/ui/input";
 import { Button } from "@/features/shared/components/ui/Button";
 import OwnerPinModal from "@/features/shared/components/OwnerPinModal";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import {
+  defaultShopTimezone,
+  getSupportedShopTimezones,
+  isSupportedShopTimezone,
+  type ShopCountryCode,
+} from "@/features/shared/lib/timezones/shopTimezones";
 import type { GuidedOnboardingSessionDetail } from "@/features/onboarding-v2/guided/types";
 
-type CountryCode = "US" | "CA";
 type SuppliesType = "percentage" | "flat";
+
+type OwnerPinStatus = {
+  ok?: boolean;
+  verified?: boolean;
+  shopId?: string;
+  expiresAt?: string;
+};
 
 export type OnboardingHourRow = {
   weekday: number;
@@ -24,18 +36,6 @@ type Props = {
   onClose: () => void;
   onCompleted: (detail: GuidedOnboardingSessionDetail) => void;
 };
-
-const TIMEZONES = [
-  "America/New_York",
-  "America/Chicago",
-  "America/Denver",
-  "America/Edmonton",
-  "America/Phoenix",
-  "America/Los_Angeles",
-  "America/Vancouver",
-  "America/Toronto",
-  "America/Halifax",
-] as const;
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -61,18 +61,35 @@ async function readJsonError(response: Response, fallback: string) {
 }
 
 async function completeStep(sessionId: string, action: "complete" | "skip") {
-  const response = await fetch(`/api/onboarding-v2/guided/sessions/${encodeURIComponent(sessionId)}/steps/shop_settings/${action}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(action === "complete" ? { summary: { savedSettings: true } } : { skippedReason: "Shop settings skipped during onboarding." }),
-  });
-  if (!response.ok) throw new Error(await readJsonError(response, "Unable to update Shop Settings onboarding step."));
+  const response = await fetch(
+    `/api/onboarding-v2/guided/sessions/${encodeURIComponent(sessionId)}/steps/shop_settings/${action}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(
+        action === "complete"
+          ? { summary: { savedSettings: true } }
+          : { skippedReason: "Shop settings skipped during onboarding." },
+      ),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(
+      await readJsonError(response, "Unable to update Shop Settings onboarding step."),
+    );
+  }
   return (await response.json()) as GuidedOnboardingSessionDetail;
 }
 
-export default function ShopSettingsSetupModal({ sessionId, open, onClose, onCompleted }: Props) {
+export default function ShopSettingsSetupModal({
+  sessionId,
+  open,
+  onClose,
+  onCompleted,
+}: Props) {
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const [loading, setLoading] = useState(false);
+  const [settingsReady, setSettingsReady] = useState(false);
   const [saving, setSaving] = useState(false);
   const [shopId, setShopId] = useState<string | null>(null);
   const [pinModalOpen, setPinModalOpen] = useState(false);
@@ -80,8 +97,8 @@ export default function ShopSettingsSetupModal({ sessionId, open, onClose, onCom
   const [now, setNow] = useState(() => Date.now());
 
   const [shopName, setShopName] = useState("");
-  const [country, setCountry] = useState<CountryCode>("US");
-  const [timezone, setTimezone] = useState("America/New_York");
+  const [country, setCountry] = useState<ShopCountryCode>("US");
+  const [timezone, setTimezone] = useState(defaultShopTimezone("US"));
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [address, setAddress] = useState("");
@@ -102,7 +119,18 @@ export default function ShopSettingsSetupModal({ sessionId, open, onClose, onCom
   const [autoGeneratePdf, setAutoGeneratePdf] = useState(false);
   const [autoSendQuoteEmail, setAutoSendQuoteEmail] = useState(false);
 
-  const isUnlocked = useMemo(() => Boolean(pinExpiresAt && new Date(pinExpiresAt).getTime() > now), [pinExpiresAt, now]);
+  const timezoneOptions = useMemo(() => {
+    const supported = [...getSupportedShopTimezones(country)];
+    // Preserve an existing historical country/timezone pair until the owner
+    // explicitly changes it. Dropping the current value from the select would
+    // silently coerce it to the first supported option on the next save.
+    if (timezone && !supported.includes(timezone)) supported.push(timezone);
+    return supported;
+  }, [country, timezone]);
+  const isUnlocked = useMemo(
+    () => Boolean(pinExpiresAt && new Date(pinExpiresAt).getTime() > now),
+    [pinExpiresAt, now],
+  );
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 1000);
@@ -112,61 +140,142 @@ export default function ShopSettingsSetupModal({ sessionId, open, onClose, onCom
   const loadSettings = useCallback(async () => {
     if (!open) return;
     setLoading(true);
+    setSettingsReady(false);
+    setPinExpiresAt(undefined);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user?.id) throw new Error("Sign in is required to load shop settings.");
-      const { data: profile, error: profileError } = await supabase.from("profiles").select("shop_id").eq("id", user.id).maybeSingle<{ shop_id: string | null }>();
+
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("shop_id")
+        .eq("id", user.id)
+        .maybeSingle<{ shop_id: string | null }>();
       if (profileError) throw profileError;
       if (!profile?.shop_id) throw new Error("No shop is associated with this profile.");
       setShopId(profile.shop_id);
 
-      const { data: shop, error: shopError } = await supabase.from("shops").select("*").eq("id", profile.shop_id).maybeSingle<Record<string, unknown>>();
+      const { data: shop, error: shopError } = await supabase
+        .from("shops")
+        .select("*")
+        .eq("id", profile.shop_id)
+        .maybeSingle<Record<string, unknown>>();
       if (shopError) throw shopError;
-      if (shop) {
-        setShopName(String(shop.shop_name ?? shop.name ?? shop.business_name ?? ""));
-        setCountry(shop.country === "CA" ? "CA" : "US");
-        setTimezone(String(shop.timezone ?? "America/New_York"));
-        setPhone(String(shop.phone_number ?? ""));
-        setEmail(String(shop.email ?? ""));
-        setAddress(String(shop.street ?? shop.address ?? ""));
-        setCity(String(shop.city ?? ""));
-        setProvince(String(shop.province ?? ""));
-        setPostalCode(String(shop.postal_code ?? ""));
-        setLaborRate(typeof shop.labor_rate === "number" ? String(shop.labor_rate) : "");
-        setDiagnosticFee(typeof shop.diagnostic_fee === "number" ? String(shop.diagnostic_fee) : "");
-        setTaxRate(typeof shop.tax_rate === "number" ? String(shop.tax_rate) : "");
-        setShopSuppliesEnabled(Boolean(shop.shop_supplies_enabled ?? (typeof shop.supplies_percent === "number" && shop.supplies_percent > 0)));
-        setShopSuppliesType(shop.shop_supplies_type === "flat" ? "flat" : "percentage");
-        setShopSuppliesPercent(typeof shop.shop_supplies_percent === "number" ? String(shop.shop_supplies_percent) : typeof shop.supplies_percent === "number" ? String(shop.supplies_percent) : "");
-        setShopSuppliesFlatAmount(typeof shop.shop_supplies_flat_amount === "number" ? String(shop.shop_supplies_flat_amount) : "");
-        setShopSuppliesCapAmount(typeof shop.shop_supplies_cap_amount === "number" ? String(shop.shop_supplies_cap_amount) : "");
-        setRequireCauseCorrection(Boolean(shop.require_cause_correction));
-        setRequireAuthorization(Boolean(shop.require_authorization));
-        setAutoGeneratePdf(Boolean(shop.auto_generate_pdf));
-        setAutoSendQuoteEmail(Boolean(shop.auto_send_quote_email));
+      if (!shop) throw new Error("Shop settings could not be loaded.");
+
+      const shopCountry: ShopCountryCode = shop.country === "CA" ? "CA" : "US";
+      const storedTimezone = String(shop.timezone ?? "").trim();
+      setShopName(String(shop.shop_name ?? shop.name ?? shop.business_name ?? ""));
+      setCountry(shopCountry);
+      setTimezone(storedTimezone || defaultShopTimezone(shopCountry));
+      setPhone(String(shop.phone_number ?? ""));
+      setEmail(String(shop.email ?? ""));
+      setAddress(String(shop.street ?? shop.address ?? ""));
+      setCity(String(shop.city ?? ""));
+      setProvince(String(shop.province ?? ""));
+      setPostalCode(String(shop.postal_code ?? ""));
+      setLaborRate(typeof shop.labor_rate === "number" ? String(shop.labor_rate) : "");
+      setDiagnosticFee(typeof shop.diagnostic_fee === "number" ? String(shop.diagnostic_fee) : "");
+      setTaxRate(typeof shop.tax_rate === "number" ? String(shop.tax_rate) : "");
+      setShopSuppliesEnabled(
+        Boolean(
+          shop.shop_supplies_enabled ??
+            (typeof shop.supplies_percent === "number" && shop.supplies_percent > 0),
+        ),
+      );
+      setShopSuppliesType(shop.shop_supplies_type === "flat" ? "flat" : "percentage");
+      setShopSuppliesPercent(
+        typeof shop.shop_supplies_percent === "number"
+          ? String(shop.shop_supplies_percent)
+          : typeof shop.supplies_percent === "number"
+            ? String(shop.supplies_percent)
+            : "",
+      );
+      setShopSuppliesFlatAmount(
+        typeof shop.shop_supplies_flat_amount === "number"
+          ? String(shop.shop_supplies_flat_amount)
+          : "",
+      );
+      setShopSuppliesCapAmount(
+        typeof shop.shop_supplies_cap_amount === "number"
+          ? String(shop.shop_supplies_cap_amount)
+          : "",
+      );
+      setRequireCauseCorrection(Boolean(shop.require_cause_correction));
+      setRequireAuthorization(Boolean(shop.require_authorization));
+      setAutoGeneratePdf(Boolean(shop.auto_generate_pdf));
+      setAutoSendQuoteEmail(Boolean(shop.auto_send_quote_email));
+
+      // Hours are part of the editable settings contract, so failing to load
+      // them must keep Save disabled. Never substitute defaults after a network
+      // failure and risk overwriting a shop's real schedule.
+      const hoursResponse = await fetch("/api/settings/hours", { cache: "no-store" });
+      if (!hoursResponse.ok) {
+        throw new Error(await readJsonError(hoursResponse, "Unable to load shop hours."));
+      }
+      const payload = (await hoursResponse.json()) as { hours?: OnboardingHourRow[] };
+      if (Array.isArray(payload.hours) && payload.hours.length > 0) {
+        const byDay = new Map(payload.hours.map((row) => [row.weekday, row]));
+        setHours(
+          DEFAULT_ONBOARDING_HOURS.map((fallback) => ({
+            ...fallback,
+            ...(byDay.get(fallback.weekday) ?? {}),
+          })),
+        );
+      } else {
+        setHours(DEFAULT_ONBOARDING_HOURS);
       }
 
-      const hoursResponse = await fetch("/api/settings/hours", { cache: "no-store" });
-      if (hoursResponse.ok) {
-        const payload = (await hoursResponse.json()) as { hours?: OnboardingHourRow[] };
-        if (Array.isArray(payload.hours) && payload.hours.length > 0) {
-          const byDay = new Map(payload.hours.map((row) => [row.weekday, row]));
-          setHours(DEFAULT_ONBOARDING_HOURS.map((fallback) => ({ ...fallback, ...(byDay.get(fallback.weekday) ?? {}) })));
-        } else {
-          setHours(DEFAULT_ONBOARDING_HOURS);
+      setSettingsReady(true);
+
+      // PIN status is optional convenience only. A failure here must not poison
+      // the mandatory settings/hours load; the owner can still unlock manually.
+      try {
+        const pinStatusResponse = await fetch("/api/shop/owner-pin/verify", {
+          method: "GET",
+          cache: "no-store",
+        });
+        if (pinStatusResponse.ok) {
+          const pinStatus = (await pinStatusResponse.json()) as OwnerPinStatus;
+          if (
+            pinStatus.verified &&
+            pinStatus.shopId === profile.shop_id &&
+            pinStatus.expiresAt
+          ) {
+            setPinExpiresAt(pinStatus.expiresAt);
+          }
         }
+      } catch {
+        setPinExpiresAt(undefined);
       }
     } catch (error) {
+      setSettingsReady(false);
       toast.error(error instanceof Error ? error.message : "Unable to load shop settings.");
     } finally {
       setLoading(false);
     }
   }, [open, supabase]);
 
-  useEffect(() => { void loadSettings(); }, [loadSettings]);
+  useEffect(() => {
+    void loadSettings();
+  }, [loadSettings]);
+
+  function changeCountry(nextCountry: ShopCountryCode) {
+    setCountry(nextCountry);
+    // Once the owner explicitly changes country, move an incompatible legacy
+    // timezone onto that country's supported default rather than preserving it.
+    if (!isSupportedShopTimezone(nextCountry, timezone)) {
+      setTimezone(defaultShopTimezone(nextCountry));
+    }
+  }
 
   async function save() {
-    if (!shopId) return;
+    if (!shopId || !settingsReady) {
+      toast.warning("Load the current shop settings before saving.");
+      return;
+    }
     if (!isUnlocked) {
       toast.warning("Unlock with Owner PIN first.");
       setPinModalOpen(true);
@@ -207,7 +316,9 @@ export default function ShopSettingsSetupModal({ sessionId, open, onClose, onCom
           },
         }),
       });
-      if (!updateResponse.ok) throw new Error(await readJsonError(updateResponse, "Failed to save shop settings."));
+      if (!updateResponse.ok) {
+        throw new Error(await readJsonError(updateResponse, "Failed to save shop settings."));
+      }
 
       const openDays = hours.filter((hour) => !hour.closed);
       const hoursResponse = await fetch("/api/settings/hours", {
@@ -215,7 +326,9 @@ export default function ShopSettingsSetupModal({ sessionId, open, onClose, onCom
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ shopId, hours: openDays }),
       });
-      if (!hoursResponse.ok) throw new Error(await readJsonError(hoursResponse, "Failed to save shop hours."));
+      if (!hoursResponse.ok) {
+        throw new Error(await readJsonError(hoursResponse, "Failed to save shop hours."));
+      }
 
       const detail = await completeStep(sessionId, "complete");
       onCompleted(detail);
@@ -247,7 +360,8 @@ export default function ShopSettingsSetupModal({ sessionId, open, onClose, onCom
   const provinceLabel = country === "CA" ? "Province" : "State";
   const postalLabel = country === "CA" ? "Postal code" : "ZIP code";
   const currency = country === "CA" ? "CAD" : "USD";
-  const inputClass = "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)]";
+  const inputClass =
+    "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)]";
 
   return (
     <div className="fixed inset-0 z-[90] overflow-y-auto bg-[color:var(--theme-surface-overlay)] p-4 backdrop-blur-sm">
@@ -261,18 +375,26 @@ export default function ShopSettingsSetupModal({ sessionId, open, onClose, onCom
           <div className="flex gap-2">
             <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>Close</Button>
             <Button type="button" variant="secondary" onClick={skip} disabled={saving}>Skip for now</Button>
-            <Button type="button" onClick={save} disabled={saving || loading}>{saving ? "Saving..." : isUnlocked ? "Save Shop Settings" : "Unlock & save"}</Button>
+            <Button type="button" onClick={save} disabled={saving || loading || !settingsReady}>
+              {saving ? "Saving..." : isUnlocked ? "Save Shop Settings" : "Unlock & save"}
+            </Button>
           </div>
         </div>
 
-        {loading ? <div className="mt-5 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 text-sm text-[color:var(--theme-text-secondary)]">Loading current shop settings…</div> : null}
+        {loading ? (
+          <div className="mt-5 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 text-sm text-[color:var(--theme-text-secondary)]">Loading current shop settings…</div>
+        ) : null}
 
         <div className="mt-5 grid gap-5 lg:grid-cols-2">
           <Panel title="Business">
             <div className="grid gap-3 md:grid-cols-2">
               <Input className={inputClass} value={shopName} onChange={(e) => setShopName(e.target.value)} placeholder="Shop name" />
-              <select value={country} onChange={(e) => setCountry(e.target.value as CountryCode)} className="h-10 rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 text-sm text-[color:var(--theme-text-primary)]"><option value="US">United States</option><option value="CA">Canada</option></select>
-              <select value={timezone} onChange={(e) => setTimezone(e.target.value)} className="h-10 rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 text-sm text-[color:var(--theme-text-primary)]">{TIMEZONES.map((tz) => <option key={tz} value={tz}>{tz}</option>)}</select>
+              <select value={country} onChange={(e) => changeCountry(e.target.value as ShopCountryCode)} className="h-10 rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 text-sm text-[color:var(--theme-text-primary)]">
+                <option value="US">United States</option><option value="CA">Canada</option>
+              </select>
+              <select value={timezone} onChange={(e) => setTimezone(e.target.value)} className="h-10 rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 text-sm text-[color:var(--theme-text-primary)]">
+                {timezoneOptions.map((tz) => <option key={tz} value={tz}>{tz}</option>)}
+              </select>
               <Input className={inputClass} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone" />
               <Input className={inputClass} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" />
               <Input className={inputClass} value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Street address" />
@@ -287,8 +409,12 @@ export default function ShopSettingsSetupModal({ sessionId, open, onClose, onCom
               <Input className={inputClass} value={laborRate} onChange={(e) => setLaborRate(e.target.value)} placeholder={`Labor rate (${currency}/hr)`} />
               <Input className={inputClass} value={diagnosticFee} onChange={(e) => setDiagnosticFee(e.target.value)} placeholder={`Diagnostic fee (${currency})`} />
               <Input className={inputClass} value={taxRate} onChange={(e) => setTaxRate(e.target.value)} placeholder="Tax rate (%)" />
-              <label className="flex items-center gap-2 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm"><input type="checkbox" checked={shopSuppliesEnabled} onChange={(e) => setShopSuppliesEnabled(e.target.checked)} /> Shop supplies enabled</label>
-              <select value={shopSuppliesType} onChange={(e) => setShopSuppliesType(e.target.value === "flat" ? "flat" : "percentage")} className="h-10 rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 text-sm text-[color:var(--theme-text-primary)]"><option value="percentage">Percentage</option><option value="flat">Flat amount</option></select>
+              <label className="flex items-center gap-2 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm">
+                <input type="checkbox" checked={shopSuppliesEnabled} onChange={(e) => setShopSuppliesEnabled(e.target.checked)} /> Shop supplies enabled
+              </label>
+              <select value={shopSuppliesType} onChange={(e) => setShopSuppliesType(e.target.value === "flat" ? "flat" : "percentage")} className="h-10 rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 text-sm text-[color:var(--theme-text-primary)]">
+                <option value="percentage">Percentage</option><option value="flat">Flat amount</option>
+              </select>
               <Input className={inputClass} value={shopSuppliesPercent} onChange={(e) => setShopSuppliesPercent(e.target.value)} placeholder="Shop supplies (%)" />
               <Input className={inputClass} value={shopSuppliesFlatAmount} onChange={(e) => setShopSuppliesFlatAmount(e.target.value)} placeholder={`Shop supplies flat (${currency})`} />
               <Input className={inputClass} value={shopSuppliesCapAmount} onChange={(e) => setShopSuppliesCapAmount(e.target.value)} placeholder={`Supplies cap (${currency})`} />
@@ -300,9 +426,11 @@ export default function ShopSettingsSetupModal({ sessionId, open, onClose, onCom
               {hours.map((row, idx) => (
                 <div key={row.weekday} className="grid gap-3 p-3 md:grid-cols-[70px_110px_1fr_1fr] md:items-center">
                   <div className="text-sm font-semibold">{WEEKDAYS[row.weekday]}</div>
-                  <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={!!row.closed} onChange={(e) => setHours((prev) => prev.map((h, i) => i === idx ? { ...h, closed: e.target.checked } : h))} /> Closed</label>
-                  <input type="time" className="rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-2 text-sm" value={row.open_time} disabled={!!row.closed} onChange={(e) => setHours((prev) => prev.map((h, i) => i === idx ? { ...h, open_time: e.target.value } : h))} />
-                  <input type="time" className="rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-2 text-sm" value={row.close_time} disabled={!!row.closed} onChange={(e) => setHours((prev) => prev.map((h, i) => i === idx ? { ...h, close_time: e.target.value } : h))} />
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={!!row.closed} onChange={(e) => setHours((prev) => prev.map((hour, i) => i === idx ? { ...hour, closed: e.target.checked } : hour))} /> Closed
+                  </label>
+                  <input type="time" className="rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-2 text-sm" value={row.open_time} disabled={!!row.closed} onChange={(e) => setHours((prev) => prev.map((hour, i) => i === idx ? { ...hour, open_time: e.target.value } : hour))} />
+                  <input type="time" className="rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-2 text-sm" value={row.close_time} disabled={!!row.closed} onChange={(e) => setHours((prev) => prev.map((hour, i) => i === idx ? { ...hour, close_time: e.target.value } : hour))} />
                 </div>
               ))}
             </div>
@@ -316,9 +444,8 @@ export default function ShopSettingsSetupModal({ sessionId, open, onClose, onCom
                 ["Auto-generate quote PDF", autoGeneratePdf, setAutoGeneratePdf],
                 ["Auto-send quote email", autoSendQuoteEmail, setAutoSendQuoteEmail],
               ] as Array<[string, boolean, (next: boolean) => void]>).map(([label, value, setter]) => (
-                <label key={String(label)} className="flex items-center gap-2 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2">
-                  <input type="checkbox" checked={Boolean(value)} onChange={(e) => setter(e.target.checked)} />
-                  {label}
+                <label key={label} className="flex items-center gap-2 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2">
+                  <input type="checkbox" checked={value} onChange={(e) => setter(e.target.checked)} />{label}
                 </label>
               ))}
             </div>
@@ -331,5 +458,10 @@ export default function ShopSettingsSetupModal({ sessionId, open, onClose, onCom
 }
 
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
-  return <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-4"><h3 className="mb-3 text-lg font-semibold text-[color:var(--theme-text-primary)]">{title}</h3>{children}</section>;
+  return (
+    <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-4">
+      <h3 className="mb-3 text-lg font-semibold text-[color:var(--theme-text-primary)]">{title}</h3>
+      {children}
+    </section>
+  );
 }

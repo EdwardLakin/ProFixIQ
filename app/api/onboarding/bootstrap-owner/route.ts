@@ -11,21 +11,24 @@ import {
   hashOwnerPin,
   isValidOwnerPin,
   normalizeOwnerPin,
+  verifyOwnerPin,
 } from "@/features/shared/lib/server/owner-pin-crypto";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import {
+  createAdminSupabase,
+  createServerSupabaseRoute,
+} from "@/features/shared/lib/supabase/server";
+import {
+  isSupportedShopTimezone,
+  type ShopCountryCode,
+} from "@/features/shared/lib/timezones/shopTimezones";
+import { createStripeClient } from "@/features/stripe/lib/stripe/client";
+import { isStripeSubscriptionAccessBearing } from "@/features/stripe/lib/stripe/subscriptionStatus";
+import { reconcileShopBillingFromUser } from "@/features/stripe/lib/server/canonical-shop-billing";
 
-const COUNTRIES = new Set(["US", "CA"]);
-const TIMEZONES = new Set([
-  "America/New_York",
-  "America/Chicago",
-  "America/Denver",
-  "America/Edmonton",
-  "America/Phoenix",
-  "America/Los_Angeles",
-  "America/Vancouver",
-  "America/Toronto",
-  "America/Halifax",
-]);
+const COUNTRIES = new Set<ShopCountryCode>(["US", "CA"]);
+const OWNER_BOOTSTRAP_CONTRACT_PROBE_SHOP_ID =
+  "00000000-0000-4000-8000-000000000002";
+const OWNER_BOOTSTRAP_PENDING_MARKER = "profixiq-owner-bootstrap-pending-v2:";
 
 type Body = {
   businessName?: unknown;
@@ -54,6 +57,200 @@ function readBootstrapShopId(value: unknown): string | null {
   return typeof first.shop_id === "string" ? first.shop_id : null;
 }
 
+async function verifyExistingOwnerPin(args: {
+  userId: string;
+  shopId: string;
+  pin: string;
+}): Promise<boolean> {
+  const admin = createAdminSupabase();
+  const { data: shop, error } = await admin
+    .from("shops")
+    .select("owner_id,owner_pin_hash")
+    .eq("id", args.shopId)
+    .maybeSingle();
+
+  if (error || !shop || shop.owner_id !== args.userId || !shop.owner_pin_hash) {
+    return false;
+  }
+
+  return verifyOwnerPin(args.pin, shop.owner_pin_hash);
+}
+
+async function inspectOwnedShopRecovery(
+  userId: string,
+): Promise<
+  | { ok: true }
+  | { ok: false; reason: "lookup_failed" | "ambiguous_owner_shop_recovery" }
+> {
+  const admin = createAdminSupabase();
+  const { data, error } = await admin
+    .from("shops")
+    .select("id")
+    .eq("owner_id", userId)
+    .limit(2);
+
+  if (error) return { ok: false, reason: "lookup_failed" };
+  if ((data?.length ?? 0) > 1) {
+    return { ok: false, reason: "ambiguous_owner_shop_recovery" };
+  }
+  return { ok: true };
+}
+
+async function reconcileAcquiredBilling(args: {
+  userId: string;
+  shopId: string;
+}): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const secretKey = String(process.env.STRIPE_SECRET_KEY ?? "").trim();
+  if (!secretKey) return { ok: false, reason: "stripe_not_configured" };
+
+  try {
+    const result = await reconcileShopBillingFromUser({
+      stripe: createStripeClient(secretKey),
+      supabase: createAdminSupabase(),
+      userId: args.userId,
+      shopId: args.shopId,
+    });
+    return result.linked
+      ? { ok: true }
+      : { ok: false, reason: result.reason ?? "billing_not_linked" };
+  } catch (error) {
+    return {
+      ok: false,
+      reason:
+        error instanceof Error
+          ? error.message
+          : "billing_reconciliation_failed",
+    };
+  }
+}
+
+async function finalizeOwnerOnboarding(args: {
+  userId: string;
+  shopId: string;
+}): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const admin = createAdminSupabase();
+
+  const { data: shop, error: shopError } = await admin
+    .from("shops")
+    .select(
+      "id,owner_id,stripe_subscription_id,stripe_subscription_status,stripe_pricing_model,plan",
+    )
+    .eq("id", args.shopId)
+    .maybeSingle();
+  if (shopError || !shop) {
+    return { ok: false, reason: shopError?.message ?? "shop_not_found" };
+  }
+  if (
+    shop.owner_id !== args.userId ||
+    !shop.stripe_subscription_id ||
+    !isStripeSubscriptionAccessBearing(shop.stripe_subscription_status) ||
+    !shop.stripe_pricing_model ||
+    !shop.plan
+  ) {
+    return { ok: false, reason: "canonical_billing_not_ready" };
+  }
+
+  const { data: profile, error: profileError } = await admin
+    .from("profiles")
+    .update({ completed_onboarding: true })
+    .eq("id", args.userId)
+    .eq("shop_id", args.shopId)
+    .eq("role", "owner")
+    .select("id,completed_onboarding")
+    .maybeSingle();
+  if (profileError || !profile?.completed_onboarding) {
+    return {
+      ok: false,
+      reason: profileError?.message ?? "owner_completion_not_persisted",
+    };
+  }
+
+  return { ok: true };
+}
+
+function billingUnavailable(reason: string) {
+  console.error("owner onboarding billing reconciliation failed", { reason });
+  return NextResponse.json(
+    {
+      ok: false,
+      error:
+        "Your shop is saved, but billing access is not ready yet. Try again before continuing.",
+    },
+    { status: 503 },
+  );
+}
+
+function completionUnavailable(reason: string) {
+  console.error("owner onboarding completion failed", { reason });
+  return NextResponse.json(
+    {
+      ok: false,
+      error:
+        "Your shop and billing are saved, but setup could not be finalized. Try again.",
+    },
+    { status: 503 },
+  );
+}
+
+function pendingStateUnavailable(reason: string) {
+  console.error("owner onboarding pending transition failed", { reason });
+  return NextResponse.json(
+    {
+      ok: false,
+      error:
+        "Your shop is saved, but setup could not be secured for billing. Try again.",
+    },
+    { status: 503 },
+  );
+}
+
+function bootstrapUpgradeUnavailable() {
+  return NextResponse.json(
+    {
+      ok: false,
+      error:
+        "Shop setup is being upgraded. Try again in a moment before continuing.",
+    },
+    { status: 503 },
+  );
+}
+
+function invalidExistingOwnerPin() {
+  return NextResponse.json(
+    { ok: false, error: "Owner PIN is incorrect." },
+    { status: 401 },
+  );
+}
+
+function ambiguousOwnerRecovery() {
+  return NextResponse.json(
+    {
+      ok: false,
+      error:
+        "More than one historical shop is linked to this owner. Resolve the shop identity before continuing setup.",
+    },
+    { status: 409 },
+  );
+}
+
+function successfulBootstrapResponse(args: {
+  userId: string;
+  shopId: string;
+  replayed?: boolean;
+}) {
+  const response = NextResponse.json({
+    ok: true,
+    shopId: args.shopId,
+    destination: "/dashboard/onboarding-v2",
+    ...(args.replayed ? { replayed: true } : {}),
+  });
+  return setOwnerPinVerifiedCookie(response, {
+    userId: args.userId,
+    shopId: args.shopId,
+    purpose: OWNER_PIN_PURPOSES.PRIVILEGED,
+  });
+}
+
 export async function POST(request: Request) {
   const supabase = createServerSupabaseRoute();
 
@@ -78,37 +275,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const businessName = clean(body.businessName);
-    const shopName = clean(body.shopName) || businessName;
-    const street = clean(body.street);
-    const city = clean(body.city);
-    const province = clean(body.province);
-    const postalCode = clean(body.postalCode);
-    const country = clean(body.country).toUpperCase();
-    const timezone = clean(body.timezone);
     const pin = normalizeOwnerPin(clean(body.pin));
-
-    if (
-      invalidLength(businessName, 120) ||
-      invalidLength(shopName, 120) ||
-      invalidLength(street, 200) ||
-      invalidLength(city, 100) ||
-      invalidLength(province, 80) ||
-      invalidLength(postalCode, 16)
-    ) {
-      return NextResponse.json(
-        { ok: false, error: "Complete every required shop field." },
-        { status: 400 },
-      );
-    }
-
-    if (!COUNTRIES.has(country) || !TIMEZONES.has(timezone)) {
-      return NextResponse.json(
-        { ok: false, error: "Choose a supported country and timezone." },
-        { status: 400 },
-      );
-    }
-
     if (!isValidOwnerPin(pin)) {
       return NextResponse.json(
         { ok: false, error: "Owner PIN must be 4 to 8 digits." },
@@ -126,7 +293,10 @@ export async function POST(request: Request) {
 
     if (profileError || !profile) {
       return NextResponse.json(
-        { ok: false, error: "Your owner profile is not ready. Sign out and sign in again." },
+        {
+          ok: false,
+          error: "Your owner profile is not ready. Sign out and sign in again.",
+        },
         { status: 409 },
       );
     }
@@ -136,16 +306,69 @@ export async function POST(request: Request) {
       profile.role === "owner" &&
       profile.completed_onboarding
     ) {
-      return NextResponse.json({
-        ok: true,
-        destination: "/dashboard/onboarding-v2",
+      const pinVerified = await verifyExistingOwnerPin({
+        userId: user.id,
+        shopId: profile.shop_id,
+        pin,
+      });
+      if (!pinVerified) return invalidExistingOwnerPin();
+
+      const billing = await reconcileAcquiredBilling({
+        userId: user.id,
+        shopId: profile.shop_id,
+      });
+      if (!billing.ok) return billingUnavailable(billing.reason);
+
+      const finalized = await finalizeOwnerOnboarding({
+        userId: user.id,
+        shopId: profile.shop_id,
+      });
+      if (!finalized.ok) return completionUnavailable(finalized.reason);
+
+      return successfulBootstrapResponse({
+        userId: user.id,
+        shopId: profile.shop_id,
+        replayed: true,
+      });
+    }
+
+    if (
+      profile.shop_id &&
+      profile.role === "owner" &&
+      !profile.completed_onboarding
+    ) {
+      const pinVerified = await verifyExistingOwnerPin({
+        userId: user.id,
+        shopId: profile.shop_id,
+        pin,
+      });
+      if (!pinVerified) return invalidExistingOwnerPin();
+
+      const billing = await reconcileAcquiredBilling({
+        userId: user.id,
+        shopId: profile.shop_id,
+      });
+      if (!billing.ok) return billingUnavailable(billing.reason);
+
+      const finalized = await finalizeOwnerOnboarding({
+        userId: user.id,
+        shopId: profile.shop_id,
+      });
+      if (!finalized.ok) return completionUnavailable(finalized.reason);
+
+      return successfulBootstrapResponse({
+        userId: user.id,
+        shopId: profile.shop_id,
         replayed: true,
       });
     }
 
     if (profile.shop_id || profile.role || profile.completed_onboarding) {
       return NextResponse.json(
-        { ok: false, error: "This account is not eligible to create a new shop." },
+        {
+          ok: false,
+          error: "This account is not eligible to create a new shop.",
+        },
         { status: 403 },
       );
     }
@@ -161,6 +384,78 @@ export async function POST(request: Request) {
       );
     }
 
+    const businessName = clean(body.businessName);
+    const shopName = clean(body.shopName) || businessName;
+    const street = clean(body.street);
+    const city = clean(body.city);
+    const province = clean(body.province);
+    const postalCode = clean(body.postalCode);
+    const country = clean(body.country).toUpperCase();
+    const timezone = clean(body.timezone);
+
+    if (
+      invalidLength(businessName, 120) ||
+      invalidLength(shopName, 120) ||
+      invalidLength(street, 200) ||
+      invalidLength(city, 100) ||
+      invalidLength(province, 80) ||
+      invalidLength(postalCode, 16)
+    ) {
+      return NextResponse.json(
+        { ok: false, error: "Complete every required shop field." },
+        { status: 400 },
+      );
+    }
+
+    if (!COUNTRIES.has(country as ShopCountryCode)) {
+      return NextResponse.json(
+        { ok: false, error: "Choose a supported country." },
+        { status: 400 },
+      );
+    }
+    if (!isSupportedShopTimezone(country as ShopCountryCode, timezone)) {
+      return NextResponse.json(
+        { ok: false, error: "Choose a supported timezone for this country." },
+        { status: 400 },
+      );
+    }
+
+    // App-first deployment must never call the previous bootstrap body. The
+    // hardened same-signature function recognizes this harmless sentinel; the
+    // previous function rejects its country before any mutation. A failed probe
+    // therefore means "wait for the DB expand step" and fails closed.
+    const { data: probeRows, error: probeError } = await supabase.rpc(
+      "bootstrap_owner_atomic",
+      {
+        p_business_name: "__profixiq_owner_bootstrap_v2_probe__",
+        p_shop_name: "__probe__",
+        p_street: "__probe__",
+        p_city: "__probe__",
+        p_province: "__probe__",
+        p_postal_code: "__probe__",
+        p_country: "__PROBE__",
+        p_timezone: "Etc/UTC",
+        p_owner_pin_hash: "__probe__",
+      },
+    );
+    if (
+      probeError ||
+      readBootstrapShopId(probeRows) !== OWNER_BOOTSTRAP_CONTRACT_PROBE_SHOP_ID
+    ) {
+      return bootstrapUpgradeUnavailable();
+    }
+
+    // Even after the readiness probe, explicitly reject ambiguous historical
+    // recovery in the application so a rollback to the previous DB body cannot
+    // ever select "newest shop wins" for this request.
+    const recovery = await inspectOwnedShopRecovery(user.id);
+    if (!recovery.ok) {
+      if (recovery.reason === "ambiguous_owner_shop_recovery") {
+        return ambiguousOwnerRecovery();
+      }
+      return pendingStateUnavailable(recovery.reason);
+    }
+
     const ownerPinHash = await hashOwnerPin(pin);
     const { data: rows, error: bootstrapError } = await supabase.rpc(
       "bootstrap_owner_atomic",
@@ -173,7 +468,7 @@ export async function POST(request: Request) {
         p_postal_code: postalCode,
         p_country: country,
         p_timezone: timezone,
-        p_owner_pin_hash: ownerPinHash,
+        p_owner_pin_hash: `${OWNER_BOOTSTRAP_PENDING_MARKER}${ownerPinHash}`,
       },
     );
     const shopId = readBootstrapShopId(rows);
@@ -184,21 +479,36 @@ export async function POST(request: Request) {
         code: bootstrapError?.code ?? null,
       });
       return NextResponse.json(
-        { ok: false, error: "We could not create your shop. Please try again." },
+        {
+          ok: false,
+          error: "We could not create your shop. Please try again.",
+        },
         { status: 500 },
       );
     }
 
-    const response = NextResponse.json({
-      ok: true,
-      shopId,
-      destination: "/dashboard/onboarding-v2",
-    });
-    return setOwnerPinVerifiedCookie(response, {
+    // The hardened DB stores only the real PIN hash and owns the atomic pending
+    // transition. A concurrent read-only retry still has to prove its submitted
+    // PIN before this request may touch billing or privileged state. Do not write
+    // completed_onboarding=false again here: a duplicate request must never
+    // reopen an owner another request has already finalized successfully.
+    const persistedPinVerified = await verifyExistingOwnerPin({
       userId: user.id,
       shopId,
-      purpose: OWNER_PIN_PURPOSES.PRIVILEGED,
+      pin,
     });
+    if (!persistedPinVerified) return invalidExistingOwnerPin();
+
+    const billing = await reconcileAcquiredBilling({ userId: user.id, shopId });
+    if (!billing.ok) return billingUnavailable(billing.reason);
+
+    const finalized = await finalizeOwnerOnboarding({
+      userId: user.id,
+      shopId,
+    });
+    if (!finalized.ok) return completionUnavailable(finalized.reason);
+
+    return successfulBootstrapResponse({ userId: user.id, shopId });
   } catch (error) {
     console.error("owner onboarding bootstrap unexpected failure", {
       name: error instanceof Error ? error.name : "UnknownError",

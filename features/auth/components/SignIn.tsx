@@ -13,6 +13,7 @@ import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { claimStripeAcquisitionAfterAuth } from "@/features/stripe/lib/client/claim-acquisition";
 
 type Mode = "sign-in" | "sign-up";
+type AcquisitionContextStatus = "idle" | "loading" | "ready" | "error";
 
 type AuthPageProps = {
   initialMode?: Mode;
@@ -25,25 +26,23 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = useMemo(() => createBrowserSupabase(), []);
-  const [mode, setMode] = useState<Mode>(initialMode);
+  const isAcquisitionFlow = searchParams.get("flow")?.trim() === "acquisition";
+  const acquisitionSessionId = useMemo(() => {
+    const value = searchParams.get("session_id")?.trim() ?? "";
+    return isAcquisitionFlow && /^cs_[A-Za-z0-9_]+$/.test(value) ? value : null;
+  }, [isAcquisitionFlow, searchParams]);
+  const [mode, setMode] = useState<Mode>(() => (isAcquisitionFlow ? "sign-up" : initialMode));
   const [identifier, setIdentifier] = useState(() => searchParams.get("email")?.trim().toLowerCase() ?? "");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState(() =>
-    searchParams.get("billing_link_error") === "1"
-      ? "We couldn't securely link that checkout. Retry from the same checkout confirmation link."
-      : "",
-  );
+  const [error, setError] = useState(() => (searchParams.get("billing_link_error") === "1" ? "We couldn't securely link that checkout. Retry from the same checkout confirmation link." : ""));
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
+  const [resendLoading, setResendLoading] = useState(false);
+  const [pendingConfirmationEmail, setPendingConfirmationEmail] = useState<string | null>(null);
+  const [acquisitionContextStatus, setAcquisitionContextStatus] = useState<AcquisitionContextStatus>(isAcquisitionFlow ? "loading" : "idle");
 
-  const origin = useMemo(
-    () =>
-      typeof window !== "undefined"
-        ? window.location.origin
-        : process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") || "https://profixiq.com",
-    [],
-  );
+  const origin = useMemo(() => (typeof window !== "undefined" ? window.location.origin : process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") || "https://profixiq.com"), []);
 
   const emailRedirectTo = useMemo(() => {
     const params = new URLSearchParams();
@@ -83,10 +82,45 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
     return `/forgot-password${params.size ? `?${params.toString()}` : ""}`;
   }, [identifier, searchParams]);
 
-  const isOpsSignIn = useMemo(
-    () => safeInternalRedirect(searchParams.get("redirect"), "") === "/ops",
-    [searchParams],
-  );
+  const isOpsSignIn = useMemo(() => safeInternalRedirect(searchParams.get("redirect"), "") === "/ops", [searchParams]);
+
+  useEffect(() => {
+    if (!isAcquisitionFlow) return;
+    if (!acquisitionSessionId) {
+      setAcquisitionContextStatus("error");
+      setError("This trial checkout link is invalid. Return to pricing and start a new trial.");
+      return;
+    }
+
+    const controller = new AbortController();
+    setAcquisitionContextStatus("loading");
+    void fetch(`/api/stripe/checkout/acquisition-context?session_id=${encodeURIComponent(acquisitionSessionId)}`, {
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        const body = (await response.json().catch(() => null)) as {
+          email?: unknown;
+        } | null;
+        const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
+        if (!response.ok || !email.includes("@")) {
+          throw new Error("checkout_not_eligible");
+        }
+        setIdentifier(email);
+        setAcquisitionContextStatus("ready");
+      })
+      .catch((fetchError: unknown) => {
+        if (controller.signal.aborted) return;
+        console.warn("stripe acquisition context unavailable", {
+          name: fetchError instanceof Error ? fetchError.name : "UnknownError",
+        });
+        setAcquisitionContextStatus("error");
+        setError("We couldn't verify this trial checkout. Return to the checkout confirmation page and try again.");
+      });
+
+    return () => controller.abort();
+  }, [acquisitionSessionId, isAcquisitionFlow]);
 
   useEffect(() => {
     let cancelled = false;
@@ -118,16 +152,17 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
     setNotice("");
 
     try {
+      if (isAcquisitionFlow && acquisitionContextStatus !== "ready") {
+        setError("Wait for us to verify your trial checkout before continuing.");
+        return;
+      }
+
       if (mode === "sign-in") {
-        const acquisitionSessionId =
-          searchParams.get("flow")?.trim() === "acquisition"
-            ? searchParams.get("session_id")?.trim() || undefined
-            : undefined;
         const result = await signInWithIdentifier({
           identifier,
           password,
           surface: "shop",
-          acquisitionSessionId,
+          acquisitionSessionId: acquisitionSessionId ?? undefined,
         });
         if (!result.ok) {
           setError(result.error);
@@ -165,9 +200,8 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
       }
       if (!data.session) {
         setPassword("");
-        setNotice(
-          "If this is a new account, check its inbox for the verification link. If you already have an account, choose Sign in—another confirmation email will not be sent.",
-        );
+        setPendingConfirmationEmail(email);
+        setNotice("Check your inbox for the verification link. If it doesn't arrive, resend it below or choose Sign in if this account already exists.");
         return;
       }
       const claim = await claimStripeAcquisitionAfterAuth(searchParams);
@@ -186,6 +220,28 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
     }
   }
 
+  async function handleResendConfirmation() {
+    if (!pendingConfirmationEmail || resendLoading) return;
+    setResendLoading(true);
+    setError("");
+    setNotice("");
+
+    try {
+      const { error: resendError } = await supabase.auth.resend({
+        type: "signup",
+        email: pendingConfirmationEmail,
+        options: { emailRedirectTo },
+      });
+      if (resendError) {
+        setError("We couldn't resend the verification email. Wait a minute and try again, or choose Sign in if this account is already verified.");
+        return;
+      }
+      setNotice("Verification email resent. Check your inbox and spam folder for the newest link.");
+    } finally {
+      setResendLoading(false);
+    }
+  }
+
   async function handleOpsOAuthSignIn() {
     if (loading) return;
     setLoading(true);
@@ -198,9 +254,7 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
         options: { redirectTo: emailRedirectTo },
       });
       if (oauthError) {
-        setError(
-          "Google sign-in is not available yet. Use email and password for now.",
-        );
+        setError("Google sign-in is not available yet. Use email and password for now.");
       }
     } finally {
       setLoading(false);
@@ -217,16 +271,10 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
       highlights={["Role-aware access", "Live work visibility", "Secure approvals"]}
     >
       <div className="mb-6">
-        <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-copper)]">
-          Shop dashboard
-        </div>
-        <h1 className="mt-2 text-3xl font-semibold tracking-[-0.035em] text-[color:var(--theme-text-primary)] sm:text-4xl">
-          {isSignIn ? "Welcome back" : "Create your shop account"}
-        </h1>
+        <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-copper)]">Shop dashboard</div>
+        <h1 className="mt-2 text-3xl font-semibold tracking-[-0.035em] text-[color:var(--theme-text-primary)] sm:text-4xl">{isSignIn ? "Welcome back" : "Create your shop account"}</h1>
         <p className="mt-2 text-sm leading-6 text-[color:var(--theme-text-secondary)]">
-          {isSignIn
-            ? "Use your shop username or account email."
-            : "Start with the owner account; invite the rest of your team after setup."}
+          {isSignIn ? "Use your shop username or account email." : "Start with the owner account; invite the rest of your team after setup."}
         </p>
       </div>
 
@@ -281,8 +329,19 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
             placeholder={isSignIn ? "name@shop.com or username" : "owner@shop.com"}
             value={identifier}
             onChange={(event) => setIdentifier(event.target.value)}
+            readOnly={isAcquisitionFlow && acquisitionContextStatus === "ready"}
+            aria-describedby={isAcquisitionFlow ? "acquisition-email-help" : undefined}
             required
           />
+          {isAcquisitionFlow ? (
+            <p id="acquisition-email-help" className="mt-1.5 text-xs text-[color:var(--theme-text-muted)]">
+              {acquisitionContextStatus === "loading"
+                ? "Verifying the email used for your trial checkout…"
+                : acquisitionContextStatus === "ready"
+                  ? "This email is locked to the completed trial checkout."
+                  : "The completed trial checkout must be verified before account setup."}
+            </p>
+          ) : null}
         </div>
 
         <div>
@@ -321,7 +380,7 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
 
         <button
           type="submit"
-          disabled={loading}
+          disabled={loading || (isAcquisitionFlow && acquisitionContextStatus !== "ready")}
           className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent-copper)] px-4 py-3 text-sm font-bold text-[color:var(--theme-text-on-accent)] shadow-[0_14px_32px_color-mix(in_srgb,var(--accent-copper)_25%,transparent)] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
@@ -329,14 +388,35 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
         </button>
       </form>
 
+      {!isSignIn && pendingConfirmationEmail ? (
+        <button
+          type="button"
+          disabled={resendLoading}
+          onClick={handleResendConfirmation}
+          className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[color:var(--theme-border-soft)] px-4 py-3 text-sm font-bold text-[color:var(--theme-text-primary)] transition hover:border-[var(--accent-copper)] disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {resendLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+          {resendLoading ? "Resending…" : "Resend verification email"}
+        </button>
+      ) : null}
+
       <div className="mt-6 grid gap-2 border-t border-[color:var(--theme-border-soft)] pt-5 sm:grid-cols-3">
-        <Link href="/mobile/sign-in" className="rounded-xl border border-[color:var(--theme-border-soft)] px-3 py-2.5 text-center text-xs font-semibold text-[color:var(--theme-text-secondary)] transition hover:border-[var(--accent-copper)] hover:text-[color:var(--theme-text-primary)]">
+        <Link
+          href="/mobile/sign-in"
+          className="rounded-xl border border-[color:var(--theme-border-soft)] px-3 py-2.5 text-center text-xs font-semibold text-[color:var(--theme-text-secondary)] transition hover:border-[var(--accent-copper)] hover:text-[color:var(--theme-text-primary)]"
+        >
           Mobile companion
         </Link>
-        <Link href="/portal/auth/sign-in" className="rounded-xl border border-[color:var(--theme-border-soft)] px-3 py-2.5 text-center text-xs font-semibold text-[color:var(--theme-text-secondary)] transition hover:border-[var(--accent-copper)] hover:text-[color:var(--theme-text-primary)]">
+        <Link
+          href="/portal/auth/sign-in"
+          className="rounded-xl border border-[color:var(--theme-border-soft)] px-3 py-2.5 text-center text-xs font-semibold text-[color:var(--theme-text-secondary)] transition hover:border-[var(--accent-copper)] hover:text-[color:var(--theme-text-primary)]"
+        >
           Customer portal
         </Link>
-        <Link href="/portal/auth/fleet-sign-in" className="rounded-xl border border-[color:var(--theme-border-soft)] px-3 py-2.5 text-center text-xs font-semibold text-[color:var(--theme-text-secondary)] transition hover:border-[var(--accent-copper)] hover:text-[color:var(--theme-text-primary)]">
+        <Link
+          href="/portal/auth/fleet-sign-in"
+          className="rounded-xl border border-[color:var(--theme-border-soft)] px-3 py-2.5 text-center text-xs font-semibold text-[color:var(--theme-text-secondary)] transition hover:border-[var(--accent-copper)] hover:text-[color:var(--theme-text-primary)]"
+        >
           Fleet portal
         </Link>
       </div>
