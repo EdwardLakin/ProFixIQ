@@ -434,8 +434,7 @@ begin
     end if;
   end;
   update public.work_order_lines
-  set approval_state = 'approved',
-      status = 'approved'
+  set approval_state = 'approved'
   where id = v_line_id
     and shop_id = v_shop_id;
 
