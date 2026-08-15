@@ -125,6 +125,11 @@ declare
   v_source_location_id constant uuid := '9f600000-0000-4000-8000-000000000001';
   v_po_id constant uuid := '9f400000-0000-4000-8000-000000000001';
   v_po_line_id constant uuid := '9f500000-0000-4000-8000-000000000001';
+  v_terminal_po_id constant uuid := '9f400000-0000-4000-8000-000000000002';
+  v_terminal_line_id constant uuid := '9f500000-0000-4000-8000-000000000002';
+  v_scoped_po_id constant uuid := '9f400000-0000-4000-8000-000000000003';
+  v_scoped_line_one_id constant uuid := '9f500000-0000-4000-8000-000000000003';
+  v_scoped_line_two_id constant uuid := '9f500000-0000-4000-8000-000000000004';
   v_truck_id uuid;
   v_truck_location_id uuid;
   v_receipt jsonb;
@@ -232,6 +237,54 @@ begin
     and move.reference_id = v_po_id;
   if v_count <> 1 then
     raise exception 'Field truck runtime failed: receipt replay produced % stock moves', v_count;
+  end if;
+
+  insert into public.purchase_orders (id, shop_id, supplier_id, status, po_number)
+  values (
+    v_terminal_po_id, v_shop_id,
+    '9f300000-0000-4000-8000-000000000001', 'cancelled', 'FIELD-TRUCK-PO-CANCELLED'
+  );
+  insert into public.purchase_order_lines (
+    id, po_id, part_id, sku, description, qty, unit_cost, received_qty, cancelled_qty
+  ) values (
+    v_terminal_line_id, v_terminal_po_id, v_part_id, 'FT-SEAL-100',
+    'Cancelled receipt target', 1, 42.50, 0, 0
+  );
+  begin
+    perform public.field_receive_po_part_to_truck_atomic(
+      v_shop_id, v_truck_id, v_terminal_po_id, v_terminal_line_id,
+      1, v_actor_id, 'field-runtime:terminal-receipt'
+    );
+    raise exception 'Field truck runtime failed: terminal PO receipt was accepted';
+  exception when others then
+    if sqlerrm not like '%PARTS_PO_NOT_RECEIVABLE%' then
+      raise;
+    end if;
+  end;
+
+  insert into public.purchase_orders (id, shop_id, supplier_id, status, po_number)
+  values (
+    v_scoped_po_id, v_shop_id,
+    '9f300000-0000-4000-8000-000000000001', 'open', 'FIELD-TRUCK-PO-SCOPED'
+  );
+  insert into public.purchase_order_lines (
+    id, po_id, part_id, sku, description, qty, unit_cost, received_qty, cancelled_qty
+  ) values
+    (
+      v_scoped_line_one_id, v_scoped_po_id, v_part_id, 'FT-SEAL-100',
+      'First duplicate part line', 1, 42.50, 0, 0
+    ),
+    (
+      v_scoped_line_two_id, v_scoped_po_id, v_part_id, 'FT-SEAL-100',
+      'Selected duplicate part line', 1, 42.50, 0, 0
+    );
+  perform public.field_receive_po_part_to_truck_atomic(
+    v_shop_id, v_truck_id, v_scoped_po_id, v_scoped_line_two_id,
+    1, v_actor_id, 'field-runtime:scoped-receipt'
+  );
+  if (select received_qty from public.purchase_order_lines where id = v_scoped_line_one_id) <> 0
+     or (select received_qty from public.purchase_order_lines where id = v_scoped_line_two_id) <> 1 then
+    raise exception 'Field truck runtime failed: receipt was not scoped to the selected PO line';
   end if;
 
   -- Seed MAIN and prove a transfer is one paired, exact-once operation.
@@ -356,6 +409,23 @@ begin
   if v_work_order_id is null or v_line_id is null then
     raise exception 'Field truck runtime failed: repair handoff did not materialize';
   end if;
+
+  begin
+    perform public.field_use_truck_part_atomic(
+      v_shop_id, v_visit_id, v_line_id, v_part_id, 1,
+      v_actor_id, 'field-runtime:unapproved-use'
+    );
+    raise exception 'Field truck runtime failed: unapproved repair line accepted part use';
+  exception when others then
+    if sqlerrm not like '%not approved and actionable%' then
+      raise;
+    end if;
+  end;
+  update public.work_order_lines
+  set approval_state = 'approved',
+      status = 'approved'
+  where id = v_line_id
+    and shop_id = v_shop_id;
 
   v_before := public.parts_on_hand(v_shop_id, v_part_id, v_truck_location_id);
   v_use := public.field_use_truck_part_atomic(

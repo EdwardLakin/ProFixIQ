@@ -15,6 +15,7 @@ import type {
   FieldTruckInventorySnapshot,
   FieldUseTruckPartPayload,
 } from "./truckInventoryContracts";
+import { numeric } from "./truckInventoryContracts";
 
 const SNAPSHOT_KIND = "field-truck-inventory";
 const SNAPSHOT_ID = "active-truck";
@@ -75,12 +76,63 @@ export async function cacheFieldTruckInventorySnapshot(args: {
 export async function loadCachedFieldTruckInventorySnapshot(args: {
   scope: OfflineMutationScope;
 }): Promise<FieldTruckInventorySnapshot | null> {
+  await hydrateOfflineMutationQueue();
   const stored = await getOfflineSnapshot<FieldTruckInventorySnapshot>({
     scope: args.scope,
     kind: SNAPSHOT_KIND,
     entityId: SNAPSHOT_ID,
   });
-  return stored?.data ?? null;
+  if (!stored?.data) return null;
+
+  return listPendingMutations(args.scope)
+    .filter((mutation) => mutation.status !== "conflicted")
+    .reduce<FieldTruckInventorySnapshot>((snapshot, mutation) => {
+      if (!mutation.payload || typeof mutation.payload !== "object") return snapshot;
+      if (mutation.actionType === "field-inventory:use-part") {
+        const payload = mutation.payload as FieldUseTruckPartPayload;
+        const quantity = numeric(payload.quantity);
+        return {
+          ...snapshot,
+          items: snapshot.items.map((item) =>
+            item.partId === payload.partId
+              ? {
+                  ...item,
+                  onHand: Math.max(0, numeric(item.onHand) - quantity),
+                  available: Math.max(0, numeric(item.available) - quantity),
+                }
+              : item,
+          ),
+        };
+      }
+      if (mutation.actionType === "field-inventory:return-part") {
+        const payload = mutation.payload as FieldReturnTruckPartPayload;
+        const quantity = numeric(payload.quantity);
+        const partId = snapshot.recentUses.find(
+          (use) => use.workOrderPartId === payload.workOrderPartId,
+        )?.partId;
+        return {
+          ...snapshot,
+          items: snapshot.items.map((item) =>
+            item.partId === partId
+              ? {
+                  ...item,
+                  onHand: numeric(item.onHand) + quantity,
+                  available: numeric(item.available) + quantity,
+                }
+              : item,
+          ),
+          recentUses: snapshot.recentUses.map((use) =>
+            use.workOrderPartId === payload.workOrderPartId
+              ? {
+                  ...use,
+                  returnedQuantity: numeric(use.returnedQuantity) + quantity,
+                }
+              : use,
+          ),
+        };
+      }
+      return snapshot;
+    }, stored.data);
 }
 
 export async function consumeFieldTruckPart(args: {
@@ -103,6 +155,7 @@ export async function consumeFieldTruckPart(args: {
     queueOnOffline: true,
     dependsOn: lastVisitMutationDependency(args.payload.visitId),
     orderKey: `service-visit:${args.payload.visitId}`,
+    bestEffortOnlineHistory: true,
     runner: async () => {
       const response = await fetch("/api/mobile/service/truck-inventory/use", {
         method: "POST",
@@ -140,6 +193,7 @@ export async function returnFieldTruckPart(args: {
     queueOnOffline: true,
     dependsOn: lastVisitMutationDependency(args.payload.visitId),
     orderKey: `service-visit:${args.payload.visitId}`,
+    bestEffortOnlineHistory: true,
     runner: async () => {
       const response = await fetch("/api/mobile/service/truck-inventory/return", {
         method: "POST",

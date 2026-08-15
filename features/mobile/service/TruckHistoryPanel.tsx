@@ -6,7 +6,7 @@ import type {
   FieldRecentPartUse,
   FieldTruckInventorySnapshot,
 } from "./truckInventoryContracts";
-import { numeric } from "./truckInventoryContracts";
+import { aggregateRecentPartUses, numeric } from "./truckInventoryContracts";
 import { actionClass, quantityLabel } from "./truckInventoryUi";
 
 type Props = {
@@ -16,9 +16,10 @@ type Props = {
 };
 
 export default function TruckHistoryPanel({ snapshot, busy, handleReturn }: Props) {
+  const recentUses = aggregateRecentPartUses(snapshot.recentUses);
   return (
     <section className="space-y-3">
-      {snapshot.recentUses.map((use) => {
+      {recentUses.map((use) => {
         const returnable = Math.max(
           0,
           numeric(use.quantity) - numeric(use.returnedQuantity),
@@ -56,7 +57,7 @@ export default function TruckHistoryPanel({ snapshot, busy, handleReturn }: Prop
           </article>
         );
       })}
-      {snapshot.recentUses.length === 0 ? (
+      {recentUses.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-[color:var(--theme-border-soft)] p-8 text-center text-sm text-[color:var(--theme-text-muted)]">
           No truck parts have been used on this call yet.
         </div>

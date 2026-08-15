@@ -8,6 +8,7 @@ import type {
   FieldTruckInventoryItem,
   FieldTruckInventorySnapshot,
 } from "./truckInventoryContracts";
+import { isActionableFieldWorkOrderLine } from "./truckInventoryContracts";
 import { numeric } from "./truckInventoryContracts";
 import type { IdentityDraft } from "./truckInventoryUi";
 import {
@@ -71,7 +72,7 @@ export default function TruckStockPanel({
               className="mt-1 min-h-11 w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3"
             >
               <option value="">Select repair line</option>
-              {snapshot.workOrderLines.map((line) => (
+              {snapshot.workOrderLines.filter(isActionableFieldWorkOrderLine).map((line) => (
                 <option key={line.id} value={line.id}>
                   {line.lineNumber ? `#${line.lineNumber} · ` : ""}
                   {line.description}

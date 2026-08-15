@@ -13,6 +13,7 @@ import {
 } from "./truckInventoryOffline";
 import { fetchTruckInventorySnapshot } from "./truckInventoryClient";
 import type { FieldTruckInventorySnapshot } from "./truckInventoryContracts";
+import { isActionableFieldWorkOrderLine } from "./truckInventoryContracts";
 
 export function useTruckInventorySnapshot() {
   const [snapshot, setSnapshot] = useState<FieldTruckInventorySnapshot | null>(null);
@@ -38,7 +39,16 @@ export function useTruckInventorySnapshot() {
         const resolvedTruckId = next.truck?.id ?? serviceVehicleId ?? "";
         selectedTruckIdRef.current = resolvedTruckId;
         setSelectedTruckId(resolvedTruckId);
-        setSelectedLineId((current) => current || next.workOrderLines[0]?.id || "");
+        setSelectedLineId(
+          (current) => {
+            const actionable = next.workOrderLines.filter(
+              isActionableFieldWorkOrderLine,
+            );
+            return actionable.some((line) => line.id === current)
+              ? current
+              : actionable[0]?.id || "";
+          },
+        );
         const resolvedScope =
           scope ?? getOfflineMutationScope() ?? (await resolveOfflineMutationScope({}));
         if (resolvedScope) {
@@ -59,7 +69,14 @@ export function useTruckInventorySnapshot() {
           selectedTruckIdRef.current = cachedTruckId;
           setSelectedTruckId(cachedTruckId);
           setSelectedLineId(
-            (current) => current || cached.workOrderLines[0]?.id || "",
+            (current) => {
+              const actionable = cached.workOrderLines.filter(
+                isActionableFieldWorkOrderLine,
+              );
+              return actionable.some((line) => line.id === current)
+                ? current
+                : actionable[0]?.id || "";
+            },
           );
           setError(
             online

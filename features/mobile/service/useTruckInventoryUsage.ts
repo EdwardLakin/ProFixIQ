@@ -192,7 +192,7 @@ export function useTruckInventoryUsage({
           setIdentityDraft({
             code,
             name: "",
-            partNumber: code,
+            partNumber: "",
             manufacturer: "",
             unitCost: "",
             unitSellPrice: "",

@@ -73,6 +73,26 @@ export type FieldWorkOrderLine = {
   assignedTechnicianId: string | null;
 };
 
+const ACTIONABLE_FIELD_LINE_STATUSES = new Set([
+  "awaiting",
+  "assigned",
+  "queued",
+  "approved",
+  "in_progress",
+  "on_hold",
+  "paused",
+  "waiting_parts",
+]);
+
+export function isActionableFieldWorkOrderLine(line: FieldWorkOrderLine): boolean {
+  return (
+    String(line.approvalState ?? "").trim().toLowerCase() === "approved" &&
+    ACTIONABLE_FIELD_LINE_STATUSES.has(
+      String(line.status ?? "").trim().toLowerCase(),
+    )
+  );
+}
+
 export type FieldOpenReceipt = {
   purchaseOrderId: string;
   purchaseOrderNumber: string;
@@ -110,6 +130,32 @@ export type FieldRecentPartUse = {
   createdAt: string;
   returnedQuantity: number;
 };
+
+export function aggregateRecentPartUses(
+  uses: FieldRecentPartUse[],
+): FieldRecentPartUse[] {
+  const grouped = new Map<string, FieldRecentPartUse>();
+  for (const use of uses) {
+    const current = grouped.get(use.workOrderPartId);
+    if (!current) {
+      grouped.set(use.workOrderPartId, { ...use });
+      continue;
+    }
+    current.quantity = numeric(current.quantity) + numeric(use.quantity);
+    current.returnedQuantity = Math.max(
+      numeric(current.returnedQuantity),
+      numeric(use.returnedQuantity),
+    );
+    if (new Date(use.createdAt).getTime() > new Date(current.createdAt).getTime()) {
+      current.stockMoveId = use.stockMoveId;
+      current.createdAt = use.createdAt;
+    }
+  }
+  return [...grouped.values()].sort(
+    (left, right) =>
+      new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime(),
+  );
+}
 
 export type FieldTruckInventorySnapshot = {
   generatedAt: string;

@@ -1,6 +1,8 @@
 import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
+import { aggregateRecentPartUses } from "@/features/mobile/service/truckInventoryContracts";
+
 const read = (path: string) => readFileSync(path, "utf8");
 const migration = [
   "supabase/migrations/20260812230000_field_integration_identity_core.sql",
@@ -8,6 +10,9 @@ const migration = [
   "supabase/migrations/20260812230200_field_truck_inventory_snapshot.sql",
   "supabase/migrations/20260812230300_field_truck_inventory_movement_commands.sql",
   "supabase/migrations/20260812230400_field_truck_inventory_work_order_commands.sql",
+  "supabase/migrations/20260815050000_field_part_identity_review_hardening.sql",
+  "supabase/migrations/20260815050100_field_truck_line_review_hardening.sql",
+  "supabase/migrations/20260815050200_field_truck_receipt_review_hardening.sql",
 ]
   .map(read)
   .join("\n");
@@ -51,6 +56,15 @@ const workflow = read(".github/workflows/mobile-v1-validation.yml");
 const contracts = read(
   "features/mobile/service/truckInventoryContracts.ts",
 );
+const identityReview = read(
+  "supabase/migrations/20260815050000_field_part_identity_review_hardening.sql",
+);
+const lineReview = read(
+  "supabase/migrations/20260815050100_field_truck_line_review_hardening.sql",
+);
+const receiptReview = read(
+  "supabase/migrations/20260815050200_field_truck_receipt_review_hardening.sql",
+);
 
 describe("Field Service truck inventory", () => {
   it("uses one canonical part identity across providers, barcodes, PO, stock, work order, and invoice truth", () => {
@@ -92,6 +106,9 @@ describe("Field Service truck inventory", () => {
     expect(migration).toContain("public.receive_po_part_and_allocate(");
     expect(migration).toContain("'purchase_order'");
     expect(migration).toContain("public.parts_ensure_work_order_part(");
+    expect(receiptReview).toContain("profixiq_receive_po_line_to_location_atomic");
+    expect(receiptReview).toContain("'purchase_order_line_id', p_purchase_order_line_id");
+    expect(receiptReview).toContain("PARTS_PO_NOT_RECEIVABLE");
     expect(migration).toContain("'direct_to_truck', true");
     expect(receiveApi).toContain("p_purchase_order_line_id");
     expect(receiveApi).toContain("field_receive_po_part_to_truck_atomic");
@@ -110,6 +127,8 @@ describe("Field Service truck inventory", () => {
     expect(migration).toContain("public.parts_issue_by_line_part_atomic(");
     expect(migration).toContain("field_return_truck_part_atomic");
     expect(migration).toContain("public.parts_return_to_stock(");
+    expect(lineReview).toContain("line.approval_state::text");
+    expect(lineReview).toContain("The repair line is not approved and actionable");
     expect(useApi).toContain("requireMobileServiceOperatorApiAccess");
     expect(useApi).toContain("field_use_truck_part_atomic");
     expect(inventoryUi).toContain("handleUse(part.partId)");
@@ -127,6 +146,11 @@ describe("Field Service truck inventory", () => {
     expect(inventoryUi).toContain("There is no separate stock-item setup step.");
     expect(inventoryUi).toContain("createIfMissing: true");
     expect(migration).toContain("'requiresDetails', true");
+    expect(identityReview).not.toContain("coalesce(v_supplier_sku, v_code)");
+    expect(identityReview).not.toContain("coalesce(v_part_number, v_code)");
+    expect(identityReview).toContain(
+      "case when v_actor.can_manage_parts then p_unit_cost else null end",
+    );
   });
 
   it("caches the assigned truck and replays use/return once in the visit dependency chain", () => {
@@ -135,10 +159,46 @@ describe("Field Service truck inventory", () => {
     expect(offline).toContain('actionType: "field-inventory:return-part"');
     expect(offline).toContain('orderKey: `service-visit:${args.payload.visitId}`');
     expect(offline).toContain("lastVisitMutationDependency");
+    expect(offline.match(/bestEffortOnlineHistory: true/g)).toHaveLength(2);
+    expect(offline).toContain("listPendingMutations(args.scope)");
     expect(replay).toContain('"field-inventory:use-part"');
     expect(replay).toContain('"field-inventory:return-part"');
     expect(replay).toContain("mutation.clientMutationId");
     expect(inventoryUi).toContain("Offline — showing the last cached truck snapshot.");
+  });
+
+  it("aggregates repeated issues before calculating the returnable quantity", () => {
+    const uses = aggregateRecentPartUses([
+      {
+        stockMoveId: "older",
+        workOrderPartId: "work-part",
+        workOrderLineId: "line",
+        partId: "part",
+        name: "Seal",
+        partNumber: "S-1",
+        quantity: 2,
+        createdAt: "2026-08-15T00:00:00.000Z",
+        returnedQuantity: 1,
+      },
+      {
+        stockMoveId: "newer",
+        workOrderPartId: "work-part",
+        workOrderLineId: "line",
+        partId: "part",
+        name: "Seal",
+        partNumber: "S-1",
+        quantity: 3,
+        createdAt: "2026-08-15T01:00:00.000Z",
+        returnedQuantity: 1,
+      },
+    ]);
+
+    expect(uses).toHaveLength(1);
+    expect(uses[0]).toMatchObject({
+      stockMoveId: "newer",
+      quantity: 5,
+      returnedQuantity: 1,
+    });
   });
 
   it("adds a reusable integration core without storing provider secrets in the client contract", () => {
