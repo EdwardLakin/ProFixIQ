@@ -36,13 +36,21 @@ set user_id = excluded.user_id,
     full_name = excluded.full_name;
 
 insert into public.shops (id, owner_id, business_name, name, user_limit)
-values (
-  'a1438000-0000-4000-8000-000000000010',
-  'a1438000-0000-4000-8000-000000000001',
-  'CoPilot Runtime Shop',
-  'CoPilot Runtime Shop',
-  10
-)
+values
+  (
+    'a1438000-0000-4000-8000-000000000010',
+    'a1438000-0000-4000-8000-000000000001',
+    'CoPilot Runtime Shop',
+    'CoPilot Runtime Shop',
+    10
+  ),
+  (
+    'a1438000-0000-4000-8000-000000000011',
+    'a1438000-0000-4000-8000-000000000001',
+    'CoPilot Cross-Tenant Shop',
+    'CoPilot Cross-Tenant Shop',
+    10
+  )
 on conflict (id) do nothing;
 
 update public.profiles
@@ -71,6 +79,12 @@ values
     'a1438000-0000-4000-8000-000000000010',
     'completed',
     'COPILOT-RT-TERMINAL'
+  ),
+  (
+    'a1438000-0000-4000-8000-000000000105',
+    'a1438000-0000-4000-8000-000000000011',
+    'queued',
+    'COPILOT-RT-CROSS-TENANT'
   )
 on conflict (id) do nothing;
 
@@ -114,7 +128,47 @@ values
     'a1438000-0000-4000-8000-000000000002',
     'a1438000-0000-4000-8000-000000000002',
     'Runtime terminal guard'
+  ),
+  (
+    'a1438000-0000-4000-8000-000000000204',
+    'a1438000-0000-4000-8000-000000000102',
+    'a1438000-0000-4000-8000-000000000010',
+    'job',
+    'awaiting',
+    null,
+    null,
+    'Runtime unassigned guard'
+  ),
+  (
+    'a1438000-0000-4000-8000-000000000205',
+    'a1438000-0000-4000-8000-000000000105',
+    'a1438000-0000-4000-8000-000000000011',
+    'job',
+    'awaiting',
+    null,
+    null,
+    'Runtime cross-tenant guard'
   )
+on conflict (id) do nothing;
+
+insert into public.tech_shifts (
+  id,
+  shop_id,
+  user_id,
+  status,
+  type,
+  start_time,
+  end_time
+)
+values (
+  'a1438000-0000-4000-8000-000000000206',
+  'a1438000-0000-4000-8000-000000000010',
+  'a1438000-0000-4000-8000-000000000002',
+  'active',
+  'shift',
+  now() - interval '1 hour',
+  null
+)
 on conflict (id) do nothing;
 
 -- The existing line-status refresh trigger recalculates a parent work order
@@ -327,6 +381,235 @@ begin
   end if;
 end
 $technician_copilot_command_transport$;
+
+do $technician_copilot_job_actions$
+declare
+  v_active_session_id uuid;
+  v_release_metadata jsonb;
+  v_release_replay jsonb;
+  v_start jsonb;
+  v_start_replay jsonb;
+  v_story jsonb;
+  v_story_replay jsonb;
+  v_line_updated_at timestamptz;
+begin
+  select rs.id
+    into v_active_session_id
+  from copilot.repair_sessions rs
+  where rs.technician_id = 'a1438000-0000-4000-8000-000000000002'
+    and rs.work_order_id = 'a1438000-0000-4000-8000-000000000102'
+    and rs.status = 'active';
+
+  with command as (
+    insert into public.ai_action_events (
+      shop_id,
+      event_type,
+      actor_id,
+      actor_role,
+      source,
+      payload,
+      metadata
+    )
+    values (
+      'a1438000-0000-4000-8000-000000000010',
+      'technician_copilot_command',
+      'a1438000-0000-4000-8000-000000000002',
+      'mechanic',
+      'technician_copilot_command',
+      jsonb_build_object(
+        'authUserId', 'a1438000-0000-4000-8000-000000000002',
+        'action', 'job.action',
+        'sessionId', v_active_session_id,
+        'workOrderLineId', 'a1438000-0000-4000-8000-000000000202',
+        'jobAction', 'job.release_hold',
+        'operationId', 'a1438000-0000-5000-a000-000000000401'
+      ),
+      '{}'::jsonb
+    )
+    returning metadata
+  )
+  select c.metadata
+    into v_release_metadata
+  from command c;
+
+  if nullif(v_release_metadata #>> '{copilotCommandError,message}', '') is not null
+    or v_release_metadata #>> '{copilotCommandResult,copilotAction}' <> 'job.release_hold'
+    or not exists (
+      select 1
+      from public.work_order_lines wol
+      where wol.id = 'a1438000-0000-4000-8000-000000000202'
+        and lower(wol.status::text) = 'awaiting'
+        and wol.hold_reason is null
+    )
+  then
+    raise exception 'CoPilot job-action assertion failed: command bridge did not release the assigned hold';
+  end if;
+
+  v_release_replay := copilot.technician_job_action_internal(
+    'a1438000-0000-4000-8000-000000000002',
+    v_active_session_id,
+    'a1438000-0000-4000-8000-000000000202',
+    'job.release_hold',
+    'a1438000-0000-5000-a000-000000000401'
+  );
+  if not coalesce((v_release_replay ->> 'idempotent')::boolean, false) then
+    raise exception 'CoPilot job-action assertion failed: released-hold replay was not idempotent';
+  end if;
+
+  v_start := copilot.technician_job_action_internal(
+    'a1438000-0000-4000-8000-000000000002',
+    v_active_session_id,
+    'a1438000-0000-4000-8000-000000000202',
+    'job.start',
+    'a1438000-0000-5000-a000-000000000402'
+  );
+  v_start_replay := copilot.technician_job_action_internal(
+    'a1438000-0000-4000-8000-000000000002',
+    v_active_session_id,
+    'a1438000-0000-4000-8000-000000000202',
+    'job.start',
+    'a1438000-0000-5000-a000-000000000402'
+  );
+
+  if coalesce((v_start ->> 'idempotent')::boolean, true)
+    or not coalesce((v_start_replay ->> 'idempotent')::boolean, false)
+    or not exists (
+      select 1
+      from public.work_order_line_labor_segments seg
+      where seg.work_order_line_id = 'a1438000-0000-4000-8000-000000000202'
+        and seg.technician_id = 'a1438000-0000-4000-8000-000000000002'
+        and seg.ended_at is null
+    )
+  then
+    raise exception 'CoPilot job-action assertion failed: start replay was not idempotent';
+  end if;
+
+  begin
+    perform copilot.technician_job_action_internal(
+      'a1438000-0000-4000-8000-000000000002',
+      v_active_session_id,
+      'a1438000-0000-4000-8000-000000000202',
+      'job.hold',
+      'a1438000-0000-5000-a000-000000000402',
+      'Must not reuse start operation'
+    );
+    raise exception 'CoPilot job-action assertion failed: operation ID was reused across actions';
+  exception when sqlstate '23505' then
+    if sqlerrm <> 'copilot_operation_id_conflict' then
+      raise;
+    end if;
+  end;
+
+  select wol.updated_at
+    into v_line_updated_at
+  from public.work_order_lines wol
+  where wol.id = 'a1438000-0000-4000-8000-000000000202';
+
+  begin
+    perform copilot.technician_job_action_internal(
+      'a1438000-0000-4000-8000-000000000002',
+      v_active_session_id,
+      'a1438000-0000-4000-8000-000000000202',
+      'job.story.save',
+      'a1438000-0000-5000-a000-000000000403',
+      null,
+      'Confirmed seized inner pad',
+      'Clean and lubricate bracket',
+      v_line_updated_at - interval '1 second'
+    );
+    raise exception 'CoPilot job-action assertion failed: stale story write succeeded';
+  exception when sqlstate 'P0001' then
+    if position('OFFLINE_VERSION_CONFLICT' in sqlerrm) = 0 then
+      raise;
+    end if;
+  end;
+
+  v_story := copilot.technician_job_action_internal(
+    'a1438000-0000-4000-8000-000000000002',
+    v_active_session_id,
+    'a1438000-0000-4000-8000-000000000202',
+    'job.story.save',
+    'a1438000-0000-5000-a000-000000000404',
+    null,
+    'Confirmed seized inner pad',
+    'Clean and lubricate bracket',
+    v_line_updated_at
+  );
+  v_story_replay := copilot.technician_job_action_internal(
+    'a1438000-0000-4000-8000-000000000002',
+    v_active_session_id,
+    'a1438000-0000-4000-8000-000000000202',
+    'job.story.save',
+    'a1438000-0000-5000-a000-000000000404',
+    null,
+    'Confirmed seized inner pad',
+    'Clean and lubricate bracket',
+    v_line_updated_at
+  );
+
+  if coalesce((v_story ->> 'idempotent')::boolean, true)
+    or not coalesce((v_story_replay ->> 'idempotent')::boolean, false)
+    or not exists (
+      select 1
+      from public.work_order_lines wol
+      where wol.id = 'a1438000-0000-4000-8000-000000000202'
+        and wol.cause = 'Confirmed seized inner pad'
+        and wol.correction = 'Clean and lubricate bracket'
+    )
+  then
+    raise exception 'CoPilot job-action assertion failed: story save or replay was incoherent';
+  end if;
+
+  perform copilot.technician_job_action_internal(
+    'a1438000-0000-4000-8000-000000000002',
+    v_active_session_id,
+    'a1438000-0000-4000-8000-000000000202',
+    'job.hold',
+    'a1438000-0000-5000-a000-000000000405',
+    'Waiting for parts'
+  );
+
+  if not exists (
+    select 1
+    from public.work_order_lines wol
+    where wol.id = 'a1438000-0000-4000-8000-000000000202'
+      and lower(wol.status::text) = 'on_hold'
+      and wol.hold_reason = 'Waiting for parts'
+  ) then
+    raise exception 'CoPilot job-action assertion failed: hold did not use canonical line state';
+  end if;
+
+  begin
+    perform copilot.technician_job_action_internal(
+      'a1438000-0000-4000-8000-000000000002',
+      v_active_session_id,
+      'a1438000-0000-4000-8000-000000000204',
+      'job.start',
+      'a1438000-0000-5000-a000-000000000406'
+    );
+    raise exception 'CoPilot job-action assertion failed: unassigned line was accepted';
+  exception when sqlstate '42501' then
+    if sqlerrm <> 'copilot_work_order_assignment_required' then
+      raise;
+    end if;
+  end;
+
+  begin
+    perform copilot.technician_job_action_internal(
+      'a1438000-0000-4000-8000-000000000002',
+      v_active_session_id,
+      'a1438000-0000-4000-8000-000000000205',
+      'job.start',
+      'a1438000-0000-5000-a000-000000000407'
+    );
+    raise exception 'CoPilot job-action assertion failed: cross-tenant line was accepted';
+  exception when sqlstate '55000' then
+    if sqlerrm <> 'copilot_job_action_session_or_line_not_actionable' then
+      raise;
+    end if;
+  end;
+end
+$technician_copilot_job_actions$;
 
 do $technician_copilot_runtime_schema$
 begin

@@ -7,6 +7,19 @@ import {
   type WorkOrderLineStatus,
 } from "@/features/work-orders/lib/line-status";
 
+export type TechnicianWorkLine = {
+  id: string;
+  complaint: string | null;
+  description: string | null;
+  status: string;
+  cause: string | null;
+  correction: string | null;
+  holdReason: string | null;
+  priority: number | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+};
+
 export type TechnicianWorkCandidate = {
   id: string;
   customId: string | null;
@@ -20,6 +33,8 @@ export type TechnicianWorkCandidate = {
   vehicleUnitNumber: string | null;
   /** Only active job line IDs canonically assigned to this technician. */
   lineIds: string[];
+  /** Actionable assigned job lines, including the state shown on technician screens. */
+  lines: TechnicianWorkLine[];
   /** Readable complaints on the assigned work order for conversational context. */
   lineComplaints: string[];
 };
@@ -57,10 +72,18 @@ type WorkOrderCandidateRow = {
   updated_at: string | null;
 };
 
-type ComplaintLine = {
+type WorkOrderLineCandidateRow = {
   id: string;
   work_order_id: string;
   complaint: string | null;
+  description: string | null;
+  status: string;
+  cause: string | null;
+  correction: string | null;
+  hold_reason: string | null;
+  priority: number | null;
+  created_at: string | null;
+  updated_at: string | null;
 };
 
 const ACTIVE_CANONICAL_LINE_STATUSES = [
@@ -124,7 +147,7 @@ function embeddedAssignedLine(row: SharedAssignmentRow): AssignedLine | null {
 
 function buildCandidate(
   row: WorkOrderCandidateRow,
-  assignedLineIds: readonly string[],
+  assignedLines: readonly TechnicianWorkLine[],
   complaints: readonly string[],
 ): TechnicianWorkCandidate {
   return {
@@ -138,7 +161,8 @@ function buildCandidate(
     vehicleModel: row.vehicle_model,
     vehicleVin: row.vehicle_vin,
     vehicleUnitNumber: row.vehicle_unit_number,
-    lineIds: uniqueIds(assignedLineIds),
+    lineIds: uniqueIds(assignedLines.map((line) => line.id)),
+    lines: [...assignedLines],
     lineComplaints: [...new Set(complaints.map((value) => value.trim()).filter(Boolean))],
   };
 }
@@ -200,21 +224,38 @@ async function collectAssignedLines(
   return [...assignedById.values()];
 }
 
-async function loadComplaintLines(
+async function loadWorkOrderLines(
   input: TechnicianWorkScope,
   workOrderIds: readonly string[],
-): Promise<ComplaintLine[]> {
+): Promise<WorkOrderLineCandidateRow[]> {
   if (workOrderIds.length === 0) return [];
 
   const result = await input.supabase
     .from("work_order_lines")
-    .select("id,work_order_id,complaint")
+    .select(
+      "id,work_order_id,complaint,description,status,cause,correction,hold_reason,priority,created_at,updated_at",
+    )
     .eq("shop_id", input.shopId)
     .eq("line_type", "job")
     .in("work_order_id", [...workOrderIds]);
 
   if (result.error) throw new Error(result.error.message);
-  return (result.data ?? []) as ComplaintLine[];
+  return (result.data ?? []) as WorkOrderLineCandidateRow[];
+}
+
+function toTechnicianWorkLine(row: WorkOrderLineCandidateRow): TechnicianWorkLine {
+  return {
+    id: row.id,
+    complaint: text(row.complaint),
+    description: text(row.description),
+    status: row.status,
+    cause: text(row.cause),
+    correction: text(row.correction),
+    holdReason: text(row.hold_reason),
+    priority: row.priority,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
 }
 
 export function readCanonicalWorkOrderConcern(intakeJson: unknown): string | null {
@@ -256,19 +297,21 @@ export async function listTechnicianWorkCandidates(
   if (!rows.length) return [];
 
   const visibleWorkOrderIds = rows.map((row) => row.id);
-  const lines = await loadComplaintLines(input, visibleWorkOrderIds);
+  const lines = await loadWorkOrderLines(input, visibleWorkOrderIds);
   const assignedLineIds = new Set(assignedLines.map((line) => line.id));
   const byWorkOrder = new Map<
     string,
-    { assignedIds: string[]; complaints: string[] }
+    { assignedLines: TechnicianWorkLine[]; complaints: string[] }
   >();
 
   for (const line of lines) {
     const value = byWorkOrder.get(line.work_order_id) ?? {
-      assignedIds: [],
+      assignedLines: [],
       complaints: [],
     };
-    if (assignedLineIds.has(line.id)) value.assignedIds.push(line.id);
+    if (assignedLineIds.has(line.id)) {
+      value.assignedLines.push(toTechnicianWorkLine(line));
+    }
     if (line.complaint?.trim()) value.complaints.push(line.complaint.trim());
     byWorkOrder.set(line.work_order_id, value);
   }
@@ -276,12 +319,12 @@ export async function listTechnicianWorkCandidates(
   return rows
     .map((row) => {
       const linesForOrder = byWorkOrder.get(row.id) ?? {
-        assignedIds: [],
+        assignedLines: [],
         complaints: [],
       };
       return buildCandidate(
         row,
-        linesForOrder.assignedIds,
+        linesForOrder.assignedLines,
         linesForOrder.complaints,
       );
     })
@@ -311,19 +354,21 @@ export async function loadTechnicianWorkCandidateForWorkOrder(
   if (workOrderResult.error) throw new Error(workOrderResult.error.message);
   if (!workOrderResult.data) return null;
 
-  const complaintLines = await loadComplaintLines(input, [workOrderId]);
+  const workOrderLines = await loadWorkOrderLines(input, [workOrderId]);
   const assignedLineIds = new Set(assignedLines.map((line) => line.id));
-  const assignedIds: string[] = [];
+  const assignedWorkLines: TechnicianWorkLine[] = [];
   const complaints: string[] = [];
 
-  for (const line of complaintLines) {
-    if (assignedLineIds.has(line.id)) assignedIds.push(line.id);
+  for (const line of workOrderLines) {
+    if (assignedLineIds.has(line.id)) {
+      assignedWorkLines.push(toTechnicianWorkLine(line));
+    }
     if (line.complaint?.trim()) complaints.push(line.complaint.trim());
   }
 
   const candidate = buildCandidate(
     workOrderResult.data as WorkOrderCandidateRow,
-    assignedIds,
+    assignedWorkLines,
     complaints,
   );
   return candidate.lineIds.length > 0 ? candidate : null;
