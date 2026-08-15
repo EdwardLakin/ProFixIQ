@@ -1,5 +1,9 @@
 import "server-only";
 
+import {
+  AgentTeamRequestError,
+  readAgentTeamReadiness,
+} from "@/features/agent/server/teamClient";
 import { requireOpsOperatorPageAccess } from "@/features/ops/server/operator-access";
 
 export type OpsHealthState = "healthy" | "degraded" | "down";
@@ -95,10 +99,12 @@ function agentDetails(
   responseStatus: number,
   runtime: OpsRuntimeGeneration | null,
   generationVerifiable: boolean,
+  pipelineReady: boolean,
 ): Array<{ label: string; value: string }> {
   return [
     { label: "HTTP", value: String(responseStatus) },
     { label: "Generation", value: generationVerifiable ? "Verified" : "Unverified" },
+    { label: "Pipeline readiness", value: pipelineReady ? "Passed" : "Failed" },
     { label: "Commit", value: shortSha(runtime?.commitSha ?? null) },
     { label: "Deployment", value: runtime?.deploymentId ?? "Unavailable" },
     { label: "Fingerprint", value: runtime?.fingerprint ? runtime.fingerprint.slice(0, 16) : "Unavailable" },
@@ -120,14 +126,26 @@ async function agentHealth(): Promise<OpsHealthService> {
 
   const started = Date.now();
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 4_000);
+  const timeout = setTimeout(() => controller.abort(), 8_000);
   try {
-    const response = await fetch(`${baseUrl}/health`, {
-      method: "GET",
-      cache: "no-store",
-      signal: controller.signal,
-      headers: { accept: "application/json" },
-    });
+    const [response, readiness] = await Promise.all([
+      fetch(`${baseUrl}/health`, {
+        method: "GET",
+        cache: "no-store",
+        signal: controller.signal,
+        headers: { accept: "application/json" },
+      }),
+      readAgentTeamReadiness(controller.signal)
+        .then((payload) => ({ ok: payload.ok === true, error: null as string | null }))
+        .catch((error: unknown) => ({
+          ok: false,
+          error: error instanceof AgentTeamRequestError
+            ? error.status === 403
+              ? "Authenticated Agent API access was denied."
+              : "A required Agent pipeline dependency is unavailable."
+            : "Authenticated Agent pipeline readiness is unreachable.",
+        })),
+    ]);
     const latencyMs = Date.now() - started;
     const raw = await response.text();
     let payload: Record<string, unknown> | null = null;
@@ -141,14 +159,19 @@ async function agentHealth(): Promise<OpsHealthService> {
     const runtime = normalizeAgentRuntime(payload?.runtime);
     const serviceStatus = text(payload?.status);
     const generationVerifiable = runtime?.verifiable === true;
-    const details = agentDetails(response.status, runtime, generationVerifiable);
+    const details = agentDetails(
+      response.status,
+      runtime,
+      generationVerifiable,
+      readiness.ok,
+    );
 
-    if (response.ok && serviceStatus === "ok" && generationVerifiable) {
+    if (response.ok && serviceStatus === "ok" && generationVerifiable && readiness.ok) {
       return {
         key: "agent",
         label: "ProFixIQ Agent",
         state: "healthy",
-        summary: "Agent worker and deployment generation are verifiable.",
+        summary: "Agent worker, protected API, dependencies, and deployment generation are verifiable.",
         latencyMs,
         details,
       };
@@ -169,9 +192,10 @@ async function agentHealth(): Promise<OpsHealthService> {
       key: "agent",
       label: "ProFixIQ Agent",
       state: "degraded",
-      summary: !generationVerifiable
+      summary: readiness.error
+        ?? (!generationVerifiable
         ? "Agent is reachable, but its deployment generation is not yet verifiable."
-        : text(payload.error) ?? `Agent health returned HTTP ${response.status}.`,
+        : text(payload.error) ?? `Agent health returned HTTP ${response.status}.`),
       latencyMs,
       details,
     };

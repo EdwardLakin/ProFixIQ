@@ -24,16 +24,16 @@ export function decideAgentRequestRetry(
   const stepStatus = state.stepStatus?.trim().toLowerCase() || null;
 
   if (!caseStatus) {
-    return requestStatus === "failed"
+    return requestStatus === "failed" || requestStatus === "submitted"
       ? {
           allowed: true,
           action: "resubmit",
-          reason: "The failed request has no engineering case yet.",
+          reason: "The durable request has no engineering case and can be dispatched idempotently.",
         }
       : {
           allowed: false,
           action: null,
-          reason: "Only failed requests without an engineering case can be resubmitted.",
+          reason: "Only failed or undispatched submitted requests can be resubmitted.",
         };
   }
 
@@ -69,5 +69,7 @@ export function decideAgentRequestRetry(
 }
 
 export function isAgentRequestRetryVisible(state: RetryState): boolean {
-  return state.requestStatus === "failed" || state.caseStatus === "blocked";
+  return state.requestStatus === "failed"
+    || (state.requestStatus === "submitted" && !state.caseStatus)
+    || state.caseStatus === "blocked";
 }

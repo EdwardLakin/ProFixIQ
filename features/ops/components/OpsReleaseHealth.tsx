@@ -53,14 +53,14 @@ function formatTime(value: string | null): string {
   }).format(new Date(value));
 }
 
-function StatusPill({ state }: { state: ReleaseState }) {
+function StatusPill({ state, label }: { state: ReleaseState; label?: string }) {
   return (
     <span className={cn(
       "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em]",
       stateTone(state),
     )}>
       <StateIcon state={state} />
-      {stateLabel(state)}
+      {label ?? stateLabel(state)}
     </span>
   );
 }
@@ -84,6 +84,58 @@ function migrationStatusLabel(status: OpsReleaseHealthSnapshot["migrations"]["st
 }
 
 export default function OpsReleaseHealth({ snapshot }: { snapshot: OpsReleaseHealthSnapshot }) {
+  const ciUnavailable = snapshot.ci.canonicalName === "Unavailable"
+    || snapshot.ci.conclusion === null;
+  const migrationParityFailed = snapshot.migrations.pending.length > 0
+    || snapshot.migrations.drift.length > 0
+    || snapshot.migrations.status === "failed";
+  const releaseIssues = [
+    snapshot.production.state !== "healthy"
+      ? {
+          id: "app-release-evidence",
+          title: "App commit parity needs attention",
+          explanation: snapshot.production.behindMain
+            ? "Production is serving an older commit than GitHub main."
+            : "The production deployment identity could not be verified.",
+        }
+      : null,
+    snapshot.agent.state !== "healthy"
+      ? {
+          id: "agent-release-evidence",
+          title: "Agent generation evidence needs attention",
+          explanation: "The Agent runtime or its deployment fingerprint could not be verified.",
+        }
+      : null,
+    snapshot.ci.state !== "healthy"
+      ? {
+          id: "ci-evidence",
+          title: ciUnavailable ? "CI verification is unavailable" : "Release CI needs attention",
+          explanation: ciUnavailable
+            ? "No canonical CI result is available; zero recorded failures is not proof that CI passed."
+            : `${snapshot.ci.failingChecks} completed check${snapshot.ci.failingChecks === 1 ? "" : "s"} failed.`,
+        }
+      : null,
+    snapshot.migrations.state !== "healthy"
+      ? {
+          id: "migration-evidence",
+          title: migrationParityFailed ? "Migration parity failed" : "Migration evidence is unavailable",
+          explanation: migrationParityFailed
+            ? "The repository and production ledgers do not contain the same migration identities."
+            : "The production migration ledger could not be verified.",
+        }
+      : null,
+    snapshot.failures.state !== "healthy"
+      ? {
+          id: "release-failure-evidence",
+          title: snapshot.failures.countSinceRelease === null
+            ? "Failure capture is unverified"
+            : "Failures were captured after release",
+          explanation: snapshot.failures.countSinceRelease === null
+            ? "Operational failure evidence could not be retrieved."
+            : `${snapshot.failures.countSinceRelease} captured failure${snapshot.failures.countSinceRelease === 1 ? "" : "s"} need inspection.`,
+        }
+      : null,
+  ].filter((issue): issue is { id: string; title: string; explanation: string } => issue !== null);
   const migrationSummary = snapshot.migrations.status === "pending"
     ? `${snapshot.migrations.pending.length} repository migration${snapshot.migrations.pending.length === 1 ? "" : "s"} not applied in production.`
     : snapshot.migrations.status === "drift"
@@ -138,15 +190,43 @@ export default function OpsReleaseHealth({ snapshot }: { snapshot: OpsReleaseHea
           </div>
           <p className="text-xs font-semibold opacity-80">Checked {formatTime(snapshot.checkedAt)} MT</p>
         </div>
+        {releaseIssues.length > 0 ? (
+          <div className="mt-4 border-t border-current/15 pt-4">
+            <p className="text-sm font-semibold">
+              {snapshot.overall === "down" ? "Blocked by" : "Needs attention from"}{" "}
+              {releaseIssues.length} release gate{releaseIssues.length === 1 ? "" : "s"}: {releaseIssues.map((issue) => issue.title).join("; ")}.
+            </p>
+            <div className="mt-3 flex flex-wrap items-start gap-2">
+              <a
+                href={`#${releaseIssues[0]?.id ?? "ci-evidence"}`}
+                className="inline-flex items-center justify-center rounded-lg border border-current/30 bg-black/5 px-3 py-2 text-xs font-bold transition hover:bg-black/10 dark:bg-white/5 dark:hover:bg-white/10"
+              >
+                Inspect {releaseIssues.length} issue{releaseIssues.length === 1 ? "" : "s"}
+              </a>
+              <details className="max-w-2xl rounded-lg border border-current/20 bg-black/5 px-3 py-2 text-xs dark:bg-white/5">
+                <summary className="cursor-pointer font-bold">Explain blockers</summary>
+                <ul className="mt-2 space-y-2">
+                  {releaseIssues.map((issue) => (
+                    <li key={issue.id}>
+                      <a href={`#${issue.id}`} className="font-semibold underline-offset-2 hover:underline">{issue.title}</a>
+                      <span className="opacity-80"> — {issue.explanation}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-2 opacity-75">This explanation is read-only and derived from the release evidence shown below.</p>
+              </details>
+            </div>
+          </div>
+        ) : null}
       </section>
 
       <section className="grid gap-4 xl:grid-cols-2">
-        <article className="overflow-hidden rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] shadow-card">
+        <article id="app-release-evidence" className="scroll-mt-6 overflow-hidden rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] shadow-card">
           <div className="flex items-start justify-between gap-4 border-b border-[color:var(--theme-border-soft)] p-4 sm:p-5">
             <div className="flex items-start gap-3">
               <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-orange-500/10 text-orange-500"><Server className="h-5 w-5" /></span>
               <div>
-                <h2 className="text-sm font-bold">ProFixIQ production</h2>
+                <h2 className="text-sm font-bold">App commit parity</h2>
                 <p className="mt-1 text-xs leading-5 text-[color:var(--theme-text-secondary)]">
                   {snapshot.production.behindMain === false
                     ? "The live application SHA matches GitHub main."
@@ -164,16 +244,16 @@ export default function OpsReleaseHealth({ snapshot }: { snapshot: OpsReleaseHea
             <Detail label="Deployment" value={shortId(snapshot.production.deploymentId)} />
             <Detail label="Environment" value={snapshot.production.environment} />
             <Detail label="Release commit time" value={formatTime(snapshot.production.releaseCommitAt)} />
-            <Detail label="Release PR" value={snapshot.production.releasePr ? `#${snapshot.production.releasePr.number} ${snapshot.production.releasePr.title}` : "Unavailable"} />
+            <Detail label="Release PR (metadata)" value={snapshot.production.releasePr ? `#${snapshot.production.releasePr.number} ${snapshot.production.releasePr.title}` : "Unavailable — non-blocking"} />
           </dl>
         </article>
 
-        <article className="overflow-hidden rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] shadow-card">
+        <article id="agent-release-evidence" className="scroll-mt-6 overflow-hidden rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] shadow-card">
           <div className="flex items-start justify-between gap-4 border-b border-[color:var(--theme-border-soft)] p-4 sm:p-5">
             <div className="flex items-start gap-3">
               <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-sky-500/10 text-sky-500"><Bot className="h-5 w-5" /></span>
               <div>
-                <h2 className="text-sm font-bold">ProFixIQ Agent production</h2>
+                <h2 className="text-sm font-bold">Agent reachability &amp; generation integrity</h2>
                 <p className="mt-1 text-xs leading-5 text-[color:var(--theme-text-secondary)]">
                   {snapshot.agent.generationVerified
                     ? "The Agent is reachable and its production generation is cryptographically fingerprinted."
@@ -193,27 +273,43 @@ export default function OpsReleaseHealth({ snapshot }: { snapshot: OpsReleaseHea
       </section>
 
       <section className="grid gap-4 xl:grid-cols-3">
-        <article className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 shadow-card sm:p-5">
+        <article id="ci-evidence" className="scroll-mt-6 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 shadow-card sm:p-5">
           <div className="flex items-start justify-between gap-3">
             <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-violet-500/10 text-violet-500"><Workflow className="h-5 w-5" /></span>
-            <StatusPill state={snapshot.ci.state} />
+            <StatusPill
+              state={snapshot.ci.state}
+              label={ciUnavailable ? "Blocking — no CI evidence" : undefined}
+            />
           </div>
-          <h2 className="mt-4 text-sm font-bold">Latest release CI</h2>
+          <h2 className="mt-4 text-sm font-bold">{ciUnavailable ? "CI verification unavailable" : "Latest release CI"}</h2>
           <p className="mt-1 text-xs leading-5 text-[color:var(--theme-text-secondary)]">
-            Canonical check: {snapshot.ci.canonicalName}. {snapshot.ci.failingChecks === 0 ? "No completed checks are failing." : `${snapshot.ci.failingChecks} completed checks failed.`}
+            {ciUnavailable
+              ? "No canonical result is available. No completed checks are known to be failing, but absence of evidence is not a passing result."
+              : `Canonical check: ${snapshot.ci.canonicalName}. ${snapshot.ci.failingChecks === 0 ? "No completed checks are failing." : `${snapshot.ci.failingChecks} completed checks failed.`}`}
           </p>
           <div className="mt-4 grid gap-2 text-xs">
             <div className="flex justify-between gap-3"><span className="text-[color:var(--theme-text-muted)]">Conclusion</span><span className="font-mono">{snapshot.ci.conclusion ?? "Unavailable"}</span></div>
             <div className="flex justify-between gap-3"><span className="text-[color:var(--theme-text-muted)]">Completed</span><span>{formatTime(snapshot.ci.completedAt)}</span></div>
           </div>
+          <a
+            href={snapshot.ci.detailsUrl ?? `https://github.com/EdwardLakin/ProFixIQ/commit/${snapshot.production.commitSha ?? snapshot.production.expectedMainSha ?? "main"}/checks`}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-4 inline-flex rounded-lg border border-violet-500/30 px-3 py-2 text-xs font-bold text-violet-600 transition hover:bg-violet-500/10 dark:text-violet-300"
+          >
+            Inspect CI evidence
+          </a>
         </article>
 
-        <article className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 shadow-card sm:p-5">
+        <article id="migration-evidence" className="scroll-mt-6 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 shadow-card sm:p-5">
           <div className="flex items-start justify-between gap-3">
             <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-500"><Database className="h-5 w-5" /></span>
-            <StatusPill state={snapshot.migrations.state} />
+            <StatusPill
+              state={snapshot.migrations.state}
+              label={migrationParityFailed ? "Blocking — parity failed" : undefined}
+            />
           </div>
-          <h2 className="mt-4 text-sm font-bold">Migration release state</h2>
+          <h2 className="mt-4 text-sm font-bold">{migrationParityFailed ? "Migration parity failed" : "Migration release state"}</h2>
           <p className="mt-1 text-xs leading-5 text-[color:var(--theme-text-secondary)]">{migrationSummary}</p>
           <div className="mt-4 grid gap-2 text-xs">
             <div className="flex justify-between gap-3"><span className="text-[color:var(--theme-text-muted)]">Status</span><span className="font-semibold">{migrationStatusLabel(snapshot.migrations.status)}</span></div>
@@ -221,12 +317,20 @@ export default function OpsReleaseHealth({ snapshot }: { snapshot: OpsReleaseHea
             <div className="flex justify-between gap-3"><span className="text-[color:var(--theme-text-muted)]">Main / production</span><span className="font-mono">{snapshot.migrations.repoCount} / {snapshot.migrations.appliedCount ?? "Unavailable"}</span></div>
             <div className="flex justify-between gap-3"><span className="text-[color:var(--theme-text-muted)]">Supabase check</span><span className="font-mono">{snapshot.migrations.supabaseCheck ?? "Unavailable"}</span></div>
           </div>
+          {(snapshot.migrations.pending.length > 0 || snapshot.migrations.drift.length > 0) ? (
+            <a href="#migration-reconciliation" className="mt-4 inline-flex rounded-lg border border-emerald-500/30 px-3 py-2 text-xs font-bold text-emerald-700 transition hover:bg-emerald-500/10 dark:text-emerald-300">
+              Compare migration ledgers
+            </a>
+          ) : null}
         </article>
 
-        <article className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 shadow-card sm:p-5">
+        <article id="release-failure-evidence" className="scroll-mt-6 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 shadow-card sm:p-5">
           <div className="flex items-start justify-between gap-3">
             <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400"><ShieldCheck className="h-5 w-5" /></span>
-            <StatusPill state={snapshot.failures.state} />
+            <StatusPill
+              state={snapshot.failures.state}
+              label={snapshot.failures.countSinceRelease === null ? "Unverified" : undefined}
+            />
           </div>
           <h2 className="mt-4 text-sm font-bold">Failures since release</h2>
           <p className="mt-1 text-xs leading-5 text-[color:var(--theme-text-secondary)]">{failureSummary}</p>
@@ -239,14 +343,20 @@ export default function OpsReleaseHealth({ snapshot }: { snapshot: OpsReleaseHea
       </section>
 
       {(snapshot.migrations.pending.length > 0 || snapshot.migrations.drift.length > 0) ? (
-        <section className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4 shadow-card sm:p-5">
+        <section id="migration-reconciliation" className="scroll-mt-6 rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4 shadow-card sm:p-5">
           <h2 className="text-sm font-bold">Migration reconciliation required</h2>
+          <p className="mt-2 text-xs leading-5 text-[color:var(--theme-text-secondary)]">
+            Equal totals do not prove parity. Inspect the filenames, SQL, checksums, and ledger timestamps before choosing a repair; ledger history must not be rewritten from this read-only page.
+          </p>
           {snapshot.migrations.pending.length > 0 ? (
-            <p className="mt-2 break-words font-mono text-xs text-[color:var(--theme-text-secondary)]">Pending: {snapshot.migrations.pending.join(", ")}</p>
+            <p className="mt-2 break-words font-mono text-xs text-[color:var(--theme-text-secondary)]">In main, not production: {snapshot.migrations.pending.join(", ")}</p>
           ) : null}
           {snapshot.migrations.drift.length > 0 ? (
-            <p className="mt-2 break-words font-mono text-xs text-[color:var(--theme-text-secondary)]">Production-only: {snapshot.migrations.drift.join(", ")}</p>
+            <p className="mt-2 break-words font-mono text-xs text-[color:var(--theme-text-secondary)]">In production, not main: {snapshot.migrations.drift.join(", ")}</p>
           ) : null}
+          <Link href="/ops/agent-control" className="mt-4 inline-flex rounded-lg border border-amber-500/40 px-3 py-2 text-xs font-bold text-amber-700 transition hover:bg-amber-500/10 dark:text-amber-300">
+            Open Agent Control for a fix plan
+          </Link>
         </section>
       ) : null}
 
@@ -275,12 +385,21 @@ export default function OpsReleaseHealth({ snapshot }: { snapshot: OpsReleaseHea
 
       <section className="grid gap-3 sm:grid-cols-3" aria-label="Release evidence sources">
         {[
-          { label: "GitHub release evidence", state: snapshot.sources.github },
-          { label: "Supabase release evidence", state: snapshot.sources.database },
-          { label: "Agent runtime evidence", state: snapshot.sources.agent },
+          { label: "GitHub evidence retrieval", state: snapshot.sources.github, detail: "Commit, pull request, and check evidence." },
+          {
+            label: "Supabase evidence retrieval",
+            state: snapshot.sources.database,
+            detail: snapshot.sources.database === "healthy" && snapshot.migrations.state !== "healthy"
+              ? "Ledger read succeeded; migration parity failed."
+              : "Production ledger evidence retrieval.",
+          },
+          { label: "Agent evidence retrieval", state: snapshot.sources.agent, detail: "Runtime generation and release evidence." },
         ].map((source) => (
-          <div key={source.label} className="flex items-center justify-between gap-3 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
-            <span className="text-xs font-semibold">{source.label}</span>
+          <div key={source.label} className="flex items-start justify-between gap-3 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
+            <span>
+              <span className="block text-xs font-semibold">{source.label}</span>
+              <span className="mt-1 block text-[10px] leading-4 text-[color:var(--theme-text-muted)]">{source.detail}</span>
+            </span>
             <StatusPill state={source.state} />
           </div>
         ))}
