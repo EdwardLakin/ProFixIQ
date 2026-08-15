@@ -418,6 +418,10 @@ begin
     raise exception 'Field truck runtime failed: repair handoff did not materialize';
   end if;
 
+  update public.work_order_lines
+  set approval_state = 'pending'
+  where id = v_line_id
+    and shop_id = v_shop_id;
   begin
     perform public.field_use_truck_part_atomic(
       v_shop_id, v_visit_id, v_line_id, v_part_id, 1,
