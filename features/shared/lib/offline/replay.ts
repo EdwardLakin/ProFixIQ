@@ -171,6 +171,50 @@ const handlers: Record<string, OfflineMutationRunner> = {
       operationKey,
     );
   },
+  "field-inventory:use-part": async (mutation) => {
+    const payload = mutation.payload as ReplayPayload;
+    const visitId = text(payload.visitId);
+    const workOrderLineId = text(payload.workOrderLineId);
+    const partId = text(payload.partId);
+    const quantity = Number(payload.quantity);
+    const operationKey = text(payload.operationKey) || mutation.clientMutationId;
+    if (
+      !visitId ||
+      !workOrderLineId ||
+      !partId ||
+      !Number.isFinite(quantity) ||
+      quantity <= 0 ||
+      !operationKey
+    ) {
+      return { conflicted: "Truck-part use is missing required offline data." };
+    }
+    await apiPost(
+      "/api/mobile/service/truck-inventory/use",
+      { ...payload, operationKey },
+      operationKey,
+    );
+  },
+  "field-inventory:return-part": async (mutation) => {
+    const payload = mutation.payload as ReplayPayload;
+    const visitId = text(payload.visitId);
+    const workOrderPartId = text(payload.workOrderPartId);
+    const quantity = Number(payload.quantity);
+    const operationKey = text(payload.operationKey) || mutation.clientMutationId;
+    if (
+      !visitId ||
+      !workOrderPartId ||
+      !Number.isFinite(quantity) ||
+      quantity <= 0 ||
+      !operationKey
+    ) {
+      return { conflicted: "Truck-part return is missing required offline data." };
+    }
+    await apiPost(
+      "/api/mobile/service/truck-inventory/return",
+      { ...payload, operationKey },
+      operationKey,
+    );
+  },
   "service-visit:transition": async (mutation) => {
     const payload = mutation.payload as ReplayPayload;
     const visitId = text(payload.visitId);

@@ -11,6 +11,8 @@ on:
       - "app/api/invoices/finalize/route.ts"
       - "app/api/payments/manual/route.ts"
       - "features/invoices/components/RecordManualPayment.tsx"
+      - "features/integrations/core/**"
+      - "features/integrations/parts/**"
       - "features/mobile/service/**"
       - "features/mobile/config/mobile-tiles.ts"
       - "features/shared/lib/offline/mutations.ts"
@@ -22,8 +24,15 @@ on:
       - "supabase/migrations/20260811020200_mobile_v1_followup_authorization_alignment.sql"
       - "supabase/migrations/20260811020300_mobile_v1_second_codex_review_hardening.sql"
       - "supabase/migrations/20260811160152_mobile_v1_end_to_end_repair_hardening.sql"
+      - "supabase/migrations/20260812230000_field_integration_identity_core.sql"
+      - "supabase/migrations/20260812230100_field_part_identity_commands.sql"
+      - "supabase/migrations/20260812230200_field_truck_inventory_snapshot.sql"
+      - "supabase/migrations/20260812230300_field_truck_inventory_movement_commands.sql"
+      - "supabase/migrations/20260812230400_field_truck_inventory_work_order_commands.sql"
+      - "tests/field-truck-inventory-contract.test.ts"
       - "tests/mobile-v1-productization.test.ts"
       - "tests/mobile-v1-post-merge-hardening.test.ts"
+      - "tests/mobile/field-truck-inventory.runtime.sql"
       - "tests/mobile/mobile-v1-fake-day.runtime.sql"
       - "tests/mobile/mobile-v1-team-dispatch.runtime.sql"
       - "tests/mobile/mobile-v1-codex-hardening.runtime.sql"
@@ -66,6 +75,7 @@ jobs:
       - name: Mobile V1 source contracts
         run: >-
           pnpm exec vitest run
+          tests/field-truck-inventory-contract.test.ts
           tests/mobile-v1-productization.test.ts
           tests/mobile-v1-post-merge-hardening.test.ts
           tests/mobile-service-shell.test.ts
@@ -118,6 +128,9 @@ jobs:
             echo "=== Post-merge end-to-end Mobile V1 day ==="
             psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
               -f tests/mobile/mobile-v1-post-merge-hardening.runtime.sql
+            echo "=== Field truck inventory runtime ==="
+            psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+              -f tests/mobile/field-truck-inventory.runtime.sql
           } 2>&1 | tee "$RUNNER_TEMP/mobile-v1-runtime.log"
 
       - name: Upload Mobile V1 runtime diagnostics
