@@ -36,7 +36,7 @@ jobs:
 
       - uses: supabase/setup-cli@v2
         with:
-          version: 2.101.0
+          version: 2.114.0
           github-token: ${{ github.token }}
 
       - name: Reject duplicate migration versions
