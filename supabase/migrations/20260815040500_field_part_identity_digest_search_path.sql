@@ -1,9 +1,8 @@
 begin;
 
-set local lock_timeout = '5s';
-set local statement_timeout = '10min';
-set local check_function_bodies = false;
-
+-- The preview branch already applied the original identity migration. Reinstall
+-- the RPC with pgcrypto explicitly schema-qualified so the hardened empty
+-- search_path remains safe and clean-database/runtime calls can hash requests.
 create or replace function public.field_resolve_or_create_part_identity_atomic(
   p_shop_id uuid,
   p_actor_user_id uuid,
@@ -401,6 +400,5 @@ begin
   return v_operation.result;
 end;
 $$;
-
 
 commit;

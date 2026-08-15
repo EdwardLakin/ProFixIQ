@@ -61,6 +61,7 @@ describe("Field Service truck inventory", () => {
     expect(migration).toContain(
       "field_resolve_or_create_part_identity_atomic",
     );
+    expect(migration).toContain("extensions.digest(");
     expect(migration).toContain("insert into public.parts_barcodes");
     expect(migration).toContain("'canonical_part_id', p_part_id");
     expect(partsIntegration.replace(/\s*\*\s*/g, " ")).toContain(
