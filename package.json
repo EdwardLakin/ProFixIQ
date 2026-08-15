@@ -48,7 +48,7 @@
     "@sendgrid/mail": "^8.1.5",
     "@serwist/next": "9.5.12",
     "@supabase/ssr": "0.6.1",
-    "@supabase/supabase-js": "2.43.4",
+    "@supabase/supabase-js": "2.39.5",
     "ai": "^4.3.16",
     "bcryptjs": "^3.0.2",
     "clsx": "^2.1.1",
@@ -128,7 +128,7 @@
     "vitest": "4.1.10"
   },
   "overrides": {
-    "@supabase/supabase-js": "2.43.4",
+    "@supabase/supabase-js": "2.39.5",
     "@supabase/ssr": "0.6.1",
     "typescript": "5.4.5"
   },
