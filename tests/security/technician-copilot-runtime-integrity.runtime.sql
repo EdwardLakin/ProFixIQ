@@ -69,7 +69,7 @@ values
   (
     'a1438000-0000-4000-8000-000000000103',
     'a1438000-0000-4000-8000-000000000010',
-    'ready_to_invoice',
+    'completed',
     'COPILOT-RT-TERMINAL'
   )
 on conflict (id) do nothing;
