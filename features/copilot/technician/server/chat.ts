@@ -131,7 +131,7 @@ function storedTurnText(event: RepairSessionEvent): string {
 }
 
 type StoredActionTurn = {
-  action: TechnicianCopilotAction;
+  action: BoundTechnicianCopilotAction["action"];
   key: string;
   workOrderId: string | null;
   workOrderLineId: string | null;
