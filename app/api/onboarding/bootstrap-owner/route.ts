@@ -22,6 +22,7 @@ import {
   type ShopCountryCode,
 } from "@/features/shared/lib/timezones/shopTimezones";
 import { createStripeClient } from "@/features/stripe/lib/stripe/client";
+import { isStripeSubscriptionAccessBearing } from "@/features/stripe/lib/stripe/subscriptionStatus";
 import { reconcileShopBillingFromUser } from "@/features/stripe/lib/server/canonical-shop-billing";
 
 const COUNTRIES = new Set<ShopCountryCode>(["US", "CA"]);
@@ -68,19 +69,16 @@ async function verifyExistingOwnerPin(args: {
     .eq("id", args.shopId)
     .maybeSingle();
 
-  if (
-    error ||
-    !shop ||
-    shop.owner_id !== args.userId ||
-    !shop.owner_pin_hash
-  ) {
+  if (error || !shop || shop.owner_id !== args.userId || !shop.owner_pin_hash) {
     return false;
   }
 
   return verifyOwnerPin(args.pin, shop.owner_pin_hash);
 }
 
-async function inspectOwnedShopRecovery(userId: string): Promise<
+async function inspectOwnedShopRecovery(
+  userId: string,
+): Promise<
   | { ok: true }
   | { ok: false; reason: "lookup_failed" | "ambiguous_owner_shop_recovery" }
 > {
@@ -119,7 +117,9 @@ async function reconcileAcquiredBilling(args: {
     return {
       ok: false,
       reason:
-        error instanceof Error ? error.message : "billing_reconciliation_failed",
+        error instanceof Error
+          ? error.message
+          : "billing_reconciliation_failed",
     };
   }
 }
@@ -143,7 +143,7 @@ async function finalizeOwnerOnboarding(args: {
   if (
     shop.owner_id !== args.userId ||
     !shop.stripe_subscription_id ||
-    !shop.stripe_subscription_status ||
+    !isStripeSubscriptionAccessBearing(shop.stripe_subscription_status) ||
     !shop.stripe_pricing_model ||
     !shop.plan
   ) {
@@ -365,7 +365,10 @@ export async function POST(request: Request) {
 
     if (profile.shop_id || profile.role || profile.completed_onboarding) {
       return NextResponse.json(
-        { ok: false, error: "This account is not eligible to create a new shop." },
+        {
+          ok: false,
+          error: "This account is not eligible to create a new shop.",
+        },
         { status: 403 },
       );
     }
@@ -476,7 +479,10 @@ export async function POST(request: Request) {
         code: bootstrapError?.code ?? null,
       });
       return NextResponse.json(
-        { ok: false, error: "We could not create your shop. Please try again." },
+        {
+          ok: false,
+          error: "We could not create your shop. Please try again.",
+        },
         { status: 500 },
       );
     }

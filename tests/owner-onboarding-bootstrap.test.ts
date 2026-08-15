@@ -167,14 +167,17 @@ describe("owner onboarding bootstrap", () => {
 
     expect(page).toContain("<OwnerOnboardingForm />");
     expect(page).toContain("if (profile?.completed_onboarding)");
-    expect(page).not.toContain("profile?.shop_id || profile?.completed_onboarding");
+    expect(page).not.toContain(
+      "profile?.shop_id || profile?.completed_onboarding",
+    );
     expect(form).toContain('fetch("/api/onboarding/bootstrap-owner"');
     expect(form).toContain("Create shop and continue");
   });
 
   it("requires an authenticated caller", async () => {
     mocks.getUser.mockResolvedValue({ data: { user: null }, error: null });
-    const { POST } = await import("../app/api/onboarding/bootstrap-owner/route");
+    const { POST } =
+      await import("../app/api/onboarding/bootstrap-owner/route");
 
     const response = await POST(request());
 
@@ -192,7 +195,8 @@ describe("owner onboarding bootstrap", () => {
       },
       error: null,
     });
-    const { POST } = await import("../app/api/onboarding/bootstrap-owner/route");
+    const { POST } =
+      await import("../app/api/onboarding/bootstrap-owner/route");
 
     const response = await POST(request());
 
@@ -202,7 +206,8 @@ describe("owner onboarding bootstrap", () => {
   });
 
   it("validates the PIN and supported region before a new shop is hashed", async () => {
-    const { POST } = await import("../app/api/onboarding/bootstrap-owner/route");
+    const { POST } =
+      await import("../app/api/onboarding/bootstrap-owner/route");
 
     const invalidPin = await POST(request({ pin: "12ab" }));
     const invalidTimezone = await POST(request({ timezone: "Etc/Unknown" }));
@@ -219,7 +224,8 @@ describe("owner onboarding bootstrap", () => {
     ["CA", "America/St_Johns"],
     ["CA", "America/Regina"],
   ])("accepts supported regional timezone %s %s", async (country, timezone) => {
-    const { POST } = await import("../app/api/onboarding/bootstrap-owner/route");
+    const { POST } =
+      await import("../app/api/onboarding/bootstrap-owner/route");
 
     const response = await POST(request({ country, timezone }));
 
@@ -238,7 +244,8 @@ describe("owner onboarding bootstrap", () => {
       },
       error: null,
     });
-    const { POST } = await import("../app/api/onboarding/bootstrap-owner/route");
+    const { POST } =
+      await import("../app/api/onboarding/bootstrap-owner/route");
 
     const response = await POST(request());
 
@@ -249,7 +256,8 @@ describe("owner onboarding bootstrap", () => {
   });
 
   it("probes the hardened contract, bootstraps pending, verifies PIN, hydrates billing, then completes", async () => {
-    const { POST } = await import("../app/api/onboarding/bootstrap-owner/route");
+    const { POST } =
+      await import("../app/api/onboarding/bootstrap-owner/route");
 
     const response = await POST(request());
     const payload = await response.json();
@@ -282,8 +290,7 @@ describe("owner onboarding bootstrap", () => {
       p_postal_code: "80216",
       p_country: "US",
       p_timezone: "America/Denver",
-      p_owner_pin_hash:
-        "profixiq-owner-bootstrap-pending-v2:hashed-owner-pin",
+      p_owner_pin_hash: "profixiq-owner-bootstrap-pending-v2:hashed-owner-pin",
     });
     expect(mocks.verifyOwnerPin).toHaveBeenCalledWith(
       "4826",
@@ -304,7 +311,8 @@ describe("owner onboarding bootstrap", () => {
       data: null,
       error: { code: "P0001", message: "Unsupported country" },
     });
-    const { POST } = await import("../app/api/onboarding/bootstrap-owner/route");
+    const { POST } =
+      await import("../app/api/onboarding/bootstrap-owner/route");
 
     const response = await POST(request());
 
@@ -321,7 +329,8 @@ describe("owner onboarding bootstrap", () => {
       data: [{ id: "shop-a" }, { id: "shop-b" }],
       error: null,
     });
-    const { POST } = await import("../app/api/onboarding/bootstrap-owner/route");
+    const { POST } =
+      await import("../app/api/onboarding/bootstrap-owner/route");
 
     const response = await POST(request());
 
@@ -345,7 +354,8 @@ describe("owner onboarding bootstrap", () => {
               error: null,
             },
     );
-    const { POST } = await import("../app/api/onboarding/bootstrap-owner/route");
+    const { POST } =
+      await import("../app/api/onboarding/bootstrap-owner/route");
 
     const response = await POST(request({ pin: "9999" }));
 
@@ -365,7 +375,8 @@ describe("owner onboarding bootstrap", () => {
       linked: false,
       reason: "no_subscription_found",
     });
-    const { POST } = await import("../app/api/onboarding/bootstrap-owner/route");
+    const { POST } =
+      await import("../app/api/onboarding/bootstrap-owner/route");
 
     const response = await POST(request());
 
@@ -387,7 +398,31 @@ describe("owner onboarding bootstrap", () => {
       },
       error: null,
     });
-    const { POST } = await import("../app/api/onboarding/bootstrap-owner/route");
+    const { POST } =
+      await import("../app/api/onboarding/bootstrap-owner/route");
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(503);
+    expect(mocks.adminCompleteProfileMaybeSingle).not.toHaveBeenCalled();
+    expect(mocks.setOwnerPinVerifiedCookie).not.toHaveBeenCalled();
+  });
+
+  it("does not finalize onboarding for a canceled subscription", async () => {
+    mocks.adminShopMaybeSingle.mockResolvedValue({
+      data: {
+        id: SHOP_ID,
+        owner_id: "owner-user-1",
+        owner_pin_hash: "hashed-existing-owner-pin",
+        stripe_subscription_id: "sub_canceled_owner",
+        stripe_subscription_status: "canceled",
+        stripe_pricing_model: "product_packages_v1",
+        plan: "complete",
+      },
+      error: null,
+    });
+    const { POST } =
+      await import("../app/api/onboarding/bootstrap-owner/route");
 
     const response = await POST(request());
 
@@ -408,7 +443,8 @@ describe("owner onboarding bootstrap", () => {
       },
       error: null,
     });
-    const { POST } = await import("../app/api/onboarding/bootstrap-owner/route");
+    const { POST } =
+      await import("../app/api/onboarding/bootstrap-owner/route");
 
     const response = await POST(request());
 
@@ -437,7 +473,8 @@ describe("owner onboarding bootstrap", () => {
       error: null,
     });
     mocks.verifyOwnerPin.mockResolvedValue(false);
-    const { POST } = await import("../app/api/onboarding/bootstrap-owner/route");
+    const { POST } =
+      await import("../app/api/onboarding/bootstrap-owner/route");
 
     const response = await POST(request({ pin: "9999" }));
 
@@ -459,7 +496,8 @@ describe("owner onboarding bootstrap", () => {
       },
       error: null,
     });
-    const { POST } = await import("../app/api/onboarding/bootstrap-owner/route");
+    const { POST } =
+      await import("../app/api/onboarding/bootstrap-owner/route");
 
     const response = await POST(request());
 
@@ -487,7 +525,8 @@ describe("owner onboarding bootstrap", () => {
       error: null,
     });
     mocks.verifyOwnerPin.mockResolvedValue(false);
-    const { POST } = await import("../app/api/onboarding/bootstrap-owner/route");
+    const { POST } =
+      await import("../app/api/onboarding/bootstrap-owner/route");
 
     const response = await POST(request({ pin: "9999" }));
 
@@ -500,7 +539,7 @@ describe("owner onboarding bootstrap", () => {
     const route = readFileSync(
       "app/api/onboarding/bootstrap-owner/route.ts",
       "utf8",
-    );
+    ).replace(/\r\n/g, "\n");
 
     expect(route).not.toContain("update({ completed_onboarding: false })");
     expect(route).toContain(
@@ -521,7 +560,9 @@ describe("owner onboarding bootstrap", () => {
     expect(migration).toContain("__profixiq_owner_bootstrap_v2_probe__");
     expect(migration).toContain("profixiq-owner-bootstrap-pending-v2:");
     expect(migration).toContain("v_effective_owner_pin_hash");
-    expect(migration).toContain("completed_onboarding = not v_pending_protocol");
+    expect(migration).toContain(
+      "completed_onboarding = not v_pending_protocol",
+    );
     expect(migration).toContain("return query select v_profile.shop_id, false");
     expect(migration).toContain("pg_catalog.pg_timezone_names");
     expect(migration).toContain("Ambiguous owner shop recovery");

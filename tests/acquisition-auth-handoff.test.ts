@@ -60,24 +60,35 @@ describe("acquisition auth handoff", () => {
     expect(forgotPassword).toContain('sp.get("email")');
     expect(forgotPassword).toContain("buildContinuationParams(sp, trimmed)");
     expect(forgotPassword).toContain("setPasswordRedirect");
-    expect(forgotPassword).toContain(
-      "/api/auth/send-reset?redirect=",
-    );
+    expect(forgotPassword).toContain("/api/auth/send-reset?redirect=");
   });
 
-  it("does not promise a confirmation email for a repeated signup", () => {
+  it("binds account setup to the completed checkout email", () => {
+    const signIn = read("features/auth/components/SignIn.tsx");
+    const contextRoute = read(
+      "features/stripe/api/stripe/checkout/acquisition-context/route.ts",
+    );
+
+    expect(signIn).toContain('isAcquisitionFlow ? "sign-up" : initialMode');
+    expect(signIn).toContain(
+      "/api/stripe/checkout/acquisition-context?session_id=",
+    );
+    expect(signIn).toContain("setIdentifier(email)");
+    expect(signIn).toContain('acquisitionContextStatus === "ready"');
+    expect(contextRoute).toContain("readStripeAcquisitionMetadata");
+    expect(contextRoute).toContain("isCompletedStripeAcquisitionSession");
+    expect(contextRoute).toContain("isStripeSubscriptionAccessBearing");
+    expect(contextRoute).toContain('"Cache-Control": "no-store"');
+  });
+
+  it("lets an unconfirmed owner resend the verification email", () => {
     const signIn = read("features/auth/components/SignIn.tsx");
 
-    expect(signIn).toContain(
-      "If this is a new account, check its inbox for the verification link.",
-    );
-    expect(signIn).toContain(
-      "If you already have an account, choose Sign in—another confirmation email will not be sent.",
-    );
-    expect(signIn).toContain('setPassword("");');
-    expect(signIn).not.toContain(
-      "Check your email to verify the account, then continue into shop setup.",
-    );
+    expect(signIn).toContain("setPendingConfirmationEmail(email)");
+    expect(signIn).toContain("supabase.auth.resend({");
+    expect(signIn).toContain('type: "signup"');
+    expect(signIn).toContain("options: { emailRedirectTo }");
+    expect(signIn).toContain("Resend verification email");
   });
 
   it("claims a completed acquisition before leaving password recovery", () => {
