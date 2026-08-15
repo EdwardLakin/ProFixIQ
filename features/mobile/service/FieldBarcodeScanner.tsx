@@ -60,8 +60,8 @@ export default function FieldBarcodeScanner({
 
     let quagga: QuaggaLike;
     try {
-      const module = await import("@ericblade/quagga2");
-      quagga = module.default as unknown as QuaggaLike;
+      const quaggaModule = await import("@ericblade/quagga2");
+      quagga = quaggaModule.default as unknown as QuaggaLike;
     } catch (loadError) {
       setError(
         loadError instanceof Error

@@ -17,7 +17,7 @@ import type {
 import { numeric } from "./truckInventoryContracts";
 import {
   returnFieldTruckPart,
-  useFieldTruckPart,
+  consumeFieldTruckPart,
 } from "./truckInventoryOffline";
 import type { IdentityDraft } from "./truckInventoryUi";
 
@@ -90,7 +90,7 @@ export function useTruckInventoryUsage({
 
       setUsageBusy(true);
       try {
-        const result = await useFieldTruckPart({
+        const result = await consumeFieldTruckPart({
           scope,
           payload: {
             visitId: snapshot.visit.id,

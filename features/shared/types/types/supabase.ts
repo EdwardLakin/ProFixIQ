@@ -7861,6 +7861,242 @@ export type Database = {
           },
         ]
       }
+      integration_connections: {
+        Row: {
+          capabilities: string[]
+          config: Json
+          created_at: string
+          created_by: string | null
+          display_name: string | null
+          id: string
+          last_error: string | null
+          last_error_at: string | null
+          last_success_at: string | null
+          provider: string
+          secret_reference: string | null
+          shop_id: string
+          status: string
+          sync_cursor: Json
+          updated_at: string
+        }
+        Insert: {
+          capabilities?: string[]
+          config?: Json
+          created_at?: string
+          created_by?: string | null
+          display_name?: string | null
+          id?: string
+          last_error?: string | null
+          last_error_at?: string | null
+          last_success_at?: string | null
+          provider: string
+          secret_reference?: string | null
+          shop_id: string
+          status?: string
+          sync_cursor?: Json
+          updated_at?: string
+        }
+        Update: {
+          capabilities?: string[]
+          config?: Json
+          created_at?: string
+          created_by?: string | null
+          display_name?: string | null
+          id?: string
+          last_error?: string | null
+          last_error_at?: string | null
+          last_success_at?: string | null
+          provider?: string
+          secret_reference?: string | null
+          shop_id?: string
+          status?: string
+          sync_cursor?: Json
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "integration_connections_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "integration_connections_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      integration_external_objects: {
+        Row: {
+          canonical_id: string
+          canonical_table: string
+          connection_id: string | null
+          created_at: string
+          external_id: string
+          external_version: string | null
+          first_seen_at: string
+          id: string
+          last_seen_at: string
+          metadata: Json
+          object_type: string
+          provider: string
+          shop_id: string
+          updated_at: string
+        }
+        Insert: {
+          canonical_id: string
+          canonical_table: string
+          connection_id?: string | null
+          created_at?: string
+          external_id: string
+          external_version?: string | null
+          first_seen_at?: string
+          id?: string
+          last_seen_at?: string
+          metadata?: Json
+          object_type: string
+          provider: string
+          shop_id: string
+          updated_at?: string
+        }
+        Update: {
+          canonical_id?: string
+          canonical_table?: string
+          connection_id?: string | null
+          created_at?: string
+          external_id?: string
+          external_version?: string | null
+          first_seen_at?: string
+          id?: string
+          last_seen_at?: string
+          metadata?: Json
+          object_type?: string
+          provider?: string
+          shop_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "integration_external_objects_connection_id_fkey"
+            columns: ["connection_id"]
+            isOneToOne: false
+            referencedRelation: "integration_connections"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "integration_external_objects_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "integration_external_objects_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      integration_sync_events: {
+        Row: {
+          attempt_count: number
+          canonical_id: string | null
+          canonical_table: string | null
+          completed_at: string | null
+          connection_id: string | null
+          created_at: string
+          created_by: string | null
+          direction: string
+          error_message: string | null
+          external_id: string | null
+          id: string
+          object_type: string | null
+          operation: string
+          operation_key: string
+          payload_hash: string | null
+          provider: string
+          request_metadata: Json
+          response_metadata: Json
+          shop_id: string
+          started_at: string
+          status: string
+        }
+        Insert: {
+          attempt_count?: number
+          canonical_id?: string | null
+          canonical_table?: string | null
+          completed_at?: string | null
+          connection_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          direction: string
+          error_message?: string | null
+          external_id?: string | null
+          id?: string
+          object_type?: string | null
+          operation: string
+          operation_key: string
+          payload_hash?: string | null
+          provider: string
+          request_metadata?: Json
+          response_metadata?: Json
+          shop_id: string
+          started_at?: string
+          status?: string
+        }
+        Update: {
+          attempt_count?: number
+          canonical_id?: string | null
+          canonical_table?: string | null
+          completed_at?: string | null
+          connection_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          direction?: string
+          error_message?: string | null
+          external_id?: string | null
+          id?: string
+          object_type?: string | null
+          operation?: string
+          operation_key?: string
+          payload_hash?: string | null
+          provider?: string
+          request_metadata?: Json
+          response_metadata?: Json
+          shop_id?: string
+          started_at?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "integration_sync_events_connection_id_fkey"
+            columns: ["connection_id"]
+            isOneToOne: false
+            referencedRelation: "integration_connections"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "integration_sync_events_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "integration_sync_events_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       integrations: {
         Row: {
           config: Json
@@ -10721,6 +10957,112 @@ export type Database = {
             columns: ["part_id"]
             isOneToOne: false
             referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      part_external_identities: {
+        Row: {
+          active: boolean
+          barcode: string | null
+          connection_id: string | null
+          created_at: string
+          created_by: string | null
+          external_id: string | null
+          id: string
+          manufacturer: string | null
+          metadata: Json
+          package_quantity: number
+          part_id: string
+          part_number: string | null
+          provider: string
+          shop_id: string
+          supplier_id: string | null
+          supplier_sku: string | null
+          unit_of_measure: string | null
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          barcode?: string | null
+          connection_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          external_id?: string | null
+          id?: string
+          manufacturer?: string | null
+          metadata?: Json
+          package_quantity?: number
+          part_id: string
+          part_number?: string | null
+          provider?: string
+          shop_id: string
+          supplier_id?: string | null
+          supplier_sku?: string | null
+          unit_of_measure?: string | null
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          barcode?: string | null
+          connection_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          external_id?: string | null
+          id?: string
+          manufacturer?: string | null
+          metadata?: Json
+          package_quantity?: number
+          part_id?: string
+          part_number?: string | null
+          provider?: string
+          shop_id?: string
+          supplier_id?: string | null
+          supplier_sku?: string | null
+          unit_of_measure?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "part_external_identities_connection_id_fkey"
+            columns: ["connection_id"]
+            isOneToOne: false
+            referencedRelation: "integration_connections"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "part_external_identities_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "part_stock_summary"
+            referencedColumns: ["part_id"]
+          },
+          {
+            foreignKeyName: "part_external_identities_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "part_external_identities_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "part_external_identities_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "part_external_identities_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
             referencedColumns: ["id"]
           },
         ]
@@ -27722,6 +28064,86 @@ export type Database = {
       fail_stripe_webhook_event: {
         Args: { p_claim_token: string; p_error: string; p_event_id: string }
         Returns: boolean
+      }
+      field_receive_po_part_to_truck_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_operation_key: string
+          p_purchase_order_id: string
+          p_purchase_order_line_id: string
+          p_quantity: number
+          p_service_vehicle_id: string
+          p_shop_id: string
+        }
+        Returns: Json
+      }
+      field_resolve_or_create_part_identity_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_code: string
+          p_connection_id?: string
+          p_create_if_missing?: boolean
+          p_external_id?: string
+          p_manufacturer?: string
+          p_metadata?: Json
+          p_name?: string
+          p_operation_key?: string
+          p_package_quantity?: number
+          p_part_number?: string
+          p_provider?: string
+          p_shop_id: string
+          p_supplier_id?: string
+          p_supplier_sku?: string
+          p_unit_cost?: number
+          p_unit_of_measure?: string
+          p_unit_sell_price?: number
+        }
+        Returns: Json
+      }
+      field_return_truck_part_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_operation_key: string
+          p_quantity: number
+          p_service_visit_id: string
+          p_shop_id: string
+          p_work_order_part_id: string
+        }
+        Returns: Json
+      }
+      field_transfer_stock_to_truck_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_operation_key: string
+          p_part_id: string
+          p_quantity: number
+          p_service_vehicle_id: string
+          p_shop_id: string
+          p_source_location_id: string
+        }
+        Returns: Json
+      }
+      field_truck_inventory_snapshot: {
+        Args: {
+          p_actor_user_id: string
+          p_query?: string
+          p_service_vehicle_id?: string
+          p_service_visit_id?: string
+          p_shop_id: string
+        }
+        Returns: Json
+      }
+      field_use_truck_part_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_operation_key: string
+          p_part_id: string
+          p_quantity: number
+          p_service_visit_id: string
+          p_shop_id: string
+          p_work_order_line_id: string
+        }
+        Returns: Json
       }
       finalize_estimate_send_atomic: {
         Args: {

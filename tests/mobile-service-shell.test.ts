@@ -51,7 +51,9 @@ describe("Mobile Service shell", () => {
     expect(scopeGate).toContain("setOfflineMutationScope");
     expect(scopeGate).toContain("cached?.userId === authUserId");
     expect(scopeGate).toContain("SNAPSHOT_SCOPE_KEY");
-    expect(scopeGate).toContain("fail closed");
+    expect(scopeGate).toMatch(
+      /\\.catch\\(\\(\\) => \\{[\\s\\S]*removeItem\\(SNAPSHOT_CACHE_KEY\\)[\\s\\S]*removeItem\\(SNAPSHOT_SCOPE_KEY\\)[\\s\\S]*router\\.replace\\("\\/mobile"\\)/,
+    );
   });
 
   it("exposes Field Service only to roles eligible for personal field assignment", () => {

@@ -83,7 +83,7 @@ export async function loadCachedFieldTruckInventorySnapshot(args: {
   return stored?.data ?? null;
 }
 
-export async function useFieldTruckPart(args: {
+export async function consumeFieldTruckPart(args: {
   scope: OfflineMutationScope;
   payload: FieldUseTruckPartPayload;
 }): Promise<{

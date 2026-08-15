@@ -63,8 +63,8 @@ describe("Field Service truck inventory", () => {
     );
     expect(migration).toContain("insert into public.parts_barcodes");
     expect(migration).toContain("'canonical_part_id', p_part_id");
-    expect(partsIntegration).toContain(
-      "Every selected result must resolve to one canonical ProFixIQ parts.id",
+    expect(partsIntegration).toMatch(
+      /Every selected[\\s*]+result must resolve to one canonical ProFixIQ parts\\.id/,
     );
     expect(partsIntegration).not.toContain("MockPartsProvider");
     expect(partsIntegration).not.toContain("demo-123");
