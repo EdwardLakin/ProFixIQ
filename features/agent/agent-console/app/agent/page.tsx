@@ -10,6 +10,12 @@ import Card from "@shared/components/ui/Card";
 import { Badge } from "@shared/components/ui/badge";
 import { Separator } from "@shared/components/ui/separator";
 import { cn } from "@shared/lib/utils";
+import {
+  diagnoseAgentPipelineRequest,
+  partitionAgentQuestions,
+  summarizeAgentPipeline,
+  type AgentPipelineRequestSnapshot,
+} from "@/features/agent/lib/pipelineDiagnostics";
 import { isAgentRequestRetryVisible } from "@/features/agent/lib/requestRetry";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import {
@@ -46,6 +52,23 @@ type AgentTeamState = {
   decision?: string | null;
   missingInformation?: string[];
   mission?: AgentMissionReview | null;
+  specialists?: Array<{
+    key: string;
+    role: string;
+    required: boolean;
+    decision: string | null;
+    summary: string | null;
+  }>;
+  conflicts?: Array<{
+    topic: string;
+    description: string;
+  }>;
+  internalRequirements?: string[];
+  internalDependency?: string | null;
+  nextAction?: string | null;
+  attemptNumber?: number | null;
+  maximumInternalAttempts?: number | null;
+  updatedAt?: string | null;
   syncedAt?: string;
 };
 
@@ -121,6 +144,48 @@ function isString(v: unknown): v is string {
   return typeof v === "string";
 }
 
+function pipelineSnapshot(request: AgentRequest): AgentPipelineRequestSnapshot {
+  const context = request.normalized_json ?? null;
+  const team = context?.agentTeam && typeof context.agentTeam === "object"
+    ? context.agentTeam
+    : null;
+  const legacyQuestions = Array.isArray(context?.questions)
+    ? context.questions
+        .map((question) => question?.question)
+        .filter(isString)
+    : [];
+  const teamQuestions = Array.isArray(team?.missingInformation)
+    ? team.missingInformation.filter(isString)
+    : [];
+  const { reporterQuestions } = partitionAgentQuestions([
+    ...legacyQuestions,
+    ...teamQuestions,
+  ]);
+
+  return {
+    id: request.id,
+    status: request.status,
+    createdAt: request.created_at,
+    updatedAt: request.updated_at,
+    notes: request.llm_notes,
+    reporterQuestions,
+    team: team
+      ? {
+          currentStage: team.currentStage,
+          caseStatus: team.caseStatus,
+          stepStatus: team.stepStatus,
+          updatedAt: team.updatedAt,
+          syncedAt: team.syncedAt,
+          missionStatus: team.mission?.status,
+          internalDependency: team.internalDependency,
+          internalRequirements: team.internalRequirements,
+          specialists: team.specialists,
+          conflicts: team.conflicts,
+        }
+      : null,
+  };
+}
+
 export default function AgentConsolePage() {
   const [requests, setRequests] = useState<AgentRequest[]>([]);
   const [selected, setSelected] = useState<AgentRequest | null>(null);
@@ -138,6 +203,7 @@ export default function AgentConsolePage() {
   const [replyText, setReplyText] = useState("");
   const [replySending, setReplySending] = useState(false);
   const [retryingRequestId, setRetryingRequestId] = useState<string | null>(null);
+  const [inspectionMode, setInspectionMode] = useState<"explain" | "inspect" | null>(null);
 
   const selectedContext: AgentContext | null = selected?.normalized_json ?? null;
   const selectedTeam = useMemo<AgentTeamState | null>(() => {
@@ -147,7 +213,7 @@ export default function AgentConsolePage() {
       : null;
   }, [selectedContext?.agentTeam]);
 
-  const questions = useMemo<AgentQuestion[]>(() => {
+  const questionGroups = useMemo(() => {
     const raw = selectedContext?.questions;
     const legacy = raw && Array.isArray(raw)
       ? raw
@@ -170,13 +236,34 @@ export default function AgentConsolePage() {
       : [];
 
     const seen = new Set<string>();
-    return [...legacy, ...teamMissing].filter((question) => {
+    const uniqueQuestions = [...legacy, ...teamMissing].filter((question) => {
       const key = question.question.trim().toLowerCase();
       if (!key || seen.has(key)) return false;
       seen.add(key);
       return true;
     });
+    const partitioned = partitionAgentQuestions(
+      uniqueQuestions.map((question) => question.question),
+    );
+    const reporterSet = new Set(
+      partitioned.reporterQuestions.map((question) => question.toLowerCase()),
+    );
+
+    return {
+      reporterQuestions: uniqueQuestions.filter((question) =>
+        reporterSet.has(question.question.trim().toLowerCase()),
+      ),
+      internalRequirements: partitioned.internalRequirements,
+    };
   }, [selectedContext?.questions, selectedTeam]);
+  const questions = questionGroups.reporterQuestions;
+  const internalRequirements = useMemo(
+    () => [...new Set([
+      ...(selectedTeam?.internalRequirements ?? []).filter(isString),
+      ...questionGroups.internalRequirements,
+    ])],
+    [questionGroups.internalRequirements, selectedTeam?.internalRequirements],
+  );
 
   const responses = useMemo<AgentResponse[]>(() => {
     const raw = selectedContext?.responses;
@@ -231,6 +318,17 @@ export default function AgentConsolePage() {
     });
   }, [selectedContext?.responses]);
 
+  const pipelineSummary = useMemo(
+    () => summarizeAgentPipeline(requests.map(pipelineSnapshot)),
+    [requests],
+  );
+  const selectedDiagnostic = useMemo(
+    () => selected
+      ? diagnoseAgentPipelineRequest(pipelineSnapshot(selected))
+      : null,
+    [selected],
+  );
+
   const missionAwaitingApproval = selectedTeam?.mission?.status === "awaiting_approval";
   const missionReviewComplete = isMissionReviewComplete(selectedTeam?.mission);
   const releaseAwaitingApproval = selectedTeam?.caseStatus === "ready_for_human_approval"
@@ -247,10 +345,23 @@ export default function AgentConsolePage() {
         stepStatus: selectedTeam?.stepStatus,
       })
     : false;
-  const retryLabel = selectedTeam?.caseStatus === "blocked"
-    ? "Restart Investigation"
-    : "Retry Request";
+  const retryLabel = selectedDiagnostic?.kind === "authorization_failure"
+    ? "Retry dispatch"
+    : selectedTeam?.caseStatus === "blocked"
+      ? `Restart from ${selectedTeam.currentStage?.replace(/_/g, " ") ?? "stage"}`
+      : selected?.status === "submitted"
+        ? "Replay dispatch"
+        : "Retry Request";
   const actionBusy = isPending || retryingRequestId === selected?.id;
+
+  function inspectFirstPipelineIssue() {
+    const requestId = pipelineSummary.issueIds[0];
+    if (!requestId) return;
+    const request = requests.find((item) => item.id === requestId);
+    if (!request) return;
+    setSelected(request);
+    setInspectionMode("explain");
+  }
 
   async function loadRequests() {
     try {
@@ -577,6 +688,62 @@ export default function AgentConsolePage() {
         </div>
       </div>
 
+      <Card
+        className="mb-6 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 shadow-card"
+        aria-label="Agent request pipeline health"
+      >
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-xs font-semibold uppercase tracking-[0.15em] text-[color:var(--theme-text-secondary)]">
+                Request pipeline
+              </h2>
+              <Badge
+                className={cn(
+                  "border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                  pipelineSummary.state === "healthy"
+                    ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-300"
+                    : "border-amber-500/50 bg-amber-500/10 text-amber-200",
+                )}
+              >
+                {pipelineSummary.state === "healthy" ? "Healthy" : "Needs attention"}
+              </Badge>
+            </div>
+            <p className="text-xs text-[color:var(--theme-text-secondary)]">
+              {pipelineSummary.issueCount > 0
+                ? `${pipelineSummary.issueCount} request${pipelineSummary.issueCount === 1 ? "" : "s"} need inspection or recovery.`
+                : "No failed, blocked, or stale request transitions were detected."}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 text-[0.7rem] text-[color:var(--theme-text-secondary)]">
+            <span className="rounded-lg border border-[color:var(--theme-border-soft)] px-2 py-1">
+              {pipelineSummary.failedCount} failed
+            </span>
+            <span className="rounded-lg border border-[color:var(--theme-border-soft)] px-2 py-1">
+              {pipelineSummary.blockedCount} blocked
+            </span>
+            <span className="rounded-lg border border-[color:var(--theme-border-soft)] px-2 py-1">
+              {pipelineSummary.staleCount} stale
+            </span>
+            <span className="rounded-lg border border-[color:var(--theme-border-soft)] px-2 py-1">
+              {pipelineSummary.approvalCount} awaiting approval
+            </span>
+            {pipelineSummary.issueCount > 0 && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="border-orange-500/70 text-xs font-semibold text-orange-300 hover:bg-orange-600 hover:text-[color:var(--theme-text-on-accent)]"
+                onClick={inspectFirstPipelineIssue}
+              >
+                Inspect issues
+              </Button>
+            )}
+          </div>
+        </div>
+      </Card>
+
       <div className="grid gap-6 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1.4fr)]">
         {/* LEFT LIST */}
         <Card className="flex h-[70vh] flex-col rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 shadow-card backdrop-blur-md">
@@ -602,7 +769,10 @@ export default function AgentConsolePage() {
               <button
                 key={req.id}
                 type="button"
-                onClick={() => setSelected(req)}
+                onClick={() => {
+                  setSelected(req);
+                  setInspectionMode(null);
+                }}
                 className={cn(
                   "w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-left text-xs text-[color:var(--theme-text-primary)] transition hover:border-orange-500/70 hover:bg-orange-500/5",
                   selected?.id === req.id &&
@@ -749,9 +919,178 @@ export default function AgentConsolePage() {
                       {selectedTeam.mission?.id ? (
                         <AgentMissionDetails mission={selectedTeam.mission} />
                       ) : null}
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          aria-pressed={inspectionMode === "explain"}
+                          className="border-sky-500/50 text-[0.7rem] font-semibold text-sky-200 hover:bg-sky-600 hover:text-[color:var(--theme-text-on-accent)]"
+                          onClick={() => setInspectionMode((mode) =>
+                            mode === "explain" ? null : "explain"
+                          )}
+                        >
+                          Explain issue
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          aria-pressed={inspectionMode === "inspect"}
+                          className="border-orange-500/60 text-[0.7rem] font-semibold text-orange-300 hover:bg-orange-600 hover:text-[color:var(--theme-text-on-accent)]"
+                          onClick={() => setInspectionMode((mode) =>
+                            mode === "inspect" ? null : "inspect"
+                          )}
+                        >
+                          Inspect run
+                        </Button>
+                      </div>
+                      {inspectionMode && selectedDiagnostic && (
+                        <div className="space-y-3 rounded-lg border border-sky-500/30 bg-sky-500/5 p-3">
+                          <div className="space-y-1">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div className="text-xs font-semibold text-[color:var(--theme-text-primary)]">
+                                {selectedDiagnostic.title}
+                              </div>
+                              {selectedDiagnostic.actionLabel && (
+                                <Badge className="border border-sky-500/40 bg-sky-500/10 text-[10px] text-sky-200">
+                                  Next: {selectedDiagnostic.actionLabel}
+                                </Badge>
+                              )}
+                            </div>
+                            <p className="text-xs text-[color:var(--theme-text-secondary)]">
+                              {selectedDiagnostic.explanation}
+                            </p>
+                          </div>
+
+                          <dl className="grid gap-2 text-[0.7rem] sm:grid-cols-3">
+                            <div>
+                              <dt className="text-[color:var(--theme-text-muted)]">Stage</dt>
+                              <dd className="text-[color:var(--theme-text-primary)]">
+                                {selectedTeam.currentStage?.replace(/_/g, " ") ?? "Unknown"}
+                              </dd>
+                            </div>
+                            <div>
+                              <dt className="text-[color:var(--theme-text-muted)]">Stage status</dt>
+                              <dd className="text-[color:var(--theme-text-primary)]">
+                                {selectedTeam.stepStatus?.replace(/_/g, " ") ?? "Unknown"}
+                              </dd>
+                            </div>
+                            <div>
+                              <dt className="text-[color:var(--theme-text-muted)]">Last progress</dt>
+                              <dd className="text-[color:var(--theme-text-primary)]">
+                                {selectedDiagnostic.ageMinutes == null
+                                  ? "Unavailable"
+                                  : `${selectedDiagnostic.ageMinutes} min ago`}
+                              </dd>
+                            </div>
+                          </dl>
+
+                          {inspectionMode === "inspect" && (
+                            <>
+                              {(selectedTeam.specialists?.length ?? 0) > 0 && (
+                                <div className="space-y-2">
+                                  <div className="text-[0.7rem] font-semibold uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">
+                                    Specialist results
+                                  </div>
+                                  <ul className="space-y-2">
+                                    {selectedTeam.specialists?.map((specialist) => (
+                                      <li
+                                        key={specialist.key}
+                                        className="rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2"
+                                      >
+                                        <div className="flex flex-wrap items-center justify-between gap-2">
+                                          <span className="font-medium text-[color:var(--theme-text-primary)]">
+                                            {specialist.role}
+                                          </span>
+                                          <Badge className="border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] text-[10px] text-[color:var(--theme-text-primary)]">
+                                            {specialist.decision ?? "unknown"}
+                                          </Badge>
+                                        </div>
+                                        {specialist.summary && (
+                                          <p className="mt-1 text-[color:var(--theme-text-secondary)]">
+                                            {specialist.summary}
+                                          </p>
+                                        )}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+
+                              {(selectedTeam.conflicts?.length ?? 0) > 0 && (
+                                <div className="space-y-1 rounded-md border border-amber-500/30 bg-amber-500/5 p-2">
+                                  <div className="font-medium text-amber-200">Internal conflicts</div>
+                                  {selectedTeam.conflicts?.map((conflict) => (
+                                    <p key={`${conflict.topic}-${conflict.description}`} className="text-[color:var(--theme-text-secondary)]">
+                                      {conflict.description}
+                                    </p>
+                                  ))}
+                                </div>
+                              )}
+
+                              {internalRequirements.length > 0 && (
+                                <div className="space-y-1 rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2">
+                                  <div className="font-medium text-[color:var(--theme-text-primary)]">
+                                    Engineering evidence still required
+                                  </div>
+                                  <ul className="list-disc space-y-1 pl-4 text-[color:var(--theme-text-secondary)]">
+                                    {internalRequirements.map((requirement) => (
+                                      <li key={requirement}>{requirement}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      )}
                       {selectedTeam.caseStatus === "blocked" && questions.length === 0 && (
                         <div className="text-xs text-[color:var(--theme-text-muted)]">
-                          The engineering team is blocked on an internal dependency. No reporter input is requested.
+                          The engineering team is blocked on an internal dependency. Inspect the run or restart the current stage; no reporter input is requested.
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+
+                {!selectedTeam && selectedDiagnostic && (
+                  <>
+                    <Separator className="bg-[color:var(--theme-surface-subtle)]" />
+                    <div className="space-y-2 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-[0.75rem]">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <div className="text-[0.7rem] font-semibold uppercase tracking-[0.13em] text-[color:var(--theme-text-secondary)]">
+                            Pipeline diagnosis
+                          </div>
+                          <div className="mt-1 text-xs font-semibold text-[color:var(--theme-text-primary)]">
+                            {selectedDiagnostic.title}
+                          </div>
+                        </div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          aria-pressed={inspectionMode === "inspect"}
+                          className="border-orange-500/60 text-[0.7rem] font-semibold text-orange-300 hover:bg-orange-600 hover:text-[color:var(--theme-text-on-accent)]"
+                          onClick={() => setInspectionMode((mode) =>
+                            mode === "inspect" ? null : "inspect"
+                          )}
+                        >
+                          Inspect failure
+                        </Button>
+                      </div>
+                      <p className="text-xs text-[color:var(--theme-text-secondary)]">
+                        {selectedDiagnostic.explanation}
+                      </p>
+                      {inspectionMode === "inspect" && (
+                        <div className="space-y-1 rounded-md border border-red-500/30 bg-red-500/5 p-2 text-[0.7rem]">
+                          <div className="text-[color:var(--theme-text-muted)]">
+                            Recorded failure
+                          </div>
+                          <p className="whitespace-pre-wrap text-[color:var(--theme-text-primary)]">
+                            {selected.llm_notes ?? "No structured Agent error was recorded."}
+                          </p>
                         </div>
                       )}
                     </div>

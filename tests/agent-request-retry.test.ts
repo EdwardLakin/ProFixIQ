@@ -26,6 +26,14 @@ describe("agent request retry policy", () => {
     });
   });
 
+  it("replays a submitted request that never received an engineering case", () => {
+    expect(decideAgentRequestRetry({ requestStatus: "submitted" })).toMatchObject({
+      allowed: true,
+      action: "resubmit",
+    });
+    expect(isAgentRequestRetryVisible({ requestStatus: "submitted" })).toBe(true);
+  });
+
   it("resumes blocked cases and failed current stages", () => {
     expect(decideAgentRequestRetry({
       requestStatus: "in_progress",
@@ -92,7 +100,7 @@ describe("agent request retry integration contract", () => {
   it("provisions private owner-scoped evidence storage from migrations", () => {
     expect(evidenceMigration).toContain("insert into storage.buckets");
     expect(evidenceMigration).toContain("'agent_uploads'");
-    expect(evidenceMigration).toContain("false,\n  20971520");
+    expect(evidenceMigration).toMatch(/false,\r?\n\s+20971520/);
     expect(evidenceMigration).toContain("agent_uploads_insert_own");
     expect(evidenceMigration).toContain("agent_uploads_select_own_or_operator");
     expect(evidenceMigration).toContain("(storage.foldername(name))[1] = (select auth.uid())::text");
@@ -100,9 +108,11 @@ describe("agent request retry integration contract", () => {
     expect(evidenceMigration).not.toContain("for all");
   });
 
-  it("offers separate retry and restart labels in Agent Control", () => {
+  it("offers contextual retry and restart labels in Agent Control", () => {
     expect(consolePage).toContain("/retry");
     expect(consolePage).toContain('"Retry Request"');
-    expect(consolePage).toContain('"Restart Investigation"');
+    expect(consolePage).toContain('"Retry dispatch"');
+    expect(consolePage).toContain("Restart from");
+    expect(consolePage).toContain('"Replay dispatch"');
   });
 });

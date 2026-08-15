@@ -67,6 +67,13 @@ export type AgentTeamCaseEnvelope = {
   } | null;
 };
 
+export type AgentTeamReadiness = {
+  ok?: boolean;
+  service?: string;
+  workflow?: string;
+  dependencies?: Record<string, { ok?: boolean; [key: string]: unknown }>;
+};
+
 export type AgentTeamProjection = {
   engineeringCaseId: string;
   requestId: string;
@@ -77,6 +84,22 @@ export type AgentTeamProjection = {
   decision: string | null;
   missingInformation: string[];
   updatedAt: string;
+  specialists: Array<{
+    key: string;
+    role: string;
+    required: boolean;
+    decision: string | null;
+    summary: string | null;
+  }>;
+  conflicts: Array<{
+    topic: string;
+    description: string;
+  }>;
+  internalRequirements: string[];
+  internalDependency: string | null;
+  nextAction: string | null;
+  attemptNumber: number | null;
+  maximumInternalAttempts: number | null;
   mission: {
     id: string;
     status: string;
@@ -329,6 +352,12 @@ export async function readAgentTeamCase(
   );
 }
 
+export async function readAgentTeamReadiness(
+  signal?: AbortSignal,
+): Promise<AgentTeamReadiness> {
+  return agentTeamRequest<AgentTeamReadiness>("/ready", { signal });
+}
+
 export async function resumeAgentTeamCase(params: {
   engineeringCaseId: string;
   resumedBy: string;
@@ -416,6 +445,37 @@ export function projectAgentTeamCase(
   const rawMissingInformation = envelope.caseSummary?.missingInformation
     ?? currentStep?.result?.missingInformation
     ?? [];
+  const currentData = isRecord(currentStep?.result?.data)
+    ? currentStep.result.data
+    : {};
+  const specialists = Array.isArray(currentData.specialists)
+    ? currentData.specialists.filter(isRecord).flatMap((item) => {
+        const key = nullableString(item.key);
+        if (!key) return [];
+        return [{
+          key,
+          role: nullableString(item.role) ?? key.replace(/_/g, " "),
+          required: item.required === true,
+          decision: nullableString(item.decision),
+          summary: nullableString(item.summary),
+        }];
+      })
+    : [];
+  const conflicts = Array.isArray(currentData.conflicts)
+    ? currentData.conflicts.filter(isRecord).flatMap((item) => {
+        const description = nullableString(item.description);
+        if (!description) return [];
+        return [{
+          topic: nullableString(item.topic) ?? "specialist_conflict",
+          description,
+        }];
+      })
+    : [];
+  const internalRequirements = Array.isArray(currentData.internalRequirements)
+    ? currentData.internalRequirements
+        .map((item) => nullableString(item))
+        .filter((item): item is string => Boolean(item))
+    : [];
   const metadata = isRecord(engineeringCase.ticket.metadata)
     ? engineeringCase.ticket.metadata
     : {};
@@ -455,6 +515,13 @@ export function projectAgentTeamCase(
         ? rawMissingInformation.filter((value): value is string => typeof value === "string")
         : [],
     updatedAt: engineeringCase.updatedAt,
+    specialists,
+    conflicts,
+    internalRequirements,
+    internalDependency: nullableString(currentData.internalDependency),
+    nextAction: nullableString(currentData.nextAction),
+    attemptNumber: nullableNumber(currentData.attemptNumber),
+    maximumInternalAttempts: nullableNumber(currentData.maximumInternalAttempts),
     mission: mission
       ? {
           id: mission.id,

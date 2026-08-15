@@ -93,6 +93,13 @@ function initialProjection(
     decision: null,
     missingInformation: [],
     updatedAt: new Date().toISOString(),
+    specialists: [],
+    conflicts: [],
+    internalRequirements: [],
+    internalDependency: null,
+    nextAction: null,
+    attemptNumber: null,
+    maximumInternalAttempts: null,
     mission: null,
     pullRequest: {
       number: response.github?.prNumber ?? null,

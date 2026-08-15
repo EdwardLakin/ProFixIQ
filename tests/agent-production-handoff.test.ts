@@ -46,8 +46,21 @@ describe("production agent request handoff", () => {
     expect(route).toContain("projection.missingInformation.map");
     expect(route).toContain("questions: projectionQuestions(projection)");
     expect(consolePage).toContain("selectedTeam?.missingInformation");
+    expect(consolePage).toContain("partitionAgentQuestions");
+    expect(consolePage).toContain("internalRequirements");
     expect(consolePage).toContain("The engineering team needs this information to continue:");
     expect(replyRoute).toContain("resumeAgentTeamCase");
+  });
+
+  it("exposes grounded specialist diagnostics and contextual recovery controls", () => {
+    expect(teamClient).toContain("specialists,");
+    expect(teamClient).toContain("conflicts,");
+    expect(teamClient).toContain("internalDependency: nullableString(currentData.internalDependency)");
+    expect(consolePage).toContain("Request pipeline");
+    expect(consolePage).toContain("Explain issue");
+    expect(consolePage).toContain("Inspect run");
+    expect(consolePage).toContain("Specialist results");
+    expect(consolePage).toContain("Engineering evidence still required");
   });
 
   it("projects an awaiting mission as diagnosis plus repair proposal rather than a fake Q&A blocker", () => {

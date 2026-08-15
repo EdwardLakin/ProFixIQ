@@ -25,6 +25,9 @@ describe("Ops System Health", () => {
   it("treats Agent deployment generation as required health evidence", () => {
     const server = source("features/ops/server/get-system-health.ts");
     expect(server).toContain('`${baseUrl}/health`');
+    expect(server).toContain("readAgentTeamReadiness");
+    expect(server).toContain('Pipeline readiness", value: pipelineReady ? "Passed" : "Failed"');
+    expect(server).toContain("Authenticated Agent API access was denied.");
     expect(server).toContain("generationVerifiable");
     expect(server).toContain('state: "down"');
     expect(server).toContain('state: "degraded"');

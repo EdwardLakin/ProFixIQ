@@ -82,4 +82,18 @@ describe("Ops deployments and release health", () => {
     expect(component).toContain("Failures since release");
     expect(component).toContain("Release evidence sources");
   });
+
+  it("explains release blockers and provides evidence-first inspection actions", () => {
+    const component = source("features/ops/components/OpsReleaseHealth.tsx");
+    expect(component).toContain("releaseIssues");
+    expect(component).toContain("Explain blockers");
+    expect(component).toContain("Inspect CI evidence");
+    expect(component).toContain("Blocking — no CI evidence");
+    expect(component).toContain("Migration parity failed");
+    expect(component).toContain("Compare migration ledgers");
+    expect(component).toContain("In main, not production");
+    expect(component).toContain("In production, not main");
+    expect(component).toContain("Open Agent Control for a fix plan");
+    expect(component).toContain("Ledger read succeeded; migration parity failed.");
+  });
 });

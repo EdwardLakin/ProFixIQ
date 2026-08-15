@@ -87,6 +87,27 @@ function projectionFromNormalized(value: unknown): AgentTeamProjection | null {
   const missingInformation = Array.isArray(team.missingInformation)
     ? team.missingInformation.filter((item): item is string => typeof item === "string")
     : [];
+  const specialists = Array.isArray(team.specialists)
+    ? team.specialists.filter(isRecord).flatMap((item) => {
+        const key = nullableString(item.key);
+        if (!key) return [];
+        return [{
+          key,
+          role: nullableString(item.role) ?? key.replace(/_/g, " "),
+          required: item.required === true,
+          decision: nullableString(item.decision),
+          summary: nullableString(item.summary),
+        }];
+      })
+    : [];
+  const conflicts = Array.isArray(team.conflicts)
+    ? team.conflicts.filter(isRecord).flatMap((item) => {
+        const description = nullableString(item.description);
+        return description
+          ? [{ topic: nullableString(item.topic) ?? "specialist_conflict", description }]
+          : [];
+      })
+    : [];
 
   return {
     engineeringCaseId,
@@ -98,6 +119,17 @@ function projectionFromNormalized(value: unknown): AgentTeamProjection | null {
     decision: nullableString(team.decision),
     missingInformation,
     updatedAt: nullableString(team.updatedAt) ?? new Date(0).toISOString(),
+    specialists,
+    conflicts,
+    internalRequirements: stringArray(team.internalRequirements),
+    internalDependency: nullableString(team.internalDependency),
+    nextAction: nullableString(team.nextAction),
+    attemptNumber: Number.isFinite(Number(team.attemptNumber))
+      ? Number(team.attemptNumber)
+      : null,
+    maximumInternalAttempts: Number.isFinite(Number(team.maximumInternalAttempts))
+      ? Number(team.maximumInternalAttempts)
+      : null,
     mission: mission?.id ? mission : null,
     pullRequest: {
       number: Number.isFinite(Number(pullRequest.number))
