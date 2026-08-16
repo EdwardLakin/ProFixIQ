@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { resolveFieldExistingSessionHref } from "../features/auth/lib/accessSurfaceRouting";
 
 const read = (path: string) => readFileSync(path, "utf8");
 
@@ -32,6 +33,10 @@ describe("dedicated product access surfaces", () => {
   it("makes Field a first-class authentication surface", () => {
     const field = read("features/auth/components/FieldSignIn.tsx");
     const route = read("app/api/auth/sign-in/route.ts");
+    const accessRoute = read("app/api/mobile/field-service/access/route.ts");
+    const routeGate = read(
+      "features/mobile/service/MobileFieldServiceRouteGate.tsx",
+    );
 
     expect(field).toContain('surface: "field"');
     expect(field).toContain("Sign in to ProFixIQ Field");
@@ -40,13 +45,56 @@ describe("dedicated product access surfaces", () => {
     expect(route).toContain('fieldAccess.canAccessFieldService');
     expect(route).toContain('"/mobile/service/setup"');
     expect(field).toContain("resolveFieldPostSignInHref");
+    expect(field).toContain("resolveFieldExistingSessionHref");
     expect(field).toContain("We couldn't reach ProFixIQ");
-    expect(route).toContain(
-      'surface === "field" ? "local" : "global"',
-    );
+    expect(route).toContain("resolveAuthenticatedStaffProfile");
+    expect(accessRoute).toContain("mustChangePassword");
+    expect(routeGate).toContain("resolveFieldExistingSessionHref");
+    expect(routeGate).toContain('router.replace(destination ?? "/mobile")');
+    expect(route).toContain('surface === "field" ? "local" : "global"');
     expect(route).toContain(
       "supabase.auth.signOut({ scope: rejectedSessionScope })",
     );
+  });
+
+  it("forces existing Field sessions through password setup before routing", () => {
+    expect(
+      resolveFieldExistingSessionHref(
+        {
+          canAccessFieldService: true,
+          mustChangePassword: true,
+        },
+        "/mobile/service/work-orders/work-order-1",
+      ),
+    ).toBe("/auth/set-password?redirect=%2Fmobile%2Fservice");
+
+    expect(
+      resolveFieldExistingSessionHref(
+        {
+          canAccessFieldService: true,
+          mustChangePassword: false,
+        },
+        "/mobile/service/work-orders/work-order-1",
+      ),
+    ).toBe("/mobile/service/work-orders/work-order-1");
+
+    expect(
+      resolveFieldExistingSessionHref(
+        { canConfigure: true, mustChangePassword: true },
+        "/mobile/service",
+      ),
+    ).toBe("/auth/set-password?redirect=%2Fmobile%2Fservice%2Fsetup");
+
+    expect(resolveFieldExistingSessionHref({}, "/mobile/service")).toBeNull();
+  });
+
+  it("keeps the public AI CTA on the implemented assistant route", () => {
+    const buttons = read("features/shared/components/LandingButtons.tsx");
+
+    expect(buttons).toContain(
+      'href="/shop/sign-in?redirect=%2Fai%2Fassistant"',
+    );
+    expect(buttons).not.toContain('href="/shop/sign-in?redirect=%2Fai"');
   });
 
   it("removes Mobile companion from the public Shop sign-in hierarchy", () => {

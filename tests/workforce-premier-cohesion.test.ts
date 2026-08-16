@@ -23,6 +23,7 @@ const scheduleOverrideMigration = read(
   "supabase/migrations/20260728213500_atomic_staff_schedule_overrides.sql",
 );
 const adminAccess = read("features/shared/lib/server/admin-access.ts");
+const canonicalProfile = read("features/shared/lib/authenticated-profile.ts");
 const selfRoute = read("app/api/workforce/me/route.ts");
 const mobileShiftRoute = read("app/api/mobile/shifts/route.ts");
 const selfCard = read("features/workforce/components/MyWorkforceCard.tsx");
@@ -97,7 +98,9 @@ const assignablesRoute = read("app/api/assignables/route.ts");
 describe("premier workforce cohesion", () => {
   it("resolves both historical and canonical profile identity shapes", () => {
     expect(adminAccess).toContain("resolveAuthenticatedStaffProfile");
-    expect(adminAccess).toContain('.eq("user_id", authUserId)');
+    expect(adminAccess).toContain("resolveCanonicalStaffProfile");
+    expect(canonicalProfile).toContain('.eq("id", authUserId)');
+    expect(canonicalProfile).toContain('.eq("user_id", authUserId)');
     expect(identityMigration).toContain(
       "create or replace function public.profixiq_workforce_profile_id()",
     );

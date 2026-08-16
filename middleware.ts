@@ -21,6 +21,7 @@ import {
   toFleetPublicPath,
   resolveLegacyFleetRedirect,
 } from "@/features/fleet/lib/fleetProductRouting";
+import { resolveCanonicalStaffProfile } from "@/features/shared/lib/authenticated-profile";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import {
   hasSupabasePublicEnv,
@@ -358,12 +359,10 @@ export async function middleware(req: NextRequest) {
 
   if (user && !isPortal) {
     try {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("completed_onboarding, shop_id, role")
-        .eq("id", user.id)
-        .limit(1)
-        .maybeSingle();
+      const { profile } = await resolveCanonicalStaffProfile(
+        supabase,
+        user.id,
+      );
 
       const normalizedRole = String(profile?.role ?? "").trim().toLowerCase();
       const pendingOwnerBootstrap =
@@ -427,11 +426,11 @@ export async function middleware(req: NextRequest) {
       const access = await resolvePortalAccessServer(supabase, user.id);
       if (!access.customer && !access.fleet) return res;
 
-      const target = productRequestUrl(
-        req,
-        access.customer ? "/portal" : "/portal/fleet",
-        fleetProductRequest,
-      );
+      const surface: PortalSurface = access.customer ? "customer" : "fleet";
+      const to = isPortalPathForSurface(redirectParam, surface)
+        ? redirectParam!
+        : PORTAL_HOME[surface];
+      const target = productRequestUrl(req, to, fleetProductRequest);
       return redirectWithResponseHeaders(target, res);
     }
 

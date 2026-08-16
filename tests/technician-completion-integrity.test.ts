@@ -17,6 +17,10 @@ const completionService = readFileSync(
   "features/work-orders/server/completeWorkOrderLine.ts",
   "utf8",
 );
+const completionLearningMigration = readFileSync(
+  "supabase/migrations/20260816173500_completion_learning_queue_review_hardening.sql",
+  "utf8",
+);
 const copilotClient = readFileSync(
   "features/copilot/technician/components/TechnicianTextCopilot.tsx",
   "utf8",
@@ -76,9 +80,12 @@ describe("technician completion integrity", () => {
     );
   });
 
-  it("uses the same fail-open repair-learning hook for screen and voice completion", () => {
-    expect(completionService).toContain("learnFromCompletedWorkOrderLine");
+  it("queues repair learning from the canonical finish receipt for screen and voice", () => {
     expect(completionService).toContain("await applyJobPunchTransition");
-    expect(actions).toContain("await learnFromCompletedWorkOrderLine");
+    expect(actions).toContain("await sendCopilotServerCommand");
+    expect(actions).not.toContain("upsertMenuRepairItemFromCompletedLine");
+    expect(completionLearningMigration).toContain(
+      "after insert on public.workforce_operation_keys",
+    );
   });
 });

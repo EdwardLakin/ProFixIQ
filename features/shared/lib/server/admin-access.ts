@@ -1,7 +1,11 @@
 import "server-only";
 
 import { redirect } from "next/navigation";
-import type { Database } from "@shared/types/types/supabase";
+import { NextResponse } from "next/server";
+import {
+  resolveCanonicalStaffProfile,
+  type AuthenticatedStaffProfile,
+} from "@/features/shared/lib/authenticated-profile";
 import {
   createAdminSupabase,
   createServerSupabaseRSC,
@@ -17,13 +21,8 @@ import {
   type OwnerPinPurpose,
   requireOwnerPinVerified,
 } from "@/features/shared/lib/server/owner-pin";
-import { NextResponse } from "next/server";
 
-type DB = Database;
-type ProfileScope = Pick<
-  DB["public"]["Tables"]["profiles"]["Row"],
-  "id" | "role" | "shop_id" | "completed_onboarding" | "email" | "full_name"
->;
+type ProfileScope = AuthenticatedStaffProfile;
 type ShopScopedProfile = Omit<ProfileScope, "shop_id"> & { shop_id: string };
 
 type CapabilityKey = keyof ActorCapabilities;
@@ -43,34 +42,13 @@ export async function resolveAuthenticatedStaffProfile(
   supabase: ServerSupabase,
   authUserId: string,
 ): Promise<{ profile: ProfileScope | null; error: string | null }> {
-  const byId = await supabase
-    .from("profiles")
-    .select("id, role, shop_id, completed_onboarding, email, full_name")
-    .eq("id", authUserId)
-    .maybeSingle<ProfileScope>();
-
-  if (byId.error) {
-    return { profile: null, error: byId.error.message };
-  }
-  if (byId.data) {
-    return { profile: byId.data, error: null };
-  }
-
   // profiles.self.read historically only matched profiles.id = auth.uid().
   // Imported staff can instead retain a canonical profile id while linking
-  // their Supabase account through profiles.user_id. The auth subject above is
-  // server-verified, and user_id is unique, so the service client is used only
-  // for this exact fallback lookup.
-  const byAuthUser = await createAdminSupabase()
-    .from("profiles")
-    .select("id, role, shop_id, completed_onboarding, email, full_name")
-    .eq("user_id", authUserId)
-    .maybeSingle<ProfileScope>();
-
-  return {
-    profile: byAuthUser.data ?? null,
-    error: byAuthUser.error?.message ?? null,
-  };
+  // their Supabase account through profiles.user_id. Keep an exact service
+  // fallback for deployments that have not yet installed linked self-read RLS.
+  return resolveCanonicalStaffProfile(supabase, authUserId, {
+    linkedProfileClient: createAdminSupabase,
+  });
 }
 
 type ShopPageAccessOptions = {

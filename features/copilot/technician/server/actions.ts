@@ -1,7 +1,6 @@
 import "server-only";
 
 import { normalizeWorkOrderLineStatus } from "@/features/work-orders/lib/line-status";
-import { learnFromCompletedWorkOrderLine } from "@/features/work-orders/server/completeWorkOrderLine";
 import type { TechnicianCopilotAction } from "./actionContract";
 import type {
   TechnicianWorkCandidate,
@@ -390,15 +389,6 @@ export async function executeBoundTechnicianCopilotAction(input: {
         error instanceof Error ? error.message : String(error),
       ),
     };
-  }
-
-  if (action.type === "job.complete") {
-    await learnFromCompletedWorkOrderLine({
-      supabase: input.identity.supabase,
-      lineId: input.bound.lineId,
-      actorUserId: input.identity.authUserId,
-      operationKey: input.operationId,
-    });
   }
 
   const label = input.bound.lineLabel;

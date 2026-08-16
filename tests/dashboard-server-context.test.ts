@@ -90,7 +90,8 @@ describe("dashboard server shop context", () => {
     expect(calls).toContainEqual({
       table: "profiles",
       method: "select",
-      columns: "id, role, shop_id, completed_onboarding, email, full_name",
+      columns:
+        "id, role, shop_id, completed_onboarding, must_change_password, email, full_name",
     });
     expect(calls).toContainEqual({
       table: "profiles",
@@ -121,17 +122,21 @@ describe("dashboard server shop context", () => {
       "features/shared/lib/server/admin-access.ts",
       "utf8",
     );
+    const canonicalProfileSource = readFileSync(
+      "features/shared/lib/authenticated-profile.ts",
+      "utf8",
+    );
 
-    expect(middlewareSource).toContain('.from("profiles")');
-    expect(middlewareSource).toContain('.eq("id", user.id)');
-    expect(middlewareSource).toContain(".limit(1)");
-    expect(middlewareSource).toContain(".maybeSingle()");
+    expect(middlewareSource).toContain("resolveCanonicalStaffProfile");
 
     expect(resolverSource).toContain("resolveAuthenticatedStaffProfile");
-    expect(staffResolverSource).toContain('.from("profiles")');
-    expect(staffResolverSource).toContain('.eq("id", authUserId)');
-    expect(staffResolverSource).toContain('.eq("user_id", authUserId)');
-    expect(staffResolverSource).toContain(".maybeSingle<ProfileScope>()");
+    expect(staffResolverSource).toContain("resolveCanonicalStaffProfile");
+    expect(canonicalProfileSource).toContain('.from("profiles")');
+    expect(canonicalProfileSource).toContain('.eq("id", authUserId)');
+    expect(canonicalProfileSource).toContain('.eq("user_id", authUserId)');
+    expect(canonicalProfileSource).toContain(
+      ".maybeSingle<AuthenticatedStaffProfile>()",
+    );
     expect(resolverSource).not.toContain("createServer" + "ComponentClient");
     expect(resolverSource).not.toContain("@supabase/" + "auth-helpers-nextjs");
   });

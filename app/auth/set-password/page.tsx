@@ -72,7 +72,7 @@ export default function SetPasswordPage() {
   }, [isPortalActivation, supabase]);
 
   async function finishActivation(userId: string, role: string | null) {
-    const activation = await activatePasswordProfile(supabase, userId);
+    const activation = await activatePasswordProfile();
     if (!activation.ok) {
       console.error("[set-password] profile activation failed", {
         userId,
