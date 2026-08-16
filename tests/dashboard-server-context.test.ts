@@ -90,7 +90,8 @@ describe("dashboard server shop context", () => {
     expect(calls).toContainEqual({
       table: "profiles",
       method: "select",
-      columns: "id, role, shop_id, completed_onboarding, email, full_name",
+      columns:
+        "id, role, shop_id, completed_onboarding, must_change_password, email, full_name",
     });
     expect(calls).toContainEqual({
       table: "profiles",
