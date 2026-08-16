@@ -17,7 +17,10 @@ vi.mock(
   }),
 );
 
-import { completeWorkOrderLine } from "@/features/work-orders/server/completeWorkOrderLine";
+import {
+  completeWorkOrderLine,
+  learnFromCompletedWorkOrderLine,
+} from "@/features/work-orders/server/completeWorkOrderLine";
 
 function completionClient() {
   const maybeSingle = vi.fn().mockResolvedValue({
@@ -27,7 +30,26 @@ function completionClient() {
   const eq = vi.fn(() => ({ maybeSingle }));
   const select = vi.fn(() => ({ eq }));
   const from = vi.fn(() => ({ select }));
-  return { client: { from } as never, from, select, eq, maybeSingle };
+  const rpc = vi.fn(async (name: string) => {
+    if (name === "claim_completed_repair_learning_atomic") {
+      return {
+        data: { claimed: true, completed: false, inProgress: false },
+        error: null,
+      };
+    }
+    if (name === "finish_completed_repair_learning_atomic") {
+      return { data: { completed: true }, error: null };
+    }
+    throw new Error(`Unexpected RPC: ${name}`);
+  });
+  return {
+    client: { from, rpc } as never,
+    from,
+    select,
+    eq,
+    maybeSingle,
+    rpc,
+  };
 }
 
 describe("canonical work-order line completion", () => {
@@ -41,7 +63,7 @@ describe("canonical work-order line completion", () => {
   });
 
   it("runs idempotent repair learning after the canonical finish succeeds", async () => {
-    const { client } = completionClient();
+    const { client, rpc } = completionClient();
     const result = await completeWorkOrderLine({
       supabase: client,
       lineId: "line-1",
@@ -71,6 +93,25 @@ describe("canonical work-order line completion", () => {
       workOrderLineId: "line-1",
       actorUserId: "auth-tech",
     });
+    expect(rpc).toHaveBeenNthCalledWith(
+      1,
+      "claim_completed_repair_learning_atomic",
+      expect.objectContaining({
+        p_shop_id: "shop-1",
+        p_work_order_line_id: "line-1",
+        p_actor_user_id: "auth-tech",
+        p_operation_key: "finish-key",
+        p_lease_token: expect.any(String),
+      }),
+    );
+    expect(rpc).toHaveBeenNthCalledWith(
+      2,
+      "finish_completed_repair_learning_atomic",
+      expect.objectContaining({
+        p_succeeded: true,
+        p_lease_token: expect.any(String),
+      }),
+    );
     expect(result).toMatchObject({
       ok: true,
       menuRepairLearning: { ok: true },
@@ -78,7 +119,7 @@ describe("canonical work-order line completion", () => {
   });
 
   it("keeps completion successful when repair learning fails", async () => {
-    const { client } = completionClient();
+    const { client, rpc } = completionClient();
     mocks.upsertMenuRepairItemFromCompletedLine.mockRejectedValue(
       new Error("learning unavailable"),
     );
@@ -97,6 +138,10 @@ describe("canonical work-order line completion", () => {
       ok: true,
       menuRepairLearning: { ok: false },
     });
+    expect(rpc).toHaveBeenLastCalledWith(
+      "finish_completed_repair_learning_atomic",
+      expect.objectContaining({ p_succeeded: false }),
+    );
   });
 
   it("does not learn from a completion that did not commit", async () => {
@@ -121,5 +166,55 @@ describe("canonical work-order line completion", () => {
       error: "INSPECTION_COMPLETION_REQUIRED",
     });
     expect(mocks.upsertMenuRepairItemFromCompletedLine).not.toHaveBeenCalled();
+  });
+
+  it("lets only one concurrent replay perform repair learning", async () => {
+    const { client, rpc } = completionClient();
+    let claimCount = 0;
+    rpc.mockImplementation(async (name: string) => {
+      if (name === "claim_completed_repair_learning_atomic") {
+        claimCount += 1;
+        return claimCount === 1
+          ? {
+              data: { claimed: true, completed: false, inProgress: false },
+              error: null,
+            }
+          : {
+              data: { claimed: false, completed: false, inProgress: true },
+              error: null,
+            };
+      }
+      return { data: { completed: true }, error: null };
+    });
+
+    let releaseLearning!: () => void;
+    mocks.upsertMenuRepairItemFromCompletedLine.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseLearning = resolve;
+        }),
+    );
+
+    const first = learnFromCompletedWorkOrderLine({
+      supabase: client,
+      lineId: "line-1",
+      actorUserId: "auth-tech",
+      operationKey: "finish-key",
+    });
+    await vi.waitFor(() => {
+      expect(mocks.upsertMenuRepairItemFromCompletedLine).toHaveBeenCalledTimes(1);
+    });
+    const replay = await learnFromCompletedWorkOrderLine({
+      supabase: client,
+      lineId: "line-1",
+      actorUserId: "auth-tech",
+      operationKey: "finish-key",
+    });
+    releaseLearning();
+    const completed = await first;
+
+    expect(replay).toEqual({ ok: true });
+    expect(completed).toEqual({ ok: true });
+    expect(mocks.upsertMenuRepairItemFromCompletedLine).toHaveBeenCalledTimes(1);
   });
 });

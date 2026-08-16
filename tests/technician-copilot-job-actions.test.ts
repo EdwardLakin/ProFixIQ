@@ -19,6 +19,7 @@ import {
   describeNextTechnicianWork,
   executeTechnicianCopilotAction,
   prepareTechnicianCopilotAction,
+  selectNextTechnicianWorkLine,
 } from "@/features/copilot/technician/server/actions";
 
 const workOrder: TechnicianWorkCandidate = {
@@ -78,6 +79,17 @@ describe("Technician CoPilot canonical job actions", () => {
     expect(reply).toContain("already punched into Road test");
     expect(reply).toContain("WO #EL000005");
     expect(mocks.sendCopilotServerCommand).not.toHaveBeenCalled();
+  });
+
+  it("selects in-progress work before awaiting, held, or waiting-parts lines", () => {
+    const selected = selectNextTechnicianWorkLine([
+      { ...workOrder.lines[0], status: "waiting_parts", priority: 1 },
+      { ...workOrder.lines[0], id: "line-awaiting", status: "awaiting", priority: 1 },
+      { ...workOrder.lines[1], id: "line-running", status: "in_progress", priority: 9 },
+      { ...workOrder.lines[0], id: "line-held", status: "on_hold", priority: 0 },
+    ]);
+
+    expect(selected?.id).toBe("line-running");
   });
 
   it("uses the repair session's active line when natural language omits an ID", () => {
@@ -322,6 +334,7 @@ describe("Technician CoPilot canonical job actions", () => {
       supabase: expect.anything(),
       lineId: activeWorkOrder.lines[0].id,
       actorUserId: "00000000-0000-4000-8000-000000000011",
+      operationKey: "00000000-0000-5000-a000-000000000310",
     });
   });
 

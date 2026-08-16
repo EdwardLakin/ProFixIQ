@@ -593,7 +593,7 @@ describe("Technician CoPilot persistent text runtime", () => {
       turnId: "turn-start-before-reanchor",
       inputSource: "voice",
     });
-    const remainingLine = {
+    const remainingAwaitingLine = {
       ...candidate.lines[0],
       id: "line-road-test",
       complaint: "Final road test",
@@ -601,9 +601,28 @@ describe("Technician CoPilot persistent text runtime", () => {
       cause: null,
       correction: null,
     };
+    const remainingHeldLine = {
+      ...remainingAwaitingLine,
+      id: "line-held",
+      complaint: "Repair on hold",
+      status: "on_hold",
+      priority: 1,
+    };
+    const remainingRunningLine = {
+      ...remainingAwaitingLine,
+      id: "line-running",
+      complaint: "Running repair",
+      status: "in_progress",
+      priority: 9,
+    };
     const beforeCompletion = {
       ...candidate,
-      lineIds: ["line-driveline", remainingLine.id],
+      lineIds: [
+        "line-driveline",
+        remainingHeldLine.id,
+        remainingAwaitingLine.id,
+        remainingRunningLine.id,
+      ],
       lines: [
         {
           ...candidate.lines[0],
@@ -611,13 +630,25 @@ describe("Technician CoPilot persistent text runtime", () => {
           cause: "Failed rear U-joint",
           correction: "Replaced rear U-joint",
         },
-        remainingLine,
+        remainingHeldLine,
+        remainingAwaitingLine,
+        remainingRunningLine,
       ],
     };
     const afterCompletion = {
       ...beforeCompletion,
-      lineIds: [remainingLine.id],
-      lines: [remainingLine],
+      lineIds: [
+        remainingHeldLine.id,
+        remainingAwaitingLine.id,
+        remainingRunningLine.id,
+      ],
+      // Deliberately unordered to prove completion disposition uses the same
+      // in-progress/status/priority ordering as "what's next".
+      lines: [
+        remainingHeldLine,
+        remainingAwaitingLine,
+        remainingRunningLine,
+      ],
     };
     let completionCommitted = false;
     mocks.listTechnicianWorkCandidates.mockResolvedValue([beforeCompletion]);
@@ -657,13 +688,13 @@ describe("Technician CoPilot persistent text runtime", () => {
     expect(completed.sessionId).toBe("session-ford");
     expect(completed.session).toMatchObject({
       status: "active",
-      activeWorkOrderLineId: remainingLine.id,
+      activeWorkOrderLineId: remainingRunningLine.id,
     });
     expect(
       mocks.sendCopilotServerCommand.mock.calls.some(
         ([call]) =>
           call.action === "session.start" &&
-          call.args.workOrderLineId === remainingLine.id,
+          call.args.workOrderLineId === remainingRunningLine.id,
       ),
     ).toBe(true);
     expect(
