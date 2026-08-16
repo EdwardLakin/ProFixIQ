@@ -18,6 +18,11 @@ values
     'a1438000-0000-4000-8000-000000000003',
     'copilot-runtime-split-tech@example.com',
     '{"full_name":"CoPilot Split Identity Technician"}'::jsonb
+  ),
+  (
+    'a1438000-0000-4000-8000-000000000004',
+    'copilot-runtime-split-profile@example.com',
+    '{"full_name":"CoPilot Split Identity Profile Anchor"}'::jsonb
   )
 on conflict (id) do nothing;
 
