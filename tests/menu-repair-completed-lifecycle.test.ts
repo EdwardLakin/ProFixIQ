@@ -124,7 +124,7 @@ describe("completed repair memory", () => {
       "features/work-orders/server/processCompletedRepairLearningQueue.ts",
     );
     const completionLearningMigration = read(
-      "supabase/migrations/20260816041500_completion_learning_trusted_queue_hotfix.sql",
+      "supabase/migrations/20260816173500_completion_learning_queue_review_hardening.sql",
     );
     const completedHelper = read(
       "features/menu-repair-items/server/upsertMenuRepairItemFromCompletedLine.ts",

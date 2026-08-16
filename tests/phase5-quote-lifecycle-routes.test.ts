@@ -25,7 +25,7 @@ const completionService = read(
   "features/work-orders/server/completeWorkOrderLine.ts",
 );
 const completionLearningMigration = read(
-  "supabase/migrations/20260816041500_completion_learning_trusted_queue_hotfix.sql",
+  "supabase/migrations/20260816173500_completion_learning_queue_review_hardening.sql",
 );
 const partsQuotingPage = read("app/parts/quoting/page.tsx");
 const legacyMenuCaptureRoute = read(

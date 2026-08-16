@@ -18,7 +18,7 @@ const completionService = readFileSync(
   "utf8",
 );
 const completionLearningMigration = readFileSync(
-  "supabase/migrations/20260816041500_completion_learning_trusted_queue_hotfix.sql",
+  "supabase/migrations/20260816173500_completion_learning_queue_review_hardening.sql",
   "utf8",
 );
 const copilotClient = readFileSync(
