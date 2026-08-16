@@ -427,11 +427,11 @@ export async function middleware(req: NextRequest) {
       const access = await resolvePortalAccessServer(supabase, user.id);
       if (!access.customer && !access.fleet) return res;
 
-      const target = productRequestUrl(
-        req,
-        access.customer ? "/portal" : "/portal/fleet",
-        fleetProductRequest,
-      );
+      const surface: PortalSurface = access.customer ? "customer" : "fleet";
+      const to = isPortalPathForSurface(redirectParam, surface)
+        ? redirectParam!
+        : PORTAL_HOME[surface];
+      const target = productRequestUrl(req, to, fleetProductRequest);
       return redirectWithResponseHeaders(target, res);
     }
 

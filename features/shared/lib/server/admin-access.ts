@@ -22,7 +22,13 @@ import { NextResponse } from "next/server";
 type DB = Database;
 type ProfileScope = Pick<
   DB["public"]["Tables"]["profiles"]["Row"],
-  "id" | "role" | "shop_id" | "completed_onboarding" | "email" | "full_name"
+  | "id"
+  | "role"
+  | "shop_id"
+  | "completed_onboarding"
+  | "must_change_password"
+  | "email"
+  | "full_name"
 >;
 type ShopScopedProfile = Omit<ProfileScope, "shop_id"> & { shop_id: string };
 
@@ -45,7 +51,9 @@ export async function resolveAuthenticatedStaffProfile(
 ): Promise<{ profile: ProfileScope | null; error: string | null }> {
   const byId = await supabase
     .from("profiles")
-    .select("id, role, shop_id, completed_onboarding, email, full_name")
+    .select(
+      "id, role, shop_id, completed_onboarding, must_change_password, email, full_name",
+    )
     .eq("id", authUserId)
     .maybeSingle<ProfileScope>();
 
@@ -63,7 +71,9 @@ export async function resolveAuthenticatedStaffProfile(
   // for this exact fallback lookup.
   const byAuthUser = await createAdminSupabase()
     .from("profiles")
-    .select("id, role, shop_id, completed_onboarding, email, full_name")
+    .select(
+      "id, role, shop_id, completed_onboarding, must_change_password, email, full_name",
+    )
     .eq("user_id", authUserId)
     .maybeSingle<ProfileScope>();
 

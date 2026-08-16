@@ -19,6 +19,7 @@ const authFixture = vi.hoisted(() => ({
     role: string;
     created_at: string;
   }>,
+  customerId: null as string | null,
 }));
 
 vi.mock("@supabase/ssr", () => ({
@@ -40,7 +41,12 @@ vi.mock("@supabase/ssr", () => ({
 
       async maybeSingle() {
         return {
-          data: this.table === "profiles" ? authFixture.profile : null,
+          data:
+            this.table === "profiles"
+              ? authFixture.profile
+              : this.table === "customers" && authFixture.customerId
+                ? { id: authFixture.customerId }
+                : null,
           error: null,
         };
       }
@@ -73,6 +79,7 @@ afterEach(() => {
   authFixture.user = null;
   authFixture.profile = null;
   authFixture.memberships = [];
+  authFixture.customerId = null;
 
   if (originalSupabaseUrl === undefined) {
     delete process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -226,6 +233,30 @@ describe("Product host middleware boundary", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("location")).toBeNull();
+  });
+
+  it("preserves a customer portal deep link for an active session", async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "test-anon-key";
+    authFixture.user = { id: "customer-user-1", app_metadata: {} };
+    authFixture.profile = {
+      id: "customer-user-1",
+      role: "customer",
+      shop_id: null,
+      completed_onboarding: true,
+    };
+    authFixture.customerId = "customer-1";
+
+    const response = await middleware(
+      shopRequest(
+        "/customer/sign-in?redirect=%2Fportal%2Finvoices%2Finvoice-1",
+      ),
+    );
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      "https://profixiq.com/portal/invoices/invoice-1",
+    );
   });
 
   it("honors explicit Shop sign-in on a phone instead of switching products", async () => {

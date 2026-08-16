@@ -91,6 +91,12 @@ const FIELD_HOME = "/mobile/service";
 const FIELD_SETUP = "/mobile/service/setup";
 const PASSWORD_CHANGE = "/auth/set-password";
 
+export type FieldExistingSessionAccess = {
+  canAccessFieldService?: boolean;
+  canConfigure?: boolean;
+  mustChangePassword?: boolean;
+};
+
 /**
  * The API owns security-sensitive Field destinations. A requested Field
  * continuation is applied only after the API returns the normal Field home;
@@ -113,4 +119,31 @@ export function resolveFieldPostSignInHref(
   if (destination !== FIELD_HOME) return FIELD_HOME;
 
   return safeInternalRedirect(requestedDestination, FIELD_HOME, [FIELD_HOME]);
+}
+
+/**
+ * Existing sessions do not pass through the sign-in API, so the Field access
+ * endpoint must supply the password-change flag and this client-side routing
+ * decision must enforce it before entering either the workspace or setup.
+ */
+export function resolveFieldExistingSessionHref(
+  access: FieldExistingSessionAccess,
+  requestedDestination: string,
+): string | null {
+  const fieldDestination = access.canAccessFieldService
+    ? FIELD_HOME
+    : access.canConfigure
+      ? FIELD_SETUP
+      : null;
+
+  if (!fieldDestination) return null;
+
+  const apiEquivalentDestination = access.mustChangePassword
+    ? `${PASSWORD_CHANGE}?redirect=${encodeURIComponent(fieldDestination)}`
+    : fieldDestination;
+
+  return resolveFieldPostSignInHref(
+    apiEquivalentDestination,
+    requestedDestination,
+  );
 }
