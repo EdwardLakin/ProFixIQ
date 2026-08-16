@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   PRODUCT_SIGN_IN,
+  resolveFieldPostSignInHref,
   resolveLegacySignInHref,
 } from "./accessSurfaceRouting";
 
@@ -56,5 +57,32 @@ describe("product access surface routing", () => {
         new URLSearchParams("redirect=https%3A%2F%2Fevil.example"),
       ),
     ).toBe("/shop/sign-in?redirect=https%3A%2F%2Fevil.example");
+  });
+
+  it("preserves forced password changes ahead of Field continuations", () => {
+    expect(
+      resolveFieldPostSignInHref(
+        "/auth/set-password?redirect=%2Fmobile%2Fservice",
+        "/mobile/service/today",
+      ),
+    ).toBe("/auth/set-password?redirect=%2Fmobile%2Fservice");
+  });
+
+  it("applies Field continuations only to a normal Field home response", () => {
+    expect(
+      resolveFieldPostSignInHref(
+        "/mobile/service",
+        "/mobile/service/today",
+      ),
+    ).toBe("/mobile/service/today");
+    expect(
+      resolveFieldPostSignInHref(
+        "/mobile/service/setup",
+        "/mobile/service/today",
+      ),
+    ).toBe("/mobile/service/setup");
+    expect(
+      resolveFieldPostSignInHref("/dashboard", "/mobile/service/today"),
+    ).toBe("/mobile/service");
   });
 });

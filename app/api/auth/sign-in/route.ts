@@ -151,8 +151,9 @@ export async function POST(req: Request) {
     );
   }
 
+  const rejectedSessionScope = surface === "field" ? "local" : "global";
   const deny = async () => {
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: rejectedSessionScope });
     return NextResponse.json(
       { ok: false, error: GENERIC_ERROR },
       { status: 403 },
@@ -244,7 +245,7 @@ export async function POST(req: Request) {
           ? "/mobile/service/setup"
           : null;
     } catch {
-      await supabase.auth.signOut();
+      await supabase.auth.signOut({ scope: rejectedSessionScope });
       return NextResponse.json(
         { ok: false, error: "Unable to verify Field access right now." },
         { status: 503 },

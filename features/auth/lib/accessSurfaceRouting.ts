@@ -86,3 +86,31 @@ export function resolveLegacySignInHref(
     ? appendContinuation(PRODUCT_SIGN_IN[surface], searchParams)
     : null;
 }
+
+const FIELD_HOME = "/mobile/service";
+const FIELD_SETUP = "/mobile/service/setup";
+const PASSWORD_CHANGE = "/auth/set-password";
+
+/**
+ * The API owns security-sensitive Field destinations. A requested Field
+ * continuation is applied only after the API returns the normal Field home;
+ * forced password changes and setup handoffs must never be overridden.
+ */
+export function resolveFieldPostSignInHref(
+  apiDestination: string,
+  requestedDestination: string,
+): string {
+  const destination = safeInternalRedirect(apiDestination, FIELD_HOME);
+
+  if (
+    destination === PASSWORD_CHANGE ||
+    destination.startsWith(`${PASSWORD_CHANGE}?`)
+  ) {
+    return destination;
+  }
+
+  if (destination === FIELD_SETUP) return FIELD_SETUP;
+  if (destination !== FIELD_HOME) return FIELD_HOME;
+
+  return safeInternalRedirect(requestedDestination, FIELD_HOME, [FIELD_HOME]);
+}

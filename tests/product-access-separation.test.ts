@@ -39,6 +39,14 @@ describe("dedicated product access surfaces", () => {
     expect(route).toContain("getMobileFieldServiceAccess");
     expect(route).toContain('fieldAccess.canAccessFieldService');
     expect(route).toContain('"/mobile/service/setup"');
+    expect(field).toContain("resolveFieldPostSignInHref");
+    expect(field).toContain("We couldn't reach ProFixIQ");
+    expect(route).toContain(
+      'surface === "field" ? "local" : "global"',
+    );
+    expect(route).toContain(
+      "supabase.auth.signOut({ scope: rejectedSessionScope })",
+    );
   });
 
   it("removes Mobile companion from the public Shop sign-in hierarchy", () => {

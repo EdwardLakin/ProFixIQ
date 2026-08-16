@@ -7,6 +7,7 @@ import { Eye, EyeOff, Loader2, Truck, WifiOff } from "lucide-react";
 
 import AuthShell from "@/features/auth/components/AuthShell";
 import AuthStatus from "@/features/auth/components/AuthStatus";
+import { resolveFieldPostSignInHref } from "@/features/auth/lib/accessSurfaceRouting";
 import { safeInternalRedirect } from "@/features/auth/lib/safeRedirect";
 import { signInWithIdentifier } from "@/features/auth/lib/signInClient";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
@@ -111,15 +112,16 @@ export default function FieldSignIn() {
         return;
       }
 
-      const destination = safeInternalRedirect(
-        requestedDestination,
+      const destination = resolveFieldPostSignInHref(
         result.destination,
-        [FIELD_HOME],
+        requestedDestination,
       );
-      router.replace(
-        result.destination === FIELD_SETUP ? FIELD_SETUP : destination,
-      );
+      router.replace(destination);
       router.refresh();
+    } catch {
+      setError(
+        "We couldn't reach ProFixIQ. Check your connection and try again.",
+      );
     } finally {
       setLoading(false);
     }
