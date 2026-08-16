@@ -358,28 +358,6 @@ export async function middleware(req: NextRequest) {
     }
   }
 
-  if (pathname === "/" && user) {
-    if (isPortalOnlyAccount) {
-      const access = await resolvePortalAccessServer(supabase, user.id);
-      const target = productRequestUrl(
-        req,
-        access.fleet && !access.customer ? "/portal/fleet" : "/portal",
-        fleetProductRequest,
-      );
-      return redirectWithResponseHeaders(target, res);
-    }
-    const target = productRequestUrl(
-      req,
-      !completed
-        ? "/onboarding"
-        : mobileDeviceRequest
-          ? "/mobile"
-          : "/dashboard",
-      fleetProductRequest,
-    );
-    return redirectWithResponseHeaders(target, res);
-  }
-
   if (isPublic) {
     const requestedRedirect = safeRedirectPath(
       req.nextUrl.searchParams.get("redirect"),
