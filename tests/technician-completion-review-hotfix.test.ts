@@ -35,6 +35,15 @@ describe("technician completion post-merge review hotfix", () => {
     expect(migration).toContain("on conflict (shop_id, work_order_line_id)");
     expect(migration).toContain("for update");
     expect(migration).toContain("interval '5 minutes'");
+    expect(migration).toContain(
+      "completed_repair_learning_receipts_line_idx",
+    );
+    expect(migration).toContain(
+      "completed_repair_learning_receipts_actor_idx",
+    );
+    expect(migration).toContain(
+      "completed_repair_learning_receipts_deny_direct_access",
+    );
     expect(completionService).toContain(
       '"claim_completed_repair_learning_atomic"',
     );

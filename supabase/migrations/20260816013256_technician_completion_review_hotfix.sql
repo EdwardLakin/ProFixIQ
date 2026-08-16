@@ -86,6 +86,20 @@ alter table copilot.completed_repair_learning_receipts enable row level security
 revoke all on copilot.completed_repair_learning_receipts
   from public, anon, authenticated, service_role;
 
+create index if not exists completed_repair_learning_receipts_line_idx
+  on copilot.completed_repair_learning_receipts (work_order_line_id);
+create index if not exists completed_repair_learning_receipts_actor_idx
+  on copilot.completed_repair_learning_receipts (actor_user_id);
+
+drop policy if exists completed_repair_learning_receipts_deny_direct_access
+  on copilot.completed_repair_learning_receipts;
+create policy completed_repair_learning_receipts_deny_direct_access
+  on copilot.completed_repair_learning_receipts
+  for all
+  to public
+  using (false)
+  with check (false);
+
 create or replace function public.claim_completed_repair_learning_atomic(
   p_shop_id uuid,
   p_work_order_line_id uuid,
