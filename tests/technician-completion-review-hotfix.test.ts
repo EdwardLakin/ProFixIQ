@@ -5,6 +5,10 @@ const migration = readFileSync(
   "supabase/migrations/20260816013256_technician_completion_review_hotfix.sql",
   "utf8",
 );
+const advisorMigration = readFileSync(
+  "supabase/migrations/20260816020500_completion_learning_receipt_advisor_hardening.sql",
+  "utf8",
+);
 const actions = readFileSync(
   "features/copilot/technician/server/actions.ts",
   "utf8",
@@ -35,13 +39,13 @@ describe("technician completion post-merge review hotfix", () => {
     expect(migration).toContain("on conflict (shop_id, work_order_line_id)");
     expect(migration).toContain("for update");
     expect(migration).toContain("interval '5 minutes'");
-    expect(migration).toContain(
+    expect(advisorMigration).toContain(
       "completed_repair_learning_receipts_line_idx",
     );
-    expect(migration).toContain(
+    expect(advisorMigration).toContain(
       "completed_repair_learning_receipts_actor_idx",
     );
-    expect(migration).toContain(
+    expect(advisorMigration).toContain(
       "completed_repair_learning_receipts_deny_direct_access",
     );
     expect(completionService).toContain(
