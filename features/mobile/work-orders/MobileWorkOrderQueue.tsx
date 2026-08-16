@@ -164,14 +164,18 @@ function primarySignal(signal: WorkOrderSignal): string | null {
   return null;
 }
 
-export default function MobileWorkOrderQueue() {
+export default function MobileWorkOrderQueue({
+  initialStatus = "",
+}: {
+  initialStatus?: string;
+}) {
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [queryText, setQueryText] = useState("");
-  const [status, setStatus] = useState<string>("");
+  const [status, setStatus] = useState<string>(initialStatus);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [forbidden, setForbidden] = useState(false);
   const [assignedOnly, setAssignedOnly] = useState(false);
