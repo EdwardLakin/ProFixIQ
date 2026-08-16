@@ -34,6 +34,9 @@ describe("dedicated product access surfaces", () => {
     const field = read("features/auth/components/FieldSignIn.tsx");
     const route = read("app/api/auth/sign-in/route.ts");
     const accessRoute = read("app/api/mobile/field-service/access/route.ts");
+    const routeGate = read(
+      "features/mobile/service/MobileFieldServiceRouteGate.tsx",
+    );
 
     expect(field).toContain('surface: "field"');
     expect(field).toContain("Sign in to ProFixIQ Field");
@@ -46,6 +49,8 @@ describe("dedicated product access surfaces", () => {
     expect(field).toContain("We couldn't reach ProFixIQ");
     expect(route).toContain("resolveAuthenticatedStaffProfile");
     expect(accessRoute).toContain("mustChangePassword");
+    expect(routeGate).toContain("resolveFieldExistingSessionHref");
+    expect(routeGate).toContain('router.replace(destination ?? "/mobile")');
     expect(route).toContain('surface === "field" ? "local" : "global"');
     expect(route).toContain(
       "supabase.auth.signOut({ scope: rejectedSessionScope })",

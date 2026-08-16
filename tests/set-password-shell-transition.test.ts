@@ -26,23 +26,24 @@ describe("set-password shell transition", () => {
   });
 
   it("keeps database details internal and presents a safe retry message", async () => {
-    const eq = vi.fn().mockResolvedValue({
-      error: { message: "raw postgres policy detail" },
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+      json: async () => ({
+        error: "Account activation could not be completed.",
+      }),
     });
-    const update = vi.fn(() => ({ eq }));
-    const from = vi.fn(() => ({ update }));
-
-    const result = await activatePasswordProfile(
-      { from } as never,
-      "profile-id",
-    );
+    const result = await activatePasswordProfile(fetchMock as never);
 
     expect(result).toEqual({
       ok: false,
       userMessage: PASSWORD_ACTIVATION_RETRY_MESSAGE,
-      detail: "raw postgres policy detail",
+      detail: "Account activation could not be completed.",
     });
     expect(PASSWORD_ACTIVATION_RETRY_MESSAGE).not.toContain("postgres");
+    expect(readFileSync(helperPath, "utf8")).toContain(
+      "/api/auth/password-activation",
+    );
     expect(readFileSync(helperPath, "utf8")).toContain(
       "PASSWORD_ACTIVATION_RETRY_MESSAGE",
     );

@@ -9,6 +9,7 @@ const authFixture = vi.hoisted(() => ({
   },
   profile: null as null | {
     id: string;
+    user_id?: string | null;
     role: string | null;
     shop_id: string | null;
     completed_onboarding: boolean;
@@ -25,13 +26,16 @@ const authFixture = vi.hoisted(() => ({
 vi.mock("@supabase/ssr", () => ({
   createServerClient: () => {
     class MockQuery {
+      private readonly filters = new Map<string, unknown>();
+
       constructor(private readonly table: string) {}
 
       select() {
         return this;
       }
 
-      eq() {
+      eq(column: string, value: unknown) {
+        this.filters.set(column, value);
         return this;
       }
 
@@ -40,10 +44,18 @@ vi.mock("@supabase/ssr", () => ({
       }
 
       async maybeSingle() {
+        const profileMatches =
+          authFixture.profile &&
+          ((this.filters.has("id") &&
+            authFixture.profile.id === this.filters.get("id")) ||
+            (this.filters.has("user_id") &&
+              authFixture.profile.user_id === this.filters.get("user_id")));
         return {
           data:
             this.table === "profiles"
-              ? authFixture.profile
+              ? profileMatches
+                ? authFixture.profile
+                : null
               : this.table === "customers" && authFixture.customerId
                 ? { id: authFixture.customerId }
                 : null,
@@ -142,6 +154,24 @@ describe("Product host middleware boundary", () => {
     expect(response.headers.get("location")).toBe(
       "https://profixiq.com/onboarding",
     );
+  });
+
+  it("uses the canonical linked profile for imported staff in middleware", async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "test-anon-key";
+    authFixture.user = { id: "auth-user-1", app_metadata: {} };
+    authFixture.profile = {
+      id: "canonical-profile-1",
+      user_id: "auth-user-1",
+      role: "technician",
+      shop_id: "shop-1",
+      completed_onboarding: true,
+    };
+
+    const response = await middleware(shopRequest("/mobile/service"));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("location")).toBeNull();
   });
 
   it("moves legacy Fleet workspace URLs off the Shop hostname", async () => {
