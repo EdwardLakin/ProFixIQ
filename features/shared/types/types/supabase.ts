@@ -27461,7 +27461,7 @@ export type Database = {
           p_worker_id: string
         }
         Returns: {
-          actor_user_id: string | null
+          actor_user_id: string
           lease_token: string
           shop_id: string
           work_order_line_id: string
@@ -30547,3 +30547,4 @@ export const Constants = {
     },
   },
 } as const
+
