@@ -765,7 +765,8 @@ begin
     completed,
     is_draft,
     locked,
-    signing_cycle
+    signing_cycle,
+    is_canonical
   ) values (
     'a1438000-0000-4000-8000-000000000220',
     'a1438000-0000-4000-8000-000000000010',
@@ -775,7 +776,8 @@ begin
     false,
     true,
     false,
-    0
+    0,
+    true
   );
 
   begin
@@ -843,6 +845,33 @@ begin
     'CoPilot Runtime Technician',
     0,
     now()
+  );
+
+  -- Retained non-canonical inspections are immutable evidence history. A
+  -- stale draft must not block completion once the canonical inspection is
+  -- explicitly complete and signed.
+  insert into public.inspections (
+    id,
+    shop_id,
+    work_order_id,
+    work_order_line_id,
+    status,
+    completed,
+    is_draft,
+    locked,
+    signing_cycle,
+    is_canonical
+  ) values (
+    'a1438000-0000-4000-8000-000000000222',
+    'a1438000-0000-4000-8000-000000000010',
+    'a1438000-0000-4000-8000-000000000102',
+    'a1438000-0000-4000-8000-000000000202',
+    'draft',
+    false,
+    true,
+    false,
+    0,
+    false
   );
 
   perform copilot.technician_event_append_internal(
@@ -983,6 +1012,24 @@ begin
   where id = 'a1438000-0000-4000-8000-000000000209'
   returning updated_at into v_line_updated_at;
 
+  perform copilot.technician_event_append_internal(
+    'a1438000-0000-4000-8000-000000000003',
+    v_session_id,
+    'action.pending',
+    'system',
+    'a1438000-0000-5000-a000-000000000423',
+    jsonb_build_object(
+      'action', 'job.complete',
+      'key', 'a1438000-0000-5000-a000-000000000422',
+      'turnId', 'runtime-split-complete-turn',
+      'request', jsonb_build_object('type', 'job.complete'),
+      'workOrderId', 'a1438000-0000-4000-8000-000000000104',
+      'workOrderLineId', 'a1438000-0000-4000-8000-000000000209',
+      'lineUpdatedAt', v_line_updated_at
+    ),
+    now()
+  );
+
   perform copilot.technician_job_action_internal(
     'a1438000-0000-4000-8000-000000000003',
     v_session_id,
@@ -1022,8 +1069,128 @@ begin
   ) then
     raise exception 'CoPilot split-identity assertion failed: auth/profile ownership was conflated';
   end if;
+
+  update public.work_order_lines
+  set assigned_tech_id = 'a1438000-0000-4000-8000-000000000004',
+      assigned_to = 'a1438000-0000-4000-8000-000000000004'
+  where id = 'a1438000-0000-4000-8000-000000000210';
+
+  perform copilot.technician_session_start_internal(
+    'a1438000-0000-4000-8000-000000000003',
+    'a1438000-0000-4000-8000-000000000104',
+    'a1438000-0000-4000-8000-000000000210',
+    'shop',
+    'a1438000-0000-5000-a000-000000000424'
+  );
+
+  update public.work_order_lines
+  set assigned_tech_id = null,
+      assigned_to = null
+  where id = 'a1438000-0000-4000-8000-000000000210';
+  delete from public.work_order_line_technicians
+  where work_order_line_id = 'a1438000-0000-4000-8000-000000000210'
+    and technician_id = 'a1438000-0000-4000-8000-000000000004';
+
+  begin
+    perform copilot.technician_session_read_internal(
+      'a1438000-0000-4000-8000-000000000003',
+      v_session_id
+    );
+    raise exception 'CoPilot receipt assertion failed: historical completion receipt survived re-anchor';
+  exception when sqlstate '42501' then
+    if sqlerrm <> 'copilot_work_order_assignment_required' then
+      raise;
+    end if;
+  end;
+
+  insert into public.workforce_operation_keys (
+    shop_id,
+    operation_name,
+    operation_key,
+    actor_user_id,
+    work_order_id,
+    work_order_line_id,
+    result
+  ) values (
+    'a1438000-0000-4000-8000-000000000010',
+    'job_punch:finish',
+    'technician-copilot:a1438000-0000-5000-a000-000000000425',
+    'a1438000-0000-4000-8000-000000000004',
+    'a1438000-0000-4000-8000-000000000104',
+    'a1438000-0000-4000-8000-000000000210',
+    '{}'::jsonb
+  );
+
+  if not exists (
+    select 1
+    from public.workforce_operation_keys receipt
+    where receipt.operation_key =
+      'technician-copilot:a1438000-0000-5000-a000-000000000425'
+      and receipt.actor_user_id =
+        'a1438000-0000-4000-8000-000000000003'
+  ) then
+    raise exception 'CoPilot split-identity assertion failed: legacy receipt actor was not normalized';
+  end if;
 end
 $technician_copilot_split_identity_completion$;
+
+do $technician_completion_learning_serialization$
+declare
+  v_first jsonb;
+  v_overlapping jsonb;
+  v_finished jsonb;
+  v_replay jsonb;
+begin
+  v_first := public.claim_completed_repair_learning_atomic(
+    'a1438000-0000-4000-8000-000000000010',
+    'a1438000-0000-4000-8000-000000000202',
+    'a1438000-0000-4000-8000-000000000002',
+    'runtime-learning-operation',
+    'a1438000-0000-5000-a000-000000000430'
+  );
+  v_overlapping := public.claim_completed_repair_learning_atomic(
+    'a1438000-0000-4000-8000-000000000010',
+    'a1438000-0000-4000-8000-000000000202',
+    'a1438000-0000-4000-8000-000000000002',
+    'runtime-learning-operation',
+    'a1438000-0000-5000-a000-000000000431'
+  );
+  v_finished := public.finish_completed_repair_learning_atomic(
+    'a1438000-0000-4000-8000-000000000010',
+    'a1438000-0000-4000-8000-000000000202',
+    'a1438000-0000-4000-8000-000000000002',
+    'a1438000-0000-5000-a000-000000000430',
+    true,
+    '{"ok":true}'::jsonb
+  );
+  v_replay := public.claim_completed_repair_learning_atomic(
+    'a1438000-0000-4000-8000-000000000010',
+    'a1438000-0000-4000-8000-000000000202',
+    'a1438000-0000-4000-8000-000000000002',
+    'runtime-learning-operation',
+    'a1438000-0000-5000-a000-000000000432'
+  );
+
+  if not coalesce((v_first ->> 'claimed')::boolean, false)
+    or not coalesce((v_overlapping ->> 'inProgress')::boolean, false)
+    or not coalesce((v_finished ->> 'completed')::boolean, false)
+    or not coalesce((v_replay ->> 'completed')::boolean, false)
+    or exists (
+      select 1
+      from copilot.completed_repair_learning_receipts receipt
+      where receipt.shop_id = 'a1438000-0000-4000-8000-000000000010'
+        and receipt.work_order_line_id =
+          'a1438000-0000-4000-8000-000000000202'
+        and (
+          receipt.state <> 'completed'
+          or receipt.attempt_count <> 1
+        )
+    )
+  then
+    raise exception 'Completed repair learning assertion failed: replay serialization is incoherent';
+  end if;
+end
+$technician_completion_learning_serialization$;
 
 do $technician_copilot_runtime_schema$
 begin

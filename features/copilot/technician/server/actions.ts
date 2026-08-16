@@ -92,6 +92,29 @@ function nextRank(line: TechnicianWorkLine): number {
   return 4;
 }
 
+export function compareTechnicianWorkLines(
+  left: TechnicianWorkLine,
+  right: TechnicianWorkLine,
+): number {
+  const rank = nextRank(left) - nextRank(right);
+  if (rank !== 0) return rank;
+  const priority =
+    (left.priority ?? Number.MAX_SAFE_INTEGER) -
+    (right.priority ?? Number.MAX_SAFE_INTEGER);
+  if (priority !== 0) return priority;
+  const createdAt = String(left.createdAt ?? "").localeCompare(
+    String(right.createdAt ?? ""),
+  );
+  if (createdAt !== 0) return createdAt;
+  return left.id.localeCompare(right.id);
+}
+
+export function selectNextTechnicianWorkLine(
+  lines: readonly TechnicianWorkLine[],
+): TechnicianWorkLine | null {
+  return [...lines].sort(compareTechnicianWorkLines)[0] ?? null;
+}
+
 export function describeNextTechnicianWork(
   assignedWork: readonly TechnicianWorkCandidate[],
 ): string {
@@ -99,19 +122,9 @@ export function describeNextTechnicianWork(
     .flatMap((workOrder) =>
       workOrder.lines.map((line) => ({ workOrder, line })),
     )
-    .sort((left, right) => {
-      const rank = nextRank(left.line) - nextRank(right.line);
-      if (rank !== 0) return rank;
-      const priority =
-        (left.line.priority ?? Number.MAX_SAFE_INTEGER) -
-        (right.line.priority ?? Number.MAX_SAFE_INTEGER);
-      if (priority !== 0) return priority;
-      const createdAt = String(left.line.createdAt ?? "").localeCompare(
-        String(right.line.createdAt ?? ""),
-      );
-      if (createdAt !== 0) return createdAt;
-      return left.line.id.localeCompare(right.line.id);
-    });
+    .sort((left, right) =>
+      compareTechnicianWorkLines(left.line, right.line),
+    );
 
   const next = choices[0];
   if (!next) return "You don't have another assigned job line right now.";
@@ -384,6 +397,7 @@ export async function executeBoundTechnicianCopilotAction(input: {
       supabase: input.identity.supabase,
       lineId: input.bound.lineId,
       actorUserId: input.identity.authUserId,
+      operationKey: input.operationId,
     });
   }
 

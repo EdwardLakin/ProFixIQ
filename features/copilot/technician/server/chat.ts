@@ -14,6 +14,7 @@ import {
   describeNextTechnicianWork,
   executeBoundTechnicianCopilotAction,
   prepareTechnicianCopilotAction,
+  selectNextTechnicianWorkLine,
   technicianWorkLineLabel,
   type BoundTechnicianCopilotAction,
 } from "./actions";
@@ -852,7 +853,9 @@ export async function runTechnicianCopilotTurn(input: {
       technicianIds: [input.identity.authUserId, input.identity.profileId],
       workOrderId: completionWorkOrderId,
     });
-    const nextLine = activeWorkOrder?.lines[0] ?? null;
+    const nextLine = selectNextTechnicianWorkLine(
+      activeWorkOrder?.lines ?? [],
+    );
     if (nextLine) {
       await command<{ sessionId: string }>(input.identity, "session.start", {
         workOrderId: completionWorkOrderId,
