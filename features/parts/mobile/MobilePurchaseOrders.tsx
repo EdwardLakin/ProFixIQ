@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { purchaseOrderIdentity } from "@/features/parts/lib/purchaseOrderIdentity";
+import { isOpenPartsObligation } from "@/features/parts/lib/open-parts-obligations";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import {
   purchaseOrderCanReceive,
@@ -70,6 +71,7 @@ type PurchaseOrder = {
   ordered_at: string | null;
   expected_at: string | null;
   work_order_id: string | null;
+  supplier_quote_request_id: string | null;
   total: number | null;
 };
 
@@ -114,27 +116,30 @@ type JsonResult = {
   ok?: boolean;
   error?: string;
   vendorId?: string;
+  vendorIsActive?: boolean;
   vendor?: Supplier;
   result?: Record<string, unknown>;
 };
 
-const RELEASED_REQUEST_STATUSES = [
+const ORDERABLE_REQUEST_STATUSES = [
   "approved",
   "partially_ordered",
   "partially_consumed",
   "partially_returned",
-  "fulfilled",
-  "returned",
 ] as const;
 
-const CANCELLED_ITEM_STATUSES = new Set([
-  "cancelled",
-  "canceled",
-  "declined",
-  "rejected",
-]);
-
 const CLOSED_PO_STATUSES = new Set(["received", "cancelled", "canceled"]);
+const ACTIVE_PURCHASE_ORDER_STATUSES = [
+  "draft",
+  "open",
+  "ordered",
+  "partially_ordered",
+  "sent",
+  "receiving",
+  "partially_received",
+] as const;
+const QUERY_PAGE_SIZE = 200;
+const QUERY_ID_BATCH_SIZE = 100;
 
 const actionClass =
   "inline-flex min-h-11 items-center justify-center rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-3 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] transition hover:border-[color:var(--accent-copper)] disabled:cursor-not-allowed disabled:opacity-50";
@@ -230,15 +235,46 @@ export default function MobilePurchaseOrders({
     setError(null);
 
     try {
-      const [requestResult, supplierResult, locationResult, poResult] =
-        await Promise.all([
-          supabase
+      const requestPromise = (async (): Promise<PartRequest[]> => {
+        const rows: PartRequest[] = [];
+        for (let offset = 0; ; offset += QUERY_PAGE_SIZE) {
+          const result = await supabase
             .from("part_requests")
             .select("id,work_order_id,status")
             .eq("shop_id", shopId)
-            .in("status", [...RELEASED_REQUEST_STATUSES])
+            .in("status", [...ORDERABLE_REQUEST_STATUSES])
             .order("created_at", { ascending: false })
-            .limit(200),
+            .order("id", { ascending: false })
+            .range(offset, offset + QUERY_PAGE_SIZE - 1);
+          if (result.error) throw result.error;
+          const page = (result.data ?? []) as PartRequest[];
+          rows.push(...page);
+          if (page.length < QUERY_PAGE_SIZE) return rows;
+        }
+      })();
+      const purchaseOrderPromise = (async (): Promise<PurchaseOrder[]> => {
+        const rows: PurchaseOrder[] = [];
+        for (let offset = 0; ; offset += QUERY_PAGE_SIZE) {
+          const result = await supabase
+            .from("purchase_orders")
+            .select(
+              "id,po_number,supplier_id,status,created_at,ordered_at,expected_at,work_order_id,supplier_quote_request_id,total",
+            )
+            .eq("shop_id", shopId)
+            .in("status", [...ACTIVE_PURCHASE_ORDER_STATUSES])
+            .order("created_at", { ascending: false })
+            .order("id", { ascending: false })
+            .range(offset, offset + QUERY_PAGE_SIZE - 1);
+          if (result.error) throw result.error;
+          const page = (result.data ?? []) as PurchaseOrder[];
+          rows.push(...page);
+          if (page.length < QUERY_PAGE_SIZE) return rows;
+        }
+      })();
+
+      const [nextRequests, supplierResult, locationResult, nextPurchaseOrders] =
+        await Promise.all([
+          requestPromise,
           supabase
             .from("suppliers")
             .select("id,name,email,phone,is_active")
@@ -250,53 +286,61 @@ export default function MobilePurchaseOrders({
             .select("id,code,name")
             .eq("shop_id", shopId)
             .order("code", { ascending: true }),
-          supabase
-            .from("purchase_orders")
-            .select(
-              "id,po_number,supplier_id,status,created_at,ordered_at,expected_at,work_order_id,total",
-            )
-            .eq("shop_id", shopId)
-            .order("created_at", { ascending: false })
-            .limit(150),
+          purchaseOrderPromise,
         ]);
 
-      const firstError =
-        requestResult.error ||
-        supplierResult.error ||
-        locationResult.error ||
-        poResult.error;
+      const firstError = supplierResult.error || locationResult.error;
       if (firstError) throw firstError;
 
-      const nextRequests = (requestResult.data ?? []) as PartRequest[];
-      const nextPurchaseOrders = (poResult.data ?? []) as PurchaseOrder[];
       const requestIds = nextRequests.map((request) => request.id);
       const poIds = nextPurchaseOrders.map((purchaseOrder) => purchaseOrder.id);
 
-      let nextItems: PartRequestItem[] = [];
-      if (requestIds.length > 0) {
-        const itemResult = await supabase
-          .from("part_request_items")
-          .select(
-            "id,request_id,work_order_id,work_order_line_id,part_id,description,status,qty,qty_requested,qty_approved,qty_ordered,qty_received,unit_cost,location_id,vendor_id,updated_at",
-          )
-          .eq("shop_id", shopId)
-          .in("request_id", requestIds)
-          .order("updated_at", { ascending: false });
-        if (itemResult.error) throw itemResult.error;
-        nextItems = (itemResult.data ?? []) as PartRequestItem[];
+      const nextItems: PartRequestItem[] = [];
+      for (
+        let start = 0;
+        start < requestIds.length;
+        start += QUERY_ID_BATCH_SIZE
+      ) {
+        const requestIdBatch = requestIds.slice(
+          start,
+          start + QUERY_ID_BATCH_SIZE,
+        );
+        for (let offset = 0; ; offset += QUERY_PAGE_SIZE) {
+          const itemResult = await supabase
+            .from("part_request_items")
+            .select(
+              "id,request_id,work_order_id,work_order_line_id,part_id,description,status,qty,qty_requested,qty_approved,qty_ordered,qty_received,unit_cost,location_id,vendor_id,updated_at",
+            )
+            .eq("shop_id", shopId)
+            .in("request_id", requestIdBatch)
+            .order("updated_at", { ascending: false })
+            .order("id", { ascending: false })
+            .range(offset, offset + QUERY_PAGE_SIZE - 1);
+          if (itemResult.error) throw itemResult.error;
+          const page = (itemResult.data ?? []) as PartRequestItem[];
+          nextItems.push(...page);
+          if (page.length < QUERY_PAGE_SIZE) break;
+        }
       }
 
-      let nextLines: PurchaseOrderLine[] = [];
-      if (poIds.length > 0) {
-        const lineResult = await supabase
-          .from("purchase_order_lines")
-          .select(
-            "id,po_id,part_request_item_id,part_id,description,sku,qty,cancelled_qty,received_qty,unit_cost,location_id,created_at",
-          )
-          .in("po_id", poIds)
-          .order("created_at", { ascending: true });
-        if (lineResult.error) throw lineResult.error;
-        nextLines = (lineResult.data ?? []) as PurchaseOrderLine[];
+      const nextLines: PurchaseOrderLine[] = [];
+      for (let start = 0; start < poIds.length; start += QUERY_ID_BATCH_SIZE) {
+        const poIdBatch = poIds.slice(start, start + QUERY_ID_BATCH_SIZE);
+        for (let offset = 0; ; offset += QUERY_PAGE_SIZE) {
+          const lineResult = await supabase
+            .from("purchase_order_lines")
+            .select(
+              "id,po_id,part_request_item_id,part_id,description,sku,qty,cancelled_qty,received_qty,unit_cost,location_id,created_at",
+            )
+            .in("po_id", poIdBatch)
+            .order("created_at", { ascending: true })
+            .order("id", { ascending: true })
+            .range(offset, offset + QUERY_PAGE_SIZE - 1);
+          if (lineResult.error) throw lineResult.error;
+          const page = (lineResult.data ?? []) as PurchaseOrderLine[];
+          nextLines.push(...page);
+          if (page.length < QUERY_PAGE_SIZE) break;
+        }
       }
 
       const workOrderIds = Array.from(
@@ -310,15 +354,23 @@ export default function MobilePurchaseOrders({
           ].filter((id): id is string => Boolean(id)),
         ),
       );
-      let nextWorkOrders: WorkOrder[] = [];
-      if (workOrderIds.length > 0) {
+      const nextWorkOrders: WorkOrder[] = [];
+      for (
+        let start = 0;
+        start < workOrderIds.length;
+        start += QUERY_ID_BATCH_SIZE
+      ) {
+        const workOrderIdBatch = workOrderIds.slice(
+          start,
+          start + QUERY_ID_BATCH_SIZE,
+        );
         const workOrderResult = await supabase
           .from("work_orders")
           .select("id,custom_id")
           .eq("shop_id", shopId)
-          .in("id", workOrderIds);
+          .in("id", workOrderIdBatch);
         if (workOrderResult.error) throw workOrderResult.error;
-        nextWorkOrders = (workOrderResult.data ?? []) as WorkOrder[];
+        nextWorkOrders.push(...((workOrderResult.data ?? []) as WorkOrder[]));
       }
 
       setRequests(nextRequests);
@@ -377,11 +429,16 @@ export default function MobilePurchaseOrders({
   const needsOrdering = useMemo(
     () =>
       items.filter(
-        (item) =>
-          !CANCELLED_ITEM_STATUSES.has(clean(item.status).toLowerCase()) &&
-          requestRemainingToOrder(item) > 0,
+        (item) => {
+          const request = requestById.get(item.request_id);
+          return (
+            Boolean(request) &&
+            isOpenPartsObligation(request?.status, item) &&
+            requestRemainingToOrder(item) > 0
+          );
+        },
       ),
-    [items],
+    [items, requestById],
   );
   const activePurchaseOrders = useMemo(
     () =>
@@ -443,6 +500,20 @@ export default function MobilePurchaseOrders({
 
   const placePurchaseOrder = async (purchaseOrder: PurchaseOrder) => {
     if (placingPoId) return;
+    const supplier = supplierById.get(purchaseOrder.supplier_id);
+    const contactChannel = purchaseOrder.supplier_quote_request_id
+      ? clean(supplier?.email)
+        ? "email"
+        : clean(supplier?.phone)
+          ? "phone"
+          : null
+      : null;
+    if (purchaseOrder.supplier_quote_request_id && !contactChannel) {
+      toast.error(
+        "Add an email address or phone number for this supplier before placing the quoted PO.",
+      );
+      return;
+    }
     const key =
       placeOperationKeys.current.get(purchaseOrder.id) ?? operationId();
     placeOperationKeys.current.set(purchaseOrder.id, key);
@@ -460,7 +531,10 @@ export default function MobilePurchaseOrders({
             "Content-Type": "application/json",
             "Idempotency-Key": key,
           },
-          body: JSON.stringify({ idempotencyKey: key }),
+          body: JSON.stringify({
+            idempotencyKey: key,
+            contactChannel,
+          }),
         },
       );
       const payload = await readJson(response);
@@ -501,6 +575,18 @@ export default function MobilePurchaseOrders({
     if ((!response.ok && response.status !== 409) || !supplierId) {
       throw new Error(payload?.error || "Unable to create the supplier.");
     }
+    if (response.status === 409) {
+      const duplicate = suppliers.find(
+        (supplier) => supplier.id === supplierId,
+      );
+      const duplicateIsActive =
+        payload?.vendorIsActive ?? duplicate?.is_active ?? false;
+      if (!duplicateIsActive) {
+        throw new Error(
+          "A supplier with this name is inactive. Reactivate it before creating a purchase order.",
+        );
+      }
+    }
     if (payload?.vendor) {
       setSuppliers((current) =>
         [
@@ -517,6 +603,10 @@ export default function MobilePurchaseOrders({
     const remaining = requestRemainingToOrder(orderDraft.item);
     if (!Number.isFinite(orderDraft.qty) || orderDraft.qty <= 0) {
       toast.error("Order quantity must be greater than zero.");
+      return;
+    }
+    if (Math.round(orderDraft.qty * 100) / 100 !== orderDraft.qty) {
+      toast.error("Order quantity supports at most two decimal places.");
       return;
     }
     if (orderDraft.qty > remaining) {
@@ -645,9 +735,7 @@ export default function MobilePurchaseOrders({
       toast.error(`Only ${formatQuantity(remaining)} remains on this line.`);
       return;
     }
-    const needsLocation = Boolean(
-      receiveDraft.line.part_request_item_id || receiveDraft.line.part_id,
-    );
+    const needsLocation = Boolean(receiveDraft.line.part_id);
     if (needsLocation && !receiveDraft.locationId) {
       toast.error("Select the receiving location.");
       return;
@@ -670,7 +758,10 @@ export default function MobilePurchaseOrders({
     setSubmitting(true);
     try {
       let response: Response;
-      if (receiveDraft.line.part_request_item_id) {
+      if (
+        receiveDraft.line.part_request_item_id &&
+        receiveDraft.line.part_id
+      ) {
         response = await fetch(
           `/api/parts/requests/items/${encodeURIComponent(
             receiveDraft.line.part_request_item_id,
@@ -1060,9 +1151,7 @@ export default function MobilePurchaseOrders({
                                 className={`${primaryActionClass} mt-3 w-full`}
                                 onClick={() => openReceive(purchaseOrder, line)}
                                 disabled={
-                                  Boolean(
-                                    line.part_request_item_id || line.part_id,
-                                  ) && locations.length === 0
+                                  Boolean(line.part_id) && locations.length === 0
                                 }
                               >
                                 Receive {formatQuantity(remaining)}
@@ -1346,8 +1435,7 @@ export default function MobilePurchaseOrders({
               {formatQuantity(purchaseOrderLineRemaining(receiveDraft.line))}
             </div>
 
-            {receiveDraft.line.part_request_item_id ||
-            receiveDraft.line.part_id ? (
+            {receiveDraft.line.part_id ? (
               <label className="mt-3 block text-sm text-[color:var(--theme-text-secondary)]">
                 Receiving location
                 <select

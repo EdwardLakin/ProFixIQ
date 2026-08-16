@@ -27,8 +27,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ itemId: string
     !isUuid(itemId) ||
     (!isUuid(poId) && !isUuid(supplierId)) ||
     qty == null ||
+    Math.round(qty * 100) / 100 !== qty ||
     (locationId != null && !isUuid(locationId)) ||
-    (unitCost != null && (!Number.isFinite(unitCost) || unitCost < 0))
+    (unitCost != null && (!Number.isFinite(unitCost) || unitCost < 0)) ||
+    (notes != null && notes.length > 2000)
   )
     return NextResponse.json(
       {

@@ -4,7 +4,23 @@ import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-a
 import { toSafeDatabaseError } from "@/features/shared/lib/server/safeDatabaseError";
 
 type Body = {
+  contactChannel?: unknown;
   idempotencyKey?: unknown;
+};
+
+type RpcClient = {
+  rpc: (
+    name: string,
+    args: Record<string, unknown>,
+  ) => PromiseLike<{
+    data: Record<string, unknown> | null;
+    error: {
+      message?: string | null;
+      details?: string | null;
+      hint?: string | null;
+      code?: string | null;
+    } | null;
+  }>;
 };
 
 function isUuid(value: unknown): value is string {
@@ -20,14 +36,6 @@ function clean(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-const PLACED_STATUSES = new Set([
-  "open",
-  "ordered",
-  "sent",
-  "receiving",
-  "received",
-]);
-
 export async function POST(
   request: Request,
   context: { params: Promise<{ poId: string }> },
@@ -37,13 +45,19 @@ export async function POST(
   const idempotencyKey =
     clean(request.headers.get("Idempotency-Key")) ||
     clean(body?.idempotencyKey);
+  const contactChannel = clean(body?.contactChannel).toLowerCase();
 
-  if (!isUuid(poId) || !idempotencyKey || idempotencyKey.length > 300) {
+  if (
+    !isUuid(poId) ||
+    !idempotencyKey ||
+    idempotencyKey.length > 200 ||
+    (contactChannel && contactChannel !== "email" && contactChannel !== "phone")
+  ) {
     return NextResponse.json(
       {
         ok: false,
         error:
-          "A valid purchase order and stable idempotency key are required.",
+          "A valid purchase order, contact method, and stable idempotency key are required.",
       },
       { status: 400 },
     );
@@ -54,96 +68,28 @@ export async function POST(
   });
   if (!access.ok) return access.response;
 
-  const shopId = access.profile.shop_id;
-  const { data: purchaseOrder, error: purchaseOrderError } =
-    await access.supabase
-      .from("purchase_orders")
-      .select("id,status,ordered_at")
-      .eq("id", poId)
-      .eq("shop_id", shopId)
-      .maybeSingle();
-
-  if (purchaseOrderError) {
-    const safeError = toSafeDatabaseError(purchaseOrderError, {
-      context: "parts/po/place-context",
-      fallback: "The purchase order could not be loaded.",
-    });
-    return NextResponse.json(
-      {
-        ok: false,
-        error: safeError.message,
-        correlationId: safeError.correlationId,
-      },
-      { status: 500 },
-    );
-  }
-  if (!purchaseOrder) {
-    return NextResponse.json(
-      { ok: false, error: "Purchase order not found." },
-      { status: 404 },
-    );
-  }
-
-  const currentStatus = clean(purchaseOrder.status).toLowerCase();
-  if (PLACED_STATUSES.has(currentStatus)) {
-    return NextResponse.json({
-      ok: true,
-      idempotent: true,
-      result: purchaseOrder,
-    });
-  }
-  if (currentStatus !== "draft") {
-    return NextResponse.json(
-      { ok: false, error: "Only a draft purchase order can be placed." },
-      { status: 409 },
-    );
-  }
-
-  const { data: lines, error: linesError } = await access.supabase
-    .from("purchase_order_lines")
-    .select("id,qty,cancelled_qty")
-    .eq("po_id", poId);
-  if (linesError) {
-    const safeError = toSafeDatabaseError(linesError, {
-      context: "parts/po/place-lines",
-      fallback: "The purchase-order lines could not be verified.",
-    });
-    return NextResponse.json(
-      {
-        ok: false,
-        error: safeError.message,
-        correlationId: safeError.correlationId,
-      },
-      { status: 500 },
-    );
-  }
-  const hasActiveLine = (lines ?? []).some(
-    (line) => Number(line.qty ?? 0) - Number(line.cancelled_qty ?? 0) > 0,
+  const scopedKey = `${access.profile.shop_id}:parts_place_purchase_order:${idempotencyKey}`;
+  const { data, error } = await (access.supabase as unknown as RpcClient).rpc(
+    "parts_place_purchase_order",
+    {
+      p_po_id: poId,
+      p_idempotency_key: scopedKey,
+      p_contact_channel: contactChannel || null,
+    },
   );
-  if (!hasActiveLine) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "Add at least one active line before placing this PO.",
-      },
-      { status: 409 },
-    );
-  }
 
-  const orderedAt = purchaseOrder.ordered_at || new Date().toISOString();
-  const { data: updated, error: updateError } = await access.supabase
-    .from("purchase_orders")
-    .update({ status: "open", ordered_at: orderedAt })
-    .eq("id", poId)
-    .eq("shop_id", shopId)
-    .eq("status", "draft")
-    .select("id,status,ordered_at")
-    .maybeSingle();
-
-  if (updateError) {
-    const safeError = toSafeDatabaseError(updateError, {
+  if (error) {
+    const safeError = toSafeDatabaseError(error, {
       context: "parts/po/place",
       fallback: "The purchase order could not be placed.",
+      publicMessagePatterns: [
+        /^Purchase order not found/i,
+        /^Only a draft purchase order/i,
+        /^Add at least one active line/i,
+        /^A supplier contact method is required/i,
+        /^Purchase order supplier was not found/i,
+        /^The selected supplier does not have/i,
+      ],
     });
     return NextResponse.json(
       {
@@ -151,34 +97,16 @@ export async function POST(
         error: safeError.message,
         correlationId: safeError.correlationId,
       },
-      { status: 500 },
+      {
+        status:
+          safeError.isPublicMessage && error.code === "P0002"
+            ? 404
+            : safeError.isPublicMessage
+              ? 409
+              : 500,
+      },
     );
   }
-  if (updated) {
-    return NextResponse.json({ ok: true, idempotent: false, result: updated });
-  }
 
-  const { data: raced, error: racedError } = await access.supabase
-    .from("purchase_orders")
-    .select("id,status,ordered_at")
-    .eq("id", poId)
-    .eq("shop_id", shopId)
-    .maybeSingle();
-  if (racedError) {
-    return NextResponse.json(
-      { ok: false, error: "The purchase-order state could not be confirmed." },
-      { status: 500 },
-    );
-  }
-  if (raced && PLACED_STATUSES.has(clean(raced.status).toLowerCase())) {
-    return NextResponse.json({ ok: true, idempotent: true, result: raced });
-  }
-
-  return NextResponse.json(
-    {
-      ok: false,
-      error: "The purchase order changed before it could be placed.",
-    },
-    { status: 409 },
-  );
+  return NextResponse.json({ ok: true, result: data });
 }

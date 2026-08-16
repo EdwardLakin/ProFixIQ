@@ -7,6 +7,7 @@ import {
   requestRemainingToOrder,
   requestTargetQuantity,
 } from "@/features/parts/mobile/mobilePurchaseOrderQuantities";
+import { isOpenPartsObligation } from "@/features/parts/lib/open-parts-obligations";
 
 const read = (path: string) => readFileSync(path, "utf8");
 const page = read("app/mobile/service/purchase-orders/page.tsx");
@@ -76,5 +77,31 @@ describe("Field purchase orders", () => {
     expect(workflow).toContain("/receive-free-text`");
     expect(workflow).not.toContain('.from("stock_moves")');
     expect(workflow).not.toContain('.from("purchase_order_lines").update');
+  });
+
+  it("keeps terminal requests out of ordering and routes request-backed free text by inventory identity", () => {
+    expect(
+      isOpenPartsObligation("fulfilled", {
+        request_id: "request-1",
+        status: "approved",
+        qty_approved: 1,
+        qty_ordered: 0,
+      }),
+    ).toBe(false);
+    expect(workflow).toMatch(
+      /receiveDraft\.line\.part_request_item_id\s*&&\s*receiveDraft\.line\.part_id/,
+    );
+    expect(workflow).toContain(
+      "const needsLocation = Boolean(receiveDraft.line.part_id)",
+    );
+  });
+
+  it("loads every operational PO before rendering the receive queue", () => {
+    expect(workflow).toContain("ACTIVE_PURCHASE_ORDER_STATUSES");
+    expect(workflow).toContain("offset += QUERY_PAGE_SIZE");
+    expect(workflow).toContain(
+      '.range(offset, offset + QUERY_PAGE_SIZE - 1)',
+    );
+    expect(workflow).not.toContain(".limit(150)");
   });
 });

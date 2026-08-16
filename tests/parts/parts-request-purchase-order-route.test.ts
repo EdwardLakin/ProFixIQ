@@ -134,4 +134,23 @@ describe("parts request purchase-order route", () => {
       }),
     );
   });
+
+  it("rejects order quantities with more than two decimal places", async () => {
+    const supabase = createSupabase();
+    mocks.requireShopScopedApiAccess.mockResolvedValue({
+      ok: true,
+      profile: { id: "actor-id", shop_id: SHOP_ID },
+      supabase,
+    });
+
+    const response = await callRoute({
+      supplierId: SUPPLIER_ID,
+      qty: 1.001,
+      unitCost: 40,
+      idempotencyKey: "over-precision-order",
+    });
+
+    expect(response.status).toBe(400);
+    expect(supabase.rpc).not.toHaveBeenCalled();
+  });
 });

@@ -91,10 +91,10 @@ async function findNormalizedDuplicate(args: {
   shopId: string;
   name: string;
   excludeId?: string;
-}): Promise<{ id: string; name: string } | null> {
+}): Promise<{ id: string; name: string; is_active: boolean } | null> {
   const { data, error } = await args.supabase
     .from("suppliers")
-    .select("id, name")
+    .select("id, name, is_active")
     .eq("shop_id", args.shopId)
     .limit(1000);
   if (error) throw error;
@@ -132,6 +132,7 @@ export async function POST(request: Request) {
         {
           error: `A vendor named “${duplicate.name}” already exists.`,
           vendorId: duplicate.id,
+          vendorIsActive: duplicate.is_active,
         },
         { status: 409 },
       );
@@ -195,6 +196,7 @@ export async function PATCH(request: Request) {
         {
           error: `A vendor named “${duplicate.name}” already exists.`,
           vendorId: duplicate.id,
+          vendorIsActive: duplicate.is_active,
         },
         { status: 409 },
       );

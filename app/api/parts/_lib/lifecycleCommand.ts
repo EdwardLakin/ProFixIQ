@@ -77,6 +77,7 @@ export async function runPartsLifecycleRpcWithAccess(
         /^Receipt quantity .*$/i,
         /^Requested .* quantity .*$/i,
         /^No outstanding .*$/i,
+        /^Purchase order supplier is inactive\.?$/i,
         /^Cannot .*$/i,
       ],
     });
