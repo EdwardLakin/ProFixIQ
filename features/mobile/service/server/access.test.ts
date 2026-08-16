@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveMobileFieldServiceAccess } from "./access";
+import {
+  resolveFieldWorkspaceCapabilities,
+  resolveMobileFieldServiceAccess,
+} from "./access";
 
 describe("resolveMobileFieldServiceAccess", () => {
   it("does not grant Field Service to a standard shop mechanic", () => {
@@ -49,5 +52,36 @@ describe("resolveMobileFieldServiceAccess", () => {
         productEntitled: false,
       }).canAccessFieldService,
     ).toBe(false);
+  });
+});
+
+describe("resolveFieldWorkspaceCapabilities", () => {
+  it("does not advertise scheduling, parts, or fleet tools to a mechanic", () => {
+    expect(
+      resolveFieldWorkspaceCapabilities({
+        role: "mechanic",
+        canAccessFleet: false,
+        canConfigureFieldService: false,
+      }),
+    ).toEqual({
+      canManageScheduling: false,
+      canManageParts: false,
+      canAccessFleet: false,
+      canConfigureFieldService: false,
+    });
+  });
+
+  it("keeps fleet visibility tied to the canonical fleet scope", () => {
+    expect(
+      resolveFieldWorkspaceCapabilities({
+        role: "manager",
+        canAccessFleet: false,
+        canConfigureFieldService: false,
+      }),
+    ).toMatchObject({
+      canManageScheduling: true,
+      canManageParts: true,
+      canAccessFleet: false,
+    });
   });
 });

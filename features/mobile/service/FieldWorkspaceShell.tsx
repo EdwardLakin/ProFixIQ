@@ -21,6 +21,12 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import {
+  canUseFieldWorkspaceCapability,
+  EMPTY_FIELD_WORKSPACE_CAPABILITIES,
+  normalizeFieldWorkspaceCapabilities,
+  type FieldWorkspaceCapabilities,
+} from "./fieldWorkspaceCapabilities";
 
 export const FIELD_SURFACE_SESSION_KEY = "profixiq:field-surface:v1";
 
@@ -29,6 +35,7 @@ type FieldNavItem = {
   href: string;
   icon: LucideIcon;
   exact?: boolean;
+  requiredCapability?: keyof FieldWorkspaceCapabilities;
 };
 
 const WORK_NAV: FieldNavItem[] = [
@@ -42,6 +49,7 @@ const WORK_NAV: FieldNavItem[] = [
     label: "Appointments",
     href: "/mobile/appointments",
     icon: CalendarDays,
+    requiredCapability: "canManageScheduling",
   },
   {
     label: "Work orders",
@@ -56,8 +64,18 @@ const WORK_NAV: FieldNavItem[] = [
 ];
 
 const OPERATIONS_NAV: FieldNavItem[] = [
-  { label: "Parts", href: "/mobile/parts", icon: Boxes },
-  { label: "Fleet", href: "/mobile/fleet", icon: Truck },
+  {
+    label: "Parts",
+    href: "/mobile/parts",
+    icon: Boxes,
+    requiredCapability: "canManageParts",
+  },
+  {
+    label: "Fleet",
+    href: "/mobile/fleet",
+    icon: Truck,
+    requiredCapability: "canAccessFleet",
+  },
   {
     label: "Follow-ups",
     href: "/mobile/service/followups",
@@ -112,16 +130,23 @@ function FieldNavLink({
 
 function FieldNavigation({
   pathname,
+  capabilities,
   onNavigate,
 }: {
   pathname: string;
+  capabilities: FieldWorkspaceCapabilities;
   onNavigate?: () => void;
 }) {
   return (
     <nav aria-label="Field workspace">
       <div className="field-workspace-nav__section">
         <div className="field-workspace-nav__label">Work</div>
-        {WORK_NAV.map((item) => (
+        {WORK_NAV.filter((item) =>
+          canUseFieldWorkspaceCapability(
+            capabilities,
+            item.requiredCapability,
+          ),
+        ).map((item) => (
           <FieldNavLink
             key={item.href}
             item={item}
@@ -132,7 +157,12 @@ function FieldNavigation({
       </div>
       <div className="field-workspace-nav__section">
         <div className="field-workspace-nav__label">Operations</div>
-        {OPERATIONS_NAV.map((item) => (
+        {OPERATIONS_NAV.filter((item) =>
+          canUseFieldWorkspaceCapability(
+            capabilities,
+            item.requiredCapability,
+          ),
+        ).map((item) => (
           <FieldNavLink
             key={item.href}
             item={item}
@@ -150,6 +180,8 @@ export default function FieldWorkspaceShell({ children }: { children: ReactNode 
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [workspaceCapabilities, setWorkspaceCapabilities] =
+    useState<FieldWorkspaceCapabilities>(EMPTY_FIELD_WORKSPACE_CAPABILITIES);
 
   useEffect(() => setMenuOpen(false), [pathname]);
 
@@ -161,6 +193,34 @@ export default function FieldWorkspaceShell({ children }: { children: ReactNode 
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [menuOpen]);
+
+  useEffect(() => {
+    let active = true;
+
+    void fetch("/api/mobile/field-service/access", {
+      credentials: "include",
+      cache: "no-store",
+    })
+      .then(async (response) => {
+        const body = (await response.json().catch(() => null)) as
+          | {
+              canAccessFieldService?: boolean;
+              workspaceCapabilities?: unknown;
+            }
+          | null;
+        if (!active || !response.ok || !body?.canAccessFieldService) return;
+        setWorkspaceCapabilities(
+          normalizeFieldWorkspaceCapabilities(body.workspaceCapabilities),
+        );
+      })
+      .catch(() => {
+        // Keep optional navigation hidden when capabilities cannot be verified.
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const exitField = () => {
     window.sessionStorage.removeItem(FIELD_SURFACE_SESSION_KEY);
@@ -197,7 +257,10 @@ export default function FieldWorkspaceShell({ children }: { children: ReactNode 
         </Link>
 
         <div className="field-workspace-sidebar__scroll">
-          <FieldNavigation pathname={pathname} />
+          <FieldNavigation
+            pathname={pathname}
+            capabilities={workspaceCapabilities}
+          />
         </div>
 
         <div className="field-workspace-sidebar__footer">
@@ -208,16 +271,27 @@ export default function FieldWorkspaceShell({ children }: { children: ReactNode 
             <PackageOpen aria-hidden className="h-[1.1rem] w-[1.1rem]" />
             <span>Truck inventory</span>
           </Link>
-          <Link
-            href="/mobile/service/setup"
-            className="field-workspace-nav__link"
-          >
-            <Settings2 aria-hidden className="h-[1.1rem] w-[1.1rem]" />
-            <span>Field setup</span>
-          </Link>
+          {workspaceCapabilities.canConfigureFieldService ? (
+            <Link
+              href="/mobile/service/setup"
+              className="field-workspace-nav__link"
+            >
+              <Settings2 aria-hidden className="h-[1.1rem] w-[1.1rem]" />
+              <span>Field setup</span>
+            </Link>
+          ) : null}
           <Link href="/mobile" onClick={exitField} className="field-workspace-exit">
             Switch workspace
           </Link>
+          <button
+            type="button"
+            onClick={() => void signOut()}
+            disabled={signingOut}
+            className="field-workspace-nav__link field-workspace-sign-out"
+          >
+            <LogOut aria-hidden className="h-[1.1rem] w-[1.1rem]" />
+            <span>{signingOut ? "Signing out…" : "Sign out"}</span>
+          </button>
         </div>
       </aside>
 
@@ -254,13 +328,27 @@ export default function FieldWorkspaceShell({ children }: { children: ReactNode 
           <Home aria-hidden className="h-5 w-5" />
           <span>Today</span>
         </Link>
-        <Link
-          href="/mobile/appointments"
-          data-active={pathname.startsWith("/mobile/appointments") ? "true" : "false"}
-        >
-          <CalendarDays aria-hidden className="h-5 w-5" />
-          <span>Schedule</span>
-        </Link>
+        {workspaceCapabilities.canManageScheduling ? (
+          <Link
+            href="/mobile/appointments"
+            data-active={
+              pathname.startsWith("/mobile/appointments") ? "true" : "false"
+            }
+          >
+            <CalendarDays aria-hidden className="h-5 w-5" />
+            <span>Schedule</span>
+          </Link>
+        ) : (
+          <Link
+            href="/mobile/inspections"
+            data-active={
+              pathname.startsWith("/mobile/inspections") ? "true" : "false"
+            }
+          >
+            <ClipboardCheck aria-hidden className="h-5 w-5" />
+            <span>Inspect</span>
+          </Link>
+        )}
         <Link href="/mobile/service/new" className="field-workspace-bottom__new">
           <Plus aria-hidden className="h-6 w-6" />
           <span>New</span>
@@ -319,7 +407,11 @@ export default function FieldWorkspaceShell({ children }: { children: ReactNode 
           >
             <Plus aria-hidden className="h-5 w-5" /> New service call
           </Link>
-          <FieldNavigation pathname={pathname} onNavigate={() => setMenuOpen(false)} />
+          <FieldNavigation
+            pathname={pathname}
+            capabilities={workspaceCapabilities}
+            onNavigate={() => setMenuOpen(false)}
+          />
           <div className="field-workspace-nav__section">
             <div className="field-workspace-nav__label">Workspace</div>
             <FieldNavLink
@@ -331,15 +423,17 @@ export default function FieldWorkspaceShell({ children }: { children: ReactNode 
               pathname={pathname}
               onNavigate={() => setMenuOpen(false)}
             />
-            <FieldNavLink
-              item={{
-                label: "Field setup",
-                href: "/mobile/service/setup",
-                icon: Settings2,
-              }}
-              pathname={pathname}
-              onNavigate={() => setMenuOpen(false)}
-            />
+            {workspaceCapabilities.canConfigureFieldService ? (
+              <FieldNavLink
+                item={{
+                  label: "Field setup",
+                  href: "/mobile/service/setup",
+                  icon: Settings2,
+                }}
+                pathname={pathname}
+                onNavigate={() => setMenuOpen(false)}
+              />
+            ) : null}
           </div>
         </div>
         <div className="field-workspace-drawer__footer">

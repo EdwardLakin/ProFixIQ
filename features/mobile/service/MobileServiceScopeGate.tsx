@@ -11,6 +11,11 @@ import {
 } from "@/features/shared/lib/offline/mutations";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import FieldHub from "./FieldHub";
+import {
+  EMPTY_FIELD_WORKSPACE_CAPABILITIES,
+  normalizeFieldWorkspaceCapabilities,
+  type FieldWorkspaceCapabilities,
+} from "./fieldWorkspaceCapabilities";
 
 const SNAPSHOT_CACHE_KEY = "profixiq:mobile-service:active:v1";
 const SNAPSHOT_SCOPE_KEY = "profixiq:mobile-service:active-scope:v1";
@@ -57,6 +62,8 @@ function protectSnapshot(scope: OfflineMutationScope | null): void {
 
 export default function MobileServiceScopeGate() {
   const [ready, setReady] = useState(false);
+  const [workspaceCapabilities, setWorkspaceCapabilities] =
+    useState<FieldWorkspaceCapabilities>(EMPTY_FIELD_WORKSPACE_CAPABILITIES);
   const router = useRouter();
 
   useEffect(() => {
@@ -81,7 +88,11 @@ export default function MobileServiceScopeGate() {
         cache: "no-store",
       });
       const fieldAccess = (await fieldAccessResponse.json().catch(() => null)) as
-        | { canAccessFieldService?: boolean; canConfigure?: boolean }
+        | {
+            canAccessFieldService?: boolean;
+            canConfigure?: boolean;
+            workspaceCapabilities?: unknown;
+          }
         | null;
       if (!active) return;
       if (!fieldAccessResponse.ok || !fieldAccess?.canAccessFieldService) {
@@ -89,6 +100,9 @@ export default function MobileServiceScopeGate() {
         router.replace(fieldAccess?.canConfigure ? "/mobile/service/setup" : "/mobile");
         return;
       }
+      setWorkspaceCapabilities(
+        normalizeFieldWorkspaceCapabilities(fieldAccess.workspaceCapabilities),
+      );
 
       const cached = getOfflineMutationScope();
       let scope: OfflineMutationScope | null =
@@ -125,5 +139,5 @@ export default function MobileServiceScopeGate() {
     );
   }
 
-  return <FieldHub />;
+  return <FieldHub capabilities={workspaceCapabilities} />;
 }

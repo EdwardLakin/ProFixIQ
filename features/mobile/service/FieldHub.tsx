@@ -22,6 +22,10 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import MobileServiceShell from "./MobileServiceShell";
+import {
+  canUseFieldWorkspaceCapability,
+  type FieldWorkspaceCapabilities,
+} from "./fieldWorkspaceCapabilities";
 
 type FieldModule = {
   title: string;
@@ -29,6 +33,7 @@ type FieldModule = {
   href?: string;
   icon: LucideIcon;
   status: "ready" | "next";
+  requiredCapability?: keyof FieldWorkspaceCapabilities;
 };
 
 const FIELD_MODULES: FieldModule[] = [
@@ -38,6 +43,7 @@ const FIELD_MODULES: FieldModule[] = [
     href: "/mobile/appointments",
     icon: CalendarDays,
     status: "ready",
+    requiredCapability: "canManageScheduling",
   },
   {
     title: "Work orders",
@@ -66,11 +72,12 @@ const FIELD_MODULES: FieldModule[] = [
     href: "/mobile/parts",
     icon: Boxes,
     status: "ready",
+    requiredCapability: "canManageParts",
   },
   {
     title: "Invoices & payment",
     description: "Finish the invoice and collect in the field.",
-    href: "/mobile/work-orders?status=ready_to_invoice",
+    href: "/mobile/work-orders?status=ready_to_invoice&mode=field_closeout",
     icon: FileText,
     status: "ready",
   },
@@ -80,6 +87,7 @@ const FIELD_MODULES: FieldModule[] = [
     href: "/mobile/fleet",
     icon: Truck,
     status: "ready",
+    requiredCapability: "canAccessFleet",
   },
   {
     title: "Purchase orders",
@@ -131,7 +139,11 @@ function FieldModuleCard({ module }: { module: FieldModule }) {
   );
 }
 
-export default function FieldHub() {
+export default function FieldHub({
+  capabilities,
+}: {
+  capabilities: FieldWorkspaceCapabilities;
+}) {
   const [online, setOnline] = useState(true);
   const [dateLabel, setDateLabel] = useState("Today");
 
@@ -169,12 +181,14 @@ export default function FieldHub() {
           <Link href="/mobile/service/new" className="field-hub-primary-action">
             <Plus aria-hidden className="h-5 w-5" /> New service call
           </Link>
-          <Link
-            href="/mobile/appointments"
-            className="field-hub-secondary-action"
-          >
-            <CalendarDays aria-hidden className="h-4 w-4" /> Book appointment
-          </Link>
+          {capabilities.canManageScheduling ? (
+            <Link
+              href="/mobile/appointments"
+              className="field-hub-secondary-action"
+            >
+              <CalendarDays aria-hidden className="h-4 w-4" /> Book appointment
+            </Link>
+          ) : null}
         </div>
       </section>
 
@@ -236,7 +250,12 @@ export default function FieldHub() {
             </div>
           </div>
           <div className="field-hub-module-grid">
-            {FIELD_MODULES.map((module) => (
+            {FIELD_MODULES.filter((module) =>
+              canUseFieldWorkspaceCapability(
+                capabilities,
+                module.requiredCapability,
+              ),
+            ).map((module) => (
               <FieldModuleCard key={module.title} module={module} />
             ))}
           </div>
