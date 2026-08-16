@@ -1,7 +1,5 @@
 "use client";
 
-import { Boxes } from "lucide-react";
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -12,7 +10,12 @@ import {
   type OfflineMutationScope,
 } from "@/features/shared/lib/offline/mutations";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
-import MobileServiceShell from "./MobileServiceShell";
+import FieldHub from "./FieldHub";
+import {
+  EMPTY_FIELD_WORKSPACE_CAPABILITIES,
+  normalizeFieldWorkspaceCapabilities,
+  type FieldWorkspaceCapabilities,
+} from "./fieldWorkspaceCapabilities";
 
 const SNAPSHOT_CACHE_KEY = "profixiq:mobile-service:active:v1";
 const SNAPSHOT_SCOPE_KEY = "profixiq:mobile-service:active-scope:v1";
@@ -59,6 +62,8 @@ function protectSnapshot(scope: OfflineMutationScope | null): void {
 
 export default function MobileServiceScopeGate() {
   const [ready, setReady] = useState(false);
+  const [workspaceCapabilities, setWorkspaceCapabilities] =
+    useState<FieldWorkspaceCapabilities>(EMPTY_FIELD_WORKSPACE_CAPABILITIES);
   const router = useRouter();
 
   useEffect(() => {
@@ -83,7 +88,11 @@ export default function MobileServiceScopeGate() {
         cache: "no-store",
       });
       const fieldAccess = (await fieldAccessResponse.json().catch(() => null)) as
-        | { canAccessFieldService?: boolean; canConfigure?: boolean }
+        | {
+            canAccessFieldService?: boolean;
+            canConfigure?: boolean;
+            workspaceCapabilities?: unknown;
+          }
         | null;
       if (!active) return;
       if (!fieldAccessResponse.ok || !fieldAccess?.canAccessFieldService) {
@@ -91,6 +100,9 @@ export default function MobileServiceScopeGate() {
         router.replace(fieldAccess?.canConfigure ? "/mobile/service/setup" : "/mobile");
         return;
       }
+      setWorkspaceCapabilities(
+        normalizeFieldWorkspaceCapabilities(fieldAccess.workspaceCapabilities),
+      );
 
       const cached = getOfflineMutationScope();
       let scope: OfflineMutationScope | null =
@@ -127,23 +139,5 @@ export default function MobileServiceScopeGate() {
     );
   }
 
-  return (
-    <>
-      <div className="mx-auto w-full max-w-3xl px-3 pt-3 sm:px-4">
-        <Link
-          href="/mobile/service/truck-inventory"
-          className="flex min-h-12 items-center justify-between rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-4 text-sm font-extrabold text-[color:var(--theme-text-primary)] shadow-card"
-        >
-          <span className="inline-flex items-center gap-2">
-            <Boxes className="h-4 w-4 text-[color:var(--accent-copper)]" />
-            Truck inventory
-          </span>
-          <span className="text-xs text-[color:var(--theme-text-muted)]">
-            Receive · transfer · scan/use
-          </span>
-        </Link>
-      </div>
-      <MobileServiceShell />
-    </>
-  );
+  return <FieldHub capabilities={workspaceCapabilities} />;
 }
