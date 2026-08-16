@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 
 import { enforceAuthRateLimit } from "@/features/auth/server/authRateLimit";
 import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
+import { getMobileFieldServiceAccess } from "@/features/mobile/service/server/access";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import {
   createAdminSupabase,
@@ -16,7 +17,7 @@ import {
   normalizeLoginUsername,
 } from "@/features/users/lib/username";
 
-type AccessSurface = "shop" | "mobile" | "customer" | "fleet";
+type AccessSurface = "shop" | "mobile" | "field" | "customer" | "fleet";
 type Body = {
   identifier?: string;
   password?: string;
@@ -98,6 +99,7 @@ export async function POST(req: Request) {
   const password = String(body?.password ?? "");
   const surface: AccessSurface =
     body?.surface === "mobile" ||
+    body?.surface === "field" ||
     body?.surface === "customer" ||
     body?.surface === "fleet"
       ? body.surface
@@ -149,8 +151,9 @@ export async function POST(req: Request) {
     );
   }
 
+  const rejectedSessionScope = surface === "field" ? "local" : "global";
   const deny = async () => {
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: rejectedSessionScope });
     return NextResponse.json(
       { ok: false, error: GENERIC_ERROR },
       { status: 403 },
@@ -158,7 +161,7 @@ export async function POST(req: Request) {
   };
 
   if (
-    (surface === "shop" || surface === "mobile") &&
+    (surface === "shop" || surface === "mobile" || surface === "field") &&
     signedInUser.app_metadata?.profixiq_portal_only === true &&
     !hasAcquisitionContext
   ) {
@@ -198,7 +201,7 @@ export async function POST(req: Request) {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("shop_id, role, completed_onboarding, must_change_password")
+    .select("id, shop_id, role, completed_onboarding, must_change_password, email, full_name")
     .eq("id", signedInUser.id)
     .maybeSingle();
 
@@ -211,17 +214,55 @@ export async function POST(req: Request) {
     return deny();
   }
 
-  if (surface === "mobile") {
-    const capabilities = getActorCapabilities({ role: profile.role });
+  const capabilities = getActorCapabilities({ role: profile.role });
+  if (surface === "mobile" || surface === "field") {
     const canUseMobile =
       capabilities.isKnownRole && capabilities.canonicalRole !== "customer";
     if (!canUseMobile) return deny();
   }
 
+  let fieldDestination: string | null = null;
+  if (surface === "field") {
+    try {
+      const fieldAccess = await getMobileFieldServiceAccess({
+        ok: true,
+        profile: {
+          id: profile.id,
+          role: profile.role,
+          shop_id: profile.shop_id,
+          completed_onboarding: profile.completed_onboarding,
+          email: profile.email,
+          full_name: profile.full_name,
+        },
+        canonicalRole: capabilities.canonicalRole,
+        authUserId: signedInUser.id,
+        supabase,
+      });
+
+      fieldDestination = fieldAccess.canAccessFieldService
+        ? "/mobile/service"
+        : fieldAccess.canConfigure
+          ? "/mobile/service/setup"
+          : null;
+    } catch {
+      await supabase.auth.signOut({ scope: rejectedSessionScope });
+      return NextResponse.json(
+        { ok: false, error: "Unable to verify Field access right now." },
+        { status: 503 },
+      );
+    }
+
+    if (!fieldDestination) return deny();
+  }
+
   const destination = profile.must_change_password
-    ? surface === "mobile"
-      ? "/auth/set-password?redirect=%2Fmobile"
-      : "/auth/set-password"
+    ? surface === "field"
+      ? `/auth/set-password?redirect=${encodeURIComponent(fieldDestination!)}`
+      : surface === "mobile"
+        ? "/auth/set-password?redirect=%2Fmobile"
+        : "/auth/set-password"
+    : surface === "field"
+      ? fieldDestination!
     : surface === "mobile"
       ? "/mobile"
       : profile.completed_onboarding || profile.shop_id

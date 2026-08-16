@@ -58,6 +58,7 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
     if (demoId) params.set("demoId", demoId);
     if (intakeId) params.set("intakeId", intakeId);
     if (activationContext) params.set("activationContext", activationContext);
+    params.set("surface", "shop");
     return `${origin}/auth/callback${params.size ? `?${params.toString()}` : ""}`;
   }, [origin, searchParams]);
 
@@ -78,6 +79,7 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
     if (demoId) params.set("demoId", demoId);
     if (intakeId) params.set("intakeId", intakeId);
     if (activationContext) params.set("activationContext", activationContext);
+    params.set("surface", "shop");
 
     return `/forgot-password${params.size ? `?${params.toString()}` : ""}`;
   }, [identifier, searchParams]);
@@ -265,13 +267,14 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
 
   return (
     <AuthShell
-      productLabel="Shop dashboard"
+      productLabel="ProFixIQ Shop"
       heroTitle="The operating system for modern repair shops."
       heroDescription="Move from intake to invoice with every role, approval, and service record connected to the right shop."
       highlights={["Role-aware access", "Live work visibility", "Secure approvals"]}
+      backHref="/sign-in"
     >
       <div className="mb-6">
-        <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-copper)]">Shop dashboard</div>
+        <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-copper)]">ProFixIQ Shop</div>
         <h1 className="mt-2 text-3xl font-semibold tracking-[-0.035em] text-[color:var(--theme-text-primary)] sm:text-4xl">{isSignIn ? "Welcome back" : "Create your shop account"}</h1>
         <p className="mt-2 text-sm leading-6 text-[color:var(--theme-text-secondary)]">
           {isSignIn ? "Use your shop username or account email." : "Start with the owner account; invite the rest of your team after setup."}
@@ -384,7 +387,7 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
           className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent-copper)] px-4 py-3 text-sm font-bold text-[color:var(--theme-text-on-accent)] shadow-[0_14px_32px_color-mix(in_srgb,var(--accent-copper)_25%,transparent)] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-          {loading ? "Please wait…" : isSignIn ? "Sign in to ProFixIQ" : "Create owner account"}
+          {loading ? "Please wait…" : isSignIn ? "Sign in to ProFixIQ Shop" : "Create owner account"}
         </button>
       </form>
 
@@ -400,24 +403,12 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
         </button>
       ) : null}
 
-      <div className="mt-6 grid gap-2 border-t border-[color:var(--theme-border-soft)] pt-5 sm:grid-cols-3">
+      <div className="mt-6 border-t border-[color:var(--theme-border-soft)] pt-5 text-center">
         <Link
-          href="/mobile/sign-in"
-          className="rounded-xl border border-[color:var(--theme-border-soft)] px-3 py-2.5 text-center text-xs font-semibold text-[color:var(--theme-text-secondary)] transition hover:border-[var(--accent-copper)] hover:text-[color:var(--theme-text-primary)]"
+          href="/sign-in"
+          className="text-xs font-semibold text-[color:var(--theme-text-secondary)] transition hover:text-[var(--accent-copper)] hover:underline"
         >
-          Mobile companion
-        </Link>
-        <Link
-          href="/portal/auth/sign-in"
-          className="rounded-xl border border-[color:var(--theme-border-soft)] px-3 py-2.5 text-center text-xs font-semibold text-[color:var(--theme-text-secondary)] transition hover:border-[var(--accent-copper)] hover:text-[color:var(--theme-text-primary)]"
-        >
-          Customer portal
-        </Link>
-        <Link
-          href="/portal/auth/fleet-sign-in"
-          className="rounded-xl border border-[color:var(--theme-border-soft)] px-3 py-2.5 text-center text-xs font-semibold text-[color:var(--theme-text-secondary)] transition hover:border-[var(--accent-copper)] hover:text-[color:var(--theme-text-primary)]"
-        >
-          Fleet portal
+          Choose another ProFixIQ app
         </Link>
       </div>
     </AuthShell>

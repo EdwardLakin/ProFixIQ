@@ -23,6 +23,7 @@ const CONTINUATION_KEYS = [
   "demoId",
   "intakeId",
   "activationContext",
+  "surface",
 ] as const;
 
 function buildContinuationParams(
@@ -50,13 +51,25 @@ export default function ForgotPasswordPage() {
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const surface = sp.get("surface")?.trim().toLowerCase();
 
   const goBack = () => {
     const params = buildContinuationParams(sp, email);
     const redirect = params.get("redirect");
-    const signInPath = redirect?.startsWith("/mobile")
-      ? "/mobile/sign-in"
-      : "/sign-in";
+    const signInPath =
+      surface === "field"
+        ? "/field/sign-in"
+        : surface === "customer"
+          ? "/customer/sign-in"
+          : surface === "fleet"
+            ? "/sign-in"
+            : surface === "shop"
+              ? "/shop/sign-in"
+              : redirect?.startsWith("/mobile/service")
+                ? "/field/sign-in"
+                : redirect?.startsWith("/mobile")
+                  ? "/mobile/sign-in"
+                  : "/sign-in";
     router.push(
       `${signInPath}${params.size ? `?${params.toString()}` : ""}`,
     );
@@ -142,7 +155,15 @@ export default function ForgotPasswordPage() {
               Back
             </button>
 
-            <div className="text-[10px] text-[color:var(--theme-text-muted)]">Shop access</div>
+            <div className="text-[10px] text-[color:var(--theme-text-muted)]">
+              {surface === "field"
+                ? "Field access"
+                : surface === "customer"
+                  ? "Customer Portal"
+                  : surface === "fleet"
+                    ? "Fleet access"
+                    : "Shop access"}
+            </div>
           </div>
 
           <div className="mb-6 space-y-2 text-center">

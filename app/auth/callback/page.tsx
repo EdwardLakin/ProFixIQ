@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { resolvePostAuthDestination } from "@/features/auth/lib/postAuthRouting";
+import { resolveLegacySignInHref } from "@/features/auth/lib/accessSurfaceRouting";
 import { safeInternalRedirect } from "@/features/auth/lib/safeRedirect";
 import { claimStripeAcquisitionAfterAuth } from "@/features/stripe/lib/client/claim-acquisition";
 
@@ -58,6 +59,7 @@ export default function AuthCallbackPage() {
         const demoId = sp.get("demoId")?.trim();
         const intakeId = sp.get("intakeId")?.trim();
         const activationContext = sp.get("activationContext")?.trim();
+        const surface = sp.get("surface")?.trim();
         if (redirect) passthrough.set("redirect", redirect);
         if (mode) passthrough.set("mode", mode);
         if (sessionId) passthrough.set("session_id", sessionId);
@@ -65,7 +67,9 @@ export default function AuthCallbackPage() {
         if (demoId) passthrough.set("demoId", demoId);
         if (intakeId) passthrough.set("intakeId", intakeId);
         if (activationContext) passthrough.set("activationContext", activationContext);
-        const signInHref = `/sign-in${passthrough.toString() ? `?${passthrough.toString()}` : ""}`;
+        if (surface) passthrough.set("surface", surface);
+        const signInHref =
+          resolveLegacySignInHref(passthrough) ?? "/sign-in";
 
         router.replace(signInHref);
         setTimeout(() => {
@@ -88,7 +92,7 @@ export default function AuthCallbackPage() {
         if (sessionId) retry.set("session_id", sessionId);
         retry.set("flow", "acquisition");
         retry.set("billing_link_error", "1");
-        router.replace(`/sign-in?${retry.toString()}`);
+        router.replace(`/shop/sign-in?${retry.toString()}`);
         return;
       }
 

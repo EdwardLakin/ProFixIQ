@@ -376,7 +376,7 @@ export default function QuotePageClient(): JSX.Element {
     } = await supabase.auth.getUser();
 
     if (userErr || !user) {
-      router.replace("/portal/auth/sign-in");
+      router.replace("/customer/sign-in");
       return;
     }
 

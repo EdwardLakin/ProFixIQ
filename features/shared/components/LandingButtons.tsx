@@ -33,7 +33,7 @@ export default function LandingHero() {
 
         <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
           <Link
-            href="/sign-in?redirectedFrom=/ai"
+            href="/shop/sign-in?redirect=%2Fai"
             className="rounded-lg bg-orange-500 px-5 py-3 font-bold text-[color:var(--theme-text-on-accent)] shadow hover:bg-orange-600"
           >
             Try the AI

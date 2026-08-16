@@ -8,6 +8,9 @@ describe("shell route boundaries", () => {
   it.each([
     "/",
     "/sign-in",
+    "/shop/sign-in",
+    "/field/sign-in",
+    "/customer/sign-in",
     "/signup",
     "/compare-plans",
     "/mobile/sign-in",

@@ -114,6 +114,7 @@ function legacyFleetPath(pathname: string): string | null {
   ) {
     return null;
   }
+  if (normalized === "/fleet/sign-in") return "/sign-in";
   if (normalized === "/fleet" || normalized === "/fleet/tower") return "/";
   if (normalized === "/fleet/dispatch") return "/";
 

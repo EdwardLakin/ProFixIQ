@@ -83,7 +83,7 @@ export default function PortalCustomerAppointmentsPage() {
 
       if (userErr || !user) {
         toast.error("Please sign in to view appointments.");
-        router.replace("/portal/auth/sign-in");
+        router.replace("/customer/sign-in");
         return;
       }
 

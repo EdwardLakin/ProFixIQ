@@ -7,7 +7,6 @@ import { Eye, EyeOff, Loader2 } from "lucide-react";
 import AuthShell from "@/features/auth/components/AuthShell";
 import AuthStatus from "@/features/auth/components/AuthStatus";
 import {
-  PORTAL_SIGN_IN,
   resolvePortalSurfaceRedirect,
   type PortalSurface,
 } from "@/features/auth/lib/portalSurfaceRouting";
@@ -37,6 +36,14 @@ export default function PortalSignInForm({
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const isFleet = portalType === "fleet";
+  const primarySiteOrigin =
+    process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ||
+    "https://profixiq.com";
+  const accessChooserHref =
+    isFleet && productHost ? `${primarySiteOrigin}/sign-in` : "/sign-in";
+  const forgotPasswordHref = isFleet
+    ? "/forgot-password?surface=fleet"
+    : "/forgot-password?surface=customer&redirect=%2Fportal";
 
   useEffect(() => {
     if (searchParams.get("activation") === "invalid") {
@@ -110,6 +117,7 @@ export default function PortalSignInForm({
           ? ["Fleet control tower", "Maintenance planning", "Connected repair history"]
           : ["Secure approvals", "Live progress", "Service history"]
       }
+      backHref={accessChooserHref}
     >
       <div className="mb-6">
         <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-copper)]">
@@ -158,7 +166,7 @@ export default function PortalSignInForm({
               Password
             </label>
             <Link
-              href="/forgot-password"
+              href={forgotPasswordHref}
               className="text-xs font-semibold text-[var(--accent-copper)] hover:underline"
             >
               Forgot password?
@@ -227,18 +235,11 @@ export default function PortalSignInForm({
       </div>
 
       <div className="mt-4 text-center text-xs text-[color:var(--theme-text-muted)]">
-        {isFleet ? "Looking for a customer service record?" : "Managing a fleet?"}{" "}
         <Link
-          href={
-            isFleet && productHost
-              ? `${process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") || "https://profixiq.com"}${PORTAL_SIGN_IN.customer}`
-              : isFleet
-                ? PORTAL_SIGN_IN.customer
-                : PORTAL_SIGN_IN.fleet
-          }
+          href={accessChooserHref}
           className="font-semibold text-[var(--accent-copper)] hover:underline"
         >
-          Sign in to the {isFleet ? "customer" : "fleet"} portal
+          Choose another ProFixIQ app
         </Link>
       </div>
     </AuthShell>

@@ -179,6 +179,81 @@ describe("Product host middleware boundary", () => {
     );
   });
 
+  it("moves the dedicated Fleet card route onto the Fleet product host", async () => {
+    const response = await middleware(shopRequest("/fleet/sign-in"));
+
+    expect(response.status).toBe(308);
+    expect(response.headers.get("location")).toBe(
+      "https://fleet.profixiq.com/sign-in",
+    );
+  });
+
+  it("moves legacy Field-flavored Mobile sign-in links to dedicated Field access", async () => {
+    const response = await middleware(
+      shopRequest("/mobile/sign-in?redirect=%2Fmobile%2Fservice"),
+    );
+
+    expect(response.status).toBe(308);
+    expect(response.headers.get("location")).toBe(
+      "https://profixiq.com/field/sign-in?redirect=%2Fmobile%2Fservice",
+    );
+  });
+
+  it("sends anonymous Field routes to Field sign-in", async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "test-anon-key";
+
+    const response = await middleware(shopRequest("/mobile/service"));
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      "https://profixiq.com/field/sign-in?redirect=%2Fmobile%2Fservice",
+    );
+  });
+
+  it("keeps the neutral access chooser visible to authenticated users", async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "test-anon-key";
+    authFixture.user = { id: "user-1", app_metadata: {} };
+    authFixture.profile = {
+      id: "user-1",
+      role: "owner",
+      shop_id: "shop-1",
+      completed_onboarding: true,
+    };
+
+    const response = await middleware(shopRequest("/sign-in"));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("location")).toBeNull();
+  });
+
+  it("honors explicit Shop sign-in on a phone instead of switching products", async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "test-anon-key";
+    authFixture.user = { id: "user-1", app_metadata: {} };
+    authFixture.profile = {
+      id: "user-1",
+      role: "owner",
+      shop_id: "shop-1",
+      completed_onboarding: true,
+    };
+
+    const response = await middleware(
+      new NextRequest("https://profixiq.com/shop/sign-in", {
+        headers: {
+          host: "profixiq.com",
+          "user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)",
+        },
+      }),
+    );
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      "https://profixiq.com/dashboard",
+    );
+  });
+
   it("does not expose the Shop work-order board as a Fleet route", async () => {
     const response = await middleware(fleetRequest("/dispatch"));
 

@@ -59,7 +59,7 @@ export default function PortalSignUpForm() {
       </div>
 
       <div className="mt-6 grid gap-2 sm:grid-cols-2">
-        <Link href="/portal/auth/sign-in" className="rounded-xl bg-[var(--accent-copper)] px-4 py-3 text-center text-sm font-bold text-[color:var(--theme-text-on-accent)]">
+        <Link href="/customer/sign-in" className="rounded-xl bg-[var(--accent-copper)] px-4 py-3 text-center text-sm font-bold text-[color:var(--theme-text-on-accent)]">
           Sign in if activated
         </Link>
         <Link href="/" className="rounded-xl border border-[color:var(--theme-border-soft)] px-4 py-3 text-center text-sm font-semibold text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)]">

@@ -40,7 +40,7 @@ export default function PortalConfirmPage() {
         if (cancelled) return;
         if (!session?.user) {
           router.replace(
-            "/portal/auth/sign-in?portal=customer&activation=invalid",
+            "/customer/sign-in?activation=invalid",
           );
           return;
         }
