@@ -51,6 +51,12 @@ set user_id = excluded.user_id,
     role = excluded.role,
     full_name = excluded.full_name;
 
+-- The legacy before-insert trigger initially mirrors profiles.id into user_id.
+-- Re-link this imported-style profile after insert to exercise split identity.
+update public.profiles
+set user_id = 'a1438000-0000-4000-8000-000000000003'
+where id = 'a1438000-0000-4000-8000-000000000004';
+
 insert into public.shops (id, owner_id, business_name, name, user_limit)
 values
   (
@@ -181,6 +187,16 @@ values
     'a1438000-0000-4000-8000-000000000004',
     'a1438000-0000-4000-8000-000000000004',
     'Runtime split-identity completion'
+  ),
+  (
+    'a1438000-0000-4000-8000-000000000210',
+    'a1438000-0000-4000-8000-000000000104',
+    'a1438000-0000-4000-8000-000000000010',
+    'job',
+    'awaiting',
+    null,
+    null,
+    'Runtime split-identity sibling'
   )
 on conflict (id) do nothing;
 
