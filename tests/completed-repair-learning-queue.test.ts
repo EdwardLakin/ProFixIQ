@@ -54,14 +54,14 @@ describe("completed repair learning queue", () => {
     const result = await processCompletedRepairLearningQueue(
       admin,
       10,
-      "worker-1",
+      "00000000-0000-4000-8000-000000000001",
     );
     errorLog.mockRestore();
 
     expect(rpc).toHaveBeenCalledWith(
       "claim_completed_repair_learning_batch",
       {
-        p_worker_id: "worker-1",
+        p_worker_id: "00000000-0000-4000-8000-000000000001",
         p_limit: 10,
         p_lease_seconds: 600,
       },
@@ -94,7 +94,11 @@ describe("completed repair learning queue", () => {
     } as never;
 
     await expect(
-      processCompletedRepairLearningQueue(admin, 10, "worker-1"),
+      processCompletedRepairLearningQueue(
+        admin,
+        10,
+        "00000000-0000-4000-8000-000000000001",
+      ),
     ).rejects.toThrow("queue unavailable");
   });
 
@@ -125,7 +129,7 @@ describe("completed repair learning queue", () => {
     const result = await processCompletedRepairLearningQueue(
       admin,
       10,
-      "worker-1",
+      "00000000-0000-4000-8000-000000000001",
     );
 
     expect(mocks.upsertMenuRepairItemFromCompletedLine).toHaveBeenCalledTimes(1);
