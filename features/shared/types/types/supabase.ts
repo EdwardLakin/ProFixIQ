@@ -28173,18 +28173,6 @@ export type Database = {
         }
         Returns: Json
       }
-      finish_completed_repair_learning_atomic: {
-        Args: {
-          p_actor_user_id: string
-          p_at?: string
-          p_lease_token: string
-          p_result?: Json
-          p_shop_id: string
-          p_succeeded: boolean
-          p_work_order_line_id: string
-        }
-        Returns: Json
-      }
       finalize_estimate_send_atomic: {
         Args: {
           p_actor_profile_id: string
@@ -28282,6 +28270,18 @@ export type Database = {
           p_phone?: string
           p_shop_id: string
           p_vin?: string
+        }
+        Returns: Json
+      }
+      finish_completed_repair_learning_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_at?: string
+          p_lease_token: string
+          p_result?: Json
+          p_shop_id: string
+          p_succeeded: boolean
+          p_work_order_line_id: string
         }
         Returns: Json
       }
