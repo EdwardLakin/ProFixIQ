@@ -5,6 +5,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const replace = vi.fn();
 let pathname = "/dashboard";
+const availability = vi.hoisted(() => ({
+  state: {
+    status: "available" as "available" | "unavailable",
+    message: null as string | null,
+  },
+}));
 
 vi.mock("next/navigation", () => ({
   usePathname: () => pathname,
@@ -13,7 +19,11 @@ vi.mock("next/navigation", () => ({
 
 vi.mock(
   "@/features/copilot/technician/client/useTechnicianCopilotAvailability",
-  () => ({ useTechnicianCopilotAvailability: () => true }),
+  () => ({
+    useTechnicianCopilotAvailability: () =>
+      availability.state.status === "available",
+    useTechnicianCopilotAvailabilityState: () => availability.state,
+  }),
 );
 
 vi.mock(
@@ -26,6 +36,7 @@ vi.mock(
 );
 
 import { TechnicianCopilotShell } from "@/features/copilot/technician/components/TechnicianCopilotShell";
+import { TechnicianCopilotCompatibilityRoute } from "@/features/copilot/technician/components/TechnicianCopilotCompatibilityRoute";
 
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
@@ -33,6 +44,7 @@ describe("persistent Technician CoPilot shell", () => {
   beforeEach(() => {
     pathname = "/dashboard";
     replace.mockReset();
+    availability.state = { status: "available", message: null };
   });
 
   it("keeps one collaborator runtime mounted while the panel opens and closes", () => {
@@ -43,15 +55,21 @@ describe("persistent Technician CoPilot shell", () => {
       "false",
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Open Technician CoPilot" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open Technician CoPilot" }),
+    );
 
-    expect(screen.getByRole("dialog", { name: "Technician CoPilot" })).toBeVisible();
+    expect(
+      screen.getByRole("dialog", { name: "Technician CoPilot" }),
+    ).toBeVisible();
     expect(screen.getByTestId("copilot-runtime")).toHaveAttribute(
       "data-active",
       "true",
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Close Technician CoPilot" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Close Technician CoPilot" }),
+    );
 
     expect(screen.getByTestId("copilot-runtime")).toHaveAttribute(
       "data-active",
@@ -64,7 +82,9 @@ describe("persistent Technician CoPilot shell", () => {
     pathname = "/mobile/copilot/technician";
     render(<TechnicianCopilotShell shouldCheck surface="mobile" />);
 
-    expect(screen.getByRole("dialog", { name: "Technician CoPilot" })).toBeVisible();
+    expect(
+      screen.getByRole("dialog", { name: "Technician CoPilot" }),
+    ).toBeVisible();
     const closeButtons = screen.getAllByRole("button", {
       name: "Close Technician CoPilot",
     });
@@ -94,8 +114,43 @@ describe("persistent Technician CoPilot shell", () => {
     expect(desktopShell).toContain(
       'shouldCheck={canonicalizeRole(role) === "mechanic"}',
     );
-    expect(mobileShell.match(/<TechnicianCopilotShell/g)).toHaveLength(3);
+    expect(mobileShell.match(/<TechnicianCopilotShell/g)).toHaveLength(1);
+    expect(desktopShell).toContain(
+      "resolveCanonicalStaffProfile(supabase, uid)",
+    );
+    expect(desktopShell).toContain("if (profile) setRole(profile.role)");
     expect(desktopRoute).not.toContain("<TechnicianTextCopilot");
     expect(mobileRoute).not.toContain("<TechnicianTextCopilot");
+  });
+
+  it("provides a terminal recovery state when a compatibility route is unavailable", () => {
+    availability.state = {
+      status: "unavailable",
+      message: "Technician CoPilot is not enabled for this account.",
+    };
+
+    render(<TechnicianCopilotCompatibilityRoute returnHref="/tech/queue" />);
+
+    expect(
+      screen.getByRole("heading", { name: "Technician CoPilot unavailable" }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("link", { name: "Return to my jobs" }),
+    ).toHaveAttribute("href", "/tech/queue");
+  });
+
+  it("keeps force-mounted dialogs inert while closed", () => {
+    const sharedDialog = readFileSync(
+      "features/shared/components/ui/dialog.tsx",
+      "utf8",
+    );
+
+    expect(sharedDialog).toContain(
+      "<DialogPortal forceMount={props.forceMount}>",
+    );
+    expect(sharedDialog).toContain(
+      "<DialogOverlay forceMount={props.forceMount} />",
+    );
+    expect(sharedDialog).toContain("data-[state=closed]:pointer-events-none");
   });
 });

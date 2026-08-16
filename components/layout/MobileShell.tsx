@@ -5,12 +5,12 @@ import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 
+import { TechnicianCopilotShell } from "@/features/copilot/technician/components/TechnicianCopilotShell";
 import { resolveMobileHref } from "@/features/mobile/navigation/mobile-route-continuity";
 import FieldWorkspaceShell, {
   FIELD_SURFACE_SESSION_KEY,
 } from "@/features/mobile/service/FieldWorkspaceShell";
 import { MobileBottomNav } from "./MobileBottomNav";
-import { TechnicianCopilotShell } from "@/features/copilot/technician/components/TechnicianCopilotShell";
 
 type Props = {
   children: ReactNode;
@@ -149,58 +149,57 @@ export function MobileShell({ children, title }: Props) {
     return children;
   }
 
+  let mobileSurface: ReactNode;
   if (isImmersiveRoute(pathname)) {
-    return (
-      <>
-        <div className="profixiq-mobile-command min-h-screen overflow-x-hidden pt-[env(safe-area-inset-top,0px)]">
-          <main className="mobile-command-main min-w-0 overflow-x-hidden">{children}</main>
-        </div>
-        <TechnicianCopilotShell shouldCheck surface="mobile" />
-      </>
+    mobileSurface = (
+      <div className="profixiq-mobile-command min-h-screen overflow-x-hidden pt-[env(safe-area-inset-top,0px)]">
+        <main className="mobile-command-main min-w-0 overflow-x-hidden">
+          {children}
+        </main>
+      </div>
     );
-  }
+  } else if (fieldSurface) {
+    mobileSurface = <FieldWorkspaceShell>{children}</FieldWorkspaceShell>;
+  } else {
+    mobileSurface = (
+      <div className="profixiq-mobile-command min-h-screen overflow-x-hidden">
+        <header className="mobile-command-header">
+          <div className="mobile-command-header__inner">
+            <button
+              type="button"
+              onClick={() => setMenuOpen(true)}
+              aria-label="Open navigation menu"
+              aria-expanded={menuOpen}
+              className="mobile-command-header__menu"
+            >
+              <Menu aria-hidden className="h-5 w-5" strokeWidth={2.2} />
+            </button>
 
-  if (fieldSurface) {
-    return (
-      <>
-        <FieldWorkspaceShell>{children}</FieldWorkspaceShell>
-        <TechnicianCopilotShell shouldCheck surface="mobile" />
-      </>
+            <div className="mobile-command-header__title">{resolvedTitle}</div>
+
+            <button
+              type="button"
+              onClick={() => router.push("/mobile")}
+              aria-label="Go to mobile home"
+              className="mobile-command-header__mark"
+            >
+              PFIQ
+            </button>
+          </div>
+        </header>
+
+        <main className="mobile-command-main">{children}</main>
+
+        <MobileBottomNav open={menuOpen} onClose={() => setMenuOpen(false)} />
+      </div>
     );
   }
 
   return (
-    <div className="profixiq-mobile-command min-h-screen overflow-x-hidden">
-      <header className="mobile-command-header">
-        <div className="mobile-command-header__inner">
-          <button
-            type="button"
-            onClick={() => setMenuOpen(true)}
-            aria-label="Open navigation menu"
-            aria-expanded={menuOpen}
-            className="mobile-command-header__menu"
-          >
-            <Menu aria-hidden className="h-5 w-5" strokeWidth={2.2} />
-          </button>
-
-          <div className="mobile-command-header__title">{resolvedTitle}</div>
-
-          <button
-            type="button"
-            onClick={() => router.push("/mobile")}
-            aria-label="Go to mobile home"
-            className="mobile-command-header__mark"
-          >
-            PFIQ
-          </button>
-        </div>
-      </header>
-
-      <main className="mobile-command-main">{children}</main>
-
-      <MobileBottomNav open={menuOpen} onClose={() => setMenuOpen(false)} />
+    <>
+      {mobileSurface}
       <TechnicianCopilotShell shouldCheck surface="mobile" />
-    </div>
+    </>
   );
 }
 

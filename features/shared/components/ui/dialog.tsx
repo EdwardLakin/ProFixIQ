@@ -21,7 +21,7 @@ export const DialogOverlay = React.forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      "fixed inset-0 z-40 bg-[color:var(--theme-surface-overlay)] backdrop-blur-sm transition-opacity data-[state=open]:opacity-100 data-[state=closed]:opacity-0",
+      "fixed inset-0 z-40 bg-[color:var(--theme-surface-overlay)] backdrop-blur-sm transition-opacity data-[state=open]:opacity-100 data-[state=closed]:invisible data-[state=closed]:pointer-events-none data-[state=closed]:opacity-0",
       className,
     )}
     {...props}
@@ -33,8 +33,8 @@ export const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
 >(({ className, children, ...props }, ref) => (
-  <DialogPortal>
-    <DialogOverlay />
+  <DialogPortal forceMount={props.forceMount}>
+    <DialogOverlay forceMount={props.forceMount} />
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
