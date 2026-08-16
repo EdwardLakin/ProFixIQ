@@ -7,6 +7,7 @@ import { enforceAuthRateLimit } from "@/features/auth/server/authRateLimit";
 import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
 import { getMobileFieldServiceAccess } from "@/features/mobile/service/server/access";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import { resolveAuthenticatedStaffProfile } from "@/features/shared/lib/server/admin-access";
 import {
   createAdminSupabase,
   createServerSupabaseRoute,
@@ -199,13 +200,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, destination: "/portal/fleet" });
   }
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("id, shop_id, role, completed_onboarding, must_change_password, email, full_name")
-    .eq("id", signedInUser.id)
-    .maybeSingle();
+  const { profile, error: profileError } =
+    await resolveAuthenticatedStaffProfile(supabase, signedInUser.id);
 
-  if (!profile) return deny();
+  if (profileError || !profile) return deny();
 
   if (!profile.shop_id) {
     if (surface === "shop" && !profile.role) {
@@ -231,6 +229,7 @@ export async function POST(req: Request) {
           role: profile.role,
           shop_id: profile.shop_id,
           completed_onboarding: profile.completed_onboarding,
+          must_change_password: profile.must_change_password,
           email: profile.email,
           full_name: profile.full_name,
         },

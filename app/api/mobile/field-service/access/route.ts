@@ -10,9 +10,14 @@ export async function GET() {
   if (!access.ok) return access.response;
 
   try {
-    return NextResponse.json(await getMobileFieldServiceWorkspaceAccess(access), {
-      headers: { "Cache-Control": "private, no-store" },
-    });
+    const fieldAccess = await getMobileFieldServiceWorkspaceAccess(access);
+    return NextResponse.json(
+      {
+        ...fieldAccess,
+        mustChangePassword: access.profile.must_change_password === true,
+      },
+      { headers: { "Cache-Control": "private, no-store" } },
+    );
   } catch {
     return NextResponse.json(
       { error: "Unable to verify Field Service access." },

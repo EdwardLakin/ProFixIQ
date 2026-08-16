@@ -2,11 +2,10 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
-
-type FieldAccess = {
-  canAccessFieldService?: boolean;
-  canConfigure?: boolean;
-};
+import {
+  resolveFieldExistingSessionHref,
+  type FieldExistingSessionAccess,
+} from "@/features/auth/lib/accessSurfaceRouting";
 
 export default function MobileFieldServiceRouteGate({
   children,
@@ -25,19 +24,22 @@ export default function MobileFieldServiceRouteGate({
         credentials: "include",
         cache: "no-store",
       }).catch(() => null);
-      const access = (await response?.json().catch(() => null)) as FieldAccess | null;
+      const access = (await response?.json().catch(() => null)) as
+        | FieldExistingSessionAccess
+        | null;
       if (!active) return;
 
-      const setupRoute = pathname === "/mobile/service/setup";
-      if (
-        response?.ok &&
-        (access?.canAccessFieldService || (setupRoute && access?.canConfigure))
-      ) {
+      const destination =
+        response?.ok && access
+          ? resolveFieldExistingSessionHref(access, pathname)
+          : null;
+
+      if (destination === pathname) {
         setAllowed(true);
         return;
       }
 
-      router.replace(setupRoute && access?.canConfigure ? "/mobile/service/setup" : "/mobile");
+      router.replace(destination ?? "/mobile");
     })();
 
     return () => {

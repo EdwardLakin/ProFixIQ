@@ -7,7 +7,7 @@ describe("acquisition auth handoff", () => {
   it("lets only a canonical unassigned shop owner continue to onboarding", () => {
     const route = read("app/api/auth/sign-in/route.ts");
 
-    expect(route).toContain("if (!profile) return deny();");
+    expect(route).toContain("if (profileError || !profile) return deny();");
     expect(route).toContain('if (surface === "shop" && !profile.role)');
     expect(route).toContain(
       'return NextResponse.json({ ok: true, destination: "/onboarding" });',

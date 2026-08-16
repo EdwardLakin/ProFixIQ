@@ -14,15 +14,23 @@ const read = (path: string) => readFileSync(path, "utf8");
 
 describe("Codex review follow-up hardening", () => {
   it("keeps password activation retryable without exposing database details", async () => {
-    const eq = vi.fn().mockResolvedValue({ error: { message: "raw postgres policy detail" } });
-    const update = vi.fn(() => ({ eq }));
-    const from = vi.fn(() => ({ update }));
-    const result = await activatePasswordProfile({ from } as never, "user-id");
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+      json: async () => ({
+        error: "Account activation could not be completed.",
+      }),
+    });
+    const result = await activatePasswordProfile(fetchMock as never);
     expect(result).toEqual({
       ok: false,
       userMessage: PASSWORD_ACTIVATION_RETRY_MESSAGE,
-      detail: "raw postgres policy detail",
+      detail: "Account activation could not be completed.",
     });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/auth/password-activation",
+      expect.objectContaining({ method: "POST" }),
+    );
     expect(PASSWORD_ACTIVATION_RETRY_MESSAGE).not.toContain("postgres");
   });
 

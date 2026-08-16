@@ -7,21 +7,21 @@ import { Eye, EyeOff, Loader2, Truck, WifiOff } from "lucide-react";
 
 import AuthShell from "@/features/auth/components/AuthShell";
 import AuthStatus from "@/features/auth/components/AuthStatus";
-import { resolveFieldPostSignInHref } from "@/features/auth/lib/accessSurfaceRouting";
+import {
+  resolveFieldExistingSessionHref,
+  resolveFieldPostSignInHref,
+  type FieldExistingSessionAccess,
+} from "@/features/auth/lib/accessSurfaceRouting";
 import { safeInternalRedirect } from "@/features/auth/lib/safeRedirect";
 import { signInWithIdentifier } from "@/features/auth/lib/signInClient";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
 const FIELD_HOME = "/mobile/service";
-const FIELD_SETUP = "/mobile/service/setup";
 
 const inputClass =
   "w-full rounded-xl border border-[color:var(--theme-input-border)] bg-[color:var(--theme-input-bg)] px-3.5 py-3 text-base text-[color:var(--theme-input-text)] outline-none transition placeholder:text-[color:var(--theme-text-muted)] focus:border-[var(--accent-copper)] focus:ring-4 focus:ring-[color:color-mix(in_srgb,var(--accent-copper)_16%,transparent)]";
 
-type FieldAccessResponse = {
-  canAccessFieldService?: boolean;
-  canConfigure?: boolean;
-};
+type FieldAccessResponse = FieldExistingSessionAccess;
 
 export default function FieldSignIn() {
   const router = useRouter();
@@ -69,12 +69,12 @@ export default function FieldSignIn() {
           | null;
         if (cancelled) return;
 
-        if (response.ok && access?.canAccessFieldService) {
-          router.replace(requestedDestination);
-          return;
-        }
-        if (response.ok && access?.canConfigure) {
-          router.replace(FIELD_SETUP);
+        const destination =
+          response.ok && access
+            ? resolveFieldExistingSessionHref(access, requestedDestination)
+            : null;
+        if (destination) {
+          router.replace(destination);
           return;
         }
 
