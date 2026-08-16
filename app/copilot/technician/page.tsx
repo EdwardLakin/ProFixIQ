@@ -1,5 +1,7 @@
-import { TechnicianTextCopilot } from "@/features/copilot/technician/components/TechnicianTextCopilot";
-
 export default function TechnicianCopilotPage() {
-  return <TechnicianTextCopilot />;
+  return (
+    <div className="p-6 text-sm text-muted-foreground" aria-live="polite">
+      Opening your persistent Technician CoPilot…
+    </div>
+  );
 }

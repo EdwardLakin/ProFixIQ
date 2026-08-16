@@ -10,6 +10,7 @@ import FieldWorkspaceShell, {
   FIELD_SURFACE_SESSION_KEY,
 } from "@/features/mobile/service/FieldWorkspaceShell";
 import { MobileBottomNav } from "./MobileBottomNav";
+import { TechnicianCopilotShell } from "@/features/copilot/technician/components/TechnicianCopilotShell";
 
 type Props = {
   children: ReactNode;
@@ -150,14 +151,22 @@ export function MobileShell({ children, title }: Props) {
 
   if (isImmersiveRoute(pathname)) {
     return (
-      <div className="profixiq-mobile-command min-h-screen overflow-x-hidden pt-[env(safe-area-inset-top,0px)]">
-        <main className="mobile-command-main min-w-0 overflow-x-hidden">{children}</main>
-      </div>
+      <>
+        <div className="profixiq-mobile-command min-h-screen overflow-x-hidden pt-[env(safe-area-inset-top,0px)]">
+          <main className="mobile-command-main min-w-0 overflow-x-hidden">{children}</main>
+        </div>
+        <TechnicianCopilotShell shouldCheck surface="mobile" />
+      </>
     );
   }
 
   if (fieldSurface) {
-    return <FieldWorkspaceShell>{children}</FieldWorkspaceShell>;
+    return (
+      <>
+        <FieldWorkspaceShell>{children}</FieldWorkspaceShell>
+        <TechnicianCopilotShell shouldCheck surface="mobile" />
+      </>
+    );
   }
 
   return (
@@ -190,6 +199,7 @@ export function MobileShell({ children, title }: Props) {
       <main className="mobile-command-main">{children}</main>
 
       <MobileBottomNav open={menuOpen} onClose={() => setMenuOpen(false)} />
+      <TechnicianCopilotShell shouldCheck surface="mobile" />
     </div>
   );
 }

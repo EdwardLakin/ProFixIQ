@@ -25,6 +25,8 @@ import { isBillingAttentionStatus } from "@/features/stripe/lib/stripe/subscript
 import { isOutsideDesktopAppShell } from "@/features/shared/lib/routes/shellBoundaries";
 import OpsNotificationsBell from "@/features/shared/components/OpsNotificationsBell";
 import { isDefaultOpsOperatorEmail } from "@/features/ops/lib/operatorAccess";
+import { TechnicianCopilotShell } from "@/features/copilot/technician/components/TechnicianCopilotShell";
+import { canonicalizeRole } from "@/features/shared/lib/rbac";
 
 const HEADER_OFFSET_DESKTOP = "pt-14";
 
@@ -104,6 +106,9 @@ export default function AppShell({
     initialIdentity?.email ?? null,
   );
   const [mustChangePassword, setMustChangePassword] = useState(false);
+  const [role, setRole] = useState<string | null>(
+    initialIdentity?.role ?? null,
+  );
   const [, setShopId] = useState<string | null>(
     initialIdentity?.shopId ?? null,
   );
@@ -185,6 +190,7 @@ export default function AppShell({
 
         setUserEmail(profile?.email ?? session?.user?.email ?? null);
         setMustChangePassword(!!profile?.must_change_password);
+        setRole(profile?.role ?? null);
 
         const sid = (profile?.shop_id as string | null) ?? null;
         setShopId(sid);
@@ -673,6 +679,11 @@ export default function AppShell({
           <AskAssistantEntry mobile />
         </div>
       ) : null}
+
+      <TechnicianCopilotShell
+        shouldCheck={canonicalizeRole(role) === "mechanic"}
+        surface="desktop"
+      />
     </>
   );
 }
