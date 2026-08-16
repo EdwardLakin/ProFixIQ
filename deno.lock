@@ -95,8 +95,6 @@
       "dependencies": [
         "npm:@react-pdf/renderer@^2.3.0",
         "npm:@sendgrid/mail@^8.1.5",
-        "npm:@supabase/auth-helpers-nextjs@0.10",
-        "npm:@supabase/auth-helpers-react@0.5",
         "npm:@supabase/ssr@~0.6.1",
         "npm:@supabase/supabase-js@^2.39.5",
         "npm:@types/node@20.10.5",

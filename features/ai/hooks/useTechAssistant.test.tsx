@@ -10,7 +10,7 @@ vi.mock("next/navigation", () => ({
   usePathname: () => "/test-assistant",
 }));
 
-vi.mock("@supabase/auth-helpers-react", () => ({
+vi.mock("@/features/shared/lib/supabase/session-context", () => ({
   useSession: () => ({ user: { id: "user_1" } }),
 }));
 

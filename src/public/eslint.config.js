@@ -7,7 +7,15 @@ import next from "@next/eslint-plugin-next";
 export default [
   js.configs.recommended,
   ...ts.configs.recommended,
-  next.configs.recommended,
+  {
+    files: ["**/*.{js,jsx,ts,tsx}"],
+    plugins: {
+      "@next/next": next,
+    },
+    rules: {
+      ...next.configs.recommended.rules,
+    },
+  },
   {
     files: ["**/*.{ts,tsx}"],
     rules: {

@@ -45,6 +45,10 @@ const nextConfig: NextConfig = {
   webpack(config: any) {
     config.resolve.alias = {
       ...(config.resolve.alias || {}),
+      "@ericblade/quagga2$": path.resolve(
+        __dirname,
+        "node_modules/@ericblade/quagga2/dist/quagga.min.js",
+      ),
       "@": path.resolve(__dirname, "src"),
       "@hooks": path.resolve(__dirname, "src/hooks"),
       "@components": path.resolve(__dirname, "src/components"),
