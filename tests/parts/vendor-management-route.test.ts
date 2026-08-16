@@ -10,7 +10,9 @@ vi.mock("@/features/shared/lib/server/admin-access", () => ({
 
 const vendorId = "11111111-1111-4111-8111-111111111111";
 
-function createSupabase(existing: Array<{ id: string; name: string }> = []) {
+function createSupabase(
+  existing: Array<{ id: string; name: string; is_active: boolean }> = [],
+) {
   const inserted: Array<Record<string, unknown>> = [];
   const updated: Array<Record<string, unknown>> = [];
   const filters: Array<[string, unknown]> = [];
@@ -118,7 +120,7 @@ describe("parts vendor management route", () => {
 
   it("rejects normalized duplicate names before inserting", async () => {
     const supabase = createSupabase([
-      { id: vendorId, name: "North-Star Parts" },
+      { id: vendorId, name: "North-Star Parts", is_active: false },
     ]);
     authorize(supabase);
     const { POST } = await import("../../app/api/parts/vendors/route");
@@ -131,6 +133,10 @@ describe("parts vendor management route", () => {
     );
 
     expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      vendorId,
+      vendorIsActive: false,
+    });
     expect(supabase.supplierTable.insert).not.toHaveBeenCalled();
   });
 

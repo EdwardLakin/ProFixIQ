@@ -31,6 +31,7 @@ describe("Field Hub workspace", () => {
       "/mobile/work-orders",
       "/mobile/inspections",
       "/mobile/parts",
+      "/mobile/service/purchase-orders",
       "/mobile/fleet",
       "/mobile/service/followups",
     ]) {
@@ -66,9 +67,11 @@ describe("Field Hub workspace", () => {
     expect(fieldHub).toContain("canUseFieldWorkspaceCapability");
   });
 
-  it("treats purchase orders as an explicit next slice until a field-safe surface exists", () => {
+  it("exposes the field-safe purchase-order surface only to parts-capable operators", () => {
     expect(fieldHub).toContain('title: "Purchase orders"');
-    expect(fieldHub).toContain('status: "next"');
+    expect(fieldHub).toContain('href: "/mobile/service/purchase-orders"');
+    expect(fieldHub).toContain('requiredCapability: "canManageParts"');
+    expect(fieldShell).toContain('label: "Purchase orders"');
     expect(fieldHub).not.toContain('href: "/parts/po"');
   });
 

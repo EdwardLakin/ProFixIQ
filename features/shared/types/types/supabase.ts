@@ -28930,6 +28930,14 @@ export type Database = {
         Args: { p_location_id?: string; p_part_id: string; p_shop_id: string }
         Returns: number
       }
+      parts_place_purchase_order: {
+        Args: {
+          p_contact_channel?: string
+          p_idempotency_key: string
+          p_po_id: string
+        }
+        Returns: Json
+      }
       parts_publish_request_notification: {
         Args: { p_request_id: string; p_stage: string }
         Returns: undefined
