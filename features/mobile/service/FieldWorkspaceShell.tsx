@@ -9,6 +9,7 @@ import {
   LogOut,
   Menu,
   PackageOpen,
+  PackagePlus,
   Plus,
   Settings2,
   Truck,
@@ -68,6 +69,13 @@ const OPERATIONS_NAV: FieldNavItem[] = [
     label: "Parts",
     href: "/mobile/parts",
     icon: Boxes,
+    exact: true,
+    requiredCapability: "canManageParts",
+  },
+  {
+    label: "Purchase orders",
+    href: "/mobile/service/purchase-orders",
+    icon: PackagePlus,
     requiredCapability: "canManageParts",
   },
   {
@@ -91,6 +99,9 @@ function isActive(pathname: string, item: FieldNavItem): boolean {
 
 function pageTitle(pathname: string): string {
   if (pathname === "/mobile/service") return "Field Hub";
+  if (pathname.startsWith("/mobile/service/purchase-orders")) {
+    return "Purchase orders";
+  }
   if (pathname.startsWith("/mobile/service/new")) return "New service call";
   if (pathname.startsWith("/mobile/service/truck-inventory")) {
     return "Truck inventory";

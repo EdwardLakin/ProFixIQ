@@ -30,9 +30,8 @@ import {
 type FieldModule = {
   title: string;
   description: string;
-  href?: string;
+  href: string;
   icon: LucideIcon;
-  status: "ready" | "next";
   requiredCapability?: keyof FieldWorkspaceCapabilities;
 };
 
@@ -42,7 +41,6 @@ const FIELD_MODULES: FieldModule[] = [
     description: "Accept, create and manage digital bookings.",
     href: "/mobile/appointments",
     icon: CalendarDays,
-    status: "ready",
     requiredCapability: "canManageScheduling",
   },
   {
@@ -50,28 +48,24 @@ const FIELD_MODULES: FieldModule[] = [
     description: "Build the repair, labor and job record.",
     href: "/mobile/work-orders",
     icon: BriefcaseBusiness,
-    status: "ready",
   },
   {
     title: "Inspections",
     description: "Run forms, capture evidence and findings.",
     href: "/mobile/inspections",
     icon: ClipboardCheck,
-    status: "ready",
   },
   {
     title: "Customer intake",
     description: "Find or create the customer as you book the call.",
     href: "/mobile/service/new",
     icon: UserRound,
-    status: "ready",
   },
   {
     title: "Parts & truck stock",
     description: "Request, receive, allocate and consume parts.",
     href: "/mobile/parts",
     icon: Boxes,
-    status: "ready",
     requiredCapability: "canManageParts",
   },
   {
@@ -79,21 +73,20 @@ const FIELD_MODULES: FieldModule[] = [
     description: "Finish the invoice and collect in the field.",
     href: "/mobile/work-orders?status=ready_to_invoice&mode=field_closeout",
     icon: FileText,
-    status: "ready",
   },
   {
     title: "Fleet connections",
     description: "Work with units, inspections and service requests.",
     href: "/mobile/fleet",
     icon: Truck,
-    status: "ready",
     requiredCapability: "canAccessFleet",
   },
   {
     title: "Purchase orders",
-    description: "Mobile-first PO authoring and receiving is the next build slice.",
+    description: "Author supplier orders and receive parts into Field stock.",
+    href: "/mobile/service/purchase-orders",
     icon: PackagePlus,
-    status: "next",
+    requiredCapability: "canManageParts",
   },
 ];
 
@@ -107,30 +100,17 @@ function FieldModuleCard({ module }: { module: FieldModule }) {
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-2">
           <span className="field-hub-module__title">{module.title}</span>
-          {module.status === "next" ? (
-            <span className="field-hub-module__badge">Next</span>
-          ) : null}
         </span>
         <span className="field-hub-module__description">
           {module.description}
         </span>
       </span>
-      {module.href ? (
-        <ArrowRight
-          aria-hidden
-          className="h-4 w-4 shrink-0 text-[color:var(--accent-copper)]"
-        />
-      ) : null}
+      <ArrowRight
+        aria-hidden
+        className="h-4 w-4 shrink-0 text-[color:var(--accent-copper)]"
+      />
     </>
   );
-
-  if (!module.href) {
-    return (
-      <div className="field-hub-module" data-available="false">
-        {content}
-      </div>
-    );
-  }
 
   return (
     <Link className="field-hub-module" href={module.href}>
