@@ -16,70 +16,36 @@ function createSupabase(options: {
   found?: boolean;
   lines?: Array<{ id: string; qty: number; cancelled_qty: number }>;
 }) {
-  const filters: Array<[string, unknown]> = [];
-  const updates: Array<Record<string, unknown>> = [];
-  const purchaseOrder = {
-    id: PO_ID,
-    status: options.status,
-    ordered_at: options.status === "draft" ? null : "2026-08-16T12:00:00Z",
-  };
-
-  const purchaseOrderSelect = {
-    eq(field: string, value: unknown) {
-      filters.push([field, value]);
-      return purchaseOrderSelect;
-    },
-    maybeSingle: vi.fn(async () => ({
-      data: options.found === false ? null : purchaseOrder,
-      error: null,
-    })),
-  };
-  type PurchaseOrderUpdateChain = {
-    eq: (field: string, value: unknown) => PurchaseOrderUpdateChain;
-    select: ReturnType<typeof vi.fn>;
-    maybeSingle: ReturnType<typeof vi.fn>;
-  };
-  const purchaseOrderUpdate: PurchaseOrderUpdateChain = {
-    eq(field: string, value: unknown) {
-      filters.push([field, value]);
-      return purchaseOrderUpdate;
-    },
-    select: vi.fn(() => purchaseOrderUpdate),
-    maybeSingle: vi.fn(async () => ({
+  const hasActiveLine = (
+    options.lines ?? [{ id: "line-1", qty: 2, cancelled_qty: 0 }]
+  ).some((line) => line.qty - line.cancelled_qty > 0);
+  const rpc = vi.fn(async () => {
+    if (options.found === false) {
+      return {
+        data: null,
+        error: { code: "P0002", message: "Purchase order not found." },
+      };
+    }
+    if (!hasActiveLine) {
+      return {
+        data: null,
+        error: {
+          code: "23514",
+          message: "Add at least one active line before placing this PO.",
+        },
+      };
+    }
+    return {
       data: {
-        ...purchaseOrder,
+        idempotent: options.status !== "draft",
+        po_id: PO_ID,
         status: "open",
-        ordered_at: "2026-08-16T12:00:00Z",
       },
       error: null,
-    })),
-  };
-  const lineSelect = {
-    eq: vi.fn(async () => ({
-      data: options.lines ?? [{ id: "line-1", qty: 2, cancelled_qty: 0 }],
-      error: null,
-    })),
-  };
+    };
+  });
 
-  return {
-    filters,
-    updates,
-    from: vi.fn((table: string) => {
-      if (table === "purchase_order_lines") {
-        return { select: vi.fn(() => lineSelect) };
-      }
-      if (table === "purchase_orders") {
-        return {
-          select: vi.fn(() => purchaseOrderSelect),
-          update: vi.fn((payload: Record<string, unknown>) => {
-            updates.push(payload);
-            return purchaseOrderUpdate;
-          }),
-        };
-      }
-      throw new Error(`Unexpected table ${table}`);
-    }),
-  };
+  return { rpc };
 }
 
 async function callRoute(supabase: ReturnType<typeof createSupabase>) {
@@ -114,20 +80,18 @@ describe("purchase-order place route", () => {
     const payload = await response.json();
 
     expect(response.status).toBe(200);
-    expect(payload).toMatchObject({ ok: true, idempotent: false });
+    expect(payload).toMatchObject({
+      ok: true,
+      result: { idempotent: false, po_id: PO_ID, status: "open" },
+    });
     expect(mocks.requireShopScopedApiAccess).toHaveBeenCalledWith({
       requiredCapability: "canManageParts",
     });
-    expect(supabase.updates).toEqual([
-      expect.objectContaining({ status: "open" }),
-    ]);
-    expect(supabase.filters).toEqual(
-      expect.arrayContaining([
-        ["id", PO_ID],
-        ["shop_id", SHOP_ID],
-        ["status", "draft"],
-      ]),
-    );
+    expect(supabase.rpc).toHaveBeenCalledWith("parts_place_purchase_order", {
+      p_po_id: PO_ID,
+      p_idempotency_key: `${SHOP_ID}:parts_place_purchase_order:place-po-1`,
+      p_contact_channel: null,
+    });
   });
 
   it("treats a retry against an already placed PO as idempotent", async () => {
@@ -136,8 +100,10 @@ describe("purchase-order place route", () => {
     const payload = await response.json();
 
     expect(response.status).toBe(200);
-    expect(payload).toMatchObject({ ok: true, idempotent: true });
-    expect(supabase.updates).toHaveLength(0);
+    expect(payload).toMatchObject({
+      ok: true,
+      result: { idempotent: true, po_id: PO_ID, status: "open" },
+    });
   });
 
   it("refuses to place a header without an active line", async () => {
@@ -152,7 +118,7 @@ describe("purchase-order place route", () => {
       ok: false,
       error: expect.stringContaining("active line"),
     });
-    expect(supabase.updates).toHaveLength(0);
+    expect(supabase.rpc).toHaveBeenCalledTimes(1);
   });
 
   it("does not expose a purchase order outside the authorized shop", async () => {
@@ -164,12 +130,6 @@ describe("purchase-order place route", () => {
       ok: false,
       error: "Purchase order not found.",
     });
-    expect(supabase.filters).toEqual(
-      expect.arrayContaining([
-        ["id", PO_ID],
-        ["shop_id", SHOP_ID],
-      ]),
-    );
-    expect(supabase.updates).toHaveLength(0);
+    expect(supabase.rpc).toHaveBeenCalledTimes(1);
   });
 });
