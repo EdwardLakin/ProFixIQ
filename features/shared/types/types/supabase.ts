@@ -27443,6 +27443,17 @@ export type Database = {
         Returns: string
       }
       check_plan_limit: { Args: { _feature: string }; Returns: boolean }
+      claim_completed_repair_learning_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_at?: string
+          p_lease_token: string
+          p_operation_key: string
+          p_shop_id: string
+          p_work_order_line_id: string
+        }
+        Returns: Json
+      }
       claim_financial_outbox_batch: {
         Args: {
           p_lease_seconds?: number
@@ -28158,6 +28169,18 @@ export type Database = {
           p_quantity: number
           p_service_visit_id: string
           p_shop_id: string
+          p_work_order_line_id: string
+        }
+        Returns: Json
+      }
+      finish_completed_repair_learning_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_at?: string
+          p_lease_token: string
+          p_result?: Json
+          p_shop_id: string
+          p_succeeded: boolean
           p_work_order_line_id: string
         }
         Returns: Json
