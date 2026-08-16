@@ -13,6 +13,22 @@ alter table copilot.completed_repair_learning_receipts
   add constraint completed_repair_learning_receipts_actor_user_id_fkey
   foreign key (actor_user_id) references auth.users(id) on delete set null;
 
+-- Canonical workforce keys include their caller-specific prefix and the
+-- workforce receipt table intentionally stores text without an artificial
+-- length cap. Mirror that contract here so copying a trusted receipt cannot
+-- roll back completion or this migration.
+alter table copilot.completed_repair_learning_receipts
+  drop constraint if exists completed_repair_learning_operation_key_chk;
+alter table copilot.completed_repair_learning_receipts
+  add constraint completed_repair_learning_operation_key_chk
+  check (nullif(btrim(operation_key), '') is not null);
+
+alter table copilot.completed_repair_learning_receipts
+  drop constraint if exists completed_repair_learning_state_chk;
+alter table copilot.completed_repair_learning_receipts
+  add constraint completed_repair_learning_state_chk
+  check (state in ('running', 'retryable', 'completed', 'failed'));
+
 -- The first implementation persisted the caller's raw idempotency key. Bind
 -- those rows to the canonical durable finish receipt before trust is enforced.
 update copilot.completed_repair_learning_receipts receipt
@@ -101,8 +117,8 @@ begin
       source_line_updated_at = excluded.source_line_updated_at,
       state = 'retryable',
       lease_token = null,
-      lease_expires_at = null,
-      attempt_count = current_receipt.attempt_count + 1,
+      lease_expires_at = v_now,
+      attempt_count = 1,
       result = jsonb_build_object('queued', true),
       completed_at = null,
       updated_at = v_now
@@ -123,6 +139,82 @@ after insert on public.workforce_operation_keys
 for each row
 when (new.operation_name = 'job_punch:finish')
 execute function copilot.enqueue_completed_repair_learning();
+
+-- A replay of an already-committed finish receipt does not insert another
+-- workforce row, so the insert trigger cannot recover historical completions
+-- whose old post-commit learning call failed before creating its receipt.
+-- Keep this owner-only helper as a deterministic manual recovery path and run
+-- it once during the upgrade.
+create or replace function copilot.backfill_completed_repair_learning_queue()
+returns integer
+language plpgsql
+security definer
+set search_path = public, copilot, pg_temp
+as $$
+declare
+  v_inserted integer := 0;
+begin
+  with trusted_finish as (
+    select distinct on (workforce.shop_id, workforce.work_order_line_id)
+      workforce.shop_id,
+      workforce.work_order_line_id,
+      workforce.actor_user_id,
+      workforce.operation_key,
+      coalesce(line.updated_at, workforce.created_at, clock_timestamp())
+        as source_line_updated_at
+    from public.workforce_operation_keys workforce
+    join public.work_order_lines line
+      on line.id = workforce.work_order_line_id
+     and line.shop_id = workforce.shop_id
+     and lower(coalesce(line.status::text, '')) in ('completed', 'invoiced')
+    where workforce.operation_name = 'job_punch:finish'
+      and workforce.work_order_line_id is not null
+      and nullif(btrim(workforce.operation_key), '') is not null
+    order by
+      workforce.shop_id,
+      workforce.work_order_line_id,
+      workforce.created_at desc,
+      workforce.id desc
+  )
+  insert into copilot.completed_repair_learning_receipts (
+    shop_id,
+    work_order_line_id,
+    actor_user_id,
+    operation_key,
+    source_line_updated_at,
+    state,
+    lease_token,
+    lease_expires_at,
+    attempt_count,
+    result,
+    completed_at,
+    updated_at
+  )
+  select
+    finish.shop_id,
+    finish.work_order_line_id,
+    finish.actor_user_id,
+    finish.operation_key,
+    finish.source_line_updated_at,
+    'retryable',
+    null,
+    clock_timestamp(),
+    1,
+    jsonb_build_object('queued', true, 'backfilled', true),
+    null,
+    clock_timestamp()
+  from trusted_finish finish
+  on conflict (shop_id, work_order_line_id) do nothing;
+
+  get diagnostics v_inserted = row_count;
+  return v_inserted;
+end;
+$$;
+
+revoke all on function copilot.backfill_completed_repair_learning_queue()
+  from public, anon, authenticated, service_role;
+
+select copilot.backfill_completed_repair_learning_queue();
 
 create or replace function public.claim_completed_repair_learning_batch(
   p_worker_id uuid,
@@ -161,7 +253,13 @@ begin
      and line.shop_id = receipt.shop_id
      and lower(coalesce(line.status::text, '')) in ('completed', 'invoiced')
     where (
-      receipt.state = 'retryable'
+      (
+        receipt.state = 'retryable'
+        and (
+          receipt.lease_expires_at is null
+          or receipt.lease_expires_at <= v_now
+        )
+      )
       or (
         receipt.state = 'running'
         and (
@@ -220,6 +318,8 @@ as $$
 declare
   v_receipt copilot.completed_repair_learning_receipts%rowtype;
   v_now timestamptz := clock_timestamp();
+  v_terminal_failure boolean := false;
+  v_next_attempt_at timestamptz;
   v_result jsonb := case
     when jsonb_typeof(p_result) = 'object'
       and octet_length(p_result::text) <= 16384
@@ -269,11 +369,34 @@ begin
       using errcode = '42501';
   end if;
 
+  if not p_succeeded then
+    v_terminal_failure := v_receipt.attempt_count >= 6;
+    if not v_terminal_failure then
+      v_next_attempt_at := v_now + make_interval(
+        secs => least(
+          3600.0::double precision,
+          60.0::double precision * power(
+            2.0::double precision,
+            greatest(0, least(v_receipt.attempt_count - 2, 6))::double precision
+          )
+        )
+      );
+    end if;
+  end if;
+
   update copilot.completed_repair_learning_receipts receipt
-  set state = case when p_succeeded then 'completed' else 'retryable' end,
+  set state = case
+        when p_succeeded then 'completed'
+        when v_terminal_failure then 'failed'
+        else 'retryable'
+      end,
       lease_token = null,
-      lease_expires_at = null,
-      result = v_result,
+      lease_expires_at = v_next_attempt_at,
+      result = v_result || jsonb_build_object(
+        'terminal', v_terminal_failure,
+        'attemptCount', v_receipt.attempt_count,
+        'nextAttemptAt', v_next_attempt_at
+      ),
       completed_at = case when p_succeeded then v_now else null end,
       updated_at = v_now
   where receipt.shop_id = p_shop_id
@@ -281,19 +404,22 @@ begin
 
   return jsonb_build_object(
     'completed', p_succeeded,
-    'retryable', not p_succeeded,
+    'retryable', not p_succeeded and not v_terminal_failure,
+    'failed', v_terminal_failure,
+    'nextAttemptAt', v_next_attempt_at,
     'replayed', false
   );
 end;
 $$;
 
-create index if not exists completed_repair_learning_receipts_queue_idx
+drop index if exists copilot.completed_repair_learning_receipts_queue_idx;
+create index completed_repair_learning_receipts_queue_idx
   on copilot.completed_repair_learning_receipts (
     state,
     lease_expires_at,
     updated_at
   )
-  where state <> 'completed';
+  where state in ('retryable', 'running');
 
 -- Retire the browser-callable lease API. All queue ownership now flows through
 -- the service-only batch and worker finalizer above.
@@ -326,6 +452,8 @@ comment on function public.finish_completed_repair_learning_worker(
   uuid,uuid,uuid,uuid,boolean,jsonb
 ) is
   'Service-only finalization of an owned completed-repair learning lease.';
+comment on function copilot.backfill_completed_repair_learning_queue() is
+  'Owner-only recovery of missing learning queue rows from canonical finish receipts.';
 
 do $completion_learning_trusted_queue_postcheck$
 begin
@@ -347,6 +475,11 @@ begin
     or has_function_privilege(
       'authenticated',
       'public.finish_completed_repair_learning_worker(uuid,uuid,uuid,uuid,boolean,jsonb)',
+      'EXECUTE'
+    )
+    or has_function_privilege(
+      'authenticated',
+      'copilot.backfill_completed_repair_learning_queue()',
       'EXECUTE'
     )
   then
@@ -373,6 +506,11 @@ begin
       'public.finish_completed_repair_learning_worker(uuid,uuid,uuid,uuid,boolean,jsonb)',
       'EXECUTE'
     )
+    or has_function_privilege(
+      'service_role',
+      'copilot.backfill_completed_repair_learning_queue()',
+      'EXECUTE'
+    )
   then
     raise exception 'Completion learning postcheck failed: trusted worker privileges are incoherent';
   end if;
@@ -394,6 +532,17 @@ begin
       and not trigger_row.tgisinternal
   ) then
     raise exception 'Completion learning postcheck failed: finish enqueue trigger is missing';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_constraint constraint_row
+    where constraint_row.conname = 'completed_repair_learning_state_chk'
+      and constraint_row.conrelid =
+        'copilot.completed_repair_learning_receipts'::regclass
+      and position('failed' in pg_get_constraintdef(constraint_row.oid)) > 0
+  ) then
+    raise exception 'Completion learning postcheck failed: terminal state is missing';
   end if;
 end;
 $completion_learning_trusted_queue_postcheck$;

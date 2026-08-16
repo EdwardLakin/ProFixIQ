@@ -63,6 +63,12 @@ describe("technician completion post-merge review hotfix", () => {
       "create trigger enqueue_completed_repair_learning",
     );
     expect(trustedQueueMigration).toContain(
+      "backfill_completed_repair_learning_queue",
+    );
+    expect(trustedQueueMigration).toContain(
+      "on conflict (shop_id, work_order_line_id) do nothing",
+    );
+    expect(trustedQueueMigration).toContain(
       "claim_completed_repair_learning_batch",
     );
     expect(trustedQueueMigration).toContain(
@@ -74,6 +80,19 @@ describe("technician completion post-merge review hotfix", () => {
     expect(trustedQueueMigration).toContain(") to service_role;");
     expect(trustedQueueMigration).toContain("clock_timestamp()");
     expect(trustedQueueMigration).toContain("on delete set null");
+    expect(trustedQueueMigration).toContain(
+      "check (nullif(btrim(operation_key), '') is not null)",
+    );
+    expect(trustedQueueMigration).toContain(
+      "check (state in ('running', 'retryable', 'completed', 'failed'))",
+    );
+    expect(trustedQueueMigration).toContain(
+      "v_terminal_failure := v_receipt.attempt_count >= 6",
+    );
+    expect(trustedQueueMigration).toContain("power(");
+    expect(trustedQueueMigration).toContain(
+      "where state in ('retryable', 'running')",
+    );
     expect(trustedQueueMigration).toContain(
       "finish_completed_repair_learning_worker",
     );

@@ -197,6 +197,26 @@ values
     null,
     null,
     'Runtime split-identity sibling'
+  ),
+  (
+    'a1438000-0000-4000-8000-000000000211',
+    'a1438000-0000-4000-8000-000000000103',
+    'a1438000-0000-4000-8000-000000000010',
+    'job',
+    'completed',
+    null,
+    null,
+    'Runtime completion-learning backfill'
+  ),
+  (
+    'a1438000-0000-4000-8000-000000000212',
+    'a1438000-0000-4000-8000-000000000103',
+    'a1438000-0000-4000-8000-000000000010',
+    'job',
+    'completed',
+    null,
+    null,
+    'Runtime completion-learning bounded retry'
   )
 on conflict (id) do nothing;
 
@@ -1232,6 +1252,16 @@ begin
       'public.finish_completed_repair_learning_worker(uuid,uuid,uuid,uuid,boolean,jsonb)',
       'EXECUTE'
     )
+    or has_function_privilege(
+      'authenticated',
+      'copilot.backfill_completed_repair_learning_queue()',
+      'EXECUTE'
+    )
+    or has_function_privilege(
+      'service_role',
+      'copilot.backfill_completed_repair_learning_queue()',
+      'EXECUTE'
+    )
   then
     raise exception 'Completed repair learning assertion failed: browser role can finalize receipts';
   end if;
@@ -1276,6 +1306,180 @@ begin
   end if;
 end
 $technician_completion_learning_security$;
+
+do $technician_completion_learning_upgrade_backfill$
+declare
+  v_backfilled integer;
+begin
+  insert into public.workforce_operation_keys (
+    shop_id,
+    operation_name,
+    operation_key,
+    actor_user_id,
+    work_order_id,
+    work_order_line_id,
+    result
+  ) values (
+    'a1438000-0000-4000-8000-000000000010',
+    'job_punch:finish',
+    'runtime-historical-finish-with-lost-learning-response',
+    'a1438000-0000-4000-8000-000000000002',
+    'a1438000-0000-4000-8000-000000000103',
+    'a1438000-0000-4000-8000-000000000211',
+    '{"ok":true,"action":"finish"}'::jsonb
+  );
+
+  -- Recreate the production upgrade state: durable finish committed, old
+  -- post-commit learning failed before its receipt was created.
+  delete from copilot.completed_repair_learning_receipts
+  where shop_id = 'a1438000-0000-4000-8000-000000000010'
+    and work_order_line_id = 'a1438000-0000-4000-8000-000000000211';
+
+  v_backfilled := copilot.backfill_completed_repair_learning_queue();
+
+  if v_backfilled < 1
+    or not exists (
+      select 1
+      from copilot.completed_repair_learning_receipts receipt
+      where receipt.shop_id = 'a1438000-0000-4000-8000-000000000010'
+        and receipt.work_order_line_id =
+          'a1438000-0000-4000-8000-000000000211'
+        and receipt.operation_key =
+          'runtime-historical-finish-with-lost-learning-response'
+        and receipt.state = 'retryable'
+        and coalesce((receipt.result ->> 'backfilled')::boolean, false)
+    )
+  then
+    raise exception 'Completed repair learning assertion failed: historical finish was not backfilled';
+  end if;
+end
+$technician_completion_learning_upgrade_backfill$;
+
+do $technician_completion_learning_bounded_retry$
+declare
+  v_claim record;
+  v_finish jsonb;
+  v_immediate_reclaim integer;
+  v_failure integer;
+begin
+  insert into public.workforce_operation_keys (
+    shop_id,
+    operation_name,
+    operation_key,
+    actor_user_id,
+    work_order_id,
+    work_order_line_id,
+    result
+  ) values (
+    'a1438000-0000-4000-8000-000000000010',
+    'job_punch:finish',
+    repeat('k', 700),
+    'a1438000-0000-4000-8000-000000000002',
+    'a1438000-0000-4000-8000-000000000103',
+    'a1438000-0000-4000-8000-000000000212',
+    '{"ok":true,"action":"finish"}'::jsonb
+  );
+
+  if not exists (
+    select 1
+    from copilot.completed_repair_learning_receipts receipt
+    where receipt.shop_id = 'a1438000-0000-4000-8000-000000000010'
+      and receipt.work_order_line_id =
+        'a1438000-0000-4000-8000-000000000212'
+      and char_length(receipt.operation_key) = 700
+  ) then
+    raise exception 'Completed repair learning assertion failed: canonical operation key was truncated or rejected';
+  end if;
+
+  update copilot.completed_repair_learning_receipts
+  set state = 'completed',
+      lease_token = null,
+      lease_expires_at = null
+  where work_order_line_id <>
+    'a1438000-0000-4000-8000-000000000212';
+
+  for v_failure in 1..5 loop
+    select batch.*
+      into v_claim
+    from public.claim_completed_repair_learning_batch(
+      'a1438000-0000-5000-a000-000000000440',
+      10,
+      600
+    ) batch
+    where batch.work_order_line_id =
+      'a1438000-0000-4000-8000-000000000212';
+
+    if not found then
+      raise exception 'Completed repair learning assertion failed: retry % was not claimable', v_failure;
+    end if;
+
+    v_finish := public.finish_completed_repair_learning_worker(
+      'a1438000-0000-4000-8000-000000000010',
+      'a1438000-0000-4000-8000-000000000212',
+      v_claim.actor_user_id,
+      v_claim.lease_token,
+      false,
+      jsonb_build_object('ok', false, 'failure', v_failure)
+    );
+
+    if v_failure < 5 then
+      select count(*)
+        into v_immediate_reclaim
+      from public.claim_completed_repair_learning_batch(
+        'a1438000-0000-5000-a000-000000000441',
+        10,
+        600
+      );
+
+      if not coalesce((v_finish ->> 'retryable')::boolean, false)
+        or coalesce((v_finish ->> 'failed')::boolean, false)
+        or v_immediate_reclaim <> 0
+        or not exists (
+          select 1
+          from copilot.completed_repair_learning_receipts receipt
+          where receipt.work_order_line_id =
+            'a1438000-0000-4000-8000-000000000212'
+            and receipt.state = 'retryable'
+            and receipt.lease_expires_at > clock_timestamp()
+        )
+      then
+        raise exception 'Completed repair learning assertion failed: retry backoff % is incoherent', v_failure;
+      end if;
+
+      update copilot.completed_repair_learning_receipts
+      set lease_expires_at = clock_timestamp() - interval '1 second'
+      where work_order_line_id =
+        'a1438000-0000-4000-8000-000000000212';
+    elsif not coalesce((v_finish ->> 'failed')::boolean, false)
+      or coalesce((v_finish ->> 'retryable')::boolean, false)
+    then
+      raise exception 'Completed repair learning assertion failed: poison receipt did not become terminal';
+    end if;
+  end loop;
+
+  select count(*)
+    into v_immediate_reclaim
+  from public.claim_completed_repair_learning_batch(
+    'a1438000-0000-5000-a000-000000000442',
+    10,
+    600
+  );
+
+  if v_immediate_reclaim <> 0
+    or not exists (
+      select 1
+      from copilot.completed_repair_learning_receipts receipt
+      where receipt.work_order_line_id =
+        'a1438000-0000-4000-8000-000000000212'
+        and receipt.state = 'failed'
+        and receipt.attempt_count = 6
+        and coalesce((receipt.result ->> 'terminal')::boolean, false)
+    )
+  then
+    raise exception 'Completed repair learning assertion failed: terminal receipt remained claimable';
+  end if;
+end
+$technician_completion_learning_bounded_retry$;
 
 do $technician_copilot_runtime_schema$
 begin
