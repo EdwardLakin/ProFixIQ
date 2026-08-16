@@ -520,7 +520,11 @@ function VisitCard({
   );
 }
 
-export default function MobileServiceShell() {
+export default function MobileServiceShell({
+  embedded = false,
+}: {
+  embedded?: boolean;
+}) {
   const router = useRouter();
   const [snapshot, setSnapshot] = useState<MobileActiveJobContract | null>(null);
   const [loading, setLoading] = useState(true);
@@ -529,9 +533,7 @@ export default function MobileServiceShell() {
   const [stale, setStale] = useState(false);
   const [busyVisitId, setBusyVisitId] = useState<string | null>(null);
   const [queuedNotice, setQueuedNotice] = useState<string | null>(null);
-  const [online, setOnline] = useState(
-    () => typeof navigator === "undefined" || navigator.onLine,
-  );
+  const [online, setOnline] = useState(true);
 
   const applyVisit = useCallback((updated: DispatchVisit) => {
     setSnapshot((previous) => {
@@ -676,6 +678,7 @@ export default function MobileServiceShell() {
         void load(true);
       }
     }, REFRESH_INTERVAL_MS);
+    setOnline(navigator.onLine);
     window.addEventListener("online", updateOnline);
     window.addEventListener("offline", updateOnline);
     document.addEventListener("visibilitychange", refreshOnFocus);
@@ -832,8 +835,15 @@ export default function MobileServiceShell() {
   );
 
   return (
-    <main className="mx-auto w-full max-w-3xl space-y-4 px-3 pb-8 pt-3 text-[color:var(--theme-text-primary)] sm:px-4">
-      <section className="overflow-hidden rounded-3xl border border-white/10 bg-slate-950 px-4 py-4 text-white shadow-card">
+    <main
+      className={`${
+        embedded
+          ? "w-full space-y-4 text-[color:var(--theme-text-primary)]"
+          : "mx-auto w-full max-w-3xl space-y-4 px-3 pb-8 pt-3 text-[color:var(--theme-text-primary)] sm:px-4"
+      }`}
+    >
+      {!embedded ? (
+        <section className="overflow-hidden rounded-3xl border border-white/10 bg-slate-950 px-4 py-4 text-white shadow-card">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="text-[0.62rem] font-extrabold uppercase tracking-[0.2em] text-sky-300">
@@ -879,7 +889,8 @@ export default function MobileServiceShell() {
             <Settings2 className="h-4 w-4" /> Setup
           </Link>
         </div>
-      </section>
+        </section>
+      ) : null}
 
       {!online || stale ? (
         <section className="rounded-2xl border border-amber-400/30 bg-amber-500/10 px-3.5 py-3 text-sm text-amber-100">

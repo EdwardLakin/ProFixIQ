@@ -2,6 +2,11 @@ import "server-only";
 
 import { NextResponse } from "next/server";
 
+import {
+  resolveFleetActorContext,
+  resolveFleetActorScope,
+} from "@/features/fleet/lib/resolveFleetActorContext";
+import type { FieldWorkspaceCapabilities } from "@/features/mobile/service/fieldWorkspaceCapabilities";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
@@ -16,6 +21,24 @@ export type MobileFieldServiceAccess = {
   canConfigure: boolean;
   canAccessFieldService: boolean;
 };
+
+export type MobileFieldServiceWorkspaceAccess = MobileFieldServiceAccess & {
+  workspaceCapabilities: FieldWorkspaceCapabilities;
+};
+
+export function resolveFieldWorkspaceCapabilities(input: {
+  role: string | null | undefined;
+  canAccessFleet: boolean;
+  canConfigureFieldService: boolean;
+}): FieldWorkspaceCapabilities {
+  const actor = getActorCapabilities({ role: input.role });
+  return {
+    canManageScheduling: actor.canManageScheduling,
+    canManageParts: actor.canManageParts,
+    canAccessFleet: input.canAccessFleet,
+    canConfigureFieldService: input.canConfigureFieldService,
+  };
+}
 
 export function resolveMobileFieldServiceAccess(input: {
   serviceModel: string | null | undefined;
@@ -74,6 +97,36 @@ export async function getMobileFieldServiceAccess(
     canonicalRole: access.canonicalRole,
     productEntitled: entitlementResult.data === true,
   });
+}
+
+export async function getMobileFieldServiceWorkspaceAccess(
+  access: ShopAccess,
+): Promise<MobileFieldServiceWorkspaceAccess> {
+  const fieldAccess = await getMobileFieldServiceAccess(access);
+  let canAccessFleet = false;
+
+  if (fieldAccess.canAccessFieldService) {
+    try {
+      const fleetActor = await resolveFleetActorContext(access.supabase, {
+        userId: access.authUserId,
+      });
+      const fleetScope = resolveFleetActorScope(fleetActor, {
+        preferMembershipFleet: !fleetActor.isInternal,
+      });
+      canAccessFleet = fleetScope?.shopId === access.profile.shop_id;
+    } catch {
+      // Fleet navigation is optional; its own route remains authoritative.
+    }
+  }
+
+  return {
+    ...fieldAccess,
+    workspaceCapabilities: resolveFieldWorkspaceCapabilities({
+      role: access.profile.role,
+      canAccessFleet,
+      canConfigureFieldService: fieldAccess.canConfigure,
+    }),
+  };
 }
 
 export async function isExplicitMobileFieldOperator(

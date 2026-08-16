@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import {
-  getMobileFieldServiceAccess,
+  getMobileFieldServiceWorkspaceAccess,
 } from "@/features/mobile/service/server/access";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
@@ -10,7 +10,7 @@ export async function GET() {
   if (!access.ok) return access.response;
 
   try {
-    const fieldAccess = await getMobileFieldServiceAccess(access);
+    const fieldAccess = await getMobileFieldServiceWorkspaceAccess(access);
     return NextResponse.json(
       {
         ...fieldAccess,

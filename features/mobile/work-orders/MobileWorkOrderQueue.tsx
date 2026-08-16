@@ -23,6 +23,7 @@ import {
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
+import { resolveMobileWorkOrderHref } from "./mobileWorkOrderRouting";
 
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -164,14 +165,20 @@ function primarySignal(signal: WorkOrderSignal): string | null {
   return null;
 }
 
-export default function MobileWorkOrderQueue() {
+export default function MobileWorkOrderQueue({
+  initialStatus = "",
+  readyToInvoiceCloseout = false,
+}: {
+  initialStatus?: string;
+  readyToInvoiceCloseout?: boolean;
+}) {
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [queryText, setQueryText] = useState("");
-  const [status, setStatus] = useState<string>("");
+  const [status, setStatus] = useState<string>(initialStatus);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [forbidden, setForbidden] = useState(false);
   const [assignedOnly, setAssignedOnly] = useState(false);
@@ -531,7 +538,11 @@ export default function MobileWorkOrderQueue() {
             return (
               <Link
                 key={workOrder.id}
-                href={`/mobile/work-orders/${workOrder.id}`}
+                href={resolveMobileWorkOrderHref({
+                  workOrderId: workOrder.id,
+                  status: key,
+                  readyToInvoiceCloseout,
+                })}
                 className="mobile-command-row relative block overflow-hidden border p-4 pl-5 active:scale-[0.992]"
               >
                 <span
