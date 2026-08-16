@@ -9,8 +9,8 @@ const authFixture = vi.hoisted(() => ({
   },
   profile: null as null | {
     id: string;
-    role: string;
-    shop_id: string;
+    role: string | null;
+    shop_id: string | null;
     completed_onboarding: boolean;
   },
   memberships: [] as Array<{
@@ -99,7 +99,44 @@ function shopRequest(pathname: string): NextRequest {
   });
 }
 
-describe("Fleet product middleware boundary", () => {
+describe("Product host middleware boundary", () => {
+  it("keeps the Shop marketing root public for an incomplete authenticated account", async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "test-anon-key";
+    authFixture.user = { id: "user-1", app_metadata: {} };
+    authFixture.profile = {
+      id: "user-1",
+      role: null,
+      shop_id: null,
+      completed_onboarding: false,
+    };
+
+    const response = await middleware(shopRequest("/"));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("location")).toBeNull();
+    expect(response.headers.get("x-middleware-next")).toBe("1");
+  });
+
+  it("still routes an incomplete authenticated account from protected Shop routes to onboarding", async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "test-anon-key";
+    authFixture.user = { id: "user-1", app_metadata: {} };
+    authFixture.profile = {
+      id: "user-1",
+      role: null,
+      shop_id: null,
+      completed_onboarding: false,
+    };
+
+    const response = await middleware(shopRequest("/dashboard"));
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      "https://profixiq.com/onboarding",
+    );
+  });
+
   it("moves legacy Fleet workspace URLs off the Shop hostname", async () => {
     const response = await middleware(
       shopRequest("/portal/fleet/units/unit-42?tab=history"),
