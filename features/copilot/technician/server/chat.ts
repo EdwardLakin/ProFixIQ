@@ -12,9 +12,10 @@ import {
 import { projectTechnicianContext } from "../session/projectTechnicianContext";
 import {
   describeNextTechnicianWork,
-  executeTechnicianCopilotAction,
+  executeBoundTechnicianCopilotAction,
   prepareTechnicianCopilotAction,
-  type PreparedTechnicianCopilotAction,
+  technicianWorkLineLabel,
+  type BoundTechnicianCopilotAction,
 } from "./actions";
 import {
   parseTechnicianCopilotAction,
@@ -130,8 +131,13 @@ function storedTurnText(event: RepairSessionEvent): string {
 }
 
 type StoredActionTurn = {
-  action: TechnicianCopilotAction;
+  action: BoundTechnicianCopilotAction["action"];
   key: string;
+  workOrderId: string | null;
+  workOrderLineId: string | null;
+  lineLabel: string | null;
+  lineCause: string | null;
+  lineCorrection: string | null;
   lineUpdatedAt: string | null;
   result: {
     ok: boolean;
@@ -175,6 +181,26 @@ function storedActionTurn(
   return {
     action,
     key,
+    workOrderId:
+      typeof pending.payload?.workOrderId === "string"
+        ? pending.payload.workOrderId
+        : null,
+    workOrderLineId:
+      typeof pending.payload?.workOrderLineId === "string"
+        ? pending.payload.workOrderLineId
+        : null,
+    lineLabel:
+      typeof pending.payload?.lineLabel === "string"
+        ? pending.payload.lineLabel
+        : null,
+    lineCause:
+      typeof pending.payload?.lineCause === "string"
+        ? pending.payload.lineCause
+        : null,
+    lineCorrection:
+      typeof pending.payload?.lineCorrection === "string"
+        ? pending.payload.lineCorrection
+        : null,
     lineUpdatedAt:
       typeof pending.payload?.lineUpdatedAt === "string"
         ? pending.payload.lineUpdatedAt
@@ -194,6 +220,30 @@ function storedActionTurn(
                 : null,
           }
         : null,
+  };
+}
+
+function isStoredCompletion(
+  storedAction: StoredActionTurn | null,
+): storedAction is StoredActionTurn & {
+  action: Extract<TechnicianCopilotAction, { type: "job.complete" }>;
+} {
+  return storedAction?.action.type === "job.complete";
+}
+
+function boundActionFromStored(
+  storedAction: StoredActionTurn,
+): BoundTechnicianCopilotAction | null {
+  if (!storedAction.workOrderLineId) return null;
+  return {
+    action: storedAction.action,
+    lineId: storedAction.workOrderLineId,
+    lineLabel:
+      storedAction.lineLabel ??
+      `job ${storedAction.workOrderLineId.slice(0, 8)}`,
+    lineCause: storedAction.lineCause,
+    lineCorrection: storedAction.lineCorrection,
+    lineUpdatedAt: storedAction.lineUpdatedAt,
   };
 }
 
@@ -370,18 +420,6 @@ export async function runTechnicianCopilotTurn(input: {
         events: envelope.events,
       })
     : null;
-  if (envelope.session) assertActiveSession(envelope.session);
-
-  let activeWorkOrder = envelope.session
-    ? await candidateForSession(input.identity, envelope.session, candidates)
-    : null;
-  if (envelope.session && !activeWorkOrder) {
-    throw new TechnicianCopilotConflictError(
-      "technician_copilot_work_not_actionable",
-      "The active CoPilot work order is no longer assigned and actionable.",
-    );
-  }
-
   let boundTurn = bindTurnToPersistedInput({
     envelope,
     turnId: input.turnId,
@@ -393,14 +431,51 @@ export async function runTechnicianCopilotTurn(input: {
   );
   let documentationAlreadyFinalized =
     envelope.documentationTurns?.includes(input.turnId) ?? false;
+  let storedAction = storedActionTurn(envelope.events, input.turnId);
+  let activeWorkOrder =
+    envelope.session?.status === "active"
+      ? await candidateForSession(input.identity, envelope.session, candidates)
+      : null;
+
+  if (envelope.session?.status === "closed") {
+    if (existingAssistant && isStoredCompletion(storedAction)) {
+      return {
+        sessionId: null,
+        session: null,
+        reply: existingAssistant.text,
+        context,
+        workOrder: null,
+        capabilities,
+        replayed: true,
+      };
+    }
+    throw new TechnicianCopilotConflictError(
+      "technician_copilot_session_stale",
+      "This CoPilot repair session is closed. Start from your current assigned work.",
+    );
+  }
+
+  if (envelope.session) assertActiveSession(envelope.session);
+  if (
+    envelope.session &&
+    !activeWorkOrder &&
+    !isStoredCompletion(storedAction)
+  ) {
+    throw new TechnicianCopilotConflictError(
+      "technician_copilot_work_not_actionable",
+      "The active CoPilot work order is no longer assigned and actionable.",
+    );
+  }
 
   if (
     existingAssistant &&
     envelope.session &&
-    (!input.identity.documentationEnabled || documentationAlreadyFinalized)
+    (!input.identity.documentationEnabled || documentationAlreadyFinalized) &&
+    !(isStoredCompletion(storedAction) && storedAction.result?.ok)
   ) {
     return {
       sessionId: envelope.session.id,
+      session: envelope.session,
       reply: existingAssistant.text,
       context,
       workOrder: activeWorkOrder,
@@ -551,8 +626,10 @@ export async function runTechnicianCopilotTurn(input: {
     );
   }
 
-  const storedAction = storedActionTurn(envelope.events, input.turnId);
+  storedAction = storedActionTurn(envelope.events, input.turnId);
   let replayedActionResult = Boolean(storedAction?.result);
+  let completionNeedsDisposition =
+    isStoredCompletion(storedAction) && storedAction.result?.ok === true;
   const decisionPromise =
     existingAssistant || storedAction?.result || storedAction
       ? Promise.resolve(null)
@@ -578,188 +655,6 @@ export async function runTechnicianCopilotTurn(input: {
     }),
   ]);
 
-  let reply =
-    existingAssistant?.text ??
-    storedAction?.result?.reply ??
-    decision?.reply ??
-    "I'm with you.";
-  if (!existingAssistant && !storedAction?.result) {
-    const requestedAction =
-      storedAction?.action ?? decision?.action ?? { type: "none" as const };
-    const prepared = prepareTechnicianCopilotAction({
-      action: requestedAction,
-      activeWorkOrder,
-      assignedWork: candidates,
-      activeWorkOrderLineId: session.activeWorkOrderLineId,
-    });
-
-    if (prepared.kind === "reply") {
-      reply = prepared.reply;
-      if (storedAction) {
-        await append(input.identity, {
-          sessionId: session.id,
-          eventType: "action.completed",
-          turnId: input.turnId,
-          suffix: "canonical-action-result",
-          origin: "system",
-          details: {
-            action: `Attempted ${storedAction.action.type}`,
-            key: storedAction.key,
-            turnId: input.turnId,
-            ok: false,
-            reply,
-            tool: storedAction.action.type,
-          },
-        });
-      }
-    } else if (prepared.kind === "execute") {
-      let executable: Extract<
-        PreparedTechnicianCopilotAction,
-        { kind: "execute" }
-      > | null = prepared;
-      let actionKey =
-        storedAction?.key ??
-        deriveCopilotOperationId(input.turnId, "canonical-action");
-      let expectedLineUpdatedAt =
-        storedAction ? storedAction.lineUpdatedAt : prepared.line.updatedAt;
-
-      if (!storedAction) {
-        await append(input.identity, {
-          sessionId: session.id,
-          eventType: "action.pending",
-          turnId: input.turnId,
-          suffix: "canonical-action-pending",
-          origin: "system",
-          details: {
-            action: prepared.action.type,
-            key: actionKey,
-            turnId: input.turnId,
-            request: prepared.action,
-            workOrderId: prepared.workOrder.id,
-            workOrderLineId: prepared.line.id,
-            lineUpdatedAt: expectedLineUpdatedAt,
-          },
-        });
-
-        const bindingEnvelope = await read(input.identity, session.id);
-        assertActiveSession(bindingEnvelope.session);
-        const persistedAction = storedActionTurn(
-          bindingEnvelope.events,
-          input.turnId,
-        );
-        if (!persistedAction) {
-          throw new TechnicianCopilotConflictError(
-            "technician_copilot_action_binding_failed",
-            "The spoken action could not be bound safely. Try that request again.",
-          );
-        }
-
-        actionKey = persistedAction.key;
-        expectedLineUpdatedAt = persistedAction.lineUpdatedAt;
-        if (persistedAction.result) {
-          reply = persistedAction.result.reply;
-          replayedActionResult = true;
-          executable = null;
-        } else {
-          const rebound = prepareTechnicianCopilotAction({
-            action: persistedAction.action,
-            activeWorkOrder,
-            assignedWork: candidates,
-            activeWorkOrderLineId: session.activeWorkOrderLineId,
-          });
-          if (rebound.kind === "execute") {
-            executable = rebound;
-          } else {
-            reply =
-              rebound.kind === "reply"
-                ? rebound.reply
-                : "That job action is no longer available.";
-            await append(input.identity, {
-              sessionId: session.id,
-              eventType: "action.completed",
-              turnId: input.turnId,
-              suffix: "canonical-action-result",
-              origin: "system",
-              details: {
-                action: `Attempted ${persistedAction.action.type}`,
-                key: actionKey,
-                turnId: input.turnId,
-                ok: false,
-                reply,
-                tool: persistedAction.action.type,
-              },
-            });
-            executable = null;
-          }
-        }
-      }
-
-      if (executable && session.activeWorkOrderLineId !== executable.line.id) {
-        await command<{ sessionId: string }>(input.identity, "session.start", {
-          workOrderId: executable.workOrder.id,
-          workOrderLineId: executable.line.id,
-          mode: session.mode,
-          operationId: deriveCopilotOperationId(
-            input.turnId,
-            "action-line-anchor",
-          ),
-        });
-        session.activeWorkOrderLineId = executable.line.id;
-      }
-
-      if (executable) {
-        const actionResult = await executeTechnicianCopilotAction({
-          identity: {
-            authUserId: input.identity.authUserId,
-            profileId: input.identity.profileId,
-            shopId: input.identity.shopId,
-          },
-          sessionId: session.id,
-          prepared: executable,
-          operationId: actionKey,
-          expectedLineUpdatedAt,
-        });
-        reply = actionResult.reply;
-
-        await append(input.identity, {
-          sessionId: session.id,
-          eventType: "action.completed",
-          turnId: input.turnId,
-          suffix: "canonical-action-result",
-          origin: "system",
-          details: {
-            action:
-              actionResult.eventLabel ??
-              `Attempted ${executable.action.type}`,
-            key: actionKey,
-            turnId: input.turnId,
-            ok: actionResult.ok,
-            reply,
-            eventLabel: actionResult.eventLabel,
-            eventDetail: actionResult.eventDetail,
-            detail: actionResult.eventDetail,
-            tool: executable.action.type,
-            workOrderId: executable.workOrder.id,
-            workOrderLineId: executable.line.id,
-          },
-        });
-
-        if (actionResult.ok) {
-          activeWorkOrder =
-            (await loadTechnicianWorkCandidateForWorkOrder({
-              supabase: input.identity.supabase,
-              shopId: input.identity.shopId,
-              technicianIds: [
-                input.identity.authUserId,
-                input.identity.profileId,
-              ],
-              workOrderId: executable.workOrder.id,
-            })) ?? activeWorkOrder;
-        }
-      }
-    }
-  }
-
   const documentationEvents = dedupeDocumentationEvents(
     envelope.events,
     documentationExtraction.events,
@@ -775,6 +670,7 @@ export async function runTechnicianCopilotTurn(input: {
         turnId: input.turnId,
         events: documentationEvents,
       });
+      documentationAlreadyFinalized = true;
     } catch (error) {
       console.error(
         "[technician-copilot] silent documentation persistence failed",
@@ -783,6 +679,157 @@ export async function runTechnicianCopilotTurn(input: {
           error: error instanceof Error ? error.message : String(error),
         },
       );
+    }
+  }
+
+  let reply =
+    existingAssistant?.text ??
+    storedAction?.result?.reply ??
+    decision?.reply ??
+    "I'm with you.";
+  if (!existingAssistant && !storedAction?.result) {
+    let actionKey =
+      storedAction?.key ??
+      deriveCopilotOperationId(input.turnId, "canonical-action");
+    let actionWorkOrderId = storedAction?.workOrderId ?? session.workOrderId;
+    let boundAction = storedAction
+      ? boundActionFromStored(storedAction)
+      : null;
+
+    if (!storedAction) {
+      const prepared = prepareTechnicianCopilotAction({
+        action: decision?.action ?? { type: "none" },
+        activeWorkOrder,
+        assignedWork: candidates,
+        activeWorkOrderLineId: session.activeWorkOrderLineId,
+      });
+
+      if (prepared.kind === "reply") {
+        reply = prepared.reply;
+      } else if (prepared.kind === "execute") {
+        actionWorkOrderId = prepared.workOrder.id;
+        await append(input.identity, {
+          sessionId: session.id,
+          eventType: "action.pending",
+          turnId: input.turnId,
+          suffix: "canonical-action-pending",
+          origin: "system",
+          details: {
+            action: prepared.action.type,
+            key: actionKey,
+            turnId: input.turnId,
+            request: prepared.action,
+            workOrderId: prepared.workOrder.id,
+            workOrderLineId: prepared.line.id,
+            lineLabel: technicianWorkLineLabel(prepared.line),
+            lineCause: prepared.line.cause,
+            lineCorrection: prepared.line.correction,
+            lineUpdatedAt: prepared.line.updatedAt,
+          },
+        });
+
+        const bindingEnvelope = await read(input.identity, session.id);
+        assertActiveSession(bindingEnvelope.session);
+        storedAction = storedActionTurn(bindingEnvelope.events, input.turnId);
+        if (!storedAction) {
+          throw new TechnicianCopilotConflictError(
+            "technician_copilot_action_binding_failed",
+            "The spoken action could not be bound safely. Try that request again.",
+          );
+        }
+        actionKey = storedAction.key;
+        actionWorkOrderId = storedAction.workOrderId ?? actionWorkOrderId;
+        if (storedAction.result) {
+          reply = storedAction.result.reply;
+          replayedActionResult = true;
+        } else {
+          boundAction = boundActionFromStored(storedAction);
+        }
+      }
+    }
+
+    if (storedAction && !boundAction && !storedAction.result) {
+      reply = "That persisted job action is missing its line binding. Try a new request.";
+      await append(input.identity, {
+        sessionId: session.id,
+        eventType: "action.completed",
+        turnId: input.turnId,
+        suffix: "canonical-action-result",
+        origin: "system",
+        details: {
+          action: `Attempted ${storedAction.action.type}`,
+          key: actionKey,
+          turnId: input.turnId,
+          ok: false,
+          reply,
+          tool: storedAction.action.type,
+        },
+      });
+    }
+
+    if (boundAction) {
+      if (
+        activeWorkOrder?.lines.some((line) => line.id === boundAction.lineId) &&
+        session.activeWorkOrderLineId !== boundAction.lineId
+      ) {
+        await command<{ sessionId: string }>(input.identity, "session.start", {
+          workOrderId: actionWorkOrderId,
+          workOrderLineId: boundAction.lineId,
+          mode: session.mode,
+          operationId: deriveCopilotOperationId(
+            input.turnId,
+            "action-line-anchor",
+          ),
+        });
+        session.activeWorkOrderLineId = boundAction.lineId;
+      }
+
+      const actionResult = await executeBoundTechnicianCopilotAction({
+        identity: input.identity,
+        sessionId: session.id,
+        bound: boundAction,
+        operationId: actionKey,
+        expectedLineUpdatedAt: storedAction?.lineUpdatedAt,
+      });
+      reply = actionResult.reply;
+
+      await append(input.identity, {
+        sessionId: session.id,
+        eventType: "action.completed",
+        turnId: input.turnId,
+        suffix: "canonical-action-result",
+        origin: "system",
+        details: {
+          action:
+            actionResult.eventLabel ??
+            `Attempted ${boundAction.action.type}`,
+          key: actionKey,
+          turnId: input.turnId,
+          ok: actionResult.ok,
+          reply,
+          eventLabel: actionResult.eventLabel,
+          eventDetail: actionResult.eventDetail,
+          detail: actionResult.eventDetail,
+          tool: boundAction.action.type,
+          workOrderId: actionWorkOrderId,
+          workOrderLineId: boundAction.lineId,
+        },
+      });
+
+      if (actionResult.ok) {
+        activeWorkOrder = await loadTechnicianWorkCandidateForWorkOrder({
+          supabase: input.identity.supabase,
+          shopId: input.identity.shopId,
+          technicianIds: [
+            input.identity.authUserId,
+            input.identity.profileId,
+          ],
+          workOrderId: actionWorkOrderId,
+        });
+        if (boundAction.action.type === "job.complete") {
+          completionNeedsDisposition = true;
+        }
+      }
     }
   }
 
@@ -797,12 +844,49 @@ export async function runTechnicianCopilotTurn(input: {
     });
   }
 
+  if (completionNeedsDisposition) {
+    const completionWorkOrderId = storedAction?.workOrderId ?? session.workOrderId;
+    activeWorkOrder = await loadTechnicianWorkCandidateForWorkOrder({
+      supabase: input.identity.supabase,
+      shopId: input.identity.shopId,
+      technicianIds: [input.identity.authUserId, input.identity.profileId],
+      workOrderId: completionWorkOrderId,
+    });
+    const nextLine = activeWorkOrder?.lines[0] ?? null;
+    if (nextLine) {
+      await command<{ sessionId: string }>(input.identity, "session.start", {
+        workOrderId: completionWorkOrderId,
+        workOrderLineId: nextLine.id,
+        mode: session.mode,
+        operationId: deriveCopilotOperationId(
+          input.turnId,
+          "completion-session-reanchor",
+        ),
+      });
+      session.activeWorkOrderLineId = nextLine.id;
+    } else {
+      await command(input.identity, "session.close", {
+        sessionId: session.id,
+        operationId: deriveCopilotOperationId(
+          input.turnId,
+          "completion-session-close",
+        ),
+        reason: "completed_last_actionable_line",
+      });
+    }
+  }
+
   const finalEnvelope = await read(input.identity, session.id);
-  assertActiveSession(finalEnvelope.session);
+  if (!finalEnvelope.session) {
+    throw new TechnicianCopilotConflictError(
+      "technician_copilot_session_stale",
+      "The CoPilot completion result could not be restored.",
+    );
+  }
   const finalContext = projectTechnicianContext({
     repairSessionId: session.id,
-    mode: session.mode,
-    status: session.status,
+    mode: finalEnvelope.session.mode,
+    status: finalEnvelope.session.status,
     events: finalEnvelope.events,
   });
   const persistedAssistant = finalContext.conversation.find(
@@ -810,7 +894,14 @@ export async function runTechnicianCopilotTurn(input: {
   );
 
   return {
-    sessionId: session.id,
+    sessionId:
+      finalEnvelope.session.status === "active"
+        ? finalEnvelope.session.id
+        : null,
+    session:
+      finalEnvelope.session.status === "active"
+        ? finalEnvelope.session
+        : null,
     reply: persistedAssistant?.text ?? reply,
     context: finalContext,
     workOrder: activeWorkOrder,

@@ -21,6 +21,9 @@ const readiness = read(
 const finishRoute = read(
   "app/api/work-orders/lines/[id]/finish/route.ts",
 );
+const completionService = read(
+  "features/work-orders/server/completeWorkOrderLine.ts",
+);
 const partsQuotingPage = read("app/parts/quoting/page.tsx");
 const legacyMenuCaptureRoute = read(
   "app/api/menu-items/upsert-from-line/route.ts",
@@ -61,9 +64,10 @@ describe("Phase 5 route and helper contract", () => {
     );
     expect(legacyMenuCaptureRoute).not.toContain('.from("menu_items")');
 
-    const finishCall = finishRoute.indexOf("await applyJobPunchTransition");
-    const learningCall = finishRoute.indexOf(
-      "await upsertMenuRepairItemFromCompletedLine",
+    expect(finishRoute).toContain("await completeWorkOrderLine");
+    const finishCall = completionService.indexOf("await applyJobPunchTransition");
+    const learningCall = completionService.indexOf(
+      "await learnFromCompletedWorkOrderLine",
     );
     expect(finishCall).toBeGreaterThan(-1);
     expect(learningCall).toBeGreaterThan(finishCall);

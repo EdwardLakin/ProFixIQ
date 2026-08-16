@@ -13,6 +13,16 @@ values
     'a1438000-0000-4000-8000-000000000002',
     'copilot-runtime-tech@example.com',
     '{"full_name":"CoPilot Runtime Technician"}'::jsonb
+  ),
+  (
+    'a1438000-0000-4000-8000-000000000003',
+    'copilot-runtime-split-tech@example.com',
+    '{"full_name":"CoPilot Split Identity Technician"}'::jsonb
+  ),
+  (
+    'a1438000-0000-4000-8000-000000000004',
+    'copilot-runtime-split-profile@example.com',
+    '{"full_name":"CoPilot Split Identity Profile Anchor"}'::jsonb
   )
 on conflict (id) do nothing;
 
@@ -29,11 +39,23 @@ values
     'a1438000-0000-4000-8000-000000000002',
     'mechanic',
     'CoPilot Runtime Technician'
+  ),
+  (
+    'a1438000-0000-4000-8000-000000000004',
+    'a1438000-0000-4000-8000-000000000003',
+    'mechanic',
+    'CoPilot Split Identity Technician'
   )
 on conflict (id) do update
 set user_id = excluded.user_id,
     role = excluded.role,
     full_name = excluded.full_name;
+
+-- The legacy before-insert trigger initially mirrors profiles.id into user_id.
+-- Re-link this imported-style profile after insert to exercise split identity.
+update public.profiles
+set user_id = 'a1438000-0000-4000-8000-000000000003'
+where id = 'a1438000-0000-4000-8000-000000000004';
 
 insert into public.shops (id, owner_id, business_name, name, user_limit)
 values
@@ -57,7 +79,8 @@ update public.profiles
 set shop_id = 'a1438000-0000-4000-8000-000000000010'
 where id in (
   'a1438000-0000-4000-8000-000000000001',
-  'a1438000-0000-4000-8000-000000000002'
+  'a1438000-0000-4000-8000-000000000002',
+  'a1438000-0000-4000-8000-000000000004'
 );
 
 insert into public.work_orders (id, shop_id, status, custom_id)
@@ -79,6 +102,12 @@ values
     'a1438000-0000-4000-8000-000000000010',
     'completed',
     'COPILOT-RT-TERMINAL'
+  ),
+  (
+    'a1438000-0000-4000-8000-000000000104',
+    'a1438000-0000-4000-8000-000000000010',
+    'in_progress',
+    'COPILOT-RT-SPLIT-ID'
   ),
   (
     'a1438000-0000-4000-8000-000000000105',
@@ -148,6 +177,26 @@ values
     null,
     null,
     'Runtime cross-tenant guard'
+  ),
+  (
+    'a1438000-0000-4000-8000-000000000209',
+    'a1438000-0000-4000-8000-000000000104',
+    'a1438000-0000-4000-8000-000000000010',
+    'job',
+    'awaiting',
+    'a1438000-0000-4000-8000-000000000004',
+    'a1438000-0000-4000-8000-000000000004',
+    'Runtime split-identity completion'
+  ),
+  (
+    'a1438000-0000-4000-8000-000000000210',
+    'a1438000-0000-4000-8000-000000000104',
+    'a1438000-0000-4000-8000-000000000010',
+    'job',
+    'awaiting',
+    null,
+    null,
+    'Runtime split-identity sibling'
   )
 on conflict (id) do nothing;
 
@@ -160,15 +209,25 @@ insert into public.tech_shifts (
   start_time,
   end_time
 )
-values (
-  'a1438000-0000-4000-8000-000000000206',
-  'a1438000-0000-4000-8000-000000000010',
-  'a1438000-0000-4000-8000-000000000002',
-  'active',
-  'shift',
-  now() - interval '1 hour',
-  null
-)
+values
+  (
+    'a1438000-0000-4000-8000-000000000206',
+    'a1438000-0000-4000-8000-000000000010',
+    'a1438000-0000-4000-8000-000000000002',
+    'active',
+    'shift',
+    now() - interval '1 hour',
+    null
+  ),
+  (
+    'a1438000-0000-4000-8000-000000000207',
+    'a1438000-0000-4000-8000-000000000010',
+    'a1438000-0000-4000-8000-000000000004',
+    'active',
+    'shift',
+    now() - interval '1 hour',
+    null
+  )
 on conflict (id) do nothing;
 
 -- The existing line-status refresh trigger recalculates a parent work order
@@ -393,6 +452,8 @@ declare
   v_story_replay jsonb;
   v_complete jsonb;
   v_complete_replay jsonb;
+  v_close jsonb;
+  v_closed_read jsonb;
   v_line_updated_at timestamptz;
 begin
   select rs.id
@@ -695,6 +756,113 @@ begin
     end if;
   end;
 
+  insert into public.inspections (
+    id,
+    shop_id,
+    work_order_id,
+    work_order_line_id,
+    status,
+    completed,
+    is_draft,
+    locked,
+    signing_cycle
+  ) values (
+    'a1438000-0000-4000-8000-000000000220',
+    'a1438000-0000-4000-8000-000000000010',
+    'a1438000-0000-4000-8000-000000000102',
+    'a1438000-0000-4000-8000-000000000202',
+    'draft',
+    false,
+    true,
+    false,
+    0
+  );
+
+  begin
+    perform copilot.technician_job_action_internal(
+      'a1438000-0000-4000-8000-000000000002',
+      v_active_session_id,
+      'a1438000-0000-4000-8000-000000000202',
+      'job.complete',
+      'a1438000-0000-5000-a000-000000000413',
+      null,
+      'Confirmed seized inner pad',
+      'Clean and lubricate bracket',
+      v_line_updated_at
+    );
+    raise exception 'CoPilot job-completion assertion failed: unsigned inspection was finalized';
+  exception when sqlstate 'P0001' then
+    if position('INSPECTION_COMPLETION_REQUIRED' in sqlerrm) = 0 then
+      raise;
+    end if;
+  end;
+
+  if not exists (
+    select 1
+    from public.inspections i
+    where i.id = 'a1438000-0000-4000-8000-000000000220'
+      and not coalesce(i.completed, false)
+      and coalesce(i.is_draft, true)
+      and not coalesce(i.locked, false)
+      and i.finalized_at is null
+      and i.finalized_by is null
+  ) or not exists (
+    select 1
+    from public.work_order_line_labor_segments segment
+    where segment.work_order_line_id = 'a1438000-0000-4000-8000-000000000202'
+      and segment.technician_id = 'a1438000-0000-4000-8000-000000000002'
+      and segment.ended_at is null
+  ) then
+    raise exception 'CoPilot job-completion assertion failed: draft inspection rejection mutated completion state';
+  end if;
+
+  perform set_config('profixiq.inspection_sign', 'on', true);
+  update public.inspections
+  set status = 'completed',
+      completed = true,
+      is_draft = false,
+      locked = true,
+      finalized_at = now(),
+      finalized_by = 'a1438000-0000-4000-8000-000000000002'
+  where id = 'a1438000-0000-4000-8000-000000000220';
+  perform set_config('profixiq.inspection_sign', 'off', true);
+
+  insert into public.inspection_signatures (
+    id,
+    inspection_id,
+    role,
+    signed_by,
+    signed_name,
+    signing_cycle,
+    signed_at
+  ) values (
+    'a1438000-0000-4000-8000-000000000221',
+    'a1438000-0000-4000-8000-000000000220',
+    'technician',
+    'a1438000-0000-4000-8000-000000000002',
+    'CoPilot Runtime Technician',
+    0,
+    now()
+  );
+
+  perform copilot.technician_event_append_internal(
+    'a1438000-0000-4000-8000-000000000002',
+    v_active_session_id,
+    'action.pending',
+    'system',
+    'a1438000-0000-5000-a000-000000000414',
+    jsonb_build_object(
+      'action', 'job.complete',
+      'key', 'a1438000-0000-5000-a000-000000000412',
+      'turnId', 'runtime-complete-turn',
+      'request', jsonb_build_object('type', 'job.complete'),
+      'workOrderId', 'a1438000-0000-4000-8000-000000000102',
+      'workOrderLineId', 'a1438000-0000-4000-8000-000000000202',
+      'lineUpdatedAt', v_line_updated_at
+    ),
+    now()
+  );
+
   v_complete := copilot.technician_job_action_internal(
     'a1438000-0000-4000-8000-000000000002',
     v_active_session_id,
@@ -739,8 +907,123 @@ begin
   then
     raise exception 'CoPilot job-completion assertion failed: completion or replay was incoherent';
   end if;
+
+  perform copilot.technician_event_append_internal(
+    'a1438000-0000-4000-8000-000000000002',
+    v_active_session_id,
+    'action.completed',
+    'system',
+    'a1438000-0000-5000-a000-000000000415',
+    jsonb_build_object(
+      'action', 'Completed job',
+      'key', 'a1438000-0000-5000-a000-000000000412',
+      'turnId', 'runtime-complete-turn',
+      'ok', true,
+      'reply', 'Completed runtime job.',
+      'tool', 'job.complete',
+      'workOrderId', 'a1438000-0000-4000-8000-000000000102',
+      'workOrderLineId', 'a1438000-0000-4000-8000-000000000202'
+    ),
+    now()
+  );
+
+  v_close := copilot.technician_session_close_internal(
+    'a1438000-0000-4000-8000-000000000002',
+    v_active_session_id,
+    'a1438000-0000-5000-a000-000000000416',
+    'completed_last_actionable_line'
+  );
+  v_closed_read := copilot.technician_session_read_internal(
+    'a1438000-0000-4000-8000-000000000002',
+    v_active_session_id
+  );
+
+  if v_close ->> 'status' <> 'closed'
+    or v_closed_read #>> '{session,status}' <> 'closed'
+    or not exists (
+      select 1
+      from copilot.repair_session_events event
+      where event.repair_session_id = v_active_session_id
+        and event.event_type = 'session.closed'
+    )
+  then
+    raise exception 'CoPilot job-completion assertion failed: completed repair session did not close durably';
+  end if;
 end
 $technician_copilot_job_actions$;
+
+do $technician_copilot_split_identity_completion$
+declare
+  v_session_id uuid;
+  v_line_updated_at timestamptz;
+begin
+  v_session_id := (
+    copilot.technician_session_start_internal(
+      'a1438000-0000-4000-8000-000000000003',
+      'a1438000-0000-4000-8000-000000000104',
+      'a1438000-0000-4000-8000-000000000209',
+      'shop',
+      'a1438000-0000-5000-a000-000000000420'
+    ) ->> 'sessionId'
+  )::uuid;
+
+  perform copilot.technician_job_action_internal(
+    'a1438000-0000-4000-8000-000000000003',
+    v_session_id,
+    'a1438000-0000-4000-8000-000000000209',
+    'job.start',
+    'a1438000-0000-5000-a000-000000000421'
+  );
+
+  update public.work_order_lines
+  set labor_time = 1.0,
+      cause = 'Split identity cause',
+      correction = 'Split identity correction',
+      updated_at = now()
+  where id = 'a1438000-0000-4000-8000-000000000209'
+  returning updated_at into v_line_updated_at;
+
+  perform copilot.technician_job_action_internal(
+    'a1438000-0000-4000-8000-000000000003',
+    v_session_id,
+    'a1438000-0000-4000-8000-000000000209',
+    'job.complete',
+    'a1438000-0000-5000-a000-000000000422',
+    null,
+    'Split identity cause',
+    'Split identity correction',
+    v_line_updated_at
+  );
+
+  if not exists (
+    select 1
+    from public.work_order_lines wol
+    where wol.id = 'a1438000-0000-4000-8000-000000000209'
+      and lower(wol.status::text) = 'completed'
+  ) or not exists (
+    select 1
+    from public.work_order_line_labor_segments segment
+    where segment.work_order_line_id = 'a1438000-0000-4000-8000-000000000209'
+      and segment.technician_id = 'a1438000-0000-4000-8000-000000000004'
+      and segment.created_by = 'a1438000-0000-4000-8000-000000000004'
+      and segment.ended_at is not null
+  ) or not exists (
+    select 1
+    from public.workforce_operation_keys receipt
+    where receipt.operation_key =
+      'technician-copilot:a1438000-0000-5000-a000-000000000422'
+      and receipt.actor_user_id = 'a1438000-0000-4000-8000-000000000003'
+      and receipt.work_order_line_id = 'a1438000-0000-4000-8000-000000000209'
+  ) or not exists (
+    select 1
+    from public.activity_logs log
+    where log.target_id = 'a1438000-0000-4000-8000-000000000209'
+      and log.user_id = 'a1438000-0000-4000-8000-000000000003'
+  ) then
+    raise exception 'CoPilot split-identity assertion failed: auth/profile ownership was conflated';
+  end if;
+end
+$technician_copilot_split_identity_completion$;
 
 do $technician_copilot_runtime_schema$
 begin
