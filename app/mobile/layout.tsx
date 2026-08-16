@@ -11,6 +11,7 @@ import "./mobile-command.css";
 import "./mobile-command-overrides.css";
 import "./mobile-route-surfaces.css";
 import "./mobile-work-command.css";
+import "./field-hub.css";
 
 export default function MobileLayout({
   children,

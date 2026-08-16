@@ -5,6 +5,7 @@ const read = (path: string) => readFileSync(path, "utf8");
 const page = read("app/mobile/service/page.tsx");
 const shell = read("features/mobile/service/MobileServiceShell.tsx");
 const scopeGate = read("features/mobile/service/MobileServiceScopeGate.tsx");
+const fieldHub = read("features/mobile/service/FieldHub.tsx");
 const tiles = read("features/mobile/config/mobile-tiles.ts");
 const activeRoute = read("app/api/mobile/service-visits/active/route.ts");
 const dispatchRoute = read("app/api/dispatch/visits/[id]/route.ts");
@@ -12,7 +13,8 @@ const dispatchRoute = read("app/api/dispatch/visits/[id]/route.ts");
 describe("Mobile Service shell", () => {
   it("uses the merged Dispatch contracts instead of duplicating service-visit state", () => {
     expect(page).toContain("MobileServiceScopeGate");
-    expect(scopeGate).toContain("MobileServiceShell");
+    expect(scopeGate).toContain("FieldHub");
+    expect(fieldHub).toContain("MobileServiceShell embedded");
     expect(shell).toContain("/api/mobile/service-visits/active");
     expect(shell).toContain("/api/dispatch/visits/${visit.id}");
     expect(shell).not.toContain('.from("service_visits")');

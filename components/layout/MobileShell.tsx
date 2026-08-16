@@ -6,6 +6,9 @@ import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 
 import { resolveMobileHref } from "@/features/mobile/navigation/mobile-route-continuity";
+import FieldWorkspaceShell, {
+  FIELD_SURFACE_SESSION_KEY,
+} from "@/features/mobile/service/FieldWorkspaceShell";
 import { MobileBottomNav } from "./MobileBottomNav";
 
 type Props = {
@@ -74,7 +77,36 @@ export function MobileShell({ children, title }: Props) {
   const pathname = usePathname();
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [fieldSurface, setFieldSurface] = useState(
+    pathname.startsWith("/mobile/service"),
+  );
   const resolvedTitle = title ?? getTitleFromPath(pathname);
+
+  useEffect(() => {
+    try {
+      if (
+        pathname === "/mobile" ||
+        pathname === "/mobile/sign-in" ||
+        pathname.startsWith("/mobile/sign-in/")
+      ) {
+        window.sessionStorage.removeItem(FIELD_SURFACE_SESSION_KEY);
+        setFieldSurface(false);
+        return;
+      }
+
+      if (pathname.startsWith("/mobile/service")) {
+        window.sessionStorage.setItem(FIELD_SURFACE_SESSION_KEY, "true");
+        setFieldSurface(true);
+        return;
+      }
+
+      setFieldSurface(
+        window.sessionStorage.getItem(FIELD_SURFACE_SESSION_KEY) === "true",
+      );
+    } catch {
+      setFieldSurface(pathname.startsWith("/mobile/service"));
+    }
+  }, [pathname]);
 
   useEffect(() => {
     const openMenu = () => setMenuOpen(true);
@@ -122,6 +154,10 @@ export function MobileShell({ children, title }: Props) {
         <main className="mobile-command-main min-w-0 overflow-x-hidden">{children}</main>
       </div>
     );
+  }
+
+  if (fieldSurface) {
+    return <FieldWorkspaceShell>{children}</FieldWorkspaceShell>;
   }
 
   return (
