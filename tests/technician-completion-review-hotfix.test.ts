@@ -9,6 +9,10 @@ const advisorMigration = readFileSync(
   "supabase/migrations/20260816020500_completion_learning_receipt_advisor_hardening.sql",
   "utf8",
 );
+const trustedQueueMigration = readFileSync(
+  "supabase/migrations/20260816041500_completion_learning_trusted_queue_hotfix.sql",
+  "utf8",
+);
 const actions = readFileSync(
   "features/copilot/technician/server/actions.ts",
   "utf8",
@@ -19,6 +23,10 @@ const chat = readFileSync(
 );
 const completionService = readFileSync(
   "features/work-orders/server/completeWorkOrderLine.ts",
+  "utf8",
+);
+const completionWorker = readFileSync(
+  "features/work-orders/server/processCompletedRepairLearningQueue.ts",
   "utf8",
 );
 
@@ -48,13 +56,34 @@ describe("technician completion post-merge review hotfix", () => {
     expect(advisorMigration).toContain(
       "completed_repair_learning_receipts_deny_direct_access",
     );
-    expect(completionService).toContain(
-      '"claim_completed_repair_learning_atomic"',
+  });
+
+  it("moves repair-learning finalization behind a trusted durable queue", () => {
+    expect(trustedQueueMigration).toContain(
+      "create trigger enqueue_completed_repair_learning",
+    );
+    expect(trustedQueueMigration).toContain(
+      "claim_completed_repair_learning_batch",
+    );
+    expect(trustedQueueMigration).toContain(
+      "workforce.operation_name = 'job_punch:finish'",
+    );
+    expect(trustedQueueMigration).toContain(
+      ") from public, anon, authenticated, service_role;",
+    );
+    expect(trustedQueueMigration).toContain(") to service_role;");
+    expect(trustedQueueMigration).toContain("clock_timestamp()");
+    expect(trustedQueueMigration).toContain("on delete set null");
+    expect(trustedQueueMigration).toContain(
+      "finish_completed_repair_learning_worker",
     );
     expect(completionService).toContain(
-      '"finish_completed_repair_learning_atomic"',
+      'menuRepairLearning: { ok: false, state: "pending" as const }',
     );
-    expect(completionService).toContain("operationKey: input.operationKey");
+    expect(completionWorker).toContain(
+      '"claim_completed_repair_learning_batch"',
+    );
+    expect(actions).not.toContain("learnFromCompletedWorkOrderLine");
   });
 
   it("normalizes legacy split-identity completion receipts", () => {

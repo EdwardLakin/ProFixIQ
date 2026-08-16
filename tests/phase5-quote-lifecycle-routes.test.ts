@@ -24,6 +24,9 @@ const finishRoute = read(
 const completionService = read(
   "features/work-orders/server/completeWorkOrderLine.ts",
 );
+const completionLearningMigration = read(
+  "supabase/migrations/20260816041500_completion_learning_trusted_queue_hotfix.sql",
+);
 const partsQuotingPage = read("app/parts/quoting/page.tsx");
 const legacyMenuCaptureRoute = read(
   "app/api/menu-items/upsert-from-line/route.ts",
@@ -65,12 +68,13 @@ describe("Phase 5 route and helper contract", () => {
     expect(legacyMenuCaptureRoute).not.toContain('.from("menu_items")');
 
     expect(finishRoute).toContain("await completeWorkOrderLine");
-    const finishCall = completionService.indexOf("await applyJobPunchTransition");
-    const learningCall = completionService.indexOf(
-      "await learnFromCompletedWorkOrderLine",
+    expect(completionService).toContain("await applyJobPunchTransition");
+    expect(completionService).not.toContain(
+      "upsertMenuRepairItemFromCompletedLine",
     );
-    expect(finishCall).toBeGreaterThan(-1);
-    expect(learningCall).toBeGreaterThan(finishCall);
+    expect(completionLearningMigration).toContain(
+      "create trigger enqueue_completed_repair_learning",
+    );
   });
 
   it("routes legacy inspection import through the atomic anchored command", () => {

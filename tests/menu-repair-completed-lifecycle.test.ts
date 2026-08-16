@@ -120,6 +120,12 @@ describe("completed repair memory", () => {
     const completionService = read(
       "features/work-orders/server/completeWorkOrderLine.ts",
     );
+    const completionWorker = read(
+      "features/work-orders/server/processCompletedRepairLearningQueue.ts",
+    );
+    const completionLearningMigration = read(
+      "supabase/migrations/20260816041500_completion_learning_trusted_queue_hotfix.sql",
+    );
     const completedHelper = read(
       "features/menu-repair-items/server/upsertMenuRepairItemFromCompletedLine.ts",
     );
@@ -128,12 +134,15 @@ describe("completed repair memory", () => {
     );
 
     expect(finishRoute).toContain("await completeWorkOrderLine");
-    expect(
-      completionService.indexOf("await applyJobPunchTransition"),
-    ).toBeLessThan(
-      completionService.indexOf("await learnFromCompletedWorkOrderLine"),
+    expect(completionService).toContain("await applyJobPunchTransition");
+    expect(completionService).toContain(
+      'menuRepairLearning: { ok: false, state: "pending" as const }',
     );
-    expect(completionService).toContain("completed repair memory update failed");
+    expect(completionWorker).toContain("completed repair memory update failed");
+    expect(completionWorker).toContain("upsertMenuRepairItemFromCompletedLine");
+    expect(completionLearningMigration).toContain(
+      "create trigger enqueue_completed_repair_learning",
+    );
     expect(completedHelper).toContain('.from("work_order_parts")');
     expect(completedHelper).toContain('.from("menu_repair_item_pricing_parts")');
     expect(completedHelper).toContain("completedNetQuantity");

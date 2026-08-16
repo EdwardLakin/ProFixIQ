@@ -8,7 +8,6 @@ const mocks = vi.hoisted(() => ({
   decideTechnicianCopilotTurn: vi.fn(),
   extractTechnicianDocumentationTurn: vi.fn(),
   sendCopilotServerCommand: vi.fn(),
-  learnFromCompletedWorkOrderLine: vi.fn(),
 }));
 
 vi.mock("@/features/copilot/technician/server/assignedWork", async () => {
@@ -34,10 +33,6 @@ vi.mock("@/features/copilot/technician/server/documentation", () => ({
 
 vi.mock("@/features/copilot/technician/server/transport", () => ({
   sendCopilotServerCommand: mocks.sendCopilotServerCommand,
-}));
-
-vi.mock("@/features/work-orders/server/completeWorkOrderLine", () => ({
-  learnFromCompletedWorkOrderLine: mocks.learnFromCompletedWorkOrderLine,
 }));
 
 import { runTechnicianCopilotTurn } from "@/features/copilot/technician/server/chat";
@@ -93,8 +88,6 @@ describe("Technician CoPilot persistent text runtime", () => {
     documentationTurns = [];
     eventCounter = 0;
     finalReasoningContext = null;
-    mocks.learnFromCompletedWorkOrderLine.mockResolvedValue({ ok: true });
-
     mocks.listTechnicianWorkCandidates.mockResolvedValue([candidate]);
     mocks.loadTechnicianWorkCandidateForWorkOrder.mockResolvedValue(candidate);
 

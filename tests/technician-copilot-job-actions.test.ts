@@ -4,15 +4,10 @@ import type { TechnicianWorkCandidate } from "@/features/copilot/technician/serv
 
 const mocks = vi.hoisted(() => ({
   sendCopilotServerCommand: vi.fn(),
-  learnFromCompletedWorkOrderLine: vi.fn(),
 }));
 
 vi.mock("@/features/copilot/technician/server/transport", () => ({
   sendCopilotServerCommand: mocks.sendCopilotServerCommand,
-}));
-
-vi.mock("@/features/work-orders/server/completeWorkOrderLine", () => ({
-  learnFromCompletedWorkOrderLine: mocks.learnFromCompletedWorkOrderLine,
 }));
 
 import {
@@ -70,7 +65,6 @@ describe("Technician CoPilot canonical job actions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.sendCopilotServerCommand.mockResolvedValue({ ok: true });
-    mocks.learnFromCompletedWorkOrderLine.mockResolvedValue({ ok: true });
   });
 
   it("answers what's next from assigned line state without claiming or mutating work", () => {
@@ -330,12 +324,6 @@ describe("Technician CoPilot canonical job actions", () => {
       eventLabel: "Completed job",
       eventDetail: "Brake inspection",
     });
-    expect(mocks.learnFromCompletedWorkOrderLine).toHaveBeenCalledWith({
-      supabase: expect.anything(),
-      lineId: activeWorkOrder.lines[0].id,
-      actorUserId: "00000000-0000-4000-8000-000000000011",
-      operationKey: "00000000-0000-5000-a000-000000000310",
-    });
   });
 
   it("replays the same durable operation after an unknown transport outcome", async () => {
@@ -453,6 +441,5 @@ describe("Technician CoPilot canonical job actions", () => {
       reply: "Complete and sign the inspection before I can finish that job.",
     });
     expect(result.reply).not.toContain("123");
-    expect(mocks.learnFromCompletedWorkOrderLine).not.toHaveBeenCalled();
   });
 });

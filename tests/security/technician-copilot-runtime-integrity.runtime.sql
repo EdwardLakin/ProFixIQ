@@ -1136,45 +1136,52 @@ $technician_copilot_split_identity_completion$;
 
 do $technician_completion_learning_serialization$
 declare
-  v_first jsonb;
-  v_overlapping jsonb;
+  v_claim record;
   v_finished jsonb;
-  v_replay jsonb;
+  v_overlapping integer;
+  v_replay integer;
 begin
-  v_first := public.claim_completed_repair_learning_atomic(
-    'a1438000-0000-4000-8000-000000000010',
-    'a1438000-0000-4000-8000-000000000202',
-    'a1438000-0000-4000-8000-000000000002',
-    'runtime-learning-operation',
-    'a1438000-0000-5000-a000-000000000430'
-  );
-  v_overlapping := public.claim_completed_repair_learning_atomic(
-    'a1438000-0000-4000-8000-000000000010',
-    'a1438000-0000-4000-8000-000000000202',
-    'a1438000-0000-4000-8000-000000000002',
-    'runtime-learning-operation',
-    'a1438000-0000-5000-a000-000000000431'
-  );
-  v_finished := public.finish_completed_repair_learning_atomic(
-    'a1438000-0000-4000-8000-000000000010',
-    'a1438000-0000-4000-8000-000000000202',
-    'a1438000-0000-4000-8000-000000000002',
+  select batch.*
+    into v_claim
+  from public.claim_completed_repair_learning_batch(
     'a1438000-0000-5000-a000-000000000430',
+    50,
+    600
+  ) batch
+  where batch.work_order_line_id =
+    'a1438000-0000-4000-8000-000000000202';
+
+  select count(*)
+    into v_overlapping
+  from public.claim_completed_repair_learning_batch(
+    'a1438000-0000-5000-a000-000000000431',
+    50,
+    600
+  );
+
+  v_finished := public.finish_completed_repair_learning_worker(
+    'a1438000-0000-4000-8000-000000000010',
+    'a1438000-0000-4000-8000-000000000202',
+    v_claim.actor_user_id,
+    v_claim.lease_token,
     true,
     '{"ok":true}'::jsonb
   );
-  v_replay := public.claim_completed_repair_learning_atomic(
-    'a1438000-0000-4000-8000-000000000010',
-    'a1438000-0000-4000-8000-000000000202',
-    'a1438000-0000-4000-8000-000000000002',
-    'runtime-learning-operation',
-    'a1438000-0000-5000-a000-000000000432'
+
+  select count(*)
+    into v_replay
+  from public.claim_completed_repair_learning_batch(
+    'a1438000-0000-5000-a000-000000000432',
+    50,
+    600
   );
 
-  if not coalesce((v_first ->> 'claimed')::boolean, false)
-    or not coalesce((v_overlapping ->> 'inProgress')::boolean, false)
+  if v_claim.work_order_line_id is distinct from
+      'a1438000-0000-4000-8000-000000000202'
+    or v_claim.lease_token is null
+    or v_overlapping <> 0
     or not coalesce((v_finished ->> 'completed')::boolean, false)
-    or not coalesce((v_replay ->> 'completed')::boolean, false)
+    or v_replay <> 0
     or exists (
       select 1
       from copilot.completed_repair_learning_receipts receipt
@@ -1183,7 +1190,8 @@ begin
           'a1438000-0000-4000-8000-000000000202'
         and (
           receipt.state <> 'completed'
-          or receipt.attempt_count <> 1
+          or receipt.attempt_count <> 2
+          or receipt.completed_at > clock_timestamp() + interval '1 minute'
         )
     )
   then
@@ -1191,6 +1199,83 @@ begin
   end if;
 end
 $technician_completion_learning_serialization$;
+
+do $technician_completion_learning_security$
+begin
+  if has_function_privilege(
+      'authenticated',
+      'public.claim_completed_repair_learning_atomic(uuid,uuid,uuid,text,uuid,timestamp with time zone)',
+      'EXECUTE'
+    )
+    or has_function_privilege(
+      'authenticated',
+      'public.finish_completed_repair_learning_atomic(uuid,uuid,uuid,uuid,boolean,jsonb,timestamp with time zone)',
+      'EXECUTE'
+    )
+    or has_function_privilege(
+      'service_role',
+      'public.claim_completed_repair_learning_atomic(uuid,uuid,uuid,text,uuid,timestamp with time zone)',
+      'EXECUTE'
+    )
+    or has_function_privilege(
+      'service_role',
+      'public.finish_completed_repair_learning_atomic(uuid,uuid,uuid,uuid,boolean,jsonb,timestamp with time zone)',
+      'EXECUTE'
+    )
+    or not has_function_privilege(
+      'service_role',
+      'public.claim_completed_repair_learning_batch(uuid,integer,integer)',
+      'EXECUTE'
+    )
+    or not has_function_privilege(
+      'service_role',
+      'public.finish_completed_repair_learning_worker(uuid,uuid,uuid,uuid,boolean,jsonb)',
+      'EXECUTE'
+    )
+  then
+    raise exception 'Completed repair learning assertion failed: browser role can finalize receipts';
+  end if;
+
+  insert into auth.users (id, email, raw_user_meta_data)
+  values (
+    'a1438000-0000-4000-8000-000000000006',
+    'copilot-runtime-deleted-tech@example.com',
+    '{}'::jsonb
+  );
+
+  insert into public.workforce_operation_keys (
+    shop_id,
+    operation_name,
+    operation_key,
+    actor_user_id,
+    work_order_id,
+    work_order_line_id,
+    result
+  ) values (
+    'a1438000-0000-4000-8000-000000000010',
+    'job_punch:finish',
+    'runtime-deleted-technician-finish',
+    'a1438000-0000-4000-8000-000000000006',
+    'a1438000-0000-4000-8000-000000000102',
+    'a1438000-0000-4000-8000-000000000204',
+    '{"ok":true,"action":"finish"}'::jsonb
+  );
+
+  delete from auth.users
+  where id = 'a1438000-0000-4000-8000-000000000006';
+
+  if not exists (
+    select 1
+    from copilot.completed_repair_learning_receipts receipt
+    where receipt.shop_id = 'a1438000-0000-4000-8000-000000000010'
+      and receipt.work_order_line_id =
+        'a1438000-0000-4000-8000-000000000204'
+      and receipt.actor_user_id is null
+  ) then
+    raise exception 'Completed repair learning assertion failed: user deletion removed or blocked the audit receipt';
+  end if;
+end
+$technician_completion_learning_security$;
 
 do $technician_copilot_runtime_schema$
 begin

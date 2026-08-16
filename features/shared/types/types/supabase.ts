@@ -27454,6 +27454,19 @@ export type Database = {
         }
         Returns: Json
       }
+      claim_completed_repair_learning_batch: {
+        Args: {
+          p_lease_seconds?: number
+          p_limit?: number
+          p_worker_id: string
+        }
+        Returns: {
+          actor_user_id: string | null
+          lease_token: string
+          shop_id: string
+          work_order_line_id: string
+        }[]
+      }
       claim_financial_outbox_batch: {
         Args: {
           p_lease_seconds?: number
@@ -28277,6 +28290,17 @@ export type Database = {
         Args: {
           p_actor_user_id: string
           p_at?: string
+          p_lease_token: string
+          p_result?: Json
+          p_shop_id: string
+          p_succeeded: boolean
+          p_work_order_line_id: string
+        }
+        Returns: Json
+      }
+      finish_completed_repair_learning_worker: {
+        Args: {
+          p_actor_user_id: string
           p_lease_token: string
           p_result?: Json
           p_shop_id: string
@@ -30523,4 +30547,3 @@ export const Constants = {
     },
   },
 } as const
-

@@ -17,6 +17,10 @@
       "schedule": "*/2 * * * *"
     },
     {
+      "path": "/api/internal/completed-repair-learning/tick",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/api/internal/workforce/auto-punch-out",
       "schedule": "* * * * *"
     },
