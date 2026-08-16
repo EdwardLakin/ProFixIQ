@@ -33,7 +33,7 @@ function NavPill({ href, label, active, accentColor, onClick }: { href: string; 
   return <Link href={href} onClick={onClick} className={cx("group flex items-center justify-between rounded-xl border px-4 py-3 text-sm transition", active ? "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-primary)] shadow-[var(--theme-shadow-medium)]" : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)] hover:border-[color:var(--theme-border-soft)] hover:bg-[color:var(--theme-surface-subtle)]")}><span className="font-semibold">{label}</span><span className={cx("h-2 w-2 rounded-full transition-opacity", active ? "opacity-100" : "opacity-0 group-hover:opacity-80")} style={{ backgroundColor: accentColor }} /></Link>;
 }
 
-export function OperationsPortalShell({ title, subtitle, badgeLabel, accentColor = DEFAULT_ACCENT, nav, signInRedirectPath = "/portal/auth/sign-in", enableAuthControls = true, children }: OperationsPortalShellProps) {
+export function OperationsPortalShell({ title, subtitle, badgeLabel, accentColor = DEFAULT_ACCENT, nav, signInRedirectPath = "/customer/sign-in", enableAuthControls = true, children }: OperationsPortalShellProps) {
   const pathname = usePathname();
   const router = useRouter();
   const supabase = useMemo(() => (enableAuthControls ? createBrowserSupabase() : null), [enableAuthControls]);

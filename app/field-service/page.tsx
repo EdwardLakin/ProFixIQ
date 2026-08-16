@@ -20,8 +20,8 @@ export default function FieldServiceMarketingPage() {
         priceDetail:
           "Includes one active service truck. Add active trucks for $49 each per month. Operators and portal users are never billed as seats.",
         accent: "field",
-        signInHref: "/mobile/sign-in?redirect=%2Fmobile%2Fservice",
-        signInLabel: "Field Service sign-in",
+        signInHref: "/field/sign-in",
+        signInLabel: "Field sign-in",
         outcomes: [
           "1 truck included",
           "No per-user charge",

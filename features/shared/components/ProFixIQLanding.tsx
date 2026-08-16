@@ -181,13 +181,13 @@ export default function ProFixIQLanding() {
           </nav>
 
           <div className="hidden items-center gap-3 sm:flex">
-            <Link href="/portal" className="text-sm font-semibold text-[color:var(--marketing-muted)] hover:text-[color:var(--marketing-ink)]">Portal sign-in</Link>
+            <Link href="/customer/sign-in" className="text-sm font-semibold text-[color:var(--marketing-muted)] hover:text-[color:var(--marketing-ink)]">Customer sign-in</Link>
             {sessionExists ? <><Link href="/dashboard" className="rounded-xl border border-[color:var(--marketing-border-strong)] bg-white px-4 py-2.5 text-sm font-bold">Dashboard</Link><button type="button" onClick={() => void handleSignOut()} className="text-sm font-semibold text-[color:var(--marketing-muted)]">Sign out</button></> : <><Link href="/sign-in" className="px-2 text-sm font-semibold text-[color:var(--marketing-ink)]">Sign in</Link><Link href="/compare-plans" className="rounded-xl bg-[color:var(--marketing-copper)] px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-[color:var(--marketing-copper-dark)]">Start free trial</Link></>}
           </div>
 
           <button type="button" className="grid h-10 w-10 place-items-center rounded-lg border border-[color:var(--marketing-border)] bg-white sm:hidden" onClick={() => setMenuOpen((value) => !value)} aria-expanded={menuOpen} aria-label="Toggle navigation">{menuOpen ? <X size={19} /> : <Menu size={19} />}</button>
         </div>
-        {menuOpen ? <div className="border-t border-[color:var(--marketing-border)] bg-white px-5 py-5 sm:hidden"><div className="flex flex-col gap-4">{[{ href: "#workflow", label: "Workflow" }, { href: "#product", label: "Product" }, { href: "#shop-boost", label: "Shop Boost" }, { href: "#pricing", label: "Pricing" }, { href: "/portal", label: "Portal sign-in" }, { href: sessionExists ? "/dashboard" : "/sign-in", label: sessionExists ? "Dashboard" : "Sign in" }].map((item) => <Link key={item.href} href={item.href} onClick={() => setMenuOpen(false)} className="text-sm font-bold">{item.label}</Link>)}<Link href="/compare-plans" className="mt-2 rounded-xl bg-[color:var(--marketing-copper)] px-4 py-3 text-center text-sm font-bold text-white">Start free trial</Link></div></div> : null}
+        {menuOpen ? <div className="border-t border-[color:var(--marketing-border)] bg-white px-5 py-5 sm:hidden"><div className="flex flex-col gap-4">{[{ href: "#workflow", label: "Workflow" }, { href: "#product", label: "Product" }, { href: "#shop-boost", label: "Shop Boost" }, { href: "#pricing", label: "Pricing" }, { href: "/customer/sign-in", label: "Customer sign-in" }, { href: sessionExists ? "/dashboard" : "/sign-in", label: sessionExists ? "Dashboard" : "Sign in" }].map((item) => <Link key={item.href} href={item.href} onClick={() => setMenuOpen(false)} className="text-sm font-bold">{item.label}</Link>)}<Link href="/compare-plans" className="mt-2 rounded-xl bg-[color:var(--marketing-copper)] px-4 py-3 text-center text-sm font-bold text-white">Start free trial</Link></div></div> : null}
       </header>
 
       <main>
@@ -200,19 +200,22 @@ export default function ProFixIQLanding() {
                 <div className="marketing-eyebrow">Choose your workspace</div>
                 <h2 className="mt-3 text-3xl font-semibold tracking-[-0.035em] sm:text-4xl">One sign-in system. Clear operational boundaries.</h2>
               </div>
-              <p className="max-w-xl text-sm leading-6 text-[color:var(--marketing-muted)]">Shop Mobile is for work in the bay. Field Service is a separately enabled, explicitly assigned dispatch workspace. Fleet Maintenance is a dedicated fleet workspace.</p>
+              <p className="max-w-xl text-sm leading-6 text-[color:var(--marketing-muted)]">Shop, Field, and Fleet each have a dedicated sign-in and operating boundary. Customer Portal provides a fourth, invitation-based access path.</p>
             </div>
             <div className="mt-8 grid gap-4 lg:grid-cols-3">
               {[
-                { title: "Shop Operations", body: "Run repair operations, the customer journey, and Shop Mobile for authorized shop roles.", href: "/sign-in", action: "Shop sign-in", icon: Wrench },
-                { title: "Field Service", body: "Dispatch and complete off-site service visits with explicit operator access and service-truck capacity.", href: "/field-service", action: "Explore Field Service", icon: Building2 },
-                { title: "Fleet Maintenance", body: "Give participating fleets an owned workspace for assets, maintenance, approvals, and history.", href: "/fleet-maintenance", action: "Explore Fleet Maintenance", icon: Users },
-              ].map(({ title, body, href, action, icon: Icon }) => (
+                { title: "Shop Operations", body: "Run repair operations, the customer journey, and Shop Mobile for authorized shop roles.", href: "/shop/sign-in", action: "Shop sign-in", signInHref: null, signInLabel: null, icon: Wrench },
+                { title: "Field Service", body: "Dispatch and complete off-site service visits with explicit operator access and service-truck capacity.", href: "/field-service", action: "Explore Field Service", signInHref: "/field/sign-in", signInLabel: "Field sign-in", icon: Building2 },
+                { title: "Fleet Maintenance", body: "Give participating fleets an owned workspace for assets, maintenance, approvals, and history.", href: "/fleet-maintenance", action: "Explore Fleet Maintenance", signInHref: "/fleet/sign-in", signInLabel: "Fleet sign-in", icon: Users },
+              ].map(({ title, body, href, action, signInHref, signInLabel, icon: Icon }) => (
                 <article key={title} className="flex flex-col rounded-2xl border border-[color:var(--marketing-border)] bg-[color:var(--marketing-stone)] p-6">
                   <Icon size={22} className="text-[color:var(--marketing-copper-dark)]" />
                   <h3 className="mt-6 text-xl font-bold">{title}</h3>
                   <p className="mt-3 flex-1 text-sm leading-6 text-[color:var(--marketing-muted)]">{body}</p>
-                  <Link href={href} className="mt-6 inline-flex items-center gap-2 text-sm font-bold text-[color:var(--marketing-copper-dark)]">{action} <ArrowRight size={15} /></Link>
+                  <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2">
+                    <Link href={href} className="inline-flex items-center gap-2 text-sm font-bold text-[color:var(--marketing-copper-dark)]">{action} <ArrowRight size={15} /></Link>
+                    {signInHref && signInLabel ? <Link href={signInHref} className="text-sm font-semibold text-[color:var(--marketing-muted)] transition hover:text-[color:var(--marketing-ink)]">{signInLabel}</Link> : null}
+                  </div>
                 </article>
               ))}
             </div>

@@ -1,4 +1,4 @@
-export type SignInSurface = "shop" | "mobile" | "customer" | "fleet";
+export type SignInSurface = "shop" | "mobile" | "field" | "customer" | "fleet";
 
 export async function signInWithIdentifier(input: {
   identifier: string;

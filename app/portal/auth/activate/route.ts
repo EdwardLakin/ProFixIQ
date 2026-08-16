@@ -13,7 +13,7 @@ function asPortalOtpType(value: string | null): PortalOtpType | null {
 }
 
 function activationFailureUrl(req: NextRequest): URL {
-  const url = new URL("/portal/auth/sign-in", req.url);
+  const url = new URL("/customer/sign-in", req.url);
   url.searchParams.set("portal", "customer");
   url.searchParams.set("activation", "invalid");
   return url;

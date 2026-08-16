@@ -42,7 +42,7 @@ export default function QuoteRequestPageClient() {
     void (async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        router.replace("/portal/auth/sign-in");
+        router.replace("/customer/sign-in");
         return;
       }
       const { data: customer } = await supabase

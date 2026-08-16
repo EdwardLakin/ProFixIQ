@@ -20,7 +20,7 @@ export default function PortalConfirmPage() {
       if (cancelled) return;
 
       // ✅ land on portal home
-      router.replace(session?.user ? "/portal" : "/portal/auth/sign-in");
+      router.replace(session?.user ? "/portal" : "/customer/sign-in");
     })();
 
     return () => {

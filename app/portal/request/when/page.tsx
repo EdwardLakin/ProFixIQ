@@ -211,7 +211,7 @@ export default function PortalRequestWhenPage() {
 
       if (userErr || !user) {
         toast.error("Please sign in to request service.");
-        router.replace("/portal/auth/sign-in");
+        router.replace("/customer/sign-in");
         return;
       }
 

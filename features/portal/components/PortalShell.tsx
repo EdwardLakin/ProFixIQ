@@ -150,7 +150,7 @@ export default function PortalShell({
       await supabase.auth.signOut();
     } finally {
       setSigningOut(false);
-      router.replace("/portal/auth/sign-in");
+      router.replace("/customer/sign-in");
     }
   };
 

@@ -18,10 +18,11 @@ const groups = [
   {
     title: "Access",
     links: [
-      { label: "Shop sign-in", href: "/sign-in" },
-      { label: "Customer portal", href: "/portal" },
-      { label: "Fleet portal", href: "/portal/fleet" },
-      { label: "Compare plans", href: "/compare-plans" },
+      { label: "Choose an app", href: "/sign-in" },
+      { label: "Shop sign-in", href: "/shop/sign-in" },
+      { label: "Field sign-in", href: "/field/sign-in" },
+      { label: "Fleet sign-in", href: "/fleet/sign-in" },
+      { label: "Customer portal", href: "/customer/sign-in" },
     ],
   },
 ];

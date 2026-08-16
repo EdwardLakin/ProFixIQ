@@ -162,6 +162,20 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
+  const requestedPublicRedirect = safeRedirectPath(
+    req.nextUrl.searchParams.get("redirect"),
+  );
+  if (
+    !fleetProductRequest &&
+    requestPathname === "/mobile/sign-in" &&
+    (requestedPublicRedirect === "/mobile/service" ||
+      requestedPublicRedirect?.startsWith("/mobile/service/"))
+  ) {
+    const target = req.nextUrl.clone();
+    target.pathname = "/field/sign-in";
+    return NextResponse.redirect(target, 308);
+  }
+
   if (!fleetProductRequest) {
     const legacyFleetRedirect = resolveLegacyFleetRedirect(
       `${requestPathname}${search}`,
@@ -271,6 +285,13 @@ export async function middleware(req: NextRequest) {
   const isPortal = pathname === "/portal" || pathname.startsWith("/portal/");
   const isFleetPortalAuthPage = pathname === PORTAL_SIGN_IN.fleet;
   const isPortalAuthPage = pathname.startsWith("/portal/auth/");
+  const isAccessChooser = pathname === "/sign-in";
+  const isShopSignIn =
+    pathname === "/shop/sign-in" || pathname.startsWith("/signup");
+  const isFieldSignIn = pathname === "/field/sign-in";
+  const isCustomerSignIn = pathname === PORTAL_SIGN_IN.customer;
+  const isMobileSignIn = pathname === "/mobile/sign-in";
+  const isLegacyCustomerSignIn = pathname === "/portal/auth/sign-in";
   const isFleetPortalPath = isPortalPathForSurface(pathname, "fleet");
   const isPortalActivationPage =
     pathname === "/portal/auth/confirm" ||
@@ -292,8 +313,11 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith("/subscribe") ||
     pathname.startsWith("/confirm") ||
     pathname.startsWith("/signup") ||
-    pathname.startsWith("/sign-in") ||
-    pathname.startsWith("/mobile/sign-in") ||
+    isAccessChooser ||
+    isShopSignIn ||
+    isFieldSignIn ||
+    isCustomerSignIn ||
+    isMobileSignIn ||
     pathname.startsWith("/forgot-password") ||
     pathname.startsWith("/auth/reset") ||
     pathname.startsWith("/auth/set-password") ||
@@ -365,11 +389,8 @@ export async function middleware(req: NextRequest) {
     const redirectParam = fleetProductRequest
       ? (toFleetInternalHref(requestedRedirect) ?? requestedRedirect)
       : requestedRedirect;
-    const isMainSignIn =
-      pathname.startsWith("/sign-in") || pathname.startsWith("/signup");
-    const isMobileSignIn = pathname.startsWith("/mobile/sign-in");
 
-    if (user && (isMainSignIn || isMobileSignIn)) {
+    if (user && (isShopSignIn || isMobileSignIn || isFieldSignIn)) {
       if (isPortalOnlyAccount) {
         const access = await resolvePortalAccessServer(supabase, user.id);
         const target = productRequestUrl(
@@ -380,13 +401,37 @@ export async function middleware(req: NextRequest) {
         return redirectWithResponseHeaders(target, res);
       }
 
+      if (isFieldSignIn) {
+        if (!completed) {
+          const target = productRequestUrl(
+            req,
+            "/onboarding",
+            fleetProductRequest,
+          );
+          return redirectWithResponseHeaders(target, res);
+        }
+        return res;
+      }
+
       const defaultAuthenticatedPath = !completed
         ? "/onboarding"
-        : isMobileSignIn || mobileDeviceRequest
+        : isMobileSignIn
           ? "/mobile"
           : "/dashboard";
       const to = redirectParam ?? defaultAuthenticatedPath;
       const target = productRequestUrl(req, to, fleetProductRequest);
+      return redirectWithResponseHeaders(target, res);
+    }
+
+    if (user && isCustomerSignIn) {
+      const access = await resolvePortalAccessServer(supabase, user.id);
+      if (!access.customer && !access.fleet) return res;
+
+      const target = productRequestUrl(
+        req,
+        access.customer ? "/portal" : "/portal/fleet",
+        fleetProductRequest,
+      );
       return redirectWithResponseHeaders(target, res);
     }
 
@@ -438,7 +483,7 @@ export async function middleware(req: NextRequest) {
 
     if (
       !user &&
-      pathname === PORTAL_SIGN_IN.customer &&
+      (isCustomerSignIn || isLegacyCustomerSignIn) &&
       req.nextUrl.searchParams.get("portal") === "fleet"
     ) {
       const login = productRequestUrl(
@@ -475,8 +520,14 @@ export async function middleware(req: NextRequest) {
       return redirectWithResponseHeaders(login, res);
     }
 
+    const isFieldRoute =
+      pathname === "/mobile/service" || pathname.startsWith("/mobile/service/");
     const isMobileRoute = pathname.startsWith("/mobile");
-    const loginPath = isMobileRoute ? "/mobile/sign-in" : "/sign-in";
+    const loginPath = isFieldRoute
+      ? "/field/sign-in"
+      : isMobileRoute
+        ? "/mobile/sign-in"
+        : "/shop/sign-in";
     const login = productRequestUrl(req, loginPath, fleetProductRequest);
     login.searchParams.set("redirect", pathname + search);
     return redirectWithResponseHeaders(login, res);
@@ -574,6 +625,9 @@ export const config = {
     },
     "/",
     "/sign-in",
+    "/shop/sign-in",
+    "/field/sign-in",
+    "/customer/sign-in",
     "/compare-plans",
     "/subscribe",
     "/confirm",
