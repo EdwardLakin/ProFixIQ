@@ -601,24 +601,42 @@ export const listStalledWorkOrdersTool = defineShopAssistantTool({
     href: z.string(),
   }),
   async execute(input, context) {
-    const { data, error } = await context.actor.supabase
-      .from("work_orders")
-      .select("id, custom_id, status, updated_at")
-      .eq("shop_id", context.actor.shopId)
-      .in("status", [
-        "awaiting",
-        "awaiting_approval",
-        "queued",
-        "on_hold",
-        "planned",
-        "in_progress",
-        "active",
-      ])
-      .order("updated_at", { ascending: true, nullsFirst: false })
-      .limit(100);
-    if (error) throw new Error(error.message);
+    const rows: Array<{
+      id: string;
+      custom_id: string | null;
+      status: string | null;
+      updated_at: string | null;
+    }> = [];
+    const pageSize = 500;
 
-    const workOrders = (data ?? [])
+    // Stalled thresholds vary by state (for example, approval waits become
+    // stale sooner than queued work). A mixed-status age cap can therefore
+    // hide a newer-but-stalled approval behind older queued rows. Evaluate the
+    // complete scoped set before applying the caller's result limit.
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await context.actor.supabase
+        .from("work_orders")
+        .select("id, custom_id, status, updated_at")
+        .eq("shop_id", context.actor.shopId)
+        .in("status", [
+          "awaiting",
+          "awaiting_approval",
+          "queued",
+          "on_hold",
+          "planned",
+          "in_progress",
+          "active",
+        ])
+        .order("updated_at", { ascending: true, nullsFirst: false })
+        .order("id", { ascending: true })
+        .range(from, from + pageSize - 1);
+      if (error) throw new Error(error.message);
+      const page = data ?? [];
+      rows.push(...page);
+      if (page.length < pageSize) break;
+    }
+
+    const workOrders = rows
       .map((row) => {
         const hours = ageHours(row.updated_at);
         if (hours == null || !isWorkOrderFlowStalled(row.status, hours)) {

@@ -16,6 +16,7 @@ import {
   listPartsBlockersTool,
 } from "@/features/shop-assistant/server/tools/domains/inventory";
 import { recommendWorkAssignmentsTool } from "@/features/shop-assistant/server/tools/domains/workforce";
+import { listStalledWorkOrdersTool } from "@/features/shop-assistant/server/tools/domains/workOrders";
 import { logOperationalEvent } from "@/features/work-orders/server/logOperationalEvent";
 
 const universalMigration = readFileSync(
@@ -148,6 +149,35 @@ describe("shop assistant review hardening", () => {
       requestItemId: uuid(501),
       remainingQuantity: 2,
       workOrderId: uuid(70_000),
+    });
+  });
+
+  it("finds stalled approval work beyond older non-stalled queued rows", async () => {
+    const now = Date.now();
+    const workOrders = Array.from({ length: 501 }, (_, index) => ({
+      id: uuid(index + 1),
+      custom_id: `WO-${index + 1}`,
+      status: index === 500 ? "awaiting_approval" : "queued",
+      updated_at: new Date(
+        now - (index === 500 ? 13 : 20) * 60 * 60 * 1000,
+      ).toISOString(),
+    }));
+    const ranges: number[] = [];
+    const supabase = queryClient({ work_orders: workOrders }, (table, from) => {
+      if (table === "work_orders") ranges.push(from);
+    });
+
+    const result = await listStalledWorkOrdersTool.execute({ limit: 1 }, {
+      actor: { shopId: uuid(90_000), supabase },
+      threadId: uuid(90_001),
+      idempotencyKey: "stalled-work-page-test",
+    } as never);
+
+    expect(ranges).toEqual([0, 500]);
+    expect(result.workOrders).toHaveLength(1);
+    expect(result.workOrders[0]).toMatchObject({
+      workOrderId: uuid(501),
+      status: "awaiting_approval",
     });
   });
 
