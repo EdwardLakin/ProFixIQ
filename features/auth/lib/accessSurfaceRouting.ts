@@ -56,7 +56,10 @@ function surfaceForLegacyContinuation(
   }
 
   const redirect = safeInternalRedirect(searchParams.get("redirect"), "");
-  if (redirect === "/mobile/service" || redirect.startsWith("/mobile/service/")) {
+  if (
+    redirect === "/mobile/service" ||
+    redirect.startsWith("/mobile/service/")
+  ) {
     return "field";
   }
   if (redirect === "/portal/fleet" || redirect.startsWith("/portal/fleet/")) {
@@ -85,6 +88,22 @@ export function resolveLegacySignInHref(
   return surface
     ? appendContinuation(PRODUCT_SIGN_IN[surface], searchParams)
     : null;
+}
+
+/**
+ * Completed self-serve checkout always continues through the shared owner
+ * account-setup form. Product-specific sign-in pages remain for existing
+ * accounts and invited users; they are not allowed to swallow a new trial.
+ */
+export function resolveAcquisitionSignupHref(
+  searchParams: URLSearchParams,
+): string | null {
+  const flow = searchParams.get("flow")?.trim();
+  const sessionId = searchParams.get("session_id")?.trim() ?? "";
+  if (flow !== "acquisition" || !/^cs_[A-Za-z0-9_]+$/.test(sessionId)) {
+    return null;
+  }
+  return appendContinuation("/signup", searchParams);
 }
 
 const FIELD_HOME = "/mobile/service";

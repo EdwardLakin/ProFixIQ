@@ -60,7 +60,7 @@ export default function LandingHero() {
               href="/compare-plans"
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-[color:var(--marketing-copper)] px-5 py-3.5 text-sm font-bold text-white shadow-[0_12px_30px_rgba(23,71,255,0.24)] transition hover:-translate-y-0.5 hover:bg-[color:var(--marketing-copper-dark)]"
             >
-              Start 14-day free trial
+              Start 7-day free trial
               <ArrowRight size={16} />
             </Link>
             <Link

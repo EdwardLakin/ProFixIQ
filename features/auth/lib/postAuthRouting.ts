@@ -15,20 +15,22 @@ export const PASSTHROUGH_KEYS = [
   "activationContext",
 ] as const;
 
-
 export async function resolvePostAuthDestination(args: {
   supabase: SupabaseClient<Database>;
   searchParams: URLSearchParams | ReadonlyURLSearchParams;
   isMobileMode?: boolean;
   defaultDashboardHref?: string;
+  unassignedAccountHref?: string;
 }): Promise<string> {
   const {
     supabase,
     searchParams,
     isMobileMode = false,
     defaultDashboardHref = "/dashboard",
+    unassignedAccountHref,
   } = args;
-  const activationContext = parseActivationContextFromSearchParams(searchParams);
+  const activationContext =
+    parseActivationContextFromSearchParams(searchParams);
 
   const {
     data: { user },
@@ -44,6 +46,10 @@ export async function resolvePostAuthDestination(args: {
 
   if (profile?.must_change_password) {
     return "/auth/set-password";
+  }
+
+  if (profile && !profile.shop_id && !profile.role && unassignedAccountHref) {
+    return unassignedAccountHref;
   }
 
   if (isMobileMode) return "/mobile";

@@ -51,7 +51,7 @@ Lifetime coupons must be assigned to a specific approved customer or subscriptio
 ## Required production environment variables
 
 ```text
-STRIPE_TRIAL_DAYS=14
+STRIPE_TRIAL_DAYS=7
 STRIPE_AUTOMATIC_TAX_ENABLED=true
 STRIPE_CONNECT_WEBHOOK_SECRET=<secret from the connected-account webhook endpoint>
 STRIPE_BILLING_RECONCILE_TOKEN=<random server-only secret>

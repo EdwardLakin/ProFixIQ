@@ -15,6 +15,8 @@ import { createStripeClient } from "@/features/stripe/lib/stripe/client";
 import {
   PRODUCT_PACKAGE_BILLING_MODEL,
   PRODUCT_PACKAGE_KEYS,
+  productAcquisitionSurface,
+  type ProductAcquisitionSurface,
   type ProductPackageKey,
 } from "@/features/stripe/lib/stripe/product-packages";
 import { resolveProductPackagePriceId } from "@/features/stripe/lib/server/product-package-price-contract";
@@ -69,12 +71,14 @@ type CheckoutSelection =
       packageKey: ProductPackageKey;
       legacyPlanKey: null;
       acquisitionPlanKey: PlanKey;
+      acquisitionSurface: ProductAcquisitionSurface;
       pricingModel: typeof PRODUCT_PACKAGE_BILLING_MODEL;
     }
   | {
       packageKey: null;
       legacyPlanKey: PlanKey;
       acquisitionPlanKey: PlanKey;
+      acquisitionSurface: ProductAcquisitionSurface;
       pricingModel: "base_plus_seats_v2";
     };
 
@@ -116,8 +120,8 @@ function getShopDisplayName(shop: ShopScope): string {
 }
 
 function configuredTrialDays(): number {
-  const parsed = Math.trunc(Number(process.env.STRIPE_TRIAL_DAYS ?? "14"));
-  return Number.isFinite(parsed) && parsed >= 0 && parsed <= 60 ? parsed : 14;
+  const parsed = Math.trunc(Number(process.env.STRIPE_TRIAL_DAYS ?? "7"));
+  return Number.isFinite(parsed) && parsed >= 0 && parsed <= 60 ? parsed : 7;
 }
 
 function automaticTaxEnabled(): boolean {
@@ -192,6 +196,7 @@ function acquisitionMetadata(input: {
     acquisition_intent_id: input.intentId,
     acquisition_nonce: input.nonce,
     plan_key: input.selection.acquisitionPlanKey,
+    acquisition_surface: input.selection.acquisitionSurface,
     ...(input.selection.packageKey
       ? { package_key: input.selection.packageKey }
       : {}),
@@ -213,6 +218,7 @@ function resolveCheckoutSelection(input: {
       // The acquisition ledger keeps the historical canonical plan alias while
       // package_key carries the new commercial entitlement.
       acquisitionPlanKey: "starter",
+      acquisitionSurface: productAcquisitionSurface(input.packageKey),
       pricingModel: PRODUCT_PACKAGE_BILLING_MODEL,
     };
   }
@@ -221,6 +227,7 @@ function resolveCheckoutSelection(input: {
     packageKey: null,
     legacyPlanKey: input.planKey ?? "starter",
     acquisitionPlanKey: input.planKey ?? "starter",
+    acquisitionSurface: "shop",
     pricingModel: "base_plus_seats_v2",
   };
 }
@@ -251,8 +258,7 @@ function buildCheckoutParams(input: {
     success_url: input.successUrl,
     cancel_url: input.cancelUrl,
     allow_promotion_codes: true,
-    payment_method_collection:
-      input.trialDays > 0 ? "if_required" : "always",
+    payment_method_collection: input.trialDays > 0 ? "if_required" : "always",
     ...(input.clientReferenceId
       ? { client_reference_id: input.clientReferenceId }
       : {}),
@@ -317,7 +323,7 @@ export async function POST(req: Request) {
         foundingDiscountApplied: false,
       });
 
-      const successUrl = `${baseUrl}/auth/callback?flow=acquisition&session_id={CHECKOUT_SESSION_ID}`;
+      const successUrl = `${baseUrl}/auth/callback?flow=acquisition&session_id={CHECKOUT_SESSION_ID}&surface=${selection.acquisitionSurface}`;
       if (intent.status === "expired" || intent.status === "failed") {
         return noStoreJson({ error: "Checkout attempt expired" }, 409);
       }

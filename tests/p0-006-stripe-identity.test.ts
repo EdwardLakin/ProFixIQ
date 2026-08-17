@@ -17,16 +17,23 @@ describe("P0-006 Stripe identity boundary", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(
-      claimStripeAcquisitionAfterAuth(new URLSearchParams("flow=owner&session_id=cs_valid")),
-    ).resolves.toEqual({ required: false, linked: true });
+      claimStripeAcquisitionAfterAuth(
+        new URLSearchParams("flow=owner&session_id=cs_valid"),
+      ),
+    ).resolves.toEqual({ required: false, linked: true, surface: null });
     await expect(
-      claimStripeAcquisitionAfterAuth(new URLSearchParams("flow=acquisition&session_id=invalid")),
-    ).resolves.toEqual({ required: true, linked: false });
+      claimStripeAcquisitionAfterAuth(
+        new URLSearchParams("flow=acquisition&session_id=invalid"),
+      ),
+    ).resolves.toEqual({ required: true, linked: false, surface: null });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("submits only the server-verifiable Checkout Session identifier", async () => {
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ success: true })));
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ success: true, surface: "field" })),
+    );
     vi.stubGlobal("fetch", fetchMock);
     const sessionId = "cs_test_identity_006";
 
@@ -34,7 +41,7 @@ describe("P0-006 Stripe identity boundary", () => {
       claimStripeAcquisitionAfterAuth(
         new URLSearchParams(`flow=acquisition&session_id=${sessionId}`),
       ),
-    ).resolves.toEqual({ required: true, linked: true });
+    ).resolves.toEqual({ required: true, linked: true, surface: "field" });
 
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/stripe/checkout/link-user",
@@ -47,9 +54,29 @@ describe("P0-006 Stripe identity boundary", () => {
     );
   });
 
+  it("requires the linking route to return a verified product surface", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ success: true }), { status: 200 }),
+      ),
+    );
+
+    await expect(
+      claimStripeAcquisitionAfterAuth(
+        new URLSearchParams(
+          "flow=acquisition&session_id=cs_test_missing_surface",
+        ),
+      ),
+    ).resolves.toEqual({ required: true, linked: false, surface: null });
+  });
+
   it("keeps price, trial, governed discounts, redirects, and Stripe retries server-owned", async () => {
     const checkout = await source("app/api/stripe/checkout/route.ts");
-    const landing = await source("features/shared/components/ProFixIQLanding.tsx");
+    const landing = await source(
+      "features/shared/components/ProFixIQLanding.tsx",
+    );
     const comparison = await source("app/compare-plans/page.tsx");
     const discountMigration = await source(
       "supabase/migrations/20260802170000_stripe_billing_model_connect_correction.sql",
@@ -64,13 +91,19 @@ describe("P0-006 Stripe identity boundary", () => {
     );
     expect(checkout).not.toContain("STRIPE_PRICE_BASE_MONTHLY");
     expect(checkout).toContain("configuredTrialDays()");
+    expect(checkout).toContain(
+      'process.env.STRIPE_TRIAL_DAYS ?? "7"',
+    );
+    expect(checkout).toMatch(/\? parsed : 7;/);
     expect(checkout).toContain("allow_promotion_codes: true");
     expect(checkout).not.toContain("STRIPE_FOUNDING_COUPON_ID");
     expect(discountMigration).toContain(
       "create table if not exists public.billing_discount_grants",
     );
     expect(checkout).toContain("profixiq:acquisition:${intent.id}");
-    expect(checkout).toContain("profixiq:shop-checkout:${shop.id}:${attemptId}");
+    expect(checkout).toContain(
+      "profixiq:shop-checkout:${shop.id}:${attemptId}",
+    );
     expect(landing).not.toContain("enableTrial:");
     expect(landing).not.toContain("applyFoundingDiscount:");
     expect(comparison).not.toContain("cancelPath:");
@@ -78,14 +111,20 @@ describe("P0-006 Stripe identity boundary", () => {
   });
 
   it("requires verified acquisition artifacts before the atomic claim", async () => {
-    const linking = await source("features/stripe/api/stripe/checkout/link-user/route.ts");
+    const linking = await source(
+      "features/stripe/api/stripe/checkout/link-user/route.ts",
+    );
 
     expect(linking).toContain("isCompletedStripeAcquisitionSession(session)");
     expect(linking).toContain("getStripeCheckoutPriceId(stripe, session.id)");
     expect(linking).toContain("getStripeCheckoutEmail(stripe, session)");
     expect(linking).toContain("claimStripeAcquisitionIntent({");
-    expect(linking).toContain("idempotencyKey: `profixiq:acquisition-customer-link:");
-    expect(linking).toContain("idempotencyKey: `profixiq:acquisition-subscription-link:");
+    expect(linking).toContain(
+      "idempotencyKey: `profixiq:acquisition-customer-link:",
+    );
+    expect(linking).toContain(
+      "idempotencyKey: `profixiq:acquisition-subscription-link:",
+    );
   });
 
   it("reconciles canonical payment amounts before the application contract", async () => {
@@ -96,7 +135,9 @@ describe("P0-006 Stripe identity boundary", () => {
     const correction = await source(correctionPath);
 
     expect(correctionPath.localeCompare(applicationPath)).toBeLessThan(0);
-    expect(correction).toContain("ADD COLUMN IF NOT EXISTS amount numeric(14,2)");
+    expect(correction).toContain(
+      "ADD COLUMN IF NOT EXISTS amount numeric(14,2)",
+    );
     expect(correction).toContain("amount_cents::numeric / 100");
     expect(correction).toContain("ALTER COLUMN amount SET NOT NULL");
     expect(correction).toContain("cannot infer payments.amount");
@@ -105,9 +146,13 @@ describe("P0-006 Stripe identity boundary", () => {
   it("does not expose acquisition email by bearer Checkout Session ID", async () => {
     const sessionRoute = await source("app/api/stripe/session/route.ts");
     const accessIndex = sessionRoute.indexOf("requireShopScopedApiAccess({");
-    const retrieveIndex = sessionRoute.indexOf("checkout.sessions.retrieve(sessionId)");
+    const retrieveIndex = sessionRoute.indexOf(
+      "checkout.sessions.retrieve(sessionId)",
+    );
 
-    expect(sessionRoute).not.toContain('metadataPurpose === "profixiq_acquisition"');
+    expect(sessionRoute).not.toContain(
+      'metadataPurpose === "profixiq_acquisition"',
+    );
     expect(accessIndex).toBeGreaterThan(-1);
     expect(retrieveIndex).toBeGreaterThan(accessIndex);
     expect(sessionRoute).not.toContain("details: message");

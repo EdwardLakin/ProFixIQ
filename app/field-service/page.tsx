@@ -25,7 +25,7 @@ export default function FieldServiceMarketingPage() {
         outcomes: [
           "1 truck included",
           "No per-user charge",
-          "14-day free trial",
+          "7-day free trial",
         ],
         features: [
           {

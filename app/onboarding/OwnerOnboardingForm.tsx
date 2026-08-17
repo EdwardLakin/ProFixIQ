@@ -12,6 +12,7 @@ import {
   shopCountryForTimezone,
   type ShopCountryCode,
 } from "@/features/shared/lib/timezones/shopTimezones";
+import type { ProductAcquisitionSurface } from "@/features/stripe/lib/stripe/product-packages";
 
 const COUNTRIES = [
   { value: "US", label: "United States" },
@@ -24,7 +25,55 @@ type BootstrapResponse = {
   destination?: string;
 };
 
-export default function OwnerOnboardingForm() {
+const ONBOARDING_COPY: Record<
+  ProductAcquisitionSurface,
+  {
+    eyebrow: string;
+    title: string;
+    description: string;
+    businessLabel: string;
+    locationLabel: string;
+    submitLabel: string;
+    destination: string | null;
+  }
+> = {
+  shop: {
+    eyebrow: "ProFixIQ Shop setup",
+    title: "Create your shop workspace",
+    description:
+      "Add the shop details your team and customers will see. You can change these settings later.",
+    businessLabel: "Shop details",
+    locationLabel: "Primary shop location",
+    submitLabel: "Create shop and continue",
+    destination: null,
+  },
+  field: {
+    eyebrow: "ProFixIQ Field setup",
+    title: "Create your Field Service workspace",
+    description:
+      "Add the business and primary service location behind this Field Service trial. You will configure trucks and operators next.",
+    businessLabel: "Field Service business",
+    locationLabel: "Primary service location",
+    submitLabel: "Create Field workspace and continue",
+    destination: "/mobile/service/setup",
+  },
+  fleet: {
+    eyebrow: "ProFixIQ Fleet setup",
+    title: "Create your Fleet workspace",
+    description:
+      "Add the organization and primary location behind this Fleet Maintenance trial. You will create the first fleet relationship next.",
+    businessLabel: "Fleet organization",
+    locationLabel: "Primary fleet location",
+    submitLabel: "Create Fleet workspace and continue",
+    destination: "/dashboard/owner/fleet-access",
+  },
+};
+
+export default function OwnerOnboardingForm({
+  acquisitionSurface,
+}: {
+  acquisitionSurface: ProductAcquisitionSurface;
+}) {
   const [country, setCountry] = useState<ShopCountryCode>("US");
   const [timezone, setTimezone] = useState<string>(defaultShopTimezone("US"));
   const [error, setError] = useState<string | null>(null);
@@ -33,6 +82,7 @@ export default function OwnerOnboardingForm() {
     () => getSupportedShopTimezones(country),
     [country],
   );
+  const copy = ONBOARDING_COPY[acquisitionSurface];
 
   useEffect(() => {
     const detected = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -83,10 +133,15 @@ export default function OwnerOnboardingForm() {
           pin,
         }),
       });
-      const payload = (await response.json().catch(() => ({}))) as BootstrapResponse;
+      const payload = (await response
+        .json()
+        .catch(() => ({}))) as BootstrapResponse;
 
       if (!response.ok || !payload.ok) {
-        setError(payload.error || "We could not create your shop. Please try again.");
+        setError(
+          payload.error ||
+            "We could not create your workspace. Please try again.",
+        );
         return;
       }
 
@@ -103,10 +158,12 @@ export default function OwnerOnboardingForm() {
             "/onboarding/shop-boost",
             activationContext,
           )
-        : payload.destination || "/dashboard/onboarding-v2";
+        : copy.destination || payload.destination || "/dashboard/onboarding-v2";
       window.location.assign(destination);
     } catch {
-      setError("We could not create your shop. Check your connection and try again.");
+      setError(
+        "We could not create your workspace. Check your connection and try again.",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -120,11 +177,11 @@ export default function OwnerOnboardingForm() {
       <div className="mx-auto max-w-3xl">
         <header className="mb-6">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-copper)]">
-            ProFixIQ shop setup
+            {copy.eyebrow}
           </p>
-          <h1 className="mt-2 text-3xl font-semibold">Create your shop workspace</h1>
+          <h1 className="mt-2 text-3xl font-semibold">{copy.title}</h1>
           <p className="mt-2 max-w-2xl text-sm text-[color:var(--theme-text-secondary)]">
-            Add the shop details your team and customers will see. You can change these settings later.
+            {copy.description}
           </p>
         </header>
 
@@ -134,51 +191,111 @@ export default function OwnerOnboardingForm() {
         >
           <section aria-labelledby="shop-details-heading">
             <h2 id="shop-details-heading" className="text-lg font-semibold">
-              Shop details
+              {copy.businessLabel}
             </h2>
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
               <label className="space-y-1.5 text-sm font-medium">
                 <span>Business name</span>
-                <input name="businessName" type="text" autoComplete="organization" required maxLength={120} className={fieldClassName} />
+                <input
+                  name="businessName"
+                  type="text"
+                  autoComplete="organization"
+                  required
+                  maxLength={120}
+                  className={fieldClassName}
+                />
               </label>
               <label className="space-y-1.5 text-sm font-medium">
                 <span>Shop name</span>
-                <input name="shopName" type="text" maxLength={120} placeholder="Defaults to business name" className={fieldClassName} />
+                <input
+                  name="shopName"
+                  type="text"
+                  maxLength={120}
+                  placeholder="Defaults to business name"
+                  className={fieldClassName}
+                />
               </label>
             </div>
           </section>
 
           <section aria-labelledby="location-heading">
-            <h2 id="location-heading" className="text-lg font-semibold">Primary location</h2>
+            <h2 id="location-heading" className="text-lg font-semibold">
+              {copy.locationLabel}
+            </h2>
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
               <label className="space-y-1.5 text-sm font-medium sm:col-span-2">
                 <span>Street address</span>
-                <input name="street" type="text" autoComplete="street-address" required maxLength={200} className={fieldClassName} />
+                <input
+                  name="street"
+                  type="text"
+                  autoComplete="street-address"
+                  required
+                  maxLength={200}
+                  className={fieldClassName}
+                />
               </label>
               <label className="space-y-1.5 text-sm font-medium">
                 <span>City</span>
-                <input name="city" type="text" autoComplete="address-level2" required maxLength={100} className={fieldClassName} />
+                <input
+                  name="city"
+                  type="text"
+                  autoComplete="address-level2"
+                  required
+                  maxLength={100}
+                  className={fieldClassName}
+                />
               </label>
               <label className="space-y-1.5 text-sm font-medium">
                 <span>{country === "CA" ? "Province" : "State"}</span>
-                <input name="province" type="text" autoComplete="address-level1" required maxLength={80} className={fieldClassName} />
+                <input
+                  name="province"
+                  type="text"
+                  autoComplete="address-level1"
+                  required
+                  maxLength={80}
+                  className={fieldClassName}
+                />
               </label>
               <label className="space-y-1.5 text-sm font-medium">
                 <span>{country === "CA" ? "Postal code" : "ZIP code"}</span>
-                <input name="postalCode" type="text" autoComplete="postal-code" required maxLength={16} className={fieldClassName} />
+                <input
+                  name="postalCode"
+                  type="text"
+                  autoComplete="postal-code"
+                  required
+                  maxLength={16}
+                  className={fieldClassName}
+                />
               </label>
               <label className="space-y-1.5 text-sm font-medium">
                 <span>Country</span>
-                <select value={country} onChange={(event) => changeCountry(event.target.value as ShopCountryCode)} className={fieldClassName}>
-                  {COUNTRIES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+                <select
+                  value={country}
+                  onChange={(event) =>
+                    changeCountry(event.target.value as ShopCountryCode)
+                  }
+                  className={fieldClassName}
+                >
+                  {COUNTRIES.map((item) => (
+                    <option key={item.value} value={item.value}>
+                      {item.label}
+                    </option>
+                  ))}
                 </select>
               </label>
               <label className="space-y-1.5 text-sm font-medium sm:col-span-2">
                 <span>Timezone</span>
-                <select value={timezone} onChange={(event) => setTimezone(event.target.value)} className={fieldClassName}>
+                <select
+                  value={timezone}
+                  onChange={(event) => setTimezone(event.target.value)}
+                  className={fieldClassName}
+                >
                   {timezoneOptions.map((item) => (
                     <option key={item} value={item}>
-                      {item.replace("America/", "").replace("Pacific/", "").replaceAll("_", " ")}
+                      {item
+                        .replace("America/", "")
+                        .replace("Pacific/", "")
+                        .replaceAll("_", " ")}
                     </option>
                   ))}
                 </select>
@@ -187,24 +304,56 @@ export default function OwnerOnboardingForm() {
           </section>
 
           <section aria-labelledby="owner-pin-heading">
-            <h2 id="owner-pin-heading" className="text-lg font-semibold">Owner PIN</h2>
-            <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">Use 4 to 8 digits. This protects sensitive owner actions inside the shop.</p>
+            <h2 id="owner-pin-heading" className="text-lg font-semibold">
+              Owner PIN
+            </h2>
+            <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
+              Use 4 to 8 digits. This protects sensitive owner actions inside
+              the shop.
+            </p>
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
               <label className="space-y-1.5 text-sm font-medium">
                 <span>Owner PIN</span>
-                <input name="pin" type="password" inputMode="numeric" autoComplete="new-password" pattern="[0-9]{4,8}" required className={fieldClassName} />
+                <input
+                  name="pin"
+                  type="password"
+                  inputMode="numeric"
+                  autoComplete="new-password"
+                  pattern="[0-9]{4,8}"
+                  required
+                  className={fieldClassName}
+                />
               </label>
               <label className="space-y-1.5 text-sm font-medium">
                 <span>Confirm owner PIN</span>
-                <input name="pinConfirmation" type="password" inputMode="numeric" autoComplete="new-password" pattern="[0-9]{4,8}" required className={fieldClassName} />
+                <input
+                  name="pinConfirmation"
+                  type="password"
+                  inputMode="numeric"
+                  autoComplete="new-password"
+                  pattern="[0-9]{4,8}"
+                  required
+                  className={fieldClassName}
+                />
               </label>
             </div>
           </section>
 
-          {error ? <p role="alert" className="rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</p> : null}
+          {error ? (
+            <p
+              role="alert"
+              className="rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-200"
+            >
+              {error}
+            </p>
+          ) : null}
 
-          <button type="submit" disabled={submitting} className="inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-[var(--accent-copper)] px-5 py-3 text-sm font-semibold text-[color:var(--theme-text-on-accent)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto">
-            {submitting ? "Creating shop…" : "Create shop and continue"}
+          <button
+            type="submit"
+            disabled={submitting}
+            className="inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-[var(--accent-copper)] px-5 py-3 text-sm font-semibold text-[color:var(--theme-text-on-accent)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+          >
+            {submitting ? "Creating workspace…" : copy.submitLabel}
           </button>
         </form>
       </div>

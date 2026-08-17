@@ -3,6 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import {
+  acquisitionHomeHref,
+  acquisitionOnboardingHref,
+} from "@/features/auth/lib/acquisitionSurfaceRouting";
 import { resolvePostAuthDestination } from "@/features/auth/lib/postAuthRouting";
 import { activatePasswordProfile } from "@/features/auth/lib/passwordActivation";
 import { claimStripeAcquisitionAfterAuth } from "@/features/stripe/lib/client/claim-acquisition";
@@ -12,7 +16,9 @@ import { Input } from "@shared/components/ui/input";
 type StatusTone = "neutral" | "error" | "success";
 
 function getReturnPath(role: string | null | undefined): string {
-  const normalized = String(role ?? "").trim().toLowerCase();
+  const normalized = String(role ?? "")
+    .trim()
+    .toLowerCase();
   if (!normalized) return "/dashboard";
   if (normalized === "customer") return "/portal";
   if (normalized === "fleet_manager") return "/fleet";
@@ -42,12 +48,17 @@ export default function SetPasswordPage() {
   useEffect(() => {
     let cancelled = false;
     async function checkSession() {
-      const { data: { session }, error } = await supabase.auth.getSession();
+      const {
+        data: { session },
+        error,
+      } = await supabase.auth.getSession();
       if (cancelled) return;
       if (error) {
         setHasSession(false);
         setStatusTone("error");
-        setStatusMessage("Unable to validate your session. Request a new link and try again.");
+        setStatusMessage(
+          "Unable to validate your session. Request a new link and try again.",
+        );
         setCheckingSession(false);
         return;
       }
@@ -68,7 +79,9 @@ export default function SetPasswordPage() {
       setCheckingSession(false);
     }
     void checkSession();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [isPortalActivation, supabase]);
 
   async function finishActivation(userId: string, role: string | null) {
@@ -97,13 +110,20 @@ export default function SetPasswordPage() {
       isPortalActivation
         ? "Portal password created. Opening your portal..."
         : claim.required
-          ? "Password updated. Opening shop setup..."
+          ? "Password updated. Opening your product setup..."
           : "Password updated. Redirecting...",
     );
     const redirect = await resolvePostAuthDestination({
       supabase,
       searchParams,
-      defaultDashboardHref: claim.required ? "/onboarding" : getReturnPath(role),
+      defaultDashboardHref: claim.surface
+        ? acquisitionHomeHref(claim.surface)
+        : getReturnPath(role),
+      ...(claim.surface
+        ? {
+            unassignedAccountHref: acquisitionOnboardingHref(claim.surface),
+          }
+        : {}),
     });
     window.setTimeout(() => window.location.replace(redirect), 700);
     return true;
@@ -146,7 +166,9 @@ export default function SetPasswordPage() {
       }
 
       setStatusMessage("Saving your new password...");
-      const { data, error } = await supabase.auth.updateUser({ password: trimmedPassword });
+      const { data, error } = await supabase.auth.updateUser({
+        password: trimmedPassword,
+      });
       if (error) {
         setStatusTone("error");
         setStatusMessage(error.message || "Failed to update password.");
@@ -154,10 +176,13 @@ export default function SetPasswordPage() {
       }
 
       const userId = data.user?.id ?? null;
-      const role = (data.user?.user_metadata?.role as string | undefined) ?? null;
+      const role =
+        (data.user?.user_metadata?.role as string | undefined) ?? null;
       if (!userId) {
         setStatusTone("error");
-        setStatusMessage("Password updated, but the account could not be identified. Contact support.");
+        setStatusMessage(
+          "Password updated, but the account could not be identified. Contact support.",
+        );
         return;
       }
 
@@ -171,7 +196,9 @@ export default function SetPasswordPage() {
     } catch (error) {
       console.error("[set-password] unexpected activation error", error);
       setStatusTone("error");
-      setStatusMessage("Unable to finish account setup. Retry activation or contact support.");
+      setStatusMessage(
+        "Unable to finish account setup. Retry activation or contact support.",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -188,29 +215,53 @@ export default function SetPasswordPage() {
     <main className="flex min-h-screen items-center justify-center bg-[color:var(--theme-surface-page)] px-6 py-10 text-[color:var(--theme-text-primary)]">
       <div className="w-full max-w-md rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-6 shadow-2xl">
         <h1 className="text-2xl font-semibold text-[color:var(--theme-text-primary)]">
-          {isPortalActivation ? "Create your portal password" : "Set new password"}
+          {isPortalActivation
+            ? "Create your portal password"
+            : "Set new password"}
         </h1>
         <p className={`mt-3 text-sm ${statusClass}`}>{statusMessage}</p>
 
         <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
           <div className="space-y-2">
-            <label className="text-xs text-[color:var(--theme-text-secondary)]">New password</label>
+            <label className="text-xs text-[color:var(--theme-text-secondary)]">
+              New password
+            </label>
             <Input
               type="password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
-              placeholder={passwordCommitted ? "Password already updated" : "Enter new password"}
-              disabled={checkingSession || submitting || !hasSession || passwordCommitted}
+              placeholder={
+                passwordCommitted
+                  ? "Password already updated"
+                  : "Enter new password"
+              }
+              disabled={
+                checkingSession ||
+                submitting ||
+                !hasSession ||
+                passwordCommitted
+              }
             />
           </div>
           <div className="space-y-2">
-            <label className="text-xs text-[color:var(--theme-text-secondary)]">Confirm password</label>
+            <label className="text-xs text-[color:var(--theme-text-secondary)]">
+              Confirm password
+            </label>
             <Input
               type="password"
               value={confirmPassword}
               onChange={(event) => setConfirmPassword(event.target.value)}
-              placeholder={passwordCommitted ? "Password already updated" : "Confirm new password"}
-              disabled={checkingSession || submitting || !hasSession || passwordCommitted}
+              placeholder={
+                passwordCommitted
+                  ? "Password already updated"
+                  : "Confirm new password"
+              }
+              disabled={
+                checkingSession ||
+                submitting ||
+                !hasSession ||
+                passwordCommitted
+              }
             />
           </div>
           <Button

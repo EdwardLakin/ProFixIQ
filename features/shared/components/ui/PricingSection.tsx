@@ -175,7 +175,7 @@ export default function PricingSection({
                   plan.featured ? styles.primaryButton : styles.secondaryButton
                 } mt-6 rounded-xl border px-4 py-3 text-sm font-bold transition`}
               >
-                {isBusy ? "Starting…" : "Start 14-day free trial"}
+                {isBusy ? "Starting…" : "Start 7-day free trial"}
               </button>
 
               <div className={`${styles.divider} my-6 h-px`} />

@@ -4,6 +4,13 @@ import Stripe from "stripe";
 
 import type { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import type { PlanKey } from "@/features/stripe/lib/stripe/constants";
+import {
+  normalizeProductAcquisitionSurface,
+  normalizeProductPackageKey,
+  productAcquisitionSurface,
+  type ProductAcquisitionSurface,
+  type ProductPackageKey,
+} from "@/features/stripe/lib/stripe/product-packages";
 
 type AdminClient = ReturnType<typeof createAdminSupabase>;
 
@@ -13,7 +20,9 @@ export type StripeAcquisitionMetadata = {
   intentId: string;
   nonce: string;
   planKey: PlanKey;
+  packageKey: ProductPackageKey | null;
   priceId: string;
+  surface: ProductAcquisitionSurface;
 };
 
 type BeginIntentRow = {
@@ -66,7 +75,23 @@ export function readStripeAcquisitionMetadata(
   const intentId = String(metadata?.acquisition_intent_id ?? "").trim();
   const nonce = String(metadata?.acquisition_nonce ?? "").trim();
   const planKey = String(metadata?.plan_key ?? "").trim();
+  const packageKeyRaw = String(metadata?.package_key ?? "").trim();
   const priceId = String(metadata?.price_id ?? "").trim();
+  const surfaceRaw = String(metadata?.acquisition_surface ?? "").trim();
+  const packageKey = normalizeProductPackageKey(packageKeyRaw);
+  const explicitSurface = normalizeProductAcquisitionSurface(surfaceRaw);
+
+  if ((packageKeyRaw && !packageKey) || (surfaceRaw && !explicitSurface)) {
+    return null;
+  }
+
+  // Legacy plan-based sessions did not carry package identity and belong to
+  // Shop. Package sessions derive their surface from the server-owned package
+  // contract; an explicit Stripe value must agree with that derivation.
+  const derivedSurface = packageKey
+    ? productAcquisitionSurface(packageKey)
+    : "shop";
+  if (explicitSurface && explicitSurface !== derivedSurface) return null;
 
   if (
     purpose !== STRIPE_ACQUISITION_PURPOSE ||
@@ -78,7 +103,14 @@ export function readStripeAcquisitionMetadata(
     return null;
   }
 
-  return { intentId, nonce, planKey, priceId };
+  return {
+    intentId,
+    nonce,
+    planKey,
+    packageKey,
+    priceId,
+    surface: explicitSurface ?? derivedSurface,
+  };
 }
 
 export function isCompletedStripeAcquisitionSession(

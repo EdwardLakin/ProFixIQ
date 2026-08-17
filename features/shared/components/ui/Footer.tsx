@@ -39,7 +39,7 @@ export default function Footer({ className }: { className?: string }) {
             </Link>
             <h2 className="mt-8 text-3xl font-semibold leading-tight tracking-[-0.04em] sm:text-4xl">See how ProFixIQ fits your shop.</h2>
             <p className="mt-4 max-w-lg text-base leading-7 text-slate-400">Bring inspections, repair building, approvals, parts, workforce operations, invoicing, and portals into one connected system.</p>
-            <Link href="/compare-plans" className="mt-7 inline-flex items-center gap-2 rounded-xl bg-[color:var(--marketing-copper)] px-5 py-3 text-sm font-bold text-white transition hover:bg-[color:var(--marketing-copper-dark)]">Start 14-day free trial <ArrowRight size={15} /></Link>
+            <Link href="/compare-plans" className="mt-7 inline-flex items-center gap-2 rounded-xl bg-[color:var(--marketing-copper)] px-5 py-3 text-sm font-bold text-white transition hover:bg-[color:var(--marketing-copper-dark)]">Start 7-day free trial <ArrowRight size={15} /></Link>
           </div>
 
           {groups.map((group) => (

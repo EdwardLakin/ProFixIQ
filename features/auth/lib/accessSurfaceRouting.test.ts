@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   PRODUCT_SIGN_IN,
+  resolveAcquisitionSignupHref,
   resolveFieldPostSignInHref,
   resolveLegacySignInHref,
 } from "./accessSurfaceRouting";
@@ -22,9 +23,27 @@ describe("product access surface routing", () => {
     expect(acquisition).toBe(
       "/shop/sign-in?session_id=cs_test_123&flow=acquisition",
     );
-    expect(protectedRoute).toBe(
-      "/shop/sign-in?redirect=%2Fwork-orders%2Fwo-1",
-    );
+    expect(protectedRoute).toBe("/shop/sign-in?redirect=%2Fwork-orders%2Fwo-1");
+  });
+
+  it("keeps every self-serve product trial on the shared account setup route", () => {
+    for (const surface of ["shop", "field", "fleet"] as const) {
+      expect(
+        resolveAcquisitionSignupHref(
+          new URLSearchParams(
+            `flow=acquisition&session_id=cs_test_${surface}&surface=${surface}`,
+          ),
+        ),
+      ).toBe(
+        `/signup?session_id=cs_test_${surface}&flow=acquisition&surface=${surface}`,
+      );
+    }
+
+    expect(
+      resolveAcquisitionSignupHref(
+        new URLSearchParams("flow=acquisition&session_id=invalid"),
+      ),
+    ).toBeNull();
   });
 
   it("routes legacy continuations to Field, Fleet, and Customer Portal", () => {
@@ -38,17 +57,13 @@ describe("product access surface routing", () => {
       resolveLegacySignInHref(
         new URLSearchParams("redirect=%2Fportal%2Ffleet%2Fassets"),
       ),
-    ).toBe(
-      `${PRODUCT_SIGN_IN.fleet}?redirect=%2Fportal%2Ffleet%2Fassets`,
-    );
+    ).toBe(`${PRODUCT_SIGN_IN.fleet}?redirect=%2Fportal%2Ffleet%2Fassets`);
 
     expect(
       resolveLegacySignInHref(
         new URLSearchParams("surface=customer&redirect=%2Fportal%2Finvoices"),
       ),
-    ).toBe(
-      "/customer/sign-in?redirect=%2Fportal%2Finvoices&surface=customer",
-    );
+    ).toBe("/customer/sign-in?redirect=%2Fportal%2Finvoices&surface=customer");
   });
 
   it("does not classify an unsafe external redirect as another product", () => {
@@ -70,10 +85,7 @@ describe("product access surface routing", () => {
 
   it("applies Field continuations only to a normal Field home response", () => {
     expect(
-      resolveFieldPostSignInHref(
-        "/mobile/service",
-        "/mobile/service/today",
-      ),
+      resolveFieldPostSignInHref("/mobile/service", "/mobile/service/today"),
     ).toBe("/mobile/service/today");
     expect(
       resolveFieldPostSignInHref(

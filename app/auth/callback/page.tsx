@@ -4,8 +4,15 @@ import { useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { EmailOtpType } from "@supabase/supabase-js";
+import {
+  acquisitionHomeHref,
+  acquisitionOnboardingHref,
+} from "@/features/auth/lib/acquisitionSurfaceRouting";
 import { resolvePostAuthDestination } from "@/features/auth/lib/postAuthRouting";
-import { resolveLegacySignInHref } from "@/features/auth/lib/accessSurfaceRouting";
+import {
+  resolveAcquisitionSignupHref,
+  resolveLegacySignInHref,
+} from "@/features/auth/lib/accessSurfaceRouting";
 import { safeInternalRedirect } from "@/features/auth/lib/safeRedirect";
 import { claimStripeAcquisitionAfterAuth } from "@/features/stripe/lib/client/claim-acquisition";
 
@@ -66,10 +73,13 @@ export default function AuthCallbackPage() {
         if (flow) passthrough.set("flow", flow);
         if (demoId) passthrough.set("demoId", demoId);
         if (intakeId) passthrough.set("intakeId", intakeId);
-        if (activationContext) passthrough.set("activationContext", activationContext);
+        if (activationContext)
+          passthrough.set("activationContext", activationContext);
         if (surface) passthrough.set("surface", surface);
         const signInHref =
-          resolveLegacySignInHref(passthrough) ?? "/sign-in";
+          resolveAcquisitionSignupHref(passthrough) ??
+          resolveLegacySignInHref(passthrough) ??
+          "/sign-in";
 
         router.replace(signInHref);
         setTimeout(() => {
@@ -92,7 +102,11 @@ export default function AuthCallbackPage() {
         if (sessionId) retry.set("session_id", sessionId);
         retry.set("flow", "acquisition");
         retry.set("billing_link_error", "1");
-        router.replace(`/shop/sign-in?${retry.toString()}`);
+        const surface = sp.get("surface")?.trim();
+        if (surface) retry.set("surface", surface);
+        router.replace(
+          resolveAcquisitionSignupHref(retry) ?? `/signup?${retry.toString()}`,
+        );
         return;
       }
 
@@ -104,6 +118,12 @@ export default function AuthCallbackPage() {
         supabase,
         searchParams: sp,
         isMobileMode,
+        ...(claim.surface
+          ? {
+              defaultDashboardHref: acquisitionHomeHref(claim.surface),
+              unassignedAccountHref: acquisitionOnboardingHref(claim.surface),
+            }
+          : {}),
       });
 
       router.replace(destination);
@@ -125,7 +145,9 @@ export default function AuthCallbackPage() {
     <div className="min-h-[60vh] grid place-items-center text-[color:var(--theme-text-primary)]">
       <div className="text-center">
         <h1 className="text-2xl font-bold">Finishing sign-in...</h1>
-        <p className="text-sm text-[color:var(--theme-text-secondary)]">One moment while we set things up.</p>
+        <p className="text-sm text-[color:var(--theme-text-secondary)]">
+          One moment while we set things up.
+        </p>
       </div>
     </div>
   );

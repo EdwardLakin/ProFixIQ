@@ -165,7 +165,9 @@ describe("owner onboarding bootstrap", () => {
     const page = readFileSync("app/onboarding/page.tsx", "utf8");
     const form = readFileSync("app/onboarding/OwnerOnboardingForm.tsx", "utf8");
 
-    expect(page).toContain("<OwnerOnboardingForm />");
+    expect(page).toContain(
+      "<OwnerOnboardingForm acquisitionSurface={acquisitionSurface} />",
+    );
     expect(page).toContain("if (profile?.completed_onboarding)");
     expect(page).not.toContain(
       "profile?.shop_id || profile?.completed_onboarding",

@@ -125,7 +125,7 @@ export default function ProductMarketingPage({
                   className="inline-flex items-center gap-2 rounded-xl px-5 py-3.5 text-sm font-bold text-[#07111f] shadow-[0_16px_40px_rgba(0,0,0,0.3)] transition hover:-translate-y-0.5"
                   style={{ backgroundColor: accent }}
                 >
-                  Start 14-day free trial <ArrowRight size={16} />
+                  Start 7-day free trial <ArrowRight size={16} />
                 </Link>
                 <Link
                   href={config.signInHref}

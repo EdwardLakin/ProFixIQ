@@ -55,6 +55,11 @@ describe("acquisition auth handoff", () => {
       expect(forgotPassword).toContain(`"${key}"`);
     }
 
+    expect(signIn).toContain(
+      'params.set("surface", acquisitionSurface ?? "shop")',
+    );
+    expect(forgotPassword).toContain('"surface"');
+
     expect(signIn).toContain("forgotPasswordHref");
     expect(signIn).toContain("href={forgotPasswordHref}");
     expect(forgotPassword).toContain('sp.get("email")');
@@ -74,10 +79,12 @@ describe("acquisition auth handoff", () => {
       "/api/stripe/checkout/acquisition-context?session_id=",
     );
     expect(signIn).toContain("setIdentifier(email)");
+    expect(signIn).toContain("setAcquisitionSurface(surface)");
     expect(signIn).toContain('acquisitionContextStatus === "ready"');
     expect(contextRoute).toContain("readStripeAcquisitionMetadata");
     expect(contextRoute).toContain("isCompletedStripeAcquisitionSession");
     expect(contextRoute).toContain("isStripeSubscriptionAccessBearing");
+    expect(contextRoute).toContain("surface: metadata.surface");
     expect(contextRoute).toContain('"Cache-Control": "no-store"');
   });
 
@@ -89,6 +96,40 @@ describe("acquisition auth handoff", () => {
     expect(signIn).toContain('type: "signup"');
     expect(signIn).toContain("options: { emailRedirectTo }");
     expect(signIn).toContain("Resend verification email");
+    expect(signIn).toContain("isAwaitingConfirmation");
+    expect(signIn).toContain("Verify your email");
+  });
+
+  it("routes a checkout and confirmed account using the verified product surface", () => {
+    const checkout = read("app/api/stripe/checkout/route.ts");
+    const callback = read("app/auth/callback/page.tsx");
+    const onboarding = read("app/onboarding/page.tsx");
+    const onboardingForm = read("app/onboarding/OwnerOnboardingForm.tsx");
+    const linkUser = read(
+      "features/stripe/api/stripe/checkout/link-user/route.ts",
+    );
+
+    expect(checkout).toContain(
+      "acquisition_surface: input.selection.acquisitionSurface",
+    );
+    expect(checkout).toContain("surface=${selection.acquisitionSurface}");
+    expect(callback).toContain("resolveAcquisitionSignupHref(passthrough)");
+    expect(callback).toContain("acquisitionHomeHref(claim.surface)");
+    expect(callback).toContain("acquisitionOnboardingHref(claim.surface)");
+    expect(linkUser).toContain("surface: metadata.surface");
+    expect(linkUser).toContain("profixiq_acquisition_surface");
+    expect(onboarding).toContain(
+      "user.app_metadata?.profixiq_acquisition_surface",
+    );
+    expect(onboarding).toContain(
+      "<OwnerOnboardingForm acquisitionSurface={acquisitionSurface} />",
+    );
+    expect(onboardingForm).toContain("field: {");
+    expect(onboardingForm).toContain("fleet: {");
+    expect(onboardingForm).toContain('destination: "/mobile/service/setup"');
+    expect(onboardingForm).toContain(
+      'destination: "/dashboard/owner/fleet-access"',
+    );
   });
 
   it("claims a completed acquisition before leaving password recovery", () => {
@@ -97,9 +138,8 @@ describe("acquisition auth handoff", () => {
     expect(setPassword).toContain("claimStripeAcquisitionAfterAuth");
     expect(setPassword).toContain("if (!claim.linked)");
     expect(setPassword).toContain("resolvePostAuthDestination");
-    expect(setPassword).toContain(
-      'defaultDashboardHref: claim.required ? "/onboarding" : getReturnPath(role)',
-    );
+    expect(setPassword).toContain("acquisitionHomeHref(claim.surface)");
+    expect(setPassword).toContain("acquisitionOnboardingHref(claim.surface)");
     expect(setPassword).toContain("window.location.replace(redirect)");
   });
 });
