@@ -92,7 +92,12 @@ describe("persistent Technician CoPilot shell", () => {
     );
 
     const dialog = screen.getByRole("dialog", { name: "Technician CoPilot" });
-    expect(dialog).toBeVisible();
+    expect(dialog).toHaveAttribute("aria-hidden", "false");
+    expect(dialog).toHaveClass(
+      "visible",
+      "pointer-events-auto",
+      "opacity-100",
+    );
     expect(screen.getByTestId("copilot-runtime")).toBe(runtime);
     expect(runtime).toHaveAttribute("data-active", "true");
 
@@ -100,7 +105,12 @@ describe("persistent Technician CoPilot shell", () => {
       screen.getByRole("button", { name: "Close Technician CoPilot" }),
     );
 
-    expect(dialog).not.toBeVisible();
+    expect(dialog).toHaveAttribute("aria-hidden", "true");
+    expect(dialog).toHaveClass(
+      "invisible",
+      "pointer-events-none",
+      "opacity-0",
+    );
     expect(screen.getByTestId("copilot-runtime")).toBe(runtime);
     expect(runtime).toHaveAttribute("data-active", "false");
     expect(document.body.style.pointerEvents).not.toBe("none");
