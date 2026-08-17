@@ -112,7 +112,7 @@ export async function POST(req: Request) {
     const completion = await openai.chat.completions.create({
       model: getOpenAIModelForPurpose("fast"),
       ...openAITemperatureParam(getOpenAIModelForPurpose("fast"), 0.4),
-      max_tokens: 260,
+      max_completion_tokens: 260,
       messages: [
         {
           role: "system",

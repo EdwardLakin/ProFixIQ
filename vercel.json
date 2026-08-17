@@ -32,6 +32,8 @@
   "git": {
     "deploymentEnabled": {
       "main": true,
+      "agent/*": true,
+      "codex/*": true,
       "*": false
     }
   }

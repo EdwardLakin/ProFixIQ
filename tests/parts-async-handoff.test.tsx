@@ -189,7 +189,7 @@ describe("PartsDrawer async use-part handoff", () => {
     mocks.consumePart.mockReturnValue(consumption.promise);
     const closeListener = listenFor("test:parts-drawer-close");
 
-    const { container } = render(
+    render(
       <PartsDrawer
         closeEventName="test:parts-drawer-close"
         open
@@ -219,7 +219,7 @@ describe("PartsDrawer async use-part handoff", () => {
     fireEvent.click(headerClose);
     fireEvent.click(pickerClose);
 
-    const backdrop = container.querySelector<HTMLDivElement>(
+    const backdrop = document.querySelector<HTMLDivElement>(
       'div.fixed.inset-0 > div[aria-hidden="true"]',
     );
     expect(backdrop).not.toBeNull();

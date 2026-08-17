@@ -107,6 +107,12 @@ export type GetOperationalObservabilityInput = {
   correlationId?: string | null;
 };
 
+export function hasOperationalEventFilter(
+  input: Pick<GetOperationalObservabilityInput, "entityType" | "entityId" | "correlationId">,
+): boolean {
+  return Boolean(input.entityType || input.entityId || input.correlationId);
+}
+
 function relationMissing(error: unknown): boolean {
   const candidate = error as { code?: string; message?: string } | null;
   const code = String(candidate?.code ?? "");
@@ -220,9 +226,12 @@ export async function getOperationalObservability(
       "id, shop_id, event_type, occurred_at, actor_user_id, actor_role, entity_type, entity_id, parent_entity_type, parent_entity_id, correlation_id, source, severity, metadata",
     )
     .eq("shop_id", input.shopId)
-    .gte("occurred_at", since7d)
     .order("occurred_at", { ascending: false })
     .limit(eventLimit);
+
+  if (!hasOperationalEventFilter(input)) {
+    eventsQuery = eventsQuery.gte("occurred_at", since7d);
+  }
 
   if (input.entityType) eventsQuery = eventsQuery.eq("entity_type", input.entityType);
   if (input.entityId) eventsQuery = eventsQuery.eq("entity_id", input.entityId);
