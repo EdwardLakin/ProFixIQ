@@ -101,8 +101,46 @@ type WorkOrderIdentity = {
 };
 
 function finiteNumber(value: unknown): number | null {
+  if (
+    value == null ||
+    (typeof value === "string" && value.trim().length === 0) ||
+    (typeof value !== "number" && typeof value !== "string")
+  ) {
+    return null;
+  }
   const parsed = typeof value === "number" ? value : Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+async function loadLinkedLegacyLineIds(params: {
+  supabase: ReturnType<typeof getServerSupabase>;
+  shopId: string;
+  workOrderLineIds: string[];
+}): Promise<Set<string>> {
+  const linked = new Set<string>();
+  const uniqueIds = [...new Set(params.workOrderLineIds)];
+
+  // Keep each PostgREST URL bounded while still handling legacy lines that
+  // have more than one quote projection.
+  for (let chunkStart = 0; chunkStart < uniqueIds.length; chunkStart += 100) {
+    const chunk = uniqueIds.slice(chunkStart, chunkStart + 100);
+    for (let from = 0; ; from += 500) {
+      const { data, error } = await params.supabase
+        .from("work_order_quote_lines")
+        .select("id, work_order_line_id")
+        .eq("shop_id", params.shopId)
+        .in("work_order_line_id", chunk)
+        .order("id", { ascending: true })
+        .range(from, from + 499);
+      if (error) throw new Error(error.message);
+      for (const row of data ?? []) {
+        if (row.work_order_line_id) linked.add(row.work_order_line_id);
+      }
+      if ((data ?? []).length < 500) break;
+    }
+  }
+
+  return linked;
 }
 
 export function resolvePendingQuoteLineTotal(
@@ -197,9 +235,19 @@ export const toolListPendingApprovals: ToolDef<
       const quoteRows = (
         (quotePage.data ?? []) as ReviewableQuoteLine[]
       ).filter(isReviewableQuoteLine);
-      legacyCandidates.push(...legacyRows);
+      const linkedOnPage = await loadLinkedLegacyLineIds({
+        supabase,
+        shopId: ctx.shopId,
+        workOrderLineIds: legacyRows.map((row) => row.id),
+      });
+      const unlinkedLegacyRows = legacyRows.filter(
+        (row) => !linkedOnPage.has(row.id),
+      );
+      legacyCandidates.push(...unlinkedLegacyRows);
       quoteCandidates.push(...quoteRows);
-      legacyRows.forEach((row) => legacyWorkOrders.add(row.work_order_id));
+      unlinkedLegacyRows.forEach((row) =>
+        legacyWorkOrders.add(row.work_order_id),
+      );
       quoteRows.forEach((row) => quoteWorkOrders.add(row.work_order_id));
       legacyDone = legacyRows.length < 500 || legacyWorkOrders.size >= limit;
       quoteDone =

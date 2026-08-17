@@ -177,27 +177,37 @@ export const listFleetUnitsTool = defineShopAssistantTool({
       };
     }
     const admin = createAdminSupabase();
-    const [{ data: enrollments, error }, { data: fleets, error: fleetError }] =
-      await Promise.all([
-        admin
-          .from("fleet_vehicles")
-          .select(
-            "fleet_id, vehicle_id, nickname, vehicles!inner(id, year, make, model, unit_number, license_plate, vin)",
-          )
-          .eq("shop_id", context.actor.shopId)
-          .in("fleet_id", scopedIds)
-          .or("active.is.null,active.eq.true")
-          .limit(300),
-        admin.from("fleets").select("id, name").in("id", scopedIds),
-      ]);
-    if (error) throw new Error(error.message);
+    const { data: fleets, error: fleetError } = await admin
+      .from("fleets")
+      .select("id, name")
+      .in("id", scopedIds);
     if (fleetError) throw new Error(fleetError.message);
     const fleetNames = new Map(
       (fleets ?? []).map((fleet) => [fleet.id, fleet.name ?? "Fleet"]),
     );
     const token = input.query?.toLowerCase();
-    const units = rows(enrollments)
-      .map((enrollment) => {
+    const units: Array<z.infer<typeof FleetUnitSchema>> = [];
+    const pageSize = token ? 500 : input.limit;
+
+    // A fleet can contain thousands of active enrollments. Page the stable
+    // enrollment order until enough post-filter matches are found so a VIN,
+    // plate, unit, make, or model cannot disappear behind an arbitrary cap.
+    for (let from = 0; units.length < input.limit; from += pageSize) {
+      const { data: enrollments, error } = await admin
+        .from("fleet_vehicles")
+        .select(
+          "fleet_id, vehicle_id, nickname, vehicles!inner(id, year, make, model, unit_number, license_plate, vin)",
+        )
+        .eq("shop_id", context.actor.shopId)
+        .in("fleet_id", scopedIds)
+        .or("active.is.null,active.eq.true")
+        .order("fleet_id", { ascending: true })
+        .order("vehicle_id", { ascending: true })
+        .range(from, from + pageSize - 1);
+      if (error) throw new Error(error.message);
+      const page = rows(enrollments);
+
+      for (const enrollment of page) {
         const relation = Array.isArray(enrollment.vehicles)
           ? enrollment.vehicles[0]
           : enrollment.vehicles;
@@ -205,7 +215,7 @@ export const listFleetUnitsTool = defineShopAssistantTool({
           relation && typeof relation === "object" ? (relation as Row) : {};
         const vehicleId = clean(enrollment.vehicle_id);
         const fleetId = clean(enrollment.fleet_id);
-        if (!vehicleId || !fleetId) return null;
+        if (!vehicleId || !fleetId) continue;
         const label =
           clean(enrollment.nickname) ??
           clean(vehicle.unit_number) ??
@@ -222,8 +232,8 @@ export const listFleetUnitsTool = defineShopAssistantTool({
           .filter(Boolean)
           .join(" ")
           .toLowerCase();
-        if (token && !searchable.includes(token)) return null;
-        return {
+        if (token && !searchable.includes(token)) continue;
+        units.push({
           vehicleId,
           fleetId,
           fleetName: fleetNames.get(fleetId) ?? "Fleet",
@@ -237,10 +247,12 @@ export const listFleetUnitsTool = defineShopAssistantTool({
           plate: clean(vehicle.license_plate),
           vin: clean(vehicle.vin),
           href: `/fleet/assets/${vehicleId}`,
-        };
-      })
-      .filter((unit): unit is NonNullable<typeof unit> => Boolean(unit))
-      .slice(0, input.limit);
+        });
+        if (units.length >= input.limit) break;
+      }
+
+      if (page.length < pageSize) break;
+    }
     return {
       ok: true as const,
       units,

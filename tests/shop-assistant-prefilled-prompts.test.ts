@@ -15,6 +15,7 @@ const availableToolNames = new Set([
   "read_daily_activity",
   "recommend_work_assignments",
   "list_technician_load",
+  "find_customers",
 ]);
 
 function plan(question: string) {
@@ -61,5 +62,18 @@ describe("shop assistant prefilled prompts", () => {
       startsAt: clock.todayStart,
       endsAt: clock.todayEnd,
     });
+  });
+
+  it("keeps customer lookup deterministic when the model is unavailable", () => {
+    const result = plan("Find customer Jane Doe");
+    expect(result.kind).toBe("tools");
+    if (result.kind !== "tools") return;
+    expect(result.calls).toEqual([
+      {
+        name: "find_customers",
+        input: { query: "Jane Doe", limit: 10 },
+        mode: "read",
+      },
+    ]);
   });
 });

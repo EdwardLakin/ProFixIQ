@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
+import { resolvePendingQuoteLineTotal } from "@/features/agent/tools/listPendingApprovals";
+
 const registry = readFileSync(
   "features/shop-assistant/server/tools/registry.ts",
   "utf8",
@@ -56,6 +58,10 @@ const inspectionTools = readFileSync(
 );
 const fleetTools = readFileSync(
   "features/shop-assistant/server/tools/domains/fleet.ts",
+  "utf8",
+);
+const reportingTools = readFileSync(
+  "features/shop-assistant/server/tools/domains/reporting.ts",
   "utf8",
 );
 const orchestrator = readFileSync(
@@ -284,6 +290,28 @@ describe("shop assistant tool execution contracts", () => {
     );
   });
 
+  it("searches every accessible fleet enrollment before limiting matches", () => {
+    expect(fleetTools).not.toContain(".limit(300)");
+    expect(fleetTools).toContain(
+      ".range(from, from + pageSize - 1)",
+    );
+    expect(fleetTools).toContain('.order("fleet_id", { ascending: true })');
+    expect(fleetTools).toContain('.order("vehicle_id", { ascending: true })');
+  });
+
+  it("counts the full daily activity window before limiting display rows", () => {
+    const dailyActivity = reportingTools.slice(
+      reportingTools.indexOf('name: "read_daily_activity"'),
+    );
+    expect(dailyActivity.match(/count: "exact"/g)).toHaveLength(5);
+    expect(dailyActivity).toContain(
+      "workOrderChanges: workOrderResult.count ?? 0",
+    );
+    expect(dailyActivity).toContain(
+      "technicianChanges: technicianResult.count ?? 0",
+    );
+  });
+
   it("fails closed around work-order lifecycle and active technician work", () => {
     expect(workOrderTools).toContain("HOLDABLE_WORK_ORDER_STATUSES");
     expect(workOrderTools).toContain('"active"');
@@ -330,8 +358,37 @@ describe("shop assistant tool execution contracts", () => {
 
   it("paginates approvals and suppresses every quote-linked legacy line", () => {
     expect(pendingApprovals).toContain("linkedLegacyLineIds");
+    expect(pendingApprovals).toContain("loadLinkedLegacyLineIds");
+    expect(pendingApprovals).toContain("unlinkedLegacyRows");
     expect(pendingApprovals).toContain(".range(from, from + 499)");
     expect(pendingApprovals).not.toContain(".limit(400)");
+  });
+
+  it("falls back through nullable quote totals without coercing null to zero", () => {
+    expect(
+      resolvePendingQuoteLineTotal({
+        grand_total: null,
+        subtotal: 125.5,
+        labor_total: 75.5,
+        parts_total: 50,
+      }),
+    ).toBe(125.5);
+    expect(
+      resolvePendingQuoteLineTotal({
+        grand_total: null,
+        subtotal: null,
+        labor_total: 75.5,
+        parts_total: 50,
+      }),
+    ).toBe(125.5);
+    expect(
+      resolvePendingQuoteLineTotal({
+        grand_total: null,
+        subtotal: null,
+        labor_total: null,
+        parts_total: null,
+      }),
+    ).toBeNull();
   });
 
   it("uses idempotency, execution leases, and terminal result replay", () => {

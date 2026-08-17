@@ -222,55 +222,62 @@ export const readDailyActivityTool = defineShopAssistantTool({
       canWorkOrders
         ? context.actor.supabase
             .from("work_orders")
-            .select("id, custom_id, status, updated_at")
+            .select("id, custom_id, status, updated_at", { count: "exact" })
             .eq("shop_id", context.actor.shopId)
             .gte("updated_at", input.startsAt)
             .lt("updated_at", input.endsAt)
             .order("updated_at", { ascending: false })
             .limit(input.limit)
-        : Promise.resolve({ data: [], error: null }),
+        : Promise.resolve({ data: [], error: null, count: 0 }),
       canSchedule
         ? context.actor.supabase
             .from("bookings")
-            .select("id, starts_at, status, updated_at, work_order_id")
+            .select("id, starts_at, status, updated_at, work_order_id", {
+              count: "exact",
+            })
             .eq("shop_id", context.actor.shopId)
             .gte("updated_at", input.startsAt)
             .lt("updated_at", input.endsAt)
             .order("updated_at", { ascending: false })
             .limit(input.limit)
-        : Promise.resolve({ data: [], error: null }),
+        : Promise.resolve({ data: [], error: null, count: 0 }),
       canParts
         ? context.actor.supabase
             .from("part_request_items")
-            .select("id, description, status, updated_at, work_order_id")
+            .select("id, description, status, updated_at, work_order_id", {
+              count: "exact",
+            })
             .eq("shop_id", context.actor.shopId)
             .gte("updated_at", input.startsAt)
             .lt("updated_at", input.endsAt)
             .order("updated_at", { ascending: false })
             .limit(input.limit)
-        : Promise.resolve({ data: [], error: null }),
+        : Promise.resolve({ data: [], error: null, count: 0 }),
       canInvoice
         ? context.actor.supabase
             .from("invoices")
-            .select("id, invoice_number, status, updated_at, work_order_id")
+            .select("id, invoice_number, status, updated_at, work_order_id", {
+              count: "exact",
+            })
             .eq("shop_id", context.actor.shopId)
             .gte("updated_at", input.startsAt)
             .lt("updated_at", input.endsAt)
             .order("updated_at", { ascending: false })
             .limit(input.limit)
-        : Promise.resolve({ data: [], error: null }),
+        : Promise.resolve({ data: [], error: null, count: 0 }),
       canWorkforce
         ? context.actor.supabase
             .from("work_order_line_labor_segments")
             .select(
               "id, started_at, ended_at, updated_at, work_order_id, technician_id",
+              { count: "exact" },
             )
             .eq("shop_id", context.actor.shopId)
             .gte("updated_at", input.startsAt)
             .lt("updated_at", input.endsAt)
             .order("updated_at", { ascending: false })
             .limit(input.limit)
-        : Promise.resolve({ data: [], error: null }),
+        : Promise.resolve({ data: [], error: null, count: 0 }),
     ]);
     if (workOrderResult.error) throw new Error(workOrderResult.error.message);
     if (bookingResult.error) throw new Error(bookingResult.error.message);
@@ -332,11 +339,11 @@ export const readDailyActivityTool = defineShopAssistantTool({
       .slice(0, input.limit);
 
     const counts = {
-      workOrderChanges: workOrderResult.data?.length ?? 0,
-      bookingChanges: bookingResult.data?.length ?? 0,
-      inventoryChanges: inventoryResult.data?.length ?? 0,
-      invoiceChanges: invoiceResult.data?.length ?? 0,
-      technicianChanges: technicianResult.data?.length ?? 0,
+      workOrderChanges: workOrderResult.count ?? 0,
+      bookingChanges: bookingResult.count ?? 0,
+      inventoryChanges: inventoryResult.count ?? 0,
+      invoiceChanges: invoiceResult.count ?? 0,
+      technicianChanges: technicianResult.count ?? 0,
     };
     const visibleCounts = [
       canWorkOrders ? `${counts.workOrderChanges} work-order` : null,

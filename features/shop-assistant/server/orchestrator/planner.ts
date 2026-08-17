@@ -106,6 +106,15 @@ function quotedOrTrailingQuery(question: string): string | null {
   return trailing?.trim() || null;
 }
 
+function customerSearchQuery(question: string): string | null {
+  const quoted = quotedOrTrailingQuery(question);
+  if (quoted) return quoted;
+  const trailing = question.match(
+    /\bcustomers?\s+(?:named\s+)?(.{2,120})[?.!]*$/i,
+  )?.[1];
+  return trailing?.replace(/[?.!]+$/, "").trim() || null;
+}
+
 function callsPlan(
   calls: Array<{ name: string; input?: Record<string, unknown> }>,
   rationale: string,
@@ -255,6 +264,22 @@ export function selectDeterministicShopAssistantPlan(params: {
       [{ name: "list_fleet_units", input: { limit: 25 } }],
       "Read only units in the actor's fleet scope.",
     );
+  }
+
+  if (
+    available("find_customers") &&
+    /\b(?:find|search|look up|lookup)\b.*\bcustomers?\b/i.test(question)
+  ) {
+    const query = customerSearchQuery(question);
+    return query
+      ? callsPlan(
+          [{ name: "find_customers", input: { query, limit: 10 } }],
+          "Search same-shop customers by name, email, or phone.",
+        )
+      : {
+          kind: "clarification",
+          message: "What customer name, email, or phone should I search for?",
+        };
   }
 
   if (WRITE_INTENT_PATTERN.test(question)) {
