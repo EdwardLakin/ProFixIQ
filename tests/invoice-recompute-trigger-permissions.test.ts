@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 const migrationPath =
   "supabase/migrations/20260804051000_restore_authenticated_invoice_recompute.sql";
 const aclRepairMigrationPath =
-  "supabase/migrations/20260817044500_restore_invoice_recompute_authenticated_grant.sql";
+  "supabase/migrations/20260817050600_restore_invoice_recompute_authenticated_grant.sql";
 
 function migrationSource(path = migrationPath) {
   return readFileSync(path, "utf8");
