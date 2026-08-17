@@ -91,6 +91,10 @@ describe("P0-006 Stripe identity boundary", () => {
     );
     expect(checkout).not.toContain("STRIPE_PRICE_BASE_MONTHLY");
     expect(checkout).toContain("configuredTrialDays()");
+    expect(checkout).toContain(
+      'process.env.STRIPE_TRIAL_DAYS ?? "7"',
+    );
+    expect(checkout).toMatch(/\? parsed : 7;/);
     expect(checkout).toContain("allow_promotion_codes: true");
     expect(checkout).not.toContain("STRIPE_FOUNDING_COUPON_ID");
     expect(discountMigration).toContain(

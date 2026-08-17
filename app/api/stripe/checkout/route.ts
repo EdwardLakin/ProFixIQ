@@ -120,8 +120,8 @@ function getShopDisplayName(shop: ShopScope): string {
 }
 
 function configuredTrialDays(): number {
-  const parsed = Math.trunc(Number(process.env.STRIPE_TRIAL_DAYS ?? "14"));
-  return Number.isFinite(parsed) && parsed >= 0 && parsed <= 60 ? parsed : 14;
+  const parsed = Math.trunc(Number(process.env.STRIPE_TRIAL_DAYS ?? "7"));
+  return Number.isFinite(parsed) && parsed >= 0 && parsed <= 60 ? parsed : 7;
 }
 
 function automaticTaxEnabled(): boolean {

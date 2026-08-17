@@ -454,7 +454,7 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
         </h1>
         <p className="mt-2 text-sm leading-6 text-[color:var(--theme-text-secondary)]">
           {isAwaitingConfirmation
-            ? `We created the owner account for ${pendingConfirmationEmail}. Open the verification link to securely attach this 14-day trial and continue ${productCopy.label} setup.`
+            ? `We created the owner account for ${pendingConfirmationEmail}. Open the verification link to securely attach this 7-day trial and continue ${productCopy.label} setup.`
             : isSignIn
               ? `Use your ${productCopy.label} username or account email.`
               : productCopy.accountDescription}

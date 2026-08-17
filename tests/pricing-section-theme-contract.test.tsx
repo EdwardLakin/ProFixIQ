@@ -84,7 +84,7 @@ describe("PricingSection theme contract", () => {
       screen.getByRole("region", { name: "Pricing plans" }),
     ).toHaveAttribute("data-surface", "light");
     expect(
-      screen.getAllByRole("button", { name: "Start 14-day free trial" }),
+      screen.getAllByRole("button", { name: "Start 7-day free trial" }),
     ).toHaveLength(4);
   });
 
