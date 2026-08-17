@@ -44,6 +44,28 @@ const AssignmentRecommendationSchema = z.object({
   href: z.string(),
 });
 
+type AssignmentWorkOrderRow = {
+  id: string;
+  custom_id: string | null;
+  status: string | null;
+  priority: number | null;
+  is_waiter: boolean | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+type AssignmentLineRow = {
+  id: string;
+  work_order_id: string;
+  description: string | null;
+  labor_time: number | null;
+  assigned_tech_id: string | null;
+  line_status: string | null;
+  status: string | null;
+  priority: number | null;
+  job_priority: string | null;
+};
+
 function isAssignableTechnicianRole(role: string | null | undefined): boolean {
   const canonical = canonicalizeRole(role);
   return (
@@ -137,8 +159,10 @@ export const recommendWorkAssignmentsTool = defineShopAssistantTool({
     href: z.string(),
   }),
   async execute(input, context) {
-    const { data: workOrders, error: workOrderError } =
-      await context.actor.supabase
+    const workOrders: AssignmentWorkOrderRow[] = [];
+    const pageSize = 500;
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await context.actor.supabase
         .from("work_orders")
         .select(
           "id, custom_id, status, priority, is_waiter, created_at, updated_at",
@@ -152,12 +176,27 @@ export const recommendWorkAssignmentsTool = defineShopAssistantTool({
           "in_progress",
         ])
         .order("created_at", { ascending: true, nullsFirst: false })
-        .limit(100);
-    if (workOrderError) throw new Error(workOrderError.message);
+        .order("id", { ascending: true })
+        .range(from, from + pageSize - 1);
+      if (error) throw new Error(error.message);
+      const page = (data ?? []) as AssignmentWorkOrderRow[];
+      workOrders.push(...page);
+      if (page.length < pageSize) break;
+    }
 
-    const workOrderIds = (workOrders ?? []).map((row) => row.id);
-    const { data: lines, error: lineError } = workOrderIds.length
-      ? await context.actor.supabase
+    const lines: AssignmentLineRow[] = [];
+    const workOrderIds = workOrders.map((row) => row.id);
+    // Bound each PostgREST URL and page every matching line. Ranking only a
+    // partial work-order or line set can recommend a lower-priority job while
+    // urgent work remains outside the arbitrary cap.
+    for (
+      let chunkStart = 0;
+      chunkStart < workOrderIds.length;
+      chunkStart += 100
+    ) {
+      const workOrderChunk = workOrderIds.slice(chunkStart, chunkStart + 100);
+      for (let from = 0; ; from += pageSize) {
+        const { data, error } = await context.actor.supabase
           .from("work_order_lines")
           .select(
             "id, work_order_id, description, labor_time, assigned_tech_id, line_status, status, priority, job_priority",
@@ -165,9 +204,23 @@ export const recommendWorkAssignmentsTool = defineShopAssistantTool({
           .eq("shop_id", context.actor.shopId)
           .eq("line_type", "job")
           .is("voided_at", null)
-          .in("work_order_id", workOrderIds)
-      : { data: [], error: null };
-    if (lineError) throw new Error(lineError.message);
+          .in("work_order_id", workOrderChunk)
+          .order("work_order_id", { ascending: true })
+          .order("id", { ascending: true })
+          .range(from, from + pageSize - 1);
+        if (error) throw new Error(error.message);
+        const page = (data ?? []) as AssignmentLineRow[];
+        lines.push(...page);
+        if (page.length < pageSize) break;
+      }
+    }
+
+    const linesByWorkOrder = new Map<string, AssignmentLineRow[]>();
+    for (const line of lines) {
+      const existing = linesByWorkOrder.get(line.work_order_id);
+      if (existing) existing.push(line);
+      else linesByWorkOrder.set(line.work_order_id, [line]);
+    }
 
     const load = await getTechnicianLoadMetricsWithClient(
       context.actor.supabase,
@@ -187,23 +240,17 @@ export const recommendWorkAssignmentsTool = defineShopAssistantTool({
         technician.currentActiveJobs,
       ]),
     );
-    const terminal = new Set([
-      "completed",
-      "done",
-      "cancelled",
-      "canceled",
-      "void",
-    ]);
-    const rows = (workOrders ?? [])
+    const rows = workOrders
       .map((workOrder) => {
-        const eligibleLines = (lines ?? []).filter((line) => {
-          if (line.work_order_id !== workOrder.id || line.assigned_tech_id)
-            return false;
-          const status = String(line.line_status ?? line.status ?? "")
-            .trim()
-            .toLowerCase();
-          return !terminal.has(status);
-        });
+        const eligibleLines = (linesByWorkOrder.get(workOrder.id) ?? []).filter(
+          (line) => {
+            if (line.assigned_tech_id) return false;
+            const status =
+              normalizedStatus(line.line_status) ||
+              normalizedStatus(line.status);
+            return !TERMINAL_ASSIGNMENT_STATUSES.has(status);
+          },
+        );
         if (eligibleLines.length === 0) return null;
         const age = ageHours(workOrder.updated_at ?? workOrder.created_at) ?? 0;
         const linePriority = Math.max(

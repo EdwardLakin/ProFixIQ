@@ -1470,6 +1470,7 @@ begin
     price_estimate,
     notes,
     status,
+    approval_state,
     priority
   ) values (
     p_work_order_id,
@@ -1484,7 +1485,8 @@ begin
     p_labor_time,
     p_price_estimate,
     nullif(trim(coalesce(p_notes, '')), ''),
-    'awaiting',
+    'awaiting_approval',
+    'pending',
     coalesce(v_work_order.priority, 3)
   ) returning * into v_line;
 
@@ -1787,16 +1789,17 @@ begin
       message = 'The work order changed after the confirmation preview.';
   end if;
 
+  -- The canonical creator and its lifecycle triggers read auth.uid() for
+  -- requested_by and event attribution. This wrapper has already verified
+  -- the action actor, so project that identity into the transaction-local JWT
+  -- subject while retaining the service_role claim used by the trusted RPC.
+  perform set_config('request.jwt.claim.sub', p_actor_user_id::text, true);
   v_request_id := public.create_part_request_with_items(
     p_work_order_id,
     p_items,
     p_work_order_line_id::text,
     p_notes
   );
-  update public.part_requests
-  set requested_by = p_actor_user_id
-  where id = v_request_id
-    and shop_id = p_shop_id;
   select count(*)::integer into v_item_count
   from public.part_request_items pri
   where pri.request_id = v_request_id and pri.shop_id = p_shop_id;
@@ -2690,7 +2693,13 @@ begin
       and id = any(v_line_ids);
   elsif cardinality(v_line_ids) > 0 then
     update public.work_order_lines
-    set intake_json = coalesce(intake_json, '{}'::jsonb)
+    set approval_state = 'declined',
+        status = 'on_hold',
+        line_status = 'deferred',
+        approval_at = now(),
+        approval_by = p_actor_user_id,
+        hold_reason = coalesce(nullif(trim(hold_reason), ''), 'Customer deferred'),
+        intake_json = coalesce(intake_json, '{}'::jsonb)
           || jsonb_strip_nulls(jsonb_build_object(
             'shop_decision', 'defer',
             'shop_decision_at', now(),
@@ -3133,6 +3142,13 @@ begin
       raise exception using
         errcode = 'P0002',
         message = 'Work order not found in this shop.';
+    end if;
+    if public.work_order_is_financially_locked(
+      p_shop_id, p_work_order_id
+    ) then
+      raise exception using
+        errcode = 'P0001',
+        message = 'FINANCIALLY_LOCKED: purchase orders cannot be linked after invoice finalization.';
     end if;
   end if;
 
@@ -4443,6 +4459,9 @@ begin
         and lower(coalesce(status::text, '')) not in (
           'completed', 'declined', 'deferred', 'ready_to_invoice', 'invoiced'
         )
+        and lower(coalesce(line_status::text, '')) not in (
+          'declined', 'deferred', 'voided', 'cancelled', 'canceled'
+        )
     )
   into v_line_count, v_not_done
   from public.work_order_lines
@@ -4638,6 +4657,7 @@ declare
   v_current_snapshot text;
   v_version public.invoice_versions%rowtype;
   v_result jsonb;
+  v_count integer;
 begin
   v_action := public.shop_assistant_lock_action_for_tool(
     p_action_id, p_shop_id, p_actor_user_id, 'finalize_invoice'
@@ -4827,12 +4847,32 @@ begin
     'invoiceVersionId', v_version.id,
     'total', v_version.total,
     'currency', v_version.currency,
+    'sideEffectsPending', true,
     'summary', 'Invoice ' || left(v_version.invoice_id::text, 8)
       || ' was finalized for ' || v_version.currency || ' '
       || v_version.total::text || '.',
     'href', '/work-orders/invoice/' || p_work_order_id::text
   );
-  return public.shop_assistant_succeed_action(p_action_id, p_shop_id, v_result);
+
+  -- Financial issuance is atomic in this transaction, but attachment and
+  -- operational-audit side effects run in the application process. Persist a
+  -- resumable checkpoint without closing the action. The confirmation route
+  -- records the terminal result, including any warnings, only after those
+  -- side effects have run.
+  update public.shop_assistant_actions
+  set result = v_result,
+      error = null,
+      updated_at = now()
+  where id = p_action_id
+    and shop_id = p_shop_id
+    and status = 'executing';
+  get diagnostics v_count = row_count;
+  if v_count <> 1 then
+    raise exception using
+      errcode = 'P0001',
+      message = 'The assistant action could not record its invoice checkpoint.';
+  end if;
+  return v_result;
 end;
 $$;
 

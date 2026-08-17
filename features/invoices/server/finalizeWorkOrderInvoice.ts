@@ -60,6 +60,17 @@ type WorkOrderForFinalization = {
   updated_at: string | null;
 };
 
+export type AssistantFinalizationActionCheckpoint = {
+  id: string;
+  shop_id: string;
+  requested_by: string;
+  confirmed_by: string | null;
+  tool_name: string;
+  status: string;
+  input: unknown;
+  result: unknown;
+};
+
 export type InvoiceFinalizationCandidate = {
   workOrder: WorkOrderForFinalization;
   existingVersion: InvoiceVersionRecord | null;
@@ -91,6 +102,68 @@ function invoicePartSignature(
     .sort((left, right) => left.id.localeCompare(right.id))
     .map((part) => `${part.id}:${part.qty}:${part.unitPrice}`)
     .join("|");
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+export function isResumableAssistantFinalizationCheckpoint(input: {
+  checkpoint: AssistantFinalizationActionCheckpoint;
+  actionId: string;
+  shopId: string;
+  workOrderId: string;
+  actorAuthUserId: string;
+  version: Pick<InvoiceVersionRecord, "id" | "invoice_id" | "work_order_id">;
+}): boolean {
+  const actionInput = asRecord(input.checkpoint.input);
+  const result = asRecord(input.checkpoint.result);
+  return (
+    input.version.invoice_id !== null &&
+    input.checkpoint.id === input.actionId &&
+    input.checkpoint.shop_id === input.shopId &&
+    input.checkpoint.requested_by === input.actorAuthUserId &&
+    input.checkpoint.confirmed_by === input.actorAuthUserId &&
+    input.checkpoint.tool_name === "finalize_invoice" &&
+    input.checkpoint.status === "executing" &&
+    actionInput.workOrderId === input.workOrderId &&
+    input.version.work_order_id === input.workOrderId &&
+    result.ok === true &&
+    result.sideEffectsPending === true &&
+    result.workOrderId === input.workOrderId &&
+    result.invoiceVersionId === input.version.id &&
+    result.invoiceId === input.version.invoice_id
+  );
+}
+
+async function canResumeAssistantFinalization(input: {
+  supabase: DbClient;
+  actionId: string;
+  shopId: string;
+  workOrderId: string;
+  actorAuthUserId: string;
+  version: InvoiceVersionRecord;
+}): Promise<boolean> {
+  const { data, error } = await input.supabase
+    .from("shop_assistant_actions")
+    .select(
+      "id, shop_id, requested_by, confirmed_by, tool_name, status, input, result",
+    )
+    .eq("id", input.actionId)
+    .eq("shop_id", input.shopId)
+    .maybeSingle<AssistantFinalizationActionCheckpoint>();
+  if (error) throw new Error(error.message);
+  if (!data) return false;
+  return isResumableAssistantFinalizationCheckpoint({
+    checkpoint: data,
+    actionId: input.actionId,
+    shopId: input.shopId,
+    workOrderId: input.workOrderId,
+    actorAuthUserId: input.actorAuthUserId,
+    version: input.version,
+  });
 }
 
 async function runFinalizationSideEffects(
@@ -277,68 +350,84 @@ export async function finalizeWorkOrderInvoice(input: {
   assistantActionId?: string;
 }): Promise<FinalizeWorkOrderInvoiceResult> {
   const candidate = await validateInvoiceFinalizationCandidate(input);
+  let finalized: { version: InvoiceVersionRecord; idempotent: boolean };
   if (candidate.existingVersion) {
     if (input.assistantActionId) {
-      throw new InvoiceFinalizationError(
-        409,
-        "This work order was finalized after the assistant confirmation preview.",
-      );
-    }
-    const invoiceId = candidate.existingVersion.invoice_id;
-    if (!invoiceId) {
-      throw new Error("The active invoice version is missing its invoice ID.");
-    }
-    return {
-      ok: true,
-      idempotent: true,
-      invoiceId,
-      invoiceVersionId: candidate.existingVersion.id,
-      invoiceVersion: candidate.existingVersion,
-      inspectionAttachment: null,
-    };
-  }
-  if (
-    input.expectedWorkOrderUpdatedAt &&
-    (input.expectedWorkOrderUpdatedAt === "missing"
-      ? candidate.workOrder.updated_at !== null
-      : candidate.workOrder.updated_at !== input.expectedWorkOrderUpdatedAt)
-  ) {
-    throw new InvoiceFinalizationError(
-      409,
-      "The work order changed after the invoice confirmation preview.",
-    );
-  }
-  if (!candidate.snapshot) {
-    throw new Error("The invoice snapshot was not prepared.");
-  }
-
-  const brand = await getActiveBrandForRender(input.shopId);
-  const snapshot = {
-    ...candidate.snapshot,
-    documentConfiguration: brand.document,
-  };
-  const finalized = input.assistantActionId
-    ? await finalizeAssistantInvoiceVersion({
+      const resumable = await canResumeAssistantFinalization({
         supabase: input.supabase,
         actionId: input.assistantActionId,
         shopId: input.shopId,
         workOrderId: input.workOrderId,
         actorAuthUserId: input.actorAuthUserId,
-        actorProfileId: input.actorProfileId,
-        snapshot,
-      })
-    : {
-        version: await finalizeInvoiceVersion({
+        version: candidate.existingVersion,
+      });
+      if (!resumable) {
+        throw new InvoiceFinalizationError(
+          409,
+          "This work order was finalized after the assistant confirmation preview.",
+        );
+      }
+      finalized = { version: candidate.existingVersion, idempotent: true };
+    } else {
+      const invoiceId = candidate.existingVersion.invoice_id;
+      if (!invoiceId) {
+        throw new Error(
+          "The active invoice version is missing its invoice ID.",
+        );
+      }
+      return {
+        ok: true,
+        idempotent: true,
+        invoiceId,
+        invoiceVersionId: candidate.existingVersion.id,
+        invoiceVersion: candidate.existingVersion,
+        inspectionAttachment: null,
+      };
+    }
+  } else {
+    if (
+      input.expectedWorkOrderUpdatedAt &&
+      (input.expectedWorkOrderUpdatedAt === "missing"
+        ? candidate.workOrder.updated_at !== null
+        : candidate.workOrder.updated_at !== input.expectedWorkOrderUpdatedAt)
+    ) {
+      throw new InvoiceFinalizationError(
+        409,
+        "The work order changed after the invoice confirmation preview.",
+      );
+    }
+    if (!candidate.snapshot) {
+      throw new Error("The invoice snapshot was not prepared.");
+    }
+
+    const brand = await getActiveBrandForRender(input.shopId);
+    const snapshot = {
+      ...candidate.snapshot,
+      documentConfiguration: brand.document,
+    };
+    finalized = input.assistantActionId
+      ? await finalizeAssistantInvoiceVersion({
           supabase: input.supabase,
+          actionId: input.assistantActionId,
           shopId: input.shopId,
           workOrderId: input.workOrderId,
-          invoiceId: null,
+          actorAuthUserId: input.actorAuthUserId,
+          actorProfileId: input.actorProfileId,
           snapshot,
-          actorUserId: input.actorProfileId,
-          operationKey: input.operationKey,
-        }),
-        idempotent: false,
-      };
+        })
+      : {
+          version: await finalizeInvoiceVersion({
+            supabase: input.supabase,
+            shopId: input.shopId,
+            workOrderId: input.workOrderId,
+            invoiceId: null,
+            snapshot,
+            actorUserId: input.actorProfileId,
+            operationKey: input.operationKey,
+          }),
+          idempotent: false,
+        };
+  }
   const { version } = finalized;
   const invoiceId = version.invoice_id;
   if (!invoiceId) {
@@ -367,6 +456,7 @@ export async function finalizeWorkOrderInvoice(input: {
         logOperationalEvent({
           supabase: input.supabase,
           event: "invoice_finalized",
+          actorId: input.actorAuthUserId,
           entityType: "invoice_version",
           entityId: version.id,
           details: {
@@ -374,6 +464,7 @@ export async function finalizeWorkOrderInvoice(input: {
             invoice_id: invoiceId,
             invoice_total: version.total,
           },
+          throwOnFailure: true,
         }),
     },
   ]);

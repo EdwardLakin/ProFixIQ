@@ -197,17 +197,34 @@ async function buildFleetState(
 
   const admin = createAdminSupabase();
   const [
-    { data: requests, error: requestError },
+    { count: openRequestCount, error: openRequestCountError },
+    { count: urgentRequestCount, error: urgentRequestCountError },
+    { data: urgentRequests, error: urgentRequestError },
     { count: unitCount, error: unitError },
   ] = await Promise.all([
+    admin
+      .from("fleet_service_requests")
+      .select("id", { count: "exact", head: true })
+      .eq("shop_id", actor.shopId)
+      .in("fleet_id", fleetIds)
+      .not("status", "in", "(completed,cancelled,canceled,closed)"),
+    admin
+      .from("fleet_service_requests")
+      .select("id", { count: "exact", head: true })
+      .eq("shop_id", actor.shopId)
+      .in("fleet_id", fleetIds)
+      .not("status", "in", "(completed,cancelled,canceled,closed)")
+      .in("severity", ["safety", "compliance"]),
     admin
       .from("fleet_service_requests")
       .select("id, title, severity, status, vehicle_id, created_at")
       .eq("shop_id", actor.shopId)
       .in("fleet_id", fleetIds)
       .not("status", "in", "(completed,cancelled,canceled,closed)")
-      .order("created_at", { ascending: true })
-      .limit(50),
+      .in("severity", ["safety", "compliance"])
+      .order("created_at", { ascending: true, nullsFirst: false })
+      .order("id", { ascending: true })
+      .limit(8),
     admin
       .from("fleet_vehicles")
       .select("vehicle_id", { count: "exact", head: true })
@@ -215,25 +232,25 @@ async function buildFleetState(
       .in("fleet_id", fleetIds)
       .or("active.is.null,active.eq.true"),
   ]);
-  if (requestError) throw new Error(requestError.message);
+  if (openRequestCountError) throw new Error(openRequestCountError.message);
+  if (urgentRequestCountError) throw new Error(urgentRequestCountError.message);
+  if (urgentRequestError) throw new Error(urgentRequestError.message);
   if (unitError) throw new Error(unitError.message);
-  const activeRequests = requests ?? [];
-  const urgent = activeRequests.filter((request) =>
-    /critical|urgent|high/i.test(request.severity ?? ""),
-  );
+  const openCount = openRequestCount ?? 0;
+  const urgentCount = urgentRequestCount ?? 0;
 
   return {
     generatedAt: new Date().toISOString(),
     role: actor.canonicalRole,
     scopeLabel: "entitled fleet operations",
-    headline: `${activeRequests.length} open service request(s) across ${unitCount ?? 0} accessible fleet unit(s).`,
+    headline: `${openCount} open service request(s) across ${unitCount ?? 0} accessible fleet unit(s).`,
     metrics: {
       ...EMPTY_METRICS,
-      openWorkOrders: activeRequests.length,
-      stalledWorkOrders: urgent.length,
+      openWorkOrders: openCount,
+      stalledWorkOrders: urgentCount,
     },
     visibleMetricKeys: ["openWorkOrders", "stalledWorkOrders"],
-    alerts: urgent.slice(0, 8).map((request) => ({
+    alerts: (urgentRequests ?? []).map((request) => ({
       id: `fleet-request:${request.id}`,
       code: "fleet_service_request_urgent",
       level: "warning",
@@ -248,7 +265,7 @@ async function buildFleetState(
         id: "fleet-open-requests",
         domain: "fleet",
         title: "Review fleet service requests",
-        description: `${activeRequests.length} open request(s) are in your fleet scope.`,
+        description: `${openCount} open request(s) are in your fleet scope.`,
         prompt:
           "Show my fleet service requests and prioritize what needs attention.",
         href: "/fleet/service-requests",

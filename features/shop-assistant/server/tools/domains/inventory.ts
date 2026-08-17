@@ -34,6 +34,7 @@ type PartBlocker = z.infer<typeof PartBlockerSchema>;
 
 type PartStockRow = {
   part_id: string;
+  location_id: string;
   qty_on_hand: number | null;
   reorder_point: number | null;
   reorder_qty: number | null;
@@ -247,16 +248,29 @@ export const listLowStockPartsTool = defineShopAssistantTool({
     href: z.string(),
   }),
   async execute(input, context) {
-    const { data, error } = await context.actor.supabase
-      .from("part_stock")
-      .select(
-        "part_id, qty_on_hand, reorder_point, reorder_qty, parts!inner(name, sku, low_stock_threshold, shop_id)",
-      )
-      .eq("parts.shop_id", context.actor.shopId)
-      .limit(300);
-    if (error) throw new Error(error.message);
+    const rows: PartStockRow[] = [];
+    const pageSize = 500;
 
-    const rows = (data ?? []) as unknown as PartStockRow[];
+    // Thresholds can come from either the stock location or its related part,
+    // so the low-stock predicate must be evaluated after loading the rows.
+    // Page the entire same-shop set in a deterministic composite order before
+    // ranking; an arbitrary pre-filter cap can hide the lowest stock item.
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await context.actor.supabase
+        .from("part_stock")
+        .select(
+          "part_id, location_id, qty_on_hand, reorder_point, reorder_qty, parts!inner(name, sku, low_stock_threshold, shop_id)",
+        )
+        .eq("parts.shop_id", context.actor.shopId)
+        .order("part_id", { ascending: true })
+        .order("location_id", { ascending: true })
+        .range(from, from + pageSize - 1);
+      if (error) throw new Error(error.message);
+      const page = (data ?? []) as unknown as PartStockRow[];
+      rows.push(...page);
+      if (page.length < pageSize) break;
+    }
+
     const items: LowStockItem[] = [];
 
     for (const row of rows) {
