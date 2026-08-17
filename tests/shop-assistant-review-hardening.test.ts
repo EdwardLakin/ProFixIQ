@@ -11,7 +11,10 @@ import {
   isResumableAssistantFinalizationCheckpoint,
   type AssistantFinalizationActionCheckpoint,
 } from "@/features/invoices/server/finalizeWorkOrderInvoice";
-import { listLowStockPartsTool } from "@/features/shop-assistant/server/tools/domains/inventory";
+import {
+  listLowStockPartsTool,
+  listPartsBlockersTool,
+} from "@/features/shop-assistant/server/tools/domains/inventory";
 import { recommendWorkAssignmentsTool } from "@/features/shop-assistant/server/tools/domains/workforce";
 import { logOperationalEvent } from "@/features/work-orders/server/logOperationalEvent";
 
@@ -114,6 +117,38 @@ describe("shop assistant review hardening", () => {
     expect(ranges).toEqual([0, 500]);
     expect(result.items).toHaveLength(1);
     expect(result.items[0]?.partId).toBe(uuid(501));
+  });
+
+  it("finds an outstanding parts blocker beyond completed recent rows", async () => {
+    const requestItems = Array.from({ length: 501 }, (_, index) => ({
+      id: uuid(index + 1),
+      description: `Requested part ${index + 1}`,
+      qty_approved: index === 500 ? 3 : 1,
+      qty_received: index === 500 ? 1 : 1,
+      work_order_id: uuid(70_000),
+      work_orders: { custom_id: "WO-70000", shop_id: uuid(90_000) },
+    }));
+    const ranges: number[] = [];
+    const supabase = queryClient(
+      { part_request_items: requestItems },
+      (table, from) => {
+        if (table === "part_request_items") ranges.push(from);
+      },
+    );
+
+    const result = await listPartsBlockersTool.execute({ limit: 1 }, {
+      actor: { shopId: uuid(90_000), supabase },
+      threadId: uuid(90_001),
+      idempotencyKey: "parts-blocker-page-test",
+    } as never);
+
+    expect(ranges).toEqual([0, 500]);
+    expect(result.blockers).toHaveLength(1);
+    expect(result.blockers[0]).toMatchObject({
+      requestItemId: uuid(501),
+      remainingQuantity: 2,
+      workOrderId: uuid(70_000),
+    });
   });
 
   it("ranks eligible work from every work-order page", async () => {

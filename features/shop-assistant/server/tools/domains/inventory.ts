@@ -336,48 +336,60 @@ export const listPartsBlockersTool = defineShopAssistantTool({
     href: z.string(),
   }),
   async execute(input, context) {
-    let query = context.actor.supabase
-      .from("part_request_items")
-      .select(
-        "id, description, qty_approved, qty_received, work_order_id, work_orders(custom_id, shop_id)",
-      )
-      .eq("shop_id", context.actor.shopId)
-      .order("updated_at", { ascending: false })
-      .limit(200);
-    if (input.workOrderId) query = query.eq("work_order_id", input.workOrderId);
-
-    const { data, error } = await query;
-    if (error) throw new Error(error.message);
-
-    const rows = (data ?? []) as unknown as PartRequestItemRow[];
     const blockers: PartBlocker[] = [];
+    const pageSize = 500;
 
-    for (const row of rows) {
-      const requestItemId = String(row.id ?? "").trim();
-      if (!requestItemId) continue;
+    // PostgREST cannot compare qty_approved to qty_received through the
+    // standard filter helpers. Page the stable same-shop order until enough
+    // outstanding rows are found so completed recent items cannot hide older
+    // blockers behind a pre-filter cap.
+    for (let from = 0; blockers.length < input.limit; from += pageSize) {
+      let query = context.actor.supabase
+        .from("part_request_items")
+        .select(
+          "id, description, qty_approved, qty_received, work_order_id, work_orders(custom_id, shop_id)",
+        )
+        .eq("shop_id", context.actor.shopId)
+        .order("updated_at", { ascending: false })
+        .order("id", { ascending: true })
+        .range(from, from + pageSize - 1);
+      if (input.workOrderId) {
+        query = query.eq("work_order_id", input.workOrderId);
+      }
 
-      const approvedQuantity = Number(row.qty_approved ?? 0);
-      const receivedQuantity = Number(row.qty_received ?? 0);
-      const remainingQuantity = Math.max(
-        0,
-        approvedQuantity - receivedQuantity,
-      );
-      if (remainingQuantity <= 0) continue;
+      const { data, error } = await query;
+      if (error) throw new Error(error.message);
+      const rows = (data ?? []) as unknown as PartRequestItemRow[];
 
-      const customId = row.work_orders?.custom_id?.trim() || null;
-      const workOrderId = row.work_order_id?.trim() || null;
-      blockers.push({
-        requestItemId,
-        description: row.description?.trim() || "Requested part",
-        approvedQuantity,
-        receivedQuantity,
-        remainingQuantity,
-        workOrderId,
-        workOrderLabel: customId ? `WO #${customId}` : null,
-        href: workOrderId ? `/work-orders/${workOrderId}` : "/parts/requests",
-      });
+      for (const row of rows) {
+        const requestItemId = String(row.id ?? "").trim();
+        if (!requestItemId) continue;
 
-      if (blockers.length >= input.limit) break;
+        const approvedQuantity = Number(row.qty_approved ?? 0);
+        const receivedQuantity = Number(row.qty_received ?? 0);
+        const remainingQuantity = Math.max(
+          0,
+          approvedQuantity - receivedQuantity,
+        );
+        if (remainingQuantity <= 0) continue;
+
+        const customId = row.work_orders?.custom_id?.trim() || null;
+        const workOrderId = row.work_order_id?.trim() || null;
+        blockers.push({
+          requestItemId,
+          description: row.description?.trim() || "Requested part",
+          approvedQuantity,
+          receivedQuantity,
+          remainingQuantity,
+          workOrderId,
+          workOrderLabel: customId ? `WO #${customId}` : null,
+          href: workOrderId ? `/work-orders/${workOrderId}` : "/parts/requests",
+        });
+
+        if (blockers.length >= input.limit) break;
+      }
+
+      if (rows.length < pageSize) break;
     }
 
     return {
