@@ -48,7 +48,10 @@ class FakeSpeechSynthesisUtterance {
 
 const speech = {
   cancel: vi.fn(),
+  resume: vi.fn(),
   speak: vi.fn((_utterance: SpeechSynthesisUtterance) => undefined),
+  speaking: true,
+  pending: false,
 };
 
 function deferred<T>() {
@@ -65,6 +68,8 @@ describe("Technician CoPilot voice interaction gateway", () => {
     realtime.connected = false;
     realtime.onFinal = null;
     realtime.onStateChange = null;
+    speech.speaking = true;
+    speech.pending = false;
     realtime.start.mockImplementation(async () => {
       realtime.connected = true;
       realtime.onStateChange?.("listening");
@@ -146,6 +151,7 @@ describe("Technician CoPilot voice interaction gateway", () => {
     });
     expect(realtime.pause).toHaveBeenCalledTimes(1);
     expect(realtime.stop).not.toHaveBeenCalled();
+    expect(speech.resume).toHaveBeenCalledTimes(1);
     expect(speech.speak).toHaveBeenCalledTimes(1);
 
     act(() => {
@@ -167,6 +173,168 @@ describe("Technician CoPilot voice interaction gateway", () => {
       expect(realtime.start).toHaveBeenCalledTimes(1);
       expect(result.current.phase).toBe("listening");
     });
+  });
+
+  it("returns to listening when a persisted CoPilot turn fails", async () => {
+    const onUtterance = vi.fn(async () => {
+      throw new Error("CoPilot took too long to respond. Please try again.");
+    });
+    const { result } = renderHook(() =>
+      useTechnicianInteractionGateway({ enabled: true, onUtterance }),
+    );
+
+    await act(async () => {
+      await result.current.start();
+    });
+    act(() => {
+      realtime.onFinal?.("What is my next job?");
+    });
+
+    await waitFor(() => {
+      expect(result.current.phase).toBe("listening");
+      expect(result.current.error).toContain("took too long");
+    });
+    expect(result.current.active).toBe(true);
+    expect(realtime.resume).toHaveBeenCalledTimes(1);
+    expect(realtime.stop).not.toHaveBeenCalled();
+  });
+
+  it("stops voice after a terminal CoPilot turn failure", async () => {
+    const terminalFailure = Object.assign(
+      new Error(
+        "The active CoPilot repair context changed. Reload before continuing.",
+      ),
+      { recoverable: false },
+    );
+    const onUtterance = vi.fn(async () => {
+      throw terminalFailure;
+    });
+    const { result } = renderHook(() =>
+      useTechnicianInteractionGateway({ enabled: true, onUtterance }),
+    );
+
+    await act(async () => {
+      await result.current.start();
+    });
+    act(() => {
+      realtime.onFinal?.("Complete this job.");
+    });
+
+    await waitFor(() => {
+      expect(result.current.phase).toBe("error");
+      expect(result.current.active).toBe(false);
+    });
+    expect(result.current.error).toContain("Reload before continuing");
+    expect(result.current.heardTranscript).toBe("Complete this job.");
+    expect(realtime.stop).toHaveBeenCalledTimes(1);
+    expect(realtime.resume).not.toHaveBeenCalled();
+  });
+
+  it("recovers when iOS speech synthesis never emits a completion event", async () => {
+    vi.useFakeTimers();
+    try {
+      const onUtterance = vi.fn(async () => ({
+        reply: "Your next assigned job is the Ford.",
+      }));
+      const { result } = renderHook(() =>
+        useTechnicianInteractionGateway({ enabled: true, onUtterance }),
+      );
+
+      await act(async () => {
+        await result.current.start();
+      });
+      await act(async () => {
+        realtime.onFinal?.("What is my next job?");
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(result.current.phase).toBe("speaking");
+      expect(speech.speak).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(90_001);
+      });
+
+      expect(speech.cancel).toHaveBeenCalledTimes(1);
+      expect(realtime.resume).toHaveBeenCalledTimes(1);
+      expect(result.current.phase).toBe("listening");
+      expect(result.current.error).toContain("spoken reply stalled");
+      expect(result.current.active).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not truncate a maximum-length valid reply at 90 seconds", async () => {
+    vi.useFakeTimers();
+    try {
+      const { result } = renderHook(() =>
+        useTechnicianInteractionGateway({
+          enabled: true,
+          onUtterance: vi.fn(async () => ({ reply: "x".repeat(2_000) })),
+        }),
+      );
+
+      await act(async () => {
+        await result.current.start();
+      });
+      await act(async () => {
+        realtime.onFinal?.("Read the full answer.");
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(result.current.phase).toBe("speaking");
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(90_001);
+      });
+
+      expect(speech.cancel).not.toHaveBeenCalled();
+      expect(result.current.phase).toBe("speaking");
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(216_000);
+      });
+      expect(speech.cancel).toHaveBeenCalledTimes(1);
+      expect(result.current.phase).toBe("listening");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("returns to listening quickly when device speech never starts", async () => {
+    vi.useFakeTimers();
+    try {
+      speech.speaking = false;
+      speech.pending = false;
+      const { result } = renderHook(() =>
+        useTechnicianInteractionGateway({
+          enabled: true,
+          onUtterance: vi.fn(async () => ({ reply: "The reply is ready." })),
+        }),
+      );
+
+      await act(async () => {
+        await result.current.start();
+      });
+      await act(async () => {
+        realtime.onFinal?.("Can you hear me?");
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(result.current.phase).toBe("speaking");
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_501);
+      });
+
+      expect(result.current.phase).toBe("listening");
+      expect(result.current.error).toContain("could not start");
+      expect(result.current.active).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("lets the technician interrupt a spoken reply and resume the same Realtime session", async () => {

@@ -77,6 +77,8 @@ describe("technician-first mobile UX", () => {
     expect(techHome).toContain("Open current job");
     expect(techHome).toContain("Hours &amp; efficiency");
     expect(techHome).toContain("<details");
+    expect(techHome).toContain("onClick={openTechnicianCopilot}");
+    expect(techHome).not.toContain('href="/mobile/copilot/technician"');
     expect(techHome).not.toContain("Bench-side view");
   });
 

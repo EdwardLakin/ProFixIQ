@@ -5,6 +5,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { Mic, Square, VolumeX } from "lucide-react";
@@ -74,6 +75,34 @@ type Snapshot = {
 
 type InputMode = "ui" | "voice";
 
+type TurnRequest = {
+  message: string;
+  sessionId: string | null;
+  turnId: string;
+  inputMode: InputMode;
+};
+
+const COPILOT_TURN_TIMEOUT_MS = 45_000;
+const RECOVERABLE_TURN_STATUSES = new Set([408, 425, 429, 502, 503, 504]);
+
+class TechnicianCopilotTurnRequestError extends Error {
+  readonly recoverable: boolean;
+
+  constructor(message: string, recoverable: boolean) {
+    super(message);
+    this.name = "TechnicianCopilotTurnRequestError";
+    this.recoverable = recoverable;
+  }
+}
+
+function sameTurnInput(
+  request: TurnRequest,
+  message: string,
+  inputMode: InputMode,
+) {
+  return request.message === message && request.inputMode === inputMode;
+}
+
 function timeLabel(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
@@ -92,9 +121,11 @@ function voiceStatus(phase: ReturnType<typeof useTechnicianInteractionGateway>["
 export function TechnicianTextCopilot({
   embedded = false,
   active = true,
+  compact = false,
 }: {
   embedded?: boolean;
   active?: boolean;
+  compact?: boolean;
 }) {
   const [snapshot, setSnapshot] = useState<Snapshot>({
     context: null,
@@ -104,6 +135,7 @@ export function TechnicianTextCopilot({
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const pendingTurnRef = useRef<TurnRequest | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -135,6 +167,73 @@ export function TechnicianTextCopilot({
     snapshot.capabilities?.documentation !== false;
   const voiceEnabled = snapshot.capabilities?.voice === true;
 
+  const applyTurnSnapshot = useCallback((body: Snapshot) => {
+    setSnapshot((current) => ({
+      ...current,
+      ...body,
+      session:
+        Object.prototype.hasOwnProperty.call(body, "session")
+          ? body.session
+          : body.sessionId
+            ? { id: body.sessionId }
+            : current.session,
+    }));
+  }, []);
+
+  const requestTurn = useCallback(async (request: TurnRequest) => {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(
+      () => controller.abort(),
+      COPILOT_TURN_TIMEOUT_MS,
+    );
+
+    try {
+      const response = await fetch("/api/copilot/technician/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
+        body: JSON.stringify(request),
+      });
+      const body = (await response.json()) as Snapshot;
+      if (!response.ok) {
+        const recoverable = RECOVERABLE_TURN_STATUSES.has(response.status);
+        if (recoverable) {
+          pendingTurnRef.current = request;
+        } else if (pendingTurnRef.current?.turnId === request.turnId) {
+          pendingTurnRef.current = null;
+        }
+        throw new TechnicianCopilotTurnRequestError(
+          body.error || "CoPilot could not process that turn.",
+          recoverable,
+        );
+      }
+
+      if (pendingTurnRef.current?.turnId === request.turnId) {
+        pendingTurnRef.current = null;
+      }
+      return body;
+    } catch (reason) {
+      if (reason instanceof TechnicianCopilotTurnRequestError) throw reason;
+
+      // Aborting the browser request does not cancel the server operation. Keep
+      // the exact turn key so the next attempt reconciles the persisted result
+      // instead of issuing a second mutation under a fresh idempotency key.
+      pendingTurnRef.current = request;
+      if (controller.signal.aborted) {
+        throw new TechnicianCopilotTurnRequestError(
+          "CoPilot took too long to respond. Please try again; the same turn will resume safely.",
+          true,
+        );
+      }
+      throw new TechnicianCopilotTurnRequestError(
+        "The CoPilot connection was interrupted. Please try again; the same turn will resume safely.",
+        true,
+      );
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
+  }, []);
+
   const sendTurn = useCallback(
     async (text: string, inputMode: InputMode): Promise<Snapshot> => {
       const normalized = text.trim();
@@ -148,43 +247,38 @@ export function TechnicianTextCopilot({
       setBusy(true);
       setError(null);
       try {
-        const response = await fetch("/api/copilot/technician/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            message: normalized,
-            sessionId,
-            turnId: crypto.randomUUID(),
-            inputMode,
-          }),
-        });
-        const body = (await response.json()) as Snapshot;
-        if (!response.ok) {
-          throw new Error(body.error || "CoPilot could not process that turn.");
+        let activeSessionId = sessionId;
+        const pending = pendingTurnRef.current;
+        if (pending) {
+          const reconciled = await requestTurn(pending);
+          applyTurnSnapshot(reconciled);
+          activeSessionId =
+            reconciled.session?.id ?? reconciled.sessionId ?? activeSessionId;
+          if (sameTurnInput(pending, normalized, inputMode)) {
+            return reconciled;
+          }
         }
-        setSnapshot((current) => ({
-          ...current,
-          ...body,
-          session:
-            Object.prototype.hasOwnProperty.call(body, "session")
-              ? body.session
-              : body.sessionId
-                ? { id: body.sessionId }
-                : current.session,
-        }));
+
+        const body = await requestTurn({
+          message: normalized,
+          sessionId: activeSessionId,
+          turnId: crypto.randomUUID(),
+          inputMode,
+        });
+        applyTurnSnapshot(body);
         return body;
       } catch (reason) {
-        const message =
+        const failure =
           reason instanceof Error
-            ? reason.message
-            : "CoPilot could not process that turn.";
-        setError(message);
-        throw reason instanceof Error ? reason : new Error(message);
+            ? reason
+            : new Error("CoPilot could not process that turn.");
+        setError(failure.message);
+        throw failure;
       } finally {
         setBusy(false);
       }
     },
-    [busy, sessionId],
+    [applyTurnSnapshot, busy, requestTurn, sessionId],
   );
 
   const handleVoiceUtterance = useCallback(
@@ -237,16 +331,124 @@ export function TechnicianTextCopilot({
     return (
       <main
         className={cn(
-          "mx-auto max-w-4xl p-4 text-sm text-muted-foreground",
+          "mx-auto max-w-4xl p-4 text-sm text-[color:var(--theme-text-secondary)]",
           embedded && "flex h-full items-center justify-center",
+          compact && "min-h-20",
         )}
       >
-        Loading Technician CoPilot…
+        Connecting Technician CoPilot…
       </main>
     );
   }
 
   const recentTimeline = snapshot.context?.documentation.timeline.slice(-8) ?? [];
+  const latestAssistantReply =
+    snapshot.reply?.trim() ||
+    [...(snapshot.context?.conversation ?? [])]
+      .reverse()
+      .find((turn) => turn.role === "assistant")
+      ?.text.trim() ||
+    null;
+  const visibleVoiceError = voice.error ?? error;
+
+  if (compact) {
+    return (
+      <main className="h-full min-h-0 overflow-y-auto p-3 text-[color:var(--theme-text-primary)]">
+        <div className="space-y-3">
+          <div className="flex items-center gap-3">
+            <span
+              className={cn(
+                "h-2.5 w-2.5 shrink-0 rounded-full",
+                voice.phase === "listening"
+                  ? "animate-pulse bg-emerald-400"
+                  : voice.phase === "thinking" || voice.phase === "speaking"
+                    ? "animate-pulse bg-sky-400"
+                    : voice.phase === "error"
+                      ? "bg-rose-400"
+                      : "bg-[color:var(--theme-text-muted)]",
+              )}
+              aria-hidden
+            />
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-semibold" aria-live="polite">
+                {voiceEnabled
+                  ? voiceStatus(voice.phase)
+                  : "Voice is not enabled for this technician"}
+              </div>
+              {vehicleLabel ? (
+                <div className="truncate text-xs text-[color:var(--theme-text-secondary)]">
+                  {vehicleLabel}
+                </div>
+              ) : null}
+            </div>
+            {voiceEnabled ? (
+              <button
+                type="button"
+                disabled={busy && !voice.active}
+                onClick={() =>
+                  voice.active ? voice.stop() : void voice.start()
+                }
+                className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold disabled:opacity-50"
+                style={{
+                  borderColor: "var(--theme-border-soft)",
+                  background: "var(--theme-surface-panel)",
+                }}
+              >
+                {voice.active ? (
+                  <Square className="h-4 w-4" aria-hidden />
+                ) : (
+                  <Mic className="h-4 w-4" aria-hidden />
+                )}
+                {voice.active ? "Stop" : "Start"}
+              </button>
+            ) : null}
+          </div>
+
+          {voice.heardTranscript ? (
+            <div
+              className="rounded-xl px-3 py-2 text-sm"
+              style={{ background: "var(--theme-surface-subtle)" }}
+            >
+              <span className="font-semibold">You:</span>{" "}
+              {voice.heardTranscript}
+            </div>
+          ) : null}
+
+          {latestAssistantReply ? (
+            <div
+              className="max-h-24 overflow-y-auto rounded-xl px-3 py-2 text-sm"
+              style={{ background: "var(--theme-surface-panel)" }}
+              aria-live="polite"
+            >
+              <span className="font-semibold">CoPilot:</span>{" "}
+              {latestAssistantReply}
+            </div>
+          ) : null}
+
+          {visibleVoiceError ? (
+            <div className="text-sm text-rose-400" role="alert">
+              {visibleVoiceError}
+            </div>
+          ) : null}
+
+          {voice.phase === "speaking" ? (
+            <button
+              type="button"
+              onClick={voice.interrupt}
+              className="inline-flex min-h-11 items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold"
+              style={{
+                borderColor: "var(--theme-border-soft)",
+                background: "var(--theme-surface-panel)",
+              }}
+            >
+              <VolumeX className="h-4 w-4" aria-hidden />
+              Interrupt reply
+            </button>
+          ) : null}
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main

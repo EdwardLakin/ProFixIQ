@@ -36,6 +36,39 @@ function normalizedTranscript(text: string): string | null {
   return value || null;
 }
 
+function speechWatchdogDelay(text: string): number {
+  const wordCount = Math.max(1, text.trim().split(/\s+/).length);
+  // A validated reply may contain 2,000 characters. Slow mobile voices can
+  // legitimately need several minutes for that much text, so the completion
+  // watchdog scales with both words and characters instead of truncating at a
+  // fixed 90-second ceiling.
+  return Math.max(
+    10_000,
+    wordCount * 750 + 6_000,
+    text.trim().length * 150 + 6_000,
+  );
+}
+
+function isRecoverableTurnFailure(caught: unknown): boolean {
+  if (caught && typeof caught === "object" && "recoverable" in caught) {
+    const marker = (caught as { recoverable?: unknown }).recoverable;
+    if (typeof marker === "boolean") return marker;
+  }
+  if (
+    typeof DOMException !== "undefined" &&
+    caught instanceof DOMException &&
+    caught.name === "AbortError"
+  ) {
+    return true;
+  }
+  if (caught instanceof TypeError) return true;
+
+  const message = caught instanceof Error ? caught.message : "";
+  return /took too long|network|connection was interrupted|temporar|try again/i.test(
+    message,
+  );
+}
+
 export function useTechnicianInteractionGateway({
   enabled,
   autoStart = false,
@@ -57,6 +90,8 @@ export function useTechnicianInteractionGateway({
   const startListeningRef = useRef<() => Promise<void>>(async () => undefined);
   const speakReplyRef = useRef<(text: string) => void>(() => undefined);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const speechWatchdogRef = useRef<number | null>(null);
+  const speechStartWatchdogRef = useRef<number | null>(null);
 
   const setVoicePhase = useCallback((next: TechnicianVoicePhase) => {
     phaseRef.current = next;
@@ -67,10 +102,22 @@ export function useTechnicianInteractionGateway({
     onUtteranceRef.current = onUtterance;
   }, [onUtterance]);
 
+  const clearSpeechWatchdog = useCallback(() => {
+    if (speechWatchdogRef.current !== null) {
+      window.clearTimeout(speechWatchdogRef.current);
+      speechWatchdogRef.current = null;
+    }
+    if (speechStartWatchdogRef.current !== null) {
+      window.clearTimeout(speechStartWatchdogRef.current);
+      speechStartWatchdogRef.current = null;
+    }
+  }, []);
+
   const invalidateGeneration = useCallback(() => {
     generationRef.current += 1;
     inFlightRef.current = false;
-  }, []);
+    clearSpeechWatchdog();
+  }, [clearSpeechWatchdog]);
 
   const handleTransportState = useCallback(
     (state: TechnicianRealtimeVoiceState) => {
@@ -152,19 +199,26 @@ export function useTechnicianInteractionGateway({
           ) {
             return;
           }
-          try {
-            realtimeRef.current?.stop();
-          } catch {}
-          transportStartedRef.current = false;
-          invalidateGeneration();
-          activeRef.current = false;
-          setModeActive(false);
-          setVoicePhase("error");
-          setError(
+          const failureMessage =
             caught instanceof Error
               ? caught.message
-              : "Technician CoPilot could not process that voice turn.",
-          );
+              : "Technician CoPilot could not process that voice turn.";
+          setError(failureMessage);
+          if (isRecoverableTurnFailure(caught)) {
+            await startListeningRef.current();
+          } else {
+            // Authorization, stale-session, capability, and configuration
+            // failures require user action. Stop the microphone instead of
+            // resubmitting every subsequent transcript into a terminal state.
+            invalidateGeneration();
+            activeRef.current = false;
+            setModeActive(false);
+            transportStartedRef.current = false;
+            try {
+              realtimeRef.current?.stop();
+            } catch {}
+            setVoicePhase("error");
+          }
         } finally {
           if (generationRef.current === generation) {
             inFlightRef.current = false;
@@ -244,7 +298,7 @@ export function useTechnicianInteractionGateway({
         return;
       }
 
-      window.speechSynthesis.cancel();
+      const speechSynthesis = window.speechSynthesis;
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.lang = "en-US";
       utterance.rate = 1;
@@ -259,6 +313,7 @@ export function useTechnicianInteractionGateway({
         ) {
           return;
         }
+        clearSpeechWatchdog();
         utteranceRef.current = null;
         void startListeningRef.current();
       };
@@ -274,18 +329,67 @@ export function useTechnicianInteractionGateway({
         setError("Spoken reply could not play. Continuing in listening mode.");
         resume();
       };
-      window.speechSynthesis.speak(utterance);
+
+      clearSpeechWatchdog();
+      speechWatchdogRef.current = window.setTimeout(() => {
+        if (
+          utteranceRef.current !== utterance ||
+          !activeRef.current ||
+          generationRef.current !== generation
+        ) {
+          return;
+        }
+        utteranceRef.current = null;
+        speechWatchdogRef.current = null;
+        try {
+          speechSynthesis.cancel();
+        } catch {}
+        setError(
+          "The spoken reply stalled. The reply is shown here and voice is listening again.",
+        );
+        void startListeningRef.current();
+      }, speechWatchdogDelay(text));
+
+      try {
+        // WebKit can leave speech synthesis paused after route changes or an
+        // interrupted utterance. Resume it and avoid cancel-then-speak, which
+        // can silently strand a new utterance on iOS Safari.
+        speechSynthesis.resume();
+        speechSynthesis.speak(utterance);
+        speechStartWatchdogRef.current = window.setTimeout(() => {
+          speechStartWatchdogRef.current = null;
+          if (
+            utteranceRef.current !== utterance ||
+            !activeRef.current ||
+            generationRef.current !== generation ||
+            speechSynthesis.speaking ||
+            speechSynthesis.pending
+          ) {
+            return;
+          }
+          utteranceRef.current = null;
+          clearSpeechWatchdog();
+          setError(
+            "Spoken reply could not start. The reply is shown here and voice is listening again.",
+          );
+          void startListeningRef.current();
+        }, 1_500);
+      } catch {
+        clearSpeechWatchdog();
+        utteranceRef.current = null;
+        setError(
+          "Spoken reply could not start. The reply is shown here and voice is listening again.",
+        );
+        void startListeningRef.current();
+      }
     },
-    [setVoicePhase],
+    [clearSpeechWatchdog, setVoicePhase],
   );
   speakReplyRef.current = speakReply;
 
   const start = useCallback(async () => {
     if (!enabled || activeRef.current) return;
     invalidateGeneration();
-    if (typeof window !== "undefined") {
-      window.speechSynthesis?.cancel();
-    }
     utteranceRef.current = null;
     activeRef.current = true;
     setModeActive(true);
@@ -311,9 +415,10 @@ export function useTechnicianInteractionGateway({
     if (typeof window !== "undefined") {
       window.speechSynthesis?.cancel();
     }
+    clearSpeechWatchdog();
     utteranceRef.current = null;
     setVoicePhase("idle");
-  }, [invalidateGeneration, setVoicePhase]);
+  }, [clearSpeechWatchdog, invalidateGeneration, setVoicePhase]);
 
   const interrupt = useCallback(() => {
     if (!activeRef.current || phaseRef.current !== "speaking") return;
@@ -322,10 +427,11 @@ export function useTechnicianInteractionGateway({
     if (typeof window !== "undefined") {
       window.speechSynthesis?.cancel();
     }
+    clearSpeechWatchdog();
     if (currentUtterance && activeRef.current) {
       void startListeningRef.current();
     }
-  }, []);
+  }, [clearSpeechWatchdog]);
 
   useEffect(() => {
     if (!enabled && activeRef.current) {

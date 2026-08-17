@@ -19,6 +19,7 @@ import type { MobileRole } from "@/features/mobile/config/mobile-tiles";
 import { fetchMobileShiftState } from "@/features/mobile/shifts/client";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { useTechnicianCopilotAvailability } from "@/features/copilot/technician/client/useTechnicianCopilotAvailability";
+import { openTechnicianCopilot } from "@/features/copilot/technician/components/TechnicianCopilotShell";
 import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
@@ -492,7 +493,7 @@ export function MobileTechHome({
           />
           {technicianCopilotAvailable ? (
             <ActionTile
-              href="/mobile/copilot/technician"
+              onClick={openTechnicianCopilot}
               title="Technician CoPilot"
               detail="Voice repair collaborator"
               icon={Mic2}
@@ -723,22 +724,19 @@ function CurrentJobCard({
   );
 }
 
-function ActionTile({
-  href,
-  title,
-  detail,
-  icon: Icon,
-}: {
-  href: string;
+type ActionTileProps = {
   title: string;
   detail: string;
   icon: typeof BriefcaseBusiness;
-}) {
-  return (
-    <Link
-      href={href}
-      className="mobile-tech-subpanel min-w-0 border p-3.5 active:scale-[0.992]"
-    >
+} & (
+  | { href: string; onClick?: never }
+  | { href?: never; onClick: () => void }
+);
+
+function ActionTile(props: ActionTileProps) {
+  const { title, detail, icon: Icon } = props;
+  const content = (
+    <>
       <span className="inline-grid h-10 w-10 place-items-center rounded-xl bg-[color:var(--theme-surface-subtle)] text-[color:var(--accent-copper)]">
         <Icon aria-hidden className="h-5 w-5" />
       </span>
@@ -748,6 +746,23 @@ function ActionTile({
       <span className="mt-1 block text-[0.7rem] leading-4 text-[color:var(--theme-text-secondary)]">
         {detail}
       </span>
+    </>
+  );
+
+  const className =
+    "mobile-tech-subpanel min-w-0 border p-3.5 text-left active:scale-[0.992]";
+
+  if (!props.href) {
+    return (
+      <button type="button" onClick={props.onClick} className={className}>
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <Link href={props.href} className={className}>
+      {content}
     </Link>
   );
 }
