@@ -45,6 +45,8 @@ describe("persistent Technician CoPilot shell", () => {
     pathname = "/dashboard";
     replace.mockReset();
     availability.state = { status: "available", message: null };
+    document.body.style.pointerEvents = "";
+    document.body.removeAttribute("data-scroll-locked");
   });
 
   it("keeps one collaborator runtime mounted while the panel opens and closes", () => {
@@ -76,6 +78,40 @@ describe("persistent Technician CoPilot shell", () => {
       "false",
     );
     expect(replace).not.toHaveBeenCalled();
+  });
+
+  it("keeps the mobile collaborator mounted without retaining modal locks", () => {
+    pathname = "/mobile/tech/queue";
+    render(<TechnicianCopilotShell shouldCheck surface="mobile" />);
+
+    const runtime = screen.getByTestId("copilot-runtime");
+    expect(runtime).toHaveAttribute("data-active", "false");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open Technician CoPilot" }),
+    );
+
+    const dialog = screen.getByRole("dialog", { name: "Technician CoPilot" });
+    expect(dialog).toBeVisible();
+    expect(screen.getByTestId("copilot-runtime")).toBe(runtime);
+    expect(runtime).toHaveAttribute("data-active", "true");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Close Technician CoPilot" }),
+    );
+
+    expect(dialog).not.toBeVisible();
+    expect(screen.getByTestId("copilot-runtime")).toBe(runtime);
+    expect(runtime).toHaveAttribute("data-active", "false");
+    expect(document.body.style.pointerEvents).not.toBe("none");
+    expect(document.body).not.toHaveAttribute("data-scroll-locked");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open Technician CoPilot" }),
+    );
+
+    expect(screen.getByTestId("copilot-runtime")).toBe(runtime);
+    expect(runtime).toHaveAttribute("data-active", "true");
   });
 
   it("opens from the legacy mobile destination and returns to the job queue on close", () => {
