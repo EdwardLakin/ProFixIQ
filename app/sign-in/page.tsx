@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import {
   Building2,
   ChevronRight,
+  Smartphone,
   Truck,
   UserRound,
   Wrench,
@@ -18,7 +19,7 @@ import {
 
 export const metadata: Metadata = {
   title: "Choose your ProFixIQ app",
-  description: "Sign in to ProFixIQ Shop, Field, Fleet, or Customer Portal.",
+  description: "Sign in to ProFixIQ Shop, Shop Mobile, Field, Fleet, or Customer Portal.",
 };
 
 type SignInChooserProps = {
@@ -26,31 +27,43 @@ type SignInChooserProps = {
 };
 
 const accessCards: Array<{
-  surface: ProductAccessSurface;
+  surface: ProductAccessSurface | "mobile";
+  href: string;
   title: string;
   description: string;
   icon: typeof Wrench;
 }> = [
   {
     surface: "shop",
+    href: PRODUCT_SIGN_IN.shop,
     title: "ProFixIQ Shop",
     description: "Run a repair shop from intake and approvals through parts, labor, and invoicing.",
     icon: Wrench,
   },
   {
+    surface: "mobile",
+    href: "/mobile/sign-in",
+    title: "Shop Mobile",
+    description: "Use the role-specific shop workspace from a phone or tablet for jobs, inspections, shifts, evidence, and team communication.",
+    icon: Smartphone,
+  },
+  {
     surface: "field",
+    href: PRODUCT_SIGN_IN.field,
     title: "ProFixIQ Field",
     description: "Operate a mobile service business from the truck, tablet, phone, or laptop.",
     icon: Truck,
   },
   {
     surface: "fleet",
+    href: PRODUCT_SIGN_IN.fleet,
     title: "ProFixIQ Fleet",
     description: "Manage assets, maintenance programs, defects, approvals, and service history.",
     icon: Building2,
   },
   {
     surface: "customer",
+    href: PRODUCT_SIGN_IN.customer,
     title: "Customer Portal",
     description: "Request service, approve work, follow progress, pay invoices, and view records.",
     icon: UserRound,
@@ -79,7 +92,7 @@ export default async function SignInChooser({ searchParams }: SignInChooserProps
   return (
     <AuthShell
       productLabel="Product access"
-      heroTitle="Four clear doors into one connected platform."
+      heroTitle="Five clear doors into one connected platform."
       heroDescription="Choose the workspace that matches the work you are here to do. Your account stays secure and shared while each product keeps its own operating boundary."
       highlights={["Dedicated sign-in", "Shared identity", "Product-scoped access"]}
       cardClassName="sm:p-7"
@@ -97,10 +110,10 @@ export default async function SignInChooser({ searchParams }: SignInChooserProps
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
-        {accessCards.map(({ surface, title, description, icon: Icon }) => (
+        {accessCards.map(({ surface, href, title, description, icon: Icon }) => (
           <Link
             key={surface}
-            href={PRODUCT_SIGN_IN[surface]}
+            href={href}
             className="group flex min-h-40 flex-col rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-4 transition hover:-translate-y-0.5 hover:border-[var(--accent-copper)] hover:bg-[color:var(--theme-surface-overlay)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[color:color-mix(in_srgb,var(--accent-copper)_20%,transparent)]"
           >
             <div className="flex items-start justify-between gap-3">

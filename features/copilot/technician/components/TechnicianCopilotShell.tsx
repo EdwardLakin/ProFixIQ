@@ -5,12 +5,6 @@ import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 import { useTechnicianCopilotAvailabilityState } from "@/features/copilot/technician/client/useTechnicianCopilotAvailability";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogTitle,
-} from "@/features/shared/components/ui/dialog";
 import { cn } from "@/features/shared/utils/cn";
 import { TechnicianTextCopilot } from "./TechnicianTextCopilot";
 
@@ -55,13 +49,13 @@ export function TechnicianCopilotShell({
   }, []);
 
   useEffect(() => {
-    if (!open || surface === "mobile") return;
+    if (!open) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") close();
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [close, open, surface]);
+  }, [close, open]);
 
   if (availability.status !== "available") return null;
 
@@ -94,37 +88,38 @@ export function TechnicianCopilotShell({
     return (
       <>
         {launcher}
-        <Dialog
-          open={open}
-          onOpenChange={(next) => (next ? setOpen(true) : close())}
+        <section
+          role="dialog"
+          aria-modal="true"
+          aria-label="Technician CoPilot"
+          aria-hidden={!open}
+          className={cn(
+            "fixed inset-0 z-50 flex h-[100dvh] w-full flex-col overflow-hidden overscroll-contain bg-background transition-opacity duration-200",
+            open
+              ? "visible pointer-events-auto opacity-100"
+              : "invisible pointer-events-none opacity-0",
+          )}
         >
-          <DialogContent
-            forceMount
-            className="!inset-0 !flex !h-[100dvh] !w-full !max-w-none !translate-x-0 !translate-y-0 !flex-col !overflow-hidden !rounded-none !p-0 data-[state=closed]:invisible data-[state=closed]:pointer-events-none"
-          >
-            <div className="flex shrink-0 items-center justify-between border-b px-4 py-3">
-              <div>
-                <DialogTitle className="text-sm normal-case tracking-normal">
-                  Technician CoPilot
-                </DialogTitle>
-                <DialogDescription className="text-xs">
-                  Stays with you as you move through the app
-                </DialogDescription>
+          <div className="flex shrink-0 items-center justify-between border-b px-4 py-3">
+            <div>
+              <div className="text-sm font-semibold">Technician CoPilot</div>
+              <div className="text-xs text-muted-foreground">
+                Stays with you as you move through the app
               </div>
-              <button
-                type="button"
-                onClick={close}
-                aria-label="Close Technician CoPilot"
-                className="inline-flex h-10 w-10 items-center justify-center rounded-full border bg-background"
-              >
-                <X className="h-5 w-5" aria-hidden />
-              </button>
             </div>
-            <div className="min-h-0 flex-1">
-              <TechnicianTextCopilot embedded active={open} />
-            </div>
-          </DialogContent>
-        </Dialog>
+            <button
+              type="button"
+              onClick={close}
+              aria-label="Close Technician CoPilot"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full border bg-background"
+            >
+              <X className="h-5 w-5" aria-hidden />
+            </button>
+          </div>
+          <div className="min-h-0 flex-1">
+            <TechnicianTextCopilot embedded active={open} />
+          </div>
+        </section>
       </>
     );
   }

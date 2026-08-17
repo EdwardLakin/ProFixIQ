@@ -5,11 +5,12 @@ import { resolveFieldExistingSessionHref } from "../features/auth/lib/accessSurf
 const read = (path: string) => readFileSync(path, "utf8");
 
 describe("dedicated product access surfaces", () => {
-  it("presents four equal product choices instead of a Shop-owned login page", () => {
+  it("presents five equal product choices instead of a Shop-owned login page", () => {
     const chooser = read("app/sign-in/page.tsx");
 
     for (const label of [
       "ProFixIQ Shop",
+      "Shop Mobile",
       "ProFixIQ Field",
       "ProFixIQ Fleet",
       "Customer Portal",
@@ -18,7 +19,7 @@ describe("dedicated product access surfaces", () => {
     }
 
     expect(chooser).toContain("Where do you work?");
-    expect(chooser).toContain("PRODUCT_SIGN_IN[surface]");
+    expect(chooser).toContain('href: "/mobile/sign-in"');
     expect(chooser).not.toContain("<AuthPage");
   });
 
