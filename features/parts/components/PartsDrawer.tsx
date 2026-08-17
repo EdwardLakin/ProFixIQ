@@ -1,7 +1,5 @@
 // features/work-orders/components/workorders/PartsDrawer.tsx (FULL FILE REPLACEMENT)
-// Drawer modal with tabs: Use from Inventory vs Request to Purchase
-// IMPORTANT: PartPicker must be rendered inline (no fixed inset/backdrop) to avoid nested modals.
-// This file assumes PartPicker supports `variant="inline"`.
+// Shared modal with tabs: Use from Inventory vs Request to Purchase.
 
 "use client";
 
@@ -10,6 +8,7 @@ import PartPicker, {
   type PickedPart,
 } from "@/features/parts/components/PartPicker";
 import PartsRequestModal from "@/features/work-orders/components/workorders/PartsRequestModal";
+import ModalShell from "@/features/shared/components/ModalShell";
 import { toast } from "sonner";
 import { consumePart } from "@/features/work-orders/lib/parts/consumePart";
 
@@ -110,55 +109,26 @@ export default function PartsDrawer({
       : "rounded-full border border-transparent px-4 py-2 text-sm text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)]";
 
   return (
-    <div className="fixed inset-0 z-[510]" onClick={(e) => e.stopPropagation()}>
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-[color:var(--theme-surface-overlay)] backdrop-blur-sm"
-        onClick={() => {
-          if (!usePartPending) emitClose();
-        }}
-        aria-hidden="true"
-      />
-
-      {/* Panel */}
-      <div
-        className="absolute inset-x-0 bottom-0 z-[520] w-full overflow-hidden rounded-t-2xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] text-[color:var(--theme-text-primary)] shadow-[var(--theme-shadow-medium)] backdrop-blur-xl md:inset-auto md:top-1/2 md:left-1/2 md:h-[85vh] md:w-[960px] md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* subtle radial like menu page */}
+    <ModalShell
+      isOpen={open}
+      onClose={emitClose}
+      title="Parts Drawer"
+      size="xl"
+      hideFooter
+      bodyScrollable={false}
+      busy={usePartPending}
+    >
+      <div className="flex max-h-[calc(100vh-9rem)] min-h-0 flex-col">
         <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 -z-10 bg-[var(--theme-gradient-panel)]"
-        />
-
-        {/* Header */}
-        <div className="metal-card flex items-center justify-between gap-3 border-b border-[color:var(--theme-border-soft)] bg-gradient-to-r from-[color:var(--theme-surface-page)] via-[color:var(--theme-surface-panel)] to-[color:var(--theme-surface-page)] px-4 py-3 md:px-5">
-          <div>
-            <div className="text-[11px] uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">
-              Parts
-            </div>
-            <div
-              className="text-lg font-semibold text-[color:var(--theme-text-primary)]"
-              style={{ fontFamily: "var(--font-blackops), system-ui" }}
-            >
-              Parts Drawer
-            </div>
-          </div>
-
-          <button
-            onClick={emitClose}
-            disabled={usePartPending}
-            className="rounded-full border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] px-4 py-2 text-sm text-[color:var(--theme-text-primary)] hover:border-[color:var(--accent-copper,#f97316)]/70 hover:bg-[color:var(--theme-surface-overlay)]"
-          >
-            Close
-          </button>
-        </div>
-
-        {/* Tabs */}
-        <div className="flex flex-wrap items-center gap-2 border-b border-[color:var(--theme-border-soft)] px-4 py-3 md:px-5">
+          role="tablist"
+          aria-label="Parts workflow"
+          className="flex flex-wrap items-center gap-2 border-b border-[color:var(--theme-border-soft)] pb-3"
+        >
           <button
             className={tabBtn(tab === "use")}
             disabled={usePartPending}
+            role="tab"
+            aria-selected={tab === "use"}
             onClick={() => {
               if (!usePartPending) setTab("use");
             }}
@@ -169,6 +139,8 @@ export default function PartsDrawer({
           <button
             className={tabBtn(tab === "request")}
             disabled={usePartPending}
+            role="tab"
+            aria-selected={tab === "request"}
             onClick={() => {
               if (!usePartPending) setTab("request");
             }}
@@ -176,16 +148,11 @@ export default function PartsDrawer({
           >
             Request to Purchase
           </button>
-
-          <div className="ml-auto hidden rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[11px] text-[color:var(--theme-text-secondary)] md:block">
-            Copper / glass theme
-          </div>
         </div>
 
-        {/* Body */}
-        <div className="h-[70vh] overflow-auto p-4 md:h-[calc(85vh-120px)] md:p-5">
+        <div className="min-h-0 flex-1 overflow-auto pt-4">
           {tab === "use" ? (
-            <div className="metal-card rounded-2xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] p-3 shadow-[var(--theme-shadow-medium)] backdrop-blur-xl md:p-4">
+            <div role="tabpanel">
               <PartPicker
                 open={true}
                 variant="inline"
@@ -202,7 +169,7 @@ export default function PartsDrawer({
               />
             </div>
           ) : (
-            <div className="metal-card rounded-2xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] p-3 shadow-[var(--theme-shadow-medium)] backdrop-blur-xl md:p-4">
+            <div role="tabpanel">
               <PartsRequestModal
                 isOpen={true}
                 workOrderId={workOrderId}
@@ -214,6 +181,6 @@ export default function PartsDrawer({
           )}
         </div>
       </div>
-    </div>
+    </ModalShell>
   );
 }

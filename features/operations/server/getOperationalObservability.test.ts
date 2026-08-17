@@ -3,6 +3,7 @@ import {
   deriveOperationalPipelineStatus,
   getOperationalDomain,
   getOperationalEntityHref,
+  hasOperationalEventFilter,
 } from "./getOperationalObservability";
 
 const NOW = new Date("2026-08-02T15:00:00.000Z");
@@ -60,5 +61,15 @@ describe("operational observability helpers", () => {
         metadata: {},
       }),
     ).toBe("/work-orders/11111111-1111-4111-8111-111111111111");
+  });
+
+  it("keeps filtered timelines historical while the shop dashboard stays recent", () => {
+    expect(hasOperationalEventFilter({ correlationId: null, entityId: null, entityType: null })).toBe(false);
+    expect(
+      hasOperationalEventFilter({
+        correlationId: "11111111-1111-4111-8111-111111111111",
+      }),
+    ).toBe(true);
+    expect(hasOperationalEventFilter({ entityType: "work_order" })).toBe(true);
   });
 });

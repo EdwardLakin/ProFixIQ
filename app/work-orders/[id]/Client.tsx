@@ -766,7 +766,6 @@ export default function WorkOrderIdClient(): JSX.Element {
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : "Failed to load work order.";
         setViewError(msg);
-        // eslint-disable-next-line no-console
         console.error("[WO id page] load error:", e);
       } finally {
         setLoading(false);
@@ -1188,6 +1187,7 @@ export default function WorkOrderIdClient(): JSX.Element {
   const canAssign = currentActor.canAssignWork;
   const canApprove = currentActor.canAuthorizeQuotes;
   const canRequestParts = currentActor.canManageWorkOrders;
+  const canUseInventoryPicker = currentActor.canManageParts;
 
   const canDeleteLine = currentUserRole ? LINE_DELETE_ROLES.has(currentUserRole) : false;
 
@@ -2201,7 +2201,11 @@ export default function WorkOrderIdClient(): JSX.Element {
                             ? () => void openInspectionForLine(ln)
                             : undefined
                         }
-                        onAddPart={() => setPartsLineId(ln.id)}
+                        onAddPart={
+                          canUseInventoryPicker
+                            ? () => setPartsLineId(ln.id)
+                            : undefined
+                        }
                         onRequestParts={
                           hasRequestableParts
                             ? () => void requestAllPartsForLine(ln.id, linePartRequests)

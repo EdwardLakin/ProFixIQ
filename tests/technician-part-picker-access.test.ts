@@ -10,8 +10,11 @@ const usePartButton = readFileSync(
   "utf8",
 );
 const pickerRoute = readFileSync("app/api/parts/picker/route.ts", "utf8");
+const workOrderDetail = readFileSync("app/work-orders/[id]/Client.tsx", "utf8");
+const menuBuilder = readFileSync("app/menu/page.tsx", "utf8");
+const menuItemEditor = readFileSync("app/menu/item/[id]/page.tsx", "utf8");
 
-describe("technician part picker access", () => {
+describe("parts-role part picker access", () => {
   it("loads inventory through a server-scoped route", () => {
     expect(picker).toContain("fetch(`/api/parts/picker?");
     expect(picker).toContain('params.set("workOrderLineId", workOrderLineId)');
@@ -21,22 +24,23 @@ describe("technician part picker access", () => {
     );
   });
 
-  it("limits mechanic inventory to an assigned work-order line", () => {
-    expect(pickerRoute).toContain('"mechanic"');
-    expect(pickerRoute).toContain(
-      'access.canonicalRole === "mechanic"',
+  it("requires the canonical parts capability for inventory actions", () => {
+    expect(pickerRoute).toContain('requiredCapability: "canManageParts"');
+    expect(pickerRoute).not.toContain('access.canonicalRole === "mechanic"');
+    expect(workOrderDetail).toContain(
+      "const canUseInventoryPicker = currentActor.canManageParts",
     );
-    expect(pickerRoute).toContain("line.assigned_tech_id");
-    expect(pickerRoute).toContain("line.assigned_to");
-    expect(pickerRoute).toContain(
-      '.from("work_order_line_technicians")',
-    );
-    expect(pickerRoute).toContain(
-      '.eq("technician_id", input.technicianId)',
-    );
-    expect(pickerRoute).toContain(
-      "This inventory picker is limited to your assigned jobs.",
-    );
+    expect(workOrderDetail).toContain("canUseInventoryPicker");
+    expect(workOrderDetail).toContain("? () => setPartsLineId(ln.id)");
+  });
+
+  it("preserves read-only catalog lookup for authorized menu editors", () => {
+    expect(picker).toContain('accessContext?: "inventory" | "menu-editor"');
+    expect(picker).toContain('params.set("context", accessContext)');
+    expect(pickerRoute).toContain('pickerContext === "menu-editor"');
+    expect(pickerRoute).toContain("{ allowRoles: MENU_EDITOR_ROLES }");
+    expect(menuBuilder).toContain('accessContext="menu-editor"');
+    expect(menuItemEditor).toContain('accessContext="menu-editor"');
   });
 
   it("keeps every inventory query scoped to the authenticated shop", () => {

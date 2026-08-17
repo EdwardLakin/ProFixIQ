@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Activity, ArrowUpRight, ChevronDown, RefreshCw, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { getOperationalEventPresentation } from "@/features/operations/lib/eventPresentation";
 import { canonicalizeRole } from "@/features/shared/lib/rbac";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
@@ -19,6 +20,7 @@ type EventItem = {
   actor_role: string | null;
   severity: "info" | "warning" | "critical";
   href: string | null;
+  metadata: unknown;
 };
 
 type TimelinePayload = {
@@ -41,14 +43,6 @@ function relativeTime(value: string): string {
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}h ago`;
   return `${Math.floor(hours / 24)}d ago`;
-}
-
-function eventLabel(value: string): string {
-  return value
-    .split(".")
-    .map((part) => part.replaceAll("_", " "))
-    .join(" · ")
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function severityDot(value: EventItem["severity"]): string {
@@ -152,6 +146,11 @@ export default function WorkOrderOperationalTimelineDock() {
     return () => window.clearInterval(interval);
   }, [eligible, load, open, workOrderId]);
 
+  const handleToggle = () => {
+    if (!open) void load();
+    setOpen((value) => !value);
+  };
+
   if (!eligible || !workOrderId) return null;
 
   return (
@@ -197,41 +196,44 @@ export default function WorkOrderOperationalTimelineDock() {
               </div>
             ) : events.length ? (
               <div className="space-y-2">
-                {events.slice(0, 10).map((event) => (
-                  <div
-                    key={event.id}
-                    className="flex gap-3 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-3"
-                  >
-                    <span className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${severityDot(event.severity)}`} />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                        <p className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
-                          {eventLabel(event.event_type)}
+                {events.slice(0, 10).map((event) => {
+                  const presentation = getOperationalEventPresentation(event);
+                  return (
+                    <div
+                      key={event.id}
+                      className="flex gap-3 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-3"
+                    >
+                      <span className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${severityDot(event.severity)}`} />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <p className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                            {presentation.title}
+                          </p>
+                          <span className="text-[11px] text-[color:var(--theme-text-muted)]">
+                            {relativeTime(event.occurred_at)}
+                          </span>
+                        </div>
+                        <p className="mt-0.5 text-xs text-[color:var(--theme-text-secondary)]">
+                          {presentation.detail}
                         </p>
-                        <span className="text-[11px] text-[color:var(--theme-text-muted)]">
-                          {relativeTime(event.occurred_at)}
-                        </span>
                       </div>
-                      <p className="mt-0.5 text-xs text-[color:var(--theme-text-secondary)]">
-                        {event.entity_type.replaceAll("_", " ")}
-                        {event.actor_role ? ` · ${event.actor_role.replaceAll("_", " ")}` : ""}
-                      </p>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : loading ? (
               <div className="h-24 animate-pulse rounded-xl bg-[color:var(--theme-surface-inset)]" />
             ) : (
               <div className="rounded-xl border border-dashed border-[color:var(--theme-border-soft)] p-6 text-center text-sm text-[color:var(--theme-text-secondary)]">
-                No canonical operational events have been recorded for this work order yet.
+                No operational activity has been recorded for this work order yet.
               </div>
             )}
           </div>
 
           <footer className="flex items-center justify-between gap-3 border-t border-[color:var(--theme-border-soft)] px-4 py-3">
             <span className="text-xs text-[color:var(--theme-text-muted)]">
-              {events.length} recent event{events.length === 1 ? "" : "s"}
+              {events.length} event{events.length === 1 ? "" : "s"}
+              {events[0]?.occurred_at ? ` · Latest ${relativeTime(events[0].occurred_at)}` : ""}
             </span>
             <Link
               href={`/dashboard/operations/observability?correlationId=${encodeURIComponent(workOrderId)}`}
@@ -245,7 +247,7 @@ export default function WorkOrderOperationalTimelineDock() {
 
       <button
         type="button"
-        onClick={() => setOpen((value) => !value)}
+        onClick={handleToggle}
         className="inline-flex min-h-11 items-center gap-2 rounded-full border border-blue-400/35 bg-blue-950 px-4 text-sm font-semibold text-white shadow-xl transition hover:bg-blue-900"
       >
         <Activity className="h-4 w-4" /> Timeline

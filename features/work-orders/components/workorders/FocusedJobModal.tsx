@@ -1775,6 +1775,10 @@ export default function FocusedJobModal(props: {
                 <div className="flex justify-between gap-3"><dt className="text-[color:var(--theme-text-secondary)]">Finish</dt><dd className="text-right text-[color:var(--theme-text-primary)]">{createdFinish}</dd></div>
               </dl>
             </section>
+            <div
+              id="work-order-runtime-status"
+              className="border-t border-[color:var(--theme-border-soft)] pt-4 empty:hidden"
+            />
           </div>
         ) : null}
       </aside>

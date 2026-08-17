@@ -1006,6 +1006,7 @@ export default function MenuItemsPage() {
       {pickerOpenForRow !== null ? (
         <PartPicker
           open
+          accessContext="menu-editor"
           onClose={() => setPickerOpenForRow(null)}
           onPick={(selection) => handlePickPart(pickerOpenForRow)(selection)}
         />
