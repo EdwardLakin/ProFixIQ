@@ -5,51 +5,25 @@ import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server
 
 import type { SuggestedActionContext } from "@/features/assistant/types/suggested-actions";
 import { getSuggestedActions } from "@/features/assistant/server/getSuggestedActions";
-
-
-async function requireUser(
-  supabase: ReturnType<typeof createServerSupabaseRoute>,
-) {
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-
-  if (error || !user) return null;
-  return user;
-}
-
-async function resolveProfile(
-  supabase: ReturnType<typeof createServerSupabaseRoute>,
-  userId: string,
-): Promise<{ shopId: string | null; role: string | null }> {
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("shop_id, role")
-    .eq("id", userId)
-    .maybeSingle();
-
-  if (error) {
-    return { shopId: null, role: null };
-  }
-
-  return {
-    shopId: data?.shop_id ?? null,
-    role: data?.role ?? null,
-  };
-}
+import {
+  requireShopAssistantActor,
+  resolveShopAssistantError,
+} from "@/features/shop-assistant/server/requireShopAssistantActor";
 
 export async function POST(req: Request) {
   const supabase = createServerSupabaseRoute();
-
-  const user = await requireUser(supabase);
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const profile = await resolveProfile(supabase, user.id);
-  if (!profile.shopId) {
-    return NextResponse.json({ error: "No shop found" }, { status: 400 });
+  let actor: Awaited<ReturnType<typeof requireShopAssistantActor>>;
+  try {
+    actor = await requireShopAssistantActor(supabase);
+  } catch (error: unknown) {
+    const resolved = resolveShopAssistantError(
+      error,
+      "legacy-assistant-suggested-actions-auth",
+    );
+    return NextResponse.json(
+      { error: resolved.message },
+      { status: resolved.status },
+    );
   }
 
   const body = (await req.json().catch(() => ({}))) as {
@@ -58,56 +32,61 @@ export async function POST(req: Request) {
 
   try {
     const result = await getSuggestedActions({
-      shopId: profile.shopId,
-      userId: user.id,
-      role: profile.role,
+      shopId: actor.shopId,
+      userId: actor.userId,
+      role: actor.role,
       context: body.context,
     });
 
     return NextResponse.json(result);
   } catch (error: unknown) {
+    const resolved = resolveShopAssistantError(
+      error,
+      "legacy-assistant-suggested-actions",
+    );
     return NextResponse.json(
       {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to load suggested actions",
+        error: resolved.message,
       },
-      { status: 500 },
+      { status: resolved.status },
     );
   }
 }
 
 export async function GET() {
   const supabase = createServerSupabaseRoute();
-
-  const user = await requireUser(supabase);
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const profile = await resolveProfile(supabase, user.id);
-  if (!profile.shopId) {
-    return NextResponse.json({ error: "No shop found" }, { status: 400 });
+  let actor: Awaited<ReturnType<typeof requireShopAssistantActor>>;
+  try {
+    actor = await requireShopAssistantActor(supabase);
+  } catch (error: unknown) {
+    const resolved = resolveShopAssistantError(
+      error,
+      "legacy-assistant-suggested-actions-auth",
+    );
+    return NextResponse.json(
+      { error: resolved.message },
+      { status: resolved.status },
+    );
   }
 
   try {
     const result = await getSuggestedActions({
-      shopId: profile.shopId,
-      userId: user.id,
-      role: profile.role,
+      shopId: actor.shopId,
+      userId: actor.userId,
+      role: actor.role,
     });
 
     return NextResponse.json(result);
   } catch (error: unknown) {
+    const resolved = resolveShopAssistantError(
+      error,
+      "legacy-assistant-suggested-actions",
+    );
     return NextResponse.json(
       {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to load suggested actions",
+        error: resolved.message,
       },
-      { status: 500 },
+      { status: resolved.status },
     );
   }
 }

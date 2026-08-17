@@ -10,8 +10,7 @@ import {
 import { findOrCreateActionMessage } from "@/features/shop-assistant/server/actions/actionMessages";
 import {
   requireShopAssistantActor,
-  shopAssistantErrorMessage,
-  shopAssistantErrorStatus,
+  resolveShopAssistantError,
 } from "@/features/shop-assistant/server/requireShopAssistantActor";
 import { executeShopAssistantWriteTool } from "@/features/shop-assistant/server/tools/registry";
 import {
@@ -79,7 +78,6 @@ export async function POST(_request: Request, context: RouteContext) {
           actor,
           actionId: acquired.row.id,
           error: executionError,
-          retryable: true,
         });
       }
     }
@@ -107,13 +105,17 @@ export async function POST(_request: Request, context: RouteContext) {
       },
     });
   } catch (error: unknown) {
+    const resolved = resolveShopAssistantError(
+      error,
+      "shop-assistant-action-confirm",
+    );
     return NextResponse.json<ShopAssistantChatResponse>(
       {
         ok: false,
-        error: shopAssistantErrorMessage(error),
-        retryable: shopAssistantErrorStatus(error) >= 500,
+        error: resolved.message,
+        retryable: resolved.retryable,
       },
-      { status: shopAssistantErrorStatus(error) },
+      { status: resolved.status },
     );
   }
 }

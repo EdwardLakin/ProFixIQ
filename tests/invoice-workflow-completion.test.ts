@@ -28,16 +28,22 @@ describe("invoice and work-order workflow completion", () => {
       "features/work-orders/components/InvoicePreviewPageClient.tsx",
     );
     const finalize = source("app/api/invoices/finalize/route.ts");
+    const finalizationService = source(
+      "features/invoices/server/finalizeWorkOrderInvoice.ts",
+    );
     const send = source("app/api/invoices/send/route.ts");
     expect(preview).toContain("Approve & finalize");
     expect(preview).toContain('fetch("/api/invoices/finalize"');
     expect(preview).toContain("Print invoice");
-    expect(finalize).toContain("getActiveInvoiceVersion");
-    expect(finalize).toContain("documentConfiguration: brand.document");
-    expect(finalize).toContain("invoicePartSignature");
-    expect(finalize).toContain("invoiceId: null");
+    expect(finalize).toContain("finalizeWorkOrderInvoice");
+    expect(finalizationService).toContain("getActiveInvoiceVersion");
+    expect(finalizationService).toContain(
+      "documentConfiguration: brand.document",
+    );
+    expect(finalizationService).toContain("invoicePartSignature");
+    expect(finalizationService).toContain("invoiceId: null");
     expect(finalize).not.toContain('.from("invoices")');
-    expect(finalize).toContain("runFinalizationSideEffects");
+    expect(finalizationService).toContain("runFinalizationSideEffects");
     expect(finalize).not.toContain("issued_pending_send");
     expect(finalize).not.toContain("invoiceUpdateError");
     expect(send).toContain("if (version)");

@@ -7,6 +7,7 @@ export function buildAssistantHref(context?: AssistantContext): string {
   if (context?.vehicleId) params.set("vehicleId", context.vehicleId);
   if (context?.customerId) params.set("customerId", context.customerId);
   if (context?.bookingId) params.set("bookingId", context.bookingId);
+  if (context?.invoiceId) params.set("invoiceId", context.invoiceId);
   if (context?.pageType) params.set("pageType", context.pageType);
   if (context?.pageTitle) params.set("pageTitle", context.pageTitle);
 

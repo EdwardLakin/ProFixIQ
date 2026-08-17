@@ -11,7 +11,9 @@ type Props = {
 };
 
 function roleLabel(role: string): string {
-  return role.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+  return role
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 export default function ShopAssistantDashboard({
@@ -49,13 +51,15 @@ export default function ShopAssistantDashboard({
       <header className="flex items-start justify-between gap-4">
         <div>
           <div className="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-[var(--accent-copper)]">
-            {roleLabel(state.role)} view • live shop state
+            {roleLabel(state.role)} view •{" "}
+            {state.scopeLabel ?? "live shop state"}
           </div>
           <h1 className="mt-2 text-2xl font-semibold text-[color:var(--theme-text-primary)]">
             {state.headline}
           </h1>
           <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
-            Updated {new Date(state.generatedAt).toLocaleTimeString([], {
+            Updated{" "}
+            {new Date(state.generatedAt).toLocaleTimeString([], {
               hour: "numeric",
               minute: "2-digit",
             })}
@@ -70,7 +74,14 @@ export default function ShopAssistantDashboard({
         </button>
       </header>
 
-      <ShopStateMetricGrid metrics={state.metrics} />
+      {state.role === "mechanic" ||
+      state.role === "fleet_manager" ||
+      state.role === "dispatcher" ? null : (
+        <ShopStateMetricGrid
+          metrics={state.metrics}
+          visibleMetricKeys={state.visibleMetricKeys}
+        />
+      )}
 
       <div className="grid gap-4 xl:grid-cols-2">
         <div>
@@ -92,7 +103,8 @@ export default function ShopAssistantDashboard({
 
       {error ? (
         <div className="text-xs text-amber-300">
-          The latest background refresh failed; showing the most recent shop state.
+          The latest background refresh failed; showing the most recent shop
+          state.
         </div>
       ) : null}
     </section>

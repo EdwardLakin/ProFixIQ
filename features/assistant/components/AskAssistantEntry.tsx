@@ -1,10 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import { resolveMobileHref } from "@/features/mobile/navigation/mobile-route-continuity";
+import ShopAssistantConversation from "@/features/shop-assistant/components/ShopAssistantConversation";
+import { useShopAssistant } from "@/features/shop-assistant/hooks/useShopAssistant";
+import type { ShopAssistantContext } from "@/features/shop-assistant/types";
 import { Button } from "@shared/components/ui/Button";
 import {
   Dialog,
@@ -13,78 +16,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@shared/components/ui/dialog";
-import { useAssistant } from "../hooks/useAssistant";
 import { buildAssistantHref } from "../lib/buildAssistantHref";
 import { buildPlannerHref } from "../lib/buildPlannerHref";
-import type { AssistantContext } from "../types/assistant";
-import AssistantResponseCard from "./AssistantResponseCard";
+import { deriveAssistantContext } from "../lib/deriveAssistantContext";
 
 type Props = {
   mobile?: boolean;
   placement?: "floating" | "header" | "dock";
 };
 
-function deriveContextFromPath(pathname: string): AssistantContext {
-  const context: AssistantContext = {};
-  const workOrderMatch =
-    pathname.match(/^\/work-orders\/([^/]+)$/i) ??
-    pathname.match(/^\/work-orders\/([^/]+)\/quote-review$/i) ??
-    pathname.match(/^\/work-orders\/([^/]+)\/approve$/i) ??
-    pathname.match(/^\/work-orders\/([^/]+)\/intake$/i) ??
-    pathname.match(/^\/mobile\/work-orders\/([^/]+)$/i);
-
-  if (workOrderMatch?.[1]) {
-    context.workOrderId = workOrderMatch[1];
-    context.pageType = "work_order";
-    context.pageTitle = "Work Order";
-    return context;
-  }
-
-  const customerMatch =
-    pathname.match(/^\/customers\/([^/]+)$/i) ??
-    pathname.match(/^\/mobile\/customers\/([^/]+)$/i);
-  if (customerMatch?.[1]) {
-    context.customerId = customerMatch[1];
-    context.pageType = "customer";
-    context.pageTitle = "Customer";
-    return context;
-  }
-
-  const bookingMatch =
-    pathname.match(/^\/portal\/bookings\/([^/]+)$/i) ??
-    pathname.match(/^\/dashboard\/appointments\/([^/]+)$/i);
-  if (bookingMatch?.[1]) {
-    context.bookingId = bookingMatch[1];
-    context.pageType = "booking";
-    context.pageTitle = "Booking";
-    return context;
-  }
-
-  const vehicleMatch =
-    pathname.match(/^\/fleet\/assets\/([^/]+)$/i) ??
-    pathname.match(/^\/portal\/fleet\/units\/([^/]+)$/i);
-  if (vehicleMatch?.[1]) {
-    context.vehicleId = vehicleMatch[1];
-    context.pageType = "vehicle";
-    context.pageTitle = "Vehicle";
-    return context;
-  }
-
-  if (pathname.startsWith("/dashboard")) {
-    context.pageType = "dashboard";
-    context.pageTitle = "Dashboard";
-    return context;
-  }
-
-  if (pathname.startsWith("/mobile")) {
-    context.pageType = "mobile";
-    context.pageTitle = "Mobile";
-  }
-
-  return context;
-}
-
-function getAssistantLabel(context: AssistantContext): string {
+function getAssistantLabel(context: ShopAssistantContext): string {
   switch (context.pageType) {
     case "work_order":
       return "Ask about this WO";
@@ -99,7 +40,7 @@ function getAssistantLabel(context: AssistantContext): string {
   }
 }
 
-function getPlannerLabel(context: AssistantContext): string {
+function getPlannerLabel(context: ShopAssistantContext): string {
   switch (context.pageType) {
     case "work_order":
       return "Plan next steps";
@@ -112,7 +53,7 @@ function getPlannerLabel(context: AssistantContext): string {
   }
 }
 
-function getPlannerGoal(context: AssistantContext): string {
+function getPlannerGoal(context: ShopAssistantContext): string {
   switch (context.pageType) {
     case "work_order":
       return "Build next steps for this work order";
@@ -127,7 +68,7 @@ function getPlannerGoal(context: AssistantContext): string {
   }
 }
 
-function getDefaultPrompt(context: AssistantContext): string {
+function getDefaultPrompt(context: ShopAssistantContext): string {
   switch (context.pageType) {
     case "work_order":
       return "What should I do next on this work order?";
@@ -147,13 +88,18 @@ export default function AskAssistantEntry({
   placement = "floating",
 }: Props) {
   const pathname = usePathname();
-  const context = useMemo(() => deriveContextFromPath(pathname), [pathname]);
+  const searchParams = useSearchParams();
+  const searchKey = searchParams.toString();
+  const context = useMemo(
+    () => deriveAssistantContext(pathname, new URLSearchParams(searchKey)),
+    [pathname, searchKey],
+  );
   const mobileSurface = mobile || pathname.startsWith("/mobile");
 
   const assistantHref = useMemo(() => {
     const built = buildAssistantHref(context);
     return mobileSurface
-      ? resolveMobileHref(built) ?? "/mobile/assistant"
+      ? (resolveMobileHref(built) ?? "/mobile/assistant")
       : built;
   }, [context, mobileSurface]);
   const plannerHref = useMemo(() => {
@@ -165,7 +111,7 @@ export default function AskAssistantEntry({
       bookingId: context.bookingId,
     });
     return mobileSurface
-      ? resolveMobileHref(built) ?? "/mobile/planner"
+      ? (resolveMobileHref(built) ?? "/mobile/planner")
       : built;
   }, [context, mobileSurface]);
 
@@ -179,14 +125,30 @@ export default function AskAssistantEntry({
     context.customerId,
     context.vehicleId,
     context.bookingId,
+    context.invoiceId,
   ]
     .filter(Boolean)
     .join(":");
-  const { ask, loading, data, messages, clearConversation } =
-    useAssistant(contextKey);
-  const transcriptMessages =
-    messages.at(-1)?.role === "assistant" ? messages.slice(0, -1) : messages;
+  const {
+    messages,
+    loading,
+    sending,
+    actionInFlightId,
+    error,
+    canRetry,
+    send,
+    retry,
+    confirmAction,
+    cancelAction,
+    clearConversation,
+  } = useShopAssistant(contextKey, placement === "header" && open);
   const effectiveQuery = query.trim() || getDefaultPrompt(context);
+
+  const submit = async () => {
+    if (!effectiveQuery.trim() || sending) return;
+    setQuery("");
+    await send(effectiveQuery, context);
+  };
 
   if (placement === "header") {
     return (
@@ -206,38 +168,44 @@ export default function AskAssistantEntry({
               <DialogTitle
                 className="text-[color:var(--accent-copper,#c1663b)]"
                 style={{
-                  fontFamily:
-                    "Black Ops One, var(--font-blackops), system-ui",
+                  fontFamily: "Black Ops One, var(--font-blackops), system-ui",
                 }}
               >
                 AI Assistant
               </DialogTitle>
               <DialogDescription>
-                Ask about the current page context without opening a new tab.
+                Ask or act across the shop with the data and permissions
+                available to your role. Changes require confirmation.
               </DialogDescription>
             </DialogHeader>
 
             <div className="mt-4 space-y-4">
-              {transcriptMessages.length > 0 ? (
-                <div className="max-h-64 space-y-2 overflow-y-auto rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
-                  {transcriptMessages.slice(-8).map((message, index) => (
-                    <div
-                      key={`${message.role}-${index}-${message.content.slice(0, 24)}`}
-                      className={
-                        message.role === "user"
-                          ? "ml-8 rounded-xl bg-[color:var(--theme-surface-overlay)] p-3 text-sm text-[color:var(--theme-text-primary)]"
-                          : "mr-8 whitespace-pre-line rounded-xl border border-[color:var(--theme-border-soft)] p-3 text-sm text-[color:var(--theme-text-secondary)]"
-                      }
-                    >
-                      {message.content}
-                    </div>
-                  ))}
-                </div>
-              ) : null}
+              <ShopAssistantConversation
+                messages={messages}
+                loading={loading}
+                error={error}
+                canRetry={canRetry}
+                onRetry={() => void retry()}
+                actionInFlightId={actionInFlightId}
+                onConfirmAction={(actionId) => void confirmAction(actionId)}
+                onCancelAction={(actionId) => void cancelAction(actionId)}
+                onSubmitPrompt={(prompt) => void send(prompt, context)}
+                promptDisabled={loading || sending || Boolean(actionInFlightId)}
+                className="max-h-[22rem]"
+              />
 
               <textarea
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (
+                    (event.ctrlKey || event.metaKey) &&
+                    event.key === "Enter"
+                  ) {
+                    event.preventDefault();
+                    void submit();
+                  }
+                }}
                 placeholder={
                   getDefaultPrompt(context) || "Ask anything about your shop..."
                 }
@@ -256,24 +224,37 @@ export default function AskAssistantEntry({
                     variant="ghost"
                     onClick={() => {
                       setQuery("");
-                      clearConversation();
+                      void clearConversation(context);
                     }}
-                    disabled={loading}
+                    disabled={loading || sending || Boolean(actionInFlightId)}
                   >
                     Clear
                   </Button>
                   <Button
                     type="button"
-                    onClick={() => ask(effectiveQuery, context)}
-                    isLoading={loading}
-                    disabled={!effectiveQuery.trim()}
+                    onClick={() => void submit()}
+                    isLoading={sending}
+                    disabled={
+                      loading ||
+                      sending ||
+                      Boolean(actionInFlightId) ||
+                      !effectiveQuery.trim()
+                    }
                   >
-                    Ask Assistant
+                    Send
                   </Button>
                 </div>
               </div>
 
-              <AssistantResponseCard data={data} />
+              <div className="flex justify-end">
+                <Link
+                  href={assistantHref}
+                  onClick={() => setOpen(false)}
+                  className="text-xs font-semibold text-[color:var(--accent-copper,#c1663b)] hover:underline"
+                >
+                  Open full assistant workspace
+                </Link>
+              </div>
             </div>
           </DialogContent>
         </Dialog>

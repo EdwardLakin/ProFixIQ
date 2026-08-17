@@ -7,7 +7,11 @@ import { seedCompletedWorkOrderIntelligence } from "@/features/ai/server/workOrd
 import { getInvoiceSnapshotForWorkOrder } from "@/features/invoices/server/getInvoiceSnapshot";
 import { getIssuableInvoiceSnapshot } from "@/features/invoices/server/getIssuableInvoiceSnapshot";
 
-type RpcError = { message: string; details?: string | null; hint?: string | null };
+type RpcError = {
+  message: string;
+  details?: string | null;
+  hint?: string | null;
+};
 type RpcClient = {
   rpc: (
     name: string,
@@ -88,7 +92,11 @@ export async function POST(req: Request) {
     const issuableParts = Number(issuable.partsCost ?? 0);
     if (!Number.isFinite(draftTotal) || draftTotal <= 0) {
       return NextResponse.json(
-        { ok: false, error: "Invoice pricing must be completed before marking the work order ready." },
+        {
+          ok: false,
+          error:
+            "Invoice pricing must be completed before marking the work order ready.",
+        },
         { status: 409 },
       );
     }
@@ -122,7 +130,7 @@ export async function POST(req: Request) {
   const { data, error } = await rpc.rpc("mark_work_order_ready_atomic", {
     p_shop_id: access.profile.shop_id,
     p_work_order_id: workOrderId,
-    p_actor_user_id: access.profile.id,
+    p_actor_user_id: access.authUserId,
     p_operation_key: `${access.profile.shop_id}:mark-ready:${operationKey}`,
     p_at: new Date().toISOString(),
   });
@@ -140,7 +148,10 @@ export async function POST(req: Request) {
   const event = await buildWorkOrderCompletedEvent(workOrderId);
   if (event) {
     await postStoryEventToShopReel(event).catch((storyError: unknown) => {
-      console.error("[shopreel] failed to sync completed work order", storyError);
+      console.error(
+        "[shopreel] failed to sync completed work order",
+        storyError,
+      );
     });
   }
 

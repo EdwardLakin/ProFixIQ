@@ -20,7 +20,7 @@ function newClientMessageId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return crypto.randomUUID();
   }
-  return `shop-assistant-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return `client-message-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 function mergeMessages(
@@ -59,7 +59,7 @@ async function readJson<T>(response: Response): Promise<T> {
   return (await response.json().catch(() => ({}))) as T;
 }
 
-export function useShopAssistant(resetKey?: string) {
+export function useShopAssistant(resetKey?: string, enabled = true) {
   const [thread, setThread] = useState<ShopAssistantThread | null>(null);
   const [messages, setMessages] = useState<ShopAssistantMessage[]>([]);
   const [role, setRole] = useState<CanonicalRole | null>(null);
@@ -79,7 +79,9 @@ export function useShopAssistant(resetKey?: string) {
     );
     const payload = await readJson<ShopAssistantMessagesResponse>(response);
     if (!response.ok || !payload.ok) {
-      throw new Error(payload.ok ? "Failed to load conversation" : payload.error);
+      throw new Error(
+        payload.ok ? "Failed to load conversation" : payload.error,
+      );
     }
 
     setThread(payload.thread);
@@ -95,7 +97,9 @@ export function useShopAssistant(resetKey?: string) {
       });
       const payload = await readJson<ShopAssistantThreadListResponse>(response);
       if (!response.ok || !payload.ok) {
-        throw new Error(payload.ok ? "Failed to load assistant" : payload.error);
+        throw new Error(
+          payload.ok ? "Failed to load assistant" : payload.error,
+        );
       }
 
       setRole(payload.role);
@@ -122,12 +126,17 @@ export function useShopAssistant(resetKey?: string) {
   }, [loadMessages]);
 
   useEffect(() => {
+    if (!enabled) {
+      abortRef.current?.abort();
+      actionAbortRef.current?.abort();
+      return;
+    }
     void restore();
     return () => {
       abortRef.current?.abort();
       actionAbortRef.current?.abort();
     };
-  }, [resetKey, restore]);
+  }, [enabled, resetKey, restore]);
 
   const createConversation = useCallback(
     async (context?: ShopAssistantContext) => {
@@ -138,7 +147,9 @@ export function useShopAssistant(resetKey?: string) {
       });
       const payload = await readJson<ShopAssistantMessagesResponse>(response);
       if (!response.ok || !payload.ok) {
-        throw new Error(payload.ok ? "Failed to create conversation" : payload.error);
+        throw new Error(
+          payload.ok ? "Failed to create conversation" : payload.error,
+        );
       }
 
       setThread(payload.thread);
@@ -150,78 +161,78 @@ export function useShopAssistant(resetKey?: string) {
     [],
   );
 
-  const sendRequest = useCallback(
-    async (requestPayload: RetryRequest) => {
-      if (sendingRef.current) return;
-      sendingRef.current = true;
-      setSending(true);
-      setError(null);
+  const sendRequest = useCallback(async (requestPayload: RetryRequest) => {
+    if (sendingRef.current) return;
+    sendingRef.current = true;
+    setSending(true);
+    setError(null);
 
-      const optimisticMessage: ShopAssistantMessage = {
-        id: `optimistic:${requestPayload.clientMessageId}`,
-        threadId: requestPayload.threadId ?? "pending",
-        role: "user",
-        kind: "text",
-        content: requestPayload.question,
-        payload: {},
-        clientMessageId: requestPayload.clientMessageId,
-        createdAt: new Date().toISOString(),
-        optimistic: true,
-      };
-      setMessages((current) => mergeMessages(current, [optimisticMessage]));
+    const optimisticMessage: ShopAssistantMessage = {
+      id: `optimistic:${requestPayload.clientMessageId}`,
+      threadId: requestPayload.threadId ?? "pending",
+      role: "user",
+      kind: "text",
+      content: requestPayload.question,
+      payload: {},
+      clientMessageId: requestPayload.clientMessageId,
+      createdAt: new Date().toISOString(),
+      optimistic: true,
+    };
+    setMessages((current) => mergeMessages(current, [optimisticMessage]));
 
-      const controller = new AbortController();
-      abortRef.current?.abort();
-      abortRef.current = controller;
+    const controller = new AbortController();
+    abortRef.current?.abort();
+    abortRef.current = controller;
+    let retryable = true;
 
-      try {
-        const response = await fetch("/api/shop-assistant/chat", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(requestPayload),
-          signal: controller.signal,
-        });
-        const payload = await readJson<ShopAssistantChatResponse>(response);
-        if (!response.ok || !payload.ok) {
-          throw new Error(payload.ok ? "Shop assistant request failed" : payload.error);
-        }
-
-        setThread(payload.thread);
-        setMessages((current) => mergeMessages(current, payload.messages));
-        setRetryRequest(null);
-      } catch (sendError: unknown) {
-        if (controller.signal.aborted) return;
-        setRetryRequest(requestPayload);
-        setError(
-          sendError instanceof Error
-            ? sendError.message
-            : "Shop assistant request failed",
+    try {
+      const response = await fetch("/api/shop-assistant/chat", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(requestPayload),
+        signal: controller.signal,
+      });
+      const payload = await readJson<ShopAssistantChatResponse>(response);
+      if (!response.ok || !payload.ok) {
+        retryable = payload.ok
+          ? response.status >= 500
+          : payload.retryable === true;
+        throw new Error(
+          payload.ok ? "Shop assistant request failed" : payload.error,
         );
-      } finally {
-        if (abortRef.current === controller) abortRef.current = null;
-        sendingRef.current = false;
-        setSending(false);
       }
-    },
-    [],
-  );
+
+      setThread(payload.thread);
+      setMessages((current) => mergeMessages(current, payload.messages));
+      setRetryRequest(null);
+    } catch (sendError: unknown) {
+      if (controller.signal.aborted) return;
+      setRetryRequest(retryable ? requestPayload : null);
+      setError(
+        sendError instanceof Error
+          ? sendError.message
+          : "Shop assistant request failed",
+      );
+    } finally {
+      if (abortRef.current === controller) abortRef.current = null;
+      sendingRef.current = false;
+      setSending(false);
+    }
+  }, []);
 
   const send = useCallback(
     async (question: string, context?: ShopAssistantContext) => {
       const clean = question.trim();
       if (!clean || sendingRef.current) return;
 
-      let activeThread = thread;
-      if (!activeThread) activeThread = await createConversation(context);
-
       await sendRequest({
         question: clean,
         context,
-        threadId: activeThread.id,
+        threadId: thread?.id,
         clientMessageId: newClientMessageId(),
       });
     },
-    [createConversation, sendRequest, thread],
+    [sendRequest, thread],
   );
 
   const retry = useCallback(async () => {
@@ -229,39 +240,45 @@ export function useShopAssistant(resetKey?: string) {
     await sendRequest(retryRequest);
   }, [retryRequest, sendRequest]);
 
-  const runAction = useCallback(async (actionId: string, command: ActionCommand) => {
-    if (!actionId || actionAbortRef.current) return;
-    setActionInFlightId(actionId);
-    setError(null);
-    const controller = new AbortController();
-    actionAbortRef.current = controller;
+  const runAction = useCallback(
+    async (actionId: string, command: ActionCommand) => {
+      if (!actionId || actionAbortRef.current) return;
+      setActionInFlightId(actionId);
+      setError(null);
+      const controller = new AbortController();
+      actionAbortRef.current = controller;
 
-    try {
-      const response = await fetch(
-        `/api/shop-assistant/actions/${encodeURIComponent(actionId)}/${command}`,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          signal: controller.signal,
-        },
-      );
-      const payload = await readJson<ShopAssistantChatResponse>(response);
-      if (!response.ok || !payload.ok) {
-        throw new Error(payload.ok ? "Shop action failed" : payload.error);
+      try {
+        const response = await fetch(
+          `/api/shop-assistant/actions/${encodeURIComponent(actionId)}/${command}`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            signal: controller.signal,
+          },
+        );
+        const payload = await readJson<ShopAssistantChatResponse>(response);
+        if (!response.ok || !payload.ok) {
+          throw new Error(payload.ok ? "Shop action failed" : payload.error);
+        }
+
+        setThread(payload.thread);
+        setMessages((current) => mergeMessages(current, payload.messages));
+      } catch (actionError: unknown) {
+        if (controller.signal.aborted) return;
+        setError(
+          actionError instanceof Error
+            ? actionError.message
+            : "Shop action failed",
+        );
+      } finally {
+        if (actionAbortRef.current === controller)
+          actionAbortRef.current = null;
+        setActionInFlightId(null);
       }
-
-      setThread(payload.thread);
-      setMessages((current) => mergeMessages(current, payload.messages));
-    } catch (actionError: unknown) {
-      if (controller.signal.aborted) return;
-      setError(
-        actionError instanceof Error ? actionError.message : "Shop action failed",
-      );
-    } finally {
-      if (actionAbortRef.current === controller) actionAbortRef.current = null;
-      setActionInFlightId(null);
-    }
-  }, []);
+    },
+    [],
+  );
 
   const confirmAction = useCallback(
     async (actionId: string) => runAction(actionId, "confirm"),
@@ -277,7 +294,18 @@ export function useShopAssistant(resetKey?: string) {
     async (context?: ShopAssistantContext) => {
       abortRef.current?.abort();
       actionAbortRef.current?.abort();
-      await createConversation(context);
+      setLoading(true);
+      try {
+        await createConversation(context);
+      } catch (conversationError: unknown) {
+        setError(
+          conversationError instanceof Error
+            ? conversationError.message
+            : "Failed to create a new conversation",
+        );
+      } finally {
+        setLoading(false);
+      }
     },
     [createConversation],
   );

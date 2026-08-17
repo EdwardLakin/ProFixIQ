@@ -14,12 +14,17 @@ import {
   evaluateSmartMatchReadiness,
 } from "../../server/opsRecommendations";
 import { buildPartSuggestions } from "@/features/parts/server/buildPartSuggestions";
+import { listTechnicianWorkCandidates } from "@/features/copilot/technician/server/assignedWork";
 import {
   getOpenAIClient,
   isOpenAIConfigured,
 } from "@/features/shared/lib/server/openai";
-import { getOpenAIModelForPurpose, openAITemperatureParam } from "@/features/shared/lib/server/openai-models";
+import {
+  getOpenAIModelForPurpose,
+  openAITemperatureParam,
+} from "@/features/shared/lib/server/openai-models";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 
 import type {
@@ -40,6 +45,7 @@ import {
 type AskParams = {
   shopId: string;
   userId: string;
+  profileId: string;
   role: string | null;
   request: AssistantAskRequest;
 };
@@ -398,20 +404,23 @@ function buildDiagnosticMessages(args: {
   );
 
   const images = (args.request.imageAttachments ?? [])
-    .filter((image) => typeof image.url === "string" && image.url.trim().length > 0)
+    .filter(
+      (image) => typeof image.url === "string" && image.url.trim().length > 0,
+    )
     .slice(-3);
-  const latestUserContent: ChatCompletionMessageParam = images.length > 0
-    ? {
-        role: "user",
-        content: [
-          { type: "text", text: args.question },
-          ...images.map((image) => ({
-            type: "image_url" as const,
-            image_url: { url: image.url as string, detail: "low" as const },
-          })),
-        ],
-      }
-    : { role: "user", content: args.question };
+  const latestUserContent: ChatCompletionMessageParam =
+    images.length > 0
+      ? {
+          role: "user",
+          content: [
+            { type: "text", text: args.question },
+            ...images.map((image) => ({
+              type: "image_url" as const,
+              image_url: { url: image.url as string, detail: "low" as const },
+            })),
+          ],
+        }
+      : { role: "user", content: args.question };
 
   return [
     {
@@ -726,7 +735,14 @@ async function answerPartsDomain(args: {
         .from("purchase_orders")
         .select("id, status, created_at, expected_at, total")
         .eq("shop_id", args.shopId)
-        .in("status", ["draft", "sent", "partially_received", "receiving"])
+        .in("status", [
+          "draft",
+          "open",
+          "ordered",
+          "sent",
+          "partially_received",
+          "receiving",
+        ])
         .order("created_at", { ascending: false })
         .limit(20),
       supabase
@@ -759,7 +775,7 @@ async function answerPartsDomain(args: {
       supabase
         .from("work_order_parts")
         .select(
-          "id, work_order_id, work_order_line_id, part_id, part_number, part_name, quantity",
+          "id, work_order_id, work_order_line_id, part_id, part_number_snapshot, description_snapshot, quantity",
         )
         .eq("shop_id", args.shopId)
         .order("created_at", { ascending: false })
@@ -823,8 +839,8 @@ async function answerPartsDomain(args: {
 
   const partsUsed = (partUsageRes.data ?? []) as Array<{
     part_id: string | null;
-    part_number: string | null;
-    part_name: string | null;
+    part_number_snapshot: string | null;
+    description_snapshot: string | null;
     quantity: number | null;
     work_order_id: string | null;
   }>;
@@ -868,7 +884,7 @@ async function answerPartsDomain(args: {
 
   const matchingPriorUse = searchPartToken
     ? partsUsed.filter((row) =>
-        [row.part_number, row.part_name, row.part_id]
+        [row.part_number_snapshot, row.description_snapshot, row.part_id]
           .filter(Boolean)
           .some((value) =>
             String(value).toLowerCase().includes(searchPartToken),
@@ -1048,6 +1064,7 @@ async function answerFleetDomain(args: {
     const { data: vehicle } = await supabase
       .from("vehicles")
       .select("id")
+      .eq("shop_id", args.shopId)
       .or(`license_plate.eq.${args.plateOrVin},vin.eq.${args.plateOrVin}`)
       .maybeSingle();
     vehicleId = vehicle?.id ?? null;
@@ -1395,10 +1412,14 @@ async function answerAuthoringDomain(args: {
 export async function answerAssistant({
   shopId,
   userId,
+  profileId,
   role,
   request: rawRequest,
 }: AskParams): Promise<AssistantAnswer> {
   const supabase = getServerSupabase();
+  const actor = getActorCapabilities({ role });
+  const question = normalizeQuestion(rawRequest.question);
+  const q = question.toLowerCase();
   const trusted = await resolveTrustedAssistantContext({
     supabase,
     shopId,
@@ -1406,6 +1427,23 @@ export async function answerAssistant({
     session: rawRequest.session,
   });
   const resolvedContext = trusted.context;
+
+  // Fleet portal roles use the canonical shop-assistant fleet tools, which
+  // enforce explicit fleet membership. The legacy free-form data handlers are
+  // intentionally not allowed to fall back to same-shop-only fleet queries.
+  if (actor.canViewFleetOnlyData && !actor.canViewShopWideData) {
+    return buildAnswer({
+      intent: "unknown",
+      summary:
+        "Open the Shop Assistant to query or act on the fleet records assigned to your account.",
+      bullets: [
+        "Fleet unit and service-request results are restricted to your entitled fleet memberships.",
+      ],
+      links: [{ label: "Open Shop Assistant", href: "/assistant" }],
+      resolvedContext: {},
+    });
+  }
+
   const trustedAttachments = await resolveTrustedAssistantAttachments({
     supabase,
     shopId,
@@ -1423,9 +1461,23 @@ export async function answerAssistant({
     vehicle: trusted.vehicle ?? rawRequest.vehicle,
     imageAttachments: trustedAttachments,
   };
-  const question = normalizeQuestion(request.question);
-  const q = question.toLowerCase();
-  const actor = getActorCapabilities({ role });
+  if (actor.canonicalRole === "mechanic" && resolvedContext.workOrderId) {
+    const assigned = await listTechnicianWorkCandidates({
+      supabase: createAdminSupabase(),
+      shopId,
+      technicianIds: [userId, profileId],
+    });
+    if (
+      !assigned.some(
+        (candidate) => candidate.id === resolvedContext.workOrderId,
+      )
+    ) {
+      return buildAccessDeniedAnswer(
+        resolvedContext,
+        "that unassigned work order",
+      );
+    }
+  }
 
   const ctx: ToolContext = {
     shopId,
@@ -1444,7 +1496,10 @@ export async function answerAssistant({
     ])
   ) {
     if (!actor.canAuthorizeQuotes) {
-      return buildAccessDeniedAnswer(resolvedContext, "pending approval records");
+      return buildAccessDeniedAnswer(
+        resolvedContext,
+        "pending approval records",
+      );
     }
     const result = await toolListPendingApprovals.run({ limit: 20 }, ctx);
 
@@ -1519,33 +1574,57 @@ export async function answerAssistant({
 
   if (looksLikePartsQuestion(q)) {
     if (!actor.canViewShopWideData) {
-      return buildAccessDeniedAnswer(resolvedContext, "shop-wide parts records");
+      return buildAccessDeniedAnswer(
+        resolvedContext,
+        "shop-wide parts records",
+      );
     }
     const partsAnswer = await answerPartsDomain({ shopId, q, resolvedContext });
     if (partsAnswer) return partsAnswer;
   }
 
   if (looksLikeFleetQuestion(q)) {
-    if (!actor.canViewShopWideData && !actor.canViewFleetOnlyData) {
+    if (
+      !["owner", "admin", "manager", "advisor"].includes(actor.canonicalRole)
+    ) {
       return buildAccessDeniedAnswer(resolvedContext, "fleet records");
     }
-    const fleetAnswer = await answerFleetDomain({ shopId, q, resolvedContext, plateOrVin });
+    const fleetAnswer = await answerFleetDomain({
+      shopId,
+      q,
+      resolvedContext,
+      plateOrVin,
+    });
     if (fleetAnswer) return fleetAnswer;
   }
 
   if (looksLikeOpsIntelligenceQuestion(q)) {
     if (!actor.canViewShopWideData) {
-      return buildAccessDeniedAnswer(resolvedContext, "shop-wide operational intelligence");
+      return buildAccessDeniedAnswer(
+        resolvedContext,
+        "shop-wide operational intelligence",
+      );
     }
-    const opsIntelligenceAnswer = await answerOpsIntelligenceDomain({ shopId, q, resolvedContext });
+    const opsIntelligenceAnswer = await answerOpsIntelligenceDomain({
+      shopId,
+      q,
+      resolvedContext,
+    });
     if (opsIntelligenceAnswer) return opsIntelligenceAnswer;
   }
 
   if (looksLikeAuthoringQuestion(q)) {
     if (!actor.canManageBranding) {
-      return buildAccessDeniedAnswer(resolvedContext, "AI-assisted shop authoring");
+      return buildAccessDeniedAnswer(
+        resolvedContext,
+        "AI-assisted shop authoring",
+      );
     }
-    const authoringAnswer = await answerAuthoringDomain({ shopId, q, resolvedContext });
+    const authoringAnswer = await answerAuthoringDomain({
+      shopId,
+      q,
+      resolvedContext,
+    });
     if (authoringAnswer) return authoringAnswer;
   }
 
@@ -1561,7 +1640,11 @@ export async function answerAssistant({
       (isFollowUp(question) &&
         request.session?.lastIntent === "work_order_status"))
   ) {
-    if (!actor.canManageWorkOrders && !actor.canRunInspections && !actor.canViewShopWideData) {
+    if (
+      !actor.canManageWorkOrders &&
+      !actor.canRunInspections &&
+      !actor.canViewShopWideData
+    ) {
       return buildAccessDeniedAnswer(resolvedContext, "this work order");
     }
     const result = await runGetWorkOrderStatusSummary(
@@ -1701,7 +1784,11 @@ export async function answerAssistant({
       isFollowUp(question)) &&
       Boolean(resolvedContext.vehicleId || resolvedContext.customerId))
   ) {
-    if (!actor.canManageWorkOrders && !actor.canViewShopWideData && !actor.canViewFleetOnlyData) {
+    if (
+      !actor.canManageWorkOrders &&
+      !actor.canViewShopWideData &&
+      !actor.canViewFleetOnlyData
+    ) {
       return buildAccessDeniedAnswer(resolvedContext, "vehicle history");
     }
     const result = await runGetVehicleHistory(
@@ -1774,11 +1861,14 @@ export async function answerAssistant({
   ) {
     const techIdCandidate =
       role && ["tech", "technician", "mechanic"].includes(role.toLowerCase())
-        ? userId
+        ? profileId
         : undefined;
 
     if (!actor.canViewShopWideData && !techIdCandidate) {
-      return buildAccessDeniedAnswer(resolvedContext, "other technicians' current work");
+      return buildAccessDeniedAnswer(
+        resolvedContext,
+        "other technicians' current work",
+      );
     }
 
     const result = await runGetTechCurrentWork(
@@ -1833,7 +1923,10 @@ export async function answerAssistant({
     ])
   ) {
     if (!actor.canViewShopWideData) {
-      return buildAccessDeniedAnswer(resolvedContext, "shop-wide stalled work orders");
+      return buildAccessDeniedAnswer(
+        resolvedContext,
+        "shop-wide stalled work orders",
+      );
     }
     const result = await runGetStalledWorkOrders({}, ctx);
     const links = toLinks((result as { citations?: unknown }).citations);
@@ -1892,7 +1985,10 @@ export async function answerAssistant({
     ])
   ) {
     if (!actor.canManageScheduling && !actor.canViewShopWideData) {
-      return buildAccessDeniedAnswer(resolvedContext, "shop appointment records");
+      return buildAccessDeniedAnswer(
+        resolvedContext,
+        "shop appointment records",
+      );
     }
     const result = await runGetBookings(
       {
@@ -1978,7 +2074,10 @@ export async function answerAssistant({
     !wantsKnowledgeMode(question)
   ) {
     if (!actor.canRunInspections) {
-      return buildAccessDeniedAnswer(resolvedContext, "technician diagnostic assistance");
+      return buildAccessDeniedAnswer(
+        resolvedContext,
+        "technician diagnostic assistance",
+      );
     }
     return answerDiagnosticConversation({ question, request, resolvedContext });
   }

@@ -1,7 +1,16 @@
 import "server-only";
 
 import { canonicalizeRole } from "@/features/shared/lib/rbac";
-import type { ShopAssistantActor } from "@/features/shop-assistant/server/requireShopAssistantActor";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import { shopLocalDateTimeToUtc } from "@/features/shared/lib/utils/shopDayWindow";
+import {
+  ShopAssistantHttpError,
+  type ShopAssistantActor,
+} from "@/features/shop-assistant/server/requireShopAssistantActor";
+import {
+  formatShopAssistantToolOutput,
+  recordOutput,
+} from "@/features/shop-assistant/server/orchestrator/formatToolOutput";
 import {
   createPendingAction,
   mapActionPreview,
@@ -47,6 +56,7 @@ export type DirectToolIntentResult =
         name: string;
         label: string;
         type: "text" | "select" | "date" | "datetime";
+        required?: boolean;
         options?: Array<{ label: string; value: string }>;
       }>;
     };
@@ -56,27 +66,25 @@ type ResolvedWorkOrder = {
   customId: string | null;
 };
 
-function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
-}
-
-function stringValue(value: unknown): string | null {
-  return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
-function numberValue(value: unknown): number | null {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
 function extractUuid(value: string): string | null {
   return (
     value.match(
       /\b([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\b/i,
     )?.[1] ?? null
   );
+}
+
+function extractUuids(value: string): string[] {
+  return [
+    ...new Set(
+      Array.from(
+        value.matchAll(
+          /\b([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\b/gi,
+        ),
+        (match) => match[1].toLowerCase(),
+      ),
+    ),
+  ];
 }
 
 function extractWorkOrderReference(question: string): string | null {
@@ -86,8 +94,7 @@ function extractWorkOrderReference(question: string): string | null {
   if (explicit) return explicit;
 
   return (
-    question.match(/\b([A-Z]{1,6}-?\d{3,})\b/i)?.[1] ??
-    extractUuid(question)
+    question.match(/\b([A-Z]{1,6}-?\d{3,})\b/i)?.[1] ?? extractUuid(question)
   );
 }
 
@@ -105,7 +112,7 @@ async function resolveWorkOrder(params: {
   if (!reference) return null;
 
   const uuid = extractUuid(reference);
-  let query = params.actor.supabase
+  let query = createAdminSupabase()
     .from("work_orders")
     .select("id, custom_id")
     .eq("shop_id", params.actor.shopId);
@@ -116,10 +123,16 @@ async function resolveWorkOrder(params: {
   const { data, error } = await query.limit(2);
   if (error) throw new Error(error.message);
   if (!data || data.length === 0) {
-    throw new Error(`No same-shop work order matched ${reference}.`);
+    throw new ShopAssistantHttpError(
+      404,
+      `No same-shop work order matched ${reference}.`,
+    );
   }
   if (data.length > 1) {
-    throw new Error(`More than one work order matched ${reference}.`);
+    throw new ShopAssistantHttpError(
+      409,
+      `More than one work order matched ${reference}.`,
+    );
   }
   return { id: data[0].id, customId: data[0].custom_id ?? null };
 }
@@ -133,105 +146,123 @@ function holdReason(question: string): string {
   if (/information|more info|diagnostic info/.test(lower)) {
     return "Need additional info";
   }
-  const explicit = question.match(/\b(?:because|reason|for)\s+(.{2,120})$/i)?.[1];
+  const explicit = question.match(
+    /\b(?:because|reason|for)\s+(.{2,120})$/i,
+  )?.[1];
   return explicit?.trim() || "Hold for assistance";
-}
-
-function formatListRows(
-  rows: unknown,
-  formatter: (row: Record<string, unknown>) => string | null,
-  limit = 8,
-): string[] {
-  if (!Array.isArray(rows)) return [];
-  return rows
-    .map((row) => formatter(asRecord(row)))
-    .filter((row): row is string => Boolean(row))
-    .slice(0, limit);
-}
-
-function formatReadOutput(toolName: string, output: unknown): string {
-  const record = asRecord(output);
-  const summary = stringValue(record.summary) ?? `${toolName} completed.`;
-  let bullets: string[] = [];
-
-  if (toolName === "list_low_stock_parts") {
-    bullets = formatListRows(record.items, (item) => {
-      const name = stringValue(item.name);
-      const quantity = numberValue(item.quantityOnHand);
-      const threshold = numberValue(item.threshold);
-      const reorder = numberValue(item.suggestedReorder);
-      return name && quantity != null && threshold != null && reorder != null
-        ? `${name}: ${quantity} on hand, threshold ${threshold}, suggested reorder ${reorder}.`
-        : null;
-    });
-  } else if (toolName === "list_parts_blockers") {
-    bullets = formatListRows(record.blockers, (item) => {
-      const description = stringValue(item.description);
-      const remaining = numberValue(item.remainingQuantity);
-      const label = stringValue(item.workOrderLabel);
-      return description && remaining != null
-        ? `${label ? `${label}: ` : ""}${description} — ${remaining} still unreceived.`
-        : null;
-    });
-  } else if (toolName === "list_ready_invoices") {
-    bullets = formatListRows(record.workOrders, (item) => {
-      const customId = stringValue(item.customId);
-      const status = stringValue(item.status);
-      const customerName = stringValue(item.customerName);
-      return `${customId ? `WO #${customId}` : "Work order"} • ${status ?? "ready"}${customerName ? ` • ${customerName}` : ""}`;
-    });
-  } else if (toolName === "list_technician_load") {
-    bullets = formatListRows(record.technicians, (item) => {
-      const name = stringValue(item.name);
-      const active = numberValue(item.activeJobs);
-      const utilization = numberValue(item.utilizationPct);
-      return name && active != null && utilization != null
-        ? `${name}: ${active} active job(s), ${utilization}% utilization.`
-        : null;
-    });
-  } else if (toolName === "list_bookings") {
-    bullets = formatListRows(record.bookings, (item) => {
-      const startsAt = stringValue(item.startsAt);
-      const status = stringValue(item.status);
-      return startsAt ? `${startsAt} • ${status ?? "scheduled"}` : null;
-    });
-  } else if (toolName === "find_customers") {
-    bullets = formatListRows(record.customers, (item) => {
-      const name = stringValue(item.name);
-      const email = stringValue(item.email);
-      const phone = stringValue(item.phone);
-      return name
-        ? [name, email, phone].filter(Boolean).join(" • ")
-        : null;
-    });
-  } else if (toolName === "list_inspections") {
-    bullets = formatListRows(record.inspections, (item) => {
-      const status = stringValue(item.status);
-      const workOrderId = stringValue(item.workOrderId);
-      return `${workOrderId ? `WO ${workOrderId.slice(0, 8)}` : "Inspection"} • ${status ?? "unknown"}${item.completed === true ? " • completed" : ""}`;
-    });
-  } else if (toolName === "read_shop_state") {
-    bullets = formatListRows(record.alerts, (item) => {
-      const title = stringValue(item.title);
-      const message = stringValue(item.message);
-      return title ? `${title}${message ? ` — ${message}` : ""}` : null;
-    }, 5);
-  }
-
-  return [summary, ...bullets.map((bullet) => `• ${bullet}`)].join("\n");
 }
 
 function extractQuotedText(question: string): string | null {
   return question.match(/[“"]([^”"]+)[”"]/u)?.[1]?.trim() ?? null;
 }
 
-function parseDateTime(question: string): string | null {
-  const iso = question.match(
-    /\b(20\d{2}-\d{2}-\d{2}(?:[T\s]\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:?\d{2})?)?)\b/,
-  )?.[1];
-  if (!iso) return null;
-  const parsed = new Date(iso.includes("T") ? iso : iso.replace(" ", "T"));
-  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+async function parseDateTime(
+  question: string,
+  actor: ShopAssistantActor,
+): Promise<string | null> {
+  const match = question.match(
+    /\b(20\d{2}-\d{2}-\d{2})[T\s](\d{2}:\d{2}(?::\d{2})?)(Z|[+-]\d{2}:?\d{2})?\b/,
+  );
+  if (!match) return null;
+
+  const [, dateKey, timeValue, offset] = match;
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const [hour, minute, second = 0] = timeValue.split(":").map(Number);
+  const calendarCheck = new Date(Date.UTC(year, month - 1, day));
+  if (
+    calendarCheck.getUTCFullYear() !== year ||
+    calendarCheck.getUTCMonth() + 1 !== month ||
+    calendarCheck.getUTCDate() !== day ||
+    hour > 23 ||
+    minute > 59 ||
+    second > 59
+  ) {
+    return null;
+  }
+
+  if (offset) {
+    const parsed = new Date(`${dateKey}T${timeValue}${offset}`);
+    return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+  }
+
+  const { data: shop, error } = await createAdminSupabase()
+    .from("shops")
+    .select("timezone")
+    .eq("id", actor.shopId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  const timezone = shop?.timezone?.trim();
+  if (!timezone) {
+    throw new ShopAssistantHttpError(409, "The shop timezone is unavailable.");
+  }
+  try {
+    new Intl.DateTimeFormat("en-CA", { timeZone: timezone });
+  } catch {
+    throw new ShopAssistantHttpError(
+      409,
+      "The shop timezone is invalid. Correct it in shop settings before rescheduling.",
+    );
+  }
+
+  const resolved = shopLocalDateTimeToUtc(dateKey, timeValue, timezone);
+  const expected = `${dateKey}T${timeValue.padEnd(8, ":00")}`;
+  const localStamp = (instant: string | number): string => {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(new Date(instant));
+    const value = (kind: Intl.DateTimeFormatPartTypes) =>
+      parts.find((part) => part.type === kind)?.value ?? "";
+    return `${value("year")}-${value("month")}-${value("day")}T${value("hour")}:${value("minute")}:${value("second")}`;
+  };
+  if (localStamp(resolved) !== expected) {
+    throw new ShopAssistantHttpError(
+      400,
+      "That local time does not exist in the shop timezone because of a clock change. Choose another time or include an explicit UTC offset.",
+    );
+  }
+  const resolvedMs = new Date(resolved).getTime();
+  for (const deltaMinutes of [-120, -90, -60, -30, 30, 60, 90, 120]) {
+    if (localStamp(resolvedMs + deltaMinutes * 60_000) === expected) {
+      throw new ShopAssistantHttpError(
+        400,
+        "That local time occurs twice in the shop timezone because of a clock change. Include an explicit UTC offset.",
+      );
+    }
+  }
+  return resolved;
+}
+
+function paymentAmount(question: string): number | null {
+  const raw =
+    question.match(/(?:\$|\b(?:CAD|USD)\s*)(\d+(?:\.\d{1,2})?)/i)?.[1] ??
+    question.match(
+      /\b(?:payment(?:\s+of)?|amount)\s*:?\s*(\d+(?:\.\d{1,2})?)/i,
+    )?.[1];
+  const amount = Number(raw);
+  return Number.isFinite(amount) && amount > 0 ? amount : null;
+}
+
+function paymentMethod(
+  question: string,
+): "cash" | "cheque" | "terminal" | "eft" | "financing" | "other" | null {
+  if (/\b(?:cash)\b/i.test(question)) return "cash";
+  if (/\b(?:cheque|check)\b/i.test(question)) return "cheque";
+  if (/\b(?:terminal|card terminal|debit|credit card)\b/i.test(question)) {
+    return "terminal";
+  }
+  if (/\b(?:eft|e-transfer|etransfer|bank transfer)\b/i.test(question)) {
+    return "eft";
+  }
+  if (/\bfinanc(?:e|ing)\b/i.test(question)) return "financing";
+  if (/\bother\b/i.test(question)) return "other";
+  return null;
 }
 
 async function previewWrite(params: {
@@ -309,8 +340,8 @@ async function runRead(params: {
     kind: "read_result",
     toolName: params.toolName,
     domain: params.domain,
-    content: formatReadOutput(params.toolName, output),
-    output: asRecord(output),
+    content: formatShopAssistantToolOutput(params.toolName, output),
+    output: recordOutput(output),
     resolvedContext: params.resolvedContext,
   };
 }
@@ -322,15 +353,217 @@ export async function routeDirectToolIntent(params: {
   question: string;
   pageContext?: ShopAssistantContext;
   threadContext?: ShopAssistantThreadContext;
+  mode?: "all" | "writes_only";
 }): Promise<DirectToolIntentResult | null> {
   const question = params.question.trim();
+  const approvalDecision = question
+    .match(/^\s*(?:please\s+)?(approve|decline|defer)\b/i)?.[1]
+    ?.toLowerCase() as "approve" | "decline" | "defer" | undefined;
+  if (
+    approvalDecision &&
+    params.actor.capabilities.canAuthorizeQuotes &&
+    /\b(?:approval|quote|estimate|line|item|work\s*order|wo|all|remaining)\b/i.test(
+      question,
+    )
+  ) {
+    const workOrder = await resolveWorkOrder(params);
+    if (!workOrder) {
+      return {
+        kind: "clarification_required",
+        content: "Which work order contains the approval items?",
+        fields: [{ name: "workOrder", label: "Work order", type: "text" }],
+      };
+    }
+    const allPending = /\b(?:all|every|remaining)\b/i.test(question);
+    const itemIds = extractUuids(question).filter(
+      (id) => id !== workOrder.id.toLowerCase(),
+    );
+    if (!allPending && itemIds.length === 0) {
+      return {
+        kind: "clarification_required",
+        content:
+          "Should I apply that decision to all pending items, or only specific approval items?",
+        fields: [
+          {
+            name: "scope",
+            label: "Approval scope",
+            type: "select",
+            options: [
+              { label: "All pending items", value: "all" },
+              { label: "Specific items", value: "selected" },
+            ],
+          },
+        ],
+      };
+    }
+    const contactMethod = /\bin[ -]?person\b/i.test(question)
+      ? "in_person"
+      : /\bphone|call(?:ed)?\b/i.test(question)
+        ? "phone"
+        : /\bemail(?:ed)?\b/i.test(question)
+          ? "email"
+          : "other";
+    return previewWrite({
+      actor: params.actor,
+      threadId: params.threadId,
+      clientMessageId: params.clientMessageId,
+      toolName: "record_approval_decision",
+      input: {
+        workOrderId: workOrder.id,
+        itemIds,
+        allPending,
+        decision: approvalDecision,
+        contactMethod,
+      },
+      resolvedContext: {
+        activeWorkOrderId: workOrder.id,
+        lastDomain: "work_orders",
+      },
+    });
+  }
+
+  if (
+    params.actor.capabilities.canManageWorkOrders &&
+    params.actor.capabilities.canAuthorizeQuotes &&
+    /\b(?:finalize|issue)\b.*\binvoice\b/i.test(question)
+  ) {
+    const workOrder = await resolveWorkOrder(params);
+    if (!workOrder) {
+      return {
+        kind: "clarification_required",
+        content: "Which work order should I finalize into an invoice?",
+        fields: [{ name: "workOrder", label: "Work order", type: "text" }],
+      };
+    }
+    return previewWrite({
+      actor: params.actor,
+      threadId: params.threadId,
+      clientMessageId: params.clientMessageId,
+      toolName: "finalize_invoice",
+      input: { workOrderId: workOrder.id },
+      resolvedContext: {
+        activeWorkOrderId: workOrder.id,
+        lastDomain: "invoices",
+      },
+    });
+  }
+
+  if (
+    params.actor.capabilities.canManageWorkOrders &&
+    params.actor.capabilities.canAuthorizeQuotes &&
+    /\b(?:mark|move|set)\b.*\bready\s+to\s+invoice\b/i.test(question)
+  ) {
+    const workOrder = await resolveWorkOrder(params);
+    if (!workOrder) {
+      return {
+        kind: "clarification_required",
+        content: "Which work order should be marked ready to invoice?",
+        fields: [{ name: "workOrder", label: "Work order", type: "text" }],
+      };
+    }
+    return previewWrite({
+      actor: params.actor,
+      threadId: params.threadId,
+      clientMessageId: params.clientMessageId,
+      toolName: "mark_work_order_ready_to_invoice",
+      input: { workOrderId: workOrder.id },
+      resolvedContext: {
+        activeWorkOrderId: workOrder.id,
+        lastDomain: "work_orders",
+      },
+    });
+  }
+
+  const reversePayment =
+    /\b(?:reverse|reversal|undo)\b.*\bpayment\b|\bpayment\b.*\b(?:reverse|reversal|undo)\b/i.test(
+      question,
+    );
+  if (
+    params.actor.capabilities.canManageWorkOrders &&
+    /\b(?:record|post|apply|add)\b.*\bpayment\b/i.test(question) &&
+    !reversePayment
+  ) {
+    const workOrder = await resolveWorkOrder(params);
+    const amount = paymentAmount(question);
+    const method = paymentMethod(question);
+    if (!workOrder || !amount || !method) {
+      return {
+        kind: "clarification_required",
+        content: "Provide the work order, amount, and external payment method.",
+        fields: [
+          { name: "workOrder", label: "Work order", type: "text" },
+          { name: "amount", label: "Amount", type: "text" },
+          {
+            name: "method",
+            label: "Payment method",
+            type: "select",
+            options: [
+              { label: "Card terminal", value: "terminal" },
+              { label: "Cash", value: "cash" },
+              { label: "Cheque", value: "cheque" },
+              { label: "EFT / e-transfer", value: "eft" },
+              { label: "Financing", value: "financing" },
+              { label: "Other", value: "other" },
+            ],
+          },
+        ],
+      };
+    }
+    return previewWrite({
+      actor: params.actor,
+      threadId: params.threadId,
+      clientMessageId: params.clientMessageId,
+      toolName: "record_manual_invoice_payment",
+      input: { workOrderId: workOrder.id, amount, method },
+      resolvedContext: {
+        activeWorkOrderId: workOrder.id,
+        lastDomain: "invoices",
+      },
+    });
+  }
+
+  if (params.actor.capabilities.canManageWorkOrders && reversePayment) {
+    const workOrder = await resolveWorkOrder(params);
+    const amount = paymentAmount(question);
+    const reason =
+      question.match(/\b(?:because|reason)\s*:?\s*(.{3,500})$/i)?.[1]?.trim() ??
+      null;
+    if (!workOrder || !amount || !reason) {
+      return {
+        kind: "clarification_required",
+        content: "Provide the work order, reversal amount, and audit reason.",
+        fields: [
+          { name: "workOrder", label: "Work order", type: "text" },
+          { name: "amount", label: "Amount", type: "text" },
+          { name: "reason", label: "Reversal reason", type: "text" },
+        ],
+      };
+    }
+    return previewWrite({
+      actor: params.actor,
+      threadId: params.threadId,
+      clientMessageId: params.clientMessageId,
+      toolName: "reverse_manual_invoice_payment",
+      input: { workOrderId: workOrder.id, amount, reason },
+      resolvedContext: {
+        activeWorkOrderId: workOrder.id,
+        lastDomain: "invoices",
+      },
+    });
+  }
+
   const isHold =
     /\b(?:put|place|set|mark|move)\b.*\b(?:on\s+hold|hold)\b/i.test(question) ||
     /\bhold\b.*\b(?:work\s*order|wo|[A-Z]{1,6}-?\d{3,})\b/i.test(question);
-  const isReleaseHold =
-    /\b(?:release|remove|clear|take)\b.*\bhold\b/i.test(question);
+  const isReleaseHold = /\b(?:release|remove|clear|take)\b.*\bhold\b/i.test(
+    question,
+  );
 
-  if (isHold && !isReleaseHold) {
+  if (
+    isHold &&
+    !isReleaseHold &&
+    params.actor.capabilities.canManageWorkOrders
+  ) {
     const workOrder = await resolveWorkOrder(params);
     if (!workOrder) {
       return {
@@ -348,11 +581,14 @@ export async function routeDirectToolIntent(params: {
       clientMessageId: params.clientMessageId,
       toolName: "hold_work_order",
       input: { workOrderId: workOrder.id, reason: holdReason(question) },
-      resolvedContext: { activeWorkOrderId: workOrder.id, lastDomain: "work_orders" },
+      resolvedContext: {
+        activeWorkOrderId: workOrder.id,
+        lastDomain: "work_orders",
+      },
     });
   }
 
-  if (isReleaseHold) {
+  if (isReleaseHold && params.actor.capabilities.canManageWorkOrders) {
     const workOrder = await resolveWorkOrder(params);
     if (!workOrder) {
       return {
@@ -369,27 +605,40 @@ export async function routeDirectToolIntent(params: {
       clientMessageId: params.clientMessageId,
       toolName: "release_work_order_hold",
       input: { workOrderId: workOrder.id },
-      resolvedContext: { activeWorkOrderId: workOrder.id, lastDomain: "work_orders" },
+      resolvedContext: {
+        activeWorkOrderId: workOrder.id,
+        lastDomain: "work_orders",
+      },
     });
   }
 
   const assignMatch = question.match(
-    /\b(?:assign|move)\s+(?:(?:work\s*order|wo)\s*)?#?([A-Z]{1,6}-?\d{3,}|[0-9a-f-]{36})\s+to\s+(.{2,80})$/i,
+    /\b(?:assign|move)\s+(?:(?:work\s*order|wo)\s*)?#?([A-Z]{1,6}-?\d{3,}|[0-9a-f-]{36})\s+to\s+([^\n]{2,80})(?:\n|$)/i,
   );
-  if (assignMatch) {
+  if (assignMatch && params.actor.capabilities.canAssignWork) {
     const workOrder = await resolveWorkOrder(params);
     const techQuery = assignMatch[2].replace(/[.!?]+$/, "").trim();
-    const { data: matchedProfiles, error } = await params.actor.supabase
+    const clarifiedTechnicianId = question.match(
+      /(?:^|\n)Technician:\s*([0-9a-f-]{36})(?:\n|$)/i,
+    )?.[1];
+    let technicianQuery = createAdminSupabase()
       .from("profiles")
       .select("id, full_name, role")
-      .eq("shop_id", params.actor.shopId)
-      .ilike("full_name", `%${techQuery.replace(/[%,]/g, " ")}%`)
-      .limit(25);
+      .eq("shop_id", params.actor.shopId);
+    technicianQuery = clarifiedTechnicianId
+      ? technicianQuery.eq("id", clarifiedTechnicianId)
+      : technicianQuery.ilike(
+          "full_name",
+          `%${techQuery.replace(/[^a-zA-Z0-9 ._'-]/g, " ")}%`,
+        );
+    const { data: matchedProfiles, error } = await technicianQuery.limit(25);
     if (error) throw new Error(error.message);
     const techs = (matchedProfiles ?? [])
       .filter((profile) => {
         const role = canonicalizeRole(profile.role);
-        return role === "mechanic" || role === "lead_hand" || role === "foreman";
+        return (
+          role === "mechanic" || role === "lead_hand" || role === "foreman"
+        );
       })
       .slice(0, 10);
     if (!workOrder) {
@@ -429,13 +678,20 @@ export async function routeDirectToolIntent(params: {
         technicianId: techs[0].id,
         onlyUnassigned: true,
       },
-      resolvedContext: { activeWorkOrderId: workOrder.id, lastDomain: "workforce" },
+      resolvedContext: {
+        activeWorkOrderId: workOrder.id,
+        lastDomain: "workforce",
+      },
     });
   }
 
-  if (/\b(?:reschedule|move)\b.*\b(?:booking|appointment)\b/i.test(question)) {
-    const bookingId = extractUuid(question) ?? params.pageContext?.bookingId ?? null;
-    const startsAt = parseDateTime(question);
+  if (
+    params.actor.capabilities.canManageScheduling &&
+    /\b(?:reschedule|move)\b.*\b(?:booking|appointment)\b/i.test(question)
+  ) {
+    const bookingId =
+      extractUuid(question) ?? params.pageContext?.bookingId ?? null;
+    const startsAt = await parseDateTime(question, params.actor);
     if (!bookingId || !startsAt) {
       return {
         kind: "clarification_required",
@@ -456,7 +712,10 @@ export async function routeDirectToolIntent(params: {
     });
   }
 
-  if (/\b(?:send|message)\b.*\b(?:conversation|customer|client)\b/i.test(question)) {
+  if (
+    params.actor.capabilities.canInvitePortalCustomers &&
+    /\b(?:send|message)\b.*\b(?:conversation|customer|client)\b/i.test(question)
+  ) {
     const conversationId = extractUuid(question);
     const content = extractQuotedText(question);
     if (!conversationId || !content) {
@@ -480,21 +739,47 @@ export async function routeDirectToolIntent(params: {
     });
   }
 
-  if (/\b(?:create|add)\b.*\bcustomer\b/i.test(question)) {
+  if (
+    params.actor.capabilities.canManageWorkOrders &&
+    /\b(?:create|add)\b.*\bcustomer\b/i.test(question)
+  ) {
     const quotedName = extractQuotedText(question);
     const email = question.match(/\b[^\s@]+@[^\s@]+\.[^\s@]+\b/)?.[0];
     const nameMatch = question.match(
       /\b(?:create|add)\s+(?:a\s+|new\s+)?customer\s+(.+?)(?:\s+with\s+|\s+email\s+|\s+phone\s+|$)/i,
     )?.[1];
-    const name = quotedName ?? nameMatch?.replace(/[.!?]+$/, "").trim() ?? null;
+    const clarifiedName = question.match(
+      /(?:^|\n)Customer name:\s*([^\n]{1,160})(?:\n|$)/i,
+    )?.[1];
+    const clarifiedEmail = question.match(
+      /(?:^|\n)Email:\s*([^\s\n]+)(?:\n|$)/i,
+    )?.[1];
+    const clarifiedPhone = question.match(
+      /(?:^|\n)Phone:\s*([^\n]{3,40})(?:\n|$)/i,
+    )?.[1];
+    const name =
+      quotedName ??
+      clarifiedName?.trim() ??
+      nameMatch?.replace(/[.!?]+$/, "").trim() ??
+      null;
     if (!name) {
       return {
         kind: "clarification_required",
         content: "What is the new customer’s name?",
         fields: [
           { name: "name", label: "Customer name", type: "text" },
-          { name: "email", label: "Email", type: "text" },
-          { name: "phone", label: "Phone", type: "text" },
+          {
+            name: "email",
+            label: "Email",
+            type: "text",
+            required: false,
+          },
+          {
+            name: "phone",
+            label: "Phone",
+            type: "text",
+            required: false,
+          },
         ],
       };
     }
@@ -503,10 +788,16 @@ export async function routeDirectToolIntent(params: {
       threadId: params.threadId,
       clientMessageId: params.clientMessageId,
       toolName: "create_customer",
-      input: { name, email },
+      input: {
+        name,
+        email: clarifiedEmail ?? email,
+        phone: clarifiedPhone,
+      },
       resolvedContext: { lastDomain: "customers" },
     });
   }
+
+  if (params.mode === "writes_only") return null;
 
   if (/\b(?:low stock|low inventory|reorder)\b/i.test(question)) {
     return runRead({
@@ -520,7 +811,27 @@ export async function routeDirectToolIntent(params: {
     });
   }
 
-  if (/\b(?:parts? blockers?|waiting on parts|parts? delayed)\b/i.test(question)) {
+  if (
+    /\b(?:(?:pending|overdue|waiting|awaiting)\s+approvals?|approvals?\s+(?:pending|overdue|waiting)|waiting\s+on\s+approvals?)\b/i.test(
+      question,
+    )
+  ) {
+    return runRead({
+      actor: params.actor,
+      threadId: params.threadId,
+      clientMessageId: params.clientMessageId,
+      toolName: "list_pending_approvals",
+      domain: "work_orders",
+      input: { limit: 20 },
+      resolvedContext: { lastDomain: "work_orders" },
+    });
+  }
+
+  if (
+    /\b(?:parts? blockers?|waiting on parts|parts? delayed|delayed parts?|jobs? delayed by parts?)\b/i.test(
+      question,
+    )
+  ) {
     const workOrder = await resolveWorkOrder(params).catch(() => null);
     return runRead({
       actor: params.actor,
@@ -536,7 +847,27 @@ export async function routeDirectToolIntent(params: {
     });
   }
 
-  if (/\b(?:ready to invoice|ready for invoice|invoice queue|billing queue)\b/i.test(question)) {
+  if (
+    /\b(?:stalled work orders?|stale work orders?|queued too long|waiting too long|prioritize the stalled)\b/i.test(
+      question,
+    )
+  ) {
+    return runRead({
+      actor: params.actor,
+      threadId: params.threadId,
+      clientMessageId: params.clientMessageId,
+      toolName: "list_stalled_work_orders",
+      domain: "work_orders",
+      input: { limit: 20 },
+      resolvedContext: { lastDomain: "work_orders" },
+    });
+  }
+
+  if (
+    /\b(?:ready to invoice|ready for invoice|invoice queue|billing queue)\b/i.test(
+      question,
+    )
+  ) {
     return runRead({
       actor: params.actor,
       threadId: params.threadId,
@@ -548,7 +879,11 @@ export async function routeDirectToolIntent(params: {
     });
   }
 
-  if (/\b(?:technician load|tech load|who is idle|available tech|available technician|workload)\b/i.test(question)) {
+  if (
+    /\b(?:technician load|tech load|who is idle|available tech|available technician|workload)\b/i.test(
+      question,
+    )
+  ) {
     return runRead({
       actor: params.actor,
       threadId: params.threadId,
@@ -572,7 +907,11 @@ export async function routeDirectToolIntent(params: {
     });
   }
 
-  if (/\b(?:inspection status|open inspections?|inspection queue)\b/i.test(question)) {
+  if (
+    /\b(?:inspection status|open inspections?|inspection queue)\b/i.test(
+      question,
+    )
+  ) {
     const workOrder = await resolveWorkOrder(params).catch(() => null);
     return runRead({
       actor: params.actor,
@@ -597,7 +936,9 @@ export async function routeDirectToolIntent(params: {
       return {
         kind: "clarification_required",
         content: "Which customer should I search for?",
-        fields: [{ name: "query", label: "Name, email, or phone", type: "text" }],
+        fields: [
+          { name: "query", label: "Name, email, or phone", type: "text" },
+        ],
       };
     }
     return runRead({
@@ -611,7 +952,11 @@ export async function routeDirectToolIntent(params: {
     });
   }
 
-  if (/\b(?:revenue|business snapshot|financial snapshot|throughput report)\b/i.test(question)) {
+  if (
+    /\b(?:revenue|business snapshot|financial snapshot|throughput report)\b/i.test(
+      question,
+    )
+  ) {
     const days = Number(question.match(/\b(\d{1,3})\s+days?\b/i)?.[1] ?? 30);
     return runRead({
       actor: params.actor,
@@ -624,7 +969,11 @@ export async function routeDirectToolIntent(params: {
     });
   }
 
-  if (/\b(?:shop status|how is the shop|how's the shop|operations summary)\b/i.test(question)) {
+  if (
+    /\b(?:shop status|how is the shop|how's the shop|operations summary)\b/i.test(
+      question,
+    )
+  ) {
     return runRead({
       actor: params.actor,
       threadId: params.threadId,

@@ -49,9 +49,13 @@ describe("invoice financial integrity repair", () => {
 
   it("keeps draft writes out of HTTP routes and makes attachments non-blocking", () => {
     const finalize = source("app/api/invoices/finalize/route.ts");
+    const finalizationService = source(
+      "features/invoices/server/finalizeWorkOrderInvoice.ts",
+    );
     const send = source("app/api/invoices/send/route.ts");
     expect(finalize).not.toContain('.from("invoices")');
-    expect(finalize).toContain("finalizedWithWarnings");
+    expect(finalize).toContain("finalizeWorkOrderInvoice");
+    expect(finalizationService).toContain("finalizedWithWarnings");
     expect(send).not.toContain('status: "draft"');
     expect(send).toContain("issuanceWarnings");
   });

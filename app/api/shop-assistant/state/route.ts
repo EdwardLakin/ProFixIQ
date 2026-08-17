@@ -2,8 +2,7 @@ import { NextResponse } from "next/server";
 
 import {
   requireShopAssistantActor,
-  shopAssistantErrorMessage,
-  shopAssistantErrorStatus,
+  resolveShopAssistantError,
 } from "@/features/shop-assistant/server/requireShopAssistantActor";
 import { buildShopState } from "@/features/shop-assistant/server/state/buildShopState";
 import type { ShopAssistantStateResponse } from "@/features/shop-assistant/server/state/types";
@@ -24,9 +23,10 @@ export async function GET() {
       },
     );
   } catch (error: unknown) {
+    const resolved = resolveShopAssistantError(error, "shop-assistant-state");
     return NextResponse.json<ShopAssistantStateResponse>(
-      { ok: false, error: shopAssistantErrorMessage(error) },
-      { status: shopAssistantErrorStatus(error) },
+      { ok: false, error: resolved.message },
+      { status: resolved.status },
     );
   }
 }

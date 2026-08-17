@@ -8,8 +8,6 @@ import { getOpenAIModelForPurpose, openAITemperatureParam } from "@/features/sha
 import type { Database } from "@shared/types/types/supabase";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
-const openai = getOpenAIClient();
-
 type Vehicle = {
   year?: string | null;
   make?: string | null;
@@ -87,7 +85,7 @@ export async function POST(req: Request) {
       'Return JSON with these exact keys: { "cause": string, "correction": string, "estimatedLaborTime": number | null }',
     ].join("\n");
 
-    const completion = await openai.chat.completions.create({
+    const completion = await getOpenAIClient().chat.completions.create({
       model: getOpenAIModelForPurpose("reasoning"),
       ...openAITemperatureParam(getOpenAIModelForPurpose("reasoning"), 0.3),
       stream: false,

@@ -2,8 +2,13 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import type { Database } from "@/features/shared/types/types/supabase";
 import type { ShopAssistantActor } from "@/features/shop-assistant/server/requireShopAssistantActor";
-import { ShopAssistantHttpError } from "@/features/shop-assistant/server/requireShopAssistantActor";
+import {
+  resolveShopAssistantError,
+  ShopAssistantHttpError,
+} from "@/features/shop-assistant/server/requireShopAssistantActor";
 import type { ShopAssistantActionPreviewDraft } from "@/features/shop-assistant/server/tools/types";
 import type {
   ShopAssistantActionPreview,
@@ -13,7 +18,7 @@ import type {
   ShopAssistantDomain,
 } from "@/features/shop-assistant/types";
 
-type AssistantDb = SupabaseClient<any>;
+type AssistantDb = SupabaseClient<Database>;
 
 export const SHOP_ASSISTANT_ACTION_EXECUTION_LEASE_MS = 2 * 60 * 1000;
 
@@ -45,6 +50,10 @@ function dbFor(actor: ShopAssistantActor): AssistantDb {
   return actor.supabase as unknown as AssistantDb;
 }
 
+function actionWriteDb(): AssistantDb {
+  return createAdminSupabase() as unknown as AssistantDb;
+}
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -55,6 +64,24 @@ function asStringArray(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((item): item is string => typeof item === "string")
     : [];
+}
+
+function canonicalJson(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalJson);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, child]) => [key, canonicalJson(child)]),
+    );
+  }
+  return value;
+}
+
+function sameJson(left: unknown, right: unknown): boolean {
+  return (
+    JSON.stringify(canonicalJson(left)) === JSON.stringify(canonicalJson(right))
+  );
 }
 
 function normalizeRisk(value: string): ShopAssistantActionRisk {
@@ -84,6 +111,10 @@ function isTerminalStatus(value: string): boolean {
   );
 }
 
+function isRetryableFailedAction(row: ShopAssistantActionRow): boolean {
+  return row.status === "failed" && asRecord(row.error).retryable === true;
+}
+
 function executionLeaseExpired(
   row: ShopAssistantActionRow,
   nowMs = Date.now(),
@@ -106,6 +137,8 @@ function normalizeDomain(value: string): ShopAssistantDomain {
     value === "inspections" ||
     value === "invoices" ||
     value === "workforce" ||
+    value === "technician" ||
+    value === "fleet" ||
     value === "reporting" ||
     value === "business_analytics"
   ) {
@@ -124,8 +157,7 @@ export function mapActionPreview(
     domain: normalizeDomain(row.domain),
     risk: normalizeRisk(row.risk),
     status: normalizeStatus(row.status),
-    title:
-      typeof preview.title === "string" ? preview.title : row.tool_name,
+    title: typeof preview.title === "string" ? preview.title : row.tool_name,
     summary:
       typeof preview.summary === "string"
         ? preview.summary
@@ -200,7 +232,7 @@ export async function createPendingAction(params: {
     expires_at: expiresAt,
   };
 
-  const db = dbFor(params.actor);
+  const db = actionWriteDb();
   const { data, error } = await db
     .from("shop_assistant_actions")
     .insert(payload)
@@ -211,7 +243,9 @@ export async function createPendingAction(params: {
     return { row: data as ShopAssistantActionRow, created: true };
   }
   if (error?.code !== "23505") {
-    throw new Error(error?.message ?? "Failed to create shop assistant action.");
+    throw new Error(
+      error?.message ?? "Failed to create shop assistant action.",
+    );
   }
 
   const { data: existing, error: existingError } = await db
@@ -225,7 +259,21 @@ export async function createPendingAction(params: {
       existingError?.message ?? "Failed to restore the existing shop action.",
     );
   }
-  return { row: existing as ShopAssistantActionRow, created: false };
+  const existingRow = existing as ShopAssistantActionRow;
+  if (
+    existingRow.thread_id !== params.threadId ||
+    existingRow.requested_by !== params.actor.userId ||
+    existingRow.tool_name !== params.toolName ||
+    existingRow.domain !== params.domain ||
+    existingRow.risk !== params.risk ||
+    !sameJson(existingRow.input, params.input)
+  ) {
+    throw new ShopAssistantHttpError(
+      409,
+      "That request id is already bound to a different shop action.",
+    );
+  }
+  return { row: existingRow, created: false };
 }
 
 export async function loadAction(
@@ -239,7 +287,8 @@ export async function loadAction(
     .eq("shop_id", actor.shopId)
     .maybeSingle();
   if (error) throw new Error(error.message);
-  if (!data) throw new ShopAssistantHttpError(404, "Shop assistant action not found.");
+  if (!data)
+    throw new ShopAssistantHttpError(404, "Shop assistant action not found.");
   return data as ShopAssistantActionRow;
 }
 
@@ -255,11 +304,14 @@ export async function expireActionIfNeeded(params: {
   }
 
   const now = new Date().toISOString();
-  const { data, error } = await dbFor(params.actor)
+  const { data, error } = await actionWriteDb()
     .from("shop_assistant_actions")
     .update({
       status: "expired",
-      error: { message: "Action expired before confirmation.", retryable: true },
+      error: {
+        message: "Action expired before confirmation.",
+        retryable: false,
+      },
       execution_finished_at: now,
       updated_at: now,
     })
@@ -287,6 +339,33 @@ export async function acquireActionExecution(params: {
       "Only the staff member who requested this action can confirm it.",
     );
   }
+  if (isRetryableFailedAction(current)) {
+    const now = new Date().toISOString();
+    const { data, error } = await actionWriteDb()
+      .from("shop_assistant_actions")
+      .update({
+        status: "executing",
+        confirmed_by: params.actor.userId,
+        confirmed_at: current.confirmed_at ?? now,
+        execution_started_at: now,
+        execution_finished_at: null,
+        error: null,
+        updated_at: now,
+      })
+      .eq("id", params.actionId)
+      .eq("shop_id", params.actor.shopId)
+      .eq("requested_by", params.actor.userId)
+      .eq("status", "failed")
+      .eq("updated_at", current.updated_at)
+      .select(ACTION_SELECT)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (data) return { row: data as ShopAssistantActionRow, acquired: true };
+    return {
+      row: await loadAction(params.actor, params.actionId),
+      acquired: false,
+    };
+  }
   if (isTerminalStatus(current.status)) {
     return { row: current, acquired: false };
   }
@@ -297,7 +376,7 @@ export async function acquireActionExecution(params: {
       return { row: current, acquired: false };
     }
 
-    let recovery = dbFor(params.actor)
+    let recovery = actionWriteDb()
       .from("shop_assistant_actions")
       .update({
         confirmed_by: params.actor.userId,
@@ -314,9 +393,7 @@ export async function acquireActionExecution(params: {
       ? recovery.eq("execution_started_at", current.execution_started_at)
       : recovery.is("execution_started_at", null);
 
-    const { data, error } = await recovery
-      .select(ACTION_SELECT)
-      .maybeSingle();
+    const { data, error } = await recovery.select(ACTION_SELECT).maybeSingle();
     if (error) throw new Error(error.message);
     if (data) {
       return { row: data as ShopAssistantActionRow, acquired: true };
@@ -331,7 +408,7 @@ export async function acquireActionExecution(params: {
     return { row: current, acquired: false };
   }
 
-  const { data, error } = await dbFor(params.actor)
+  const { data, error } = await actionWriteDb()
     .from("shop_assistant_actions")
     .update({
       status: "executing",
@@ -352,7 +429,10 @@ export async function acquireActionExecution(params: {
   if (error) throw new Error(error.message);
   if (data) return { row: data as ShopAssistantActionRow, acquired: true };
 
-  return { row: await loadAction(params.actor, params.actionId), acquired: false };
+  return {
+    row: await loadAction(params.actor, params.actionId),
+    acquired: false,
+  };
 }
 
 export async function completeAction(params: {
@@ -361,7 +441,7 @@ export async function completeAction(params: {
   result: unknown;
 }): Promise<ShopAssistantActionRow> {
   const now = new Date().toISOString();
-  const { data, error } = await dbFor(params.actor)
+  const { data, error } = await actionWriteDb()
     .from("shop_assistant_actions")
     .update({
       status: "succeeded",
@@ -389,16 +469,19 @@ export async function failAction(params: {
   error: unknown;
   retryable?: boolean;
 }): Promise<ShopAssistantActionRow> {
-  const message =
-    params.error instanceof Error
-      ? params.error.message
-      : "The shop action failed.";
+  const resolved = resolveShopAssistantError(
+    params.error,
+    "shop-assistant-action",
+  );
   const now = new Date().toISOString();
-  const { data, error } = await dbFor(params.actor)
+  const { data, error } = await actionWriteDb()
     .from("shop_assistant_actions")
     .update({
       status: "failed",
-      error: { message, retryable: params.retryable ?? true },
+      error: {
+        message: resolved.message,
+        retryable: params.retryable ?? resolved.retryable,
+      },
       execution_finished_at: now,
       updated_at: now,
     })
@@ -429,7 +512,7 @@ export async function cancelAction(params: {
   }
 
   const now = new Date().toISOString();
-  const { data, error } = await dbFor(params.actor)
+  const { data, error } = await actionWriteDb()
     .from("shop_assistant_actions")
     .update({
       status: "cancelled",

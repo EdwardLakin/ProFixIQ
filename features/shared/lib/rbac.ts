@@ -322,6 +322,17 @@ export function canSendQuotes(role: string | null | undefined): boolean {
   return getActorCapabilities({ role }).canAuthorizeQuotes;
 }
 
+export function canAccessShopAssistant(
+  role: string | null | undefined,
+): boolean {
+  const canonical = canonicalizeRole(role);
+  return (
+    canonical !== "customer" &&
+    canonical !== "driver" &&
+    canonical !== "unknown"
+  );
+}
+
 export function resolveFleetRoleTier(
   role: string | null | undefined,
 ): FleetRoleTier {

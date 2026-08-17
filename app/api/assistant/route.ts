@@ -4,6 +4,10 @@ import { NextResponse } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 
 import { answerAssistant } from "@/features/agent/assistant/server/answerAssistant";
+import {
+  requireShopAssistantActor,
+  resolveShopAssistantError,
+} from "@/features/shop-assistant/server/requireShopAssistantActor";
 import type {
   AssistantAskContext,
   AssistantAskSession,
@@ -11,49 +15,17 @@ import type {
   AssistantVehicleContext,
 } from "@/features/agent/assistant/types";
 
-async function requireUser(
-  supabase: ReturnType<typeof createServerSupabaseRoute>,
-) {
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-
-  if (error || !user) return null;
-  return user;
-}
-
-async function resolveProfile(
-  supabase: ReturnType<typeof createServerSupabaseRoute>,
-  userId: string,
-): Promise<{ shopId: string | null; role: string | null }> {
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("shop_id, role")
-    .eq("id", userId)
-    .maybeSingle();
-
-  if (error) {
-    return { shopId: null, role: null };
-  }
-
-  return {
-    shopId: data?.shop_id ?? null,
-    role: data?.role ?? null,
-  };
-}
-
 export async function POST(req: Request) {
   const supabase = createServerSupabaseRoute();
-
-  const user = await requireUser(supabase);
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const profile = await resolveProfile(supabase, user.id);
-  if (!profile.shopId) {
-    return NextResponse.json({ error: "No shop found" }, { status: 400 });
+  let actor: Awaited<ReturnType<typeof requireShopAssistantActor>>;
+  try {
+    actor = await requireShopAssistantActor(supabase);
+  } catch (error: unknown) {
+    const resolved = resolveShopAssistantError(error, "legacy-assistant-auth");
+    return NextResponse.json(
+      { error: resolved.message },
+      { status: resolved.status },
+    );
   }
 
   const body = (await req.json().catch(() => ({}))) as {
@@ -78,9 +50,10 @@ export async function POST(req: Request) {
 
   try {
     const answer = await answerAssistant({
-      shopId: profile.shopId,
-      userId: user.id,
-      role: profile.role,
+      shopId: actor.shopId,
+      userId: actor.userId,
+      profileId: actor.profileId,
+      role: actor.role,
       request: {
         question: query,
         context: body.context,
@@ -176,11 +149,12 @@ export async function POST(req: Request) {
       resolvedContext: answer.resolvedContext,
     });
   } catch (error: unknown) {
+    const resolved = resolveShopAssistantError(error, "legacy-assistant");
     return NextResponse.json(
       {
-        error: error instanceof Error ? error.message : "Assistant failed",
+        error: resolved.message,
       },
-      { status: 500 },
+      { status: resolved.status },
     );
   }
 }

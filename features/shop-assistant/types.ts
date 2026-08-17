@@ -9,6 +9,8 @@ export type ShopAssistantDomain =
   | "inspections"
   | "invoices"
   | "workforce"
+  | "technician"
+  | "fleet"
   | "reporting"
   | "business_analytics";
 
@@ -42,11 +44,7 @@ export type ShopAssistantThread = {
   updatedAt: string;
 };
 
-export type ShopAssistantMessageRole =
-  | "user"
-  | "assistant"
-  | "system"
-  | "tool";
+export type ShopAssistantMessageRole = "user" | "assistant" | "system" | "tool";
 
 export type ShopAssistantMessageKind =
   | "text"
@@ -112,6 +110,7 @@ export type ShopAssistantTurn =
         name: string;
         label: string;
         type: "text" | "select" | "date" | "datetime";
+        required?: boolean;
         options?: Array<{ label: string; value: string }>;
       }>;
     }

@@ -5,8 +5,9 @@ import { z } from "zod";
 import { canonicalizeRole } from "@/features/shared/lib/rbac";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { getTechnicianLoadMetricsWithClient } from "@/features/shared/lib/stats/getTechnicianLoadMetricsCore";
+import { ageHours } from "@/features/agent/server/flowHealth";
 import { ShopAssistantHttpError } from "@/features/shop-assistant/server/requireShopAssistantActor";
-import { defineShopAssistantTool } from "../types";
+import { defineShopAssistantTool, runShopAssistantCommandRpc } from "../types";
 
 const TechnicianLoadSchema = z.object({
   technicianId: z.string().uuid(),
@@ -28,18 +29,20 @@ const AssignmentResultSchema = z.object({
   href: z.string(),
 });
 
-type RpcError = {
-  message: string;
-  details?: string | null;
-  hint?: string | null;
-};
-
-type RpcClient = {
-  rpc: (
-    name: string,
-    args: Record<string, unknown>,
-  ) => PromiseLike<{ data: unknown; error: RpcError | null }>;
-};
+const AssignmentRecommendationSchema = z.object({
+  workOrderId: z.string().uuid(),
+  customId: z.string().nullable(),
+  status: z.string().nullable(),
+  priority: z.number().nullable(),
+  ageHours: z.number().nonnegative(),
+  primaryJob: z.string().nullable(),
+  unassignedJobs: z.number().int().positive(),
+  estimatedHours: z.number().nonnegative(),
+  recommendedTechnicianId: z.string().uuid().nullable(),
+  recommendedTechnicianName: z.string().nullable(),
+  reason: z.string(),
+  href: z.string(),
+});
 
 function isAssignableTechnicianRole(role: string | null | undefined): boolean {
   const canonical = canonicalizeRole(role);
@@ -50,8 +53,24 @@ function isAssignableTechnicianRole(role: string | null | undefined): boolean {
   );
 }
 
-function rpcErrorMessage(error: RpcError): string {
-  return [error.message, error.details, error.hint].filter(Boolean).join(" — ");
+const TERMINAL_ASSIGNMENT_STATUSES = new Set([
+  "completed",
+  "done",
+  "declined",
+  "deferred",
+  "cancelled",
+  "canceled",
+  "void",
+  "voided",
+  "ready_to_invoice",
+  "invoiced",
+]);
+
+function normalizedStatus(value: unknown): string {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replaceAll(" ", "_");
 }
 
 export const listTechnicianLoadTool = defineShopAssistantTool({
@@ -60,7 +79,7 @@ export const listTechnicianLoadTool = defineShopAssistantTool({
   description: "Read current technician load and available capacity.",
   mode: "read",
   risk: "low",
-  requiredCapability: "canViewShopWideData",
+  requiredAnyCapabilities: ["canAssignWork", "canManageWorkforce"],
   confirmation: "never",
   inputSchema: z.object({
     includeOffShift: z.boolean().default(false),
@@ -95,6 +114,164 @@ export const listTechnicianLoadTool = defineShopAssistantTool({
       shopUtilizationPct: load.summary.shopUtilizationPct,
       summary: `${technicians.length} technician(s) are included in the current load view.`,
       href: "/dashboard",
+    };
+  },
+});
+
+export const recommendWorkAssignmentsTool = defineShopAssistantTool({
+  name: "recommend_work_assignments",
+  domain: "workforce",
+  description:
+    "Rank queued work orders and pair them with available on-shift technicians without changing any assignment.",
+  mode: "read",
+  risk: "low",
+  requiredCapability: "canAssignWork",
+  confirmation: "never",
+  inputSchema: z.object({
+    limit: z.number().int().min(1).max(25).default(10),
+  }),
+  outputSchema: z.object({
+    ok: z.literal(true),
+    recommendations: z.array(AssignmentRecommendationSchema),
+    summary: z.string(),
+    href: z.string(),
+  }),
+  async execute(input, context) {
+    const { data: workOrders, error: workOrderError } =
+      await context.actor.supabase
+        .from("work_orders")
+        .select(
+          "id, custom_id, status, priority, is_waiter, created_at, updated_at",
+        )
+        .eq("shop_id", context.actor.shopId)
+        .in("status", [
+          "awaiting",
+          "planned",
+          "queued",
+          "active",
+          "in_progress",
+        ])
+        .order("created_at", { ascending: true, nullsFirst: false })
+        .limit(100);
+    if (workOrderError) throw new Error(workOrderError.message);
+
+    const workOrderIds = (workOrders ?? []).map((row) => row.id);
+    const { data: lines, error: lineError } = workOrderIds.length
+      ? await context.actor.supabase
+          .from("work_order_lines")
+          .select(
+            "id, work_order_id, description, labor_time, assigned_tech_id, line_status, status, priority, job_priority",
+          )
+          .eq("shop_id", context.actor.shopId)
+          .eq("line_type", "job")
+          .is("voided_at", null)
+          .in("work_order_id", workOrderIds)
+      : { data: [], error: null };
+    if (lineError) throw new Error(lineError.message);
+
+    const load = await getTechnicianLoadMetricsWithClient(
+      context.actor.supabase,
+      context.actor.shopId,
+    );
+    const availableTechnicians = load.rows
+      .filter((row) => row.shiftSecondsToday > 0)
+      .sort(
+        (left, right) =>
+          left.currentActiveJobs - right.currentActiveJobs ||
+          left.utilizationPct - right.utilizationPct ||
+          left.name.localeCompare(right.name),
+      );
+    const projectedJobs = new Map(
+      availableTechnicians.map((technician) => [
+        technician.techId,
+        technician.currentActiveJobs,
+      ]),
+    );
+    const terminal = new Set([
+      "completed",
+      "done",
+      "cancelled",
+      "canceled",
+      "void",
+    ]);
+    const rows = (workOrders ?? [])
+      .map((workOrder) => {
+        const eligibleLines = (lines ?? []).filter((line) => {
+          if (line.work_order_id !== workOrder.id || line.assigned_tech_id)
+            return false;
+          const status = String(line.line_status ?? line.status ?? "")
+            .trim()
+            .toLowerCase();
+          return !terminal.has(status);
+        });
+        if (eligibleLines.length === 0) return null;
+        const age = ageHours(workOrder.updated_at ?? workOrder.created_at) ?? 0;
+        const linePriority = Math.max(
+          ...eligibleLines.map((line) =>
+            Number(
+              line.priority ??
+                (/urgent|critical/i.test(line.job_priority ?? "") ? 10 : 0),
+            ),
+          ),
+        );
+        return {
+          workOrder,
+          eligibleLines,
+          age,
+          score:
+            Number(workOrder.priority ?? 0) * 100 +
+            linePriority * 25 +
+            (workOrder.is_waiter ? 250 : 0) +
+            Math.min(age, 240),
+        };
+      })
+      .filter((row): row is NonNullable<typeof row> => Boolean(row))
+      .sort((left, right) => right.score - left.score || right.age - left.age)
+      .slice(0, input.limit);
+
+    const recommendations = rows.map((row) => {
+      const technician = [...availableTechnicians].sort(
+        (left, right) =>
+          Number(projectedJobs.get(left.techId) ?? 0) -
+            Number(projectedJobs.get(right.techId) ?? 0) ||
+          left.utilizationPct - right.utilizationPct,
+      )[0];
+      if (technician) {
+        projectedJobs.set(
+          technician.techId,
+          Number(projectedJobs.get(technician.techId) ?? 0) + 1,
+        );
+      }
+      const estimatedHours = row.eligibleLines.reduce(
+        (sum, line) => sum + Math.max(0, Number(line.labor_time ?? 0)),
+        0,
+      );
+      return {
+        workOrderId: row.workOrder.id,
+        customId: row.workOrder.custom_id ?? null,
+        status: row.workOrder.status ?? null,
+        priority:
+          row.workOrder.priority == null
+            ? null
+            : Number(row.workOrder.priority),
+        ageHours: Math.round(row.age * 10) / 10,
+        primaryJob: row.eligibleLines[0]?.description?.trim() || null,
+        unassignedJobs: row.eligibleLines.length,
+        estimatedHours,
+        recommendedTechnicianId: technician?.techId ?? null,
+        recommendedTechnicianName: technician?.name ?? null,
+        reason: technician
+          ? `${row.workOrder.is_waiter ? "Waiter priority; " : ""}${row.eligibleLines.length} unassigned job(s), ${Math.round(row.age)} hours in the current state; ${technician.name} has the lowest projected active load.`
+          : `${row.eligibleLines.length} unassigned job(s) need review, but no on-shift technician capacity was found.`,
+        href: `/work-orders/${row.workOrder.id}`,
+      };
+    });
+
+    return {
+      ok: true as const,
+      recommendations,
+      summary: `${recommendations.length} queued work order(s) were ranked against current on-shift capacity. No assignments were changed.`,
+      href: "/work-orders",
     };
   },
 });
@@ -136,10 +313,16 @@ export const assignWorkOrderTool = defineShopAssistantTool({
     if (workOrderError) throw new Error(workOrderError.message);
     if (technicianError) throw new Error(technicianError.message);
     if (!workOrder) {
-      throw new ShopAssistantHttpError(404, "Work order not found in this shop.");
+      throw new ShopAssistantHttpError(
+        404,
+        "Work order not found in this shop.",
+      );
     }
     if (!technician) {
-      throw new ShopAssistantHttpError(404, "Technician not found in this shop.");
+      throw new ShopAssistantHttpError(
+        404,
+        "Technician not found in this shop.",
+      );
     }
     if (!isAssignableTechnicianRole(technician.role)) {
       throw new ShopAssistantHttpError(
@@ -148,33 +331,69 @@ export const assignWorkOrderTool = defineShopAssistantTool({
       );
     }
 
-    let countQuery = admin
-      .from("work_order_lines")
-      .select("id", { count: "exact", head: true })
-      .eq("shop_id", context.actor.shopId)
-      .eq("work_order_id", workOrder.id)
-      .eq("line_type", "job");
-    if (input.onlyUnassigned) {
-      countQuery = countQuery.is("assigned_tech_id", null);
+    const eligibleLines: Array<{ id: string; updated_at: string | null }> = [];
+    for (let from = 0; ; from += 500) {
+      let lineQuery = admin
+        .from("work_order_lines")
+        .select("id, updated_at, status, line_status, assigned_tech_id")
+        .eq("shop_id", context.actor.shopId)
+        .eq("work_order_id", workOrder.id)
+        .is("voided_at", null)
+        .or("line_type.is.null,line_type.eq.job")
+        .order("id", { ascending: true })
+        .range(from, from + 499);
+      if (input.onlyUnassigned) {
+        lineQuery = lineQuery.is("assigned_tech_id", null);
+      }
+      const { data: page, error: lineError } = await lineQuery;
+      if (lineError) throw new Error(lineError.message);
+      for (const line of page ?? []) {
+        if (
+          TERMINAL_ASSIGNMENT_STATUSES.has(normalizedStatus(line.status)) ||
+          TERMINAL_ASSIGNMENT_STATUSES.has(normalizedStatus(line.line_status))
+        ) {
+          continue;
+        }
+        eligibleLines.push({ id: line.id, updated_at: line.updated_at });
+      }
+      if ((page ?? []).length < 500) break;
     }
-    const { count, error: countError } = await countQuery;
-    if (countError) throw new Error(countError.message);
+    if (eligibleLines.length === 0) {
+      throw new ShopAssistantHttpError(
+        409,
+        "This work order has no eligible job lines to assign.",
+      );
+    }
 
     const label = workOrder.custom_id
       ? `WO #${workOrder.custom_id}`
       : `WO ${workOrder.id.slice(0, 8)}`;
     return {
       title: `Assign ${label} to ${technician.full_name ?? "technician"}`,
-      summary: `${count ?? 0} job line(s) will be assigned to ${technician.full_name ?? "the selected technician"}.`,
+      summary: `${eligibleLines.length} job line(s) will be assigned to ${technician.full_name ?? "the selected technician"}.`,
       consequences: [
         input.onlyUnassigned
           ? "Existing technician assignments will remain unchanged."
           : "Existing primary technician assignments may be replaced.",
         "Primary assignments and technician bridge records will be committed atomically.",
       ],
-      targetVersions: workOrder.updated_at
-        ? { [`work_order:${workOrder.id}`]: workOrder.updated_at }
-        : {},
+      targetVersions: Object.fromEntries([
+        [
+          `work_order:${workOrder.id}`,
+          workOrder.updated_at ?? "missing",
+        ] as const,
+        [
+          `work_order_line_count:${workOrder.id}`,
+          String(eligibleLines.length),
+        ] as const,
+        ...eligibleLines.map(
+          (line) =>
+            [
+              `work_order_line:${line.id}`,
+              line.updated_at ?? "missing",
+            ] as const,
+        ),
+      ]),
       metadata: {
         workOrderId: workOrder.id,
         technicianId: technician.id,
@@ -187,8 +406,7 @@ export const assignWorkOrderTool = defineShopAssistantTool({
       throw new Error("An action id is required for atomic work assignment.");
     }
 
-    const rpc = context.actor.supabase as unknown as RpcClient;
-    const { data, error } = await rpc.rpc(
+    const data = await runShopAssistantCommandRpc(
       "shop_assistant_assign_work_order_atomic",
       {
         p_action_id: context.actionId,
@@ -199,7 +417,6 @@ export const assignWorkOrderTool = defineShopAssistantTool({
         p_only_unassigned: input.onlyUnassigned,
       },
     );
-    if (error) throw new Error(rpcErrorMessage(error));
     return AssignmentResultSchema.parse(data);
   },
 });

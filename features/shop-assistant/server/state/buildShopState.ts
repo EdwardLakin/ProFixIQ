@@ -1,12 +1,17 @@
 import "server-only";
 
+import { listTechnicianWorkCandidates } from "@/features/copilot/technician/server/assignedWork";
 import { syncAssistantNotifications } from "@/features/agent/server/syncAssistantNotifications";
 import type { PersistedAssistantNotification } from "@/features/agent/server/syncAssistantNotifications";
+import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
 import type { ActorCapabilities } from "@/features/shared/lib/rbac";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { getTechnicianLoadMetricsWithClient } from "@/features/shared/lib/stats/getTechnicianLoadMetricsCore";
+import { getShopDayRange } from "@/features/shared/lib/utils/shopDayWindow";
 import type { ShopAssistantActor } from "@/features/shop-assistant/server/requireShopAssistantActor";
 import type {
   ShopAssistantAlert,
+  ShopAssistantMetrics,
   ShopAssistantState,
   ShopAssistantSuggestion,
 } from "./types";
@@ -22,16 +27,242 @@ const ACTIVE_WORK_ORDER_STATUSES = [
 
 const READY_TO_INVOICE_STATUSES = ["completed", "ready_to_invoice"];
 
-function startOfUtcDay(now: Date): string {
-  return new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
-  ).toISOString();
+const EMPTY_METRICS = {
+  openWorkOrders: 0,
+  stalledWorkOrders: 0,
+  overdueApprovals: 0,
+  delayedParts: 0,
+  idleTechnicians: 0,
+  readyToInvoice: 0,
+  todaysBookings: 0,
+  shopUtilizationPct: 0,
+};
+
+type StateVisibility = {
+  workOrders: boolean;
+  approvals: boolean;
+  parts: boolean;
+  workforce: boolean;
+  invoices: boolean;
+  bookings: boolean;
+};
+
+function stateVisibility(actor: ShopAssistantActor): StateVisibility {
+  const capabilities = actor.capabilities;
+  return {
+    workOrders:
+      capabilities.canViewShopWideData ||
+      capabilities.canManageWorkOrders ||
+      capabilities.canAssignWork,
+    approvals: capabilities.canAuthorizeQuotes,
+    parts: capabilities.canManageParts,
+    workforce: capabilities.canAssignWork || capabilities.canManageWorkforce,
+    invoices: ["owner", "admin", "manager", "advisor", "service"].includes(
+      actor.canonicalRole,
+    ),
+    bookings: capabilities.canManageScheduling,
+  };
 }
 
-function endOfUtcDay(now: Date): string {
-  return new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1),
-  ).toISOString();
+function visibleMetricKeys(
+  visibility: StateVisibility,
+): Array<keyof ShopAssistantMetrics> {
+  const keys: Array<keyof ShopAssistantMetrics> = [];
+  if (visibility.workOrders) {
+    keys.push("openWorkOrders", "stalledWorkOrders");
+  }
+  if (visibility.approvals) keys.push("overdueApprovals");
+  if (visibility.parts) keys.push("delayedParts");
+  if (visibility.workforce) {
+    keys.push("idleTechnicians", "shopUtilizationPct");
+  }
+  if (visibility.invoices) keys.push("readyToInvoice");
+  if (visibility.bookings) keys.push("todaysBookings");
+  return keys;
+}
+
+function canViewAlert(
+  alert: ShopAssistantAlert,
+  visibility: StateVisibility,
+): boolean {
+  if (alert.code === "approval_waiting" || alert.code === "quote_waiting") {
+    return visibility.approvals;
+  }
+  if (alert.code === "parts_delivery_overdue") {
+    return visibility.parts || visibility.workOrders;
+  }
+  if (alert.code === "invoice_ready") return visibility.invoices;
+  if (
+    alert.code.startsWith("tech_") ||
+    alert.code === "shop_overloaded" ||
+    alert.code === "shop_throughput_below_capacity"
+  ) {
+    return visibility.workforce;
+  }
+  if (alert.code.startsWith("optimization_")) {
+    return visibility.invoices || visibility.workforce;
+  }
+  return visibility.workOrders;
+}
+
+async function buildMechanicState(
+  actor: ShopAssistantActor,
+): Promise<ShopAssistantState> {
+  const assigned = await listTechnicianWorkCandidates({
+    supabase: createAdminSupabase(),
+    shopId: actor.shopId,
+    technicianIds: [actor.userId, actor.profileId],
+  });
+  const heldLines = assigned.flatMap((workOrder) =>
+    workOrder.lines
+      .filter((line) => line.status === "on_hold")
+      .map((line) => ({ workOrder, line })),
+  );
+  const alerts: ShopAssistantAlert[] = heldLines
+    .slice(0, 8)
+    .map(({ workOrder, line }) => ({
+      id: `assigned-hold:${line.id}`,
+      code: "assigned_job_on_hold",
+      level: "warning",
+      title: `${workOrder.customId ? `WO #${workOrder.customId}` : "Assigned work"} is on hold`,
+      message:
+        line.holdReason?.trim() || "Review the assigned job's hold reason.",
+      href: `/work-orders/${workOrder.id}`,
+      entityType: "work_order_line",
+      entityId: line.id,
+    }));
+  const lineCount = assigned.reduce(
+    (sum, workOrder) => sum + workOrder.lines.length,
+    0,
+  );
+
+  return {
+    generatedAt: new Date().toISOString(),
+    role: actor.canonicalRole,
+    scopeLabel: "assigned work only",
+    headline: `${lineCount} active job line(s) are assigned to you across ${assigned.length} work order(s).`,
+    metrics: {
+      ...EMPTY_METRICS,
+      openWorkOrders: assigned.length,
+      stalledWorkOrders: heldLines.length,
+    },
+    visibleMetricKeys: ["openWorkOrders", "stalledWorkOrders"],
+    alerts,
+    suggestions: [
+      {
+        id: "mechanic-assigned-work",
+        domain: "technician",
+        title: "Review my assigned work",
+        description:
+          "See only the active job lines canonically assigned to you.",
+        prompt: "Show my assigned work and tell me what is next.",
+        href: "/mobile",
+      },
+      ...(heldLines.length > 0
+        ? [
+            {
+              id: "mechanic-held-work",
+              domain: "technician" as const,
+              title: "Review held assigned jobs",
+              description: `${heldLines.length} assigned job line(s) are on hold.`,
+              prompt: "Which of my assigned jobs are on hold and why?",
+              href: "/mobile",
+            },
+          ]
+        : []),
+    ],
+  };
+}
+
+async function buildFleetState(
+  actor: ShopAssistantActor,
+): Promise<ShopAssistantState> {
+  const fleetActor = await resolveFleetActorContext(createAdminSupabase(), {
+    userId: actor.userId,
+    profileId: actor.profileId,
+  });
+  const fleetIds = fleetActor.fleetIds;
+  if (fleetActor.shopId !== actor.shopId || fleetIds.length === 0) {
+    return {
+      generatedAt: new Date().toISOString(),
+      role: actor.canonicalRole,
+      scopeLabel: "fleet operations",
+      headline: "No entitled fleet workspace is available to this account.",
+      metrics: { ...EMPTY_METRICS },
+      visibleMetricKeys: [],
+      alerts: [],
+      suggestions: [],
+    };
+  }
+
+  const admin = createAdminSupabase();
+  const [
+    { data: requests, error: requestError },
+    { count: unitCount, error: unitError },
+  ] = await Promise.all([
+    admin
+      .from("fleet_service_requests")
+      .select("id, title, severity, status, vehicle_id, created_at")
+      .eq("shop_id", actor.shopId)
+      .in("fleet_id", fleetIds)
+      .not("status", "in", "(completed,cancelled,canceled,closed)")
+      .order("created_at", { ascending: true })
+      .limit(50),
+    admin
+      .from("fleet_vehicles")
+      .select("vehicle_id", { count: "exact", head: true })
+      .eq("shop_id", actor.shopId)
+      .in("fleet_id", fleetIds)
+      .or("active.is.null,active.eq.true"),
+  ]);
+  if (requestError) throw new Error(requestError.message);
+  if (unitError) throw new Error(unitError.message);
+  const activeRequests = requests ?? [];
+  const urgent = activeRequests.filter((request) =>
+    /critical|urgent|high/i.test(request.severity ?? ""),
+  );
+
+  return {
+    generatedAt: new Date().toISOString(),
+    role: actor.canonicalRole,
+    scopeLabel: "entitled fleet operations",
+    headline: `${activeRequests.length} open service request(s) across ${unitCount ?? 0} accessible fleet unit(s).`,
+    metrics: {
+      ...EMPTY_METRICS,
+      openWorkOrders: activeRequests.length,
+      stalledWorkOrders: urgent.length,
+    },
+    visibleMetricKeys: ["openWorkOrders", "stalledWorkOrders"],
+    alerts: urgent.slice(0, 8).map((request) => ({
+      id: `fleet-request:${request.id}`,
+      code: "fleet_service_request_urgent",
+      level: "warning",
+      title: request.title,
+      message: `${request.severity ?? "urgent"} • ${request.status}`,
+      href: "/fleet/service-requests",
+      entityType: "fleet_service_request",
+      entityId: request.id,
+    })),
+    suggestions: [
+      {
+        id: "fleet-open-requests",
+        domain: "fleet",
+        title: "Review fleet service requests",
+        description: `${activeRequests.length} open request(s) are in your fleet scope.`,
+        prompt:
+          "Show my fleet service requests and prioritize what needs attention.",
+        href: "/fleet/service-requests",
+      },
+      {
+        id: "fleet-units",
+        domain: "fleet",
+        title: "Review fleet units",
+        description: `${unitCount ?? 0} unit(s) are accessible to this account.`,
+        prompt: "List my fleet units.",
+        href: "/fleet/units",
+      },
+    ],
+  };
 }
 
 function mapNotificationCode(code: string): string {
@@ -82,7 +313,10 @@ function dedupeAlerts(alerts: ShopAssistantAlert[], limit = 12) {
   return output;
 }
 
-function countUniqueAlerts(alerts: ShopAssistantAlert[], codes: string[]): number {
+function countUniqueAlerts(
+  alerts: ShopAssistantAlert[],
+  codes: string[],
+): number {
   const keys = new Set<string>();
   for (const alert of alerts) {
     if (!codes.includes(alert.code)) continue;
@@ -150,7 +384,8 @@ function buildSuggestions(params: {
       domain: "work_orders",
       title: "Clear overdue approvals",
       description: `${params.overdueApprovals} approval(s) are holding up work.`,
-      prompt: "Show the overdue approvals and the best customer follow-up order.",
+      prompt:
+        "Show the overdue approvals and the best customer follow-up order.",
       href: "/quote-review",
     },
   );
@@ -176,20 +411,24 @@ function buildSuggestions(params: {
       domain: "workforce",
       title: "Use available technician capacity",
       description: `${params.idleTechnicians} shifted technician(s) have no active job.`,
-      prompt: "Which queued jobs should be assigned to the available technicians?",
+      prompt:
+        "Which queued jobs should be assigned to the available technicians?",
       href: "/dashboard",
     },
   );
 
   addSuggestion(
     suggestions,
-    capabilities.canManageBilling && params.readyToInvoice > 0,
+    capabilities.canManageWorkOrders &&
+      capabilities.canAuthorizeQuotes &&
+      params.readyToInvoice > 0,
     {
       id: "finish-ready-invoices",
       domain: "invoices",
       title: "Finish ready invoices",
       description: `${params.readyToInvoice} work order(s) are completed or ready to invoice.`,
-      prompt: "List the work orders ready to invoice and any remaining blockers.",
+      prompt:
+        "List the work orders ready to invoice and any remaining blockers.",
       href: "/billing",
     },
   );
@@ -202,7 +441,8 @@ function buildSuggestions(params: {
       domain: "work_orders",
       title: "Unstick stalled work",
       description: `${params.stalledWorkOrders} work order(s) have exceeded a workflow threshold.`,
-      prompt: "Prioritize the stalled work orders and recommend the next operational step for each.",
+      prompt:
+        "Prioritize the stalled work orders and recommend the next operational step for each.",
       href: "/work-orders/view",
     },
   );
@@ -225,8 +465,10 @@ function buildSuggestions(params: {
       id: "shop-status-check",
       domain: "reporting",
       title: "Review the current shop status",
-      description: "Ask for a concise operational summary across the records you can access.",
-      prompt: "Give me the current shop status and the three most useful next steps.",
+      description:
+        "Ask for a concise operational summary across the records you can access.",
+      prompt:
+        "Give me the current shop status and the three most useful next steps.",
       href: "/assistant",
     });
   }
@@ -237,39 +479,69 @@ function buildSuggestions(params: {
 export async function buildShopState(
   actor: ShopAssistantActor,
 ): Promise<ShopAssistantState> {
-  const now = new Date();
+  if (actor.canonicalRole === "mechanic") {
+    return buildMechanicState(actor);
+  }
+  if (
+    actor.canonicalRole === "fleet_manager" ||
+    actor.canonicalRole === "dispatcher"
+  ) {
+    return buildFleetState(actor);
+  }
 
-  const [persistedNotifications, loadMetrics] = await Promise.all([
+  const now = new Date();
+  const visibility = stateVisibility(actor);
+
+  const [persistedNotifications, loadMetrics, shopResult] = await Promise.all([
     syncAssistantNotifications({
       shopId: actor.shopId,
       userId: actor.userId,
       role: actor.role,
     }).catch(() => [] as PersistedAssistantNotification[]),
-    getTechnicianLoadMetricsWithClient(actor.supabase, actor.shopId).catch(
-      () => null,
-    ),
+    visibility.workforce
+      ? getTechnicianLoadMetricsWithClient(actor.supabase, actor.shopId).catch(
+          () => null,
+        )
+      : Promise.resolve(null),
+    visibility.bookings
+      ? actor.supabase
+          .from("shops")
+          .select("timezone")
+          .eq("id", actor.shopId)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
   ]);
 
-  const dayStartIso = loadMetrics?.dayStartIso ?? startOfUtcDay(now);
-  const dayEndIso = loadMetrics?.dayEndIso ?? endOfUtcDay(now);
+  const shopDay = getShopDayRange(
+    shopResult.data?.timezone?.trim() || "UTC",
+    now,
+  );
+  const dayStartIso = loadMetrics?.dayStartIso ?? shopDay.start;
+  const dayEndIso = loadMetrics?.dayEndIso ?? shopDay.end;
 
   const [openResult, readyResult, bookingsResult] = await Promise.all([
-    actor.supabase
-      .from("work_orders")
-      .select("id", { count: "exact", head: true })
-      .eq("shop_id", actor.shopId)
-      .in("status", ACTIVE_WORK_ORDER_STATUSES),
-    actor.supabase
-      .from("work_orders")
-      .select("id", { count: "exact", head: true })
-      .eq("shop_id", actor.shopId)
-      .in("status", READY_TO_INVOICE_STATUSES),
-    actor.supabase
-      .from("bookings")
-      .select("id", { count: "exact", head: true })
-      .eq("shop_id", actor.shopId)
-      .gte("starts_at", dayStartIso)
-      .lt("starts_at", dayEndIso),
+    visibility.workOrders
+      ? actor.supabase
+          .from("work_orders")
+          .select("id", { count: "exact", head: true })
+          .eq("shop_id", actor.shopId)
+          .in("status", ACTIVE_WORK_ORDER_STATUSES)
+      : Promise.resolve({ count: 0, error: null }),
+    visibility.invoices
+      ? actor.supabase
+          .from("work_orders")
+          .select("id", { count: "exact", head: true })
+          .eq("shop_id", actor.shopId)
+          .in("status", READY_TO_INVOICE_STATUSES)
+      : Promise.resolve({ count: 0, error: null }),
+    visibility.bookings
+      ? actor.supabase
+          .from("bookings")
+          .select("id", { count: "exact", head: true })
+          .eq("shop_id", actor.shopId)
+          .gte("starts_at", dayStartIso)
+          .lt("starts_at", dayEndIso)
+      : Promise.resolve({ count: 0, error: null }),
   ]);
 
   const idleTechnicians = (loadMetrics?.rows ?? []).filter(
@@ -279,10 +551,12 @@ export async function buildShopState(
       row.utilizationPct <= 40,
   );
 
-  const mappedNotifications = persistedNotifications.map(mapNotification);
+  const mappedNotifications = persistedNotifications
+    .map(mapNotification)
+    .filter((alert) => canViewAlert(alert, visibility));
   const syntheticAlerts: ShopAssistantAlert[] = [];
 
-  for (const row of idleTechnicians.slice(0, 4)) {
+  for (const row of visibility.workforce ? idleTechnicians.slice(0, 4) : []) {
     syntheticAlerts.push({
       id: `technician-idle:${row.techId}`,
       code: "technician_idle",
@@ -296,7 +570,7 @@ export async function buildShopState(
   }
 
   const readyToInvoice = readyResult.error ? 0 : Number(readyResult.count ?? 0);
-  if (readyToInvoice > 0) {
+  if (visibility.invoices && readyToInvoice > 0) {
     syntheticAlerts.push({
       id: "invoice-ready:shop",
       code: "invoice_ready",
@@ -336,6 +610,7 @@ export async function buildShopState(
   return {
     generatedAt: new Date().toISOString(),
     role: actor.canonicalRole,
+    scopeLabel: `${actor.canonicalRole.replaceAll("_", " ")} operations`,
     headline: buildHeadline({
       role: actor.canonicalRole,
       openWorkOrders,
@@ -344,6 +619,7 @@ export async function buildShopState(
       idleTechnicians: idleTechnicians.length,
     }),
     metrics,
+    visibleMetricKeys: visibleMetricKeys(visibility),
     alerts,
     suggestions: buildSuggestions({
       capabilities: actor.capabilities,

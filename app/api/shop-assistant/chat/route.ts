@@ -7,10 +7,10 @@ import type {
   AssistantResolvedContext,
 } from "@/features/agent/assistant/types";
 import { routeDirectToolIntent } from "@/features/shop-assistant/server/actions/directToolIntent";
+import { orchestrateShopAssistantTurn } from "@/features/shop-assistant/server/orchestrator/orchestrateShopAssistantTurn";
 import {
   requireShopAssistantActor,
-  shopAssistantErrorMessage,
-  shopAssistantErrorStatus,
+  resolveShopAssistantError,
 } from "@/features/shop-assistant/server/requireShopAssistantActor";
 import {
   findAssistantReply,
@@ -22,6 +22,7 @@ import {
   threadContextFromPage,
   updateShopAssistantThreadContext,
 } from "@/features/shop-assistant/server/threadStore";
+import { resolveTrustedShopAssistantContext } from "@/features/shop-assistant/server/trustedContext";
 import type {
   ShopAssistantActionPreview,
   ShopAssistantActionResult,
@@ -31,24 +32,6 @@ import type {
   ShopAssistantThreadContext,
   ShopAssistantTurn,
 } from "@/features/shop-assistant/types";
-
-function isTechnicianDiagnosticRequest(question: string): boolean {
-  return /\b(?:[PBCU][0-9A-F]{4}|diagnos(?:e|is|tic)|pinout|expected voltage|misfire|no[- ]start|wiring test)\b/i.test(
-    question,
-  );
-}
-
-function technicianRedirectAnswer(): AssistantAnswer {
-  return {
-    intent: "unknown",
-    summary:
-      "Open the work order and use its Technician AI for diagnostic guidance. The shop-wide assistant is reserved for operations, customers, scheduling, parts, billing, reporting, and workforce coordination.",
-    bullets: [],
-    links: [],
-    entities: [],
-    actions: [],
-  };
-}
 
 function uniqueLines(values: string[]): string[] {
   const seen = new Set<string>();
@@ -151,7 +134,10 @@ function turnFromMessage(message: ShopAssistantMessage): ShopAssistantTurn {
   }
 
   const actionResult = actionResultFromPayload(message.payload);
-  if ((message.kind === "action_result" || message.kind === "error") && actionResult) {
+  if (
+    (message.kind === "action_result" || message.kind === "error") &&
+    actionResult
+  ) {
     return { kind: "action_result", message, action: actionResult };
   }
 
@@ -176,16 +162,21 @@ function responseFromExisting(params: {
   };
 }
 
+function isRetryableRequestError(message: ShopAssistantMessage): boolean {
+  return message.kind === "error" && message.payload.retryable === true;
+}
+
 export async function POST(request: Request) {
-  let actor: Awaited<ReturnType<typeof requireShopAssistantActor>> | null = null;
+  let actor: Awaited<ReturnType<typeof requireShopAssistantActor>> | null =
+    null;
   let threadId: string | null = null;
   let requestClientMessageId: string | null = null;
 
   try {
     actor = await requireShopAssistantActor();
-    const body = (await request.json().catch(() => null)) as
-      | ShopAssistantChatRequest
-      | null;
+    const body = (await request
+      .json()
+      .catch(() => null)) as ShopAssistantChatRequest | null;
     const question = body?.question?.trim() ?? "";
     const clientMessageId = body?.clientMessageId?.trim() ?? "";
 
@@ -201,7 +192,11 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
-    if (clientMessageId.length < 8 || clientMessageId.length > 200) {
+    if (
+      clientMessageId.length < 8 ||
+      clientMessageId.length > 200 ||
+      clientMessageId.startsWith("shop-")
+    ) {
       return NextResponse.json<ShopAssistantChatResponse>(
         {
           ok: false,
@@ -216,16 +211,25 @@ export async function POST(request: Request) {
     let thread = await getOrCreateShopAssistantThread(
       actor,
       body?.threadId,
-      body?.context,
+      undefined,
     );
     threadId = thread.id;
 
-    const requestedContext = threadContextFromPage(body?.context);
-    if (Object.values(requestedContext).some(Boolean)) {
+    const trusted = await resolveTrustedShopAssistantContext({
+      actor,
+      requested: body?.context,
+      stored: thread.context,
+    });
+    const requestedContext = threadContextFromPage(trusted.pageContext);
+    if (
+      Object.values(requestedContext).some(Boolean) ||
+      JSON.stringify(thread.context) !== JSON.stringify(trusted.threadContext)
+    ) {
       thread = await updateShopAssistantThreadContext({
         actor,
         thread,
-        context: requestedContext,
+        context: trusted.threadContext,
+        replaceContext: true,
       });
     }
 
@@ -235,8 +239,8 @@ export async function POST(request: Request) {
       content: question,
       clientMessageId,
       payload: {
-        pageType: body?.context?.pageType,
-        pageTitle: body?.context?.pageTitle,
+        pageType: trusted.pageContext.pageType,
+        pageTitle: trusted.pageContext.pageTitle,
       },
     });
 
@@ -246,6 +250,12 @@ export async function POST(request: Request) {
         thread.id,
         clientMessageId,
       );
+      if (existingReply && !isRetryableRequestError(existingReply)) {
+        const messages = await loadShopAssistantMessages(actor, thread.id);
+        return NextResponse.json(
+          responseFromExisting({ thread, messages, reply: existingReply }),
+        );
+      }
       if (!existingReply) {
         return NextResponse.json<ShopAssistantChatResponse>(
           {
@@ -256,11 +266,9 @@ export async function POST(request: Request) {
           { status: 409 },
         );
       }
-
-      const messages = await loadShopAssistantMessages(actor, thread.id);
-      return NextResponse.json(
-        responseFromExisting({ thread, messages, reply: existingReply }),
-      );
+      // A persisted transient error is not a successful idempotent reply.
+      // Continue with the same request id so reads run again and any staged
+      // write reuses its original action/idempotency key.
     }
 
     const storedMessages = await loadShopAssistantMessages(actor, thread.id);
@@ -269,8 +277,9 @@ export async function POST(request: Request) {
       threadId: thread.id,
       clientMessageId,
       question,
-      pageContext: body?.context,
-      threadContext: thread.context,
+      pageContext: trusted.pageContext,
+      threadContext: trusted.threadContext,
+      mode: "writes_only",
     });
 
     if (direct) {
@@ -316,7 +325,11 @@ export async function POST(request: Request) {
 
       const turn: ShopAssistantTurn =
         direct.kind === "confirmation_required"
-          ? { kind: "confirmation_required", message: reply, action: direct.action }
+          ? {
+              kind: "confirmation_required",
+              message: reply,
+              action: direct.action,
+            }
           : direct.kind === "action_result"
             ? { kind: "action_result", message: reply, action: direct.action }
             : direct.kind === "clarification_required"
@@ -335,24 +348,109 @@ export async function POST(request: Request) {
       });
     }
 
-    const answer = isTechnicianDiagnosticRequest(question)
-      ? technicianRedirectAnswer()
-      : await answerAssistant({
-          shopId: actor.shopId,
-          userId: actor.userId,
-          role: actor.role,
-          request: {
-            question,
-            context: body?.context,
-            session: {
-              workOrderId: thread.context.activeWorkOrderId,
-              vehicleId: thread.context.activeVehicleId,
-              customerId: thread.context.activeCustomerId,
-              bookingId: thread.context.activeBookingId,
-            },
-            messages: conversationMessages(storedMessages),
+    const orchestrated = await orchestrateShopAssistantTurn({
+      actor,
+      threadId: thread.id,
+      clientMessageId,
+      question,
+      pageContext: trusted.pageContext,
+      threadContext: trusted.threadContext,
+      messages: storedMessages,
+    });
+
+    if (orchestrated.kind !== "informational") {
+      const kind =
+        orchestrated.kind === "confirmation_required"
+          ? "confirmation"
+          : orchestrated.kind === "action_result"
+            ? "action_result"
+            : "text";
+      const payload: Record<string, unknown> = {
+        requestClientMessageId: clientMessageId,
+        planner: orchestrated.planner,
+      };
+      if (orchestrated.kind === "read_result") {
+        payload.toolCalls = orchestrated.outputs;
+      } else if (orchestrated.kind === "confirmation_required") {
+        payload.action = orchestrated.action;
+      } else if (orchestrated.kind === "action_result") {
+        payload.action = orchestrated.action;
+      } else if (orchestrated.kind === "clarification_required") {
+        payload.fields = orchestrated.fields;
+      } else {
+        payload.links = [
+          {
+            label: "Open Technician CoPilot",
+            href: orchestrated.href,
           },
-        });
+        ];
+      }
+
+      const reply = await insertAssistantMessage({
+        actor,
+        threadId: thread.id,
+        kind,
+        content: orchestrated.content,
+        payload,
+      });
+      const shouldSetTitle = thread.title === "Shop Assistant";
+      thread = await updateShopAssistantThreadContext({
+        actor,
+        thread,
+        context:
+          "resolvedContext" in orchestrated
+            ? (orchestrated.resolvedContext ?? {})
+            : {},
+        title: shouldSetTitle ? question.slice(0, 80) : undefined,
+      });
+      const messages = await loadShopAssistantMessages(actor, thread.id);
+
+      const turn: ShopAssistantTurn =
+        orchestrated.kind === "confirmation_required"
+          ? {
+              kind: "confirmation_required",
+              message: reply,
+              action: orchestrated.action,
+            }
+          : orchestrated.kind === "action_result"
+            ? {
+                kind: "action_result",
+                message: reply,
+                action: orchestrated.action,
+              }
+            : orchestrated.kind === "clarification_required"
+              ? {
+                  kind: "clarification_required",
+                  message: reply,
+                  fields: orchestrated.fields,
+                }
+              : { kind: "answer", message: reply };
+
+      return NextResponse.json<ShopAssistantChatResponse>({
+        ok: true,
+        thread,
+        messages,
+        turn,
+      });
+    }
+
+    const answer = await answerAssistant({
+      shopId: actor.shopId,
+      userId: actor.userId,
+      profileId: actor.profileId,
+      role: actor.role,
+      request: {
+        question,
+        context: trusted.pageContext,
+        session: {
+          workOrderId: trusted.threadContext.activeWorkOrderId,
+          vehicleId: trusted.threadContext.activeVehicleId,
+          customerId: trusted.threadContext.activeCustomerId,
+          bookingId: trusted.threadContext.activeBookingId,
+        },
+        messages: conversationMessages(storedMessages),
+      },
+    });
 
     const reply = await insertAssistantMessage({
       actor,
@@ -361,6 +459,7 @@ export async function POST(request: Request) {
       payload: {
         requestClientMessageId: clientMessageId,
         answer,
+        planner: orchestrated.planner,
       },
     });
 
@@ -387,16 +486,17 @@ export async function POST(request: Request) {
       },
     });
   } catch (error: unknown) {
+    const resolved = resolveShopAssistantError(error, "shop-assistant-chat");
     if (actor && threadId && requestClientMessageId) {
       try {
         await insertAssistantMessage({
           actor,
           threadId,
           kind: "error",
-          content: shopAssistantErrorMessage(error),
+          content: resolved.message,
           payload: {
             requestClientMessageId,
-            retryable: true,
+            retryable: resolved.retryable,
           },
         });
       } catch {
@@ -407,10 +507,10 @@ export async function POST(request: Request) {
     return NextResponse.json<ShopAssistantChatResponse>(
       {
         ok: false,
-        error: shopAssistantErrorMessage(error),
-        retryable: shopAssistantErrorStatus(error) >= 500,
+        error: resolved.message,
+        retryable: resolved.retryable,
       },
-      { status: shopAssistantErrorStatus(error) },
+      { status: resolved.status },
     );
   }
 }

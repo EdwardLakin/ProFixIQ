@@ -7,56 +7,24 @@ import type {
   AssistantAskResponse,
 } from "@/features/agent/assistant/types";
 import { AssistantContextValidationError } from "@/features/agent/assistant/server/trustedContext";
-
-
-async function requireUser(
-  supabase: ReturnType<typeof createServerSupabaseRoute>,
-) {
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-
-  if (error || !user) return null;
-  return user;
-}
-
-async function resolveProfile(
-  supabase: ReturnType<typeof createServerSupabaseRoute>,
-  userId: string,
-): Promise<{ shopId: string | null; role: string | null }> {
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("shop_id, role")
-    .eq("id", userId)
-    .maybeSingle();
-
-  if (error) {
-    return { shopId: null, role: null };
-  }
-
-  return {
-    shopId: data?.shop_id ?? null,
-    role: data?.role ?? null,
-  };
-}
+import {
+  requireShopAssistantActor,
+  resolveShopAssistantError,
+} from "@/features/shop-assistant/server/requireShopAssistantActor";
 
 export async function POST(request: Request) {
   const supabase = createServerSupabaseRoute();
-
-  const user = await requireUser(supabase);
-  if (!user) {
-    return NextResponse.json<AssistantAskResponse>(
-      { ok: false, error: "Unauthorized" },
-      { status: 401 },
+  let actor: Awaited<ReturnType<typeof requireShopAssistantActor>>;
+  try {
+    actor = await requireShopAssistantActor(supabase);
+  } catch (error: unknown) {
+    const resolved = resolveShopAssistantError(
+      error,
+      "legacy-assistant-answer-auth",
     );
-  }
-
-  const profile = await resolveProfile(supabase, user.id);
-  if (!profile.shopId) {
     return NextResponse.json<AssistantAskResponse>(
-      { ok: false, error: "No shop found for user" },
-      { status: 400 },
+      { ok: false, error: resolved.message },
+      { status: resolved.status },
     );
   }
 
@@ -82,17 +50,27 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
-  if (body.messages !== undefined && (!Array.isArray(body.messages) ||
-    body.messages.length > 20 || body.messages.some((message) =>
-      !message || (message.role !== "user" && message.role !== "assistant") ||
-      typeof message.content !== "string" || message.content.length > 4000))) {
+  if (
+    body.messages !== undefined &&
+    (!Array.isArray(body.messages) ||
+      body.messages.length > 20 ||
+      body.messages.some(
+        (message) =>
+          !message ||
+          (message.role !== "user" && message.role !== "assistant") ||
+          typeof message.content !== "string" ||
+          message.content.length > 4000,
+      ))
+  ) {
     return NextResponse.json<AssistantAskResponse>(
       { ok: false, error: "Conversation history is invalid" },
       { status: 400 },
     );
   }
-  if (body.imageAttachments !== undefined &&
-    (!Array.isArray(body.imageAttachments) || body.imageAttachments.length > 3)) {
+  if (
+    body.imageAttachments !== undefined &&
+    (!Array.isArray(body.imageAttachments) || body.imageAttachments.length > 3)
+  ) {
     return NextResponse.json<AssistantAskResponse>(
       { ok: false, error: "Too many image attachments" },
       { status: 400 },
@@ -101,9 +79,10 @@ export async function POST(request: Request) {
 
   try {
     const answer = await answerAssistant({
-      shopId: profile.shopId,
-      userId: user.id,
-      role: profile.role,
+      shopId: actor.shopId,
+      userId: actor.userId,
+      profileId: actor.profileId,
+      role: actor.role,
       request: body,
     });
 
@@ -112,16 +91,16 @@ export async function POST(request: Request) {
       answer,
     });
   } catch (error: unknown) {
-    const status = error instanceof AssistantContextValidationError ? 400 : 500;
+    const resolved =
+      error instanceof AssistantContextValidationError
+        ? { status: 400, message: error.message }
+        : resolveShopAssistantError(error, "legacy-assistant-answer");
     return NextResponse.json<AssistantAskResponse>(
       {
         ok: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to answer assistant question",
+        error: resolved.message,
       },
-      { status },
+      { status: resolved.status },
     );
   }
 }

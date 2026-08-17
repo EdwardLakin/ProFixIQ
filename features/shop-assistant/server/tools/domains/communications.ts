@@ -3,6 +3,7 @@ import "server-only";
 import { z } from "zod";
 
 import { authorizeConversationActor } from "@/features/ai/lib/chat/authorization";
+import { ShopAssistantHttpError } from "@/features/shop-assistant/server/requireShopAssistantActor";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { defineShopAssistantTool } from "../types";
 
@@ -27,9 +28,15 @@ async function loadConversationAccess(
     conversationId,
     actorUserId,
   });
-  if (!access.ok) throw new Error(access.error);
+  if (!access.ok) {
+    if (access.status >= 500) throw new Error(access.error);
+    throw new ShopAssistantHttpError(access.status, access.error);
+  }
   if (access.actor.shopId !== expectedShopId) {
-    throw new Error("Conversation belongs to another shop.");
+    throw new ShopAssistantHttpError(
+      403,
+      "Conversation belongs to another shop.",
+    );
   }
   return { admin, access };
 }
@@ -37,7 +44,8 @@ async function loadConversationAccess(
 export const sendConversationMessageTool = defineShopAssistantTool({
   name: "send_conversation_message",
   domain: "customer_communications",
-  description: "Send a reviewed message to an existing authorized conversation.",
+  description:
+    "Send a reviewed message to an existing authorized conversation.",
   mode: "write",
   risk: "high",
   requiredCapability: "canInvitePortalCustomers",
@@ -53,9 +61,10 @@ export const sendConversationMessageTool = defineShopAssistantTool({
       context.actor.userId,
       context.actor.shopId,
     );
-    const recipientCount = access.participantUserIds.filter(
-      (userId) => userId !== context.actor.userId,
-    ).length;
+    const recipients = access.participantUserIds
+      .filter((userId) => userId !== context.actor.userId)
+      .sort();
+    const recipientCount = recipients.length;
 
     return {
       title: "Send customer conversation message",
@@ -64,6 +73,10 @@ export const sendConversationMessageTool = defineShopAssistantTool({
         `This message will be sent immediately to ${recipientCount} other conversation participant(s).`,
         "Sent messages remain in the conversation history.",
       ],
+      targetVersions: {
+        [`conversation_participants:${input.conversationId}`]:
+          recipients.join(","),
+      },
       metadata: {
         conversationId: input.conversationId,
         recipientCount,
@@ -73,7 +86,9 @@ export const sendConversationMessageTool = defineShopAssistantTool({
   },
   async execute(input, context) {
     if (!context.actionId) {
-      throw new Error("An action id is required to send an idempotent message.");
+      throw new Error(
+        "An action id is required to send an idempotent message.",
+      );
     }
 
     const { admin, access } = await loadConversationAccess(
@@ -81,15 +96,11 @@ export const sendConversationMessageTool = defineShopAssistantTool({
       context.actor.userId,
       context.actor.shopId,
     );
-    const recipients = access.participantUserIds.filter(
-      (userId) => userId !== context.actor.userId,
-    );
-
     const { data: existing, error: existingError } = await admin
       .from("messages")
       .select("id, conversation_id, recipients, sent_at")
       .eq("conversation_id", input.conversationId)
-      .eq("sender_id", context.actor.userId)
+      .eq("sender_participant_id", access.actorParticipant.id)
       .eq("client_message_id", context.actionId)
       .maybeSingle();
     if (existingError) throw new Error(existingError.message);
@@ -101,9 +112,27 @@ export const sendConversationMessageTool = defineShopAssistantTool({
         conversationId: existing.conversation_id,
         recipients: (existing.recipients ?? []) as string[],
         sentAt: existing.sent_at,
-        summary: "The message had already been sent; the existing result was returned.",
+        summary:
+          "The message had already been sent; the existing result was returned.",
         href: `/chat?conversationId=${encodeURIComponent(input.conversationId)}`,
       };
+    }
+
+    const recipients = access.participantUserIds
+      .filter((userId) => userId !== context.actor.userId)
+      .sort();
+    const expectedRecipients =
+      context.targetVersions?.[
+        `conversation_participants:${input.conversationId}`
+      ];
+    if (
+      expectedRecipients == null ||
+      expectedRecipients !== recipients.join(",")
+    ) {
+      throw new ShopAssistantHttpError(
+        409,
+        "The conversation participants changed after preview. Ask again before sending.",
+      );
     }
 
     const sentAt = new Date().toISOString();
@@ -112,6 +141,8 @@ export const sendConversationMessageTool = defineShopAssistantTool({
       .insert({
         conversation_id: input.conversationId,
         sender_id: context.actor.userId,
+        sender_participant_id: access.actorParticipant.id,
+        sender_kind: "staff",
         recipients,
         content: input.content,
         sent_at: sentAt,
@@ -119,6 +150,7 @@ export const sendConversationMessageTool = defineShopAssistantTool({
         metadata: {
           source: "shop_assistant",
           actionId: context.actionId,
+          actor_kind: "staff",
         },
         client_message_id: context.actionId,
       })

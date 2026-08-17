@@ -4,6 +4,7 @@ import type { ShopAssistantMetrics } from "@/features/shop-assistant/server/stat
 
 type Props = {
   metrics: ShopAssistantMetrics;
+  visibleMetricKeys?: Array<keyof ShopAssistantMetrics>;
 };
 
 const METRICS: Array<{
@@ -21,23 +22,34 @@ const METRICS: Array<{
   { key: "shopUtilizationPct", label: "Utilization", suffix: "%" },
 ];
 
-export default function ShopStateMetricGrid({ metrics }: Props) {
+export default function ShopStateMetricGrid({
+  metrics,
+  visibleMetricKeys,
+}: Props) {
+  const visible = visibleMetricKeys
+    ? new Set<keyof ShopAssistantMetrics>(visibleMetricKeys)
+    : null;
   return (
-    <section aria-label="Live shop metrics" className="grid grid-cols-2 gap-2 md:grid-cols-4">
-      {METRICS.map((metric) => (
-        <div
-          key={metric.key}
-          className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3"
-        >
-          <div className="text-2xl font-semibold tabular-nums text-[color:var(--theme-text-primary)]">
-            {metrics[metric.key]}
-            {metric.suffix ?? ""}
+    <section
+      aria-label="Live shop metrics"
+      className="grid grid-cols-2 gap-2 md:grid-cols-4"
+    >
+      {METRICS.filter((metric) => !visible || visible.has(metric.key)).map(
+        (metric) => (
+          <div
+            key={metric.key}
+            className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3"
+          >
+            <div className="text-2xl font-semibold tabular-nums text-[color:var(--theme-text-primary)]">
+              {metrics[metric.key]}
+              {metric.suffix ?? ""}
+            </div>
+            <div className="mt-1 text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">
+              {metric.label}
+            </div>
           </div>
-          <div className="mt-1 text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">
-            {metric.label}
-          </div>
-        </div>
-      ))}
+        ),
+      )}
     </section>
   );
 }
