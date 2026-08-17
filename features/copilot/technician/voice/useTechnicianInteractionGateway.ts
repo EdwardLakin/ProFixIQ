@@ -27,9 +27,29 @@ type TechnicianInteractionGatewayOptions = {
 type RealtimeTransport = {
   start: () => Promise<void>;
   pause?: () => boolean;
+  playAudio?: (encodedAudio: ArrayBuffer) => Promise<void>;
+  stopAudio?: () => void;
   resume?: () => boolean;
   stop: () => void;
 };
+
+type ScreenWakeLockSentinel = {
+  released: boolean;
+  release: () => Promise<void>;
+  addEventListener: (
+    type: "release",
+    listener: () => void,
+    options?: AddEventListenerOptions,
+  ) => void;
+};
+
+type NavigatorWithWakeLock = Navigator & {
+  wakeLock?: {
+    request: (type: "screen") => Promise<ScreenWakeLockSentinel>;
+  };
+};
+
+const COPILOT_SPEECH_TIMEOUT_MS = 20_000;
 
 function normalizedTranscript(text: string): string | null {
   const value = text.trim();
@@ -78,6 +98,8 @@ export function useTechnicianInteractionGateway({
   const [modeActive, setModeActive] = useState(false);
   const [heardTranscript, setHeardTranscript] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [wakeLockActive, setWakeLockActive] = useState(false);
+  const [wakeLockSupported, setWakeLockSupported] = useState(false);
 
   const activeRef = useRef(false);
   const autoStartAttemptedRef = useRef(false);
@@ -92,6 +114,10 @@ export function useTechnicianInteractionGateway({
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const speechWatchdogRef = useRef<number | null>(null);
   const speechStartWatchdogRef = useRef<number | null>(null);
+  const speechRequestControllerRef = useRef<AbortController | null>(null);
+  const speechPlaybackAttemptRef = useRef(0);
+  const wakeLockRef = useRef<ScreenWakeLockSentinel | null>(null);
+  const wakeLockRequestPendingRef = useRef(false);
 
   const setVoicePhase = useCallback((next: TechnicianVoicePhase) => {
     phaseRef.current = next;
@@ -113,11 +139,73 @@ export function useTechnicianInteractionGateway({
     }
   }, []);
 
+  const cancelSpeechOutput = useCallback(() => {
+    speechPlaybackAttemptRef.current += 1;
+    speechRequestControllerRef.current?.abort();
+    speechRequestControllerRef.current = null;
+    try {
+      realtimeRef.current?.stopAudio?.();
+    } catch {}
+  }, []);
+
+  const releaseWakeLock = useCallback(() => {
+    const wakeLock = wakeLockRef.current;
+    wakeLockRef.current = null;
+    setWakeLockActive(false);
+    if (wakeLock && !wakeLock.released) {
+      void wakeLock.release().catch(() => undefined);
+    }
+  }, []);
+
+  const requestWakeLock = useCallback(async () => {
+    if (
+      typeof navigator === "undefined" ||
+      typeof document === "undefined" ||
+      document.visibilityState !== "visible" ||
+      !activeRef.current ||
+      wakeLockRef.current ||
+      wakeLockRequestPendingRef.current
+    ) {
+      return;
+    }
+
+    const wakeLockManager = (navigator as NavigatorWithWakeLock).wakeLock;
+    setWakeLockSupported(Boolean(wakeLockManager));
+    if (!wakeLockManager) return;
+
+    wakeLockRequestPendingRef.current = true;
+    try {
+      const sentinel = await wakeLockManager.request("screen");
+      if (!activeRef.current || document.visibilityState !== "visible") {
+        await sentinel.release().catch(() => undefined);
+        return;
+      }
+
+      wakeLockRef.current = sentinel;
+      setWakeLockActive(true);
+      sentinel.addEventListener(
+        "release",
+        () => {
+          if (wakeLockRef.current === sentinel) {
+            wakeLockRef.current = null;
+            setWakeLockActive(false);
+          }
+        },
+        { once: true },
+      );
+    } catch {
+      setWakeLockActive(false);
+    } finally {
+      wakeLockRequestPendingRef.current = false;
+    }
+  }, []);
+
   const invalidateGeneration = useCallback(() => {
     generationRef.current += 1;
     inFlightRef.current = false;
+    cancelSpeechOutput();
     clearSpeechWatchdog();
-  }, [clearSpeechWatchdog]);
+  }, [cancelSpeechOutput, clearSpeechWatchdog]);
 
   const handleTransportState = useCallback(
     (state: TechnicianRealtimeVoiceState) => {
@@ -139,6 +227,7 @@ export function useTechnicianInteractionGateway({
         invalidateGeneration();
         activeRef.current = false;
         setModeActive(false);
+        releaseWakeLock();
         setVoicePhase("idle");
         setError("Voice connection ended. Start voice to reconnect.");
         return;
@@ -151,7 +240,7 @@ export function useTechnicianInteractionGateway({
       else if (state === "listening") setVoicePhase("listening");
       else if (state === "error") setVoicePhase("error");
     },
-    [invalidateGeneration, setVoicePhase],
+    [invalidateGeneration, releaseWakeLock, setVoicePhase],
   );
 
   const handleFinalTranscript = useCallback(
@@ -213,6 +302,7 @@ export function useTechnicianInteractionGateway({
             invalidateGeneration();
             activeRef.current = false;
             setModeActive(false);
+            releaseWakeLock();
             transportStartedRef.current = false;
             try {
               realtimeRef.current?.stop();
@@ -226,7 +316,7 @@ export function useTechnicianInteractionGateway({
         }
       })();
     },
-    [invalidateGeneration, setVoicePhase],
+    [invalidateGeneration, releaseWakeLock, setVoicePhase],
   );
 
   const realtime = useTechnicianRealtimeVoice(
@@ -240,6 +330,7 @@ export function useTechnicianInteractionGateway({
         invalidateGeneration();
         activeRef.current = false;
         setModeActive(false);
+        releaseWakeLock();
         setVoicePhase("error");
         setError(message);
       },
@@ -277,23 +368,32 @@ export function useTechnicianInteractionGateway({
       invalidateGeneration();
       activeRef.current = false;
       setModeActive(false);
+      releaseWakeLock();
       setVoicePhase("error");
       setError(
         caught instanceof Error ? caught.message : "Realtime voice could not start.",
       );
     }
-  }, [enabled, invalidateGeneration, setVoicePhase]);
+  }, [enabled, invalidateGeneration, releaseWakeLock, setVoicePhase]);
   startListeningRef.current = startListening;
 
-  const speakReply = useCallback(
-    (text: string) => {
-      if (!activeRef.current) return;
-      const generation = generationRef.current;
+  const speakWithDeviceVoice = useCallback(
+    (text: string, generation: number, playbackAttempt: number) => {
+      if (
+        !activeRef.current ||
+        generationRef.current !== generation ||
+        speechPlaybackAttemptRef.current !== playbackAttempt
+      ) {
+        return;
+      }
       if (
         typeof window === "undefined" ||
         typeof window.speechSynthesis === "undefined" ||
         typeof SpeechSynthesisUtterance === "undefined"
       ) {
+        setError(
+          "Spoken reply could not play. The reply is shown here and voice is listening again.",
+        );
         void startListeningRef.current();
         return;
       }
@@ -309,7 +409,8 @@ export function useTechnicianInteractionGateway({
         if (
           utteranceRef.current !== utterance ||
           !activeRef.current ||
-          generationRef.current !== generation
+          generationRef.current !== generation ||
+          speechPlaybackAttemptRef.current !== playbackAttempt
         ) {
           return;
         }
@@ -322,7 +423,8 @@ export function useTechnicianInteractionGateway({
       utterance.onerror = () => {
         if (
           utteranceRef.current !== utterance ||
-          generationRef.current !== generation
+          generationRef.current !== generation ||
+          speechPlaybackAttemptRef.current !== playbackAttempt
         ) {
           return;
         }
@@ -335,7 +437,8 @@ export function useTechnicianInteractionGateway({
         if (
           utteranceRef.current !== utterance ||
           !activeRef.current ||
-          generationRef.current !== generation
+          generationRef.current !== generation ||
+          speechPlaybackAttemptRef.current !== playbackAttempt
         ) {
           return;
         }
@@ -362,6 +465,7 @@ export function useTechnicianInteractionGateway({
             utteranceRef.current !== utterance ||
             !activeRef.current ||
             generationRef.current !== generation ||
+            speechPlaybackAttemptRef.current !== playbackAttempt ||
             speechSynthesis.speaking ||
             speechSynthesis.pending
           ) {
@@ -385,6 +489,84 @@ export function useTechnicianInteractionGateway({
     },
     [clearSpeechWatchdog, setVoicePhase],
   );
+
+  const speakReply = useCallback(
+    (text: string) => {
+      if (!activeRef.current) return;
+
+      const generation = generationRef.current;
+      cancelSpeechOutput();
+      const playbackAttempt = speechPlaybackAttemptRef.current;
+      const controller = new AbortController();
+      speechRequestControllerRef.current = controller;
+      setVoicePhase("speaking");
+
+      void (async () => {
+        const timeout = window.setTimeout(
+          () => controller.abort(),
+          COPILOT_SPEECH_TIMEOUT_MS,
+        );
+        try {
+          const response = await fetch("/api/copilot/technician/speech", {
+            method: "POST",
+            cache: "no-store",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text }),
+            signal: controller.signal,
+          });
+          if (!response.ok) {
+            throw new Error("Generated CoPilot voice was unavailable.");
+          }
+
+          const encodedAudio = await response.arrayBuffer();
+          if (encodedAudio.byteLength === 0) {
+            throw new Error("Generated CoPilot voice returned no audio.");
+          }
+          if (
+            !activeRef.current ||
+            generationRef.current !== generation ||
+            speechPlaybackAttemptRef.current !== playbackAttempt
+          ) {
+            return;
+          }
+
+          const playAudio = realtimeRef.current?.playAudio;
+          if (!playAudio) {
+            throw new Error("CoPilot audio output is not ready.");
+          }
+          await playAudio(encodedAudio);
+          if (
+            !activeRef.current ||
+            generationRef.current !== generation ||
+            speechPlaybackAttemptRef.current !== playbackAttempt
+          ) {
+            return;
+          }
+
+          if (speechRequestControllerRef.current === controller) {
+            speechRequestControllerRef.current = null;
+          }
+          void startListeningRef.current();
+        } catch {
+          if (
+            !activeRef.current ||
+            generationRef.current !== generation ||
+            speechPlaybackAttemptRef.current !== playbackAttempt
+          ) {
+            return;
+          }
+          if (speechRequestControllerRef.current === controller) {
+            speechRequestControllerRef.current = null;
+          }
+          speakWithDeviceVoice(text, generation, playbackAttempt);
+        } finally {
+          window.clearTimeout(timeout);
+        }
+      })();
+    },
+    [cancelSpeechOutput, setVoicePhase, speakWithDeviceVoice],
+  );
   speakReplyRef.current = speakReply;
 
   const start = useCallback(async () => {
@@ -394,8 +576,9 @@ export function useTechnicianInteractionGateway({
     activeRef.current = true;
     setModeActive(true);
     setError(null);
+    void requestWakeLock();
     await startListeningRef.current();
-  }, [enabled, invalidateGeneration]);
+  }, [enabled, invalidateGeneration, requestWakeLock]);
 
   useEffect(() => {
     if (!enabled || !autoStart || autoStartAttemptedRef.current) return;
@@ -408,6 +591,7 @@ export function useTechnicianInteractionGateway({
     activeRef.current = false;
     setModeActive(false);
     setHeardTranscript("");
+    releaseWakeLock();
     try {
       realtimeRef.current?.stop();
     } catch {}
@@ -418,20 +602,38 @@ export function useTechnicianInteractionGateway({
     clearSpeechWatchdog();
     utteranceRef.current = null;
     setVoicePhase("idle");
-  }, [clearSpeechWatchdog, invalidateGeneration, setVoicePhase]);
+  }, [clearSpeechWatchdog, invalidateGeneration, releaseWakeLock, setVoicePhase]);
 
   const interrupt = useCallback(() => {
     if (!activeRef.current || phaseRef.current !== "speaking") return;
-    const currentUtterance = utteranceRef.current;
+    cancelSpeechOutput();
     utteranceRef.current = null;
     if (typeof window !== "undefined") {
       window.speechSynthesis?.cancel();
     }
     clearSpeechWatchdog();
-    if (currentUtterance && activeRef.current) {
-      void startListeningRef.current();
+    void startListeningRef.current();
+  }, [cancelSpeechOutput, clearSpeechWatchdog]);
+
+  useEffect(() => {
+    if (typeof navigator === "undefined" || typeof document === "undefined") {
+      return;
     }
-  }, [clearSpeechWatchdog]);
+
+    setWakeLockSupported(Boolean((navigator as NavigatorWithWakeLock).wakeLock));
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible" && activeRef.current) {
+        void requestWakeLock();
+      } else if (document.visibilityState !== "visible") {
+        releaseWakeLock();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [releaseWakeLock, requestWakeLock]);
 
   useEffect(() => {
     if (!enabled && activeRef.current) {
@@ -446,6 +648,8 @@ export function useTechnicianInteractionGateway({
     active: modeActive,
     heardTranscript,
     error,
+    wakeLockActive,
+    wakeLockSupported,
     start,
     stop,
     interrupt,

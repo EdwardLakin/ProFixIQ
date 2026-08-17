@@ -350,6 +350,11 @@ export function TechnicianTextCopilot({
       ?.text.trim() ||
     null;
   const visibleVoiceError = voice.error ?? error;
+  const voiceContinuityMessage = voice.active
+    ? voice.wakeLockActive
+      ? "AI-generated voice · Screen stays awake while voice is active."
+      : "AI-generated voice · Keep this screen on; locking the phone pauses Safari voice."
+    : "Replies use an AI-generated voice.";
 
   if (compact) {
     return (
@@ -378,6 +383,11 @@ export function TechnicianTextCopilot({
               {vehicleLabel ? (
                 <div className="truncate text-xs text-[color:var(--theme-text-secondary)]">
                   {vehicleLabel}
+                </div>
+              ) : null}
+              {voiceEnabled ? (
+                <div className="mt-0.5 text-xs text-[color:var(--theme-text-secondary)]">
+                  {voiceContinuityMessage}
                 </div>
               ) : null}
             </div>
@@ -490,6 +500,9 @@ export function TechnicianTextCopilot({
               <p className="mt-1 text-xs text-muted-foreground">
                 Realtime transcription feeds the same CoPilot turn runtime. The
                 mic pauses while the persisted reply is spoken, then resumes.
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {voiceContinuityMessage}
               </p>
             </div>
             <div className="flex flex-wrap gap-2">

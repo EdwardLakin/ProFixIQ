@@ -5,6 +5,8 @@ const realtime = vi.hoisted(() => ({
   connected: false,
   start: vi.fn(async () => undefined),
   pause: vi.fn(() => false),
+  playAudio: vi.fn(async (_audio: ArrayBuffer) => undefined),
+  stopAudio: vi.fn(),
   resume: vi.fn(() => false),
   stop: vi.fn(),
   onFinal: null as null | ((text: string) => void),
@@ -26,6 +28,8 @@ vi.mock("@/features/copilot/technician/voice/useTechnicianRealtimeVoice", () => 
     return {
       start: realtime.start,
       pause: realtime.pause,
+      playAudio: realtime.playAudio,
+      stopAudio: realtime.stopAudio,
       resume: realtime.resume,
       stop: realtime.stop,
     };
@@ -54,6 +58,13 @@ const speech = {
   pending: false,
 };
 
+const generatedAudio = new Uint8Array([1, 2, 3, 4]).buffer;
+const speechFetch = vi.fn();
+const wakeLockRequest = vi.fn();
+let wakeLockRelease = vi.fn(async () => undefined);
+let generatedPlayback: ReturnType<typeof deferred<void>>;
+let generatedPlaybackStarted = false;
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((next) => {
@@ -68,6 +79,8 @@ describe("Technician CoPilot voice interaction gateway", () => {
     realtime.connected = false;
     realtime.onFinal = null;
     realtime.onStateChange = null;
+    generatedPlayback = deferred<void>();
+    generatedPlaybackStarted = false;
     speech.speaking = true;
     speech.pending = false;
     realtime.start.mockImplementation(async () => {
@@ -76,6 +89,15 @@ describe("Technician CoPilot voice interaction gateway", () => {
       return undefined;
     });
     realtime.pause.mockImplementation(() => realtime.connected);
+    realtime.playAudio.mockImplementation(() => {
+      generatedPlaybackStarted = true;
+      return generatedPlayback.promise.finally(() => {
+        generatedPlaybackStarted = false;
+      });
+    });
+    realtime.stopAudio.mockImplementation(() => {
+      if (generatedPlaybackStarted) generatedPlayback.resolve();
+    });
     realtime.resume.mockImplementation(() => {
       if (!realtime.connected) return false;
       realtime.onStateChange?.("listening");
@@ -94,11 +116,37 @@ describe("Technician CoPilot voice interaction gateway", () => {
       configurable: true,
       value: speech,
     });
+    speechFetch.mockImplementation(async () => ({
+      ok: true,
+      arrayBuffer: async () => generatedAudio.slice(0),
+    }));
+    vi.stubGlobal("fetch", speechFetch);
+
+    let wakeLockReleaseListener: (() => void) | null = null;
+    const wakeLockSentinel = {
+      released: false,
+      release: vi.fn(async () => {
+        wakeLockSentinel.released = true;
+        wakeLockReleaseListener?.();
+      }),
+      addEventListener: vi.fn(
+        (_type: "release", listener: () => void) => {
+          wakeLockReleaseListener = listener;
+        },
+      ),
+    };
+    wakeLockRelease = wakeLockSentinel.release;
+    wakeLockRequest.mockResolvedValue(wakeLockSentinel);
+    Object.defineProperty(navigator, "wakeLock", {
+      configurable: true,
+      value: { request: wakeLockRequest },
+    });
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
     Reflect.deleteProperty(window, "speechSynthesis");
+    Reflect.deleteProperty(navigator, "wakeLock");
   });
 
   it("starts one call automatically when voice access becomes available", async () => {
@@ -126,7 +174,7 @@ describe("Technician CoPilot voice interaction gateway", () => {
     expect(realtime.start).toHaveBeenCalledTimes(1);
   });
 
-  it("pauses the live Realtime session for a CoPilot turn, speaks the persisted reply, then resumes it", async () => {
+  it("pauses Realtime, plays generated speech through its audio context, then resumes it", async () => {
     const onUtterance = vi.fn(async (text: string) => ({
       reply: `Reply to ${text}`,
     }));
@@ -151,21 +199,31 @@ describe("Technician CoPilot voice interaction gateway", () => {
     });
     expect(realtime.pause).toHaveBeenCalledTimes(1);
     expect(realtime.stop).not.toHaveBeenCalled();
-    expect(speech.resume).toHaveBeenCalledTimes(1);
-    expect(speech.speak).toHaveBeenCalledTimes(1);
+    expect(speechFetch).toHaveBeenCalledWith(
+      "/api/copilot/technician/speech",
+      expect.objectContaining({
+        method: "POST",
+        credentials: "same-origin",
+      }),
+    );
+    const speechRequest = speechFetch.mock.calls[0]?.[1] as
+      | RequestInit
+      | undefined;
+    expect(JSON.parse(String(speechRequest?.body))).toEqual({
+      text: "Reply to Rear U-joint has play.",
+    });
+    expect(realtime.playAudio).toHaveBeenCalledTimes(1);
+    expect(realtime.playAudio.mock.calls[0]?.[0]).toBeInstanceOf(ArrayBuffer);
+    expect(speech.speak).not.toHaveBeenCalled();
 
     act(() => {
       realtime.onFinal?.("Late buffered transcript");
     });
     expect(onUtterance).toHaveBeenCalledTimes(1);
 
-    const utterance = speech.speak.mock.calls[0]?.[0] as unknown as
-      | FakeSpeechSynthesisUtterance
-      | undefined;
-    expect(utterance?.text).toBe("Reply to Rear U-joint has play.");
-
-    act(() => {
-      utterance?.onend?.();
+    await act(async () => {
+      generatedPlayback.resolve();
+      await generatedPlayback.promise;
     });
 
     await waitFor(() => {
@@ -197,6 +255,29 @@ describe("Technician CoPilot voice interaction gateway", () => {
     expect(result.current.active).toBe(true);
     expect(realtime.resume).toHaveBeenCalledTimes(1);
     expect(realtime.stop).not.toHaveBeenCalled();
+  });
+
+  it("holds a screen wake lock while voice is active and releases it on stop", async () => {
+    const { result } = renderHook(() =>
+      useTechnicianInteractionGateway({
+        enabled: true,
+        onUtterance: vi.fn(async () => ({ reply: null })),
+      }),
+    );
+
+    await act(async () => {
+      await result.current.start();
+    });
+    await waitFor(() => {
+      expect(wakeLockRequest).toHaveBeenCalledWith("screen");
+      expect(result.current.wakeLockSupported).toBe(true);
+      expect(result.current.wakeLockActive).toBe(true);
+    });
+
+    act(() => result.current.stop());
+
+    expect(wakeLockRelease).toHaveBeenCalledTimes(1);
+    expect(result.current.wakeLockActive).toBe(false);
   });
 
   it("stops voice after a terminal CoPilot turn failure", async () => {
@@ -233,6 +314,7 @@ describe("Technician CoPilot voice interaction gateway", () => {
   it("recovers when iOS speech synthesis never emits a completion event", async () => {
     vi.useFakeTimers();
     try {
+      speechFetch.mockResolvedValue({ ok: false });
       const onUtterance = vi.fn(async () => ({
         reply: "Your next assigned job is the Ford.",
       }));
@@ -269,6 +351,7 @@ describe("Technician CoPilot voice interaction gateway", () => {
   it("does not truncate a maximum-length valid reply at 90 seconds", async () => {
     vi.useFakeTimers();
     try {
+      speechFetch.mockResolvedValue({ ok: false });
       const { result } = renderHook(() =>
         useTechnicianInteractionGateway({
           enabled: true,
@@ -306,6 +389,7 @@ describe("Technician CoPilot voice interaction gateway", () => {
   it("returns to listening quickly when device speech never starts", async () => {
     vi.useFakeTimers();
     try {
+      speechFetch.mockResolvedValue({ ok: false });
       speech.speaking = false;
       speech.pending = false;
       const { result } = renderHook(() =>
@@ -349,13 +433,18 @@ describe("Technician CoPilot voice interaction gateway", () => {
     act(() => {
       realtime.onFinal?.("What have we figured out?");
     });
-    await waitFor(() => expect(result.current.phase).toBe("speaking"));
+    await waitFor(() => {
+      expect(result.current.phase).toBe("speaking");
+      expect(realtime.playAudio).toHaveBeenCalledTimes(1);
+    });
+    realtime.stopAudio.mockClear();
 
     act(() => {
       result.current.interrupt();
     });
 
     expect(speech.cancel).toHaveBeenCalled();
+    expect(realtime.stopAudio).toHaveBeenCalledTimes(1);
     await waitFor(() => {
       expect(realtime.resume).toHaveBeenCalledTimes(1);
       expect(realtime.start).toHaveBeenCalledTimes(1);
@@ -393,6 +482,8 @@ describe("Technician CoPilot voice interaction gateway", () => {
     });
 
     expect(speech.speak).not.toHaveBeenCalled();
+    expect(speechFetch).not.toHaveBeenCalled();
+    expect(realtime.playAudio).not.toHaveBeenCalled();
     expect(result.current.active).toBe(true);
     expect(result.current.phase).toBe("listening");
   });

@@ -30,6 +30,8 @@ function deferred<T>() {
 }
 
 const sockets: FakeWebSocket[] = [];
+const audioContexts: FakeAudioContext[] = [];
+const audioSources: FakeAudioBufferSource[] = [];
 
 class FakeWebSocket {
   static readonly CONNECTING = 0;
@@ -68,6 +70,19 @@ class FakeAudioWorkletNode {
   readonly disconnect = vi.fn();
 }
 
+class FakeAudioBufferSource {
+  buffer: AudioBuffer | null = null;
+  onended: (() => void) | null = null;
+  readonly connect = vi.fn();
+  readonly disconnect = vi.fn();
+  readonly start = vi.fn();
+  readonly stop = vi.fn();
+
+  finish() {
+    this.onended?.();
+  }
+}
+
 class FakeAudioContext {
   readonly state = "running" as AudioContextState;
   readonly destination = {} as AudioDestinationNode;
@@ -76,6 +91,13 @@ class FakeAudioContext {
   } as unknown as AudioWorklet;
   readonly resume = vi.fn(async () => undefined);
   readonly close = vi.fn(async () => undefined);
+  readonly decodeAudioData = vi.fn(async () => ({
+    duration: 1,
+  } as AudioBuffer));
+
+  constructor() {
+    audioContexts.push(this);
+  }
 
   createMediaStreamSource() {
     return { connect: vi.fn() } as unknown as MediaStreamAudioSourceNode;
@@ -87,6 +109,12 @@ class FakeAudioContext {
       connect: vi.fn(),
       disconnect: vi.fn(),
     } as unknown as GainNode;
+  }
+
+  createBufferSource() {
+    const source = new FakeAudioBufferSource();
+    audioSources.push(source);
+    return source as unknown as AudioBufferSourceNode;
   }
 }
 
@@ -103,6 +131,8 @@ describe("Technician CoPilot-owned Realtime transport", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     sockets.splice(0, sockets.length);
+    audioContexts.splice(0, audioContexts.length);
+    audioSources.splice(0, audioSources.length);
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,
       value: { getUserMedia },
@@ -197,6 +227,44 @@ describe("Technician CoPilot-owned Realtime transport", () => {
     expect(first.track.stop).toHaveBeenCalledTimes(1);
     expect(replacement.track.stop).not.toHaveBeenCalled();
     expect(sockets[0]?.readyState).toBe(FakeWebSocket.OPEN);
+    unmount();
+  });
+
+  it("decodes generated speech in the unlocked Realtime audio context and supports interruption", async () => {
+    const { stream } = fakeStream();
+    getUserMedia.mockResolvedValue(stream);
+    const { result, unmount } = renderHook(() =>
+      useTechnicianRealtimeVoice(vi.fn(), (text) => text),
+    );
+
+    await act(async () => {
+      await result.current.start();
+    });
+    act(() => sockets[0]?.open());
+    expect(result.current.pause()).toBe(true);
+
+    const firstPlayback = result.current.playAudio(
+      new Uint8Array([1, 2, 3]).buffer,
+    );
+    await waitFor(() => expect(audioSources).toHaveLength(1));
+    expect(audioContexts[0]?.decodeAudioData).toHaveBeenCalledTimes(1);
+    expect(audioSources[0]?.connect).toHaveBeenCalledWith(
+      audioContexts[0]?.destination,
+    );
+    expect(audioSources[0]?.start).toHaveBeenCalledTimes(1);
+
+    audioSources[0]?.finish();
+    await expect(firstPlayback).resolves.toBeUndefined();
+
+    const interruptedPlayback = result.current.playAudio(
+      new Uint8Array([4, 5, 6]).buffer,
+    );
+    await waitFor(() => expect(audioSources).toHaveLength(2));
+    result.current.stopAudio();
+    await expect(interruptedPlayback).resolves.toBeUndefined();
+    expect(audioSources[1]?.stop).toHaveBeenCalledTimes(1);
+
+    expect(result.current.resume()).toBe(true);
     unmount();
   });
 
