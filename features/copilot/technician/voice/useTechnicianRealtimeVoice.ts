@@ -30,6 +30,11 @@ type RealtimeTokenErrorResponse = {
   code?: string;
 };
 
+type RealtimePlayback = {
+  source: AudioBufferSourceNode;
+  settle: (error?: unknown) => void;
+};
+
 type RealtimeSessionResources = {
   generation: number;
   ws: WebSocket | null;
@@ -37,6 +42,7 @@ type RealtimeSessionResources = {
   mediaStream: MediaStream | null;
   worklet: AudioWorkletNode | null;
   zeroGain: GainNode | null;
+  playback: RealtimePlayback | null;
   paused: boolean;
   live: string;
 };
@@ -101,7 +107,21 @@ function stopStream(stream: MediaStream | null | undefined): void {
   } catch {}
 }
 
+function stopPlayback(session: RealtimeSessionResources): void {
+  const playback = session.playback;
+  session.playback = null;
+  if (!playback) return;
+
+  playback.source.onended = null;
+  try {
+    playback.source.stop();
+  } catch {}
+  playback.settle();
+}
+
 function cleanupSession(session: RealtimeSessionResources): void {
+  stopPlayback(session);
+
   try {
     session.worklet?.disconnect();
   } catch {}
@@ -240,6 +260,7 @@ export function useTechnicianRealtimeVoice(
       mediaStream: null,
       worklet: null,
       zeroGain: null,
+      playback: null,
       paused: false,
       live: "",
     };
@@ -505,6 +526,68 @@ export function useTechnicianRealtimeVoice(
     return true;
   }
 
+  async function playAudio(encodedAudio: ArrayBuffer): Promise<void> {
+    const session = activeSessionRef.current;
+    const audioContext = session?.audioCtx ?? null;
+    if (
+      stoppedRef.current ||
+      !session ||
+      !audioContext ||
+      !session.paused ||
+      encodedAudio.byteLength === 0
+    ) {
+      throw new Error("CoPilot audio output is not ready.");
+    }
+
+    if (audioContext.state === "suspended") {
+      await audioContext.resume();
+    }
+    if (!sessionIsCurrent(session) || session.audioCtx !== audioContext) {
+      throw new Error("CoPilot audio output was interrupted.");
+    }
+
+    const decoded = await audioContext.decodeAudioData(encodedAudio.slice(0));
+    if (!sessionIsCurrent(session) || session.audioCtx !== audioContext) {
+      throw new Error("CoPilot audio output was interrupted.");
+    }
+
+    stopPlayback(session);
+
+    await new Promise<void>((resolve, reject) => {
+      const source = audioContext.createBufferSource();
+      let settled = false;
+      const settle = (error?: unknown) => {
+        if (settled) return;
+        settled = true;
+        source.onended = null;
+        try {
+          source.disconnect();
+        } catch {}
+        if (session.playback?.source === source) {
+          session.playback = null;
+        }
+        if (error) reject(error);
+        else resolve();
+      };
+
+      source.buffer = decoded;
+      source.connect(audioContext.destination);
+      source.onended = () => settle();
+      session.playback = { source, settle };
+
+      try {
+        source.start();
+      } catch (error) {
+        settle(error);
+      }
+    });
+  }
+
+  function stopAudio(): void {
+    const session = activeSessionRef.current;
+    if (session) stopPlayback(session);
+  }
+
   function resume(): boolean {
     const session = activeSessionRef.current;
     const socket = session?.ws ?? null;
@@ -559,5 +642,5 @@ export function useTechnicianRealtimeVoice(
     };
   }, []);
 
-  return { start, pause, resume, stop };
+  return { start, pause, playAudio, stopAudio, resume, stop };
 }

@@ -99,6 +99,22 @@ const FEATURE_POLICY: Record<AIFeature, AIOpsPolicy> = {
     anomalyHighCostUsd: envNum("AI_ANOMALY_COST_REALTIME_TOKEN", 0.05),
     anomalyHardDenialThreshold: envNum("AI_ANOMALY_DENIAL_REALTIME_TOKEN", 8),
   },
+  technician_copilot_speech: {
+    budgetSoftUsd: envNum("AI_BUDGET_SOFT_USD_COPILOT_SPEECH", 25),
+    budgetHardUsd: envNum("AI_BUDGET_HARD_USD_COPILOT_SPEECH", 40),
+    rateLimitMax: envNum("AI_RATE_LIMIT_COPILOT_SPEECH_MAX", 60),
+    rateLimitWindowMs: envNum(
+      "AI_RATE_LIMIT_COPILOT_SPEECH_WINDOW_MS",
+      5 * 60 * 1000,
+    ),
+    anomalySpikeThreshold: envNum("AI_ANOMALY_SPIKE_COPILOT_SPEECH", 45),
+    anomalyFailureThreshold: envNum("AI_ANOMALY_FAIL_COPILOT_SPEECH", 8),
+    anomalyHighCostUsd: envNum("AI_ANOMALY_COST_COPILOT_SPEECH", 0.25),
+    anomalyHardDenialThreshold: envNum(
+      "AI_ANOMALY_DENIAL_COPILOT_SPEECH",
+      8,
+    ),
+  },
   work_order_documentation_rewrite: {
     budgetSoftUsd: envNum("AI_BUDGET_SOFT_USD_DOCUMENTATION", 30),
     budgetHardUsd: envNum("AI_BUDGET_HARD_USD_DOCUMENTATION", 50),
@@ -149,6 +165,17 @@ export function estimateAICostUsd(feature: AIFeature, totalTokens: number | null
       : envNum("AI_COST_PER_1K_TOKENS_DEFAULT", 0.006);
   const minimumFlat = feature === "openai_realtime_token" ? 0.001 : 0;
   return Number(((tokens / 1000) * perThousand + minimumFlat).toFixed(6));
+}
+
+export function estimateAISpeechCostUsd(characterCount: number): number {
+  const characters = Math.max(characterCount, 0);
+  const perThousandCharacters = envNum(
+    "AI_COST_PER_1K_CHARACTERS_COPILOT_SPEECH",
+    0.015,
+  );
+  return Number(
+    ((characters / 1000) * perThousandCharacters).toFixed(6),
+  );
 }
 
 export function enforceAIOperationalPolicy(input: EnforceInput):

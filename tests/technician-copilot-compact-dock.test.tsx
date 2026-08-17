@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const voice = vi.hoisted(() => ({
   phase: "speaking" as const,
   active: true,
+  wakeLockActive: true,
+  wakeLockSupported: true,
   heardTranscript: "What's my next job?",
   error: null as string | null,
   start: vi.fn(async () => undefined),
@@ -70,6 +72,11 @@ describe("compact Technician CoPilot dock", () => {
     ).toBeVisible();
     expect(screen.getByText("What's my next job?")).toBeVisible();
     expect(screen.getByText("CoPilot is replying…")).toBeVisible();
+    expect(
+      screen.getByText(
+        "AI-generated voice · Screen stays awake while voice is active.",
+      ),
+    ).toBeVisible();
     expect(
       screen.getByRole("button", { name: "Interrupt reply" }),
     ).toBeVisible();
