@@ -199,6 +199,37 @@ describe("Technician CoPilot voice interaction gateway", () => {
     expect(realtime.stop).not.toHaveBeenCalled();
   });
 
+  it("stops voice after a terminal CoPilot turn failure", async () => {
+    const terminalFailure = Object.assign(
+      new Error(
+        "The active CoPilot repair context changed. Reload before continuing.",
+      ),
+      { recoverable: false },
+    );
+    const onUtterance = vi.fn(async () => {
+      throw terminalFailure;
+    });
+    const { result } = renderHook(() =>
+      useTechnicianInteractionGateway({ enabled: true, onUtterance }),
+    );
+
+    await act(async () => {
+      await result.current.start();
+    });
+    act(() => {
+      realtime.onFinal?.("Complete this job.");
+    });
+
+    await waitFor(() => {
+      expect(result.current.phase).toBe("error");
+      expect(result.current.active).toBe(false);
+    });
+    expect(result.current.error).toContain("Reload before continuing");
+    expect(result.current.heardTranscript).toBe("Complete this job.");
+    expect(realtime.stop).toHaveBeenCalledTimes(1);
+    expect(realtime.resume).not.toHaveBeenCalled();
+  });
+
   it("recovers when iOS speech synthesis never emits a completion event", async () => {
     vi.useFakeTimers();
     try {
@@ -230,6 +261,43 @@ describe("Technician CoPilot voice interaction gateway", () => {
       expect(result.current.phase).toBe("listening");
       expect(result.current.error).toContain("spoken reply stalled");
       expect(result.current.active).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not truncate a maximum-length valid reply at 90 seconds", async () => {
+    vi.useFakeTimers();
+    try {
+      const { result } = renderHook(() =>
+        useTechnicianInteractionGateway({
+          enabled: true,
+          onUtterance: vi.fn(async () => ({ reply: "x".repeat(2_000) })),
+        }),
+      );
+
+      await act(async () => {
+        await result.current.start();
+      });
+      await act(async () => {
+        realtime.onFinal?.("Read the full answer.");
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(result.current.phase).toBe("speaking");
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(90_001);
+      });
+
+      expect(speech.cancel).not.toHaveBeenCalled();
+      expect(result.current.phase).toBe("speaking");
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(216_000);
+      });
+      expect(speech.cancel).toHaveBeenCalledTimes(1);
+      expect(result.current.phase).toBe("listening");
     } finally {
       vi.useRealTimers();
     }

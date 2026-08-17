@@ -38,7 +38,35 @@ function normalizedTranscript(text: string): string | null {
 
 function speechWatchdogDelay(text: string): number {
   const wordCount = Math.max(1, text.trim().split(/\s+/).length);
-  return Math.min(90_000, Math.max(10_000, wordCount * 750 + 6_000));
+  // A validated reply may contain 2,000 characters. Slow mobile voices can
+  // legitimately need several minutes for that much text, so the completion
+  // watchdog scales with both words and characters instead of truncating at a
+  // fixed 90-second ceiling.
+  return Math.max(
+    10_000,
+    wordCount * 750 + 6_000,
+    text.trim().length * 150 + 6_000,
+  );
+}
+
+function isRecoverableTurnFailure(caught: unknown): boolean {
+  if (caught && typeof caught === "object" && "recoverable" in caught) {
+    const marker = (caught as { recoverable?: unknown }).recoverable;
+    if (typeof marker === "boolean") return marker;
+  }
+  if (
+    typeof DOMException !== "undefined" &&
+    caught instanceof DOMException &&
+    caught.name === "AbortError"
+  ) {
+    return true;
+  }
+  if (caught instanceof TypeError) return true;
+
+  const message = caught instanceof Error ? caught.message : "";
+  return /took too long|network|connection was interrupted|temporar|try again/i.test(
+    message,
+  );
 }
 
 export function useTechnicianInteractionGateway({
@@ -171,12 +199,26 @@ export function useTechnicianInteractionGateway({
           ) {
             return;
           }
-          setError(
+          const failureMessage =
             caught instanceof Error
               ? caught.message
-              : "Technician CoPilot could not process that voice turn.",
-          );
-          await startListeningRef.current();
+              : "Technician CoPilot could not process that voice turn.";
+          setError(failureMessage);
+          if (isRecoverableTurnFailure(caught)) {
+            await startListeningRef.current();
+          } else {
+            // Authorization, stale-session, capability, and configuration
+            // failures require user action. Stop the microphone instead of
+            // resubmitting every subsequent transcript into a terminal state.
+            invalidateGeneration();
+            activeRef.current = false;
+            setModeActive(false);
+            transportStartedRef.current = false;
+            try {
+              realtimeRef.current?.stop();
+            } catch {}
+            setVoicePhase("error");
+          }
         } finally {
           if (generationRef.current === generation) {
             inFlightRef.current = false;
@@ -184,7 +226,7 @@ export function useTechnicianInteractionGateway({
         }
       })();
     },
-    [setVoicePhase],
+    [invalidateGeneration, setVoicePhase],
   );
 
   const realtime = useTechnicianRealtimeVoice(

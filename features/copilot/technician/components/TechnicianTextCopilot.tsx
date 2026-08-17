@@ -5,6 +5,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { Mic, Square, VolumeX } from "lucide-react";
@@ -74,7 +75,33 @@ type Snapshot = {
 
 type InputMode = "ui" | "voice";
 
+type TurnRequest = {
+  message: string;
+  sessionId: string | null;
+  turnId: string;
+  inputMode: InputMode;
+};
+
 const COPILOT_TURN_TIMEOUT_MS = 45_000;
+const RECOVERABLE_TURN_STATUSES = new Set([408, 425, 429, 502, 503, 504]);
+
+class TechnicianCopilotTurnRequestError extends Error {
+  readonly recoverable: boolean;
+
+  constructor(message: string, recoverable: boolean) {
+    super(message);
+    this.name = "TechnicianCopilotTurnRequestError";
+    this.recoverable = recoverable;
+  }
+}
+
+function sameTurnInput(
+  request: TurnRequest,
+  message: string,
+  inputMode: InputMode,
+) {
+  return request.message === message && request.inputMode === inputMode;
+}
 
 function timeLabel(value: string) {
   const date = new Date(value);
@@ -108,6 +135,7 @@ export function TechnicianTextCopilot({
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const pendingTurnRef = useRef<TurnRequest | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -139,6 +167,73 @@ export function TechnicianTextCopilot({
     snapshot.capabilities?.documentation !== false;
   const voiceEnabled = snapshot.capabilities?.voice === true;
 
+  const applyTurnSnapshot = useCallback((body: Snapshot) => {
+    setSnapshot((current) => ({
+      ...current,
+      ...body,
+      session:
+        Object.prototype.hasOwnProperty.call(body, "session")
+          ? body.session
+          : body.sessionId
+            ? { id: body.sessionId }
+            : current.session,
+    }));
+  }, []);
+
+  const requestTurn = useCallback(async (request: TurnRequest) => {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(
+      () => controller.abort(),
+      COPILOT_TURN_TIMEOUT_MS,
+    );
+
+    try {
+      const response = await fetch("/api/copilot/technician/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
+        body: JSON.stringify(request),
+      });
+      const body = (await response.json()) as Snapshot;
+      if (!response.ok) {
+        const recoverable = RECOVERABLE_TURN_STATUSES.has(response.status);
+        if (recoverable) {
+          pendingTurnRef.current = request;
+        } else if (pendingTurnRef.current?.turnId === request.turnId) {
+          pendingTurnRef.current = null;
+        }
+        throw new TechnicianCopilotTurnRequestError(
+          body.error || "CoPilot could not process that turn.",
+          recoverable,
+        );
+      }
+
+      if (pendingTurnRef.current?.turnId === request.turnId) {
+        pendingTurnRef.current = null;
+      }
+      return body;
+    } catch (reason) {
+      if (reason instanceof TechnicianCopilotTurnRequestError) throw reason;
+
+      // Aborting the browser request does not cancel the server operation. Keep
+      // the exact turn key so the next attempt reconciles the persisted result
+      // instead of issuing a second mutation under a fresh idempotency key.
+      pendingTurnRef.current = request;
+      if (controller.signal.aborted) {
+        throw new TechnicianCopilotTurnRequestError(
+          "CoPilot took too long to respond. Please try again; the same turn will resume safely.",
+          true,
+        );
+      }
+      throw new TechnicianCopilotTurnRequestError(
+        "The CoPilot connection was interrupted. Please try again; the same turn will resume safely.",
+        true,
+      );
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
+  }, []);
+
   const sendTurn = useCallback(
     async (text: string, inputMode: InputMode): Promise<Snapshot> => {
       const normalized = text.trim();
@@ -151,52 +246,39 @@ export function TechnicianTextCopilot({
 
       setBusy(true);
       setError(null);
-      const controller = new AbortController();
-      const timeoutId = window.setTimeout(
-        () => controller.abort(),
-        COPILOT_TURN_TIMEOUT_MS,
-      );
       try {
-        const response = await fetch("/api/copilot/technician/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          signal: controller.signal,
-          body: JSON.stringify({
-            message: normalized,
-            sessionId,
-            turnId: crypto.randomUUID(),
-            inputMode,
-          }),
-        });
-        const body = (await response.json()) as Snapshot;
-        if (!response.ok) {
-          throw new Error(body.error || "CoPilot could not process that turn.");
+        let activeSessionId = sessionId;
+        const pending = pendingTurnRef.current;
+        if (pending) {
+          const reconciled = await requestTurn(pending);
+          applyTurnSnapshot(reconciled);
+          activeSessionId =
+            reconciled.session?.id ?? reconciled.sessionId ?? activeSessionId;
+          if (sameTurnInput(pending, normalized, inputMode)) {
+            return reconciled;
+          }
         }
-        setSnapshot((current) => ({
-          ...current,
-          ...body,
-          session:
-            Object.prototype.hasOwnProperty.call(body, "session")
-              ? body.session
-              : body.sessionId
-                ? { id: body.sessionId }
-                : current.session,
-        }));
+
+        const body = await requestTurn({
+          message: normalized,
+          sessionId: activeSessionId,
+          turnId: crypto.randomUUID(),
+          inputMode,
+        });
+        applyTurnSnapshot(body);
         return body;
       } catch (reason) {
-        const failure = controller.signal.aborted
-          ? new Error("CoPilot took too long to respond. Please try again.")
-          : reason instanceof Error
+        const failure =
+          reason instanceof Error
             ? reason
             : new Error("CoPilot could not process that turn.");
         setError(failure.message);
         throw failure;
       } finally {
-        window.clearTimeout(timeoutId);
         setBusy(false);
       }
     },
-    [busy, sessionId],
+    [applyTurnSnapshot, busy, requestTurn, sessionId],
   );
 
   const handleVoiceUtterance = useCallback(
