@@ -26981,11 +26981,7 @@ export type Database = {
       }
       agent_can_start: { Args: never; Returns: boolean }
       agent_reject_action: {
-        Args: {
-          p_action_id: string
-          p_reason?: string
-          p_rejected_by?: string
-        }
+        Args: { p_action_id: string; p_reason?: string; p_rejected_by?: string }
         Returns: {
           approved_at: string | null
           approved_by: string | null
@@ -27988,11 +27984,7 @@ export type Database = {
         Returns: Json
       }
       dispatch_can_execute: {
-        Args: {
-          p_actor_user_id: string
-          p_shop_id: string
-          p_visit_id: string
-        }
+        Args: { p_actor_user_id: string; p_shop_id: string; p_visit_id: string }
         Returns: boolean
       }
       dispatch_can_manage: {
@@ -28086,11 +28078,7 @@ export type Database = {
         Returns: Json
       }
       dispatch_visit_history: {
-        Args: {
-          p_actor_user_id: string
-          p_shop_id: string
-          p_visit_id: string
-        }
+        Args: { p_actor_user_id: string; p_shop_id: string; p_visit_id: string }
         Returns: Json
       }
       dispatch_visit_snapshot: { Args: { p_visit_id: string }; Returns: Json }
@@ -28499,11 +28487,7 @@ export type Database = {
         Returns: Json
       }
       match_learned_job_templates: {
-        Args: {
-          p_embedding: string
-          p_match_count?: number
-          p_shop_id: string
-        }
+        Args: { p_embedding: string; p_match_count?: number; p_shop_id: string }
         Returns: {
           confidence_score: number
           default_labor_hours: number
@@ -28517,11 +28501,7 @@ export type Database = {
         }[]
       }
       match_work_order_intelligence: {
-        Args: {
-          p_embedding: string
-          p_match_count?: number
-          p_shop_id: string
-        }
+        Args: { p_embedding: string; p_match_count?: number; p_shop_id: string }
         Returns: {
           cause: string
           complaint: string
@@ -29642,6 +29622,16 @@ export type Database = {
         }
         Returns: Json
       }
+      shop_assistant_assert_line_snapshot: {
+        Args: {
+          p_mode: string
+          p_only_unassigned?: boolean
+          p_shop_id: string
+          p_target_versions: Json
+          p_work_order_id: string
+        }
+        Returns: number
+      }
       shop_assistant_assign_work_order_atomic: {
         Args: {
           p_action_id: string
@@ -29652,16 +29642,6 @@ export type Database = {
           p_work_order_id: string
         }
         Returns: Json
-      }
-      shop_assistant_assert_line_snapshot: {
-        Args: {
-          p_only_unassigned: boolean
-          p_shop_id: string
-          p_target_versions: Json
-          p_tool_name: string
-          p_work_order_id: string
-        }
-        Returns: number
       }
       shop_assistant_cancel_booking_atomic: {
         Args: {
@@ -29818,6 +29798,14 @@ export type Database = {
         }
         Returns: Json
       }
+      shop_assistant_invoice_source_fingerprint: {
+        Args: { p_shop_id: string; p_work_order_id: string }
+        Returns: string
+      }
+      shop_assistant_json_fingerprint: {
+        Args: { p_value: Json }
+        Returns: string
+      }
       shop_assistant_lock_action_for_tool: {
         Args: {
           p_action_id: string
@@ -29855,14 +29843,6 @@ export type Database = {
           isSetofReturn: false
         }
       }
-      shop_assistant_invoice_source_fingerprint: {
-        Args: { p_shop_id: string; p_work_order_id: string }
-        Returns: string
-      }
-      shop_assistant_json_fingerprint: {
-        Args: { p_value: Json }
-        Returns: string
-      }
       shop_assistant_mark_work_order_ready_atomic: {
         Args: {
           p_action_id: string
@@ -29871,14 +29851,6 @@ export type Database = {
           p_work_order_id: string
         }
         Returns: Json
-      }
-      shop_assistant_profile_id: {
-        Args: { p_actor_user_id: string; p_shop_id: string }
-        Returns: string
-      }
-      shop_assistant_profile_role: {
-        Args: { p_actor_user_id: string; p_shop_id: string }
-        Returns: string
       }
       shop_assistant_place_purchase_order_atomic: {
         Args: {
@@ -29889,6 +29861,14 @@ export type Database = {
           p_shop_id: string
         }
         Returns: Json
+      }
+      shop_assistant_profile_id: {
+        Args: { p_actor_user_id: string; p_shop_id: string }
+        Returns: string
+      }
+      shop_assistant_profile_role: {
+        Args: { p_actor_user_id: string; p_shop_id: string }
+        Returns: string
       }
       shop_assistant_receive_part_request_item_atomic: {
         Args: {
@@ -29928,6 +29908,15 @@ export type Database = {
         }
         Returns: Json
       }
+      shop_assistant_release_work_order_hold_atomic: {
+        Args: {
+          p_action_id: string
+          p_actor_user_id: string
+          p_shop_id: string
+          p_work_order_id: string
+        }
+        Returns: Json
+      }
       shop_assistant_reopen_inspection_atomic: {
         Args: {
           p_action_id: string
@@ -29935,15 +29924,6 @@ export type Database = {
           p_inspection_id: string
           p_reason: string
           p_shop_id: string
-        }
-        Returns: Json
-      }
-      shop_assistant_release_work_order_hold_atomic: {
-        Args: {
-          p_action_id: string
-          p_actor_user_id: string
-          p_shop_id: string
-          p_work_order_id: string
         }
         Returns: Json
       }
@@ -30833,3 +30813,4 @@ export const Constants = {
     },
   },
 } as const
+
