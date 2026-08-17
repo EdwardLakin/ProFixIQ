@@ -43,4 +43,23 @@ describe("operational event presentation", () => {
       detail: "Requested",
     });
   });
+
+  it("shows the changed stage for stage-transition events", () => {
+    expect(
+      getOperationalEventPresentation({
+        event_type: "quote_line.stage.ready_to_send",
+        entity_type: "work_order_quote_line",
+        actor_role: "advisor",
+        metadata: {
+          old_status: "draft",
+          new_status: "draft",
+          old_stage: "pricing",
+          new_stage: "ready_to_send",
+        },
+      }),
+    ).toEqual({
+      title: "Quote Line · Stage · Ready To Send",
+      detail: "Pricing → Ready To Send · by Advisor",
+    });
+  });
 });

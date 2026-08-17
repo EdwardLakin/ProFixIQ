@@ -761,6 +761,7 @@ export default function MenuItemDetailPage() {
       {pickerOpenForRow !== null && (
         <PartPicker
           open={true}
+          accessContext="menu-editor"
           onClose={() => setPickerOpenForRow(null)}
           onPick={(sel) => {
             const idx = pickerOpenForRow;

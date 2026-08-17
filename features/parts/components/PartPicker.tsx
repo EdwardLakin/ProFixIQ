@@ -60,6 +60,7 @@ export type PickedPart = {
 type Props = {
   open: boolean;
   channel?: string;
+  accessContext?: "inventory" | "menu-editor";
   initialSearch?: string;
   initialQty?: number;
   workOrderId?: string;
@@ -118,6 +119,7 @@ function actionErrorMessage(error: unknown): string {
 export function PartPicker({
   open,
   channel = "partpicker",
+  accessContext = "inventory",
   initialSearch = "",
   initialQty = 1,
   workOrderId,
@@ -217,6 +219,9 @@ export function PartPicker({
         const params = new URLSearchParams();
         const term = search.trim();
         if (term) params.set("q", term);
+        if (accessContext === "menu-editor") {
+          params.set("context", accessContext);
+        }
         if (workOrderLineId) {
           params.set("workOrderLineId", workOrderLineId);
         }
@@ -267,7 +272,7 @@ export function PartPicker({
     return () => {
       cancelled = true;
     };
-  }, [open, search, workOrderLineId]);
+  }, [accessContext, open, search, workOrderLineId]);
 
   useEffect(() => {
     if (!open) return;

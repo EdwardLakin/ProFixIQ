@@ -50,8 +50,13 @@ export function getOperationalEventPresentation(
   event: OperationalEventPresentationInput,
 ): { title: string; detail: string } {
   const metadata = metadataRecord(event.metadata);
-  const oldStatus = metadataText(metadata, "old_status") ?? metadataText(metadata, "old_stage");
-  const newStatus = metadataText(metadata, "new_status") ?? metadataText(metadata, "new_stage");
+  const isStageTransition = event.event_type.includes(".stage.");
+  const oldStatus = isStageTransition
+    ? metadataText(metadata, "old_stage")
+    : metadataText(metadata, "old_status") ?? metadataText(metadata, "old_stage");
+  const newStatus = isStageTransition
+    ? metadataText(metadata, "new_stage")
+    : metadataText(metadata, "new_status") ?? metadataText(metadata, "new_stage");
   const details: string[] = [];
 
   if (oldStatus && newStatus && oldStatus !== newStatus) {

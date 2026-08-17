@@ -47,6 +47,11 @@ describe("desktop work-order cockpit", () => {
     expect(pwaRuntime).toContain("createPortal(runtimeStatusControl, runtimeStatusTarget)");
   });
 
+  it("keeps the fixed runtime status visible until its dock target mounts", () => {
+    expect(pwaRuntime).toContain(": runtimeStatusControl}");
+    expect(pwaRuntime).not.toContain("workOrderSurface\n          ? null");
+  });
+
   it("keeps canonical work-order actions behind their existing handlers", () => {
     expect(detail).toContain("assignWorkOrderLineTechnician");
     expect(detail).toContain("requestAllPartsForLine");

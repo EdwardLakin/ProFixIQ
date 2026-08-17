@@ -3,6 +3,18 @@ import { NextResponse } from "next/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
+const MENU_EDITOR_ROLES = [
+  "owner",
+  "admin",
+  "manager",
+  "advisor",
+  "service",
+  "parts",
+  "mechanic",
+  "lead_hand",
+  "foreman",
+] as const;
+
 function cleanSearch(value: string | null): string {
   return (value ?? "")
     .replace(/[,%_().]/g, " ")
@@ -12,12 +24,15 @@ function cleanSearch(value: string | null): string {
 }
 
 export async function GET(request: Request) {
-  const access = await requireShopScopedApiAccess({
-    requiredCapability: "canManageParts",
-  });
+  const url = new URL(request.url);
+  const pickerContext = url.searchParams.get("context");
+  const access = await requireShopScopedApiAccess(
+    pickerContext === "menu-editor"
+      ? { allowRoles: MENU_EDITOR_ROLES }
+      : { requiredCapability: "canManageParts" },
+  );
   if (!access.ok) return access.response;
 
-  const url = new URL(request.url);
   const search = cleanSearch(url.searchParams.get("q"));
   const admin = createAdminSupabase();
 

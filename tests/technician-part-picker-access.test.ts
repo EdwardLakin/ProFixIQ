@@ -11,6 +11,8 @@ const usePartButton = readFileSync(
 );
 const pickerRoute = readFileSync("app/api/parts/picker/route.ts", "utf8");
 const workOrderDetail = readFileSync("app/work-orders/[id]/Client.tsx", "utf8");
+const menuBuilder = readFileSync("app/menu/page.tsx", "utf8");
+const menuItemEditor = readFileSync("app/menu/item/[id]/page.tsx", "utf8");
 
 describe("parts-role part picker access", () => {
   it("loads inventory through a server-scoped route", () => {
@@ -22,7 +24,7 @@ describe("parts-role part picker access", () => {
     );
   });
 
-  it("requires the canonical parts capability in both UI and API", () => {
+  it("requires the canonical parts capability for inventory actions", () => {
     expect(pickerRoute).toContain('requiredCapability: "canManageParts"');
     expect(pickerRoute).not.toContain('access.canonicalRole === "mechanic"');
     expect(workOrderDetail).toContain(
@@ -30,6 +32,15 @@ describe("parts-role part picker access", () => {
     );
     expect(workOrderDetail).toContain("canUseInventoryPicker");
     expect(workOrderDetail).toContain("? () => setPartsLineId(ln.id)");
+  });
+
+  it("preserves read-only catalog lookup for authorized menu editors", () => {
+    expect(picker).toContain('accessContext?: "inventory" | "menu-editor"');
+    expect(picker).toContain('params.set("context", accessContext)');
+    expect(pickerRoute).toContain('pickerContext === "menu-editor"');
+    expect(pickerRoute).toContain("{ allowRoles: MENU_EDITOR_ROLES }");
+    expect(menuBuilder).toContain('accessContext="menu-editor"');
+    expect(menuItemEditor).toContain('accessContext="menu-editor"');
   });
 
   it("keeps every inventory query scoped to the authenticated shop", () => {

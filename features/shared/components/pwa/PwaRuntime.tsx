@@ -384,9 +384,7 @@ export default function PwaRuntime() {
     <>
       {runtimeStatusControl && runtimeStatusTarget
         ? createPortal(runtimeStatusControl, runtimeStatusTarget)
-        : workOrderSurface
-          ? null
-          : runtimeStatusControl}
+        : runtimeStatusControl}
 
       {showIosInstructions && (
         <div className="fixed inset-0 z-[110] grid place-items-center bg-slate-950/80 p-4 backdrop-blur-sm">
