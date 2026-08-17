@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
+import { createPortal } from "react-dom";
 
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import {
@@ -56,6 +57,25 @@ export default function PwaRuntime() {
   const updateReloading = useRef(false);
   const pending = summary.queued + summary.syncing + summary.failed;
   const mobileSurface = pathname.startsWith("/mobile");
+  const workOrderSurface = pathname.startsWith("/work-orders/");
+  const [runtimeStatusTarget, setRuntimeStatusTarget] = useState<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (!workOrderSurface) {
+      setRuntimeStatusTarget(null);
+      return;
+    }
+
+    const resolveTarget = () => {
+      const nextTarget = document.getElementById("work-order-runtime-status");
+      setRuntimeStatusTarget((current) => (current === nextTarget ? current : nextTarget));
+    };
+
+    resolveTarget();
+    const observer = new MutationObserver(resolveTarget);
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [workOrderSurface]);
 
   const publishInstallAvailability = useCallback(
     (detail: InstallAvailability) => {
@@ -292,6 +312,67 @@ export default function PwaRuntime() {
   const showRuntimeStatus =
     !online || pending > 0 || Boolean(updateReady) || Boolean(syncBlocked);
 
+  const runtimeStatusControl = showRuntimeStatus && !mobileSurface ? (
+    <div
+      className={
+        runtimeStatusTarget
+          ? "flex w-full flex-wrap items-center gap-2 rounded-xl border border-slate-700 bg-slate-950/95 px-3 py-2 text-xs font-semibold text-slate-100 shadow-lg"
+          : "fixed z-[100] flex max-w-[calc(100vw-2rem)] flex-wrap items-center justify-end gap-2 rounded-2xl border border-slate-700 bg-slate-950/95 px-3 py-2 text-xs font-semibold text-slate-100 shadow-xl backdrop-blur sm:flex-nowrap sm:rounded-full"
+      }
+      style={
+        runtimeStatusTarget
+          ? undefined
+          : {
+              bottom: `calc(1rem + env(safe-area-inset-bottom, 0px) + ${viewportInsets.bottom}px)`,
+              right: `calc(1rem + env(safe-area-inset-right, 0px) + ${viewportInsets.right}px)`,
+            }
+      }
+    >
+      {runtimeStatusTarget ? (
+        <span className="w-full text-[10px] uppercase tracking-[0.16em] text-slate-400">
+          App status
+        </span>
+      ) : null}
+      <span
+        className={`h-2 w-2 rounded-full ${
+          online ? "bg-emerald-400" : "bg-amber-400"
+        }`}
+      />
+      <span>
+        {syncBlocked
+          ? "Sync needs attention"
+          : online
+            ? pending
+              ? `Syncing ${pending}`
+              : "Online"
+            : `Offline · ${pending} pending`}
+      </span>
+      {pending > 0 || !online || syncBlocked ? (
+        <button
+          type="button"
+          onClick={() => window.location.assign("/offline/sync")}
+          className="rounded-full border border-slate-600 px-3 py-1"
+        >
+          Details
+        </button>
+      ) : null}
+      {updateReady ? (
+        <button
+          type="button"
+          onClick={activateUpdate}
+          disabled={activatingUpdate || pending > 0}
+          className="rounded-full bg-sky-400 px-3 py-1 text-slate-950"
+        >
+          {activatingUpdate
+            ? "Updating…"
+            : pending > 0
+              ? "Sync first"
+              : "Update"}
+        </button>
+      ) : null}
+    </div>
+  ) : null;
+
   if (
     isStandalonePublicRoute(pathname) ||
     ((!showRuntimeStatus || mobileSurface) && !showIosInstructions)
@@ -301,53 +382,11 @@ export default function PwaRuntime() {
 
   return (
     <>
-      {showRuntimeStatus && !mobileSurface ? (
-        <div
-          className="fixed z-[100] flex max-w-[calc(100vw-2rem)] flex-wrap items-center justify-end gap-2 rounded-2xl border border-slate-700 bg-slate-950/95 px-3 py-2 text-xs font-semibold text-slate-100 shadow-xl backdrop-blur sm:flex-nowrap sm:rounded-full"
-          style={{
-            bottom: `calc(1rem + env(safe-area-inset-bottom, 0px) + ${viewportInsets.bottom}px)`,
-            right: `calc(1rem + env(safe-area-inset-right, 0px) + ${viewportInsets.right}px)`,
-          }}
-        >
-          <span
-            className={`h-2 w-2 rounded-full ${
-              online ? "bg-emerald-400" : "bg-amber-400"
-            }`}
-          />
-          <span>
-            {syncBlocked
-              ? "Sync needs attention"
-              : online
-                ? pending
-                  ? `Syncing ${pending}`
-                  : "Online"
-                : `Offline · ${pending} pending`}
-          </span>
-          {(pending > 0 || !online || syncBlocked) && (
-            <button
-              type="button"
-              onClick={() => window.location.assign("/offline/sync")}
-              className="rounded-full border border-slate-600 px-3 py-1"
-            >
-              Details
-            </button>
-          )}
-          {updateReady && (
-            <button
-              type="button"
-              onClick={activateUpdate}
-              disabled={activatingUpdate || pending > 0}
-              className="rounded-full bg-sky-400 px-3 py-1 text-slate-950"
-            >
-              {activatingUpdate
-                ? "Updating…"
-                : pending > 0
-                  ? "Sync first"
-                  : "Update"}
-            </button>
-          )}
-        </div>
-      ) : null}
+      {runtimeStatusControl && runtimeStatusTarget
+        ? createPortal(runtimeStatusControl, runtimeStatusTarget)
+        : workOrderSurface
+          ? null
+          : runtimeStatusControl}
 
       {showIosInstructions && (
         <div className="fixed inset-0 z-[110] grid place-items-center bg-slate-950/80 p-4 backdrop-blur-sm">

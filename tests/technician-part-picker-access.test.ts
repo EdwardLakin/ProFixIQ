@@ -10,8 +10,9 @@ const usePartButton = readFileSync(
   "utf8",
 );
 const pickerRoute = readFileSync("app/api/parts/picker/route.ts", "utf8");
+const workOrderDetail = readFileSync("app/work-orders/[id]/Client.tsx", "utf8");
 
-describe("technician part picker access", () => {
+describe("parts-role part picker access", () => {
   it("loads inventory through a server-scoped route", () => {
     expect(picker).toContain("fetch(`/api/parts/picker?");
     expect(picker).toContain('params.set("workOrderLineId", workOrderLineId)');
@@ -21,22 +22,14 @@ describe("technician part picker access", () => {
     );
   });
 
-  it("limits mechanic inventory to an assigned work-order line", () => {
-    expect(pickerRoute).toContain('"mechanic"');
-    expect(pickerRoute).toContain(
-      'access.canonicalRole === "mechanic"',
+  it("requires the canonical parts capability in both UI and API", () => {
+    expect(pickerRoute).toContain('requiredCapability: "canManageParts"');
+    expect(pickerRoute).not.toContain('access.canonicalRole === "mechanic"');
+    expect(workOrderDetail).toContain(
+      "const canUseInventoryPicker = currentActor.canManageParts",
     );
-    expect(pickerRoute).toContain("line.assigned_tech_id");
-    expect(pickerRoute).toContain("line.assigned_to");
-    expect(pickerRoute).toContain(
-      '.from("work_order_line_technicians")',
-    );
-    expect(pickerRoute).toContain(
-      '.eq("technician_id", input.technicianId)',
-    );
-    expect(pickerRoute).toContain(
-      "This inventory picker is limited to your assigned jobs.",
-    );
+    expect(workOrderDetail).toContain("canUseInventoryPicker");
+    expect(workOrderDetail).toContain("? () => setPartsLineId(ln.id)");
   });
 
   it("keeps every inventory query scoped to the authenticated shop", () => {

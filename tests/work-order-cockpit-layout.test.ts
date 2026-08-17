@@ -10,6 +10,18 @@ const jobCard = readFileSync(
   "features/work-orders/components/JobCard.tsx",
   "utf8",
 );
+const partsDrawer = readFileSync(
+  "features/parts/components/PartsDrawer.tsx",
+  "utf8",
+);
+const partPicker = readFileSync(
+  "features/parts/components/PartPicker.tsx",
+  "utf8",
+);
+const pwaRuntime = readFileSync(
+  "features/shared/components/pwa/PwaRuntime.tsx",
+  "utf8",
+);
 
 describe("desktop work-order cockpit", () => {
   it("uses stable navigator, workspace, command-center, and activity surfaces", () => {
@@ -31,6 +43,8 @@ describe("desktop work-order cockpit", () => {
     expect(focusedJob).toContain('"Add hold"');
     expect(focusedJob).not.toContain('"Add blocker"');
     expect(jobCard).toContain('display === "navigator"');
+    expect(focusedJob).toContain('id="work-order-runtime-status"');
+    expect(pwaRuntime).toContain("createPortal(runtimeStatusControl, runtimeStatusTarget)");
   });
 
   it("keeps canonical work-order actions behind their existing handlers", () => {
@@ -49,5 +63,14 @@ describe("desktop work-order cockpit", () => {
     expect(focusedJob).toContain("<NewChatModal");
     expect(focusedJob).toContain("<AIAssistantModal");
     expect(focusedJob).toContain("<VehicleHistoryModal");
+  });
+
+  it("keeps parts workflows in the shared top-level modal layer", () => {
+    expect(partsDrawer).toContain("<ModalShell");
+    expect(partsDrawer).toContain('title="Parts Drawer"');
+    expect(partsDrawer).toContain('variant="inline"');
+    expect(partPicker).toContain("<ModalShell");
+    expect(partPicker).toContain('title="Part Picker"');
+    expect(partsDrawer).not.toContain('className="fixed inset-0 z-[510]"');
   });
 });

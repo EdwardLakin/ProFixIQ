@@ -19,6 +19,7 @@ import {
   type AiPartSuggestion,
 } from "@/features/parts/hooks/useAiPartSuggestions";
 import { toPartDisplaySummary } from "@/features/parts/lib/part-display";
+import ModalShell from "@/features/shared/components/ModalShell";
 
 type DB = Database;
 type UUID = string;
@@ -428,29 +429,30 @@ export function PartPicker({
       aria-busy={submitting}
       className="metal-card rounded-2xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] p-4 shadow-[var(--theme-shadow-medium)] backdrop-blur-xl md:p-6"
     >
-      {/* Header */}
-      <div className="mb-4 flex items-center justify-between gap-4">
-        <div>
-          <div className="text-xs uppercase tracking-[0.2em] text-[color:var(--theme-text-muted)]">
-            Select a part
+      {variant === "inline" ? (
+        <div className="mb-4 flex items-center justify-between gap-4">
+          <div>
+            <div className="text-xs uppercase tracking-[0.2em] text-[color:var(--theme-text-muted)]">
+              Select a part
+            </div>
+            <h3
+              className="mt-1 text-2xl font-semibold text-[color:var(--theme-text-primary)]"
+              style={{ fontFamily: "var(--font-blackops), system-ui" }}
+            >
+              Part Picker
+            </h3>
           </div>
-          <h3
-            className="mt-1 text-2xl font-semibold text-[color:var(--theme-text-primary)]"
-            style={{ fontFamily: "var(--font-blackops), system-ui" }}
-          >
-            Part Picker
-          </h3>
-        </div>
 
-        <button
-          onClick={close}
-          disabled={submitting}
-          className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-4 py-2 text-sm text-[color:var(--theme-text-primary)] hover:border-orange-500 hover:bg-[color:var(--theme-surface-panel)]"
-          type="button"
-        >
-          Close
-        </button>
-      </div>
+          <button
+            onClick={close}
+            disabled={submitting}
+            className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-4 py-2 text-sm text-[color:var(--theme-text-primary)] hover:border-orange-500 hover:bg-[color:var(--theme-surface-panel)]"
+            type="button"
+          >
+            Close
+          </button>
+        </div>
+      ) : null}
 
       {/* AI Suggestions */}
       <div className="mb-4 rounded-2xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] shadow-[var(--theme-shadow-medium)] backdrop-blur-xl">
@@ -780,26 +782,16 @@ export function PartPicker({
   if (variant === "inline") return panel;
 
   return (
-    <div
-      className="fixed inset-0 z-[500] flex items-center justify-center"
-      onClick={(e) => {
-        e.stopPropagation();
-      }}
+    <ModalShell
+      isOpen={open}
+      onClose={close}
+      title="Part Picker"
+      size="lg"
+      hideFooter
+      busy={submitting}
     >
-      <div
-        className="fixed inset-0 bg-[color:var(--theme-surface-overlay)] backdrop-blur-sm"
-        aria-hidden="true"
-        onClick={() => {
-          if (!submittingRef.current) close();
-        }}
-      />
-      <div
-        className="relative z-[510] w-full max-w-4xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {panel}
-      </div>
-    </div>
+      {panel}
+    </ModalShell>
   );
 }
 
