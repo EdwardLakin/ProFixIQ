@@ -80,7 +80,7 @@ export async function handleStripeAcquisitionContext(req: Request) {
       );
     }
 
-    return noStoreJson({ email: checkoutEmail });
+    return noStoreJson({ email: checkoutEmail, surface: metadata.surface });
   } catch (error) {
     console.error("stripe_acquisition_context_failed", {
       name: error instanceof Error ? error.name : "UnknownError",

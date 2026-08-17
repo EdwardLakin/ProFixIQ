@@ -129,12 +129,25 @@ export async function handleStripeCheckoutLinkUser(req: Request) {
       );
     }
 
-    if (user.app_metadata?.profixiq_portal_only === true) {
+    const shouldUpgradePortalIdentity =
+      user.app_metadata?.profixiq_portal_only === true;
+    const shouldPersistAcquisitionSurface =
+      user.app_metadata?.profixiq_acquisition_surface !== metadata.surface ||
+      (metadata.packageKey &&
+        user.app_metadata?.profixiq_acquisition_package !==
+          metadata.packageKey);
+    if (shouldUpgradePortalIdentity || shouldPersistAcquisitionSurface) {
       const { error: identityUpgradeError } =
         await admin.auth.admin.updateUserById(user.id, {
           app_metadata: {
             ...user.app_metadata,
-            profixiq_portal_only: false,
+            ...(shouldUpgradePortalIdentity
+              ? { profixiq_portal_only: false }
+              : {}),
+            profixiq_acquisition_surface: metadata.surface,
+            ...(metadata.packageKey
+              ? { profixiq_acquisition_package: metadata.packageKey }
+              : {}),
           },
         });
       if (identityUpgradeError) {
@@ -179,6 +192,7 @@ export async function handleStripeCheckoutLinkUser(req: Request) {
 
     return noStoreJson({
       success: true,
+      surface: metadata.surface,
       shopLinked: Boolean(claim.shopId),
       repeated: claim.repeated,
     });

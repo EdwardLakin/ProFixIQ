@@ -9,6 +9,19 @@ export const PRODUCT_PACKAGE_KEYS = [
 
 export type ProductPackageKey = (typeof PRODUCT_PACKAGE_KEYS)[number];
 export type ProductCapability = "shop" | "field_service" | "fleet_maintenance";
+export type ProductAcquisitionSurface = "shop" | "field" | "fleet";
+
+export const PRODUCT_PACKAGE_ACQUISITION_SURFACE: Record<
+  ProductPackageKey,
+  ProductAcquisitionSurface
+> = {
+  shop_operations: "shop",
+  field_service: "field",
+  fleet_maintenance: "fleet",
+  // Complete Operations starts with the Shop owner workspace, which owns the
+  // shared location and unlocks the Field and Fleet capabilities afterward.
+  complete_operations: "shop",
+};
 
 export const PRODUCT_PACKAGE_LOOKUP_KEYS: Record<ProductPackageKey, string> = {
   shop_operations: "profixiq_shop_operations_monthly_v1",
@@ -109,6 +122,25 @@ export function normalizeProductPackageKey(
     .trim()
     .toLowerCase();
   return isProductPackageKey(normalized) ? normalized : null;
+}
+
+export function normalizeProductAcquisitionSurface(
+  value: unknown,
+): ProductAcquisitionSurface | null {
+  const normalized = String(value ?? "")
+    .trim()
+    .toLowerCase();
+  return normalized === "shop" ||
+    normalized === "field" ||
+    normalized === "fleet"
+    ? normalized
+    : null;
+}
+
+export function productAcquisitionSurface(
+  packageKey: ProductPackageKey,
+): ProductAcquisitionSurface {
+  return PRODUCT_PACKAGE_ACQUISITION_SURFACE[packageKey];
 }
 
 export function productPackageAllows(

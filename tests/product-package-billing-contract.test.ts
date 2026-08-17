@@ -9,6 +9,7 @@ import {
   PRODUCT_PACKAGE_KEYS,
   PRODUCT_PACKAGE_LOOKUP_KEYS,
   PRODUCT_PACKAGE_PRICING,
+  productAcquisitionSurface,
   productPackageAllows,
 } from "../features/stripe/lib/stripe/product-packages";
 import { resolveProductPackagePriceContract } from "../features/stripe/lib/server/product-package-price-contract";
@@ -101,6 +102,13 @@ describe("ProFixIQ product package billing contract", () => {
     ).toBe(true);
   });
 
+  it("maps every package to its canonical account acquisition surface", () => {
+    expect(productAcquisitionSurface("shop_operations")).toBe("shop");
+    expect(productAcquisitionSurface("field_service")).toBe("field");
+    expect(productAcquisitionSurface("fleet_maintenance")).toBe("fleet");
+    expect(productAcquisitionSurface("complete_operations")).toBe("shop");
+  });
+
   it("resolves every live package and capacity price by lookup key", async () => {
     const prices = [
       ...PRODUCT_PACKAGE_KEYS.map((packageKey) =>
@@ -160,14 +168,18 @@ describe("ProFixIQ product package billing contract", () => {
   it("binds Checkout and database gates to package identity", async () => {
     const [checkout, migration, scopeMigration, reconciler, worker] =
       await Promise.all([
-      readFile(CHECKOUT, "utf8"),
-      readFile(MIGRATION, "utf8"),
-      readFile(ENTITLEMENT_SCOPE_MIGRATION, "utf8"),
-      readFile(RECONCILER, "utf8"),
-      readFile(WORKER, "utf8"),
+        readFile(CHECKOUT, "utf8"),
+        readFile(MIGRATION, "utf8"),
+        readFile(ENTITLEMENT_SCOPE_MIGRATION, "utf8"),
+        readFile(RECONCILER, "utf8"),
+        readFile(WORKER, "utf8"),
       ]);
     expect(checkout).toContain("packageKey: z.enum(PRODUCT_PACKAGE_KEYS)");
     expect(checkout).toContain("package_key: selection.packageKey");
+    expect(checkout).toContain(
+      "acquisition_surface: input.selection.acquisitionSurface",
+    );
+    expect(checkout).toContain("surface=${selection.acquisitionSurface}");
     expect(checkout).not.toContain("payment_method_types");
     expect(checkout).toContain("payment_method_collection");
     expect(checkout).toContain('"if_required"');

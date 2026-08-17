@@ -57,22 +57,22 @@ export default function ForgotPasswordPage() {
     const params = buildContinuationParams(sp, email);
     const redirect = params.get("redirect");
     const signInPath =
-      surface === "field"
-        ? "/field/sign-in"
-        : surface === "customer"
-          ? "/customer/sign-in"
-          : surface === "fleet"
-            ? "/sign-in"
-            : surface === "shop"
-              ? "/shop/sign-in"
-              : redirect?.startsWith("/mobile/service")
-                ? "/field/sign-in"
-                : redirect?.startsWith("/mobile")
-                  ? "/mobile/sign-in"
-                  : "/sign-in";
-    router.push(
-      `${signInPath}${params.size ? `?${params.toString()}` : ""}`,
-    );
+      params.get("flow") === "acquisition" && params.has("session_id")
+        ? "/signup"
+        : surface === "field"
+          ? "/field/sign-in"
+          : surface === "customer"
+            ? "/customer/sign-in"
+            : surface === "fleet"
+              ? "/sign-in"
+              : surface === "shop"
+                ? "/shop/sign-in"
+                : redirect?.startsWith("/mobile/service")
+                  ? "/field/sign-in"
+                  : redirect?.startsWith("/mobile")
+                    ? "/mobile/sign-in"
+                    : "/sign-in";
+    router.push(`${signInPath}${params.size ? `?${params.toString()}` : ""}`);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -114,7 +114,9 @@ export default function ForgotPasswordPage() {
       setNotice(data.message || "Reset email sent. Check your inbox.");
       setStatus("sent");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to send reset email.");
+      setError(
+        err instanceof Error ? err.message : "Unable to send reset email.",
+      );
       setStatus("error");
     }
   };
@@ -151,7 +153,9 @@ export default function ForgotPasswordPage() {
                 disabled:cursor-not-allowed disabled:opacity-60
               "
             >
-              <span aria-hidden className="text-base leading-none">←</span>
+              <span aria-hidden className="text-base leading-none">
+                ←
+              </span>
               Back
             </button>
 
