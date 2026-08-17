@@ -25,6 +25,9 @@ import { isBillingAttentionStatus } from "@/features/stripe/lib/stripe/subscript
 import { isOutsideDesktopAppShell } from "@/features/shared/lib/routes/shellBoundaries";
 import OpsNotificationsBell from "@/features/shared/components/OpsNotificationsBell";
 import { isDefaultOpsOperatorEmail } from "@/features/ops/lib/operatorAccess";
+import { TechnicianCopilotShell } from "@/features/copilot/technician/components/TechnicianCopilotShell";
+import { canonicalizeRole } from "@/features/shared/lib/rbac";
+import { resolveCanonicalStaffProfile } from "@/features/shared/lib/authenticated-profile";
 
 const HEADER_OFFSET_DESKTOP = "pt-14";
 
@@ -51,11 +54,6 @@ const ActionButton = ({
     {children}
   </button>
 );
-
-type ProfileScope = Pick<
-  Database["public"]["Tables"]["profiles"]["Row"],
-  "email" | "role" | "must_change_password" | "shop_id"
->;
 
 type ShopBillingScope = Pick<
   Database["public"]["Tables"]["shops"]["Row"],
@@ -104,6 +102,9 @@ export default function AppShell({
     initialIdentity?.email ?? null,
   );
   const [mustChangePassword, setMustChangePassword] = useState(false);
+  const [role, setRole] = useState<string | null>(
+    initialIdentity?.role ?? null,
+  );
   const [, setShopId] = useState<string | null>(
     initialIdentity?.shopId ?? null,
   );
@@ -177,14 +178,11 @@ export default function AppShell({
       if (!uid) return;
 
       try {
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("email, role, must_change_password, shop_id")
-          .eq("id", uid)
-          .single<ProfileScope>();
+        const { profile } = await resolveCanonicalStaffProfile(supabase, uid);
 
         setUserEmail(profile?.email ?? session?.user?.email ?? null);
         setMustChangePassword(!!profile?.must_change_password);
+        if (profile) setRole(profile.role);
 
         const sid = (profile?.shop_id as string | null) ?? null;
         setShopId(sid);
@@ -673,6 +671,11 @@ export default function AppShell({
           <AskAssistantEntry mobile />
         </div>
       ) : null}
+
+      <TechnicianCopilotShell
+        shouldCheck={canonicalizeRole(role) === "mechanic"}
+        surface="desktop"
+      />
     </>
   );
 }

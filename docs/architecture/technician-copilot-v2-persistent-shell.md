@@ -1,0 +1,74 @@
+# Technician CoPilot V2 — Persistent Technician Shell
+
+## Scope
+
+This phase moves the existing technician collaborator from a destination page
+into the authenticated application shells. It does not create another CoPilot
+runtime, voice provider, Repair Session, or mutation path.
+
+One `TechnicianTextCopilot` instance now remains mounted while an authorized
+technician moves through:
+
+- desktop shop routes;
+- standard Shop Mobile routes;
+- focused mobile job and inspection routes; and
+- the Field Service mobile surface when the same technician has access.
+
+The desktop shell presents the collaborator as a right-side panel. Shop Mobile
+uses a full-height overlay above the mobile navigation. Closing either surface
+keeps the Repair Session client mounted but stops active microphone capture.
+
+## Canonical runtime
+
+The persistent shell continues to use the existing boundaries:
+
+```text
+Application shell
+  -> technician capability access check
+  -> one mounted Technician CoPilot client
+  -> existing session and chat APIs
+  -> existing Technician Interaction Gateway
+  -> existing Repair Session event ledger
+  -> canonical technician actions and silent documentation
+```
+
+Legacy links remain compatible. Visiting `/copilot/technician` or
+`/mobile/copilot/technician` opens the shell-owned panel; it no longer mounts a
+second page-owned voice or conversation client.
+
+## Authorization and lifecycle
+
+- Desktop checks availability only for the canonical `mechanic` role.
+- Mobile relies on the same authenticated server access check, so other roles
+  receive no launcher or client runtime.
+- Capability removal unmounts the shell client.
+- Closing the panel stops Realtime capture and speech output.
+- Route changes do not unmount the collaborator, so text, voice state, and the
+  hydrated Repair Session remain available throughout the technician workflow.
+- Server-side authorization, tenant scope, assignment checks, action replay,
+  and mutation rules are unchanged.
+
+## Rollback
+
+The shell is still default-closed behind the existing
+`technician_copilot_text` capability. Disabling that capability removes the
+launcher and client without changing Repair Session or work-order data. The
+dedicated route URLs remain valid compatibility entry points.
+
+## Acceptance path
+
+1. Open CoPilot from the desktop or Shop Mobile launcher.
+2. Start or resume an assigned repair and exchange at least one turn.
+3. Navigate to the technician queue, focused job, work order, inspection, and
+   another shop route.
+4. Reopen the panel and confirm the same Repair Session context is present.
+5. Start voice, close the panel, and confirm microphone/speech output stops.
+6. Reopen the panel and explicitly restart voice.
+7. Disable technician CoPilot access and confirm the launcher disappears.
+
+## Next slice
+
+After live-device validation of this shell, the next voice slice can add true
+hands-free duplex behavior: acoustic barge-in, echo suppression, resumable
+long-running listening, and shop-floor latency/noise evaluation. Those changes
+must continue through the same shell-owned client and Repair Session runtime.

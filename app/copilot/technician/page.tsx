@@ -1,5 +1,5 @@
-import { TechnicianTextCopilot } from "@/features/copilot/technician/components/TechnicianTextCopilot";
+import { TechnicianCopilotCompatibilityRoute } from "@/features/copilot/technician/components/TechnicianCopilotCompatibilityRoute";
 
 export default function TechnicianCopilotPage() {
-  return <TechnicianTextCopilot />;
+  return <TechnicianCopilotCompatibilityRoute returnHref="/tech/queue" />;
 }

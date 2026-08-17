@@ -1,5 +1,7 @@
-import { TechnicianTextCopilot } from "@/features/copilot/technician/components/TechnicianTextCopilot";
+import { TechnicianCopilotCompatibilityRoute } from "@/features/copilot/technician/components/TechnicianCopilotCompatibilityRoute";
 
 export default function MobileTechnicianCopilotPage() {
-  return <TechnicianTextCopilot />;
+  return (
+    <TechnicianCopilotCompatibilityRoute returnHref="/mobile/tech/queue" />
+  );
 }

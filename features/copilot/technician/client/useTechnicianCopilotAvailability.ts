@@ -2,14 +2,25 @@
 
 import { useEffect, useState } from "react";
 
-export function useTechnicianCopilotAvailability(
+export type TechnicianCopilotAvailabilityState =
+  | { status: "idle" | "checking" | "available"; message: null }
+  | { status: "unavailable" | "error"; message: string };
+
+export function useTechnicianCopilotAvailabilityState(
   shouldCheck: boolean,
-): boolean {
-  const [available, setAvailable] = useState(false);
+): TechnicianCopilotAvailabilityState {
+  const [availability, setAvailability] =
+    useState<TechnicianCopilotAvailabilityState>({
+      status: shouldCheck ? "checking" : "idle",
+      message: null,
+    });
 
   useEffect(() => {
     let active = true;
-    setAvailable(false);
+    setAvailability({
+      status: shouldCheck ? "checking" : "idle",
+      message: null,
+    });
     if (!shouldCheck) {
       return () => {
         active = false;
@@ -19,11 +30,35 @@ export function useTechnicianCopilotAvailability(
     void fetch("/api/copilot/technician/session?accessOnly=1", {
       cache: "no-store",
     })
-      .then((response) => {
-        if (active) setAvailable(response.ok);
+      .then(async (response) => {
+        if (!active) return;
+        if (response.ok) {
+          setAvailability({ status: "available", message: null });
+          return;
+        }
+
+        const body = (await response.json().catch(() => null)) as
+          | { error?: string }
+          | null;
+        setAvailability({
+          status:
+            response.status === 401 || response.status === 403
+              ? "unavailable"
+              : "error",
+          message:
+            body?.error ??
+            (response.status === 401 || response.status === 403
+              ? "Technician CoPilot is not enabled for this account."
+              : "Technician CoPilot availability could not be verified."),
+        });
       })
       .catch(() => {
-        if (active) setAvailable(false);
+        if (active) {
+          setAvailability({
+            status: "error",
+            message: "Technician CoPilot availability could not be verified.",
+          });
+        }
       });
 
     return () => {
@@ -31,5 +66,13 @@ export function useTechnicianCopilotAvailability(
     };
   }, [shouldCheck]);
 
-  return available;
+  return availability;
+}
+
+export function useTechnicianCopilotAvailability(
+  shouldCheck: boolean,
+): boolean {
+  return (
+    useTechnicianCopilotAvailabilityState(shouldCheck).status === "available"
+  );
 }

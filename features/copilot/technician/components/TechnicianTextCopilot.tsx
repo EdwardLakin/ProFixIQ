@@ -10,6 +10,7 @@ import {
 import { Mic, Square, VolumeX } from "lucide-react";
 
 import { useTechnicianInteractionGateway } from "@/features/copilot/technician/voice/useTechnicianInteractionGateway";
+import { cn } from "@/features/shared/utils/cn";
 
 type Turn = {
   eventId: string;
@@ -88,7 +89,13 @@ function voiceStatus(phase: ReturnType<typeof useTechnicianInteractionGateway>["
   return "Voice ready";
 }
 
-export function TechnicianTextCopilot() {
+export function TechnicianTextCopilot({
+  embedded = false,
+  active = true,
+}: {
+  embedded?: boolean;
+  active?: boolean;
+}) {
   const [snapshot, setSnapshot] = useState<Snapshot>({
     context: null,
     workOrder: null,
@@ -190,9 +197,13 @@ export function TechnicianTextCopilot() {
 
   const voice = useTechnicianInteractionGateway({
     enabled: voiceEnabled,
-    autoStart: true,
+    autoStart: active,
     onUtterance: handleVoiceUtterance,
   });
+
+  useEffect(() => {
+    if (!active && voice.active) voice.stop();
+  }, [active, voice]);
 
   const vehicleLabel = useMemo(() => {
     const workOrder = snapshot.workOrder;
@@ -224,7 +235,12 @@ export function TechnicianTextCopilot() {
 
   if (loading) {
     return (
-      <main className="mx-auto max-w-4xl p-4 text-sm text-muted-foreground">
+      <main
+        className={cn(
+          "mx-auto max-w-4xl p-4 text-sm text-muted-foreground",
+          embedded && "flex h-full items-center justify-center",
+        )}
+      >
         Loading Technician CoPilot…
       </main>
     );
@@ -233,10 +249,19 @@ export function TechnicianTextCopilot() {
   const recentTimeline = snapshot.context?.documentation.timeline.slice(-8) ?? [];
 
   return (
-    <main className="mx-auto flex min-h-[100dvh] max-w-4xl flex-col gap-4 p-4 pb-28">
+    <main
+      className={cn(
+        "mx-auto flex max-w-4xl flex-col gap-4 p-4",
+        embedded
+          ? "h-full min-h-0 overflow-y-auto pb-4"
+          : "min-h-[100dvh] pb-28",
+      )}
+    >
       <header className="rounded-2xl border bg-card p-4 shadow-sm">
         <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Phase 4 Preview · Text + realtime voice + silent documentation
+          {embedded
+            ? "Persistent repair collaborator"
+            : "Phase 4 Preview · Text + realtime voice + silent documentation"}
         </div>
         <h1 className="mt-1 text-2xl font-semibold">Technician CoPilot</h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -414,7 +439,12 @@ export function TechnicianTextCopilot() {
 
       <form
         onSubmit={send}
-        className="fixed inset-x-0 bottom-0 z-20 border-t bg-background/95 p-3 backdrop-blur"
+        className={cn(
+          "border-t bg-background/95 p-3 backdrop-blur",
+          embedded
+            ? "sticky bottom-0 z-20 -mx-4 -mb-4 mt-auto"
+            : "fixed inset-x-0 bottom-0 z-20",
+        )}
       >
         <div className="mx-auto flex max-w-4xl gap-2">
           <input
