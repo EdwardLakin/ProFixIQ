@@ -5,7 +5,7 @@ const realtime = vi.hoisted(() => ({
   connected: false,
   start: vi.fn(async () => undefined),
   pause: vi.fn(() => false),
-  playAudio: vi.fn(async (_audio: ArrayBuffer) => undefined),
+  playAudio: vi.fn(async (_audio: ArrayBuffer): Promise<void> => undefined),
   stopAudio: vi.fn(),
   resume: vi.fn(() => false),
   stop: vi.fn(),
@@ -61,7 +61,7 @@ const speech = {
 const generatedAudio = new Uint8Array([1, 2, 3, 4]).buffer;
 const speechFetch = vi.fn();
 const wakeLockRequest = vi.fn();
-let wakeLockRelease = vi.fn(async () => undefined);
+let wakeLockRelease = vi.fn(async (): Promise<void> => undefined);
 let generatedPlayback: ReturnType<typeof deferred<void>>;
 let generatedPlaybackStarted = false;
 
