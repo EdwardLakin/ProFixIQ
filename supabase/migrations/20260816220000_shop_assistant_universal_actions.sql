@@ -411,27 +411,19 @@ begin
   where fleet.id = p_fleet_id
     and fleet.shop_id = p_shop_id
     and coalesce(fleet.active, true)
+    and public.profixiq_fleet_has_product_access(fleet.id)
+    and exists (
+      select 1
+      from public.fleet_members member
+      where member.shop_id = p_shop_id
+        and member.fleet_id = fleet.id
+        and member.user_id in (v_actor_profile_id, p_actor_user_id)
+    )
   for update;
   if not found then
     raise exception using
-      errcode = 'P0002',
-      message = 'Fleet not found in this shop.';
-  end if;
-
-  if v_actor_role = 'fleet_manager'
-     and not exists (
-       select 1
-       from public.fleet_members member
-       where member.shop_id = p_shop_id
-         and member.fleet_id = p_fleet_id
-         and member.user_id in (v_actor_profile_id, p_actor_user_id)
-         and lower(replace(coalesce(member.role::text, ''), ' ', '_')) in (
-           'owner', 'admin', 'manager', 'fleet_manager'
-         )
-     ) then
-    raise exception using
       errcode = '42501',
-      message = 'That fleet is outside your fleet access.';
+      message = 'That fleet is outside your entitled fleet access.';
   end if;
 
   if not exists (
@@ -598,11 +590,19 @@ begin
   from public.fleet_service_requests request
   where request.id = p_service_request_id
     and request.shop_id = p_shop_id
+    and public.profixiq_fleet_has_product_access(request.fleet_id)
+    and exists (
+      select 1
+      from public.fleet_members member
+      where member.shop_id = p_shop_id
+        and member.fleet_id = request.fleet_id
+        and member.user_id in (v_actor_profile_id, p_actor_user_id)
+    )
   for update;
   if not found then
     raise exception using
-      errcode = 'P0002',
-      message = 'Fleet service request not found in this shop.';
+      errcode = '42501',
+      message = 'Fleet service request not found in an entitled fleet.';
   end if;
 
   v_expected := v_action.target_versions

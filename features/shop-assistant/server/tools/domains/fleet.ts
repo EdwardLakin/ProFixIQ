@@ -9,11 +9,7 @@ import {
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { ShopAssistantHttpError } from "@/features/shop-assistant/server/requireShopAssistantActor";
 import type { ShopAssistantToolContext } from "../types";
-import {
-  defineShopAssistantTool,
-  runShopAssistantCommandRpc,
-  throwShopAssistantRpcError,
-} from "../types";
+import { defineShopAssistantTool, runShopAssistantCommandRpc } from "../types";
 
 const FleetUnitSchema = z.object({
   vehicleId: z.string().uuid(),
@@ -86,13 +82,36 @@ async function allowedFleetIds(
   context: ShopAssistantToolContext,
 ): Promise<string[]> {
   const actor = await fleetActor(context);
-  if (!actor.isInternal) return actor.fleetIds;
+  return actor.fleetIds;
+}
+
+async function loadAccessibleFleetServiceRequest(
+  context: ShopAssistantToolContext,
+  serviceRequestId: string,
+) {
+  const fleetIds = await allowedFleetIds(context);
+  if (fleetIds.length === 0) {
+    throw new ShopAssistantHttpError(
+      403,
+      "Fleet access is not available for this account.",
+    );
+  }
+
   const { data, error } = await createAdminSupabase()
-    .from("fleets")
-    .select("id")
-    .eq("shop_id", context.actor.shopId);
+    .from("fleet_service_requests")
+    .select("id, fleet_id, title, status, work_order_id, updated_at")
+    .eq("shop_id", context.actor.shopId)
+    .eq("id", serviceRequestId)
+    .in("fleet_id", fleetIds)
+    .maybeSingle();
   if (error) throw new Error(error.message);
-  return (data ?? []).map((row) => row.id);
+  if (!data) {
+    throw new ShopAssistantHttpError(
+      404,
+      "Fleet service request not found in an accessible fleet.",
+    );
+  }
+  return data;
 }
 
 async function resolveFleetForVehicle(params: {
@@ -433,19 +452,10 @@ export const convertFleetServiceRequestTool = defineShopAssistantTool({
   inputSchema: z.object({ serviceRequestId: z.string().uuid() }),
   outputSchema: ConvertFleetServiceRequestResultSchema,
   async preview(input, context) {
-    const { data, error } = await context.actor.supabase
-      .from("fleet_service_requests")
-      .select("id, title, status, work_order_id, updated_at")
-      .eq("shop_id", context.actor.shopId)
-      .eq("id", input.serviceRequestId)
-      .maybeSingle();
-    if (error) throwShopAssistantRpcError(error);
-    if (!data) {
-      throw new ShopAssistantHttpError(
-        404,
-        "Fleet service request not found in this shop.",
-      );
-    }
+    const data = await loadAccessibleFleetServiceRequest(
+      context,
+      input.serviceRequestId,
+    );
     return {
       title: `Convert fleet request: ${data.title}`,
       summary: data.work_order_id
@@ -465,6 +475,7 @@ export const convertFleetServiceRequestTool = defineShopAssistantTool({
     if (!context.actionId) {
       throw new Error("An action id is required to convert a fleet request.");
     }
+    await loadAccessibleFleetServiceRequest(context, input.serviceRequestId);
     const data = await runShopAssistantCommandRpc(
       "shop_assistant_convert_fleet_service_request_atomic",
       {
