@@ -15,8 +15,10 @@ technician moves through:
 - the Field Service mobile surface when the same technician has access.
 
 The desktop shell presents the collaborator as a right-side panel. Shop Mobile
-uses a full-height overlay above the mobile navigation. Closing either surface
-keeps the Repair Session client mounted but stops active microphone capture.
+opens as a compact, opaque voice dock that occupies only its own bounds, leaves
+the current workflow visible and interactive, and can be explicitly expanded
+to the full conversation. Closing either surface keeps the Repair Session
+client mounted but stops active microphone capture.
 
 ## Canonical runtime
 
@@ -45,6 +47,11 @@ second page-owned voice or conversation client.
 - Closing the panel stops Realtime capture and speech output.
 - Route changes do not unmount the collaborator, so text, voice state, and the
   hydrated Repair Session remain available throughout the technician workflow.
+- The mobile home action opens the shell in place instead of navigating away
+  from the technician's current screen.
+- A persisted reply is visible in the compact dock even when device speech
+  output is unavailable or stalls. Speech output has a bounded watchdog and
+  returns to listening instead of remaining indefinitely in a replying state.
 - Server-side authorization, tenant scope, assignment checks, action replay,
   and mutation rules are unchanged.
 
@@ -57,14 +64,16 @@ dedicated route URLs remain valid compatibility entry points.
 
 ## Acceptance path
 
-1. Open CoPilot from the desktop or Shop Mobile launcher.
+1. Open CoPilot from the desktop or Shop Mobile launcher and confirm the mobile
+   workflow remains visible, scrollable, and interactive outside the dock.
 2. Start or resume an assigned repair and exchange at least one turn.
 3. Navigate to the technician queue, focused job, work order, inspection, and
    another shop route.
 4. Reopen the panel and confirm the same Repair Session context is present.
 5. Start voice, close the panel, and confirm microphone/speech output stops.
 6. Reopen the panel and explicitly restart voice.
-7. Disable technician CoPilot access and confirm the launcher disappears.
+7. Expand and collapse the mobile conversation without remounting the runtime.
+8. Disable technician CoPilot access and confirm the launcher disappears.
 
 ## Next slice
 

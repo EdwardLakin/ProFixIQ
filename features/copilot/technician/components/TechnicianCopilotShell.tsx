@@ -1,6 +1,6 @@
 "use client";
 
-import { Bot, X } from "lucide-react";
+import { Bot, Maximize2, Minimize2, X } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
@@ -10,6 +10,11 @@ import { TechnicianTextCopilot } from "./TechnicianTextCopilot";
 
 export const OPEN_TECHNICIAN_COPILOT_EVENT =
   "profixiq:technician-copilot-open";
+
+export function openTechnicianCopilot(): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event(OPEN_TECHNICIAN_COPILOT_EVENT));
+}
 
 function isCopilotRoute(pathname: string): boolean {
   return (
@@ -29,24 +34,34 @@ export function TechnicianCopilotShell({
   const router = useRouter();
   const availability = useTechnicianCopilotAvailabilityState(shouldCheck);
   const [open, setOpen] = useState(() => isCopilotRoute(pathname));
+  const [expanded, setExpanded] = useState(false);
+
+  const openCompact = useCallback(() => {
+    setExpanded(false);
+    setOpen(true);
+  }, []);
 
   const close = useCallback(() => {
     setOpen(false);
+    setExpanded(false);
     if (isCopilotRoute(pathname)) {
       router.replace(surface === "mobile" ? "/mobile/tech/queue" : "/tech/queue");
     }
   }, [pathname, router, surface]);
 
   useEffect(() => {
-    if (isCopilotRoute(pathname)) setOpen(true);
+    if (isCopilotRoute(pathname)) {
+      setOpen(true);
+      setExpanded(false);
+    }
   }, [pathname]);
 
   useEffect(() => {
-    const handleOpen = () => setOpen(true);
+    const handleOpen = () => openCompact();
     window.addEventListener(OPEN_TECHNICIAN_COPILOT_EVENT, handleOpen);
     return () =>
       window.removeEventListener(OPEN_TECHNICIAN_COPILOT_EVENT, handleOpen);
-  }, []);
+  }, [openCompact]);
 
   useEffect(() => {
     if (!open) return;
@@ -62,7 +77,7 @@ export function TechnicianCopilotShell({
   const launcher = (
     <button
       type="button"
-      onClick={() => setOpen(true)}
+      onClick={openCompact}
       aria-label="Open Technician CoPilot"
       aria-expanded={open}
       tabIndex={open ? -1 : 0}
@@ -89,35 +104,75 @@ export function TechnicianCopilotShell({
       <>
         {launcher}
         <section
-          role="dialog"
-          aria-modal="true"
+          role={expanded ? "dialog" : "region"}
+          aria-modal={expanded ? "true" : undefined}
           aria-label="Technician CoPilot"
           aria-hidden={!open}
           className={cn(
-            "fixed inset-0 z-50 flex h-[100dvh] w-full flex-col overflow-hidden overscroll-contain bg-background transition-opacity duration-200",
+            "fixed z-40 flex min-h-0 flex-col overflow-hidden border text-[color:var(--theme-text-primary)] shadow-[var(--theme-shadow-strong)] transition-[opacity,transform,border-radius] duration-200",
+            expanded
+              ? "inset-0 h-[100dvh] w-full rounded-none"
+              : "inset-x-3 bottom-[calc(1rem+env(safe-area-inset-bottom))] max-h-[min(21rem,calc(100dvh-7rem))] rounded-2xl",
             open
               ? "visible pointer-events-auto opacity-100"
-              : "invisible pointer-events-none opacity-0",
+              : "invisible pointer-events-none translate-y-3 opacity-0",
           )}
+          style={{
+            borderColor: "var(--theme-border-strong)",
+            background: expanded
+              ? "var(--theme-surface-page)"
+              : "var(--theme-surface-panel-strong)",
+          }}
         >
-          <div className="flex shrink-0 items-center justify-between border-b px-4 py-3">
+          <div
+            className="flex shrink-0 items-center justify-between gap-3 border-b px-4 py-3"
+            style={{ borderColor: "var(--theme-border-soft)" }}
+          >
             <div>
               <div className="text-sm font-semibold">Technician CoPilot</div>
-              <div className="text-xs text-muted-foreground">
-                Stays with you as you move through the app
+              <div className="text-xs text-[color:var(--theme-text-secondary)]">
+                {expanded
+                  ? "Conversation and repair memory"
+                  : "Voice stays active while you keep working"}
               </div>
             </div>
-            <button
-              type="button"
-              onClick={close}
-              aria-label="Close Technician CoPilot"
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full border bg-background"
-            >
-              <X className="h-5 w-5" aria-hidden />
-            </button>
+            <div className="flex shrink-0 gap-2">
+              <button
+                type="button"
+                onClick={() => setExpanded((current) => !current)}
+                aria-label={
+                  expanded
+                    ? "Return to compact voice controls"
+                    : "Show full CoPilot conversation"
+                }
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full border"
+                style={{
+                  borderColor: "var(--theme-border-soft)",
+                  background: "var(--theme-surface-panel)",
+                }}
+              >
+                {expanded ? (
+                  <Minimize2 className="h-5 w-5" aria-hidden />
+                ) : (
+                  <Maximize2 className="h-5 w-5" aria-hidden />
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={close}
+                aria-label="Close Technician CoPilot"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full border"
+                style={{
+                  borderColor: "var(--theme-border-soft)",
+                  background: "var(--theme-surface-panel)",
+                }}
+              >
+                <X className="h-5 w-5" aria-hidden />
+              </button>
+            </div>
           </div>
           <div className="min-h-0 flex-1">
-            <TechnicianTextCopilot embedded active={open} />
+            <TechnicianTextCopilot embedded active={open} compact={!expanded} />
           </div>
         </section>
       </>
@@ -132,16 +187,23 @@ export function TechnicianCopilotShell({
         aria-label="Technician CoPilot"
         aria-hidden={!open}
         className={cn(
-          "fixed bottom-4 right-4 top-16 z-30 flex w-[min(32rem,calc(100vw-2rem))] min-h-0 flex-col overflow-hidden rounded-2xl border bg-background shadow-2xl transition duration-200",
+          "fixed bottom-4 right-4 top-16 z-30 flex w-[min(32rem,calc(100vw-2rem))] min-h-0 flex-col overflow-hidden rounded-2xl border text-[color:var(--theme-text-primary)] shadow-2xl transition duration-200",
           open
             ? "translate-x-0 opacity-100"
             : "invisible pointer-events-none translate-x-[calc(100%+2rem)] opacity-0",
         )}
+        style={{
+          borderColor: "var(--theme-border-strong)",
+          background: "var(--theme-surface-panel-strong)",
+        }}
       >
-        <div className="flex shrink-0 items-center justify-between border-b px-4 py-3">
+        <div
+          className="flex shrink-0 items-center justify-between border-b px-4 py-3"
+          style={{ borderColor: "var(--theme-border-soft)" }}
+        >
           <div>
             <div className="text-sm font-semibold">Technician CoPilot</div>
-            <div className="text-xs text-muted-foreground">
+            <div className="text-xs text-[color:var(--theme-text-secondary)]">
               Stays with you as you move through the app
             </div>
           </div>
@@ -149,7 +211,11 @@ export function TechnicianCopilotShell({
             type="button"
             onClick={close}
             aria-label="Close Technician CoPilot"
-            className="inline-flex h-10 w-10 items-center justify-center rounded-full border bg-background"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full border"
+            style={{
+              borderColor: "var(--theme-border-soft)",
+              background: "var(--theme-surface-panel)",
+            }}
           >
             <X className="h-5 w-5" aria-hidden />
           </button>

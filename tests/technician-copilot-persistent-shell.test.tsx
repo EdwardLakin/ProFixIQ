@@ -1,6 +1,6 @@
 import React from "react";
 import { readFileSync } from "node:fs";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const replace = vi.fn();
@@ -29,13 +29,26 @@ vi.mock(
 vi.mock(
   "@/features/copilot/technician/components/TechnicianTextCopilot",
   () => ({
-    TechnicianTextCopilot: ({ active }: { active?: boolean }) => (
-      <div data-testid="copilot-runtime" data-active={String(active)} />
+    TechnicianTextCopilot: ({
+      active,
+      compact,
+    }: {
+      active?: boolean;
+      compact?: boolean;
+    }) => (
+      <div
+        data-testid="copilot-runtime"
+        data-active={String(active)}
+        data-compact={String(compact)}
+      />
     ),
   }),
 );
 
-import { TechnicianCopilotShell } from "@/features/copilot/technician/components/TechnicianCopilotShell";
+import {
+  openTechnicianCopilot,
+  TechnicianCopilotShell,
+} from "@/features/copilot/technician/components/TechnicianCopilotShell";
 import { TechnicianCopilotCompatibilityRoute } from "@/features/copilot/technician/components/TechnicianCopilotCompatibilityRoute";
 
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
@@ -80,7 +93,7 @@ describe("persistent Technician CoPilot shell", () => {
     expect(replace).not.toHaveBeenCalled();
   });
 
-  it("keeps the mobile collaborator mounted without retaining modal locks", () => {
+  it("keeps a compact mobile voice dock mounted without blocking the page", () => {
     pathname = "/mobile/tech/queue";
     render(<TechnicianCopilotShell shouldCheck surface="mobile" />);
 
@@ -91,26 +104,47 @@ describe("persistent Technician CoPilot shell", () => {
       screen.getByRole("button", { name: "Open Technician CoPilot" }),
     );
 
-    const dialog = screen.getByRole("dialog", { name: "Technician CoPilot" });
-    expect(dialog).toHaveAttribute("aria-hidden", "false");
-    expect(dialog).toHaveClass(
+    const dock = screen.getByRole("region", { name: "Technician CoPilot" });
+    expect(dock).toHaveAttribute("aria-hidden", "false");
+    expect(dock).not.toHaveAttribute("aria-modal");
+    expect(dock).toHaveClass(
       "visible",
       "pointer-events-auto",
       "opacity-100",
+      "inset-x-3",
     );
+    expect(dock).not.toHaveClass("inset-0");
     expect(screen.getByTestId("copilot-runtime")).toBe(runtime);
     expect(runtime).toHaveAttribute("data-active", "true");
+    expect(runtime).toHaveAttribute("data-compact", "true");
+    expect(document.body.style.pointerEvents).not.toBe("none");
+    expect(document.body).not.toHaveAttribute("data-scroll-locked");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show full CoPilot conversation" }),
+    );
+
+    const dialog = screen.getByRole("dialog", { name: "Technician CoPilot" });
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+    expect(dialog).toHaveClass("inset-0");
+    expect(screen.getByTestId("copilot-runtime")).toBe(runtime);
+    expect(runtime).toHaveAttribute("data-compact", "false");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Return to compact voice controls" }),
+    );
+    expect(
+      screen.getByRole("region", { name: "Technician CoPilot" }),
+    ).toBeVisible();
+    expect(screen.getByTestId("copilot-runtime")).toBe(runtime);
+    expect(runtime).toHaveAttribute("data-compact", "true");
 
     fireEvent.click(
       screen.getByRole("button", { name: "Close Technician CoPilot" }),
     );
 
-    expect(dialog).toHaveAttribute("aria-hidden", "true");
-    expect(dialog).toHaveClass(
-      "invisible",
-      "pointer-events-none",
-      "opacity-0",
-    );
+    expect(dock).toHaveAttribute("aria-hidden", "true");
+    expect(dock).toHaveClass("invisible", "pointer-events-none", "opacity-0");
     expect(screen.getByTestId("copilot-runtime")).toBe(runtime);
     expect(runtime).toHaveAttribute("data-active", "false");
     expect(document.body.style.pointerEvents).not.toBe("none");
@@ -124,12 +158,28 @@ describe("persistent Technician CoPilot shell", () => {
     expect(runtime).toHaveAttribute("data-active", "true");
   });
 
+  it("opens the compact dock in place through the shared mobile action", () => {
+    pathname = "/mobile";
+    render(<TechnicianCopilotShell shouldCheck surface="mobile" />);
+
+    act(() => openTechnicianCopilot());
+
+    expect(
+      screen.getByRole("region", { name: "Technician CoPilot" }),
+    ).toBeVisible();
+    expect(screen.getByTestId("copilot-runtime")).toHaveAttribute(
+      "data-compact",
+      "true",
+    );
+    expect(replace).not.toHaveBeenCalled();
+  });
+
   it("opens from the legacy mobile destination and returns to the job queue on close", () => {
     pathname = "/mobile/copilot/technician";
     render(<TechnicianCopilotShell shouldCheck surface="mobile" />);
 
     expect(
-      screen.getByRole("dialog", { name: "Technician CoPilot" }),
+      screen.getByRole("region", { name: "Technician CoPilot" }),
     ).toBeVisible();
     const closeButtons = screen.getAllByRole("button", {
       name: "Close Technician CoPilot",
