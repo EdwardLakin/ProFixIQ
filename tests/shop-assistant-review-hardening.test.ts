@@ -15,6 +15,7 @@ import {
   listLowStockPartsTool,
   listPartsBlockersTool,
 } from "@/features/shop-assistant/server/tools/domains/inventory";
+import { listBookingsTool } from "@/features/shop-assistant/server/tools/domains/scheduling";
 import { recommendWorkAssignmentsTool } from "@/features/shop-assistant/server/tools/domains/workforce";
 import { listStalledWorkOrdersTool } from "@/features/shop-assistant/server/tools/domains/workOrders";
 import { logOperationalEvent } from "@/features/work-orders/server/logOperationalEvent";
@@ -232,6 +233,89 @@ describe("shop assistant review hardening", () => {
 
     expect(workOrderRanges).toEqual([0, 500]);
     expect(result.recommendations[0]?.workOrderId).toBe(uuid(501));
+  });
+
+  it("detects booking conflicts beyond the displayed result cap", async () => {
+    const cancelled = Array.from({ length: 500 }, (_, index) => ({
+      id: uuid(index + 1),
+      starts_at: new Date(Date.UTC(2026, 7, 17, 0, index)).toISOString(),
+      ends_at: null,
+      status: "cancelled",
+      customer_id: null,
+      vehicle_id: null,
+      work_order_id: null,
+      notes: null,
+      updated_at: null,
+    }));
+    const rows = [
+      ...cancelled,
+      {
+        id: uuid(501),
+        starts_at: "2026-08-18T16:00:00.000Z",
+        ends_at: "2026-08-18T17:00:00.000Z",
+        status: "scheduled",
+        customer_id: null,
+        vehicle_id: null,
+        work_order_id: null,
+        notes: null,
+        updated_at: null,
+      },
+      {
+        id: uuid(502),
+        starts_at: "2026-08-18T16:30:00.000Z",
+        ends_at: "2026-08-18T17:30:00.000Z",
+        status: "scheduled",
+        customer_id: null,
+        vehicle_id: null,
+        work_order_id: null,
+        notes: null,
+        updated_at: null,
+      },
+    ];
+    const ranges: number[] = [];
+    const query = {
+      select() {
+        return query;
+      },
+      eq() {
+        return query;
+      },
+      gte() {
+        return query;
+      },
+      lt() {
+        return query;
+      },
+      order() {
+        return query;
+      },
+      range(from: number, to: number) {
+        ranges.push(from);
+        return Promise.resolve({
+          data: rows.slice(from, to + 1),
+          error: null,
+        });
+      },
+    };
+    const supabase = { from: () => query };
+
+    const result = await listBookingsTool.execute({ limit: 1 }, {
+      actor: { shopId: uuid(90_000), supabase },
+      threadId: uuid(90_001),
+      idempotencyKey: "booking-conflict-page-test",
+    } as never);
+
+    expect(ranges).toEqual([0, 500]);
+    expect(result.bookings).toHaveLength(1);
+    expect(result.conflicts).toEqual([
+      {
+        firstBookingId: uuid(501),
+        secondBookingId: uuid(502),
+        startsAt: "2026-08-18T16:30:00.000Z",
+        endsAt: "2026-08-18T17:00:00.000Z",
+      },
+    ]);
+    expect(result.summary).toContain("502 appointment(s) matched");
   });
 
   it("resumes only the exact executing invoice checkpoint", () => {

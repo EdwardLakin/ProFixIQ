@@ -195,7 +195,8 @@ export async function POST(request: Request) {
     if (
       clientMessageId.length < 8 ||
       clientMessageId.length > 200 ||
-      clientMessageId.startsWith("shop-")
+      clientMessageId.startsWith("shop-reply:") ||
+      clientMessageId.startsWith("shop-action:")
     ) {
       return NextResponse.json<ShopAssistantChatResponse>(
         {

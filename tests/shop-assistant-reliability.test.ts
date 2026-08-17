@@ -122,7 +122,9 @@ describe("shop assistant reliability contracts", () => {
   it("keeps technician diagnostics isolated inside the existing work-order assistant", () => {
     expect(actorSource).toContain("canAccessShopAssistant");
     expect(trustedContextSource).toContain('canonicalRole !== "mechanic"');
-    expect(trustedContextSource).toContain("listTechnicianWorkCandidates");
+    expect(trustedContextSource).toContain(
+      "loadTechnicianWorkCandidateForWorkOrder",
+    );
     expect(chatRoute).toContain("orchestrateShopAssistantTurn");
     expect(planner).toContain("DIAGNOSTIC_PATTERN");
     expect(planner).toContain('kind: "technician_delegate"');
@@ -130,5 +132,11 @@ describe("shop assistant reliability contracts", () => {
     expect(chatRoute).toContain("Open Technician CoPilot");
     expect(techHook).toContain('postJSON("/api/assistant/answer"');
     expect(techHook).not.toContain("/api/shop-assistant/chat");
+  });
+
+  it("accepts rolling-deploy client ids while reserving server message ids", () => {
+    expect(chatRoute).not.toContain('clientMessageId.startsWith("shop-")');
+    expect(chatRoute).toContain('clientMessageId.startsWith("shop-reply:")');
+    expect(chatRoute).toContain('clientMessageId.startsWith("shop-action:")');
   });
 });

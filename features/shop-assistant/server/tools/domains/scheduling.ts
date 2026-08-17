@@ -103,22 +103,34 @@ export const listBookingsTool = defineShopAssistantTool({
   }),
   outputSchema: BookingListSchema,
   async execute(input, context) {
-    let query = context.actor.supabase
-      .from("bookings")
-      .select(
-        "id, starts_at, ends_at, status, customer_id, vehicle_id, work_order_id, notes, updated_at",
-      )
-      .eq("shop_id", context.actor.shopId)
-      .order("starts_at", { ascending: true })
-      .limit(input.limit);
-    if (input.startsAfter) query = query.gte("starts_at", input.startsAfter);
-    if (input.startsBefore) query = query.lt("starts_at", input.startsBefore);
-    if (input.status) query = query.eq("status", input.status);
+    const pageSize = 500;
+    const matchingBookings: ReturnType<typeof mapBooking>[] = [];
+    for (let from = 0; ; from += pageSize) {
+      let query = context.actor.supabase
+        .from("bookings")
+        .select(
+          "id, starts_at, ends_at, status, customer_id, vehicle_id, work_order_id, notes, updated_at",
+        )
+        .eq("shop_id", context.actor.shopId)
+        .order("starts_at", { ascending: true })
+        .order("id", { ascending: true });
+      if (input.startsAfter) {
+        query = query.gte("starts_at", input.startsAfter);
+      }
+      if (input.startsBefore) {
+        query = query.lt("starts_at", input.startsBefore);
+      }
+      if (input.status) query = query.eq("status", input.status);
 
-    const { data, error } = await query;
-    if (error) throw new Error(error.message);
-    const bookings = ((data ?? []) as BookingRow[]).map(mapBooking);
-    const activeBookings = bookings.filter(
+      const { data, error } = await query.range(from, from + pageSize - 1);
+      if (error) throw new Error(error.message);
+      const page = (data ?? []) as BookingRow[];
+      matchingBookings.push(...page.map(mapBooking));
+      if (page.length < pageSize) break;
+    }
+
+    const bookings = matchingBookings.slice(0, input.limit);
+    const activeBookings = matchingBookings.filter(
       (booking) =>
         booking.status !== "cancelled" &&
         booking.status !== "canceled" &&
@@ -156,7 +168,7 @@ export const listBookingsTool = defineShopAssistantTool({
       ok: true as const,
       bookings,
       conflicts,
-      summary: `${bookings.length} appointment(s) matched the requested window; ${conflicts.length} overlapping pair(s) were detected.`,
+      summary: `${matchingBookings.length} appointment(s) matched the requested window; showing ${bookings.length}. ${conflicts.length} overlapping pair(s) were detected.`,
       href: "/dashboard/appointments",
     };
   },

@@ -4,7 +4,7 @@ import {
   AssistantContextValidationError,
   resolveTrustedAssistantContext,
 } from "@/features/agent/assistant/server/trustedContext";
-import { listTechnicianWorkCandidates } from "@/features/copilot/technician/server/assignedWork";
+import { loadTechnicianWorkCandidateForWorkOrder } from "@/features/copilot/technician/server/assignedWork";
 import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import type { ShopAssistantActor } from "@/features/shop-assistant/server/requireShopAssistantActor";
@@ -132,12 +132,13 @@ async function assertMechanicContextAccess(params: {
       "Mechanic assistant context must be one of your assigned work orders.",
     );
   }
-  const assigned = await listTechnicianWorkCandidates({
+  const assigned = await loadTechnicianWorkCandidateForWorkOrder({
     supabase: createAdminSupabase(),
     shopId: params.actor.shopId,
     technicianIds: [params.actor.userId, params.actor.profileId],
+    workOrderId,
   });
-  if (!assigned.some((candidate) => candidate.id === workOrderId)) {
+  if (!assigned) {
     throw new ShopAssistantHttpError(
       403,
       "That work order is outside your assigned work.",
