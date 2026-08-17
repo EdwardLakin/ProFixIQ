@@ -99,7 +99,6 @@ export function TechnicianCopilotShell({
           onOpenChange={(next) => (next ? setOpen(true) : close())}
         >
           <DialogContent
-            forceMount
             className="!inset-0 !flex !h-[100dvh] !w-full !max-w-none !translate-x-0 !translate-y-0 !flex-col !overflow-hidden !rounded-none !p-0 data-[state=closed]:invisible data-[state=closed]:pointer-events-none"
           >
             <div className="flex shrink-0 items-center justify-between border-b px-4 py-3">
