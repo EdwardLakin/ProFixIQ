@@ -37,8 +37,10 @@ export type ShopAssistantMetrics = {
 export type ShopAssistantState = {
   generatedAt: string;
   role: CanonicalRole;
+  scopeLabel?: string;
   headline: string;
   metrics: ShopAssistantMetrics;
+  visibleMetricKeys: Array<keyof ShopAssistantMetrics>;
   alerts: ShopAssistantAlert[];
   suggestions: ShopAssistantSuggestion[];
 };

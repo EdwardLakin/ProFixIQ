@@ -20,7 +20,10 @@ const EXAMPLE_PROMPTS = [
   "Which queued jobs should be assigned next?",
 ];
 
-function optionalParam(params: URLSearchParams, key: string): string | undefined {
+function optionalParam(
+  params: URLSearchParams,
+  key: string,
+): string | undefined {
   const value = params.get(key)?.trim();
   return value || undefined;
 }
@@ -79,25 +82,27 @@ export default function AssistantPage() {
     await send(value, context);
   };
 
+  const sendPrompt = async (prompt: string) => {
+    if (!prompt.trim() || sending) return;
+    setQuery("");
+    await send(prompt, context);
+  };
+
   return (
     <PageShell
       title="Shop Assistant"
       description="Live shop intelligence, proactive alerts, and a durable operations conversation."
     >
       <div className="space-y-4">
-        <ShopAssistantDashboard
-          onPrompt={setQuery}
-          refreshToken={messages.at(-1)?.id}
-        />
-
         <div className={`${ui.panel} ${ui.panelPadding} space-y-4`}>
           <div className="desktop-panel-soft p-4">
             <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
               Shop conversation
             </div>
             <p className="mt-2 text-xs text-[color:var(--theme-text-secondary)]">
-              Ask questions or request operational actions across the shop. Diagnostic
-              guidance remains inside each work order&apos;s Technician AI.
+              Ask questions or request operational actions across the shop.
+              Diagnostic guidance remains inside each work order&apos;s
+              Technician AI.
             </p>
           </div>
 
@@ -110,6 +115,8 @@ export default function AssistantPage() {
             actionInFlightId={actionInFlightId}
             onConfirmAction={(actionId) => void confirmAction(actionId)}
             onCancelAction={(actionId) => void cancelAction(actionId)}
+            onSubmitPrompt={(prompt) => void sendPrompt(prompt)}
+            promptDisabled={loading || sending || Boolean(actionInFlightId)}
             className="max-h-[34rem]"
           />
 
@@ -126,7 +133,8 @@ export default function AssistantPage() {
                 key={example}
                 type="button"
                 className="desktop-pill px-3 py-1 text-xs text-[color:var(--theme-text-secondary)] hover:border-[color:var(--brand-accent,#E39A6E)]/50 hover:text-[color:var(--brand-accent,#E39A6E)]"
-                onClick={() => setQuery(example)}
+                disabled={loading || sending || Boolean(actionInFlightId)}
+                onClick={() => void sendPrompt(example)}
               >
                 {example}
               </button>
@@ -154,6 +162,16 @@ export default function AssistantPage() {
             </Button>
           </div>
         </div>
+
+        <details className="group" open={messages.length === 0}>
+          <summary className="mb-3 cursor-pointer text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
+            Live shop overview
+          </summary>
+          <ShopAssistantDashboard
+            onPrompt={(prompt) => void sendPrompt(prompt)}
+            refreshToken={messages.at(-1)?.id}
+          />
+        </details>
       </div>
     </PageShell>
   );

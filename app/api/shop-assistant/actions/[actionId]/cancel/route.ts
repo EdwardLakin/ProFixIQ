@@ -7,8 +7,7 @@ import {
 import { findOrCreateActionMessage } from "@/features/shop-assistant/server/actions/actionMessages";
 import {
   requireShopAssistantActor,
-  shopAssistantErrorMessage,
-  shopAssistantErrorStatus,
+  resolveShopAssistantError,
 } from "@/features/shop-assistant/server/requireShopAssistantActor";
 import {
   getShopAssistantThread,
@@ -48,13 +47,17 @@ export async function POST(_request: Request, context: RouteContext) {
       },
     });
   } catch (error: unknown) {
+    const resolved = resolveShopAssistantError(
+      error,
+      "shop-assistant-action-cancel",
+    );
     return NextResponse.json<ShopAssistantChatResponse>(
       {
         ok: false,
-        error: shopAssistantErrorMessage(error),
-        retryable: shopAssistantErrorStatus(error) >= 500,
+        error: resolved.message,
+        retryable: resolved.retryable,
       },
-      { status: shopAssistantErrorStatus(error) },
+      { status: resolved.status },
     );
   }
 }

@@ -26,7 +26,10 @@ import { isOutsideDesktopAppShell } from "@/features/shared/lib/routes/shellBoun
 import OpsNotificationsBell from "@/features/shared/components/OpsNotificationsBell";
 import { isDefaultOpsOperatorEmail } from "@/features/ops/lib/operatorAccess";
 import { TechnicianCopilotShell } from "@/features/copilot/technician/components/TechnicianCopilotShell";
-import { canonicalizeRole } from "@/features/shared/lib/rbac";
+import {
+  canAccessShopAssistant,
+  canonicalizeRole,
+} from "@/features/shared/lib/rbac";
 import { resolveCanonicalStaffProfile } from "@/features/shared/lib/authenticated-profile";
 
 const HEADER_OFFSET_DESKTOP = "pt-14";
@@ -130,6 +133,7 @@ export default function AppShell({
     !initialOutsideDesktopShell && !isOutsideDesktopAppShell(pathname);
 
   const canSeeAgentConsole = isDefaultOpsOperatorEmail(userEmail);
+  const canUseShopAssistant = Boolean(userId && canAccessShopAssistant(role));
   const isMobileWorkOrderDetail = /^\/mobile\/work-orders\/[^/]+$/i.test(
     pathname,
   );
@@ -565,7 +569,9 @@ export default function AppShell({
                 </ActionButton>
               ) : null}
 
-              <AskAssistantEntry placement="header" />
+              {canUseShopAssistant ? (
+                <AskAssistantEntry placement="header" />
+              ) : null}
 
               {userId && canSeeAgentConsole ? (
                 <ActionButton
@@ -666,7 +672,7 @@ export default function AppShell({
         />
       ) : null}
 
-      {!isMobileWorkOrderDetail ? (
+      {canUseShopAssistant && !isMobileWorkOrderDetail ? (
         <div className="md:hidden">
           <AskAssistantEntry mobile />
         </div>

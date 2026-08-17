@@ -11,11 +11,22 @@ type Params = {
   entityId?: string | null;
   details?: Json;
   at?: string;
+  throwOnFailure?: boolean;
 };
+
+function failureMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === "object" && "message" in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === "string" && message.trim()) return message.trim();
+  }
+  return String(error || "unknown error");
+}
 
 /**
  * Best-effort activity logging that supports both known activity_logs shapes.
- * Never throws to avoid breaking critical user flows.
+ * It remains non-blocking by default; strict callers can request an exception
+ * so their durable action result records an explicit follow-up warning.
  */
 export async function logOperationalEvent({
   supabase,
@@ -25,6 +36,7 @@ export async function logOperationalEvent({
   entityId = null,
   details = null,
   at,
+  throwOnFailure = false,
 }: Params): Promise<void> {
   const timestamp = at ?? new Date().toISOString();
   const context =
@@ -56,16 +68,33 @@ export async function logOperationalEvent({
     context,
   };
 
+  let modernFailure: unknown = null;
   try {
-    const { error } = await supabase.from("activity_logs").insert(modernPayload);
+    const { error } = await supabase
+      .from("activity_logs")
+      .insert(modernPayload);
     if (!error) return;
-  } catch {
-    // try legacy payload below
+    modernFailure = error;
+  } catch (error) {
+    modernFailure = error;
   }
 
+  let legacyFailure: unknown = null;
   try {
-    await supabase.from("activity_logs").insert(legacyPayload);
-  } catch {
-    // swallow logging failures to preserve primary action flow
+    const { error } = await supabase
+      .from("activity_logs")
+      .insert(legacyPayload);
+    if (!error) return;
+    legacyFailure = error;
+  } catch (error) {
+    legacyFailure = error;
+  }
+
+  if (throwOnFailure) {
+    throw new Error(
+      `Operational event logging failed for both activity_logs schemas: modern (${failureMessage(
+        modernFailure,
+      )}); legacy (${failureMessage(legacyFailure)}).`,
+    );
   }
 }

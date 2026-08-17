@@ -10,10 +10,12 @@ import type {
   ShopAssistantThread,
   ShopAssistantThreadContext,
 } from "@/features/shop-assistant/types";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import type { Database } from "@/features/shared/types/types/supabase";
 import type { ShopAssistantActor } from "./requireShopAssistantActor";
 import { ShopAssistantHttpError } from "./requireShopAssistantActor";
 
-type AssistantDb = SupabaseClient<any>;
+type AssistantDb = SupabaseClient<Database>;
 
 type ThreadRow = {
   id: string;
@@ -71,6 +73,8 @@ export function normalizeThreadContext(
       domain === "inspections" ||
       domain === "invoices" ||
       domain === "workforce" ||
+      domain === "technician" ||
+      domain === "fleet" ||
       domain === "reporting" ||
       domain === "business_analytics"
         ? domain
@@ -96,7 +100,9 @@ export function mergeThreadContext(
   next: ShopAssistantThreadContext,
 ): ShopAssistantThreadContext {
   return Object.fromEntries(
-    Object.entries({ ...current, ...next }).filter(([, value]) => value !== undefined),
+    Object.entries({ ...current, ...next }).filter(
+      ([, value]) => value !== undefined,
+    ),
   ) as ShopAssistantThreadContext;
 }
 
@@ -204,7 +210,8 @@ export async function getShopAssistantThread(
     .maybeSingle();
 
   if (error) throw new Error(error.message);
-  if (!data) throw new ShopAssistantHttpError(404, "Shop assistant thread not found");
+  if (!data)
+    throw new ShopAssistantHttpError(404, "Shop assistant thread not found");
   return mapThread(data as ThreadRow);
 }
 
@@ -285,16 +292,31 @@ export async function insertUserMessageIdempotent(params: {
       "id, thread_id, shop_id, user_id, role, kind, content, payload, client_message_id, created_at",
     )
     .eq("thread_id", threadId)
+    .eq("shop_id", actor.shopId)
+    .eq("user_id", actor.userId)
+    .eq("role", "user")
     .eq("client_message_id", clientMessageId)
     .maybeSingle();
 
   if (existingError || !existing) {
     throw new Error(
-      existingError?.message ?? "Failed to restore idempotent shop assistant message",
+      existingError?.message ??
+        "Failed to restore idempotent shop assistant message",
+    );
+  }
+
+  if ((existing as MessageRow).content !== content) {
+    throw new ShopAssistantHttpError(
+      409,
+      "That client message id already belongs to a different request.",
     );
   }
 
   return { message: mapMessage(existing as MessageRow), created: false };
+}
+
+function assistantReplyClientMessageId(clientMessageId: string): string {
+  return `shop-reply:${clientMessageId}`;
 }
 
 export async function findAssistantReply(
@@ -302,20 +324,34 @@ export async function findAssistantReply(
   threadId: string,
   clientMessageId: string,
 ): Promise<ShopAssistantMessage | null> {
+  const select =
+    "id, thread_id, shop_id, user_id, role, kind, content, payload, client_message_id, created_at";
   const { data, error } = await dbFor(actor)
     .from("shop_assistant_messages")
-    .select(
-      "id, thread_id, shop_id, user_id, role, kind, content, payload, client_message_id, created_at",
-    )
+    .select(select)
     .eq("thread_id", threadId)
+    .eq("shop_id", actor.shopId)
+    .eq("role", "assistant")
+    .eq("client_message_id", assistantReplyClientMessageId(clientMessageId))
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (data) return mapMessage(data as MessageRow);
+
+  // Preserve idempotency for replies written before assistant response keys
+  // were introduced.
+  const { data: legacy, error: legacyError } = await dbFor(actor)
+    .from("shop_assistant_messages")
+    .select(select)
+    .eq("thread_id", threadId)
+    .eq("shop_id", actor.shopId)
     .eq("role", "assistant")
     .contains("payload", { requestClientMessageId: clientMessageId })
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-
-  if (error) throw new Error(error.message);
-  return data ? mapMessage(data as MessageRow) : null;
+  if (legacyError) throw new Error(legacyError.message);
+  return legacy ? mapMessage(legacy as MessageRow) : null;
 }
 
 export async function insertAssistantMessage(params: {
@@ -325,35 +361,56 @@ export async function insertAssistantMessage(params: {
   kind?: ShopAssistantMessageKind;
   payload?: Record<string, unknown>;
 }): Promise<ShopAssistantMessage> {
-  const {
-    actor,
-    threadId,
+  const { actor, threadId, content, kind = "text", payload = {} } = params;
+  const requestClientMessageId = optionalString(payload.requestClientMessageId);
+  const clientMessageId = requestClientMessageId
+    ? assistantReplyClientMessageId(requestClientMessageId)
+    : null;
+  const db = createAdminSupabase() as unknown as AssistantDb;
+  const insert = {
+    thread_id: threadId,
+    shop_id: actor.shopId,
+    user_id: null,
+    role: "assistant",
+    kind,
     content,
-    kind = "text",
-    payload = {},
-  } = params;
+    payload,
+    client_message_id: clientMessageId,
+  };
 
-  const { data, error } = await dbFor(actor)
+  const { data, error } = await db
     .from("shop_assistant_messages")
-    .insert({
-      thread_id: threadId,
-      shop_id: actor.shopId,
-      user_id: null,
-      role: "assistant",
-      kind,
-      content,
-      payload,
-    })
+    .insert(insert)
     .select(
       "id, thread_id, shop_id, user_id, role, kind, content, payload, client_message_id, created_at",
     )
-    .single();
+    .maybeSingle();
 
-  if (error || !data) {
+  if (!error && data) return mapMessage(data as MessageRow);
+  if (error?.code !== "23505" || !clientMessageId) {
     throw new Error(error?.message ?? "Failed to save shop assistant reply");
   }
 
-  return mapMessage(data as MessageRow);
+  // A transient failure and its retry represent one logical assistant turn.
+  // Replace the prior keyed reply so success cannot coexist with a stale
+  // error, and so a crash after insert cannot duplicate the response.
+  const { data: updated, error: updateError } = await db
+    .from("shop_assistant_messages")
+    .update({ kind, content, payload })
+    .eq("thread_id", threadId)
+    .eq("shop_id", actor.shopId)
+    .eq("role", "assistant")
+    .eq("client_message_id", clientMessageId)
+    .select(
+      "id, thread_id, shop_id, user_id, role, kind, content, payload, client_message_id, created_at",
+    )
+    .maybeSingle();
+  if (updateError || !updated) {
+    throw new Error(
+      updateError?.message ?? "Failed to restore shop assistant reply",
+    );
+  }
+  return mapMessage(updated as MessageRow);
 }
 
 export async function updateShopAssistantThreadContext(params: {
@@ -361,8 +418,11 @@ export async function updateShopAssistantThreadContext(params: {
   thread: ShopAssistantThread;
   context: ShopAssistantThreadContext;
   title?: string;
+  replaceContext?: boolean;
 }): Promise<ShopAssistantThread> {
-  const merged = mergeThreadContext(params.thread.context, params.context);
+  const merged = params.replaceContext
+    ? normalizeThreadContext(params.context)
+    : mergeThreadContext(params.thread.context, params.context);
   const update: Record<string, unknown> = { context: merged };
   if (params.title?.trim()) update.title = params.title.trim().slice(0, 120);
 

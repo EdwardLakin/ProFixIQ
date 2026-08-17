@@ -52,6 +52,8 @@ export type FleetActorContext = {
 
 type ResolveFleetActorContextOptions = {
   userId?: string;
+  /** Canonical profiles.id when the caller has already resolved it. */
+  profileId?: string;
   requestedFleetId?: string | null;
 };
 
@@ -99,18 +101,26 @@ export async function resolveFleetActorContext(
     };
   }
 
-  const [{ data: profile }, { data: memberships }] = await Promise.all([
-    supabase
-      .from("profiles")
-      .select("id, role, shop_id")
-      .eq("id", userId)
-      .maybeSingle(),
-    supabase
-      .from("fleet_members")
-      .select("fleet_id, shop_id, role, created_at")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: true }),
-  ]);
+  const profileById = await supabase
+    .from("profiles")
+    .select("id, role, shop_id")
+    .eq("id", options?.profileId ?? userId)
+    .maybeSingle();
+  const profileByAuthUser =
+    !profileById.error && !profileById.data && !options?.profileId
+      ? await supabase
+          .from("profiles")
+          .select("id, role, shop_id")
+          .eq("user_id", userId)
+          .maybeSingle()
+      : null;
+  const profile = profileById.data ?? profileByAuthUser?.data ?? null;
+  const canonicalProfileId = profile?.id ?? options?.profileId ?? userId;
+  const { data: memberships } = await supabase
+    .from("fleet_members")
+    .select("fleet_id, shop_id, role, created_at")
+    .eq("user_id", canonicalProfileId)
+    .order("created_at", { ascending: true });
 
   const typedProfile = (profile ?? null) as Pick<
     ProfileRow,
@@ -217,14 +227,14 @@ export async function resolveFleetActorContext(
       canSeeFleetWideUnits:
         hasFleetProductAccess &&
         (isInternal ||
-        actorType === "fleet_manager" ||
+          actorType === "fleet_manager" ||
           actorType === "fleet_dispatcher"),
       canCreatePretripReports:
         hasFleetProductAccess && (isInternal || actorType === "fleet_driver"),
       canConvertPretripToServiceRequest:
         hasFleetProductAccess &&
         (isInternal ||
-        actorType === "fleet_manager" ||
+          actorType === "fleet_manager" ||
           actorType === "fleet_dispatcher"),
       canAccessFleetIntake:
         hasFleetProductAccess && (isInternal || isFleetActor),

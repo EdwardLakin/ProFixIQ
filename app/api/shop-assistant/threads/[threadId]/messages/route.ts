@@ -3,8 +3,7 @@ import { NextResponse } from "next/server";
 import type { ShopAssistantMessagesResponse } from "@/features/shop-assistant/types";
 import {
   requireShopAssistantActor,
-  shopAssistantErrorMessage,
-  shopAssistantErrorStatus,
+  resolveShopAssistantError,
 } from "@/features/shop-assistant/server/requireShopAssistantActor";
 import {
   getShopAssistantThread,
@@ -28,9 +27,13 @@ export async function GET(_request: Request, context: RouteContext) {
       messages,
     });
   } catch (error: unknown) {
+    const resolved = resolveShopAssistantError(
+      error,
+      "shop-assistant-thread-messages",
+    );
     return NextResponse.json<ShopAssistantMessagesResponse>(
-      { ok: false, error: shopAssistantErrorMessage(error) },
-      { status: shopAssistantErrorStatus(error) },
+      { ok: false, error: resolved.message },
+      { status: resolved.status },
     );
   }
 }

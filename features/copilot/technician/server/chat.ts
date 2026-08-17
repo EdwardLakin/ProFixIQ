@@ -39,7 +39,10 @@ import {
 export class TechnicianCopilotConflictError extends Error {
   readonly status = 409;
 
-  constructor(public readonly code: string, message: string) {
+  constructor(
+    public readonly code: string,
+    message: string,
+  ) {
     super(message);
     this.name = "TechnicianCopilotConflictError";
   }
@@ -95,7 +98,7 @@ function candidateFor(
   id: string | null | undefined,
 ) {
   return id
-    ? candidates.find((candidate) => candidate.id === id) ?? null
+    ? (candidates.find((candidate) => candidate.id === id) ?? null)
     : null;
 }
 
@@ -115,7 +118,9 @@ async function candidateForSession(
   });
 }
 
-function complaintFor(candidate: TechnicianWorkCandidate | null): string | null {
+function complaintFor(
+  candidate: TechnicianWorkCandidate | null,
+): string | null {
   if (!candidate) return null;
   const values = [candidate.concern, ...candidate.lineComplaints]
     .map((value) => value?.trim())
@@ -128,7 +133,9 @@ function storedTurnSource(event: RepairSessionEvent): TechnicianTurnSource {
 }
 
 function storedTurnText(event: RepairSessionEvent): string {
-  return typeof event.payload?.text === "string" ? event.payload.text.trim() : "";
+  return typeof event.payload?.text === "string"
+    ? event.payload.text.trim()
+    : "";
 }
 
 type StoredActionTurn = {
@@ -154,16 +161,13 @@ function storedActionTurn(
 ): StoredActionTurn | null {
   const pending = events.find(
     (event) =>
-      event.eventType === "action.pending" &&
-      event.payload?.turnId === turnId,
+      event.eventType === "action.pending" && event.payload?.turnId === turnId,
   );
   if (!pending) return null;
 
   const action = parseTechnicianCopilotAction(pending.payload?.request);
   const key =
-    typeof pending.payload?.key === "string"
-      ? pending.payload.key.trim()
-      : "";
+    typeof pending.payload?.key === "string" ? pending.payload.key.trim() : "";
   if (action.type === "none" || action.type === "work.next" || !key) {
     return null;
   }
@@ -248,7 +252,9 @@ function boundActionFromStored(
   };
 }
 
-function assertActiveSession(session: Session | null): asserts session is Session {
+function assertActiveSession(
+  session: Session | null,
+): asserts session is Session {
   if (!session || session.status !== "active") {
     throw new TechnicianCopilotConflictError(
       "technician_copilot_session_stale",
@@ -333,10 +339,7 @@ async function appendDocumentationTurn(
   }>(identity, "documentation.append", {
     sessionId: input.sessionId,
     sourceTurnId: input.turnId,
-    operationId: deriveCopilotOperationId(
-      input.turnId,
-      "documentation-turn",
-    ),
+    operationId: deriveCopilotOperationId(input.turnId, "documentation-turn"),
     events: input.events,
     occurredAt: new Date().toISOString(),
   });
@@ -387,6 +390,9 @@ export async function runTechnicianCopilotTurn(input: {
   turnId: string;
   sessionId?: string | null;
   inputSource?: TechnicianTurnSource;
+  requiredWorkOrderId?: string | null;
+  requiredWorkOrderLineId?: string | null;
+  requiredWorkOrderLineUpdatedAt?: string | null;
 }) {
   const requestedMessage = input.message.trim();
   const inputSource: TechnicianTurnSource =
@@ -405,12 +411,100 @@ export async function runTechnicianCopilotTurn(input: {
     shopId: input.identity.shopId,
     technicianIds: [input.identity.authUserId, input.identity.profileId],
   });
+  const requiredWorkOrder = input.requiredWorkOrderId
+    ? candidateFor(candidates, input.requiredWorkOrderId)
+    : null;
+  const requiredLine = input.requiredWorkOrderLineId
+    ? (requiredWorkOrder?.lines.find(
+        (line) => line.id === input.requiredWorkOrderLineId,
+      ) ?? null)
+    : null;
   let envelope = await read(input.identity, input.sessionId);
   if (input.sessionId && !envelope.session) {
     throw new TechnicianCopilotConflictError(
       "technician_copilot_session_stale",
       "This CoPilot tab no longer owns an active repair session. Reload before continuing.",
     );
+  }
+
+  const initialStoredAction = storedActionTurn(envelope.events, input.turnId);
+  if (
+    initialStoredAction &&
+    ((input.requiredWorkOrderId &&
+      initialStoredAction.workOrderId !== input.requiredWorkOrderId) ||
+      (input.requiredWorkOrderLineId &&
+        initialStoredAction.workOrderLineId !== input.requiredWorkOrderLineId))
+  ) {
+    throw new TechnicianCopilotConflictError(
+      "technician_copilot_confirmed_target_conflict",
+      "This confirmed CoPilot action is bound to a different work order or job line.",
+    );
+  }
+  if (
+    !initialStoredAction &&
+    ((input.requiredWorkOrderId && !requiredWorkOrder) ||
+      (input.requiredWorkOrderLineId && !requiredLine))
+  ) {
+    throw new TechnicianCopilotConflictError(
+      "technician_copilot_confirmed_target_stale",
+      "The confirmed work order or job line is no longer assigned and actionable.",
+    );
+  }
+  if (
+    !initialStoredAction &&
+    requiredLine &&
+    input.requiredWorkOrderLineUpdatedAt &&
+    ((requiredLine.updatedAt == null &&
+      input.requiredWorkOrderLineUpdatedAt !== "missing") ||
+      (requiredLine.updatedAt != null &&
+        (input.requiredWorkOrderLineUpdatedAt === "missing" ||
+          new Date(requiredLine.updatedAt).getTime() !==
+            new Date(input.requiredWorkOrderLineUpdatedAt).getTime())))
+  ) {
+    throw new TechnicianCopilotConflictError(
+      "technician_copilot_confirmed_target_stale",
+      "The assigned job changed after confirmation. Review its current state and ask again.",
+    );
+  }
+
+  if (requiredWorkOrder && requiredLine && !initialStoredAction) {
+    const initialContext = envelope.session
+      ? projectTechnicianContext({
+          repairSessionId: envelope.session.id,
+          mode: envelope.session.mode,
+          status: envelope.session.status,
+          events: envelope.events,
+        })
+      : null;
+    const closedCompletionReplay = Boolean(
+      envelope.session?.status === "closed" &&
+      initialContext?.conversation.some(
+        (turn) => turn.turnId === input.turnId && turn.role === "assistant",
+      ) &&
+      isStoredCompletion(initialStoredAction),
+    );
+    if (
+      !closedCompletionReplay &&
+      (envelope.session?.status !== "active" ||
+        envelope.session.workOrderId !== requiredWorkOrder.id ||
+        envelope.session.activeWorkOrderLineId !== requiredLine.id)
+    ) {
+      const anchored = await command<{ sessionId: string }>(
+        input.identity,
+        "session.start",
+        {
+          workOrderId: requiredWorkOrder.id,
+          workOrderLineId: requiredLine.id,
+          mode: "shop",
+          operationId: deriveCopilotOperationId(
+            input.turnId,
+            "confirmed-target-anchor",
+          ),
+        },
+      );
+      envelope = await read(input.identity, anchored.sessionId);
+      assertActiveSession(envelope.session);
+    }
   }
 
   let context = envelope.session
@@ -514,10 +608,7 @@ export async function runTechnicianCopilotTurn(input: {
       });
       return {
         sessionId: null,
-        reply:
-          prepared.kind === "reply"
-            ? prepared.reply
-            : decision.reply,
+        reply: prepared.kind === "reply" ? prepared.reply : decision.reply,
         context: null,
         workOrder: null,
         capabilities,
@@ -539,10 +630,7 @@ export async function runTechnicianCopilotTurn(input: {
         workOrderId: selected.id,
         workOrderLineId: lineId,
         mode: "shop",
-        operationId: deriveCopilotOperationId(
-          input.turnId,
-          "session-start",
-        ),
+        operationId: deriveCopilotOperationId(input.turnId, "session-start"),
       },
     );
     envelope = await read(input.identity, started.sessionId);
@@ -598,9 +686,7 @@ export async function runTechnicianCopilotTurn(input: {
   const existingComplaint = complaintFor(activeWorkOrder);
   if (
     existingComplaint &&
-    !envelope.events.some(
-      (event) => event.eventType === "complaint.recorded",
-    )
+    !envelope.events.some((event) => event.eventType === "complaint.recorded")
   ) {
     await append(input.identity, {
       sessionId: session.id,
@@ -628,6 +714,18 @@ export async function runTechnicianCopilotTurn(input: {
   }
 
   storedAction = storedActionTurn(envelope.events, input.turnId);
+  if (
+    storedAction &&
+    ((input.requiredWorkOrderId &&
+      storedAction.workOrderId !== input.requiredWorkOrderId) ||
+      (input.requiredWorkOrderLineId &&
+        storedAction.workOrderLineId !== input.requiredWorkOrderLineId))
+  ) {
+    throw new TechnicianCopilotConflictError(
+      "technician_copilot_confirmed_target_conflict",
+      "This confirmed CoPilot action is bound to a different work order or job line.",
+    );
+  }
   let replayedActionResult = Boolean(storedAction?.result);
   let completionNeedsDisposition =
     isStoredCompletion(storedAction) && storedAction.result?.ok === true;
@@ -635,16 +733,16 @@ export async function runTechnicianCopilotTurn(input: {
     existingAssistant || storedAction?.result || storedAction
       ? Promise.resolve(null)
       : decideTechnicianCopilotTurn({
-        message: boundTurn.message,
-        activeSession: {
-          id: session.id,
-          workOrderId: session.workOrderId,
-          activeWorkOrderLineId: session.activeWorkOrderLineId,
-        },
-        assignedWork: candidates,
-        workOrder: activeWorkOrder,
-        repairContext: context,
-      });
+          message: boundTurn.message,
+          activeSession: {
+            id: session.id,
+            workOrderId: session.workOrderId,
+            activeWorkOrderLineId: session.activeWorkOrderLineId,
+          },
+          assignedWork: candidates,
+          workOrder: activeWorkOrder,
+          repairContext: context,
+        });
   const [decision, documentationExtraction] = await Promise.all([
     decisionPromise,
     extractDocumentation({
@@ -693,9 +791,7 @@ export async function runTechnicianCopilotTurn(input: {
       storedAction?.key ??
       deriveCopilotOperationId(input.turnId, "canonical-action");
     let actionWorkOrderId = storedAction?.workOrderId ?? session.workOrderId;
-    let boundAction = storedAction
-      ? boundActionFromStored(storedAction)
-      : null;
+    let boundAction = storedAction ? boundActionFromStored(storedAction) : null;
 
     if (!storedAction) {
       const prepared = prepareTechnicianCopilotAction({
@@ -708,6 +804,17 @@ export async function runTechnicianCopilotTurn(input: {
       if (prepared.kind === "reply") {
         reply = prepared.reply;
       } else if (prepared.kind === "execute") {
+        if (
+          (input.requiredWorkOrderId &&
+            prepared.workOrder.id !== input.requiredWorkOrderId) ||
+          (input.requiredWorkOrderLineId &&
+            prepared.line.id !== input.requiredWorkOrderLineId)
+        ) {
+          throw new TechnicianCopilotConflictError(
+            "technician_copilot_confirmed_target_conflict",
+            "The interpreted CoPilot action did not match the exact job shown for confirmation.",
+          );
+        }
         actionWorkOrderId = prepared.workOrder.id;
         await append(input.identity, {
           sessionId: session.id,
@@ -750,7 +857,8 @@ export async function runTechnicianCopilotTurn(input: {
     }
 
     if (storedAction && !boundAction && !storedAction.result) {
-      reply = "That persisted job action is missing its line binding. Try a new request.";
+      reply =
+        "That persisted job action is missing its line binding. Try a new request.";
       await append(input.identity, {
         sessionId: session.id,
         eventType: "action.completed",
@@ -802,8 +910,7 @@ export async function runTechnicianCopilotTurn(input: {
         origin: "system",
         details: {
           action:
-            actionResult.eventLabel ??
-            `Attempted ${boundAction.action.type}`,
+            actionResult.eventLabel ?? `Attempted ${boundAction.action.type}`,
           key: actionKey,
           turnId: input.turnId,
           ok: actionResult.ok,
@@ -821,10 +928,7 @@ export async function runTechnicianCopilotTurn(input: {
         activeWorkOrder = await loadTechnicianWorkCandidateForWorkOrder({
           supabase: input.identity.supabase,
           shopId: input.identity.shopId,
-          technicianIds: [
-            input.identity.authUserId,
-            input.identity.profileId,
-          ],
+          technicianIds: [input.identity.authUserId, input.identity.profileId],
           workOrderId: actionWorkOrderId,
         });
         if (boundAction.action.type === "job.complete") {
@@ -846,7 +950,8 @@ export async function runTechnicianCopilotTurn(input: {
   }
 
   if (completionNeedsDisposition) {
-    const completionWorkOrderId = storedAction?.workOrderId ?? session.workOrderId;
+    const completionWorkOrderId =
+      storedAction?.workOrderId ?? session.workOrderId;
     activeWorkOrder = await loadTechnicianWorkCandidateForWorkOrder({
       supabase: input.identity.supabase,
       shopId: input.identity.shopId,
@@ -902,9 +1007,7 @@ export async function runTechnicianCopilotTurn(input: {
         ? finalEnvelope.session.id
         : null,
     session:
-      finalEnvelope.session.status === "active"
-        ? finalEnvelope.session
-        : null,
+      finalEnvelope.session.status === "active" ? finalEnvelope.session : null,
     reply: persistedAssistant?.text ?? reply,
     context: finalContext,
     workOrder: activeWorkOrder,

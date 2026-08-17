@@ -100,7 +100,7 @@ export default function QuoteViewer({ summary, quote }: QuoteViewerProps) {
     setQuoteState((prev) =>
       prev.map((item, i) => {
         if (i !== idx) return item;
-        let next: EditableQuoteLineItem = { ...item, [field]: value as any };
+        const next: EditableQuoteLineItem = { ...item, [field]: value as any };
         const ensurePart = () => next.part ?? { name: item.partName ?? "", price: null };
 
         if (field === "partName") {

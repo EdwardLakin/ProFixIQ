@@ -443,26 +443,6 @@
       "expiresOn": "2026-09-06"
     },
     {
-      "fingerprint": "937113e269e3a78ef4a0",
-      "rule": "missing-column",
-      "severity": "error",
-      "domain": "ai-automation",
-      "file": "features/agent/assistant/server/answerAssistant.ts",
-      "subject": "work_order_parts.part_name",
-      "message": "select references missing column work_order_parts.part_name",
-      "expiresOn": "2026-09-06"
-    },
-    {
-      "fingerprint": "90dd00f96db5a33fc2f9",
-      "rule": "missing-column",
-      "severity": "error",
-      "domain": "ai-automation",
-      "file": "features/agent/assistant/server/answerAssistant.ts",
-      "subject": "work_order_parts.part_number",
-      "message": "select references missing column work_order_parts.part_number",
-      "expiresOn": "2026-09-06"
-    },
-    {
       "fingerprint": "3d604899e2d91140c18b",
       "rule": "missing-column",
       "severity": "error",
@@ -610,16 +590,6 @@
       "file": "features/shared/components/AccountPlanPanel.tsx",
       "subject": "user_plans.plan",
       "message": "select references missing column user_plans.plan",
-      "expiresOn": "2026-09-06"
-    },
-    {
-      "fingerprint": "e26ed07bb9c043b87710",
-      "rule": "missing-column",
-      "severity": "error",
-      "domain": "financial",
-      "file": "features/shop-assistant/server/tools/domains/invoices.ts",
-      "subject": "invoices.sent_at",
-      "message": "select references missing column invoices.sent_at",
       "expiresOn": "2026-09-06"
     },
     {

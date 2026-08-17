@@ -30,6 +30,7 @@ export type AssistantContext = {
   vehicleId?: string;
   customerId?: string;
   bookingId?: string;
+  invoiceId?: string;
   pageType?: string;
   pageTitle?: string;
 };

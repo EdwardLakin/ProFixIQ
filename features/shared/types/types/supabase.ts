@@ -29607,6 +29607,31 @@ export type Database = {
         }
         Returns: undefined
       }
+      shop_assistant_add_work_order_line_atomic: {
+        Args: {
+          p_action_id: string
+          p_actor_user_id: string
+          p_description: string
+          p_job_type?: string
+          p_labor_time?: number
+          p_notes?: string
+          p_price_estimate?: number
+          p_shop_id: string
+          p_urgency?: string
+          p_work_order_id: string
+        }
+        Returns: Json
+      }
+      shop_assistant_assert_line_snapshot: {
+        Args: {
+          p_mode: string
+          p_only_unassigned?: boolean
+          p_shop_id: string
+          p_target_versions: Json
+          p_work_order_id: string
+        }
+        Returns: number
+      }
       shop_assistant_assign_work_order_atomic: {
         Args: {
           p_action_id: string
@@ -29615,6 +29640,40 @@ export type Database = {
           p_shop_id: string
           p_technician_id: string
           p_work_order_id: string
+        }
+        Returns: Json
+      }
+      shop_assistant_cancel_booking_atomic: {
+        Args: {
+          p_action_id: string
+          p_actor_user_id: string
+          p_booking_id: string
+          p_reason: string
+          p_shop_id: string
+        }
+        Returns: Json
+      }
+      shop_assistant_convert_fleet_service_request_atomic: {
+        Args: {
+          p_action_id: string
+          p_actor_user_id: string
+          p_service_request_id: string
+          p_shop_id: string
+        }
+        Returns: Json
+      }
+      shop_assistant_create_booking_atomic: {
+        Args: {
+          p_action_id: string
+          p_actor_user_id: string
+          p_customer_id: string
+          p_ends_at: string
+          p_mode?: string
+          p_notes?: string
+          p_resource_id?: string
+          p_shop_id: string
+          p_starts_at: string
+          p_vehicle_id: string
         }
         Returns: Json
       }
@@ -29629,6 +29688,106 @@ export type Database = {
         }
         Returns: Json
       }
+      shop_assistant_create_fleet_service_request_atomic: {
+        Args: {
+          p_action_id: string
+          p_actor_user_id: string
+          p_fleet_id: string
+          p_requested_for_date?: string
+          p_shop_id: string
+          p_summary: string
+          p_title: string
+          p_vehicle_id: string
+        }
+        Returns: Json
+      }
+      shop_assistant_create_inventory_part_atomic: {
+        Args: {
+          p_action_id: string
+          p_actor_user_id: string
+          p_category: string
+          p_cost: number
+          p_description: string
+          p_initial_quantity: number
+          p_location_id: string
+          p_low_stock_threshold: number
+          p_manufacturer: string
+          p_name: string
+          p_part_number: string
+          p_price: number
+          p_reorder_quantity: number
+          p_shop_id: string
+          p_sku: string
+        }
+        Returns: Json
+      }
+      shop_assistant_create_part_request_atomic: {
+        Args: {
+          p_action_id: string
+          p_actor_user_id: string
+          p_items: Json
+          p_notes?: string
+          p_shop_id: string
+          p_work_order_id: string
+          p_work_order_line_id: string
+        }
+        Returns: Json
+      }
+      shop_assistant_create_purchase_order_atomic: {
+        Args: {
+          p_action_id: string
+          p_actor_user_id: string
+          p_expected_at: string
+          p_lines: Json
+          p_notes: string
+          p_shop_id: string
+          p_supplier_id: string
+          p_work_order_id: string
+        }
+        Returns: Json
+      }
+      shop_assistant_create_vehicle_atomic: {
+        Args: {
+          p_action_id: string
+          p_actor_user_id: string
+          p_customer_id: string
+          p_license_plate?: string
+          p_make?: string
+          p_mileage?: string
+          p_model?: string
+          p_notes?: string
+          p_shop_id: string
+          p_unit_number?: string
+          p_vin?: string
+          p_year?: number
+        }
+        Returns: Json
+      }
+      shop_assistant_create_work_order_atomic: {
+        Args: {
+          p_action_id: string
+          p_actor_user_id: string
+          p_advisor_id?: string
+          p_customer_id: string
+          p_is_waiter?: boolean
+          p_notes?: string
+          p_priority?: number
+          p_shop_id: string
+          p_vehicle_id: string
+        }
+        Returns: Json
+      }
+      shop_assistant_finalize_invoice_atomic: {
+        Args: {
+          p_action_id: string
+          p_actor_profile_id: string
+          p_actor_user_id: string
+          p_shop_id: string
+          p_snapshot: Json
+          p_work_order_id: string
+        }
+        Returns: Json
+      }
       shop_assistant_hold_work_order_atomic: {
         Args: {
           p_action_id: string
@@ -29638,6 +29797,14 @@ export type Database = {
           p_work_order_id: string
         }
         Returns: Json
+      }
+      shop_assistant_invoice_source_fingerprint: {
+        Args: { p_shop_id: string; p_work_order_id: string }
+        Returns: string
+      }
+      shop_assistant_json_fingerprint: {
+        Args: { p_value: Json }
+        Returns: string
       }
       shop_assistant_lock_action_for_tool: {
         Args: {
@@ -29676,9 +29843,70 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      shop_assistant_mark_work_order_ready_atomic: {
+        Args: {
+          p_action_id: string
+          p_actor_user_id: string
+          p_shop_id: string
+          p_work_order_id: string
+        }
+        Returns: Json
+      }
+      shop_assistant_place_purchase_order_atomic: {
+        Args: {
+          p_action_id: string
+          p_actor_user_id: string
+          p_contact_channel: string
+          p_purchase_order_id: string
+          p_shop_id: string
+        }
+        Returns: Json
+      }
+      shop_assistant_profile_id: {
+        Args: { p_actor_user_id: string; p_shop_id: string }
+        Returns: string
+      }
       shop_assistant_profile_role: {
         Args: { p_actor_user_id: string; p_shop_id: string }
         Returns: string
+      }
+      shop_assistant_receive_part_request_item_atomic: {
+        Args: {
+          p_action_id: string
+          p_actor_user_id: string
+          p_item_id: string
+          p_location_id: string
+          p_purchase_order_id?: string
+          p_quantity: number
+          p_shop_id: string
+        }
+        Returns: Json
+      }
+      shop_assistant_receive_purchase_order_line_atomic: {
+        Args: {
+          p_action_id: string
+          p_actor_user_id: string
+          p_location_id?: string
+          p_purchase_order_id: string
+          p_purchase_order_line_id: string
+          p_quantity: number
+          p_shop_id: string
+        }
+        Returns: Json
+      }
+      shop_assistant_record_approval_decision_atomic: {
+        Args: {
+          p_action_id: string
+          p_actor_user_id: string
+          p_all_pending: boolean
+          p_contact_method: string
+          p_decision: string
+          p_item_ids: string[]
+          p_note: string
+          p_shop_id: string
+          p_work_order_id: string
+        }
+        Returns: Json
       }
       shop_assistant_release_work_order_hold_atomic: {
         Args: {
@@ -29686,6 +29914,16 @@ export type Database = {
           p_actor_user_id: string
           p_shop_id: string
           p_work_order_id: string
+        }
+        Returns: Json
+      }
+      shop_assistant_reopen_inspection_atomic: {
+        Args: {
+          p_action_id: string
+          p_actor_user_id: string
+          p_inspection_id: string
+          p_reason: string
+          p_shop_id: string
         }
         Returns: Json
       }
@@ -29700,6 +29938,26 @@ export type Database = {
           p_starts_at: string
         }
         Returns: Json
+      }
+      shop_assistant_set_inventory_stock_atomic: {
+        Args: {
+          p_action_id: string
+          p_actor_user_id: string
+          p_location_id: string
+          p_part_id: string
+          p_quantity_on_hand: number
+          p_reason: string
+          p_shop_id: string
+        }
+        Returns: Json
+      }
+      shop_assistant_succeed_action: {
+        Args: { p_action_id: string; p_result: Json; p_shop_id: string }
+        Returns: Json
+      }
+      shop_assistant_timestamp_version_matches: {
+        Args: { p_current: string; p_expected: string }
+        Returns: boolean
       }
       shop_id_for: { Args: { uid: string }; Returns: string }
       shop_role: { Args: { shop_id: string }; Returns: string }

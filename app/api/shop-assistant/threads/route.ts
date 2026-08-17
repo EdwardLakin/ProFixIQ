@@ -7,13 +7,13 @@ import type {
 } from "@/features/shop-assistant/types";
 import {
   requireShopAssistantActor,
-  shopAssistantErrorMessage,
-  shopAssistantErrorStatus,
+  resolveShopAssistantError,
 } from "@/features/shop-assistant/server/requireShopAssistantActor";
 import {
   createShopAssistantThread,
   listShopAssistantThreads,
 } from "@/features/shop-assistant/server/threadStore";
+import { resolveTrustedShopAssistantContext } from "@/features/shop-assistant/server/trustedContext";
 
 export async function GET() {
   try {
@@ -27,9 +27,13 @@ export async function GET() {
       role: actor.canonicalRole,
     });
   } catch (error: unknown) {
+    const resolved = resolveShopAssistantError(
+      error,
+      "shop-assistant-threads-list",
+    );
     return NextResponse.json<ShopAssistantThreadListResponse>(
-      { ok: false, error: shopAssistantErrorMessage(error) },
-      { status: shopAssistantErrorStatus(error) },
+      { ok: false, error: resolved.message },
+      { status: resolved.status },
     );
   }
 }
@@ -40,7 +44,12 @@ export async function POST(request: Request) {
     const body = (await request.json().catch(() => ({}))) as {
       context?: ShopAssistantContext;
     };
-    const thread = await createShopAssistantThread(actor, body.context);
+    const trusted = await resolveTrustedShopAssistantContext({
+      actor,
+      requested: body.context,
+      stored: {},
+    });
+    const thread = await createShopAssistantThread(actor, trusted.pageContext);
 
     return NextResponse.json<ShopAssistantMessagesResponse>(
       {
@@ -51,9 +60,13 @@ export async function POST(request: Request) {
       { status: 201 },
     );
   } catch (error: unknown) {
+    const resolved = resolveShopAssistantError(
+      error,
+      "shop-assistant-thread-create",
+    );
     return NextResponse.json<ShopAssistantMessagesResponse>(
-      { ok: false, error: shopAssistantErrorMessage(error) },
-      { status: shopAssistantErrorStatus(error) },
+      { ok: false, error: resolved.message },
+      { status: resolved.status },
     );
   }
 }

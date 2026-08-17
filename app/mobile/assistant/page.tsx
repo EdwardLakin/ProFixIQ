@@ -10,7 +10,10 @@ import { useShopAssistant } from "@/features/shop-assistant/hooks/useShopAssista
 import type { ShopAssistantContext } from "@/features/shop-assistant/types";
 import { Button } from "@shared/components/ui/Button";
 
-function optionalParam(params: URLSearchParams, key: string): string | undefined {
+function optionalParam(
+  params: URLSearchParams,
+  key: string,
+): string | undefined {
   const value = params.get(key)?.trim();
   return value || undefined;
 }
@@ -71,10 +74,10 @@ export default function MobileAssistantPage() {
 
   const hasRecordContext = Boolean(
     context.workOrderId ||
-      context.vehicleId ||
-      context.customerId ||
-      context.bookingId ||
-      context.invoiceId,
+    context.vehicleId ||
+    context.customerId ||
+    context.bookingId ||
+    context.invoiceId,
   );
 
   return (
@@ -86,7 +89,9 @@ export default function MobileAssistantPage() {
           </span>
           <div className="min-w-0 flex-1">
             <div className="mobile-dashboard-hero__eyebrow">Shop assistant</div>
-            <h1 className="mobile-dashboard-hero__title">Ask with shop context</h1>
+            <h1 className="mobile-dashboard-hero__title">
+              Ask with shop context
+            </h1>
             <p className="mobile-dashboard-hero__subtitle">
               {hasRecordContext
                 ? "The current record context is included with this conversation."
@@ -96,13 +101,6 @@ export default function MobileAssistantPage() {
           <Sparkles className="mt-1 h-5 w-5 shrink-0 text-[#8ed4ff]" />
         </div>
       </section>
-
-      <div className="overflow-hidden rounded-[1.15rem]">
-        <ShopAssistantDashboard
-          onPrompt={setQuestion}
-          refreshToken={messages.at(-1)?.id}
-        />
-      </div>
 
       <section className="mobile-command-panel overflow-hidden border">
         <ShopAssistantConversation
@@ -114,6 +112,8 @@ export default function MobileAssistantPage() {
           actionInFlightId={actionInFlightId}
           onConfirmAction={(actionId) => void confirmAction(actionId)}
           onCancelAction={(actionId) => void cancelAction(actionId)}
+          onSubmitPrompt={(prompt) => void send(prompt, context)}
+          promptDisabled={loading || sending || Boolean(actionInFlightId)}
           className="max-h-[31rem]"
         />
       </section>
@@ -155,7 +155,10 @@ export default function MobileAssistantPage() {
             variant="default"
             size="sm"
             disabled={
-              loading || sending || Boolean(actionInFlightId) || !question.trim()
+              loading ||
+              sending ||
+              Boolean(actionInFlightId) ||
+              !question.trim()
             }
             isLoading={sending}
             onClick={() => void submit()}
@@ -166,6 +169,22 @@ export default function MobileAssistantPage() {
           </Button>
         </div>
       </section>
+
+      <details
+        className="overflow-hidden rounded-[1.15rem]"
+        open={messages.length === 0}
+      >
+        <summary className="cursor-pointer px-1 py-2 text-xs font-bold uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
+          Live operational overview
+        </summary>
+        <ShopAssistantDashboard
+          onPrompt={(prompt) => {
+            setQuestion("");
+            void send(prompt, context);
+          }}
+          refreshToken={messages.at(-1)?.id}
+        />
+      </details>
     </main>
   );
 }

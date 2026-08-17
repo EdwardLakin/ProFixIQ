@@ -3,12 +3,14 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { ShopAssistantActor } from "@/features/shop-assistant/server/requireShopAssistantActor";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import type { Database } from "@/features/shared/types/types/supabase";
 import type {
   ShopAssistantMessage,
   ShopAssistantMessageKind,
 } from "@/features/shop-assistant/types";
 
-type AssistantDb = SupabaseClient<any>;
+type AssistantDb = SupabaseClient<Database>;
 
 type MessageRow = {
   id: string;
@@ -57,8 +59,8 @@ export async function findOrCreateActionMessage(params: {
   content: string;
   payload: Record<string, unknown>;
 }): Promise<ShopAssistantMessage> {
-  const clientMessageId = `shop-action:${params.actionId}:${params.kind}`;
-  const db = params.actor.supabase as unknown as AssistantDb;
+  const clientMessageId = `shop-action:${params.actionId}`;
+  const db = createAdminSupabase() as unknown as AssistantDb;
   const insert = {
     thread_id: params.threadId,
     shop_id: params.actor.shopId,
@@ -85,9 +87,16 @@ export async function findOrCreateActionMessage(params: {
 
   const { data: existing, error: existingError } = await db
     .from("shop_assistant_messages")
-    .select(MESSAGE_SELECT)
+    .update({
+      kind: params.kind,
+      content: params.content,
+      payload: insert.payload,
+    })
     .eq("thread_id", params.threadId)
+    .eq("shop_id", params.actor.shopId)
+    .eq("role", "assistant")
     .eq("client_message_id", clientMessageId)
+    .select(MESSAGE_SELECT)
     .maybeSingle();
   if (existingError || !existing) {
     throw new Error(

@@ -46,14 +46,16 @@ describe("shop assistant live state contracts", () => {
     expect(stateBuilder).toContain("capabilities.canAuthorizeQuotes");
     expect(stateBuilder).toContain("capabilities.canManageParts");
     expect(stateBuilder).toContain("capabilities.canAssignWork");
-    expect(stateBuilder).toContain("capabilities.canManageBilling");
+    expect(stateBuilder).toContain("capabilities.canManageWorkOrders");
     expect(stateBuilder).toContain("capabilities.canManageScheduling");
   });
 
   it("serves current state through an authenticated no-store route", () => {
     expect(stateRoute).toContain("requireShopAssistantActor");
     expect(stateRoute).toContain("buildShopState");
-    expect(stateRoute).toContain('"cache-control": "private, no-store, max-age=0"');
+    expect(stateRoute).toContain(
+      '"cache-control": "private, no-store, max-age=0"',
+    );
   });
 
   it("refreshes while visible instead of appending duplicate dashboard cards", () => {

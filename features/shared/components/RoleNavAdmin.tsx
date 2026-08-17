@@ -34,9 +34,11 @@ export default function RoleNavAdmin() {
     <div className="hidden md:flex md:w-64 flex-col gap-4 border-r border-[color:var(--theme-border-soft)] bg-surface/80 backdrop-blur">
       {/* everything admin can reach is now in the tile-based sidebar already */}
       <div className="px-4 pt-4 space-y-3 border-t border-[color:var(--theme-border-soft)]">
-        <p className="text-xs font-medium text-[color:var(--theme-text-secondary)]">Admin tools</p>
+        <p className="text-xs font-medium text-[color:var(--theme-text-secondary)]">
+          Admin tools
+        </p>
         <Link
-          href="/ai/assistant"
+          href="/assistant"
           className="block text-sm text-[color:var(--theme-text-primary)] hover:text-[color:var(--theme-text-primary)]"
         >
           AI Assistant

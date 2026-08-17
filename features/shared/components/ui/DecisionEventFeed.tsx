@@ -60,16 +60,20 @@ export default function DecisionEventFeed({
   filter = "all",
   maxVisible = 5,
 }: DecisionEventFeedProps): JSX.Element | null {
-  if (!Array.isArray(events) || events.length === 0) return null;
-
   const [activeFilter, setActiveFilter] = useState<NonNullable<DecisionEventFeedProps["filter"]>>(filter);
   const [expanded, setExpanded] = useState(false);
-  const showFilterControls = !compact && events.length > maxVisible;
 
   const filteredEvents = useMemo(
-    () => events.filter((event) => matchesFilter(event, activeFilter)),
+    () =>
+      Array.isArray(events)
+        ? events.filter((event) => matchesFilter(event, activeFilter))
+        : [],
     [events, activeFilter],
   );
+
+  if (!Array.isArray(events) || events.length === 0) return null;
+
+  const showFilterControls = !compact && events.length > maxVisible;
 
   const visibleEvents = expanded ? filteredEvents : filteredEvents.slice(-Math.max(maxVisible, 1));
   const hiddenCount = filteredEvents.length - visibleEvents.length;
