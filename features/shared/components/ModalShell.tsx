@@ -16,6 +16,7 @@ type ModalShellProps = {
   size?: "sm" | "md" | "lg" | "xl";
   hideFooter?: boolean;
   bodyScrollable?: boolean;
+  busy?: boolean;
 };
 
 const widthMap: Record<NonNullable<ModalShellProps["size"]>, string> = {
@@ -36,13 +37,17 @@ export default function ModalShell({
   size = "md",
   hideFooter = false,
   bodyScrollable = true,
+  busy = false,
 }: ModalShellProps) {
   const width = widthMap[size];
+  const handleClose = () => {
+    if (!busy) onClose();
+  };
 
   return (
     <Dialog
       open={isOpen}
-      onClose={onClose}
+      onClose={handleClose}
       className="fixed inset-0 z-[500] flex items-center justify-center px-3 py-6 sm:px-4"
     >
       <div
@@ -51,7 +56,10 @@ export default function ModalShell({
       />
 
       <div className={`relative z-[510] w-full ${width}`}>
-        <Dialog.Panel className="relative w-full overflow-hidden rounded-[26px] border border-[color:var(--theme-border-soft)] bg-[var(--theme-gradient-panel)] text-[color:var(--theme-text-primary)] shadow-[var(--theme-shadow-medium)]">
+        <Dialog.Panel
+          aria-busy={busy}
+          className="relative w-full overflow-hidden rounded-[26px] border border-[color:var(--theme-border-soft)] bg-[var(--theme-gradient-panel)] text-[color:var(--theme-text-primary)] shadow-[var(--theme-shadow-medium)]"
+        >
           <div className="absolute inset-x-0 top-0 z-20 h-[3px] bg-[linear-gradient(90deg,transparent,var(--brand-primary),var(--brand-accent),transparent)]" />
           <div className="pointer-events-none absolute inset-x-10 top-0 z-10 h-24 bg-[radial-gradient(circle_at_top,color-mix(in_srgb,var(--brand-primary)_18%,transparent),transparent_72%)]" />
 
@@ -73,8 +81,9 @@ export default function ModalShell({
 
             <button
               type="button"
-              onClick={onClose}
-              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[0.78rem] text-[color:var(--theme-text-primary)] transition hover:border-[var(--accent-copper-soft)] hover:bg-[color:var(--theme-surface-subtle)] hover:text-[color:var(--theme-text-primary)] active:scale-95"
+              onClick={handleClose}
+              disabled={busy}
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[0.78rem] text-[color:var(--theme-text-primary)] transition hover:border-[var(--accent-copper-soft)] hover:bg-[color:var(--theme-surface-subtle)] hover:text-[color:var(--theme-text-primary)] active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
               aria-label="Close"
               title="Close"
             >
@@ -101,7 +110,8 @@ export default function ModalShell({
                   type="button"
                   variant="ghost"
                   size="sm"
-                  onClick={onClose}
+                  onClick={handleClose}
+                  disabled={busy}
                 >
                   Cancel
                 </Button>
@@ -112,6 +122,7 @@ export default function ModalShell({
                     variant="copper"
                     size="sm"
                     onClick={() => void onSubmit()}
+                    disabled={busy}
                   >
                     {submitText}
                   </Button>

@@ -24,6 +24,7 @@ import {
 import { ImportedHistoryRecordCard } from "@/features/work-orders/components/ImportedHistoryRecordCard";
 import { usePersistentGuidedOnboardingQuery } from "@/features/onboarding-v2/guided/persistence";
 import { useTabs } from "@/features/shared/components/tabs/TabsProvider";
+import ModalShell from "@/features/shared/components/ModalShell";
 
 type DB = Database;
 
@@ -1911,33 +1912,17 @@ export default function CustomerProfilePage(): JSX.Element {
           </div>
         </div>
 
-        <Modal
+        <ModalShell
           title="Create customer"
-          open={createCustomerOpen}
+          isOpen={createCustomerOpen}
           onClose={() => {
             if (creatingCustomer) return;
             setCreateCustomerOpen(false);
           }}
-          footer={
-            <>
-              <button
-                type="button"
-                onClick={() => setCreateCustomerOpen(false)}
-                disabled={creatingCustomer}
-                className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-inset)] disabled:opacity-60"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => void createCustomer(false)}
-                disabled={creatingCustomer}
-                className="rounded-xl bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-on-accent)] shadow-[0_0_22px_rgba(212,118,49,0.75)] hover:brightness-110 disabled:opacity-60"
-              >
-                {creatingCustomer ? "Creating…" : "Create customer"}
-              </button>
-            </>
-          }
+          onSubmit={() => createCustomer(false)}
+          submitText={creatingCustomer ? "Creating…" : "Create customer"}
+          size="lg"
+          busy={creatingCustomer}
         >
           <div className="space-y-4">
             <div className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-3 text-xs leading-5 text-[color:var(--theme-text-secondary)]">
@@ -2160,7 +2145,7 @@ export default function CustomerProfilePage(): JSX.Element {
               />
             </label>
           </div>
-        </Modal>
+        </ModalShell>
       </div>
     );
   }
