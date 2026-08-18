@@ -353,6 +353,25 @@ export default function MobileWorkOrderQueue({
     };
   }, [load, supabase]);
 
+  useEffect(() => {
+    const refreshIfOnline = () => {
+      if (navigator.onLine) void load("refresh");
+    };
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") refreshIfOnline();
+    };
+
+    window.addEventListener("online", refreshIfOnline);
+    window.addEventListener("focus", refreshIfOnline);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+
+    return () => {
+      window.removeEventListener("online", refreshIfOnline);
+      window.removeEventListener("focus", refreshIfOnline);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [load]);
+
   const filteredRows = useMemo(() => {
     const search = queryText.trim().toLowerCase();
     if (!search) return rows;
@@ -395,106 +414,123 @@ export default function MobileWorkOrderQueue({
   return (
     <div className="mobile-work-order-queue">
       {!embedded ? (
-      <section className="mobile-dashboard-hero">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="mobile-dashboard-hero__eyebrow">
-              {assignedOnly ? "Technician queue" : "Shop operations"}
+        <section className="mobile-dashboard-hero">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="mobile-dashboard-hero__eyebrow">
+                {assignedOnly ? "Technician queue" : "Shop operations"}
+              </div>
+              <h1 className="mobile-dashboard-hero__title">
+                {assignedOnly ? "My work orders" : "Work orders"}
+              </h1>
+              <p className="mobile-dashboard-hero__subtitle">
+                {assignedOnly
+                  ? `${activeCount} active work order${activeCount === 1 ? "" : "s"} assigned to you.`
+                  : `${activeCount} active work order${activeCount === 1 ? "" : "s"} in the current shop flow.`}
+              </p>
             </div>
-            <h1 className="mobile-dashboard-hero__title">
-              {assignedOnly ? "My work orders" : "Work orders"}
-            </h1>
-            <p className="mobile-dashboard-hero__subtitle">
-              {assignedOnly
-                ? `${activeCount} active work order${activeCount === 1 ? "" : "s"} assigned to you.`
-                : `${activeCount} active work order${activeCount === 1 ? "" : "s"} in the current shop flow.`}
-            </p>
+            <div className="flex shrink-0 gap-2">
+              <button
+                type="button"
+                onClick={() => setSearchOpen((current) => !current)}
+                aria-label={searchOpen ? "Close search" : "Search work orders"}
+                className="inline-grid h-11 w-11 place-items-center rounded-xl border border-white/20 bg-white/10 text-white"
+              >
+                {searchOpen ? (
+                  <X className="h-5 w-5" />
+                ) : (
+                  <Search className="h-5 w-5" />
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => void load("refresh")}
+                aria-label="Refresh work orders"
+                className="inline-grid h-11 w-11 place-items-center rounded-xl border border-white/20 bg-white/10 text-white disabled:opacity-55"
+                disabled={refreshing}
+              >
+                <RefreshCw
+                  className={`h-5 w-5 ${refreshing ? "animate-spin" : ""}`}
+                />
+              </button>
+            </div>
           </div>
-          <div className="flex shrink-0 gap-2">
-            <button
-              type="button"
-              onClick={() => setSearchOpen((current) => !current)}
-              aria-label={searchOpen ? "Close search" : "Search work orders"}
-              className="inline-grid h-11 w-11 place-items-center rounded-xl border border-white/20 bg-white/10 text-white"
-            >
-              {searchOpen ? (
-                <X className="h-5 w-5" />
-              ) : (
-                <Search className="h-5 w-5" />
-              )}
-            </button>
-            <button
-              type="button"
-              onClick={() => void load("refresh")}
-              aria-label="Refresh work orders"
-              className="inline-grid h-11 w-11 place-items-center rounded-xl border border-white/20 bg-white/10 text-white disabled:opacity-55"
-              disabled={refreshing}
-            >
-              <RefreshCw
-                className={`h-5 w-5 ${refreshing ? "animate-spin" : ""}`}
-              />
-            </button>
-          </div>
-        </div>
 
-        {searchOpen ? (
-          <div className="relative mt-4">
-            <Search
-              aria-hidden
-              className="pointer-events-none absolute left-3 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-slate-400"
-            />
-            <input
-              autoFocus
-              value={queryText}
-              onChange={(event) => setQueryText(event.target.value)}
-              placeholder="Search RO, customer, plate or vehicle"
-              className="w-full pl-10 pr-4"
-            />
-          </div>
-        ) : null}
-      </section>
+          {searchOpen ? (
+            <div className="relative mt-4">
+              <Search
+                aria-hidden
+                className="pointer-events-none absolute left-3 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-slate-400"
+              />
+              <input
+                autoFocus
+                value={queryText}
+                onChange={(event) => setQueryText(event.target.value)}
+                placeholder="Search RO, customer, plate or vehicle"
+                className="w-full pl-10 pr-4"
+              />
+            </div>
+          ) : null}
+        </section>
       ) : null}
 
       <section className="mt-3 overflow-hidden rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] shadow-[var(--mobile-shadow)]">
         {!lockStatus ? (
-        <div className="flex items-center gap-2 overflow-x-auto px-3 py-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <Filter
-            aria-hidden
-            className="h-4 w-4 shrink-0 text-[color:var(--theme-text-muted)]"
-          />
-          {FILTERS.map((filter) => {
-            const active = status === filter.value;
-            return (
-              <button
-                key={filter.value || "active"}
-                type="button"
-                onClick={() => setStatus(filter.value)}
-                className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
-                  active
-                    ? "border-[color:var(--accent-copper)] bg-[color:var(--accent-copper)] text-white"
-                    : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-secondary)]"
-                }`}
-              >
-                {filter.label}
-              </button>
-            );
-          })}
-        </div>
+          <div className="flex items-center gap-2 overflow-x-auto px-3 py-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <Filter
+              aria-hidden
+              className="h-4 w-4 shrink-0 text-[color:var(--theme-text-muted)]"
+            />
+            {FILTERS.map((filter) => {
+              const active = status === filter.value;
+              return (
+                <button
+                  key={filter.value || "active"}
+                  type="button"
+                  onClick={() => setStatus(filter.value)}
+                  className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                    active
+                      ? "border-[color:var(--accent-copper)] bg-[color:var(--accent-copper)] text-white"
+                      : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-secondary)]"
+                  }`}
+                >
+                  {filter.label}
+                </button>
+              );
+            })}
+          </div>
         ) : null}
         <div className="flex items-center justify-between border-t border-[color:var(--theme-border-soft)] px-4 py-2.5 text-xs text-[color:var(--theme-text-secondary)]">
           <span>
             {filteredRows.length} work order
             {filteredRows.length === 1 ? "" : "s"}
           </span>
-          {!assignedOnly ? (
-            <Link
-              href="/mobile/work-orders/create"
-              className="inline-flex items-center gap-1.5 font-bold text-[color:var(--accent-copper)]"
-            >
-              <Plus aria-hidden className="h-4 w-4" />
-              Create
-            </Link>
-          ) : null}
+          <div className="flex items-center gap-3">
+            {embedded ? (
+              <button
+                type="button"
+                onClick={() => void load("refresh")}
+                aria-label="Refresh active repairs"
+                className="inline-flex items-center gap-1.5 font-bold text-[color:var(--accent-copper)] disabled:opacity-55"
+                disabled={refreshing}
+              >
+                <RefreshCw
+                  aria-hidden
+                  className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`}
+                />
+                Refresh
+              </button>
+            ) : null}
+            {!assignedOnly ? (
+              <Link
+                href="/mobile/work-orders/create"
+                className="inline-flex items-center gap-1.5 font-bold text-[color:var(--accent-copper)]"
+              >
+                <Plus aria-hidden className="h-4 w-4" />
+                Create
+              </Link>
+            ) : null}
+          </div>
         </div>
       </section>
 
