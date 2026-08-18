@@ -60,6 +60,11 @@ describe("Mobile Service shell", () => {
     expect(scopeGate).toContain("verificationUnavailable");
     expect(routeGate).toContain("readFieldServiceOfflineAccess");
     expect(routeGate).toContain("response.status >= 500");
+    expect(routeGate).toContain("isRetryableOfflineStatus(response.status)");
+    expect(scopeGate).toContain(
+      "isRetryableOfflineStatus(fieldAccessResponse.status)",
+    );
+    expect(scopeGate).toContain("Snapshot persistence is best-effort");
     expect(fieldAccessRoute).toContain("userId: access.authUserId");
     expect(fieldAccessRoute).toContain("shopId: access.profile.shop_id");
     expect(scopeGate).not.toContain("resolveCurrentActor");

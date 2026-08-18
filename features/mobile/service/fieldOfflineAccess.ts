@@ -9,6 +9,7 @@ import {
 
 export const FIELD_SERVICE_OFFLINE_ACCESS_CACHE_PREFIX =
   "profixiq:field-service:access:v1";
+export const FIELD_SERVICE_OFFLINE_ACCESS_MAX_AGE_MS = 12 * 60 * 60 * 1000;
 
 type StorageReader = Pick<Storage, "getItem">;
 type StorageWriter = Pick<Storage, "setItem" | "removeItem">;
@@ -35,7 +36,13 @@ function clean(value: unknown): string {
 }
 
 function browserStorage(): Storage | null {
-  return typeof window !== "undefined" ? window.localStorage : null;
+  if (typeof window === "undefined") return null;
+
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
 }
 
 export function getFieldServiceOfflineAccessCacheKey(
@@ -65,6 +72,7 @@ export function resolveFieldServiceAccessScope(
 export function readFieldServiceOfflineAccess(
   scope: OfflineMutationScope,
   storage: StorageReader | null = browserStorage(),
+  nowMs: number = Date.now(),
 ): FieldServiceOfflineAccessSnapshot | null {
   const key = getFieldServiceOfflineAccessCacheKey(scope);
   if (!key || !storage) return null;
@@ -74,6 +82,9 @@ export function readFieldServiceOfflineAccess(
       string,
       unknown
     > | null;
+    const validatedAt = clean(parsed?.validatedAt);
+    const validatedAtMs = Date.parse(validatedAt);
+    const snapshotAgeMs = nowMs - validatedAtMs;
     if (
       !parsed ||
       parsed.version !== 1 ||
@@ -81,7 +92,10 @@ export function readFieldServiceOfflineAccess(
       clean(parsed.shopId) !== clean(scope.shopId) ||
       parsed.canAccessFieldService !== true ||
       parsed.mustChangePassword !== false ||
-      !Number.isFinite(Date.parse(clean(parsed.validatedAt)))
+      !Number.isFinite(validatedAtMs) ||
+      !Number.isFinite(snapshotAgeMs) ||
+      snapshotAgeMs < 0 ||
+      snapshotAgeMs > FIELD_SERVICE_OFFLINE_ACCESS_MAX_AGE_MS
     ) {
       return null;
     }
@@ -96,7 +110,7 @@ export function readFieldServiceOfflineAccess(
       workspaceCapabilities: normalizeFieldWorkspaceCapabilities(
         parsed.workspaceCapabilities,
       ),
-      validatedAt: clean(parsed.validatedAt),
+      validatedAt,
     };
   } catch {
     return null;

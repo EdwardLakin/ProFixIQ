@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import {
   getOfflineMutationScope,
+  isRetryableOfflineStatus,
   setOfflineMutationScope,
   type OfflineMutationScope,
 } from "@/features/shared/lib/offline/mutations";
@@ -54,18 +55,22 @@ function readStoredScope(): StoredScope | null {
 }
 
 function protectSnapshot(scope: OfflineMutationScope | null): void {
-  const storedScope = readStoredScope();
-  if (!scope || !sameScope(storedScope, scope)) {
-    window.localStorage.removeItem(SNAPSHOT_CACHE_KEY);
-  }
+  try {
+    const storedScope = readStoredScope();
+    if (!scope || !sameScope(storedScope, scope)) {
+      window.localStorage.removeItem(SNAPSHOT_CACHE_KEY);
+    }
 
-  if (scope) {
-    window.localStorage.setItem(
-      SNAPSHOT_SCOPE_KEY,
-      JSON.stringify({ userId: scope.userId, shopId: scope.shopId }),
-    );
-  } else {
-    window.localStorage.removeItem(SNAPSHOT_SCOPE_KEY);
+    if (scope) {
+      window.localStorage.setItem(
+        SNAPSHOT_SCOPE_KEY,
+        JSON.stringify({ userId: scope.userId, shopId: scope.shopId }),
+      );
+    } else {
+      window.localStorage.removeItem(SNAPSHOT_SCOPE_KEY);
+    }
+  } catch {
+    // Snapshot persistence is best-effort; verified online access remains usable.
   }
 }
 
@@ -132,7 +137,9 @@ export default function MobileServiceScopeGate() {
       }
 
       const verificationUnavailable =
-        !fieldAccessResponse || fieldAccessResponse.status >= 500;
+        !fieldAccessResponse ||
+        fieldAccessResponse.status >= 500 ||
+        isRetryableOfflineStatus(fieldAccessResponse.status);
       const offlineAccess =
         verificationUnavailable && cachedScope
           ? readFieldServiceOfflineAccess(cachedScope)

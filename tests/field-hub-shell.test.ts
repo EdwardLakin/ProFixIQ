@@ -93,6 +93,7 @@ describe("Field Hub workspace", () => {
     );
     expect(fieldHub).toContain("getFieldDashboardLayoutCacheKey");
     expect(fieldHub).toContain("createFieldDashboardLayoutSaveQueue");
+    expect(fieldHub).toContain("!saveQueue.hasWork()");
     expect(fieldHub).toContain('title: "Scan or create part"');
     expect(fieldShell).toContain('label: "Truck inventory"');
   });

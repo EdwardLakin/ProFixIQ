@@ -8,6 +8,7 @@ import {
 } from "@/features/auth/lib/accessSurfaceRouting";
 import {
   getOfflineMutationScope,
+  isRetryableOfflineStatus,
   setOfflineMutationScope,
 } from "@/features/shared/lib/offline/mutations";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
@@ -69,7 +70,12 @@ export default function MobileFieldServiceRouteGate({
         } else if (operatorScope) {
           clearFieldServiceOfflineAccess(operatorScope);
         }
-      } else if ((!response || response.status >= 500) && cachedAccess) {
+      } else if (
+        (!response ||
+          response.status >= 500 ||
+          isRetryableOfflineStatus(response.status)) &&
+        cachedAccess
+      ) {
         access = cachedAccess;
       } else if (operatorScope) {
         clearFieldServiceOfflineAccess(operatorScope);

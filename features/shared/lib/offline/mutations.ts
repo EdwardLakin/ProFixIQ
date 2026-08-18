@@ -85,7 +85,11 @@ function clean(value: unknown): string {
 }
 
 function browserReady(): boolean {
-  return typeof window !== "undefined" && typeof localStorage !== "undefined";
+  try {
+    return typeof window !== "undefined" && typeof localStorage !== "undefined";
+  } catch {
+    return false;
+  }
 }
 
 function emitQueueUpdate(): void {
@@ -151,16 +155,21 @@ export function setOfflineMutationScope(
   scope: OfflineMutationScope | null,
 ): void {
   if (!browserReady()) return;
-  if (!scope?.userId.trim() || !scope.shopId.trim()) {
-    localStorage.removeItem(SCOPE_KEY);
-  } else {
-    localStorage.setItem(
-      SCOPE_KEY,
-      JSON.stringify({
-        userId: scope.userId.trim(),
-        shopId: scope.shopId.trim(),
-      }),
-    );
+  try {
+    if (!scope?.userId.trim() || !scope.shopId.trim()) {
+      localStorage.removeItem(SCOPE_KEY);
+    } else {
+      localStorage.setItem(
+        SCOPE_KEY,
+        JSON.stringify({
+          userId: scope.userId.trim(),
+          shopId: scope.shopId.trim(),
+        }),
+      );
+    }
+  } catch {
+    // Scope persistence is best-effort; verified online access remains usable.
+    return;
   }
   emitQueueUpdate();
 }
@@ -682,7 +691,7 @@ export function isRetryableOfflineError(error: unknown): boolean {
   const status = statusCode(error);
   if (status != null) {
     if (PERMANENT_STATUS_CODES.has(status)) return false;
-    if (RETRYABLE_STATUS_CODES.has(status)) return true;
+    if (isRetryableOfflineStatus(status)) return true;
   }
   const source = (error && typeof error === "object" ? error : {}) as ErrorLike;
   const code = clean(source.code).toUpperCase();
@@ -702,6 +711,11 @@ export function isRetryableOfflineError(error: unknown): boolean {
       message,
     )
   );
+}
+
+export function isRetryableOfflineStatus(status: unknown): boolean {
+  const parsed = typeof status === "number" ? status : Number(status);
+  return Number.isFinite(parsed) && RETRYABLE_STATUS_CODES.has(parsed);
 }
 
 export async function replayQueuedMutations(args: {

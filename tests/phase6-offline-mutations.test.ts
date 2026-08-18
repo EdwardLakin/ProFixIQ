@@ -1,6 +1,10 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
-import { isRetryableOfflineError } from "@/features/shared/lib/offline/mutations";
+import {
+  isRetryableOfflineError,
+  isRetryableOfflineStatus,
+  setOfflineMutationScope,
+} from "@/features/shared/lib/offline/mutations";
 
 const source = readFileSync(
   "features/shared/lib/offline/mutations.ts",
@@ -46,6 +50,32 @@ describe("Phase 6 offline mutation reliability", () => {
     expect(isRetryableOfflineError(new TypeError("Failed to fetch"))).toBe(true);
     expect(isRetryableOfflineError({ status: 503, message: "Unavailable" })).toBe(true);
     expect(isRetryableOfflineError({ status: 429, message: "Retry later" })).toBe(true);
+    vi.unstubAllGlobals();
+  });
+
+  it("shares retryable response status policy with access verification", () => {
+    expect(isRetryableOfflineStatus(408)).toBe(true);
+    expect(isRetryableOfflineStatus(425)).toBe(true);
+    expect(isRetryableOfflineStatus(429)).toBe(true);
+    expect(isRetryableOfflineStatus(401)).toBe(false);
+    expect(isRetryableOfflineStatus(403)).toBe(false);
+  });
+
+  it("keeps local scope persistence best-effort when browser storage throws", () => {
+    vi.stubGlobal("localStorage", {
+      getItem: vi.fn(() => null),
+      removeItem: vi.fn(() => {
+        throw new DOMException("Blocked", "SecurityError");
+      }),
+      setItem: vi.fn(() => {
+        throw new DOMException("Blocked", "SecurityError");
+      }),
+    });
+
+    expect(() =>
+      setOfflineMutationScope({ userId: "user-a", shopId: "shop-a" }),
+    ).not.toThrow();
+    expect(() => setOfflineMutationScope(null)).not.toThrow();
     vi.unstubAllGlobals();
   });
 });

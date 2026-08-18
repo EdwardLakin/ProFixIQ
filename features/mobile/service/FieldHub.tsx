@@ -388,7 +388,10 @@ export default function FieldHub({
   useEffect(() => {
     if (!preferencesLoaded || !cacheKey || !pendingSyncRef.current) return;
     const serialized = serializeLayout(layout);
-    if (serialized === lastRemoteLayoutRef.current) {
+    if (
+      serialized === lastRemoteLayoutRef.current &&
+      !saveQueue.hasWork()
+    ) {
       pendingSyncRef.current = false;
       writeCachedLayout(cacheKey, cacheScope, layout, false);
       return;

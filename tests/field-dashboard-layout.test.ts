@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   buildFieldDashboardLayoutCache,
@@ -12,6 +12,9 @@ import {
 } from "@/features/mobile/service/fieldDashboardLayout";
 
 describe("Field dashboard layout", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
   it("restores every known card while rejecting unknown and duplicate entries", () => {
     const layout = normalizeFieldDashboardLayout([
       { id: "followups_due", y: 0, hidden: true },
@@ -138,6 +141,7 @@ describe("Field dashboard layout", () => {
     queue.enqueue(firstEdit);
     const flushing = queue.flush();
     await Promise.resolve();
+    expect(queue.hasWork()).toBe(true);
     queue.enqueue(latestEdit);
     expect(queue.hasPending()).toBe(true);
     releaseFirstSave?.();
@@ -148,5 +152,32 @@ describe("Field dashboard layout", () => {
       JSON.stringify(latestEdit),
     ]);
     expect(queue.hasPending()).toBe(false);
+    expect(queue.hasWork()).toBe(false);
+  });
+
+  it("automatically retries the newest retained edit after a transient failure", async () => {
+    vi.useFakeTimers();
+    const saved: string[] = [];
+    const queue = createFieldDashboardLayoutSaveQueue(
+      async (request) => {
+        saved.push(request.serialized);
+        return saved.length > 1;
+      },
+      { retryDelayMs: 25, maxAutomaticRetries: 1 },
+    );
+    const layout = setFieldDashboardCardVisibility(
+      normalizeFieldDashboardLayout(null),
+      "followups_due",
+      false,
+    );
+
+    queue.enqueue(layout);
+    await queue.flush();
+    expect(queue.hasWork()).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(25);
+
+    expect(saved).toEqual([JSON.stringify(layout), JSON.stringify(layout)]);
+    expect(queue.hasWork()).toBe(false);
   });
 });

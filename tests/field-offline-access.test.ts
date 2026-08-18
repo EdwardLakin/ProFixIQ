@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  FIELD_SERVICE_OFFLINE_ACCESS_MAX_AGE_MS,
   getFieldServiceOfflineAccessCacheKey,
   readFieldServiceOfflineAccess,
   resolveFieldServiceAccessScope,
@@ -63,6 +64,33 @@ describe("Field offline access", () => {
     if (!firstKey || !secondKey) throw new Error("Expected scoped cache keys");
     storage.setItem(secondKey, storage.getItem(firstKey) ?? "");
     expect(readFieldServiceOfflineAccess(secondScope, storage)).toBeNull();
+  });
+
+  it("rejects an offline entitlement after one bounded field shift", () => {
+    const storage = createMemoryStorage();
+    const scope = { userId: "user-a", shopId: "shop-a" };
+    const snapshot = writeFieldServiceOfflineAccess(
+      scope,
+      grantedAccess,
+      storage,
+    );
+    if (!snapshot) throw new Error("Expected an offline access snapshot");
+    const validatedAtMs = Date.parse(snapshot.validatedAt);
+
+    expect(
+      readFieldServiceOfflineAccess(
+        scope,
+        storage,
+        validatedAtMs + FIELD_SERVICE_OFFLINE_ACCESS_MAX_AGE_MS,
+      ),
+    ).not.toBeNull();
+    expect(
+      readFieldServiceOfflineAccess(
+        scope,
+        storage,
+        validatedAtMs + FIELD_SERVICE_OFFLINE_ACCESS_MAX_AGE_MS + 1,
+      ),
+    ).toBeNull();
   });
 
   it("does not cache mismatched, denied, or password-blocked access", () => {

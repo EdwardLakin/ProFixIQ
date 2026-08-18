@@ -47,6 +47,16 @@ export type FieldDashboardLayoutSaveQueue = {
   enqueue: (layout: FieldDashboardLayoutItem[]) => void;
   flush: () => Promise<void>;
   hasPending: () => boolean;
+  hasWork: () => boolean;
+};
+
+type FieldDashboardLayoutSaveQueueOptions = {
+  retryDelayMs?: number;
+  maxAutomaticRetries?: number;
+};
+
+type PendingFieldDashboardLayoutSave = FieldDashboardLayoutSaveRequest & {
+  failedAttempts: number;
 };
 
 const CARD_ID_SET = new Set<string>(FIELD_DASHBOARD_CARD_IDS);
@@ -176,12 +186,38 @@ export function buildFieldDashboardLayoutCache(
 
 export function createFieldDashboardLayoutSaveQueue(
   persist: (request: FieldDashboardLayoutSaveRequest) => Promise<boolean>,
+  options: FieldDashboardLayoutSaveQueueOptions = {},
 ): FieldDashboardLayoutSaveQueue {
-  let pending: FieldDashboardLayoutSaveRequest | null = null;
+  const retryDelayMs = Math.max(0, options.retryDelayMs ?? 1_000);
+  const maxAutomaticRetries = Math.max(
+    0,
+    options.maxAutomaticRetries ?? 2,
+  );
+  let pending: PendingFieldDashboardLayoutSave | null = null;
   let inFlight: Promise<void> | null = null;
+  let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
-  const flush = (): Promise<void> => {
+  const scheduleRetry = () => {
+    if (
+      !pending ||
+      pending.failedAttempts > maxAutomaticRetries ||
+      retryTimer
+    ) {
+      return;
+    }
+
+    retryTimer = setTimeout(() => {
+      retryTimer = null;
+      void flush();
+    }, retryDelayMs);
+  };
+
+  function flush(): Promise<void> {
     if (inFlight) return inFlight;
+    if (retryTimer) {
+      clearTimeout(retryTimer);
+      retryTimer = null;
+    }
 
     inFlight = (async () => {
       while (pending) {
@@ -190,16 +226,22 @@ export function createFieldDashboardLayoutSaveQueue(
         const saved = await persist(request).catch(() => false);
         if (!saved) {
           // Preserve the newest edit if another one arrived during the failed save.
-          if (!pending) pending = request;
+          if (!pending) {
+            pending = {
+              ...request,
+              failedAttempts: request.failedAttempts + 1,
+            };
+          }
           break;
         }
       }
     })().finally(() => {
       inFlight = null;
+      scheduleRetry();
     });
 
     return inFlight;
-  };
+  }
 
   return {
     enqueue(layout) {
@@ -207,10 +249,12 @@ export function createFieldDashboardLayoutSaveQueue(
       pending = {
         layout: normalized,
         serialized: JSON.stringify(normalized),
+        failedAttempts: 0,
       };
     },
     flush,
     hasPending: () => pending !== null,
+    hasWork: () => pending !== null || inFlight !== null,
   };
 }
 
