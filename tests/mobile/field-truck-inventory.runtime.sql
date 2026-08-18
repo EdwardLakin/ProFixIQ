@@ -216,7 +216,7 @@ begin
   where id = v_truck_id;
   perform set_config('request.jwt.claim.sub', v_technician_id::text, true);
   begin
-    perform public.field_transfer_stock_to_truck_atomic(
+    perform public.field_transfer_stock_to_truck_authorized_atomic(
       v_shop_id,
       v_truck_id,
       v_source_location_id,

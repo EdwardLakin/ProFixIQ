@@ -13,7 +13,14 @@ const migration = [
   "supabase/migrations/20260815050000_field_part_identity_review_hardening.sql",
   "supabase/migrations/20260815050100_field_truck_line_review_hardening.sql",
   "supabase/migrations/20260815050200_field_truck_receipt_review_hardening.sql",
-  "supabase/migrations/20260818093000_field_truck_inventory_activity.sql",
+  "supabase/migrations/20260818153429_field_truck_inventory_activity.sql",
+  "supabase/migrations/20260818161654_field_truck_transfer_additive_authorization.sql",
+]
+  .map(read)
+  .join("\n");
+const additiveHardening = [
+  "supabase/migrations/20260818153429_field_truck_inventory_activity.sql",
+  "supabase/migrations/20260818161654_field_truck_transfer_additive_authorization.sql",
 ]
   .map(read)
   .join("\n");
@@ -95,12 +102,22 @@ describe("Field Service truck inventory", () => {
     expect(migration).toContain("FIELD_TRUCK_TRANSFER_KEY_CONFLICT");
     expect(migration).toContain("public.parts_available(");
     expect(transferApi).toContain('requiredCapability: "canManageParts"');
-    expect(transferApi).toContain("field_transfer_stock_to_truck_atomic");
+    expect(transferApi).toContain(
+      "field_transfer_stock_to_truck_authorized_atomic",
+    );
     expect(snapshotApi).toContain("p_service_vehicle_id");
     expect(contracts).toContain("trucks: FieldTruck[]");
     expect(inventoryUi).toContain("Select service truck");
     expect(migration).toContain(
-      "private.field_transfer_stock_to_truck_atomic_impl",
+      "field_transfer_stock_to_truck_authorized_atomic",
+    );
+    expect(migration).toContain(
+      "return public.field_transfer_stock_to_truck_atomic(",
+    );
+    expect(migration).not.toContain("rename to field_transfer_stock_to_truck");
+    expect(migration).not.toContain("set schema private");
+    expect(additiveHardening).not.toMatch(
+      /drop\s+(?:function|table|column|type)/i,
     );
     expect(migration).toContain("not v_actor.can_manage_parts");
     expect(migration).toContain("Parts management permission is required.");

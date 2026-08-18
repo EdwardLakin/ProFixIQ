@@ -28164,6 +28164,18 @@ export type Database = {
         }
         Returns: Json
       }
+      field_transfer_stock_to_truck_authorized_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_operation_key: string
+          p_part_id: string
+          p_quantity: number
+          p_service_vehicle_id: string
+          p_shop_id: string
+          p_source_location_id: string
+        }
+        Returns: Json
+      }
       field_truck_inventory_activity: {
         Args: {
           p_actor_user_id: string
@@ -30822,3 +30834,4 @@ export const Constants = {
     },
   },
 } as const
+

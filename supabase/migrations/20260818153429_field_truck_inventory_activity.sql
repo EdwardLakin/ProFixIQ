@@ -4,22 +4,17 @@ set local lock_timeout = '5s';
 set local statement_timeout = '10min';
 set local check_function_bodies = false;
 
--- Stock loading is a Parts-management command. Keep the existing paired,
--- idempotent ledger implementation private and put the capability check at the
--- database boundary so direct Data API RPC calls cannot bypass the route guard.
-alter function public.field_transfer_stock_to_truck_atomic(
+-- Preserve the canonical paired/idempotent transfer function and its schema
+-- identity. Authenticated callers use the additive Parts-authorized endpoint;
+-- the original implementation remains available only to service-role jobs.
+revoke all on function public.field_transfer_stock_to_truck_atomic(
   uuid,uuid,uuid,uuid,numeric,uuid,text
-) rename to field_transfer_stock_to_truck_atomic_impl;
-
-alter function public.field_transfer_stock_to_truck_atomic_impl(
+) from public, anon, authenticated;
+grant execute on function public.field_transfer_stock_to_truck_atomic(
   uuid,uuid,uuid,uuid,numeric,uuid,text
-) set schema private;
+) to service_role;
 
-revoke all on function private.field_transfer_stock_to_truck_atomic_impl(
-  uuid,uuid,uuid,uuid,numeric,uuid,text
-) from public, anon, authenticated, service_role;
-
-create function public.field_transfer_stock_to_truck_atomic(
+create or replace function public.field_transfer_stock_to_truck_authorized_atomic(
   p_shop_id uuid,
   p_service_vehicle_id uuid,
   p_source_location_id uuid,
@@ -48,7 +43,7 @@ begin
     raise exception using errcode = '42501', message = 'Parts management permission is required.';
   end if;
 
-  return private.field_transfer_stock_to_truck_atomic_impl(
+  return public.field_transfer_stock_to_truck_atomic(
     p_shop_id,
     p_service_vehicle_id,
     p_source_location_id,
@@ -60,17 +55,17 @@ begin
 end;
 $$;
 
-revoke all on function public.field_transfer_stock_to_truck_atomic(
+revoke all on function public.field_transfer_stock_to_truck_authorized_atomic(
   uuid,uuid,uuid,uuid,numeric,uuid,text
 ) from public, anon;
-grant execute on function public.field_transfer_stock_to_truck_atomic(
+grant execute on function public.field_transfer_stock_to_truck_authorized_atomic(
   uuid,uuid,uuid,uuid,numeric,uuid,text
 ) to authenticated, service_role;
 
-comment on function public.field_transfer_stock_to_truck_atomic(
+comment on function public.field_transfer_stock_to_truck_authorized_atomic(
   uuid,uuid,uuid,uuid,numeric,uuid,text
 ) is
-  'Parts-authorized Field command that delegates to the canonical paired truck-transfer ledger implementation.';
+  'Additive Parts-authorized Field command that delegates to the preserved canonical paired truck-transfer ledger implementation.';
 
 create index if not exists stock_moves_shop_location_created_idx
   on public.stock_moves (shop_id, location_id, created_at desc);
