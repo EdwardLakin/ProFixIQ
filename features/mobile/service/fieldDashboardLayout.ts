@@ -5,6 +5,7 @@ export const FIELD_DASHBOARD_LEGACY_LAYOUT_CACHE_KEY =
   "profixiq:field-dashboard:layout:v1";
 
 export const FIELD_DASHBOARD_CARD_IDS = [
+  "dispatch_queue",
   "jobs_in_progress",
   "awaiting_approval",
   "parts_required",

@@ -62,6 +62,30 @@ update public.profiles
 set shop_id = '9f200000-0000-4000-8000-000000000001'
 where id = '9f100000-0000-4000-8000-000000000001';
 
+insert into auth.users (id, email, raw_user_meta_data)
+values (
+  '9f100000-0000-4000-8000-000000000002',
+  'field-truck-runtime-tech@example.com',
+  '{"full_name":"Field Truck Runtime Technician"}'::jsonb
+)
+on conflict (id) do nothing;
+
+insert into public.profiles (id, user_id, role, full_name, email, shop_id)
+values (
+  '9f100000-0000-4000-8000-000000000002',
+  '9f100000-0000-4000-8000-000000000002',
+  'mechanic',
+  'Field Truck Runtime Technician',
+  'field-truck-runtime-tech@example.com',
+  '9f200000-0000-4000-8000-000000000001'
+)
+on conflict (id) do update
+set user_id = excluded.user_id,
+    role = excluded.role,
+    full_name = excluded.full_name,
+    email = excluded.email,
+    shop_id = excluded.shop_id;
+
 insert into public.suppliers (id, shop_id, name, is_active)
 values (
   '9f300000-0000-4000-8000-000000000001',
@@ -122,6 +146,7 @@ do $$
 declare
   v_shop_id constant uuid := '9f200000-0000-4000-8000-000000000001';
   v_actor_id constant uuid := '9f100000-0000-4000-8000-000000000001';
+  v_technician_id constant uuid := '9f100000-0000-4000-8000-000000000002';
   v_source_location_id constant uuid := '9f600000-0000-4000-8000-000000000001';
   v_po_id constant uuid := '9f400000-0000-4000-8000-000000000001';
   v_po_line_id constant uuid := '9f500000-0000-4000-8000-000000000001';
@@ -150,6 +175,7 @@ declare
   v_transfer jsonb;
   v_transfer_replay jsonb;
   v_snapshot jsonb;
+  v_activity jsonb;
   v_count integer;
   v_before numeric;
   v_after numeric;
@@ -182,6 +208,30 @@ begin
   if v_truck_id is null or v_truck_location_id is null then
     raise exception 'Field truck runtime failed: setup did not create truck inventory';
   end if;
+
+  -- Route guards are not the authority: a technician cannot call the public
+  -- transfer RPC directly even when the truck is assigned to them.
+  update public.service_vehicles
+  set primary_user_id = v_technician_id
+  where id = v_truck_id;
+  perform set_config('request.jwt.claim.sub', v_technician_id::text, true);
+  begin
+    perform public.field_transfer_stock_to_truck_atomic(
+      v_shop_id,
+      v_truck_id,
+      v_source_location_id,
+      '9f700000-0000-4000-8000-000000000001'::uuid,
+      1,
+      v_technician_id,
+      'field-runtime:technician-transfer-denied'
+    );
+    raise exception 'Field truck runtime failed: technician bypassed Parts permission';
+  exception when others then
+    if sqlstate <> '42501' or sqlerrm not like '%Parts management permission is required%' then
+      raise;
+    end if;
+  end;
+  perform set_config('request.jwt.claim.sub', v_actor_id::text, true);
 
   -- A free-text PO line becomes a canonical part inside the receipt command.
   v_receipt := public.field_receive_po_part_to_truck_atomic(
@@ -514,6 +564,26 @@ begin
      or jsonb_array_length(coalesce(v_snapshot -> 'items', '[]'::jsonb)) < 1
      or jsonb_array_length(coalesce(v_snapshot -> 'catalog', '[]'::jsonb)) < 1 then
     raise exception 'Field truck runtime failed: assigned truck snapshot is incomplete';
+  end if;
+
+  v_activity := public.field_truck_inventory_activity(
+    v_shop_id,
+    v_actor_id,
+    v_truck_id,
+    50
+  );
+  if jsonb_array_length(v_activity) < 4
+     or not exists (
+       select 1
+       from jsonb_array_elements(v_activity) movement
+       where movement ->> 'reason' = 'transfer_in'
+     )
+     or not exists (
+       select 1
+       from jsonb_array_elements(v_activity) movement
+       where movement ->> 'reason' = 'consume'
+     ) then
+    raise exception 'Field truck runtime failed: canonical truck activity is incomplete';
   end if;
 end;
 $$;

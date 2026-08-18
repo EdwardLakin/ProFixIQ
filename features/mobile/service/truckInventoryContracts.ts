@@ -131,6 +131,22 @@ export type FieldRecentPartUse = {
   returnedQuantity: number;
 };
 
+export type FieldTruckInventoryMovement = {
+  id: string;
+  partId: string;
+  partName: string;
+  partNumber: string | null;
+  quantity: number;
+  direction: "in" | "out";
+  reason: string;
+  createdAt: string;
+  actorName: string | null;
+  sourceLocationName: string | null;
+  destinationLocationName: string | null;
+  purchaseOrderNumber: string | null;
+  workOrderNumber: string | null;
+};
+
 export function aggregateRecentPartUses(
   uses: FieldRecentPartUse[],
 ): FieldRecentPartUse[] {
@@ -171,6 +187,7 @@ export type FieldTruckInventorySnapshot = {
   openReceipts: FieldOpenReceipt[];
   locations: FieldStockLocation[];
   recentUses: FieldRecentPartUse[];
+  movements: FieldTruckInventoryMovement[];
 };
 
 export type FieldPartIdentityResult =

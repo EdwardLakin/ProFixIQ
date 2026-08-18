@@ -13,6 +13,7 @@ const migration = [
   "supabase/migrations/20260815050000_field_part_identity_review_hardening.sql",
   "supabase/migrations/20260815050100_field_truck_line_review_hardening.sql",
   "supabase/migrations/20260815050200_field_truck_receipt_review_hardening.sql",
+  "supabase/migrations/20260818093000_field_truck_inventory_activity.sql",
 ]
   .map(read)
   .join("\n");
@@ -98,6 +99,21 @@ describe("Field Service truck inventory", () => {
     expect(snapshotApi).toContain("p_service_vehicle_id");
     expect(contracts).toContain("trucks: FieldTruck[]");
     expect(inventoryUi).toContain("Select service truck");
+    expect(migration).toContain(
+      "private.field_transfer_stock_to_truck_atomic_impl",
+    );
+    expect(migration).toContain("not v_actor.can_manage_parts");
+    expect(migration).toContain("Parts management permission is required.");
+  });
+
+  it("exposes a tenant-scoped truck ledger activity projection", () => {
+    expect(migration).toContain("field_truck_inventory_activity");
+    expect(migration).toContain("stock_moves_shop_location_created_idx");
+    expect(migration).toContain("move.shop_id = p_shop_id");
+    expect(migration).toContain("move.location_id = v_truck.stock_location_id");
+    expect(snapshotApi).toContain("field_truck_inventory_activity");
+    expect(contracts).toContain("movements: FieldTruckInventoryMovement[]");
+    expect(inventoryUi).toContain("Truck movement history");
   });
 
   it("receives canonical or free-text PO lines directly to the truck without a setup detour", () => {
@@ -157,6 +173,7 @@ describe("Field Service truck inventory", () => {
     expect(offline).toContain('const SNAPSHOT_KIND = "field-truck-inventory"');
     expect(offline).toContain('actionType: "field-inventory:use-part"');
     expect(offline).toContain('actionType: "field-inventory:return-part"');
+    expect(offline).toContain("movements: stored.data.movements ?? []");
     expect(offline).toContain('orderKey: `service-visit:${args.payload.visitId}`');
     expect(offline).toContain("lastVisitMutationDependency");
     expect(offline.match(/bestEffortOnlineHistory: true/g)).toHaveLength(2);
@@ -228,11 +245,13 @@ describe("Field Service truck inventory", () => {
     expect(runtime).toContain("field_receive_po_part_to_truck_atomic");
     expect(runtime).toContain("free-text PO line becomes a canonical part");
     expect(runtime).toContain("field_transfer_stock_to_truck_atomic");
+    expect(runtime).toContain("technician bypassed Parts permission");
     expect(runtime).toContain("field_use_truck_part_atomic");
     expect(runtime).toContain("repeated use decremented inventory twice");
     expect(runtime).toContain("field_return_truck_part_atomic");
     expect(runtime).toContain("return replay changed inventory twice");
     expect(runtime).toContain("field_truck_inventory_snapshot");
+    expect(runtime).toContain("field_truck_inventory_activity");
     expect(workflow).toContain("tests/field-truck-inventory-contract.test.ts");
     expect(workflow).toContain("tests/mobile/field-truck-inventory.runtime.sql");
     expect(workflow).toContain("Field truck inventory runtime");

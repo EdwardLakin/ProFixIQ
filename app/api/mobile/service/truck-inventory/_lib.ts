@@ -63,7 +63,7 @@ export function fieldInventoryErrorResponse(
     publicMessagePatterns: [
       /^Authenticated actor mismatch\.?$/i,
       /^Field (?:Service|inventory) access is required\.?$/i,
-      /^Parts (?:receiving )?permission is required\.?$/i,
+      /^Parts (?:(?:receiving|management) )?permission is required\.?$/i,
       /^This (?:truck|service visit|service call).*$/i,
       /^The (?:service truck|assigned service truck).*$/i,
       /^A stable operation key is required\.?$/i,

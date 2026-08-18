@@ -132,7 +132,10 @@ export async function loadCachedFieldTruckInventorySnapshot(args: {
         };
       }
       return snapshot;
-    }, stored.data);
+    }, {
+      ...stored.data,
+      movements: stored.data.movements ?? [],
+    });
 }
 
 export async function consumeFieldTruckPart(args: {
