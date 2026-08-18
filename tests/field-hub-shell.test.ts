@@ -21,7 +21,9 @@ describe("Field Hub workspace", () => {
   it("keeps the Field shell active while an operator moves through shared mobile workflows", () => {
     expect(mobileShell).toContain('pathname.startsWith("/mobile/service")');
     expect(mobileShell).toContain("FIELD_SURFACE_SESSION_KEY");
-    expect(mobileShell).toContain("<FieldWorkspaceShell>{children}</FieldWorkspaceShell>");
+    expect(mobileShell).toContain(
+      "<FieldWorkspaceShell>{children}</FieldWorkspaceShell>",
+    );
     expect(mobileShell).toContain('pathname === "/mobile"');
     expect(fieldShell).toContain("Switch workspace");
   });
@@ -61,7 +63,10 @@ describe("Field Hub workspace", () => {
       canUseFieldWorkspaceCapability(mechanicCapabilities, "canManageParts"),
     ).toBe(false);
     expect(
-      canUseFieldWorkspaceCapability(mechanicCapabilities, "canManageOperations"),
+      canUseFieldWorkspaceCapability(
+        mechanicCapabilities,
+        "canManageOperations",
+      ),
     ).toBe(false);
     expect(canUseFieldWorkspaceCapability(mechanicCapabilities)).toBe(true);
     expect(fieldShell).toContain("normalizeFieldWorkspaceCapabilities");
@@ -83,6 +88,11 @@ describe("Field Hub workspace", () => {
     expect(fieldHub).toContain("FIELD_DASHBOARD_LAYOUT_SCOPE");
     expect(fieldHub).toContain("moveFieldDashboardCard");
     expect(fieldHub).toContain("setFieldDashboardCardVisibility");
+    expect(fieldHub).toMatch(
+      /title: "New work order"[\s\S]*?requiredCapability: "canManageOperations"/,
+    );
+    expect(fieldHub).toContain("getFieldDashboardLayoutCacheKey");
+    expect(fieldHub).toContain("createFieldDashboardLayoutSaveQueue");
     expect(fieldHub).toContain('title: "Scan or create part"');
     expect(fieldShell).toContain('label: "Truck inventory"');
   });
@@ -90,9 +100,7 @@ describe("Field Hub workspace", () => {
   it("does not leak Fleet navigation and hides workspace switching unless another product is verified", () => {
     expect(fieldHub).not.toContain('href: "/mobile/fleet"');
     expect(fieldShell).not.toContain('href: "/mobile/fleet"');
-    expect(fieldShell).toContain(
-      "workspaceCapabilities.canSwitchWorkspace ?",
-    );
+    expect(fieldShell).toContain("workspaceCapabilities.canSwitchWorkspace ?");
     expect(fieldShell).toContain('href="/sign-in"');
     expect(fieldAccess).toContain(
       "fleetActor.capabilities.canAccessFleetIntake",
@@ -112,7 +120,9 @@ describe("Field Hub workspace", () => {
     expect(workOrderPage).toContain("SUPPORTED_STATUSES");
     expect(workOrderPage).toContain("SUPPORTED_STATUSES.has(requested)");
     expect(workOrderPage).toContain('key={`${status || "active"}');
-    expect(workOrderPage).toContain('requestedParams.mode === "field_closeout"');
+    expect(workOrderPage).toContain(
+      'requestedParams.mode === "field_closeout"',
+    );
   });
 
   it("routes only opted-in ready-to-invoice rows to canonical Field closeout", () => {
@@ -136,8 +146,8 @@ describe("Field Hub workspace", () => {
   it("signs out the Field session locally before returning to its dedicated sign-in", () => {
     expect(fieldShell).toContain('signOut({ scope: "local" })');
     expect(fieldShell).toContain('router.replace("/field/sign-in")');
-    expect(fieldShell.match(/onClick=\{\(\) => void signOut\(\)\}/g)).toHaveLength(
-      2,
-    );
+    expect(
+      fieldShell.match(/onClick=\{\(\) => void signOut\(\)\}/g),
+    ).toHaveLength(2);
   });
 });

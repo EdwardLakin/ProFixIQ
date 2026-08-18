@@ -1,0 +1,162 @@
+"use client";
+
+import type { FieldExistingSessionAccess } from "@/features/auth/lib/accessSurfaceRouting";
+import type { OfflineMutationScope } from "@/features/shared/lib/offline/mutations";
+import {
+  normalizeFieldWorkspaceCapabilities,
+  type FieldWorkspaceCapabilities,
+} from "./fieldWorkspaceCapabilities";
+
+export const FIELD_SERVICE_OFFLINE_ACCESS_CACHE_PREFIX =
+  "profixiq:field-service:access:v1";
+
+type StorageReader = Pick<Storage, "getItem">;
+type StorageWriter = Pick<Storage, "setItem" | "removeItem">;
+
+export type FieldServiceAccessPayload = FieldExistingSessionAccess & {
+  userId?: string;
+  shopId?: string;
+  workspaceCapabilities?: unknown;
+};
+
+export type FieldServiceOfflineAccessSnapshot = {
+  version: 1;
+  userId: string;
+  shopId: string;
+  canAccessFieldService: true;
+  canConfigure: boolean;
+  mustChangePassword: false;
+  workspaceCapabilities: FieldWorkspaceCapabilities;
+  validatedAt: string;
+};
+
+function clean(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function browserStorage(): Storage | null {
+  return typeof window !== "undefined" ? window.localStorage : null;
+}
+
+export function getFieldServiceOfflineAccessCacheKey(
+  scope: OfflineMutationScope,
+): string | null {
+  const userId = clean(scope.userId);
+  const shopId = clean(scope.shopId);
+  if (!userId || !shopId) return null;
+
+  return `${FIELD_SERVICE_OFFLINE_ACCESS_CACHE_PREFIX}:${encodeURIComponent(shopId)}:${encodeURIComponent(userId)}`;
+}
+
+export function resolveFieldServiceAccessScope(
+  access: FieldServiceAccessPayload | null,
+  authUserId: string,
+): OfflineMutationScope | null {
+  const userId = clean(access?.userId);
+  const shopId = clean(access?.shopId);
+  const expectedUserId = clean(authUserId);
+  if (!userId || !shopId || !expectedUserId || userId !== expectedUserId) {
+    return null;
+  }
+
+  return { userId, shopId };
+}
+
+export function readFieldServiceOfflineAccess(
+  scope: OfflineMutationScope,
+  storage: StorageReader | null = browserStorage(),
+): FieldServiceOfflineAccessSnapshot | null {
+  const key = getFieldServiceOfflineAccessCacheKey(scope);
+  if (!key || !storage) return null;
+
+  try {
+    const parsed = JSON.parse(storage.getItem(key) ?? "null") as Record<
+      string,
+      unknown
+    > | null;
+    if (
+      !parsed ||
+      parsed.version !== 1 ||
+      clean(parsed.userId) !== clean(scope.userId) ||
+      clean(parsed.shopId) !== clean(scope.shopId) ||
+      parsed.canAccessFieldService !== true ||
+      parsed.mustChangePassword !== false ||
+      !Number.isFinite(Date.parse(clean(parsed.validatedAt)))
+    ) {
+      return null;
+    }
+
+    return {
+      version: 1,
+      userId: clean(parsed.userId),
+      shopId: clean(parsed.shopId),
+      canAccessFieldService: true,
+      canConfigure: parsed.canConfigure === true,
+      mustChangePassword: false,
+      workspaceCapabilities: normalizeFieldWorkspaceCapabilities(
+        parsed.workspaceCapabilities,
+      ),
+      validatedAt: clean(parsed.validatedAt),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function writeFieldServiceOfflineAccess(
+  scope: OfflineMutationScope,
+  access: FieldServiceAccessPayload,
+  storage: StorageWriter | null = browserStorage(),
+): FieldServiceOfflineAccessSnapshot | null {
+  const key = getFieldServiceOfflineAccessCacheKey(scope);
+  if (!key || !storage) return null;
+
+  const verifiedScope = resolveFieldServiceAccessScope(access, scope.userId);
+
+  if (
+    verifiedScope?.shopId !== scope.shopId.trim() ||
+    access.canAccessFieldService !== true ||
+    access.mustChangePassword === true
+  ) {
+    try {
+      storage.removeItem(key);
+    } catch {
+      // Storage can be unavailable in private browsing or under quota pressure.
+    }
+    return null;
+  }
+
+  const snapshot: FieldServiceOfflineAccessSnapshot = {
+    version: 1,
+    userId: scope.userId.trim(),
+    shopId: scope.shopId.trim(),
+    canAccessFieldService: true,
+    canConfigure: access.canConfigure === true,
+    mustChangePassword: false,
+    workspaceCapabilities: normalizeFieldWorkspaceCapabilities(
+      access.workspaceCapabilities,
+    ),
+    validatedAt: new Date().toISOString(),
+  };
+
+  try {
+    storage.setItem(key, JSON.stringify(snapshot));
+    return snapshot;
+  } catch {
+    return null;
+  }
+}
+
+export function clearFieldServiceOfflineAccess(
+  scope: OfflineMutationScope,
+  storage: StorageWriter | null = browserStorage(),
+): void {
+  const key = getFieldServiceOfflineAccessCacheKey(scope);
+  if (!key || !storage) return;
+
+  try {
+    storage.removeItem(key);
+  } catch {
+    // An explicit server denial remains authoritative even if cache cleanup fails.
+  }
+}

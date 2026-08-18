@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { resolveCurrentActor } from "@/features/shared/lib/currentActor";
 import {
   getOfflineMutationScope,
   setOfflineMutationScope,
@@ -16,18 +15,28 @@ import {
   normalizeFieldWorkspaceCapabilities,
   type FieldWorkspaceCapabilities,
 } from "./fieldWorkspaceCapabilities";
+import {
+  clearFieldServiceOfflineAccess,
+  readFieldServiceOfflineAccess,
+  resolveFieldServiceAccessScope,
+  writeFieldServiceOfflineAccess,
+  type FieldServiceAccessPayload,
+} from "./fieldOfflineAccess";
 
 const SNAPSHOT_CACHE_KEY = "profixiq:mobile-service:active:v1";
 const SNAPSHOT_SCOPE_KEY = "profixiq:mobile-service:active-scope:v1";
 
 type StoredScope = Pick<OfflineMutationScope, "userId" | "shopId">;
 
-function sameScope(left: StoredScope | null, right: StoredScope | null): boolean {
+function sameScope(
+  left: StoredScope | null,
+  right: StoredScope | null,
+): boolean {
   return Boolean(
     left &&
-      right &&
-      left.userId === right.userId &&
-      left.shopId === right.shopId,
+    right &&
+    left.userId === right.userId &&
+    left.shopId === right.shopId,
   );
 }
 
@@ -62,6 +71,7 @@ function protectSnapshot(scope: OfflineMutationScope | null): void {
 
 export default function MobileServiceScopeGate() {
   const [ready, setReady] = useState(false);
+  const [scope, setScope] = useState<OfflineMutationScope | null>(null);
   const [workspaceCapabilities, setWorkspaceCapabilities] =
     useState<FieldWorkspaceCapabilities>(EMPTY_FIELD_WORKSPACE_CAPABILITIES);
   const router = useRouter();
@@ -71,58 +81,82 @@ export default function MobileServiceScopeGate() {
 
     void (async () => {
       const supabase = createBrowserSupabase();
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+      const [sessionResult, fieldAccessResponse] = await Promise.all([
+        supabase.auth.getSession(),
+        fetch("/api/mobile/field-service/access", {
+          credentials: "include",
+          cache: "no-store",
+        }).catch(() => null),
+      ]);
+      const session = sessionResult.data.session;
       const authUserId = session?.user?.id?.trim() ?? "";
 
       if (!authUserId) {
         if (!active) return;
         protectSnapshot(null);
+        router.replace("/mobile");
+        return;
+      }
+
+      const fieldAccess = (await fieldAccessResponse
+        ?.json()
+        .catch(() => null)) as FieldServiceAccessPayload | null;
+      if (!active) return;
+
+      const cached = getOfflineMutationScope();
+      const cachedScope = cached?.userId === authUserId ? cached : null;
+
+      if (fieldAccessResponse?.ok && fieldAccess?.canAccessFieldService) {
+        const verifiedScope = resolveFieldServiceAccessScope(
+          fieldAccess,
+          authUserId,
+        );
+        if (!verifiedScope) {
+          if (cachedScope) clearFieldServiceOfflineAccess(cachedScope);
+          protectSnapshot(null);
+          router.replace("/mobile");
+          return;
+        }
+
+        setOfflineMutationScope(verifiedScope);
+        writeFieldServiceOfflineAccess(verifiedScope, fieldAccess);
+        setWorkspaceCapabilities(
+          normalizeFieldWorkspaceCapabilities(
+            fieldAccess.workspaceCapabilities,
+          ),
+        );
+        setScope(verifiedScope);
+        protectSnapshot(verifiedScope);
         setReady(true);
         return;
       }
 
-      const fieldAccessResponse = await fetch("/api/mobile/field-service/access", {
-        credentials: "include",
-        cache: "no-store",
-      });
-      const fieldAccess = (await fieldAccessResponse.json().catch(() => null)) as
-        | {
-            canAccessFieldService?: boolean;
-            canConfigure?: boolean;
-            workspaceCapabilities?: unknown;
-          }
-        | null;
-      if (!active) return;
-      if (!fieldAccessResponse.ok || !fieldAccess?.canAccessFieldService) {
-        protectSnapshot(null);
-        router.replace(fieldAccess?.canConfigure ? "/mobile/service/setup" : "/mobile");
+      const verificationUnavailable =
+        !fieldAccessResponse || fieldAccessResponse.status >= 500;
+      const offlineAccess =
+        verificationUnavailable && cachedScope
+          ? readFieldServiceOfflineAccess(cachedScope)
+          : null;
+      if (offlineAccess) {
+        setWorkspaceCapabilities(offlineAccess.workspaceCapabilities);
+        setScope(cachedScope);
+        protectSnapshot(cachedScope);
+        setReady(true);
         return;
       }
-      setWorkspaceCapabilities(
-        normalizeFieldWorkspaceCapabilities(fieldAccess.workspaceCapabilities),
-      );
 
-      const cached = getOfflineMutationScope();
-      let scope: OfflineMutationScope | null =
-        cached?.userId === authUserId ? cached : null;
-
-      if (!scope && typeof navigator !== "undefined" && navigator.onLine) {
-        const actor = await resolveCurrentActor(supabase);
-        if (actor.user?.id === authUserId && actor.shopId) {
-          scope = { userId: authUserId, shopId: actor.shopId };
-          setOfflineMutationScope(scope);
-        }
+      if (cachedScope && !verificationUnavailable) {
+        clearFieldServiceOfflineAccess(cachedScope);
       }
-
-      if (!active) return;
-      protectSnapshot(scope);
-      setReady(true);
+      if (!fieldAccessResponse?.ok || !fieldAccess?.canAccessFieldService) {
+        protectSnapshot(null);
+        router.replace(
+          fieldAccess?.canConfigure ? "/mobile/service/setup" : "/mobile",
+        );
+        return;
+      }
     })().catch(() => {
       if (!active) return;
-      window.localStorage.removeItem(SNAPSHOT_CACHE_KEY);
-      window.localStorage.removeItem(SNAPSHOT_SCOPE_KEY);
       router.replace("/mobile");
     });
 
@@ -139,5 +173,13 @@ export default function MobileServiceScopeGate() {
     );
   }
 
-  return <FieldHub capabilities={workspaceCapabilities} />;
+  if (!scope) return null;
+
+  return (
+    <FieldHub
+      key={`${scope.shopId}:${scope.userId}`}
+      capabilities={workspaceCapabilities}
+      scope={scope}
+    />
+  );
 }

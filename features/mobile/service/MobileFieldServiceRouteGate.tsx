@@ -6,6 +6,18 @@ import {
   resolveFieldExistingSessionHref,
   type FieldExistingSessionAccess,
 } from "@/features/auth/lib/accessSurfaceRouting";
+import {
+  getOfflineMutationScope,
+  setOfflineMutationScope,
+} from "@/features/shared/lib/offline/mutations";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import {
+  clearFieldServiceOfflineAccess,
+  readFieldServiceOfflineAccess,
+  resolveFieldServiceAccessScope,
+  writeFieldServiceOfflineAccess,
+  type FieldServiceAccessPayload,
+} from "./fieldOfflineAccess";
 
 export default function MobileFieldServiceRouteGate({
   children,
@@ -20,19 +32,52 @@ export default function MobileFieldServiceRouteGate({
     let active = true;
 
     void (async () => {
-      const response = await fetch("/api/mobile/field-service/access", {
-        credentials: "include",
-        cache: "no-store",
-      }).catch(() => null);
-      const access = (await response?.json().catch(() => null)) as
-        | FieldExistingSessionAccess
-        | null;
+      const supabase = createBrowserSupabase();
+      const [sessionResult, response] = await Promise.all([
+        supabase.auth.getSession(),
+        fetch("/api/mobile/field-service/access", {
+          credentials: "include",
+          cache: "no-store",
+        }).catch(() => null),
+      ]);
+      const authUserId = sessionResult.data.session?.user.id?.trim() ?? "";
+      const cachedScope = getOfflineMutationScope();
+      const operatorScope =
+        cachedScope?.userId === authUserId ? cachedScope : null;
+      const cachedAccess = operatorScope
+        ? readFieldServiceOfflineAccess(operatorScope)
+        : null;
+      const responseAccess = (await response
+        ?.json()
+        .catch(() => null)) as FieldServiceAccessPayload | null;
       if (!active) return;
 
-      const destination =
-        response?.ok && access
-          ? resolveFieldExistingSessionHref(access, pathname)
-          : null;
+      let access: FieldExistingSessionAccess | null = null;
+      if (response?.ok && responseAccess) {
+        const verifiedScope = resolveFieldServiceAccessScope(
+          responseAccess,
+          authUserId,
+        );
+        if (verifiedScope) {
+          access = responseAccess;
+        }
+        if (verifiedScope && responseAccess.canAccessFieldService === true) {
+          setOfflineMutationScope(verifiedScope);
+          writeFieldServiceOfflineAccess(verifiedScope, responseAccess);
+        } else if (verifiedScope) {
+          clearFieldServiceOfflineAccess(verifiedScope);
+        } else if (operatorScope) {
+          clearFieldServiceOfflineAccess(operatorScope);
+        }
+      } else if ((!response || response.status >= 500) && cachedAccess) {
+        access = cachedAccess;
+      } else if (operatorScope) {
+        clearFieldServiceOfflineAccess(operatorScope);
+      }
+
+      const destination = access
+        ? resolveFieldExistingSessionHref(access, pathname)
+        : null;
 
       if (destination === pathname) {
         setAllowed(true);
@@ -40,7 +85,9 @@ export default function MobileFieldServiceRouteGate({
       }
 
       router.replace(destination ?? "/mobile");
-    })();
+    })().catch(() => {
+      if (active) router.replace("/mobile");
+    });
 
     return () => {
       active = false;

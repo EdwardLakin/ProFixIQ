@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 
-import {
-  getMobileFieldServiceWorkspaceAccess,
-} from "@/features/mobile/service/server/access";
+import { getMobileFieldServiceWorkspaceAccess } from "@/features/mobile/service/server/access";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
 export async function GET() {
@@ -14,6 +12,8 @@ export async function GET() {
     return NextResponse.json(
       {
         ...fieldAccess,
+        userId: access.authUserId,
+        shopId: access.profile.shop_id,
         mustChangePassword: access.profile.must_change_password === true,
       },
       { headers: { "Cache-Control": "private, no-store" } },

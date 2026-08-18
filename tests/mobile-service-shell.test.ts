@@ -5,7 +5,11 @@ const read = (path: string) => readFileSync(path, "utf8");
 const page = read("app/mobile/service/page.tsx");
 const shell = read("features/mobile/service/MobileServiceShell.tsx");
 const scopeGate = read("features/mobile/service/MobileServiceScopeGate.tsx");
+const routeGate = read(
+  "features/mobile/service/MobileFieldServiceRouteGate.tsx",
+);
 const fieldHub = read("features/mobile/service/FieldHub.tsx");
+const fieldAccessRoute = read("app/api/mobile/field-service/access/route.ts");
 const tiles = read("features/mobile/config/mobile-tiles.ts");
 const activeRoute = read("app/api/mobile/service-visits/active/route.ts");
 const dispatchRoute = read("app/api/dispatch/visits/[id]/route.ts");
@@ -49,17 +53,16 @@ describe("Mobile Service shell", () => {
     expect(shell).toContain("existing offline mobile workflow");
     expect(scopeGate).toContain("getOfflineMutationScope");
     expect(scopeGate).toContain("supabase.auth.getSession");
-    expect(scopeGate).toContain("resolveCurrentActor");
     expect(scopeGate).toContain("setOfflineMutationScope");
     expect(scopeGate).toContain("cached?.userId === authUserId");
     expect(scopeGate).toContain("SNAPSHOT_SCOPE_KEY");
-    expect(scopeGate).toContain("})().catch(() => {");
-    expect(scopeGate).toContain(
-      "window.localStorage.removeItem(SNAPSHOT_CACHE_KEY)",
-    );
-    expect(scopeGate).toContain(
-      "window.localStorage.removeItem(SNAPSHOT_SCOPE_KEY)",
-    );
+    expect(scopeGate).toContain("readFieldServiceOfflineAccess");
+    expect(scopeGate).toContain("verificationUnavailable");
+    expect(routeGate).toContain("readFieldServiceOfflineAccess");
+    expect(routeGate).toContain("response.status >= 500");
+    expect(fieldAccessRoute).toContain("userId: access.authUserId");
+    expect(fieldAccessRoute).toContain("shopId: access.profile.shop_id");
+    expect(scopeGate).not.toContain("resolveCurrentActor");
     expect(scopeGate).toContain('router.replace("/mobile")');
   });
 
