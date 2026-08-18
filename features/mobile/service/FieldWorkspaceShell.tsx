@@ -11,6 +11,7 @@ import {
   PackageOpen,
   PackagePlus,
   Plus,
+  RadioTower,
   Settings2,
   Wrench,
   X,
@@ -49,6 +50,12 @@ const WORK_NAV: FieldNavItem[] = [
     label: "Appointments",
     href: "/mobile/appointments",
     icon: CalendarDays,
+    requiredCapability: "canManageScheduling",
+  },
+  {
+    label: "Dispatch",
+    href: "/mobile/service/dispatch",
+    icon: RadioTower,
     requiredCapability: "canManageScheduling",
   },
   {
@@ -101,6 +108,7 @@ function pageTitle(pathname: string): string {
     return "Purchase orders";
   }
   if (pathname.startsWith("/mobile/service/new")) return "New service call";
+  if (pathname.startsWith("/mobile/service/dispatch")) return "Dispatch";
   if (pathname.startsWith("/mobile/service/truck-inventory")) {
     return "Truck inventory";
   }
@@ -273,13 +281,6 @@ export default function FieldWorkspaceShell({ children }: { children: ReactNode 
         </div>
 
         <div className="field-workspace-sidebar__footer">
-          <Link
-            href="/mobile/service/truck-inventory"
-            className="field-workspace-nav__link"
-          >
-            <PackageOpen aria-hidden className="h-[1.1rem] w-[1.1rem]" />
-            <span>Truck inventory</span>
-          </Link>
           {workspaceCapabilities.canConfigureFieldService ? (
             <Link
               href="/mobile/service/setup"
@@ -345,13 +346,13 @@ export default function FieldWorkspaceShell({ children }: { children: ReactNode 
         </Link>
         {workspaceCapabilities.canManageScheduling ? (
           <Link
-            href="/mobile/appointments"
+            href="/mobile/service/dispatch"
             data-active={
-              pathname.startsWith("/mobile/appointments") ? "true" : "false"
+              pathname.startsWith("/mobile/service/dispatch") ? "true" : "false"
             }
           >
-            <CalendarDays aria-hidden className="h-5 w-5" />
-            <span>Schedule</span>
+            <RadioTower aria-hidden className="h-5 w-5" />
+            <span>Dispatch</span>
           </Link>
         ) : (
           <Link
@@ -429,15 +430,6 @@ export default function FieldWorkspaceShell({ children }: { children: ReactNode 
           />
           <div className="field-workspace-nav__section">
             <div className="field-workspace-nav__label">Workspace</div>
-            <FieldNavLink
-              item={{
-                label: "Truck inventory",
-                href: "/mobile/service/truck-inventory",
-                icon: PackageOpen,
-              }}
-              pathname={pathname}
-              onNavigate={() => setMenuOpen(false)}
-            />
             {workspaceCapabilities.canConfigureFieldService ? (
               <FieldNavLink
                 item={{

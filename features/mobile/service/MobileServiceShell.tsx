@@ -522,8 +522,10 @@ function VisitCard({
 
 export default function MobileServiceShell({
   embedded = false,
+  canManageScheduling = false,
 }: {
   embedded?: boolean;
+  canManageScheduling?: boolean;
 }) {
   const router = useRouter();
   const [snapshot, setSnapshot] = useState<MobileActiveJobContract | null>(null);
@@ -965,13 +967,25 @@ export default function MobileServiceShell({
           <p className="mx-auto mt-1 max-w-sm text-sm text-[color:var(--theme-text-secondary)]">
             Take the next call in seconds or keep working from the normal mobile work-order queue.
           </p>
-          <div className="mt-4 grid gap-2 sm:grid-cols-2">
+          <div
+            className={`mt-4 grid gap-2 ${
+              canManageScheduling ? "sm:grid-cols-3" : "sm:grid-cols-2"
+            }`}
+          >
             <Link
               href="/mobile/service/new"
               className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-sky-500 px-4 text-sm font-extrabold text-white"
             >
               <Plus className="h-4 w-4" /> New service call
             </Link>
+            {canManageScheduling ? (
+              <Link
+                href="/mobile/service/dispatch"
+                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-sky-500/40 bg-sky-500/10 px-4 text-sm font-extrabold text-[color:var(--theme-text-primary)]"
+              >
+                <Route className="h-4 w-4" /> Open dispatch
+              </Link>
+            ) : null}
             <Link
               href="/mobile/work-orders/create"
               className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-4 text-sm font-bold"
