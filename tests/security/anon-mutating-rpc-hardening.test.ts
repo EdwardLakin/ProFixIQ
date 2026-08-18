@@ -8,6 +8,9 @@ const source = (path: string) =>
 const migration = source(
   "supabase/migrations/20260818190557_harden_anon_mutating_rpc_acl.sql",
 );
+const actorAttributionMigration = source(
+  "supabase/migrations/20260818201023_preserve_void_stock_return_actor.sql",
+);
 const punchCorrectionRoute = source(
   "app/api/workforce/attendance/corrections/route.ts",
 );
@@ -75,6 +78,24 @@ describe("anonymous mutating RPC hardening", () => {
     expect(migration).toMatch(/commit;\s*$/);
     expect(migration).not.toMatch(
       /\b(?:drop|alter|create)\s+(?:table|column|type|function)\b/i,
+    );
+  });
+
+  it("preserves the authorized actor on nested stock returns", () => {
+    expect(actorAttributionMigration).toContain(
+      "select public.parts_return_to_stock(",
+    );
+    expect(actorAttributionMigration).toContain(
+      "set created_by = p_actor_user_id",
+    );
+    expect(actorAttributionMigration).toContain("sm.shop_id = p_shop_id");
+    expect(actorAttributionMigration).toContain("sm.created_by is null");
+    expect(actorAttributionMigration).toContain(
+      "from public, anon, authenticated",
+    );
+    expect(actorAttributionMigration).toContain("to service_role");
+    expect(actorAttributionMigration).not.toMatch(
+      /\b(?:drop|alter|create)\s+(?:table|column|type)\b/i,
     );
   });
 });
