@@ -46,8 +46,29 @@ alter view public.v_shift_rollups set (security_invoker = true);
 revoke all on table public.v_shift_rollups from public, anon, authenticated;
 grant select on table public.v_shift_rollups to authenticated;
 
--- Reviews are intentionally public, and the base table already has a public
--- SELECT RLS policy limited to published (`is_public = true`) reviews.
+-- Reviews are intentionally public. Production already has this policy, but
+-- the ordered clean-replay baseline does not, so create it only when absent.
+-- The policy is deliberately shared by anon and authenticated callers so the
+-- same published-review surface remains visible before and after sign-in.
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_catalog.pg_policies
+    where schemaname = 'public'
+      and tablename = 'shop_reviews'
+      and policyname = 'Public can read published reviews'
+  ) then
+    create policy "Public can read published reviews"
+      on public.shop_reviews
+      for select
+      to anon, authenticated
+      using (is_public = true);
+  end if;
+end
+$$;
+
+grant select on table public.shop_reviews to anon, authenticated;
 alter view public.shop_reviews_public set (security_invoker = true);
 revoke all on table public.shop_reviews_public from public, anon, authenticated;
 grant select on table public.shop_reviews_public to anon, authenticated;
@@ -156,6 +177,30 @@ begin
   ) then
     raise exception
       'security hardening failed: shop_reviews_public is not security-invoker';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_catalog.pg_policies
+    where schemaname = 'public'
+      and tablename = 'shop_reviews'
+      and policyname = 'Public can read published reviews'
+      and cmd = 'SELECT'
+      and roles @> array['anon', 'authenticated']::name[]
+      and qual = '(is_public = true)'
+  ) then
+    raise exception
+      'security hardening failed: published-review RLS policy is missing or invalid';
+  end if;
+
+  if not has_table_privilege('anon', 'public.shop_reviews', 'SELECT')
+     or not has_table_privilege(
+       'authenticated',
+       'public.shop_reviews',
+       'SELECT'
+     ) then
+    raise exception
+      'security hardening failed: published-review base SELECT grant is missing';
   end if;
 
   if not has_table_privilege('anon', 'public.shop_reviews_public', 'SELECT')

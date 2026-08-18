@@ -1,3 +1,8 @@
+begin;
+
+set local lock_timeout = '5s';
+set local statement_timeout = '10min';
+
 -- Production hardening: close direct Data API execution of high-risk
 -- SECURITY DEFINER mutation functions that are not anonymous workflows.
 --
@@ -90,19 +95,42 @@ grant execute on function public.transition_staff_time_off_request(
   uuid, uuid, uuid, text, text
 ) to authenticated, service_role;
 
--- Customer intake requires auth.uid() in the function body. Remove the legacy
--- PUBLIC execute grant so the database privilege matches that contract.
-revoke execute on function public.work_orders_set_intake(uuid, jsonb, boolean)
-  from public, anon;
-grant execute on function public.work_orders_set_intake(uuid, jsonb, boolean)
-  to authenticated, service_role;
+-- Customer intake requires auth.uid() in the function body. Production has a
+-- legacy helper that is intentionally absent from the ordered clean-replay
+-- baseline, so align its ACL when present without recreating the function.
+do $$
+declare
+  v_intake regprocedure;
+begin
+  select p.oid::regprocedure
+    into v_intake
+  from pg_catalog.pg_proc p
+  join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public'
+    and p.proname = 'work_orders_set_intake'
+    and pg_catalog.oidvectortypes(p.proargtypes) = 'uuid, jsonb, boolean'
+  limit 1;
+
+  if v_intake is not null then
+    execute format(
+      'revoke execute on function %s from public, anon',
+      v_intake
+    );
+    execute format(
+      'grant execute on function %s to authenticated, service_role',
+      v_intake
+    );
+  end if;
+end
+$$;
 
 -- Replay-time privilege assertions. These fail closed if a future baseline or
--- default grant re-exposes a protected mutation surface. The production-only
--- agent worker is asserted when present and skipped on clean replay.
+-- default grant re-exposes a protected mutation surface. Production-only
+-- legacy helpers are asserted when present and skipped on clean replay.
 do $$
 declare
   v_agent regprocedure;
+  v_intake regprocedure;
 begin
   select p.oid::regprocedure
     into v_agent
@@ -111,6 +139,15 @@ begin
   where n.nspname = 'public'
     and p.proname = 'agent_claim_next_job'
   order by p.oid
+  limit 1;
+
+  select p.oid::regprocedure
+    into v_intake
+  from pg_catalog.pg_proc p
+  join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public'
+    and p.proname = 'work_orders_set_intake'
+    and pg_catalog.oidvectortypes(p.proargtypes) = 'uuid, jsonb, boolean'
   limit 1;
 
   if v_agent is not null and (
@@ -212,18 +249,24 @@ begin
        'authenticated',
        'public.transition_staff_time_off_request(uuid,uuid,uuid,text,text)',
        'EXECUTE'
-     )
-     or has_function_privilege(
-       'anon',
-       'public.work_orders_set_intake(uuid,jsonb,boolean)',
-       'EXECUTE'
-     )
-     or not has_function_privilege(
-       'authenticated',
-       'public.work_orders_set_intake(uuid,jsonb,boolean)',
-       'EXECUTE'
      ) then
     raise exception 'RPC hardening failed: authenticated mutation ACL contract changed';
   end if;
+
+  if v_intake is not null and (
+       has_function_privilege('anon', v_intake, 'EXECUTE')
+       or not has_function_privilege(
+         'authenticated',
+         v_intake,
+         'EXECUTE'
+       )
+       or not has_function_privilege('service_role', v_intake, 'EXECUTE')
+     ) then
+    raise exception 'RPC hardening failed: work_orders_set_intake ACL is unsafe';
+  end if;
 end
 $$;
+
+notify pgrst, 'reload schema';
+
+commit;
