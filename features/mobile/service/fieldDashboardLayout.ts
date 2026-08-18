@@ -1,5 +1,7 @@
 export const FIELD_DASHBOARD_LAYOUT_SCOPE = "field";
-export const FIELD_DASHBOARD_LAYOUT_CACHE_KEY =
+export const FIELD_DASHBOARD_LAYOUT_CACHE_PREFIX =
+  "profixiq:field-dashboard:layout:v2";
+export const FIELD_DASHBOARD_LEGACY_LAYOUT_CACHE_KEY =
   "profixiq:field-dashboard:layout:v1";
 
 export const FIELD_DASHBOARD_CARD_IDS = [
@@ -23,7 +25,55 @@ export type FieldDashboardLayoutItem = {
   hidden?: boolean;
 };
 
+export type FieldDashboardLayoutCacheScope = {
+  userId: string;
+  shopId: string;
+};
+
+export type FieldDashboardLayoutCacheRecord = {
+  version: 2;
+  userId: string;
+  shopId: string;
+  layout: FieldDashboardLayoutItem[];
+  pendingSync: boolean;
+};
+
+export type FieldDashboardLayoutSaveRequest = {
+  layout: FieldDashboardLayoutItem[];
+  serialized: string;
+};
+
+export type FieldDashboardLayoutSaveQueue = {
+  enqueue: (layout: FieldDashboardLayoutItem[]) => void;
+  flush: () => Promise<void>;
+  hasPending: () => boolean;
+  hasWork: () => boolean;
+};
+
+type FieldDashboardLayoutSaveQueueOptions = {
+  retryDelayMs?: number;
+  maxAutomaticRetries?: number;
+};
+
+type PendingFieldDashboardLayoutSave = FieldDashboardLayoutSaveRequest & {
+  failedAttempts: number;
+};
+
 const CARD_ID_SET = new Set<string>(FIELD_DASHBOARD_CARD_IDS);
+
+function cleanScopePart(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+export function getFieldDashboardLayoutCacheKey(
+  scope: FieldDashboardLayoutCacheScope,
+): string | null {
+  const userId = cleanScopePart(scope.userId);
+  const shopId = cleanScopePart(scope.shopId);
+  if (!userId || !shopId) return null;
+
+  return `${FIELD_DASHBOARD_LAYOUT_CACHE_PREFIX}:${encodeURIComponent(shopId)}:${encodeURIComponent(userId)}`;
+}
 
 function isFieldDashboardCardId(value: unknown): value is FieldDashboardCardId {
   return typeof value === "string" && CARD_ID_SET.has(value);
@@ -86,6 +136,126 @@ export function normalizeFieldDashboardLayout(
   );
 
   return orderLayout([...parsed, ...missing]);
+}
+
+export function parseFieldDashboardLayoutCache(
+  value: unknown,
+  scope: FieldDashboardLayoutCacheScope,
+): FieldDashboardLayoutCacheRecord | null {
+  if (!value || typeof value !== "object") return null;
+
+  const record = value as Record<string, unknown>;
+  const userId = cleanScopePart(scope.userId);
+  const shopId = cleanScopePart(scope.shopId);
+  if (
+    record.version !== 2 ||
+    cleanScopePart(record.userId) !== userId ||
+    cleanScopePart(record.shopId) !== shopId ||
+    !userId ||
+    !shopId
+  ) {
+    return null;
+  }
+
+  return {
+    version: 2,
+    userId,
+    shopId,
+    layout: normalizeFieldDashboardLayout(record.layout),
+    pendingSync: record.pendingSync === true,
+  };
+}
+
+export function buildFieldDashboardLayoutCache(
+  scope: FieldDashboardLayoutCacheScope,
+  layout: FieldDashboardLayoutItem[],
+  pendingSync: boolean,
+): FieldDashboardLayoutCacheRecord | null {
+  const userId = cleanScopePart(scope.userId);
+  const shopId = cleanScopePart(scope.shopId);
+  if (!userId || !shopId) return null;
+
+  return {
+    version: 2,
+    userId,
+    shopId,
+    layout: normalizeFieldDashboardLayout(layout),
+    pendingSync,
+  };
+}
+
+export function createFieldDashboardLayoutSaveQueue(
+  persist: (request: FieldDashboardLayoutSaveRequest) => Promise<boolean>,
+  options: FieldDashboardLayoutSaveQueueOptions = {},
+): FieldDashboardLayoutSaveQueue {
+  const retryDelayMs = Math.max(0, options.retryDelayMs ?? 1_000);
+  const maxAutomaticRetries = Math.max(
+    0,
+    options.maxAutomaticRetries ?? 2,
+  );
+  let pending: PendingFieldDashboardLayoutSave | null = null;
+  let inFlight: Promise<void> | null = null;
+  let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const scheduleRetry = () => {
+    if (
+      !pending ||
+      pending.failedAttempts > maxAutomaticRetries ||
+      retryTimer
+    ) {
+      return;
+    }
+
+    retryTimer = setTimeout(() => {
+      retryTimer = null;
+      void flush();
+    }, retryDelayMs);
+  };
+
+  function flush(): Promise<void> {
+    if (inFlight) return inFlight;
+    if (retryTimer) {
+      clearTimeout(retryTimer);
+      retryTimer = null;
+    }
+
+    inFlight = (async () => {
+      while (pending) {
+        const request = pending;
+        pending = null;
+        const saved = await persist(request).catch(() => false);
+        if (!saved) {
+          // Preserve the newest edit if another one arrived during the failed save.
+          if (!pending) {
+            pending = {
+              ...request,
+              failedAttempts: request.failedAttempts + 1,
+            };
+          }
+          break;
+        }
+      }
+    })().finally(() => {
+      inFlight = null;
+      scheduleRetry();
+    });
+
+    return inFlight;
+  }
+
+  return {
+    enqueue(layout) {
+      const normalized = normalizeFieldDashboardLayout(layout);
+      pending = {
+        layout: normalized,
+        serialized: JSON.stringify(normalized),
+        failedAttempts: 0,
+      };
+    },
+    flush,
+    hasPending: () => pending !== null,
+    hasWork: () => pending !== null || inFlight !== null,
+  };
 }
 
 export function setFieldDashboardCardVisibility(

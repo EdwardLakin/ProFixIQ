@@ -27,15 +27,21 @@ import {
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import type { OfflineMutationScope } from "@/features/shared/lib/offline/mutations";
 import MobileServiceShell from "./MobileServiceShell";
 import {
+  buildFieldDashboardLayoutCache,
   buildDefaultFieldDashboardLayout,
-  FIELD_DASHBOARD_LAYOUT_CACHE_KEY,
+  createFieldDashboardLayoutSaveQueue,
+  FIELD_DASHBOARD_LEGACY_LAYOUT_CACHE_KEY,
   FIELD_DASHBOARD_LAYOUT_SCOPE,
+  getFieldDashboardLayoutCacheKey,
   moveFieldDashboardCard,
   normalizeFieldDashboardLayout,
+  parseFieldDashboardLayoutCache,
   setFieldDashboardCardVisibility,
   type FieldDashboardCardId,
+  type FieldDashboardLayoutCacheRecord,
   type FieldDashboardLayoutItem,
 } from "./fieldDashboardLayout";
 import {
@@ -71,6 +77,7 @@ const FIELD_PRIMARY_ACTIONS: FieldAction[] = [
     title: "New work order",
     href: "/mobile/work-orders/create",
     icon: FilePlus2,
+    requiredCapability: "canManageOperations",
   },
   {
     title: "Scan or create part",
@@ -150,15 +157,33 @@ function serializeLayout(layout: FieldDashboardLayoutItem[]): string {
   return JSON.stringify(layout);
 }
 
-function readCachedLayout(): FieldDashboardLayoutItem[] {
+function readCachedLayout(
+  cacheKey: string,
+  scope: OfflineMutationScope,
+): FieldDashboardLayoutCacheRecord | null {
   try {
-    return normalizeFieldDashboardLayout(
-      JSON.parse(
-        window.localStorage.getItem(FIELD_DASHBOARD_LAYOUT_CACHE_KEY) ?? "null",
-      ),
+    return parseFieldDashboardLayoutCache(
+      JSON.parse(window.localStorage.getItem(cacheKey) ?? "null"),
+      scope,
     );
   } catch {
-    return buildDefaultFieldDashboardLayout();
+    return null;
+  }
+}
+
+function writeCachedLayout(
+  cacheKey: string,
+  scope: OfflineMutationScope,
+  layout: FieldDashboardLayoutItem[],
+  pendingSync: boolean,
+): void {
+  const record = buildFieldDashboardLayoutCache(scope, layout, pendingSync);
+  if (!record) return;
+
+  try {
+    window.localStorage.setItem(cacheKey, JSON.stringify(record));
+  } catch {
+    // Remote preferences remain authoritative when device storage is unavailable.
   }
 }
 
@@ -186,8 +211,10 @@ function FieldDashboardCardLink({ card }: { card: FieldDashboardCard }) {
 
 export default function FieldHub({
   capabilities,
+  scope,
 }: {
   capabilities: FieldWorkspaceCapabilities;
+  scope: OfflineMutationScope;
 }) {
   const [online, setOnline] = useState(true);
   const [dateLabel, setDateLabel] = useState("Today");
@@ -197,6 +224,44 @@ export default function FieldHub({
   );
   const [preferencesLoaded, setPreferencesLoaded] = useState(false);
   const lastRemoteLayoutRef = useRef<string | null>(null);
+  const latestLayoutRef = useRef(serializeLayout(layout));
+  const pendingSyncRef = useRef(false);
+  const cacheScope = useMemo(
+    () => ({ userId: scope.userId, shopId: scope.shopId }),
+    [scope.shopId, scope.userId],
+  );
+  const cacheKey = useMemo(
+    () => getFieldDashboardLayoutCacheKey(cacheScope),
+    [cacheScope],
+  );
+  const saveQueue = useMemo(
+    () =>
+      createFieldDashboardLayoutSaveQueue(async (request) => {
+        if (!navigator.onLine) return false;
+
+        const response = await fetch("/api/dashboard/layout", {
+          method: "PUT",
+          credentials: "include",
+          keepalive: true,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            scope: FIELD_DASHBOARD_LAYOUT_SCOPE,
+            layout: request.layout,
+          }),
+        }).catch(() => null);
+        if (!response?.ok) return false;
+
+        lastRemoteLayoutRef.current = request.serialized;
+        if (cacheKey && latestLayoutRef.current === request.serialized) {
+          pendingSyncRef.current = false;
+          writeCachedLayout(cacheKey, cacheScope, request.layout, false);
+        }
+        return true;
+      }),
+    [cacheKey, cacheScope],
+  );
+
+  latestLayoutRef.current = serializeLayout(layout);
 
   const eligibleCards = useMemo(
     () =>
@@ -263,8 +328,29 @@ export default function FieldHub({
 
   useEffect(() => {
     let active = true;
-    const cached = readCachedLayout();
-    setLayout(cached);
+    setPreferencesLoaded(false);
+    lastRemoteLayoutRef.current = null;
+
+    if (!cacheKey) {
+      setLayout(buildDefaultFieldDashboardLayout());
+      pendingSyncRef.current = false;
+      setPreferencesLoaded(true);
+      return () => {
+        active = false;
+      };
+    }
+
+    try {
+      window.localStorage.removeItem(FIELD_DASHBOARD_LEGACY_LAYOUT_CACHE_KEY);
+    } catch {
+      // The legacy unscoped cache is never read, even if cleanup is unavailable.
+    }
+
+    const cached = readCachedLayout(cacheKey, cacheScope);
+    const cachedLayout = cached?.layout ?? buildDefaultFieldDashboardLayout();
+    pendingSyncRef.current = cached?.pendingSync === true;
+    setLayout(cachedLayout);
+    latestLayoutRef.current = serializeLayout(cachedLayout);
 
     void fetch(
       `/api/dashboard/layout?scope=${encodeURIComponent(FIELD_DASHBOARD_LAYOUT_SCOPE)}`,
@@ -279,12 +365,13 @@ export default function FieldHub({
         } | null;
         if (!active || !response.ok) return;
         const remote = normalizeFieldDashboardLayout(body?.layout);
-        setLayout(remote);
-        window.localStorage.setItem(
-          FIELD_DASHBOARD_LAYOUT_CACHE_KEY,
-          serializeLayout(remote),
-        );
-        lastRemoteLayoutRef.current = serializeLayout(remote);
+        const serializedRemote = serializeLayout(remote);
+        lastRemoteLayoutRef.current = serializedRemote;
+        if (!pendingSyncRef.current) {
+          setLayout(remote);
+          latestLayoutRef.current = serializedRemote;
+          writeCachedLayout(cacheKey, cacheScope, remote, false);
+        }
       })
       .catch(() => {
         // Device preferences remain usable while the operator is offline.
@@ -296,37 +383,42 @@ export default function FieldHub({
     return () => {
       active = false;
     };
-  }, []);
+  }, [cacheKey, cacheScope]);
 
   useEffect(() => {
-    if (!preferencesLoaded) return;
+    if (!preferencesLoaded || !cacheKey || !pendingSyncRef.current) return;
     const serialized = serializeLayout(layout);
-    window.localStorage.setItem(FIELD_DASHBOARD_LAYOUT_CACHE_KEY, serialized);
-    if (!online || serialized === lastRemoteLayoutRef.current) return;
+    if (
+      serialized === lastRemoteLayoutRef.current &&
+      !saveQueue.hasWork()
+    ) {
+      pendingSyncRef.current = false;
+      writeCachedLayout(cacheKey, cacheScope, layout, false);
+      return;
+    }
+
+    writeCachedLayout(cacheKey, cacheScope, layout, true);
+    saveQueue.enqueue(layout);
+    if (!online) return;
 
     const timeout = window.setTimeout(() => {
-      void fetch("/api/dashboard/layout", {
-        method: "PUT",
-        credentials: "include",
-        keepalive: true,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          scope: FIELD_DASHBOARD_LAYOUT_SCOPE,
-          layout,
-        }),
-      })
-        .then((response) => {
-          if (response.ok) lastRemoteLayoutRef.current = serialized;
-        })
-        .catch(() => {
-          // The device cache is the offline fallback; sync retries after a change.
-        });
+      void saveQueue.flush();
     }, 350);
 
     return () => window.clearTimeout(timeout);
-  }, [layout, online, preferencesLoaded]);
+  }, [cacheKey, cacheScope, layout, online, preferencesLoaded, saveQueue]);
 
-  const resetLayout = () => setLayout(buildDefaultFieldDashboardLayout());
+  const updateLayout = (
+    updater: (
+      current: FieldDashboardLayoutItem[],
+    ) => FieldDashboardLayoutItem[],
+  ) => {
+    pendingSyncRef.current = true;
+    setLayout(updater);
+  };
+
+  const resetLayout = () =>
+    updateLayout(() => buildDefaultFieldDashboardLayout());
 
   return (
     <main className="field-hub">
@@ -482,7 +574,7 @@ export default function FieldHub({
                       <button
                         type="button"
                         onClick={() =>
-                          setLayout((current) =>
+                          updateLayout((current) =>
                             moveFieldDashboardCard(
                               current,
                               item.id,
@@ -499,7 +591,7 @@ export default function FieldHub({
                       <button
                         type="button"
                         onClick={() =>
-                          setLayout((current) =>
+                          updateLayout((current) =>
                             moveFieldDashboardCard(
                               current,
                               item.id,
@@ -519,7 +611,7 @@ export default function FieldHub({
                         data-visible={visible ? "true" : "false"}
                         aria-pressed={visible}
                         onClick={() =>
-                          setLayout((current) =>
+                          updateLayout((current) =>
                             setFieldDashboardCardVisibility(
                               current,
                               item.id,
