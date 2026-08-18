@@ -98,6 +98,14 @@ const FIELD_PRIMARY_ACTIONS: FieldAction[] = [
 
 const FIELD_DASHBOARD_CARDS: FieldDashboardCard[] = [
   {
+    id: "dispatch_queue",
+    title: "Dispatch queue",
+    description: "Assign new service calls to an operator and truck.",
+    href: "/mobile/service/dispatch",
+    icon: RadioTower,
+    requiredCapability: "canManageScheduling",
+  },
+  {
     id: "jobs_in_progress",
     title: "Jobs in progress",
     description: "Return to active repairs and service calls.",
@@ -483,7 +491,10 @@ export default function FieldHub({
               All work <ArrowRight aria-hidden className="h-4 w-4" />
             </Link>
           </div>
-          <MobileServiceShell embedded />
+          <MobileServiceShell
+            embedded
+            canManageScheduling={capabilities.canManageScheduling}
+          />
         </section>
 
         <aside

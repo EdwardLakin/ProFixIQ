@@ -31,6 +31,7 @@ describe("Field Hub workspace", () => {
   it("links the Hub to canonical mobile operations instead of duplicating their data flows", () => {
     for (const href of [
       "/mobile/appointments",
+      "/mobile/service/dispatch",
       "/mobile/work-orders",
       "/mobile/inspections",
       "/mobile/parts",
@@ -40,7 +41,7 @@ describe("Field Hub workspace", () => {
       expect(`${fieldShell}\n${fieldHub}`).toContain(href);
     }
 
-    expect(fieldHub).toContain("<MobileServiceShell embedded />");
+    expect(fieldHub).toContain("<MobileServiceShell");
     expect(fieldHub).not.toContain('.from("');
   });
 
@@ -94,7 +95,14 @@ describe("Field Hub workspace", () => {
     expect(fieldHub).toContain("getFieldDashboardLayoutCacheKey");
     expect(fieldHub).toContain("createFieldDashboardLayoutSaveQueue");
     expect(fieldHub).toContain('title: "Scan or create part"');
+    expect(fieldHub).toMatch(
+      /id: "dispatch_queue"[\s\S]*?requiredCapability: "canManageScheduling"/,
+    );
+    expect(fieldHub).toContain(
+      "canManageScheduling={capabilities.canManageScheduling}",
+    );
     expect(fieldShell).toContain('label: "Truck inventory"');
+    expect(fieldShell.match(/label: "Truck inventory"/g)).toHaveLength(1);
   });
 
   it("does not leak Fleet navigation and hides workspace switching unless another product is verified", () => {

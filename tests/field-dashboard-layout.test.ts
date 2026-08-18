@@ -22,6 +22,7 @@ describe("Field dashboard layout", () => {
 
     expect(layout.map((item) => item.id)).toEqual([
       "followups_due",
+      "dispatch_queue",
       "jobs_in_progress",
       "awaiting_approval",
       "parts_required",

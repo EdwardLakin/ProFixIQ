@@ -95,12 +95,20 @@ function visitMatchesLane(visit: DispatchVisit, lane: LaneKey): boolean {
   return ["arrived", "working", "paused"].includes(visit.status);
 }
 
-export default function DispatchBoardClient() {
+export default function DispatchBoardClient({
+  surface = "shop",
+}: {
+  surface?: "shop" | "field";
+}) {
   const [board, setBoard] = useState<DispatchBoardSnapshot>(EMPTY_BOARD);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [busyVisitId, setBusyVisitId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const fieldSurface = surface === "field";
+  const scheduleHref = fieldSurface
+    ? "/mobile/appointments"
+    : "/dashboard/appointments";
 
   const load = useCallback(async (quiet = false) => {
     if (quiet) setRefreshing(true);
@@ -241,7 +249,13 @@ export default function DispatchBoardClient() {
   );
 
   return (
-    <main className="min-h-screen bg-[color:var(--theme-page-bg)] px-4 py-5 text-[color:var(--theme-text-primary)] sm:px-6 lg:px-8">
+    <main
+      className={`${
+        fieldSurface
+          ? "w-full px-3 py-4 sm:px-4 lg:px-5"
+          : "min-h-screen px-4 py-5 sm:px-6 lg:px-8"
+      } bg-[color:var(--theme-page-bg)] text-[color:var(--theme-text-primary)]`}
+    >
       <div className="mx-auto max-w-[1800px] space-y-5">
         <header className="flex flex-col gap-4 rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel-strong)] p-5 shadow-[var(--theme-shadow-soft)] lg:flex-row lg:items-center lg:justify-between">
           <div>
@@ -254,8 +268,16 @@ export default function DispatchBoardClient() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            {fieldSurface ? (
+              <Link
+                href="/mobile/service/new"
+                className="inline-flex items-center gap-2 rounded-xl bg-[color:var(--theme-action-primary)] px-3 py-2 text-sm font-semibold text-[color:var(--theme-action-primary-text)] hover:opacity-90"
+              >
+                New service call
+              </Link>
+            ) : null}
             <Link
-              href="/dashboard/appointments"
+              href={scheduleHref}
               className="inline-flex items-center gap-2 rounded-xl border border-[color:var(--theme-border-soft)] px-3 py-2 text-sm font-medium hover:bg-[color:var(--theme-surface-subtle)]"
             >
               <CalendarClock className="h-4 w-4" /> Schedule
