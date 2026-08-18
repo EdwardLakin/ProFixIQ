@@ -74,6 +74,31 @@ where id in (
   '33000000-0000-4000-8000-000000000003'
 );
 
+insert into public.shop_reviews (
+  id,
+  shop_id,
+  reviewer_user_id,
+  rating,
+  comment,
+  is_public
+) values
+  (
+    'a1050000-0000-4000-8000-000000000001',
+    'a1000000-0000-4000-8000-000000000001',
+    '11000000-0000-4000-8000-000000000001',
+    5,
+    'Published P0-001 review',
+    true
+  ),
+  (
+    'a1050000-0000-4000-8000-000000000002',
+    'a1000000-0000-4000-8000-000000000001',
+    '33000000-0000-4000-8000-000000000003',
+    2,
+    'Unpublished P0-001 review',
+    false
+  );
+
 insert into public.parts (id, shop_id, name, part_number, sku)
 values
   (
@@ -432,6 +457,15 @@ create temp table p0_001_public_view_result (
 );
 grant insert, select on table p0_001_public_view_result to anon;
 
+create temp table p0_001_public_review_result (
+  caller_role text primary key,
+  visible_rows bigint not null,
+  published_visible boolean not null,
+  unpublished_visible boolean not null
+);
+grant insert, select on table p0_001_public_review_result
+  to anon, authenticated;
+
 create function pg_temp.expect_anon_select_denied(p_relation regclass)
 returns void
 language plpgsql
@@ -459,6 +493,17 @@ where id in (
   'a1000000-0000-4000-8000-000000000001',
   'b2000000-0000-4000-8000-000000000002'
 );
+insert into p0_001_public_review_result
+select
+  'anon',
+  count(*),
+  coalesce(bool_or(id = 'a1050000-0000-4000-8000-000000000001'), false),
+  coalesce(bool_or(id = 'a1050000-0000-4000-8000-000000000002'), false)
+from public.shop_reviews_public
+where id in (
+  'a1050000-0000-4000-8000-000000000001',
+  'a1050000-0000-4000-8000-000000000002'
+);
 select pg_temp.expect_anon_select_denied('public.apps');
 select pg_temp.expect_anon_select_denied('public.part_stock_summary');
 select pg_temp.expect_anon_select_denied('public.parts_barcodes');
@@ -466,6 +511,26 @@ select pg_temp.expect_anon_select_denied('public.shop_profiles');
 select pg_temp.expect_anon_select_denied('public.warranties');
 select pg_temp.expect_anon_select_denied('public.warranty_claims');
 select pg_temp.expect_anon_select_denied('public.widgets');
+reset role;
+
+select set_config('request.jwt.claim.role', 'authenticated', true);
+select set_config(
+  'request.jwt.claim.sub',
+  '22000000-0000-4000-8000-000000000002',
+  true
+);
+set local role authenticated;
+insert into p0_001_public_review_result
+select
+  'authenticated',
+  count(*),
+  coalesce(bool_or(id = 'a1050000-0000-4000-8000-000000000001'), false),
+  coalesce(bool_or(id = 'a1050000-0000-4000-8000-000000000002'), false)
+from public.shop_reviews_public
+where id in (
+  'a1050000-0000-4000-8000-000000000001',
+  'a1050000-0000-4000-8000-000000000002'
+);
 reset role;
 
 do $$
@@ -477,6 +542,21 @@ begin
   ) then
     raise exception
       'P0-001 runtime assertion failed: safe public shop view regressed';
+  end if;
+
+  if exists (
+    select 1
+    from p0_001_public_review_result
+    where visible_rows <> 1
+       or not published_visible
+       or unpublished_visible
+  )
+     or (
+       select count(*)
+       from p0_001_public_review_result
+     ) <> 2 then
+    raise exception
+      'P0-001 runtime assertion failed: public review visibility regressed';
   end if;
 end
 $$;
