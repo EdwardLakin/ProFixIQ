@@ -8,6 +8,12 @@ const source = (path: string) =>
 const migration = source(
   "supabase/migrations/20260818190557_harden_anon_mutating_rpc_acl.sql",
 );
+const actorAttributionMigration = source(
+  "supabase/migrations/20260818201023_preserve_void_stock_return_actor.sql",
+);
+const actorSnapshotFixMigration = source(
+  "supabase/migrations/20260818204500_fix_void_stock_return_actor_snapshot.sql",
+);
 const punchCorrectionRoute = source(
   "app/api/workforce/attendance/corrections/route.ts",
 );
@@ -75,6 +81,46 @@ describe("anonymous mutating RPC hardening", () => {
     expect(migration).toMatch(/commit;\s*$/);
     expect(migration).not.toMatch(
       /\b(?:drop|alter|create)\s+(?:table|column|type|function)\b/i,
+    );
+  });
+
+  it("preserves the authorized actor in a statement after the nested stock return", () => {
+    expect(actorAttributionMigration).toContain(
+      "v_return_result := public.parts_return_to_stock(",
+    );
+    expect(actorAttributionMigration).toContain(
+      "where sm.id = nullif(v_return_result ->> 'stock_move_id', '')::uuid",
+    );
+    expect(actorAttributionMigration).not.toContain(
+      "with returned_move as materialized",
+    );
+
+    for (const forwardMigration of [
+      actorAttributionMigration,
+      actorSnapshotFixMigration,
+    ]) {
+      expect(forwardMigration).toContain(
+        "set created_by = p_actor_user_id",
+      );
+      expect(forwardMigration).toContain("sm.shop_id = p_shop_id");
+      expect(forwardMigration).toContain("sm.created_by is null");
+      expect(forwardMigration).toContain(
+        "from public, anon, authenticated",
+      );
+      expect(forwardMigration).toContain("to service_role");
+      expect(forwardMigration).not.toContain(
+        "has_function_privilege('public'",
+      );
+      expect(forwardMigration).not.toMatch(
+        /\b(?:drop|alter|create)\s+(?:table|column|type)\b/i,
+      );
+    }
+
+    expect(actorSnapshotFixMigration).toContain(
+      "v_stale_call constant text",
+    );
+    expect(actorSnapshotFixMigration).toContain(
+      "v_fixed_call constant text",
     );
   });
 });
