@@ -1,7 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+} from "react";
 import {
   ArrowRight,
   CalendarClock,
@@ -18,6 +24,11 @@ import type {
   DispatchVisit,
 } from "@/features/dispatch/lib/contracts";
 import type { ServiceVisitStatus } from "@/features/scheduling/lib/service-visit-contract";
+
+const DISPATCH_THEME = {
+  "--theme-action-primary": "var(--brand-primary,#2563eb)",
+  "--theme-action-primary-text": "var(--theme-text-on-accent,#fff)",
+} as CSSProperties;
 
 const EMPTY_BOARD: DispatchBoardSnapshot = {
   generatedAt: new Date(0).toISOString(),
@@ -250,6 +261,7 @@ export default function DispatchBoardClient({
 
   return (
     <main
+      style={DISPATCH_THEME}
       className={`${
         fieldSurface
           ? "w-full px-3 py-4 sm:px-4 lg:px-5"

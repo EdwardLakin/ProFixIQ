@@ -33,6 +33,13 @@ describe("Field service-call dispatch", () => {
     expect(dispatchBoard).toContain("/api/dispatch/visits/${visit.id}");
     expect(dispatchBoard).toContain('href="/mobile/service/new"');
     expect(dispatchBoard).toContain('"/mobile/appointments"');
+    expect(dispatchBoard).toContain("style={DISPATCH_THEME}");
+    expect(dispatchBoard).toContain(
+      '"--theme-action-primary": "var(--brand-primary,#2563eb)"',
+    );
+    expect(dispatchBoard).toContain(
+      '"--theme-action-primary-text": "var(--theme-text-on-accent,#fff)"',
+    );
   });
 
   it("keeps intake, assignment, and transitions on tenant-scoped commands", () => {
