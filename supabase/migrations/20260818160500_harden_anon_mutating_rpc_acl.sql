@@ -5,13 +5,34 @@
 -- touched here because their anonymous access is part of a separate contract
 -- and must be reviewed independently.
 
--- Internal agent queue workers are service-role only. The function performs no
--- caller authentication and returns a claimed job payload while mutating the
--- queue, so neither anon nor ordinary authenticated sessions may execute it.
-revoke execute on function public.agent_claim_next_job(text, public.agent_job_kind[])
-  from public, anon, authenticated;
-grant execute on function public.agent_claim_next_job(text, public.agent_job_kind[])
-  to service_role;
+-- Internal agent queue workers are service-role only. This RPC is a
+-- production-only legacy object and is intentionally absent from clean replay,
+-- so harden it when present without reintroducing it into the baseline.
+do $$
+declare
+  v_agent regprocedure;
+begin
+  select p.oid::regprocedure
+    into v_agent
+  from pg_catalog.pg_proc p
+  join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public'
+    and p.proname = 'agent_claim_next_job'
+  order by p.oid
+  limit 1;
+
+  if v_agent is not null then
+    execute format(
+      'revoke execute on function %s from public, anon, authenticated',
+      v_agent
+    );
+    execute format(
+      'grant execute on function %s to service_role',
+      v_agent
+    );
+  end if;
+end
+$$;
 
 -- Financial correction-session primitives are server-side commands. Their
 -- current production ACL already excludes authenticated but accidentally
@@ -77,23 +98,25 @@ grant execute on function public.work_orders_set_intake(uuid, jsonb, boolean)
   to authenticated, service_role;
 
 -- Replay-time privilege assertions. These fail closed if a future baseline or
--- default grant re-exposes a protected mutation surface.
+-- default grant re-exposes a protected mutation surface. The production-only
+-- agent worker is asserted when present and skipped on clean replay.
 do $$
+declare
+  v_agent regprocedure;
 begin
-  if has_function_privilege(
-       'anon',
-       'public.agent_claim_next_job(text,public.agent_job_kind[])',
-       'EXECUTE'
-     )
-     or has_function_privilege(
-       'authenticated',
-       'public.agent_claim_next_job(text,public.agent_job_kind[])',
-       'EXECUTE'
-     )
-     or not has_function_privilege(
-       'service_role',
-       'public.agent_claim_next_job(text,public.agent_job_kind[])',
-       'EXECUTE'
+  select p.oid::regprocedure
+    into v_agent
+  from pg_catalog.pg_proc p
+  join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public'
+    and p.proname = 'agent_claim_next_job'
+  order by p.oid
+  limit 1;
+
+  if v_agent is not null and (
+       has_function_privilege('anon', v_agent, 'EXECUTE')
+       or has_function_privilege('authenticated', v_agent, 'EXECUTE')
+       or not has_function_privilege('service_role', v_agent, 'EXECUTE')
      ) then
     raise exception 'RPC hardening failed: agent_claim_next_job ACL is unsafe';
   end if;
