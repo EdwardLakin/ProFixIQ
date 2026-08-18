@@ -82,6 +82,7 @@ import {
 } from "./domains/workOrders";
 import {
   assignWorkOrderTool,
+  listTechnicianAssignmentsTool,
   listTechnicianLoadTool,
   recommendWorkAssignmentsTool,
 } from "./domains/workforce";
@@ -144,6 +145,7 @@ const TOOL_DEFINITIONS = [
   searchInvoicesTool,
   listMyAssignedWorkTool,
   requestTechnicianCopilotTool,
+  listTechnicianAssignmentsTool,
   listTechnicianLoadTool,
   recommendWorkAssignmentsTool,
   assignWorkOrderTool,

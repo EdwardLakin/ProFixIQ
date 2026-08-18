@@ -2,9 +2,14 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 
 const technicianLoadMock = vi.hoisted(() => vi.fn());
+const technicianAssignmentsMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/features/shared/lib/stats/getTechnicianLoadMetricsCore", () => ({
   getTechnicianLoadMetricsWithClient: technicianLoadMock,
+}));
+
+vi.mock("@/features/copilot/technician/server/assignedWork", () => ({
+  listTechnicianWorkCandidates: technicianAssignmentsMock,
 }));
 
 import {
@@ -16,7 +21,10 @@ import {
   listPartsBlockersTool,
 } from "@/features/shop-assistant/server/tools/domains/inventory";
 import { listBookingsTool } from "@/features/shop-assistant/server/tools/domains/scheduling";
-import { recommendWorkAssignmentsTool } from "@/features/shop-assistant/server/tools/domains/workforce";
+import {
+  listTechnicianAssignmentsTool,
+  recommendWorkAssignmentsTool,
+} from "@/features/shop-assistant/server/tools/domains/workforce";
 import { listStalledWorkOrdersTool } from "@/features/shop-assistant/server/tools/domains/workOrders";
 import { logOperationalEvent } from "@/features/work-orders/server/logOperationalEvent";
 
@@ -128,11 +136,13 @@ describe("shop assistant review hardening", () => {
       qty_approved: index === 500 ? 3 : 1,
       qty_received: index === 500 ? 1 : 1,
       work_order_id: uuid(70_000),
-      work_orders: { custom_id: "WO-70000", shop_id: uuid(90_000) },
     }));
     const ranges: number[] = [];
     const supabase = queryClient(
-      { part_request_items: requestItems },
+      {
+        part_request_items: requestItems,
+        work_orders: [{ id: uuid(70_000), custom_id: "WO-70000" }],
+      },
       (table, from) => {
         if (table === "part_request_items") ranges.push(from);
       },
@@ -150,6 +160,74 @@ describe("shop assistant review hardening", () => {
       requestItemId: uuid(501),
       remainingQuantity: 2,
       workOrderId: uuid(70_000),
+      workOrderLabel: "WO #WO-70000",
+    });
+  });
+
+  it("lists a named technician's canonical assignments without requiring an active shift", async () => {
+    technicianLoadMock.mockClear();
+    technicianAssignmentsMock.mockResolvedValueOnce([
+      {
+        id: uuid(80_000),
+        customId: "EL000004",
+        status: "active",
+        concern: null,
+        description: null,
+        vehicleYear: 2021,
+        vehicleMake: "Ford",
+        vehicleModel: "F-150",
+        vehicleVin: null,
+        vehicleUnitNumber: null,
+        lineIds: [uuid(80_001)],
+        lines: [
+          {
+            id: uuid(80_001),
+            complaint: null,
+            description: "Replace front brake pads",
+            status: "in_progress",
+            cause: null,
+            correction: null,
+            holdReason: null,
+            priority: null,
+            createdAt: null,
+            updatedAt: null,
+          },
+        ],
+        lineComplaints: [],
+      },
+    ]);
+    const supabase = queryClient({
+      profiles: [
+        {
+          id: uuid(79_000),
+          user_id: uuid(79_001),
+          shop_id: uuid(90_000),
+          full_name: "Test Mechanic",
+          role: "mechanic",
+        },
+      ],
+    });
+
+    const result = await listTechnicianAssignmentsTool.execute(
+      { query: "test mechanic", limit: 20 },
+      {
+        actor: { shopId: uuid(90_000), supabase },
+        threadId: uuid(90_001),
+        idempotencyKey: "named-technician-assignments-test",
+      } as never,
+    );
+
+    expect(technicianLoadMock).not.toHaveBeenCalled();
+    expect(technicianAssignmentsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        shopId: uuid(90_000),
+        technicianIds: [uuid(79_000), uuid(79_001)],
+      }),
+    );
+    expect(result.technician.name).toBe("Test Mechanic");
+    expect(result.workOrders[0]).toMatchObject({
+      customId: "EL000004",
+      lines: [{ label: "Replace front brake pads" }],
     });
   });
 
