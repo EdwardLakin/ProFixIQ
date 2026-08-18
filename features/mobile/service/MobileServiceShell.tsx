@@ -51,7 +51,6 @@ type PendingCloseout = {
 function pendingCloseoutKey(userId: string, shopId: string): string {
   return `${PENDING_CLOSEOUT_CACHE_KEY}:${userId}:${shopId}`;
 }
-
 type VisitAction = {
   label: string;
   icon: typeof Navigation;
@@ -837,7 +836,7 @@ export default function MobileServiceShell({
   );
 
   return (
-    <main
+    <div
       className={`${
         embedded
           ? "w-full space-y-4 text-[color:var(--theme-text-primary)]"
@@ -995,6 +994,6 @@ export default function MobileServiceShell({
           </div>
         </section>
       )}
-    </main>
+    </div>
   );
 }

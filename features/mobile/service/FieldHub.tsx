@@ -109,7 +109,7 @@ const FIELD_DASHBOARD_CARDS: FieldDashboardCard[] = [
     id: "jobs_in_progress",
     title: "Jobs in progress",
     description: "Return to active repairs and service calls.",
-    href: "/mobile/work-orders?status=in_progress",
+    href: "/mobile/service/jobs",
     icon: Wrench,
   },
   {
@@ -164,7 +164,6 @@ const FIELD_DASHBOARD_CARDS: FieldDashboardCard[] = [
 function serializeLayout(layout: FieldDashboardLayoutItem[]): string {
   return JSON.stringify(layout);
 }
-
 function readCachedLayout(
   cacheKey: string,
   scope: OfflineMutationScope,

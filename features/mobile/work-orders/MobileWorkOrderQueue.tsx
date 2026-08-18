@@ -121,7 +121,6 @@ function statusKey(raw: string | null | undefined): StatusKey {
     .replaceAll(" ", "_") as StatusKey;
   return key in STATUS_LABEL ? key : "awaiting";
 }
-
 function cleanText(value: string | null | undefined): string {
   return String(value ?? "")
     .trim()
@@ -168,9 +167,13 @@ function primarySignal(signal: WorkOrderSignal): string | null {
 export default function MobileWorkOrderQueue({
   initialStatus = "",
   readyToInvoiceCloseout = false,
+  embedded = false,
+  lockStatus = false,
 }: {
   initialStatus?: string;
   readyToInvoiceCloseout?: boolean;
+  embedded?: boolean;
+  lockStatus?: boolean;
 }) {
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const [rows, setRows] = useState<Row[]>([]);
@@ -390,7 +393,8 @@ export default function MobileWorkOrderQueue({
   );
 
   return (
-    <main className="mobile-work-order-queue">
+    <div className="mobile-work-order-queue">
+      {!embedded ? (
       <section className="mobile-dashboard-hero">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
@@ -449,8 +453,10 @@ export default function MobileWorkOrderQueue({
           </div>
         ) : null}
       </section>
+      ) : null}
 
       <section className="mt-3 overflow-hidden rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] shadow-[var(--mobile-shadow)]">
+        {!lockStatus ? (
         <div className="flex items-center gap-2 overflow-x-auto px-3 py-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <Filter
             aria-hidden
@@ -474,6 +480,7 @@ export default function MobileWorkOrderQueue({
             );
           })}
         </div>
+        ) : null}
         <div className="flex items-center justify-between border-t border-[color:var(--theme-border-soft)] px-4 py-2.5 text-xs text-[color:var(--theme-text-secondary)]">
           <span>
             {filteredRows.length} work order
@@ -592,6 +599,6 @@ export default function MobileWorkOrderQueue({
           })
         )}
       </section>
-    </main>
+    </div>
   );
 }
