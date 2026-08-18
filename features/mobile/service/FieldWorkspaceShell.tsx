@@ -12,7 +12,6 @@ import {
   PackagePlus,
   Plus,
   Settings2,
-  Truck,
   Wrench,
   X,
   type LucideIcon,
@@ -66,6 +65,11 @@ const WORK_NAV: FieldNavItem[] = [
 
 const OPERATIONS_NAV: FieldNavItem[] = [
   {
+    label: "Truck inventory",
+    href: "/mobile/service/truck-inventory",
+    icon: PackageOpen,
+  },
+  {
     label: "Parts",
     href: "/mobile/parts",
     icon: Boxes,
@@ -77,12 +81,6 @@ const OPERATIONS_NAV: FieldNavItem[] = [
     href: "/mobile/service/purchase-orders",
     icon: PackagePlus,
     requiredCapability: "canManageParts",
-  },
-  {
-    label: "Fleet",
-    href: "/mobile/fleet",
-    icon: Truck,
-    requiredCapability: "canAccessFleet",
   },
   {
     label: "Follow-ups",
@@ -291,9 +289,15 @@ export default function FieldWorkspaceShell({ children }: { children: ReactNode 
               <span>Field setup</span>
             </Link>
           ) : null}
-          <Link href="/mobile" onClick={exitField} className="field-workspace-exit">
-            Switch workspace
-          </Link>
+          {workspaceCapabilities.canSwitchWorkspace ? (
+            <Link
+              href="/sign-in"
+              onClick={exitField}
+              className="field-workspace-exit"
+            >
+              Switch workspace
+            </Link>
+          ) : null}
           <button
             type="button"
             onClick={() => void signOut()}
@@ -448,9 +452,11 @@ export default function FieldWorkspaceShell({ children }: { children: ReactNode 
           </div>
         </div>
         <div className="field-workspace-drawer__footer">
-          <Link href="/mobile" onClick={exitField}>
-            Switch workspace
-          </Link>
+          {workspaceCapabilities.canSwitchWorkspace ? (
+            <Link href="/sign-in" onClick={exitField}>
+              Switch workspace
+            </Link>
+          ) : null}
           <button type="button" onClick={() => void signOut()} disabled={signingOut}>
             <LogOut aria-hidden className="h-4 w-4" />
             {signingOut ? "Signing out…" : "Sign out"}

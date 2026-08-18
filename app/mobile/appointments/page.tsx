@@ -472,7 +472,10 @@ export default function MobileAppointmentsPage() {
         </section>
 
         {/* Create / edit form */}
-        <section className="space-y-2 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 shadow-card backdrop-blur-md">
+        <section
+          id="new-appointment"
+          className="scroll-mt-24 space-y-2 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 shadow-card backdrop-blur-md"
+        >
           {!online ? (
             <p className="text-xs text-[color:var(--theme-text-secondary)]">
               Appointment creation and changes require a connection. Saved

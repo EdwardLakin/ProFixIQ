@@ -1,15 +1,17 @@
 export type FieldWorkspaceCapabilities = {
   canManageScheduling: boolean;
   canManageParts: boolean;
-  canAccessFleet: boolean;
+  canManageOperations: boolean;
   canConfigureFieldService: boolean;
+  canSwitchWorkspace: boolean;
 };
 
 export const EMPTY_FIELD_WORKSPACE_CAPABILITIES: FieldWorkspaceCapabilities = {
   canManageScheduling: false,
   canManageParts: false,
-  canAccessFleet: false,
+  canManageOperations: false,
   canConfigureFieldService: false,
+  canSwitchWorkspace: false,
 };
 
 export function normalizeFieldWorkspaceCapabilities(
@@ -23,8 +25,9 @@ export function normalizeFieldWorkspaceCapabilities(
   return {
     canManageScheduling: capabilities?.canManageScheduling === true,
     canManageParts: capabilities?.canManageParts === true,
-    canAccessFleet: capabilities?.canAccessFleet === true,
+    canManageOperations: capabilities?.canManageOperations === true,
     canConfigureFieldService: capabilities?.canConfigureFieldService === true,
+    canSwitchWorkspace: capabilities?.canSwitchWorkspace === true,
   };
 }
 

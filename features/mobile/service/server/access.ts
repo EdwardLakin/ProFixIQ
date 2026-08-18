@@ -2,10 +2,7 @@ import "server-only";
 
 import { NextResponse } from "next/server";
 
-import {
-  resolveFleetActorContext,
-  resolveFleetActorScope,
-} from "@/features/fleet/lib/resolveFleetActorContext";
+import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
 import type { FieldWorkspaceCapabilities } from "@/features/mobile/service/fieldWorkspaceCapabilities";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
@@ -28,15 +25,16 @@ export type MobileFieldServiceWorkspaceAccess = MobileFieldServiceAccess & {
 
 export function resolveFieldWorkspaceCapabilities(input: {
   role: string | null | undefined;
-  canAccessFleet: boolean;
   canConfigureFieldService: boolean;
+  canSwitchWorkspace: boolean;
 }): FieldWorkspaceCapabilities {
   const actor = getActorCapabilities({ role: input.role });
   return {
     canManageScheduling: actor.canManageScheduling,
     canManageParts: actor.canManageParts,
-    canAccessFleet: input.canAccessFleet,
+    canManageOperations: actor.canManageWorkOrders,
     canConfigureFieldService: input.canConfigureFieldService,
+    canSwitchWorkspace: input.canSwitchWorkspace,
   };
 }
 
@@ -103,28 +101,37 @@ export async function getMobileFieldServiceWorkspaceAccess(
   access: ShopAccess,
 ): Promise<MobileFieldServiceWorkspaceAccess> {
   const fieldAccess = await getMobileFieldServiceAccess(access);
+  let canAccessShop = false;
   let canAccessFleet = false;
 
   if (fieldAccess.canAccessFieldService) {
-    try {
-      const fleetActor = await resolveFleetActorContext(access.supabase, {
-        userId: access.authUserId,
-      });
-      const fleetScope = resolveFleetActorScope(fleetActor, {
-        preferMembershipFleet: !fleetActor.isInternal,
-      });
-      canAccessFleet = fleetScope?.shopId === access.profile.shop_id;
-    } catch {
-      // Fleet navigation is optional; its own route remains authoritative.
-    }
+    const [shopEntitlement, fleetWorkspaceAccess] = await Promise.all([
+      access.supabase.rpc("profixiq_shop_has_product_access", {
+        p_capability: "shop",
+        p_shop_id: access.profile.shop_id,
+      }),
+      (async () => {
+        try {
+          const fleetActor = await resolveFleetActorContext(access.supabase, {
+            userId: access.authUserId,
+          });
+          return fleetActor.capabilities.canAccessFleetIntake;
+        } catch {
+          // Another workspace is optional; its own route remains authoritative.
+          return false;
+        }
+      })(),
+    ]);
+    canAccessShop = !shopEntitlement.error && shopEntitlement.data === true;
+    canAccessFleet = fleetWorkspaceAccess;
   }
 
   return {
     ...fieldAccess,
     workspaceCapabilities: resolveFieldWorkspaceCapabilities({
       role: access.profile.role,
-      canAccessFleet,
       canConfigureFieldService: fieldAccess.canConfigure,
+      canSwitchWorkspace: canAccessShop || canAccessFleet,
     }),
   };
 }

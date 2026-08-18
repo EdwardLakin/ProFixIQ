@@ -11,6 +11,7 @@ const read = (path: string) => readFileSync(path, "utf8");
 const mobileShell = read("components/layout/MobileShell.tsx");
 const fieldShell = read("features/mobile/service/FieldWorkspaceShell.tsx");
 const fieldHub = read("features/mobile/service/FieldHub.tsx");
+const fieldAccess = read("features/mobile/service/server/access.ts");
 const workOrderPage = read("app/mobile/work-orders/page.tsx");
 const workOrderQueue = read(
   "features/mobile/work-orders/MobileWorkOrderQueue.tsx",
@@ -32,7 +33,6 @@ describe("Field Hub workspace", () => {
       "/mobile/inspections",
       "/mobile/parts",
       "/mobile/service/purchase-orders",
-      "/mobile/fleet",
       "/mobile/service/followups",
     ]) {
       expect(`${fieldShell}\n${fieldHub}`).toContain(href);
@@ -46,8 +46,9 @@ describe("Field Hub workspace", () => {
     const mechanicCapabilities = normalizeFieldWorkspaceCapabilities({
       canManageScheduling: false,
       canManageParts: false,
-      canAccessFleet: false,
+      canManageOperations: false,
       canConfigureFieldService: false,
+      canSwitchWorkspace: false,
     });
 
     expect(
@@ -60,11 +61,43 @@ describe("Field Hub workspace", () => {
       canUseFieldWorkspaceCapability(mechanicCapabilities, "canManageParts"),
     ).toBe(false);
     expect(
-      canUseFieldWorkspaceCapability(mechanicCapabilities, "canAccessFleet"),
+      canUseFieldWorkspaceCapability(mechanicCapabilities, "canManageOperations"),
     ).toBe(false);
     expect(canUseFieldWorkspaceCapability(mechanicCapabilities)).toBe(true);
     expect(fieldShell).toContain("normalizeFieldWorkspaceCapabilities");
     expect(fieldHub).toContain("canUseFieldWorkspaceCapability");
+  });
+
+  it("keeps permanent Field actions on canonical workflows", () => {
+    for (const href of [
+      "/mobile/appointments#new-appointment",
+      "/mobile/service/new",
+      "/mobile/work-orders/create",
+      "/mobile/service/truck-inventory",
+      "/mobile/inspections",
+      "/mobile/work-orders?status=ready_to_invoice&mode=field_closeout",
+    ]) {
+      expect(fieldHub).toContain(`href: "${href}"`);
+    }
+
+    expect(fieldHub).toContain("FIELD_DASHBOARD_LAYOUT_SCOPE");
+    expect(fieldHub).toContain("moveFieldDashboardCard");
+    expect(fieldHub).toContain("setFieldDashboardCardVisibility");
+    expect(fieldHub).toContain('title: "Scan or create part"');
+    expect(fieldShell).toContain('label: "Truck inventory"');
+  });
+
+  it("does not leak Fleet navigation and hides workspace switching unless another product is verified", () => {
+    expect(fieldHub).not.toContain('href: "/mobile/fleet"');
+    expect(fieldShell).not.toContain('href: "/mobile/fleet"');
+    expect(fieldShell).toContain(
+      "workspaceCapabilities.canSwitchWorkspace ?",
+    );
+    expect(fieldShell).toContain('href="/sign-in"');
+    expect(fieldAccess).toContain(
+      "fleetActor.capabilities.canAccessFleetIntake",
+    );
+    expect(fieldAccess).not.toContain("resolveFleetActorScope");
   });
 
   it("exposes the field-safe purchase-order surface only to parts-capable operators", () => {
