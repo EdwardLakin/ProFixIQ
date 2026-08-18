@@ -47,3 +47,155 @@ grant select on table public.shop_reviews_public to anon, authenticated;
 -- projection behavior but remove every DML privilege and expose SELECT only.
 revoke all on table public.shop_public_profiles from public, anon, authenticated;
 grant select on table public.shop_public_profiles to anon, authenticated;
+
+-- Fail the migration during clean replay if a future baseline/default grant
+-- causes any of these boundaries to regress.
+do $$
+declare
+  v_relation text;
+  v_reloptions text[];
+begin
+  foreach v_relation in array array[
+    'ai_training_events_v',
+    'stock_balances',
+    'v_shift_rollups',
+    'v_vehicle_service_history',
+    'v_parts_reconciliation',
+    'v_global_saved_menu_items',
+    'v_video_performance_summary',
+    'v_top_content_types_by_shop'
+  ]
+  loop
+    select c.reloptions
+      into v_reloptions
+    from pg_catalog.pg_class c
+    join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public'
+      and c.relname = v_relation;
+
+    if not (
+      coalesce(v_reloptions, '{}'::text[])
+      @> array['security_invoker=true']
+    ) then
+      raise exception
+        'security hardening failed: public.% is not security-invoker',
+        v_relation;
+    end if;
+
+    if has_table_privilege('anon', 'public.' || v_relation, 'SELECT')
+       or has_table_privilege('anon', 'public.' || v_relation, 'INSERT')
+       or has_table_privilege('anon', 'public.' || v_relation, 'UPDATE')
+       or has_table_privilege('anon', 'public.' || v_relation, 'DELETE') then
+      raise exception
+        'security hardening failed: anon retains access to public.%',
+        v_relation;
+    end if;
+
+    if not has_table_privilege(
+      'authenticated',
+      'public.' || v_relation,
+      'SELECT'
+    )
+       or has_table_privilege(
+         'authenticated',
+         'public.' || v_relation,
+         'INSERT'
+       )
+       or has_table_privilege(
+         'authenticated',
+         'public.' || v_relation,
+         'UPDATE'
+       )
+       or has_table_privilege(
+         'authenticated',
+         'public.' || v_relation,
+         'DELETE'
+       ) then
+      raise exception
+        'security hardening failed: authenticated privilege contract changed for public.%',
+        v_relation;
+    end if;
+
+    if not has_table_privilege(
+      'service_role',
+      'public.' || v_relation,
+      'SELECT'
+    ) then
+      raise exception
+        'security hardening failed: service_role lost SELECT on public.%',
+        v_relation;
+    end if;
+  end loop;
+
+  select c.reloptions
+    into v_reloptions
+  from pg_catalog.pg_class c
+  join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'public'
+    and c.relname = 'shop_reviews_public';
+
+  if not (
+    coalesce(v_reloptions, '{}'::text[])
+    @> array['security_invoker=true']
+  ) then
+    raise exception
+      'security hardening failed: shop_reviews_public is not security-invoker';
+  end if;
+
+  if not has_table_privilege('anon', 'public.shop_reviews_public', 'SELECT')
+     or has_table_privilege('anon', 'public.shop_reviews_public', 'INSERT')
+     or has_table_privilege('anon', 'public.shop_reviews_public', 'UPDATE')
+     or has_table_privilege('anon', 'public.shop_reviews_public', 'DELETE')
+     or not has_table_privilege(
+       'authenticated',
+       'public.shop_reviews_public',
+       'SELECT'
+     )
+     or has_table_privilege(
+       'authenticated',
+       'public.shop_reviews_public',
+       'INSERT'
+     )
+     or has_table_privilege(
+       'authenticated',
+       'public.shop_reviews_public',
+       'UPDATE'
+     )
+     or has_table_privilege(
+       'authenticated',
+       'public.shop_reviews_public',
+       'DELETE'
+     ) then
+    raise exception
+      'security hardening failed: shop_reviews_public privilege contract changed';
+  end if;
+
+  if not has_table_privilege('anon', 'public.shop_public_profiles', 'SELECT')
+     or has_table_privilege('anon', 'public.shop_public_profiles', 'INSERT')
+     or has_table_privilege('anon', 'public.shop_public_profiles', 'UPDATE')
+     or has_table_privilege('anon', 'public.shop_public_profiles', 'DELETE')
+     or not has_table_privilege(
+       'authenticated',
+       'public.shop_public_profiles',
+       'SELECT'
+     )
+     or has_table_privilege(
+       'authenticated',
+       'public.shop_public_profiles',
+       'INSERT'
+     )
+     or has_table_privilege(
+       'authenticated',
+       'public.shop_public_profiles',
+       'UPDATE'
+     )
+     or has_table_privilege(
+       'authenticated',
+       'public.shop_public_profiles',
+       'DELETE'
+     ) then
+    raise exception
+      'security hardening failed: shop_public_profiles privilege contract changed';
+  end if;
+end
+$$;
