@@ -30,15 +30,20 @@ grant execute on function public.close_work_order_correction_session(
   uuid, uuid, uuid, uuid, jsonb
 ) to service_role;
 
--- Authenticated staff workflows. Anonymous callers must not be able to supply
--- an owner/manager/profile UUID and invoke these SECURITY DEFINER mutations.
+-- Punch correction is also a server-side command. The function validates the
+-- supplied actor profile's role, but does not bind that supplied UUID to
+-- auth.uid(). The application route already calls it with the service-role
+-- client after canManageScheduling authorization, so direct Data API access by
+-- ordinary authenticated users is unnecessary and would permit actor spoofing.
 revoke execute on function public.apply_punch_correction(
   uuid, uuid, uuid, timestamptz, text
-) from public, anon;
+) from public, anon, authenticated;
 grant execute on function public.apply_punch_correction(
   uuid, uuid, uuid, timestamptz, text
-) to authenticated, service_role;
+) to service_role;
 
+-- Authenticated staff workflows below bind their actor identity in the
+-- function body and may remain callable by authenticated sessions.
 revoke execute on function public.replace_staff_schedule_template(
   uuid, uuid, uuid, jsonb
 ) from public, anon;
@@ -130,12 +135,20 @@ begin
        'public.apply_punch_correction(uuid,uuid,uuid,timestamptz,text)',
        'EXECUTE'
      )
-     or not has_function_privilege(
+     or has_function_privilege(
        'authenticated',
        'public.apply_punch_correction(uuid,uuid,uuid,timestamptz,text)',
        'EXECUTE'
      )
-     or has_function_privilege(
+     or not has_function_privilege(
+       'service_role',
+       'public.apply_punch_correction(uuid,uuid,uuid,timestamptz,text)',
+       'EXECUTE'
+     ) then
+    raise exception 'RPC hardening failed: punch correction ACL is unsafe';
+  end if;
+
+  if has_function_privilege(
        'anon',
        'public.replace_staff_schedule_template(uuid,uuid,uuid,jsonb)',
        'EXECUTE'
