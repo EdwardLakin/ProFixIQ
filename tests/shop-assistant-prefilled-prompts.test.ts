@@ -14,6 +14,7 @@ const availableToolNames = new Set([
   "list_parts_blockers",
   "read_daily_activity",
   "recommend_work_assignments",
+  "list_technician_assignments",
   "list_technician_load",
   "find_customers",
 ]);
@@ -62,6 +63,19 @@ describe("shop assistant prefilled prompts", () => {
       startsAt: clock.todayStart,
       endsAt: clock.todayEnd,
     });
+  });
+
+  it("routes named technician assignment questions independently of shift load", () => {
+    const result = plan("What is Test Mechanic assigned to?");
+    expect(result.kind).toBe("tools");
+    if (result.kind !== "tools") return;
+    expect(result.calls).toEqual([
+      {
+        name: "list_technician_assignments",
+        input: { query: "Test Mechanic", limit: 20 },
+        mode: "read",
+      },
+    ]);
   });
 
   it("keeps customer lookup deterministic when the model is unavailable", () => {

@@ -2,6 +2,7 @@ import "server-only";
 
 import { z } from "zod";
 
+import { listTechnicianWorkCandidates } from "@/features/copilot/technician/server/assignedWork";
 import { canonicalizeRole } from "@/features/shared/lib/rbac";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { getTechnicianLoadMetricsWithClient } from "@/features/shared/lib/stats/getTechnicianLoadMetricsCore";
@@ -17,6 +18,21 @@ const TechnicianLoadSchema = z.object({
   completedJobsToday: z.number().int().nonnegative(),
   utilizationPct: z.number(),
   shiftSecondsToday: z.number().nonnegative(),
+});
+
+const TechnicianAssignmentLineSchema = z.object({
+  lineId: z.string().uuid(),
+  label: z.string(),
+  status: z.string(),
+});
+
+const TechnicianAssignmentWorkOrderSchema = z.object({
+  workOrderId: z.string().uuid(),
+  customId: z.string().nullable(),
+  status: z.string().nullable(),
+  vehicle: z.string().nullable(),
+  lines: z.array(TechnicianAssignmentLineSchema),
+  href: z.string(),
 });
 
 const AssignmentResultSchema = z.object({
@@ -66,6 +82,13 @@ type AssignmentLineRow = {
   job_priority: string | null;
 };
 
+type TechnicianProfileRow = {
+  id: string;
+  user_id: string | null;
+  full_name: string | null;
+  role: string | null;
+};
+
 function isAssignableTechnicianRole(role: string | null | undefined): boolean {
   const canonical = canonicalizeRole(role);
   return (
@@ -93,6 +116,32 @@ function normalizedStatus(value: unknown): string {
     .trim()
     .toLowerCase()
     .replaceAll(" ", "_");
+}
+
+function normalizedTechnicianName(value: unknown): string {
+  return String(value ?? "")
+    .trim()
+    .toLocaleLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+function technicianVehicleLabel(candidate: {
+  vehicleYear: number | null;
+  vehicleMake: string | null;
+  vehicleModel: string | null;
+  vehicleUnitNumber: string | null;
+}): string | null {
+  const description = [
+    candidate.vehicleYear,
+    candidate.vehicleMake,
+    candidate.vehicleModel,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  return (
+    [candidate.vehicleUnitNumber, description].filter(Boolean).join(" • ") ||
+    null
+  );
 }
 
 export const listTechnicianLoadTool = defineShopAssistantTool({
@@ -136,6 +185,114 @@ export const listTechnicianLoadTool = defineShopAssistantTool({
       shopUtilizationPct: load.summary.shopUtilizationPct,
       summary: `${technicians.length} technician(s) are included in the current load view.`,
       href: "/dashboard",
+    };
+  },
+});
+
+export const listTechnicianAssignmentsTool = defineShopAssistantTool({
+  name: "list_technician_assignments",
+  domain: "workforce",
+  description:
+    "Resolve a same-shop technician by name and list their canonically assigned active job lines, including off-shift technicians.",
+  mode: "read",
+  risk: "low",
+  requiredAnyCapabilities: ["canAssignWork", "canManageWorkforce"],
+  confirmation: "never",
+  inputSchema: z.object({
+    query: z.string().trim().min(1).max(120),
+    limit: z.number().int().min(1).max(30).default(20),
+  }),
+  outputSchema: z.object({
+    ok: z.literal(true),
+    technician: z.object({
+      technicianId: z.string().uuid(),
+      name: z.string(),
+      role: z.string().nullable(),
+    }),
+    workOrders: z.array(TechnicianAssignmentWorkOrderSchema),
+    summary: z.string(),
+    href: z.string(),
+  }),
+  async execute(input, context) {
+    const profiles: TechnicianProfileRow[] = [];
+    const pageSize = 500;
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await context.actor.supabase
+        .from("profiles")
+        .select("id, user_id, full_name, role")
+        .eq("shop_id", context.actor.shopId)
+        .order("full_name", { ascending: true, nullsFirst: false })
+        .order("id", { ascending: true })
+        .range(from, from + pageSize - 1);
+      if (error) throw new Error(error.message);
+      const page = (data ?? []) as TechnicianProfileRow[];
+      profiles.push(...page);
+      if (page.length < pageSize) break;
+    }
+
+    const query = normalizedTechnicianName(input.query);
+    const eligible = profiles.filter(
+      (profile) =>
+        isAssignableTechnicianRole(profile.role) &&
+        Boolean(profile.full_name?.trim()),
+    );
+    const exactMatches = eligible.filter(
+      (profile) => normalizedTechnicianName(profile.full_name) === query,
+    );
+    const matches =
+      exactMatches.length > 0
+        ? exactMatches
+        : eligible.filter((profile) =>
+            normalizedTechnicianName(profile.full_name).includes(query),
+          );
+
+    if (matches.length === 0) {
+      throw new ShopAssistantHttpError(
+        404,
+        `No technician named "${input.query}" was found in this shop.`,
+      );
+    }
+    if (matches.length > 1) {
+      throw new ShopAssistantHttpError(
+        409,
+        `More than one technician matched "${input.query}". Use the technician's full name.`,
+      );
+    }
+
+    const technician = matches[0];
+    const assignments = await listTechnicianWorkCandidates({
+      supabase: context.actor.supabase,
+      shopId: context.actor.shopId,
+      technicianIds: [technician.id, technician.user_id ?? ""],
+    });
+    const workOrders = assignments.slice(0, input.limit).map((candidate) => ({
+      workOrderId: candidate.id,
+      customId: candidate.customId,
+      status: candidate.status,
+      vehicle: technicianVehicleLabel(candidate),
+      lines: candidate.lines.map((line) => ({
+        lineId: line.id,
+        label: line.description ?? line.complaint ?? "Job line",
+        status: line.status,
+      })),
+      href: `/work-orders/${candidate.id}`,
+    }));
+    const lineCount = workOrders.reduce(
+      (total, workOrder) => total + workOrder.lines.length,
+      0,
+    );
+    const technicianName = technician.full_name?.trim() || input.query;
+
+    return {
+      ok: true as const,
+      technician: {
+        technicianId: technician.id,
+        name: technicianName,
+        role: technician.role,
+      },
+      workOrders,
+      summary: `${technicianName} has ${lineCount} active job line(s) across ${workOrders.length} assigned work order(s).`,
+      href: "/work-orders",
     };
   },
 });

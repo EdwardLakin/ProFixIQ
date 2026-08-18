@@ -115,6 +115,26 @@ function customerSearchQuery(question: string): string | null {
   return trailing?.replace(/[?.!]+$/, "").trim() || null;
 }
 
+function technicianAssignmentQuery(question: string): string | null {
+  const patterns = [
+    /\bwhat(?:['’]s|\s+is)\s+(.{2,120}?)\s+(?:assigned\s+to|working\s+on)\b/i,
+    /\b(?:show|list)\s+(?:the\s+)?assignments?\s+(?:for|of)\s+(.{2,120})[?.!]*$/i,
+    /\b(?:show|list)\s+(.{2,120}?)['’]s\s+assignments?\b/i,
+  ];
+  for (const pattern of patterns) {
+    const match = question.match(pattern)?.[1]
+      ?.replace(/[?.!]+$/, "")
+      .trim();
+    if (
+      match &&
+      !/^(?:he|she|they|them|that|the technician|the tech)$/i.test(match)
+    ) {
+      return match;
+    }
+  }
+  return null;
+}
+
 function callsPlan(
   calls: Array<{ name: string; input?: Record<string, unknown> }>,
   rationale: string,
@@ -207,6 +227,24 @@ export function selectDeterministicShopAssistantPlan(params: {
     return callsPlan(
       [{ name: "list_my_assigned_work", input: { limit: 20 } }],
       "Read only the signed-in mechanic's assigned active work.",
+    );
+  }
+
+  const namedTechnician = technicianAssignmentQuery(question);
+  if (namedTechnician) {
+    return (
+      permitted(
+        [
+          {
+            name: "list_technician_assignments",
+            input: { query: namedTechnician, limit: 20 },
+          },
+        ],
+        "Resolve the named same-shop technician and read assigned active work regardless of shift state.",
+      ) ?? {
+        kind: "clarification",
+        message: "Your role cannot view shop-wide technician assignments.",
+      }
     );
   }
 

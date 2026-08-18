@@ -93,6 +93,26 @@ export function formatShopAssistantToolOutput(
         ? `${name}: ${active} active job(s), ${utilization}% utilization.`
         : null;
     });
+  } else if (toolName === "list_technician_assignments") {
+    bullets = formatListRows(record.workOrders, (item) => {
+      const customId = stringValue(item.customId);
+      const status = stringValue(item.status);
+      const vehicle = stringValue(item.vehicle);
+      const lineLabels = Array.isArray(item.lines)
+        ? item.lines
+            .map((line) => stringValue(asRecord(line).label))
+            .filter((label): label is string => Boolean(label))
+            .slice(0, 3)
+        : [];
+      return [
+        customId ? `WO #${customId}` : "Assigned work order",
+        status,
+        vehicle,
+        lineLabels.length ? lineLabels.join("; ") : null,
+      ]
+        .filter(Boolean)
+        .join(" - ");
+    });
   } else if (toolName === "list_my_assigned_work") {
     bullets = formatListRows(record.workOrders, (item) => {
       const customId = stringValue(item.customId);

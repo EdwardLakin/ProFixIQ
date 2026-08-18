@@ -62,7 +62,11 @@ type PartRequestItemRow = {
   qty_approved: number | null;
   qty_received: number | null;
   work_order_id: string | null;
-  work_orders: { custom_id: string | null; shop_id: string | null } | null;
+};
+
+type PartBlockerWorkOrderRow = {
+  id: string;
+  custom_id: string | null;
 };
 
 const PartRequestCreateResultSchema = z.object({
@@ -346,9 +350,7 @@ export const listPartsBlockersTool = defineShopAssistantTool({
     for (let from = 0; blockers.length < input.limit; from += pageSize) {
       let query = context.actor.supabase
         .from("part_request_items")
-        .select(
-          "id, description, qty_approved, qty_received, work_order_id, work_orders(custom_id, shop_id)",
-        )
+        .select("id, description, qty_approved, qty_received, work_order_id")
         .eq("shop_id", context.actor.shopId)
         .order("updated_at", { ascending: false })
         .order("id", { ascending: true })
@@ -373,7 +375,6 @@ export const listPartsBlockersTool = defineShopAssistantTool({
         );
         if (remainingQuantity <= 0) continue;
 
-        const customId = row.work_orders?.custom_id?.trim() || null;
         const workOrderId = row.work_order_id?.trim() || null;
         blockers.push({
           requestItemId,
@@ -382,8 +383,8 @@ export const listPartsBlockersTool = defineShopAssistantTool({
           receivedQuantity,
           remainingQuantity,
           workOrderId,
-          workOrderLabel: customId ? `WO #${customId}` : null,
-          href: workOrderId ? `/work-orders/${workOrderId}` : "/parts/requests",
+          workOrderLabel: null,
+          href: "/parts/requests",
         });
 
         if (blockers.length >= input.limit) break;
@@ -392,10 +393,50 @@ export const listPartsBlockersTool = defineShopAssistantTool({
       if (rows.length < pageSize) break;
     }
 
+    // part_request_items.work_order_id is intentionally not backed by a
+    // database foreign key in the current schema, so PostgREST cannot resolve
+    // a nested work_orders relationship. Resolve display labels explicitly and
+    // keep the lookup same-shop scoped.
+    const workOrdersById = new Map<string, PartBlockerWorkOrderRow>();
+    const workOrderIds = [
+      ...new Set(
+        blockers
+          .map((blocker) => blocker.workOrderId)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ];
+    for (let from = 0; from < workOrderIds.length; from += 100) {
+      const ids = workOrderIds.slice(from, from + 100);
+      const { data, error } = await context.actor.supabase
+        .from("work_orders")
+        .select("id, custom_id")
+        .eq("shop_id", context.actor.shopId)
+        .in("id", ids)
+        .range(0, ids.length - 1);
+      if (error) throw new Error(error.message);
+      for (const row of (data ?? []) as PartBlockerWorkOrderRow[]) {
+        workOrdersById.set(row.id, row);
+      }
+    }
+
+    const resolvedBlockers = blockers.map((blocker) => {
+      const workOrder = blocker.workOrderId
+        ? workOrdersById.get(blocker.workOrderId)
+        : undefined;
+      const workOrderId = workOrder?.id ?? null;
+      const customId = workOrder?.custom_id?.trim() || null;
+      return {
+        ...blocker,
+        workOrderId,
+        workOrderLabel: customId ? `WO #${customId}` : null,
+        href: workOrderId ? `/work-orders/${workOrderId}` : "/parts/requests",
+      };
+    });
+
     return {
       ok: true as const,
-      blockers,
-      summary: `${blockers.length} part request item(s) still have unreceived quantity.`,
+      blockers: resolvedBlockers,
+      summary: `${resolvedBlockers.length} part request item(s) still have unreceived quantity.`,
       href: "/parts/requests",
     };
   },
