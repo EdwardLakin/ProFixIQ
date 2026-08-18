@@ -108,6 +108,7 @@ function pageTitle(pathname: string): string {
     return "Purchase orders";
   }
   if (pathname.startsWith("/mobile/service/new")) return "New service call";
+  if (pathname.startsWith("/mobile/service/jobs")) return "Active field work";
   if (pathname.startsWith("/mobile/service/dispatch")) return "Dispatch";
   if (pathname.startsWith("/mobile/service/truck-inventory")) {
     return "Truck inventory";
@@ -370,8 +371,13 @@ export default function FieldWorkspaceShell({ children }: { children: ReactNode 
           <span>New</span>
         </Link>
         <Link
-          href="/mobile/work-orders"
-          data-active={pathname.startsWith("/mobile/work-orders") ? "true" : "false"}
+          href="/mobile/service/jobs"
+          data-active={
+            pathname.startsWith("/mobile/service/jobs") ||
+            pathname.startsWith("/mobile/work-orders")
+              ? "true"
+              : "false"
+          }
         >
           <BriefcaseBusiness aria-hidden className="h-5 w-5" />
           <span>Work</span>
