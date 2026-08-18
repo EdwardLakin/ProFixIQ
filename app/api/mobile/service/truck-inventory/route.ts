@@ -29,13 +29,14 @@ export async function GET(request: NextRequest) {
 
   const { data, error } = await fieldInventoryRpc(
     access.supabase,
-    "field_truck_inventory_snapshot",
+    "field_truck_inventory_snapshot_with_activity",
     {
       p_shop_id: access.profile.shop_id,
       p_actor_user_id: access.authUserId,
       p_service_visit_id: visitId,
       p_service_vehicle_id: serviceVehicleId,
       p_query: query,
+      p_activity_limit: 50,
     },
   );
   if (error)
@@ -44,35 +45,10 @@ export async function GET(request: NextRequest) {
   const snapshot =
     data && typeof data === "object" && !Array.isArray(data)
       ? (data as Record<string, unknown>)
-      : {};
-  const truck =
-    snapshot.truck && typeof snapshot.truck === "object"
-      ? (snapshot.truck as Record<string, unknown>)
-      : null;
-  const resolvedTruckId = truck?.id;
-  let movements: unknown[] = [];
-  if (isUuid(resolvedTruckId)) {
-    const activity = await fieldInventoryRpc(
-      access.supabase,
-      "field_truck_inventory_activity",
-      {
-        p_shop_id: access.profile.shop_id,
-        p_actor_user_id: access.authUserId,
-        p_service_vehicle_id: resolvedTruckId,
-        p_limit: 50,
-      },
-    );
-    if (activity.error) {
-      return fieldInventoryErrorResponse(
-        activity.error,
-        "field-truck-inventory/activity",
-      );
-    }
-    movements = Array.isArray(activity.data) ? activity.data : [];
-  }
+      : { movements: [] };
 
   return NextResponse.json(
-    { ...snapshot, movements },
+    snapshot,
     {
       headers: { "Cache-Control": "private, no-store" },
     },

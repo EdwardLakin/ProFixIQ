@@ -352,7 +352,7 @@ begin
     'field_runtime_seed',
     v_po_line_id
   );
-  v_transfer := public.field_transfer_stock_to_truck_atomic(
+  v_transfer := public.field_transfer_stock_to_truck_authorized_atomic(
     v_shop_id,
     v_truck_id,
     v_source_location_id,
@@ -366,7 +366,7 @@ begin
        <> v_truck_before_transfer + 1 then
     raise exception 'Field truck runtime failed: paired transfer quantities are wrong';
   end if;
-  v_transfer_replay := public.field_transfer_stock_to_truck_atomic(
+  v_transfer_replay := public.field_transfer_stock_to_truck_authorized_atomic(
     v_shop_id,
     v_truck_id,
     v_source_location_id,
@@ -553,12 +553,13 @@ begin
     raise exception 'Field truck runtime failed: return replay changed inventory twice';
   end if;
 
-  v_snapshot := public.field_truck_inventory_snapshot(
+  v_snapshot := public.field_truck_inventory_snapshot_with_activity(
     v_shop_id,
     v_actor_id,
     v_visit_id,
     v_truck_id,
-    'FT-SEAL-100'
+    'FT-SEAL-100',
+    50
   );
   if v_snapshot -> 'truck' ->> 'id' is distinct from v_truck_id::text
      or jsonb_array_length(coalesce(v_snapshot -> 'items', '[]'::jsonb)) < 1
@@ -566,12 +567,7 @@ begin
     raise exception 'Field truck runtime failed: assigned truck snapshot is incomplete';
   end if;
 
-  v_activity := public.field_truck_inventory_activity(
-    v_shop_id,
-    v_actor_id,
-    v_truck_id,
-    50
-  );
+  v_activity := coalesce(v_snapshot -> 'movements', '[]'::jsonb);
   if jsonb_array_length(v_activity) < 4
      or not exists (
        select 1
@@ -584,6 +580,97 @@ begin
        where movement ->> 'reason' = 'consume'
      ) then
     raise exception 'Field truck runtime failed: canonical truck activity is incomplete';
+  end if;
+end;
+$$;
+
+reset role;
+
+-- Reservation ledger entries have zero physical quantity change. Seed both
+-- directions as the database owner, then verify the authenticated Field RPC
+-- projects lifecycle_quantity without exposing a separate read window.
+insert into public.stock_moves (
+  shop_id,
+  part_id,
+  location_id,
+  qty_change,
+  reason,
+  reference_kind,
+  reference_id,
+  created_by,
+  idempotency_key,
+  lifecycle_quantity,
+  metadata
+)
+select
+  '9f200000-0000-4000-8000-000000000001'::uuid,
+  line.part_id,
+  vehicle.stock_location_id,
+  0,
+  movement.reason::public.stock_move_reason,
+  'field_runtime_reservation',
+  line.part_id,
+  '9f100000-0000-4000-8000-000000000001'::uuid,
+  'field-runtime:reservation:' || movement.reason,
+  movement.quantity,
+  jsonb_build_object('operation', 'field_runtime_reservation')
+from public.purchase_order_lines line
+cross join lateral (
+  select truck.stock_location_id
+  from public.service_vehicles truck
+  where truck.shop_id = '9f200000-0000-4000-8000-000000000001'::uuid
+    and truck.active
+  order by truck.created_at desc, truck.id
+  limit 1
+) vehicle
+cross join (
+  values
+    ('wo_allocate'::text, 3::numeric),
+    ('wo_release'::text, 2::numeric)
+) movement(reason, quantity)
+where line.id = '9f500000-0000-4000-8000-000000000001'::uuid;
+
+select set_config('request.jwt.claim.role', 'authenticated', true);
+select set_config('request.jwt.claim.sub', '9f100000-0000-4000-8000-000000000001', true);
+set local role authenticated;
+
+do $$
+declare
+  v_snapshot jsonb;
+  v_truck_id uuid;
+  v_activity jsonb;
+begin
+  select vehicle.id into v_truck_id
+  from public.service_vehicles vehicle
+  where vehicle.shop_id = '9f200000-0000-4000-8000-000000000001'::uuid
+    and vehicle.active
+  order by vehicle.created_at desc, vehicle.id
+  limit 1;
+
+  v_snapshot := public.field_truck_inventory_snapshot_with_activity(
+    '9f200000-0000-4000-8000-000000000001'::uuid,
+    '9f100000-0000-4000-8000-000000000001'::uuid,
+    null,
+    v_truck_id,
+    null,
+    50
+  );
+  v_activity := coalesce(v_snapshot -> 'movements', '[]'::jsonb);
+
+  if not exists (
+    select 1
+    from jsonb_array_elements(v_activity) movement
+    where movement ->> 'reason' = 'wo_allocate'
+      and (movement ->> 'quantity')::numeric = 3
+      and movement ->> 'direction' = 'out'
+  ) or not exists (
+    select 1
+    from jsonb_array_elements(v_activity) movement
+    where movement ->> 'reason' = 'wo_release'
+      and (movement ->> 'quantity')::numeric = 2
+      and movement ->> 'direction' = 'in'
+  ) then
+    raise exception 'Field truck runtime failed: reservation movement quantity or direction is wrong';
   end if;
 end;
 $$;

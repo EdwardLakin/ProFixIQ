@@ -15,6 +15,7 @@ const migration = [
   "supabase/migrations/20260815050200_field_truck_receipt_review_hardening.sql",
   "supabase/migrations/20260818153429_field_truck_inventory_activity.sql",
   "supabase/migrations/20260818161654_field_truck_transfer_additive_authorization.sql",
+  "supabase/migrations/20260818184534_field_truck_inventory_consistent_activity.sql",
 ]
   .map(read)
   .join("\n");
@@ -24,6 +25,9 @@ const additiveHardening = [
 ]
   .map(read)
   .join("\n");
+const consistentActivity = read(
+  "supabase/migrations/20260818184534_field_truck_inventory_consistent_activity.sql",
+);
 const inventoryUi = [
   "features/mobile/service/MobileTruckInventory.tsx",
   "features/mobile/service/MobileTruckInventoryScreen.tsx",
@@ -128,7 +132,29 @@ describe("Field Service truck inventory", () => {
     expect(migration).toContain("stock_moves_shop_location_created_idx");
     expect(migration).toContain("move.shop_id = p_shop_id");
     expect(migration).toContain("move.location_id = v_truck.stock_location_id");
-    expect(snapshotApi).toContain("field_truck_inventory_activity");
+    expect(snapshotApi).toContain(
+      "field_truck_inventory_snapshot_with_activity",
+    );
+    expect(snapshotApi).not.toContain('"field_truck_inventory_activity"');
+    expect(snapshotApi.match(/fieldInventoryRpc\(/g)).toHaveLength(1);
+    expect(consistentActivity).toContain(
+      "alter function public.field_truck_inventory_snapshot(uuid,uuid,uuid,uuid,text)",
+    );
+    expect(consistentActivity).toContain(
+      "field_truck_inventory_snapshot_with_activity",
+    );
+    expect(consistentActivity).toContain(
+      "when move.reason in ('wo_allocate', 'wo_release')",
+    );
+    expect(consistentActivity).toContain(
+      "then abs(coalesce(move.lifecycle_quantity, 0))",
+    );
+    expect(consistentActivity).toContain(
+      "when move.reason = 'wo_allocate' then 'out'",
+    );
+    expect(consistentActivity).toContain(
+      "when move.reason = 'wo_release' then 'in'",
+    );
     expect(contracts).toContain("movements: FieldTruckInventoryMovement[]");
     expect(inventoryUi).toContain("Truck movement history");
   });
@@ -261,14 +287,14 @@ describe("Field Service truck inventory", () => {
   it("proves canonicalization, paired transfer, use, return, and exact replay on a clean database", () => {
     expect(runtime).toContain("field_receive_po_part_to_truck_atomic");
     expect(runtime).toContain("free-text PO line becomes a canonical part");
-    expect(runtime).toContain("field_transfer_stock_to_truck_atomic");
+    expect(runtime).toContain("field_transfer_stock_to_truck_authorized_atomic");
     expect(runtime).toContain("technician bypassed Parts permission");
     expect(runtime).toContain("field_use_truck_part_atomic");
     expect(runtime).toContain("repeated use decremented inventory twice");
     expect(runtime).toContain("field_return_truck_part_atomic");
     expect(runtime).toContain("return replay changed inventory twice");
-    expect(runtime).toContain("field_truck_inventory_snapshot");
-    expect(runtime).toContain("field_truck_inventory_activity");
+    expect(runtime).toContain("field_truck_inventory_snapshot_with_activity");
+    expect(runtime).toContain("reservation movement quantity or direction is wrong");
     expect(workflow).toContain("tests/field-truck-inventory-contract.test.ts");
     expect(workflow).toContain("tests/mobile/field-truck-inventory.runtime.sql");
     expect(workflow).toContain("Field truck inventory runtime");
