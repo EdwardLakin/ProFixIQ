@@ -45,11 +45,14 @@ describe("phase 3 atomic parts routes", () => {
     expect(helper).not.toContain("|| fallback");
   });
 
-  it("uses one line disposition command", () => {
+  it("uses one line disposition command behind the authorized server client", () => {
     const route = source(
       "app/api/work-orders/lines/[id]/delete-or-void/route.ts",
     );
     expect(route).toContain("parts_void_work_order_line_atomic");
+    expect(route).toContain("requiredCapability: \"canManageWorkOrders\"");
+    expect(route).toContain("createAdminSupabase()");
+    expect(route).not.toContain("const rpc = access.supabase");
     expect(route).not.toContain("apply_stock_move");
     expect(route).not.toContain('from("work_order_part_allocations")');
   });

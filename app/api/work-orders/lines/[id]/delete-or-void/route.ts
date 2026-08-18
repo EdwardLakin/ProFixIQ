@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 type RpcError = { message: string; details?: string | null; hint?: string | null };
 type RpcClient = {
@@ -71,7 +72,7 @@ export async function POST(
     );
   }
 
-  const rpc = access.supabase as unknown as RpcClient;
+  const rpc = createAdminSupabase() as unknown as RpcClient;
   const { data, error } = await rpc.rpc("parts_void_work_order_line_atomic", {
     p_shop_id: access.profile.shop_id,
     p_work_order_line_id: id,
