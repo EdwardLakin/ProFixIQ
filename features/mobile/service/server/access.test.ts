@@ -56,32 +56,34 @@ describe("resolveMobileFieldServiceAccess", () => {
 });
 
 describe("resolveFieldWorkspaceCapabilities", () => {
-  it("does not advertise scheduling, parts, or fleet tools to a mechanic", () => {
+  it("does not advertise management tools or a workspace switch to a Field-only mechanic", () => {
     expect(
       resolveFieldWorkspaceCapabilities({
         role: "mechanic",
-        canAccessFleet: false,
         canConfigureFieldService: false,
+        canSwitchWorkspace: false,
       }),
     ).toEqual({
       canManageScheduling: false,
       canManageParts: false,
-      canAccessFleet: false,
+      canManageOperations: false,
       canConfigureFieldService: false,
+      canSwitchWorkspace: false,
     });
   });
 
-  it("keeps fleet visibility tied to the canonical fleet scope", () => {
+  it("advertises workspace switching only after another product scope is verified", () => {
     expect(
       resolveFieldWorkspaceCapabilities({
         role: "manager",
-        canAccessFleet: false,
         canConfigureFieldService: false,
+        canSwitchWorkspace: true,
       }),
     ).toMatchObject({
       canManageScheduling: true,
       canManageParts: true,
-      canAccessFleet: false,
+      canManageOperations: true,
+      canSwitchWorkspace: true,
     });
   });
 });
