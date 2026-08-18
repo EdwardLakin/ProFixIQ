@@ -42,6 +42,17 @@ grant execute on function public.apply_punch_correction(
   uuid, uuid, uuid, timestamptz, text
 ) to service_role;
 
+-- Work-order line voiding is likewise kept behind the authorized server route.
+-- The RPC accepts shop, actor and aggregate UUIDs and its SECURITY DEFINER body
+-- does not bind those inputs to auth.uid(). The route now performs the
+-- canManageWorkOrders check first and invokes this command with service_role.
+revoke execute on function public.parts_void_work_order_line_atomic(
+  uuid, uuid, text, text, text, text, text, text, text, text, uuid
+) from public, anon, authenticated;
+grant execute on function public.parts_void_work_order_line_atomic(
+  uuid, uuid, text, text, text, text, text, text, text, text, uuid
+) to service_role;
+
 -- Authenticated staff workflows below bind their actor identity in the
 -- function body and may remain callable by authenticated sessions.
 revoke execute on function public.replace_staff_schedule_template(
@@ -56,13 +67,6 @@ revoke execute on function public.transition_staff_time_off_request(
 ) from public, anon;
 grant execute on function public.transition_staff_time_off_request(
   uuid, uuid, uuid, text, text
-) to authenticated, service_role;
-
-revoke execute on function public.parts_void_work_order_line_atomic(
-  uuid, uuid, text, text, text, text, text, text, text, text, uuid
-) from public, anon;
-grant execute on function public.parts_void_work_order_line_atomic(
-  uuid, uuid, text, text, text, text, text, text, text, text, uuid
 ) to authenticated, service_role;
 
 -- Customer intake requires auth.uid() in the function body. Remove the legacy
@@ -150,6 +154,24 @@ begin
 
   if has_function_privilege(
        'anon',
+       'public.parts_void_work_order_line_atomic(uuid,uuid,text,text,text,text,text,text,text,text,uuid)',
+       'EXECUTE'
+     )
+     or has_function_privilege(
+       'authenticated',
+       'public.parts_void_work_order_line_atomic(uuid,uuid,text,text,text,text,text,text,text,text,uuid)',
+       'EXECUTE'
+     )
+     or not has_function_privilege(
+       'service_role',
+       'public.parts_void_work_order_line_atomic(uuid,uuid,text,text,text,text,text,text,text,text,uuid)',
+       'EXECUTE'
+     ) then
+    raise exception 'RPC hardening failed: line void ACL is unsafe';
+  end if;
+
+  if has_function_privilege(
+       'anon',
        'public.replace_staff_schedule_template(uuid,uuid,uuid,jsonb)',
        'EXECUTE'
      )
@@ -166,16 +188,6 @@ begin
      or not has_function_privilege(
        'authenticated',
        'public.transition_staff_time_off_request(uuid,uuid,uuid,text,text)',
-       'EXECUTE'
-     )
-     or has_function_privilege(
-       'anon',
-       'public.parts_void_work_order_line_atomic(uuid,uuid,text,text,text,text,text,text,text,text,uuid)',
-       'EXECUTE'
-     )
-     or not has_function_privilege(
-       'authenticated',
-       'public.parts_void_work_order_line_atomic(uuid,uuid,text,text,text,text,text,text,text,text,uuid)',
        'EXECUTE'
      )
      or has_function_privilege(
