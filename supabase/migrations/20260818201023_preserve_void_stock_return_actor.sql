@@ -18,20 +18,22 @@ declare
         );
 $original_call$;
   v_attributed_call constant text := $attributed_call$
-        with returned_move as materialized (
-          select public.parts_return_to_stock(
+        declare
+          v_return_result jsonb;
+        begin
+          v_return_result := public.parts_return_to_stock(
             v_wop.id,
             v_location.location_id,
             v_location.qty,
             p_operation_key || ':return:' || v_wop.id::text || ':' || v_location.location_id::text
-          ) as result
-        )
-        update public.stock_moves as sm
-        set created_by = p_actor_user_id
-        from returned_move
-        where sm.id = nullif(returned_move.result ->> 'stock_move_id', '')::uuid
-          and sm.shop_id = p_shop_id
-          and sm.created_by is null;
+          );
+
+          update public.stock_moves as sm
+          set created_by = p_actor_user_id
+          where sm.id = nullif(v_return_result ->> 'stock_move_id', '')::uuid
+            and sm.shop_id = p_shop_id
+            and sm.created_by is null;
+        end;
 $attributed_call$;
 begin
   if to_regprocedure(v_signature) is null then
@@ -45,7 +47,8 @@ begin
   into v_definition;
 
   if position(v_original_call in v_definition) = 0 then
-    if position('set created_by = p_actor_user_id' in v_definition) > 0 then
+    if position('v_return_result := public.parts_return_to_stock' in v_definition) > 0
+       and position('set created_by = p_actor_user_id' in v_definition) > 0 then
       -- Replay-safe if this repair was applied manually before its ledger entry.
       return;
     end if;
@@ -78,7 +81,8 @@ begin
   select pg_get_functiondef(to_regprocedure(v_signature))
   into v_definition;
 
-  if position('set created_by = p_actor_user_id' in v_definition) = 0
+  if position('v_return_result := public.parts_return_to_stock' in v_definition) = 0
+     or position('set created_by = p_actor_user_id' in v_definition) = 0
      or position('sm.shop_id = p_shop_id' in v_definition) = 0
      or position('sm.created_by is null' in v_definition) = 0 then
     raise exception
@@ -87,8 +91,8 @@ begin
         message = 'VOID_STOCK_RETURN_ACTOR_FAILED: ledger attribution repair is missing';
   end if;
 
-  if has_function_privilege('public', v_signature, 'EXECUTE')
-     or has_function_privilege('anon', v_signature, 'EXECUTE')
+  -- anon/authenticated checks also detect EXECUTE inherited from PUBLIC.
+  if has_function_privilege('anon', v_signature, 'EXECUTE')
      or has_function_privilege('authenticated', v_signature, 'EXECUTE')
      or not has_function_privilege('service_role', v_signature, 'EXECUTE') then
     raise exception
