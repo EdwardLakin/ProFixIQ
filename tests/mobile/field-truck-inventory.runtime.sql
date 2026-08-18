@@ -62,6 +62,30 @@ update public.profiles
 set shop_id = '9f200000-0000-4000-8000-000000000001'
 where id = '9f100000-0000-4000-8000-000000000001';
 
+insert into auth.users (id, email, raw_user_meta_data)
+values (
+  '9f100000-0000-4000-8000-000000000002',
+  'field-truck-runtime-tech@example.com',
+  '{"full_name":"Field Truck Runtime Technician"}'::jsonb
+)
+on conflict (id) do nothing;
+
+insert into public.profiles (id, user_id, role, full_name, email, shop_id)
+values (
+  '9f100000-0000-4000-8000-000000000002',
+  '9f100000-0000-4000-8000-000000000002',
+  'mechanic',
+  'Field Truck Runtime Technician',
+  'field-truck-runtime-tech@example.com',
+  '9f200000-0000-4000-8000-000000000001'
+)
+on conflict (id) do update
+set user_id = excluded.user_id,
+    role = excluded.role,
+    full_name = excluded.full_name,
+    email = excluded.email,
+    shop_id = excluded.shop_id;
+
 insert into public.suppliers (id, shop_id, name, is_active)
 values (
   '9f300000-0000-4000-8000-000000000001',
@@ -122,6 +146,7 @@ do $$
 declare
   v_shop_id constant uuid := '9f200000-0000-4000-8000-000000000001';
   v_actor_id constant uuid := '9f100000-0000-4000-8000-000000000001';
+  v_technician_id constant uuid := '9f100000-0000-4000-8000-000000000002';
   v_source_location_id constant uuid := '9f600000-0000-4000-8000-000000000001';
   v_po_id constant uuid := '9f400000-0000-4000-8000-000000000001';
   v_po_line_id constant uuid := '9f500000-0000-4000-8000-000000000001';
@@ -150,6 +175,7 @@ declare
   v_transfer jsonb;
   v_transfer_replay jsonb;
   v_snapshot jsonb;
+  v_activity jsonb;
   v_count integer;
   v_before numeric;
   v_after numeric;
@@ -182,6 +208,30 @@ begin
   if v_truck_id is null or v_truck_location_id is null then
     raise exception 'Field truck runtime failed: setup did not create truck inventory';
   end if;
+
+  -- Route guards are not the authority: a technician cannot call the public
+  -- transfer RPC directly even when the truck is assigned to them.
+  update public.service_vehicles
+  set primary_user_id = v_technician_id
+  where id = v_truck_id;
+  perform set_config('request.jwt.claim.sub', v_technician_id::text, true);
+  begin
+    perform public.field_transfer_stock_to_truck_authorized_atomic(
+      v_shop_id,
+      v_truck_id,
+      v_source_location_id,
+      '9f700000-0000-4000-8000-000000000001'::uuid,
+      1,
+      v_technician_id,
+      'field-runtime:technician-transfer-denied'
+    );
+    raise exception 'Field truck runtime failed: technician bypassed Parts permission';
+  exception when others then
+    if sqlstate <> '42501' or sqlerrm not like '%Parts management permission is required%' then
+      raise;
+    end if;
+  end;
+  perform set_config('request.jwt.claim.sub', v_actor_id::text, true);
 
   -- A free-text PO line becomes a canonical part inside the receipt command.
   v_receipt := public.field_receive_po_part_to_truck_atomic(
@@ -302,7 +352,7 @@ begin
     'field_runtime_seed',
     v_po_line_id
   );
-  v_transfer := public.field_transfer_stock_to_truck_atomic(
+  v_transfer := public.field_transfer_stock_to_truck_authorized_atomic(
     v_shop_id,
     v_truck_id,
     v_source_location_id,
@@ -316,7 +366,7 @@ begin
        <> v_truck_before_transfer + 1 then
     raise exception 'Field truck runtime failed: paired transfer quantities are wrong';
   end if;
-  v_transfer_replay := public.field_transfer_stock_to_truck_atomic(
+  v_transfer_replay := public.field_transfer_stock_to_truck_authorized_atomic(
     v_shop_id,
     v_truck_id,
     v_source_location_id,
@@ -503,17 +553,124 @@ begin
     raise exception 'Field truck runtime failed: return replay changed inventory twice';
   end if;
 
-  v_snapshot := public.field_truck_inventory_snapshot(
+  v_snapshot := public.field_truck_inventory_snapshot_with_activity(
     v_shop_id,
     v_actor_id,
     v_visit_id,
     v_truck_id,
-    'FT-SEAL-100'
+    'FT-SEAL-100',
+    50
   );
   if v_snapshot -> 'truck' ->> 'id' is distinct from v_truck_id::text
      or jsonb_array_length(coalesce(v_snapshot -> 'items', '[]'::jsonb)) < 1
      or jsonb_array_length(coalesce(v_snapshot -> 'catalog', '[]'::jsonb)) < 1 then
     raise exception 'Field truck runtime failed: assigned truck snapshot is incomplete';
+  end if;
+
+  v_activity := coalesce(v_snapshot -> 'movements', '[]'::jsonb);
+  if jsonb_array_length(v_activity) < 4
+     or not exists (
+       select 1
+       from jsonb_array_elements(v_activity) movement
+       where movement ->> 'reason' = 'transfer_in'
+     )
+     or not exists (
+       select 1
+       from jsonb_array_elements(v_activity) movement
+       where movement ->> 'reason' = 'consume'
+     ) then
+    raise exception 'Field truck runtime failed: canonical truck activity is incomplete';
+  end if;
+end;
+$$;
+
+reset role;
+
+-- Reservation ledger entries have zero physical quantity change. Seed both
+-- directions as the database owner, then verify the authenticated Field RPC
+-- projects lifecycle_quantity without exposing a separate read window.
+insert into public.stock_moves (
+  shop_id,
+  part_id,
+  location_id,
+  qty_change,
+  reason,
+  reference_kind,
+  reference_id,
+  created_by,
+  idempotency_key,
+  lifecycle_quantity,
+  metadata
+)
+select
+  '9f200000-0000-4000-8000-000000000001'::uuid,
+  line.part_id,
+  vehicle.stock_location_id,
+  0,
+  movement.reason::public.stock_move_reason,
+  'field_runtime_reservation',
+  line.part_id,
+  '9f100000-0000-4000-8000-000000000001'::uuid,
+  'field-runtime:reservation:' || movement.reason,
+  movement.quantity,
+  jsonb_build_object('operation', 'field_runtime_reservation')
+from public.purchase_order_lines line
+cross join lateral (
+  select truck.stock_location_id
+  from public.service_vehicles truck
+  where truck.shop_id = '9f200000-0000-4000-8000-000000000001'::uuid
+    and truck.active
+  order by truck.created_at desc, truck.id
+  limit 1
+) vehicle
+cross join (
+  values
+    ('wo_allocate'::text, 3::numeric),
+    ('wo_release'::text, 2::numeric)
+) movement(reason, quantity)
+where line.id = '9f500000-0000-4000-8000-000000000001'::uuid;
+
+select set_config('request.jwt.claim.role', 'authenticated', true);
+select set_config('request.jwt.claim.sub', '9f100000-0000-4000-8000-000000000001', true);
+set local role authenticated;
+
+do $$
+declare
+  v_snapshot jsonb;
+  v_truck_id uuid;
+  v_activity jsonb;
+begin
+  select vehicle.id into v_truck_id
+  from public.service_vehicles vehicle
+  where vehicle.shop_id = '9f200000-0000-4000-8000-000000000001'::uuid
+    and vehicle.active
+  order by vehicle.created_at desc, vehicle.id
+  limit 1;
+
+  v_snapshot := public.field_truck_inventory_snapshot_with_activity(
+    '9f200000-0000-4000-8000-000000000001'::uuid,
+    '9f100000-0000-4000-8000-000000000001'::uuid,
+    null,
+    v_truck_id,
+    null,
+    50
+  );
+  v_activity := coalesce(v_snapshot -> 'movements', '[]'::jsonb);
+
+  if not exists (
+    select 1
+    from jsonb_array_elements(v_activity) movement
+    where movement ->> 'reason' = 'wo_allocate'
+      and (movement ->> 'quantity')::numeric = 3
+      and movement ->> 'direction' = 'out'
+  ) or not exists (
+    select 1
+    from jsonb_array_elements(v_activity) movement
+    where movement ->> 'reason' = 'wo_release'
+      and (movement ->> 'quantity')::numeric = 2
+      and movement ->> 'direction' = 'in'
+  ) then
+    raise exception 'Field truck runtime failed: reservation movement quantity or direction is wrong';
   end if;
 end;
 $$;

@@ -28164,8 +28164,40 @@ export type Database = {
         }
         Returns: Json
       }
+      field_transfer_stock_to_truck_authorized_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_operation_key: string
+          p_part_id: string
+          p_quantity: number
+          p_service_vehicle_id: string
+          p_shop_id: string
+          p_source_location_id: string
+        }
+        Returns: Json
+      }
+      field_truck_inventory_activity: {
+        Args: {
+          p_actor_user_id: string
+          p_limit?: number
+          p_service_vehicle_id: string
+          p_shop_id: string
+        }
+        Returns: Json
+      }
       field_truck_inventory_snapshot: {
         Args: {
+          p_actor_user_id: string
+          p_query?: string
+          p_service_vehicle_id?: string
+          p_service_visit_id?: string
+          p_shop_id: string
+        }
+        Returns: Json
+      }
+      field_truck_inventory_snapshot_with_activity: {
+        Args: {
+          p_activity_limit?: number
           p_actor_user_id: string
           p_query?: string
           p_service_vehicle_id?: string

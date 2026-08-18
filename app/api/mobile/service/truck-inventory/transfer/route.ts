@@ -42,7 +42,7 @@ export async function POST(request: Request) {
 
   const { data, error } = await fieldInventoryRpc(
     access.supabase,
-    "field_transfer_stock_to_truck_atomic",
+    "field_transfer_stock_to_truck_authorized_atomic",
     {
       p_shop_id: access.profile.shop_id,
       p_service_vehicle_id: serviceVehicleId,

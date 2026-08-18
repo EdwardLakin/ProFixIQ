@@ -18,7 +18,7 @@ describe("Mobile Service shell", () => {
   it("uses the merged Dispatch contracts instead of duplicating service-visit state", () => {
     expect(page).toContain("MobileServiceScopeGate");
     expect(scopeGate).toContain("FieldHub");
-    expect(fieldHub).toContain("MobileServiceShell embedded");
+    expect(fieldHub).toContain("<MobileServiceShell");
     expect(shell).toContain("/api/mobile/service-visits/active");
     expect(shell).toContain("/api/dispatch/visits/${visit.id}");
     expect(shell).not.toContain('.from("service_visits")');
@@ -43,6 +43,8 @@ describe("Mobile Service shell", () => {
     expect(shell).toContain('toStatus: "completed"');
     expect(shell).toContain('runTransition(visit, "paused")');
     expect(shell).toContain('transitionVisit(current, "dispatched")');
+    expect(shell).toContain('href="/mobile/service/dispatch"');
+    expect(shell).toContain("canManageScheduling ?");
   });
 
   it("keeps dispatch mutations online-only but preserves an authenticated actor-scoped snapshot", () => {

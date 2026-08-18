@@ -82,7 +82,7 @@ export default function MobileTruckInventoryScreen(props: Props) {
     { key: "stock", label: "Truck stock", icon: Boxes },
     { key: "load", label: "Transfer", icon: MoveRight },
     { key: "receive", label: "Receive", icon: PackageCheck },
-    { key: "history", label: "Used", icon: ClipboardList },
+    { key: "history", label: "Activity", icon: ClipboardList },
   ];
 
   return (
