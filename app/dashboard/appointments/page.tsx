@@ -43,6 +43,11 @@ type ShopRow = Pick<
   "id" | "name" | "slug" | "accepts_online_booking"
 >;
 type CustomerRow = Database["public"]["Tables"]["customers"]["Row"];
+type AppointmentCreatePrefill = {
+  customer: CustomerRow;
+  vehicleId: string;
+  vehicleLabel: string;
+};
 
 type ShopContextResponse = {
   shop?: ShopRow | null;
@@ -207,6 +212,9 @@ export default function PortalAppointmentsPage(): JSX.Element {
   const search = useSearchParams();
   const router = useRouter();
   const requestedBookingId = search.get("bookingId")?.trim() ?? "";
+  const requestedCreate = search.get("openCreate") === "1";
+  const requestedCustomerId = search.get("customerId")?.trim() ?? "";
+  const requestedVehicleId = search.get("vehicleId")?.trim() ?? "";
 
   const [shops, setShops] = useState<ShopRow[]>([]);
   const [shopSlug, setShopSlug] = useState<string>(search.get("shop") || "");
@@ -226,6 +234,8 @@ export default function PortalAppointmentsPage(): JSX.Element {
   const [panelMode, setPanelMode] = useState<PanelMode>(null);
   const [editing, setEditing] = useState<Booking | null>(null);
   const [creatingDate, setCreatingDate] = useState<string | null>(null);
+  const [createPrefill, setCreatePrefill] =
+    useState<AppointmentCreatePrefill | null>(null);
 
   const [query, setQuery] = useState<string>("");
   const [listTab, setListTab] = useState<ListTab>("all");
@@ -233,6 +243,7 @@ export default function PortalAppointmentsPage(): JSX.Element {
 
   const bookingsAbortRef = useRef<AbortController | null>(null);
   const requestsAbortRef = useRef<AbortController | null>(null);
+  const consumedCreateHandoffRef = useRef<string | null>(null);
 
   // "..." menu state
   const [menuOpenFor, setMenuOpenFor] = useState<string | null>(null);
@@ -404,6 +415,66 @@ export default function PortalAppointmentsPage(): JSX.Element {
     };
   }, [supabase, selectedShop]);
 
+  // Workspace handoffs are hydrated from same-shop canonical rows before the
+  // create drawer opens. Query parameters are hints only; the create endpoint
+  // performs the authoritative relationship and tenant checks again.
+  useEffect(() => {
+    if (
+      !requestedCreate ||
+      !requestedCustomerId ||
+      !requestedVehicleId ||
+      !selectedShop ||
+      loadingCustomers
+    ) {
+      return;
+    }
+
+    const handoffKey = `${selectedShop.id}:${requestedCustomerId}:${requestedVehicleId}`;
+    if (consumedCreateHandoffRef.current === handoffKey) return;
+    const customer = customers.find((row) => row.id === requestedCustomerId);
+    if (!customer) return;
+
+    const controller = new AbortController();
+    void (async () => {
+      const { data: vehicle, error } = await supabase
+        .from("vehicles")
+        .select("id,year,make,model,unit_number,license_plate,vin")
+        .eq("shop_id", selectedShop.id)
+        .eq("id", requestedVehicleId)
+        .eq("customer_id", requestedCustomerId)
+        .abortSignal(controller.signal)
+        .maybeSingle();
+      if (controller.signal.aborted) return;
+      if (error || !vehicle) {
+        toast.error("The selected customer and vehicle could not be opened.");
+        return;
+      }
+
+      const label =
+        [vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(" ") ||
+        (vehicle.unit_number ? `Unit ${vehicle.unit_number}` : null) ||
+        vehicle.license_plate ||
+        vehicle.vin ||
+        "Selected vehicle";
+      consumedCreateHandoffRef.current = handoffKey;
+      setCreatePrefill({ customer, vehicleId: vehicle.id, vehicleLabel: label });
+      setCreatingDate(isoDate(weekStart));
+      setEditing(null);
+      setPanelMode("create");
+    })();
+
+    return () => controller.abort();
+  }, [
+    customers,
+    loadingCustomers,
+    requestedCreate,
+    requestedCustomerId,
+    requestedVehicleId,
+    selectedShop,
+    supabase,
+    weekStart,
+  ]);
+
   const refreshBookings = useCallback(
     async (slug: string, ws: Date, we: Date) => {
       if (!slug) return;
@@ -532,6 +603,7 @@ export default function PortalAppointmentsPage(): JSX.Element {
   }, [filteredBookings, listTab]);
 
   function openCreate(dayIso: string) {
+    setCreatePrefill(null);
     setCreatingDate(dayIso);
     setEditing(null);
     setPanelMode("create");
@@ -547,6 +619,7 @@ export default function PortalAppointmentsPage(): JSX.Element {
     setPanelMode(null);
     setEditing(null);
     setCreatingDate(null);
+    setCreatePrefill(null);
   }
 
   async function handleCreate(form: {
@@ -554,6 +627,7 @@ export default function PortalAppointmentsPage(): JSX.Element {
     startsAt: string;
     endsAt: string;
     customerId?: string;
+    vehicleId?: string;
     customerName: string;
     customerEmail: string;
     customerPhone: string;
@@ -581,6 +655,7 @@ export default function PortalAppointmentsPage(): JSX.Element {
           endsAt: endIso,
           notes: form.notes,
           customerId: form.customerId ?? null,
+          vehicleId: form.vehicleId ?? null,
           customerName: form.customerName,
           customerEmail: form.customerEmail,
           customerPhone: form.customerPhone,
@@ -1120,6 +1195,7 @@ export default function PortalAppointmentsPage(): JSX.Element {
                 defaultDate={creatingDate ?? isoDate(weekStart)}
                 customers={customers}
                 loadingCustomers={loadingCustomers}
+                prefill={createPrefill}
                 onCancel={closePanel}
                 onSubmit={handleCreate}
               />
@@ -1344,6 +1420,7 @@ export default function PortalAppointmentsPage(): JSX.Element {
                 defaultDate={creatingDate ?? isoDate(weekStart)}
                 customers={customers}
                 loadingCustomers={loadingCustomers}
+                prefill={createPrefill}
                 onCancel={closePanel}
                 onSubmit={handleCreate}
               />
@@ -1391,18 +1468,21 @@ function CreateForm({
   defaultDate,
   customers,
   loadingCustomers,
+  prefill,
   onCancel,
   onSubmit,
 }: {
   defaultDate: string;
   customers: CustomerRow[];
   loadingCustomers: boolean;
+  prefill: AppointmentCreatePrefill | null;
   onCancel: () => void;
   onSubmit: (form: {
     date: string;
     startsAt: string;
     endsAt: string;
     customerId?: string;
+    vehicleId?: string;
     customerName: string;
     customerEmail: string;
     customerPhone: string;
@@ -1412,10 +1492,41 @@ function CreateForm({
   const [date, setDate] = useState(defaultDate);
   const [startsAt, setStartsAt] = useState("09:00");
   const [endsAt, setEndsAt] = useState("10:00");
-  const [customerId, setCustomerId] = useState<string>("");
-  const [customerName, setCustomerName] = useState("");
-  const [customerEmail, setCustomerEmail] = useState("");
-  const [customerPhone, setCustomerPhone] = useState("");
+  const initialCustomer = prefill?.customer ?? null;
+  const initialRecord = initialCustomer as unknown as Record<
+    string,
+    unknown
+  > | null;
+  const initialFull = initialRecord
+    ? safeString(initialRecord["full_name"]) || safeString(initialRecord["name"])
+    : "";
+  const initialFirst = initialRecord
+    ? safeString(initialRecord["first_name"])
+    : "";
+  const initialLast = initialRecord
+    ? safeString(initialRecord["last_name"])
+    : "";
+  const [customerId, setCustomerId] = useState<string>(
+    initialCustomer?.id ?? "",
+  );
+  const [vehicleId, setVehicleId] = useState<string>(
+    prefill?.vehicleId ?? "",
+  );
+  const [customerName, setCustomerName] = useState(
+    initialFull || `${initialFirst} ${initialLast}`.trim(),
+  );
+  const [customerEmail, setCustomerEmail] = useState(
+    initialRecord
+      ? safeString(initialRecord["email"]) ||
+        safeString(initialRecord["contact_email"])
+      : "",
+  );
+  const [customerPhone, setCustomerPhone] = useState(
+    initialRecord
+      ? safeString(initialRecord["phone"]) ||
+        safeString(initialRecord["mobile"])
+      : "",
+  );
   const [notes, setNotes] = useState("");
 
   useEffect(() => {
@@ -1424,6 +1535,7 @@ function CreateForm({
 
   const handleSelectCustomer = (id: string) => {
     setCustomerId(id);
+    if (id !== prefill?.customer.id) setVehicleId("");
     const c = customers.find((x) => x.id === id);
     if (!c) return;
 
@@ -1450,6 +1562,7 @@ function CreateForm({
           startsAt,
           endsAt,
           customerId: customerId || undefined,
+          vehicleId: vehicleId || undefined,
           customerName,
           customerEmail,
           customerPhone,
@@ -1460,6 +1573,13 @@ function CreateForm({
       <h3 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
         Create appointment
       </h3>
+
+      {vehicleId && prefill ? (
+        <div className="rounded-xl border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-sm">
+          <span className="text-[color:var(--theme-text-muted)]">Vehicle</span>{" "}
+          <strong>{prefill.vehicleLabel}</strong>
+        </div>
+      ) : null}
 
       <div className="grid gap-2 sm:grid-cols-2">
         <label className="text-xs text-[color:var(--theme-text-secondary)]">

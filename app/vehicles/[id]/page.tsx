@@ -2,7 +2,10 @@ import { unstable_noStore as noStore } from "next/cache";
 import { notFound } from "next/navigation";
 
 import VehicleWorkspace from "@/features/vehicles/components/VehicleWorkspace";
-import { VEHICLE_WORKSPACE_READER_ROLES } from "@/features/vehicles/lib/vehicleWorkspace";
+import {
+  VEHICLE_WORKSPACE_READER_ROLES,
+  vehicleWorkspaceActionHrefs,
+} from "@/features/vehicles/lib/vehicleWorkspace";
 import {
   loadVehicleWorkspaceSnapshot,
   vehicleWorkspaceCreateWorkOrderHref,
@@ -44,10 +47,15 @@ export default async function VehicleWorkspacePage({
   // public result so callers cannot use this route to enumerate vehicle IDs.
   if (!snapshot) notFound();
 
+  const actionHrefs = vehicleWorkspaceActionHrefs(snapshot);
+
   return (
     <VehicleWorkspace
       snapshot={snapshot}
       createWorkOrderHref={vehicleWorkspaceCreateWorkOrderHref(snapshot)}
+      bookAppointmentHref={actionHrefs.bookAppointment}
+      createEstimateHref={actionHrefs.createEstimate}
+      messageCustomerHref={actionHrefs.messageCustomer}
     />
   );
 }

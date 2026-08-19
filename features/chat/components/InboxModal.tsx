@@ -58,6 +58,9 @@ type Props = {
   open: boolean;
   onClose: () => void;
   seedConversationId?: string | null;
+  startNew?: boolean;
+  initialCustomerId?: string | null;
+  contextOverride?: ComposeContext | null;
 };
 
 type ComposeContext = {
@@ -132,6 +135,9 @@ export default function InboxModal({
   open,
   onClose,
   seedConversationId = null,
+  startNew = false,
+  initialCustomerId = null,
+  contextOverride = null,
 }: Props): JSX.Element | null {
   const pathname = usePathname() ?? "/dashboard";
   const supabase = useMemo(() => createBrowserSupabase(), []);
@@ -149,11 +155,11 @@ export default function InboxModal({
   const [sending, setSending] = useState(false);
   const [selectedRecipients, setSelectedRecipients] = useState<string[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(
-    null,
+    initialCustomerId,
   );
   const [composeAudience, setComposeAudience] = useState<
     "internal" | "customer"
-  >("internal");
+  >(initialCustomerId ? "customer" : "internal");
   const [roleFilter, setRoleFilter] = useState("all");
   const [useContext, setUseContext] = useState(true);
   const [draftScope, setDraftScope] = useState<OfflineMutationScope | null>(
@@ -168,7 +174,10 @@ export default function InboxModal({
   const [draftSaved, setDraftSaved] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
 
-  const context = useMemo(() => inferContext(pathname), [pathname]);
+  const context = useMemo(
+    () => contextOverride ?? inferContext(pathname),
+    [contextOverride, pathname],
+  );
   const draftTargetId = activeConversationId
     ? `conversation:${activeConversationId}`
     : `staff:new:${composeAudience}:${context.context_type ?? "general"}:${context.context_id ?? "none"}`;
@@ -207,9 +216,13 @@ export default function InboxModal({
     const data = (await res.json()) as ConversationPayload[];
     setRows(data);
     setActiveConversationId(
-      (curr) => curr ?? seedConversationId ?? data[0]?.conversation.id ?? null,
+      (curr) =>
+        curr ??
+        (startNew
+          ? null
+          : seedConversationId ?? data[0]?.conversation.id ?? null),
     );
-  }, [seedConversationId]);
+  }, [seedConversationId, startNew]);
 
   const loadMessages = useCallback(async (conversationId: string) => {
     const res = await fetch("/api/chat/get-messages", {
@@ -247,6 +260,21 @@ export default function InboxModal({
       })
       .catch(() => undefined);
   }, [open, supabase, loadConversations]);
+
+  useEffect(() => {
+    if (!open || !startNew || !initialCustomerId || customers.length === 0) {
+      return;
+    }
+    const customer = customers.find((row) => row.id === initialCustomerId);
+    setComposeAudience("customer");
+    setActiveConversationId(null);
+    setSelectedCustomerId(customer?.can_message ? customer.id : null);
+    if (!customer?.can_message) {
+      setSendError(
+        "This customer must activate messaging before a message can be sent.",
+      );
+    }
+  }, [customers, initialCustomerId, open, startNew]);
 
   useEffect(() => {
     if (!open || !me) {
@@ -292,7 +320,11 @@ export default function InboxModal({
       setCompose(next.content);
       if (!activeConversationId) {
         setSelectedRecipients(next.recipientIds ?? []);
-        setSelectedCustomerId(next.customerId ?? null);
+        setSelectedCustomerId(
+          startNew && initialCustomerId
+            ? initialCustomerId
+            : next.customerId ?? null,
+        );
         setUseContext(next.useContext ?? true);
       }
       setDraftSaved(Boolean(stored?.content));
@@ -301,7 +333,14 @@ export default function InboxModal({
     return () => {
       cancelled = true;
     };
-  }, [activeConversationId, draftScope, draftTargetId, open]);
+  }, [
+    activeConversationId,
+    draftScope,
+    draftTargetId,
+    initialCustomerId,
+    open,
+    startNew,
+  ]);
 
   useEffect(() => {
     if (

@@ -44,6 +44,8 @@ type Props = {
   shopId?: string;
   defaultLaborRate?: number;
   shopTimezone?: string;
+  initialCustomer?: EstimateCustomerForm | null;
+  initialVehicle?: EstimateVehicleForm | null;
 };
 
 type MutationResult = {
@@ -247,6 +249,8 @@ export default function EstimateBuilder({
   shopId: initialShopId,
   defaultLaborRate = 0,
   shopTimezone = "UTC",
+  initialCustomer = null,
+  initialVehicle = null,
 }: Props) {
   const router = useRouter();
   const isNew = !estimateId;
@@ -259,16 +263,16 @@ export default function EstimateBuilder({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [customer, setCustomer] = useState<EstimateCustomerForm>({
-    ...EMPTY_ESTIMATE_CUSTOMER,
+    ...(initialCustomer ?? EMPTY_ESTIMATE_CUSTOMER),
   });
   const [vehicle, setVehicle] = useState<EstimateVehicleForm>({
-    ...EMPTY_ESTIMATE_VEHICLE,
+    ...(initialVehicle ?? EMPTY_ESTIMATE_VEHICLE),
   });
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(
-    null,
+    initialCustomer?.id ?? null,
   );
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(
-    null,
+    initialVehicle?.id ?? null,
   );
   const [lines, setLines] = useState<EstimateLineDraft[]>(() => [
     newLine(defaultLaborRate),

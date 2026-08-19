@@ -183,6 +183,49 @@ export type VehicleWorkspaceSnapshot = {
   conflicts: VehicleWorkspaceConflict[];
 };
 
+export type VehicleWorkspaceActionHrefs = {
+  bookAppointment: string | null;
+  createEstimate: string | null;
+  messageCustomer: string | null;
+};
+
+export function vehicleWorkspaceActionHrefs(
+  snapshot: VehicleWorkspaceSnapshot,
+): VehicleWorkspaceActionHrefs {
+  const account = snapshot.currentAccount;
+  const blocked = snapshot.conflicts.some((conflict) =>
+    ["archived_account", "vehicle_status"].includes(conflict.kind),
+  );
+  if (
+    blocked ||
+    !account?.active ||
+    account.archivedAt ||
+    account.mergedIntoCustomerId
+  ) {
+    return {
+      bookAppointment: null,
+      createEstimate: null,
+      messageCustomer: null,
+    };
+  }
+
+  const handoff = new URLSearchParams({
+    customerId: account.id,
+    vehicleId: snapshot.identity.id,
+  });
+  return {
+    bookAppointment: snapshot.permissions.canBookAppointment
+      ? `/dashboard/appointments?openCreate=1&${handoff.toString()}`
+      : null,
+    createEstimate: snapshot.permissions.canCreateEstimate
+      ? `/estimates/new?${handoff.toString()}`
+      : null,
+    messageCustomer: snapshot.permissions.canMessageCustomer
+      ? `/chat?compose=customer&contextType=vehicle&contextId=${encodeURIComponent(snapshot.identity.id)}&customerId=${encodeURIComponent(account.id)}`
+      : null,
+  };
+}
+
 export type VehicleWorkspaceSearchCard = {
   vehicle: VehicleIdentity;
   currentAccount: Pick<CustomerAccountSummary, "id" | "displayName"> | null;
