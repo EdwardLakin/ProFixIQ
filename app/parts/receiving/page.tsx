@@ -13,6 +13,7 @@ import {
 } from "@/features/parts/lib/status-display";
 import {
   buildPartTrustMeta,
+  countAmbiguousStagingRowsByPart,
   trustBadgeTone,
   trustLevelLabel,
   trustReasonTone,
@@ -180,7 +181,7 @@ export default function ReceivingInboxPage(): JSX.Element {
           .eq("shop_id", sid),
         supabase
           .from("shop_parts_import_match_candidates")
-          .select("staging_id, candidate_part_id")
+          .select("staging_row_id, candidate_part_id")
           .in("candidate_part_id", partIds)
           .eq("shop_id", sid),
       ]);
@@ -198,11 +199,28 @@ export default function ReceivingInboxPage(): JSX.Element {
           pendingCount[String(r.matched_part_id)] = (pendingCount[String(r.matched_part_id)] ?? 0) + 1;
         }
       });
-      const candCount: Record<string, number> = {};
-      (candRes.data ?? []).forEach((r) => {
-        const id = String(r.candidate_part_id);
-        candCount[id] = (candCount[id] ?? 0) + 1;
-      });
+      const candidateStagingRowIds = [
+        ...new Set(
+          (candRes.data ?? [])
+            .map((row) => String(row.staging_row_id ?? ""))
+            .filter(Boolean),
+        ),
+      ];
+      const completeCandidateRows = candidateStagingRowIds.length
+        ? (
+            await supabase
+              .from("shop_parts_import_match_candidates")
+              .select("staging_row_id, candidate_part_id")
+              .in("staging_row_id", candidateStagingRowIds)
+              .eq("shop_id", sid)
+          ).data ?? []
+        : [];
+      const ambiguousCountByPartId = countAmbiguousStagingRowsByPart(
+        completeCandidateRows.map((row) => ({
+          stagingRowId: row.staging_row_id,
+          candidatePartId: row.candidate_part_id,
+        })),
+      );
 
       const tMap: Record<string, PartTrustMeta> = {};
       for (const pid of partIds) {
@@ -215,7 +233,7 @@ export default function ReceivingInboxPage(): JSX.Element {
           sourceIntakeId: p?.source_intake_id ?? null,
           importConfidence: extended?.import_confidence ?? null,
           aliasCount: aliasCount[pid] ?? 0,
-          ambiguousCandidateCount: (candCount[pid] ?? 0) > 1 ? candCount[pid] : 0,
+          ambiguousCandidateCount: ambiguousCountByPartId[pid] ?? 0,
           pendingStagingCount: pendingCount[pid] ?? 0,
         });
       }

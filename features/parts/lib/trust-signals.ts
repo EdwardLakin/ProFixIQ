@@ -5,6 +5,34 @@ export type PartTrustMeta = {
   reasons: string[];
 };
 
+export function countAmbiguousStagingRowsByPart(
+  rows: ReadonlyArray<{
+    stagingRowId: string | null | undefined;
+    candidatePartId: string | null | undefined;
+  }>,
+): Record<string, number> {
+  const candidatesByStagingRow = new Map<string, Set<string>>();
+  for (const row of rows) {
+    const stagingRowId = String(row.stagingRowId ?? "");
+    const candidatePartId = String(row.candidatePartId ?? "");
+    if (!stagingRowId || !candidatePartId) continue;
+    const candidates =
+      candidatesByStagingRow.get(stagingRowId) ?? new Set<string>();
+    candidates.add(candidatePartId);
+    candidatesByStagingRow.set(stagingRowId, candidates);
+  }
+
+  const ambiguousCountByPartId: Record<string, number> = {};
+  for (const candidates of candidatesByStagingRow.values()) {
+    if (candidates.size <= 1) continue;
+    for (const candidatePartId of candidates) {
+      ambiguousCountByPartId[candidatePartId] =
+        (ambiguousCountByPartId[candidatePartId] ?? 0) + 1;
+    }
+  }
+  return ambiguousCountByPartId;
+}
+
 const TRUST_REASON = {
   missingSku: "Missing SKU",
   missingPartNumber: "Missing part number",

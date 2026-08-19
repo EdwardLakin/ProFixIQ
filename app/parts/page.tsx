@@ -237,7 +237,7 @@ export default function PartsDashboardPage(): JSX.Element {
         supabase.from("shop_parts_import_staging").select("status"),
         supabase
           .from("shop_parts_import_match_candidates")
-          .select("staging_id, candidate_part_id"),
+          .select("staging_row_id, candidate_part_id"),
       ]);
 
       const partsRows = (partsRes.data ?? []) as TrustExtendedPart[];
@@ -263,7 +263,7 @@ export default function PartsDashboardPage(): JSX.Element {
       ).length;
       const candidateCounts: Record<string, number> = {};
       for (const row of candidateRes.data ?? []) {
-        const key = String(row.staging_id ?? row.candidate_part_id ?? "");
+        const key = String(row.staging_row_id ?? row.candidate_part_id ?? "");
         if (key) candidateCounts[key] = (candidateCounts[key] ?? 0) + 1;
       }
       setTrustSummary({
