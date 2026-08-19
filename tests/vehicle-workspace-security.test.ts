@@ -12,6 +12,9 @@ const workspacePage = read("app/vehicles/[id]/page.tsx");
 const workspaceComponent = read(
   "features/vehicles/components/VehicleWorkspace.tsx",
 );
+const workspaceSourceReference = read(
+  "features/workspace/components/WorkspaceSourceReference.tsx",
+);
 const vehicleSearchPage = read("features/vehicles/app/vehicles/page.tsx");
 
 describe("Shop Vehicle Workspace security contract", () => {
@@ -144,7 +147,7 @@ describe("Shop Vehicle Workspace security contract", () => {
     expect(workspaceComponent).toContain(
       "canOpenReference(\n              snapshot.documentSummary.latestReference",
     );
-    expect(workspaceComponent).toContain("Source retained");
+    expect(workspaceSourceReference).toContain("Source retained");
 
     expect(vehicleSearchPage).toContain('work.kind === "estimate"');
     expect(vehicleSearchPage).toContain("permissions.canViewEstimates");

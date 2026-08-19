@@ -1,5 +1,4 @@
 import Link from "next/link";
-import type { ReactNode } from "react";
 
 import type {
   ActiveWorkSummary,
@@ -10,6 +9,22 @@ import type {
   VehicleWorkspaceReference,
   VehicleWorkspaceSnapshot,
 } from "@/features/vehicles/lib/vehicleWorkspace";
+import {
+  WorkspaceCard,
+  WorkspaceCommandBar,
+  WorkspaceEmptyState as EmptyState,
+  WorkspaceHeader,
+  WorkspaceSection,
+  WorkspaceShell,
+  WorkspaceSourceReference as SourceFooter,
+  WorkspaceStatus,
+  WorkspaceTimeline,
+  WorkspaceTimelineItem,
+  WORKSPACE_EYEBROW as EYEBROW,
+  WORKSPACE_ITEM as ITEM,
+  WORKSPACE_LINK_FOCUS as LINK_FOCUS,
+  WORKSPACE_PANEL as PANEL,
+} from "@/features/workspace/components";
 
 type VehicleWorkspaceProps = {
   snapshot: VehicleWorkspaceSnapshot;
@@ -18,15 +33,6 @@ type VehicleWorkspaceProps = {
   createEstimateHref: string | null;
   messageCustomerHref: string | null;
 };
-
-const PANEL =
-  "rounded-2xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--desktop-panel-bg-soft,var(--theme-surface-page))] shadow-[var(--theme-shadow-medium)] backdrop-blur-xl";
-const ITEM =
-  "rounded-xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--desktop-item-bg,var(--theme-surface-inset))]";
-const EYEBROW =
-  "text-[11px] font-semibold uppercase tracking-[0.2em] text-[color:var(--theme-text-muted)]";
-const LINK_FOCUS =
-  "focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent-copper-soft,#fdba74)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--theme-surface-page)]";
 
 function textOrDash(value: string | number | null | undefined): string {
   if (value == null) return "—";
@@ -72,36 +78,7 @@ function vehicleTitle(snapshot: VehicleWorkspaceSnapshot): string {
 }
 
 function StatusPill({ value }: { value: string }) {
-  return (
-    <span className="inline-flex max-w-full rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.15em] text-[color:var(--theme-text-secondary)]">
-      {humanize(value)}
-    </span>
-  );
-}
-
-function SourceFooter({
-  label,
-  canOpen = true,
-}: {
-  label: string;
-  canOpen?: boolean;
-}) {
-  return (
-    <span className="mt-3 flex items-center justify-between gap-3 border-t border-[color:var(--theme-border-soft)] pt-3 text-xs text-[color:var(--theme-text-muted)]">
-      <span className="min-w-0 truncate">Source: {label}</span>
-      <span aria-hidden="true" className="shrink-0 text-[color:var(--accent-copper-light,#fdba74)]">
-        {canOpen ? "Open →" : "Source retained"}
-      </span>
-    </span>
-  );
-}
-
-function EmptyState({ children }: { children: ReactNode }) {
-  return (
-    <p className={`${ITEM} px-4 py-5 text-sm text-[color:var(--theme-text-muted)]`}>
-      {children}
-    </p>
-  );
+  return <WorkspaceStatus>{humanize(value)}</WorkspaceStatus>;
 }
 
 const WORK_ORDER_SOURCE_TYPES = new Set<
@@ -194,24 +171,15 @@ function ActiveWorkCard({
 
   return (
     <li>
-      {canOpen ? (
-        <Link
-          href={item.reference.href}
-          data-source-id={item.reference.sourceId}
-          data-source-type={item.reference.sourceType}
-          className={`${ITEM} ${LINK_FOCUS} block h-full p-4 transition hover:border-[color:var(--accent-copper-soft,#fdba74)] hover:bg-[color:var(--theme-surface-subtle)]`}
-        >
-          {content}
-        </Link>
-      ) : (
-        <div
-          data-source-id={item.reference.sourceId}
-          data-source-type={item.reference.sourceType}
-          className={`${ITEM} block h-full p-4`}
-        >
-          {content}
-        </div>
-      )}
+      <WorkspaceCard
+        href={canOpen ? item.reference.href : null}
+        sourceId={item.reference.sourceId}
+        sourceType={item.reference.sourceType}
+        className="block h-full p-4"
+        interactiveClassName="transition hover:border-[color:var(--accent-copper-soft,#fdba74)] hover:bg-[color:var(--theme-surface-subtle)]"
+      >
+        {content}
+      </WorkspaceCard>
     </li>
   );
 }
@@ -254,24 +222,15 @@ function AppointmentCard({
 
   return (
     <li>
-      {canOpen ? (
-        <Link
-          href={appointment.reference.href}
-          data-source-id={appointment.reference.sourceId}
-          data-source-type={appointment.reference.sourceType}
-          className={`${ITEM} ${LINK_FOCUS} block h-full p-4 transition hover:border-[color:var(--accent-copper-soft,#fdba74)] hover:bg-[color:var(--theme-surface-subtle)]`}
-        >
-          {content}
-        </Link>
-      ) : (
-        <div
-          data-source-id={appointment.reference.sourceId}
-          data-source-type={appointment.reference.sourceType}
-          className={`${ITEM} block h-full p-4`}
-        >
-          {content}
-        </div>
-      )}
+      <WorkspaceCard
+        href={canOpen ? appointment.reference.href : null}
+        sourceId={appointment.reference.sourceId}
+        sourceType={appointment.reference.sourceType}
+        className="block h-full p-4"
+        interactiveClassName="transition hover:border-[color:var(--accent-copper-soft,#fdba74)] hover:bg-[color:var(--theme-surface-subtle)]"
+      >
+        {content}
+      </WorkspaceCard>
     </li>
   );
 }
@@ -367,30 +326,17 @@ function TimelineEvent({
   );
 
   return (
-    <li className="relative pl-7 before:absolute before:left-[7px] before:top-3 before:h-full before:w-px before:bg-[color:var(--theme-border-soft)] last:before:hidden">
-      <span
-        aria-hidden="true"
-        className="absolute left-0 top-2 h-[15px] w-[15px] rounded-full border-2 border-[color:var(--accent-copper-soft,#fdba74)] bg-[color:var(--theme-surface-page)]"
-      />
-      {canOpen ? (
-        <Link
-          href={event.reference.href}
-          data-source-id={event.reference.sourceId}
-          data-source-type={event.reference.sourceType}
-          className={`${ITEM} ${LINK_FOCUS} block p-4 transition hover:border-[color:var(--accent-copper-soft,#fdba74)]`}
-        >
-          {content}
-        </Link>
-      ) : (
-        <div
-          data-source-id={event.reference.sourceId}
-          data-source-type={event.reference.sourceType}
-          className={`${ITEM} block p-4`}
-        >
-          {content}
-        </div>
-      )}
-    </li>
+    <WorkspaceTimelineItem>
+      <WorkspaceCard
+        href={canOpen ? event.reference.href : null}
+        sourceId={event.reference.sourceId}
+        sourceType={event.reference.sourceType}
+        className="block p-4"
+        interactiveClassName="transition hover:border-[color:var(--accent-copper-soft,#fdba74)]"
+      >
+        {content}
+      </WorkspaceCard>
+    </WorkspaceTimelineItem>
   );
 }
 
@@ -411,8 +357,8 @@ export function VehicleWorkspace({
   ].filter((row): row is [string, string] => Boolean(row));
 
   return (
-    <main className="mx-auto flex w-full max-w-7xl flex-col gap-5 px-4 py-4 text-[color:var(--theme-text-primary)] sm:px-6 sm:py-6 lg:px-8">
-      <header className={`${PANEL} sticky top-2 z-20 overflow-hidden p-4 sm:p-5`}>
+    <WorkspaceShell>
+      <WorkspaceHeader>
         <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
@@ -493,9 +439,9 @@ export function VehicleWorkspace({
                 No current account
               </p>
             )}
-            <nav
-              aria-label="Vehicle actions"
-              className="flex flex-wrap gap-2 xl:justify-end"
+            <WorkspaceCommandBar
+              ariaLabel="Vehicle actions"
+              className="xl:justify-end"
             >
               {currentAccount &&
               snapshot.permissions.canOpenAccount ? (
@@ -538,7 +484,7 @@ export function VehicleWorkspace({
                   Message
                 </Link>
               ) : null}
-            </nav>
+            </WorkspaceCommandBar>
           </div>
         </div>
 
@@ -563,28 +509,22 @@ export function VehicleWorkspace({
             </ul>
           </div>
         ) : null}
-      </header>
+      </WorkspaceHeader>
 
-      <section
-        aria-labelledby="active-now-heading"
-        className={`${PANEL} p-4 sm:p-5`}
-      >
-        <div className="flex flex-wrap items-end justify-between gap-2">
-          <div>
-            <p className={EYEBROW}>Current condition</p>
-            <h2 id="active-now-heading" className="mt-1 text-xl font-bold">
-              Active now
-            </h2>
-          </div>
-          <p className="text-xs text-[color:var(--theme-text-muted)]">
+      <WorkspaceSection
+        headingId="active-now-heading"
+        eyebrow="Current condition"
+        title="Active now"
+        summary={
+          <>
             {snapshot.activeWork.length} active record
             {snapshot.activeWork.length === 1 ? "" : "s"}
             {snapshot.upcomingAppointments.length
               ? ` · ${snapshot.upcomingAppointments.length} upcoming`
               : ""}
-          </p>
-        </div>
-
+          </>
+        }
+      >
         {snapshot.activeWork.length || snapshot.upcomingAppointments.length ? (
           <ul className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {snapshot.activeWork.map((item) => (
@@ -610,24 +550,19 @@ export function VehicleWorkspace({
             </EmptyState>
           </div>
         )}
-      </section>
+      </WorkspaceSection>
 
-      <section
-        aria-labelledby="attention-heading"
-        className={`${PANEL} p-4 sm:p-5`}
-      >
-        <div className="flex flex-wrap items-end justify-between gap-2">
-          <div>
-            <p className={EYEBROW}>Evidence-backed items</p>
-            <h2 id="attention-heading" className="mt-1 text-xl font-bold">
-              Needs attention
-            </h2>
-          </div>
-          <p className="text-xs text-[color:var(--theme-text-muted)]">
+      <WorkspaceSection
+        headingId="attention-heading"
+        eyebrow="Evidence-backed items"
+        title="Needs attention"
+        summary={
+          <>
             {snapshot.attentionItems.length} evidence item
             {snapshot.attentionItems.length === 1 ? "" : "s"}
-          </p>
-        </div>
+          </>
+        }
+      >
         {snapshot.attentionItems.length ? (
           <ul className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {snapshot.attentionItems.map((item) => (
@@ -645,26 +580,17 @@ export function VehicleWorkspace({
             </EmptyState>
           </div>
         )}
-      </section>
+      </WorkspaceSection>
 
-      <section
-        aria-labelledby="timeline-heading"
-        className={`${PANEL} p-4 sm:p-5`}
+      <WorkspaceSection
+        headingId="timeline-heading"
+        eyebrow="Canonical record stream"
+        title="Recent timeline"
+        summary="Most recent first"
       >
-        <div className="flex flex-wrap items-end justify-between gap-2">
-          <div>
-            <p className={EYEBROW}>Canonical record stream</p>
-            <h2 id="timeline-heading" className="mt-1 text-xl font-bold">
-              Recent timeline
-            </h2>
-          </div>
-          <p className="text-xs text-[color:var(--theme-text-muted)]">
-            Most recent first
-          </p>
-        </div>
         {visibleTimeline.length ? (
           <>
-            <ol className="mt-5 space-y-3">
+            <WorkspaceTimeline className="mt-5">
               {visibleTimeline.map((event) => (
                 <TimelineEvent
                   key={`${event.reference.sourceType}:${event.reference.sourceId}:${event.kind}`}
@@ -672,7 +598,7 @@ export function VehicleWorkspace({
                   canOpen={canOpenTimelineEvent(event, snapshot.permissions)}
                 />
               ))}
-            </ol>
+            </WorkspaceTimeline>
             {olderTimeline.length ? (
               <details className={`${ITEM} mt-4 p-4`}>
                 <summary
@@ -681,7 +607,7 @@ export function VehicleWorkspace({
                   Show {olderTimeline.length} older event
                   {olderTimeline.length === 1 ? "" : "s"}
                 </summary>
-                <ol className="mt-5 space-y-3">
+                <WorkspaceTimeline className="mt-5">
                   {olderTimeline.map((event) => (
                     <TimelineEvent
                       key={`${event.reference.sourceType}:${event.reference.sourceId}:${event.kind}`}
@@ -689,7 +615,7 @@ export function VehicleWorkspace({
                       canOpen={canOpenTimelineEvent(event, snapshot.permissions)}
                     />
                   ))}
-                </ol>
+                </WorkspaceTimeline>
               </details>
             ) : null}
           </>
@@ -698,7 +624,7 @@ export function VehicleWorkspace({
             <EmptyState>No timeline events are visible for this vehicle.</EmptyState>
           </div>
         )}
-      </section>
+      </WorkspaceSection>
 
       <aside
         aria-label="Vehicle workspace summaries"
@@ -843,7 +769,7 @@ export function VehicleWorkspace({
           </section>
         ) : null}
       </aside>
-    </main>
+    </WorkspaceShell>
   );
 }
 

@@ -1,4 +1,5 @@
 import type { CanonicalRole } from "@/features/shared/lib/rbac";
+import type { WorkspaceSourceReference } from "@/features/workspace/lib/workspace";
 
 export const VEHICLE_WORKSPACE_READER_ROLES = [
   "owner",
@@ -27,12 +28,8 @@ export type VehicleWorkspaceSourceType =
   | "work_order_part"
   | "work_order_quote_line";
 
-export type VehicleWorkspaceReference = {
-  sourceType: VehicleWorkspaceSourceType;
-  sourceId: string;
-  sourceLabel: string;
-  href: string;
-};
+export type VehicleWorkspaceReference =
+  WorkspaceSourceReference<VehicleWorkspaceSourceType>;
 
 export type VehicleWorkspacePermissions = {
   canViewAccountContact: boolean;
