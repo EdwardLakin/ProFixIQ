@@ -413,13 +413,16 @@ function latestWorkOrderOdometer(
     )
     .sort(
       (a, b) =>
-        workOrderServiceTime(b) - workOrderServiceTime(a),
+        workOrderEvidenceTime(b) - workOrderEvidenceTime(a),
     )[0];
   return newestReading?.odometer_km ?? null;
 }
 
-function workOrderServiceTime(row: WorkspaceWorkOrderRow): number {
-  const value = Date.parse(row.scheduled_at ?? row.created_at ?? "");
+function workOrderEvidenceTime(row: WorkspaceWorkOrderRow): number {
+  // The canonical work-order schema has no odometer-captured timestamp.
+  // created_at is the immutable intake boundary; scheduled_at is planning data
+  // synchronized from bookings and must never reorder recorded evidence.
+  const value = Date.parse(row.created_at ?? "");
   return Number.isFinite(value) ? value : Number.NEGATIVE_INFINITY;
 }
 
@@ -971,9 +974,13 @@ function buildDocumentSummary(input: {
   inspections: WorkspaceInspectionRow[];
   workOrdersById: Map<string, WorkspaceWorkOrderRow>;
 }): VehicleDocumentSummary {
-  const reports = input.inspections.filter(
-    (row) => Boolean(row.pdf_url || row.pdf_storage_path),
-  );
+  const reports = input.inspections
+    .filter((row) => Boolean(row.pdf_url || row.pdf_storage_path))
+    .sort((a, b) => {
+      const evidenceOrder =
+        inspectionReportEvidenceTime(b) - inspectionReportEvidenceTime(a);
+      return evidenceOrder || b.id.localeCompare(a.id);
+    });
   const newestWorkOrderMedia = [...input.workOrderMedia].sort(
     (a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime(),
   )[0];
@@ -997,6 +1004,15 @@ function buildDocumentSummary(input: {
         ? inspectionReference(reports[0])
         : null,
   };
+}
+
+function inspectionReportEvidenceTime(row: WorkspaceInspectionRow): number {
+  const timestamps = [row.finalized_at, row.updated_at, row.created_at]
+    .map((value) => Date.parse(value ?? ""))
+    .filter(Number.isFinite);
+  return timestamps.length > 0
+    ? Math.max(...timestamps)
+    : Number.NEGATIVE_INFINITY;
 }
 
 function buildConflicts(input: {
@@ -1090,7 +1106,7 @@ function latestCanonicalServiceWorkOrder(
         );
       })
       .sort((a, b) => {
-        const timeDifference = workOrderServiceTime(b) - workOrderServiceTime(a);
+        const timeDifference = workOrderEvidenceTime(b) - workOrderEvidenceTime(a);
         return timeDifference === 0 ? b.id.localeCompare(a.id) : timeDifference;
       })[0] ?? null
   );
@@ -1286,6 +1302,7 @@ export async function loadVehicleWorkspaceSnapshot(input: {
           )
           .eq("shop_id", input.shopId)
           .eq("vehicle_id", input.vehicleId)
+          .order("updated_at", { ascending: false, nullsFirst: false })
           .order("created_at", { ascending: false, nullsFirst: false })
           .order("id", { ascending: false })
           .range(from, to);

@@ -399,7 +399,9 @@ function workOrderIsEstimate(row: SearchWorkOrderRow): boolean {
 }
 
 function workOrderEvidenceTime(row: SearchWorkOrderRow): number {
-  const value = Date.parse(row.scheduled_at ?? row.created_at ?? "");
+  // The work-order record has no odometer-captured timestamp. created_at is
+  // the immutable intake boundary; scheduled_at is mutable scheduler data.
+  const value = Date.parse(row.created_at ?? "");
   return Number.isFinite(value) ? value : Number.NEGATIVE_INFINITY;
 }
 

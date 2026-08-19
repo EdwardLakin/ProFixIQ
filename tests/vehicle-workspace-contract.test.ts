@@ -780,6 +780,40 @@ describe("Shop Vehicle Workspace contract", () => {
     );
   });
 
+  it("does not let rescheduling an older work order replace newer odometer evidence", async () => {
+    const fixture = workspaceFixture({
+      additionalWorkOrders: [
+        {
+          id: "wo-rescheduled-old",
+          customer_id: "customer-1",
+          vehicle_id: "vehicle-1",
+          custom_id: "1001",
+          status: "completed",
+          record_type: "work_order",
+          approval_state: "approved",
+          estimate_number: null,
+          estimate_status: null,
+          scheduled_at: "2027-01-01T10:00:00.000Z",
+          odometer_km: 60000,
+          created_at: "2025-12-01T10:00:00.000Z",
+          updated_at: "2026-08-19T10:00:00.000Z",
+        },
+      ],
+    });
+
+    const snapshot = await loadVehicleWorkspaceSnapshot({
+      supabase: fixture.client as never,
+      shopId: "shop-a",
+      role: "owner",
+      vehicleId: "vehicle-1",
+    });
+
+    expect(snapshot?.identity).toMatchObject({
+      mileage: "64100",
+      odometerUnit: "km",
+    });
+  });
+
   it("blocks Create WO for archived-account or vehicle-status conflicts only", async () => {
     const fixture = workspaceFixture();
     const snapshot = await loadVehicleWorkspaceSnapshot({
@@ -1398,6 +1432,57 @@ describe("Shop Vehicle Workspace contract", () => {
     expect(snapshot?.documentSummary.latestReference?.sourceLabel).not.toContain(
       "ea15b3b8",
     );
+  });
+
+  it("opens the most recently finalized or regenerated inspection report", async () => {
+    const fixture = workspaceFixture({
+      inspections: [
+        {
+          id: "inspection-newer-created",
+          work_order_id: "wo-2",
+          work_order_line_id: null,
+          inspection_type: "Newer-created inspection",
+          status: "finalized",
+          completed: true,
+          summary: null,
+          created_at: "2026-01-04T10:00:00.000Z",
+          started_at: "2026-01-04T10:00:00.000Z",
+          finalized_at: "2026-01-04T11:00:00.000Z",
+          updated_at: "2026-01-04T11:00:00.000Z",
+          pdf_url: "/reports/newer-created.pdf",
+          pdf_storage_path: null,
+        },
+        {
+          id: "inspection-latest-report",
+          work_order_id: "wo-1",
+          work_order_line_id: null,
+          inspection_type: "Latest finalized inspection",
+          status: "finalized",
+          completed: true,
+          summary: null,
+          created_at: "2026-01-02T10:00:00.000Z",
+          started_at: "2026-01-02T10:00:00.000Z",
+          finalized_at: "2026-01-05T11:00:00.000Z",
+          updated_at: "2026-01-06T11:00:00.000Z",
+          pdf_url: "/reports/latest.pdf",
+          pdf_storage_path: null,
+        },
+      ],
+    });
+
+    const snapshot = await loadVehicleWorkspaceSnapshot({
+      supabase: fixture.client as never,
+      shopId: "shop-a",
+      role: "owner",
+      vehicleId: "vehicle-1",
+    });
+
+    expect(snapshot?.documentSummary.latestReference).toEqual({
+      sourceType: "inspection",
+      sourceId: "inspection-latest-report",
+      sourceLabel: "Latest finalized inspection",
+      href: "/inspections/inspection-latest-report",
+    });
   });
 
   it("opens estimate records through their canonical estimate route", async () => {
@@ -2322,6 +2407,7 @@ describe("Shop Vehicle Workspace contract", () => {
     });
     const older = searchWorkOrderRow("wo-older", vehicle.id, {
       odometerKm: 65000,
+      scheduledAt: "2027-01-01T10:00:00.000Z",
       createdAt: "2026-01-01T09:00:00.000Z",
       updatedAt: "2026-08-04T10:00:00.000Z",
       vehicleMileage: null,
