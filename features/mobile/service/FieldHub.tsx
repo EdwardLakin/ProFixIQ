@@ -137,9 +137,9 @@ const FIELD_DASHBOARD_CARDS: FieldDashboardCard[] = [
   },
   {
     id: "unpaid_invoices",
-    title: "Ready for closeout",
-    description: "Invoice completed work and take payment in the field.",
-    href: "/mobile/work-orders?status=ready_to_invoice&mode=field_closeout",
+    title: "Unpaid invoices",
+    description: "Collect open balances and review completed invoices.",
+    href: "/mobile/service/invoices",
     icon: ReceiptText,
     requiredCapability: "canManageOperations",
   },
