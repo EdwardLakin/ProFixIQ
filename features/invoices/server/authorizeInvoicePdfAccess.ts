@@ -17,6 +17,7 @@ export async function canAccessInvoicePdf(input: {
   authUserId: string;
   shopId: string;
   customerId: string | null;
+  customerVisibleDocument: boolean;
 }): Promise<boolean> {
   const { profile } = await resolveAuthenticatedStaffProfile(
     input.supabase,
@@ -30,7 +31,11 @@ export async function canAccessInvoicePdf(input: {
     }
   }
 
-  if (!input.customerId) return false;
+  // Staff billing operators may render a working draft, but portal customers
+  // must never receive mutable/unissued financial documents. Callers derive
+  // this bit from the canonical invoice-version lifecycle before we evaluate
+  // durable portal membership.
+  if (!input.customerVisibleDocument || !input.customerId) return false;
 
   const { data: portalAccess, error: portalAccessError } = await input.supabase.rpc(
     "profixiq_is_portal_customer_for",
