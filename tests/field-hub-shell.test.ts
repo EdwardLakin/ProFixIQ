@@ -37,6 +37,7 @@ describe("Field Hub workspace", () => {
       "/mobile/parts",
       "/mobile/service/purchase-orders",
       "/mobile/service/followups",
+      "/mobile/service/invoices",
     ]) {
       expect(`${fieldShell}\n${fieldHub}`).toContain(href);
     }
@@ -104,6 +105,10 @@ describe("Field Hub workspace", () => {
     );
     expect(fieldShell).toContain('label: "Truck inventory"');
     expect(fieldShell.match(/label: "Truck inventory"/g)).toHaveLength(1);
+    expect(fieldShell).toContain('label: "Invoices & history"');
+    expect(fieldHub).toMatch(
+      /id: "unpaid_invoices"[\s\S]*?title: "Unpaid invoices"/,
+    );
   });
 
   it("does not leak Fleet navigation and hides workspace switching unless another product is verified", () => {

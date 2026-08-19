@@ -12,6 +12,7 @@ import {
   PackagePlus,
   Plus,
   RadioTower,
+  ReceiptText,
   Settings2,
   Wrench,
   X,
@@ -72,6 +73,12 @@ const WORK_NAV: FieldNavItem[] = [
 
 const OPERATIONS_NAV: FieldNavItem[] = [
   {
+    label: "Invoices & history",
+    href: "/mobile/service/invoices",
+    icon: ReceiptText,
+    requiredCapability: "canManageOperations",
+  },
+  {
     label: "Truck inventory",
     href: "/mobile/service/truck-inventory",
     icon: PackageOpen,
@@ -110,6 +117,9 @@ function pageTitle(pathname: string): string {
   if (pathname.startsWith("/mobile/service/new")) return "New service call";
   if (pathname.startsWith("/mobile/service/jobs")) return "Active field work";
   if (pathname.startsWith("/mobile/service/dispatch")) return "Dispatch";
+  if (pathname.startsWith("/mobile/service/invoices")) {
+    return "Invoices & history";
+  }
   if (pathname.startsWith("/mobile/service/truck-inventory")) {
     return "Truck inventory";
   }
