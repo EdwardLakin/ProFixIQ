@@ -233,26 +233,6 @@
       "expiresOn": "2026-09-06"
     },
     {
-      "fingerprint": "b5ab30b194047e169693",
-      "rule": "missing-column",
-      "severity": "error",
-      "domain": "parts",
-      "file": "app/parts/page.tsx",
-      "subject": "shop_parts_import_match_candidates.staging_id",
-      "message": "select references missing column shop_parts_import_match_candidates.staging_id",
-      "expiresOn": "2026-09-06"
-    },
-    {
-      "fingerprint": "79b17e3dc7bc8b802735",
-      "rule": "missing-column",
-      "severity": "error",
-      "domain": "parts",
-      "file": "app/parts/receiving/page.tsx",
-      "subject": "shop_parts_import_match_candidates.staging_id",
-      "message": "select references missing column shop_parts_import_match_candidates.staging_id",
-      "expiresOn": "2026-09-06"
-    },
-    {
       "fingerprint": "85da6576aee2f976fb03",
       "rule": "missing-column",
       "severity": "error",
