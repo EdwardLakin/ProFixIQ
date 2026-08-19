@@ -85,6 +85,7 @@ export async function GET(
           .select("invoice_number,notes")
           .eq("id", version.invoice_id)
           .eq("shop_id", version.shop_id)
+          .eq("work_order_id", version.work_order_id)
           .maybeSingle<{
             invoice_number: string | null;
             notes: string | null;
