@@ -5,28 +5,31 @@ function source(path: string) {
   return readFileSync(path, "utf8").replace(/\r\n/g, "\n");
 }
 
-const migrationPath =
+const invoiceMigrationPath =
   "supabase/migrations/20260819153500_harden_invoice_write_rls.sql";
+const bootstrapDriftMigrationPath =
+  "supabase/migrations/20260819160000_harden_financial_bootstrap_policy_drift.sql";
 
 describe("financial write RLS hardening", () => {
   it("retires both legacy same-shop FOR ALL invoice policies and splits invoice mutations by operation", () => {
-    const migration = source(migrationPath);
+    const invoiceMigration = source(invoiceMigrationPath);
+    const driftMigration = source(bootstrapDriftMigrationPath);
 
-    expect(migration).toContain(
+    expect(invoiceMigration).toContain(
       "drop policy if exists invoices_modify_by_shop on public.invoices",
     );
-    expect(migration).toContain(
+    expect(driftMigration).toContain(
       "drop policy if exists invoices_shop_crud on public.invoices",
     );
-    expect(migration).toContain("create policy invoices_billing_insert");
-    expect(migration).toContain("create policy invoices_billing_update");
-    expect(migration).toContain("create policy invoices_billing_delete");
-    expect(migration).not.toContain("create policy invoices_modify_by_shop");
-    expect(migration).not.toContain("create policy invoices_shop_crud");
+    expect(invoiceMigration).toContain("create policy invoices_billing_insert");
+    expect(invoiceMigration).toContain("create policy invoices_billing_update");
+    expect(invoiceMigration).toContain("create policy invoices_billing_delete");
+    expect(invoiceMigration).not.toContain("create policy invoices_modify_by_shop");
+    expect(driftMigration).not.toContain("create policy invoices_shop_crud");
   });
 
   it("binds every authenticated invoice mutation to the actor shop and billing roles", () => {
-    const migration = source(migrationPath);
+    const migration = source(invoiceMigrationPath);
     const roleClause =
       "'owner', 'admin', 'manager', 'advisor', 'service'";
 
@@ -39,15 +42,17 @@ describe("financial write RLS hardening", () => {
     expect(migration.split(roleClause).length - 1).toBe(4);
   });
 
-  it("retire bootstrap payment DML and unconstrained API-role TRUNCATE privileges", () => {
-    const migration = source(migrationPath);
-    expect(migration).toContain(
+  it("retires bootstrap payment DML and unconstrained API-role TRUNCATE privileges", () => {
+    const invoiceMigration = source(invoiceMigrationPath);
+    const driftMigration = source(bootstrapDriftMigrationPath);
+
+    expect(driftMigration).toContain(
       "drop policy if exists payments_shop_crud on public.payments",
     );
-    expect(migration).toContain(
+    expect(driftMigration).toContain(
       "revoke insert, update, delete, truncate on table public.payments\n  from anon, authenticated",
     );
-    expect(migration).toContain(
+    expect(invoiceMigration).toContain(
       "revoke truncate on table public.invoices from anon, authenticated",
     );
   });
