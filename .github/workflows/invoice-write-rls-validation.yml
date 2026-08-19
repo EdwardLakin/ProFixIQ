@@ -5,6 +5,7 @@ on:
     paths:
       - "supabase/migrations/**"
       - "tests/security/invoice-write-rls.runtime.sql"
+      - "tests/security/financial-read-rls.runtime.sql"
       - ".github/workflows/invoice-write-rls-validation.yml"
 
 permissions:
@@ -41,7 +42,7 @@ jobs:
           set -euo pipefail
           supabase db start
 
-      - name: Execute invoice and payment RLS runtime regression
+      - name: Execute invoice and payment mutation RLS runtime regression
         shell: bash
         env:
           DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
@@ -53,3 +54,12 @@ jobs:
           fi
           psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
             -f tests/security/invoice-write-rls.runtime.sql
+
+      - name: Execute invoice and payment read RLS runtime regression
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+            -f tests/security/financial-read-rls.runtime.sql
