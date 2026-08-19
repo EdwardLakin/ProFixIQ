@@ -11,6 +11,8 @@ const bootstrapDriftMigrationPath =
   "supabase/migrations/20260819160000_harden_financial_bootstrap_policy_drift.sql";
 const readPolicyMigrationPath =
   "supabase/migrations/20260819162500_reconcile_financial_read_policies.sql";
+const portalInvoiceMigrationPath =
+  "supabase/migrations/20260819163500_bind_invoice_portal_read_to_invite.sql";
 
 describe("financial RLS hardening", () => {
   it("retires both legacy same-shop FOR ALL invoice policies and splits invoice mutations by operation", () => {
@@ -59,15 +61,23 @@ describe("financial RLS hardening", () => {
     );
   });
 
-  it("reconciles invoice and payment reads without restoring direct payment writes", () => {
+  it("reconciles staff financial reads without restoring direct payment writes", () => {
     const migration = source(readPolicyMigrationPath);
 
     expect(migration).toContain("create policy invoices_staff_select");
     expect(migration).toContain("shop_id = (select public.current_shop_id())");
-    expect(migration).toContain("create policy invoices_customer_select");
-    expect(migration).toContain("c.user_id = (select auth.uid())");
     expect(migration).toContain("create policy payments_staff_select");
     expect(migration).not.toContain("create policy payments_shop_crud");
+  });
+
+  it("binds customer invoice reads to durable accepted portal evidence", () => {
+    const migration = source(portalInvoiceMigrationPath);
+
+    expect(migration).toContain("create policy invoices_customer_select");
+    expect(migration).toContain("customer_id is not null");
+    expect(migration).toContain(
+      "public.profixiq_is_portal_customer_for(customer_id, shop_id)",
+    );
   });
 
   it("keeps the application billing-operator and server payment contracts aligned", () => {
