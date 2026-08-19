@@ -180,7 +180,7 @@ export default function ReceivingInboxPage(): JSX.Element {
           .eq("shop_id", sid),
         supabase
           .from("shop_parts_import_match_candidates")
-          .select("staging_id, candidate_part_id")
+          .select("staging_row_id, candidate_part_id")
           .in("candidate_part_id", partIds)
           .eq("shop_id", sid),
       ]);
