@@ -69,7 +69,7 @@ describe("invoice PDF authorization", () => {
     expect(ROLE_GROUPS.billingOperators).not.toContain("parts");
   });
 
-  it("allows a same-shop billing operator without consulting portal membership", async () => {
+  it("allows a same-shop billing operator to render a working draft without consulting portal membership", async () => {
     mocks.resolveAuthenticatedStaffProfile.mockResolvedValue(
       staffProfile("owner", "shop-a"),
     );
@@ -81,6 +81,7 @@ describe("invoice PDF authorization", () => {
         authUserId: "user-1",
         shopId: "shop-a",
         customerId: null,
+        customerVisibleDocument: false,
       }),
     ).resolves.toBe(true);
 
@@ -99,6 +100,7 @@ describe("invoice PDF authorization", () => {
         authUserId: "user-1",
         shopId: "shop-a",
         customerId: null,
+        customerVisibleDocument: true,
       }),
     ).resolves.toBe(false);
 
@@ -117,13 +119,14 @@ describe("invoice PDF authorization", () => {
         authUserId: "user-1",
         shopId: "shop-a",
         customerId: null,
+        customerVisibleDocument: true,
       }),
     ).resolves.toBe(false);
 
     expect(client.rpc).not.toHaveBeenCalled();
   });
 
-  it("allows an authenticated portal customer only when the canonical membership predicate returns true", async () => {
+  it("allows an authenticated portal customer only for a customer-visible document with durable membership", async () => {
     const client = sessionClient({ data: true, error: null });
 
     await expect(
@@ -132,6 +135,7 @@ describe("invoice PDF authorization", () => {
         authUserId: "portal-user",
         shopId: "shop-a",
         customerId: "customer-a",
+        customerVisibleDocument: true,
       }),
     ).resolves.toBe(true);
 
@@ -144,6 +148,22 @@ describe("invoice PDF authorization", () => {
     );
   });
 
+  it("denies a portal customer a draft before consulting otherwise-valid membership", async () => {
+    const client = sessionClient({ data: true, error: null });
+
+    await expect(
+      canAccessInvoicePdf({
+        supabase: client.supabase,
+        authUserId: "portal-user",
+        shopId: "shop-a",
+        customerId: "customer-a",
+        customerVisibleDocument: false,
+      }),
+    ).resolves.toBe(false);
+
+    expect(client.rpc).not.toHaveBeenCalled();
+  });
+
   it("denies missing or revoked portal membership", async () => {
     const client = sessionClient({ data: false, error: null });
 
@@ -153,6 +173,7 @@ describe("invoice PDF authorization", () => {
         authUserId: "portal-user",
         shopId: "shop-a",
         customerId: "customer-a",
+        customerVisibleDocument: true,
       }),
     ).resolves.toBe(false);
   });
@@ -169,6 +190,7 @@ describe("invoice PDF authorization", () => {
         authUserId: "portal-user",
         shopId: "shop-a",
         customerId: "customer-a",
+        customerVisibleDocument: true,
       }),
     ).resolves.toBe(false);
   });
@@ -182,15 +204,18 @@ describe("invoice PDF authorization", () => {
         authUserId: "portal-user",
         shopId: "shop-a",
         customerId: null,
+        customerVisibleDocument: true,
       }),
     ).resolves.toBe(false);
 
     expect(client.rpc).not.toHaveBeenCalled();
   });
 
-  it("gates service-role invoice-version rendering before financial data is returned", () => {
+  it("gates service-role invoice-version rendering on customer-visible lifecycle", () => {
     expect(versionRoute).toContain("canAccessInvoicePdf");
     expect(versionRoute).toContain("customerId: workOrder?.customer_id ?? null");
+    expect(versionRoute).toContain("CUSTOMER_VISIBLE_INVOICE_STATES.includes(");
+    expect(versionRoute).toContain("version.lifecycle_status");
     expect(versionRoute).toContain(
       'NextResponse.json({ error: "Forbidden" }, { status: 403 })',
     );
@@ -198,12 +223,14 @@ describe("invoice PDF authorization", () => {
     expect(versionRoute).not.toContain("customer?.user_id === user.id");
   });
 
-  it("adds the same financial gate to work-order invoice PDFs", () => {
+  it("requires an issued active version before portal access to work-order invoice PDFs", () => {
     expect(workOrderRoute).toContain(
       '.select("id,shop_id,custom_id,customer_id")',
     );
+    expect(workOrderRoute).toContain("const activeVersion = await getActiveInvoiceVersion");
     expect(workOrderRoute).toContain("canAccessInvoicePdf");
     expect(workOrderRoute).toContain("customerId: workOrder.customer_id");
+    expect(workOrderRoute).toContain("customerVisibleDocument: activeVersion !== null");
     expect(workOrderRoute).toContain(
       'NextResponse.json({ error: "Forbidden" }, { status: 403 })',
     );
