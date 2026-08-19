@@ -4,6 +4,7 @@ export type OpenWorkKind =
   | "inspection"
   | "invoice"
   | "customer"
+  | "vehicle"
   | "appointment";
 
 export type OpenWorkItem = {
@@ -213,6 +214,16 @@ export function resolveOpenWork(
       mobileHref: `/mobile/customers/${encodeURIComponent(segments[1])}`,
       title: `Customer · ${shortId(segments[1])}`,
       kind: "customer",
+      lastOpenedAt: now,
+    };
+  }
+
+  if (segments[0] === "vehicles" && segments[1]) {
+    return {
+      key: `vehicle:${segments[1]}`,
+      href: path,
+      title: `Vehicle · ${shortId(segments[1])}`,
+      kind: "vehicle",
       lastOpenedAt: now,
     };
   }

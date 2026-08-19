@@ -38,8 +38,16 @@ import FullCalendarModal from "./FullCalendarModal";
 import type { Database } from "@shared/types/types/supabase";
 import { Button } from "@shared/components/ui/Button";
 
-type ShopRow = Database["public"]["Tables"]["shops"]["Row"];
+type ShopRow = Pick<
+  Database["public"]["Tables"]["shops"]["Row"],
+  "id" | "name" | "slug" | "accepts_online_booking"
+>;
 type CustomerRow = Database["public"]["Tables"]["customers"]["Row"];
+
+type ShopContextResponse = {
+  shop?: ShopRow | null;
+  error?: string;
+};
 
 export type Booking = {
   id: string;
@@ -198,6 +206,7 @@ export default function PortalAppointmentsPage(): JSX.Element {
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const search = useSearchParams();
   const router = useRouter();
+  const requestedBookingId = search.get("bookingId")?.trim() ?? "";
 
   const [shops, setShops] = useState<ShopRow[]>([]);
   const [shopSlug, setShopSlug] = useState<string>(search.get("shop") || "");
@@ -245,50 +254,46 @@ export default function PortalAppointmentsPage(): JSX.Element {
   // depend on whether that shop currently accepts public online bookings.
   useEffect(() => {
     let mounted = true;
+    const controller = new AbortController();
 
     (async () => {
-      const { data: auth } = await supabase.auth.getUser();
-      const userId = auth.user?.id;
-      if (!userId) {
-        if (mounted) toast.error("Sign in to manage appointments.");
-        return;
-      }
+      try {
+        const response = await fetch("/api/portal/bookings?scope=shop", {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        const context = (await response.json().catch(() => null)) as
+          | ShopContextResponse
+          | null;
+        if (!response.ok) {
+          throw new Error(context?.error || "Unable to load your shop.");
+        }
 
-      const { data: profile, error: profileError } = await supabase
-        .from("profiles")
-        .select("shop_id")
-        .eq("id", userId)
-        .maybeSingle<{ shop_id: string | null }>();
+        const shop = context?.shop ?? null;
+        if (!shop?.id || !shop.slug) {
+          throw new Error("Your profile is not linked to a shop.");
+        }
+        if (!mounted) return;
 
-      if (profileError || !profile?.shop_id) {
-        if (mounted) toast.error("Your profile is not linked to a shop.");
-        return;
-      }
-
-      const { data, error } = await supabase
-        .from("shops")
-        .select("id,name,slug,accepts_online_booking")
-        .eq("id", profile.shop_id)
-        .maybeSingle();
-
-      if (!mounted) return;
-
-      if (error) {
-        // eslint-disable-next-line no-console
-        console.error(error);
-        toast.error("Unable to load shops.");
-        return;
-      }
-
-      const rows = data ? [data as ShopRow] : [];
-      setShops(rows);
-
-      if (rows.length > 0) {
-        const authorizedSlug = rows[0].slug as string;
+        setShops([shop]);
+        const authorizedSlug = shop.slug;
         setShopSlug(authorizedSlug);
-        if (shopSlug !== authorizedSlug) {
+        if (search.get("shop") !== authorizedSlug) {
+          const canonicalQuery = new URLSearchParams(search.toString());
+          canonicalQuery.set("shop", authorizedSlug);
           router.replace(
-            `/dashboard/appointments?shop=${encodeURIComponent(authorizedSlug)}`,
+            `/dashboard/appointments?${canonicalQuery.toString()}`,
+          );
+        }
+      } catch (caught: unknown) {
+        if (caught instanceof DOMException && caught.name === "AbortError") {
+          return;
+        }
+        if (mounted) {
+          toast.error(
+            caught instanceof Error
+              ? caught.message
+              : "Unable to load your shop.",
           );
         }
       }
@@ -296,13 +301,67 @@ export default function PortalAppointmentsPage(): JSX.Element {
 
     return () => {
       mounted = false;
+      controller.abort();
     };
-  }, [supabase, router, shopSlug]);
+  }, [router, search]);
 
   const selectedShop = useMemo(
     () => shops.find((s) => (s.slug as string | null) === shopSlug) ?? null,
     [shops, shopSlug],
   );
+
+  // Resolve appointment deep links only after the actor's canonical shop is
+  // known. The guarded staff endpoint applies both capability and tenant/RLS
+  // checks before returning the exact booking.
+  useEffect(() => {
+    if (!selectedShop || !requestedBookingId) return;
+
+    const controller = new AbortController();
+    void (async () => {
+      try {
+        const authorizedSlug = selectedShop.slug as string;
+        const response = await fetch(
+          `/api/portal/bookings?shop=${encodeURIComponent(authorizedSlug)}&bookingId=${encodeURIComponent(requestedBookingId)}`,
+          { cache: "no-store", signal: controller.signal },
+        );
+        const body = (await response.json().catch(() => null)) as
+          | Booking[]
+          | { error?: string }
+          | null;
+        if (!response.ok) {
+          throw new Error(
+            body && !Array.isArray(body)
+              ? body.error || "Unable to open appointment."
+              : "Unable to open appointment.",
+          );
+        }
+
+        const booking = Array.isArray(body) ? body[0] : null;
+        if (!booking) throw new Error("Appointment not found.");
+
+        const appointmentDate = new Date(booking.starts_at);
+        if (Number.isNaN(appointmentDate.getTime())) {
+          throw new Error("Appointment has an invalid start date.");
+        }
+        appointmentDate.setHours(0, 0, 0, 0);
+        setWeekStart(appointmentDate);
+        setEditing(booking);
+        setCreatingDate(null);
+        setPanelMode("edit");
+      } catch (caught: unknown) {
+        if (caught instanceof DOMException && caught.name === "AbortError") {
+          return;
+        }
+        toast.error(
+          caught instanceof Error
+            ? caught.message
+            : "Unable to open appointment.",
+        );
+      }
+    })();
+
+    return () => controller.abort();
+  }, [requestedBookingId, selectedShop]);
 
   // load customers for selected shop
   useEffect(() => {

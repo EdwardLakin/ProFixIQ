@@ -326,25 +326,22 @@ describe("guided onboarding page panels", () => {
     expect(source).not.toContain("Start typing to search customers.");
   });
 
-  it("builds Vehicle Files with default and live-search behavior capped to 20 shop-scoped rows", () => {
+  it("builds Vehicle Files on the guarded canonical server-search contract", () => {
     const source = read("features/vehicles/app/vehicles/page.tsx");
+    const route = read("app/vehicles/page.tsx");
 
     expect(source).toContain("Vehicle Files");
-    expect(source).toContain(
-      "Search by unit, VIN, plate, year, make, model, or customer.",
-    );
-    expect(source).toContain('placeholder="Search vehicles..."');
+    expect(source).toContain("Search by customer or company, phone, email, VIN");
+    expect(source).toContain('placeholder="Customer, phone, VIN, plate, unit, or WO…"');
     expect(source).toContain("+ Create Vehicle");
     expect(source).toContain("GuidedPageStepPanel");
     expect(source).toContain('"No vehicles found yet."');
-    expect(source).toContain('"No vehicles match your search."');
-    expect(source).toContain('.eq("shop_id", shopId)');
-    expect(source).toContain("setVisibleRows(sortedRows.slice(0, 20))");
-    expect(source).toContain(
-      "setVisibleRows(sortVehicleRows(rows).slice(0, 20))",
-    );
-    expect(source).toContain("vehicleSearchHaystack");
-    expect(source).not.toContain("Start typing to search vehicles.");
+    expect(source).toContain("/api/vehicles/search?");
+    expect(source).toContain("Open Workspace");
+    expect(source).toContain("Create Work Order");
+    expect(source).not.toContain("createBrowserSupabase");
+    expect(route).toContain("requireShopPageAccess");
+    expect(route).toContain("VEHICLE_WORKSPACE_READER_ROLES");
   });
 
   it("does not introduce legacy guided onboarding or auth helper regressions", () => {
