@@ -5,21 +5,32 @@ import Link from "next/link";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import FleetFormImportCard from "@/features/inspections/components/FleetFormImportCard";
+import {
+  getInspectionBuilderNavigation,
+  type InspectionBuilderSurface,
+} from "@/features/inspections/lib/inspectionBuilderNavigation";
 import GuidedPageStepPanel from "@/features/onboarding-v2/components/GuidedPageStepPanel";
+import { hasAnyRole, ROLE_GROUPS } from "@/features/shared/lib/rbac";
 
 type DB = Database;
 type Template = DB["public"]["Tables"]["inspection_templates"]["Row"];
 
 type Scope = "mine" | "shared" | "all";
 
-export default function InspectionTemplatesPage() {
+export default function InspectionTemplatesPage({
+  surface = "shop",
+}: {
+  surface?: InspectionBuilderSurface;
+}) {
   const supabase = useMemo(() => createBrowserSupabase(), []);
+  const navigation = getInspectionBuilderNavigation(surface);
   const [scope, setScope] = useState<Scope>("mine");
   const [search, setSearch] = useState("");
   const [mine, setMine] = useState<Template[]>([]);
   const [shared, setShared] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
+  const [canManageTemplates, setCanManageTemplates] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [, setShopId] = useState<string | null>(null);
 
@@ -34,27 +45,33 @@ export default function InspectionTemplatesPage() {
 
       // resolve shop_id for this user (if any)
       let resolvedShopId: string | null = null;
+      let resolvedRole: string | null = null;
       if (uid) {
         const byUser = await supabase
           .from("profiles")
-          .select("shop_id")
+          .select("shop_id, role")
           .eq("user_id", uid)
           .maybeSingle();
 
         if (byUser.data?.shop_id) {
           resolvedShopId = byUser.data.shop_id;
+          resolvedRole = byUser.data.role ?? null;
         } else {
           const byId = await supabase
             .from("profiles")
-            .select("shop_id")
+            .select("shop_id, role")
             .eq("id", uid)
             .maybeSingle();
           if (byId.data?.shop_id) {
             resolvedShopId = byId.data.shop_id;
+            resolvedRole = byId.data.role ?? null;
           }
         }
       }
       setShopId(resolvedShopId);
+      setCanManageTemplates(
+        hasAnyRole(resolvedRole, ROLE_GROUPS.billingOperators),
+      );
 
       // "My" templates (optionally scoped to shop)
       const minePromise = uid
@@ -132,7 +149,8 @@ export default function InspectionTemplatesPage() {
     });
   }, [scope, mine, shared, search]);
 
-  const canEditOrDelete = (t: Template) => !!userId && t.user_id === userId;
+  const canEditOrDelete = (t: Template) =>
+    canManageTemplates && !!userId && t.user_id === userId;
 
   async function handleDelete(id: string) {
     if (!userId) return;
@@ -140,17 +158,29 @@ export default function InspectionTemplatesPage() {
     if (!ok) return;
     try {
       setDeletingId(id);
-      const { error } = await supabase
-        .from("inspection_templates")
-        .delete()
-        .eq("id", id)
-        .eq("user_id", userId);
-      if (error) throw error;
+      if (navigation.surface === "field") {
+        const response = await fetch(
+          `/api/mobile/service/inspection-templates?templateId=${encodeURIComponent(id)}`,
+          { method: "DELETE" },
+        );
+        const body = (await response.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        if (!response.ok) {
+          throw new Error(body?.error || "Failed to delete template.");
+        }
+      } else {
+        const { error } = await supabase
+          .from("inspection_templates")
+          .delete()
+          .eq("id", id)
+          .eq("user_id", userId);
+        if (error) throw error;
+      }
 
       setMine((prev) => prev.filter((t) => t.id !== id));
       setShared((prev) => prev.filter((t) => t.id !== id));
     } catch (e) {
-      // eslint-disable-next-line no-console
       console.error("Delete failed:", e);
       alert("Failed to delete template.");
     } finally {
@@ -201,7 +231,11 @@ export default function InspectionTemplatesPage() {
         <GuidedPageStepPanel />
 
         {/* Header + filters */}
-        <div className={headerCard + " relative overflow-hidden px-4 py-4 md:px-6 md:py-5"}>
+        <div
+          className={
+            headerCard + " relative overflow-hidden px-4 py-4 md:px-6 md:py-5"
+          }
+        >
           <div
             aria-hidden
             className={`
@@ -223,7 +257,8 @@ export default function InspectionTemplatesPage() {
                 Inspection Templates
               </h1>
               <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
-                Build, import, and manage inspection templates for your shop and fleets.
+                Build, import, and manage inspection templates for your shop and
+                fleets.
               </p>
             </div>
 
@@ -244,25 +279,31 @@ export default function InspectionTemplatesPage() {
                           : "border-transparent bg-transparent text-[color:var(--theme-text-secondary)] hover:bg-zinc-900/80")
                       }
                     >
-                      {s === "mine" ? "My Templates" : s === "shared" ? "Shared" : "All"}
+                      {s === "mine"
+                        ? "My Templates"
+                        : s === "shared"
+                          ? "Shared"
+                          : "All"}
                     </button>
                   );
                 })}
               </div>
 
               {/* New template CTA (was orange gradient + orange glow) */}
-              <Link
-                href="/inspections/custom-inspection"
-                className={`
+              {canManageTemplates ? (
+                <Link
+                  href={navigation.newTemplateHref}
+                  className={`
                   mt-1 inline-flex items-center justify-center rounded-full
                   bg-[linear-gradient(to_right,rgba(200,122,67,0.85),rgba(200,122,67,0.55))]
                   px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-on-accent)]
                   shadow-[0_0_22px_${COPPER_SHADOW_60}] hover:shadow-[0_0_30px_${COPPER_SHADOW_80}]
                   md:mt-0
                 `}
-              >
-                New Template
-              </Link>
+                >
+                  New Template
+                </Link>
+              ) : null}
             </div>
           </div>
 
@@ -282,14 +323,16 @@ export default function InspectionTemplatesPage() {
             </div>
 
             <div className="text-[11px] text-[color:var(--theme-text-muted)] md:pl-3">
-              <span className="hidden md:inline">Tip:</span>{" "}
-              Use fleet imports to match customer forms exactly.
+              <span className="hidden md:inline">Tip:</span> Use fleet imports
+              to match customer forms exactly.
             </div>
           </div>
         </div>
 
         {/* Fleet import card */}
-        <FleetFormImportCard />
+        {canManageTemplates ? (
+          <FleetFormImportCard mobile={navigation.mobileImport} />
+        ) : null}
 
         {/* Templates list */}
         <div className={listCard + " px-4 py-4 md:px-6 md:py-5"}>
@@ -303,16 +346,17 @@ export default function InspectionTemplatesPage() {
                 No templates found
               </div>
               <p className="mt-2 text-xs text-[color:var(--theme-text-secondary)]">
-                Try adjusting your filters or import a fleet form to generate a template.
+                Try adjusting your filters or import a fleet form to generate a
+                template.
               </p>
             </div>
           ) : (
             <ul className="grid grid-cols-1 gap-4 md:grid-cols-2">
               {rows.map((t) => {
                 const mineOwned = canEditOrDelete(t);
-                const encodedName = encodeURIComponent(t.template_name ?? "Custom Inspection");
-
-                const createdAt = t.created_at ? new Date(t.created_at).toLocaleDateString() : "—";
+                const createdAt = t.created_at
+                  ? new Date(t.created_at).toLocaleDateString()
+                  : "—";
 
                 const tags = Array.isArray(t.tags) ? t.tags : [];
                 const lowerTags = tags.map((tag) => tag.toLowerCase());
@@ -419,7 +463,9 @@ export default function InspectionTemplatesPage() {
                         <span>{createdAt}</span>
                         {tags.length > 0 && (
                           <>
-                            <span className="text-[color:var(--theme-text-muted)]">•</span>
+                            <span className="text-[color:var(--theme-text-muted)]">
+                              •
+                            </span>
                             <div className="flex flex-wrap gap-1">
                               {tags.slice(0, 4).map((tag) => (
                                 <span
@@ -444,20 +490,25 @@ export default function InspectionTemplatesPage() {
                         <div className="flex items-center gap-2">
                           {/* Use Template / run */}
                           <Link
-                            href={`/inspections/run?templateId=${t.id}`}
+                            href={navigation.useTemplateHref(t.id)}
                             className={`
                               rounded-full border border-[color:var(--metal-border-soft,var(--theme-border-soft))]
                               bg-[color:var(--theme-surface-overlay)] px-3 py-1.5 text-[11px] uppercase tracking-[0.16em]
                               text-[color:var(--theme-text-primary)] hover:border-[${COPPER_65}] hover:bg-[color:var(--theme-surface-overlay)]
                             `}
                           >
-                            Use
+                            {navigation.surface === "field"
+                              ? "Use on a work order"
+                              : "Use"}
                           </Link>
 
                           {/* Edit -> go to custom draft */}
                           {mineOwned && (
                             <Link
-                              href={`/inspections/custom-draft?templateId=${t.id}&template=${encodedName}`}
+                              href={navigation.editHref(
+                                t.id,
+                                t.template_name ?? "Custom Inspection",
+                              )}
                               className={`
                                 rounded-full border border-[color:var(--metal-border-soft,var(--theme-border-soft))]
                                 bg-[color:var(--theme-surface-overlay)] px-3 py-1.5 text-[11px] uppercase tracking-[0.16em]

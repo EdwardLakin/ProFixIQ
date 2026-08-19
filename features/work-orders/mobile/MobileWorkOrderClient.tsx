@@ -96,6 +96,7 @@ function extractInspectionTemplateId(
 ): string | null {
   return (
     ln.inspection_template_id ??
+    ln.template_id ??
     ln.inspection_template ??
     ln.inspectionTemplate ??
     ln.template ??
@@ -105,6 +106,39 @@ function extractInspectionTemplateId(
     ln.metadata2?.template ??
     null
   );
+}
+
+const FIELD_INSPECTION_LOCKED_LINE_STATUSES = new Set([
+  "completed",
+  "ready_to_invoice",
+  "invoiced",
+  "declined",
+  "deferred",
+  "cancelled",
+  "canceled",
+  "closed",
+  "void",
+  "voided",
+]);
+
+const FIELD_INSPECTION_LOCKED_PARENT_STATUSES = new Set([
+  "completed",
+  "ready_to_invoice",
+  "invoiced",
+  "cancelled",
+  "canceled",
+  "closed",
+  "paid",
+  "void",
+  "voided",
+  "archived",
+]);
+
+function normalizeFieldInspectionStatus(value: unknown): string {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
 }
 
 /* ---------------------------- Badges (WO header) ---------------------------- */
@@ -146,8 +180,7 @@ const BADGE: Record<KnownStatus, string> = {
     "bg-[color:var(--theme-surface-panel-strong)] border-[color:var(--theme-border-soft)] text-[color:var(--theme-text-primary)] shadow-[0_0_14px_rgba(148,163,184,0.20)]",
   planned:
     "bg-purple-950/40 border-purple-400/70 text-purple-200 shadow-[0_0_18px_rgba(147,51,234,0.40)]",
-  new:
-    "bg-[color:var(--theme-surface-panel)] border-[color:var(--theme-border-soft)] text-[color:var(--theme-text-primary)] shadow-[0_0_14px_rgba(148,163,184,0.28)]",
+  new: "bg-[color:var(--theme-surface-panel)] border-[color:var(--theme-border-soft)] text-[color:var(--theme-text-primary)] shadow-[0_0_14px_rgba(148,163,184,0.28)]",
   completed:
     "bg-emerald-950/50 border-emerald-400/70 text-emerald-200 shadow-[0_0_20px_rgba(16,185,129,0.55)]",
   ready_to_invoice:
@@ -189,6 +222,7 @@ export default function MobileWorkOrderClient({
 
   // ✅ handle ?focus=<workOrderLineId>
   const focusParam = searchParams?.get("focus") ?? null;
+  const inspectionTemplateId = searchParams?.get("templateId")?.trim() || null;
   const handledFocusRef = useRef<string | null>(null);
 
   // 🔥 IMPORTANT: scope tab-state keys by routeId so different work orders don’t bleed state
@@ -248,11 +282,16 @@ export default function MobileWorkOrderClient({
     true,
   );
   const [warnedMissing, setWarnedMissing] = useState(false);
-  const [offlineSummary, setOfflineSummary] = useState(() => getOfflineSyncSummary());
+  const [offlineSummary, setOfflineSummary] = useState(() =>
+    getOfflineSyncSummary(),
+  );
 
   // mobile focused job view
   const [focusedJobId, setFocusedJobId] = useState<string | null>(null);
   const [focusedOpen, setFocusedOpen] = useState(false);
+  const [attachingTemplateLineId, setAttachingTemplateLineId] = useState<
+    string | null
+  >(null);
 
   /* ---------------------- AUTH ---------------------- */
   useEffect(() => {
@@ -299,7 +338,8 @@ export default function MobileWorkOrderClient({
         if (!profErr) {
           setCurrentUserRole(prof?.role ?? null);
           setShopId((prof?.shop_id as string | null) ?? null);
-          if (prof?.shop_id) setOfflineMutationScope({ userId: uid, shopId: prof.shop_id });
+          if (prof?.shop_id)
+            setOfflineMutationScope({ userId: uid, shopId: prof.shop_id });
         } else {
           setCurrentUserRole(null);
           setShopId(null);
@@ -343,7 +383,8 @@ export default function MobileWorkOrderClient({
       setLoading(true);
       setViewError(null);
 
-      const scope = currentUserId && shopId ? { userId: currentUserId, shopId } : null;
+      const scope =
+        currentUserId && shopId ? { userId: currentUserId, shopId } : null;
       const loadCached = async (): Promise<boolean> => {
         if (!scope) return false;
         const cached = await loadProjectedWorkOrderSnapshot({
@@ -366,7 +407,8 @@ export default function MobileWorkOrderClient({
       };
 
       if (!navigator.onLine) {
-        if (!(await loadCached())) setViewError("No saved copy of this work order is available.");
+        if (!(await loadCached()))
+          setViewError("No saved copy of this work order is available.");
         setLoading(false);
         return;
       }
@@ -462,37 +504,38 @@ export default function MobileWorkOrderClient({
           setWarnedMissing(true);
         }
 
-        const [linesRes, vehRes, custRes, quotesRes, shopRes] = await Promise.all([
-          supabase
-            .from("work_order_lines")
-            .select("*")
-            .eq("work_order_id", woRow.id)
-            .order("created_at", { ascending: true }),
-          woRow.vehicle_id
-            ? supabase
-                .from("vehicles")
-                .select("*")
-                .eq("id", woRow.vehicle_id)
-                .maybeSingle()
-            : Promise.resolve({ data: null, error: null } as const),
-          woRow.customer_id
-            ? supabase
-                .from("customers")
-                .select("*")
-                .eq("id", woRow.customer_id)
-                .maybeSingle()
-            : Promise.resolve({ data: null, error: null } as const),
-          supabase
-            .from("work_order_quote_lines")
-            .select("*")
-            .eq("work_order_id", woRow.id)
-            .order("created_at", { ascending: true }),
-          supabase
-            .from("shops")
-            .select("labor_rate")
-            .eq("id", woRow.shop_id)
-            .maybeSingle<{ labor_rate: number | null }>(),
-        ]);
+        const [linesRes, vehRes, custRes, quotesRes, shopRes] =
+          await Promise.all([
+            supabase
+              .from("work_order_lines")
+              .select("*")
+              .eq("work_order_id", woRow.id)
+              .order("created_at", { ascending: true }),
+            woRow.vehicle_id
+              ? supabase
+                  .from("vehicles")
+                  .select("*")
+                  .eq("id", woRow.vehicle_id)
+                  .maybeSingle()
+              : Promise.resolve({ data: null, error: null } as const),
+            woRow.customer_id
+              ? supabase
+                  .from("customers")
+                  .select("*")
+                  .eq("id", woRow.customer_id)
+                  .maybeSingle()
+              : Promise.resolve({ data: null, error: null } as const),
+            supabase
+              .from("work_order_quote_lines")
+              .select("*")
+              .eq("work_order_id", woRow.id)
+              .order("created_at", { ascending: true }),
+            supabase
+              .from("shops")
+              .select("labor_rate")
+              .eq("id", woRow.shop_id)
+              .maybeSingle<{ labor_rate: number | null }>(),
+          ]);
 
         if (linesRes.error) throw linesRes.error;
         const lineRows = (linesRes.data ?? []) as WorkOrderLine[];
@@ -547,26 +590,39 @@ export default function MobileWorkOrderClient({
         const freshQuoteLines = quotesRes.error
           ? []
           : ((quotesRes.data as WorkOrderQuoteLine[] | null) ?? []);
-        const freshVehicle = vehRes?.error ? null : ((vehRes?.data as Vehicle | null) ?? null);
-        const freshCustomer = custRes?.error ? null : ((custRes?.data as Customer | null) ?? null);
+        const freshVehicle = vehRes?.error
+          ? null
+          : ((vehRes?.data as Vehicle | null) ?? null);
+        const freshCustomer = custRes?.error
+          ? null
+          : ((custRes?.data as Customer | null) ?? null);
 
         if (quotesRes.error) {
           setQuoteLines([]);
-          console.error("[Mobile WO id page] quote lines load error:", quotesRes.error);
+          console.error(
+            "[Mobile WO id page] quote lines load error:",
+            quotesRes.error,
+          );
         } else {
           setQuoteLines((quotesRes.data as WorkOrderQuoteLine[] | null) ?? []);
         }
 
         if (vehRes?.error) {
           setVehicle(null);
-          console.error("[Mobile WO id page] vehicle load error:", vehRes.error);
+          console.error(
+            "[Mobile WO id page] vehicle load error:",
+            vehRes.error,
+          );
         } else {
           setVehicle((vehRes?.data as Vehicle | null) ?? null);
         }
 
         if (custRes?.error) {
           setCustomer(null);
-          console.error("[Mobile WO id page] customer load error:", custRes.error);
+          console.error(
+            "[Mobile WO id page] customer load error:",
+            custRes.error,
+          );
         } else {
           setCustomer((custRes?.data as Customer | null) ?? null);
         }
@@ -582,8 +638,18 @@ export default function MobileWorkOrderClient({
             shopLaborRate: freshShopLaborRate,
           };
           await Promise.all([
-            saveOfflineSnapshot({ scope, kind: "mobile-work-order-detail", entityId: routeId, data: snapshot }),
-            saveOfflineSnapshot({ scope, kind: "mobile-work-order-detail", entityId: woRow.id, data: snapshot }),
+            saveOfflineSnapshot({
+              scope,
+              kind: "mobile-work-order-detail",
+              entityId: routeId,
+              data: snapshot,
+            }),
+            saveOfflineSnapshot({
+              scope,
+              kind: "mobile-work-order-detail",
+              entityId: woRow.id,
+              data: snapshot,
+            }),
           ]);
         }
       } catch (e: unknown) {
@@ -790,8 +856,7 @@ export default function MobileWorkOrderClient({
       ReturnType<typeof resolveWorkOrderLinePricing>
     > = {};
     for (const line of lines) {
-      const canonicalParts =
-        lineContext.canonicalPartsByLine[line.id] ?? [];
+      const canonicalParts = lineContext.canonicalPartsByLine[line.id] ?? [];
       const allocations = filterAllocationsNotBackedByCanonicalParts(
         lineContext.allocationsByLine[line.id] ?? [],
         canonicalParts,
@@ -848,7 +913,8 @@ export default function MobileWorkOrderClient({
   }, [customer, offlineSummary, updateActiveTab, vehicle, wo]);
 
   const visibleLineState = useCallback(
-    (line: WorkOrderLine) => mobileOperationalState.lineStates.get(line) ?? "awaiting",
+    (line: WorkOrderLine) =>
+      mobileOperationalState.lineStates.get(line) ?? "awaiting",
     [mobileOperationalState],
   );
 
@@ -929,25 +995,27 @@ export default function MobileWorkOrderClient({
     ? (wo as WorkOrder & WorkOrderWaiterFlags)
     : null;
 
-  const isWaiter =
-    !!(
-      waiterFlagSource &&
-      (waiterFlagSource.is_waiter ||
-        waiterFlagSource.waiter ||
-        waiterFlagSource.customer_waiting)
-    );
+  const isWaiter = !!(
+    waiterFlagSource &&
+    (waiterFlagSource.is_waiter ||
+      waiterFlagSource.waiter ||
+      waiterFlagSource.customer_waiting)
+  );
 
   const canonicalHeaderStatus = mobileOperationalState.headerStatus;
 
   const hasAnyPending = approvalPending.length > 0 || quotePending.length > 0;
   const inProgressCount = mobileOperationalState.counters.in_progress;
-  const unassignedCount = mobileOperationalState.counters.awaiting + mobileOperationalState.counters.assigned;
+  const unassignedCount =
+    mobileOperationalState.counters.awaiting +
+    mobileOperationalState.counters.assigned;
   const awaitingPartsCount = mobileOperationalState.counters.waiting_parts;
   const nextActionText = useMemo(() => {
     if (inProgressCount > 0) return "Continue active job punches.";
     if (approvalPending.length > 0) return "Review pending approvals.";
     if (awaitingPartsCount > 0) return "Release parts-blocked jobs.";
-    if (mobileOperationalState.counters.on_hold > 0) return "Resolve held jobs.";
+    if (mobileOperationalState.counters.on_hold > 0)
+      return "Resolve held jobs.";
     if (unassignedCount > 0) return "Assign unassigned jobs.";
     return "All lines are complete.";
   }, [
@@ -976,16 +1044,34 @@ export default function MobileWorkOrderClient({
     el.scrollIntoView({ block: "start", behavior: "auto" });
   }, []);
 
-  const firstInProgressLineId = mobileOperationalState.visibleLines.find((line) => visibleLineState(line) === "in_progress")?.id ?? null;
-  const firstOnHoldLineId = mobileOperationalState.visibleLines.find((line) => visibleLineState(line) === "on_hold")?.id ?? null;
-  const firstPartsWaitingLineId = mobileOperationalState.visibleLines.find((line) => visibleLineState(line) === "waiting_parts" || Boolean(line.hold_reason?.toLowerCase().includes("part")))?.id ?? null;
-  const firstUnassignedLineId = mobileOperationalState.visibleLines.find((line) => visibleLineState(line) === "awaiting" || visibleLineState(line) === "assigned")?.id ?? null;
+  const firstInProgressLineId =
+    mobileOperationalState.visibleLines.find(
+      (line) => visibleLineState(line) === "in_progress",
+    )?.id ?? null;
+  const firstOnHoldLineId =
+    mobileOperationalState.visibleLines.find(
+      (line) => visibleLineState(line) === "on_hold",
+    )?.id ?? null;
+  const firstPartsWaitingLineId =
+    mobileOperationalState.visibleLines.find(
+      (line) =>
+        visibleLineState(line) === "waiting_parts" ||
+        Boolean(line.hold_reason?.toLowerCase().includes("part")),
+    )?.id ?? null;
+  const firstUnassignedLineId =
+    mobileOperationalState.visibleLines.find(
+      (line) =>
+        visibleLineState(line) === "awaiting" ||
+        visibleLineState(line) === "assigned",
+    )?.id ?? null;
 
   const primaryActionLine = actionableLines[0] ?? null;
 
   useEffect(() => {
     if (!focusedJobId) return;
-    const stillActionable = actionableLines.some((line) => line.id === focusedJobId);
+    const stillActionable = actionableLines.some(
+      (line) => line.id === focusedJobId,
+    );
     if (stillActionable) return;
 
     const nextLineId = actionableLines[0]?.id ?? null;
@@ -997,14 +1083,26 @@ export default function MobileWorkOrderClient({
 
   const operationalPills = useMemo(
     () => [
-      { title: "In progress", count: inProgressCount, targetLineId: firstInProgressLineId },
+      {
+        title: "In progress",
+        count: inProgressCount,
+        targetLineId: firstInProgressLineId,
+      },
       {
         title: "On hold",
         count: mobileOperationalState.counters.on_hold,
         targetLineId: firstOnHoldLineId,
       },
-      { title: "Parts waiting", count: awaitingPartsCount, targetLineId: firstPartsWaitingLineId },
-      { title: "Unassigned", count: unassignedCount, targetLineId: firstUnassignedLineId },
+      {
+        title: "Parts waiting",
+        count: awaitingPartsCount,
+        targetLineId: firstPartsWaitingLineId,
+      },
+      {
+        title: "Unassigned",
+        count: unassignedCount,
+        targetLineId: firstUnassignedLineId,
+      },
     ],
     [
       awaitingPartsCount,
@@ -1023,18 +1121,23 @@ export default function MobileWorkOrderClient({
   const approveLine = useCallback(
     async (lineId: string) => {
       if (!lineId) return;
-      const res = await fetch(`/api/work-orders/lines/${lineId}/approval-decision`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          decision: "approve",
-          workOrderId: wo?.id ?? null,
-        }),
-      });
-      const json = (await res.json().catch(() => null)) as
-        | { ok?: boolean; error?: string }
-        | null;
-      if (!res.ok || !json?.ok) return toast.error(json?.error ?? "Failed to approve line");
+      const res = await fetch(
+        `/api/work-orders/lines/${lineId}/approval-decision`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            decision: "approve",
+            workOrderId: wo?.id ?? null,
+          }),
+        },
+      );
+      const json = (await res.json().catch(() => null)) as {
+        ok?: boolean;
+        error?: string;
+      } | null;
+      if (!res.ok || !json?.ok)
+        return toast.error(json?.error ?? "Failed to approve line");
       toast.success("Line approved");
       void fetchAll();
     },
@@ -1044,18 +1147,23 @@ export default function MobileWorkOrderClient({
   const declineLine = useCallback(
     async (lineId: string) => {
       if (!lineId) return;
-      const res = await fetch(`/api/work-orders/lines/${lineId}/approval-decision`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          decision: "decline",
-          workOrderId: wo?.id ?? null,
-        }),
-      });
-      const json = (await res.json().catch(() => null)) as
-        | { ok?: boolean; error?: string }
-        | null;
-      if (!res.ok || !json?.ok) return toast.error(json?.error ?? "Failed to decline line");
+      const res = await fetch(
+        `/api/work-orders/lines/${lineId}/approval-decision`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            decision: "decline",
+            workOrderId: wo?.id ?? null,
+          }),
+        },
+      );
+      const json = (await res.json().catch(() => null)) as {
+        ok?: boolean;
+        error?: string;
+      } | null;
+      if (!res.ok || !json?.ok)
+        return toast.error(json?.error ?? "Failed to decline line");
       toast.success("Line declined");
       void fetchAll();
     },
@@ -1070,7 +1178,9 @@ export default function MobileWorkOrderClient({
       });
       toast.success("Sent to parts for quoting");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to send line to parts");
+      toast.error(
+        error instanceof Error ? error.message : "Failed to send line to parts",
+      );
     }
   }, []);
 
@@ -1085,7 +1195,11 @@ export default function MobileWorkOrderClient({
       }
       toast.success("Queued all pending lines for parts quoting");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to queue pending lines for parts");
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to queue pending lines for parts",
+      );
     }
   }, [approvalPending]);
 
@@ -1107,9 +1221,7 @@ export default function MobileWorkOrderClient({
         void fetchAll();
       } catch (e) {
         toast.error(
-          e instanceof Error
-            ? e.message
-            : "Failed to authorize quote line",
+          e instanceof Error ? e.message : "Failed to authorize quote line",
         );
       }
     },
@@ -1122,9 +1234,10 @@ export default function MobileWorkOrderClient({
       const res = await fetch(`/api/work-orders/quotes/${quoteId}/decline`, {
         method: "POST",
       });
-      const json = (await res.json().catch(() => null)) as
-        | { ok?: boolean; error?: string }
-        | null;
+      const json = (await res.json().catch(() => null)) as {
+        ok?: boolean;
+        error?: string;
+      } | null;
       if (!res.ok || !json?.ok) {
         toast.error(json?.error ?? "Failed to decline quote");
         return;
@@ -1159,6 +1272,70 @@ export default function MobileWorkOrderClient({
       router.push(`/mobile/inspections/${ln.id}?${sp.toString()}`);
     },
     [router, wo?.id],
+  );
+
+  const attachAndOpenInspection = useCallback(
+    async (ln: WorkOrderLine) => {
+      if (!inspectionTemplateId || !ln.id || !wo?.id) return;
+      if (!navigator.onLine) {
+        toast.error("Connect to attach an inspection template to this job.");
+        return;
+      }
+
+      setAttachingTemplateLineId(ln.id);
+      try {
+        const response = await fetch(
+          "/api/mobile/service/work-order-lines/inspection-template",
+          {
+            method: "PUT",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              workOrderLineId: ln.id,
+              templateId: inspectionTemplateId,
+            }),
+          },
+        );
+        const body = (await response.json().catch(() => null)) as {
+          error?: string;
+          workOrderId?: string;
+          workOrderLineId?: string;
+          templateId?: string;
+        } | null;
+        if (!response.ok) {
+          throw new Error(
+            body?.error || "Unable to attach the inspection template.",
+          );
+        }
+        if (
+          body?.workOrderId !== wo.id ||
+          body.workOrderLineId !== ln.id ||
+          body.templateId !== inspectionTemplateId
+        ) {
+          throw new Error("The inspection assignment response was incomplete.");
+        }
+
+        const query = new URLSearchParams({
+          workOrderId: body.workOrderId,
+          workOrderLineId: body.workOrderLineId,
+          templateId: body.templateId,
+          view: "mobile",
+        });
+        toast.success("Inspection template attached.");
+        router.push(
+          `/mobile/inspections/${encodeURIComponent(body.workOrderLineId)}?${query.toString()}`,
+        );
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "Unable to attach the inspection template.",
+        );
+      } finally {
+        setAttachingTemplateLineId(null);
+      }
+    },
+    [inspectionTemplateId, router, wo?.id],
   );
 
   /* ----------------------- ✅ focus param handling ----------------------- */
@@ -1218,7 +1395,10 @@ export default function MobileWorkOrderClient({
         <PreviousPageButton />
         {wo?.custom_id && (
           <span className="rounded-full border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-page)] px-2.5 py-1 text-[10px] text-[color:var(--theme-text-secondary)]">
-            ID <span className="font-mono text-[color:var(--theme-text-primary)]">{wo.id.slice(0, 8)}</span>
+            ID{" "}
+            <span className="font-mono text-[color:var(--theme-text-primary)]">
+              {wo.id.slice(0, 8)}
+            </span>
           </span>
         )}
       </div>
@@ -1246,8 +1426,9 @@ export default function MobileWorkOrderClient({
         offlineSummary.failed > 0 ||
         offlineSummary.conflicted > 0) && (
         <div className="metal-panel metal-panel--card rounded-2xl border border-amber-500/35 px-3 py-2 text-xs text-amber-100">
-          Sync queue: pending {offlineSummary.queued + offlineSummary.syncing} • failed{" "}
-          {offlineSummary.failed} • conflicted {offlineSummary.conflicted}
+          Sync queue: pending {offlineSummary.queued + offlineSummary.syncing} •
+          failed {offlineSummary.failed} • conflicted{" "}
+          {offlineSummary.conflicted}
         </div>
       )}
 
@@ -1267,7 +1448,9 @@ export default function MobileWorkOrderClient({
                 <div className="flex flex-wrap items-center gap-2">
                   <h1 className="text-base font-semibold sm:text-lg">
                     Work Order{" "}
-                    <span className="text-sky-200">{wo.custom_id || `#${wo.id.slice(0, 8)}`}</span>
+                    <span className="text-sky-200">
+                      {wo.custom_id || `#${wo.id.slice(0, 8)}`}
+                    </span>
                   </h1>
                   <span className={chip(canonicalHeaderStatus)}>
                     {canonicalHeaderStatus.replaceAll("_", " ")}
@@ -1278,8 +1461,12 @@ export default function MobileWorkOrderClient({
                     </span>
                   ) : null}
                 </div>
-                <p className="text-[11px] text-[color:var(--theme-text-secondary)]">Created {createdAtText}</p>
-                <p className="text-[11px] text-[color:var(--theme-text-secondary)]">Expected {expectedCompletionText}</p>
+                <p className="text-[11px] text-[color:var(--theme-text-secondary)]">
+                  Created {createdAtText}
+                </p>
+                <p className="text-[11px] text-[color:var(--theme-text-secondary)]">
+                  Expected {expectedCompletionText}
+                </p>
               </div>
             </div>
             <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1">
@@ -1292,7 +1479,9 @@ export default function MobileWorkOrderClient({
                     disabled={disabled}
                     onClick={() => {
                       if (!pill.targetLineId) return;
-                      jumpToElement(lineRefs.current[pill.targetLineId] ?? null);
+                      jumpToElement(
+                        lineRefs.current[pill.targetLineId] ?? null,
+                      );
                     }}
                     className={[
                       "inline-flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]",
@@ -1320,12 +1509,12 @@ export default function MobileWorkOrderClient({
               <h2 className="text-sm font-semibold sm:text-base">
                 Vehicle &amp; Customer
               </h2>
-                <button
-                  type="button"
-                  className="text-[11px] font-medium text-sky-200 underline-offset-2 hover:underline"
-                  onClick={() => setShowDetails((v) => !v)}
-                  aria-expanded={showDetails}
-                >
+              <button
+                type="button"
+                className="text-[11px] font-medium text-sky-200 underline-offset-2 hover:underline"
+                onClick={() => setShowDetails((v) => !v)}
+                aria-expanded={showDetails}
+              >
                 {showDetails ? "Hide details" : "Show details"}
               </button>
             </div>
@@ -1344,13 +1533,13 @@ export default function MobileWorkOrderClient({
                       </p>
                       <p className="mt-1 text-[11px] text-[color:var(--theme-text-secondary)]">
                         VIN:{" "}
-                        <span className="font-mono">
-                          {vehicle.vin ?? "—"}
-                        </span>
+                        <span className="font-mono">{vehicle.vin ?? "—"}</span>
                         <br />
                         Plate:{" "}
                         {vehicle.license_plate ?? (
-                          <span className="text-[color:var(--theme-text-muted)]">—</span>
+                          <span className="text-[color:var(--theme-text-muted)]">
+                            —
+                          </span>
                         )}
                         <br />
                         Mileage:{" "}
@@ -1358,7 +1547,9 @@ export default function MobileWorkOrderClient({
                           (wo.odometer_km != null ? (
                             `${wo.odometer_km} km`
                           ) : (
-                            <span className="text-[color:var(--theme-text-muted)]">—</span>
+                            <span className="text-[color:var(--theme-text-muted)]">
+                              —
+                            </span>
                           ))}
                       </p>
                     </>
@@ -1376,10 +1567,7 @@ export default function MobileWorkOrderClient({
                   {customer ? (
                     <>
                       <p className="text-sm font-medium text-[color:var(--theme-text-primary)]">
-                        {[
-                          customer.first_name ?? "",
-                          customer.last_name ?? "",
-                        ]
+                        {[customer.first_name ?? "", customer.last_name ?? ""]
                           .filter(Boolean)
                           .join(" ") || "—"}
                       </p>
@@ -1387,7 +1575,9 @@ export default function MobileWorkOrderClient({
                         {customer.phone ?? "—"}{" "}
                         {customer.email ? (
                           <>
-                            <span className="mx-1 text-[color:var(--theme-text-muted)]">•</span>
+                            <span className="mx-1 text-[color:var(--theme-text-muted)]">
+                              •
+                            </span>
                             {customer.email}
                           </>
                         ) : null}
@@ -1418,23 +1608,23 @@ export default function MobileWorkOrderClient({
               ref={approvalSectionRef}
               className="metal-panel metal-panel--card scroll-mt-20 rounded-2xl border border-[var(--metal-border-soft)] px-4 py-4 shadow-[var(--theme-shadow-medium)]"
             >
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)] sm:text-base">
-                Awaiting customer approval
-              </h2>
-              {approvalPending.length > 1 && (
-                <button
-                  type="button"
-                  className="rounded-full border border-amber-300/65 bg-amber-500/14 px-3 py-1.5 text-[11px] font-semibold text-amber-100 shadow-[0_0_14px_rgba(251,191,36,0.20)] hover:bg-amber-500/18"
-                  onClick={sendAllPendingToParts}
-                  title="Queue all lines for parts quoting"
-                >
-                  Quote all pending lines
-                </button>
-              )}
-            </div>
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)] sm:text-base">
+                  Awaiting customer approval
+                </h2>
+                {approvalPending.length > 1 && (
+                  <button
+                    type="button"
+                    className="rounded-full border border-amber-300/65 bg-amber-500/14 px-3 py-1.5 text-[11px] font-semibold text-amber-100 shadow-[0_0_14px_rgba(251,191,36,0.20)] hover:bg-amber-500/18"
+                    onClick={sendAllPendingToParts}
+                    title="Queue all lines for parts quoting"
+                  >
+                    Quote all pending lines
+                  </button>
+                )}
+              </div>
 
-            <div className="space-y-4">
+              <div className="space-y-4">
                 {/* Job lines needing approval */}
                 {approvalPending.length > 0 && (
                   <div className="space-y-2">
@@ -1447,9 +1637,7 @@ export default function MobileWorkOrderClient({
                           (ln.hold_reason ?? "")
                             .toLowerCase()
                             .includes("part")) ||
-                        (ln.hold_reason ?? "")
-                          .toLowerCase()
-                          .includes("quote");
+                        (ln.hold_reason ?? "").toLowerCase().includes("quote");
 
                       const hasQuotedParts =
                         (activeQuotesByLine[ln.id] ?? []).length > 0;
@@ -1481,10 +1669,7 @@ export default function MobileWorkOrderClient({
                                   ? `${ln.labor_time}h`
                                   : "—"}{" "}
                                 • Status:{" "}
-                                {(ln.status ?? "awaiting").replaceAll(
-                                  "_",
-                                  " ",
-                                )}{" "}
+                                {(ln.status ?? "awaiting").replaceAll("_", " ")}{" "}
                                 • Approval:{" "}
                                 {(ln.approval_state ?? "pending").replaceAll(
                                   "_",
@@ -1568,10 +1753,7 @@ export default function MobileWorkOrderClient({
                               {idx + 1}. {q.description}
                             </div>
                             <div className="mt-0.5 text-[11px] text-[color:var(--theme-text-secondary)]">
-                              {String(q.job_type ?? "job").replaceAll(
-                                "_",
-                                " ",
-                              )}{" "}
+                              {String(q.job_type ?? "job").replaceAll("_", " ")}{" "}
                               •{" "}
                               {typeof q.est_labor_hours === "number"
                                 ? `${q.est_labor_hours}h`
@@ -1616,6 +1798,31 @@ export default function MobileWorkOrderClient({
             </section>
           ) : null}
 
+          {inspectionTemplateId ? (
+            <section className="metal-panel metal-panel--card rounded-2xl border border-sky-400/35 px-4 py-4 shadow-[var(--theme-shadow-medium)]">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-sky-200">
+                    Inspection setup
+                  </div>
+                  <h2 className="mt-1 text-sm font-semibold sm:text-base">
+                    Choose the job line for this template
+                  </h2>
+                  <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+                    The template stays attached to the selected line, and that
+                    line remains the inspection runtime identity.
+                  </p>
+                </div>
+                <Link
+                  href="/mobile/service/inspection-builder"
+                  className="rounded-full border border-[color:var(--theme-border-soft)] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-primary)]"
+                >
+                  Cancel
+                </Link>
+              </div>
+            </section>
+          ) : null}
+
           {/* Jobs list */}
           <section
             ref={jobsSectionRef}
@@ -1633,10 +1840,30 @@ export default function MobileWorkOrderClient({
             </div>
 
             {displayLines.length === 0 ? (
-              <p className="text-sm text-[color:var(--theme-text-secondary)]">No lines yet.</p>
+              <p className="text-sm text-[color:var(--theme-text-secondary)]">
+                No lines yet.
+              </p>
             ) : (
               <div className="space-y-2">
                 {displayLines.map((ln, idx) => {
+                  const attachedTemplateId = extractInspectionTemplateId(
+                    ln as WorkOrderLineWithInspectionMeta,
+                  );
+                  const lineLocked =
+                    Boolean(ln.voided_at) ||
+                    [ln.status, ln.line_status].some((status) =>
+                      FIELD_INSPECTION_LOCKED_LINE_STATUSES.has(
+                        normalizeFieldInspectionStatus(status),
+                      ),
+                    ) ||
+                    FIELD_INSPECTION_LOCKED_PARENT_STATUSES.has(
+                      normalizeFieldInspectionStatus(wo.status),
+                    );
+                  const hasDifferentTemplate = Boolean(
+                    inspectionTemplateId &&
+                    attachedTemplateId &&
+                    attachedTemplateId !== inspectionTemplateId,
+                  );
                   const activeTechnicianIds =
                     lineContext.activeTechnicianIdsByLine?.[ln.id] ?? [];
                   const punchedIn =
@@ -1677,24 +1904,59 @@ export default function MobileWorkOrderClient({
                         line={ln}
                         parts={lineContext.allocationsByLine[ln.id] ?? []}
                         partsCount={pricing?.partsCount ?? 0}
-                        partsStatusLabel={getPartsRequestStatusLabel(partRequests)}
+                        partsStatusLabel={getPartsRequestStatusLabel(
+                          partRequests,
+                        )}
                         pricing={pricing}
                         technicians={lineTechnicians}
                         canAssign={canAssign}
                         isPunchedIn={punchedIn}
                         isCurrentUserWorkingThisLine={Boolean(
                           punchedIn &&
-                            currentUserId &&
-                            activeTechnicianIds.includes(currentUserId),
+                          currentUserId &&
+                          activeTechnicianIds.includes(currentUserId),
                         )}
                         activeTechnicianNames={activeTechnicianNames}
                         onOpen={openFocused}
                         onAssign={undefined}
-                        onOpenInspection={() => openInspection(ln)}
+                        onOpenInspection={
+                          inspectionTemplateId
+                            ? undefined
+                            : () => openInspection(ln)
+                        }
                         onAddPart={undefined}
                         compact
                         hideExecutionStageCompletenessPills
                       />
+                      {inspectionTemplateId ? (
+                        <div className="mt-2 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3">
+                          {lineLocked ? (
+                            <p className="text-xs text-[color:var(--theme-text-secondary)]">
+                              Inactive or completed job lines cannot receive a
+                              new inspection template.
+                            </p>
+                          ) : hasDifferentTemplate ? (
+                            <p className="text-xs text-amber-200">
+                              This job already has a different inspection
+                              template. Existing assignments are not replaced
+                              from Field.
+                            </p>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => void attachAndOpenInspection(ln)}
+                              disabled={attachingTemplateLineId !== null}
+                              className="inline-flex min-h-11 w-full items-center justify-center rounded-xl border border-sky-400/45 bg-sky-500/12 px-4 py-2 text-sm font-semibold text-sky-100 disabled:cursor-wait disabled:opacity-55"
+                            >
+                              {attachingTemplateLineId === ln.id
+                                ? "Attaching..."
+                                : attachedTemplateId === inspectionTemplateId
+                                  ? "Open attached inspection"
+                                  : "Attach and start inspection"}
+                            </button>
+                          )}
+                        </div>
+                      ) : null}
                     </div>
                   );
                 })}
@@ -1702,13 +1964,20 @@ export default function MobileWorkOrderClient({
             )}
           </section>
 
-
           {quotePending.length > 0 && (
-            <section id="pending-quote-items" className="metal-panel metal-panel--card scroll-mt-20 rounded-2xl border border-sky-400/25 px-4 py-4 shadow-[var(--theme-shadow-medium)]">
+            <section
+              id="pending-quote-items"
+              className="metal-panel metal-panel--card scroll-mt-20 rounded-2xl border border-sky-400/25 px-4 py-4 shadow-[var(--theme-shadow-medium)]"
+            >
               <div className="mb-3 flex items-start justify-between gap-2">
                 <div>
-                  <h2 className="text-sm font-semibold text-sky-100 sm:text-base">Pending quote items</h2>
-                  <p className="text-[11px] text-[color:var(--theme-text-muted)]">Recommended repairs awaiting quote review or customer decision.</p>
+                  <h2 className="text-sm font-semibold text-sky-100 sm:text-base">
+                    Pending quote items
+                  </h2>
+                  <p className="text-[11px] text-[color:var(--theme-text-muted)]">
+                    Recommended repairs awaiting quote review or customer
+                    decision.
+                  </p>
                 </div>
                 <span className="rounded-full border border-sky-400/40 px-3 py-1.5 text-[11px] font-semibold text-sky-100">
                   Review here
@@ -1716,20 +1985,68 @@ export default function MobileWorkOrderClient({
               </div>
               <div className="space-y-2">
                 {quotePending.map((q) => {
-                  const meta = typeof q.metadata === "object" && q.metadata && !Array.isArray(q.metadata) ? q.metadata as Record<string, unknown> : {};
+                  const meta =
+                    typeof q.metadata === "object" &&
+                    q.metadata &&
+                    !Array.isArray(q.metadata)
+                      ? (q.metadata as Record<string, unknown>)
+                      : {};
                   const parts = Array.isArray(meta.parts) ? meta.parts : [];
-                  const inspectionStatus = typeof meta.inspection_status === "string" ? meta.inspection_status.toUpperCase() : "RECOMMEND";
-                  const sourceFinding = typeof meta.source_finding_title === "string" ? meta.source_finding_title : q.ai_complaint ?? "Inspection finding";
-                  const pricingReviewRequired = q.status === "pending_parts" || (typeof meta.menu_match === "object" && meta.menu_match !== null && (meta.menu_match as Record<string, unknown>).pricing_review_required === true);
+                  const inspectionStatus =
+                    typeof meta.inspection_status === "string"
+                      ? meta.inspection_status.toUpperCase()
+                      : "RECOMMEND";
+                  const sourceFinding =
+                    typeof meta.source_finding_title === "string"
+                      ? meta.source_finding_title
+                      : (q.ai_complaint ?? "Inspection finding");
+                  const pricingReviewRequired =
+                    q.status === "pending_parts" ||
+                    (typeof meta.menu_match === "object" &&
+                      meta.menu_match !== null &&
+                      (meta.menu_match as Record<string, unknown>)
+                        .pricing_review_required === true);
                   return (
-                    <article key={q.id} className="rounded-xl border border-sky-400/20 bg-sky-950/20 p-3">
-                      <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">{q.description || "Recommended repair"}</div>
-                      <div className="mt-1 text-[11px] uppercase tracking-[0.14em] text-sky-200">{inspectionStatus} • {sourceFinding}</div>
+                    <article
+                      key={q.id}
+                      className="rounded-xl border border-sky-400/20 bg-sky-950/20 p-3"
+                    >
+                      <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                        {q.description || "Recommended repair"}
+                      </div>
+                      <div className="mt-1 text-[11px] uppercase tracking-[0.14em] text-sky-200">
+                        {inspectionStatus} • {sourceFinding}
+                      </div>
                       <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-[color:var(--theme-text-secondary)]">
-                        <div>Labor: {typeof q.labor_hours === "number" ? `${q.labor_hours}h` : typeof q.est_labor_hours === "number" ? `${q.est_labor_hours}h` : "—"}</div>
-                        <div>Parts: {parts.length > 0 ? `${parts.length} req.` : "None"}</div>
-                        <div>Stage: {String(q.stage ?? q.status ?? "advisor_pending").replaceAll("_", " ")}</div>
-                        <div className={pricingReviewRequired ? "text-amber-200" : "text-emerald-200"}>{pricingReviewRequired ? "Pricing review" : "Pricing available"}</div>
+                        <div>
+                          Labor:{" "}
+                          {typeof q.labor_hours === "number"
+                            ? `${q.labor_hours}h`
+                            : typeof q.est_labor_hours === "number"
+                              ? `${q.est_labor_hours}h`
+                              : "—"}
+                        </div>
+                        <div>
+                          Parts:{" "}
+                          {parts.length > 0 ? `${parts.length} req.` : "None"}
+                        </div>
+                        <div>
+                          Stage:{" "}
+                          {String(
+                            q.stage ?? q.status ?? "advisor_pending",
+                          ).replaceAll("_", " ")}
+                        </div>
+                        <div
+                          className={
+                            pricingReviewRequired
+                              ? "text-amber-200"
+                              : "text-emerald-200"
+                          }
+                        >
+                          {pricingReviewRequired
+                            ? "Pricing review"
+                            : "Pricing available"}
+                        </div>
                       </div>
                     </article>
                   );
@@ -1744,8 +2061,12 @@ export default function MobileWorkOrderClient({
           >
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h2 className="text-sm font-semibold sm:text-base">Focused job / actions</h2>
-                <p className="mt-1 text-[11px] text-[color:var(--theme-text-secondary)]">{nextActionText}</p>
+                <h2 className="text-sm font-semibold sm:text-base">
+                  Focused job / actions
+                </h2>
+                <p className="mt-1 text-[11px] text-[color:var(--theme-text-secondary)]">
+                  {nextActionText}
+                </p>
               </div>
               {primaryActionLine ? (
                 <button
@@ -1769,7 +2090,9 @@ export default function MobileWorkOrderClient({
           </section>
 
           <section className="metal-panel metal-panel--card rounded-2xl border border-[var(--metal-border-soft)] px-4 py-3">
-            <h2 className="text-sm font-semibold sm:text-base">Supporting utilities</h2>
+            <h2 className="text-sm font-semibold sm:text-base">
+              Supporting utilities
+            </h2>
             <div className="mt-2">
               <AskAssistantEntry mobile placement="dock" />
             </div>

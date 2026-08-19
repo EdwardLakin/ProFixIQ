@@ -21,6 +21,10 @@ import {
   type CvipGroup,
   type VehicleType,
 } from "@inspections/lib/inspection/masterInspectionList";
+import {
+  getInspectionBuilderNavigation,
+  type InspectionBuilderSurface,
+} from "@/features/inspections/lib/inspectionBuilderNavigation";
 import { buttonClasses } from "@/features/shared/components/ui/Button";
 
 type DutyClass = "light" | "medium" | "heavy";
@@ -492,9 +496,14 @@ function cleanNumericString(raw: string): string {
   return cleaned ? cleaned.replace(/^0+(?=\d)/, "") : "";
 }
 
-export default function CustomBuilderPage() {
+export default function CustomBuilderPage({
+  surface = "shop",
+}: {
+  surface?: InspectionBuilderSurface;
+}) {
   const router = useRouter();
   const sp = useSearchParams();
+  const navigation = getInspectionBuilderNavigation(surface);
 
   const [title, setTitle] = useState(sp.get("template") || "Custom Inspection");
   const [dutyClass, setDutyClass] = useState<DutyClass>("heavy");
@@ -676,7 +685,7 @@ export default function CustomBuilderPage() {
       }),
     );
 
-    router.push(`/inspections/custom-draft?${qs.toString()}`);
+    router.push(navigation.reviewHref(qs));
   }
 
   function startQuickFromMaster() {
@@ -877,8 +886,9 @@ export default function CustomBuilderPage() {
 
   const activeSection = useMemo(
     () =>
-      masterInspectionList.find((section) => section.title === activeSectionTitle) ??
-      masterInspectionList[0],
+      masterInspectionList.find(
+        (section) => section.title === activeSectionTitle,
+      ) ?? masterInspectionList[0],
     [activeSectionTitle],
   );
 
@@ -916,13 +926,15 @@ export default function CustomBuilderPage() {
     {
       id: "template" as const,
       title: "Start from a template",
-      description: "Build a proven inspection for the vehicle and brake system.",
+      description:
+        "Build a proven inspection for the vehicle and brake system.",
       icon: FileStack,
     },
     {
       id: "prompt" as const,
       title: "Describe what you need",
-      description: "Turn a plain-language request into a structured inspection.",
+      description:
+        "Turn a plain-language request into a structured inspection.",
       icon: Sparkles,
     },
     {
@@ -973,7 +985,8 @@ export default function CustomBuilderPage() {
                 Build a focused inspection
               </h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-[color:var(--theme-text-secondary)]">
-                Set the basics, choose one build method, then review the technician experience.
+                Set the basics, choose one build method, then review the
+                technician experience.
               </p>
             </div>
             <div className="flex items-center gap-2 self-start rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-2 text-xs text-[color:var(--theme-text-secondary)] lg:self-auto">
@@ -988,14 +1001,20 @@ export default function CustomBuilderPage() {
           </div>
         </header>
 
-        <section className={cx(panelClass, "overflow-hidden")} aria-labelledby="inspection-setup-heading">
+        <section
+          className={cx(panelClass, "overflow-hidden")}
+          aria-labelledby="inspection-setup-heading"
+        >
           <div className="border-b border-[color:var(--theme-border-soft)] px-5 py-4">
             <div className="flex items-center gap-3">
               <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-500/10 text-sm font-bold text-blue-500">
                 1
               </span>
               <div>
-                <h2 id="inspection-setup-heading" className="text-sm font-semibold">
+                <h2
+                  id="inspection-setup-heading"
+                  className="text-sm font-semibold"
+                >
                   Inspection setup
                 </h2>
                 <p className="text-xs text-[color:var(--theme-text-secondary)]">
@@ -1019,7 +1038,9 @@ export default function CustomBuilderPage() {
               Duty class
               <select
                 value={dutyClass}
-                onChange={(event) => setDutyClass(event.target.value as DutyClass)}
+                onChange={(event) =>
+                  setDutyClass(event.target.value as DutyClass)
+                }
                 className={cx(inputClass, "mt-1.5")}
               >
                 <option value="light">Light duty</option>
@@ -1033,7 +1054,9 @@ export default function CustomBuilderPage() {
                 <input
                   inputMode="decimal"
                   value={laborHours}
-                  onChange={(event) => setLaborHours(cleanNumericString(event.target.value))}
+                  onChange={(event) =>
+                    setLaborHours(cleanNumericString(event.target.value))
+                  }
                   placeholder="0.8"
                   className={cx(inputClass, "pr-12")}
                 />
@@ -1048,10 +1071,13 @@ export default function CustomBuilderPage() {
             <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-3.5 text-sm font-medium text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-surface-subtle)] [&::-webkit-details-marker]:hidden">
               <span className="flex min-w-0 items-center gap-2">
                 <Settings2 className="h-4 w-4" aria-hidden />
-                <span className="truncate">Measurement grids and included services</span>
+                <span className="truncate">
+                  Measurement grids and included services
+                </span>
               </span>
               <span className="hidden shrink-0 text-xs text-[color:var(--theme-text-muted)] sm:inline">
-                {compactGridLabel(gridMode)} brakes · {optionalFeatureCount} included
+                {compactGridLabel(gridMode)} brakes · {optionalFeatureCount}{" "}
+                included
               </span>
             </summary>
             <div className="grid gap-5 border-t border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-5 lg:grid-cols-2">
@@ -1094,7 +1120,9 @@ export default function CustomBuilderPage() {
                     className={selectionButtonClasses(includeOil)}
                   >
                     Oil service
-                    {includeOil ? <Check className="h-4 w-4 text-current" aria-hidden /> : null}
+                    {includeOil ? (
+                      <Check className="h-4 w-4 text-current" aria-hidden />
+                    ) : null}
                   </button>
                   <button
                     type="button"
@@ -1103,7 +1131,9 @@ export default function CustomBuilderPage() {
                     className={selectionButtonClasses(includeTireGrid)}
                   >
                     Tire measurements
-                    {includeTireGrid ? <Check className="h-4 w-4 text-current" aria-hidden /> : null}
+                    {includeTireGrid ? (
+                      <Check className="h-4 w-4 text-current" aria-hidden />
+                    ) : null}
                   </button>
                   <button
                     type="button"
@@ -1112,16 +1142,22 @@ export default function CustomBuilderPage() {
                     className={selectionButtonClasses(includeBatteryGrid)}
                   >
                     Battery measurements
-                    {includeBatteryGrid ? <Check className="h-4 w-4 text-current" aria-hidden /> : null}
+                    {includeBatteryGrid ? (
+                      <Check className="h-4 w-4 text-current" aria-hidden />
+                    ) : null}
                   </button>
                   <button
                     type="button"
                     aria-pressed={includeGreaseChassis}
-                    onClick={() => setIncludeGreaseChassis((current) => !current)}
+                    onClick={() =>
+                      setIncludeGreaseChassis((current) => !current)
+                    }
                     className={selectionButtonClasses(includeGreaseChassis)}
                   >
                     Grease chassis
-                    {includeGreaseChassis ? <Check className="h-4 w-4 text-current" aria-hidden /> : null}
+                    {includeGreaseChassis ? (
+                      <Check className="h-4 w-4 text-current" aria-hidden />
+                    ) : null}
                   </button>
                 </div>
                 {includeOil ? (
@@ -1129,7 +1165,9 @@ export default function CustomBuilderPage() {
                     Oil service engine
                     <select
                       value={oilEngineType}
-                      onChange={(event) => setOilEngineType(event.target.value as EngineType)}
+                      onChange={(event) =>
+                        setOilEngineType(event.target.value as EngineType)
+                      }
                       className={cx(inputClass, "mt-1.5")}
                     >
                       <option value="gas">Gas</option>
@@ -1142,7 +1180,10 @@ export default function CustomBuilderPage() {
           </details>
         </section>
 
-        <section className={cx(panelClass, "overflow-hidden")} aria-labelledby="build-method-heading">
+        <section
+          className={cx(panelClass, "overflow-hidden")}
+          aria-labelledby="build-method-heading"
+        >
           <div className="border-b border-[color:var(--theme-border-soft)] px-5 py-4">
             <div className="flex items-center gap-3">
               <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-500/10 text-sm font-bold text-blue-500">
@@ -1176,10 +1217,14 @@ export default function CustomBuilderPage() {
                       : "border-transparent text-[color:var(--theme-text-secondary)] hover:border-[color:var(--theme-border-soft)] hover:bg-[color:var(--theme-surface-page)]",
                   )}
                 >
-                  <span className={cx(
-                    "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
-                    active ? "bg-blue-500/10 text-blue-500" : "bg-[color:var(--theme-surface-subtle)]",
-                  )}>
+                  <span
+                    className={cx(
+                      "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
+                      active
+                        ? "bg-blue-500/10 text-blue-500"
+                        : "bg-[color:var(--theme-surface-subtle)]",
+                    )}
+                  >
                     <Icon className="h-4 w-4" aria-hidden />
                   </span>
                   <span>
@@ -1200,9 +1245,12 @@ export default function CustomBuilderPage() {
               {buildMethod === "template" ? (
                 <div className="space-y-5">
                   <div>
-                    <h3 className="text-base font-semibold">Configure the starting template</h3>
+                    <h3 className="text-base font-semibold">
+                      Configure the starting template
+                    </h3>
                     <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
-                      ProFixIQ selects the right checks from the master inspection library.
+                      ProFixIQ selects the right checks from the master
+                      inspection library.
                     </p>
                   </div>
                   <div className="grid gap-4 md:grid-cols-3">
@@ -1258,14 +1306,18 @@ export default function CustomBuilderPage() {
                       <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[color:var(--theme-text-muted)]">
                         Vehicle profile
                       </div>
-                      <div className="mt-1 text-sm font-medium capitalize">{vehicleType}</div>
+                      <div className="mt-1 text-sm font-medium capitalize">
+                        {vehicleType}
+                      </div>
                     </div>
                     <div>
                       <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[color:var(--theme-text-muted)]">
                         Brake checks
                       </div>
                       <div className="mt-1 text-sm font-medium">
-                        {brakeSystem === "air_brake" ? "Air brake" : "Hydraulic"}
+                        {brakeSystem === "air_brake"
+                          ? "Air brake"
+                          : "Hydraulic"}
                       </div>
                     </div>
                     <div>
@@ -1283,9 +1335,12 @@ export default function CustomBuilderPage() {
               {buildMethod === "prompt" ? (
                 <div className="space-y-4">
                   <div>
-                    <h3 className="text-base font-semibold">Describe the inspection</h3>
+                    <h3 className="text-base font-semibold">
+                      Describe the inspection
+                    </h3>
                     <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
-                      Include the vehicle, brake system, desired size, and any measurements.
+                      Include the vehicle, brake system, desired size, and any
+                      measurements.
                     </p>
                   </div>
                   <textarea
@@ -1328,20 +1383,23 @@ export default function CustomBuilderPage() {
                       Commercial presets
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      {(Object.keys(CVIP_PRESETS) as AiPresetKey[]).map((key) => (
-                        <button
-                          key={key}
-                          type="button"
-                          aria-pressed={aiPreset === key}
-                          onClick={() => applyAiPreset(key)}
-                          className={cx(
-                            quietButtonClass,
-                            aiPreset === key && "border-blue-500/30 bg-blue-500/10 text-blue-500",
-                          )}
-                        >
-                          {CVIP_PRESETS[key].label}
-                        </button>
-                      ))}
+                      {(Object.keys(CVIP_PRESETS) as AiPresetKey[]).map(
+                        (key) => (
+                          <button
+                            key={key}
+                            type="button"
+                            aria-pressed={aiPreset === key}
+                            onClick={() => applyAiPreset(key)}
+                            className={cx(
+                              quietButtonClass,
+                              aiPreset === key &&
+                                "border-blue-500/30 bg-blue-500/10 text-blue-500",
+                            )}
+                          >
+                            {CVIP_PRESETS[key].label}
+                          </button>
+                        ),
+                      )}
                     </div>
                   </div>
                   {aiError ? (
@@ -1356,10 +1414,15 @@ export default function CustomBuilderPage() {
                 <div className="grid min-h-[480px] overflow-hidden rounded-xl border border-[color:var(--theme-border-soft)] lg:grid-cols-[240px_minmax(0,1fr)]">
                   <aside className="border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-3 lg:border-b-0 lg:border-r">
                     <div className="relative">
-                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[color:var(--theme-text-muted)]" aria-hidden />
+                      <Search
+                        className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[color:var(--theme-text-muted)]"
+                        aria-hidden
+                      />
                       <input
                         value={sectionQuery}
-                        onChange={(event) => setSectionQuery(event.target.value)}
+                        onChange={(event) =>
+                          setSectionQuery(event.target.value)
+                        }
                         placeholder="Find a section…"
                         aria-label="Find inspection section"
                         className={cx(inputClass, "pl-9")}
@@ -1385,12 +1448,14 @@ export default function CustomBuilderPage() {
                             )}
                           >
                             <span className="truncate">{section.title}</span>
-                            <span className={cx(
-                              "rounded-full px-2 py-0.5 text-[10px]",
-                              count > 0
-                                ? "bg-blue-500/10 text-blue-500"
-                                : "bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-muted)]",
-                            )}>
+                            <span
+                              className={cx(
+                                "rounded-full px-2 py-0.5 text-[10px]",
+                                count > 0
+                                  ? "bg-blue-500/10 text-blue-500"
+                                  : "bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-muted)]",
+                              )}
+                            >
                               {count}
                             </span>
                           </button>
@@ -1406,20 +1471,29 @@ export default function CustomBuilderPage() {
                           {activeSection?.title ?? "Inspection checks"}
                         </h3>
                         <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
-                          {selections[activeSection?.title ?? ""]?.length ?? 0} of {activeSection?.items.length ?? 0} selected
+                          {selections[activeSection?.title ?? ""]?.length ?? 0}{" "}
+                          of {activeSection?.items.length ?? 0} selected
                         </p>
                       </div>
                       <div className="flex gap-2">
                         <button
                           type="button"
-                          onClick={() => activeSection && selectAllInSection(activeSection.title, activeSection.items)}
+                          onClick={() =>
+                            activeSection &&
+                            selectAllInSection(
+                              activeSection.title,
+                              activeSection.items,
+                            )
+                          }
                           className={quietButtonClass}
                         >
                           Select all
                         </button>
                         <button
                           type="button"
-                          onClick={() => activeSection && clearSection(activeSection.title)}
+                          onClick={() =>
+                            activeSection && clearSection(activeSection.title)
+                          }
                           className={quietButtonClass}
                         >
                           Clear
@@ -1427,7 +1501,10 @@ export default function CustomBuilderPage() {
                       </div>
                     </div>
                     <div className="relative mt-4">
-                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[color:var(--theme-text-muted)]" aria-hidden />
+                      <Search
+                        className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[color:var(--theme-text-muted)]"
+                        aria-hidden
+                      />
                       <input
                         value={itemQuery}
                         onChange={(event) => setItemQuery(event.target.value)}
@@ -1438,7 +1515,9 @@ export default function CustomBuilderPage() {
                     </div>
                     <div className="mt-3 grid max-h-[350px] gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
                       {visibleActiveItems.map((item) => {
-                        const checked = (selections[activeSection?.title ?? ""] ?? []).includes(item.item);
+                        const checked = (
+                          selections[activeSection?.title ?? ""] ?? []
+                        ).includes(item.item);
                         return (
                           <label
                             key={item.item}
@@ -1451,7 +1530,10 @@ export default function CustomBuilderPage() {
                             <input
                               type="checkbox"
                               checked={checked}
-                              onChange={() => activeSection && toggle(activeSection.title, item.item)}
+                              onChange={() =>
+                                activeSection &&
+                                toggle(activeSection.title, item.item)
+                              }
                               className="h-4 w-4 accent-[color:var(--brand-primary)]"
                             />
                             <span className="leading-snug">{item.item}</span>
@@ -1481,34 +1563,51 @@ export default function CustomBuilderPage() {
               </p>
               <dl className="mt-4 divide-y divide-[color:var(--theme-border-soft)] text-xs">
                 <div className="flex items-center justify-between py-2.5">
-                  <dt className="text-[color:var(--theme-text-secondary)]">Checks</dt>
+                  <dt className="text-[color:var(--theme-text-secondary)]">
+                    Checks
+                  </dt>
                   <dd className="font-semibold">{displayedCheckCount}</dd>
                 </div>
                 <div className="flex items-center justify-between py-2.5">
-                  <dt className="text-[color:var(--theme-text-secondary)]">Duty class</dt>
+                  <dt className="text-[color:var(--theme-text-secondary)]">
+                    Duty class
+                  </dt>
                   <dd className="font-semibold">{dutyLabel}</dd>
                 </div>
                 <div className="flex items-center justify-between py-2.5">
-                  <dt className="text-[color:var(--theme-text-secondary)]">Corner grid</dt>
-                  <dd className="font-semibold">{compactGridLabel(gridMode)}</dd>
+                  <dt className="text-[color:var(--theme-text-secondary)]">
+                    Corner grid
+                  </dt>
+                  <dd className="font-semibold">
+                    {compactGridLabel(gridMode)}
+                  </dd>
                 </div>
                 <div className="flex items-center justify-between py-2.5">
-                  <dt className="text-[color:var(--theme-text-secondary)]">Included services</dt>
+                  <dt className="text-[color:var(--theme-text-secondary)]">
+                    Included services
+                  </dt>
                   <dd className="font-semibold">{optionalFeatureCount}</dd>
                 </div>
                 {buildMethod === "manual" ? (
                   <div className="flex items-center justify-between py-2.5">
-                    <dt className="text-[color:var(--theme-text-secondary)]">Sections</dt>
+                    <dt className="text-[color:var(--theme-text-secondary)]">
+                      Sections
+                    </dt>
                     <dd className="font-semibold">{selectedSectionCount}</dd>
                   </div>
                 ) : null}
                 <div className="flex items-center justify-between py-2.5">
-                  <dt className="text-[color:var(--theme-text-secondary)]">Estimated labor</dt>
-                  <dd className="font-semibold">{laborHours.trim() ? laborHours + " hr" : "Not set"}</dd>
+                  <dt className="text-[color:var(--theme-text-secondary)]">
+                    Estimated labor
+                  </dt>
+                  <dd className="font-semibold">
+                    {laborHours.trim() ? laborHours + " hr" : "Not set"}
+                  </dd>
                 </div>
               </dl>
               <div className="mt-4 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-[11px] leading-5 text-emerald-700 dark:text-emerald-300">
-                Review opens the technician-facing draft before anything is saved.
+                Review opens the technician-facing draft before anything is
+                saved.
               </div>
             </aside>
           </div>
@@ -1517,15 +1616,25 @@ export default function CustomBuilderPage() {
         <div className="sticky bottom-3 z-20 flex flex-col gap-3 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)]/95 p-3 shadow-[0_16px_50px_rgba(15,23,42,0.18)] backdrop-blur-xl sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-1 text-xs text-[color:var(--theme-text-secondary)]">
             <span>
-              <strong className="text-[color:var(--theme-text-primary)]">{displayedCheckCount}</strong> checks
+              <strong className="text-[color:var(--theme-text-primary)]">
+                {displayedCheckCount}
+              </strong>{" "}
+              checks
             </span>
             {buildMethod === "manual" ? (
               <span>
-                <strong className="text-[color:var(--theme-text-primary)]">{selectedSectionCount}</strong> sections
+                <strong className="text-[color:var(--theme-text-primary)]">
+                  {selectedSectionCount}
+                </strong>{" "}
+                sections
               </span>
             ) : null}
             <span>{optionalFeatureCount} included services</span>
-            <span>{laborHours.trim() ? laborHours + " hr estimated" : "Labor estimate optional"}</span>
+            <span>
+              {laborHours.trim()
+                ? laborHours + " hr estimated"
+                : "Labor estimate optional"}
+            </span>
           </div>
           <button
             type="button"
@@ -1534,7 +1643,9 @@ export default function CustomBuilderPage() {
             className={cx(primaryButtonClass, "w-full shrink-0 sm:w-auto")}
           >
             {aiLoading ? "Building inspection…" : "Review inspection"}
-            {!aiLoading ? <ChevronRight className="h-4 w-4" aria-hidden /> : null}
+            {!aiLoading ? (
+              <ChevronRight className="h-4 w-4" aria-hidden />
+            ) : null}
           </button>
         </div>
       </div>

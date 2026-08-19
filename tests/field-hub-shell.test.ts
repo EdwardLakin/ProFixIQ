@@ -12,6 +12,7 @@ const mobileShell = read("components/layout/MobileShell.tsx");
 const fieldShell = read("features/mobile/service/FieldWorkspaceShell.tsx");
 const fieldHub = read("features/mobile/service/FieldHub.tsx");
 const fieldAccess = read("features/mobile/service/server/access.ts");
+const inspectionPage = read("app/mobile/inspections/page.tsx");
 const workOrderPage = read("app/mobile/work-orders/page.tsx");
 const workOrderQueue = read(
   "features/mobile/work-orders/MobileWorkOrderQueue.tsx",
@@ -51,6 +52,7 @@ describe("Field Hub workspace", () => {
       canManageScheduling: false,
       canManageParts: false,
       canManageOperations: false,
+      canManageInspectionTemplates: false,
       canConfigureFieldService: false,
       canSwitchWorkspace: false,
     });
@@ -73,6 +75,21 @@ describe("Field Hub workspace", () => {
     expect(canUseFieldWorkspaceCapability(mechanicCapabilities)).toBe(true);
     expect(fieldShell).toContain("normalizeFieldWorkspaceCapabilities");
     expect(fieldHub).toContain("canUseFieldWorkspaceCapability");
+  });
+
+  it("fails the Field inspection-builder entry closed behind verified workspace access", () => {
+    expect(inspectionPage).toContain(
+      'fetch("/api/mobile/field-service/access"',
+    );
+    expect(inspectionPage).toContain("body?.canAccessFieldService");
+    expect(inspectionPage).toContain(".canManageInspectionTemplates");
+    expect(inspectionPage).toContain(
+      'href="/mobile/service/inspection-builder"',
+    );
+    expect(inspectionPage).toContain("Build inspection");
+    expect(fieldShell).toContain(
+      'pathname.startsWith("/mobile/service/inspection-builder")',
+    );
   });
 
   it("keeps permanent Field actions on canonical workflows", () => {

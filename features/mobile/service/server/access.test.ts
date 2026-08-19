@@ -67,6 +67,7 @@ describe("resolveFieldWorkspaceCapabilities", () => {
       canManageScheduling: false,
       canManageParts: false,
       canManageOperations: false,
+      canManageInspectionTemplates: false,
       canConfigureFieldService: false,
       canSwitchWorkspace: false,
     });
@@ -83,7 +84,25 @@ describe("resolveFieldWorkspaceCapabilities", () => {
       canManageScheduling: true,
       canManageParts: true,
       canManageOperations: true,
+      canManageInspectionTemplates: true,
       canSwitchWorkspace: true,
     });
+  });
+
+  it("uses canonical billing roles for inspection template management", () => {
+    expect(
+      resolveFieldWorkspaceCapabilities({
+        role: "service_advisor",
+        canConfigureFieldService: false,
+        canSwitchWorkspace: false,
+      }).canManageInspectionTemplates,
+    ).toBe(true);
+    expect(
+      resolveFieldWorkspaceCapabilities({
+        role: "foreman",
+        canConfigureFieldService: false,
+        canSwitchWorkspace: false,
+      }).canManageInspectionTemplates,
+    ).toBe(false);
   });
 });

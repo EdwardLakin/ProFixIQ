@@ -11,6 +11,10 @@ import type {
 } from "@inspections/lib/inspection/types";
 import { computeDefaultLaborHours } from "@inspections/lib/inspection/computeLabor";
 import { masterInspectionList } from "@inspections/lib/inspection/masterInspectionList";
+import {
+  getInspectionBuilderNavigation,
+  type InspectionBuilderSurface,
+} from "@/features/inspections/lib/inspectionBuilderNavigation";
 import { toast } from "sonner";
 
 const UNIT_OPTIONS = ["", "mm", "psi", "kPa", "in", "ft·lb"] as const;
@@ -66,7 +70,8 @@ function normalizeItemLike(i: unknown): {
     i.item ?? i.name ?? i.label ?? i.title ?? i.description,
   ).trim();
 
-  const unit = (isRecord(i) ? (i.unit as InspectionItem["unit"]) : null) ?? null;
+  const unit =
+    (isRecord(i) ? (i.unit as InspectionItem["unit"]) : null) ?? null;
 
   const rawStatus = isRecord(i) ? i.status : undefined;
 
@@ -87,7 +92,8 @@ function normalizeItemLike(i: unknown): {
       ? (i.value as InspectionItem["value"])
       : undefined;
 
-  const laborHours = typeof i.laborHours === "number" ? i.laborHours : undefined;
+  const laborHours =
+    typeof i.laborHours === "number" ? i.laborHours : undefined;
 
   const parts = Array.isArray(i.parts)
     ? (i.parts as InspectionItem["parts"])
@@ -128,9 +134,7 @@ function normalizeSections(input: unknown): InspectionSection[] {
     }
   }
 
-  return Array.from(byTitle.values()).filter(
-    (s) => (s.items?.length ?? 0) > 0,
-  );
+  return Array.from(byTitle.values()).filter((s) => (s.items?.length ?? 0) > 0);
 }
 
 function buildOilChangeSection(): InspectionSection {
@@ -186,10 +190,15 @@ function coerceNumberOrNull(s: string): number | null {
 
 /* -------------------------------- component -------------------------------- */
 
-export default function CustomDraftPage() {
+export default function CustomDraftPage({
+  surface = "shop",
+}: {
+  surface?: InspectionBuilderSurface;
+}) {
   const router = useRouter();
   const sp = useSearchParams();
   const supabase = useMemo(() => createBrowserSupabase(), []);
+  const navigation = getInspectionBuilderNavigation(surface);
 
   const nextKeyRef = useRef(1);
   const mkKey = () =>
@@ -299,7 +308,9 @@ export default function CustomDraftPage() {
     return masterByTitle.get(key) ?? [];
   }
 
-  function attachKeysFromNormalized(normalized: InspectionSection[]): DraftSection[] {
+  function attachKeysFromNormalized(
+    normalized: InspectionSection[],
+  ): DraftSection[] {
     return normalized.map((s) => ({
       title: s.title,
       items: (s.items ?? []).map((it) => ({
@@ -363,10 +374,15 @@ export default function CustomDraftPage() {
 
       const rawLegacy = sessionStorage.getItem("customInspection:sections");
       const titleLegacy = sessionStorage.getItem("customInspection:title");
-      const includeOilRawLegacy =
-        sessionStorage.getItem("customInspection:includeOil");
-      const storedDutyLegacy = sessionStorage.getItem("customInspection:dutyClass");
-      const storedGridLegacy = sessionStorage.getItem("customInspection:gridMode");
+      const includeOilRawLegacy = sessionStorage.getItem(
+        "customInspection:includeOil",
+      );
+      const storedDutyLegacy = sessionStorage.getItem(
+        "customInspection:dutyClass",
+      );
+      const storedGridLegacy = sessionStorage.getItem(
+        "customInspection:gridMode",
+      );
 
       const raw = rawInspection ?? rawLegacy;
       const t = titleInspection ?? titleLegacy;
@@ -380,7 +396,8 @@ export default function CustomDraftPage() {
           if (isRecord(parsed)) {
             const dc = asString(parsed.dutyClass);
             const gm = normalizeGridMode(asString(parsed.grid));
-            if (dc === "light" || dc === "medium" || dc === "heavy") nextDuty = dc;
+            if (dc === "light" || dc === "medium" || dc === "heavy")
+              nextDuty = dc;
             if (gm) nextGrid = gm;
           }
         } catch {
@@ -388,7 +405,8 @@ export default function CustomDraftPage() {
         }
       }
 
-      if (!nextDuty && storedDutyLegacy) nextDuty = storedDutyLegacy as DutyClass;
+      if (!nextDuty && storedDutyLegacy)
+        nextDuty = storedDutyLegacy as DutyClass;
       if (!nextGrid && storedGridLegacy) {
         const g = normalizeGridMode(storedGridLegacy);
         if (g) nextGrid = g;
@@ -402,8 +420,9 @@ export default function CustomDraftPage() {
         const parsedUnknown = JSON.parse(raw) as unknown;
         const parsed = normalizeSections(parsedUnknown);
 
-        const includeOilLegacy =
-          includeOilRawLegacy ? JSON.parse(includeOilRawLegacy) === true : false;
+        const includeOilLegacy = includeOilRawLegacy
+          ? JSON.parse(includeOilRawLegacy) === true
+          : false;
 
         const hasOil = parsed.some(
           (s) => (s.title || "").trim().toLowerCase() === "oil change",
@@ -485,7 +504,9 @@ export default function CustomDraftPage() {
       ...prev,
       {
         title: "New Section",
-        items: [{ item: "", unit: null, status: "na", _key: mkKey() } as DraftItem],
+        items: [
+          { item: "", unit: null, status: "na", _key: mkKey() } as DraftItem,
+        ],
       },
     ]);
   }
@@ -548,7 +569,11 @@ export default function CustomDraftPage() {
   /**
    * Returns true if added, false if skipped (already exists / empty)
    */
-  function addItemFromMaster(secIdx: number, label: string, unit?: string | null): boolean {
+  function addItemFromMaster(
+    secIdx: number,
+    label: string,
+    unit?: string | null,
+  ): boolean {
     const trimmed = (label || "").trim();
     if (!trimmed) return false;
 
@@ -634,6 +659,33 @@ export default function CustomDraftPage() {
     });
   }
 
+  async function saveFieldTemplate(
+    method: "POST" | "PATCH",
+    input: {
+      templateId?: string;
+      templateName: string;
+      sections: InspectionSection[];
+      description?: string | null;
+      vehicleType?: VehicleType | null;
+      tags?: string[];
+      laborHours?: number | null;
+    },
+  ): Promise<string> {
+    const response = await fetch("/api/mobile/service/inspection-templates", {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    const body = (await response.json().catch(() => null)) as {
+      id?: string;
+      error?: string;
+    } | null;
+    if (!response.ok || !body?.id) {
+      throw new Error(body?.error || "Failed to save template.");
+    }
+    return body.id;
+  }
+
   /* --------------------------------- actions -------------------------------- */
 
   const saveTemplate = async () => {
@@ -653,32 +705,53 @@ export default function CustomDraftPage() {
 
       const hours = coerceNumberOrNull(laborHoursInput);
 
-      const payload: InsertTemplate = {
-        template_name: (title || "").trim() || "Custom Template",
-        sections:
-          cleaned as unknown as Database["public"]["Tables"]["inspection_templates"]["Insert"]["sections"],
-        description: "Created from Custom Draft",
-        vehicle_type: vehicleType || undefined,
-        tags: ["custom", "draft"],
-        is_public: false,
-        labor_hours: hours,
-        shop_id: shopId ?? undefined,
-      };
+      const templateName = (title || "").trim() || "Custom Template";
+      if (navigation.surface === "field") {
+        await saveFieldTemplate("POST", {
+          templateName,
+          sections: cleaned,
+          description: "Created from Custom Draft",
+          vehicleType,
+          tags: ["custom", "draft"],
+          laborHours: hours,
+        });
+      } else {
+        if (!shopId) {
+          toast.error("Shop scope is still loading. Try again in a moment.");
+          return;
+        }
+        const payload: InsertTemplate = {
+          template_name: templateName,
+          sections:
+            cleaned as unknown as Database["public"]["Tables"]["inspection_templates"]["Insert"]["sections"],
+          description: "Created from Custom Draft",
+          vehicle_type: vehicleType || undefined,
+          tags: ["custom", "draft"],
+          is_public: false,
+          labor_hours: hours,
+          shop_id: shopId,
+          user_id: u.user.id,
+        };
 
-      const { error, data } = await supabase
-        .from("inspection_templates")
-        .insert(payload)
-        .select("id")
-        .maybeSingle();
+        const { error, data } = await supabase
+          .from("inspection_templates")
+          .insert(payload)
+          .select("id")
+          .maybeSingle();
 
-      if (error || !data?.id) {
-        console.error(error);
-        toast.error("Failed to save template.");
-        return;
+        if (error || !data?.id) {
+          console.error(error);
+          toast.error("Failed to save template.");
+          return;
+        }
       }
 
       toast.success("Template saved as new.");
-      router.replace(`/inspections/templates`);
+      router.replace(navigation.templatesHref);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to save template.",
+      );
     } finally {
       setSavingNew(false);
     }
@@ -706,28 +779,43 @@ export default function CustomDraftPage() {
 
       const hours = coerceNumberOrNull(laborHoursInput);
 
-      const payload: UpdateTemplate = {
-        template_name: (title || "").trim() || "Custom Template",
-        sections:
-          cleaned as unknown as Database["public"]["Tables"]["inspection_templates"]["Update"]["sections"],
-        vehicle_type: vehicleType || undefined,
-        labor_hours: hours,
-      };
+      const templateName = (title || "").trim() || "Custom Template";
+      if (navigation.surface === "field") {
+        await saveFieldTemplate("PATCH", {
+          templateId,
+          templateName,
+          sections: cleaned,
+          vehicleType,
+          laborHours: hours,
+        });
+      } else {
+        const payload: UpdateTemplate = {
+          template_name: templateName,
+          sections:
+            cleaned as unknown as Database["public"]["Tables"]["inspection_templates"]["Update"]["sections"],
+          vehicle_type: vehicleType || undefined,
+          labor_hours: hours,
+        };
 
-      const { error, data } = await supabase
-        .from("inspection_templates")
-        .update(payload)
-        .eq("id", templateId)
-        .select("id")
-        .maybeSingle();
+        const { error, data } = await supabase
+          .from("inspection_templates")
+          .update(payload)
+          .eq("id", templateId)
+          .select("id")
+          .maybeSingle();
 
-      if (error || !data?.id) {
-        console.error(error);
-        toast.error("Failed to update template.");
-        return;
+        if (error || !data?.id) {
+          console.error(error);
+          toast.error("Failed to update template.");
+          return;
+        }
       }
 
       toast.success("Template changes saved.");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to update template.",
+      );
     } finally {
       setSavingExisting(false);
     }
@@ -742,9 +830,15 @@ export default function CustomDraftPage() {
         return;
       }
       sessionStorage.setItem("inspection:sections", JSON.stringify(cleaned));
-      sessionStorage.setItem("inspection:title", (title || "").trim() || "Inspection");
+      sessionStorage.setItem(
+        "inspection:title",
+        (title || "").trim() || "Inspection",
+      );
 
-      const qs = new URLSearchParams();
+      const qs = new URLSearchParams(sp.toString());
+      // A persisted template id makes the runner reload the stored template,
+      // which would replace the unsaved draft staged above.
+      qs.delete("templateId");
       qs.set("template", title || "Inspection");
       if (vehicleType) qs.set("vehicleType", vehicleType);
       if (dutyClass) qs.set("dutyClass", dutyClass);
@@ -772,8 +866,31 @@ export default function CustomDraftPage() {
 
     const hours = coerceNumberOrNull(laborHoursInput);
 
+    const templateName = (title || "").trim() || "Custom Template";
+    if (navigation.surface === "field") {
+      try {
+        return await saveFieldTemplate("POST", {
+          templateName,
+          sections: cleaned,
+          description: "Created from Custom Draft",
+          vehicleType,
+          tags: ["custom", "draft"],
+          laborHours: hours,
+        });
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : "Failed to save template.",
+        );
+        return null;
+      }
+    }
+
+    if (!shopId) {
+      toast.error("Shop scope is still loading. Try again in a moment.");
+      return null;
+    }
     const payload: InsertTemplate = {
-      template_name: (title || "").trim() || "Custom Template",
+      template_name: templateName,
       sections:
         cleaned as unknown as Database["public"]["Tables"]["inspection_templates"]["Insert"]["sections"],
       description: "Created from Custom Draft",
@@ -781,7 +898,8 @@ export default function CustomDraftPage() {
       tags: ["custom", "draft"],
       is_public: false,
       labor_hours: hours,
-      shop_id: shopId ?? undefined,
+      shop_id: shopId,
+      user_id: u.user.id,
     };
 
     const { error, data } = await supabase
@@ -845,20 +963,29 @@ export default function CustomDraftPage() {
         body: JSON.stringify(body),
       });
 
-      const json = (await res.json().catch(() => null)) as
-        | { ok?: boolean; id?: string; error?: string; detail?: string }
-        | null;
+      const json = (await res.json().catch(() => null)) as {
+        ok?: boolean;
+        id?: string;
+        error?: string;
+        detail?: string;
+      } | null;
 
       if (!res.ok || !json?.ok || !json?.id) {
-        toast.error(json?.detail || json?.error || `Menu create failed (HTTP ${res.status})`);
+        toast.error(
+          json?.detail ||
+            json?.error ||
+            `Menu create failed (HTTP ${res.status})`,
+        );
         return;
       }
 
       toast.success("Menu item created (inspection-linked).");
       setShowMenuCreate(false);
-      router.push(`/menu/item/${json.id}`);
+      router.push(navigation.menuItemHref(json.id));
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Failed to create menu item.");
+      toast.error(
+        e instanceof Error ? e.message : "Failed to create menu item.",
+      );
     } finally {
       setCreatingMenu(false);
     }
@@ -952,15 +1079,23 @@ export default function CustomDraftPage() {
 
           <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-[color:var(--theme-text-secondary)] md:mt-0">
             <span>
-              Sections: <span className="font-semibold text-[color:var(--theme-text-primary)]">{totalSections}</span>
+              Sections:{" "}
+              <span className="font-semibold text-[color:var(--theme-text-primary)]">
+                {totalSections}
+              </span>
             </span>
             <span>
-              Items: <span className="font-semibold text-[color:var(--theme-text-primary)]">{totalItems}</span>
+              Items:{" "}
+              <span className="font-semibold text-[color:var(--theme-text-primary)]">
+                {totalItems}
+              </span>
             </span>
             <span>
               Labor:{" "}
               <span className="font-semibold text-[color:var(--theme-text-primary)]">
-                {Number.isFinite(laborHoursNumber) ? laborHoursNumber.toFixed(2) : "0.00"}
+                {Number.isFinite(laborHoursNumber)
+                  ? laborHoursNumber.toFixed(2)
+                  : "0.00"}
               </span>{" "}
               hrs
             </span>
@@ -968,7 +1103,7 @@ export default function CustomDraftPage() {
         </div>
 
         {/* ✅ Create Menu Item panel */}
-        {showMenuCreate ? (
+        {showMenuCreate && navigation.surface === "shop" ? (
           <div className="mb-5 rounded-2xl border border-[rgba(100,116,139,0.4)] bg-[color:var(--theme-surface-page)] p-4 shadow-[var(--theme-shadow-medium)]">
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
               <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
@@ -1030,7 +1165,8 @@ export default function CustomDraftPage() {
 
             <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-[11px] text-[color:var(--theme-text-secondary)]">
               <div>
-                Links this menu item to a saved inspection template (evidence trail). Parts can be added later.
+                Links this menu item to a saved inspection template (evidence
+                trail). Parts can be added later.
               </div>
 
               <button
@@ -1048,7 +1184,9 @@ export default function CustomDraftPage() {
         {/* Header controls */}
         <div className="mb-5 grid gap-3 md:grid-cols-[minmax(0,1.8fr),minmax(0,1fr),minmax(0,1fr),auto] md:items-end">
           <label className="flex flex-col gap-1">
-            <span className="text-sm text-[color:var(--theme-text-secondary)]">Template name</span>
+            <span className="text-sm text-[color:var(--theme-text-secondary)]">
+              Template name
+            </span>
             <input
               className="rounded-xl border border-[var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-page)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:border-[color:var(--theme-border-soft)] focus:outline-none focus:ring-2 focus:ring-[color:var(--theme-border-strong)]"
               value={title}
@@ -1057,12 +1195,16 @@ export default function CustomDraftPage() {
           </label>
 
           <label className="flex flex-col gap-1">
-            <span className="text-sm text-[color:var(--theme-text-secondary)]">Vehicle type</span>
+            <span className="text-sm text-[color:var(--theme-text-secondary)]">
+              Vehicle type
+            </span>
             <select
               className="rounded-xl border border-[var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-page)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] focus:border-[color:var(--theme-border-soft)] focus:outline-none focus:ring-2 focus:ring-[color:var(--theme-border-strong)]"
               value={vehicleType ?? ""}
               onChange={(e) =>
-                setVehicleType(e.target.value ? (e.target.value as VehicleType) : null)
+                setVehicleType(
+                  e.target.value ? (e.target.value as VehicleType) : null,
+                )
               }
             >
               <option value="">— Not specified —</option>
@@ -1074,12 +1216,16 @@ export default function CustomDraftPage() {
           </label>
 
           <label className="flex flex-col gap-1">
-            <span className="text-sm text-[color:var(--theme-text-secondary)]">Duty class</span>
+            <span className="text-sm text-[color:var(--theme-text-secondary)]">
+              Duty class
+            </span>
             <select
               className="rounded-xl border border-[var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-page)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] focus:border-[color:var(--theme-border-soft)] focus:outline-none focus:ring-2 focus:ring-[color:var(--theme-border-strong)]"
               value={dutyClass ?? ""}
               onChange={(e) =>
-                setDutyClass(e.target.value ? (e.target.value as DutyClass) : null)
+                setDutyClass(
+                  e.target.value ? (e.target.value as DutyClass) : null,
+                )
               }
             >
               <option value="">— Not specified —</option>
@@ -1090,7 +1236,9 @@ export default function CustomDraftPage() {
           </label>
 
           <label className="flex flex-col gap-1">
-            <span className="text-sm text-[color:var(--theme-text-secondary)]">Labor hours (inspection total)</span>
+            <span className="text-sm text-[color:var(--theme-text-secondary)]">
+              Labor hours (inspection total)
+            </span>
             <input
               type="text"
               inputMode="decimal"
@@ -1161,22 +1309,28 @@ export default function CustomDraftPage() {
         {/* Sections editor */}
         <div className="space-y-4">
           {sections.map((sec, i) => {
-            const masterItemsForThisSection = getMasterItemsForSection(sec.title);
+            const masterItemsForThisSection = getMasterItemsForSection(
+              sec.title,
+            );
 
             // ✅ Remove already-added items from dropdown
             const existingSet = getSectionItemSet(i);
 
-            const availableMasterItems = masterItemsForThisSection.filter((mi) => {
-              const k = (mi.item || "").trim().toLowerCase();
-              if (!k) return false;
-              return !existingSet.has(k);
-            });
+            const availableMasterItems = masterItemsForThisSection.filter(
+              (mi) => {
+                const k = (mi.item || "").trim().toLowerCase();
+                if (!k) return false;
+                return !existingSet.has(k);
+              },
+            );
 
             const q = itemSearch.trim().toLowerCase();
             const filteredMasterItems =
               q.length === 0
                 ? availableMasterItems
-                : availableMasterItems.filter((mi) => mi.item.toLowerCase().includes(q));
+                : availableMasterItems.filter((mi) =>
+                    mi.item.toLowerCase().includes(q),
+                  );
 
             const addPanelOpen = openAddItemFor === i;
 
@@ -1198,7 +1352,7 @@ export default function CustomDraftPage() {
                       placeholder="Section title"
                     />
                     <span className="text-[11px] text-[color:var(--theme-text-secondary)]">
-                      {(sec.items?.length ?? 0)} items
+                      {sec.items?.length ?? 0} items
                     </span>
                   </div>
 
@@ -1293,7 +1447,8 @@ export default function CustomDraftPage() {
 
                           {filteredMasterItems.length === 0 ? (
                             <div className="rounded-xl border border-[var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-page)] px-3 py-2 text-xs text-[color:var(--theme-text-secondary)]">
-                              No items available (either all are added already, or none match your search).
+                              No items available (either all are added already,
+                              or none match your search).
                             </div>
                           ) : (
                             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
@@ -1302,7 +1457,11 @@ export default function CustomDraftPage() {
                                   key={mi.item}
                                   type="button"
                                   onClick={() => {
-                                    const added = addItemFromMaster(i, mi.item, mi.unit ?? null);
+                                    const added = addItemFromMaster(
+                                      i,
+                                      mi.item,
+                                      mi.unit ?? null,
+                                    );
                                     if (added) setItemSearch("");
                                   }}
                                   className="rounded-xl border border-[var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-page)] px-3 py-2 text-left text-sm text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-panel)]"
@@ -1338,7 +1497,11 @@ export default function CustomDraftPage() {
                           value=""
                           onChange={(e) => {
                             const unit = e.target.value || null;
-                            const added = addItemFromMaster(i, customItemText, unit);
+                            const added = addItemFromMaster(
+                              i,
+                              customItemText,
+                              unit,
+                            );
                             if (added) setCustomItemText("");
                           }}
                           title="Add custom item with unit"
@@ -1354,7 +1517,11 @@ export default function CustomDraftPage() {
                         <button
                           type="button"
                           onClick={() => {
-                            const added = addItemFromMaster(i, customItemText, null);
+                            const added = addItemFromMaster(
+                              i,
+                              customItemText,
+                              null,
+                            );
                             if (added) setCustomItemText("");
                           }}
                           className="rounded-full bg-[color:var(--theme-surface-hover)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]"
@@ -1382,7 +1549,9 @@ export default function CustomDraftPage() {
                         <input
                           className="w-full rounded-lg border border-[var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-page)] px-3 py-1.5 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)]"
                           value={it.item ?? ""}
-                          onChange={(e) => updateItemLabel(i, j, e.target.value)}
+                          onChange={(e) =>
+                            updateItemLabel(i, j, e.target.value)
+                          }
                           placeholder="Item label"
                         />
 
@@ -1461,6 +1630,7 @@ export default function CustomDraftPage() {
           {/* ✅ NEW: Create Menu Item from Draft */}
           <button
             type="button"
+            hidden={navigation.surface !== "shop"}
             onClick={() => {
               setShowMenuCreate((v) => {
                 const next = !v;
@@ -1491,7 +1661,7 @@ export default function CustomDraftPage() {
           <button
             type="button"
             onClick={saveTemplate}
-            disabled={savingNew}
+            disabled={savingNew || (navigation.surface === "shop" && !shopId)}
             className="rounded-full bg-[linear-gradient(to_right,rgba(191,141,99,0.82),rgba(160,116,82,0.76))] px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-on-accent)] hover:brightness-110 disabled:opacity-60"
           >
             {savingNew ? "Saving…" : "Save as New Template"}
@@ -1500,7 +1670,8 @@ export default function CustomDraftPage() {
           <button
             type="button"
             onClick={saveAndRun}
-            disabled={running}
+            hidden={!navigation.supportsStandaloneRun}
+            disabled={running || !navigation.supportsStandaloneRun}
             className="rounded-full bg-[color:var(--theme-surface-hover)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)] disabled:opacity-60"
             title="Stage this draft and open the Run page"
           >

@@ -1,14 +1,7 @@
 "use client";
 
 import { format } from "date-fns";
-import {
-  ChevronRight,
-  Filter,
-  Plus,
-  RefreshCw,
-  Search,
-  X,
-} from "lucide-react";
+import { ChevronRight, Filter, Plus, RefreshCw, Search, X } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -37,7 +30,11 @@ type Row = WorkOrder & {
 
 type WorkOrderLineSummary = Pick<
   DB["public"]["Tables"]["work_order_lines"]["Row"],
-  "work_order_id" | "status" | "approval_state" | "assigned_tech_id" | "hold_reason"
+  | "work_order_id"
+  | "status"
+  | "approval_state"
+  | "assigned_tech_id"
+  | "hold_reason"
 >;
 
 type WorkOrderSignal = {
@@ -167,11 +164,13 @@ function primarySignal(signal: WorkOrderSignal): string | null {
 export default function MobileWorkOrderQueue({
   initialStatus = "",
   readyToInvoiceCloseout = false,
+  inspectionTemplateId = null,
   embedded = false,
   lockStatus = false,
 }: {
   initialStatus?: string;
   readyToInvoiceCloseout?: boolean;
+  inspectionTemplateId?: string | null;
   embedded?: boolean;
   lockStatus?: boolean;
 }) {
@@ -185,9 +184,9 @@ export default function MobileWorkOrderQueue({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [forbidden, setForbidden] = useState(false);
   const [assignedOnly, setAssignedOnly] = useState(false);
-  const [lineSignals, setLineSignals] = useState<Record<string, WorkOrderSignal>>(
-    {},
-  );
+  const [lineSignals, setLineSignals] = useState<
+    Record<string, WorkOrderSignal>
+  >({});
   const loadGenerationRef = useRef(0);
 
   const load = useCallback(
@@ -215,7 +214,9 @@ export default function MobileWorkOrderQueue({
             setAssignedOnly(cached.data.assignedOnly ?? false);
             return;
           }
-          setErrorMessage("No saved work orders are available on this device yet.");
+          setErrorMessage(
+            "No saved work orders are available on this device yet.",
+          );
           setRows([]);
           return;
         }
@@ -269,7 +270,10 @@ export default function MobileWorkOrderQueue({
           .limit(100);
 
         if (status === "") {
-          query = query.in("status", NORMAL_FLOW_STATUSES as unknown as string[]);
+          query = query.in(
+            "status",
+            NORMAL_FLOW_STATUSES as unknown as string[],
+          );
         } else {
           query = query.eq("status", status);
         }
@@ -430,15 +434,25 @@ export default function MobileWorkOrderQueue({
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="mobile-dashboard-hero__eyebrow">
-                {assignedOnly ? "Technician queue" : "Shop operations"}
+                {inspectionTemplateId
+                  ? "Inspection setup"
+                  : assignedOnly
+                    ? "Technician queue"
+                    : "Shop operations"}
               </div>
               <h1 className="mobile-dashboard-hero__title">
-                {assignedOnly ? "My work orders" : "Work orders"}
+                {inspectionTemplateId
+                  ? "Choose a work order"
+                  : assignedOnly
+                    ? "My work orders"
+                    : "Work orders"}
               </h1>
               <p className="mobile-dashboard-hero__subtitle">
-                {assignedOnly
-                  ? `${activeCount} active work order${activeCount === 1 ? "" : "s"} assigned to you.`
-                  : `${activeCount} active work order${activeCount === 1 ? "" : "s"} in the current shop flow.`}
+                {inspectionTemplateId
+                  ? "Select the work order that contains the job line for this template."
+                  : assignedOnly
+                    ? `${activeCount} active work order${activeCount === 1 ? "" : "s"} assigned to you.`
+                    : `${activeCount} active work order${activeCount === 1 ? "" : "s"} in the current shop flow.`}
               </p>
             </div>
             <div className="flex shrink-0 gap-2">
@@ -533,7 +547,7 @@ export default function MobileWorkOrderQueue({
                 Refresh
               </button>
             ) : null}
-            {!assignedOnly ? (
+            {!assignedOnly && !inspectionTemplateId ? (
               <Link
                 href="/mobile/work-orders/create"
                 className="inline-flex items-center gap-1.5 font-bold text-[color:var(--accent-copper)]"
@@ -597,6 +611,7 @@ export default function MobileWorkOrderQueue({
                   workOrderId: workOrder.id,
                   status: key,
                   readyToInvoiceCloseout,
+                  inspectionTemplateId,
                 })}
                 className="mobile-command-row relative block overflow-hidden border p-4 pl-5 active:scale-[0.992]"
               >

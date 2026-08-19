@@ -13,8 +13,14 @@ describe("mobile route continuity", () => {
   it.each([
     ["/dashboard", "/mobile"],
     ["/dashboard/workforce/attendance", "/mobile/workforce/attendance"],
-    ["/dashboard/owner/settings#settings-team", "/mobile/settings#settings-team"],
-    ["/dashboard/admin/settings#settings-team", "/mobile/settings#settings-team"],
+    [
+      "/dashboard/owner/settings#settings-team",
+      "/mobile/settings#settings-team",
+    ],
+    [
+      "/dashboard/admin/settings#settings-team",
+      "/mobile/settings#settings-team",
+    ],
     ["/work-orders/board", "/mobile/dispatch"],
     ["/work-orders/create", "/mobile/work-orders/create"],
     ["/work-orders/abc/quote-review", "/mobile/work-orders/abc"],
@@ -40,6 +46,13 @@ describe("mobile route continuity", () => {
       "/inspections/maintenance-50-air?workOrderId=wo",
       "/mobile/inspections/maintenance-50-air?workOrderId=wo",
     ],
+    ["/inspections/custom-inspection", "/mobile/inspections"],
+    [
+      "/inspections/custom-draft?templateId=template-1",
+      "/mobile/inspections?templateId=template-1",
+    ],
+    ["/inspections/templates", "/mobile/inspections"],
+    ["/inspections/builder", "/mobile/inspections"],
     ["/parts/requests/123", "/mobile/parts"],
     ["/messages/chat-1", "/mobile/messages/chat-1"],
     ["/customers/customer-1", "/mobile/customers/customer-1"],
@@ -109,9 +122,11 @@ describe("mobile route continuity", () => {
     const newMessage = read("features/mobile/messages/new/page.client.tsx");
     const vehicle = read("app/mobile/work-orders/[id]/vehicle/page.tsx");
     const pretrip = read("app/mobile/fleet/pretrip/[unitId]/page.tsx");
-    const previous = read("features/shared/components/ui/PreviousPageButton.tsx");
+    const previous = read(
+      "features/shared/components/ui/PreviousPageButton.tsx",
+    );
 
-    expect(job).toContain('`/mobile/work-orders/${line.work_order_id}`');
+    expect(job).toContain("`/mobile/work-orders/${line.work_order_id}`");
     expect(job).toContain('"/mobile/tech/queue"');
     expect(job).not.toContain("router.back()");
     expect(inspection).toContain("const backHref = workOrderId");
@@ -119,9 +134,7 @@ describe("mobile route continuity", () => {
     expect(chat).toContain('href="/mobile/messages"');
     expect(chat).not.toContain("router.back()");
     expect(newMessage).toContain('href="/mobile/messages"');
-    expect(vehicle).toContain(
-      'href={`/mobile/work-orders/${workOrderId}`}',
-    );
+    expect(vehicle).toContain("href={`/mobile/work-orders/${workOrderId}`}");
     expect(pretrip).toContain('href="/mobile/fleet/pretrip"');
     expect(previous).toContain('router.push("/mobile/work-orders")');
   });

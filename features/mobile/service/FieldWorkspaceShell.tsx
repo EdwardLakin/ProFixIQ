@@ -111,6 +111,9 @@ function isActive(pathname: string, item: FieldNavItem): boolean {
 
 function pageTitle(pathname: string): string {
   if (pathname === "/mobile/service") return "Field Hub";
+  if (pathname.startsWith("/mobile/service/inspection-builder")) {
+    return "Inspection builder";
+  }
   if (pathname.startsWith("/mobile/service/purchase-orders")) {
     return "Purchase orders";
   }
@@ -170,10 +173,7 @@ function FieldNavigation({
       <div className="field-workspace-nav__section">
         <div className="field-workspace-nav__label">Work</div>
         {WORK_NAV.filter((item) =>
-          canUseFieldWorkspaceCapability(
-            capabilities,
-            item.requiredCapability,
-          ),
+          canUseFieldWorkspaceCapability(capabilities, item.requiredCapability),
         ).map((item) => (
           <FieldNavLink
             key={item.href}
@@ -186,10 +186,7 @@ function FieldNavigation({
       <div className="field-workspace-nav__section">
         <div className="field-workspace-nav__label">Operations</div>
         {OPERATIONS_NAV.filter((item) =>
-          canUseFieldWorkspaceCapability(
-            capabilities,
-            item.requiredCapability,
-          ),
+          canUseFieldWorkspaceCapability(capabilities, item.requiredCapability),
         ).map((item) => (
           <FieldNavLink
             key={item.href}
@@ -203,7 +200,11 @@ function FieldNavigation({
   );
 }
 
-export default function FieldWorkspaceShell({ children }: { children: ReactNode }) {
+export default function FieldWorkspaceShell({
+  children,
+}: {
+  children: ReactNode;
+}) {
   const pathname = usePathname();
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -230,12 +231,10 @@ export default function FieldWorkspaceShell({ children }: { children: ReactNode 
       cache: "no-store",
     })
       .then(async (response) => {
-        const body = (await response.json().catch(() => null)) as
-          | {
-              canAccessFieldService?: boolean;
-              workspaceCapabilities?: unknown;
-            }
-          | null;
+        const body = (await response.json().catch(() => null)) as {
+          canAccessFieldService?: boolean;
+          workspaceCapabilities?: unknown;
+        } | null;
         if (!active || !response.ok || !body?.canAccessFieldService) return;
         setWorkspaceCapabilities(
           normalizeFieldWorkspaceCapabilities(body.workspaceCapabilities),
@@ -334,7 +333,9 @@ export default function FieldWorkspaceShell({ children }: { children: ReactNode 
         </button>
         <div className="min-w-0">
           <div className="field-workspace-header__eyebrow">ProFixIQ Field</div>
-          <div className="field-workspace-header__title">{pageTitle(pathname)}</div>
+          <div className="field-workspace-header__title">
+            {pageTitle(pathname)}
+          </div>
         </div>
         <Link
           href="/mobile/service/new"
@@ -347,7 +348,10 @@ export default function FieldWorkspaceShell({ children }: { children: ReactNode 
 
       <main className="field-workspace-main">{children}</main>
 
-      <nav className="field-workspace-bottom" aria-label="Field quick navigation">
+      <nav
+        className="field-workspace-bottom"
+        aria-label="Field quick navigation"
+      >
         <Link
           href="/mobile/service"
           data-active={pathname === "/mobile/service" ? "true" : "false"}
@@ -376,7 +380,10 @@ export default function FieldWorkspaceShell({ children }: { children: ReactNode 
             <span>Inspect</span>
           </Link>
         )}
-        <Link href="/mobile/service/new" className="field-workspace-bottom__new">
+        <Link
+          href="/mobile/service/new"
+          className="field-workspace-bottom__new"
+        >
           <Plus aria-hidden className="h-6 w-6" />
           <span>New</span>
         </Link>
@@ -465,7 +472,11 @@ export default function FieldWorkspaceShell({ children }: { children: ReactNode 
               Switch workspace
             </Link>
           ) : null}
-          <button type="button" onClick={() => void signOut()} disabled={signingOut}>
+          <button
+            type="button"
+            onClick={() => void signOut()}
+            disabled={signingOut}
+          >
             <LogOut aria-hidden className="h-4 w-4" />
             {signingOut ? "Signing out…" : "Sign out"}
           </button>

@@ -39,6 +39,10 @@ export function resolveFieldWorkspaceCapabilities(input: {
     canManageScheduling: actor.canManageScheduling,
     canManageParts: actor.canManageParts,
     canManageOperations: actor.canManageWorkOrders,
+    canManageInspectionTemplates: hasAnyRole(
+      input.role,
+      ROLE_GROUPS.billingOperators,
+    ),
     canConfigureFieldService: input.canConfigureFieldService,
     canSwitchWorkspace: input.canSwitchWorkspace,
   };
