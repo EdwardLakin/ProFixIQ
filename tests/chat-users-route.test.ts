@@ -35,6 +35,7 @@ const mockState = {
   customers: [] as CustomerRow[],
   lastProfilesEq: null as { column: string; value: string } | null,
   lastCustomersEq: null as { column: string; value: string } | null,
+  customerEqFilters: [] as Array<{ column: string; value: string }>,
 };
 
 function asAwaitable<T extends object>(
@@ -77,38 +78,55 @@ function createAdminClient() {
   return {
     from: vi.fn((table: string) => {
       if (table === "customers") {
-        let eqFilter: { column: string; value: string } | null = null;
+        const eqFilters: Array<{ column: string; value: string }> = [];
         let searchQuery = "";
+        let limitValue: number | null = null;
         const baseQuery: Record<string, unknown> = {};
-        const query = asAwaitable(baseQuery, async () => {
-          const scoped =
-            eqFilter?.column === "shop_id"
-              ? mockState.customers.filter((row) => row.shop_id === eqFilter?.value)
-              : mockState.customers;
+        const resolveRows = async (): Promise<QueryResult<unknown>> => {
+          const scoped = mockState.customers.filter((row) =>
+            eqFilters.every(
+              (filter) =>
+                row[filter.column as keyof CustomerRow] === filter.value,
+            ),
+          );
           const searchMatch = /name\.ilike\.%(.*?)%,first_name\.ilike/.exec(searchQuery);
           const text = (searchMatch?.[1] ?? "").trim().toLowerCase();
+          const matching = text
+            ? scoped.filter((row) =>
+                [row.name, row.first_name, row.last_name, row.email, row.phone]
+                  .filter(Boolean)
+                  .some((value) => value?.toLowerCase().includes(text)),
+              )
+            : scoped;
           return {
-            data: text
-              ? scoped.filter((row) =>
-                  [row.name, row.first_name, row.last_name, row.email, row.phone]
-                    .filter(Boolean)
-                    .some((value) => value?.toLowerCase().includes(text)),
-                )
-              : scoped,
+            data: limitValue === null ? matching : matching.slice(0, limitValue),
             error: null,
           };
-        });
+        };
+        const query = asAwaitable(baseQuery, resolveRows);
         query.select = vi.fn(() => query);
         query.eq = vi.fn((column: string, value: string) => {
-          eqFilter = { column, value };
-          mockState.lastCustomersEq = eqFilter;
+          const filter = { column, value };
+          eqFilters.push(filter);
+          mockState.lastCustomersEq = filter;
+          mockState.customerEqFilters = [...eqFilters];
           return query;
         });
         query.order = vi.fn(() => query);
-        query.limit = vi.fn(() => query);
+        query.limit = vi.fn((value: number) => {
+          limitValue = value;
+          return query;
+        });
         query.or = vi.fn((pattern: string) => {
           searchQuery = pattern;
           return query;
+        });
+        query.maybeSingle = vi.fn(async () => {
+          const result = await resolveRows();
+          return {
+            data: (result.data as CustomerRow[])[0] ?? null,
+            error: result.error,
+          };
         });
         return query;
       }
@@ -181,6 +199,7 @@ describe("GET /api/chat/users", () => {
     };
     mockState.lastProfilesEq = null;
     mockState.lastCustomersEq = null;
+    mockState.customerEqFilters = [];
     mockState.profiles = [
       {
         id: "profile-actor",
@@ -292,6 +311,91 @@ describe("GET /api/chat/users", () => {
     expect(body.customers).toEqual([
       expect.objectContaining({ id: "customer-a", can_message: true }),
     ]);
+  });
+
+  it("resolves an exact handoff customer outside the capped directory", async () => {
+    const target: CustomerRow = {
+      id: "customer-target",
+      user_id: "customer-target-user",
+      name: "Target Customer",
+      first_name: "Target",
+      last_name: "Customer",
+      email: "target@example.com",
+      phone: "555-9999",
+      shop_id: "shop-a",
+    };
+    mockState.customers = [
+      ...Array.from({ length: 200 }, (_, index): CustomerRow => ({
+        id: `customer-${index}`,
+        user_id: `customer-user-${index}`,
+        name: `Customer ${index}`,
+        first_name: "Customer",
+        last_name: String(index),
+        email: `customer-${index}@example.com`,
+        phone: null,
+        shop_id: "shop-a",
+      })),
+      target,
+    ];
+
+    const { GET } = await import("../app/api/chat/users/route");
+    const directoryResponse = await GET(
+      new Request("http://localhost/api/chat/users"),
+    );
+    const directory = (await directoryResponse.json()) as {
+      customers: Array<{ id: string }>;
+    };
+    expect(directory.customers).toHaveLength(200);
+    expect(directory.customers.some((customer) => customer.id === target.id)).toBe(
+      false,
+    );
+
+    const exactResponse = await GET(
+      new Request(
+        `http://localhost/api/chat/users?customerId=${target.id}`,
+      ),
+    );
+    const exact = (await exactResponse.json()) as {
+      customer: { id: string; can_message: boolean };
+    };
+
+    expect(exactResponse.status).toBe(200);
+    expect(exact.customer).toEqual(
+      expect.objectContaining({ id: target.id, can_message: true }),
+    );
+    expect(mockState.customerEqFilters).toEqual([
+      { column: "shop_id", value: "shop-a" },
+      { column: "id", value: target.id },
+    ]);
+  });
+
+  it("does not resolve an exact handoff customer from another shop", async () => {
+    const { GET } = await import("../app/api/chat/users/route");
+    const response = await GET(
+      new Request("http://localhost/api/chat/users?customerId=customer-b"),
+    );
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({
+      error: "Customer not found",
+    });
+  });
+
+  it("uses the canonical customer-messaging role gate for exact lookups", async () => {
+    mockState.me.role = "service";
+    const { GET } = await import("../app/api/chat/users/route");
+    const allowed = await GET(
+      new Request("http://localhost/api/chat/users?customerId=customer-a"),
+    );
+    expect(allowed.status).toBe(200);
+
+    mockState.me.role = "tech";
+    mockState.customerEqFilters = [];
+    const denied = await GET(
+      new Request("http://localhost/api/chat/users?customerId=customer-a"),
+    );
+    expect(denied.status).toBe(403);
+    expect(mockState.customerEqFilters).toEqual([]);
   });
 
   it("does not expose the customer directory to non-customer-facing roles", async () => {

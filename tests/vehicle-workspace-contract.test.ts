@@ -464,6 +464,7 @@ describe("Shop Vehicle Workspace contract", () => {
           canViewPartRequests: true,
           canCreateWorkOrder: true,
           canBookAppointment: true,
+          canOpenAppointments: true,
           canCreateEstimate: true,
           canMessageCustomer: true,
           canViewRelatedVehicles: true,
@@ -479,6 +480,7 @@ describe("Shop Vehicle Workspace contract", () => {
           canViewPartRequests: true,
           canCreateWorkOrder: true,
           canBookAppointment: true,
+          canOpenAppointments: true,
           canCreateEstimate: true,
           canMessageCustomer: true,
           canViewRelatedVehicles: true,
@@ -494,6 +496,7 @@ describe("Shop Vehicle Workspace contract", () => {
           canViewPartRequests: true,
           canCreateWorkOrder: true,
           canBookAppointment: true,
+          canOpenAppointments: true,
           canCreateEstimate: true,
           canMessageCustomer: true,
           canViewRelatedVehicles: true,
@@ -509,6 +512,7 @@ describe("Shop Vehicle Workspace contract", () => {
           canViewPartRequests: false,
           canCreateWorkOrder: true,
           canBookAppointment: true,
+          canOpenAppointments: true,
           canCreateEstimate: true,
           canMessageCustomer: true,
           canViewRelatedVehicles: true,
@@ -524,6 +528,7 @@ describe("Shop Vehicle Workspace contract", () => {
           canViewPartRequests: false,
           canCreateWorkOrder: true,
           canBookAppointment: false,
+          canOpenAppointments: false,
           canCreateEstimate: true,
           canMessageCustomer: true,
           canViewRelatedVehicles: true,
@@ -539,6 +544,7 @@ describe("Shop Vehicle Workspace contract", () => {
           canViewPartRequests: true,
           canCreateWorkOrder: false,
           canBookAppointment: false,
+          canOpenAppointments: false,
           canCreateEstimate: false,
           canMessageCustomer: false,
           canViewRelatedVehicles: true,
@@ -554,6 +560,7 @@ describe("Shop Vehicle Workspace contract", () => {
           canViewPartRequests: false,
           canCreateWorkOrder: false,
           canBookAppointment: false,
+          canOpenAppointments: false,
           canCreateEstimate: false,
           canMessageCustomer: false,
           canViewRelatedVehicles: false,
@@ -568,7 +575,8 @@ describe("Shop Vehicle Workspace contract", () => {
           canOpenWorkOrders: true,
           canViewPartRequests: false,
           canCreateWorkOrder: true,
-          canBookAppointment: true,
+          canBookAppointment: false,
+          canOpenAppointments: true,
           canCreateEstimate: false,
           canMessageCustomer: true,
           canViewRelatedVehicles: true,
@@ -583,7 +591,8 @@ describe("Shop Vehicle Workspace contract", () => {
           canOpenWorkOrders: true,
           canViewPartRequests: false,
           canCreateWorkOrder: true,
-          canBookAppointment: true,
+          canBookAppointment: false,
+          canOpenAppointments: true,
           canCreateEstimate: true,
           canMessageCustomer: true,
           canViewRelatedVehicles: true,
@@ -639,6 +648,23 @@ describe("Shop Vehicle Workspace contract", () => {
         .filter(([, permissions]) => permissions.canViewPartRequests)
         .map(([role]) => role),
     ).toEqual(["owner", "admin", "manager", "parts"]);
+    expect(
+      Object.entries(projected)
+        .filter(([, permissions]) => permissions.canBookAppointment)
+        .map(([role]) => role),
+    ).toEqual(["owner", "admin", "manager", "advisor"]);
+    expect(
+      Object.entries(projected)
+        .filter(([, permissions]) => permissions.canOpenAppointments)
+        .map(([role]) => role),
+    ).toEqual([
+      "owner",
+      "admin",
+      "manager",
+      "advisor",
+      "lead_hand",
+      "foreman",
+    ]);
     expect(NON_SHOP_ROLES.map((role) => projected[role])).toEqual(
       NON_SHOP_ROLES.map(() => ({
         canViewAccountContact: false,
@@ -650,6 +676,7 @@ describe("Shop Vehicle Workspace contract", () => {
         canViewPartRequests: false,
         canCreateWorkOrder: false,
         canBookAppointment: false,
+        canOpenAppointments: false,
         canCreateEstimate: false,
         canMessageCustomer: false,
         canViewRelatedVehicles: false,

@@ -95,6 +95,10 @@ describe("Universal Scheduler cutover", () => {
       'rpc(\n    "apply_portal_booking_command_atomic"',
     );
     expect(agentReschedule).not.toContain('.from("bookings")\n    .update');
+    expect(legacyStaffCreate).toContain(
+      "allowRoles: ROLE_GROUPS.schedulerBookingWriters",
+    );
+    expect(legacyStaffCreate).not.toContain("canManageScheduling");
   });
 
   it("uses one availability engine for portal validation and slot discovery", () => {

@@ -44,6 +44,7 @@ export type VehicleWorkspacePermissions = {
   canViewPartRequests: boolean;
   canCreateWorkOrder: boolean;
   canBookAppointment: boolean;
+  canOpenAppointments: boolean;
   canCreateEstimate: boolean;
   canMessageCustomer: boolean;
   canViewRelatedVehicles: boolean;

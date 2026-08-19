@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
-import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import { ROLE_GROUPS } from "@/features/shared/lib/rbac";
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import {
   createPortalBooking,
   type CreatePortalBookingInput,
@@ -28,26 +28,12 @@ function legacyStaffOperationKey(userId: string, body: CreatePortalBookingInput)
 
 export async function POST(req: Request) {
   try {
-    const supabase = createServerSupabaseRoute();
-    const {
-      data: { user },
-      error: authErr,
-    } = await supabase.auth.getUser();
+    const access = await requireShopScopedApiAccess({
+      allowRoles: ROLE_GROUPS.schedulerBookingWriters,
+    });
+    if (!access.ok) return access.response;
 
-    if (authErr || !user) return bad("Not authenticated", 401);
-
-    const { data: profile, error: profileErr } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .maybeSingle<{ role: string | null }>();
-
-    if (profileErr) return bad(profileErr.message, 403);
-
-    const actor = getActorCapabilities({ role: profile?.role ?? null });
-    if (!actor.isKnownRole || (!actor.canManageScheduling && !actor.canViewShopWideData)) {
-      return bad("This legacy endpoint is staff-only", 403);
-    }
+    const { authUserId: userId, supabase } = access;
 
     const body = (await req.json().catch(() => null)) as CreatePortalBookingInput | null;
     if (!body) return bad("Invalid JSON body", 400);
@@ -56,11 +42,11 @@ export async function POST(req: Request) {
       req.headers.get("Idempotency-Key")?.trim() ||
       body.operationKey?.trim() ||
       body.idempotencyKey?.trim() ||
-      legacyStaffOperationKey(user.id, body);
+      legacyStaffOperationKey(userId, body);
 
     const result = await createPortalBooking({
       supabase,
-      userId: user.id,
+      userId,
       input: { ...body, operationKey },
       actorMode: "allow-staff",
     });

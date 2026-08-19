@@ -151,7 +151,7 @@ function canOpenTimelineEvent(
   event: VehicleTimelineEvent,
   permissions: VehicleWorkspacePermissions,
 ): boolean {
-  if (event.kind === "appointment" && !permissions.canBookAppointment) {
+  if (event.kind === "appointment" && !permissions.canOpenAppointments) {
     return false;
   }
   if (event.kind === "estimate") return permissions.canViewEstimates;
@@ -598,7 +598,7 @@ export function VehicleWorkspace({
               <AppointmentCard
                 key={`${appointment.reference.sourceType}:${appointment.reference.sourceId}`}
                 appointment={appointment}
-                canOpen={snapshot.permissions.canBookAppointment}
+                canOpen={snapshot.permissions.canOpenAppointments}
               />
             ))}
           </ul>

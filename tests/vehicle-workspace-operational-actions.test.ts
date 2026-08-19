@@ -42,6 +42,7 @@ function snapshot(
       canViewPartRequests: true,
       canCreateWorkOrder: true,
       canBookAppointment: true,
+      canOpenAppointments: true,
       canCreateEstimate: true,
       canMessageCustomer: true,
       canViewRelatedVehicles: true,
@@ -146,5 +147,18 @@ describe("Vehicle Workspace operational action handoffs", () => {
     expect(estimate).toContain('.eq("customer_id", customerId)');
     expect(estimate).toContain("initialCustomer={initialCustomer}");
     expect(estimate).toContain("initialVehicle={initialVehicle}");
+  });
+
+  it("resolves message handoff customers by exact tenant-scoped id", () => {
+    const inbox = readFileSync(
+      "features/chat/components/InboxModal.tsx",
+      "utf8",
+    );
+
+    expect(inbox).toContain("/api/chat/users?customerId=");
+    expect(inbox).toContain('cache: "no-store"');
+    expect(inbox).not.toContain(
+      "customers.find((row) => row.id === initialCustomerId)",
+    );
   });
 });

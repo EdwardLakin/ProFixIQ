@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { staffNewMessageDraftTarget } from "@/features/chat/offline/messageDrafts";
 
 const read = (path: string) => readFileSync(path, "utf8");
 const repository = read("features/chat/offline/messageDrafts.ts");
@@ -11,6 +12,29 @@ const appShell = read("features/shared/components/AppShell.tsx");
 const serviceWorker = read("app/sw.ts");
 
 describe("offline messaging drafts", () => {
+  it("binds each new customer draft to its intended recipient", () => {
+    const context = {
+      audience: "customer" as const,
+      contextType: "vehicle",
+      contextId: "vehicle-a",
+    };
+
+    const firstOwner = staffNewMessageDraftTarget({
+      ...context,
+      customerId: "customer-a",
+    });
+    const nextOwner = staffNewMessageDraftTarget({
+      ...context,
+      customerId: "customer-b",
+    });
+
+    expect(firstOwner).not.toBe(nextOwner);
+    expect(firstOwner).toContain("customer:customer-a");
+    expect(nextOwner).toContain("customer:customer-b");
+    expect(staffInbox).toContain("staffNewMessageDraftTarget");
+    expect(staffInbox).toContain("stored.customerId === selectedCustomerId");
+  });
+
   it("stores drafts in tenant-scoped IndexedDB and never localStorage", () => {
     expect(repository).toContain('const KIND = "message-draft"');
     expect(repository).toContain("saveOfflineSnapshot");

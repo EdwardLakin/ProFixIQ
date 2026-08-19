@@ -32,6 +32,15 @@ describe("canonical role gating contract", () => {
     }
   });
 
+  it("matches scheduler booking writes to the canonical database roles", () => {
+    expect(ROLE_GROUPS.schedulerBookingWriters).toEqual([
+      "owner",
+      "admin",
+      "manager",
+      "advisor",
+    ]);
+  });
+
   it("limits managers to operational and workforce authority", () => {
     const manager = getActorCapabilities({ role: "manager" });
     expect(manager.canManageWorkforce).toBe(true);
