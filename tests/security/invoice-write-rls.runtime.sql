@@ -74,11 +74,30 @@ where id in (
   '43300000-0000-4000-8000-000000000003'
 );
 
-insert into public.invoices (id, shop_id, invoice_number, status, notes)
+insert into public.work_orders (id, shop_id)
+values
+  (
+    'a4120000-0000-4000-8000-000000000001',
+    'a4100000-0000-4000-8000-000000000001'
+  ),
+  (
+    'b4220000-0000-4000-8000-000000000002',
+    'b4200000-0000-4000-8000-000000000002'
+  );
+
+insert into public.invoices (
+  id,
+  shop_id,
+  work_order_id,
+  invoice_number,
+  status,
+  notes
+)
 values
   (
     'a4110000-0000-4000-8000-000000000001',
     'a4100000-0000-4000-8000-000000000001',
+    'a4120000-0000-4000-8000-000000000001',
     'INV-RLS-A',
     'draft',
     'original-a'
@@ -86,13 +105,14 @@ values
   (
     'b4210000-0000-4000-8000-000000000002',
     'b4200000-0000-4000-8000-000000000002',
+    'b4220000-0000-4000-8000-000000000002',
     'INV-RLS-B',
     'draft',
     'original-b'
   );
 
--- A same-shop mechanic may still read an invoice through the existing shop
--- read policy, but must not be able to mutate it directly.
+-- A same-shop mechanic may still read an invoice through the staff read policy,
+-- but must not be able to mutate it directly.
 select set_config('request.jwt.claim.role', 'authenticated', true);
 select set_config(
   'request.jwt.claim.sub',
@@ -176,6 +196,18 @@ begin
      or has_table_privilege('authenticated', 'public.invoices', 'TRUNCATE') then
     raise exception
       'Invoice RLS regression: API-facing role retains TRUNCATE on invoices';
+  end if;
+
+  if has_table_privilege('anon', 'public.payments', 'INSERT')
+     or has_table_privilege('anon', 'public.payments', 'UPDATE')
+     or has_table_privilege('anon', 'public.payments', 'DELETE')
+     or has_table_privilege('anon', 'public.payments', 'TRUNCATE')
+     or has_table_privilege('authenticated', 'public.payments', 'INSERT')
+     or has_table_privilege('authenticated', 'public.payments', 'UPDATE')
+     or has_table_privilege('authenticated', 'public.payments', 'DELETE')
+     or has_table_privilege('authenticated', 'public.payments', 'TRUNCATE') then
+    raise exception
+      'Payment RLS regression: API-facing role retains payment mutation privileges';
   end if;
 end
 $$;
