@@ -1,0 +1,55 @@
+name: Invoice Write RLS Validation
+
+on:
+  pull_request:
+    paths:
+      - "supabase/migrations/**"
+      - "tests/security/invoice-write-rls.runtime.sql"
+      - ".github/workflows/invoice-write-rls-validation.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: invoice-write-rls-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v2
+        with:
+          version: 2.114.0
+          github-token: ${{ github.token }}
+
+      - name: Initialize ephemeral Supabase configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -f supabase/config.toml ]]; then
+            supabase init
+          fi
+          supabase --version
+
+      - name: Start fresh database and apply migrations
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase db start
+
+      - name: Execute invoice and payment RLS runtime regression
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+            -f tests/security/invoice-write-rls.runtime.sql
