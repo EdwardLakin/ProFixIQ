@@ -10,7 +10,10 @@ import {
 } from "@/features/branding/server/getActiveBrandForRender";
 import { isFrozenInvoiceDocumentConfiguration } from "@/features/invoices/lib/invoiceDocumentTheme";
 import { canAccessInvoicePdf } from "@/features/invoices/server/authorizeInvoicePdfAccess";
-import { getInvoiceVersionById } from "@/features/invoices/server/invoiceVersionQueries";
+import {
+  CUSTOMER_VISIBLE_INVOICE_STATES,
+  getInvoiceVersionById,
+} from "@/features/invoices/server/invoiceVersionQueries";
 import {
   premiumInvoiceFilename,
   renderPremiumInvoicePdf,
@@ -68,6 +71,9 @@ export async function GET(
       authUserId: user.id,
       shopId: version.shop_id,
       customerId: workOrder?.customer_id ?? null,
+      customerVisibleDocument: CUSTOMER_VISIBLE_INVOICE_STATES.includes(
+        version.lifecycle_status,
+      ),
     });
     if (!allowed) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
