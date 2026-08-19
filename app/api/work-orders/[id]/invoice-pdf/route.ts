@@ -7,6 +7,7 @@ import {
   getActiveBrandForRender,
 } from "@/features/branding/server/getActiveBrandForRender";
 import { isFrozenInvoiceDocumentConfiguration } from "@/features/invoices/lib/invoiceDocumentTheme";
+import { canAccessInvoicePdf } from "@/features/invoices/server/authorizeInvoicePdfAccess";
 import { getActiveInvoiceVersion } from "@/features/invoices/server/financialLifecycle";
 import { getIssuableInvoiceSnapshot } from "@/features/invoices/server/getIssuableInvoiceSnapshot";
 import {
@@ -35,15 +36,17 @@ export async function GET(
   }
 
   try {
-    // The session-scoped client keeps the read inside the caller's shop RLS boundary.
+    // The session-scoped client keeps the lookup inside the caller's work-order
+    // RLS boundary before the explicit financial authorization gate below.
     const { data: workOrder, error: workOrderError } = await supabase
       .from("work_orders")
-      .select("id,shop_id,custom_id")
+      .select("id,shop_id,custom_id,customer_id")
       .eq("id", workOrderId)
       .maybeSingle<{
         id: string;
         shop_id: string;
         custom_id: string | null;
+        customer_id: string | null;
       }>();
     if (workOrderError) throw workOrderError;
     if (!workOrder) {
@@ -51,6 +54,16 @@ export async function GET(
         { error: "Work order not found" },
         { status: 404 },
       );
+    }
+
+    const allowed = await canAccessInvoicePdf({
+      supabase,
+      authUserId: user.id,
+      shopId: workOrder.shop_id,
+      customerId: workOrder.customer_id,
+    });
+    if (!allowed) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const activeVersion = await getActiveInvoiceVersion({
