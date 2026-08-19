@@ -13,6 +13,8 @@ const readPolicyMigrationPath =
   "supabase/migrations/20260819162500_reconcile_financial_read_policies.sql";
 const portalInvoiceMigrationPath =
   "supabase/migrations/20260819163500_bind_invoice_portal_read_to_invite.sql";
+const financialReadScopeMigrationPath =
+  "supabase/migrations/20260819165000_restrict_financial_staff_reads.sql";
 
 describe("financial RLS hardening", () => {
   it("retires both legacy same-shop FOR ALL invoice policies and splits invoice mutations by operation", () => {
@@ -61,13 +63,31 @@ describe("financial RLS hardening", () => {
     );
   });
 
-  it("reconciles staff financial reads without restoring direct payment writes", () => {
+  it("reconciles financial reads without restoring direct payment writes", () => {
     const migration = source(readPolicyMigrationPath);
 
     expect(migration).toContain("create policy invoices_staff_select");
     expect(migration).toContain("shop_id = (select public.current_shop_id())");
     expect(migration).toContain("create policy payments_staff_select");
     expect(migration).not.toContain("create policy payments_shop_crud");
+  });
+
+  it("restricts same-shop invoice and payment reads to billing operators", () => {
+    const migration = source(financialReadScopeMigrationPath);
+    const roleClause =
+      "'owner', 'admin', 'manager', 'advisor', 'service'";
+
+    expect(migration).toContain("drop policy if exists invoices_staff_select");
+    expect(migration).toContain("create policy invoices_staff_select");
+    expect(migration).toContain("drop policy if exists payments_staff_select");
+    expect(migration).toContain("create policy payments_staff_select");
+    expect(
+      migration.match(/shop_id = \(select public\.current_shop_id\(\)\)/g),
+    ).toHaveLength(2);
+    expect(
+      migration.match(/select public\.profixiq_current_role\(\)/g),
+    ).toHaveLength(2);
+    expect(migration.split(roleClause).length - 1).toBe(2);
   });
 
   it("binds customer invoice reads to durable accepted portal evidence", () => {
