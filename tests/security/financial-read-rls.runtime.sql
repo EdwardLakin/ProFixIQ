@@ -91,8 +91,85 @@ values (
   1234
 );
 
+insert into public.invoice_versions (
+  id,
+  shop_id,
+  work_order_id,
+  invoice_id,
+  version_number,
+  lifecycle_status,
+  currency,
+  subtotal,
+  total,
+  snapshot,
+  snapshot_hash,
+  issued_at
+)
+values (
+  'a6500000-0000-4000-8000-000000000005',
+  'a6100000-0000-4000-8000-000000000001',
+  'a6200000-0000-4000-8000-000000000002',
+  'a6300000-0000-4000-8000-000000000003',
+  1,
+  'issued',
+  'CAD',
+  12.34,
+  12.34,
+  '{}'::jsonb,
+  'financial-read-rls-version',
+  now()
+);
+
+insert into public.payment_events (
+  id,
+  shop_id,
+  work_order_id,
+  invoice_version_id,
+  event_kind,
+  amount,
+  currency,
+  processor,
+  operation_key
+)
+values (
+  'a6600000-0000-4000-8000-000000000006',
+  'a6100000-0000-4000-8000-000000000001',
+  'a6200000-0000-4000-8000-000000000002',
+  'a6500000-0000-4000-8000-000000000005',
+  'payment_succeeded',
+  12.34,
+  'CAD',
+  'test',
+  'financial-read-rls-event'
+);
+
+insert into public.payment_receipts (
+  id,
+  shop_id,
+  work_order_id,
+  invoice_version_id,
+  payment_event_id,
+  receipt_number,
+  amount,
+  currency,
+  received_at,
+  remaining_balance
+)
+values (
+  'a6700000-0000-4000-8000-000000000007',
+  'a6100000-0000-4000-8000-000000000001',
+  'a6200000-0000-4000-8000-000000000002',
+  'a6500000-0000-4000-8000-000000000005',
+  'a6600000-0000-4000-8000-000000000006',
+  'R-FINANCIAL-READ',
+  12.34,
+  'CAD',
+  now(),
+  0
+);
+
 -- Same-shop floor roles do not have application financial access and must not
--- recover it by querying the authenticated Supabase API directly.
+-- recover it by querying any canonical financial table through PostgREST.
 select set_config('request.jwt.claim.role', 'authenticated', true);
 select set_config(
   'request.jwt.claim.sub',
@@ -117,11 +194,36 @@ begin
     raise exception
       'Financial read RLS regression: same-shop mechanic can read payment';
   end if;
+
+  if exists (
+    select 1 from public.invoice_versions
+    where id = 'a6500000-0000-4000-8000-000000000005'
+  ) then
+    raise exception
+      'Financial read RLS regression: same-shop mechanic can read invoice version';
+  end if;
+
+  if exists (
+    select 1 from public.payment_events
+    where id = 'a6600000-0000-4000-8000-000000000006'
+  ) then
+    raise exception
+      'Financial read RLS regression: same-shop mechanic can read payment event';
+  end if;
+
+  if exists (
+    select 1 from public.payment_receipts
+    where id = 'a6700000-0000-4000-8000-000000000007'
+  ) then
+    raise exception
+      'Financial read RLS regression: same-shop mechanic can read payment receipt';
+  end if;
 end
 $$;
 reset role;
 
--- Billing operators retain same-shop financial visibility.
+-- Billing operators retain same-shop visibility across the complete canonical
+-- financial read model.
 select set_config('request.jwt.claim.role', 'authenticated', true);
 select set_config(
   'request.jwt.claim.sub',
@@ -145,6 +247,30 @@ begin
   ) then
     raise exception
       'Financial read RLS regression: same-shop owner cannot read payment';
+  end if;
+
+  if not exists (
+    select 1 from public.invoice_versions
+    where id = 'a6500000-0000-4000-8000-000000000005'
+  ) then
+    raise exception
+      'Financial read RLS regression: same-shop owner cannot read invoice version';
+  end if;
+
+  if not exists (
+    select 1 from public.payment_events
+    where id = 'a6600000-0000-4000-8000-000000000006'
+  ) then
+    raise exception
+      'Financial read RLS regression: same-shop owner cannot read payment event';
+  end if;
+
+  if not exists (
+    select 1 from public.payment_receipts
+    where id = 'a6700000-0000-4000-8000-000000000007'
+  ) then
+    raise exception
+      'Financial read RLS regression: same-shop owner cannot read payment receipt';
   end if;
 end
 $$;
