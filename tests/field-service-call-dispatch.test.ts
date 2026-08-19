@@ -11,14 +11,16 @@ const visitApi = read("app/api/dispatch/visits/[id]/route.ts");
 const intakeApi = read("app/api/mobile/service/intake/route.ts");
 
 describe("Field service-call dispatch", () => {
-  it("gives scheduling-capable Field operators a native Dispatch destination", () => {
+  it("keeps Dispatch available without replacing Schedule in the phone bar", () => {
     expect(fieldShell).toMatch(
       /label: "Dispatch"[\s\S]*?href: "\/mobile\/service\/dispatch"[\s\S]*?requiredCapability: "canManageScheduling"/,
     );
     expect(fieldHub).toMatch(
       /id: "dispatch_queue"[\s\S]*?href: "\/mobile\/service\/dispatch"[\s\S]*?requiredCapability: "canManageScheduling"/,
     );
-    expect(fieldShell).toContain("<span>Dispatch</span>");
+    expect(fieldShell).toMatch(
+      /canManageScheduling \? \([\s\S]*?href="\/mobile\/appointments"[\s\S]*?<CalendarDays[\s\S]*?<span>Schedule<\/span>/,
+    );
   });
 
   it("server-guards the Field dispatch page and reuses the canonical board", () => {

@@ -31,7 +31,7 @@ describe("Field active-work cockpit", () => {
   });
 
   it("keeps the service lifecycle and repair queue valid when embedded in one page landmark", () => {
-    expect(serviceShell).toContain("<div\n      className={`${");
+    expect(serviceShell).toMatch(/<div\r?\n\s+className=\{`\$\{/);
     expect(workOrderQueue).toContain(
       '<div className="mobile-work-order-queue">',
     );

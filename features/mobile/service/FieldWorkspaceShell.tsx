@@ -347,13 +347,13 @@ export default function FieldWorkspaceShell({ children }: { children: ReactNode 
         </Link>
         {workspaceCapabilities.canManageScheduling ? (
           <Link
-            href="/mobile/service/dispatch"
+            href="/mobile/appointments"
             data-active={
-              pathname.startsWith("/mobile/service/dispatch") ? "true" : "false"
+              pathname.startsWith("/mobile/appointments") ? "true" : "false"
             }
           >
-            <RadioTower aria-hidden className="h-5 w-5" />
-            <span>Dispatch</span>
+            <CalendarDays aria-hidden className="h-5 w-5" />
+            <span>Schedule</span>
           </Link>
         ) : (
           <Link
