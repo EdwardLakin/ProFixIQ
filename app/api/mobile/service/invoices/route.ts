@@ -1,8 +1,20 @@
 import { NextResponse } from "next/server";
 
 import { listFieldInvoiceHistory } from "@/features/mobile/service/server/fieldInvoiceHistory";
-import { requireMobileServiceOperatorApiAccess } from "@/features/mobile/service/server/access";
+import {
+  listFieldOperatorAssignedWorkOrderIds,
+  requireMobileServiceOperatorApiAccess,
+} from "@/features/mobile/service/server/access";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+
+function invoiceHistoryResponse(
+  rows: Awaited<ReturnType<typeof listFieldInvoiceHistory>>,
+) {
+  return NextResponse.json(
+    { ok: true, rows },
+    { headers: { "Cache-Control": "private, no-store" } },
+  );
+}
 
 export async function GET() {
   const access = await requireMobileServiceOperatorApiAccess();
@@ -12,15 +24,23 @@ export async function GET() {
   }
 
   try {
+    const scope = access.managementRole
+      ? ({ kind: "shop" } as const)
+      : ({
+          kind: "work_orders",
+          ids: await listFieldOperatorAssignedWorkOrderIds(access),
+        } as const);
+    if (scope.kind === "work_orders" && scope.ids.length === 0) {
+      return invoiceHistoryResponse([]);
+    }
+
     const rows = await listFieldInvoiceHistory({
       supabase: createAdminSupabase(),
       shopId: access.profile.shop_id,
+      scope,
     });
 
-    return NextResponse.json(
-      { ok: true, rows },
-      { headers: { "Cache-Control": "private, no-store" } },
-    );
+    return invoiceHistoryResponse(rows);
   } catch (error) {
     console.error("[field-invoices] read failed", {
       message: error instanceof Error ? error.message : "Unknown error",

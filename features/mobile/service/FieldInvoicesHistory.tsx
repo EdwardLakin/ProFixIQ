@@ -21,6 +21,7 @@ import {
 } from "@/features/mobile/service/fieldInvoiceHistory";
 import {
   getOfflineSnapshot,
+  removeOfflineSnapshots,
   saveOfflineSnapshot,
 } from "@/features/shared/lib/offline/database";
 import { getOfflineMutationScope } from "@/features/shared/lib/offline/mutations";
@@ -39,6 +40,27 @@ const FILTERS: Array<{ value: FieldInvoiceFilter; label: string }> = [
 const SNAPSHOT_KIND = "field-invoice-history";
 const SNAPSHOT_ENTITY = "latest";
 const SNAPSHOT_MAX_AGE_MS = 1000 * 60 * 60 * 12;
+let snapshotWriteQueue: Promise<void> = Promise.resolve();
+
+function enqueueSnapshotWrite(operation: () => Promise<void>): Promise<void> {
+  const write = snapshotWriteQueue.catch(() => undefined).then(operation);
+  snapshotWriteQueue = write.catch(() => undefined);
+  return write;
+}
+
+class InvoiceHistoryResponseError extends Error {
+  constructor(
+    message: string,
+    readonly allowsSavedSnapshot: boolean,
+  ) {
+    super(message);
+    this.name = "InvoiceHistoryResponseError";
+  }
+}
+
+function isRetryableResponseStatus(status: number): boolean {
+  return status === 408 || status === 425 || status === 429 || status >= 500;
+}
 
 function money(value: number, currency: string): string {
   return new Intl.NumberFormat("en-CA", {
@@ -71,6 +93,7 @@ export default function FieldInvoicesHistory() {
   const [showingSaved, setShowingSaved] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const loadGeneration = useRef(0);
+  const snapshotFallbackBlocked = useRef(false);
 
   const load = useCallback(async (mode: "initial" | "refresh" = "initial") => {
     const generation = ++loadGeneration.current;
@@ -86,26 +109,59 @@ export default function FieldInvoicesHistory() {
         cache: "no-store",
         headers: { Accept: "application/json" },
       });
-      const body = (await response.json().catch(() => null)) as
-        | InvoiceHistoryResponse
-        | null;
-      if (!response.ok || !body?.ok) {
-        throw new Error(body?.error ?? "Invoices and history could not load.");
-      }
+      const body = (await response
+        .json()
+        .catch(() => null)) as InvoiceHistoryResponse | null;
       if (!isLatest()) return;
+      if (response.status === 401 || response.status === 403) {
+        snapshotFallbackBlocked.current = true;
+        setRows([]);
+        setShowingSaved(false);
+        setErrorMessage(
+          body?.error ?? "You no longer have access to invoices.",
+        );
+        if (scope) {
+          try {
+            await enqueueSnapshotWrite(() =>
+              removeOfflineSnapshots({
+                scope,
+                kind: SNAPSHOT_KIND,
+                entityIds: [SNAPSHOT_ENTITY],
+              }),
+            );
+          } catch (snapshotError) {
+            console.warn("[field-invoices] denied snapshot cleanup failed", {
+              message:
+                snapshotError instanceof Error
+                  ? snapshotError.message
+                  : "Unknown error",
+            });
+          }
+        }
+        return;
+      }
+      if (!response.ok || !body?.ok) {
+        throw new InvoiceHistoryResponseError(
+          body?.error ?? "Invoices and history could not load.",
+          response.ok || isRetryableResponseStatus(response.status),
+        );
+      }
 
       const nextRows = body.rows ?? [];
+      snapshotFallbackBlocked.current = false;
       setRows(nextRows);
       setShowingSaved(false);
       if (scope) {
         try {
-          await saveOfflineSnapshot({
-            scope,
-            kind: SNAPSHOT_KIND,
-            entityId: SNAPSHOT_ENTITY,
-            data: nextRows,
-            maxAgeMs: SNAPSHOT_MAX_AGE_MS,
-          });
+          await enqueueSnapshotWrite(() =>
+            saveOfflineSnapshot({
+              scope,
+              kind: SNAPSHOT_KIND,
+              entityId: SNAPSHOT_ENTITY,
+              data: nextRows,
+              maxAgeMs: SNAPSHOT_MAX_AGE_MS,
+            }),
+          );
         } catch (snapshotError) {
           console.warn("[field-invoices] snapshot save failed", {
             message:
@@ -117,13 +173,18 @@ export default function FieldInvoicesHistory() {
       }
     } catch (error) {
       if (!isLatest()) return;
-      const snapshot = scope
-        ? await getOfflineSnapshot<FieldInvoiceHistoryRow[]>({
-            scope,
-            kind: SNAPSHOT_KIND,
-            entityId: SNAPSHOT_ENTITY,
-          })
-        : null;
+      const allowsSavedSnapshot =
+        !snapshotFallbackBlocked.current &&
+        (!(error instanceof InvoiceHistoryResponseError) ||
+          error.allowsSavedSnapshot);
+      const snapshot =
+        allowsSavedSnapshot && scope
+          ? await getOfflineSnapshot<FieldInvoiceHistoryRow[]>({
+              scope,
+              kind: SNAPSHOT_KIND,
+              entityId: SNAPSHOT_ENTITY,
+            })
+          : null;
       if (!isLatest()) return;
 
       if (snapshot) {
@@ -150,6 +211,9 @@ export default function FieldInvoicesHistory() {
   useEffect(() => {
     setOnline(navigator.onLine);
     void load();
+    return () => {
+      loadGeneration.current += 1;
+    };
   }, [load]);
 
   useEffect(() => {
@@ -181,6 +245,7 @@ export default function FieldInvoicesHistory() {
     [filter, query, rows],
   );
   const outstandingLabels = Object.entries(summary.outstandingByCurrency);
+  const liveActionsAvailable = online && !showingSaved;
 
   return (
     <div className="mx-auto w-full max-w-5xl space-y-3">
@@ -188,7 +253,9 @@ export default function FieldInvoicesHistory() {
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="mobile-dashboard-hero__eyebrow">Money</div>
-            <h1 className="mobile-dashboard-hero__title">Invoices &amp; history</h1>
+            <h1 className="mobile-dashboard-hero__title">
+              Invoices &amp; history
+            </h1>
             <p className="mobile-dashboard-hero__subtitle">
               Collect open balances and find completed Field invoices.
             </p>
@@ -219,7 +286,10 @@ export default function FieldInvoicesHistory() {
         </div>
       ) : null}
 
-      <section className="grid grid-cols-2 gap-2 sm:grid-cols-3" aria-label="Invoice summary">
+      <section
+        className="grid grid-cols-2 gap-2 sm:grid-cols-3"
+        aria-label="Invoice summary"
+      >
         <div className="mobile-command-panel border p-3">
           <WalletCards aria-hidden className="h-4 w-4 text-amber-500" />
           <div className="mt-2 text-2xl font-black text-[color:var(--theme-text-primary)]">
@@ -344,7 +414,8 @@ export default function FieldInvoicesHistory() {
                     </span>
                   </div>
                   <div className="mt-1 text-xs font-semibold text-[color:var(--theme-text-secondary)]">
-                    {row.workOrderNumber || `#${row.workOrderId.slice(0, 8)}`} · {row.customerName}
+                    {row.workOrderNumber || `#${row.workOrderId.slice(0, 8)}`} ·{" "}
+                    {row.customerName}
                   </div>
                   <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
                     {row.vehicleLabel}
@@ -371,7 +442,7 @@ export default function FieldInvoicesHistory() {
                   {dateLabel(row.issuedAt)}
                 </span>
                 <div className="flex flex-wrap justify-end gap-2">
-                  {online ? (
+                  {liveActionsAvailable ? (
                     <Link
                       href={`/api/work-orders/${encodeURIComponent(row.workOrderId)}/invoice-pdf`}
                       target="_blank"
@@ -387,7 +458,7 @@ export default function FieldInvoicesHistory() {
                   >
                     Work order <ChevronRight aria-hidden className="h-4 w-4" />
                   </Link>
-                  {online ? (
+                  {liveActionsAvailable ? (
                     <Link
                       href={`/mobile/service/closeout/${encodeURIComponent(row.workOrderId)}`}
                       className="inline-flex min-h-10 items-center gap-1 rounded-xl bg-[color:var(--accent-copper)] px-3 text-xs font-extrabold text-white"

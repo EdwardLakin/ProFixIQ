@@ -6,6 +6,7 @@ const route = read("app/api/mobile/service/invoices/route.ts");
 const serverReader = read(
   "features/mobile/service/server/fieldInvoiceHistory.ts",
 );
+const access = read("features/mobile/service/server/access.ts");
 const page = read("app/mobile/service/invoices/page.tsx");
 const shell = read("features/mobile/service/FieldWorkspaceShell.tsx");
 const hub = read("features/mobile/service/FieldHub.tsx");
@@ -19,7 +20,24 @@ describe("Field invoices and history contract", () => {
     );
     expect(serverReader).toContain('.eq("shop_id", args.shopId)');
     expect(serverReader).toContain('.eq("status", "invoiced")');
-    expect(serverReader).not.toMatch(/\.insert\(|\.update\(|\.delete\(|\.upsert\(/);
+    expect(route).toContain("listFieldOperatorAssignedWorkOrderIds(access)");
+    expect(
+      route.indexOf("listFieldOperatorAssignedWorkOrderIds(access)"),
+    ).toBeLessThan(route.indexOf("createAdminSupabase()"));
+    expect(access).toContain("ROLE_GROUPS.billingOperators");
+    expect(access).toContain('.eq("assigned_user_id", access.profile.id)');
+    expect(serverReader).not.toMatch(
+      /\.insert\(|\.update\(|\.delete\(|\.upsert\(/,
+    );
+  });
+
+  it("paginates complete history through the intended invoice foreign key", () => {
+    expect(serverReader).toContain("collectAllPages");
+    expect(serverReader).toContain(".range(from, to)");
+    expect(serverReader).not.toContain(".limit(200)");
+    expect(serverReader).toContain(
+      "invoices:invoices!invoice_versions_invoice_id_fkey(invoice_number)",
+    );
   });
 
   it("keeps the page and navigation behind the canonical work-order capability", () => {
@@ -33,9 +51,7 @@ describe("Field invoices and history contract", () => {
   });
 
   it("reuses canonical closeout, work-order, and invoice PDF routes", () => {
-    const component = read(
-      "features/mobile/service/FieldInvoicesHistory.tsx",
-    );
+    const component = read("features/mobile/service/FieldInvoicesHistory.tsx");
     expect(component).toContain("/mobile/service/closeout/");
     expect(component).toContain("/mobile/work-orders/");
     expect(component).toContain("/api/work-orders/");

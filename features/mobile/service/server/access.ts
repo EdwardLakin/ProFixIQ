@@ -4,13 +4,19 @@ import { NextResponse } from "next/server";
 
 import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
 import type { FieldWorkspaceCapabilities } from "@/features/mobile/service/fieldWorkspaceCapabilities";
-import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import {
+  getActorCapabilities,
+  hasAnyRole,
+  ROLE_GROUPS,
+} from "@/features/shared/lib/rbac";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
 type ShopAccess = Extract<
   Awaited<ReturnType<typeof requireShopScopedApiAccess>>,
   { ok: true }
 >;
+
+const FIELD_ASSIGNMENT_PAGE_SIZE = 500;
 
 export type MobileFieldServiceAccess = {
   fieldServiceEnabled: boolean;
@@ -47,8 +53,8 @@ export function resolveMobileFieldServiceAccess(input: {
 }): MobileFieldServiceAccess {
   const fieldServiceEnabled = Boolean(
     input.productEntitled &&
-      input.onboardingCompletedAt &&
-      ["mobile", "both"].includes(input.serviceModel ?? ""),
+    input.onboardingCompletedAt &&
+    ["mobile", "both"].includes(input.serviceModel ?? ""),
   );
   const canConfigure = ["owner", "admin"].includes(input.canonicalRole);
 
@@ -164,6 +170,40 @@ export async function canFieldOperatorAccessWorkOrder(
   return Boolean(data);
 }
 
+export async function listFieldOperatorAssignedWorkOrderIds(
+  access: ShopAccess,
+): Promise<string[]> {
+  const actor = getActorCapabilities({ role: access.profile.role });
+  const fieldAccess = await getMobileFieldServiceAccess(access);
+  if (!fieldAccess.canAccessFieldService || !actor.canPerformAssignedWork) {
+    return [];
+  }
+
+  const workOrderIds = new Set<string>();
+  let from = 0;
+
+  while (true) {
+    const { data, error } = await access.supabase
+      .from("service_visits")
+      .select("work_order_id")
+      .eq("shop_id", access.profile.shop_id)
+      .eq("assigned_user_id", access.profile.id)
+      .not("work_order_id", "is", null)
+      .order("id", { ascending: true })
+      .range(from, from + FIELD_ASSIGNMENT_PAGE_SIZE - 1);
+    if (error) throw new Error(error.message);
+
+    const page = (data ?? []) as Array<{ work_order_id: string | null }>;
+    if (page.length === 0) break;
+    for (const visit of page) {
+      if (visit.work_order_id) workOrderIds.add(visit.work_order_id);
+    }
+    from += page.length;
+  }
+
+  return [...workOrderIds];
+}
+
 export async function requireMobileServiceOperatorApiAccess() {
   const access = await requireShopScopedApiAccess();
   if (!access.ok) return access;
@@ -194,9 +234,7 @@ export async function requireMobileServiceOperatorApiAccess() {
     isFieldOperator: fieldAccess.isFieldOperator,
     managementRole:
       fieldAccess.canAccessFieldService &&
-      ["owner", "admin", "manager", "advisor", "service"].includes(
-        access.canonicalRole,
-      ),
+      hasAnyRole(access.canonicalRole, ROLE_GROUPS.billingOperators),
     fieldServiceEnabled: fieldAccess.fieldServiceEnabled,
   };
 }
