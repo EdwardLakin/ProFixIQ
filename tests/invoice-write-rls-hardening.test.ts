@@ -15,6 +15,8 @@ const portalInvoiceMigrationPath =
   "supabase/migrations/20260819163500_bind_invoice_portal_read_to_invite.sql";
 const financialReadScopeMigrationPath =
   "supabase/migrations/20260819165000_restrict_financial_staff_reads.sql";
+const canonicalCustomerVisibilityMigrationPath =
+  "supabase/migrations/20260819170500_reconcile_customer_financial_visibility.sql";
 
 describe("financial RLS hardening", () => {
   it("retires both legacy same-shop FOR ALL invoice policies and splits invoice mutations by operation", () => {
@@ -90,14 +92,71 @@ describe("financial RLS hardening", () => {
     expect(migration.split(roleClause).length - 1).toBe(2);
   });
 
-  it("binds customer invoice reads to durable accepted portal evidence", () => {
-    const migration = source(portalInvoiceMigrationPath);
+  it("supersedes the initial invoice-only portal predicate with the canonical work-order contract", () => {
+    const initialMigration = source(portalInvoiceMigrationPath);
+    const finalMigration = source(canonicalCustomerVisibilityMigrationPath);
 
-    expect(migration).toContain("create policy invoices_customer_select");
-    expect(migration).toContain("customer_id is not null");
-    expect(migration).toContain(
+    expect(initialMigration).toContain(
       "public.profixiq_is_portal_customer_for(customer_id, shop_id)",
     );
+    expect(finalMigration).toContain(
+      "drop policy if exists invoices_customer_select on public.invoices",
+    );
+    expect(finalMigration).toContain("wo.id = invoices.work_order_id");
+    expect(finalMigration).toContain("wo.shop_id = invoices.shop_id");
+    expect(finalMigration).toContain(
+      "invoices.customer_id = wo.customer_id",
+    );
+    expect(finalMigration).toContain(
+      "public.profixiq_is_portal_customer_for(wo.customer_id, wo.shop_id)",
+    );
+    expect(finalMigration).toContain("iv.invoice_id = invoices.id");
+    expect(finalMigration).toContain(
+      "'issued', 'partially_paid', 'paid', 'voided', 'superseded', 'credited'",
+    );
+  });
+
+  it("removes legacy customer.user_id shortcuts from every canonical financial table", () => {
+    const migration = source(canonicalCustomerVisibilityMigrationPath);
+
+    for (const legacyPolicy of [
+      "invoice_versions_staff_or_customer_select",
+      "payment_events_staff_or_customer_select",
+      "payment_receipts_staff_or_customer_select",
+    ]) {
+      expect(migration).toContain(`drop policy if exists ${legacyPolicy}`);
+    }
+
+    for (const customerPolicy of [
+      "invoice_versions_customer_select",
+      "payment_events_customer_select",
+      "payment_receipts_customer_select",
+    ]) {
+      expect(migration).toContain(`create policy ${customerPolicy}`);
+    }
+
+    expect(migration).not.toContain("c.user_id = auth.uid()");
+    expect(
+      migration.match(
+        /public\.profixiq_is_portal_customer_for\(wo\.customer_id, wo\.shop_id\)/g,
+      ),
+    ).toHaveLength(4);
+  });
+
+  it("keeps canonical financial snapshots role-scoped for staff", () => {
+    const migration = source(canonicalCustomerVisibilityMigrationPath);
+    const roleClause =
+      "'owner', 'admin', 'manager', 'advisor', 'service'";
+
+    for (const staffPolicy of [
+      "invoice_versions_staff_select",
+      "payment_events_staff_select",
+      "payment_receipts_staff_select",
+    ]) {
+      expect(migration).toContain(`create policy ${staffPolicy}`);
+    }
+
+    expect(migration.split(roleClause).length - 1).toBe(3);
   });
 
   it("keeps the application billing-operator and server payment contracts aligned", () => {
