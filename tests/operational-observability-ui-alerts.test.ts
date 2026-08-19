@@ -100,7 +100,7 @@ describe("operational observability UI and alerting", () => {
     expect(healthRoute).toContain("operationalHealth:");
   });
 
-  it("schedules the internal health check while retaining approved preview deployments", () => {
+  it("schedules the internal health check while disabling preview deployments", () => {
     const parsed = JSON.parse(cronConfig) as {
       crons: Array<{ path: string; schedule: string }>;
       ignoreCommand?: string;
@@ -111,10 +111,10 @@ describe("operational observability UI and alerting", () => {
       path: "/api/internal/observability/health",
       schedule: "7 * * * *",
     });
-    expect(parsed.ignoreCommand).toBe("exit 1");
+    expect(parsed.ignoreCommand).toBeUndefined();
     expect(parsed.git.deploymentEnabled.main).toBe(true);
-    expect(parsed.git.deploymentEnabled["agent/*"]).toBe(true);
-    expect(parsed.git.deploymentEnabled["codex/*"]).toBe(true);
     expect(parsed.git.deploymentEnabled["*"]).toBe(false);
+    expect(parsed.git.deploymentEnabled["agent/*"]).toBeUndefined();
+    expect(parsed.git.deploymentEnabled["codex/*"]).toBeUndefined();
   });
 });
