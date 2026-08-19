@@ -23,10 +23,10 @@ describe("Shop Vehicle Workspace security contract", () => {
       ),
     );
     const workOrderQuery = loader.slice(
-      loader.indexOf("const workOrdersResult"),
       loader.indexOf(
-        'throwQueryError(workOrdersResult.error, "Unable to load work orders")',
+        "const workOrders = await collectAllPages<WorkspaceWorkOrderRow>",
       ),
+      loader.indexOf("// Work-order RLS is the canonical assignment boundary"),
     );
 
     expect(vehicleQuery).toContain('.from("vehicles")');
@@ -36,6 +36,8 @@ describe("Shop Vehicle Workspace security contract", () => {
     expect(workOrderQuery).toContain('.from("work_orders")');
     expect(workOrderQuery).toContain('.eq("shop_id", input.shopId)');
     expect(workOrderQuery).toContain('.eq("vehicle_id", input.vehicleId)');
+    expect(workOrderQuery).toContain(".range(from, to)");
+    expect(workOrderQuery).not.toContain(".limit(100)");
   });
 
   it("scopes installed-part evidence without projecting commercial fields", () => {
@@ -46,7 +48,10 @@ describe("Shop Vehicle Workspace security contract", () => {
 
     expect(partQuery).toContain('.eq("shop_id", input.shopId)');
     expect(partQuery).toContain('.eq("is_active", true)');
-    expect(partQuery).toContain('.in("work_order_id", workOrderIds)');
+    expect(partQuery).toContain('.in("work_order_id", ids)');
+    expect(loader).toContain(
+      "collectWorkOrderScopedRows<WorkspaceWorkOrderPartRow>",
+    );
     expect(partQuery).toContain("quantity_consumed,quantity_returned");
     expect(partQuery).not.toContain("price");
     expect(partQuery).not.toContain("cost");

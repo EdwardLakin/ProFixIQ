@@ -4,7 +4,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 
 import type { CanonicalRole } from "@/features/shared/lib/rbac";
-import { normalizeWorkOrderStatus } from "@/features/work-orders/lib/work-order-status";
+import {
+  isEstimateRecord,
+  normalizeWorkOrderStatus,
+} from "@/features/work-orders/lib/work-order-status";
 import {
   createWorkOrderHandoffHref,
   customerAccountDisplayName,
@@ -86,6 +89,7 @@ type SearchWorkOrderRow = Pick<
   | "vehicle_unit_number"
   | "vehicle_mileage"
   | "odometer_km"
+  | "scheduled_at"
   | "created_at"
   | "updated_at"
 >;
@@ -187,7 +191,7 @@ const CUSTOMER_COLUMNS =
 const CUSTOMER_SAFE_COLUMNS =
   "id,account_type,active,business_name,name,first_name,last_name,identity_name,archived_at,merged_into_customer_id";
 const WORK_ORDER_COLUMNS =
-  "id,custom_id,status,record_type,estimate_number,estimate_status,customer_id,customer_name,vehicle_id,vehicle_year,vehicle_make,vehicle_model,vehicle_submodel,vehicle_vin,vehicle_license_plate,vehicle_unit_number,vehicle_mileage,odometer_km,created_at,updated_at";
+  "id,custom_id,status,record_type,estimate_number,estimate_status,customer_id,customer_name,vehicle_id,vehicle_year,vehicle_make,vehicle_model,vehicle_submodel,vehicle_vin,vehicle_license_plate,vehicle_unit_number,vehicle_mileage,odometer_km,scheduled_at,created_at,updated_at";
 
 function normalizedState(value: string | null | undefined): string {
   return String(value ?? "")
@@ -391,11 +395,13 @@ function workOrderDisplayStatus(row: SearchWorkOrderRow): string {
 }
 
 function workOrderIsEstimate(row: SearchWorkOrderRow): boolean {
-  return row.record_type === "estimate" || Boolean(row.estimate_number);
+  return isEstimateRecord(row);
 }
 
 function workOrderEvidenceTime(row: SearchWorkOrderRow): number {
-  const value = Date.parse(row.updated_at ?? row.created_at ?? "");
+  // The work-order record has no odometer-captured timestamp. created_at is
+  // the immutable intake boundary; scheduled_at is mutable scheduler data.
+  const value = Date.parse(row.created_at ?? "");
   return Number.isFinite(value) ? value : Number.NEGATIVE_INFINITY;
 }
 

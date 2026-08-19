@@ -54,8 +54,10 @@ type QueryBuilder = {
   or: (...args: unknown[]) => QueryBuilder;
   gte: (...args: unknown[]) => QueryBuilder;
   gt: (...args: unknown[]) => QueryBuilder;
+  lt: (...args: unknown[]) => QueryBuilder;
   order: (...args: unknown[]) => QueryBuilder;
   limit: (...args: unknown[]) => QueryBuilder;
+  range: (...args: unknown[]) => QueryBuilder;
   maybeSingle: (...args: unknown[]) => QueryBuilder;
   then<TResult1 = QueryResult, TResult2 = never>(
     onfulfilled?:
@@ -110,12 +112,20 @@ function createSupabaseFixture(
           calls.push({ table, operation: "gt", args });
           return query;
         },
+        lt(...args: unknown[]) {
+          calls.push({ table, operation: "lt", args });
+          return query;
+        },
         order(...args: unknown[]) {
           calls.push({ table, operation: "order", args });
           return query;
         },
         limit(...args: unknown[]) {
           calls.push({ table, operation: "limit", args });
+          return query;
+        },
+        range(...args: unknown[]) {
+          calls.push({ table, operation: "range", args });
           return query;
         },
         maybeSingle(...args: unknown[]) {
@@ -143,9 +153,11 @@ function workspaceFixture(
     history?: unknown[];
     invoices?: unknown[];
     inspections?: unknown[];
+    maintenanceSuggestion?: unknown | null;
     partRequests?: unknown[];
     quoteLines?: unknown[];
     workOrderLines?: unknown[];
+    workOrderMedia?: unknown[];
     workOrderParts?: unknown[];
   } = {},
 ) {
@@ -198,6 +210,12 @@ function workspaceFixture(
     },
     ...(overrides.additionalWorkOrders ?? []),
   ];
+  const workOrderChunkCount = Math.max(1, Math.ceil(workOrders.length / 100));
+  const chunkedResults = (data: unknown[]) =>
+    Array.from({ length: workOrderChunkCount }, (_, index) => ({
+      data: index === 0 ? data : [],
+      error: null,
+    }));
 
   const inspections =
     overrides.inspections ??
@@ -271,40 +289,39 @@ function workspaceFixture(
           ],
         error: null,
       },
+      { data: [], error: null },
     ],
     inspections: [{ data: inspections, error: null }],
-    work_order_lines: [{ data: overrides.workOrderLines ?? [], error: null }],
-    work_order_parts: [{ data: overrides.workOrderParts ?? [], error: null }],
-    work_order_quote_lines: [{ data: overrides.quoteLines ?? [], error: null }],
-    maintenance_suggestions: [{ data: [], error: null }],
+    work_order_lines: chunkedResults(overrides.workOrderLines ?? []),
+    work_order_parts: chunkedResults(overrides.workOrderParts ?? []),
+    work_order_quote_lines: chunkedResults(overrides.quoteLines ?? []),
+    maintenance_suggestions: [
+      { data: overrides.maintenanceSuggestion ?? null, error: null },
+    ],
     history: [{ data: overrides.history ?? [], error: null }],
     vehicle_media: [{ data: [], error: null }],
-    work_order_media: [{ data: [], error: null }],
-    part_requests: [{ data: overrides.partRequests ?? [], error: null }],
-    invoices: [
-      {
-        data:
-          overrides.invoices ??
-          [
-            {
-              id: "invoice-1",
-              work_order_id: "wo-1",
-              invoice_number: "INV-1048",
-              status: "open",
-              currency: "CAD",
-              total: 850,
-              outstanding_total: 250,
-              paid_total: 600,
-              created_at: "2026-01-03T10:00:00.000Z",
-              issued_at: "2026-01-03T10:00:00.000Z",
-              paid_at: null,
-              updated_at: "2026-01-03T10:00:00.000Z",
-            },
-          ],
-        error: null,
-      },
-    ],
-    payments: [{ data: [], error: null }],
+    work_order_media: chunkedResults(overrides.workOrderMedia ?? []),
+    part_requests: chunkedResults(overrides.partRequests ?? []),
+    invoices: chunkedResults(
+      overrides.invoices ??
+        [
+          {
+            id: "invoice-1",
+            work_order_id: "wo-1",
+            invoice_number: "INV-1048",
+            status: "open",
+            currency: "CAD",
+            total: 850,
+            outstanding_total: 250,
+            paid_total: 600,
+            created_at: "2026-01-03T10:00:00.000Z",
+            issued_at: "2026-01-03T10:00:00.000Z",
+            paid_at: null,
+            updated_at: "2026-01-03T10:00:00.000Z",
+          },
+        ],
+    ),
+    payments: chunkedResults([]),
   });
 }
 
@@ -351,6 +368,7 @@ function searchWorkOrderRow(
     estimateStatus?: string | null;
     odometerKm?: number | null;
     recordType?: string;
+    scheduledAt?: string | null;
     status?: string;
     createdAt?: string;
     updatedAt?: string | null;
@@ -380,6 +398,7 @@ function searchWorkOrderRow(
         : overrides.vehicleMileage,
     odometer_km:
       overrides.odometerKm === undefined ? 64000 : overrides.odometerKm,
+    scheduled_at: overrides.scheduledAt ?? null,
     created_at: overrides.createdAt ?? "2026-01-01T10:00:00.000Z",
     updated_at:
       overrides.updatedAt === undefined
@@ -761,6 +780,40 @@ describe("Shop Vehicle Workspace contract", () => {
     );
   });
 
+  it("does not let rescheduling an older work order replace newer odometer evidence", async () => {
+    const fixture = workspaceFixture({
+      additionalWorkOrders: [
+        {
+          id: "wo-rescheduled-old",
+          customer_id: "customer-1",
+          vehicle_id: "vehicle-1",
+          custom_id: "1001",
+          status: "completed",
+          record_type: "work_order",
+          approval_state: "approved",
+          estimate_number: null,
+          estimate_status: null,
+          scheduled_at: "2027-01-01T10:00:00.000Z",
+          odometer_km: 60000,
+          created_at: "2025-12-01T10:00:00.000Z",
+          updated_at: "2026-08-19T10:00:00.000Z",
+        },
+      ],
+    });
+
+    const snapshot = await loadVehicleWorkspaceSnapshot({
+      supabase: fixture.client as never,
+      shopId: "shop-a",
+      role: "owner",
+      vehicleId: "vehicle-1",
+    });
+
+    expect(snapshot?.identity).toMatchObject({
+      mileage: "64100",
+      odometerUnit: "km",
+    });
+  });
+
   it("blocks Create WO for archived-account or vehicle-status conflicts only", async () => {
     const fixture = workspaceFixture();
     const snapshot = await loadVehicleWorkspaceSnapshot({
@@ -911,6 +964,169 @@ describe("Shop Vehicle Workspace contract", () => {
         (appointment) => appointment.reference.sourceId,
       ),
     ).toEqual(["booking-confirmed"]);
+    const upcomingCalls = fixture.calls.filter(
+      (call) => call.table === "bookings" &&
+        ["gte", "order", "range"].includes(call.operation),
+    );
+    expect(upcomingCalls).toContainEqual({
+      table: "bookings",
+      operation: "gte",
+      args: ["ends_at", "2026-01-10T00:00:00.000Z"],
+    });
+    expect(upcomingCalls).toContainEqual({
+      table: "bookings",
+      operation: "order",
+      args: ["starts_at", { ascending: true }],
+    });
+    expect(upcomingCalls).toContainEqual({
+      table: "bookings",
+      operation: "range",
+      args: [0, 99],
+    });
+  });
+
+  it("pages complete work-order evidence and retains an older open record", async () => {
+    const newerClosedRows = Array.from({ length: 101 }, (_, index) => ({
+      id: `wo-closed-${index}`,
+      customer_id: "customer-1",
+      vehicle_id: "vehicle-1",
+      custom_id: `CLOSED-${index}`,
+      status: "completed",
+      record_type: "work_order",
+      approval_state: "approved",
+      estimate_number: null,
+      estimate_status: null,
+      scheduled_at: null,
+      odometer_km: null,
+      created_at: `2026-01-${String((index % 28) + 1).padStart(2, "0")}T10:00:00.000Z`,
+      updated_at: "2026-02-01T10:00:00.000Z",
+    }));
+    const olderOpen = {
+      id: "wo-older-open",
+      customer_id: "customer-1",
+      vehicle_id: "vehicle-1",
+      custom_id: "0042",
+      status: "in_progress",
+      record_type: "work_order",
+      approval_state: "approved",
+      estimate_number: null,
+      estimate_status: null,
+      scheduled_at: "2020-01-05T10:00:00.000Z",
+      odometer_km: 12000,
+      created_at: "2020-01-01T10:00:00.000Z",
+      updated_at: "2026-08-01T10:00:00.000Z",
+    };
+    const fixture = workspaceFixture({
+      additionalWorkOrders: [...newerClosedRows, olderOpen],
+    });
+
+    const snapshot = await loadVehicleWorkspaceSnapshot({
+      supabase: fixture.client as never,
+      shopId: "shop-a",
+      role: "owner",
+      vehicleId: "vehicle-1",
+    });
+
+    expect(snapshot?.identity.mileage).toBe("64100");
+    expect(snapshot?.activeWork).toContainEqual(
+      expect.objectContaining({
+        kind: "work_order",
+        reference: expect.objectContaining({ sourceId: "wo-older-open" }),
+      }),
+    );
+    expect(
+      snapshot?.conflicts.find(
+        (conflict) => conflict.kind === "multiple_active_work_orders",
+      )?.sourceIds,
+    ).toContain("wo-older-open");
+
+    const partScopes = fixture.calls.filter(
+      (call) => call.table === "work_order_parts" && call.operation === "in",
+    );
+    expect(partScopes).toHaveLength(2);
+    expect(partScopes[1]?.args[1]).toContain("wo-older-open");
+    const workOrderCalls = fixture.calls.filter(
+      (call) => call.table === "work_orders",
+    );
+    expect(workOrderCalls).toContainEqual({
+      table: "work_orders",
+      operation: "range",
+      args: [0, 499],
+    });
+    expect(workOrderCalls.some((call) => call.operation === "limit")).toBe(
+      false,
+    );
+  });
+
+  it("uses only a fresh cache for the latest canonical service work order", async () => {
+    const suggestion = {
+      work_order_id: "wo-2",
+      vehicle_id: "vehicle-1",
+      status: "ready",
+      suggestions: [
+        {
+          label: "Engine oil service",
+          serviceCode: "OIL",
+          dueNow: true,
+          suppressed: false,
+          whyDue: "Mileage interval reached",
+        },
+      ],
+      created_at: "2026-01-02T12:00:00.000Z",
+      updated_at: "2026-01-05T12:00:00.000Z",
+      error_message: null,
+      mileage_km: 64100,
+    };
+    const freshFixture = workspaceFixture({ maintenanceSuggestion: suggestion });
+    const staleFixture = workspaceFixture({
+      maintenanceSuggestion: {
+        ...suggestion,
+        updated_at: "2026-01-03T12:00:00.000Z",
+      },
+    });
+
+    const [fresh, stale] = await Promise.all([
+      loadVehicleWorkspaceSnapshot({
+        supabase: freshFixture.client as never,
+        shopId: "shop-a",
+        role: "owner",
+        vehicleId: "vehicle-1",
+      }),
+      loadVehicleWorkspaceSnapshot({
+        supabase: staleFixture.client as never,
+        shopId: "shop-a",
+        role: "owner",
+        vehicleId: "vehicle-1",
+      }),
+    ]);
+
+    expect(fresh?.attentionItems).toContainEqual(
+      expect.objectContaining({
+        kind: "maintenance_due",
+        title: "Engine oil service",
+        explanation: "Mileage interval reached · evaluated for WO-1051",
+        reference: expect.objectContaining({ sourceId: "wo-2" }),
+      }),
+    );
+    expect(
+      fresh?.attentionItems.filter((item) => item.kind === "maintenance_due"),
+    ).toHaveLength(1);
+    expect(
+      fresh?.attentionItems.find((item) => item.kind === "maintenance_due")
+        ?.explanation,
+    ).not.toContain("OIL");
+    expect(stale?.attentionItems.some((item) => item.kind === "maintenance_due"))
+      .toBe(false);
+    expect(
+      freshFixture.calls.filter(
+        (call) => call.table === "maintenance_suggestions" &&
+          call.operation === "eq",
+      ),
+    ).toContainEqual({
+      table: "maintenance_suggestions",
+      operation: "eq",
+      args: ["work_order_id", "wo-2"],
+    });
   });
 
   it("deduplicates deferred quote evidence without suppressing unrelated line attention", async () => {
@@ -1021,7 +1237,7 @@ describe("Shop Vehicle Workspace contract", () => {
       expect.objectContaining({
         kind: "approval",
         title: "Estimate quote-approved",
-        detail: "Decision: approved",
+        detail: "Decision: Approved",
         reference: expect.objectContaining({
           sourceType: "work_order_quote_line",
           sourceId: "quote-approved",
@@ -1166,8 +1382,9 @@ describe("Shop Vehicle Workspace contract", () => {
       partsSnapshot?.activeWork.filter((item) => item.kind === "part_request"),
     ).toEqual([
       expect.objectContaining({
+        title: "Brake pads needed",
         status: "requested",
-        detail: "Brake pads needed",
+        detail: "Requested for WO-1048",
         reference: expect.objectContaining({
           sourceType: "part_request",
           sourceId: "request-open",
@@ -1184,6 +1401,88 @@ describe("Shop Vehicle Workspace contract", () => {
     expect(
       advisorSnapshot?.activeWork.some((item) => item.kind === "part_request"),
     ).toBe(false);
+  });
+
+  it("labels opaque work-order media with its canonical source record", async () => {
+    const fixture = workspaceFixture({
+      workOrderMedia: [
+        {
+          id: "media-1",
+          work_order_id: "wo-1",
+          kind: "photo",
+          file_name: "ea15b3b8-7ed4-421a-bf68-92475461c6cd.jpg",
+          created_at: "2026-01-08T10:00:00.000Z",
+        },
+      ],
+    });
+
+    const snapshot = await loadVehicleWorkspaceSnapshot({
+      supabase: fixture.client as never,
+      shopId: "shop-a",
+      role: "owner",
+      vehicleId: "vehicle-1",
+    });
+
+    expect(snapshot?.documentSummary.latestReference).toEqual({
+      sourceType: "work_order_media",
+      sourceId: "media-1",
+      sourceLabel: "Photo from WO-1048",
+      href: "/work-orders/wo-1",
+    });
+    expect(snapshot?.documentSummary.latestReference?.sourceLabel).not.toContain(
+      "ea15b3b8",
+    );
+  });
+
+  it("opens the most recently finalized or regenerated inspection report", async () => {
+    const fixture = workspaceFixture({
+      inspections: [
+        {
+          id: "inspection-newer-created",
+          work_order_id: "wo-2",
+          work_order_line_id: null,
+          inspection_type: "Newer-created inspection",
+          status: "finalized",
+          completed: true,
+          summary: null,
+          created_at: "2026-01-04T10:00:00.000Z",
+          started_at: "2026-01-04T10:00:00.000Z",
+          finalized_at: "2026-01-04T11:00:00.000Z",
+          updated_at: "2026-01-04T11:00:00.000Z",
+          pdf_url: "/reports/newer-created.pdf",
+          pdf_storage_path: null,
+        },
+        {
+          id: "inspection-latest-report",
+          work_order_id: "wo-1",
+          work_order_line_id: null,
+          inspection_type: "Latest finalized inspection",
+          status: "finalized",
+          completed: true,
+          summary: null,
+          created_at: "2026-01-02T10:00:00.000Z",
+          started_at: "2026-01-02T10:00:00.000Z",
+          finalized_at: "2026-01-05T11:00:00.000Z",
+          updated_at: "2026-01-06T11:00:00.000Z",
+          pdf_url: "/reports/latest.pdf",
+          pdf_storage_path: null,
+        },
+      ],
+    });
+
+    const snapshot = await loadVehicleWorkspaceSnapshot({
+      supabase: fixture.client as never,
+      shopId: "shop-a",
+      role: "owner",
+      vehicleId: "vehicle-1",
+    });
+
+    expect(snapshot?.documentSummary.latestReference).toEqual({
+      sourceType: "inspection",
+      sourceId: "inspection-latest-report",
+      sourceLabel: "Latest finalized inspection",
+      href: "/inspections/inspection-latest-report",
+    });
   });
 
   it("opens estimate records through their canonical estimate route", async () => {
@@ -1225,6 +1524,56 @@ describe("Shop Vehicle Workspace contract", () => {
         href: "/estimates/estimate-1",
       },
     });
+  });
+
+  it("treats an approved converted estimate as its canonical work order", async () => {
+    const fixture = workspaceFixture({
+      additionalWorkOrders: [
+        {
+          id: "wo-converted-estimate",
+          customer_id: "customer-1",
+          vehicle_id: "vehicle-1",
+          custom_id: "1072",
+          status: "in_progress",
+          record_type: "work_order",
+          approval_state: "approved",
+          estimate_number: "EST-72",
+          estimate_status: "approved",
+          scheduled_at: "2026-01-06T10:00:00.000Z",
+          odometer_km: null,
+          created_at: "2026-01-05T10:00:00.000Z",
+          updated_at: "2026-01-06T10:00:00.000Z",
+        },
+      ],
+    });
+
+    const snapshot = await loadVehicleWorkspaceSnapshot({
+      supabase: fixture.client as never,
+      shopId: "shop-a",
+      role: "owner",
+      vehicleId: "vehicle-1",
+    });
+
+    expect(snapshot?.activeWork).toContainEqual(
+      expect.objectContaining({
+        kind: "work_order",
+        reference: {
+          sourceType: "work_order",
+          sourceId: "wo-converted-estimate",
+          sourceLabel: "WO-1072",
+          href: "/work-orders/wo-converted-estimate",
+        },
+      }),
+    );
+    expect(snapshot?.recentTimeline).toContainEqual(
+      expect.objectContaining({
+        kind: "work_order",
+        reference: expect.objectContaining({
+          sourceId: "wo-converted-estimate",
+          href: "/work-orders/wo-converted-estimate",
+        }),
+      }),
+    );
   });
 
   it("retains estimate, quote, and inspection evidence for a mechanic without granting detail access", async () => {
@@ -2058,12 +2407,28 @@ describe("Shop Vehicle Workspace contract", () => {
     });
     const older = searchWorkOrderRow("wo-older", vehicle.id, {
       odometerKm: 65000,
-      updatedAt: "2026-01-04T10:00:00.000Z",
+      scheduledAt: "2027-01-01T10:00:00.000Z",
+      createdAt: "2026-01-01T09:00:00.000Z",
+      updatedAt: "2026-08-04T10:00:00.000Z",
       vehicleMileage: null,
     });
+    const convertedEstimate = searchWorkOrderRow(
+      "wo-converted-estimate",
+      vehicle.id,
+      {
+        customId: "1072",
+        estimateNumber: "EST-72",
+        estimateStatus: "approved",
+        odometerKm: null,
+        recordType: "work_order",
+        status: "in_progress",
+        scheduledAt: "2026-01-06T10:00:00.000Z",
+        createdAt: "2026-01-06T09:00:00.000Z",
+      },
+    );
     // Mirrors `updated_at desc nulls last`: the newest created WO appears after
     // older rows whose updated_at is populated.
-    const workOrders = [older, canceled, done, ready, newest];
+    const workOrders = [older, canceled, done, ready, newest, convertedEstimate];
     const fixture = createSupabaseFixture({
       vehicles: [
         { data: [vehicle], error: null },
@@ -2163,7 +2528,16 @@ describe("Shop Vehicle Workspace contract", () => {
       "wo-older",
       "wo-ready",
       "wo-newest",
+      "wo-converted-estimate",
     ]);
+    expect(card?.activeWork.at(-1)).toMatchObject({
+      kind: "work_order",
+      title: "WO-1072",
+      reference: {
+        sourceId: "wo-converted-estimate",
+        href: "/work-orders/wo-converted-estimate",
+      },
+    });
     expect(card?.latestOdometer).toBe("67000");
     expect(card?.attentionCount).toBe(1);
     expect(card?.nextAppointment?.reference.sourceId).toBe("booking-next");

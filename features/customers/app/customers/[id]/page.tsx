@@ -21,6 +21,10 @@ import {
   CustomerDuplicateReviewError,
   type CustomerDuplicateCandidate,
 } from "@/features/customers/lib/customerAccountCommands";
+import {
+  customerServiceHistoryPresentation,
+  formatOdometer,
+} from "@/features/customers/lib/customerServiceHistory";
 import { ImportedHistoryRecordCard } from "@/features/work-orders/components/ImportedHistoryRecordCard";
 import { usePersistentGuidedOnboardingQuery } from "@/features/onboarding-v2/guided/persistence";
 import { useTabs } from "@/features/shared/components/tabs/TabsProvider";
@@ -55,7 +59,13 @@ type ImportedHistory = Pick<
 > & {
   vehicles: Pick<
     Vehicle,
-    "year" | "make" | "model" | "vin" | "license_plate" | "unit_number"
+    | "year"
+    | "make"
+    | "model"
+    | "vin"
+    | "license_plate"
+    | "unit_number"
+    | "odometer_unit"
   > | null;
 };
 type VehicleMedia = DB["public"]["Tables"]["vehicle_media"]["Row"];
@@ -133,6 +143,14 @@ const STATUS_CHIP: Record<string, string> = {
   queued: "bg-indigo-900/35 border-indigo-400/40 text-indigo-100",
   in_progress: "bg-amber-900/30 border-amber-400/40 text-amber-100",
   on_hold: "bg-amber-900/35 border-amber-400/45 text-amber-100",
+  waiting_parts: "bg-amber-900/35 border-amber-400/45 text-amber-100",
+  waiting_for_parts: "bg-amber-900/35 border-amber-400/45 text-amber-100",
+  awaiting_approval: "bg-sky-900/35 border-sky-400/40 text-sky-100",
+  approved: "bg-emerald-900/30 border-emerald-400/40 text-emerald-100",
+  sent: "bg-sky-900/35 border-sky-400/40 text-sky-100",
+  partially_approved: "bg-amber-900/35 border-amber-400/45 text-amber-100",
+  cancelled: "bg-rose-900/30 border-rose-400/40 text-rose-100",
+  canceled: "bg-rose-900/30 border-rose-400/40 text-rose-100",
   completed: "bg-emerald-900/30 border-emerald-400/40 text-emerald-100",
   ready_to_invoice: "bg-emerald-900/30 border-emerald-400/40 text-emerald-100",
   invoiced: "bg-teal-900/30 border-teal-400/40 text-teal-100",
@@ -254,19 +272,6 @@ function compactDate(iso: string | null | undefined): string | null {
   return format(d, "MMM yyyy");
 }
 
-function formatNumberLike(
-  value: string | number | null | undefined,
-): string | null {
-  if (value == null) return null;
-  const raw = String(value).trim();
-  if (!raw) return null;
-  const numeric = Number(raw.replace(/,/g, ""));
-  if (!Number.isFinite(numeric)) return raw;
-  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(
-    numeric,
-  );
-}
-
 function formatEngineFuel(vehicle: Vehicle): string | null {
   return (
     [strOrNull(vehicle.engine), strOrNull(vehicle.fuel_type)]
@@ -289,16 +294,6 @@ function formatVehicleStatus(value: string | null | undefined): string | null {
   return clean
     .replace(/_/g, " ")
     .replace(/\b\w/g, (char) => char.toUpperCase());
-}
-
-function formatOdometer(
-  value: string | number | null | undefined,
-  unit: string | null | undefined,
-): string | null {
-  const formatted = formatNumberLike(value);
-  if (!formatted) return null;
-  const cleanUnit = strOrNull(unit);
-  return cleanUnit ? `${formatted} ${cleanUnit}` : formatted;
 }
 
 function formatPlateWithRegion(
@@ -808,7 +803,7 @@ export default function CustomerProfilePage(): JSX.Element {
         const { data: historyRows, error: historyErr } = await supabase
           .from("history")
           .select(
-            "id,customer_id,vehicle_id,work_order_id,service_date,description,notes,created_at,work_order_number,invoice_number,odometer,symptom,cause,correction,labor_hours,labor_sale,total,imported_from_session_id,source_system,vehicles:vehicles(year,make,model,vin,license_plate,unit_number)",
+            "id,customer_id,vehicle_id,work_order_id,service_date,description,notes,created_at,work_order_number,invoice_number,odometer,symptom,cause,correction,labor_hours,labor_sale,total,imported_from_session_id,source_system,vehicles:vehicles(year,make,model,vin,license_plate,unit_number,odometer_unit)",
           )
           .eq("customer_id", customerId)
           .order("service_date", { ascending: false });
@@ -2522,7 +2517,10 @@ export default function CustomerProfilePage(): JSX.Element {
                                               ? `Invoice ${row.invoice_number}`
                                               : null,
                                             row.odometer != null
-                                              ? `${formatNumberLike(row.odometer)} mi`
+                                              ? formatOdometer(
+                                                  row.odometer,
+                                                  row.vehicles?.odometer_unit,
+                                                )
                                               : null,
                                           ]
                                             .filter(Boolean)
@@ -2596,22 +2594,8 @@ export default function CustomerProfilePage(): JSX.Element {
                   {serviceHistorySlice.map((entry) => {
                     if (entry.kind === "work_order") {
                       const wo = entry.workOrder;
-                      const status = String(
-                        ((wo as unknown as Record<string, unknown>)[
-                          "status"
-                        ] as string | null) ?? "awaiting",
-                      );
-                      const normalizedStatus = status.toLowerCase();
-                      const lifecycleLabel =
-                        normalizedStatus.includes("complete") ||
-                        normalizedStatus.includes("invoice")
-                          ? "Completed"
-                          : normalizedStatus.includes("progress")
-                            ? "In progress"
-                            : "Active";
-                      const customId = (
-                        wo as unknown as Record<string, unknown>
-                      )["custom_id"] as string | undefined;
+                      const presentation =
+                        customerServiceHistoryPresentation(wo);
                       const vehicle = entry.vehicle;
                       const vehicleLabel = vehicle
                         ? fmtVehicleLabel(vehicle)
@@ -2621,16 +2605,18 @@ export default function CustomerProfilePage(): JSX.Element {
                         <button
                           key={`wo-${wo.id}`}
                           type="button"
-                          onClick={() => router.push(`/work-orders/${wo.id}`)}
+                          onClick={() => router.push(presentation.href)}
                           className={`${CARD_INNER} w-full p-3 text-left hover:border-[var(--accent-copper-soft)]/65`}
-                          title="Open work order"
+                          title={
+                            presentation.lifecycleLabel === "Estimate"
+                              ? "Open estimate"
+                              : "Open work order"
+                          }
                         >
                           <div className="flex flex-wrap items-start justify-between gap-3">
                             <div className="min-w-0">
                               <div className="truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">
-                                {customId
-                                  ? `WO ${customId}`
-                                  : `WO #${wo.id.slice(0, 8)}`}
+                                {presentation.title}
                               </div>
                               <div className="mt-0.5 text-[11px] text-[color:var(--theme-text-secondary)]">
                                 {safeDate(wo.created_at)}
@@ -2639,11 +2625,11 @@ export default function CustomerProfilePage(): JSX.Element {
                             </div>
 
                             <div className="flex flex-wrap items-center gap-2">
-                              <span className={chipClass(status)}>
-                                {lifecycleLabel}
+                              <span className={chipClass(presentation.statusKey)}>
+                                {presentation.lifecycleLabel}
                               </span>
                               <span className="rounded-full border border-[color:var(--theme-border-soft)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
-                                {status.replaceAll("_", " ")}
+                                {presentation.statusLabel}
                               </span>
                             </div>
                           </div>
