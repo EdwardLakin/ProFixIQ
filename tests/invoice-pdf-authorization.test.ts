@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { ROLE_GROUPS } from "@/features/shared/lib/rbac";
 
 const read = (path: string) => readFileSync(path, "utf8");
 
@@ -11,6 +12,15 @@ const workOrderRoute = read("app/api/work-orders/[id]/invoice-pdf/route.ts");
 
 describe("invoice PDF authorization", () => {
   it("limits staff PDF access to the canonical billing roles", () => {
+    expect(ROLE_GROUPS.billingOperators).toEqual([
+      "owner",
+      "admin",
+      "manager",
+      "advisor",
+      "service",
+    ]);
+    expect(ROLE_GROUPS.billingOperators).not.toContain("mechanic");
+    expect(ROLE_GROUPS.billingOperators).not.toContain("parts");
     expect(authorization).toContain("ROLE_GROUPS.billingOperators");
     expect(authorization).toContain("resolveAuthenticatedStaffProfile");
     expect(authorization).toContain("profile?.shop_id === input.shopId");
