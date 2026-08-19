@@ -13,6 +13,7 @@ import {
 } from "@/features/parts/lib/status-display";
 import {
   buildPartTrustMeta,
+  countAmbiguousStagingRowsByPart,
   trustBadgeTone,
   trustLevelLabel,
   trustReasonTone,
@@ -214,24 +215,12 @@ export default function ReceivingInboxPage(): JSX.Element {
               .eq("shop_id", sid)
           ).data ?? []
         : [];
-      const candidatesByStagingRow = new Map<string, Set<string>>();
-      for (const row of completeCandidateRows) {
-        const stagingRowId = String(row.staging_row_id ?? "");
-        const candidatePartId = String(row.candidate_part_id ?? "");
-        if (!stagingRowId || !candidatePartId) continue;
-        const candidates =
-          candidatesByStagingRow.get(stagingRowId) ?? new Set<string>();
-        candidates.add(candidatePartId);
-        candidatesByStagingRow.set(stagingRowId, candidates);
-      }
-      const ambiguousCountByPartId: Record<string, number> = {};
-      for (const candidates of candidatesByStagingRow.values()) {
-        if (candidates.size <= 1) continue;
-        for (const candidatePartId of candidates) {
-          ambiguousCountByPartId[candidatePartId] =
-            (ambiguousCountByPartId[candidatePartId] ?? 0) + 1;
-        }
-      }
+      const ambiguousCountByPartId = countAmbiguousStagingRowsByPart(
+        completeCandidateRows.map((row) => ({
+          stagingRowId: row.staging_row_id,
+          candidatePartId: row.candidate_part_id,
+        })),
+      );
 
       const tMap: Record<string, PartTrustMeta> = {};
       for (const pid of partIds) {
