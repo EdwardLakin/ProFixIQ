@@ -23,10 +23,16 @@ type RpcResult = {
   error: { message: string } | null;
 };
 
+type InvoicePdfSupabase = Parameters<
+  typeof canAccessInvoicePdf
+>[0]["supabase"];
+
 function sessionClient(rpcResult: RpcResult = { data: false, error: null }) {
+  const rpc = vi.fn().mockResolvedValue(rpcResult);
   return {
-    rpc: vi.fn().mockResolvedValue(rpcResult),
-  } as never;
+    supabase: { rpc } as unknown as InvoicePdfSupabase,
+    rpc,
+  };
 }
 
 function staffProfile(role: string, shopId: string | null) {
@@ -67,69 +73,69 @@ describe("invoice PDF authorization", () => {
     mocks.resolveAuthenticatedStaffProfile.mockResolvedValue(
       staffProfile("owner", "shop-a"),
     );
-    const supabase = sessionClient();
+    const client = sessionClient();
 
     await expect(
       canAccessInvoicePdf({
-        supabase,
+        supabase: client.supabase,
         authUserId: "user-1",
         shopId: "shop-a",
         customerId: null,
       }),
     ).resolves.toBe(true);
 
-    expect(supabase.rpc).not.toHaveBeenCalled();
+    expect(client.rpc).not.toHaveBeenCalled();
   });
 
   it("denies same-shop non-billing staff", async () => {
     mocks.resolveAuthenticatedStaffProfile.mockResolvedValue(
       staffProfile("mechanic", "shop-a"),
     );
-    const supabase = sessionClient();
+    const client = sessionClient();
 
     await expect(
       canAccessInvoicePdf({
-        supabase,
+        supabase: client.supabase,
         authUserId: "user-1",
         shopId: "shop-a",
         customerId: null,
       }),
     ).resolves.toBe(false);
 
-    expect(supabase.rpc).not.toHaveBeenCalled();
+    expect(client.rpc).not.toHaveBeenCalled();
   });
 
   it("denies a billing operator from a different shop", async () => {
     mocks.resolveAuthenticatedStaffProfile.mockResolvedValue(
       staffProfile("owner", "shop-b"),
     );
-    const supabase = sessionClient();
+    const client = sessionClient();
 
     await expect(
       canAccessInvoicePdf({
-        supabase,
+        supabase: client.supabase,
         authUserId: "user-1",
         shopId: "shop-a",
         customerId: null,
       }),
     ).resolves.toBe(false);
 
-    expect(supabase.rpc).not.toHaveBeenCalled();
+    expect(client.rpc).not.toHaveBeenCalled();
   });
 
   it("allows an authenticated portal customer only when the canonical membership predicate returns true", async () => {
-    const supabase = sessionClient({ data: true, error: null });
+    const client = sessionClient({ data: true, error: null });
 
     await expect(
       canAccessInvoicePdf({
-        supabase,
+        supabase: client.supabase,
         authUserId: "portal-user",
         shopId: "shop-a",
         customerId: "customer-a",
       }),
     ).resolves.toBe(true);
 
-    expect(supabase.rpc).toHaveBeenCalledWith(
+    expect(client.rpc).toHaveBeenCalledWith(
       "profixiq_is_portal_customer_for",
       {
         p_customer_id: "customer-a",
@@ -139,11 +145,11 @@ describe("invoice PDF authorization", () => {
   });
 
   it("denies missing or revoked portal membership", async () => {
-    const supabase = sessionClient({ data: false, error: null });
+    const client = sessionClient({ data: false, error: null });
 
     await expect(
       canAccessInvoicePdf({
-        supabase,
+        supabase: client.supabase,
         authUserId: "portal-user",
         shopId: "shop-a",
         customerId: "customer-a",
@@ -152,14 +158,14 @@ describe("invoice PDF authorization", () => {
   });
 
   it("fails closed when the portal-membership RPC errors", async () => {
-    const supabase = sessionClient({
+    const client = sessionClient({
       data: null,
       error: { message: "database unavailable" },
     });
 
     await expect(
       canAccessInvoicePdf({
-        supabase,
+        supabase: client.supabase,
         authUserId: "portal-user",
         shopId: "shop-a",
         customerId: "customer-a",
@@ -168,18 +174,18 @@ describe("invoice PDF authorization", () => {
   });
 
   it("fails closed without a customer relationship", async () => {
-    const supabase = sessionClient({ data: true, error: null });
+    const client = sessionClient({ data: true, error: null });
 
     await expect(
       canAccessInvoicePdf({
-        supabase,
+        supabase: client.supabase,
         authUserId: "portal-user",
         shopId: "shop-a",
         customerId: null,
       }),
     ).resolves.toBe(false);
 
-    expect(supabase.rpc).not.toHaveBeenCalled();
+    expect(client.rpc).not.toHaveBeenCalled();
   });
 
   it("gates service-role invoice-version rendering before financial data is returned", () => {
