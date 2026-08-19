@@ -3,6 +3,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import {
   CalendarDays,
+  Car,
   ClipboardCheck,
   LayoutDashboard,
   MoreHorizontal,
@@ -46,6 +47,7 @@ function KindIcon({
   if (kind === "inspection") return <ClipboardCheck {...props} />;
   if (kind === "invoice") return <ReceiptText {...props} />;
   if (kind === "customer") return <UserRound {...props} />;
+  if (kind === "vehicle") return <Car {...props} />;
   if (kind === "appointment") return <CalendarDays {...props} />;
   return <Wrench {...props} />;
 }

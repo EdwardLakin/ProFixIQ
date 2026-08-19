@@ -1,6 +1,10 @@
 // app/api/portal/bookings/route.ts
 import { NextResponse } from "next/server";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import {
+  createAdminSupabase,
+  createServerSupabaseRoute,
+} from "@/features/shared/lib/supabase/server";
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import type { Database } from "@shared/types/types/supabase";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import {
@@ -9,6 +13,9 @@ import {
 } from "@/features/portal/server/createPortalBooking";
 
 export const runtime = "nodejs";
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 type Db = Database;
 type BookingPayload = {
@@ -113,32 +120,38 @@ async function loadSchedulerEvents(
 }
 
 export async function GET(req: Request): Promise<Response> {
-  const supabase = createServerSupabaseRoute();
   const url = new URL(req.url);
   const shopSlug = url.searchParams.get("shop") ?? "";
   const start = url.searchParams.get("start") ?? "";
   const end = url.searchParams.get("end") ?? "";
   const status = url.searchParams.get("status") ?? "";
+  const bookingId = url.searchParams.get("bookingId")?.trim() ?? "";
+  const scope = url.searchParams.get("scope")?.trim() ?? "";
+  const shopContextOnly = scope === "shop";
   const pendingQueue = status === "pending";
 
-  if (!shopSlug || (!pendingQueue && (!start || !end))) {
+  if (scope && !shopContextOnly) {
+    return bad("Unsupported scope");
+  }
+  if (bookingId && !UUID_PATTERN.test(bookingId)) {
+    return bad("Invalid booking id");
+  }
+  if (
+    !shopContextOnly &&
+    (!shopSlug || (!bookingId && !pendingQueue && (!start || !end)))
+  ) {
     return bad("Missing shop or date range");
   }
 
-  const {
-    data: { user },
-    error: authErr,
-  } = await supabase.auth.getUser();
-  if (authErr || !user) return bad("Not authenticated", 401);
+  const access = await requireShopScopedApiAccess();
+  if (!access.ok) return access.response;
 
-  const { data: profile, error: profErr } = await supabase
-    .from("profiles")
-    .select("shop_id, role")
-    .eq("id", user.id)
-    .single();
-  if (profErr || !profile?.shop_id) return bad("Profile / shop not found", 403);
+  const { profile, supabase } = access;
 
-  const actor = getActorCapabilities({ role: profile.role });
+  const actor = getActorCapabilities({ role: access.canonicalRole });
+  if (bookingId && !actor.canManageScheduling) {
+    return bad("Not allowed", 403);
+  }
   if (
     !actor.isKnownRole ||
     (!actor.canManageScheduling && !actor.canViewShopWideData)
@@ -146,14 +159,26 @@ export async function GET(req: Request): Promise<Response> {
     return bad("Not allowed", 403);
   }
 
-  const { data: shop, error: shopErr } = await supabase
+  // The service client is used only after canonical staff authorization and is
+  // pinned to the actor's resolved tenant. This keeps linked legacy profiles
+  // working even where the shops self-read policy still keys on profiles.id.
+  let shopQuery = createAdminSupabase()
     .from("shops")
-    .select("id, slug")
-    .eq("slug", shopSlug)
-    .single();
+    .select("id, name, slug, accepts_online_booking")
+    .eq("id", profile.shop_id);
+
+  if (!shopContextOnly) {
+    shopQuery = shopQuery.eq("slug", shopSlug);
+  }
+
+  const { data: shop, error: shopErr } = await shopQuery.maybeSingle();
   if (shopErr || !shop) return bad("Shop not found", 404);
-  if (shop.id !== profile.shop_id) {
-    return bad("You cannot view bookings for this shop", 403);
+
+  if (shopContextOnly) {
+    return NextResponse.json(
+      { shop },
+      { headers: { "Cache-Control": "private, no-store" } },
+    );
   }
 
   let bookingsQuery = supabase
@@ -169,7 +194,9 @@ export async function GET(req: Request): Promise<Response> {
     .eq("shop_id", shop.id)
     .order("starts_at", { ascending: true });
 
-  if (pendingQueue) {
+  if (bookingId) {
+    bookingsQuery = bookingsQuery.eq("id", bookingId).limit(1);
+  } else if (pendingQueue) {
     bookingsQuery = bookingsQuery.eq("status", "pending");
   } else {
     const startIso = new Date(`${start}T00:00:00.000Z`).toISOString();
@@ -189,6 +216,10 @@ export async function GET(req: Request): Promise<Response> {
       code: rowsErr?.code,
     });
     return bad(rowsErr?.message || "Failed to load bookings", 500);
+  }
+
+  if (bookingId && rows.length === 0) {
+    return bad("Appointment not found", 404);
   }
 
   const bookings = rows as unknown as BookingRow[];

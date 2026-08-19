@@ -83,6 +83,10 @@ describe("Open Work route identity", () => {
       key: "customer:customer-123",
       kind: "customer",
     });
+    expect(resolveOpenWork("/vehicles/vehicle-123")).toMatchObject({
+      key: "vehicle:vehicle-123",
+      kind: "vehicle",
+    });
   });
 });
 
