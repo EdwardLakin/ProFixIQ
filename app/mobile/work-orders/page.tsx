@@ -16,6 +16,7 @@ export default async function MobileWorkOrdersListPage({
   searchParams: Promise<{
     status?: string | string[];
     mode?: string | string[];
+    templateId?: string | string[];
   }>;
 }) {
   const requestedParams = await searchParams;
@@ -25,14 +26,18 @@ export default async function MobileWorkOrdersListPage({
       ? requested
       : "";
   const readyToInvoiceCloseout =
-    status === "ready_to_invoice" &&
-    requestedParams.mode === "field_closeout";
+    status === "ready_to_invoice" && requestedParams.mode === "field_closeout";
+  const inspectionTemplateId =
+    typeof requestedParams.templateId === "string"
+      ? requestedParams.templateId.trim() || null
+      : null;
 
   return (
     <MobileWorkOrderQueue
       key={`${status || "active"}:${readyToInvoiceCloseout ? "closeout" : "detail"}`}
       initialStatus={status}
       readyToInvoiceCloseout={readyToInvoiceCloseout}
+      inspectionTemplateId={inspectionTemplateId}
     />
   );
 }

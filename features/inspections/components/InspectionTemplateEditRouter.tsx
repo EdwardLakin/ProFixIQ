@@ -5,6 +5,10 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
 import CustomDraftPage from "@/features/inspections/app/inspection/custom-draft/page";
+import {
+  getInspectionBuilderNavigation,
+  type InspectionBuilderSurface,
+} from "@/features/inspections/lib/inspectionBuilderNavigation";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
 type ImportedFieldType = "check" | "defect" | "measurement";
@@ -49,7 +53,9 @@ function normalizedSections(value: unknown): ImportedSection[] {
             typeof rawItem.unit === "string" && rawItem.unit.trim()
               ? rawItem.unit.trim()
               : null;
-          const rawFieldType = String(rawItem.fieldType ?? "").trim().toLowerCase();
+          const rawFieldType = String(rawItem.fieldType ?? "")
+            .trim()
+            .toLowerCase();
           // Imported templates created before this repair can have their
           // fieldType stripped by the old generic editor. The durable
           // customer-form tag still routes them here; keep every row visible
@@ -70,13 +76,18 @@ function normalizedSections(value: unknown): ImportedSection[] {
 function ImportedFleetTemplateEditor({
   templateId,
   initial,
+  surface,
 }: {
   templateId: string;
   initial: TemplateRow;
+  surface: InspectionBuilderSurface;
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createBrowserSupabase(), []);
-  const [title, setTitle] = useState(initial.template_name ?? "Imported fleet form");
+  const navigation = getInspectionBuilderNavigation(surface);
+  const [title, setTitle] = useState(
+    initial.template_name ?? "Imported fleet form",
+  );
   const [vehicleType, setVehicleType] = useState(initial.vehicle_type ?? "");
   const [laborHours, setLaborHours] = useState(
     typeof initial.labor_hours === "number" ? String(initial.labor_hours) : "",
@@ -124,33 +135,63 @@ function ImportedFleetTemplateEditor({
       }))
       .filter((section) => section.title && section.items.length > 0);
     if (!title.trim() || !cleaned.length) {
-      toast.error("A template name and at least one inspection row are required.");
+      toast.error(
+        "A template name and at least one inspection row are required.",
+      );
       return;
     }
 
     const parsedLabor = laborHours.trim() ? Number(laborHours) : null;
-    if (parsedLabor != null && (!Number.isFinite(parsedLabor) || parsedLabor < 0)) {
+    if (
+      parsedLabor != null &&
+      (!Number.isFinite(parsedLabor) || parsedLabor < 0)
+    ) {
       toast.error("Labor hours must be a positive number.");
       return;
     }
 
     setSaving(true);
     try {
-      const { error } = await supabase
-        .from("inspection_templates")
-        .update({
-          template_name: title.trim(),
-          sections: cleaned,
-          vehicle_type: vehicleType.trim() || null,
-          labor_hours: parsedLabor,
-        } as never)
-        .eq("id", templateId);
-      if (error) throw error;
+      if (navigation.surface === "field") {
+        const response = await fetch(
+          "/api/mobile/service/inspection-templates",
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              templateId,
+              templateName: title.trim(),
+              sections: cleaned,
+              vehicleType: vehicleType.trim() || null,
+              laborHours: parsedLabor,
+            }),
+          },
+        );
+        const body = (await response.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        if (!response.ok) {
+          throw new Error(body?.error || "Unable to save imported template.");
+        }
+      } else {
+        const { error } = await supabase
+          .from("inspection_templates")
+          .update({
+            template_name: title.trim(),
+            sections: cleaned,
+            vehicle_type: vehicleType.trim() || null,
+            labor_hours: parsedLabor,
+          } as never)
+          .eq("id", templateId);
+        if (error) throw error;
+      }
       toast.success("Imported fleet template saved.");
       setSections(cleaned);
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Unable to save imported template.",
+        error instanceof Error
+          ? error.message
+          : "Unable to save imported template.",
       );
     } finally {
       setSaving(false);
@@ -165,14 +206,17 @@ function ImportedFleetTemplateEditor({
         </div>
         <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-semibold">Edit imported inspection template</h1>
+            <h1 className="text-2xl font-semibold">
+              Edit imported inspection template
+            </h1>
             <p className="mt-1 max-w-2xl text-sm text-[color:var(--theme-text-secondary)]">
-              Imported row types are preserved here so defect classifications and measurements keep the source form&apos;s meaning.
+              Imported row types are preserved here so defect classifications
+              and measurements keep the source form&apos;s meaning.
             </p>
           </div>
           <button
             type="button"
-            onClick={() => router.push("/inspections/templates")}
+            onClick={() => router.push(navigation.templatesHref)}
             className="rounded-xl border border-[color:var(--theme-border-soft)] px-3 py-2 text-xs font-semibold"
           >
             Back to templates
@@ -250,7 +294,9 @@ function ImportedFleetTemplateEditor({
                   <input
                     value={item.item}
                     onChange={(event) =>
-                      updateItem(sectionIndex, itemIndex, { item: event.target.value })
+                      updateItem(sectionIndex, itemIndex, {
+                        item: event.target.value,
+                      })
                     }
                     aria-label="Inspection item"
                     className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-2 py-2 text-sm"
@@ -286,7 +332,9 @@ function ImportedFleetTemplateEditor({
                     onClick={() =>
                       updateSection(sectionIndex, (current) => ({
                         ...current,
-                        items: current.items.filter((_, index) => index !== itemIndex),
+                        items: current.items.filter(
+                          (_, index) => index !== itemIndex,
+                        ),
                       }))
                     }
                     className="rounded-lg px-2 text-xs text-red-400"
@@ -304,7 +352,11 @@ function ImportedFleetTemplateEditor({
                   ...current,
                   items: [
                     ...current.items,
-                    { item: "New inspection item", unit: null, fieldType: "check" },
+                    {
+                      item: "New inspection item",
+                      unit: null,
+                      fieldType: "check",
+                    },
                   ],
                 }))
               }
@@ -324,7 +376,13 @@ function ImportedFleetTemplateEditor({
               ...current,
               {
                 title: "New section",
-                items: [{ item: "New inspection item", unit: null, fieldType: "check" }],
+                items: [
+                  {
+                    item: "New inspection item",
+                    unit: null,
+                    fieldType: "check",
+                  },
+                ],
               },
             ])
           }
@@ -345,12 +403,18 @@ function ImportedFleetTemplateEditor({
   );
 }
 
-export default function InspectionTemplateEditRouter() {
+export default function InspectionTemplateEditRouter({
+  surface = "shop",
+}: {
+  surface?: InspectionBuilderSurface;
+}) {
   const searchParams = useSearchParams();
   const templateId = searchParams.get("templateId");
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const [checking, setChecking] = useState(Boolean(templateId));
-  const [importedTemplate, setImportedTemplate] = useState<TemplateRow | null>(null);
+  const [importedTemplate, setImportedTemplate] = useState<TemplateRow | null>(
+    null,
+  );
   const [checkError, setCheckError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -377,7 +441,8 @@ export default function InspectionTemplateEditRouter() {
           setChecking(false);
           return;
         }
-        const taggedImported = Array.isArray(data.tags) && data.tags.includes("customer-form");
+        const taggedImported =
+          Array.isArray(data.tags) && data.tags.includes("customer-form");
         setImportedTemplate(taggedImported ? data : null);
         setChecking(false);
       });
@@ -408,9 +473,10 @@ export default function InspectionTemplateEditRouter() {
       <ImportedFleetTemplateEditor
         templateId={templateId}
         initial={importedTemplate}
+        surface={surface}
       />
     );
   }
 
-  return <CustomDraftPage />;
+  return <CustomDraftPage surface={surface} />;
 }

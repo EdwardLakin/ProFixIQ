@@ -28,6 +28,7 @@ const grantedAccess: FieldServiceAccessPayload = {
     canManageScheduling: false,
     canManageParts: false,
     canManageOperations: false,
+    canManageInspectionTemplates: false,
     canConfigureFieldService: false,
     canSwitchWorkspace: false,
   },

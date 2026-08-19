@@ -7,10 +7,12 @@ import {
   ChevronRight,
   ClipboardCheck,
   FileScan,
+  ListChecks,
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
+import { normalizeFieldWorkspaceCapabilities } from "@/features/mobile/service/fieldWorkspaceCapabilities";
 import { resolveCurrentActor } from "@/features/shared/lib/currentActor";
 import { canonicalizeRole } from "@/features/shared/lib/rbac";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
@@ -49,18 +51,22 @@ type CanonicalInspectionRow = {
 
 function displayName(row: CanonicalInspectionRow): string | null {
   const customer = row.summary?.customer;
-  const value = `${customer?.first_name ?? ""} ${customer?.last_name ?? ""}`.trim();
+  const value =
+    `${customer?.first_name ?? ""} ${customer?.last_name ?? ""}`.trim();
   return value || null;
 }
 
 function vehicleLabel(row: CanonicalInspectionRow): string | null {
   const vehicle = row.summary?.vehicle;
-  const value = `${vehicle?.year ?? ""} ${vehicle?.make ?? ""} ${vehicle?.model ?? ""}`.trim();
+  const value =
+    `${vehicle?.year ?? ""} ${vehicle?.make ?? ""} ${vehicle?.model ?? ""}`.trim();
   return value || null;
 }
 
 function normalizedStatus(status: string | null | undefined): string {
-  return String(status ?? "open").toLowerCase().replace(/\s+/g, "_");
+  return String(status ?? "open")
+    .toLowerCase()
+    .replace(/\s+/g, "_");
 }
 
 function statusLabel(status: string | null | undefined): string {
@@ -99,6 +105,36 @@ export default function MobileInspectionsListPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [canImportForms, setCanImportForms] = useState(false);
+  const [canManageInspectionTemplates, setCanManageInspectionTemplates] =
+    useState(false);
+
+  useEffect(() => {
+    let active = true;
+
+    void fetch("/api/mobile/field-service/access", {
+      credentials: "include",
+      cache: "no-store",
+    })
+      .then(async (response) => {
+        const body = (await response.json().catch(() => null)) as {
+          canAccessFieldService?: boolean;
+          workspaceCapabilities?: unknown;
+        } | null;
+        if (!active || !response.ok || !body?.canAccessFieldService) return;
+
+        setCanManageInspectionTemplates(
+          normalizeFieldWorkspaceCapabilities(body.workspaceCapabilities)
+            .canManageInspectionTemplates,
+        );
+      })
+      .catch(() => {
+        // Keep the management action hidden when access cannot be verified.
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -184,7 +220,28 @@ export default function MobileInspectionsListPage() {
         </div>
       </section>
 
-      <section className={`grid gap-2 ${canImportForms ? "grid-cols-2" : "grid-cols-2"}`}>
+      <section
+        className={`grid gap-2 ${canImportForms ? "grid-cols-2" : "grid-cols-2"}`}
+      >
+        {canManageInspectionTemplates ? (
+          <Link
+            href="/mobile/service/inspection-builder"
+            className="mobile-command-row col-span-2 flex min-h-[5.6rem] items-center gap-3 border p-3"
+          >
+            <span className="inline-grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-300">
+              <ListChecks aria-hidden className="h-5 w-5" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-bold text-[color:var(--theme-text-primary)]">
+                Build inspection
+              </span>
+              <span className="mt-1 block text-xs leading-4 text-[color:var(--theme-text-secondary)]">
+                Create and manage reusable inspection templates.
+              </span>
+            </span>
+            <ChevronRight className="h-5 w-5 shrink-0 text-[color:var(--accent-copper)]" />
+          </Link>
+        ) : null}
         {canImportForms ? (
           <Link
             href="/mobile/inspections/import"

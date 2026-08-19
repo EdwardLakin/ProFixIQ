@@ -2,8 +2,9 @@
 import "server-only";
 import { NextResponse } from "next/server";
 import { getOpenAIClient } from "@/features/shared/lib/server/openai";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { ROLE_GROUPS } from "@/features/shared/lib/rbac";
 import {
   buildFromMaster,
   type VehicleType,
@@ -290,27 +291,6 @@ export const runtime = "nodejs";
 
 const AI_AUGMENTATION_TIMEOUT_MS = 8_000;
 
-async function hasAuthenticatedShopScope(): Promise<boolean> {
-  try {
-    const supabase = createServerSupabaseRoute();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return false;
-
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("shop_id")
-      .eq("id", user.id)
-      .maybeSingle();
-
-    return Boolean(profile?.shop_id);
-  } catch (err) {
-    console.error("Unable to verify shop scope before AI augmentation:", err);
-    return false;
-  }
-}
-
 function withTimeout<T>(
   promise: Promise<T>,
   timeoutMs: number,
@@ -388,6 +368,11 @@ function extractOutputJson(resp: unknown): unknown | null {
 /* ------------------------------------------------------------------ */
 
 export async function POST(req: Request) {
+  const access = await requireShopScopedApiAccess({
+    allowRoles: ROLE_GROUPS.billingOperators,
+  });
+  if (!access.ok) return access.response;
+
   try {
     const body: unknown = await req.json();
     if (!isRecord(body)) {
@@ -483,15 +468,8 @@ export async function POST(req: Request) {
     });
 
     // Deterministic generation is the reliable path. AI is augmentation only.
-    // Return the master-list build when OpenAI is unavailable or not shop-scoped.
+    // Authorization is enforced before prompt parsing or provider selection.
     if (!process.env.OPENAI_API_KEY) {
-      return NextResponse.json(
-        { sections: baseSections, metadata: { source: "base" } },
-        { status: 200 },
-      );
-    }
-
-    if (!(await hasAuthenticatedShopScope())) {
       return NextResponse.json(
         { sections: baseSections, metadata: { source: "base" } },
         { status: 200 },

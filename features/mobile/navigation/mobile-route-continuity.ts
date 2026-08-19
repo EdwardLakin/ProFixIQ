@@ -20,15 +20,16 @@ function isPathAtOrBelow(pathname: string, route: string): boolean {
   );
 }
 
-function firstPathSegmentAfter(pathname: string, prefix: string): string | null {
+function firstPathSegmentAfter(
+  pathname: string,
+  prefix: string,
+): string | null {
   const normalizedPrefix = prefix.endsWith("/")
     ? prefix.replace(/\/+$/, "")
     : prefix;
   if (!isPathAtOrBelow(pathname, normalizedPrefix)) return null;
 
-  const remainder = pathname
-    .slice(normalizedPrefix.length)
-    .replace(/^\/+/, "");
+  const remainder = pathname.slice(normalizedPrefix.length).replace(/^\/+/, "");
   const segment = remainder.split("/")[0]?.trim();
   return segment || null;
 }
@@ -40,10 +41,7 @@ function mapWorkOrderPath(
   if (pathname === "/work-orders" || pathname === "/work-orders/") {
     return "/mobile/work-orders";
   }
-  if (
-    pathname === "/work-orders/view" ||
-    pathname === "/work-orders/view/"
-  ) {
+  if (pathname === "/work-orders/view" || pathname === "/work-orders/view/") {
     return "/mobile/work-orders";
   }
   if (
@@ -90,6 +88,8 @@ function mapInspectionPath(pathname: string): string {
 
   const inspectionId = firstPathSegmentAfter(pathname, "/inspections");
   const nonRecordRoutes = new Set([
+    "custom-draft",
+    "custom-inspection",
     "run",
     "fill",
     "templates",
@@ -125,9 +125,7 @@ function mapFleetPath(pathname: string): string {
   }
   if (isPathAtOrBelow(pathname, "/fleet/pretrip")) {
     const unitId = firstPathSegmentAfter(pathname, "/fleet/pretrip");
-    return unitId
-      ? `/mobile/fleet/pretrip/${unitId}`
-      : "/mobile/fleet/pretrip";
+    return unitId ? `/mobile/fleet/pretrip/${unitId}` : "/mobile/fleet/pretrip";
   }
   if (isPathAtOrBelow(pathname, "/fleet/assets")) {
     const unitId = firstPathSegmentAfter(pathname, "/fleet/assets");
@@ -169,7 +167,9 @@ function mapDashboardPath(pathname: string): string {
  * External URLs, hashes, API routes, portal routes, and shared auth routes return
  * null so the caller can leave them alone.
  */
-export function resolveMobileHref(rawHref: string | null | undefined): string | null {
+export function resolveMobileHref(
+  rawHref: string | null | undefined,
+): string | null {
   const href = String(rawHref ?? "").trim();
   if (!href || href === "#") return null;
   if (
