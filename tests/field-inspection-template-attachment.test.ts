@@ -357,7 +357,7 @@ describe("Field inspection-template selection flow", () => {
 
 describe("Field inspection-template attachment migration", () => {
   const migration = readFileSync(
-    "supabase/migrations/20260819040800_guard_field_inspection_template_attachment.sql",
+    "supabase/migrations/20260819045458_guard_field_inspection_template_attachment.sql",
     "utf8",
   );
 
