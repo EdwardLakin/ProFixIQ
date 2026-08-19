@@ -9,8 +9,10 @@ const invoiceMigrationPath =
   "supabase/migrations/20260819153500_harden_invoice_write_rls.sql";
 const bootstrapDriftMigrationPath =
   "supabase/migrations/20260819160000_harden_financial_bootstrap_policy_drift.sql";
+const readPolicyMigrationPath =
+  "supabase/migrations/20260819162500_reconcile_financial_read_policies.sql";
 
-describe("financial write RLS hardening", () => {
+describe("financial RLS hardening", () => {
   it("retires both legacy same-shop FOR ALL invoice policies and splits invoice mutations by operation", () => {
     const invoiceMigration = source(invoiceMigrationPath);
     const driftMigration = source(bootstrapDriftMigrationPath);
@@ -55,6 +57,17 @@ describe("financial write RLS hardening", () => {
     expect(invoiceMigration).toContain(
       "revoke truncate on table public.invoices from anon, authenticated",
     );
+  });
+
+  it("reconciles invoice and payment reads without restoring direct payment writes", () => {
+    const migration = source(readPolicyMigrationPath);
+
+    expect(migration).toContain("create policy invoices_staff_select");
+    expect(migration).toContain("shop_id = (select public.current_shop_id())");
+    expect(migration).toContain("create policy invoices_customer_select");
+    expect(migration).toContain("c.user_id = (select auth.uid())");
+    expect(migration).toContain("create policy payments_staff_select");
+    expect(migration).not.toContain("create policy payments_shop_crud");
   });
 
   it("keeps the application billing-operator and server payment contracts aligned", () => {
