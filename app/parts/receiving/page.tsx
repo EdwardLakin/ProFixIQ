@@ -198,11 +198,40 @@ export default function ReceivingInboxPage(): JSX.Element {
           pendingCount[String(r.matched_part_id)] = (pendingCount[String(r.matched_part_id)] ?? 0) + 1;
         }
       });
-      const candCount: Record<string, number> = {};
-      (candRes.data ?? []).forEach((r) => {
-        const id = String(r.candidate_part_id);
-        candCount[id] = (candCount[id] ?? 0) + 1;
-      });
+      const candidateStagingRowIds = [
+        ...new Set(
+          (candRes.data ?? [])
+            .map((row) => String(row.staging_row_id ?? ""))
+            .filter(Boolean),
+        ),
+      ];
+      const completeCandidateRows = candidateStagingRowIds.length
+        ? (
+            await supabase
+              .from("shop_parts_import_match_candidates")
+              .select("staging_row_id, candidate_part_id")
+              .in("staging_row_id", candidateStagingRowIds)
+              .eq("shop_id", sid)
+          ).data ?? []
+        : [];
+      const candidatesByStagingRow = new Map<string, Set<string>>();
+      for (const row of completeCandidateRows) {
+        const stagingRowId = String(row.staging_row_id ?? "");
+        const candidatePartId = String(row.candidate_part_id ?? "");
+        if (!stagingRowId || !candidatePartId) continue;
+        const candidates =
+          candidatesByStagingRow.get(stagingRowId) ?? new Set<string>();
+        candidates.add(candidatePartId);
+        candidatesByStagingRow.set(stagingRowId, candidates);
+      }
+      const ambiguousCountByPartId: Record<string, number> = {};
+      for (const candidates of candidatesByStagingRow.values()) {
+        if (candidates.size <= 1) continue;
+        for (const candidatePartId of candidates) {
+          ambiguousCountByPartId[candidatePartId] =
+            (ambiguousCountByPartId[candidatePartId] ?? 0) + 1;
+        }
+      }
 
       const tMap: Record<string, PartTrustMeta> = {};
       for (const pid of partIds) {
@@ -215,7 +244,7 @@ export default function ReceivingInboxPage(): JSX.Element {
           sourceIntakeId: p?.source_intake_id ?? null,
           importConfidence: extended?.import_confidence ?? null,
           aliasCount: aliasCount[pid] ?? 0,
-          ambiguousCandidateCount: (candCount[pid] ?? 0) > 1 ? candCount[pid] : 0,
+          ambiguousCandidateCount: ambiguousCountByPartId[pid] ?? 0,
           pendingStagingCount: pendingCount[pid] ?? 0,
         });
       }
