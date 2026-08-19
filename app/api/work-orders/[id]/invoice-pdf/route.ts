@@ -56,21 +56,28 @@ export async function GET(
       );
     }
 
-    const allowed = await canAccessInvoicePdf({
-      supabase,
-      authUserId: user.id,
-      shopId: workOrder.shop_id,
-      customerId: workOrder.customer_id,
-    });
-    if (!allowed) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-
+    // Resolve the immutable/currently issued document before authorization.
+    // Billing staff may still fall back to a working draft below, but a portal
+    // customer must have a customer-visible invoice version before the gate can
+    // succeed. This prevents the service from rendering mutable draft totals to
+    // an otherwise valid portal member.
     const activeVersion = await getActiveInvoiceVersion({
       supabase,
       workOrderId,
       shopId: workOrder.shop_id,
     });
+
+    const allowed = await canAccessInvoicePdf({
+      supabase,
+      authUserId: user.id,
+      shopId: workOrder.shop_id,
+      customerId: workOrder.customer_id,
+      customerVisibleDocument: activeVersion !== null,
+    });
+    if (!allowed) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const storedSnapshot =
       activeVersion?.snapshot ??
       (await getIssuableInvoiceSnapshot({
