@@ -7,6 +7,7 @@ import {
   getActiveBrandForRender,
 } from "@/features/branding/server/getActiveBrandForRender";
 import { isFrozenInvoiceDocumentConfiguration } from "@/features/invoices/lib/invoiceDocumentTheme";
+import { canAccessInvoicePdf } from "@/features/invoices/server/authorizeInvoicePdfAccess";
 import { getActiveInvoiceVersion } from "@/features/invoices/server/financialLifecycle";
 import { getIssuableInvoiceSnapshot } from "@/features/invoices/server/getIssuableInvoiceSnapshot";
 import {
@@ -35,15 +36,17 @@ export async function GET(
   }
 
   try {
-    // The session-scoped client keeps the read inside the caller's shop RLS boundary.
+    // The session-scoped client keeps the lookup inside the caller's work-order
+    // RLS boundary before the explicit financial authorization gate below.
     const { data: workOrder, error: workOrderError } = await supabase
       .from("work_orders")
-      .select("id,shop_id,custom_id")
+      .select("id,shop_id,custom_id,customer_id")
       .eq("id", workOrderId)
       .maybeSingle<{
         id: string;
         shop_id: string;
         custom_id: string | null;
+        customer_id: string | null;
       }>();
     if (workOrderError) throw workOrderError;
     if (!workOrder) {
@@ -53,11 +56,28 @@ export async function GET(
       );
     }
 
+    // Resolve the immutable/currently issued document before authorization.
+    // Billing staff may still fall back to a working draft below, but a portal
+    // customer must have a customer-visible invoice version before the gate can
+    // succeed. This prevents the service from rendering mutable draft totals to
+    // an otherwise valid portal member.
     const activeVersion = await getActiveInvoiceVersion({
       supabase,
       workOrderId,
       shopId: workOrder.shop_id,
     });
+
+    const allowed = await canAccessInvoicePdf({
+      supabase,
+      authUserId: user.id,
+      shopId: workOrder.shop_id,
+      customerId: workOrder.customer_id,
+      customerVisibleDocument: activeVersion !== null,
+    });
+    if (!allowed) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const storedSnapshot =
       activeVersion?.snapshot ??
       (await getIssuableInvoiceSnapshot({
@@ -71,6 +91,7 @@ export async function GET(
           .select("invoice_number,notes")
           .eq("id", activeVersion.invoice_id)
           .eq("shop_id", workOrder.shop_id)
+          .eq("work_order_id", workOrderId)
           .maybeSingle<{
             invoice_number: string | null;
             notes: string | null;
