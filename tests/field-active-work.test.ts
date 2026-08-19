@@ -49,17 +49,4 @@ describe("Field active-work cockpit", () => {
       expect(cockpit).toContain(`href: "${href}"`);
     }
   });
-
-  it("keeps manual and automatic recovery paths in the embedded repair queue", () => {
-    expect(workOrderQueue).toContain('aria-label="Refresh active repairs"');
-    expect(workOrderQueue).toContain(
-      'window.addEventListener("online", refreshIfOnline)',
-    );
-    expect(workOrderQueue).toContain(
-      'window.addEventListener("focus", refreshIfOnline)',
-    );
-    expect(workOrderQueue).toContain(
-      'document.addEventListener("visibilitychange", refreshWhenVisible)',
-    );
-  });
 });

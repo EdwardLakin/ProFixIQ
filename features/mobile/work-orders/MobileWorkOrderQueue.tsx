@@ -10,7 +10,7 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   getOfflineSnapshot,
@@ -188,9 +188,13 @@ export default function MobileWorkOrderQueue({
   const [lineSignals, setLineSignals] = useState<Record<string, WorkOrderSignal>>(
     {},
   );
+  const loadGenerationRef = useRef(0);
 
   const load = useCallback(
     async (mode: "initial" | "refresh" = "initial") => {
+      const loadGeneration = ++loadGenerationRef.current;
+      const isLatestLoad = () => loadGenerationRef.current === loadGeneration;
+
       if (mode === "refresh") setRefreshing(true);
       else setLoading(true);
       setErrorMessage(null);
@@ -204,6 +208,7 @@ export default function MobileWorkOrderQueue({
             kind: "mobile-work-order-list",
             entityId: status || "active",
           });
+          if (!isLatestLoad()) return;
           if (cached) {
             setRows(cached.data.rows);
             setLineSignals(cached.data.signals);
@@ -216,6 +221,7 @@ export default function MobileWorkOrderQueue({
         }
 
         const { data: auth } = await supabase.auth.getUser();
+        if (!isLatestLoad()) return;
         if (!auth.user) {
           setErrorMessage("Unauthorized");
           setRows([]);
@@ -227,6 +233,7 @@ export default function MobileWorkOrderQueue({
           .select("role, shop_id")
           .eq("id", auth.user.id)
           .maybeSingle();
+        if (!isLatestLoad()) return;
 
         const actor = getActorCapabilities({ role: me?.role ?? null });
         const canViewAssignedWork =
@@ -268,6 +275,7 @@ export default function MobileWorkOrderQueue({
         }
 
         const { data, error } = await query;
+        if (!isLatestLoad()) return;
         if (error) {
           setErrorMessage(error.message);
           setRows([]);
@@ -286,6 +294,7 @@ export default function MobileWorkOrderQueue({
             )
             .eq("shop_id", me.shop_id)
             .in("work_order_id", workOrderIds);
+          if (!isLatestLoad()) return;
 
           (linesData ?? []).forEach((line) => {
             const item = line as WorkOrderLineSummary;
@@ -310,6 +319,7 @@ export default function MobileWorkOrderQueue({
           });
         }
 
+        if (!isLatestLoad()) return;
         setLineSignals(signals);
         setRows(list);
         await saveOfflineSnapshot({
@@ -323,8 +333,10 @@ export default function MobileWorkOrderQueue({
           },
         });
       } finally {
-        setLoading(false);
-        setRefreshing(false);
+        if (isLatestLoad()) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
     },
     [status, supabase],
