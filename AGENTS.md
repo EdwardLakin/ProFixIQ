@@ -224,6 +224,11 @@ iteration and run when a PR becomes Ready. `Agent PR Checks` remains universal;
 migration diffs also require Supabase clean replay. Preserve check names and
 concurrency behavior unless the task explicitly redesigns CI.
 
+Vercel Git deployments are production-only for cost control. Keep
+`vercel.json` configured with `main: true` and the wildcard fallback set to
+`false`. Do not add preview branch allowlists or an `ignoreCommand` override
+unless the user explicitly requests preview deployments.
+
 Green CI is necessary but not sufficient. Before recommending merge, confirm
 the final diff, final head, unresolved findings, migration state, and deployment
 ordering. Never merge or enable auto-merge without explicit approval.

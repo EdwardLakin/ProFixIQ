@@ -29,12 +29,9 @@
       "schedule": "*/5 * * * *"
     }
   ],
-  "ignoreCommand": "exit 1",
   "git": {
     "deploymentEnabled": {
       "main": true,
-      "agent/*": true,
-      "codex/*": true,
       "*": false
     }
   }
