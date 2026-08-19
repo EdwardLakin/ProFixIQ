@@ -9,6 +9,7 @@ import {
   getActiveBrandForRender,
 } from "@/features/branding/server/getActiveBrandForRender";
 import { isFrozenInvoiceDocumentConfiguration } from "@/features/invoices/lib/invoiceDocumentTheme";
+import { canAccessInvoicePdf } from "@/features/invoices/server/authorizeInvoicePdfAccess";
 import { getInvoiceVersionById } from "@/features/invoices/server/invoiceVersionQueries";
 import {
   premiumInvoiceFilename,
@@ -52,33 +53,23 @@ export async function GET(
       );
     }
 
-    const [{ data: profile }, { data: workOrder }] = await Promise.all([
-      admin
-        .from("profiles")
-        .select("shop_id")
-        .eq("id", user.id)
-        .maybeSingle<{ shop_id: string | null }>(),
-      admin
-        .from("work_orders")
-        .select("customer_id,custom_id")
-        .eq("id", version.work_order_id)
-        .eq("shop_id", version.shop_id)
-        .maybeSingle<{
-          customer_id: string | null;
-          custom_id: string | null;
-        }>(),
-    ]);
+    const { data: workOrder } = await admin
+      .from("work_orders")
+      .select("customer_id,custom_id")
+      .eq("id", version.work_order_id)
+      .eq("shop_id", version.shop_id)
+      .maybeSingle<{
+        customer_id: string | null;
+        custom_id: string | null;
+      }>();
 
-    let customerAccess = false;
-    if (workOrder?.customer_id) {
-      const { data: customer } = await admin
-        .from("customers")
-        .select("user_id")
-        .eq("id", workOrder.customer_id)
-        .maybeSingle<{ user_id: string | null }>();
-      customerAccess = customer?.user_id === user.id;
-    }
-    if (profile?.shop_id !== version.shop_id && !customerAccess) {
+    const allowed = await canAccessInvoicePdf({
+      supabase: sessionClient,
+      authUserId: user.id,
+      shopId: version.shop_id,
+      customerId: workOrder?.customer_id ?? null,
+    });
+    if (!allowed) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
