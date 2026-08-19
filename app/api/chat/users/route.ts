@@ -4,10 +4,39 @@ import {
   createServerSupabaseRoute,
   createAdminSupabase,
 } from "@/features/shared/lib/supabase/server";
+import { isCustomerMessagingRole } from "@/features/ai/lib/chat/authorization";
 
 export const dynamic = "force-dynamic";
 
 const MAX_ROWS = 200;
+
+type CustomerDirectoryRow = {
+  id: string;
+  user_id: string | null;
+  name: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  phone: string | null;
+};
+
+function customerOption(customer: CustomerDirectoryRow) {
+  return {
+    id: customer.id,
+    user_id: customer.user_id,
+    full_name:
+      customer.name?.trim() ||
+      [customer.first_name, customer.last_name]
+        .filter(Boolean)
+        .join(" ")
+        .trim() ||
+      customer.email ||
+      "Customer",
+    email: customer.email,
+    phone: customer.phone,
+    can_message: Boolean(customer.user_id),
+  };
+}
 
 export async function GET(req: Request) {
   const userClient = createServerSupabaseRoute();
@@ -15,6 +44,7 @@ export async function GET(req: Request) {
 
   const { searchParams } = new URL(req.url);
   const q = searchParams.get("q")?.trim() ?? "";
+  const customerId = searchParams.get("customerId")?.trim() ?? "";
 
   // who is calling
   const {
@@ -43,6 +73,35 @@ export async function GET(req: Request) {
     return NextResponse.json(
       { error: "Current user is not associated with a shop" },
       { status: 403 },
+    );
+  }
+
+  const canMessageCustomers = isCustomerMessagingRole(me.role);
+  if (customerId) {
+    if (!canMessageCustomers) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const { data: customer, error: customerError } = await admin
+      .from("customers")
+      .select("id, user_id, name, first_name, last_name, email, phone")
+      .eq("shop_id", shopId)
+      .eq("id", customerId)
+      .maybeSingle<CustomerDirectoryRow>();
+
+    if (customerError) {
+      return NextResponse.json(
+        { error: customerError.message ?? "Failed to load customer" },
+        { status: 500 },
+      );
+    }
+    if (!customer) {
+      return NextResponse.json({ error: "Customer not found" }, { status: 404 });
+    }
+
+    return NextResponse.json(
+      { customer: customerOption(customer) },
+      { headers: { "Cache-Control": "private, no-store" } },
     );
   }
 
@@ -81,10 +140,6 @@ export async function GET(req: Request) {
       avatar_url: (u as { avatar_url?: string | null }).avatar_url ?? null,
     })) ?? [];
 
-  const canMessageCustomers = ["owner", "admin", "manager", "advisor"].includes(
-    (me.role ?? "").toLowerCase(),
-  );
-
   if (!canMessageCustomers) {
     return NextResponse.json({ users: normalized, customers: [] });
   }
@@ -110,18 +165,7 @@ export async function GET(req: Request) {
     );
   }
 
-  const customers = (customerRows ?? []).map((customer) => ({
-    id: customer.id,
-    user_id: customer.user_id,
-    full_name:
-      customer.name?.trim() ||
-      [customer.first_name, customer.last_name].filter(Boolean).join(" ").trim() ||
-      customer.email ||
-      "Customer",
-    email: customer.email,
-    phone: customer.phone,
-    can_message: Boolean(customer.user_id),
-  }));
+  const customers = (customerRows ?? []).map(customerOption);
 
   return NextResponse.json({ users: normalized, customers });
 }

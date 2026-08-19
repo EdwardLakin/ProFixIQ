@@ -1,29 +1,34 @@
-"use client";
+import ChatListClient from "@/features/chat/components/ChatListClient";
 
-import { useEffect, useState } from "react";
-import PageShell from "@/features/shared/components/PageShell";
-import InboxModal from "@/features/chat/components/InboxModal";
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-export default function ChatListPage(): JSX.Element {
-  const [open, setOpen] = useState(true);
+type ChatListPageProps = {
+  searchParams: Promise<{
+    compose?: string;
+    contextType?: string;
+    contextId?: string;
+    customerId?: string;
+  }>;
+};
 
-  useEffect(() => {
-    setOpen(true);
-  }, []);
+export default async function ChatListPage({
+  searchParams,
+}: ChatListPageProps) {
+  const requested = await searchParams;
+  const contextId = requested.contextId?.trim() ?? "";
+  const customerId = requested.customerId?.trim() ?? "";
+  const startCustomerCompose =
+    requested.compose === "customer" &&
+    requested.contextType === "vehicle" &&
+    UUID_PATTERN.test(contextId) &&
+    UUID_PATTERN.test(customerId);
 
   return (
-    <PageShell title="Inbox">
-      <div className="rounded-xl border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 text-sm text-[color:var(--theme-text-secondary)]">
-        <p className="mb-3">Inbox is now layered as an operational modal so messaging stays in context.</p>
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className="rounded border border-[var(--accent-copper-soft)] px-3 py-1.5 text-xs font-semibold text-[var(--accent-copper-soft)] hover:bg-orange-500/10"
-        >
-          Open Inbox
-        </button>
-      </div>
-      <InboxModal open={open} onClose={() => setOpen(false)} />
-    </PageShell>
+    <ChatListClient
+      startCustomerCompose={startCustomerCompose}
+      contextId={startCustomerCompose ? contextId : null}
+      customerId={startCustomerCompose ? customerId : null}
+    />
   );
 }

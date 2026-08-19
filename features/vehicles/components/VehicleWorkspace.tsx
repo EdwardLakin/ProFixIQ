@@ -14,6 +14,9 @@ import type {
 type VehicleWorkspaceProps = {
   snapshot: VehicleWorkspaceSnapshot;
   createWorkOrderHref: string | null;
+  bookAppointmentHref: string | null;
+  createEstimateHref: string | null;
+  messageCustomerHref: string | null;
 };
 
 const PANEL =
@@ -148,7 +151,7 @@ function canOpenTimelineEvent(
   event: VehicleTimelineEvent,
   permissions: VehicleWorkspacePermissions,
 ): boolean {
-  if (event.kind === "appointment" && !permissions.canBookAppointment) {
+  if (event.kind === "appointment" && !permissions.canOpenAppointments) {
     return false;
   }
   if (event.kind === "estimate") return permissions.canViewEstimates;
@@ -394,6 +397,9 @@ function TimelineEvent({
 export function VehicleWorkspace({
   snapshot,
   createWorkOrderHref,
+  bookAppointmentHref,
+  createEstimateHref,
+  messageCustomerHref,
 }: VehicleWorkspaceProps) {
   const { identity, currentAccount } = snapshot;
   const visibleTimeline = snapshot.recentTimeline.slice(0, 8);
@@ -508,6 +514,30 @@ export function VehicleWorkspace({
                   Create Work Order
                 </Link>
               ) : null}
+              {snapshot.permissions.canBookAppointment && bookAppointmentHref ? (
+                <Link
+                  href={bookAppointmentHref}
+                  className={`${LINK_FOCUS} rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3.5 py-2 text-sm font-semibold transition hover:bg-[color:var(--theme-surface-subtle)]`}
+                >
+                  Book
+                </Link>
+              ) : null}
+              {snapshot.permissions.canCreateEstimate && createEstimateHref ? (
+                <Link
+                  href={createEstimateHref}
+                  className={`${LINK_FOCUS} rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3.5 py-2 text-sm font-semibold transition hover:bg-[color:var(--theme-surface-subtle)]`}
+                >
+                  Estimate
+                </Link>
+              ) : null}
+              {snapshot.permissions.canMessageCustomer && messageCustomerHref ? (
+                <Link
+                  href={messageCustomerHref}
+                  className={`${LINK_FOCUS} rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3.5 py-2 text-sm font-semibold transition hover:bg-[color:var(--theme-surface-subtle)]`}
+                >
+                  Message
+                </Link>
+              ) : null}
             </nav>
           </div>
         </div>
@@ -568,7 +598,7 @@ export function VehicleWorkspace({
               <AppointmentCard
                 key={`${appointment.reference.sourceType}:${appointment.reference.sourceId}`}
                 appointment={appointment}
-                canOpen={snapshot.permissions.canBookAppointment}
+                canOpen={snapshot.permissions.canOpenAppointments}
               />
             ))}
           </ul>

@@ -13,6 +13,7 @@ import {
   removeOfflineMessageDraft,
   resolveMessagingDraftScope,
   saveOfflineMessageDraft,
+  staffNewMessageDraftTarget,
   warmMessagingRouteShells,
   type OfflineMessageDraft,
 } from "@/features/chat/offline/messageDrafts";
@@ -58,6 +59,9 @@ type Props = {
   open: boolean;
   onClose: () => void;
   seedConversationId?: string | null;
+  startNew?: boolean;
+  initialCustomerId?: string | null;
+  contextOverride?: ComposeContext | null;
 };
 
 type ComposeContext = {
@@ -132,6 +136,9 @@ export default function InboxModal({
   open,
   onClose,
   seedConversationId = null,
+  startNew = false,
+  initialCustomerId = null,
+  contextOverride = null,
 }: Props): JSX.Element | null {
   const pathname = usePathname() ?? "/dashboard";
   const supabase = useMemo(() => createBrowserSupabase(), []);
@@ -149,11 +156,17 @@ export default function InboxModal({
   const [sending, setSending] = useState(false);
   const [selectedRecipients, setSelectedRecipients] = useState<string[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(
-    null,
+    startNew && initialCustomerId ? null : initialCustomerId,
   );
+  const [handoffCustomer, setHandoffCustomer] =
+    useState<CustomerOption | null>(null);
+  const [handoffCustomerResolved, setHandoffCustomerResolved] = useState(
+    !startNew || !initialCustomerId,
+  );
+  const [handoffError, setHandoffError] = useState<string | null>(null);
   const [composeAudience, setComposeAudience] = useState<
     "internal" | "customer"
-  >("internal");
+  >(initialCustomerId ? "customer" : "internal");
   const [roleFilter, setRoleFilter] = useState("all");
   const [useContext, setUseContext] = useState(true);
   const [draftScope, setDraftScope] = useState<OfflineMutationScope | null>(
@@ -168,16 +181,33 @@ export default function InboxModal({
   const [draftSaved, setDraftSaved] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
 
-  const context = useMemo(() => inferContext(pathname), [pathname]);
+  const context = useMemo(
+    () => contextOverride ?? inferContext(pathname),
+    [contextOverride, pathname],
+  );
   const draftTargetId = activeConversationId
     ? `conversation:${activeConversationId}`
-    : `staff:new:${composeAudience}:${context.context_type ?? "general"}:${context.context_id ?? "none"}`;
+    : staffNewMessageDraftTarget({
+        audience: composeAudience,
+        customerId: selectedCustomerId,
+        contextType: context.context_type,
+        contextId: context.context_id,
+      });
+  const handoffPending = Boolean(
+    open && startNew && initialCustomerId && !handoffCustomerResolved,
+  );
   const draftReady = Boolean(
+    !handoffPending &&
     draftScope &&
     messageDraft &&
     loadedDraftTarget === draftTargetId &&
     messageDraft.targetId === draftTargetId,
   );
+  const customerOptions = useMemo(() => {
+    const options = new Map(customers.map((customer) => [customer.id, customer]));
+    if (handoffCustomer) options.set(handoffCustomer.id, handoffCustomer);
+    return [...options.values()];
+  }, [customers, handoffCustomer]);
   const newConversationFingerprint = useMemo(
     () =>
       JSON.stringify({
@@ -207,9 +237,13 @@ export default function InboxModal({
     const data = (await res.json()) as ConversationPayload[];
     setRows(data);
     setActiveConversationId(
-      (curr) => curr ?? seedConversationId ?? data[0]?.conversation.id ?? null,
+      (curr) =>
+        curr ??
+        (startNew
+          ? null
+          : seedConversationId ?? data[0]?.conversation.id ?? null),
     );
-  }, [seedConversationId]);
+  }, [seedConversationId, startNew]);
 
   const loadMessages = useCallback(async (conversationId: string) => {
     const res = await fetch("/api/chat/get-messages", {
@@ -249,6 +283,70 @@ export default function InboxModal({
   }, [open, supabase, loadConversations]);
 
   useEffect(() => {
+    if (!startNew || !initialCustomerId) {
+      setHandoffCustomer(null);
+      setHandoffCustomerResolved(true);
+      setHandoffError(null);
+      return;
+    }
+    if (!open) {
+      setHandoffCustomer(null);
+      setHandoffCustomerResolved(false);
+      setHandoffError(null);
+      return;
+    }
+
+    let cancelled = false;
+    setComposeAudience("customer");
+    setActiveConversationId(null);
+    setSelectedCustomerId(null);
+    setHandoffCustomer(null);
+    setHandoffCustomerResolved(false);
+    setHandoffError(null);
+    setMessageDraft(null);
+    setLoadedDraftTarget(null);
+    setCompose("");
+
+    void fetch(
+      `/api/chat/users?customerId=${encodeURIComponent(initialCustomerId)}`,
+      { credentials: "include", cache: "no-store" },
+    )
+      .then(async (response) => {
+        const body = (await response.json().catch(() => null)) as {
+          customer?: CustomerOption | null;
+          error?: string;
+        } | null;
+        if (cancelled) return;
+        const customer =
+          response.ok && body?.customer?.id === initialCustomerId
+            ? body.customer
+            : null;
+        setHandoffCustomer(customer);
+        setSelectedCustomerId(customer?.can_message ? customer.id : null);
+
+        if (!customer?.can_message) {
+          setHandoffError(
+            customer
+              ? "This customer must activate messaging before a message can be sent."
+              : "This customer is not available for messaging in this shop.",
+          );
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setHandoffError("The customer could not be verified for messaging.");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setHandoffCustomerResolved(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [initialCustomerId, open, startNew]);
+
+  useEffect(() => {
     if (!open || !me) {
       setDraftScope(null);
       setMessageDraft(null);
@@ -277,7 +375,7 @@ export default function InboxModal({
   }, [me, open]);
 
   useEffect(() => {
-    if (!open || !draftScope) return;
+    if (!open || !draftScope || handoffPending) return;
     let cancelled = false;
     setLoadedDraftTarget(null);
     void getOfflineMessageDraft({
@@ -285,23 +383,37 @@ export default function InboxModal({
       targetId: draftTargetId,
     }).then((stored) => {
       if (cancelled) return;
+      const storedMatchesRecipient = Boolean(
+        !stored ||
+          activeConversationId ||
+          composeAudience !== "customer" ||
+          stored.customerId === selectedCustomerId,
+      );
+      const safeStored = storedMatchesRecipient ? stored : null;
       const next =
-        stored ??
+        safeStored ??
         createMessageDraft({ scope: draftScope, targetId: draftTargetId });
       setMessageDraft(next);
       setCompose(next.content);
       if (!activeConversationId) {
         setSelectedRecipients(next.recipientIds ?? []);
-        setSelectedCustomerId(next.customerId ?? null);
         setUseContext(next.useContext ?? true);
       }
-      setDraftSaved(Boolean(stored?.content));
+      setDraftSaved(Boolean(safeStored?.content));
       setLoadedDraftTarget(draftTargetId);
     });
     return () => {
       cancelled = true;
     };
-  }, [activeConversationId, draftScope, draftTargetId, open]);
+  }, [
+    activeConversationId,
+    composeAudience,
+    draftScope,
+    draftTargetId,
+    handoffPending,
+    open,
+    selectedCustomerId,
+  ]);
 
   useEffect(() => {
     if (
@@ -841,12 +953,15 @@ export default function InboxModal({
                 </>
               ) : (
                 <div className="max-h-32 overflow-auto rounded border border-[color:var(--theme-border-soft)] p-1.5">
-                  {customers.map((customer) => (
+                  {customerOptions.map((customer) => (
                     <button
                       key={customer.id}
                       type="button"
                       disabled={!draftReady || sending || !customer.can_message}
-                      onClick={() => setSelectedCustomerId(customer.id)}
+                      onClick={() => {
+                        setSelectedCustomerId(customer.id);
+                        setHandoffError(null);
+                      }}
                       className={`mb-1 flex w-full items-center justify-between rounded px-2 py-1.5 text-left ${
                         selectedCustomerId === customer.id
                           ? "bg-[color:var(--theme-surface-subtle)] ring-1 ring-[var(--accent-copper-soft)]"
@@ -919,8 +1034,10 @@ export default function InboxModal({
               Saved on this device · delivery requires a connection
             </p>
           ) : null}
-          {sendError ? (
-            <p className="px-3 pb-2 text-[10px] text-red-300">{sendError}</p>
+          {sendError || handoffError ? (
+            <p className="px-3 pb-2 text-[10px] text-red-300">
+              {sendError ?? handoffError}
+            </p>
           ) : null}
         </section>
 

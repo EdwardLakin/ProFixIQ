@@ -32,6 +32,27 @@ export type OfflineMessageDraft = {
   updatedAt: string;
 };
 
+export function staffNewMessageDraftTarget(args: {
+  audience: "internal" | "customer";
+  customerId: string | null;
+  contextType: string | null;
+  contextId: string | null;
+}): string {
+  const recipient =
+    args.audience === "customer"
+      ? `customer:${args.customerId ?? "none"}`
+      : "team";
+
+  return [
+    "staff",
+    "new",
+    args.audience,
+    recipient,
+    args.contextType ?? "general",
+    args.contextId ?? "none",
+  ].join(":");
+}
+
 export function createMessageDraft(args: {
   scope: OfflineMutationScope;
   targetId: string;

@@ -47,6 +47,7 @@ export const ROLE_GROUPS = {
     "lead_hand",
     "foreman",
   ],
+  schedulerBookingWriters: ["owner", "admin", "manager", "advisor"],
   workAssigners: [
     "owner",
     "admin",

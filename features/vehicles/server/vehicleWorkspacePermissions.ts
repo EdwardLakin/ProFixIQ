@@ -52,6 +52,9 @@ export function vehicleWorkspacePermissionsForRole(
   const isWorkOrderCreator = (
     ROLE_GROUPS.workOrderCreators as readonly CanonicalRole[]
   ).includes(role);
+  const isSchedulerBookingWriter = (
+    ROLE_GROUPS.schedulerBookingWriters as readonly CanonicalRole[]
+  ).includes(role);
 
   return {
     canViewAccountContact:
@@ -73,7 +76,8 @@ export function vehicleWorkspacePermissionsForRole(
       role,
     ),
     canCreateWorkOrder: isWorkOrderCreator,
-    canBookAppointment: capabilities.canManageScheduling,
+    canBookAppointment: isSchedulerBookingWriter,
+    canOpenAppointments: capabilities.canManageScheduling,
     canCreateEstimate: estimateActorForRole(role).canCreate,
     canMessageCustomer: isCustomerMessagingRole(role),
     canViewRelatedVehicles:
