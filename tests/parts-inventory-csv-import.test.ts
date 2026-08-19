@@ -1,6 +1,9 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { buildPartTrustMeta } from "@/features/parts/lib/trust-signals";
+import {
+  buildPartTrustMeta,
+  countAmbiguousStagingRowsByPart,
+} from "@/features/parts/lib/trust-signals";
 
 const inventorySource = () => readFileSync("app/parts/inventory/page.tsx", "utf8");
 
@@ -48,6 +51,30 @@ describe("parts inventory trust classification", () => {
 
   it("name-only or missing identity is low trust", () => {
     expect(buildPartTrustMeta({ name: "Mystery clip" }).level).toBe("low");
+  });
+});
+
+describe("parts import candidate ambiguity", () => {
+  it("does not mark repeated single-candidate staging rows as ambiguous", () => {
+    expect(
+      countAmbiguousStagingRowsByPart([
+        { stagingRowId: "row-1", candidatePartId: "part-1" },
+        { stagingRowId: "row-2", candidatePartId: "part-1" },
+      ]),
+    ).toEqual({});
+  });
+
+  it("marks every part belonging to a multi-candidate staging row", () => {
+    expect(
+      countAmbiguousStagingRowsByPart([
+        { stagingRowId: "row-1", candidatePartId: "part-1" },
+        { stagingRowId: "row-1", candidatePartId: "part-2" },
+        { stagingRowId: "row-2", candidatePartId: "part-1" },
+      ]),
+    ).toEqual({
+      "part-1": 1,
+      "part-2": 1,
+    });
   });
 });
 
