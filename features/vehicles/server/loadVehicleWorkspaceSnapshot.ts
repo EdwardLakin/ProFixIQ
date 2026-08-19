@@ -4,7 +4,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database, Json } from "@shared/types/types/supabase";
 import type { CanonicalRole } from "@/features/shared/lib/rbac";
-import { normalizeWorkOrderStatus } from "@/features/work-orders/lib/work-order-status";
+import {
+  formatOperationalLabel,
+  isEstimateRecord,
+  normalizeWorkOrderStatus,
+} from "@/features/work-orders/lib/work-order-status";
 import type { MaintenanceSuggestionItem } from "@/features/maintenance/server/types";
 import {
   createWorkOrderHandoffHref,
@@ -301,6 +305,61 @@ const TERMINAL_LINE_STATES = new Set([
   "ready_to_invoice",
   "voided",
 ]);
+const QUERY_PAGE_SIZE = 500;
+const WORK_ORDER_ID_CHUNK_SIZE = 100;
+const MAX_QUERY_PAGES = 100;
+const UPCOMING_APPOINTMENT_LIMIT = 40;
+
+type QueryPage<T> = {
+  data: T[] | null;
+  error: { message: string } | null;
+};
+
+async function collectAllPages<T>(
+  context: string,
+  loadPage: (from: number, to: number) => Promise<QueryPage<T>>,
+): Promise<T[]> {
+  const rows: T[] = [];
+
+  for (let page = 0; page < MAX_QUERY_PAGES; page += 1) {
+    const from = page * QUERY_PAGE_SIZE;
+    const result = await loadPage(from, from + QUERY_PAGE_SIZE - 1);
+    throwQueryError(result.error, context);
+    const pageRows = result.data ?? [];
+    rows.push(...pageRows);
+    if (pageRows.length < QUERY_PAGE_SIZE) return rows;
+  }
+
+  throw new Error(`${context}: query exceeded the safe pagination limit`);
+}
+
+function chunkWorkOrderIds(ids: readonly string[]): string[][] {
+  const chunks: string[][] = [];
+  for (let index = 0; index < ids.length; index += WORK_ORDER_ID_CHUNK_SIZE) {
+    chunks.push(ids.slice(index, index + WORK_ORDER_ID_CHUNK_SIZE));
+  }
+  return chunks;
+}
+
+async function collectWorkOrderScopedRows<T>(
+  context: string,
+  workOrderIds: readonly string[],
+  loadPage: (
+    ids: string[],
+    from: number,
+    to: number,
+  ) => Promise<QueryPage<T>>,
+): Promise<T[]> {
+  const rows: T[] = [];
+  for (const ids of chunkWorkOrderIds(workOrderIds)) {
+    rows.push(
+      ...(await collectAllPages(context, (from, to) =>
+        loadPage(ids, from, to),
+      )),
+    );
+  }
+  return rows;
+}
 
 function text(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
@@ -320,7 +379,7 @@ function quoteLineIsDeferred(row: WorkspaceQuoteLineRow): boolean {
 }
 
 function workOrderIsEstimate(row: WorkspaceWorkOrderRow): boolean {
-  return row.record_type === "estimate" || Boolean(row.estimate_number);
+  return isEstimateRecord(row);
 }
 
 function estimateIsActionable(row: WorkspaceWorkOrderRow): boolean {
@@ -354,10 +413,14 @@ function latestWorkOrderOdometer(
     )
     .sort(
       (a, b) =>
-        new Date(dateValue(b.updated_at, b.created_at)).getTime() -
-        new Date(dateValue(a.updated_at, a.created_at)).getTime(),
+        workOrderServiceTime(b) - workOrderServiceTime(a),
     )[0];
   return newestReading?.odometer_km ?? null;
+}
+
+function workOrderServiceTime(row: WorkspaceWorkOrderRow): number {
+  const value = Date.parse(row.scheduled_at ?? row.created_at ?? "");
+  return Number.isFinite(value) ? value : Number.NEGATIVE_INFINITY;
 }
 
 function workspaceVehicleIdentity(
@@ -553,6 +616,7 @@ function buildAttentionItems(input: {
   maintenance: MaintenanceSuggestionRow[];
 }): VehicleAttentionItem[] {
   const items: VehicleAttentionItem[] = [];
+  const representedMaintenanceServices = new Set<string>();
   const representedLineIds = new Set(
     input.quoteLines
       .filter(quoteLineIsDeferred)
@@ -653,13 +717,17 @@ function buildAttentionItems(input: {
   for (const suggestionRow of input.maintenance) {
     const workOrder = input.workOrdersById.get(suggestionRow.work_order_id);
     for (const suggestion of maintenanceItems(suggestionRow)) {
+      const maintenanceKey = normalizedOperationalState(
+        suggestion.serviceCode || suggestion.label,
+      );
+      if (representedMaintenanceServices.has(maintenanceKey)) continue;
+      representedMaintenanceServices.add(maintenanceKey);
       items.push({
         kind: "maintenance_due",
         title: suggestion.label,
         explanation: [
           suggestion.whyDue,
           workOrder ? `evaluated for ${workOrderLabel(workOrder)}` : null,
-          suggestion.serviceCode ? `service ${suggestion.serviceCode}` : null,
         ]
           .filter(Boolean)
           .join(" · "),
@@ -708,7 +776,16 @@ function buildTimeline(input: {
             : `Estimate ${row.id.slice(0, 8)}`
           : workOrderLabel(row),
       detail:
-        [isEstimate ? row.estimate_status : row.status, odometer]
+        [
+          isEstimate
+            ? row.estimate_status
+              ? formatOperationalLabel(row.estimate_status)
+              : null
+            : row.status
+              ? formatOperationalLabel(row.status)
+              : null,
+          odometer,
+        ]
           .filter(Boolean)
           .join(" · ") || null,
       occurredAt: dateValue(row.updated_at, row.created_at),
@@ -720,7 +797,10 @@ function buildTimeline(input: {
     events.push({
       kind: "appointment",
       title: "Appointment",
-      detail: [row.status, text(row.notes)].filter(Boolean).join(" · ") || null,
+      detail:
+        [row.status ? formatOperationalLabel(row.status) : null, text(row.notes)]
+          .filter(Boolean)
+          .join(" · ") || null,
       occurredAt: row.starts_at,
       reference: {
         sourceType: "appointment",
@@ -735,7 +815,7 @@ function buildTimeline(input: {
     events.push({
       kind: "inspection",
       title: inspectionReference(row).sourceLabel,
-      detail: row.status,
+      detail: row.status ? formatOperationalLabel(row.status) : null,
       occurredAt: dateValue(row.finalized_at, row.updated_at, row.started_at, row.created_at),
       reference: inspectionReference(row),
     });
@@ -747,7 +827,7 @@ function buildTimeline(input: {
     events.push({
       kind: "repair",
       title: text(row.description) ?? text(row.correction) ?? "Repair completed",
-      detail: status.replaceAll("_", " "),
+      detail: formatOperationalLabel(status),
       occurredAt: dateValue(row.updated_at, row.created_at),
       reference: lineReference(row),
     });
@@ -784,7 +864,7 @@ function buildTimeline(input: {
       kind: "approval",
       title:
         text(row.title) ?? text(row.description) ?? "Estimate item decision",
-      detail: `Decision: ${decision.replaceAll("_", " ")}`,
+      detail: `Decision: ${formatOperationalLabel(decision)}`,
       occurredAt: dateValue(decisionAt, row.updated_at, row.created_at),
       reference: quoteLineReference(row),
     });
@@ -818,7 +898,7 @@ function buildTimeline(input: {
     events.push({
       kind: "invoice",
       title: row.invoice_number ? `Invoice ${row.invoice_number}` : `Invoice ${row.id.slice(0, 8)}`,
-      detail: row.status,
+      detail: row.status ? formatOperationalLabel(row.status) : null,
       occurredAt: dateValue(row.paid_at, row.issued_at, row.updated_at, row.created_at),
       reference: {
         sourceType: "invoice",
@@ -834,7 +914,7 @@ function buildTimeline(input: {
     events.push({
       kind: "payment",
       title: "Payment recorded",
-      detail: row.status,
+      detail: row.status ? formatOperationalLabel(row.status) : null,
       occurredAt: dateValue(row.paid_at, row.created_at),
       reference: {
         sourceType: "payment",
@@ -889,6 +969,7 @@ function buildDocumentSummary(input: {
   vehicleMedia: WorkspaceVehicleMediaRow[];
   workOrderMedia: WorkspaceWorkOrderMediaRow[];
   inspections: WorkspaceInspectionRow[];
+  workOrdersById: Map<string, WorkspaceWorkOrderRow>;
 }): VehicleDocumentSummary {
   const reports = input.inspections.filter(
     (row) => Boolean(row.pdf_url || row.pdf_storage_path),
@@ -905,10 +986,11 @@ function buildDocumentSummary(input: {
       ? {
           sourceType: "work_order_media",
           sourceId: newestWorkOrderMedia.id,
-          sourceLabel:
-            text(newestWorkOrderMedia.file_name) ??
-            text(newestWorkOrderMedia.kind) ??
-            `Work-order file ${newestWorkOrderMedia.id.slice(0, 8)}`,
+          sourceLabel: `${formatOperationalLabel(newestWorkOrderMedia.kind || "attachment")} from ${
+            input.workOrdersById.has(newestWorkOrderMedia.work_order_id)
+              ? workOrderLabel(input.workOrdersById.get(newestWorkOrderMedia.work_order_id)!)
+              : "work order"
+          }`,
           href: `/work-orders/${newestWorkOrderMedia.work_order_id}`,
         }
       : reports[0]
@@ -995,6 +1077,107 @@ function buildConflicts(input: {
   return conflicts;
 }
 
+function latestCanonicalServiceWorkOrder(
+  workOrders: WorkspaceWorkOrderRow[],
+): WorkspaceWorkOrderRow | null {
+  return (
+    [...workOrders]
+      .filter((row) => {
+        if (workOrderIsEstimate(row)) return false;
+        const state = normalizedOperationalState(row.status);
+        return !["archived", "canceled", "cancelled", "void", "voided"].includes(
+          state,
+        );
+      })
+      .sort((a, b) => {
+        const timeDifference = workOrderServiceTime(b) - workOrderServiceTime(a);
+        return timeDifference === 0 ? b.id.localeCompare(a.id) : timeDifference;
+      })[0] ?? null
+  );
+}
+
+function maintenanceCacheIsFresh(input: {
+  cache: MaintenanceSuggestionRow;
+  workOrder: WorkspaceWorkOrderRow;
+  lines: WorkspaceWorkOrderLineRow[];
+}): boolean {
+  const cacheTime = Date.parse(input.cache.updated_at);
+  if (!Number.isFinite(cacheTime)) return false;
+
+  const sourceTimes = [
+    input.workOrder.updated_at,
+    input.workOrder.created_at,
+    ...input.lines
+      .filter((line) => line.work_order_id === input.workOrder.id)
+      .flatMap((line) => [line.updated_at, line.created_at]),
+  ]
+    .map((value) => Date.parse(value ?? ""))
+    .filter(Number.isFinite);
+
+  return sourceTimes.every((sourceTime) => cacheTime >= sourceTime);
+}
+
+async function loadVehicleBookings(input: {
+  supabase: SupabaseClient<Database>;
+  shopId: string;
+  vehicleId: string;
+  now: Date;
+}): Promise<WorkspaceBookingRow[]> {
+  const upcoming: WorkspaceBookingRow[] = [];
+  const appointmentPageSize = 100;
+  const nowIso = input.now.toISOString();
+
+  for (let page = 0; page < MAX_QUERY_PAGES; page += 1) {
+    const from = page * appointmentPageSize;
+    const result = await input.supabase
+      .from("bookings")
+      .select("id,work_order_id,starts_at,ends_at,status,notes,created_at")
+      .eq("shop_id", input.shopId)
+      .eq("vehicle_id", input.vehicleId)
+      .gte("ends_at", nowIso)
+      .order("starts_at", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, from + appointmentPageSize - 1);
+    throwQueryError(result.error, "Unable to load upcoming appointments");
+    const pageRows = (result.data ?? []) as WorkspaceBookingRow[];
+    for (const row of pageRows) {
+      if (
+        !TERMINAL_APPOINTMENT_STATUSES.has(
+          normalizedOperationalState(row.status),
+        )
+      ) {
+        upcoming.push(row);
+      }
+      if (upcoming.length >= UPCOMING_APPOINTMENT_LIMIT) break;
+    }
+    if (
+      upcoming.length >= UPCOMING_APPOINTMENT_LIMIT ||
+      pageRows.length < appointmentPageSize
+    ) {
+      break;
+    }
+  }
+
+  const recentResult = await input.supabase
+    .from("bookings")
+    .select("id,work_order_id,starts_at,ends_at,status,notes,created_at")
+    .eq("shop_id", input.shopId)
+    .eq("vehicle_id", input.vehicleId)
+    .lt("ends_at", nowIso)
+    .order("starts_at", { ascending: false })
+    .limit(40);
+  throwQueryError(recentResult.error, "Unable to load recent appointments");
+
+  const byId = new Map<string, WorkspaceBookingRow>();
+  for (const row of [
+    ...upcoming.slice(0, UPCOMING_APPOINTMENT_LIMIT),
+    ...((recentResult.data ?? []) as WorkspaceBookingRow[]),
+  ]) {
+    byId.set(row.id, row);
+  }
+  return [...byId.values()];
+}
+
 function throwQueryError(error: { message: string } | null, context: string): void {
   if (error) throw new Error(`${context}: ${error.message}`);
 }
@@ -1020,25 +1203,35 @@ export async function loadVehicleWorkspaceSnapshot(input: {
   if (!vehicleResult.data) return null;
   const vehicle = vehicleResult.data as WorkspaceVehicleRow;
 
-  const workOrdersResult = await input.supabase
-    .from("work_orders")
-    .select(
-      "id,customer_id,vehicle_id,custom_id,status,record_type,approval_state,estimate_number,estimate_status,scheduled_at,odometer_km,created_at,updated_at",
-    )
-    .eq("shop_id", input.shopId)
-    .eq("vehicle_id", input.vehicleId)
-    .order("updated_at", { ascending: false, nullsFirst: false })
-    .limit(100);
-  throwQueryError(workOrdersResult.error, "Unable to load work orders");
-  const workOrders = (workOrdersResult.data ?? []) as WorkspaceWorkOrderRow[];
+  const workOrders = await collectAllPages<WorkspaceWorkOrderRow>(
+    "Unable to load work orders",
+    async (from, to) => {
+      const result = await input.supabase
+        .from("work_orders")
+        .select(
+          "id,customer_id,vehicle_id,custom_id,status,record_type,approval_state,estimate_number,estimate_status,scheduled_at,odometer_km,created_at,updated_at",
+        )
+        .eq("shop_id", input.shopId)
+        .eq("vehicle_id", input.vehicleId)
+        .order("created_at", { ascending: false, nullsFirst: false })
+        .order("id", { ascending: false })
+        .range(from, to);
+      return {
+        data: (result.data ?? null) as WorkspaceWorkOrderRow[] | null,
+        error: result.error,
+      };
+    },
+  );
 
   // Work-order RLS is the canonical assignment boundary for mechanics. A same-shop
   // vehicle row alone must never grant a mechanic access to unrelated history.
   if (permissions.isAssignedWorkOnly && workOrders.length === 0) return null;
 
   const workOrderIds = workOrders.map((row) => row.id);
+  const maintenanceWorkOrder = latestCanonicalServiceWorkOrder(workOrders);
   const customerId = vehicle.customer_id;
   const emptyRows = Promise.resolve({ data: [], error: null });
+  const emptySingle = Promise.resolve({ data: null, error: null });
 
   const accountQuery = customerId
     ? permissions.canViewAccountContact
@@ -1077,61 +1270,104 @@ export async function loadVehicleWorkspaceSnapshot(input: {
     paymentsResult,
   ] = await Promise.all([
     accountQuery,
-    input.supabase
-      .from("bookings")
-      .select("id,work_order_id,starts_at,ends_at,status,notes,created_at")
-      .eq("shop_id", input.shopId)
-      .eq("vehicle_id", input.vehicleId)
-      .order("starts_at", { ascending: false })
-      .limit(40),
-    input.supabase
-      .from("inspections")
-      .select(
-        "id,work_order_id,work_order_line_id,inspection_type,status,completed,summary,created_at,started_at,finalized_at,updated_at,pdf_url,pdf_storage_path",
-      )
-      .eq("shop_id", input.shopId)
-      .eq("vehicle_id", input.vehicleId)
-      .order("updated_at", { ascending: false, nullsFirst: false })
-      .limit(40),
-    workOrderIds.length
-      ? input.supabase
-          .from("work_order_lines")
+    loadVehicleBookings({
+      supabase: input.supabase,
+      shopId: input.shopId,
+      vehicleId: input.vehicleId,
+      now,
+    }).then((data) => ({ data, error: null })),
+    collectAllPages<WorkspaceInspectionRow>(
+      "Unable to load inspections",
+      async (from, to) => {
+        const result = await input.supabase
+          .from("inspections")
           .select(
-            "id,work_order_id,description,complaint,correction,hold_reason,status,line_status,approval_state,urgency,voided_at,created_at,updated_at",
+            "id,work_order_id,work_order_line_id,inspection_type,status,completed,summary,created_at,started_at,finalized_at,updated_at,pdf_url,pdf_storage_path",
           )
           .eq("shop_id", input.shopId)
-          .in("work_order_id", workOrderIds)
-          .limit(300)
+          .eq("vehicle_id", input.vehicleId)
+          .order("created_at", { ascending: false, nullsFirst: false })
+          .order("id", { ascending: false })
+          .range(from, to);
+        return {
+          data: (result.data ?? null) as WorkspaceInspectionRow[] | null,
+          error: result.error,
+        };
+      },
+    ).then((data) => ({ data, error: null })),
+    workOrderIds.length
+      ? collectWorkOrderScopedRows<WorkspaceWorkOrderLineRow>(
+          "Unable to load repair lines",
+          workOrderIds,
+          async (ids, from, to) => {
+            const result = await input.supabase
+              .from("work_order_lines")
+              .select(
+                "id,work_order_id,description,complaint,correction,hold_reason,status,line_status,approval_state,urgency,voided_at,created_at,updated_at",
+              )
+              .eq("shop_id", input.shopId)
+              .in("work_order_id", ids)
+              .order("id", { ascending: true })
+              .range(from, to);
+            return {
+              data: (result.data ?? null) as WorkspaceWorkOrderLineRow[] | null,
+              error: result.error,
+            };
+          },
+        ).then((data) => ({ data, error: null }))
       : emptyRows,
     workOrderIds.length
-      ? input.supabase
-          .from("work_order_parts")
-          .select(
-            "id,work_order_id,work_order_line_id,description_snapshot,manufacturer_snapshot,part_number_snapshot,sku_snapshot,quantity_consumed,quantity_returned,is_active,created_at,updated_at",
-          )
-          .eq("shop_id", input.shopId)
-          .eq("is_active", true)
-          .in("work_order_id", workOrderIds)
-          .limit(300)
+      ? collectWorkOrderScopedRows<WorkspaceWorkOrderPartRow>(
+          "Unable to load installed parts",
+          workOrderIds,
+          async (ids, from, to) => {
+            const result = await input.supabase
+              .from("work_order_parts")
+              .select(
+                "id,work_order_id,work_order_line_id,description_snapshot,manufacturer_snapshot,part_number_snapshot,sku_snapshot,quantity_consumed,quantity_returned,is_active,created_at,updated_at",
+              )
+              .eq("shop_id", input.shopId)
+              .eq("is_active", true)
+              .in("work_order_id", ids)
+              .order("id", { ascending: true })
+              .range(from, to);
+            return {
+              data: (result.data ?? null) as WorkspaceWorkOrderPartRow[] | null,
+              error: result.error,
+            };
+          },
+        ).then((data) => ({ data, error: null }))
       : emptyRows,
     workOrderIds.length
-      ? input.supabase
-          .from("work_order_quote_lines")
-          .select(
-            "id,work_order_id,work_order_line_id,source_work_order_line_id,description,title,status,decision,defer_reason,decline_reason,approved_at,deferred_at,declined_at,created_at,updated_at",
-          )
-          .eq("shop_id", input.shopId)
-          .in("work_order_id", workOrderIds)
-          .limit(300)
+      ? collectWorkOrderScopedRows<WorkspaceQuoteLineRow>(
+          "Unable to load estimate items",
+          workOrderIds,
+          async (ids, from, to) => {
+            const result = await input.supabase
+              .from("work_order_quote_lines")
+              .select(
+                "id,work_order_id,work_order_line_id,source_work_order_line_id,description,title,status,decision,defer_reason,decline_reason,approved_at,deferred_at,declined_at,created_at,updated_at",
+              )
+              .eq("shop_id", input.shopId)
+              .in("work_order_id", ids)
+              .order("id", { ascending: true })
+              .range(from, to);
+            return {
+              data: (result.data ?? null) as WorkspaceQuoteLineRow[] | null,
+              error: result.error,
+            };
+          },
+        ).then((data) => ({ data, error: null }))
       : emptyRows,
-    workOrderIds.length
+    maintenanceWorkOrder
       ? input.supabase
           .from("maintenance_suggestions")
           .select("work_order_id,vehicle_id,status,suggestions,created_at,updated_at,error_message,mileage_km")
           .eq("vehicle_id", input.vehicleId)
-          .in("work_order_id", workOrderIds)
+          .eq("work_order_id", maintenanceWorkOrder.id)
           .eq("status", "ready")
-      : emptyRows,
+          .maybeSingle()
+      : emptySingle,
     input.supabase
       .from("history")
       .select(
@@ -1149,47 +1385,99 @@ export async function loadVehicleWorkspaceSnapshot(input: {
           .neq("id", input.vehicleId)
           .limit(20)
       : emptyRows,
-    input.supabase
-      .from("vehicle_media")
-      .select("id,type,filename,created_at")
-      .eq("shop_id", input.shopId)
-      .eq("vehicle_id", input.vehicleId)
-      .limit(100),
-    workOrderIds.length
-      ? input.supabase
-          .from("work_order_media")
-          .select("id,work_order_id,kind,file_name,created_at")
+    collectAllPages<WorkspaceVehicleMediaRow>(
+      "Unable to load vehicle media",
+      async (from, to) => {
+        const result = await input.supabase
+          .from("vehicle_media")
+          .select("id,type,filename,created_at")
           .eq("shop_id", input.shopId)
-          .in("work_order_id", workOrderIds)
-          .limit(100)
+          .eq("vehicle_id", input.vehicleId)
+          .order("id", { ascending: true })
+          .range(from, to);
+        return {
+          data: (result.data ?? null) as WorkspaceVehicleMediaRow[] | null,
+          error: result.error,
+        };
+      },
+    ).then((data) => ({ data, error: null })),
+    workOrderIds.length
+      ? collectWorkOrderScopedRows<WorkspaceWorkOrderMediaRow>(
+          "Unable to load work-order media",
+          workOrderIds,
+          async (ids, from, to) => {
+            const result = await input.supabase
+              .from("work_order_media")
+              .select("id,work_order_id,kind,file_name,created_at")
+              .eq("shop_id", input.shopId)
+              .in("work_order_id", ids)
+              .order("id", { ascending: true })
+              .range(from, to);
+            return {
+              data: (result.data ?? null) as WorkspaceWorkOrderMediaRow[] | null,
+              error: result.error,
+            };
+          },
+        ).then((data) => ({ data, error: null }))
       : emptyRows,
     permissions.canViewPartRequests && workOrderIds.length
-      ? input.supabase
-          .from("part_requests")
-          .select("id,work_order_id,status,notes,created_at")
-          .eq("shop_id", input.shopId)
-          .in("work_order_id", workOrderIds)
-          .order("created_at", { ascending: false })
-          .limit(100)
+      ? collectWorkOrderScopedRows<WorkspacePartRequestRow>(
+          "Unable to load parts requests",
+          workOrderIds,
+          async (ids, from, to) => {
+            const result = await input.supabase
+              .from("part_requests")
+              .select("id,work_order_id,status,notes,created_at")
+              .eq("shop_id", input.shopId)
+              .in("work_order_id", ids)
+              .order("id", { ascending: true })
+              .range(from, to);
+            return {
+              data: (result.data ?? null) as WorkspacePartRequestRow[] | null,
+              error: result.error,
+            };
+          },
+        ).then((data) => ({ data, error: null }))
       : emptyRows,
     permissions.canViewFinancials && workOrderIds.length
-      ? input.supabase
-          .from("invoices")
-          .select(
-            "id,work_order_id,invoice_number,status,currency,total,outstanding_total,paid_total,created_at,issued_at,paid_at,updated_at",
-          )
-          .eq("shop_id", input.shopId)
-          .in("work_order_id", workOrderIds)
-          .order("updated_at", { ascending: false })
+      ? collectWorkOrderScopedRows<WorkspaceInvoiceRow>(
+          "Unable to load invoices",
+          workOrderIds,
+          async (ids, from, to) => {
+            const result = await input.supabase
+              .from("invoices")
+              .select(
+                "id,work_order_id,invoice_number,status,currency,total,outstanding_total,paid_total,created_at,issued_at,paid_at,updated_at",
+              )
+              .eq("shop_id", input.shopId)
+              .in("work_order_id", ids)
+              .order("id", { ascending: true })
+              .range(from, to);
+            return {
+              data: (result.data ?? null) as WorkspaceInvoiceRow[] | null,
+              error: result.error,
+            };
+          },
+        ).then((data) => ({ data, error: null }))
       : emptyRows,
     permissions.canViewFinancials && workOrderIds.length
-      ? input.supabase
-          .from("payments")
-          .select("id,work_order_id,status,amount,currency,paid_at,created_at")
-          .eq("shop_id", input.shopId)
-          .in("work_order_id", workOrderIds)
-          .order("created_at", { ascending: false })
-          .limit(100)
+      ? collectWorkOrderScopedRows<WorkspacePaymentRow>(
+          "Unable to load payments",
+          workOrderIds,
+          async (ids, from, to) => {
+            const result = await input.supabase
+              .from("payments")
+              .select("id,work_order_id,status,amount,currency,paid_at,created_at")
+              .eq("shop_id", input.shopId)
+              .in("work_order_id", ids)
+              .order("id", { ascending: true })
+              .range(from, to);
+            return {
+              data: (result.data ?? null) as WorkspacePaymentRow[] | null,
+              error: result.error,
+            };
+          },
+        ).then((data) => ({ data, error: null }))
       : emptyRows,
   ]);
 
@@ -1218,7 +1506,19 @@ export async function loadVehicleWorkspaceSnapshot(input: {
   const lines = (linesResult.data ?? []) as WorkspaceWorkOrderLineRow[];
   const parts = (partsResult.data ?? []) as WorkspaceWorkOrderPartRow[];
   const quoteLines = (quoteLinesResult.data ?? []) as WorkspaceQuoteLineRow[];
-  const maintenance = (maintenanceResult.data ?? []) as MaintenanceSuggestionRow[];
+  const maintenanceCandidate = (maintenanceResult.data ?? null) as
+    | MaintenanceSuggestionRow
+    | null;
+  const maintenance =
+    maintenanceCandidate &&
+    maintenanceWorkOrder &&
+    maintenanceCacheIsFresh({
+      cache: maintenanceCandidate,
+      workOrder: maintenanceWorkOrder,
+      lines,
+    })
+      ? [maintenanceCandidate]
+      : [];
   const history = (historyResult.data ?? []) as WorkspaceHistoryRow[];
   const vehicleMedia = (vehicleMediaResult.data ?? []) as WorkspaceVehicleMediaRow[];
   const workOrderMedia = (workOrderMediaResult.data ?? []) as WorkspaceWorkOrderMediaRow[];
@@ -1323,11 +1623,14 @@ export async function loadVehicleWorkspaceSnapshot(input: {
     const workOrder = row.work_order_id
       ? workOrdersById.get(row.work_order_id)
       : null;
+    const requestSummary = text(row.notes)?.split(/\r?\n/, 1)[0]?.trim() || null;
     activeWork.push({
       kind: "part_request",
-      title: "Parts request",
+      title:
+        requestSummary ??
+        (workOrder ? `Parts for ${workOrderLabel(workOrder)}` : "Parts request"),
       status: row.status,
-      detail: text(row.notes) ?? (workOrder ? workOrderLabel(workOrder) : null),
+      detail: workOrder ? `Requested for ${workOrderLabel(workOrder)}` : null,
       occurredAt: row.created_at,
       reference: {
         sourceType: "part_request",
@@ -1389,6 +1692,7 @@ export async function loadVehicleWorkspaceSnapshot(input: {
       vehicleMedia,
       workOrderMedia,
       inspections,
+      workOrdersById,
     }),
     relatedVehicles,
     conflicts: buildConflicts({

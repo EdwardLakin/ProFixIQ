@@ -602,7 +602,7 @@ export function VehicleWorkspace({
           <ul className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {snapshot.attentionItems.map((item) => (
               <AttentionCard
-                key={`${item.reference.sourceType}:${item.reference.sourceId}:${item.kind}`}
+                key={`${item.reference.sourceType}:${item.reference.sourceId}:${item.kind}:${item.title}:${item.explanation}:${item.occurredAt ?? ""}`}
                 item={item}
                 canOpen={canOpenReference(item.reference, snapshot.permissions)}
               />
