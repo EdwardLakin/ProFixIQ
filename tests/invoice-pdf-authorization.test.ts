@@ -211,11 +211,12 @@ describe("invoice PDF authorization", () => {
     expect(client.rpc).not.toHaveBeenCalled();
   });
 
-  it("gates service-role invoice-version rendering on customer-visible lifecycle", () => {
+  it("gates service-role invoice-version rendering on customer-visible lifecycle and work-order identity", () => {
     expect(versionRoute).toContain("canAccessInvoicePdf");
     expect(versionRoute).toContain("customerId: workOrder?.customer_id ?? null");
     expect(versionRoute).toContain("CUSTOMER_VISIBLE_INVOICE_STATES.includes(");
     expect(versionRoute).toContain("version.lifecycle_status");
+    expect(versionRoute).toContain('.eq("work_order_id", version.work_order_id)');
     expect(versionRoute).toContain(
       'NextResponse.json({ error: "Forbidden" }, { status: 403 })',
     );
@@ -231,6 +232,7 @@ describe("invoice PDF authorization", () => {
     expect(workOrderRoute).toContain("canAccessInvoicePdf");
     expect(workOrderRoute).toContain("customerId: workOrder.customer_id");
     expect(workOrderRoute).toContain("customerVisibleDocument: activeVersion !== null");
+    expect(workOrderRoute).toContain('.eq("work_order_id", workOrderId)');
     expect(workOrderRoute).toContain(
       'NextResponse.json({ error: "Forbidden" }, { status: 403 })',
     );
