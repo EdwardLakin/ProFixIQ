@@ -33,6 +33,7 @@ export default function JobPunchButton({
   disabled = false,
 }: Props): JSX.Element {
   const [busy, setBusy] = useState(false);
+  const [pickBusy, setPickBusy] = useState(false);
   const [flash, setFlash] = useState<"started" | "finished" | null>(null);
 
   const normalizedStatus = (status ?? "").toLowerCase();
@@ -70,6 +71,44 @@ export default function JobPunchButton({
     }
 
     return false;
+  };
+
+  const requestPick = async (): Promise<void> => {
+    if (pickBusy || !lineId) return;
+    setPickBusy(true);
+    try {
+      const idempotencyKey = crypto.randomUUID();
+      const response = await fetch(
+        `/api/work-orders/lines/${encodeURIComponent(lineId)}/request-pick`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": idempotencyKey,
+          },
+          body: JSON.stringify({ idempotencyKey }),
+        },
+      );
+      const payload = (await response.json().catch(() => null)) as {
+        error?: string;
+        message?: string;
+        requested?: boolean;
+      } | null;
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "Could not request a Parts pick.");
+      }
+      if (payload?.requested === false) {
+        toast.info(payload.message ?? "No approved parts are waiting to be picked.");
+      } else {
+        toast.success(payload?.message ?? "Parts has been notified to pick this job.");
+      }
+      window.dispatchEvent(new CustomEvent("wol:refresh"));
+      await onUpdated?.();
+    } catch (e: unknown) {
+      toast.error(safeErrMsg(e, "Could not request a Parts pick."));
+    } finally {
+      setPickBusy(false);
+    }
   };
 
   const start = async (): Promise<void> => {
@@ -127,7 +166,7 @@ export default function JobPunchButton({
     "border-[var(--accent-copper-light)] text-[var(--accent-copper-light)] hover:bg-[var(--accent-copper-faint)]";
 
   return (
-    <div className="relative w-full">
+    <div className="relative w-full space-y-2">
       <Button
         type="button"
         onClick={handlePrimary}
@@ -145,6 +184,19 @@ export default function JobPunchButton({
         {label}
       </Button>
 
+      <Button
+        type="button"
+        onClick={() => void requestPick()}
+        disabled={pickBusy || disabled || !lineId}
+        isLoading={pickBusy}
+        variant="outline"
+        size="md"
+        className="inline-flex w-full items-center justify-center border-sky-400/45 bg-sky-500/10 text-center text-xs font-semibold uppercase tracking-[0.14em] text-sky-100 hover:bg-sky-500/20"
+        aria-busy={pickBusy}
+      >
+        {pickBusy ? "Notifying Parts…" : "Request pick"}
+      </Button>
+
       {flash && (
         <div
           className={`pointer-events-none absolute inset-x-0 -top-3 mx-auto w-fit rounded px-2 py-1 text-xs font-semibold shadow-md
@@ -159,8 +211,8 @@ export default function JobPunchButton({
       )}
 
       {isOnHold && !busy && (
-        <div className="mt-1 text-center text-[10px] text-amber-300">
-          Job is on hold — release hold to start again.
+        <div className="text-center text-[10px] text-amber-300">
+          Job is on hold — you can still request Parts to pick/stage it.
         </div>
       )}
     </div>

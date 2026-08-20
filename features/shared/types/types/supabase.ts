@@ -11434,6 +11434,9 @@ export type Database = {
           id: string
           job_id: string | null
           notes: string | null
+          pick_request_source: string | null
+          pick_requested_at: string | null
+          pick_requested_by: string | null
           quote_line_id: string | null
           requested_by: string | null
           shop_id: string
@@ -11451,6 +11454,9 @@ export type Database = {
           id?: string
           job_id?: string | null
           notes?: string | null
+          pick_request_source?: string | null
+          pick_requested_at?: string | null
+          pick_requested_by?: string | null
           quote_line_id?: string | null
           requested_by?: string | null
           shop_id: string
@@ -11468,6 +11474,9 @@ export type Database = {
           id?: string
           job_id?: string | null
           notes?: string | null
+          pick_request_source?: string | null
+          pick_requested_at?: string | null
+          pick_requested_by?: string | null
           quote_line_id?: string | null
           requested_by?: string | null
           shop_id?: string
@@ -29197,6 +29206,10 @@ export type Database = {
         }
         Returns: Json
       }
+      parts_reconcile_pick_request_notification: {
+        Args: { p_request_id: string }
+        Returns: undefined
+      }
       parts_reconcile_request_lifecycle: {
         Args: { p_request_id: string }
         Returns: Json
@@ -29231,6 +29244,15 @@ export type Database = {
       parts_request_operational_stage: {
         Args: { p_request_id: string }
         Returns: string
+      }
+      parts_request_pick_for_line_atomic: {
+        Args: {
+          p_actor_user_id?: string
+          p_operation_key?: string
+          p_source?: string
+          p_work_order_line_id: string
+        }
+        Returns: Json
       }
       parts_request_work_order_line_atomic: {
         Args: {
@@ -29294,6 +29316,19 @@ export type Database = {
           p_work_order_line_id: string
         }
         Returns: Json
+      }
+      parts_upsert_pick_request_notification: {
+        Args: {
+          p_remaining: number
+          p_request_id: string
+          p_required: number
+          p_shop_id: string
+          p_source: string
+          p_staged: number
+          p_work_order_id: string
+          p_work_order_line_id: string
+        }
+        Returns: undefined
       }
       parts_void_work_order_line_atomic: {
         Args: {
