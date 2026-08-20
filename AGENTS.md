@@ -30,6 +30,63 @@ verified directly when this file authorizes them.
 8. Preserve unrelated user changes. Ask only when the repository and connected
    tools cannot resolve a materially risky choice.
 
+## Additive-First Change Control
+
+This section is a hard scope boundary for every Codex implementation, review,
+review-fix, and follow-up task in this repository. A request to build a new
+feature is not permission to change existing behavior.
+
+Before editing, classify the task and state the classification in the working
+plan:
+
+- **Isolated addition:** adds new behavior without changing an existing
+  contract. This is the default for every new feature.
+- **Compatible integration:** connects to an existing contract while preserving
+  every existing caller, authorization decision, state transition, side effect,
+  and passing regression.
+- **Contract change:** intentionally changes existing behavior. This requires
+  the user's explicit, task-specific approval before editing. A general request
+  to build, continue, fix a review, or make CI green is not approval.
+
+For isolated additions and compatible integrations, do not:
+
+- replace or redefine a function, RPC, service, helper, route contract, status,
+  default, or canonical mutation used by an existing flow;
+- attach a trigger to a pre-existing table or change an existing trigger;
+- change RLS policies, grants, revokes, constraints, foreign-key delete/update
+  behavior, or column privileges on pre-existing objects;
+- make an existing role more or less capable;
+- edit an existing regression so new behavior passes;
+- hide a shared-contract change inside a feature migration or review fix.
+
+If a new capability cannot be completed without one of those changes, stop
+before editing and report:
+
+1. the exact existing object and consumers that would change;
+2. why an isolated addition or adapter cannot satisfy the requirement;
+3. the preserved behavior tests that must run;
+4. the smallest compatibility/integration change proposed;
+5. the rollout and rollback boundary.
+
+Then ask for explicit approval of that contract change. Do not infer approval
+from urgency, prior approvals, a failing check, or permission to fix the feature.
+
+Keep required shared integration work in a separate PR that lands and proves
+backward compatibility before the additive feature PR. When investigating a
+failure, first identify the commit that introduced it and fix that contract at
+its source; do not make the current unrelated PR absorb the repair.
+
+Before publishing any implementation, compare the diff to its base and list
+every pre-existing function, table, trigger, policy, privilege, route contract,
+canonical service, and test changed. An additive PR with any unapproved item in
+that list is not publishable. Run preserved-flow regressions on the final head;
+a new feature is not complete when an older passing flow fails.
+
+During review, treat an unapproved shared-contract change as a blocking
+architecture finding even when the code is secure and its new tests pass. Do
+not auto-fix that finding by expanding scope; return to the additive boundary or
+request approval.
+
 ## Sources of Truth and Reading Order
 
 Use, in order:
