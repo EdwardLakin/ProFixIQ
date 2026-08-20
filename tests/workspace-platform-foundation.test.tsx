@@ -121,7 +121,7 @@ describe("Workspace Platform shared foundation", () => {
     expect(source).toContain("this component is not a security boundary");
   });
 
-  it("adopts shared primitives in Vehicle Workspace without touching the Work Order ID screen", () => {
+  it("adopts shared primitives in Vehicle Workspace without replacing the Work Order ID presentation", () => {
     const vehicleWorkspace = read(
       "features/vehicles/components/VehicleWorkspace.tsx",
     );
@@ -138,6 +138,11 @@ describe("Workspace Platform shared foundation", () => {
     expect(workOrderPage).toContain("<WorkOrderIdClient />");
     expect(workOrderPage).toContain("<WorkOrderOperationalTimelineDock />");
     expect(workOrderPage).not.toContain("features/workspace");
-    expect(workOrderClient).not.toContain("features/workspace");
+    expect(workOrderClient).toContain(
+      'from "@/features/workspace/authorization/useWorkspaceCapabilities"',
+    );
+    expect(workOrderClient).not.toContain(
+      'from "@/features/workspace/components"',
+    );
   });
 });
