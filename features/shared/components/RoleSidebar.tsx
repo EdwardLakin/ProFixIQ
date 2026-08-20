@@ -19,6 +19,8 @@ import {
 import { cn } from "@/features/shared/utils/cn";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { canonicalizeRole } from "@/features/shared/lib/rbac";
+import { WORKSPACE_CAPABILITIES } from "@/features/workspace/authorization/capabilities";
+import { useWorkspaceCapabilities } from "@/features/workspace/authorization/useWorkspaceCapabilities";
 
 const GROUP_ORDER = [
   "Dashboard",
@@ -71,6 +73,10 @@ export default function RoleSidebar({
   const technicianCopilotAvailable = useTechnicianCopilotAvailability(
     role === "mechanic",
   );
+  const { can: canWorkspace } = useWorkspaceCapabilities();
+  const canManageWorkOrderAssignments = canWorkspace(
+    WORKSPACE_CAPABILITIES.manageWorkOrderAssignments,
+  );
 
   useEffect(() => {
     (async () => {
@@ -94,7 +100,11 @@ export default function RoleSidebar({
   const tiles = useMemo(() => {
     if (!role) return [] as Tile[];
 
-    const filteredTiles = TILES.filter((t) => t.roles.includes(role))
+    const filteredTiles = TILES.filter(
+      (t) =>
+        t.roles.includes(role) ||
+        (t.href === "/work-orders/view" && canManageWorkOrderAssignments),
+    )
       .filter((t) => t.scopes.includes("all") || t.scopes.includes(scopeFilter))
       .filter((t) => canShowTileForEmail(t, userEmail))
       .filter(
@@ -104,7 +114,13 @@ export default function RoleSidebar({
 
     if (role === "owner") return getOwnerSidebarTiles(filteredTiles);
     return filteredTiles;
-  }, [role, scopeFilter, technicianCopilotAvailable, userEmail]);
+  }, [
+    canManageWorkOrderAssignments,
+    role,
+    scopeFilter,
+    technicianCopilotAvailable,
+    userEmail,
+  ]);
 
   const canonicalActiveTile = useMemo(
     () => getCanonicalActiveTile(pathname, tiles),

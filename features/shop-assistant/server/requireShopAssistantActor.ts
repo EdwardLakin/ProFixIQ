@@ -16,6 +16,8 @@ import {
   createAdminSupabase,
   createServerSupabaseRoute,
 } from "@/features/shared/lib/supabase/server";
+import { WORKSPACE_CAPABILITIES } from "@/features/workspace/authorization/capabilities";
+import { resolveCurrentWorkspaceCapabilities } from "@/features/workspace/authorization/server/resolveWorkspaceCapabilities";
 
 export class ShopAssistantHttpError extends Error {
   readonly status: number;
@@ -89,10 +91,27 @@ export async function requireShopAssistantActor(
         : strongest,
     null,
   );
-  const capabilities = getActorCapabilities({
+  const roleCapabilities = getActorCapabilities({
     role: profile.role,
     fleetRole: strongestFleetRole,
   });
+  const workspaceAccess = await resolveCurrentWorkspaceCapabilities({
+    supabase,
+    profileId: profile.id,
+    shopId: profile.shop_id,
+    capabilityKeys: [WORKSPACE_CAPABILITIES.manageWorkOrderAssignments],
+  });
+  const capabilities: ActorCapabilities = {
+    ...roleCapabilities,
+    // Assignment is the first Workspace capability migrated end to end. A
+    // resolver error fails this one action closed without disabling unrelated
+    // assistant reads and tools.
+    canAssignWork:
+      workspaceAccess.error === null &&
+      workspaceAccess.capabilities[
+        WORKSPACE_CAPABILITIES.manageWorkOrderAssignments
+      ].granted,
+  };
 
   return {
     userId: user.id,

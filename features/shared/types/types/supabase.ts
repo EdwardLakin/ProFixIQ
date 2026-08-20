@@ -19651,6 +19651,68 @@ export type Database = {
           },
         ]
       }
+      shop_role_capability_policies: {
+        Row: {
+          capability_key: string
+          changed_by_profile_id: string | null
+          created_at: string
+          effect: string
+          id: string
+          role_key: string
+          shop_id: string
+          updated_at: string
+        }
+        Insert: {
+          capability_key: string
+          changed_by_profile_id?: string | null
+          created_at?: string
+          effect: string
+          id?: string
+          role_key: string
+          shop_id: string
+          updated_at?: string
+        }
+        Update: {
+          capability_key?: string
+          changed_by_profile_id?: string | null
+          created_at?: string
+          effect?: string
+          id?: string
+          role_key?: string
+          shop_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shop_role_capability_policies_capability_key_fkey"
+            columns: ["capability_key"]
+            isOneToOne: false
+            referencedRelation: "workspace_capabilities"
+            referencedColumns: ["capability_key"]
+          },
+          {
+            foreignKeyName: "shop_role_capability_policies_changed_by_profile_id_fkey"
+            columns: ["changed_by_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_role_capability_policies_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_role_capability_policies_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       shop_schedules: {
         Row: {
           booked_by: string | null
@@ -20971,6 +21033,75 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      staff_capability_overrides: {
+        Row: {
+          capability_key: string
+          changed_by_profile_id: string | null
+          created_at: string
+          effect: string
+          id: string
+          profile_id: string
+          shop_id: string
+          updated_at: string
+        }
+        Insert: {
+          capability_key: string
+          changed_by_profile_id?: string | null
+          created_at?: string
+          effect: string
+          id?: string
+          profile_id: string
+          shop_id: string
+          updated_at?: string
+        }
+        Update: {
+          capability_key?: string
+          changed_by_profile_id?: string | null
+          created_at?: string
+          effect?: string
+          id?: string
+          profile_id?: string
+          shop_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_capability_overrides_capability_key_fkey"
+            columns: ["capability_key"]
+            isOneToOne: false
+            referencedRelation: "workspace_capabilities"
+            referencedColumns: ["capability_key"]
+          },
+          {
+            foreignKeyName: "staff_capability_overrides_changed_by_profile_id_fkey"
+            columns: ["changed_by_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_capability_overrides_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_capability_overrides_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_capability_overrides_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
             referencedColumns: ["id"]
           },
         ]
@@ -25974,6 +26105,74 @@ export type Database = {
           },
         ]
       }
+      workspace_capabilities: {
+        Row: {
+          access_level: string
+          action_key: string
+          capability_key: string
+          created_at: string
+          description: string
+          is_protected: boolean
+          module_key: string
+          updated_at: string
+          workspace_key: string
+        }
+        Insert: {
+          access_level: string
+          action_key: string
+          capability_key: string
+          created_at?: string
+          description: string
+          is_protected?: boolean
+          module_key: string
+          updated_at?: string
+          workspace_key: string
+        }
+        Update: {
+          access_level?: string
+          action_key?: string
+          capability_key?: string
+          created_at?: string
+          description?: string
+          is_protected?: boolean
+          module_key?: string
+          updated_at?: string
+          workspace_key?: string
+        }
+        Relationships: []
+      }
+      workspace_role_capability_presets: {
+        Row: {
+          capability_key: string
+          created_at: string
+          effect: string
+          role_key: string
+          updated_at: string
+        }
+        Insert: {
+          capability_key: string
+          created_at?: string
+          effect: string
+          role_key: string
+          updated_at?: string
+        }
+        Update: {
+          capability_key?: string
+          created_at?: string
+          effect?: string
+          role_key?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workspace_role_capability_presets_capability_key_fkey"
+            columns: ["capability_key"]
+            isOneToOne: false
+            referencedRelation: "workspace_capabilities"
+            referencedColumns: ["capability_key"]
+          },
+        ]
+      }
     }
     Views: {
       invoice_net_issued_parts: {
@@ -29639,6 +29838,18 @@ export type Database = {
         }
         Returns: undefined
       }
+      set_shop_role_capability_policy_atomic: {
+        Args: { p_capability_key: string; p_effect: string; p_role_key: string }
+        Returns: Json
+      }
+      set_staff_capability_override_atomic: {
+        Args: {
+          p_capability_key: string
+          p_effect: string
+          p_target_profile_id: string
+        }
+        Returns: Json
+      }
       shop_assistant_add_work_order_line_atomic: {
         Args: {
           p_action_id: string
@@ -30234,6 +30445,26 @@ export type Database = {
       work_order_is_financially_locked: {
         Args: { p_shop_id: string; p_work_order_id: string }
         Returns: boolean
+      }
+      workspace_actor_can_manage_work_order_assignments: {
+        Args: { p_shop_id: string }
+        Returns: boolean
+      }
+      workspace_actor_can_manage_work_order_line_assignments: {
+        Args: { p_work_order_line_id: string }
+        Returns: boolean
+      }
+      workspace_current_actor_capabilities: {
+        Args: { p_capability_keys?: string[] }
+        Returns: {
+          access_level: string
+          canonical_role: string
+          capability_key: string
+          decision_source: string
+          granted: boolean
+          profile_id: string
+          shop_id: string
+        }[]
       }
     }
     Enums: {

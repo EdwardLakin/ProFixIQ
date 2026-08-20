@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { WORKSPACE_CAPABILITIES } from "@/features/workspace/authorization/capabilities";
 
 type DB = Database;
 type RpcError = { message: string; details?: string | null; hint?: string | null };
@@ -36,7 +37,8 @@ export async function POST(req: Request) {
       "";
 
     const access = await requireShopScopedApiAccess({
-      requiredCapability: "canAssignWork",
+      requiredWorkspaceCapability:
+        WORKSPACE_CAPABILITIES.manageWorkOrderAssignments,
     });
     if (!access.ok) return access.response;
 

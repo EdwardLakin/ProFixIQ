@@ -21,6 +21,8 @@ import {
   type OwnerPinPurpose,
   requireOwnerPinVerified,
 } from "@/features/shared/lib/server/owner-pin";
+import type { WorkspaceCapabilityKey } from "@/features/workspace/authorization/capabilities";
+import { resolveCurrentWorkspaceCapabilities } from "@/features/workspace/authorization/server/resolveWorkspaceCapabilities";
 
 type ProfileScope = AuthenticatedStaffProfile;
 type ShopScopedProfile = Omit<ProfileScope, "shop_id"> & { shop_id: string };
@@ -53,8 +55,14 @@ export async function resolveAuthenticatedStaffProfile(
 
 type ShopPageAccessOptions = {
   allowRoles?: readonly CanonicalRole[];
+  /**
+   * Lets a role outside allowRoles enter when this effective Workspace
+   * capability is granted. Static allowed roles do not depend on the resolver.
+   */
+  allowRolesOrWorkspaceCapability?: WorkspaceCapabilityKey;
   requiredCapability?: CapabilityKey;
   requiredCapabilities?: readonly CapabilityKey[];
+  requiredWorkspaceCapability?: WorkspaceCapabilityKey;
   redirectTo?: string;
 };
 
@@ -84,13 +92,50 @@ export async function requireShopPageAccess(
     !options.requiredCapabilities?.length ||
     options.requiredCapabilities.every((capability) => actor[capability]);
 
+  const roleAlternativeAccess =
+    profile?.shop_id &&
+    options.allowRoles &&
+    !allowedRole &&
+    options.allowRolesOrWorkspaceCapability
+      ? await resolveCurrentWorkspaceCapabilities({
+          supabase,
+          profileId: profile.id,
+          shopId: profile.shop_id,
+          capabilityKeys: [options.allowRolesOrWorkspaceCapability],
+        })
+      : null;
+  const allowedRoleOrWorkspaceCapability =
+    allowedRole ||
+    Boolean(
+      options.allowRolesOrWorkspaceCapability &&
+        roleAlternativeAccess?.error === null &&
+        roleAlternativeAccess.capabilities[
+          options.allowRolesOrWorkspaceCapability
+        ].granted,
+    );
+
+  const workspaceAccess =
+    profile?.shop_id && options.requiredWorkspaceCapability
+      ? await resolveCurrentWorkspaceCapabilities({
+          supabase,
+          profileId: profile.id,
+          shopId: profile.shop_id,
+          capabilityKeys: [options.requiredWorkspaceCapability],
+        })
+      : null;
+  const allowedWorkspaceCapability =
+    !options.requiredWorkspaceCapability ||
+    (workspaceAccess?.error === null &&
+      workspaceAccess.capabilities[options.requiredWorkspaceCapability].granted);
+
   if (
     !profile ||
     !profile.shop_id ||
     !actor.isKnownRole ||
-    !allowedRole ||
+    !allowedRoleOrWorkspaceCapability ||
     !allowedCapability ||
-    !allowedCapabilities
+    !allowedCapabilities ||
+    !allowedWorkspaceCapability
   ) {
     redirect(options.redirectTo ?? "/dashboard");
   }
@@ -114,6 +159,7 @@ export async function requireAdminPageAccess(options: {
 type ApiAccessOptions = {
   requiredCapability?: CapabilityKey;
   requiredCapabilities?: readonly CapabilityKey[];
+  requiredWorkspaceCapability?: WorkspaceCapabilityKey;
   allowRoles?: readonly CanonicalRole[];
   requireOwnerPin?: boolean;
   ownerPinRequest?: Request;
@@ -195,6 +241,34 @@ export async function requireShopScopedApiAccess(
     );
 
     if (!hasAllRequiredCapabilities) {
+      return {
+        ok: false,
+        response: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
+      };
+    }
+  }
+
+  if (options.requiredWorkspaceCapability) {
+    const workspaceAccess = await resolveCurrentWorkspaceCapabilities({
+      supabase,
+      profileId: profile.id,
+      shopId: profile.shop_id,
+      capabilityKeys: [options.requiredWorkspaceCapability],
+    });
+
+    if (workspaceAccess.error) {
+      return {
+        ok: false,
+        response: NextResponse.json(
+          { error: "Authorization service unavailable" },
+          { status: 503 },
+        ),
+      };
+    }
+
+    if (
+      !workspaceAccess.capabilities[options.requiredWorkspaceCapability].granted
+    ) {
       return {
         ok: false,
         response: NextResponse.json({ error: "Forbidden" }, { status: 403 }),

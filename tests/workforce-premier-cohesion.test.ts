@@ -429,7 +429,10 @@ describe("premier workforce cohesion", () => {
       '"Employee profile unavailable"',
     );
     expect(assignablesRoute).toContain(
-      'requiredCapability: "canAssignWork"',
+      "requiredWorkspaceCapability",
+    );
+    expect(assignablesRoute).toContain(
+      "WORKSPACE_CAPABILITIES.manageWorkOrderAssignments",
     );
     expect(assignablesRoute).toContain('scope === "work_order"');
     expect(assignablesRoute).toContain("The user-scoped client proves");

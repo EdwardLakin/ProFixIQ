@@ -251,6 +251,20 @@ jobs:
             -f tests/security/vehicle-workspace-tenant.runtime.sql \
             2>&1 | tee vehicle-workspace-tenant-runtime.log
 
+      - name: Execute Workspace authorization integration
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+            -f tests/security/workspace-authorization.runtime.sql \
+            2>&1 | tee workspace-authorization-runtime.log
+
       - name: Execute P0 AI route governance integration
         shell: bash
         env:
@@ -506,6 +520,7 @@ jobs:
             p0-002-stock-move-signature-compat-runtime.log
             p0-004-vehicle-recall-fetch-runtime.log
             vehicle-workspace-tenant-runtime.log
+            workspace-authorization-runtime.log
             p0-005-ai-route-governance-runtime.log
             p0-006-stripe-identity-runtime.log
             p0-007-financial-outbox-runtime.log

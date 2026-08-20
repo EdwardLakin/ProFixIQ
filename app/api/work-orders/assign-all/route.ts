@@ -5,6 +5,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { WORKSPACE_CAPABILITIES } from "@/features/workspace/authorization/capabilities";
 
 type Body = {
   work_order_id: string;
@@ -49,7 +50,8 @@ export async function POST(req: Request) {
     }
 
     const access = await requireShopScopedApiAccess({
-      requiredCapability: "canAssignWork",
+      requiredWorkspaceCapability:
+        WORKSPACE_CAPABILITIES.manageWorkOrderAssignments,
     });
     if (!access.ok) return access.response;
 

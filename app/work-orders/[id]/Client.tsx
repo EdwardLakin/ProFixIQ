@@ -57,6 +57,8 @@ import {
 } from "@/features/work-orders/lib/assignTechnicianClient";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import { useTabs } from "@/features/shared/components/tabs/TabsProvider";
+import { WORKSPACE_CAPABILITIES } from "@/features/workspace/authorization/capabilities";
+import { useWorkspaceCapabilities } from "@/features/workspace/authorization/useWorkspaceCapabilities";
 
 import { prepareSectionsWithCornerGrid } from "@inspections/lib/inspection/prepareSectionsWithCornerGrid";
 
@@ -244,6 +246,10 @@ export default function WorkOrderIdClient(): JSX.Element {
   const [currentUserId, setCurrentUserId] = useTabState<string | null>("wo:id:uid", null);
   const [, setUserId] = useTabState<string | null>("wo:id:effectiveUid", null);
   const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
+  const { can: canWorkspace } = useWorkspaceCapabilities();
+  const canAssign = canWorkspace(
+    WORKSPACE_CAPABILITIES.manageWorkOrderAssignments,
+  );
 
   // ✅ prevents “logged out” banner flashing / sticking
   const [authChecked, setAuthChecked] = useState<boolean>(false);
@@ -480,8 +486,7 @@ export default function WorkOrderIdClient(): JSX.Element {
 
   useEffect(() => {
     if (!currentUserRole) return;
-    const actor = getActorCapabilities({ role: currentUserRole });
-    const assignablesUrl = actor.canAssignWork
+    const assignablesUrl = canAssign
       ? "/api/assignables"
       : wo?.id
         ? `/api/assignables?scope=work_order&work_order_id=${encodeURIComponent(wo.id)}`
@@ -507,7 +512,7 @@ export default function WorkOrderIdClient(): JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [currentUserRole, wo?.id]);
+  }, [canAssign, currentUserRole, wo?.id]);
 
   /* ---------------------- FETCH ---------------------- */
   const fetchAll = useCallback(
@@ -1184,7 +1189,6 @@ export default function WorkOrderIdClient(): JSX.Element {
     : "—";
 
   const currentActor = getActorCapabilities({ role: currentUserRole });
-  const canAssign = currentActor.canAssignWork;
   const canApprove = currentActor.canAuthorizeQuotes;
   const canRequestParts = currentActor.canManageWorkOrders;
   const canUseInventoryPicker = currentActor.canManageParts;
@@ -2463,7 +2467,7 @@ export default function WorkOrderIdClient(): JSX.Element {
           onClose={() => setAddJobOpen(false)}
           workOrderId={wo.id}
           vehicleId={wo.vehicle_id ?? vehicle?.id ?? null}
-          techId={currentUserId ?? "system"}
+          techId={canAssign ? (currentUserId ?? "system") : "system"}
           shopId={wo.shop_id ?? null}
           onJobAdded={() => void fetchAll()}
         />
