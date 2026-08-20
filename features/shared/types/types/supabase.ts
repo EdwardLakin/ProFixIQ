@@ -25785,74 +25785,6 @@ export type Database = {
           },
         ]
       }
-      workspace_capabilities: {
-        Row: {
-          access_level: string
-          action_key: string
-          capability_key: string
-          created_at: string
-          description: string
-          is_protected: boolean
-          module_key: string
-          updated_at: string
-          workspace_key: string
-        }
-        Insert: {
-          access_level: string
-          action_key: string
-          capability_key: string
-          created_at?: string
-          description: string
-          is_protected?: boolean
-          module_key: string
-          updated_at?: string
-          workspace_key: string
-        }
-        Update: {
-          access_level?: string
-          action_key?: string
-          capability_key?: string
-          created_at?: string
-          description?: string
-          is_protected?: boolean
-          module_key?: string
-          updated_at?: string
-          workspace_key?: string
-        }
-        Relationships: []
-      }
-      workspace_role_capability_presets: {
-        Row: {
-          capability_key: string
-          created_at: string
-          effect: string
-          role_key: string
-          updated_at: string
-        }
-        Insert: {
-          capability_key: string
-          created_at?: string
-          effect: string
-          role_key: string
-          updated_at?: string
-        }
-        Update: {
-          capability_key?: string
-          created_at?: string
-          effect?: string
-          role_key?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "workspace_role_capability_presets_capability_key_fkey"
-            columns: ["capability_key"]
-            isOneToOne: false
-            referencedRelation: "workspace_capabilities"
-            referencedColumns: ["capability_key"]
-          },
-        ]
-      }
       workforce_document_requirements: {
         Row: {
           accept_statuses: string[]
@@ -26170,6 +26102,74 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "work_order_lines"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      workspace_capabilities: {
+        Row: {
+          access_level: string
+          action_key: string
+          capability_key: string
+          created_at: string
+          description: string
+          is_protected: boolean
+          module_key: string
+          updated_at: string
+          workspace_key: string
+        }
+        Insert: {
+          access_level: string
+          action_key: string
+          capability_key: string
+          created_at?: string
+          description: string
+          is_protected?: boolean
+          module_key: string
+          updated_at?: string
+          workspace_key: string
+        }
+        Update: {
+          access_level?: string
+          action_key?: string
+          capability_key?: string
+          created_at?: string
+          description?: string
+          is_protected?: boolean
+          module_key?: string
+          updated_at?: string
+          workspace_key?: string
+        }
+        Relationships: []
+      }
+      workspace_role_capability_presets: {
+        Row: {
+          capability_key: string
+          created_at: string
+          effect: string
+          role_key: string
+          updated_at: string
+        }
+        Insert: {
+          capability_key: string
+          created_at?: string
+          effect: string
+          role_key: string
+          updated_at?: string
+        }
+        Update: {
+          capability_key?: string
+          created_at?: string
+          effect?: string
+          role_key?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workspace_role_capability_presets_capability_key_fkey"
+            columns: ["capability_key"]
+            isOneToOne: false
+            referencedRelation: "workspace_capabilities"
+            referencedColumns: ["capability_key"]
           },
         ]
       }
@@ -29839,11 +29839,7 @@ export type Database = {
         Returns: undefined
       }
       set_shop_role_capability_policy_atomic: {
-        Args: {
-          p_capability_key: string
-          p_effect: string
-          p_role_key: string
-        }
+        Args: { p_capability_key: string; p_effect: string; p_role_key: string }
         Returns: Json
       }
       set_staff_capability_override_atomic: {
@@ -31072,3 +31068,4 @@ export const Constants = {
     },
   },
 } as const
+
