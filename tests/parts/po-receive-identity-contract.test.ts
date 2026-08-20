@@ -37,14 +37,13 @@ describe("purchase-order receive identity contract", () => {
     );
     expect(fnStart).toBeGreaterThanOrEqual(0);
 
-    const nextOverload = source.indexOf(
-      "create function public.receive_po_part_and_allocate(",
-      fnStart + 1,
-    );
-    const fnSource = source.slice(
-      fnStart,
-      nextOverload >= 0 ? nextOverload : source.length,
-    );
+    const bodyStart = source.indexOf("as $$", fnStart);
+    expect(bodyStart).toBeGreaterThan(fnStart);
+
+    const fnEnd = source.indexOf("\n$$;", bodyStart);
+    expect(fnEnd).toBeGreaterThan(bodyStart);
+
+    const fnSource = source.slice(fnStart, fnEnd + 4);
 
     expect(fnSource).toContain("p_part_id uuid");
     expect(fnSource).toContain("part.id=p_part_id");
