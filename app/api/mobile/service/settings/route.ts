@@ -55,11 +55,75 @@ async function readSettings(
     settingsResult.error || operatorResult.error || vehicleResult.error;
   if (firstError) throw new Error(firstError.message);
 
+  const canConfigure = ["owner", "admin"].includes(access.canonicalRole);
+  let fieldTeam: Array<{
+    profileId: string;
+    name: string;
+    vehicleId: string | null;
+  }> = [];
+  let fieldVehicles: Array<{
+    id: string;
+    name: string;
+    unitNumber: string | null;
+    primaryUserId: string | null;
+  }> = [];
+
+  if (canConfigure) {
+    const [operatorsResult, vehiclesResult] = await Promise.all([
+      access.supabase
+        .from("mobile_field_operators")
+        .select("profile_id")
+        .eq("shop_id", access.profile.shop_id)
+        .eq("enabled", true),
+      access.supabase
+        .from("service_vehicles")
+        .select("id,name,unit_number,primary_user_id")
+        .eq("shop_id", access.profile.shop_id)
+        .eq("active", true)
+        .contains("capabilities", { mobile_v1: true })
+        .order("name", { ascending: true }),
+    ]);
+    if (operatorsResult.error || vehiclesResult.error) {
+      throw new Error(
+        operatorsResult.error?.message ?? vehiclesResult.error?.message,
+      );
+    }
+    const profileIds = (operatorsResult.data ?? []).map(
+      (operator) => operator.profile_id,
+    );
+    const profilesResult = profileIds.length
+      ? await access.supabase
+          .from("profiles")
+          .select("id,full_name,email")
+          .eq("shop_id", access.profile.shop_id)
+          .in("id", profileIds)
+          .order("full_name", { ascending: true })
+      : { data: [], error: null };
+    if (profilesResult.error) throw new Error(profilesResult.error.message);
+
+    fieldVehicles = (vehiclesResult.data ?? []).map((vehicle) => ({
+      id: vehicle.id,
+      name: vehicle.name,
+      unitNumber: vehicle.unit_number,
+      primaryUserId: vehicle.primary_user_id,
+    }));
+    fieldTeam = (profilesResult.data ?? []).map((profile) => ({
+      profileId: profile.id,
+      name: profile.full_name?.trim() || profile.email || "Field operator",
+      vehicleId:
+        fieldVehicles.find(
+          (vehicle) => vehicle.primaryUserId === profile.id,
+        )?.id ?? null,
+    }));
+  }
+
   return {
     settings: settingsResult.data ?? null,
     currentActorFieldOperator: operatorResult.data?.enabled === true,
     serviceVehicle: vehicleResult.data ?? null,
-    canConfigure: ["owner", "admin"].includes(access.canonicalRole),
+    canConfigure,
+    fieldTeam,
+    fieldVehicles,
   };
 }
 
@@ -152,4 +216,41 @@ export async function PUT(request: Request) {
   } catch {
     return NextResponse.json({ ok: true, result: data });
   }
+}
+
+export async function PATCH(request: Request) {
+  const access = await requireShopScopedApiAccess({
+    allowRoles: ["owner", "admin"],
+  });
+  if (!access.ok) return access.response;
+
+  const body = (await request.json().catch(() => null)) as {
+    profileId?: unknown;
+    serviceVehicleId?: unknown;
+  } | null;
+  const profileId = typeof body?.profileId === "string" ? body.profileId : "";
+  const serviceVehicleId =
+    typeof body?.serviceVehicleId === "string" ? body.serviceVehicleId : "";
+  const uuidPattern =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  if (!uuidPattern.test(profileId) || !uuidPattern.test(serviceVehicleId)) {
+    return NextResponse.json(
+      { error: "Choose a valid Field operator and truck." },
+      { status: 400 },
+    );
+  }
+
+  const { error } = await access.supabase.rpc("field_assign_service_vehicle", {
+    p_shop_id: access.profile.shop_id,
+    p_profile_id: profileId,
+    p_service_vehicle_id: serviceVehicleId,
+  });
+  if (error) {
+    return NextResponse.json(
+      { error: error.message },
+      { status: error.code === "42501" ? 403 : 409 },
+    );
+  }
+
+  return NextResponse.json({ ok: true, ...(await readSettings(access)) });
 }

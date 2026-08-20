@@ -74,6 +74,21 @@ create table if not exists public.field_truck_records (
     or
     (file_path is not null and file_bucket is not null and original_filename is not null
       and content_type is not null and file_size_bytes is not null)
+  ),
+  constraint field_truck_records_file_path_scope_ck check (
+    file_path is null
+    or (
+      file_bucket = 'field-truck-files'
+      and split_part(file_path, '/', 1) = shop_id::text
+      and split_part(file_path, '/', 2) = service_vehicle_id::text
+      and (
+        (record_type = 'document' and split_part(file_path, '/', 3) = 'documents')
+        or (record_type = 'expense' and split_part(file_path, '/', 3) = 'receipts')
+      )
+      and split_part(file_path, '/', 4) = id::text
+      and split_part(file_path, '/', 5) <> ''
+      and split_part(file_path, '/', 6) = ''
+    )
   )
 );
 
@@ -160,7 +175,6 @@ alter table public.field_truck_records enable row level security;
 revoke all on table public.field_truck_records from public, anon;
 revoke all on table public.field_truck_records from authenticated;
 grant select, insert on table public.field_truck_records to authenticated;
-grant update (status, ends_at) on table public.field_truck_records to authenticated;
 grant all on table public.field_truck_records to service_role;
 
 drop policy if exists field_truck_records_assigned_select
@@ -186,23 +200,158 @@ with check (
   )
 );
 
-drop policy if exists field_truck_records_assigned_update
-  on public.field_truck_records;
-create policy field_truck_records_assigned_update
-on public.field_truck_records for update to authenticated
-using (
-  public.field_actor_can_access_service_vehicle(shop_id, service_vehicle_id)
-)
-with check (
-  public.field_actor_can_access_service_vehicle(shop_id, service_vehicle_id)
-  and exists (
+-- State changes are command-owned. Direct table updates stay revoked so an
+-- assigned operator cannot mutate arbitrary record types or transitions.
+create or replace function public.field_transition_truck_record(
+  p_record_id uuid,
+  p_action text,
+  p_ended_at timestamptz default null
+) returns setof public.field_truck_records
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_record public.field_truck_records%rowtype;
+  v_ended_at timestamptz;
+begin
+  select * into v_record
+  from public.field_truck_records
+  where id = p_record_id
+  for update;
+
+  if not found
+    or not public.field_actor_can_access_service_vehicle(
+      v_record.shop_id,
+      v_record.service_vehicle_id
+    ) then
+    raise exception 'Truck record was not found or is not accessible.'
+      using errcode = '42501';
+  end if;
+
+  if p_action = 'complete'
+    and v_record.record_type = 'reminder'
+    and v_record.status = 'open' then
+    return query
+      update public.field_truck_records
+      set status = 'completed'
+      where id = p_record_id
+      returning *;
+    return;
+  end if;
+
+  if p_action = 'reopen'
+    and v_record.record_type = 'reminder'
+    and v_record.status = 'completed' then
+    return query
+      update public.field_truck_records
+      set status = 'open'
+      where id = p_record_id
+      returning *;
+    return;
+  end if;
+
+  if p_action = 'end_downtime'
+    and v_record.record_type = 'downtime'
+    and v_record.status = 'open'
+    and v_record.ends_at is null then
+    v_ended_at := coalesce(p_ended_at, now());
+    if v_record.starts_at is null or v_ended_at <= v_record.starts_at then
+      raise exception 'Downtime must end after it starts.'
+        using errcode = '22007';
+    end if;
+    return query
+      update public.field_truck_records
+      set status = 'completed', ends_at = v_ended_at
+      where id = p_record_id
+      returning *;
+    return;
+  end if;
+
+  raise exception 'Truck record transition is not allowed.'
+    using errcode = '22023';
+end;
+$$;
+
+revoke all on function public.field_transition_truck_record(uuid, text, timestamptz)
+  from public, anon;
+grant execute on function public.field_transition_truck_record(uuid, text, timestamptz)
+  to authenticated, service_role;
+
+-- Field owners/admins can assign one active Field truck to a team operator.
+-- The command stays inside the Field setup surface and never exposes Fleet.
+create or replace function public.field_assign_service_vehicle(
+  p_shop_id uuid,
+  p_service_vehicle_id uuid,
+  p_profile_id uuid
+) returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_vehicle public.service_vehicles%rowtype;
+begin
+  if not exists (
+    select 1
+    from public.profiles actor
+    where actor.shop_id = p_shop_id
+      and (actor.id = auth.uid() or actor.user_id = auth.uid())
+      and lower(coalesce(actor.role, '')) in ('owner','admin')
+  ) then
+    raise exception 'Field truck assignment requires owner or admin access.'
+      using errcode = '42501';
+  end if;
+
+  if not exists (
     select 1
     from public.profiles profile
-    where profile.id = created_by_profile_id
-      and profile.shop_id = shop_id
-      and (profile.id = auth.uid() or profile.user_id = auth.uid())
-  )
-);
+    join public.mobile_field_operators operator
+      on operator.shop_id = profile.shop_id
+     and operator.profile_id = profile.id
+     and operator.enabled
+    where profile.id = p_profile_id
+      and profile.shop_id = p_shop_id
+  ) then
+    raise exception 'The selected profile is not an enabled Field operator.'
+      using errcode = '22023';
+  end if;
+
+  select * into v_vehicle
+  from public.service_vehicles
+  where id = p_service_vehicle_id
+    and shop_id = p_shop_id
+    and active
+    and capabilities @> '{"mobile_v1":true}'::jsonb
+  for update;
+  if not found then
+    raise exception 'The selected Field truck is unavailable.'
+      using errcode = '22023';
+  end if;
+
+  update public.service_vehicles
+  set primary_user_id = null, updated_at = now()
+  where shop_id = p_shop_id
+    and id <> p_service_vehicle_id
+    and primary_user_id = p_profile_id
+    and active
+    and capabilities @> '{"mobile_v1":true}'::jsonb;
+
+  update public.service_vehicles
+  set primary_user_id = p_profile_id, updated_at = now()
+  where id = p_service_vehicle_id;
+
+  return jsonb_build_object(
+    'serviceVehicleId', p_service_vehicle_id,
+    'profileId', p_profile_id
+  );
+end;
+$$;
+
+revoke all on function public.field_assign_service_vehicle(uuid, uuid, uuid)
+  from public, anon;
+grant execute on function public.field_assign_service_vehicle(uuid, uuid, uuid)
+  to authenticated, service_role;
 
 create or replace function public.field_storage_path_uuid(p_value text)
 returns uuid

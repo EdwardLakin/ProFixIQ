@@ -258,32 +258,29 @@ export async function PATCH(request: Request) {
   if (readError) return errorResponse("Truck record could not be verified.", 500);
   if (!existing) return errorResponse("Truck record was not found.", 404);
 
-  let updates: Database["public"]["Tables"]["field_truck_records"]["Update"];
+  let endedAt: string | null = null;
   if (action === "end_downtime") {
     if (existing.record_type !== "downtime" || !existing.starts_at) {
       return errorResponse("Only active downtime can be ended.", 409);
     }
-    const endedAt = isIsoTimestamp(body?.endedAt)
+    endedAt = isIsoTimestamp(body?.endedAt)
       ? new Date(body.endedAt).toISOString()
       : new Date().toISOString();
     if (Date.parse(endedAt) <= Date.parse(existing.starts_at)) {
       return errorResponse("Downtime must end after it starts.");
     }
-    updates = { status: "completed", ends_at: endedAt };
   } else {
     if (existing.record_type !== "reminder") {
       return errorResponse("Only reminders can be completed or reopened.", 409);
     }
-    updates = { status: action === "complete" ? "completed" : "open" };
   }
 
   const { data, error } = await access.supabase
-    .from("field_truck_records")
-    .update(updates)
-    .eq("id", existing.id)
-    .eq("shop_id", access.profile.shop_id)
-    .eq("service_vehicle_id", access.truck.id)
-    .select(FIELD_TRUCK_RECORD_SELECT)
+    .rpc("field_transition_truck_record", {
+      p_record_id: existing.id,
+      p_action: String(action),
+      p_ended_at: endedAt,
+    })
     .single();
   if (error) return errorResponse("Truck record could not be updated.", 409);
   return NextResponse.json({ ok: true, record: data });

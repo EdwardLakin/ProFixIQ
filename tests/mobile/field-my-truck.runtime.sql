@@ -169,9 +169,45 @@ begin
     '8f100000-0000-4000-8000-000000000001'
   );
 
-  update public.field_truck_records
-  set status = 'completed'
-  where id = '8f400000-0000-4000-8000-000000000001';
+  begin
+    insert into public.field_truck_records (
+      id, shop_id, service_vehicle_id, operation_key, record_type, title,
+      status, file_bucket, file_path, original_filename, content_type,
+      file_size_bytes, created_by_profile_id
+    ) values (
+      '8f400000-0000-4000-8000-000000000003',
+      '8f200000-0000-4000-8000-000000000001',
+      '8f300000-0000-4000-8000-000000000001',
+      'runtime-forged-file-path',
+      'document',
+      'Forged document path',
+      'completed',
+      'field-truck-files',
+      '8f200000-0000-4000-8000-000000000001/8f300000-0000-4000-8000-000000000002/documents/8f400000-0000-4000-8000-000000000003/secret.pdf',
+      'secret.pdf',
+      'application/pdf',
+      100,
+      '8f100000-0000-4000-8000-000000000001'
+    );
+    raise exception 'My Truck runtime failed: forged file path was accepted';
+  exception when check_violation then
+    null;
+  end;
+
+  begin
+    update public.field_truck_records
+    set status = 'completed'
+    where id = '8f400000-0000-4000-8000-000000000001';
+    raise exception 'My Truck runtime failed: direct status update was accepted';
+  exception when insufficient_privilege then
+    null;
+  end;
+
+  perform public.field_transition_truck_record(
+    '8f400000-0000-4000-8000-000000000001',
+    'complete',
+    null
+  );
   if not exists (
     select 1 from public.field_truck_records
     where id = '8f400000-0000-4000-8000-000000000001'
@@ -179,6 +215,17 @@ begin
   ) then
     raise exception 'My Truck runtime failed: assigned reminder was not completed';
   end if;
+
+  begin
+    perform public.field_transition_truck_record(
+      '8f400000-0000-4000-8000-000000000001',
+      'end_downtime',
+      now()
+    );
+    raise exception 'My Truck runtime failed: invalid record transition was accepted';
+  exception when invalid_parameter_value then
+    null;
+  end;
 
   begin
     update public.field_truck_records

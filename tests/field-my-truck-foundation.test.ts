@@ -12,7 +12,10 @@ const migration = read(
 );
 const route = read("app/api/mobile/service/my-truck/route.ts");
 const fileRoute = read("app/api/mobile/service/my-truck/files/route.ts");
+const settingsRoute = read("app/api/mobile/service/settings/route.ts");
 const screen = read("features/mobile/service/FieldMyTruck.tsx");
+const settingsScreen = read("features/mobile/service/MobileServiceSetup.tsx");
+const server = read("features/mobile/service/server/myTruck.ts");
 const shell = read("features/mobile/service/FieldWorkspaceShell.tsx");
 const runtime = read("tests/mobile/field-my-truck.runtime.sql");
 const workflow = read(".github/workflows/mobile-v1-validation.yml");
@@ -102,9 +105,37 @@ describe("Field My Truck foundation", () => {
       odometerUnit: "km",
       openReminders: 1,
       activeDowntime: 1,
-      monthCosts: 200.5,
-      currency: "CAD",
+      monthCostsByCurrency: [{ currency: "CAD", amount: 200.5 }],
     });
+  });
+
+  it("keeps monthly operating costs separated by currency", () => {
+    const summary = buildFieldMyTruckSummary(
+      [
+        record({
+          id: "cad-cost",
+          record_type: "expense",
+          title: "Fuel",
+          occurred_on: "2026-08-18",
+          amount: 100,
+          currency: "CAD",
+        }),
+        record({
+          id: "usd-cost",
+          record_type: "expense",
+          title: "Toll",
+          occurred_on: "2026-08-19",
+          amount: 100,
+          currency: "USD",
+        }),
+      ],
+      new Date("2026-08-20T18:00:00.000Z"),
+    );
+
+    expect(summary.monthCostsByCurrency).toEqual([
+      { currency: "CAD", amount: 100 },
+      { currency: "USD", amount: 100 },
+    ]);
   });
 
   it("binds every record to the authenticated operator's active Field truck", () => {
@@ -122,6 +153,8 @@ describe("Field My Truck foundation", () => {
     expect(migration).toContain("field_truck_records_operation_key_unique");
     expect(route).toContain('error.code === "23505"');
     expect(fileRoute).toContain('insertError?.code === "23505"');
+    expect(screen).toContain("pendingSubmission");
+    expect(screen).toContain("submissionFingerprint");
     expect(runtime).toContain("cross-truck insert was accepted");
     expect(runtime).toContain("operator one can read operator two records");
     expect(workflow).toContain("tests/mobile/field-my-truck.runtime.sql");
@@ -133,6 +166,8 @@ describe("Field My Truck foundation", () => {
     expect(migration).toContain("field_truck_files_assigned_select");
     expect(migration).toContain("field_truck_files_assigned_insert");
     expect(fileRoute).toContain("createSignedUrl(record.file_path, 60)");
+    expect(fileRoute).toContain("expectedPrefix");
+    expect(migration).toContain("field_truck_records_file_path_scope_ck");
     expect(fileRoute).toContain("remove([storagePath])");
     expect(fileRoute).toContain("MAX_FILE_BYTES");
   });
@@ -151,6 +186,22 @@ describe("Field My Truck foundation", () => {
     expect(shell).toContain('href: "/mobile/service/my-truck"');
     expect(shell).not.toContain('href: "/fleet/maintenance"');
     expect(screen).not.toContain("Fleet");
+    expect(migration).toContain("field_assign_service_vehicle");
+    expect(migration).toContain("field_transition_truck_record");
+    expect(settingsRoute).toContain("field_assign_service_vehicle");
+    expect(settingsScreen).toContain("Field truck assignments");
+  });
+
+  it("keeps alerts and totals independent of the paginated history surface", () => {
+    expect(server).toContain("const collectAll");
+    expect(server).toContain("alerts: [...summaryRecords.values()]");
+    expect(screen).toContain("const alerts = snapshot.alerts");
+  });
+
+  it("uses local form dates, mobile-safe file opening and reminder reopening", () => {
+    expect(screen).toContain("now.getFullYear()");
+    expect(screen).toContain('window.open("", "_blank")');
+    expect(screen).toContain('onAction(record, "reopen")');
   });
 
   it("uses a forward additive migration without destructive schema operations", () => {

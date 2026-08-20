@@ -22,13 +22,13 @@ export type FieldTruckVehicle = {
 export type FieldMyTruckSnapshot = {
   truck: FieldTruckVehicle | null;
   records: FieldTruckRecord[];
+  alerts: FieldTruckRecord[];
   summary: {
     latestOdometer: number | null;
     odometerUnit: string | null;
     openReminders: number;
     activeDowntime: number;
-    monthCosts: number;
-    currency: string;
+    monthCostsByCurrency: Array<{ currency: string; amount: number }>;
   };
 };
 
@@ -54,22 +54,18 @@ export function buildFieldMyTruckSummary(
       return bDate.localeCompare(aDate);
     })[0];
   const monthKey = now.toISOString().slice(0, 7);
-  const monthCosts = records.reduce((total, record) => {
+  const monthCosts = new Map<string, number>();
+  records.forEach((record) => {
     if (
       record.amount === null ||
       !["expense", "maintenance"].includes(record.record_type) ||
       !(record.occurred_on ?? record.created_at).startsWith(monthKey)
     ) {
-      return total;
+      return;
     }
-    return total + Number(record.amount);
-  }, 0);
-  const currency =
-    records.find(
-      (record) =>
-        record.currency &&
-        ["expense", "maintenance"].includes(record.record_type),
-    )?.currency ?? "CAD";
+    const currency = record.currency ?? "CAD";
+    monthCosts.set(currency, (monthCosts.get(currency) ?? 0) + Number(record.amount));
+  });
 
   return {
     latestOdometer: latestOdometer?.odometer ?? null,
@@ -83,8 +79,9 @@ export function buildFieldMyTruckSummary(
         record.status === "open" &&
         record.ends_at === null,
     ).length,
-    monthCosts,
-    currency,
+    monthCostsByCurrency: [...monthCosts.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([currency, amount]) => ({ currency, amount })),
   };
 }
 

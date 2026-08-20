@@ -57,19 +57,38 @@ export async function GET(request: NextRequest) {
   }
   const { data: record, error } = await access.supabase
     .from("field_truck_records")
-    .select("id,file_bucket,file_path")
+    .select("id,record_type,file_bucket,file_path")
     .eq("id", id)
     .eq("shop_id", access.profile.shop_id)
     .eq("service_vehicle_id", access.truck.id)
     .not("file_path", "is", null)
     .maybeSingle<{
       id: string;
+      record_type: string;
       file_bucket: string | null;
       file_path: string | null;
     }>();
   if (error) return errorResponse("Truck file could not be verified.", 500);
   if (!record?.file_path || record.file_bucket !== BUCKET) {
     return errorResponse("Truck file was not found.", 404);
+  }
+  const expectedPrefix = `${access.profile.shop_id}/${access.truck.id}/`;
+  const pathParts = record.file_path.split("/");
+  const expectedFolder =
+    record.record_type === "document"
+      ? "documents"
+      : record.record_type === "expense"
+        ? "receipts"
+        : null;
+  if (
+    !expectedFolder ||
+    !record.file_path.startsWith(expectedPrefix) ||
+    pathParts.length !== 5 ||
+    pathParts[2] !== expectedFolder ||
+    pathParts[3] !== record.id ||
+    !pathParts[4]
+  ) {
+    return errorResponse("Truck file path is outside the assigned truck.", 403);
   }
 
   const admin = createAdminSupabase();

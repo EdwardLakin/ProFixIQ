@@ -43,6 +43,7 @@ export async function loadFieldMyTruckSnapshot(input: {
     return {
       truck: null,
       records: [],
+      alerts: [],
       summary: buildFieldMyTruckSummary([]),
     };
   }
@@ -57,6 +58,70 @@ export async function loadFieldMyTruckSnapshot(input: {
   if (error) throw new Error(error.message);
   const records = (data ?? []) as FieldTruckRecord[];
 
+  const summaryRecords = new Map<string, FieldTruckRecord>();
+  const collectAll = async (
+    loadPage: (from: number, to: number) => PromiseLike<{
+      data: unknown[] | null;
+      error: { message: string } | null;
+    }>,
+  ) => {
+    const pageSize = 500;
+    for (let from = 0; ; from += pageSize) {
+      const { data: page, error: pageError } = await loadPage(
+        from,
+        from + pageSize - 1,
+      );
+      if (pageError) throw new Error(pageError.message);
+      for (const record of (page ?? []) as FieldTruckRecord[]) {
+        summaryRecords.set(record.id, record);
+      }
+      if ((page ?? []).length < pageSize) break;
+    }
+  };
+
+  const monthStart = new Date();
+  monthStart.setUTCDate(1);
+  monthStart.setUTCHours(0, 0, 0, 0);
+  const nextMonth = new Date(monthStart);
+  nextMonth.setUTCMonth(nextMonth.getUTCMonth() + 1);
+  const [latestResult] = await Promise.all([
+    input.supabase
+      .from("field_truck_records")
+      .select(FIELD_TRUCK_RECORD_SELECT)
+      .eq("shop_id", input.shopId)
+      .eq("service_vehicle_id", truck.id)
+      .in("record_type", ["odometer", "maintenance"])
+      .not("odometer", "is", null)
+      .order("occurred_on", { ascending: false, nullsFirst: false })
+      .order("created_at", { ascending: false })
+      .limit(1),
+    collectAll((from, to) =>
+      input.supabase
+        .from("field_truck_records")
+        .select(FIELD_TRUCK_RECORD_SELECT)
+        .eq("shop_id", input.shopId)
+        .eq("service_vehicle_id", truck.id)
+        .in("record_type", ["reminder", "downtime"])
+        .eq("status", "open")
+        .range(from, to),
+    ),
+    collectAll((from, to) =>
+      input.supabase
+        .from("field_truck_records")
+        .select(FIELD_TRUCK_RECORD_SELECT)
+        .eq("shop_id", input.shopId)
+        .eq("service_vehicle_id", truck.id)
+        .in("record_type", ["expense", "maintenance"])
+        .gte("occurred_on", monthStart.toISOString().slice(0, 10))
+        .lt("occurred_on", nextMonth.toISOString().slice(0, 10))
+        .range(from, to),
+    ),
+  ]);
+  if (latestResult.error) throw new Error(latestResult.error.message);
+  for (const record of (latestResult.data ?? []) as FieldTruckRecord[]) {
+    summaryRecords.set(record.id, record);
+  }
+
   return {
     truck: {
       id: truck.id,
@@ -64,7 +129,14 @@ export async function loadFieldMyTruckSnapshot(input: {
       unitNumber: truck.unit_number,
     },
     records,
-    summary: buildFieldMyTruckSummary(records),
+    alerts: [...summaryRecords.values()]
+      .filter(
+        (record) =>
+          record.status === "open" &&
+          ["reminder", "downtime"].includes(record.record_type),
+      )
+      .sort((a, b) => b.created_at.localeCompare(a.created_at)),
+    summary: buildFieldMyTruckSummary([...summaryRecords.values()]),
   };
 }
 

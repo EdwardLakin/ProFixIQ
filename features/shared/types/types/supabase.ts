@@ -28432,6 +28432,22 @@ export type Database = {
         Args: { p_service_vehicle_id: string; p_shop_id: string }
         Returns: boolean
       }
+      field_assign_service_vehicle: {
+        Args: {
+          p_profile_id: string
+          p_service_vehicle_id: string
+          p_shop_id: string
+        }
+        Returns: Json
+      }
+      field_transition_truck_record: {
+        Args: {
+          p_action: string
+          p_ended_at?: string | null
+          p_record_id: string
+        }
+        Returns: Database["public"]["Tables"]["field_truck_records"]["Row"][]
+      }
       field_receive_po_part_to_truck_atomic: {
         Args: {
           p_actor_user_id: string

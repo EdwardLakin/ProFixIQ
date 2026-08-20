@@ -13,7 +13,7 @@ import {
   Truck,
   Wrench,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type {
   FieldMyTruckSnapshot,
@@ -26,17 +26,23 @@ type SnapshotResponse = FieldMyTruckSnapshot & { ok: true };
 const EMPTY_SNAPSHOT: FieldMyTruckSnapshot = {
   truck: null,
   records: [],
+  alerts: [],
   summary: {
     latestOdometer: null,
     odometerUnit: null,
     openReminders: 0,
     activeDowntime: 0,
-    monthCosts: 0,
-    currency: "CAD",
+    monthCostsByCurrency: [],
   },
 };
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
 const localDateTime = () => {
   const now = new Date();
   now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
@@ -77,10 +83,29 @@ function RecordForm({
 }: {
   type: FieldTruckRecordType;
   title: string;
-  onSubmit: (type: FieldTruckRecordType, form: FormData) => Promise<boolean>;
+  onSubmit: (
+    type: FieldTruckRecordType,
+    form: FormData,
+    operationKey: string,
+  ) => Promise<boolean>;
   busy: boolean;
 }) {
   const isUpload = type === "document" || type === "expense";
+  const pendingSubmission = useRef<{
+    fingerprint: string;
+    operationKey: string;
+  } | null>(null);
+
+  const submissionFingerprint = (form: FormData) =>
+    JSON.stringify(
+      [...form.entries()].map(([key, value]) => [
+        key,
+        value instanceof File
+          ? `${value.name}:${value.size}:${value.type}:${value.lastModified}`
+          : value,
+      ]),
+    );
+
   return (
     <details className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)]">
       <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 font-extrabold">
@@ -92,8 +117,18 @@ function RecordForm({
         onSubmit={(event) => {
           event.preventDefault();
           const form = event.currentTarget;
-          void onSubmit(type, new FormData(form)).then((saved) => {
-            if (saved) form.reset();
+          const formData = new FormData(form);
+          const fingerprint = submissionFingerprint(formData);
+          const operationKey =
+            pendingSubmission.current?.fingerprint === fingerprint
+              ? pendingSubmission.current.operationKey
+              : crypto.randomUUID();
+          pendingSubmission.current = { fingerprint, operationKey };
+          void onSubmit(type, formData, operationKey).then((saved) => {
+            if (saved) {
+              pendingSubmission.current = null;
+              form.reset();
+            }
           });
         }}
       >
@@ -213,7 +248,7 @@ function RecordRow({
   busy,
 }: {
   record: FieldTruckRecord;
-  onAction: (record: FieldTruckRecord) => Promise<void>;
+  onAction: (record: FieldTruckRecord, action?: "reopen") => Promise<void>;
   onOpenFile: (record: FieldTruckRecord) => Promise<void>;
   busy: boolean;
 }) {
@@ -240,7 +275,7 @@ function RecordRow({
         {record.ends_at ? <span>To {new Date(record.ends_at).toLocaleString()}</span> : null}
       </div>
       {record.notes ? <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">{record.notes}</p> : null}
-      {record.file_path || (record.status === "open" && ["reminder", "downtime"].includes(record.record_type)) ? (
+      {record.file_path || record.record_type === "reminder" || (record.status === "open" && record.record_type === "downtime") ? (
         <div className="mt-3 flex flex-wrap gap-2">
           {record.file_path ? (
             <button type="button" disabled={busy} onClick={() => void onOpenFile(record)} className="min-h-10 rounded-xl border border-[color:var(--theme-border-soft)] px-3 text-sm font-bold">Open file</button>
@@ -248,6 +283,11 @@ function RecordRow({
           {record.status === "open" && ["reminder", "downtime"].includes(record.record_type) ? (
             <button type="button" disabled={busy} onClick={() => void onAction(record)} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-emerald-500/15 px-3 text-sm font-bold text-emerald-300">
               <Check className="h-4 w-4" /> {record.record_type === "downtime" ? "Back in service" : "Complete"}
+            </button>
+          ) : null}
+          {record.record_type === "reminder" && record.status === "completed" ? (
+            <button type="button" disabled={busy} onClick={() => void onAction(record, "reopen")} className="min-h-10 rounded-xl border border-[color:var(--theme-border-soft)] px-3 text-sm font-bold">
+              Reopen
             </button>
           ) : null}
         </div>
@@ -285,12 +325,15 @@ export default function FieldMyTruck() {
 
   useEffect(() => { void load(); }, [load]);
 
-  const submit = async (recordType: FieldTruckRecordType, form: FormData) => {
+  const submit = async (
+    recordType: FieldTruckRecordType,
+    form: FormData,
+    operationKey: string,
+  ) => {
     if (busy) return false;
     setBusy(true);
     setError(null);
     try {
-      const operationKey = crypto.randomUUID();
       const file = form.get("file");
       const hasFile = file instanceof File && file.size > 0;
       let response: Response;
@@ -322,7 +365,7 @@ export default function FieldMyTruck() {
     }
   };
 
-  const complete = async (record: FieldTruckRecord) => {
+  const complete = async (record: FieldTruckRecord, action?: "reopen") => {
     setBusy(true);
     setError(null);
     try {
@@ -330,7 +373,12 @@ export default function FieldMyTruck() {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: record.id, action: record.record_type === "downtime" ? "end_downtime" : "complete" }),
+        body: JSON.stringify({
+          id: record.id,
+          action:
+            action ??
+            (record.record_type === "downtime" ? "end_downtime" : "complete"),
+        }),
       });
       const body = (await response.json().catch(() => null)) as { error?: string } | null;
       if (!response.ok) throw new Error(body?.error ?? "Truck record could not be updated.");
@@ -343,14 +391,21 @@ export default function FieldMyTruck() {
   };
 
   const openFile = async (record: FieldTruckRecord) => {
+    const popup = window.open("", "_blank");
+    if (popup) popup.opener = null;
     setBusy(true);
     setError(null);
     try {
       const response = await fetch(`/api/mobile/service/my-truck/files?id=${encodeURIComponent(record.id)}`, { credentials: "include", cache: "no-store" });
       const body = (await response.json().catch(() => null)) as { url?: string; error?: string } | null;
       if (!response.ok || !body?.url) throw new Error(body?.error ?? "Truck file could not be opened.");
-      window.open(body.url, "_blank", "noopener,noreferrer");
+      if (popup) {
+        popup.location.replace(body.url);
+      } else {
+        window.location.assign(body.url);
+      }
     } catch (cause) {
+      popup?.close();
       setError(cause instanceof Error ? cause.message : "Truck file could not be opened.");
     } finally {
       setBusy(false);
@@ -358,7 +413,7 @@ export default function FieldMyTruck() {
   };
 
   const records = useMemo(() => snapshot.records.slice().sort((a, b) => b.created_at.localeCompare(a.created_at)), [snapshot.records]);
-  const alerts = records.filter((record) => record.status === "open" && ["reminder", "downtime"].includes(record.record_type));
+  const alerts = snapshot.alerts;
 
   if (loading && !snapshot.truck) {
     return <div className="grid min-h-[45vh] place-items-center"><Loader2 className="h-7 w-7 animate-spin text-sky-400" /></div>;
@@ -393,7 +448,15 @@ export default function FieldMyTruck() {
               [Gauge, "Odometer", snapshot.summary.latestOdometer === null ? "Not logged" : `${Number(snapshot.summary.latestOdometer).toLocaleString()} ${snapshot.summary.odometerUnit ?? "km"}`],
               [CalendarClock, "Open reminders", String(snapshot.summary.openReminders)],
               [AlertTriangle, "Active downtime", String(snapshot.summary.activeDowntime)],
-              [Receipt, "Costs this month", money(snapshot.summary.monthCosts, snapshot.summary.currency)],
+              [
+                Receipt,
+                "Costs this month",
+                snapshot.summary.monthCostsByCurrency.length
+                  ? snapshot.summary.monthCostsByCurrency
+                      .map(({ amount, currency }) => money(amount, currency))
+                      .join(" · ")
+                  : money(0, "CAD"),
+              ],
             ].map(([Icon, label, value]) => {
               const CardIcon = Icon as typeof Gauge;
               return <div key={String(label)} className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4 shadow-card"><CardIcon className="h-5 w-5 text-sky-400" /><div className="mt-3 text-xs font-bold uppercase tracking-[0.12em] text-[color:var(--theme-text-muted)]">{String(label)}</div><div className="mt-1 text-lg font-black">{String(value)}</div></div>;
