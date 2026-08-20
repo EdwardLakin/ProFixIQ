@@ -127,7 +127,7 @@ insert into public.workspace_capabilities (
     'manage',
     'manage',
     false,
-    'Assign and reassign technicians on work-order repair lines.'
+    'Assign and reassign technicians on work-order repair lines across the actor shop scope.'
   )
 on conflict (capability_key) do update
 set workspace_key = excluded.workspace_key,
@@ -386,6 +386,7 @@ declare
   v_target_role text;
   v_effect text := lower(btrim(coalesce(p_effect, '')));
   v_previous_effect text := 'inherit';
+  v_inherited_effect text := 'deny';
   v_actor_can_manage boolean := false;
   v_actor_can_grant boolean := false;
   v_target_granted boolean := false;
@@ -456,9 +457,6 @@ begin
     v_actor_shop_id,
     p_capability_key
   ) decision;
-  if not coalesce(v_actor_can_grant, false) then
-    raise exception using errcode = '42501', message = 'You cannot grant authority you do not hold.';
-  end if;
 
   select private.workspace_canonical_role(profile.role::text)
     into v_target_role
@@ -501,6 +499,34 @@ begin
       'granted', coalesce(v_target_granted, false),
       'decision_source', v_target_source
     );
+  end if;
+
+  if v_effect = 'allow' and not coalesce(v_actor_can_grant, false) then
+    raise exception using errcode = '42501', message = 'You cannot grant authority you do not hold.';
+  end if;
+
+  if v_effect = 'inherit' then
+    select policy.effect
+      into v_inherited_effect
+    from public.shop_role_capability_policies policy
+    where policy.shop_id = v_actor_shop_id
+      and policy.role_key = v_target_role
+      and policy.capability_key = p_capability_key;
+    if not found then
+      select preset.effect
+        into v_inherited_effect
+      from public.workspace_role_capability_presets preset
+      where preset.role_key = v_target_role
+        and preset.capability_key = p_capability_key;
+      if not found then
+        v_inherited_effect := 'deny';
+      end if;
+    end if;
+
+    if v_inherited_effect = 'allow'
+       and not coalesce(v_actor_can_grant, false) then
+      raise exception using errcode = '42501', message = 'You cannot restore authority you do not hold.';
+    end if;
   end if;
 
   if v_effect = 'inherit' then
@@ -592,6 +618,7 @@ declare
   v_target_role text := private.workspace_canonical_role(p_role_key);
   v_effect text := lower(btrim(coalesce(p_effect, '')));
   v_previous_effect text := 'inherit';
+  v_inherited_effect text := 'deny';
   v_actor_can_manage boolean := false;
   v_actor_can_grant boolean := false;
 begin
@@ -658,9 +685,6 @@ begin
     v_actor_shop_id,
     p_capability_key
   ) decision;
-  if not coalesce(v_actor_can_grant, false) then
-    raise exception using errcode = '42501', message = 'You cannot grant authority you do not hold.';
-  end if;
 
   if v_actor_role <> 'owner'
      and private.workspace_role_rank(v_target_role) >= private.workspace_role_rank(v_actor_role) then
@@ -686,6 +710,26 @@ begin
       'capability_key', p_capability_key,
       'effect', v_effect
     );
+  end if;
+
+  if v_effect = 'allow' and not coalesce(v_actor_can_grant, false) then
+    raise exception using errcode = '42501', message = 'You cannot grant authority you do not hold.';
+  end if;
+
+  if v_effect = 'inherit' then
+    select preset.effect
+      into v_inherited_effect
+    from public.workspace_role_capability_presets preset
+    where preset.role_key = v_target_role
+      and preset.capability_key = p_capability_key;
+    if not found then
+      v_inherited_effect := 'deny';
+    end if;
+
+    if v_inherited_effect = 'allow'
+       and not coalesce(v_actor_can_grant, false) then
+      raise exception using errcode = '42501', message = 'You cannot restore authority you do not hold.';
+    end if;
   end if;
 
   if v_effect = 'inherit' then
@@ -796,6 +840,12 @@ begin
     v_actor_auth_user_id := v_auth_user_id;
   end if;
 
+  -- `work_order.assignment.manage` is intentionally Shop-scoped. It is the
+  -- explicit Lead Hand delegation path and therefore supersedes a mechanic's
+  -- ordinary assigned-work-only RLS for this one mutation. The authenticated
+  -- actor and target repair line are still independently bound to p_shop_id;
+  -- a future location scope can narrow this predicate without changing the
+  -- canonical assignment operation.
   select decision.granted
     into v_actor_can_assign
   from private.resolve_workspace_profile_capability(

@@ -113,7 +113,10 @@ remain protected by grants and RLS where the table is exposed.
   that capability without changing an employee's base role.
 - Protected `team.permissions.manage` presets, delegated grant ceilings, tenant
   checks, peer/higher-authority checks, and canonical operational audit events
-  guard the initial management RPCs.
+  guard the initial management RPCs. A delegated administrator may reduce a
+  lower-authority employee or role to `DENY` without holding the denied
+  capability; `ALLOW` and an `INHERIT` transition that would restore access
+  remain subject to the grant ceiling.
 - The initial Shop Workspace capability resolver accepts only canonical Shop
   staff roles. Fleet managers, dispatchers, drivers, and customer profiles
   remain outside this policy domain even if stale policy rows exist; future
@@ -158,9 +161,14 @@ For example, Work Order Assignment can derive its module state from separate
 view and manage capabilities.
 
 The first proving capability is `work_order.assignment.manage`. It supports the
-Lead Hand case without granting a technician the Manager role. Resource scope
-continues to be enforced by canonical Work Order relationships and existing
-RLS/RPC checks; generalized location scope remains a later, explicit model.
+Lead Hand case without granting a technician the Manager role. For this first
+slice, that capability intentionally grants assignment management across the
+actor's Shop: the assignment RPC independently binds both the authenticated
+actor and target repair line to that Shop. This explicit delegation supersedes
+a mechanic's ordinary assigned-work-only RLS for this mutation only. A
+mechanic without the capability remains assignment-scoped and denied. The
+eventual location model can narrow this Shop scope once canonical staff/location
+membership exists; it is not simulated with an unsafe inferred relationship.
 
 ## Effective authorization database foundation
 
@@ -172,7 +180,8 @@ Forward migration
   absence of an override row);
 - a self-scoped effective-capability RPC for authenticated staff;
 - guarded management RPCs with protected-capability and grant-authority
-  ceilings and per-shop/capability transaction serialization;
+  ceilings, deny-only delegated administration, grant-restoring `INHERIT`
+  checks, and per-shop/capability transaction serialization;
 - immutable `operational_events` for material permission changes;
 - direct-RPC authorization for repair-line assignment and the Shop Assistant
   assignment path.
@@ -181,8 +190,9 @@ The four policy tables have RLS enabled and no Data API grants for `anon` or
 `authenticated`. Authenticated callers can use only the deliberately scoped
 RPCs. Authorization data is not stored in user-editable JWT metadata. The
 runtime fixture verifies tenant isolation, linked-profile resolution,
-precedence, privilege ceilings, non-Shop role exclusion, direct-RPC spoof
-resistance, and audit events.
+precedence, deny-only administration, grant and grant-restoring inheritance
+ceilings, non-Shop role exclusion, the deliberate Lead Hand Shop scope,
+direct-RPC spoof resistance, and audit events.
 
 Location scope is deliberately not simulated; it requires a canonical
 staff/location relationship before it can be added safely.
@@ -229,7 +239,10 @@ architecture underneath the screen.
 
 - Work Order assignment presets retain existing authorized roles by default.
 - An individual mechanic can be granted assignment management without a role
-  promotion, and an individual deny outranks a shop role allow.
+- The assignment-management delegation is explicitly Shop-scoped in this
+  slice; ordinary mechanics remain limited by existing assignment RLS.
+- Delegated permission managers can apply lower-authority `DENY` changes but
+  cannot grant or restore capabilities they do not hold.
 - The Work Order ID layout and all canonical operational flows are unchanged.
 - UI, API, direct RPC, and Shop Assistant assignment use the same effective
   decision and fail closed if it is unavailable.

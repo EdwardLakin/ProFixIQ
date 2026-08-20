@@ -521,6 +521,20 @@ begin
     raise exception 'Individual assignment override resolved incorrectly.';
   end if;
 
+  if not exists (
+    select 1
+    from public.work_order_lines line
+    where line.id = '71500000-0000-4000-8000-000000000001'
+      and line.assigned_tech_id = '71100000-0000-4000-8000-000000000004'
+  ) or exists (
+    select 1
+    from public.work_order_line_technicians assignment
+    where assignment.work_order_line_id = '71500000-0000-4000-8000-000000000001'
+      and assignment.technician_id = '71100000-0000-4000-8000-000000000003'
+  ) then
+    raise exception 'Lead Hand scope fixture was already related to the mechanic.';
+  end if;
+
   select public.assign_work_order_line_technician_atomic(
     '71300000-0000-4000-8000-000000000001',
     '71500000-0000-4000-8000-000000000001',
@@ -569,6 +583,141 @@ select public.set_shop_role_capability_policy_atomic(
   'work_order.assignment.manage',
   'allow'
 );
+
+reset role;
+
+-- A delegated permission manager who has personally been denied assignment
+-- authority can still reduce lower-authority access. They cannot ALLOW it or
+-- remove a deny when INHERIT would restore granted authority.
+set local role authenticated;
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"71100000-0000-4000-8000-000000000001","role":"authenticated"}',
+  true
+);
+
+select public.set_shop_role_capability_policy_atomic(
+  'mechanic',
+  'work_order.assignment.manage',
+  'allow'
+);
+select public.set_staff_capability_override_atomic(
+  '71200000-0000-4000-8000-000000000002',
+  'work_order.assignment.manage',
+  'deny'
+);
+
+reset role;
+
+set local role authenticated;
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"71100000-0000-4000-8000-000000000002","role":"authenticated"}',
+  true
+);
+
+do $workspace_authorization_deny_only_admin$
+declare
+  v_team_granted boolean;
+  v_assignment_granted boolean;
+  v_result jsonb;
+  v_staff_allow_denied boolean := false;
+  v_staff_inherit_denied boolean := false;
+  v_role_inherit_denied boolean := false;
+begin
+  select
+    bool_or(decision.granted) filter (
+      where decision.capability_key = 'team.permissions.manage'
+    ),
+    bool_or(decision.granted) filter (
+      where decision.capability_key = 'work_order.assignment.manage'
+    )
+    into v_team_granted, v_assignment_granted
+  from public.workspace_current_actor_capabilities(array[
+    'team.permissions.manage',
+    'work_order.assignment.manage'
+  ]) decision;
+
+  if not coalesce(v_team_granted, false)
+     or coalesce(v_assignment_granted, true) then
+    raise exception 'Deny-only manager fixture did not resolve as intended.';
+  end if;
+
+  select public.set_staff_capability_override_atomic(
+    '71100000-0000-4000-8000-000000000004',
+    'work_order.assignment.manage',
+    'deny'
+  ) into v_result;
+  if coalesce((v_result ->> 'changed')::boolean, false) is not true
+     or v_result ->> 'effect' is distinct from 'deny'
+     or coalesce((v_result ->> 'granted')::boolean, true) then
+    raise exception 'Permission manager could not apply a staff DENY: %', v_result;
+  end if;
+
+  begin
+    perform public.set_staff_capability_override_atomic(
+      '71100000-0000-4000-8000-000000000004',
+      'work_order.assignment.manage',
+      'allow'
+    );
+  exception when insufficient_privilege then
+    v_staff_allow_denied := true;
+  end;
+
+  begin
+    perform public.set_staff_capability_override_atomic(
+      '71100000-0000-4000-8000-000000000004',
+      'work_order.assignment.manage',
+      'inherit'
+    );
+  exception when insufficient_privilege then
+    v_staff_inherit_denied := true;
+  end;
+
+  if not v_staff_allow_denied or not v_staff_inherit_denied then
+    raise exception 'Permission manager restored staff authority they do not hold.';
+  end if;
+
+  select public.set_shop_role_capability_policy_atomic(
+    'parts',
+    'work_order.assignment.manage',
+    'deny'
+  ) into v_result;
+  if coalesce((v_result ->> 'changed')::boolean, false) is not true
+     or v_result ->> 'effect' is distinct from 'deny' then
+    raise exception 'Permission manager could not apply a role DENY: %', v_result;
+  end if;
+
+  select public.set_shop_role_capability_policy_atomic(
+    'parts',
+    'work_order.assignment.manage',
+    'inherit'
+  ) into v_result;
+  if coalesce((v_result ->> 'changed')::boolean, false) is not true
+     or v_result ->> 'effect' is distinct from 'inherit' then
+    raise exception 'Permission manager could not restore deny-only role inheritance: %',
+      v_result;
+  end if;
+
+  perform public.set_shop_role_capability_policy_atomic(
+    'advisor',
+    'work_order.assignment.manage',
+    'deny'
+  );
+  begin
+    perform public.set_shop_role_capability_policy_atomic(
+      'advisor',
+      'work_order.assignment.manage',
+      'inherit'
+    );
+  exception when insufficient_privilege then
+    v_role_inherit_denied := true;
+  end;
+  if not v_role_inherit_denied then
+    raise exception 'Permission manager restored role authority they do not hold.';
+  end if;
+end
+$workspace_authorization_deny_only_admin$;
 
 reset role;
 
