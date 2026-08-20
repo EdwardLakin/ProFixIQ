@@ -15,6 +15,11 @@ values
     '{"full_name":"Workspace Auth Manager A"}'::jsonb
   ),
   (
+    '71200000-0000-4000-8000-000000000002',
+    'workspace-auth-manager-profile-a@example.com',
+    '{"full_name":"Workspace Auth Manager Profile A"}'::jsonb
+  ),
+  (
     '71100000-0000-4000-8000-000000000003',
     'workspace-auth-mechanic-a@example.com',
     '{"full_name":"Workspace Auth Mechanic A"}'::jsonb
