@@ -27,6 +27,7 @@ describe("/api/internal/ai/expire-stale route", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    delete process.env.CRON_SECRET;
     process.env.INTERNAL_CRON_SECRET = "test-secret";
     expireStaleAiRecordsMock.mockResolvedValue(buildResult());
   });
@@ -39,14 +40,16 @@ describe("/api/internal/ai/expire-stale route", () => {
     expect(expireStaleAiRecordsMock).not.toHaveBeenCalled();
   });
 
-  it("allows scheduled GET using bearer token and executes with bounded limit", async () => {
+  it("allows scheduled GET using Vercel CRON_SECRET and executes with bounded limit", async () => {
+    delete process.env.INTERNAL_CRON_SECRET;
+    process.env.CRON_SECRET = "vercel-cron-secret";
     expireStaleAiRecordsMock.mockResolvedValue(buildResult({ dryRun: false }));
 
     const { GET } = await import("../app/api/internal/ai/expire-stale/route");
     const response = await GET(new Request("http://localhost/api/internal/ai/expire-stale", {
       method: "GET",
       headers: {
-        authorization: "Bearer test-secret",
+        authorization: "Bearer vercel-cron-secret",
       },
     }));
 
@@ -66,6 +69,37 @@ describe("/api/internal/ai/expire-stale route", () => {
       previews: expect.objectContaining({ candidates: 3, expired: 1 }),
       approvals: expect.objectContaining({ candidates: 1, expired: 0 }),
     }));
+  });
+
+  it("logs the underlying expiration error while keeping the response generic", async () => {
+    const underlyingError = new Error(
+      "Failed to load stale recommendations: database unavailable",
+    );
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    expireStaleAiRecordsMock.mockRejectedValue(underlyingError);
+
+    try {
+      const { GET } = await import("../app/api/internal/ai/expire-stale/route");
+      const response = await GET(new Request("http://localhost/api/internal/ai/expire-stale", {
+        method: "GET",
+        headers: {
+          "x-internal-cron-secret": "test-secret",
+        },
+      }));
+
+      expect(response.status).toBe(500);
+      await expect(response.json()).resolves.toEqual({
+        error: "Failed to expire stale AI records",
+      });
+      expect(consoleError).toHaveBeenCalledWith(
+        "[internal/ai/expire-stale] expiration failed",
+        underlyingError,
+      );
+    } finally {
+      consoleError.mockRestore();
+    }
   });
 
   it("keeps POST dryRun default true and bounds limit", async () => {

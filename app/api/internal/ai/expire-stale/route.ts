@@ -31,43 +31,24 @@ function parseBody(raw: ExpireStaleBody | null): { dryRun: boolean; shopId?: str
   return { dryRun, shopId, limit };
 }
 
-function parseBearerSecret(req: Request): string | null {
-  const authorization = req.headers.get("authorization")?.trim();
-  if (!authorization) {
-    return null;
-  }
-
-  const [scheme, token] = authorization.split(/\s+/, 2);
-  if (!scheme || !token || scheme.toLowerCase() !== "bearer") {
-    return null;
-  }
-
-  return token;
-}
-
-function isVercelCronAuthorized(req: Request): boolean {
-  const configuredSecret = process.env.INTERNAL_CRON_SECRET;
-  if (!configuredSecret) {
-    return false;
-  }
-
-  const bearerSecret = parseBearerSecret(req);
-  return !!bearerSecret && bearerSecret === configuredSecret;
-}
-
-function authorizeInternalRequest(req: Request): { ok: true } | { ok: false; response: NextResponse } {
-  const internalGate = requireInternalApiSecret({
+function authorizeInternalRequest(
+  req: Request,
+): { ok: true } | { ok: false; response: NextResponse } {
+  return requireInternalApiSecret({
     request: req,
     envSecretName: "INTERNAL_CRON_SECRET",
     headerName: "x-internal-cron-secret",
     routeLabel: "internal/ai/expire-stale",
+    bearerEnvSecretName: "CRON_SECRET",
   });
+}
 
-  if (internalGate.ok || isVercelCronAuthorized(req)) {
-    return { ok: true };
-  }
-
-  return { ok: false, response: internalGate.response };
+function expirationFailureResponse(error: unknown): NextResponse {
+  console.error("[internal/ai/expire-stale] expiration failed", error);
+  return NextResponse.json(
+    { error: "Failed to expire stale AI records" },
+    { status: 500 },
+  );
 }
 
 async function runExpiration(input: { dryRun: boolean; shopId?: string; limit: number }) {
@@ -116,8 +97,8 @@ export async function GET(req: Request) {
 
   try {
     return await runExpiration({ dryRun: false, limit: SCHEDULED_GET_LIMIT });
-  } catch {
-    return NextResponse.json({ error: "Failed to expire stale AI records" }, { status: 500 });
+  } catch (error) {
+    return expirationFailureResponse(error);
   }
 }
 
@@ -137,7 +118,7 @@ export async function POST(req: Request) {
 
   try {
     return await runExpiration(input);
-  } catch {
-    return NextResponse.json({ error: "Failed to expire stale AI records" }, { status: 500 });
+  } catch (error) {
+    return expirationFailureResponse(error);
   }
 }

@@ -13,10 +13,12 @@ This scheduled job calls the internal stale-expiration route to expire stale can
 - The route remains internal-only.
 - Allowed auth patterns:
   - `x-internal-cron-secret: <INTERNAL_CRON_SECRET>`
-  - `Authorization: Bearer <INTERNAL_CRON_SECRET>`
+  - `Authorization: Bearer <CRON_SECRET>` (Vercel Cron)
 - Required env var names:
-  - `INTERNAL_CRON_SECRET`
-  - `CRON_SECRET` (set to the same value as `INTERNAL_CRON_SECRET` so Vercel Cron's bearer token is accepted)
+  - `CRON_SECRET` for scheduled Vercel invocations
+  - `INTERNAL_CRON_SECRET` for controlled manual invocations
+
+The two secrets are independent and do not need to contain the same value.
 
 ## Behavior
 - Scheduled `GET` runs expiration with:
