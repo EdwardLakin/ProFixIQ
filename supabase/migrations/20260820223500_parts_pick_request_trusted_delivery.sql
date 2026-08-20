@@ -73,6 +73,8 @@ grant execute on function public.parts_request_pick_for_line_atomic(
 
 -- Reconcile both directions. A previously resolved pick signal must become
 -- active again when a return or approved-quantity increase creates new work.
+-- Fulfilled/returned parent rows are intentionally re-evaluated from current
+-- item quantities; only denied/cancelled/deferred work remains terminal here.
 create or replace function public.parts_reconcile_pick_request_notification(
   p_request_id uuid
 ) returns void
@@ -108,7 +110,7 @@ begin
 
   if v_request.pick_requested_at is not null
      and lower(coalesce(v_request.status::text, 'requested')) not in (
-       'fulfilled', 'returned', 'rejected', 'cancelled', 'canceled', 'deferred'
+       'rejected', 'cancelled', 'canceled', 'deferred'
      )
      and public.parts_request_is_operationally_released(v_request.id) then
     select
@@ -138,7 +140,7 @@ begin
     where item.request_id = v_request.id
       and item.shop_id = v_request.shop_id
       and lower(coalesce(item.status::text, 'requested')) not in (
-        'cancelled', 'canceled', 'rejected', 'returned'
+        'cancelled', 'canceled', 'rejected'
       );
 
     v_staged := greatest(v_required - v_remaining, 0);
