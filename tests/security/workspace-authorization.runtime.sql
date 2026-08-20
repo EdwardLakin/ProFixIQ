@@ -118,12 +118,21 @@ values
     'Workspace Authorization Shop B'
   );
 
+-- The baseline insert trigger initializes user_id from id. Recreate the
+-- imported/linked manager identity after insert, then bind every fixture actor
+-- to its tenant.
 update public.profiles
-set shop_id = case
-  when id = '71100000-0000-4000-8000-000000000005'::uuid
-    then '71300000-0000-4000-8000-000000000002'::uuid
-  else '71300000-0000-4000-8000-000000000001'::uuid
-end
+set
+  user_id = case
+    when id = '71200000-0000-4000-8000-000000000002'::uuid
+      then '71100000-0000-4000-8000-000000000002'::uuid
+    else user_id
+  end,
+  shop_id = case
+    when id = '71100000-0000-4000-8000-000000000005'::uuid
+      then '71300000-0000-4000-8000-000000000002'::uuid
+    else '71300000-0000-4000-8000-000000000001'::uuid
+  end
 where id in (
   '71100000-0000-4000-8000-000000000001',
   '71200000-0000-4000-8000-000000000002',
