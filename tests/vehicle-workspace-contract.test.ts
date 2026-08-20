@@ -807,6 +807,96 @@ describe("Shop Vehicle Workspace contract", () => {
     );
   });
 
+  it("uses operational labels instead of raw identifiers in Active now", async () => {
+    const fixture = workspaceFixture({
+      additionalWorkOrders: [
+        {
+          id: "estimate-1",
+          customer_id: "customer-1",
+          vehicle_id: "vehicle-1",
+          custom_id: null,
+          status: "draft",
+          record_type: "estimate",
+          approval_state: "pending",
+          estimate_number: "EST-2001",
+          estimate_status: "waiting_for_parts",
+          scheduled_at: null,
+          odometer_km: null,
+          created_at: "2026-01-05T10:00:00.000Z",
+          updated_at: "2026-01-05T11:00:00.000Z",
+        },
+      ],
+      inspections: [
+        {
+          id: "inspection-open",
+          work_order_id: "wo-1",
+          work_order_line_id: null,
+          inspection_type: null,
+          status: "draft",
+          completed: false,
+          summary: { items: [] },
+          created_at: "2026-01-06T10:00:00.000Z",
+          started_at: null,
+          finalized_at: null,
+          updated_at: "2026-01-06T10:00:00.000Z",
+          pdf_url: null,
+          pdf_storage_path: null,
+        },
+      ],
+      partRequests: [
+        {
+          id: "part-request-1",
+          work_order_id: "wo-1",
+          status: "requested",
+          notes: "Estimate EST-2001 · Rebuild front differential.\nInternal note",
+          created_at: "2026-01-07T10:00:00.000Z",
+        },
+      ],
+    });
+
+    const snapshot = await loadVehicleWorkspaceSnapshot({
+      supabase: fixture.client as never,
+      shopId: "shop-a",
+      role: "owner",
+      vehicleId: "vehicle-1",
+    });
+
+    expect(snapshot?.activeWork).toContainEqual(
+      expect.objectContaining({
+        kind: "estimate",
+        title: "EST-2001",
+        reference: expect.objectContaining({
+          sourceId: "estimate-1",
+          sourceLabel: "Estimate EST-2001",
+        }),
+      }),
+    );
+    expect(snapshot?.activeWork).toContainEqual(
+      expect.objectContaining({
+        kind: "inspection",
+        title: "Inspection for WO-1048",
+        reference: expect.objectContaining({
+          sourceId: "inspection-open",
+          sourceLabel: "Inspection for WO-1048",
+        }),
+      }),
+    );
+    expect(snapshot?.activeWork).toContainEqual(
+      expect.objectContaining({
+        kind: "part_request",
+        title: "Parts for WO-1048",
+        detail: "Estimate EST-2001 · Rebuild front differential.",
+        reference: expect.objectContaining({ sourceId: "part-request-1" }),
+      }),
+    );
+    expect(snapshot?.recentTimeline).toContainEqual(
+      expect.objectContaining({
+        kind: "estimate",
+        title: "EST-2001",
+      }),
+    );
+  });
+
   it("does not let rescheduling an older work order replace newer odometer evidence", async () => {
     const fixture = workspaceFixture({
       additionalWorkOrders: [
@@ -1409,9 +1499,9 @@ describe("Shop Vehicle Workspace contract", () => {
       partsSnapshot?.activeWork.filter((item) => item.kind === "part_request"),
     ).toEqual([
       expect.objectContaining({
-        title: "Brake pads needed",
+        title: "Parts for WO-1048",
         status: "requested",
-        detail: "Requested for WO-1048",
+        detail: "Brake pads needed",
         reference: expect.objectContaining({
           sourceType: "part_request",
           sourceId: "request-open",

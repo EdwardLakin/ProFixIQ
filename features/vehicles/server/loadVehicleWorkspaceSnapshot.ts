@@ -455,12 +455,16 @@ function workOrderLabel(row: WorkspaceWorkOrderRow): string {
   return row.custom_id ? `WO-${row.custom_id.replace(/^wo-?/i, "")}` : `WO ${row.id.slice(0, 8)}`;
 }
 
+function estimateTitle(row: WorkspaceWorkOrderRow): string {
+  return text(row.estimate_number) ?? `Estimate ${row.id.slice(0, 8)}`;
+}
+
 function workOrderReference(row: WorkspaceWorkOrderRow): VehicleWorkspaceReference {
   const isEstimate = workOrderIsEstimate(row);
   const sourceLabel = isEstimate
     ? row.estimate_number
       ? `Estimate ${row.estimate_number}`
-      : `Estimate ${row.id.slice(0, 8)}`
+      : estimateTitle(row)
     : workOrderLabel(row);
   return {
     sourceType: "work_order",
@@ -522,11 +526,25 @@ function installedPartQuantity(row: WorkspaceWorkOrderPartRow): number {
   return Number(row.quantity_consumed ?? 0) - Number(row.quantity_returned ?? 0);
 }
 
-function inspectionReference(row: WorkspaceInspectionRow): VehicleWorkspaceReference {
+function inspectionLabel(
+  row: WorkspaceInspectionRow,
+  workOrder: WorkspaceWorkOrderRow | null = null,
+): string {
+  const inspectionType = text(row.inspection_type);
+  if (inspectionType) return inspectionType;
+  return workOrder
+    ? `Inspection for ${workOrderLabel(workOrder)}`
+    : `Inspection ${row.id.slice(0, 8)}`;
+}
+
+function inspectionReference(
+  row: WorkspaceInspectionRow,
+  workOrder: WorkspaceWorkOrderRow | null = null,
+): VehicleWorkspaceReference {
   return {
     sourceType: "inspection",
     sourceId: row.id,
-    sourceLabel: row.inspection_type?.trim() || `Inspection ${row.id.slice(0, 8)}`,
+    sourceLabel: inspectionLabel(row, workOrder),
     href: `/inspections/${row.id}`,
   };
 }
@@ -694,11 +712,15 @@ function buildAttentionItems(input: {
   }
 
   for (const inspection of input.inspections) {
+    const workOrder = inspection.work_order_id
+      ? input.workOrdersById.get(inspection.work_order_id)
+      : null;
+    const reference = inspectionReference(inspection, workOrder ?? null);
     for (const finding of extractInspectionFindings(inspection.summary)) {
       const detail = [
         finding.measurement,
         finding.note,
-        `recorded during ${inspectionReference(inspection).sourceLabel}`,
+        `recorded during ${reference.sourceLabel}`,
       ]
         .filter(Boolean)
         .join(" · ");
@@ -712,7 +734,7 @@ function buildAttentionItems(input: {
           inspection.updated_at,
           inspection.created_at,
         ),
-        reference: inspectionReference(inspection),
+        reference,
       });
     }
   }
@@ -765,6 +787,7 @@ function buildTimeline(input: {
 }): VehicleTimelineEvent[] {
   const events: VehicleTimelineEvent[] = [];
   const workOrderIds = new Set(input.workOrders.map((row) => row.id));
+  const workOrdersById = new Map(input.workOrders.map((row) => [row.id, row]));
 
   for (const row of input.workOrders) {
     const isEstimate = workOrderIsEstimate(row);
@@ -774,9 +797,7 @@ function buildTimeline(input: {
       kind: isEstimate ? "estimate" : "work_order",
       title:
         isEstimate
-          ? row.estimate_number
-            ? `Estimate ${row.estimate_number}`
-            : `Estimate ${row.id.slice(0, 8)}`
+          ? estimateTitle(row)
           : workOrderLabel(row),
       detail:
         [
@@ -815,12 +836,16 @@ function buildTimeline(input: {
   }
 
   for (const row of input.inspections) {
+    const reference = inspectionReference(
+      row,
+      row.work_order_id ? workOrdersById.get(row.work_order_id) ?? null : null,
+    );
     events.push({
       kind: "inspection",
-      title: inspectionReference(row).sourceLabel,
+      title: reference.sourceLabel,
       detail: row.status ? formatOperationalLabel(row.status) : null,
       occurredAt: dateValue(row.finalized_at, row.updated_at, row.started_at, row.created_at),
-      reference: inspectionReference(row),
+      reference,
     });
   }
 
@@ -1001,7 +1026,12 @@ function buildDocumentSummary(input: {
           href: `/work-orders/${newestWorkOrderMedia.work_order_id}`,
         }
       : reports[0]
-        ? inspectionReference(reports[0])
+        ? inspectionReference(
+            reports[0],
+            reports[0].work_order_id
+              ? input.workOrdersById.get(reports[0].work_order_id) ?? null
+              : null,
+          )
         : null,
   };
 }
@@ -1593,9 +1623,7 @@ export async function loadVehicleWorkspaceSnapshot(input: {
     activeWork.push({
       kind: isEstimate ? "estimate" : "work_order",
       title: isEstimate
-        ? row.estimate_number
-          ? `Estimate ${row.estimate_number}`
-          : `Estimate ${row.id.slice(0, 8)}`
+        ? estimateTitle(row)
         : workOrderLabel(row),
       status: isEstimate ? row.estimate_status ?? row.status : row.status,
       detail: row.approval_state,
@@ -1606,13 +1634,17 @@ export async function loadVehicleWorkspaceSnapshot(input: {
   for (const row of inspections) {
     const status = normalizedOperationalState(row.status);
     if (row.completed || !OPEN_INSPECTION_STATUSES.has(status)) continue;
+    const reference = inspectionReference(
+      row,
+      row.work_order_id ? workOrdersById.get(row.work_order_id) ?? null : null,
+    );
     activeWork.push({
       kind: "inspection",
-      title: inspectionReference(row).sourceLabel,
+      title: reference.sourceLabel,
       status: row.status,
       detail: null,
       occurredAt: row.updated_at ?? row.created_at,
-      reference: inspectionReference(row),
+      reference,
     });
   }
   for (const row of invoices) {
@@ -1644,10 +1676,9 @@ export async function loadVehicleWorkspaceSnapshot(input: {
     activeWork.push({
       kind: "part_request",
       title:
-        requestSummary ??
-        (workOrder ? `Parts for ${workOrderLabel(workOrder)}` : "Parts request"),
+        workOrder ? `Parts for ${workOrderLabel(workOrder)}` : "Parts request",
       status: row.status,
-      detail: workOrder ? `Requested for ${workOrderLabel(workOrder)}` : null,
+      detail: requestSummary,
       occurredAt: row.created_at,
       reference: {
         sourceType: "part_request",

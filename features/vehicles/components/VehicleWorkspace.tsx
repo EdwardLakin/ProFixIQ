@@ -153,7 +153,7 @@ function ActiveWorkCard({
         <StatusPill value={item.status} />
       </div>
       {item.detail ? (
-        <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">
+        <p className="mt-2 line-clamp-3 text-sm text-[color:var(--theme-text-secondary)]">
           {item.detail}
         </p>
       ) : null}
