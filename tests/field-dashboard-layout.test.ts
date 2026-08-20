@@ -27,6 +27,7 @@ describe("Field dashboard layout", () => {
       "followups_due",
       "dispatch_queue",
       "jobs_in_progress",
+      "my_truck",
       "awaiting_approval",
       "parts_required",
       "truck_inventory",

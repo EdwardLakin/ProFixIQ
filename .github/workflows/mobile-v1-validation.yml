@@ -33,6 +33,7 @@ on:
       - "tests/mobile-v1-productization.test.ts"
       - "tests/mobile-v1-post-merge-hardening.test.ts"
       - "tests/mobile/field-truck-inventory.runtime.sql"
+      - "tests/mobile/field-my-truck.runtime.sql"
       - "tests/mobile/mobile-v1-fake-day.runtime.sql"
       - "tests/mobile/mobile-v1-team-dispatch.runtime.sql"
       - "tests/mobile/mobile-v1-codex-hardening.runtime.sql"
@@ -131,6 +132,9 @@ jobs:
             echo "=== Field truck inventory runtime ==="
             psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
               -f tests/mobile/field-truck-inventory.runtime.sql
+            echo "=== Field My Truck isolation runtime ==="
+            psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+              -f tests/mobile/field-my-truck.runtime.sql
           } 2>&1 | tee "$RUNNER_TEMP/mobile-v1-runtime.log"
 
       - name: Upload Mobile V1 runtime diagnostics

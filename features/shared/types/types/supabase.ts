@@ -4466,6 +4466,129 @@ export type Database = {
           },
         ]
       }
+      field_truck_records: {
+        Row: {
+          amount: number | null
+          content_type: string | null
+          created_at: string
+          created_by_profile_id: string | null
+          currency: string | null
+          due_odometer: number | null
+          due_on: string | null
+          ends_at: string | null
+          file_bucket: string | null
+          file_path: string | null
+          file_size_bytes: number | null
+          id: string
+          notes: string | null
+          occurred_on: string | null
+          odometer: number | null
+          odometer_unit: string | null
+          operation_key: string
+          original_filename: string | null
+          record_type: string
+          service_vehicle_id: string
+          shop_id: string
+          starts_at: string | null
+          status: string
+          title: string
+          updated_at: string
+          vendor: string | null
+        }
+        Insert: {
+          amount?: number | null
+          content_type?: string | null
+          created_at?: string
+          created_by_profile_id?: string | null
+          currency?: string | null
+          due_odometer?: number | null
+          due_on?: string | null
+          ends_at?: string | null
+          file_bucket?: string | null
+          file_path?: string | null
+          file_size_bytes?: number | null
+          id?: string
+          notes?: string | null
+          occurred_on?: string | null
+          odometer?: number | null
+          odometer_unit?: string | null
+          operation_key: string
+          original_filename?: string | null
+          record_type: string
+          service_vehicle_id: string
+          shop_id: string
+          starts_at?: string | null
+          status?: string
+          title: string
+          updated_at?: string
+          vendor?: string | null
+        }
+        Update: {
+          amount?: number | null
+          content_type?: string | null
+          created_at?: string
+          created_by_profile_id?: string | null
+          currency?: string | null
+          due_odometer?: number | null
+          due_on?: string | null
+          ends_at?: string | null
+          file_bucket?: string | null
+          file_path?: string | null
+          file_size_bytes?: number | null
+          id?: string
+          notes?: string | null
+          occurred_on?: string | null
+          odometer?: number | null
+          odometer_unit?: string | null
+          operation_key?: string
+          original_filename?: string | null
+          record_type?: string
+          service_vehicle_id?: string
+          shop_id?: string
+          starts_at?: string | null
+          status?: string
+          title?: string
+          updated_at?: string
+          vendor?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "field_truck_records_created_by_profile_id_fkey"
+            columns: ["created_by_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "field_truck_records_service_vehicle_id_fkey"
+            columns: ["service_vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "service_vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "field_truck_records_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "field_truck_records_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "field_truck_records_vehicle_shop_fk"
+            columns: ["shop_id", "service_vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "service_vehicles"
+            referencedColumns: ["shop_id", "id"]
+          },
+        ]
+      }
       fleet_defect_clarifications: {
         Row: {
           closed_at: string | null
@@ -28305,6 +28428,10 @@ export type Database = {
         Args: { p_claim_token: string; p_error: string; p_event_id: string }
         Returns: boolean
       }
+      field_actor_can_access_service_vehicle: {
+        Args: { p_service_vehicle_id: string; p_shop_id: string }
+        Returns: boolean
+      }
       field_receive_po_part_to_truck_atomic: {
         Args: {
           p_actor_user_id: string
@@ -28351,6 +28478,7 @@ export type Database = {
         }
         Returns: Json
       }
+      field_storage_path_uuid: { Args: { p_value: string }; Returns: string }
       field_transfer_stock_to_truck_atomic: {
         Args: {
           p_actor_user_id: string
@@ -31076,4 +31204,3 @@ export const Constants = {
     },
   },
 } as const
-
