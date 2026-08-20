@@ -49,14 +49,18 @@ const PARTS_PICK_RELEASED_STATUSES = new Set([
   "partially_ordered",
   "partially_consumed",
   "partially_returned",
+  "fulfilled",
+  "returned",
 ]);
 
 const PARTS_PICK_TERMINAL_ITEM_STATUSES = new Set([
   "cancelled",
   "canceled",
   "rejected",
-  "returned",
 ]);
+
+const PARTS_PICK_REQUEST_PAGE_SIZE = 200;
+const PARTS_PICK_ITEM_PAGE_SIZE = 1000;
 
 function normalizeAssistantNotificationStatus(
   value: unknown,
@@ -185,87 +189,107 @@ async function getDurablePartsPickNotifications(params: {
   shopId: string;
 }): Promise<PersistedAssistantNotification[]> {
   const supabase = getServerSupabase();
-  const { data: requests, error: requestError } = await supabase
-    .from("part_requests")
-    .select(
-      "id, shop_id, work_order_id, job_id, status, pick_requested_at, pick_request_source",
-    )
-    .eq("shop_id", params.shopId)
-    .not("pick_requested_at", "is", null)
-    .limit(200);
+  const notifications: PersistedAssistantNotification[] = [];
 
-  if (requestError) throw new Error(requestError.message);
+  for (
+    let requestOffset = 0;
+    ;
+    requestOffset += PARTS_PICK_REQUEST_PAGE_SIZE
+  ) {
+    const { data: requests, error: requestError } = await supabase
+      .from("part_requests")
+      .select(
+        "id, shop_id, work_order_id, job_id, status, pick_requested_at, pick_request_source",
+      )
+      .eq("shop_id", params.shopId)
+      .not("pick_requested_at", "is", null)
+      .in("status", Array.from(PARTS_PICK_RELEASED_STATUSES))
+      .order("pick_requested_at", { ascending: false })
+      .order("id", { ascending: true })
+      .range(
+        requestOffset,
+        requestOffset + PARTS_PICK_REQUEST_PAGE_SIZE - 1,
+      );
 
-  const activeRequests = (requests ?? []).filter((request) =>
-    PARTS_PICK_RELEASED_STATUSES.has(
-      String(request.status ?? "")
-        .trim()
-        .toLowerCase(),
-    ),
-  );
+    if (requestError) throw new Error(requestError.message);
 
-  if (activeRequests.length === 0) return [];
+    const requestPage = requests ?? [];
+    if (requestPage.length === 0) break;
 
-  const requestIds = activeRequests.map((request) => request.id);
-  const { data: items, error: itemError } = await supabase
-    .from("part_request_items")
-    .select(
-      "request_id, status, qty, qty_requested, qty_approved, qty_reserved, qty_consumed, qty_returned",
-    )
-    .eq("shop_id", params.shopId)
-    .in("request_id", requestIds);
+    const requestIds = requestPage.map((request) => request.id);
+    const totals = new Map<string, { required: number; remaining: number }>();
 
-  if (itemError) throw new Error(itemError.message);
+    for (
+      let itemOffset = 0;
+      ;
+      itemOffset += PARTS_PICK_ITEM_PAGE_SIZE
+    ) {
+      const { data: items, error: itemError } = await supabase
+        .from("part_request_items")
+        .select(
+          "id, request_id, status, qty, qty_requested, qty_approved, qty_reserved, qty_consumed, qty_returned",
+        )
+        .eq("shop_id", params.shopId)
+        .in("request_id", requestIds)
+        .order("id", { ascending: true })
+        .range(itemOffset, itemOffset + PARTS_PICK_ITEM_PAGE_SIZE - 1);
 
-  const totals = new Map<string, { required: number; remaining: number }>();
-  for (const item of items ?? []) {
-    const requestId = item.request_id;
-    if (!requestId) continue;
+      if (itemError) throw new Error(itemError.message);
 
-    const itemStatus = String(item.status ?? "")
-      .trim()
-      .toLowerCase();
-    if (PARTS_PICK_TERMINAL_ITEM_STATUSES.has(itemStatus)) continue;
+      const itemPage = items ?? [];
+      for (const item of itemPage) {
+        const requestId = item.request_id;
+        if (!requestId) continue;
 
-    const required = Math.max(
-      Number(item.qty_approved ?? 0),
-      Number(item.qty_requested ?? 0),
-      Number(item.qty ?? 0),
-      0,
-    );
-    const staged =
-      Number(item.qty_reserved ?? 0) +
-      Math.max(
-        Number(item.qty_consumed ?? 0) - Number(item.qty_returned ?? 0),
+        const itemStatus = String(item.status ?? "")
+          .trim()
+          .toLowerCase();
+        if (PARTS_PICK_TERMINAL_ITEM_STATUSES.has(itemStatus)) continue;
+
+        const required = Math.max(
+          Number(item.qty_approved ?? 0),
+          Number(item.qty_requested ?? 0),
+          Number(item.qty ?? 0),
+          0,
+        );
+        const staged =
+          Number(item.qty_reserved ?? 0) +
+          Math.max(
+            Number(item.qty_consumed ?? 0) - Number(item.qty_returned ?? 0),
+            0,
+          );
+        const remaining = Math.max(required - staged, 0);
+        const current = totals.get(requestId) ?? { required: 0, remaining: 0 };
+        current.required += required;
+        current.remaining += remaining;
+        totals.set(requestId, current);
+      }
+
+      if (itemPage.length < PARTS_PICK_ITEM_PAGE_SIZE) break;
+    }
+
+    for (const request of requestPage) {
+      const requestedAt = request.pick_requested_at;
+      if (!requestedAt || !request.work_order_id || !request.job_id) continue;
+
+      const requestTotals = totals.get(request.id) ?? {
+        required: 0,
+        remaining: 0,
+      };
+      if (requestTotals.required <= 0 || requestTotals.remaining <= 0) continue;
+
+      const staged = Math.max(
+        requestTotals.required - requestTotals.remaining,
         0,
       );
-    const remaining = Math.max(required - staged, 0);
-    const current = totals.get(requestId) ?? { required: 0, remaining: 0 };
-    current.required += required;
-    current.remaining += remaining;
-    totals.set(requestId, current);
-  }
+      const source =
+        String(request.pick_request_source ?? "")
+          .trim()
+          .toLowerCase() === "job_start"
+          ? "job_start"
+          : "manual";
 
-  return activeRequests.flatMap((request) => {
-    const requestedAt = request.pick_requested_at;
-    if (!requestedAt || !request.work_order_id || !request.job_id) return [];
-
-    const requestTotals = totals.get(request.id) ?? { required: 0, remaining: 0 };
-    if (requestTotals.required <= 0 || requestTotals.remaining <= 0) return [];
-
-    const staged = Math.max(
-      requestTotals.required - requestTotals.remaining,
-      0,
-    );
-    const source =
-      String(request.pick_request_source ?? "")
-        .trim()
-        .toLowerCase() === "job_start"
-        ? "job_start"
-        : "manual";
-
-    return [
-      {
+      notifications.push({
         id: `parts-pick:${request.id}`,
         shop_id: request.shop_id,
         user_id: null,
@@ -273,13 +297,13 @@ async function getDurablePartsPickNotifications(params: {
         source: "parts_pick_workflow",
         fingerprint: `parts-pick-request::${request.id}`,
         code: "parts_pick_requested",
-        level: "warning" as const,
+        level: "warning",
         title: "Parts pick requested",
         message: `${requestTotals.remaining} approved part quantity remains to be picked/staged now.`,
         href: `/parts/requests/${request.id}`,
         entity_type: "part_request",
         entity_id: request.id,
-        status: "active" as const,
+        status: "active",
         metadata: {
           workOrderId: request.work_order_id,
           workOrderLineId: request.job_id,
@@ -297,9 +321,13 @@ async function getDurablePartsPickNotifications(params: {
         resolved_at: null,
         created_at: requestedAt,
         updated_at: requestedAt,
-      },
-    ];
-  });
+      });
+    }
+
+    if (requestPage.length < PARTS_PICK_REQUEST_PAGE_SIZE) break;
+  }
+
+  return notifications;
 }
 
 export async function syncAssistantNotifications(params: {
