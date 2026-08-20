@@ -463,6 +463,27 @@ $workspace_authorization_mechanic_denied$;
 
 reset role;
 
+-- Inspect the canonical assignment relationship outside the mechanic's RLS
+-- context. An unrelated mechanic correctly cannot select this line, so this
+-- precondition must not run while impersonating that actor.
+do $workspace_authorization_lead_hand_scope_fixture$
+begin
+  if not exists (
+    select 1
+    from public.work_order_lines line
+    where line.id = '71500000-0000-4000-8000-000000000001'
+      and line.assigned_tech_id = '71100000-0000-4000-8000-000000000004'
+  ) or exists (
+    select 1
+    from public.work_order_line_technicians assignment
+    where assignment.work_order_line_id = '71500000-0000-4000-8000-000000000001'
+      and assignment.technician_id = '71100000-0000-4000-8000-000000000003'
+  ) then
+    raise exception 'Lead Hand scope fixture was already related to the mechanic.';
+  end if;
+end
+$workspace_authorization_lead_hand_scope_fixture$;
+
 -- Owner grants only the assignment capability to the mechanic. This is the
 -- Lead Hand-style individual exception without changing the employee role.
 set local role authenticated;
@@ -524,20 +545,6 @@ begin
      or not coalesce(v_granted, false)
      or v_source is distinct from 'individual_override' then
     raise exception 'Individual assignment override resolved incorrectly.';
-  end if;
-
-  if not exists (
-    select 1
-    from public.work_order_lines line
-    where line.id = '71500000-0000-4000-8000-000000000001'
-      and line.assigned_tech_id = '71100000-0000-4000-8000-000000000004'
-  ) or exists (
-    select 1
-    from public.work_order_line_technicians assignment
-    where assignment.work_order_line_id = '71500000-0000-4000-8000-000000000001'
-      and assignment.technician_id = '71100000-0000-4000-8000-000000000003'
-  ) then
-    raise exception 'Lead Hand scope fixture was already related to the mechanic.';
   end if;
 
   select public.assign_work_order_line_technician_atomic(
