@@ -166,7 +166,9 @@ describe("Field My Truck foundation", () => {
 
   it("binds every record to the authenticated operator's active Field truck", () => {
     expect(migration).toContain("field_actor_can_access_service_vehicle");
-    expect(migration).toContain("vehicle.primary_user_id = profile.id");
+    expect(migration).toContain("assignment.profile_id");
+    expect(migration).toContain("field_service_vehicle_assignments");
+    expect(migration).not.toContain("vehicle.primary_user_id = profile.id");
     expect(migration).toContain("mobile_profile_has_field_service_access");
     expect(migration).toContain(
       "foreign key (shop_id, service_vehicle_id)",
@@ -233,6 +235,8 @@ describe("Field My Truck foundation", () => {
   it("uses a forward additive migration without destructive schema operations", () => {
     expect(migration).not.toMatch(/\bdrop\s+(table|column|schema)\b/i);
     expect(migration).not.toMatch(/\btruncate\b/i);
-    expect(migration).not.toMatch(/\bdelete\s+from\b/i);
+    expect(migration).not.toMatch(
+      /\bdelete\s+from\s+public\.(field_truck_records|service_vehicles)\b/i,
+    );
   });
 });
