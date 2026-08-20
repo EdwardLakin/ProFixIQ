@@ -114,6 +114,10 @@ remain protected by grants and RLS where the table is exposed.
 - Protected `team.permissions.manage` presets, delegated grant ceilings, tenant
   checks, peer/higher-authority checks, and canonical operational audit events
   guard the initial management RPCs.
+- The initial Shop Workspace capability resolver accepts only canonical Shop
+  staff roles. Fleet managers, dispatchers, drivers, and customer profiles
+  remain outside this policy domain even if stale policy rows exist; future
+  Fleet Workspace authorization will receive its own resource-scoped contract.
 
 ### What remains after the first effective-capability slice
 
@@ -177,7 +181,8 @@ The four policy tables have RLS enabled and no Data API grants for `anon` or
 `authenticated`. Authenticated callers can use only the deliberately scoped
 RPCs. Authorization data is not stored in user-editable JWT metadata. The
 runtime fixture verifies tenant isolation, linked-profile resolution,
-precedence, privilege ceilings, direct-RPC spoof resistance, and audit events.
+precedence, privilege ceilings, non-Shop role exclusion, direct-RPC spoof
+resistance, and audit events.
 
 Location scope is deliberately not simulated; it requires a canonical
 staff/location relationship before it can be added safely.

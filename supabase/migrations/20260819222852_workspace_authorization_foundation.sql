@@ -211,6 +211,25 @@ as $$
   end;
 $$;
 
+create or replace function private.workspace_is_shop_staff_role(p_role text)
+returns boolean
+language sql
+immutable
+set search_path = ''
+as $$
+  select private.workspace_canonical_role(p_role) = any(array[
+    'owner',
+    'admin',
+    'manager',
+    'advisor',
+    'service',
+    'parts',
+    'mechanic',
+    'lead_hand',
+    'foreman'
+  ]::text[]);
+$$;
+
 create or replace function private.resolve_workspace_profile_capability(
   p_profile_id uuid,
   p_shop_id uuid,
@@ -237,7 +256,7 @@ begin
   where profile.id = p_profile_id
     and profile.shop_id = p_shop_id;
 
-  if not found or v_role = 'unknown' then
+  if not found or not private.workspace_is_shop_staff_role(v_role) then
     return query select false, 'unavailable'::text, 'deny'::text;
     return;
   end if;
@@ -322,7 +341,9 @@ begin
            profile.id
   limit 1;
 
-  if v_profile_id is null or v_shop_id is null or v_role = 'unknown' then
+  if v_profile_id is null
+     or v_shop_id is null
+     or not private.workspace_is_shop_staff_role(v_role) then
     raise exception using errcode = '42501', message = 'A shop staff profile is required.';
   end if;
 
@@ -390,7 +411,9 @@ begin
            profile.id
   limit 1;
 
-  if v_actor_profile_id is null or v_actor_shop_id is null then
+  if v_actor_profile_id is null
+     or v_actor_shop_id is null
+     or not private.workspace_is_shop_staff_role(v_actor_role) then
     raise exception using errcode = '42501', message = 'A shop staff profile is required.';
   end if;
   if p_target_profile_id = v_actor_profile_id then
@@ -442,7 +465,7 @@ begin
   from public.profiles profile
   where profile.id = p_target_profile_id
     and profile.shop_id = v_actor_shop_id;
-  if not found or v_target_role = 'unknown' then
+  if not found or not private.workspace_is_shop_staff_role(v_target_role) then
     raise exception using errcode = '42501', message = 'Target employee is not available for this shop.';
   end if;
   if v_actor_role <> 'owner'
@@ -578,7 +601,8 @@ begin
   if v_effect not in ('inherit', 'allow', 'deny') then
     raise exception using errcode = '22023', message = 'Effect must be INHERIT, ALLOW, or DENY.';
   end if;
-  if v_target_role in ('unknown', 'owner') then
+  if not private.workspace_is_shop_staff_role(v_target_role)
+     or v_target_role = 'owner' then
     raise exception using errcode = '42501', message = 'This role policy cannot be modified.';
   end if;
 
@@ -595,7 +619,9 @@ begin
            profile.id
   limit 1;
 
-  if v_actor_profile_id is null or v_actor_shop_id is null then
+  if v_actor_profile_id is null
+     or v_actor_shop_id is null
+     or not private.workspace_is_shop_staff_role(v_actor_role) then
     raise exception using errcode = '42501', message = 'A shop staff profile is required.';
   end if;
 
@@ -1096,6 +1122,8 @@ $$;
 revoke all on function private.workspace_canonical_role(text)
   from public, anon, authenticated, service_role;
 revoke all on function private.workspace_role_rank(text)
+  from public, anon, authenticated, service_role;
+revoke all on function private.workspace_is_shop_staff_role(text)
   from public, anon, authenticated, service_role;
 revoke all on function private.resolve_workspace_profile_capability(uuid, uuid, text)
   from public, anon, authenticated, service_role;

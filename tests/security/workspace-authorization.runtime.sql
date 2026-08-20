@@ -28,6 +28,21 @@ values
     '71100000-0000-4000-8000-000000000005',
     'workspace-auth-owner-b@example.com',
     '{"full_name":"Workspace Auth Owner B"}'::jsonb
+  ),
+  (
+    '71100000-0000-4000-8000-000000000006',
+    'workspace-auth-fleet-manager-a@example.com',
+    '{"full_name":"Workspace Auth Fleet Manager A"}'::jsonb
+  ),
+  (
+    '71100000-0000-4000-8000-000000000007',
+    'workspace-auth-dispatcher-a@example.com',
+    '{"full_name":"Workspace Auth Dispatcher A"}'::jsonb
+  ),
+  (
+    '71100000-0000-4000-8000-000000000008',
+    'workspace-auth-driver-a@example.com',
+    '{"full_name":"Workspace Auth Driver A"}'::jsonb
   );
 
 -- The manager fixture deliberately uses a canonical profiles.id different
@@ -63,6 +78,24 @@ values
     '71100000-0000-4000-8000-000000000005',
     'owner',
     'Workspace Auth Owner B'
+  ),
+  (
+    '71100000-0000-4000-8000-000000000006',
+    '71100000-0000-4000-8000-000000000006',
+    'fleet_manager',
+    'Workspace Auth Fleet Manager A'
+  ),
+  (
+    '71100000-0000-4000-8000-000000000007',
+    '71100000-0000-4000-8000-000000000007',
+    'dispatcher',
+    'Workspace Auth Dispatcher A'
+  ),
+  (
+    '71100000-0000-4000-8000-000000000008',
+    '71100000-0000-4000-8000-000000000008',
+    'driver',
+    'Workspace Auth Driver A'
   );
 
 insert into public.shops (id, owner_id, business_name, name)
@@ -91,7 +124,10 @@ where id in (
   '71200000-0000-4000-8000-000000000002',
   '71100000-0000-4000-8000-000000000003',
   '71100000-0000-4000-8000-000000000004',
-  '71100000-0000-4000-8000-000000000005'
+  '71100000-0000-4000-8000-000000000005',
+  '71100000-0000-4000-8000-000000000006',
+  '71100000-0000-4000-8000-000000000007',
+  '71100000-0000-4000-8000-000000000008'
 );
 
 insert into public.work_orders (id, shop_id, custom_id, status)
@@ -191,6 +227,99 @@ begin
 end
 $workspace_authorization_schema$;
 
+-- Even if stale or service-authored rows exist, Fleet/portal roles must not
+-- acquire Shop Workspace authority from role policies or individual overrides.
+insert into public.shop_role_capability_policies (
+  shop_id,
+  role_key,
+  capability_key,
+  effect,
+  changed_by_profile_id
+)
+select
+  '71300000-0000-4000-8000-000000000001'::uuid,
+  role_key,
+  'work_order.assignment.manage',
+  'allow',
+  '71100000-0000-4000-8000-000000000001'::uuid
+from unnest(array['fleet_manager', 'dispatcher', 'driver']) role_key;
+
+insert into public.staff_capability_overrides (
+  shop_id,
+  profile_id,
+  capability_key,
+  effect,
+  changed_by_profile_id
+)
+select
+  '71300000-0000-4000-8000-000000000001'::uuid,
+  profile_id,
+  'work_order.assignment.manage',
+  'allow',
+  '71100000-0000-4000-8000-000000000001'::uuid
+from unnest(array[
+  '71100000-0000-4000-8000-000000000006'::uuid,
+  '71100000-0000-4000-8000-000000000007'::uuid,
+  '71100000-0000-4000-8000-000000000008'::uuid
+]) profile_id;
+
+set local role authenticated;
+
+do $workspace_authorization_non_shop_actors$
+declare
+  v_actor record;
+  v_resolver_denied boolean;
+  v_assignment_denied boolean;
+begin
+  for v_actor in
+    select *
+    from (values
+      ('71100000-0000-4000-8000-000000000006'::uuid, 'fleet_manager'::text),
+      ('71100000-0000-4000-8000-000000000007'::uuid, 'dispatcher'::text),
+      ('71100000-0000-4000-8000-000000000008'::uuid, 'driver'::text)
+    ) actor(user_id, role_key)
+  loop
+    perform set_config(
+      'request.jwt.claims',
+      jsonb_build_object('sub', v_actor.user_id, 'role', 'authenticated')::text,
+      true
+    );
+
+    v_resolver_denied := false;
+    begin
+      perform 1
+      from public.workspace_current_actor_capabilities(
+        array['work_order.assignment.manage']
+      );
+    exception when insufficient_privilege then
+      v_resolver_denied := true;
+    end;
+
+    v_assignment_denied := false;
+    begin
+      perform public.assign_work_order_line_technician_atomic(
+        '71300000-0000-4000-8000-000000000001',
+        '71500000-0000-4000-8000-000000000001',
+        '71100000-0000-4000-8000-000000000004',
+        v_actor.user_id,
+        'workspace-authorization-non-shop-' || v_actor.role_key
+      );
+    exception when insufficient_privilege then
+      v_assignment_denied := true;
+    end;
+
+    if not v_resolver_denied or not v_assignment_denied then
+      raise exception 'Non-Shop role escaped Workspace authorization: %, resolver %, assignment %',
+        v_actor.role_key,
+        v_resolver_denied,
+        v_assignment_denied;
+    end if;
+  end loop;
+end
+$workspace_authorization_non_shop_actors$;
+
+reset role;
+
 -- The canonical owner preset can assign and establishes an idempotent result.
 set local role authenticated;
 select set_config(
@@ -198,6 +327,52 @@ select set_config(
   '{"sub":"71100000-0000-4000-8000-000000000001","role":"authenticated"}',
   true
 );
+
+do $workspace_authorization_non_shop_policy_admin$
+declare
+  v_target record;
+  v_override_denied boolean;
+  v_policy_denied boolean;
+begin
+  for v_target in
+    select *
+    from (values
+      ('71100000-0000-4000-8000-000000000006'::uuid, 'fleet_manager'::text),
+      ('71100000-0000-4000-8000-000000000007'::uuid, 'dispatcher'::text),
+      ('71100000-0000-4000-8000-000000000008'::uuid, 'driver'::text)
+    ) target(profile_id, role_key)
+  loop
+    v_override_denied := false;
+    begin
+      perform public.set_staff_capability_override_atomic(
+        v_target.profile_id,
+        'work_order.assignment.manage',
+        'allow'
+      );
+    exception when insufficient_privilege then
+      v_override_denied := true;
+    end;
+
+    v_policy_denied := false;
+    begin
+      perform public.set_shop_role_capability_policy_atomic(
+        v_target.role_key,
+        'work_order.assignment.manage',
+        'allow'
+      );
+    exception when insufficient_privilege then
+      v_policy_denied := true;
+    end;
+
+    if not v_override_denied or not v_policy_denied then
+      raise exception 'Owner delegated Shop Workspace authority to non-Shop role: %, override %, policy %',
+        v_target.role_key,
+        v_override_denied,
+        v_policy_denied;
+    end if;
+  end loop;
+end
+$workspace_authorization_non_shop_policy_admin$;
 
 do $workspace_authorization_owner_assignment$
 declare
