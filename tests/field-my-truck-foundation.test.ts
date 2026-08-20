@@ -63,6 +63,22 @@ describe("Field My Truck foundation", () => {
     expect(server).toContain("input.monthKey");
   });
 
+  it("keeps My Truck assignment and retries inside the additive boundary", () => {
+    expect(migration).toContain("field_service_vehicle_assignments");
+    expect(migration).toContain("field-truck-profile:");
+    expect(migration).toContain("field-truck-vehicle:");
+    expect(migration).not.toContain("set primary_user_id = p_profile_id");
+    expect(migration).toContain("currency ~ '^[A-Z]{3}$'");
+    expect(migration).toContain("jsonb_build_object('replayed', true)");
+    expect(migration).toContain("'work_order.assignment.manage',\n  'service'");
+    expect(server).toContain('.from("field_service_vehicle_assignments")');
+    expect(screen).toContain('name="odometerUnit"');
+    expect(screen).toContain('record.odometer_unit ?? "km"');
+    expect(fileRoute).toContain("4 * 1024 * 1024");
+    expect(runtime).toContain("mutable scheduler assignment granted ledger access");
+    expect(runtime).toContain("invalid currency was accepted");
+  });
+
   it("summarizes latest mileage, current alerts, downtime and monthly costs", () => {
     const summary = buildFieldMyTruckSummary(
       [

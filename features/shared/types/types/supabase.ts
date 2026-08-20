@@ -4397,6 +4397,62 @@ export type Database = {
         }
         Relationships: []
       }
+      field_service_vehicle_assignments: {
+        Row: {
+          assigned_by_profile_id: string | null
+          created_at: string
+          profile_id: string
+          service_vehicle_id: string
+          shop_id: string
+          updated_at: string
+        }
+        Insert: {
+          assigned_by_profile_id?: string | null
+          created_at?: string
+          profile_id: string
+          service_vehicle_id: string
+          shop_id: string
+          updated_at?: string
+        }
+        Update: {
+          assigned_by_profile_id?: string | null
+          created_at?: string
+          profile_id?: string
+          service_vehicle_id?: string
+          shop_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "field_service_vehicle_assignments_assigned_by_profile_id_fkey"
+            columns: ["assigned_by_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "field_service_vehicle_assignments_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "field_service_vehicle_assignments_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "field_service_vehicle_assignments_vehicle_shop_fk"
+            columns: ["shop_id", "service_vehicle_id"]
+            isOneToOne: true
+            referencedRelation: "service_vehicles"
+            referencedColumns: ["shop_id", "id"]
+          },
+        ]
+      }
       field_truck_records: {
         Row: {
           amount: number | null

@@ -19,15 +19,22 @@ export async function resolveAssignedFieldTruck(input: {
   shopId: string;
   profileId: string;
 }) {
+  const { data: assignment, error: assignmentError } = await input.supabase
+    .from("field_service_vehicle_assignments")
+    .select("service_vehicle_id")
+    .eq("shop_id", input.shopId)
+    .eq("profile_id", input.profileId)
+    .maybeSingle<{ service_vehicle_id: string }>();
+  if (assignmentError) throw new Error(assignmentError.message);
+  if (!assignment) return null;
+
   const { data, error } = await input.supabase
     .from("service_vehicles")
     .select("id,name,unit_number")
+    .eq("id", assignment.service_vehicle_id)
     .eq("shop_id", input.shopId)
-    .eq("primary_user_id", input.profileId)
     .eq("active", true)
     .contains("capabilities", { mobile_v1: true })
-    .order("created_at", { ascending: true })
-    .limit(1)
     .maybeSingle<{ id: string; name: string; unit_number: string | null }>();
   if (error) throw new Error(error.message);
   return data ?? null;

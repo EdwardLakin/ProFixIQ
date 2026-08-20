@@ -70,7 +70,8 @@ async function readSettings(
   }> = [];
 
   if (canConfigure) {
-    const [operatorsResult, vehiclesResult] = await Promise.all([
+    const admin = createAdminSupabase();
+    const [operatorsResult, vehiclesResult, assignmentsResult] = await Promise.all([
       access.supabase
         .from("mobile_field_operators")
         .select("profile_id")
@@ -78,22 +79,28 @@ async function readSettings(
         .eq("enabled", true),
       access.supabase
         .from("service_vehicles")
-        .select("id,name,unit_number,primary_user_id")
+        .select("id,name,unit_number")
         .eq("shop_id", access.profile.shop_id)
         .eq("active", true)
         .contains("capabilities", { mobile_v1: true })
         .order("name", { ascending: true }),
+      admin
+        .from("field_service_vehicle_assignments")
+        .select("service_vehicle_id,profile_id")
+        .eq("shop_id", access.profile.shop_id),
     ]);
-    if (operatorsResult.error || vehiclesResult.error) {
+    if (operatorsResult.error || vehiclesResult.error || assignmentsResult.error) {
       throw new Error(
-        operatorsResult.error?.message ?? vehiclesResult.error?.message,
+        operatorsResult.error?.message ??
+          vehiclesResult.error?.message ??
+          assignmentsResult.error?.message,
       );
     }
     const profileIds = (operatorsResult.data ?? []).map(
       (operator) => operator.profile_id,
     );
     const profilesResult = profileIds.length
-      ? await createAdminSupabase()
+      ? await admin
           .from("profiles")
           .select("id,full_name,email")
           .eq("shop_id", access.profile.shop_id)
@@ -106,7 +113,10 @@ async function readSettings(
       id: vehicle.id,
       name: vehicle.name,
       unitNumber: vehicle.unit_number,
-      primaryUserId: vehicle.primary_user_id,
+      primaryUserId:
+        (assignmentsResult.data ?? []).find(
+          (assignment) => assignment.service_vehicle_id === vehicle.id,
+        )?.profile_id ?? null,
     }));
     fieldTeam = (profilesResult.data ?? []).map((profile) => ({
       profileId: profile.id,

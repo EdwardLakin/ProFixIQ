@@ -192,7 +192,13 @@ function RecordForm({
               <input className={inputClass} name="dueOn" type="date" />
             </Field>
             <Field label="Due odometer">
-              <input className={inputClass} name="dueOdometer" type="number" min="0" step="0.1" />
+              <div className="grid grid-cols-[minmax(0,1fr)_5.5rem] gap-2">
+                <input className={inputClass} name="dueOdometer" type="number" min="0" step="0.1" />
+                <select className={inputClass} name="odometerUnit" defaultValue="km">
+                  <option value="km">km</option>
+                  <option value="mi">mi</option>
+                </select>
+              </div>
             </Field>
           </>
         ) : null}
@@ -215,7 +221,7 @@ function RecordForm({
         ) : null}
 
         {isUpload ? (
-          <Field label={type === "expense" ? "Receipt (optional)" : "File"}>
+          <Field label={type === "expense" ? "Receipt (optional, max 4 MB)" : "File (max 4 MB)"}>
             <input
               className={`${inputClass} py-2`}
               name="file"
@@ -271,7 +277,7 @@ function RecordRow({
         {record.amount !== null ? <span>{money(Number(record.amount), record.currency ?? "CAD")}</span> : null}
         {record.vendor ? <span>{record.vendor}</span> : null}
         {record.due_on ? <span>Due {displayDate(record.due_on)}</span> : null}
-        {record.due_odometer !== null ? <span>Due at {Number(record.due_odometer).toLocaleString()}</span> : null}
+        {record.due_odometer !== null ? <span>Due at {Number(record.due_odometer).toLocaleString()} {record.odometer_unit ?? "km"}</span> : null}
         {record.starts_at ? <span>From {new Date(record.starts_at).toLocaleString()}</span> : null}
         {record.ends_at ? <span>To {new Date(record.ends_at).toLocaleString()}</span> : null}
       </div>

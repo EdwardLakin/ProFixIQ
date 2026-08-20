@@ -15,7 +15,7 @@ import { requireMobileServiceOperatorApiAccess } from "@/features/mobile/service
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 const BUCKET = "field-truck-files";
-const MAX_FILE_BYTES = 10 * 1024 * 1024;
+const MAX_FILE_BYTES = 4 * 1024 * 1024;
 const EXTENSIONS = new Map([
   ["application/pdf", "pdf"],
   ["image/jpeg", "jpg"],
@@ -121,7 +121,7 @@ export async function POST(request: Request) {
     return errorResponse("Choose a non-empty file.");
   }
   if (file.size > MAX_FILE_BYTES) {
-    return errorResponse("Truck files must be 10 MB or smaller.", 413);
+    return errorResponse("Truck files must be 4 MB or smaller.", 413);
   }
   const extension = EXTENSIONS.get(file.type.toLowerCase());
   if (!extension) return errorResponse("Upload a PDF, JPEG, PNG, or WebP file.");

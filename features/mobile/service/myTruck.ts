@@ -106,7 +106,11 @@ export function isDateKey(value: unknown): value is string {
 }
 
 export function isIsoTimestamp(value: unknown): value is string {
-  return typeof value === "string" && !Number.isNaN(Date.parse(value));
+  return (
+    typeof value === "string" &&
+    /T.*(?:Z|[+-]\d{2}:\d{2})$/.test(value) &&
+    !Number.isNaN(Date.parse(value))
+  );
 }
 
 export function isUuid(value: unknown): value is string {

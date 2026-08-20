@@ -102,6 +102,24 @@ values
   )
 on conflict (id) do nothing;
 
+insert into public.field_service_vehicle_assignments (
+  shop_id, service_vehicle_id, profile_id, assigned_by_profile_id
+)
+values
+  (
+    '8f200000-0000-4000-8000-000000000001',
+    '8f300000-0000-4000-8000-000000000001',
+    '8f100000-0000-4000-8000-000000000001',
+    '8f100000-0000-4000-8000-000000000001'
+  ),
+  (
+    '8f200000-0000-4000-8000-000000000001',
+    '8f300000-0000-4000-8000-000000000002',
+    '8f100000-0000-4000-8000-000000000002',
+    '8f100000-0000-4000-8000-000000000001'
+  )
+on conflict do nothing;
+
 insert into public.field_truck_records (
   id, shop_id, service_vehicle_id, operation_key, record_type, title,
   due_on, status, created_by_profile_id
@@ -195,6 +213,27 @@ begin
   end;
 
   begin
+    insert into public.field_truck_records (
+      shop_id, service_vehicle_id, operation_key, record_type, title,
+      occurred_on, amount, currency, status, created_by_profile_id
+    ) values (
+      '8f200000-0000-4000-8000-000000000001',
+      '8f300000-0000-4000-8000-000000000001',
+      'runtime-invalid-currency',
+      'expense',
+      'Invalid currency',
+      current_date,
+      1,
+      'X',
+      'completed',
+      '8f100000-0000-4000-8000-000000000001'
+    );
+    raise exception 'My Truck runtime failed: invalid currency was accepted';
+  exception when check_violation then
+    null;
+  end;
+
+  begin
     update public.field_truck_records
     set status = 'completed'
     where id = '8f400000-0000-4000-8000-000000000001';
@@ -216,6 +255,23 @@ begin
     raise exception 'My Truck runtime failed: assigned reminder was not completed';
   end if;
 
+  -- Lost HTTP responses must be safe to retry.
+  perform public.field_transition_truck_record(
+    '8f400000-0000-4000-8000-000000000001',
+    'complete',
+    null
+  );
+  perform public.field_transition_truck_record(
+    '8f400000-0000-4000-8000-000000000001',
+    'reopen',
+    null
+  );
+  perform public.field_transition_truck_record(
+    '8f400000-0000-4000-8000-000000000001',
+    'reopen',
+    null
+  );
+
   begin
     perform public.field_transition_truck_record(
       '8f400000-0000-4000-8000-000000000001',
@@ -236,7 +292,43 @@ begin
     null;
   end;
 end;
-$$;
+$;
+
+reset role;
+
+-- Legacy scheduler writes to primary_user_id must not grant My Truck access.
+select set_config('request.jwt.claim.role', 'authenticated', true);
+select set_config('request.jwt.claim.sub', '8f100000-0000-4000-8000-000000000002', true);
+set local role authenticated;
+
+update public.service_vehicles
+set primary_user_id = '8f100000-0000-4000-8000-000000000002'
+where id = '8f300000-0000-4000-8000-000000000001';
+
+do $
+begin
+  if exists (
+    select 1
+    from public.field_truck_records
+    where service_vehicle_id = '8f300000-0000-4000-8000-000000000001'
+  ) then
+    raise exception 'My Truck runtime failed: mutable scheduler assignment granted ledger access';
+  end if;
+
+  begin
+    insert into public.field_service_vehicle_assignments (
+      shop_id, service_vehicle_id, profile_id
+    ) values (
+      '8f200000-0000-4000-8000-000000000001',
+      '8f300000-0000-4000-8000-000000000001',
+      '8f100000-0000-4000-8000-000000000002'
+    );
+    raise exception 'My Truck runtime failed: operator self-assignment was accepted';
+  exception when insufficient_privilege then
+    null;
+  end;
+end;
+$;
 
 reset role;
 rollback;
