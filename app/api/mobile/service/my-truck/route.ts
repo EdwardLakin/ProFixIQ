@@ -275,13 +275,14 @@ export async function PATCH(request: Request) {
     }
   }
 
-  const { data, error } = await access.supabase
-    .rpc("field_transition_truck_record", {
+  const { data, error } = await access.supabase.rpc(
+    "field_transition_truck_record",
+    {
       p_record_id: existing.id,
       p_action: String(action),
-      p_ended_at: endedAt,
-    })
-    .single();
+      ...(endedAt ? { p_ended_at: endedAt } : {}),
+    },
+  );
   if (error) return errorResponse("Truck record could not be updated.", 409);
   return NextResponse.json({ ok: true, record: data });
 }

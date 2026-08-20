@@ -28443,10 +28443,10 @@ export type Database = {
       field_transition_truck_record: {
         Args: {
           p_action: string
-          p_ended_at?: string | null
+          p_ended_at?: string
           p_record_id: string
         }
-        Returns: Database["public"]["Tables"]["field_truck_records"]["Row"][]
+        Returns: Json
       }
       field_receive_po_part_to_truck_atomic: {
         Args: {

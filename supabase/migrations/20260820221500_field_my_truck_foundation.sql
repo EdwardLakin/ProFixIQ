@@ -206,13 +206,14 @@ create or replace function public.field_transition_truck_record(
   p_record_id uuid,
   p_action text,
   p_ended_at timestamptz default null
-) returns setof public.field_truck_records
+) returns jsonb
 language plpgsql
 security definer
 set search_path = public, pg_temp
 as $$
 declare
   v_record public.field_truck_records%rowtype;
+  v_updated public.field_truck_records%rowtype;
   v_ended_at timestamptz;
 begin
   select * into v_record
@@ -232,23 +233,21 @@ begin
   if p_action = 'complete'
     and v_record.record_type = 'reminder'
     and v_record.status = 'open' then
-    return query
-      update public.field_truck_records
+    update public.field_truck_records
       set status = 'completed'
       where id = p_record_id
-      returning *;
-    return;
+      returning * into v_updated;
+    return to_jsonb(v_updated);
   end if;
 
   if p_action = 'reopen'
     and v_record.record_type = 'reminder'
     and v_record.status = 'completed' then
-    return query
-      update public.field_truck_records
+    update public.field_truck_records
       set status = 'open'
       where id = p_record_id
-      returning *;
-    return;
+      returning * into v_updated;
+    return to_jsonb(v_updated);
   end if;
 
   if p_action = 'end_downtime'
@@ -260,12 +259,11 @@ begin
       raise exception 'Downtime must end after it starts.'
         using errcode = '22007';
     end if;
-    return query
-      update public.field_truck_records
+    update public.field_truck_records
       set status = 'completed', ends_at = v_ended_at
       where id = p_record_id
-      returning *;
-    return;
+      returning * into v_updated;
+    return to_jsonb(v_updated);
   end if;
 
   raise exception 'Truck record transition is not allowed.'
