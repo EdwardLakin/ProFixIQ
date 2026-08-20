@@ -156,11 +156,22 @@ export async function syncAssistantNotifications(params: {
   const scopeKey = userScoped ? `user:${userId}` : "shop";
   const canonicalRole = canonicalizeRole(role);
   const canSeePartsWorkflow = ["owner", "admin", "manager", "parts"].includes(canonicalRole);
-  const visibleSources = canSeePartsWorkflow
-    ? [source, "parts_workflow"]
-    : userScoped
-      ? [source, "parts_tech_workflow"]
-      : [source];
+  const canSeePartsPickWorkflow = [
+    "owner",
+    "admin",
+    "manager",
+    "parts",
+    "lead_hand",
+    "foreman",
+  ].includes(canonicalRole);
+  const visibleSources = Array.from(
+    new Set([
+      source,
+      ...(canSeePartsWorkflow ? ["parts_workflow"] : []),
+      ...(canSeePartsPickWorkflow ? ["parts_pick_workflow"] : []),
+      ...(userScoped ? ["parts_tech_workflow"] : []),
+    ]),
+  );
 
   let computed = await getOpsNotifications(shopId);
 
