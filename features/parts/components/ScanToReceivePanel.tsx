@@ -233,6 +233,7 @@ export function ScanToReceivePanel(): JSX.Element {
         buildPartTrustMeta({
           sku: trustPart?.sku ?? null,
           partNumber: trustPart?.part_number ?? null,
+          barcode: code,
           normalizedPartKey: trustPart?.normalized_part_key ?? null,
           sourceIntakeId: trustPart?.source_intake_id ?? null,
         }),
