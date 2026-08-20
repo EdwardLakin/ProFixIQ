@@ -4397,75 +4397,6 @@ export type Database = {
         }
         Relationships: []
       }
-      financial_domain_outbox: {
-        Row: {
-          aggregate_id: string
-          aggregate_type: string
-          attempts: number
-          dedupe_key: string
-          delivered_at: string | null
-          event_type: string
-          id: string
-          last_error: string | null
-          lease_expires_at: string | null
-          lease_owner: string | null
-          next_attempt_at: string
-          occurred_at: string
-          payload: Json
-          processing_at: string | null
-          shop_id: string
-        }
-        Insert: {
-          aggregate_id: string
-          aggregate_type: string
-          attempts?: number
-          dedupe_key: string
-          delivered_at?: string | null
-          event_type: string
-          id?: string
-          last_error?: string | null
-          lease_expires_at?: string | null
-          lease_owner?: string | null
-          next_attempt_at?: string
-          occurred_at?: string
-          payload?: Json
-          processing_at?: string | null
-          shop_id: string
-        }
-        Update: {
-          aggregate_id?: string
-          aggregate_type?: string
-          attempts?: number
-          dedupe_key?: string
-          delivered_at?: string | null
-          event_type?: string
-          id?: string
-          last_error?: string | null
-          lease_expires_at?: string | null
-          lease_owner?: string | null
-          next_attempt_at?: string
-          occurred_at?: string
-          payload?: Json
-          processing_at?: string | null
-          shop_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "financial_domain_outbox_shop_id_fkey"
-            columns: ["shop_id"]
-            isOneToOne: false
-            referencedRelation: "shop_public_profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "financial_domain_outbox_shop_id_fkey"
-            columns: ["shop_id"]
-            isOneToOne: false
-            referencedRelation: "shops"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       field_truck_records: {
         Row: {
           amount: number | null
@@ -4586,6 +4517,75 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "service_vehicles"
             referencedColumns: ["shop_id", "id"]
+          },
+        ]
+      }
+      financial_domain_outbox: {
+        Row: {
+          aggregate_id: string
+          aggregate_type: string
+          attempts: number
+          dedupe_key: string
+          delivered_at: string | null
+          event_type: string
+          id: string
+          last_error: string | null
+          lease_expires_at: string | null
+          lease_owner: string | null
+          next_attempt_at: string
+          occurred_at: string
+          payload: Json
+          processing_at: string | null
+          shop_id: string
+        }
+        Insert: {
+          aggregate_id: string
+          aggregate_type: string
+          attempts?: number
+          dedupe_key: string
+          delivered_at?: string | null
+          event_type: string
+          id?: string
+          last_error?: string | null
+          lease_expires_at?: string | null
+          lease_owner?: string | null
+          next_attempt_at?: string
+          occurred_at?: string
+          payload?: Json
+          processing_at?: string | null
+          shop_id: string
+        }
+        Update: {
+          aggregate_id?: string
+          aggregate_type?: string
+          attempts?: number
+          dedupe_key?: string
+          delivered_at?: string | null
+          event_type?: string
+          id?: string
+          last_error?: string | null
+          lease_expires_at?: string | null
+          lease_owner?: string | null
+          next_attempt_at?: string
+          occurred_at?: string
+          payload?: Json
+          processing_at?: string | null
+          shop_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "financial_domain_outbox_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_domain_outbox_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -28440,14 +28440,6 @@ export type Database = {
         }
         Returns: Json
       }
-      field_transition_truck_record: {
-        Args: {
-          p_action: string
-          p_ended_at?: string
-          p_record_id: string
-        }
-        Returns: Json
-      }
       field_receive_po_part_to_truck_atomic: {
         Args: {
           p_actor_user_id: string
@@ -28517,6 +28509,10 @@ export type Database = {
           p_shop_id: string
           p_source_location_id: string
         }
+        Returns: Json
+      }
+      field_transition_truck_record: {
+        Args: { p_action: string; p_ended_at?: string; p_record_id: string }
         Returns: Json
       }
       field_truck_inventory_activity: {
