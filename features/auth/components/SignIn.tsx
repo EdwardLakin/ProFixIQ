@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 import AuthShell from "@/features/auth/components/AuthShell";
 import AuthStatus from "@/features/auth/components/AuthStatus";
@@ -11,6 +11,7 @@ import {
   acquisitionOnboardingHref,
 } from "@/features/auth/lib/acquisitionSurfaceRouting";
 import { resolvePostAuthDestination } from "@/features/auth/lib/postAuthRouting";
+import { navigateAfterAuthentication } from "@/features/auth/lib/postAuthNavigation";
 import { safeInternalRedirect } from "@/features/auth/lib/safeRedirect";
 import { signInWithIdentifier } from "@/features/auth/lib/signInClient";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
@@ -100,7 +101,6 @@ const VERIFYING_TRIAL_COPY = {
 };
 
 export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const isAcquisitionFlow = searchParams.get("flow")?.trim() === "acquisition";
@@ -268,12 +268,12 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
             }
           : {}),
       });
-      router.replace(destination);
+      navigateAfterAuthentication(destination);
     })();
     return () => {
       cancelled = true;
     };
-  }, [router, searchParams, supabase]);
+  }, [searchParams, supabase]);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -315,16 +315,14 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
             defaultDashboardHref: acquisitionHomeHref(claim.surface),
             unassignedAccountHref: acquisitionOnboardingHref(claim.surface),
           });
-          router.replace(destination);
-          router.refresh();
+          navigateAfterAuthentication(destination);
           return;
         }
         const requested = safeInternalRedirect(
           searchParams.get("redirect"),
           result.destination,
         );
-        router.replace(requested);
-        router.refresh();
+        navigateAfterAuthentication(requested);
         return;
       }
 
@@ -377,7 +375,7 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
               unassignedAccountHref: "/onboarding",
             }),
       });
-      router.replace(destination);
+      navigateAfterAuthentication(destination);
     } finally {
       setLoading(false);
     }
