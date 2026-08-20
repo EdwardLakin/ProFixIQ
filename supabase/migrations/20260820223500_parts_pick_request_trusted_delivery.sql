@@ -34,11 +34,14 @@ revoke all on function private.parts_request_pick_for_line_internal(
   uuid, uuid, text, text
 ) from public, anon, authenticated, service_role;
 
--- Browser/manual callers get one trusted entry point. Actor and source are
--- derived here rather than accepted from request payloads.
+-- Preserve the existing public call shape for compatibility, but make actor and
+-- source compatibility-only inputs. Browser/manual callers cannot choose either
+-- value: actor identity comes from auth.uid() and the source is always manual.
 create or replace function public.parts_request_pick_for_line_atomic(
   p_work_order_line_id uuid,
-  p_operation_key text
+  p_actor_user_id uuid default null,
+  p_source text default 'manual',
+  p_operation_key text default null
 ) returns jsonb
 language plpgsql
 security definer
@@ -49,6 +52,9 @@ begin
     raise exception using errcode = '42501', message = 'Authentication required.';
   end if;
 
+  -- p_actor_user_id and p_source are intentionally ignored. Keeping the legacy
+  -- argument shape avoids breaking existing callers while removing their ability
+  -- to forge the audit identity or label a manual request as job_start.
   return private.parts_request_pick_for_line_internal(
     p_work_order_line_id,
     auth.uid(),
@@ -58,10 +64,12 @@ begin
 end;
 $$;
 
-revoke all on function public.parts_request_pick_for_line_atomic(uuid, text)
-  from public, anon;
-grant execute on function public.parts_request_pick_for_line_atomic(uuid, text)
-  to authenticated;
+revoke all on function public.parts_request_pick_for_line_atomic(
+  uuid, uuid, text, text
+) from public, anon;
+grant execute on function public.parts_request_pick_for_line_atomic(
+  uuid, uuid, text, text
+) to authenticated;
 
 -- Reconcile both directions. A previously resolved pick signal must become
 -- active again when a return or approved-quantity increase creates new work.
