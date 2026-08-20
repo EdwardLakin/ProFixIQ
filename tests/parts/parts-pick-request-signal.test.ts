@@ -117,6 +117,22 @@ describe("parts pick request signal", () => {
     expect(notificationReader).toContain("durableSignal: true");
   });
 
+  it("filters durable candidates before paging and does not cap current alerts", () => {
+    const durableSource = notificationReader.slice(
+      notificationReader.indexOf("async function getDurablePartsPickNotifications"),
+      notificationReader.indexOf("export async function syncAssistantNotifications"),
+    );
+
+    expect(durableSource).toContain(
+      '.in("status", Array.from(PARTS_PICK_RELEASED_STATUSES))',
+    );
+    expect(durableSource).toContain('.order("pick_requested_at"');
+    expect(durableSource).toContain("PARTS_PICK_REQUEST_PAGE_SIZE");
+    expect(durableSource).toContain("PARTS_PICK_ITEM_PAGE_SIZE");
+    expect(durableSource).toContain(".range(");
+    expect(durableSource).not.toContain(".limit(200)");
+  });
+
   it("makes the pick mutation durable and state-independent on replay", () => {
     expect(migration).toContain("public.parts_begin_operation");
     expect(migration).toContain("'request_parts_pick'");
@@ -157,6 +173,8 @@ describe("parts pick request signal", () => {
     expect(hardeningMigration).toContain(
       "create or replace function public.parts_request_pick_for_line_atomic",
     );
+    expect(hardeningMigration).toContain("p_actor_user_id uuid default null");
+    expect(hardeningMigration).toContain("p_source text default 'manual'");
     expect(hardeningMigration).toContain("auth.uid(),\n    'manual'");
     expect(hardeningMigration).toContain(
       "private.parts_request_pick_for_line_internal(\n    new.work_order_line_id",
@@ -177,11 +195,24 @@ describe("parts pick request signal", () => {
     expect(hardeningMigration).toContain("return;");
   });
 
+  it("re-evaluates fulfilled and returned parents when shortages reappear", () => {
+    expect(hardeningMigration).toContain(
+      "Fulfilled/returned parent rows are intentionally re-evaluated",
+    );
+    expect(hardeningMigration).toContain(
+      "'rejected', 'cancelled', 'canceled', 'deferred'",
+    );
+    expect(hardeningMigration).not.toContain(
+      "'fulfilled', 'returned', 'rejected', 'cancelled', 'canceled', 'deferred'",
+    );
+    expect(notificationReader).toContain('"fulfilled"');
+    expect(notificationReader).toContain('"returned"');
+  });
+
   it("resolves alerts when requests or remaining items are no longer actionable", () => {
     expect(hardeningMigration).toContain(
       "parts_reconcile_pick_request_notification",
     );
-    expect(hardeningMigration).toContain("'fulfilled'");
     expect(hardeningMigration).toContain("'rejected'");
     expect(hardeningMigration).toContain("'cancelled'");
     expect(hardeningMigration).toContain("'canceled'");
