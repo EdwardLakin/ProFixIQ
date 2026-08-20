@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import { WORKSPACE_CAPABILITIES } from "@/features/workspace/authorization/capabilities";
 
 type ProfileRow = {
   id: string;
@@ -43,7 +44,10 @@ export async function GET(request: NextRequest) {
   const access = await requireShopScopedApiAccess(
     isWorkOrderDisplay
       ? {}
-      : { requiredCapability: "canAssignWork" },
+      : {
+          requiredWorkspaceCapability:
+            WORKSPACE_CAPABILITIES.manageWorkOrderAssignments,
+        },
   );
   if (!access.ok) return access.response;
 

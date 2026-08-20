@@ -25,7 +25,8 @@ import {
   toggleWorkOrderSummaryFilter,
   type WorkOrderSummaryFilter,
 } from "@/features/work-orders/lib/workOrderListFilters";
-import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import { WORKSPACE_CAPABILITIES } from "@/features/workspace/authorization/capabilities";
+import { useWorkspaceCapabilities } from "@/features/workspace/authorization/useWorkspaceCapabilities";
 
 import { WorkOrderAssignedSummary } from "@/features/work-orders/components/WorkOrderAssignedSummary";
 import {
@@ -272,6 +273,10 @@ export default function WorkOrdersView(): JSX.Element {
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { can: canWorkspace } = useWorkspaceCapabilities();
+  const canAssign = canWorkspace(
+    WORKSPACE_CAPABILITIES.manageWorkOrderAssignments,
+  );
 
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
@@ -288,7 +293,6 @@ export default function WorkOrdersView(): JSX.Element {
   >([]);
   const [selectedTechId, setSelectedTechId] = useState<string>("");
 
-  const [currentRole, setCurrentRole] = useState<string | null>(null);
   const [, setAssignVersion] = useState(0);
 
   const [reviewLoadingId, setReviewLoadingId] = useState<string | null>(null);
@@ -699,20 +703,6 @@ export default function WorkOrdersView(): JSX.Element {
 
   useEffect(() => {
     (async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (user?.id) {
-        const { data: prof } = await supabase
-          .from("profiles")
-          .select("role")
-          .eq("id", user.id)
-          .maybeSingle();
-
-        setCurrentRole(prof?.role ?? null);
-      }
-
       const { data: seededRow, error: seededErr } = await supabase
         .from("work_orders")
         .select("id")
@@ -744,9 +734,6 @@ export default function WorkOrdersView(): JSX.Element {
       }
     })();
   }, [supabase]);
-
-  const currentActor = getActorCapabilities({ role: currentRole });
-  const canAssign = currentActor.canAssignWork;
 
   useEffect(() => {
     void load();

@@ -49,8 +49,9 @@ describe("work-order surface ownership", () => {
     expect(workOrdersPageSource).toContain(
       "router.push(`/work-orders/invoice/${woId}`)",
     );
+    expect(workOrdersPageSource).toContain("useWorkspaceCapabilities");
     expect(workOrdersPageSource).toContain(
-      "const canAssign = currentActor.canAssignWork",
+      "WORKSPACE_CAPABILITIES.manageWorkOrderAssignments",
     );
     expect(workOrdersPageSource).not.toContain("<StatusPickerModal");
     expect(workOrdersPageSource).not.toContain(".update(");

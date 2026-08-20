@@ -109,7 +109,10 @@ describe("enforcement layers", () => {
       "app/api/work-orders/assign-line/route.ts",
       "app/api/work-orders/assign-all/route.ts",
     ]) {
-      expect(read(path)).toContain('requiredCapability: "canAssignWork"');
+      expect(read(path)).toContain("requiredWorkspaceCapability");
+      expect(read(path)).toContain(
+        "WORKSPACE_CAPABILITIES.manageWorkOrderAssignments",
+      );
     }
   });
 
