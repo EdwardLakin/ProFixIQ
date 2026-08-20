@@ -56,6 +56,8 @@ import {
 } from "@/features/parts/offline/partsRequestDrafts";
 import { requestVehicleRecallEnrichment } from "@/features/vehicles/lib/requestRecallEnrichment";
 import { createCustomerAccount } from "@/features/customers/lib/customerAccountCommands";
+import { WORKSPACE_CAPABILITIES } from "@/features/workspace/authorization/capabilities";
+import { useWorkspaceCapabilities } from "@/features/workspace/authorization/useWorkspaceCapabilities";
 
 type DB = Database;
 type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -530,6 +532,10 @@ export default function MobileCreateWorkOrderPage() {
   const router = useRouter();
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const draft = useWorkOrderDraft();
+  const { can: canWorkspace } = useWorkspaceCapabilities();
+  const canAssignTechnician = canWorkspace(
+    WORKSPACE_CAPABILITIES.manageWorkOrderAssignments,
+  );
 
   const [wo, setWo] = useState<WorkOrderRow | null>(null);
   const [lines, setLines] = useState<WorkOrderLineRow[]>([]);
@@ -1660,6 +1666,7 @@ export default function MobileCreateWorkOrderPage() {
             <MobileWorkOrderLines
               lines={lines}
               workOrderId={wo.id}
+              canAssignTechnician={canAssignTechnician}
               onDelete={async (lineId) => {
                 await supabase
                   .from("work_order_lines")

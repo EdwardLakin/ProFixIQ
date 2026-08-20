@@ -145,12 +145,25 @@ where id in (
 );
 
 insert into public.work_orders (id, shop_id, custom_id, status)
-values (
-  '71400000-0000-4000-8000-000000000001',
-  '71300000-0000-4000-8000-000000000001',
-  'AUTH-1001',
-  'in_progress'
-);
+values
+  (
+    '71400000-0000-4000-8000-000000000001',
+    '71300000-0000-4000-8000-000000000001',
+    'AUTH-1001',
+    'in_progress'
+  ),
+  (
+    '71400000-0000-4000-8000-000000000002',
+    '71300000-0000-4000-8000-000000000002',
+    'AUTH-2001',
+    'in_progress'
+  ),
+  (
+    '71400000-0000-4000-8000-000000000003',
+    '71300000-0000-4000-8000-000000000001',
+    'AUTH-1002',
+    'in_progress'
+  );
 
 insert into public.work_order_lines (
   id,
@@ -160,14 +173,48 @@ insert into public.work_order_lines (
   status,
   description
 )
-values (
-  '71500000-0000-4000-8000-000000000001',
-  '71300000-0000-4000-8000-000000000001',
-  '71400000-0000-4000-8000-000000000001',
-  'job',
-  'in_progress',
-  'Workspace authorization assignment fixture'
-);
+values
+  (
+    '71500000-0000-4000-8000-000000000001',
+    '71300000-0000-4000-8000-000000000001',
+    '71400000-0000-4000-8000-000000000001',
+    'job',
+    'in_progress',
+    'Workspace authorization assignment fixture'
+  ),
+  (
+    '71500000-0000-4000-8000-000000000002',
+    '71300000-0000-4000-8000-000000000002',
+    '71400000-0000-4000-8000-000000000002',
+    'job',
+    'in_progress',
+    'Workspace authorization cross-shop fixture'
+  ),
+  (
+    '71500000-0000-4000-8000-000000000003',
+    '71300000-0000-4000-8000-000000000001',
+    '71400000-0000-4000-8000-000000000003',
+    'job',
+    'in_progress',
+    'Workspace authorization delegated-read fixture'
+  );
+
+insert into public.work_order_line_technicians (
+  work_order_line_id,
+  technician_id,
+  assigned_by
+)
+values
+  (
+    '71500000-0000-4000-8000-000000000003',
+    '71100000-0000-4000-8000-000000000004',
+    '71100000-0000-4000-8000-000000000001'
+  ),
+  (
+    '71500000-0000-4000-8000-000000000002',
+    '71100000-0000-4000-8000-000000000005',
+    '71100000-0000-4000-8000-000000000005'
+  );
 
 do $workspace_authorization_schema$
 begin
@@ -221,6 +268,45 @@ begin
     'EXECUTE'
   ) then
     raise exception 'Authenticated cannot execute the self-scoped capability resolver.';
+  end if;
+
+  if has_column_privilege(
+    'authenticated',
+    'public.work_order_lines',
+    'assigned_tech_id',
+    'UPDATE'
+  ) or has_column_privilege(
+    'authenticated',
+    'public.work_order_lines',
+    'assigned_to',
+    'UPDATE'
+  ) then
+    raise exception 'Authenticated can directly update a canonical assignment column.';
+  end if;
+
+  if not has_column_privilege(
+    'authenticated',
+    'public.work_order_lines',
+    'description',
+    'UPDATE'
+  ) then
+    raise exception 'Non-assignment repair-line updates were removed with assignment writes.';
+  end if;
+
+  if has_table_privilege(
+    'authenticated',
+    'public.work_order_line_technicians',
+    'INSERT'
+  ) or has_table_privilege(
+    'authenticated',
+    'public.work_order_line_technicians',
+    'UPDATE'
+  ) or has_table_privilege(
+    'authenticated',
+    'public.work_order_line_technicians',
+    'DELETE'
+  ) then
+    raise exception 'Authenticated can directly mutate the assignment bridge.';
   end if;
 
   if exists (
@@ -406,6 +492,53 @@ begin
 end
 $workspace_authorization_owner_assignment$;
 
+do $workspace_authorization_direct_assignment_writes$
+declare
+  v_column_update_denied boolean := false;
+  v_bridge_insert_denied boolean := false;
+  v_updated integer := 0;
+begin
+  begin
+    update public.work_order_lines
+    set assigned_tech_id = '71100000-0000-4000-8000-000000000003'
+    where id = '71500000-0000-4000-8000-000000000001';
+  exception when insufficient_privilege then
+    v_column_update_denied := true;
+  end;
+
+  if not v_column_update_denied then
+    raise exception 'Authenticated owner bypassed assignment capability through a direct line update.';
+  end if;
+
+  update public.work_order_lines
+  set description = 'Workspace authorization ordinary update fixture'
+  where id = '71500000-0000-4000-8000-000000000003';
+  get diagnostics v_updated = row_count;
+
+  if v_updated <> 1 then
+    raise exception 'Assignment hardening blocked an ordinary authorized line update.';
+  end if;
+
+  begin
+    insert into public.work_order_line_technicians (
+      work_order_line_id,
+      technician_id,
+      assigned_by
+    ) values (
+      '71500000-0000-4000-8000-000000000003',
+      '71100000-0000-4000-8000-000000000003',
+      '71100000-0000-4000-8000-000000000001'
+    );
+  exception when insufficient_privilege then
+    v_bridge_insert_denied := true;
+  end;
+
+  if not v_bridge_insert_denied then
+    raise exception 'Authenticated owner bypassed assignment capability through a direct bridge insert.';
+  end if;
+end
+$workspace_authorization_direct_assignment_writes$;
+
 reset role;
 
 -- A mechanic starts denied and cannot spoof the owner—even when replaying an
@@ -424,6 +557,8 @@ declare
   v_source text;
   v_spoof_denied boolean := false;
   v_self_denied boolean := false;
+  v_unrelated_work_orders integer;
+  v_unrelated_lines integer;
 begin
   select decision.granted, decision.decision_source
     into v_granted, v_source
@@ -436,6 +571,22 @@ begin
     raise exception 'Mechanic assignment preset did not fail closed: %, %',
       v_granted,
       v_source;
+  end if;
+
+  select count(*)
+    into v_unrelated_work_orders
+  from public.work_orders work_order
+  where work_order.id = '71400000-0000-4000-8000-000000000003';
+
+  select count(*)
+    into v_unrelated_lines
+  from public.work_order_lines line
+  where line.id = '71500000-0000-4000-8000-000000000003';
+
+  if v_unrelated_work_orders <> 0 or v_unrelated_lines <> 0 then
+    raise exception 'Denied mechanic could read unrelated shop work: %, %',
+      v_unrelated_work_orders,
+      v_unrelated_lines;
   end if;
 
   begin
@@ -537,6 +688,12 @@ declare
   v_granted boolean;
   v_source text;
   v_result jsonb;
+  v_shop_work_orders integer;
+  v_shop_lines integer;
+  v_shop_assignments integer;
+  v_cross_shop_work_orders integer;
+  v_cross_shop_lines integer;
+  v_cross_shop_assignments integer;
 begin
   select
     decision.profile_id,
@@ -554,6 +711,52 @@ begin
      or not coalesce(v_granted, false)
      or v_source is distinct from 'individual_override' then
     raise exception 'Individual assignment override resolved incorrectly.';
+  end if;
+
+  select count(*)
+    into v_shop_work_orders
+  from public.work_orders work_order
+  where work_order.id = '71400000-0000-4000-8000-000000000003';
+
+  select count(*)
+    into v_shop_lines
+  from public.work_order_lines line
+  where line.id = '71500000-0000-4000-8000-000000000003';
+
+  select count(*)
+    into v_shop_assignments
+  from public.work_order_line_technicians assignment
+  where assignment.work_order_line_id = '71500000-0000-4000-8000-000000000003';
+
+  select count(*)
+    into v_cross_shop_work_orders
+  from public.work_orders work_order
+  where work_order.id = '71400000-0000-4000-8000-000000000002';
+
+  select count(*)
+    into v_cross_shop_lines
+  from public.work_order_lines line
+  where line.id = '71500000-0000-4000-8000-000000000002';
+
+  select count(*)
+    into v_cross_shop_assignments
+  from public.work_order_line_technicians assignment
+  where assignment.work_order_line_id = '71500000-0000-4000-8000-000000000002';
+
+  if v_shop_work_orders <> 1 or v_shop_lines <> 1 or v_shop_assignments <> 1 then
+    raise exception 'Delegated mechanic could not discover same-shop assignment work: %, %, %',
+      v_shop_work_orders,
+      v_shop_lines,
+      v_shop_assignments;
+  end if;
+
+  if v_cross_shop_work_orders <> 0
+     or v_cross_shop_lines <> 0
+     or v_cross_shop_assignments <> 0 then
+    raise exception 'Delegated mechanic crossed the assignment tenant boundary: %, %, %',
+      v_cross_shop_work_orders,
+      v_cross_shop_lines,
+      v_cross_shop_assignments;
   end if;
 
   select public.assign_work_order_line_technician_atomic(
@@ -645,6 +848,8 @@ declare
   v_staff_allow_denied boolean := false;
   v_staff_inherit_denied boolean := false;
   v_role_inherit_denied boolean := false;
+  v_assigned_insert_denied boolean := false;
+  v_assigned_update_denied boolean := false;
 begin
   select
     bool_or(decision.granted) filter (
@@ -662,6 +867,44 @@ begin
   if not coalesce(v_team_granted, false)
      or coalesce(v_assignment_granted, true) then
     raise exception 'Deny-only manager fixture did not resolve as intended.';
+  end if;
+
+  begin
+    insert into public.work_order_lines (
+      id,
+      shop_id,
+      work_order_id,
+      line_type,
+      status,
+      description,
+      assigned_tech_id
+    ) values (
+      '71500000-0000-4000-8000-000000000004',
+      '71300000-0000-4000-8000-000000000001',
+      '71400000-0000-4000-8000-000000000003',
+      'job',
+      'in_progress',
+      'Denied assignment insert fixture',
+      '71100000-0000-4000-8000-000000000004'
+    );
+  exception when insufficient_privilege then
+    v_assigned_insert_denied := true;
+  end;
+
+  if not v_assigned_insert_denied then
+    raise exception 'Denied manager assigned a technician through a direct line insert.';
+  end if;
+
+  begin
+    update public.work_order_lines
+    set assigned_tech_id = '71100000-0000-4000-8000-000000000004'
+    where id = '71500000-0000-4000-8000-000000000003';
+  exception when insufficient_privilege then
+    v_assigned_update_denied := true;
+  end;
+
+  if not v_assigned_update_denied then
+    raise exception 'Denied manager assigned a technician through a direct line update.';
   end if;
 
   select public.set_staff_capability_override_atomic(

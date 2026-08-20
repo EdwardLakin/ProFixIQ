@@ -10,6 +10,8 @@ import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import ModalShell from "@/features/shared/components/ModalShell";
 import type { Database } from "@shared/types/types/supabase";
 import { buildAddJobLinePayload } from "@/features/work-orders/lib/addJobLinePayload";
+import { WORKSPACE_CAPABILITIES } from "@/features/workspace/authorization/capabilities";
+import { useWorkspaceCapabilities } from "@/features/workspace/authorization/useWorkspaceCapabilities";
 
 type DB = Database;
 type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -89,6 +91,10 @@ export default function AddJobModal(props: Props) {
     props;
 
   const supabase = useMemo(() => createBrowserSupabase(), []);
+  const { can: canWorkspace } = useWorkspaceCapabilities();
+  const canAssignTechnician = canWorkspace(
+    WORKSPACE_CAPABILITIES.manageWorkOrderAssignments,
+  );
   const lastSetShopId = useRef<string | null>(null);
 
   const [jobName, setJobName] = useState("");
@@ -241,7 +247,8 @@ export default function AddJobModal(props: Props) {
         parts: validItems,
         shopId: useShopId,
         userId: user?.id ?? null,
-        assignedTechId: techId && techId !== "system" ? techId : null,
+        assignedTechId:
+          canAssignTechnician && techId && techId !== "system" ? techId : null,
         urgency,
       });
 

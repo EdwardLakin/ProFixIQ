@@ -146,4 +146,49 @@ describe("enforcement layers", () => {
     expect(migration).toContain("public.profixiq_current_role() = 'mechanic'");
     expect(migration).toContain("public.profixiq_current_role() in ('owner', 'admin')");
   });
+
+  it("makes direct assignment writes RPC-only and effective-capability readable", () => {
+    const migration = read(
+      "supabase/migrations/20260820150023_enforce_workspace_assignment_boundaries.sql",
+    );
+
+    expect(migration).toContain(
+      "workspace_actor_can_manage_work_order_assignments",
+    );
+    expect(migration).toContain("work_orders_workspace_assignment_select");
+    expect(migration).toContain(
+      "work_order_lines_workspace_assignment_select",
+    );
+    expect(migration).toContain(
+      "work_order_line_technicians_workspace_assignment_select",
+    );
+    expect(migration).toContain(
+      "column_name not in ('assigned_tech_id', 'assigned_to')",
+    );
+    expect(migration).toContain(
+      "trg_work_order_line_assignment_capability",
+    );
+    expect(migration).toContain(
+      "revoke insert, update, delete on table public.work_order_line_technicians",
+    );
+
+    const workOrderClient = read("app/work-orders/[id]/Client.tsx");
+    const focusedJob = read(
+      "features/work-orders/components/workorders/FocusedJobModal.tsx",
+    );
+    expect(workOrderClient).toContain(
+      'techId={canAssign ? (currentUserId ?? "system") : "system"}',
+    );
+    expect(focusedJob).toContain("canAssignTechnician");
+
+    const addJobModal = read(
+      "features/work-orders/components/workorders/AddJobModal.tsx",
+    );
+    expect(addJobModal).toContain(
+      "WORKSPACE_CAPABILITIES.manageWorkOrderAssignments",
+    );
+    expect(addJobModal).toContain(
+      "canAssignTechnician && techId && techId !== \"system\"",
+    );
+  });
 });

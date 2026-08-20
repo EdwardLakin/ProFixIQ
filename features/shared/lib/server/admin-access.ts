@@ -55,6 +55,11 @@ export async function resolveAuthenticatedStaffProfile(
 
 type ShopPageAccessOptions = {
   allowRoles?: readonly CanonicalRole[];
+  /**
+   * Lets a role outside allowRoles enter when this effective Workspace
+   * capability is granted. Static allowed roles do not depend on the resolver.
+   */
+  allowRolesOrWorkspaceCapability?: WorkspaceCapabilityKey;
   requiredCapability?: CapabilityKey;
   requiredCapabilities?: readonly CapabilityKey[];
   requiredWorkspaceCapability?: WorkspaceCapabilityKey;
@@ -87,6 +92,28 @@ export async function requireShopPageAccess(
     !options.requiredCapabilities?.length ||
     options.requiredCapabilities.every((capability) => actor[capability]);
 
+  const roleAlternativeAccess =
+    profile?.shop_id &&
+    options.allowRoles &&
+    !allowedRole &&
+    options.allowRolesOrWorkspaceCapability
+      ? await resolveCurrentWorkspaceCapabilities({
+          supabase,
+          profileId: profile.id,
+          shopId: profile.shop_id,
+          capabilityKeys: [options.allowRolesOrWorkspaceCapability],
+        })
+      : null;
+  const allowedRoleOrWorkspaceCapability =
+    allowedRole ||
+    Boolean(
+      options.allowRolesOrWorkspaceCapability &&
+        roleAlternativeAccess?.error === null &&
+        roleAlternativeAccess.capabilities[
+          options.allowRolesOrWorkspaceCapability
+        ].granted,
+    );
+
   const workspaceAccess =
     profile?.shop_id && options.requiredWorkspaceCapability
       ? await resolveCurrentWorkspaceCapabilities({
@@ -105,7 +132,7 @@ export async function requireShopPageAccess(
     !profile ||
     !profile.shop_id ||
     !actor.isKnownRole ||
-    !allowedRole ||
+    !allowedRoleOrWorkspaceCapability ||
     !allowedCapability ||
     !allowedCapabilities ||
     !allowedWorkspaceCapability

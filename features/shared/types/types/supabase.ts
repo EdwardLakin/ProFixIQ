@@ -30446,6 +30446,14 @@ export type Database = {
         Args: { p_shop_id: string; p_work_order_id: string }
         Returns: boolean
       }
+      workspace_actor_can_manage_work_order_assignments: {
+        Args: { p_shop_id: string }
+        Returns: boolean
+      }
+      workspace_actor_can_manage_work_order_line_assignments: {
+        Args: { p_work_order_line_id: string }
+        Returns: boolean
+      }
       workspace_current_actor_capabilities: {
         Args: { p_capability_keys?: string[] }
         Returns: {

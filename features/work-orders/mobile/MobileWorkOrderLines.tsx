@@ -14,6 +14,7 @@ type WorkOrderLineRow = DB["public"]["Tables"]["work_order_lines"]["Row"];
 type Props = {
   lines: WorkOrderLineRow[];
   workOrderId: string | null;
+  canAssignTechnician: boolean;
   onDelete: (lineId: string) => Promise<void> | void;
   /** set true from parent when this WO is a waiting / waiter job */
   isWaiter?: boolean;
@@ -48,6 +49,7 @@ const waiterPillClasses =
 export function MobileWorkOrderLines({
   lines,
   workOrderId,
+  canAssignTechnician,
   onDelete,
   isWaiter = false,
 }: Props): JSX.Element | null {
@@ -87,8 +89,6 @@ export function MobileWorkOrderLines({
             const statusLabel = line.status
               ? line.status.replaceAll("_", " ")
               : "awaiting";
-
-            const canAssign = Boolean(workOrderId);
 
             return (
               <li
@@ -149,21 +149,19 @@ export function MobileWorkOrderLines({
                   )}
 
                   <div className="flex flex-col items-end gap-1">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (!canAssign) return;
-                        setAssignLineId(line.id);
-                        setAssignOpen(true);
-                      }}
-                      className="shrink-0 rounded-full border border-sky-500/70 bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-[0.7rem] text-sky-100 hover:bg-sky-500/15 disabled:cursor-not-allowed disabled:opacity-50"
-                      disabled={!canAssign}
-                      title={
-                        canAssign ? "Assign technician" : "Open a work order first"
-                      }
-                    >
-                      Assign
-                    </button>
+                    {canAssignTechnician && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAssignLineId(line.id);
+                          setAssignOpen(true);
+                        }}
+                        className="shrink-0 rounded-full border border-sky-500/70 bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-[0.7rem] text-sky-100 hover:bg-sky-500/15"
+                        title="Assign technician"
+                      >
+                        Assign
+                      </button>
+                    )}
 
                     <button
                       type="button"
@@ -180,7 +178,7 @@ export function MobileWorkOrderLines({
         </ul>
       </div>
 
-      {assignOpen && assignLineId && (
+      {canAssignTechnician && assignOpen && assignLineId && (
         <AssignTechModal
           isOpen={assignOpen}
           onClose={() => setAssignOpen(false)}

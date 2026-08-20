@@ -45,10 +45,7 @@ type Line = DB["public"]["Tables"]["work_order_lines"]["Row"];
 
 type Row = WorkOrder & {
   is_waiter?: boolean | null;
-  customers: Pick<
-    Customer,
-    "first_name" | "last_name" | "phone" | "email"
-  > | null;
+  customers: Pick<Customer, "first_name" | "last_name"> | null;
   vehicles: Pick<Vehicle, "year" | "make" | "model" | "license_plate"> | null;
 };
 
@@ -434,7 +431,7 @@ export default function WorkOrdersView(): JSX.Element {
     if (customerIds.length > 0) {
       const { data: customerRows, error: customerErr } = await supabase
         .from("customers")
-        .select("id,first_name,last_name,phone,email")
+        .select("id,first_name,last_name")
         .in("id", customerIds);
 
       if (customerErr) {

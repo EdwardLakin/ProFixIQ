@@ -9,6 +9,14 @@ const workOrdersPageSource = readFileSync(
   "features/work-orders/app/work-orders/view/page.tsx",
   "utf8",
 );
+const guardedWorkOrdersPageSource = readFileSync(
+  "app/work-orders/view/page.tsx",
+  "utf8",
+);
+const roleSidebarSource = readFileSync(
+  "features/shared/components/RoleSidebar.tsx",
+  "utf8",
+);
 
 describe("work-order surface ownership", () => {
   it("keeps the dashboard Work Order Board on its established card-and-stage layout", () => {
@@ -77,5 +85,23 @@ describe("work-order surface ownership", () => {
       "toggleWorkOrderSummaryFilter(current, filter)",
     );
     expect(workOrdersPageSource).toContain("visibleRows.map((row)");
+  });
+
+  it("lets explicitly delegated staff discover the same canonical list", () => {
+    expect(guardedWorkOrdersPageSource).toContain(
+      "allowRolesOrWorkspaceCapability",
+    );
+    expect(guardedWorkOrdersPageSource).toContain(
+      "WORKSPACE_CAPABILITIES.manageWorkOrderAssignments",
+    );
+    expect(roleSidebarSource).toContain(
+      't.href === "/work-orders/view" && canManageWorkOrderAssignments',
+    );
+    expect(workOrdersPageSource).toContain(
+      '.select("id,first_name,last_name")',
+    );
+    expect(workOrdersPageSource).not.toContain(
+      '.select("id,first_name,last_name,phone,email")',
+    );
   });
 });
