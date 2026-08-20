@@ -292,7 +292,7 @@ begin
     null;
   end;
 end;
-$;
+$$;
 
 reset role;
 
@@ -305,7 +305,7 @@ update public.service_vehicles
 set primary_user_id = '8f100000-0000-4000-8000-000000000002'
 where id = '8f300000-0000-4000-8000-000000000001';
 
-do $
+do $$
 begin
   if exists (
     select 1
@@ -328,7 +328,7 @@ begin
     null;
   end;
 end;
-$;
+$$;
 
 reset role;
 rollback;
