@@ -71,8 +71,15 @@ export function buildPartTrustMeta(input: {
   const hasAuthoritativeIdentity = hasExternalId || hasSku || hasPartNumber || hasBarcode;
   const hasDescriptiveSupport = Boolean(input.name?.trim()) && (Boolean(input.vendor?.trim()) || Boolean(input.category?.trim()) || typeof input.price === "number" || typeof input.cost === "number");
 
-  if (!hasSku) reasons.push(TRUST_REASON.missingSku);
-  if (!hasPartNumber) reasons.push(TRUST_REASON.missingPartNumber);
+  // SKU is optional. A supplier/manufacturer part number, barcode, or external
+  // identity is authoritative on its own and must never be reported as an
+  // identity failure merely because the shop does not use an internal SKU.
+  if (!hasSku && !hasExternalId && !hasPartNumber && !hasBarcode) {
+    reasons.push(TRUST_REASON.missingSku);
+  }
+  if (!hasPartNumber && !hasExternalId && !hasSku && !hasBarcode) {
+    reasons.push(TRUST_REASON.missingPartNumber);
+  }
   if (!hasAuthoritativeIdentity) reasons.push(TRUST_REASON.missingAuthoritativeIdentity);
   if (!hasAuthoritativeIdentity && !input.normalizedPartKey?.trim()) reasons.push(TRUST_REASON.weakIdentity);
   if ((input.aliasCount ?? 0) > 0) reasons.push(TRUST_REASON.aliasBackedImport);

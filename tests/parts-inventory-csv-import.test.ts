@@ -6,6 +6,8 @@ import {
 } from "@/features/parts/lib/trust-signals";
 
 const inventorySource = () => readFileSync("app/parts/inventory/page.tsx", "utf8");
+const scanReceiveSource = () =>
+  readFileSync("features/parts/components/ScanToReceivePanel.tsx", "utf8");
 
 describe("parts inventory CSV import batching", () => {
   it("preloads authoritative identities and saves parts in batches", () => {
@@ -46,7 +48,18 @@ describe("parts inventory trust classification", () => {
   });
 
   it("part_number-only with name/vendor/pricing is not low trust", () => {
-    expect(buildPartTrustMeta({ partNumber: "PN-1", name: "Filter", vendor: "NAPA", price: 12.5 }).level).not.toBe("low");
+    const trust = buildPartTrustMeta({ partNumber: "PN-1", name: "Filter", vendor: "NAPA", price: 12.5 });
+    expect(trust.level).not.toBe("low");
+    expect(trust.reasons).not.toContain("Missing SKU");
+  });
+
+  it("barcode-only identity does not report a missing SKU failure when the caller supplies the scanned code", () => {
+    const source = scanReceiveSource();
+    const trust = buildPartTrustMeta({ barcode: "012345678905", name: "Oil filter" });
+
+    expect(source).toContain("barcode: code");
+    expect(trust.level).not.toBe("low");
+    expect(trust.reasons).not.toContain("Missing SKU");
   });
 
   it("name-only or missing identity is low trust", () => {
