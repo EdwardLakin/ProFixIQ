@@ -4,6 +4,9 @@ import { describe, expect, it } from "vitest";
 const migrationPath =
   "supabase/migrations/20260820205700_parts_pick_request_signal.sql";
 const migration = readFileSync(migrationPath, "utf8");
+const hardeningMigrationPath =
+  "supabase/migrations/20260820223500_parts_pick_request_trusted_delivery.sql";
+const hardeningMigration = readFileSync(hardeningMigrationPath, "utf8");
 const previewHistoryMigrations = [
   "supabase/migrations/20260820151500_parts_pick_request_signal.sql",
   "supabase/migrations/20260820174500_parts_pick_request_signal_review_hardening.sql",
@@ -25,6 +28,7 @@ const notificationReader = readFileSync(
 describe("parts pick request signal", () => {
   it("ships one canonical migration while preserving preview history versions", () => {
     expect(existsSync(migrationPath)).toBe(true);
+    expect(existsSync(hardeningMigrationPath)).toBe(true);
     for (const path of previewHistoryMigrations) {
       expect(existsSync(path)).toBe(true);
       const tombstone = readFileSync(path, "utf8");
@@ -37,6 +41,9 @@ describe("parts pick request signal", () => {
     expect(migration).toContain(
       "drop function if exists public.parts_request_pick_for_line_atomic(uuid, uuid, text)",
     );
+    expect(hardeningMigration).toContain(
+      "without rewriting the preview-applied 20260820205700 migration",
+    );
   });
 
   it("keeps approval as the commercial release boundary", () => {
@@ -46,14 +53,14 @@ describe("parts pick request signal", () => {
   });
 
   it("raises the same pick signal only for a live technician start/resume", () => {
-    expect(migration).toContain(
-      "function public.parts_request_pick_for_line_atomic",
+    expect(hardeningMigration).toContain(
+      "private.parts_request_pick_for_line_internal",
     );
-    expect(migration).toContain("trg_parts_request_pick_on_job_start");
-    expect(migration).toContain("new.ended_at is not null");
-    expect(migration).toContain("'legacy_line_backfill'");
-    expect(migration).toContain("'job_start'");
-    expect(migration).toContain(":request-pick:job-start:");
+    expect(hardeningMigration).toContain("trg_parts_request_pick_on_job_start");
+    expect(hardeningMigration).toContain("new.ended_at is not null");
+    expect(hardeningMigration).toContain("'legacy_line_backfill'");
+    expect(hardeningMigration).toContain("'job_start'");
+    expect(hardeningMigration).toContain(":request-pick:job-start:");
   });
 
   it("computes remaining quantity per request item", () => {
@@ -90,15 +97,24 @@ describe("parts pick request signal", () => {
     expect(migration).not.toContain("for v_recipient in");
     expect(notificationReader).toContain("canSeePartsPickWorkflow");
     expect(notificationReader).toContain('"parts_pick_workflow"');
-    expect(notificationReader).toContain('"lead_hand"');
-    expect(notificationReader).toContain('"foreman"');
+    expect(notificationReader).not.toContain('"lead_hand"');
+    expect(notificationReader).not.toContain('"foreman"');
   });
 
-  it("keeps the optional Agent notification table out of clean-replay failures", () => {
+  it("keeps delivery durable when the optional Agent notification table is absent", () => {
     expect(migration).toContain(
       "to_regclass('public.assistant_notifications') is null",
     );
-    expect(migration).toContain("execute $sql$");
+    expect(notificationReader).toContain("getDurablePartsPickNotifications");
+    expect(notificationReader).toContain('.from("part_requests")');
+    expect(notificationReader).toContain('.from("part_request_items")');
+    expect(notificationReader).toContain(
+      '.not("pick_requested_at", "is", null)',
+    );
+    expect(notificationReader).toContain(
+      "isMissingAssistantNotificationsError",
+    );
+    expect(notificationReader).toContain("durableSignal: true");
   });
 
   it("makes the pick mutation durable and state-independent on replay", () => {
@@ -131,25 +147,49 @@ describe("parts pick request signal", () => {
     expect(migration).toContain("pick_requested_by = v_actor_profile_id");
   });
 
-  it("does not route technicians through the Parts-only materialization RPC", () => {
-    expect(route).not.toContain("parts_request_work_order_line_atomic");
+  it("moves audit-source selection behind trusted entry points", () => {
+    expect(hardeningMigration).toMatch(
+      /alter function public\.parts_request_pick_for_line_atomic\(\s*uuid, uuid, text, text\s*\) set schema private/,
+    );
+    expect(hardeningMigration).toContain(
+      "rename to parts_request_pick_for_line_internal",
+    );
+    expect(hardeningMigration).toContain(
+      "create or replace function public.parts_request_pick_for_line_atomic",
+    );
+    expect(hardeningMigration).toContain("auth.uid(),\n    'manual'");
+    expect(hardeningMigration).toContain(
+      "private.parts_request_pick_for_line_internal(\n    new.work_order_line_id",
+    );
     expect(route).toContain("parts_request_pick_for_line_atomic");
-    expect(route).toContain('p_source: "manual"');
+    expect(route).not.toContain("p_source");
+    expect(route).not.toContain("p_actor_user_id");
+  });
+
+  it("reactivates previously requested alerts when quantity becomes actionable again", () => {
+    expect(hardeningMigration).toContain("if v_has_actionable then");
+    expect(hardeningMigration).toContain("pick_requested_at = now()");
+    expect(hardeningMigration).toContain(
+      "perform public.parts_upsert_pick_request_notification",
+    );
+    expect(hardeningMigration).toContain("coalesce(item.qty_returned, 0)");
+    expect(hardeningMigration).toContain("coalesce(item.qty_approved, 0)");
+    expect(hardeningMigration).toContain("return;");
   });
 
   it("resolves alerts when requests or remaining items are no longer actionable", () => {
-    expect(migration).toContain(
+    expect(hardeningMigration).toContain(
       "parts_reconcile_pick_request_notification",
     );
-    expect(migration).toContain("'fulfilled'");
-    expect(migration).toContain("'rejected'");
-    expect(migration).toContain("'cancelled'");
-    expect(migration).toContain("'canceled'");
-    expect(migration).toContain("'deferred'");
+    expect(hardeningMigration).toContain("'fulfilled'");
+    expect(hardeningMigration).toContain("'rejected'");
+    expect(hardeningMigration).toContain("'cancelled'");
+    expect(hardeningMigration).toContain("'canceled'");
+    expect(hardeningMigration).toContain("'deferred'");
     expect(migration).toContain(
       "after update of status on public.part_requests",
     );
-    expect(migration).toContain("status = 'resolved'");
+    expect(hardeningMigration).toContain("status = 'resolved'");
   });
 
   it("does not write a nonexistent part_requests.updated_at column", () => {
@@ -173,8 +213,8 @@ describe("parts pick request signal", () => {
       "revoke all on function public.parts_reconcile_pick_request_notification(uuid)",
     );
     expect(migration).toContain("from public, anon, authenticated");
-    expect(migration).toContain(
-      "grant execute on function public.parts_reconcile_pick_request_notification(uuid)",
+    expect(hardeningMigration).toContain(
+      "revoke all on function private.parts_request_pick_for_line_internal",
     );
   });
 

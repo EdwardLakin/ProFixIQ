@@ -94,8 +94,6 @@ export async function POST(req: NextRequest) {
   const rpc = supabase as unknown as RpcClient;
   const { data, error } = await rpc.rpc("parts_request_pick_for_line_atomic", {
     p_work_order_line_id: line.id,
-    p_actor_user_id: auth.user.id,
-    p_source: "manual",
     p_operation_key: `${line.shop_id}:request-pick:${line.id}:${rawKey}`,
   });
 
