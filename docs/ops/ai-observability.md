@@ -36,15 +36,18 @@ AI observability provides owner/admin/manager visibility into AI review-layer he
 ## Environment prerequisites
 
 - Internal stale-expiration route enabled
-- `INTERNAL_CRON_SECRET` configured for cron authentication
+- `CRON_SECRET` configured for scheduled Vercel bearer authentication
+- `INTERNAL_CRON_SECRET` configured when controlled manual header invocations are required
 - Vercel cron configured to call stale expiration route on schedule
 
 ## If stale backlog grows
 
-1. Confirm `/api/internal/ai/expire-stale` invocation frequency and auth headers.
-2. Check observability widget for last expiration timestamp and error-like events.
-3. Review AI event stream for blocked/failed patterns before taking action.
-4. Verify app role/capability access for operators reviewing AI inbox/recommendations.
+1. Confirm `/api/internal/ai/expire-stale` invocation frequency.
+2. Verify scheduled requests use `Authorization: Bearer <CRON_SECRET>`; controlled manual requests use `x-internal-cron-secret: <INTERNAL_CRON_SECRET>`.
+3. Check runtime logs for authorization or expiration failures.
+4. Check observability widget for last expiration timestamp and error-like events.
+5. Review AI event stream for blocked/failed patterns before taking action.
+6. Verify app role/capability access for operators reviewing AI inbox/recommendations.
 
 ## Operational guardrails
 
