@@ -43,6 +43,7 @@ const today = () => {
   const day = String(now.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 };
+const localMonth = () => today().slice(0, 7);
 const localDateTime = () => {
   const now = new Date();
   now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
@@ -306,7 +307,7 @@ export default function FieldMyTruck() {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch("/api/mobile/service/my-truck", { credentials: "include", cache: "no-store" });
+      const response = await fetch(`/api/mobile/service/my-truck?month=${localMonth()}`, { credentials: "include", cache: "no-store" });
       const body = (await response.json().catch(() => null)) as SnapshotResponse | { error?: string } | null;
       if (!response.ok || !body || !("truck" in body)) {
         throw new Error(
@@ -346,11 +347,16 @@ export default function FieldMyTruck() {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            recordType,
-            operationKey,
-            ...Object.fromEntries(form.entries()),
-          }),
+          body: JSON.stringify((() => {
+            const payload = Object.fromEntries(form.entries());
+            for (const key of ["startsAt", "endsAt"] as const) {
+              const value = payload[key];
+              if (typeof value === "string" && value) {
+                payload[key] = new Date(value).toISOString();
+              }
+            }
+            return { recordType, operationKey, ...payload };
+          })()),
         });
       }
       const body = (await response.json().catch(() => null)) as { error?: string } | null;

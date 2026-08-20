@@ -37,6 +37,7 @@ export async function loadFieldMyTruckSnapshot(input: {
   supabase: Client;
   shopId: string;
   profileId: string;
+  monthKey?: string;
 }): Promise<FieldMyTruckSnapshot> {
   const truck = await resolveAssignedFieldTruck(input);
   if (!truck) {
@@ -79,11 +80,12 @@ export async function loadFieldMyTruckSnapshot(input: {
     }
   };
 
-  const monthStart = new Date();
-  monthStart.setUTCDate(1);
-  monthStart.setUTCHours(0, 0, 0, 0);
-  const nextMonth = new Date(monthStart);
-  nextMonth.setUTCMonth(nextMonth.getUTCMonth() + 1);
+  const monthKey = input.monthKey ?? new Date().toISOString().slice(0, 7);
+  const [monthYear, monthNumber] = monthKey.split("-").map(Number);
+  const monthStart = `${monthKey}-01`;
+  const nextMonth = new Date(Date.UTC(monthYear, monthNumber, 1))
+    .toISOString()
+    .slice(0, 10);
   const [latestResult] = await Promise.all([
     input.supabase
       .from("field_truck_records")
@@ -112,8 +114,8 @@ export async function loadFieldMyTruckSnapshot(input: {
         .eq("shop_id", input.shopId)
         .eq("service_vehicle_id", truck.id)
         .in("record_type", ["expense", "maintenance"])
-        .gte("occurred_on", monthStart.toISOString().slice(0, 10))
-        .lt("occurred_on", nextMonth.toISOString().slice(0, 10))
+        .gte("occurred_on", monthStart)
+        .lt("occurred_on", nextMonth)
         .range(from, to),
     ),
   ]);
@@ -136,7 +138,10 @@ export async function loadFieldMyTruckSnapshot(input: {
           ["reminder", "downtime"].includes(record.record_type),
       )
       .sort((a, b) => b.created_at.localeCompare(a.created_at)),
-    summary: buildFieldMyTruckSummary([...summaryRecords.values()]),
+    summary: buildFieldMyTruckSummary(
+      [...summaryRecords.values()],
+      new Date(`${monthKey}-15T12:00:00.000Z`),
+    ),
   };
 }
 

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { Database } from "@shared/types/types/supabase";
 
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 type ConfigureRpcArgs =
   Database["public"]["Functions"]["mobile_configure_service_v1_atomic"]["Args"];
@@ -92,7 +93,7 @@ async function readSettings(
       (operator) => operator.profile_id,
     );
     const profilesResult = profileIds.length
-      ? await access.supabase
+      ? await createAdminSupabase()
           .from("profiles")
           .select("id,full_name,email")
           .eq("shop_id", access.profile.shop_id)

@@ -10,7 +10,7 @@ set local check_function_bodies = false;
 create table if not exists public.field_truck_records (
   id uuid primary key default gen_random_uuid(),
   shop_id uuid not null references public.shops(id) on delete cascade,
-  service_vehicle_id uuid not null references public.service_vehicles(id) on delete cascade,
+  service_vehicle_id uuid not null references public.service_vehicles(id) on delete restrict,
   operation_key text not null,
   record_type text not null,
   title text not null,
@@ -57,6 +57,17 @@ create table if not exists public.field_truck_records (
   ),
   constraint field_truck_records_file_size_ck check (
     file_size_bytes is null or file_size_bytes between 1 and 10485760
+  ),
+  constraint field_truck_records_shape_ck check (
+    (record_type = 'odometer' and odometer is not null and status = 'completed')
+    or (record_type = 'maintenance' and status = 'completed')
+    or (record_type = 'expense' and amount is not null and status = 'completed')
+    or (record_type = 'reminder' and status in ('open','completed')
+        and (due_odometer is null or odometer_unit is not null))
+    or (record_type = 'downtime' and starts_at is not null
+        and ((status = 'open' and ends_at is null)
+          or (status = 'completed' and ends_at is not null)))
+    or (record_type = 'document' and status = 'completed')
   ),
   constraint field_truck_records_downtime_window_ck check (
     record_type <> 'downtime'
@@ -107,7 +118,7 @@ begin
       add constraint field_truck_records_vehicle_shop_fk
       foreign key (shop_id, service_vehicle_id)
       references public.service_vehicles(shop_id, id)
-      on delete cascade;
+      on delete restrict;
   end if;
 end
 $do$;

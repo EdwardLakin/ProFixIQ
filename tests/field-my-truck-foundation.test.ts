@@ -53,6 +53,16 @@ function record(
 }
 
 describe("Field My Truck foundation", () => {
+  it("hardens assignment, ledger shape, retention, and local time boundaries", () => {
+    expect(settingsRoute).toContain("createAdminSupabase()");
+    expect(migration).toContain("on delete restrict");
+    expect(migration).toContain("field_truck_records_shape_ck");
+    expect(route).toContain("dueOdometer === null");
+    expect(screen).toContain("new Date(value).toISOString()");
+    expect(screen).toContain("?month=${localMonth()}");
+    expect(server).toContain("input.monthKey");
+  });
+
   it("summarizes latest mileage, current alerts, downtime and monthly costs", () => {
     const summary = buildFieldMyTruckSummary(
       [

@@ -42,15 +42,17 @@ async function getContext() {
   }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const access = await requireMobileServiceOperatorApiAccess();
   if (!access.ok) return access.response;
 
   try {
+    const monthKey = new URL(request.url).searchParams.get("month") ?? "";
     const snapshot = await loadFieldMyTruckSnapshot({
       supabase: access.supabase,
       shopId: access.profile.shop_id,
       profileId: access.profile.id,
+      monthKey: /^\d{4}-(0[1-9]|1[0-2])$/.test(monthKey) ? monthKey : undefined,
     });
     return NextResponse.json(
       { ok: true, ...snapshot },
@@ -164,7 +166,7 @@ export async function POST(request: Request) {
           : null,
     odometer,
     odometer_unit:
-      odometer === null
+      odometer === null && dueOdometer === null
         ? null
         : toNullableText(body.odometerUnit, 12) ?? "km",
     amount,
