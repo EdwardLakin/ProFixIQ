@@ -40,6 +40,19 @@ type MessageRow = {
   recipients?: string[] | null;
 };
 
+type ConversationContextSummary = {
+  conversation: {
+    id: string;
+    context_type: string | null;
+    context_id: string | null;
+    created_at: string | null;
+  };
+  latest_message?: {
+    sent_at: string | null;
+    created_at: string | null;
+  } | null;
+};
+
 type Props = {
   isOpen: boolean;
   onClose: () => void;
@@ -49,6 +62,11 @@ type Props = {
   context_id?: string | null;
   activeConversationId?: string | null;
   /**
+   * Contextual launchers can disable the global last-conversation restore so
+   * a stored thread from another resource does not replace their context.
+   */
+  restoreStoredConversation?: boolean;
+  /**
    * Where the "Open conversation history →" link should go.
    * Desktop can use "/chat"; mobile can pass its own route, e.g. "/mobile/chat".
    */
@@ -57,9 +75,75 @@ type Props = {
 
 const LOCAL_ACTIVE_KEY = "pfq-chat-last-conversation";
 const LOCAL_RECENT_KEY = "pfq-chat-recent-convos";
+const EMPTY_CONVERSATION_IDS: readonly string[] = [];
 
 function scopedStorageKey(key: string, userId: string): string {
   return `${key}:${userId}`;
+}
+
+export function resolveInitialChatConversationId({
+  forcedConversationId,
+  storedConversationId,
+  restoreStoredConversation,
+  contextualConversationIds = [],
+}: {
+  forcedConversationId: string | null;
+  storedConversationId: string | null;
+  restoreStoredConversation: boolean;
+  contextualConversationIds?: string[];
+}): string | null {
+  if (forcedConversationId) return forcedConversationId;
+  if (restoreStoredConversation) return storedConversationId;
+  if (
+    storedConversationId &&
+    contextualConversationIds.includes(storedConversationId)
+  ) {
+    return storedConversationId;
+  }
+  return contextualConversationIds[0] ?? null;
+}
+
+export function getContextualChatConversationIds({
+  conversations,
+  recentConversationIds,
+  contextType,
+  contextId,
+}: {
+  conversations: ConversationContextSummary[];
+  recentConversationIds: string[];
+  contextType: string;
+  contextId: string;
+}): string[] {
+  const matches = conversations
+    .filter(
+      ({ conversation }) =>
+        conversation.context_type === contextType &&
+        conversation.context_id === contextId,
+    )
+    .sort((left, right) => {
+      const leftActivity =
+        left.latest_message?.sent_at ??
+        left.latest_message?.created_at ??
+        left.conversation.created_at ??
+        "";
+      const rightActivity =
+        right.latest_message?.sent_at ??
+        right.latest_message?.created_at ??
+        right.conversation.created_at ??
+        "";
+      return rightActivity.localeCompare(leftActivity);
+    })
+    .map(({ conversation }) => conversation.id);
+
+  const matchingIds = new Set(matches);
+  const orderedIds = recentConversationIds.filter((id) => matchingIds.has(id));
+  const orderedIdSet = new Set(orderedIds);
+  for (const id of matches) {
+    if (orderedIdSet.has(id)) continue;
+    orderedIds.push(id);
+    orderedIdSet.add(id);
+  }
+  return orderedIds;
 }
 
 export default function NewChatModal({
@@ -69,6 +153,7 @@ export default function NewChatModal({
   context_type = null,
   context_id = null,
   activeConversationId: forcedConversationId = null,
+  restoreStoredConversation = true,
   historyHref = "/chat",
 }: Props) {
   const supabase = useMemo(() => createBrowserSupabase(), []);
@@ -102,6 +187,9 @@ export default function NewChatModal({
   const [recentConversationIds, setRecentConversationIds] = useState<string[]>(
     [],
   );
+  const [contextualConversationIds, setContextualConversationIds] = useState<
+    string[] | null
+  >(null);
   const [recentLabels, setRecentLabels] = useState<Record<string, string>>({});
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -188,6 +276,26 @@ export default function NewChatModal({
       const recent = loadRecentFromStorage();
       setRecentConversationIds(recent);
 
+      const contextualConversationIdsPromise =
+        !restoreStoredConversation && context_type && context_id
+          ? fetch("/api/chat/my-conversations", {
+              method: "GET",
+              credentials: "include",
+            })
+              .then(async (response) => {
+                if (!response.ok) return [];
+                const payload: unknown = await response.json().catch(() => []);
+                if (!Array.isArray(payload)) return [];
+                return getContextualChatConversationIds({
+                  conversations: payload as ConversationContextSummary[],
+                  recentConversationIds: recent,
+                  contextType: context_type,
+                  contextId: context_id,
+                });
+              })
+              .catch(() => [])
+          : Promise.resolve<string[] | null>(null);
+
       setLoadingUsers(true);
       setApiError(null);
 
@@ -264,12 +372,19 @@ export default function NewChatModal({
             )
           : null;
 
-      if (forcedConversationId) {
-        setActiveConvoId(forcedConversationId);
-        upsertRecent(forcedConversationId);
-      } else if (stored) {
-        setActiveConvoId(stored);
-        upsertRecent(stored);
+      const matchingConversationIds = await contextualConversationIdsPromise;
+      setContextualConversationIds(matchingConversationIds);
+
+      const initialConversationId = resolveInitialChatConversationId({
+        forcedConversationId,
+        storedConversationId: stored,
+        restoreStoredConversation,
+        contextualConversationIds: matchingConversationIds ?? [],
+      });
+
+      if (initialConversationId) {
+        setActiveConvoId(initialConversationId);
+        upsertRecent(initialConversationId);
       } else {
         setActiveConvoId(null);
       }
@@ -282,6 +397,9 @@ export default function NewChatModal({
     isOpen,
     supabase,
     forcedConversationId,
+    restoreStoredConversation,
+    context_type,
+    context_id,
     loadRecentFromStorage,
     upsertRecent,
   ]);
@@ -442,6 +560,7 @@ export default function NewChatModal({
 
   // ⬇️ Selecting recipients starts a NEW conversation (refresh chat area)
   useEffect(() => {
+    if (selectedIds.length === 0) return;
     setActiveConvoId(null);
     setMessages([]);
   }, [selectedIds]);
@@ -498,6 +617,11 @@ export default function NewChatModal({
         }
         onCreated?.(newId);
         upsertRecent(newId);
+        setContextualConversationIds((previous) =>
+          previous
+            ? [newId, ...previous.filter((id) => id !== newId)]
+            : previous,
+        );
         return newId;
       } catch (error) {
         console.error("conversation create failed:", error);
@@ -636,11 +760,17 @@ export default function NewChatModal({
     [currentUserId, recentLabels],
   );
 
+  const usesContextualConversationHistory =
+    !restoreStoredConversation && Boolean(context_type && context_id);
+  const visibleRecentConversationIds = usesContextualConversationHistory
+    ? (contextualConversationIds ?? EMPTY_CONVERSATION_IDS)
+    : recentConversationIds;
+
   useEffect(() => {
-    recentConversationIds.slice(0, 12).forEach((id) => {
+    visibleRecentConversationIds.slice(0, 12).forEach((id) => {
       void buildRecentLabel(id);
     });
-  }, [recentConversationIds, buildRecentLabel]);
+  }, [visibleRecentConversationIds, buildRecentLabel]);
 
   return (
     <ModalShell isOpen={isOpen} onClose={onClose} title="Team chat" size="xl">
@@ -822,12 +952,12 @@ export default function NewChatModal({
           Recent:
         </div>
         <div className="flex flex-wrap gap-2">
-          {recentConversationIds.length === 0 ? (
+          {visibleRecentConversationIds.length === 0 ? (
             <div className="text-[11px] text-[color:var(--theme-text-muted)]">
               No recent threads.
             </div>
           ) : (
-            recentConversationIds.slice(0, 12).map((id) => {
+            visibleRecentConversationIds.slice(0, 12).map((id) => {
               const active = id === activeConvoId;
               const label = recentLabels[id] || id.slice(0, 8);
               return (
