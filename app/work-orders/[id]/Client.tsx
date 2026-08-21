@@ -76,10 +76,12 @@ import {
   WorkOrderWorkspaceModule,
 } from "@/features/work-orders/workspace/WorkOrderWorkspaceFrame";
 import {
+  canOpenWorkOrderInspectionModule,
   createWorkOrderWorkspaceResource,
   resolveWorkOrderWorkspaceResource,
   workOrderWorkspaceCustomerMessageHref,
 } from "@/features/work-orders/workspace/workOrderWorkspace";
+import { notifyWorkOrderPartsRefresh } from "@/features/work-orders/workspace/useWorkOrderPartsRefresh";
 
 import { prepareSectionsWithCornerGrid } from "@inspections/lib/inspection/prepareSectionsWithCornerGrid";
 
@@ -1576,6 +1578,7 @@ export default function WorkOrderIdClient(): JSX.Element {
 
     const handler = () => {
       setPartsLineId(null);
+      notifyWorkOrderPartsRefresh(partsLineId);
       void fetchAll();
     };
 
@@ -1649,6 +1652,9 @@ export default function WorkOrderIdClient(): JSX.Element {
   const panelLineId = focusedJobId ?? sortedLines[0]?.id ?? null;
   const panelLine = panelLineId
     ? sortedLines.find((line) => line.id === panelLineId) ?? null
+    : null;
+  const panelInspectionTemplateId = panelLine
+    ? extractInspectionTemplateId(panelLine)
     : null;
   const panelPrimaryTech = panelLine?.assigned_tech_id
     ? assignables.find((profile) => profile.id === panelLine.assigned_tech_id) ?? null
@@ -2435,6 +2441,20 @@ export default function WorkOrderIdClient(): JSX.Element {
                   canAssignTechnician={canAssign}
                   technicianOptions={assignables}
                   onAssignTechnician={assignLineTechnician}
+                  onOpenInspection={
+                    panelLine &&
+                    canOpenWorkOrderInspectionModule({
+                      inspectionTemplateId: panelInspectionTemplateId,
+                      canRunInspections: currentActor.canRunInspections,
+                    })
+                      ? () => openInspectionForLine(panelLine)
+                      : undefined
+                  }
+                  onOpenPartsInventory={
+                    canUseInventoryPicker
+                      ? () => setPartsLineId(panelLineId)
+                      : undefined
+                  }
                   onChanged={fetchAll}
                   mode="tech"
                   variant="cockpit"
