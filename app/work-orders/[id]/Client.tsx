@@ -83,10 +83,7 @@ import {
   workOrderWorkspaceCustomerMessageHref,
 } from "@/features/work-orders/workspace/workOrderWorkspace";
 import { notifyWorkOrderPartsRefresh } from "@/features/work-orders/workspace/useWorkOrderPartsRefresh";
-import {
-  WorkOrderFinancialWorkspace,
-  type WorkOrderInvoiceReviewStatus,
-} from "@/features/work-orders/workspace/WorkOrderFinancialWorkspace";
+import { WorkOrderFinancialWorkspace } from "@/features/work-orders/workspace/WorkOrderFinancialWorkspace";
 
 import { prepareSectionsWithCornerGrid } from "@inspections/lib/inspection/prepareSectionsWithCornerGrid";
 
@@ -1083,22 +1080,16 @@ export default function WorkOrderIdClient(): JSX.Element {
     return byLine;
   }, [activeQuotesByLine, allocsByLine, lines, shopLaborRate, stagedPartsByLine]);
 
-  const workOrderPricingSummary = useMemo(() => {
-    let laborSubtotal = 0;
-    let partsSubtotal = 0;
-    let lineSubtotal = 0;
-
-    for (const line of lines) {
-      if ((line.line_type ?? "job") === "info") continue;
-      const pricing = pricingByLine[line.id];
-      laborSubtotal += Number(pricing?.laborTotal ?? 0);
-      partsSubtotal += Number(pricing?.partsTotal ?? 0);
-      lineSubtotal += Number(pricing?.lineTotal ?? 0);
-    }
-
-    return { laborSubtotal, partsSubtotal, lineSubtotal };
-  }, [lines, pricingByLine]);
-  const workOrderTotal = workOrderPricingSummary.lineSubtotal;
+  const workOrderTotal = useMemo(
+    () =>
+      lines
+        .filter((line) => (line.line_type ?? "job") !== "info")
+        .reduce(
+        (total, line) => total + Number(pricingByLine[line.id]?.lineTotal ?? 0),
+        0,
+      ),
+    [lines, pricingByLine],
+  );
 
   const isPendingApprovalLine = (l: WorkOrderLine) => {
     const a = (l.approval_state ?? "").toLowerCase();
@@ -1264,13 +1255,6 @@ export default function WorkOrderIdClient(): JSX.Element {
   });
 
   const canDeleteLine = currentUserRole ? LINE_DELETE_ROLES.has(currentUserRole) : false;
-  const invoiceReviewStatus: WorkOrderInvoiceReviewStatus =
-    reviewOk === true
-      ? "passed"
-      : reviewOk === false
-        ? "needs_attention"
-        : "not_run";
-
   const openFinancialWorkspace = useCallback(() => {
     setShowWoContext(true);
     window.requestAnimationFrame(() => {
@@ -2175,12 +2159,8 @@ export default function WorkOrderIdClient(): JSX.Element {
                   >
                     <WorkOrderFinancialWorkspace
                       workOrderId={wo.id}
-                      laborSubtotal={workOrderPricingSummary.laborSubtotal}
-                      partsSubtotal={workOrderPricingSummary.partsSubtotal}
-                      lineSubtotal={workOrderTotal}
                       workOrderStatusLabel={workOrderStatusView.label}
                       paymentStatus={wo.payment_status}
-                      invoiceReviewStatus={invoiceReviewStatus}
                     />
                   </WorkOrderWorkspaceModule>
                 ) : null}
