@@ -11,10 +11,14 @@ const migration = source(
 const jobTimeCorrectionRoute = source(
   "app/api/workforce/job-time/corrections/route.ts",
 );
+const flatRateCreditsRoute = source(
+  "app/api/workforce/flat-rate/credits/route.ts",
+);
+const timeOffRequestRoute = source("app/api/time-off/requests/route.ts");
 const inspectionSaveRoute = source("app/api/inspections/save/route.ts");
 
 describe("workforce and inspection mutating RPC ACL hardening", () => {
-  it("keeps job-time correction behind the capability-gated service-role route", () => {
+  it("keeps privileged workforce mutations behind service-role routes", () => {
     expect(jobTimeCorrectionRoute).toContain(
       'requiredCapability: "canReviewWorkforceTime"',
     );
@@ -22,13 +26,37 @@ describe("workforce and inspection mutating RPC ACL hardening", () => {
     expect(jobTimeCorrectionRoute).toContain(
       '"correct_work_order_line_labor_segment"',
     );
-    expect(migration).toContain(
-      "function public.correct_work_order_line_labor_segment",
+
+    expect(flatRateCreditsRoute).toContain(
+      'requiredCapability: "canReviewWorkforceTime"',
     );
-    expect(migration).toContain("from public, anon, authenticated");
-    expect(migration).toContain("to service_role");
+    expect(flatRateCreditsRoute).toContain("const admin = createAdminSupabase()");
+    expect(flatRateCreditsRoute).toContain(
+      '"replace_work_order_line_flat_rate_credits"',
+    );
+
+    expect(timeOffRequestRoute).toContain("requireShopScopedApiAccess");
+    expect(timeOffRequestRoute).toContain("const admin = createAdminSupabase()");
+    expect(timeOffRequestRoute).toContain('"submit_staff_time_off_request"');
+
+    for (const functionName of [
+      "correct_work_order_line_labor_segment",
+      "replace_work_order_line_flat_rate_credits",
+      "submit_staff_time_off_request",
+    ]) {
+      expect(migration).toContain(`function public.${functionName}`);
+    }
+
+    expect(migration.match(/from public, anon, authenticated;/g)).toHaveLength(3);
+    expect(migration.match(/to service_role;/g)).toHaveLength(3);
     expect(migration).toContain(
       "RPC hardening failed: job-time correction ACL is unsafe",
+    );
+    expect(migration).toContain(
+      "RPC hardening failed: flat-rate credit ACL is unsafe",
+    );
+    expect(migration).toContain(
+      "RPC hardening failed: time-off request ACL is unsafe",
     );
   });
 
