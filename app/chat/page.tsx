@@ -18,15 +18,21 @@ export default async function ChatListPage({
   const requested = await searchParams;
   const contextId = requested.contextId?.trim() ?? "";
   const customerId = requested.customerId?.trim() ?? "";
+  const contextType =
+    requested.contextType === "vehicle" ||
+    requested.contextType === "work_order"
+      ? requested.contextType
+      : null;
   const startCustomerCompose =
     requested.compose === "customer" &&
-    requested.contextType === "vehicle" &&
+    contextType !== null &&
     UUID_PATTERN.test(contextId) &&
     UUID_PATTERN.test(customerId);
 
   return (
     <ChatListClient
       startCustomerCompose={startCustomerCompose}
+      contextType={startCustomerCompose ? contextType : null}
       contextId={startCustomerCompose ? contextId : null}
       customerId={startCustomerCompose ? customerId : null}
     />

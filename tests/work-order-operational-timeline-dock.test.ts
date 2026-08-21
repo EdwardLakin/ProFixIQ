@@ -17,6 +17,16 @@ describe("work-order operational timeline", () => {
     expect(dock).toContain("Latest ${relativeTime(events[0].occurred_at)}");
   });
 
+  it("keeps the canonical Workspace UUID authoritative over route fallback", () => {
+    expect(dock).toContain(
+      "canonicalWorkspaceWorkOrderId ?? routeResolvedWorkOrderId",
+    );
+    expect(dock).toContain(
+      "if (!eligible || canonicalWorkspaceWorkOrderId)",
+    );
+    expect(dock).not.toContain("setWorkOrderId(workOrder?.id ?? null)");
+  });
+
   it("does not discard older events from an explicitly filtered timeline", () => {
     expect(server).toContain("if (!hasOperationalEventFilter(input))");
     expect(server).toContain('eventsQuery = eventsQuery.gte("occurred_at", since7d)');
