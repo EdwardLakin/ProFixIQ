@@ -50,9 +50,13 @@ import {
 } from "@/features/work-orders/lib/display/workOrderParts";
 import VehicleHistoryModal from "@/features/work-orders/components/workorders/VehicleHistoryModal";
 import DtcSuggestionModal from "@/features/work-orders/components/workorders/DtcSuggestionPopup";
+import {
+  WorkOrderJobCommunicationWorkspace,
+  WorkOrderJobDocumentsWorkspace,
+} from "@/features/work-orders/workspace/WorkOrderJobWorkspaceSurfaces";
 import { WorkOrderWorkspaceModule } from "@/features/work-orders/workspace/WorkOrderWorkspaceFrame";
 import {
-  getWorkOrderJobWorkspaceTabs,
+  getComposedWorkOrderJobWorkspaceTabs,
   type WorkOrderJobWorkspaceTabId,
 } from "@/features/work-orders/workspace/workOrderWorkspace";
 import { useWorkOrderPartsRefresh } from "@/features/work-orders/workspace/useWorkOrderPartsRefresh";
@@ -196,6 +200,7 @@ export default function FocusedJobModal(props: {
   ) => void | Promise<void>;
   onOpenInspection?: () => void | Promise<void>;
   onOpenPartsInventory?: () => void;
+  customerMessageHref?: string | null;
   onChanged?: () => void | Promise<void>;
   mode?: Mode;
   variant?: Variant;
@@ -212,6 +217,7 @@ export default function FocusedJobModal(props: {
     onAssignTechnician,
     onOpenInspection,
     onOpenPartsInventory,
+    customerMessageHref = null,
     onChanged,
     mode = "tech",
     variant = "modal",
@@ -244,7 +250,11 @@ export default function FocusedJobModal(props: {
     useState<WorkOrderJobWorkspaceTabId>("overview");
   const inspectionAvailable = Boolean(onOpenInspection);
   const workspaceTabs = useMemo(
-    () => getWorkOrderJobWorkspaceTabs({ inspectionAvailable }),
+    () =>
+      getComposedWorkOrderJobWorkspaceTabs({
+        inspectionAvailable,
+        communicationAvailable: true,
+      }),
     [inspectionAvailable],
   );
 
@@ -1585,13 +1595,32 @@ export default function FocusedJobModal(props: {
             <WorkOrderWorkspaceModule module="parts">
               {fullPartsWorkspace}
             </WorkOrderWorkspaceModule>
+          ) : activeWorkspaceTab === "communication" ? (
+            <WorkOrderWorkspaceModule module="communication">
+              <WorkOrderJobCommunicationWorkspace
+                jobLabel={lineLabel}
+                customerMessageHref={customerMessageHref}
+                onOpenJobChat={() => {
+                  closeAllSubModals();
+                  setOpenChat(true);
+                }}
+                disabled={busy}
+              />
+            </WorkOrderWorkspaceModule>
           ) : activeWorkspaceTab === "evidence" ? (
             workOrder?.id ? (
-              <WorkOrderMediaGallery
-                workOrderId={workOrder.id}
-                workOrderLineId={workOrderLineId}
-                refreshKey={mediaRefreshKey}
-              />
+              <WorkOrderWorkspaceModule module="documents">
+                <WorkOrderJobDocumentsWorkspace
+                  workOrderId={workOrder.id}
+                  workOrderLineId={workOrderLineId}
+                  refreshKey={mediaRefreshKey}
+                  onAddMedia={() => {
+                    closeAllSubModals();
+                    setOpenPhoto(true);
+                  }}
+                  disabled={busy}
+                />
+              </WorkOrderWorkspaceModule>
             ) : null
           ) : (
             <div className="space-y-6">

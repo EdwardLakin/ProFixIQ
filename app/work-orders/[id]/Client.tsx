@@ -2455,6 +2455,9 @@ export default function WorkOrderIdClient(): JSX.Element {
                       ? () => setPartsLineId(panelLineId)
                       : undefined
                   }
+                  customerMessageHref={
+                    canMessageCustomer ? messageCustomerHref : null
+                  }
                   onChanged={fetchAll}
                   mode="tech"
                   variant="cockpit"
