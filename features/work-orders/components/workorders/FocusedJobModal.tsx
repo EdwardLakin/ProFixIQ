@@ -50,21 +50,17 @@ import {
 } from "@/features/work-orders/lib/display/workOrderParts";
 import VehicleHistoryModal from "@/features/work-orders/components/workorders/VehicleHistoryModal";
 import DtcSuggestionModal from "@/features/work-orders/components/workorders/DtcSuggestionPopup";
+import { WorkOrderWorkspaceModule } from "@/features/work-orders/workspace/WorkOrderWorkspaceFrame";
+import {
+  getWorkOrderJobWorkspaceTabs,
+  type WorkOrderJobWorkspaceTabId,
+} from "@/features/work-orders/workspace/workOrderWorkspace";
 
 import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 
 type Mode = "tech" | "view";
 type Variant = "modal" | "panel" | "cockpit";
-type WorkspaceTab = "overview" | "story" | "parts" | "evidence" | "details";
-
-const WORKSPACE_TABS: ReadonlyArray<{ id: WorkspaceTab; label: string }> = [
-  { id: "overview", label: "Overview" },
-  { id: "story", label: "Story" },
-  { id: "parts", label: "Parts" },
-  { id: "evidence", label: "Evidence" },
-  { id: "details", label: "Details" },
-];
 
 const statusTextColor: Record<string, string> = {
   in_progress: "text-sky-200",
@@ -197,6 +193,8 @@ export default function FocusedJobModal(props: {
     lineId: string,
     technicianId: string,
   ) => void | Promise<void>;
+  onOpenInspection?: () => void | Promise<void>;
+  onOpenPartsInventory?: () => void;
   onChanged?: () => void | Promise<void>;
   mode?: Mode;
   variant?: Variant;
@@ -211,6 +209,8 @@ export default function FocusedJobModal(props: {
     canAssignTechnician = false,
     technicianOptions = EMPTY_TECHNICIAN_OPTIONS,
     onAssignTechnician,
+    onOpenInspection,
+    onOpenPartsInventory,
     onChanged,
     mode = "tech",
     variant = "modal",
@@ -239,7 +239,13 @@ export default function FocusedJobModal(props: {
   const [openAi, setOpenAi] = useState(false);
   const [openDtc, setOpenDtc] = useState(false);
   const [openVehicleHistory, setOpenVehicleHistory] = useState(false);
-  const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<WorkspaceTab>("overview");
+  const [activeWorkspaceTab, setActiveWorkspaceTab] =
+    useState<WorkOrderJobWorkspaceTabId>("overview");
+  const inspectionAvailable = Boolean(onOpenInspection);
+  const workspaceTabs = useMemo(
+    () => getWorkOrderJobWorkspaceTabs({ inspectionAvailable }),
+    [inspectionAvailable],
+  );
 
   const [prefillCause, setPrefillCause] = useState("");
   const [prefillCorrection, setPrefillCorrection] = useState("");
@@ -301,6 +307,14 @@ export default function FocusedJobModal(props: {
   useEffect(() => {
     setActiveWorkspaceTab("overview");
   }, [workOrderLineId]);
+
+  useEffect(() => {
+    if (
+      !workspaceTabs.some((tab) => tab.id === activeWorkspaceTab)
+    ) {
+      setActiveWorkspaceTab("overview");
+    }
+  }, [activeWorkspaceTab, workspaceTabs]);
 
   useEffect(() => {
     if (lineSnapshot?.id === workOrderLineId) {
@@ -1346,7 +1360,7 @@ export default function FocusedJobModal(props: {
 
   const fullPartsWorkspace = line ? (
     <section>
-      <div className="mb-4 flex items-center justify-between gap-3">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">
             Fulfillment
@@ -1355,17 +1369,29 @@ export default function FocusedJobModal(props: {
             {partsBottleneckDisplay?.heading ?? "Parts used and required"}
           </h3>
         </div>
-        <button
-          type="button"
-          className="rounded-lg border border-sky-400/40 bg-sky-500/10 px-3 py-1.5 text-xs font-semibold text-sky-100 transition hover:bg-sky-500/20"
-          onClick={() => {
-            closeAllSubModals();
-            setOpenParts(true);
-          }}
-          disabled={busy}
-        >
-          Request parts
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {onOpenPartsInventory ? (
+            <button
+              type="button"
+              className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1.5 text-xs font-semibold text-[color:var(--theme-text-primary)] transition hover:bg-[color:var(--theme-surface-subtle)]"
+              onClick={onOpenPartsInventory}
+              disabled={busy}
+            >
+              Add from inventory
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="rounded-lg border border-sky-400/40 bg-sky-500/10 px-3 py-1.5 text-xs font-semibold text-sky-100 transition hover:bg-sky-500/20"
+            onClick={() => {
+              closeAllSubModals();
+              setOpenParts(true);
+            }}
+            disabled={busy}
+          >
+            Request parts
+          </button>
+        </div>
       </div>
       {allocsLoading ? (
         <div className="text-sm text-[color:var(--theme-text-secondary)]">Loading…</div>
@@ -1417,6 +1443,37 @@ export default function FocusedJobModal(props: {
     </section>
   ) : null;
 
+  const inspectionWorkspace = line && onOpenInspection ? (
+    <section>
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">
+            Inspection workflow
+          </div>
+          <h3 className="mt-1 text-base font-semibold text-[color:var(--theme-text-primary)]">
+            Attached inspection
+          </h3>
+        </div>
+        <button
+          type="button"
+          className="rounded-lg border border-sky-400/40 bg-sky-500/10 px-3 py-1.5 text-xs font-semibold text-sky-100 transition hover:bg-sky-500/20"
+          onClick={() => void onOpenInspection()}
+          disabled={busy}
+        >
+          Open inspection
+        </button>
+      </div>
+      <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-4">
+        <div className="text-sm font-medium text-[color:var(--theme-text-primary)]">
+          {lineLabel}
+        </div>
+        <p className="mt-1 text-xs leading-5 text-[color:var(--theme-text-secondary)]">
+          Continue the existing inspection, evidence, autosave, and completion flow for this job.
+        </p>
+      </div>
+    </section>
+  ) : null;
+
   const CockpitBody = (
     <div
       data-work-order-cockpit="true"
@@ -1453,12 +1510,13 @@ export default function FocusedJobModal(props: {
             </div>
           </div>
           <div className="flex gap-1 overflow-x-auto" role="tablist" aria-label="Selected job workspace">
-            {WORKSPACE_TABS.map((tab) => (
+            {workspaceTabs.map((tab) => (
               <button
                 key={tab.id}
                 type="button"
                 role="tab"
                 aria-selected={activeWorkspaceTab === tab.id}
+                data-workspace-module-action={tab.module}
                 onClick={() => setActiveWorkspaceTab(tab.id)}
                 className={cn(
                   "border-b-2 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.12em] transition",
@@ -1516,8 +1574,14 @@ export default function FocusedJobModal(props: {
                 </div>
               </section>
             </div>
+          ) : activeWorkspaceTab === "inspection" ? (
+            <WorkOrderWorkspaceModule module="inspection">
+              {inspectionWorkspace}
+            </WorkOrderWorkspaceModule>
           ) : activeWorkspaceTab === "parts" ? (
-            fullPartsWorkspace
+            <WorkOrderWorkspaceModule module="parts">
+              {fullPartsWorkspace}
+            </WorkOrderWorkspaceModule>
           ) : activeWorkspaceTab === "evidence" ? (
             workOrder?.id ? (
               <WorkOrderMediaGallery

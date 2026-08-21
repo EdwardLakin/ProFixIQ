@@ -1650,6 +1650,9 @@ export default function WorkOrderIdClient(): JSX.Element {
   const panelLine = panelLineId
     ? sortedLines.find((line) => line.id === panelLineId) ?? null
     : null;
+  const panelInspectionTemplateId = panelLine
+    ? extractInspectionTemplateId(panelLine)
+    : null;
   const panelPrimaryTech = panelLine?.assigned_tech_id
     ? assignables.find((profile) => profile.id === panelLine.assigned_tech_id) ?? null
     : null;
@@ -2435,6 +2438,18 @@ export default function WorkOrderIdClient(): JSX.Element {
                   canAssignTechnician={canAssign}
                   technicianOptions={assignables}
                   onAssignTechnician={assignLineTechnician}
+                  onOpenInspection={
+                    panelLine?.job_type === "inspection" &&
+                    panelInspectionTemplateId &&
+                    currentActor.canRunInspections
+                      ? () => openInspectionForLine(panelLine)
+                      : undefined
+                  }
+                  onOpenPartsInventory={
+                    canUseInventoryPicker
+                      ? () => setPartsLineId(panelLineId)
+                      : undefined
+                  }
                   onChanged={fetchAll}
                   mode="tech"
                   variant="cockpit"

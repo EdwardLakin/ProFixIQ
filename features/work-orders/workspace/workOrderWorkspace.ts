@@ -72,6 +72,39 @@ export const WORK_ORDER_WORKSPACE_MODULES = {
 export type WorkOrderWorkspaceModuleKey =
   keyof typeof WORK_ORDER_WORKSPACE_MODULES;
 
+export type WorkOrderJobWorkspaceTabId =
+  | "overview"
+  | "story"
+  | "inspection"
+  | "parts"
+  | "evidence"
+  | "details";
+
+export type WorkOrderJobWorkspaceTab = {
+  id: WorkOrderJobWorkspaceTabId;
+  label: string;
+  module: WorkOrderWorkspaceModuleKey;
+};
+
+const WORK_ORDER_JOB_WORKSPACE_TABS: readonly WorkOrderJobWorkspaceTab[] = [
+  { id: "overview", label: "Overview", module: "repairLines" },
+  { id: "story", label: "Story", module: "repairLines" },
+  { id: "inspection", label: "Inspection", module: "inspection" },
+  { id: "parts", label: "Parts", module: "parts" },
+  { id: "evidence", label: "Evidence", module: "documents" },
+  { id: "details", label: "Details", module: "repairLines" },
+];
+
+export function getWorkOrderJobWorkspaceTabs(input: {
+  inspectionAvailable: boolean;
+}): readonly WorkOrderJobWorkspaceTab[] {
+  return input.inspectionAvailable
+    ? WORK_ORDER_JOB_WORKSPACE_TABS
+    : WORK_ORDER_JOB_WORKSPACE_TABS.filter(
+        (tab) => tab.id !== "inspection",
+      );
+}
+
 export type WorkOrderWorkspaceResourceInput = {
   shopId: string | null | undefined;
   workOrderId: string | null | undefined;
