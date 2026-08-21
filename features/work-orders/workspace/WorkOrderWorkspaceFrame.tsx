@@ -11,17 +11,20 @@ import {
   WORK_ORDER_WORKSPACE_MODULES,
   type WorkOrderWorkspaceModuleKey,
 } from "@/features/work-orders/workspace/workOrderWorkspace";
+import type { WorkspaceResourceContext } from "@/features/workspace/lib/workspace";
 
 export function WorkOrderWorkspaceFrame({
   children,
+  initialResource = null,
 }: {
   children: ReactNode;
+  initialResource?: WorkspaceResourceContext | null;
 }) {
   const params = useParams<{ id: string }>();
   const routeId = params?.id ?? "work-order";
 
   return (
-    <WorkspaceResourceProvider key={routeId}>
+    <WorkspaceResourceProvider key={routeId} initialResource={initialResource}>
       <WorkspaceShell layout="embedded">{children}</WorkspaceShell>
     </WorkspaceResourceProvider>
   );

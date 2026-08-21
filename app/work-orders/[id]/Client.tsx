@@ -67,13 +67,17 @@ import { isCustomerMessagingRole } from "@/features/ai/lib/chat/authorization";
 import { useTabs } from "@/features/shared/components/tabs/TabsProvider";
 import { WORKSPACE_CAPABILITIES } from "@/features/workspace/authorization/capabilities";
 import { useWorkspaceCapabilities } from "@/features/workspace/authorization/useWorkspaceCapabilities";
-import { usePublishWorkspaceResourceContext } from "@/features/workspace/context/WorkspaceResourceContext";
+import {
+  usePublishWorkspaceResourceContext,
+  useWorkspaceResourceContext,
+} from "@/features/workspace/context/WorkspaceResourceContext";
 import {
   WorkOrderWorkspaceCommandBar,
   WorkOrderWorkspaceModule,
 } from "@/features/work-orders/workspace/WorkOrderWorkspaceFrame";
 import {
   createWorkOrderWorkspaceResource,
+  resolveWorkOrderWorkspaceResource,
   workOrderWorkspaceCustomerMessageHref,
 } from "@/features/work-orders/workspace/workOrderWorkspace";
 
@@ -322,7 +326,7 @@ export default function WorkOrderIdClient(): JSX.Element {
     () => formatWorkOrderHeaderStatus(wo?.status, wo?.payment_status),
     [wo?.payment_status, wo?.status],
   );
-  const workspaceResource = useMemo(
+  const loadedWorkspaceResource = useMemo(
     () =>
       createWorkOrderWorkspaceResource({
         shopId: wo?.shop_id,
@@ -338,6 +342,15 @@ export default function WorkOrderIdClient(): JSX.Element {
       wo?.shop_id,
       wo?.vehicle_id,
     ],
+  );
+  const initialWorkspaceResource = useWorkspaceResourceContext();
+  const workspaceResource = useMemo(
+    () =>
+      resolveWorkOrderWorkspaceResource({
+        initialResource: initialWorkspaceResource,
+        loadedResource: loadedWorkspaceResource,
+      }),
+    [initialWorkspaceResource, loadedWorkspaceResource],
   );
   usePublishWorkspaceResourceContext(workspaceResource);
 
