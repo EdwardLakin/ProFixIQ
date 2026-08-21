@@ -22,9 +22,7 @@ export function WorkOrderWorkspaceFrame({
 
   return (
     <WorkspaceResourceProvider key={routeId}>
-      <WorkspaceShell className="mx-0 max-w-none gap-0 px-0 py-0">
-        {children}
-      </WorkspaceShell>
+      <WorkspaceShell layout="embedded">{children}</WorkspaceShell>
     </WorkspaceResourceProvider>
   );
 }

@@ -13,6 +13,7 @@ import {
   createWorkOrderWorkspaceResource,
   workOrderWorkspaceCustomerMessageHref,
 } from "@/features/work-orders/workspace/workOrderWorkspace";
+import { WorkspaceShell } from "@/features/workspace/components/WorkspaceShell";
 import {
   usePublishWorkspaceResourceContext,
   useWorkspaceResourceContext,
@@ -65,6 +66,23 @@ function ResourceConsumer() {
 }
 
 describe("Work Order Workspace foundation", () => {
+  it("embeds the existing cockpit without contained-shell spacing", () => {
+    render(<WorkspaceShell layout="embedded">Existing cockpit</WorkspaceShell>);
+
+    const shell = screen.getByRole("main");
+    expect(shell).toHaveClass("mx-0", "max-w-none", "gap-0", "p-0");
+    expect(shell).not.toHaveClass(
+      "mx-auto",
+      "max-w-7xl",
+      "gap-5",
+      "px-4",
+      "py-4",
+      "sm:px-6",
+      "sm:py-6",
+      "lg:px-8",
+    );
+  });
+
   it("publishes the canonical Work Order identity to sibling workspace modules", async () => {
     expect(resource).toEqual({
       kind: "work_order",
