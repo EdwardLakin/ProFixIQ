@@ -78,7 +78,7 @@ describe("Work Order Workspace Inspection and Parts composition", () => {
 
   it("delegates to the existing inspection and inventory handlers", () => {
     expect(workOrderClient).toContain(
-      "panelInspectionTemplateId &&",
+      "inspectionTemplateId: panelInspectionTemplateId",
     );
     expect(workOrderClient).toContain(
       "? () => openInspectionForLine(panelLine)",
