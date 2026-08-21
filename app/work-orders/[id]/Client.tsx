@@ -8,7 +8,14 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import dynamic from "next/dynamic";
-import { BrainCircuit, Clock3, ListChecks, Plus, ReceiptText } from "lucide-react";
+import {
+  BrainCircuit,
+  Clock3,
+  ListChecks,
+  MessageSquareText,
+  Plus,
+  ReceiptText,
+} from "lucide-react";
 
 import { supabaseBrowser as supabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
@@ -56,9 +63,19 @@ import {
   createAssignTechnicianOperationKey,
 } from "@/features/work-orders/lib/assignTechnicianClient";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import { isCustomerMessagingRole } from "@/features/ai/lib/chat/authorization";
 import { useTabs } from "@/features/shared/components/tabs/TabsProvider";
 import { WORKSPACE_CAPABILITIES } from "@/features/workspace/authorization/capabilities";
 import { useWorkspaceCapabilities } from "@/features/workspace/authorization/useWorkspaceCapabilities";
+import { usePublishWorkspaceResourceContext } from "@/features/workspace/context/WorkspaceResourceContext";
+import {
+  WorkOrderWorkspaceCommandBar,
+  WorkOrderWorkspaceModule,
+} from "@/features/work-orders/workspace/WorkOrderWorkspaceFrame";
+import {
+  createWorkOrderWorkspaceResource,
+  workOrderWorkspaceCustomerMessageHref,
+} from "@/features/work-orders/workspace/workOrderWorkspace";
 
 import { prepareSectionsWithCornerGrid } from "@inspections/lib/inspection/prepareSectionsWithCornerGrid";
 
@@ -305,6 +322,24 @@ export default function WorkOrderIdClient(): JSX.Element {
     () => formatWorkOrderHeaderStatus(wo?.status, wo?.payment_status),
     [wo?.payment_status, wo?.status],
   );
+  const workspaceResource = useMemo(
+    () =>
+      createWorkOrderWorkspaceResource({
+        shopId: wo?.shop_id,
+        workOrderId: wo?.id,
+        customerId: customer?.id ?? wo?.customer_id,
+        vehicleId: vehicle?.id ?? wo?.vehicle_id,
+      }),
+    [
+      customer?.id,
+      vehicle?.id,
+      wo?.customer_id,
+      wo?.id,
+      wo?.shop_id,
+      wo?.vehicle_id,
+    ],
+  );
+  usePublishWorkspaceResourceContext(workspaceResource);
 
   useEffect(() => {
     if (!wo?.id || !shouldUseReadOnlyWorkOrderView(wo.payment_status)) return;
@@ -1192,6 +1227,11 @@ export default function WorkOrderIdClient(): JSX.Element {
   const canApprove = currentActor.canAuthorizeQuotes;
   const canRequestParts = currentActor.canManageWorkOrders;
   const canUseInventoryPicker = currentActor.canManageParts;
+  const canMessageCustomer = isCustomerMessagingRole(currentUserRole);
+  const messageCustomerHref = workOrderWorkspaceCustomerMessageHref({
+    workOrderId: wo?.id,
+    customerId: customer?.id ?? wo?.customer_id,
+  });
 
   const canDeleteLine = currentUserRole ? LINE_DELETE_ROLES.has(currentUserRole) : false;
 
@@ -1642,7 +1682,10 @@ export default function WorkOrderIdClient(): JSX.Element {
           <div className="mt-2 text-sm text-red-400">Work order not found.</div>
         ) : (
           <div className={cn("space-y-2", supportFullyCollapsed && "space-y-1.5")}>
-            <section className="overflow-hidden rounded-[20px] border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3 shadow-[0_14px_36px_rgba(15,23,42,0.08)] sm:px-4">
+            <WorkOrderWorkspaceModule
+              module="statusCommand"
+              className="overflow-hidden rounded-[20px] border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3 shadow-[0_14px_36px_rgba(15,23,42,0.08)] sm:px-4"
+            >
               <div className="flex flex-wrap items-center gap-2">
                 <PreviousPageButton />
                 <div className="text-sm font-semibold text-foreground">
@@ -1676,7 +1719,9 @@ export default function WorkOrderIdClient(): JSX.Element {
                   <span className="rounded-full border border-sky-400/30 bg-sky-500/10 px-2 py-0.5 text-sky-200">Approval queue: {approvalPending.length + approvalPendingQuotes.length}</span>
                 ) : null}
               </div>
-              <div className="mt-3 flex flex-wrap items-center gap-1 border-t border-[color:var(--theme-border-soft)] pt-2">
+              <WorkOrderWorkspaceCommandBar
+                className="mt-3 gap-1 border-t border-[color:var(--theme-border-soft)] pt-2"
+              >
                 <button
                   type="button"
                   onClick={() => setShowWoContext((prev) => !prev)}
@@ -1716,12 +1761,22 @@ export default function WorkOrderIdClient(): JSX.Element {
                   <Clock3 className="h-3.5 w-3.5" />
                   Activity
                 </button>
+                {canMessageCustomer && messageCustomerHref ? (
+                  <Link
+                    href={messageCustomerHref}
+                    data-workspace-module-action="communication"
+                    className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-[color:var(--theme-text-secondary)] transition hover:bg-[color:var(--theme-surface-subtle)] hover:text-[color:var(--theme-text-primary)]"
+                  >
+                    <MessageSquareText className="h-3.5 w-3.5" />
+                    Message
+                  </Link>
+                ) : null}
                 <span className="ml-auto inline-flex items-center gap-2 font-mono text-[11px] font-semibold text-[color:var(--theme-text-primary)]">
                   <ListChecks className="h-3.5 w-3.5 text-[color:var(--theme-text-secondary)]" />
                   {sortedLines.length} jobs · {formatCurrency(workOrderTotal)}
                 </span>
-              </div>
-            </section>
+              </WorkOrderWorkspaceCommandBar>
+            </WorkOrderWorkspaceModule>
 
             {loading ? (
               <div className="rounded-lg border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-xs text-muted-foreground">
@@ -1861,27 +1916,32 @@ export default function WorkOrderIdClient(): JSX.Element {
                       </>
                     )}
                   </div>
-                  <section
-                className={cn(
-                  PANEL_VARIANTS.secondary,
-                  "p-2",
-                  hasAnyApprovalItems ? "cursor-pointer hover:border-sky-400/35" : "",
-                )}
-                onClick={hasAnyApprovalItems ? openQuoteReview : undefined}
-                role={hasAnyApprovalItems ? "button" : undefined}
-                tabIndex={hasAnyApprovalItems ? 0 : undefined}
-                onKeyDown={
-                  hasAnyApprovalItems
-                    ? (e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          openQuoteReview();
-                        }
-                      }
-                    : undefined
-                }
-                aria-label={hasAnyApprovalItems ? "Open quote review" : undefined}
-              >
+                  <WorkOrderWorkspaceModule
+                    module="estimateApproval"
+                    className={cn(
+                      PANEL_VARIANTS.secondary,
+                      "p-2",
+                      hasAnyApprovalItems
+                        ? "cursor-pointer hover:border-sky-400/35"
+                        : "",
+                    )}
+                    onClick={hasAnyApprovalItems ? openQuoteReview : undefined}
+                    role={hasAnyApprovalItems ? "button" : undefined}
+                    tabIndex={hasAnyApprovalItems ? 0 : undefined}
+                    onKeyDown={
+                      hasAnyApprovalItems
+                        ? (e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              openQuoteReview();
+                            }
+                          }
+                        : undefined
+                    }
+                    aria-label={
+                      hasAnyApprovalItems ? "Open quote review" : undefined
+                    }
+                  >
               <div className="mb-2 flex items-center justify-between gap-2">
                 <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                   Approval queue
@@ -2044,8 +2104,11 @@ export default function WorkOrderIdClient(): JSX.Element {
                   {approvalPending.length + approvalPendingQuotes.length} item(s) awaiting decision.
                 </div>
               )}
-                  </section>
-                  <section className={cn(PANEL_VARIANTS.secondary, "p-2")}>
+                  </WorkOrderWorkspaceModule>
+                  <WorkOrderWorkspaceModule
+                    module="timeline"
+                    className={cn(PANEL_VARIANTS.secondary, "p-2")}
+                  >
                 <button
                   type="button"
                   className="flex w-full items-center justify-between gap-2 text-left"
@@ -2086,13 +2149,16 @@ export default function WorkOrderIdClient(): JSX.Element {
                     Recent decision history is available when needed.
                   </p>
                 )}
-                  </section>
+                  </WorkOrderWorkspaceModule>
                 </div>
               )}
             </section>
 
           {/* Full-height cockpit: navigate left, work center, act right. */}
-          <section className="grid items-start gap-2 rounded-[24px] border border-[color:var(--theme-border-soft)] bg-[var(--theme-gradient-panel)] p-2 shadow-[0_20px_55px_rgba(15,23,42,0.1)] lg:grid-cols-[17rem_minmax(0,1fr)]">
+          <WorkOrderWorkspaceModule
+            module="repairLines"
+            className="grid items-start gap-2 rounded-[24px] border border-[color:var(--theme-border-soft)] bg-[var(--theme-gradient-panel)] p-2 shadow-[0_20px_55px_rgba(15,23,42,0.1)] lg:grid-cols-[17rem_minmax(0,1fr)]"
+          >
             <aside className="flex min-h-0 flex-col overflow-hidden rounded-[20px] border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] shadow-[0_16px_42px_rgba(15,23,42,0.08)]">
               <div className="flex items-center justify-between gap-3 border-b border-[color:var(--theme-border-soft)] px-3 py-3">
                 <div>
@@ -2363,7 +2429,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                 </section>
               )}
             </div>
-          </section>
+          </WorkOrderWorkspaceModule>
 
           {latestDecisionEvent ? (
             <button

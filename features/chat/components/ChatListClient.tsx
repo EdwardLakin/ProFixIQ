@@ -7,12 +7,14 @@ import PageShell from "@/features/shared/components/PageShell";
 
 type ChatListClientProps = {
   startCustomerCompose: boolean;
+  contextType?: "vehicle" | "work_order" | null;
   contextId: string | null;
   customerId: string | null;
 };
 
 export default function ChatListClient({
   startCustomerCompose,
+  contextType = "vehicle",
   contextId,
   customerId,
 }: ChatListClientProps): JSX.Element {
@@ -21,13 +23,19 @@ export default function ChatListClient({
     () =>
       startCustomerCompose && contextId
         ? {
-            context_type: "vehicle",
+            context_type: contextType ?? "vehicle",
             context_id: contextId,
-            deep_link: `/vehicles/${contextId}`,
-            context_label: "Vehicle workspace",
+            deep_link:
+              contextType === "work_order"
+                ? `/work-orders/${contextId}`
+                : `/vehicles/${contextId}`,
+            context_label:
+              contextType === "work_order"
+                ? "Work order workspace"
+                : "Vehicle workspace",
           }
         : null,
-    [contextId, startCustomerCompose],
+    [contextId, contextType, startCustomerCompose],
   );
 
   return (

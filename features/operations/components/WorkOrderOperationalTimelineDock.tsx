@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { getOperationalEventPresentation } from "@/features/operations/lib/eventPresentation";
 import { canonicalizeRole } from "@/features/shared/lib/rbac";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import { useWorkspaceResourceContext } from "@/features/workspace/context/WorkspaceResourceContext";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const ALLOWED_ROLES = new Set(["owner", "admin", "manager"]);
@@ -54,6 +55,11 @@ function severityDot(value: EventItem["severity"]): string {
 export default function WorkOrderOperationalTimelineDock() {
   const params = useParams();
   const routeId = String(params?.id ?? "").trim();
+  const workspaceResource = useWorkspaceResourceContext();
+  const workspaceWorkOrderId =
+    workspaceResource?.kind === "work_order"
+      ? (workspaceResource.workOrderId ?? workspaceResource.resourceId)
+      : null;
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const [eligible, setEligible] = useState(false);
   const [workOrderId, setWorkOrderId] = useState<string | null>(null);
@@ -102,6 +108,12 @@ export default function WorkOrderOperationalTimelineDock() {
       cancelled = true;
     };
   }, [routeId, supabase]);
+
+  useEffect(() => {
+    if (workspaceWorkOrderId && UUID_PATTERN.test(workspaceWorkOrderId)) {
+      setWorkOrderId(workspaceWorkOrderId);
+    }
+  }, [workspaceWorkOrderId]);
 
   const load = useCallback(async () => {
     if (!workOrderId) return;
