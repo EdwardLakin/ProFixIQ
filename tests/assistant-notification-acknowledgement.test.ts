@@ -22,7 +22,9 @@ function queryResult(data: unknown[]) {
   builder.select = vi.fn(chain);
   builder.eq = vi.fn(chain);
   builder.in = vi.fn(chain);
+  builder.not = vi.fn(chain);
   builder.order = vi.fn(chain);
+  builder.range = vi.fn(chain);
   builder.then = (
     resolve: (value: { data: unknown[]; error: null }) => unknown,
     reject?: (reason: unknown) => unknown,
@@ -49,6 +51,8 @@ describe("assistant notification acknowledgement persistence", () => {
 
     getServerSupabaseMock.mockReturnValue({
       from: vi.fn((table: string) => {
+        if (table === "part_requests") return queryResult([]);
+
         expect(table).toBe("assistant_notifications");
         assistantNotificationsAccessCount += 1;
 
