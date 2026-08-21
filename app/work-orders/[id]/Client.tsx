@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import dynamic from "next/dynamic";
 import {
   BrainCircuit,
+  CircleDollarSign,
   Clock3,
   ListChecks,
   MessageSquareText,
@@ -82,6 +83,7 @@ import {
   workOrderWorkspaceCustomerMessageHref,
 } from "@/features/work-orders/workspace/workOrderWorkspace";
 import { notifyWorkOrderPartsRefresh } from "@/features/work-orders/workspace/useWorkOrderPartsRefresh";
+import { WorkOrderFinancialWorkspace } from "@/features/work-orders/workspace/WorkOrderFinancialWorkspace";
 
 import { prepareSectionsWithCornerGrid } from "@inspections/lib/inspection/prepareSectionsWithCornerGrid";
 
@@ -1240,6 +1242,7 @@ export default function WorkOrderIdClient(): JSX.Element {
 
   const currentActor = getActorCapabilities({ role: currentUserRole });
   const canApprove = currentActor.canAuthorizeQuotes;
+  const canViewFinancials = currentActor.canViewFinancials;
   const canRequestParts = currentActor.canManageWorkOrders;
   const canUseInventoryPicker = currentActor.canManageParts;
   const canMessageCustomer = isCustomerMessagingRole(currentUserRole);
@@ -1252,6 +1255,14 @@ export default function WorkOrderIdClient(): JSX.Element {
   });
 
   const canDeleteLine = currentUserRole ? LINE_DELETE_ROLES.has(currentUserRole) : false;
+  const openFinancialWorkspace = useCallback(() => {
+    setShowWoContext(true);
+    window.requestAnimationFrame(() => {
+      document
+        .getElementById("work-order-workspace-financials")
+        ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
+  }, []);
 
   const assignLineTechnician = useCallback(
     async (lineId: string, technicianId: string): Promise<void> => {
@@ -1766,6 +1777,20 @@ export default function WorkOrderIdClient(): JSX.Element {
                   <ReceiptText className="h-3.5 w-3.5" />
                   Approvals{hasAnyApprovalItems ? ` (${approvalPending.length + approvalPendingQuotes.length})` : ""}
                 </button>
+                {canViewFinancials ? (
+                  <button
+                    type="button"
+                    onClick={openFinancialWorkspace}
+                    data-workspace-module-action="financials"
+                    className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-[color:var(--theme-text-secondary)] transition hover:bg-[color:var(--theme-surface-subtle)] hover:text-[color:var(--theme-text-primary)]"
+                  >
+                    <CircleDollarSign
+                      className="h-3.5 w-3.5"
+                      aria-hidden="true"
+                    />
+                    Financials
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => {
@@ -2127,6 +2152,18 @@ export default function WorkOrderIdClient(): JSX.Element {
                 </div>
               )}
                   </WorkOrderWorkspaceModule>
+                {canViewFinancials ? (
+                  <WorkOrderWorkspaceModule
+                    module="financials"
+                    className={cn(PANEL_VARIANTS.secondary, "p-3")}
+                  >
+                    <WorkOrderFinancialWorkspace
+                      workOrderId={wo.id}
+                      workOrderStatusLabel={workOrderStatusView.label}
+                      paymentStatus={wo.payment_status}
+                    />
+                  </WorkOrderWorkspaceModule>
+                ) : null}
                   <WorkOrderWorkspaceModule
                     module="timeline"
                     className={cn(PANEL_VARIANTS.secondary, "p-2")}
