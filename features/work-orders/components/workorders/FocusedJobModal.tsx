@@ -54,6 +54,7 @@ import { WorkOrderWorkspaceModule } from "@/features/work-orders/workspace/WorkO
 import {
   getWorkOrderJobWorkspaceTabs,
   type WorkOrderJobWorkspaceTabId,
+  workOrderPartsRefreshEventName,
 } from "@/features/work-orders/workspace/workOrderWorkspace";
 
 import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
@@ -589,6 +590,13 @@ export default function FocusedJobModal(props: {
     window.addEventListener("wol:refresh", handler);
     return () => window.removeEventListener("wol:refresh", handler);
   }, [refresh]);
+
+  useEffect(() => {
+    const eventName = workOrderPartsRefreshEventName(workOrderLineId);
+    const handlePartsRefresh = () => void loadAllocations();
+    window.addEventListener(eventName, handlePartsRefresh);
+    return () => window.removeEventListener(eventName, handlePartsRefresh);
+  }, [loadAllocations, workOrderLineId]);
 
   useEffect(() => {
     const handleClose = () => setOpenParts(false);

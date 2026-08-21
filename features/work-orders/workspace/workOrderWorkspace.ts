@@ -105,6 +105,21 @@ export function getWorkOrderJobWorkspaceTabs(input: {
       );
 }
 
+export function canOpenWorkOrderInspectionModule(input: {
+  inspectionTemplateId: string | null | undefined;
+  canRunInspections: boolean;
+}): boolean {
+  return Boolean(
+    input.inspectionTemplateId?.trim() && input.canRunInspections,
+  );
+}
+
+export function workOrderPartsRefreshEventName(
+  workOrderLineId: string,
+): string {
+  return `work-order-workspace:parts-refresh:${workOrderLineId.trim()}`;
+}
+
 export type WorkOrderWorkspaceResourceInput = {
   shopId: string | null | undefined;
   workOrderId: string | null | undefined;

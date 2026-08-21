@@ -2,8 +2,10 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import {
+  canOpenWorkOrderInspectionModule,
   getWorkOrderJobWorkspaceTabs,
   WORK_ORDER_WORKSPACE_MODULES,
+  workOrderPartsRefreshEventName,
 } from "@/features/work-orders/workspace/workOrderWorkspace";
 
 const workOrderClient = readFileSync("app/work-orders/[id]/Client.tsx", "utf8");
@@ -41,6 +43,30 @@ describe("Work Order Workspace Inspection and Parts composition", () => {
     );
   });
 
+  it("uses the attached template and capability regardless of repair-line type", () => {
+    expect(
+      canOpenWorkOrderInspectionModule({
+        inspectionTemplateId: "template-1",
+        canRunInspections: true,
+      }),
+    ).toBe(true);
+    expect(
+      canOpenWorkOrderInspectionModule({
+        inspectionTemplateId: null,
+        canRunInspections: true,
+      }),
+    ).toBe(false);
+    expect(
+      canOpenWorkOrderInspectionModule({
+        inspectionTemplateId: "template-1",
+        canRunInspections: false,
+      }),
+    ).toBe(false);
+    expect(workOrderClient).not.toContain(
+      'panelLine?.job_type === "inspection"',
+    );
+  });
+
   it("keeps Inspection and Parts on distinct canonical module boundaries", () => {
     expect(WORK_ORDER_WORKSPACE_MODULES.inspection.anchorId).not.toBe(
       WORK_ORDER_WORKSPACE_MODULES.parts.anchorId,
@@ -60,5 +86,20 @@ describe("Work Order Workspace Inspection and Parts composition", () => {
     expect(workOrderClient).toContain("? () => setPartsLineId(panelLineId)");
     expect(focusedJob).toContain("onClick={() => void onOpenInspection()}");
     expect(focusedJob).toContain("onClick={onOpenPartsInventory}");
+  });
+
+  it("refreshes the focused Parts module after the inventory drawer closes", () => {
+    expect(workOrderPartsRefreshEventName("line-1")).toBe(
+      "work-order-workspace:parts-refresh:line-1",
+    );
+    expect(workOrderClient).toContain(
+      "new Event(workOrderPartsRefreshEventName(partsLineId))",
+    );
+    expect(focusedJob).toContain(
+      "workOrderPartsRefreshEventName(workOrderLineId)",
+    );
+    expect(focusedJob).toContain(
+      "const handlePartsRefresh = () => void loadAllocations()",
+    );
   });
 });

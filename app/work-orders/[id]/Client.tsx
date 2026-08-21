@@ -76,8 +76,10 @@ import {
   WorkOrderWorkspaceModule,
 } from "@/features/work-orders/workspace/WorkOrderWorkspaceFrame";
 import {
+  canOpenWorkOrderInspectionModule,
   createWorkOrderWorkspaceResource,
   resolveWorkOrderWorkspaceResource,
+  workOrderPartsRefreshEventName,
   workOrderWorkspaceCustomerMessageHref,
 } from "@/features/work-orders/workspace/workOrderWorkspace";
 
@@ -1576,6 +1578,9 @@ export default function WorkOrderIdClient(): JSX.Element {
 
     const handler = () => {
       setPartsLineId(null);
+      window.dispatchEvent(
+        new Event(workOrderPartsRefreshEventName(partsLineId)),
+      );
       void fetchAll();
     };
 
@@ -2439,9 +2444,11 @@ export default function WorkOrderIdClient(): JSX.Element {
                   technicianOptions={assignables}
                   onAssignTechnician={assignLineTechnician}
                   onOpenInspection={
-                    panelLine?.job_type === "inspection" &&
-                    panelInspectionTemplateId &&
-                    currentActor.canRunInspections
+                    panelLine &&
+                    canOpenWorkOrderInspectionModule({
+                      inspectionTemplateId: panelInspectionTemplateId,
+                      canRunInspections: currentActor.canRunInspections,
+                    })
                       ? () => openInspectionForLine(panelLine)
                       : undefined
                   }
