@@ -1,5 +1,35 @@
 import type { WorkspaceResourceContext } from "@/features/workspace/lib/workspace";
 
+export type WorkOrderWorkspaceServerSnapshot = {
+  routeId: string;
+  resource: WorkspaceResourceContext;
+  workOrder: {
+    id: string;
+    shopId: string;
+    customerId: string | null;
+    vehicleId: string | null;
+    customId: string | null;
+    status: string | null;
+    paymentStatus: string | null;
+    approvalState: string | null;
+    recordType: string | null;
+  };
+};
+
+export function resolveWorkOrderWorkspaceResource(input: {
+  initialResource?: WorkspaceResourceContext | null;
+  loadedResource?: WorkspaceResourceContext | null;
+}): WorkspaceResourceContext | null {
+  const serverWorkOrderId = input.initialResource?.workOrderId ?? null;
+  if (
+    serverWorkOrderId &&
+    input.loadedResource?.workOrderId !== serverWorkOrderId
+  ) {
+    return input.initialResource ?? null;
+  }
+  return input.loadedResource ?? input.initialResource ?? null;
+}
+
 export const WORK_ORDER_WORKSPACE_MODULES = {
   statusCommand: {
     anchorId: "work-order-workspace-command",
