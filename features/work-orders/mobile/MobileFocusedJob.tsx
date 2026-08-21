@@ -37,6 +37,9 @@ import NewChatModal from "@/features/ai/components/chat/NewChatModal";
 import SuggestedQuickAdd from "@work-orders/components/SuggestedQuickAdd";
 import { runJobPunchTransition } from "@/features/work-orders/lib/jobPunchTransitionsClient";
 import {
+  getWorkOrderJobChatContext,
+} from "@/features/work-orders/workspace/workOrderWorkspace";
+import {
   filterAllocationsNotBackedByCanonicalParts,
   getCanonicalPartDescription,
   getCanonicalPartManufacturer,
@@ -193,6 +196,9 @@ export default function MobileFocusedJob(props: {
     () => filterAllocationsNotBackedByCanonicalParts(allocs, requiredParts),
     [allocs, requiredParts],
   );
+  const jobChatContext = workOrder?.id
+    ? getWorkOrderJobChatContext(workOrder.id)
+    : null;
 
   const showErr = (prefix: string, err?: { message?: string } | null) => {
     toast.error(`${prefix}: ${err?.message ?? "Something went wrong."}`);
@@ -1659,14 +1665,15 @@ export default function MobileFocusedJob(props: {
         />
       )}
 
-      {openChat && (
+      {openChat && jobChatContext && (
         <NewChatModal
           isOpen={openChat}
           onClose={() => setOpenChat(false)}
           created_by="system"
           onCreated={() => setOpenChat(false)}
-          context_type="work_order_line"
-          context_id={line?.id ?? null}
+          context_type={jobChatContext.contextType}
+          context_id={jobChatContext.contextId}
+          restoreStoredConversation={jobChatContext.restoreStoredConversation}
         />
       )}
 
