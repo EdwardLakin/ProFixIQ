@@ -131,6 +131,18 @@ export function getComposedWorkOrderJobWorkspaceTabs(input: {
   ];
 }
 
+export function getWorkOrderJobChatContext(workOrderId: string): {
+  contextType: "work_order";
+  contextId: string;
+  restoreStoredConversation: false;
+} {
+  return {
+    contextType: "work_order",
+    contextId: workOrderId,
+    restoreStoredConversation: false,
+  };
+}
+
 export function canOpenWorkOrderInspectionModule(input: {
   inspectionTemplateId: string | null | undefined;
   canRunInspections: boolean;

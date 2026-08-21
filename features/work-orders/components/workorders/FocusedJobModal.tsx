@@ -57,6 +57,7 @@ import {
 import { WorkOrderWorkspaceModule } from "@/features/work-orders/workspace/WorkOrderWorkspaceFrame";
 import {
   getComposedWorkOrderJobWorkspaceTabs,
+  getWorkOrderJobChatContext,
   type WorkOrderJobWorkspaceTabId,
 } from "@/features/work-orders/workspace/workOrderWorkspace";
 import { useWorkOrderPartsRefresh } from "@/features/work-orders/workspace/useWorkOrderPartsRefresh";
@@ -246,6 +247,10 @@ export default function FocusedJobModal(props: {
   const [openAi, setOpenAi] = useState(false);
   const [openDtc, setOpenDtc] = useState(false);
   const [openVehicleHistory, setOpenVehicleHistory] = useState(false);
+  const jobChatWorkOrderId = workOrder?.id ?? line?.work_order_id ?? null;
+  const jobChatContext = jobChatWorkOrderId
+    ? getWorkOrderJobChatContext(jobChatWorkOrderId)
+    : null;
   const [activeWorkspaceTab, setActiveWorkspaceTab] =
     useState<WorkOrderJobWorkspaceTabId>("overview");
   const inspectionAvailable = Boolean(onOpenInspection);
@@ -2037,14 +2042,15 @@ export default function FocusedJobModal(props: {
         />
       ) : null}
 
-      {openChat ? (
+      {openChat && jobChatContext ? (
         <NewChatModal
           isOpen={openChat}
           onClose={() => setOpenChat(false)}
           created_by="system"
           onCreated={() => setOpenChat(false)}
-          context_type="work_order_line"
-          context_id={line?.id ?? null}
+          context_type={jobChatContext.contextType}
+          context_id={jobChatContext.contextId}
+          restoreStoredConversation={jobChatContext.restoreStoredConversation}
         />
       ) : null}
 

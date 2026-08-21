@@ -49,6 +49,11 @@ type Props = {
   context_id?: string | null;
   activeConversationId?: string | null;
   /**
+   * Contextual launchers can disable the global last-conversation restore so
+   * a stored thread from another resource does not replace their context.
+   */
+  restoreStoredConversation?: boolean;
+  /**
    * Where the "Open conversation history →" link should go.
    * Desktop can use "/chat"; mobile can pass its own route, e.g. "/mobile/chat".
    */
@@ -62,6 +67,21 @@ function scopedStorageKey(key: string, userId: string): string {
   return `${key}:${userId}`;
 }
 
+export function resolveInitialChatConversationId({
+  forcedConversationId,
+  storedConversationId,
+  restoreStoredConversation,
+}: {
+  forcedConversationId: string | null;
+  storedConversationId: string | null;
+  restoreStoredConversation: boolean;
+}): string | null {
+  return (
+    forcedConversationId ??
+    (restoreStoredConversation ? storedConversationId : null)
+  );
+}
+
 export default function NewChatModal({
   isOpen,
   onClose,
@@ -69,6 +89,7 @@ export default function NewChatModal({
   context_type = null,
   context_id = null,
   activeConversationId: forcedConversationId = null,
+  restoreStoredConversation = true,
   historyHref = "/chat",
 }: Props) {
   const supabase = useMemo(() => createBrowserSupabase(), []);
@@ -264,12 +285,15 @@ export default function NewChatModal({
             )
           : null;
 
-      if (forcedConversationId) {
-        setActiveConvoId(forcedConversationId);
-        upsertRecent(forcedConversationId);
-      } else if (stored) {
-        setActiveConvoId(stored);
-        upsertRecent(stored);
+      const initialConversationId = resolveInitialChatConversationId({
+        forcedConversationId,
+        storedConversationId: stored,
+        restoreStoredConversation,
+      });
+
+      if (initialConversationId) {
+        setActiveConvoId(initialConversationId);
+        upsertRecent(initialConversationId);
       } else {
         setActiveConvoId(null);
       }
@@ -282,6 +306,7 @@ export default function NewChatModal({
     isOpen,
     supabase,
     forcedConversationId,
+    restoreStoredConversation,
     loadRecentFromStorage,
     upsertRecent,
   ]);
