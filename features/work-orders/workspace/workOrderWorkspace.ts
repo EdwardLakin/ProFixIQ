@@ -75,13 +75,25 @@ export function createWorkOrderWorkspaceResource({
 export function workOrderWorkspaceCustomerMessageHref({
   workOrderId,
   customerId,
-}: Pick<
-  WorkOrderWorkspaceResourceInput,
-  "workOrderId" | "customerId"
->): string | null {
+  customerActive,
+  customerArchivedAt = null,
+  customerMergedIntoCustomerId = null,
+}: Pick<WorkOrderWorkspaceResourceInput, "workOrderId" | "customerId"> & {
+  customerActive: boolean | null | undefined;
+  customerArchivedAt?: string | null;
+  customerMergedIntoCustomerId?: string | null;
+}): string | null {
   const canonicalWorkOrderId = workOrderId?.trim() ?? "";
   const canonicalCustomerId = customerId?.trim() ?? "";
-  if (!canonicalWorkOrderId || !canonicalCustomerId) return null;
+  if (
+    !canonicalWorkOrderId ||
+    !canonicalCustomerId ||
+    customerActive !== true ||
+    Boolean(customerArchivedAt?.trim()) ||
+    Boolean(customerMergedIntoCustomerId?.trim())
+  ) {
+    return null;
+  }
 
   const handoff = new URLSearchParams({
     compose: "customer",

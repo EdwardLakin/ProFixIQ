@@ -60,9 +60,17 @@ export default function WorkOrderOperationalTimelineDock() {
     workspaceResource?.kind === "work_order"
       ? (workspaceResource.workOrderId ?? workspaceResource.resourceId)
       : null;
+  const canonicalWorkspaceWorkOrderId =
+    workspaceWorkOrderId && UUID_PATTERN.test(workspaceWorkOrderId)
+      ? workspaceWorkOrderId
+      : null;
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const [eligible, setEligible] = useState(false);
-  const [workOrderId, setWorkOrderId] = useState<string | null>(null);
+  const [routeResolvedWorkOrderId, setRouteResolvedWorkOrderId] = useState<
+    string | null
+  >(null);
+  const workOrderId =
+    canonicalWorkspaceWorkOrderId ?? routeResolvedWorkOrderId;
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [events, setEvents] = useState<EventItem[]>([]);
@@ -88,12 +96,32 @@ export default function WorkOrderOperationalTimelineDock() {
       const role = canonicalizeRole(profile?.role);
       if (!ALLOWED_ROLES.has(role) || cancelled) return;
       setEligible(true);
+    })();
 
-      if (UUID_PATTERN.test(routeId)) {
-        setWorkOrderId(routeId);
-        return;
-      }
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!eligible || canonicalWorkspaceWorkOrderId) {
+      setRouteResolvedWorkOrderId(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if (UUID_PATTERN.test(routeId)) {
+      setRouteResolvedWorkOrderId(routeId);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setRouteResolvedWorkOrderId(null);
+    void (async () => {
       const { data: workOrder } = await supabase
         .from("work_orders")
         .select("id")
@@ -101,19 +129,15 @@ export default function WorkOrderOperationalTimelineDock() {
         .limit(1)
         .maybeSingle();
 
-      if (!cancelled) setWorkOrderId(workOrder?.id ?? null);
+      if (!cancelled) {
+        setRouteResolvedWorkOrderId(workOrder?.id ?? null);
+      }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [routeId, supabase]);
-
-  useEffect(() => {
-    if (workspaceWorkOrderId && UUID_PATTERN.test(workspaceWorkOrderId)) {
-      setWorkOrderId(workspaceWorkOrderId);
-    }
-  }, [workspaceWorkOrderId]);
+  }, [canonicalWorkspaceWorkOrderId, eligible, routeId, supabase]);
 
   const load = useCallback(async () => {
     if (!workOrderId) return;

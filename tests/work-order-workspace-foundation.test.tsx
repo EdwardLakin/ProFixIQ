@@ -144,6 +144,7 @@ describe("Work Order Workspace foundation", () => {
       workOrderWorkspaceCustomerMessageHref({
         workOrderId: "11111111-1111-4111-8111-111111111111",
         customerId: "22222222-2222-4222-8222-222222222222",
+        customerActive: true,
       }),
     ).toBe(
       "/chat?compose=customer&contextType=work_order&contextId=11111111-1111-4111-8111-111111111111&customerId=22222222-2222-4222-8222-222222222222",
@@ -152,6 +153,36 @@ describe("Work Order Workspace foundation", () => {
       workOrderWorkspaceCustomerMessageHref({
         workOrderId: "11111111-1111-4111-8111-111111111111",
         customerId: null,
+        customerActive: true,
+      }),
+    ).toBeNull();
+  });
+
+  it("suppresses customer messaging for inactive, archived, or merged accounts", () => {
+    const input = {
+      workOrderId: "11111111-1111-4111-8111-111111111111",
+      customerId: "22222222-2222-4222-8222-222222222222",
+    };
+
+    expect(
+      workOrderWorkspaceCustomerMessageHref({
+        ...input,
+        customerActive: false,
+      }),
+    ).toBeNull();
+    expect(
+      workOrderWorkspaceCustomerMessageHref({
+        ...input,
+        customerActive: true,
+        customerArchivedAt: "2026-08-20T00:00:00.000Z",
+      }),
+    ).toBeNull();
+    expect(
+      workOrderWorkspaceCustomerMessageHref({
+        ...input,
+        customerActive: true,
+        customerMergedIntoCustomerId:
+          "33333333-3333-4333-8333-333333333333",
       }),
     ).toBeNull();
   });

@@ -1231,6 +1231,9 @@ export default function WorkOrderIdClient(): JSX.Element {
   const messageCustomerHref = workOrderWorkspaceCustomerMessageHref({
     workOrderId: wo?.id,
     customerId: customer?.id ?? wo?.customer_id,
+    customerActive: customer?.active,
+    customerArchivedAt: customer?.archived_at,
+    customerMergedIntoCustomerId: customer?.merged_into_customer_id,
   });
 
   const canDeleteLine = currentUserRole ? LINE_DELETE_ROLES.has(currentUserRole) : false;
