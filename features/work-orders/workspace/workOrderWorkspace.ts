@@ -77,6 +77,7 @@ export type WorkOrderJobWorkspaceTabId =
   | "story"
   | "inspection"
   | "parts"
+  | "communication"
   | "evidence"
   | "details";
 
@@ -103,6 +104,31 @@ export function getWorkOrderJobWorkspaceTabs(input: {
     : WORK_ORDER_JOB_WORKSPACE_TABS.filter(
         (tab) => tab.id !== "inspection",
       );
+}
+
+const WORK_ORDER_JOB_COMMUNICATION_TAB: WorkOrderJobWorkspaceTab = {
+  id: "communication",
+  label: "Messages",
+  module: "communication",
+};
+
+export function getComposedWorkOrderJobWorkspaceTabs(input: {
+  inspectionAvailable: boolean;
+  communicationAvailable: boolean;
+}): readonly WorkOrderJobWorkspaceTab[] {
+  const existingTabs = getWorkOrderJobWorkspaceTabs(input);
+  if (!input.communicationAvailable) return existingTabs;
+
+  const evidenceIndex = existingTabs.findIndex((tab) => tab.id === "evidence");
+  if (evidenceIndex < 0) {
+    return [...existingTabs, WORK_ORDER_JOB_COMMUNICATION_TAB];
+  }
+
+  return [
+    ...existingTabs.slice(0, evidenceIndex),
+    WORK_ORDER_JOB_COMMUNICATION_TAB,
+    ...existingTabs.slice(evidenceIndex),
+  ];
 }
 
 export function canOpenWorkOrderInspectionModule(input: {
