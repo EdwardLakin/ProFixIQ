@@ -39,6 +39,7 @@ describe("Field Hub workspace", () => {
       "/mobile/service/purchase-orders",
       "/mobile/service/followups",
       "/mobile/service/invoices",
+      "/mobile/service/my-truck",
     ]) {
       expect(`${fieldShell}\n${fieldHub}`).toContain(href);
     }
@@ -123,6 +124,10 @@ describe("Field Hub workspace", () => {
     expect(fieldShell).toContain('label: "Truck inventory"');
     expect(fieldShell.match(/label: "Truck inventory"/g)).toHaveLength(1);
     expect(fieldShell).toContain('label: "Invoices & history"');
+    expect(fieldShell).toContain('label: "My Truck"');
+    expect(fieldHub).toMatch(
+      /id: "my_truck"[\s\S]*?href: "\/mobile\/service\/my-truck"/,
+    );
     expect(fieldHub).toMatch(
       /id: "unpaid_invoices"[\s\S]*?title: "Unpaid invoices"/,
     );

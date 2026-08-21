@@ -14,6 +14,7 @@ import {
   RadioTower,
   ReceiptText,
   Settings2,
+  Truck,
   Wrench,
   X,
   type LucideIcon,
@@ -73,6 +74,11 @@ const WORK_NAV: FieldNavItem[] = [
 
 const OPERATIONS_NAV: FieldNavItem[] = [
   {
+    label: "My Truck",
+    href: "/mobile/service/my-truck",
+    icon: Truck,
+  },
+  {
     label: "Invoices & history",
     href: "/mobile/service/invoices",
     icon: ReceiptText,
@@ -126,6 +132,7 @@ function pageTitle(pathname: string): string {
   if (pathname.startsWith("/mobile/service/truck-inventory")) {
     return "Truck inventory";
   }
+  if (pathname.startsWith("/mobile/service/my-truck")) return "My Truck";
   if (pathname.startsWith("/mobile/service/followup")) return "Follow-ups";
   if (pathname.startsWith("/mobile/service/closeout")) return "Field closeout";
   if (pathname.startsWith("/mobile/appointments")) return "Appointments";

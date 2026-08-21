@@ -13,6 +13,16 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 type ServiceModel = "shop" | "mobile" | "both";
+type FieldTeamMember = {
+  profileId: string;
+  name: string;
+  vehicleId: string | null;
+};
+type FieldVehicle = {
+  id: string;
+  name: string;
+  unitNumber: string | null;
+};
 
 export default function MobileServiceSetup() {
   const router = useRouter();
@@ -29,6 +39,8 @@ export default function MobileServiceSetup() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [canConfigure, setCanConfigure] = useState(true);
+  const [fieldTeam, setFieldTeam] = useState<FieldTeamMember[]>([]);
+  const [fieldVehicles, setFieldVehicles] = useState<FieldVehicle[]>([]);
 
   useEffect(() => {
     void fetch("/api/mobile/service/settings", {
@@ -50,6 +62,10 @@ export default function MobileServiceSetup() {
           setDefaultVisitMinutes(Number(settings.default_visit_minutes || 60));
         }
         setFieldOperator(Boolean(body.currentActorFieldOperator));
+        setFieldTeam(Array.isArray(body.fieldTeam) ? body.fieldTeam : []);
+        setFieldVehicles(
+          Array.isArray(body.fieldVehicles) ? body.fieldVehicles : [],
+        );
         if (body.serviceVehicle) {
           setTruckName(body.serviceVehicle.name || "Service Truck");
           setUnitNumber(body.serviceVehicle.unit_number || "");
@@ -93,6 +109,37 @@ export default function MobileServiceSetup() {
         cause instanceof Error
           ? cause.message
           : "Field Service setup could not be saved.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function assignTruck(profileId: string, serviceVehicleId: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/mobile/service/settings", {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profileId, serviceVehicleId }),
+      });
+      const body = (await response.json().catch(() => null)) as {
+        error?: string;
+        fieldTeam?: FieldTeamMember[];
+        fieldVehicles?: FieldVehicle[];
+      } | null;
+      if (!response.ok) {
+        throw new Error(body?.error || "Truck assignment could not be saved.");
+      }
+      setFieldTeam(body?.fieldTeam ?? []);
+      setFieldVehicles(body?.fieldVehicles ?? []);
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Truck assignment could not be saved.",
       );
     } finally {
       setBusy(false);
@@ -256,6 +303,49 @@ export default function MobileServiceSetup() {
           />
         </label>
       </section>
+
+      {canConfigure && fieldTeam.length > 0 && fieldVehicles.length > 0 ? (
+        <section className="space-y-3 rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4 shadow-card">
+          <div className="flex items-center gap-2">
+            <UsersRound className="h-5 w-5" />
+            <h2 className="font-extrabold">Field truck assignments</h2>
+          </div>
+          <p className="text-xs text-[color:var(--theme-text-secondary)]">
+            Assign each enabled Field operator to the truck shown in their My
+            Truck workspace.
+          </p>
+          <div className="space-y-2">
+            {fieldTeam.map((member) => (
+              <label
+                key={member.profileId}
+                className="grid gap-1 rounded-2xl bg-[color:var(--theme-surface-subtle)] p-3 sm:grid-cols-[minmax(0,1fr)_minmax(12rem,1fr)] sm:items-center"
+              >
+                <span className="text-sm font-semibold">{member.name}</span>
+                <select
+                  value={member.vehicleId ?? ""}
+                  disabled={busy}
+                  onChange={(event) => {
+                    if (event.target.value) {
+                      void assignTruck(member.profileId, event.target.value);
+                    }
+                  }}
+                  className="min-h-11 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 text-base"
+                >
+                  <option value="" disabled>
+                    Choose a truck
+                  </option>
+                  {fieldVehicles.map((vehicle) => (
+                    <option key={vehicle.id} value={vehicle.id}>
+                      {vehicle.name}
+                      {vehicle.unitNumber ? ` · ${vehicle.unitNumber}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <section className="rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4 shadow-card">
         <label className="block text-xs text-[color:var(--theme-text-secondary)]">

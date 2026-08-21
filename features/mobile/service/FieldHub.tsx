@@ -18,6 +18,7 @@ import {
   RotateCcw,
   Settings2,
   SlidersHorizontal,
+  Truck,
   Wrench,
   Wifi,
   WifiOff,
@@ -111,6 +112,13 @@ const FIELD_DASHBOARD_CARDS: FieldDashboardCard[] = [
     description: "Return to active repairs and service calls.",
     href: "/mobile/service/jobs",
     icon: Wrench,
+  },
+  {
+    id: "my_truck",
+    title: "My Truck",
+    description: "Review maintenance, reminders, downtime, costs and documents.",
+    href: "/mobile/service/my-truck",
+    icon: Truck,
   },
   {
     id: "awaiting_approval",
