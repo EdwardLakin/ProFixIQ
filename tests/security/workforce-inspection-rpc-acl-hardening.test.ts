@@ -6,7 +6,7 @@ const source = (path: string) =>
   readFileSync(join(process.cwd(), path), "utf8");
 
 const migration = source(
-  "supabase/migrations/20260821151500_harden_workforce_inspection_rpc_acl.sql",
+  "supabase/migrations/20260821174227_harden_workforce_inspection_rpc_acl.sql",
 );
 
 const protectedFunctions = [
