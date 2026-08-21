@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import dynamic from "next/dynamic";
 import {
   BrainCircuit,
+  CircleDollarSign,
   Clock3,
   ListChecks,
   MessageSquareText,
@@ -82,6 +83,10 @@ import {
   workOrderWorkspaceCustomerMessageHref,
 } from "@/features/work-orders/workspace/workOrderWorkspace";
 import { notifyWorkOrderPartsRefresh } from "@/features/work-orders/workspace/useWorkOrderPartsRefresh";
+import {
+  WorkOrderFinancialWorkspace,
+  type WorkOrderInvoiceReviewStatus,
+} from "@/features/work-orders/workspace/WorkOrderFinancialWorkspace";
 
 import { prepareSectionsWithCornerGrid } from "@inspections/lib/inspection/prepareSectionsWithCornerGrid";
 
@@ -1078,16 +1083,22 @@ export default function WorkOrderIdClient(): JSX.Element {
     return byLine;
   }, [activeQuotesByLine, allocsByLine, lines, shopLaborRate, stagedPartsByLine]);
 
-  const workOrderTotal = useMemo(
-    () =>
-      lines
-        .filter((line) => (line.line_type ?? "job") !== "info")
-        .reduce(
-        (total, line) => total + Number(pricingByLine[line.id]?.lineTotal ?? 0),
-        0,
-      ),
-    [lines, pricingByLine],
-  );
+  const workOrderPricingSummary = useMemo(() => {
+    let laborSubtotal = 0;
+    let partsSubtotal = 0;
+    let lineSubtotal = 0;
+
+    for (const line of lines) {
+      if ((line.line_type ?? "job") === "info") continue;
+      const pricing = pricingByLine[line.id];
+      laborSubtotal += Number(pricing?.laborTotal ?? 0);
+      partsSubtotal += Number(pricing?.partsTotal ?? 0);
+      lineSubtotal += Number(pricing?.lineTotal ?? 0);
+    }
+
+    return { laborSubtotal, partsSubtotal, lineSubtotal };
+  }, [lines, pricingByLine]);
+  const workOrderTotal = workOrderPricingSummary.lineSubtotal;
 
   const isPendingApprovalLine = (l: WorkOrderLine) => {
     const a = (l.approval_state ?? "").toLowerCase();
@@ -1240,6 +1251,7 @@ export default function WorkOrderIdClient(): JSX.Element {
 
   const currentActor = getActorCapabilities({ role: currentUserRole });
   const canApprove = currentActor.canAuthorizeQuotes;
+  const canViewFinancials = currentActor.canViewFinancials;
   const canRequestParts = currentActor.canManageWorkOrders;
   const canUseInventoryPicker = currentActor.canManageParts;
   const canMessageCustomer = isCustomerMessagingRole(currentUserRole);
@@ -1252,6 +1264,21 @@ export default function WorkOrderIdClient(): JSX.Element {
   });
 
   const canDeleteLine = currentUserRole ? LINE_DELETE_ROLES.has(currentUserRole) : false;
+  const invoiceReviewStatus: WorkOrderInvoiceReviewStatus =
+    reviewOk === true
+      ? "passed"
+      : reviewOk === false
+        ? "needs_attention"
+        : "not_run";
+
+  const openFinancialWorkspace = useCallback(() => {
+    setShowWoContext(true);
+    window.requestAnimationFrame(() => {
+      document
+        .getElementById("work-order-workspace-financials")
+        ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
+  }, []);
 
   const assignLineTechnician = useCallback(
     async (lineId: string, technicianId: string): Promise<void> => {
@@ -1766,6 +1793,20 @@ export default function WorkOrderIdClient(): JSX.Element {
                   <ReceiptText className="h-3.5 w-3.5" />
                   Approvals{hasAnyApprovalItems ? ` (${approvalPending.length + approvalPendingQuotes.length})` : ""}
                 </button>
+                {canViewFinancials ? (
+                  <button
+                    type="button"
+                    onClick={openFinancialWorkspace}
+                    data-workspace-module-action="financials"
+                    className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-[color:var(--theme-text-secondary)] transition hover:bg-[color:var(--theme-surface-subtle)] hover:text-[color:var(--theme-text-primary)]"
+                  >
+                    <CircleDollarSign
+                      className="h-3.5 w-3.5"
+                      aria-hidden="true"
+                    />
+                    Financials
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => {
@@ -2127,6 +2168,22 @@ export default function WorkOrderIdClient(): JSX.Element {
                 </div>
               )}
                   </WorkOrderWorkspaceModule>
+                {canViewFinancials ? (
+                  <WorkOrderWorkspaceModule
+                    module="financials"
+                    className={cn(PANEL_VARIANTS.secondary, "p-3")}
+                  >
+                    <WorkOrderFinancialWorkspace
+                      workOrderId={wo.id}
+                      laborSubtotal={workOrderPricingSummary.laborSubtotal}
+                      partsSubtotal={workOrderPricingSummary.partsSubtotal}
+                      lineSubtotal={workOrderTotal}
+                      workOrderStatusLabel={workOrderStatusView.label}
+                      paymentStatus={wo.payment_status}
+                      invoiceReviewStatus={invoiceReviewStatus}
+                    />
+                  </WorkOrderWorkspaceModule>
+                ) : null}
                   <WorkOrderWorkspaceModule
                     module="timeline"
                     className={cn(PANEL_VARIANTS.secondary, "p-2")}
