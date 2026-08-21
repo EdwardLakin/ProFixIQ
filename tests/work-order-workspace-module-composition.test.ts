@@ -93,13 +93,10 @@ describe("Work Order Workspace Inspection and Parts composition", () => {
       "work-order-workspace:parts-refresh:line-1",
     );
     expect(workOrderClient).toContain(
-      "new Event(workOrderPartsRefreshEventName(partsLineId))",
+      "notifyWorkOrderPartsRefresh(partsLineId)",
     );
     expect(focusedJob).toContain(
-      "workOrderPartsRefreshEventName(workOrderLineId)",
-    );
-    expect(focusedJob).toContain(
-      "const handlePartsRefresh = () => void loadAllocations()",
+      "useWorkOrderPartsRefresh(workOrderLineId, loadAllocations)",
     );
   });
 });

@@ -79,9 +79,9 @@ import {
   canOpenWorkOrderInspectionModule,
   createWorkOrderWorkspaceResource,
   resolveWorkOrderWorkspaceResource,
-  workOrderPartsRefreshEventName,
   workOrderWorkspaceCustomerMessageHref,
 } from "@/features/work-orders/workspace/workOrderWorkspace";
+import { notifyWorkOrderPartsRefresh } from "@/features/work-orders/workspace/useWorkOrderPartsRefresh";
 
 import { prepareSectionsWithCornerGrid } from "@inspections/lib/inspection/prepareSectionsWithCornerGrid";
 
@@ -1578,9 +1578,7 @@ export default function WorkOrderIdClient(): JSX.Element {
 
     const handler = () => {
       setPartsLineId(null);
-      window.dispatchEvent(
-        new Event(workOrderPartsRefreshEventName(partsLineId)),
-      );
+      notifyWorkOrderPartsRefresh(partsLineId);
       void fetchAll();
     };
 
