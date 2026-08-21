@@ -2,7 +2,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import ChatListPage from "@/app/chat/page";
+import ChatListPage from "../app/chat/page";
 import ChatListClient from "@/features/chat/components/ChatListClient";
 import {
   WorkOrderWorkspaceCommandBar,
