@@ -108,12 +108,15 @@ describe("Work Order Workspace foundation", () => {
       </WorkOrderWorkspaceModule>,
     );
 
-    const module = screen.getByLabelText("Repair lines");
-    expect(module).toHaveAttribute(
+    const moduleBoundary = screen.getByLabelText("Repair lines");
+    expect(moduleBoundary).toHaveAttribute(
       "id",
       WORK_ORDER_WORKSPACE_MODULES.repairLines.anchorId,
     );
-    expect(module).toHaveAttribute("data-workspace-module", "repairLines");
+    expect(moduleBoundary).toHaveAttribute(
+      "data-workspace-module",
+      "repairLines",
+    );
     expect(screen.getByRole("navigation", { name: "Work order actions" })).toBeVisible();
     expect(screen.getByRole("button", { name: "Existing action" })).toBeVisible();
   });
