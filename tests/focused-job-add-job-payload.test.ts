@@ -1,8 +1,22 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 
 import { buildAddJobLinePayload } from "@/features/work-orders/lib/addJobLinePayload";
 
 describe("focused-job add-job payload", () => {
+  it("creates a job unassigned until an explicit assignment action occurs", () => {
+    const source = readFileSync(
+      "features/work-orders/components/workorders/AddJobModal.tsx",
+      "utf8",
+    );
+
+    expect(source).toMatch(
+      /buildAddJobLinePayload\(\{[\s\S]*assignedTechId: null/,
+    );
+    expect(source).not.toContain("techId");
+    expect(source).not.toContain("manageWorkOrderAssignments");
+  });
+
   it("uses only the canonical work-order-line approval fields", () => {
     const payload = buildAddJobLinePayload({
       id: "line-1",

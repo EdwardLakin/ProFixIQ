@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import {
   resolveQuoteLineParts,
+  resolveQuoteLinePartsDisclosure,
   quoteLineTotalResolved,
   type CatalogPart,
   type PartRequest,
@@ -337,6 +338,37 @@ describe("Quote Review parts model", () => {
   });
 });
 
+describe("Quote Review parts disclosure", () => {
+  it.each([
+    {
+      resolvedCount: 1,
+      requiredCount: 1,
+      expanded: true,
+      expected: "details",
+    },
+    {
+      resolvedCount: 1,
+      requiredCount: 1,
+      expanded: false,
+      expected: "collapsed",
+    },
+    {
+      resolvedCount: 0,
+      requiredCount: 1,
+      expanded: false,
+      expected: "unavailable",
+    },
+    {
+      resolvedCount: 0,
+      requiredCount: 0,
+      expanded: false,
+      expected: "none",
+    },
+  ])("returns $expected for $resolvedCount resolved and $requiredCount required", (input) => {
+    expect(resolveQuoteLinePartsDisclosure(input)).toBe(input.expected);
+  });
+});
+
 describe("Quote Review total resolution", () => {
   it("one-hour line at $140 with persisted grand_total = 0 displays $140", () => {
     expect(
@@ -413,6 +445,15 @@ describe("QuoteReviewView linked parts queries and persistence boundaries", () =
 
   it("View Parts Request uses linked request_id", () => {
     expect(source).toContain("href={`/parts/requests/${request.id}`}");
+  });
+
+  it("does not label every collapsed linked part as quoted", () => {
+    expect(source).toContain(
+      '{resolvedParts.length} linked {resolvedParts.length === 1 ? "part" : "parts"}',
+    );
+    expect(source).not.toContain(
+      '{resolvedParts.length} quoted {resolvedParts.length === 1 ? "part" : "parts"} linked',
+    );
   });
 
   it("renders quarantined pricing as manual review without a $0 or live-price claim", () => {

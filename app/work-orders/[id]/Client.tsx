@@ -2609,7 +2609,6 @@ export default function WorkOrderIdClient(): JSX.Element {
           onClose={() => setAddJobOpen(false)}
           workOrderId={wo.id}
           vehicleId={wo.vehicle_id ?? vehicle?.id ?? null}
-          techId={canAssign ? (currentUserId ?? "system") : "system"}
           shopId={wo.shop_id ?? null}
           onJobAdded={() => void fetchAll()}
         />

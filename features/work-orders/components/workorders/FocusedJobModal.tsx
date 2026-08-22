@@ -2077,12 +2077,6 @@ export default function FocusedJobModal(props: {
           onClose={() => setOpenAddJob(false)}
           workOrderId={workOrder.id}
           vehicleId={vehicle?.id ?? null}
-          techId={
-            canAssignTechnician
-              ? ((line as unknown as { assigned_tech_id?: string | null })
-                  ?.assigned_tech_id ?? "system")
-              : "system"
-          }
           shopId={workOrder?.shop_id ?? null}
           onJobAdded={async () => {
             await refresh();

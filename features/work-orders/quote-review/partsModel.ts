@@ -47,6 +47,24 @@ export type QuoteLinePartsInput = {
   selectedParts?: Map<string, CatalogPart>;
 };
 
+export type QuoteLinePartsDisclosureState =
+  | "details"
+  | "collapsed"
+  | "unavailable"
+  | "none";
+
+export function resolveQuoteLinePartsDisclosure(input: {
+  resolvedCount: number;
+  requiredCount: number;
+  expanded: boolean;
+}): QuoteLinePartsDisclosureState {
+  if (input.resolvedCount > 0) {
+    return input.expanded ? "details" : "collapsed";
+  }
+
+  return input.requiredCount > 0 ? "unavailable" : "none";
+}
+
 function safeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }

@@ -24,6 +24,7 @@ import {
   isPartsRequestItemPriced,
   itemFlowLabel,
   requestFlowLabel,
+  summarizeRequestFlowDisplays,
   toItemFlowDisplay,
   toRequestFlowDisplay,
 } from "@/features/parts/lib/status-display";
@@ -1994,12 +1995,8 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
   }));
 
   const requestSummary = useMemo(() => {
-    let waiting = 0;
-    let ordered = 0;
-    let partiallyReceived = 0;
-    let complete = 0;
-    for (const r of requests) {
-      const requestState = toRequestFlowDisplay({
+    const requestStates = requests.map((r) =>
+      toRequestFlowDisplay({
         rawStatus: r.req.status,
         itemStates: r.items.map((it) =>
           toItemFlowDisplay({
@@ -2009,13 +2006,9 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
             qtyReceived: (it as { qty_received?: unknown }).qty_received,
           }),
         ),
-      });
-      if (requestState === "pending") waiting += 1;
-      else if (requestState === "in_progress") ordered += 1;
-      else if (requestState === "ready") partiallyReceived += 1;
-      else complete += 1;
-    }
-    return { waiting, ordered, partiallyReceived, complete };
+      }),
+    );
+    return summarizeRequestFlowDisplays(requestStates);
   }, [requests]);
 
   return (
@@ -2051,10 +2044,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
             onSelectedPoChange={setSelectedPo}
             statusSummary={
               <RequestStatusSummary
-                waiting={requestSummary.waiting}
-                ordered={requestSummary.ordered}
-                partiallyReceived={requestSummary.partiallyReceived}
-                complete={requestSummary.complete}
+                counts={requestSummary}
               />
             }
           />
