@@ -160,7 +160,9 @@ function normalizeLines(rowsUnknown: unknown): PortalApprovalLine[] {
   return out;
 }
 
-export function normalizeQuoteApprovals(rowsUnknown: unknown): PortalQuoteApprovalSummary[] {
+export function normalizeQuoteApprovals(
+  rowsUnknown: unknown,
+): PortalQuoteApprovalSummary[] {
   const grouped = new Map<string, QuoteApprovalAccumulator>();
 
   for (const raw of asArray(rowsUnknown)) {
@@ -172,7 +174,9 @@ export function normalizeQuoteApprovals(rowsUnknown: unknown): PortalQuoteApprov
 
     const current = grouped.get(workOrderId) ?? {
       workOrderId,
-      reference: workOrder.custom_id?.trim() || `#${workOrderId.slice(0, 8).toUpperCase()}`,
+      reference:
+        workOrder.custom_id?.trim() ||
+        `#${workOrderId.slice(0, 8).toUpperCase()}`,
       createdAt: asString(raw.sent_to_customer_at) ?? workOrder.created_at,
       lineCount: 0,
       total: 0,
@@ -185,7 +189,9 @@ export function normalizeQuoteApprovals(rowsUnknown: unknown): PortalQuoteApprov
     grouped.set(workOrderId, current);
   }
 
-  return [...grouped.values()].map(({ seenLineIds: _seenLineIds, ...summary }) => summary);
+  return [...grouped.values()].map(
+    ({ seenLineIds: _seenLineIds, ...summary }) => summary,
+  );
 }
 
 export async function listPortalApprovalsForCustomer({
@@ -193,11 +199,25 @@ export async function listPortalApprovalsForCustomer({
   customer,
 }: {
   supabase: SupabaseClient<DB>;
-  customer: Pick<PortalCustomer, "id">;
-}): Promise<{ ok: true; data: PortalApprovalsPayload } | { ok: false; error: string; status: number }> {
+  customer: Pick<PortalCustomer, "id" | "shop_id">;
+}): Promise<
+  | { ok: true; data: PortalApprovalsPayload }
+  | { ok: false; error: string; status: number }
+> {
+  if (!customer.shop_id) {
+    return {
+      ok: false,
+      error: "Customer portal is not connected to a shop.",
+      status: 403,
+    };
+  }
+
+  const shopId = customer.shop_id;
   const [lineResult, quoteResult] = await Promise.all([
-    supabase.from("work_order_lines").select(
-      `
+    supabase
+      .from("work_order_lines")
+      .select(
+        `
       id,
       description,
       complaint,
@@ -222,8 +242,10 @@ export async function listPortalApprovalsForCustomer({
         work_order_line_id
       )
     `,
-    )
+      )
+      .eq("shop_id", shopId)
       .eq("work_orders.customer_id", customer.id)
+      .eq("work_orders.shop_id", shopId)
       .eq("approval_state", "pending")
       .order("created_at", { ascending: false }),
     supabase
@@ -249,24 +271,36 @@ export async function listPortalApprovalsForCustomer({
         )
       `,
       )
+      .eq("shop_id", shopId)
       .eq("work_orders.customer_id", customer.id)
+      .eq("work_orders.shop_id", shopId)
       .order("created_at", { ascending: false })
       .limit(200),
   ]);
 
-  if (lineResult.error) return { ok: false, error: lineResult.error.message, status: 400 };
-  if (quoteResult.error) return { ok: false, error: quoteResult.error.message, status: 400 };
+  if (lineResult.error)
+    return { ok: false, error: lineResult.error.message, status: 400 };
+  if (quoteResult.error)
+    return { ok: false, error: quoteResult.error.message, status: 400 };
 
   const lines = normalizeLines(lineResult.data as unknown);
   const quoteApprovals = normalizeQuoteApprovals(quoteResult.data as unknown);
-  const requestIds = uniqStrings(lines.flatMap((ln) => ln.part_request_items.map((it) => it.request_id)));
+  const requestIds = uniqStrings(
+    lines.flatMap((ln) => ln.part_request_items.map((it) => it.request_id)),
+  );
 
   let partRequestHeaders: PartRequestHeaderPick[] = [];
   if (requestIds.length) {
-    const h = await supabase.from("part_requests").select("id, status, created_at").in("id", requestIds);
+    const h = await supabase
+      .from("part_requests")
+      .select("id, status, created_at")
+      .eq("shop_id", shopId)
+      .in("id", requestIds);
 
     if (h.error) return { ok: false, error: h.error.message, status: 400 };
-    partRequestHeaders = Array.isArray(h.data) ? (h.data as PartRequestHeaderPick[]) : [];
+    partRequestHeaders = Array.isArray(h.data)
+      ? (h.data as PartRequestHeaderPick[])
+      : [];
   }
 
   return {

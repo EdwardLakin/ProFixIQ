@@ -186,39 +186,42 @@ export async function listPortalWorkOrdersForCustomer({
     ),
   );
 
-  const [vehicleResult, advisorResult, lineResult, quoteLineResult] = await Promise.all([
-    vehicleIds.length
-      ? supabase
-          .from("vehicles")
-          .select("id,year,make,model,unit_number,license_plate")
-          .eq("shop_id", shopId)
-          .eq("customer_id", customerId)
-          .in("id", vehicleIds)
-          .returns<VehicleSummaryRow[]>()
-      : Promise.resolve({ data: [] as VehicleSummaryRow[], error: null }),
-    advisorIds.length
-      ? supabase
-          .from("profiles")
-          .select("id,full_name")
-          .eq("shop_id", shopId)
-          .in("id", advisorIds)
-          .returns<AdvisorSummaryRow[]>()
-      : Promise.resolve({ data: [] as AdvisorSummaryRow[], error: null }),
-    supabase
-      .from("work_order_lines")
-      .select("id,work_order_id,line_no,description,complaint")
-      .in("work_order_id", workOrderIds)
-      .order("line_no", { ascending: true })
-      .returns<LineSummaryRow[]>(),
-    supabase
-      .from("work_order_quote_lines")
-      .select(
-        "id,work_order_id,description,ai_complaint,notes,status,stage,sent_to_customer_at,approved_at,declined_at,work_order_line_id",
-      )
-      .in("work_order_id", workOrderIds)
-      .order("created_at", { ascending: true })
-      .returns<QuoteLineSummaryRow[]>(),
-  ]);
+  const [vehicleResult, advisorResult, lineResult, quoteLineResult] =
+    await Promise.all([
+      vehicleIds.length
+        ? supabase
+            .from("vehicles")
+            .select("id,year,make,model,unit_number,license_plate")
+            .eq("shop_id", shopId)
+            .eq("customer_id", customerId)
+            .in("id", vehicleIds)
+            .returns<VehicleSummaryRow[]>()
+        : Promise.resolve({ data: [] as VehicleSummaryRow[], error: null }),
+      advisorIds.length
+        ? supabase
+            .from("profiles")
+            .select("id,full_name")
+            .eq("shop_id", shopId)
+            .in("id", advisorIds)
+            .returns<AdvisorSummaryRow[]>()
+        : Promise.resolve({ data: [] as AdvisorSummaryRow[], error: null }),
+      supabase
+        .from("work_order_lines")
+        .select("id,work_order_id,line_no,description,complaint")
+        .eq("shop_id", shopId)
+        .in("work_order_id", workOrderIds)
+        .order("line_no", { ascending: true })
+        .returns<LineSummaryRow[]>(),
+      supabase
+        .from("work_order_quote_lines")
+        .select(
+          "id,work_order_id,description,ai_complaint,notes,status,stage,sent_to_customer_at,approved_at,declined_at,work_order_line_id",
+        )
+        .eq("shop_id", shopId)
+        .in("work_order_id", workOrderIds)
+        .order("created_at", { ascending: true })
+        .returns<QuoteLineSummaryRow[]>(),
+    ]);
 
   const queryError =
     vehicleResult.error ??
@@ -247,7 +250,9 @@ export async function listPortalWorkOrdersForCustomer({
   }
 
   for (const line of quoteLineResult.data ?? []) {
-    if (!isPendingCustomerQuoteLine(line as unknown as Record<string, unknown>)) {
+    if (
+      !isPendingCustomerQuoteLine(line as unknown as Record<string, unknown>)
+    ) {
       continue;
     }
     pendingQuoteWorkOrderIds.add(line.work_order_id);
@@ -284,10 +289,8 @@ export async function listPortalWorkOrdersForCustomer({
         `#${workOrder.id.slice(0, 8).toUpperCase()}`,
       vehicleLabel: vehicle.label,
       vehicleDetail: vehicle.detail,
-      serviceSummary:
-        linesByWorkOrder.get(workOrder.id) ??
-        quoteLinesByWorkOrder.get(workOrder.id) ??
-        ["Service visit"],
+      serviceSummary: linesByWorkOrder.get(workOrder.id) ??
+        quoteLinesByWorkOrder.get(workOrder.id) ?? ["Service visit"],
       advisorName: workOrder.advisor_id
         ? compactText(advisorsById.get(workOrder.advisor_id)?.full_name)
         : null,

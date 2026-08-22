@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import QuoteApprovalActions from "@/features/portal/components/QuoteApprovalActions";
 import PortalInvoicePayButton from "@/features/stripe/components/PortalInvoicePayButton";
@@ -28,6 +27,10 @@ import {
   type WorkOrderEvidenceItem,
 } from "@/features/work-orders/lib/evidence/workOrderEvidence";
 import { selectCustomerVisibleQuoteParts } from "@/features/portal/lib/customerVisibleQuoteParts";
+import {
+  isCustomerVisibleDirectWorkOrderLine,
+  isCustomerVisibleQuoteLine,
+} from "@/features/portal/lib/quoteApprovalPresentation";
 import { loadOptionalQuoteEvidence } from "@/features/portal/lib/loadOptionalQuoteEvidence";
 import RouteLoadPanel from "@/features/shared/components/ui/RouteLoadPanel";
 import {
@@ -38,25 +41,6 @@ import {
 } from "@/features/shared/lib/route-load";
 
 const COPPER = "#C57A4A";
-const CUSTOMER_VISIBLE_QUOTE_STATUSES = new Set([
-  "sent",
-  "approved",
-  "converted",
-  "declined",
-  "deferred",
-]);
-const CUSTOMER_VISIBLE_QUOTE_STAGES = new Set([
-  "sent",
-  "customer_review",
-  "customer_approved",
-  "customer_declined",
-  "customer_deferred",
-]);
-const HIDDEN_QUOTE_REVISION_STATUSES = new Set([
-  "cancelled",
-  "rejected",
-  "superseded",
-]);
 
 type DB = Database;
 type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -65,6 +49,16 @@ type QuoteLineDbRow = DB["public"]["Tables"]["work_order_quote_lines"]["Row"];
 type WorkOrderLineDbRow = DB["public"]["Tables"]["work_order_lines"]["Row"];
 type WorkOrderPartDbRow = DB["public"]["Tables"]["work_order_parts"]["Row"];
 type InspectionPhotoRow = DB["public"]["Tables"]["inspection_photos"]["Row"];
+
+type PortalQuoteDetailPayload = {
+  workOrder: WorkOrderRow;
+  shop: ShopRow | null;
+  quoteLines: QuoteLineRow[];
+  workOrderLines: DirectLineRow[];
+  workOrderParts: DirectPartRow[];
+  inspectionPhotos: Array<Pick<InspectionPhotoRow, "image_url" | "item_name">>;
+  inspectionPhotosUnavailable: boolean;
+};
 
 type ParamsShape = Record<string, string | string[] | undefined>;
 
@@ -172,6 +166,34 @@ type LineView = {
 function paramToString(value: string | string[] | undefined): string | null {
   if (!value) return null;
   return Array.isArray(value) ? (value[0] ?? null) : value;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+async function readPortalQuotePayload(
+  response: Response,
+): Promise<PortalQuoteDetailPayload> {
+  const body = (await response.json().catch(() => null)) as unknown;
+  if (!response.ok) {
+    const message =
+      isRecord(body) && typeof body.error === "string"
+        ? body.error
+        : "This quote could not be loaded.";
+    throw routeLoadFailureFromStatus(response.status, message);
+  }
+  if (
+    !isRecord(body) ||
+    !isRecord(body.workOrder) ||
+    !Array.isArray(body.quoteLines) ||
+    !Array.isArray(body.workOrderLines) ||
+    !Array.isArray(body.workOrderParts) ||
+    !Array.isArray(body.inspectionPhotos)
+  ) {
+    throw new Error("The quote response was incomplete.");
+  }
+  return body as unknown as PortalQuoteDetailPayload;
 }
 
 function safeTrim(x: unknown): string {
@@ -324,17 +346,6 @@ function getEvidencePhotos(
     .slice(0, 3);
 }
 
-function isCustomerVisibleQuoteLine(line: QuoteLineRow): boolean {
-  const status = safeTrim(line.status).toLowerCase();
-  const stage = safeTrim(line.stage).toLowerCase();
-  if (HIDDEN_QUOTE_REVISION_STATUSES.has(status)) return false;
-  return (
-    Boolean(line.sent_to_customer_at) ||
-    CUSTOMER_VISIBLE_QUOTE_STATUSES.has(status) ||
-    CUSTOMER_VISIBLE_QUOTE_STAGES.has(stage)
-  );
-}
-
 function quoteApprovalState(line: QuoteLineRow): LineView["approvalState"] {
   const status = safeTrim(line.status).toLowerCase();
   const stage = safeTrim(line.stage).toLowerCase();
@@ -363,8 +374,6 @@ export default function QuotePageClient(): JSX.Element {
     () => paramToString((params as ParamsShape).id),
     [params],
   );
-  const supabase = useMemo(() => createBrowserSupabase(), []);
-
   const [loading, setLoading] = useState(true);
   const [loadFailure, setLoadFailure] = useState<RouteLoadFailure | null>(null);
   const [evidenceWarning, setEvidenceWarning] =
@@ -393,134 +402,29 @@ export default function QuotePageClient(): JSX.Element {
           operation: "load customer quote",
         },
         async ({ recordStatus, signal }) => {
-          const {
-            data: { user },
-            error: userErr,
-          } = await supabase.auth.getUser();
-
-          if (userErr || !user) {
-            throw routeLoadFailureFromStatus(
-              401,
-              "Sign in to view this quote.",
-            );
-          }
-
-          const { data: customer, error: custErr } = await supabase
-            .from("customers")
-            .select("id")
-            .eq("user_id", user.id)
-            .abortSignal(signal)
-            .maybeSingle();
-
-          if (custErr) throw custErr;
-          if (!customer?.id) {
-            throw routeLoadFailureFromStatus(
-              403,
-              "This account is not linked to a customer portal profile.",
-            );
-          }
-
-          const { data: wo, error: woErr } = await supabase
-            .from("work_orders")
-            .select("*")
-            .eq("id", workOrderId)
-            .eq("customer_id", customer.id)
-            .abortSignal(signal)
-            .maybeSingle();
-
-          if (woErr) throw woErr;
-          if (!wo?.id || !wo.shop_id) {
-            throw routeLoadFailureFromStatus(
-              404,
-              "This quote is unavailable or does not belong to this account.",
-            );
-          }
-
-          setWorkOrder(wo as WorkOrderRow);
-
-          let shopRow: ShopRow | null = null;
-          let laborRate = 0;
-
-          const { data: shopData, error: shopError } = await supabase
-            .from("shops")
-            .select("*")
-            .eq("id", wo.shop_id)
-            .abortSignal(signal)
-            .maybeSingle();
-          if (shopError) throw shopError;
-          shopRow = (shopData ?? null) as ShopRow | null;
-          laborRate = asNumber(
-            (shopData as { labor_rate?: unknown } | null)?.labor_rate,
+          const response = await fetch(
+            `/api/portal/quotes/${encodeURIComponent(workOrderId)}`,
+            { cache: "no-store", signal },
           );
+          recordStatus(response.status);
+          const payload = await readPortalQuotePayload(response);
+          const wo = payload.workOrder;
+          const shopRow = payload.shop;
+          const laborRate = asNumber(shopRow?.labor_rate);
+          const quoteRowsRaw = payload.quoteLines;
+          const directRowsRaw = payload.workOrderLines;
+          const directPartsRaw = payload.workOrderParts;
+          const inspectionPhotos = payload.inspectionPhotos;
+          let evidenceWarningCandidate: RouteLoadFailure | null =
+            payload.inspectionPhotosUnavailable
+              ? routeLoadFailureFromStatus(
+                  503,
+                  "Some quote evidence could not be loaded.",
+                )
+              : null;
+
+          setWorkOrder(wo);
           setShop(shopRow);
-
-          const [quoteResult, directLineResult, directPartResult] =
-            await Promise.all([
-              supabase
-                .from("work_order_quote_lines")
-                .select(
-                  "id, description, ai_complaint, ai_cause, ai_correction, notes, job_type, labor_hours, est_labor_hours, labor_total, parts_total, subtotal, tax_total, grand_total, status, stage, sent_to_customer_at, approved_at, declined_at, work_order_line_id, metadata, created_at, updated_at",
-                )
-                .eq("work_order_id", workOrderId)
-                .eq("shop_id", wo.shop_id)
-                .order("created_at", { ascending: true })
-                .abortSignal(signal),
-              supabase
-                .from("work_order_lines")
-                .select(
-                  "id,line_no,description,complaint,cause,correction,notes,technician_notes,labor_time,price_estimate,status,line_status,approval_state,approval_at,quoted_at,created_at,updated_at,voided_at",
-                )
-                .eq("work_order_id", workOrderId)
-                .eq("shop_id", wo.shop_id)
-                .order("line_no", { ascending: true })
-                .abortSignal(signal),
-              supabase
-                .from("work_order_parts")
-                .select(
-                  "id,work_order_line_id,description_snapshot,part_number_snapshot,manufacturer_snapshot,quantity,unit_price,total_price,is_active",
-                )
-                .eq("work_order_id", workOrderId)
-                .eq("shop_id", wo.shop_id)
-                .eq("is_active", true)
-                .abortSignal(signal),
-            ]);
-          const { data: quoteRowsRaw, error: quoteErr } = quoteResult;
-          const { data: directRowsRaw, error: directLineErr } =
-            directLineResult;
-          const { data: directPartsRaw, error: directPartErr } =
-            directPartResult;
-
-          if (quoteErr || directLineErr || directPartErr) {
-            throw quoteErr ?? directLineErr ?? directPartErr;
-          }
-
-          let inspectionPhotos: Array<
-            Pick<InspectionPhotoRow, "image_url" | "item_name">
-          > = [];
-          let evidenceWarningCandidate: RouteLoadFailure | null = null;
-          const inspectionId = safeTrim(
-            (wo as { inspection_id?: unknown } | null)?.inspection_id,
-          );
-          if (inspectionId) {
-            const { data: photos, error: photosError } = await supabase
-              .from("inspection_photos")
-              .select("image_url,item_name")
-              .eq("inspection_id", inspectionId)
-              .order("created_at", { ascending: false })
-              .abortSignal(signal)
-              .limit(100);
-            if (photosError) {
-              if (signal.aborted) throw photosError;
-              evidenceWarningCandidate = asRouteLoadFailure(
-                photosError,
-                "Some quote evidence could not be loaded.",
-              );
-            } else {
-              inspectionPhotos = (photos ?? []) as Array<
-                Pick<InspectionPhotoRow, "image_url" | "item_name">
-              >;
-            }
-          }
 
           const evidenceResult = await loadOptionalQuoteEvidence({
             workOrderId,
@@ -530,10 +434,12 @@ export default function QuotePageClient(): JSX.Element {
           const canonicalEvidence = evidenceResult.items;
           evidenceWarningCandidate ??= evidenceResult.warning;
 
-          const mappedQuoteLines: LineView[] = (
-            (quoteRowsRaw ?? []) as QuoteLineRow[]
-          )
-            .filter(isCustomerVisibleQuoteLine)
+          const mappedQuoteLines: LineView[] = (quoteRowsRaw as QuoteLineRow[])
+            .filter((line) =>
+              isCustomerVisibleQuoteLine(
+                line as unknown as Record<string, unknown>,
+              ),
+            )
             .map((line, index) => {
               const parts = getQuoteParts(line, Boolean(wo.estimate_number));
               const metadata = quoteMetadata(line);
@@ -643,17 +549,8 @@ export default function QuotePageClient(): JSX.Element {
             .filter((line) => {
               if (line.voided_at || linkedWorkOrderLineIds.has(line.id))
                 return false;
-              const status = safeTrim(line.status).toLowerCase();
-              const lineStatus = safeTrim(line.line_status).toLowerCase();
-              const approvalState = safeTrim(line.approval_state).toLowerCase();
-              return (
-                (approvalState === "pending" && status === "awaiting_approval") ||
-                approvalState === "approved" ||
-                approvalState === "declined" ||
-                approvalState === "deferred" ||
-                lineStatus === "authorized" ||
-                Boolean(line.approval_at) ||
-                ["completed", "ready_to_invoice", "invoiced"].includes(status)
+              return isCustomerVisibleDirectWorkOrderLine(
+                line as unknown as Record<string, unknown>,
               );
             })
             .map((line, index) => {
@@ -766,7 +663,7 @@ export default function QuotePageClient(): JSX.Element {
     } finally {
       setLoading(false);
     }
-  }, [router, supabase, workOrderId]);
+  }, [router, workOrderId]);
 
   useEffect(() => {
     void load();

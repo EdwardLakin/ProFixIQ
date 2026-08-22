@@ -1,6 +1,9 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { selectCustomerVisibleQuoteParts } from "@/features/portal/lib/customerVisibleQuoteParts";
+import {
+  sanitizeCustomerVisibleQuoteMetadata,
+  selectCustomerVisibleQuoteParts,
+} from "@/features/portal/lib/customerVisibleQuoteParts";
 
 const read = (path: string) => readFileSync(path, "utf8");
 
@@ -18,9 +21,15 @@ describe("inspection sign and portal approval regressions", () => {
   });
 
   it("removes the redundant findings review and per-card submission paths", () => {
-    const screen = read("features/inspections/screens/GenericInspectionScreen.tsx");
-    const section = read("features/inspections/lib/inspection/SectionDisplay.tsx");
-    const tire = read("features/inspections/lib/inspection/ui/TireCornerGrid.tsx");
+    const screen = read(
+      "features/inspections/screens/GenericInspectionScreen.tsx",
+    );
+    const section = read(
+      "features/inspections/lib/inspection/SectionDisplay.tsx",
+    );
+    const tire = read(
+      "features/inspections/lib/inspection/ui/TireCornerGrid.tsx",
+    );
     const legacyPage = read("app/inspections/findings/page.tsx");
 
     expect(screen).not.toContain("Open findings list");
@@ -48,7 +57,10 @@ describe("inspection sign and portal approval regressions", () => {
   it("refreshes Supabase auth cookies for API requests", () => {
     const middleware = read("middleware.ts");
     const apiBranch = middleware.indexOf('pathname.startsWith("/api")');
-    const refresh = middleware.indexOf("await supabase.auth.getUser()", apiBranch);
+    const refresh = middleware.indexOf(
+      "await supabase.auth.getUser()",
+      apiBranch,
+    );
 
     expect(middleware).toContain('"/api/:path*"');
     expect(apiBranch).toBeGreaterThan(-1);
@@ -137,6 +149,43 @@ describe("inspection sign and portal approval regressions", () => {
       },
     };
 
-    expect(selectCustomerVisibleQuoteParts(metadata, false)).toEqual(remediated);
+    expect(selectCustomerVisibleQuoteParts(metadata, false)).toEqual(
+      remediated,
+    );
+  });
+
+  it("removes acquisition costs and unrelated internal metadata from portal payloads", () => {
+    const sanitized = sanitizeCustomerVisibleQuoteMetadata({
+      request_kind: "repair",
+      internal_advisor_note: "Do not expose",
+      parts_quote: {
+        items: [
+          {
+            description: "Front brake pads",
+            qty: 1,
+            unit_price: 98.54,
+            line_total: 98.54,
+            unit_cost: 40,
+            unitCost: 40,
+          },
+        ],
+      },
+    });
+
+    expect(sanitized).toEqual({
+      request_kind: "repair",
+      parts_quote: {
+        items: [
+          {
+            description: "Front brake pads",
+            qty: 1,
+            unit_price: 98.54,
+            line_total: 98.54,
+          },
+        ],
+      },
+    });
+    expect(JSON.stringify(sanitized)).not.toContain("cost");
+    expect(JSON.stringify(sanitized)).not.toContain("Do not expose");
   });
 });

@@ -42,8 +42,10 @@ describe("failing route loader integration", () => {
 
   it("bounds the server-rendered customer quote list", () => {
     const page = read("app/portal/quotes/page.tsx");
+    const loader = read("features/portal/server/listPortalQuotes.ts");
     expect(page).toContain("runBoundedRouteLoad");
-    expect(page).toContain(".abortSignal(signal)");
+    expect(page).toContain("listPortalQuotesForCustomer");
+    expect(loader).toContain(".abortSignal(signal)");
     expect(read("app/portal/quotes/loading.tsx")).toContain(
       "PortalQuotesLoading",
     );
@@ -64,9 +66,7 @@ describe("failing route loader integration", () => {
   });
 
   it("keeps quote approval available when optional evidence is degraded", () => {
-    const source = read(
-      "features/portal/app/quotes/[id]/QuotePageClient.tsx",
-    );
+    const source = read("features/portal/app/quotes/[id]/QuotePageClient.tsx");
     expect(source).toContain("loadOptionalQuoteEvidence");
     expect(source).toContain("setEvidenceWarning(evidenceWarningCandidate)");
     expect(source).toContain(

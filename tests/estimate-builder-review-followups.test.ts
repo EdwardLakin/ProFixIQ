@@ -18,6 +18,7 @@ const portalNotification = source(
   "features/portal/server/upsertPortalNotification.ts",
 );
 const portalList = source("app/portal/quotes/page.tsx");
+const portalListData = source("features/portal/server/listPortalQuotes.ts");
 
 function validEstimate(vin: string | null) {
   return {
@@ -95,8 +96,8 @@ describe("estimate builder review follow-ups", () => {
   });
 
   it("renders one aggregate portal card for a multi-line estimate", () => {
-    expect(portalList).toContain("if (workOrder.estimate_number)");
-    expect(portalList).toContain("key: `estimate:${workOrder.id}`");
+    expect(portalListData).toContain("if (workOrder.estimate_number)");
+    expect(portalListData).toContain("key: `estimate:${workOrder.id}`");
     expect(portalList).toContain("cards.map((card)");
     expect(portalList).toContain('"Review estimate"');
   });
