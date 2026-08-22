@@ -28,6 +28,7 @@ import {
   type WorkOrderEvidenceItem,
 } from "@/features/work-orders/lib/evidence/workOrderEvidence";
 import { selectCustomerVisibleQuoteParts } from "@/features/portal/lib/customerVisibleQuoteParts";
+import { loadOptionalQuoteEvidence } from "@/features/portal/lib/loadOptionalQuoteEvidence";
 import RouteLoadPanel from "@/features/shared/components/ui/RouteLoadPanel";
 import {
   asRouteLoadFailure,
@@ -366,6 +367,8 @@ export default function QuotePageClient(): JSX.Element {
 
   const [loading, setLoading] = useState(true);
   const [loadFailure, setLoadFailure] = useState<RouteLoadFailure | null>(null);
+  const [evidenceWarning, setEvidenceWarning] =
+    useState<RouteLoadFailure | null>(null);
   const [workOrder, setWorkOrder] = useState<WorkOrderRow | null>(null);
   const [shop, setShop] = useState<ShopRow | null>(null);
   const [lines, setLines] = useState<LineView[]>([]);
@@ -381,6 +384,7 @@ export default function QuotePageClient(): JSX.Element {
 
     setLoading(true);
     setLoadFailure(null);
+    setEvidenceWarning(null);
 
     try {
       await runBoundedRouteLoad(
@@ -493,6 +497,7 @@ export default function QuotePageClient(): JSX.Element {
           let inspectionPhotos: Array<
             Pick<InspectionPhotoRow, "image_url" | "item_name">
           > = [];
+          let evidenceWarningCandidate: RouteLoadFailure | null = null;
           const inspectionId = safeTrim(
             (wo as { inspection_id?: unknown } | null)?.inspection_id,
           );
@@ -504,29 +509,26 @@ export default function QuotePageClient(): JSX.Element {
               .order("created_at", { ascending: false })
               .abortSignal(signal)
               .limit(100);
-            if (photosError) throw photosError;
-            inspectionPhotos = (photos ?? []) as Array<
-              Pick<InspectionPhotoRow, "image_url" | "item_name">
-            >;
+            if (photosError) {
+              if (signal.aborted) throw photosError;
+              evidenceWarningCandidate = asRouteLoadFailure(
+                photosError,
+                "Some quote evidence could not be loaded.",
+              );
+            } else {
+              inspectionPhotos = (photos ?? []) as Array<
+                Pick<InspectionPhotoRow, "image_url" | "item_name">
+              >;
+            }
           }
 
-          const evidenceResponse = await fetch(
-            `/api/work-orders/${workOrderId}/media?scope=all`,
-            { cache: "no-store", signal },
-          );
-          recordStatus(evidenceResponse.status);
-          const evidenceBody = (await evidenceResponse
-            .json()
-            .catch(() => null)) as {
-            items?: WorkOrderEvidenceItem[];
-          } | null;
-          if (!evidenceResponse.ok) {
-            throw routeLoadFailureFromStatus(
-              evidenceResponse.status,
-              "Quote evidence could not be loaded.",
-            );
-          }
-          const canonicalEvidence = evidenceBody?.items ?? [];
+          const evidenceResult = await loadOptionalQuoteEvidence({
+            workOrderId,
+            signal,
+            recordStatus,
+          });
+          const canonicalEvidence = evidenceResult.items;
+          evidenceWarningCandidate ??= evidenceResult.warning;
 
           const mappedQuoteLines: LineView[] = (
             (quoteRowsRaw ?? []) as QuoteLineRow[]
@@ -745,6 +747,7 @@ export default function QuotePageClient(): JSX.Element {
               };
             });
 
+          setEvidenceWarning(evidenceWarningCandidate);
           setLines([...mappedQuoteLines, ...mappedDirectLines]);
         },
       );
@@ -891,6 +894,36 @@ export default function QuotePageClient(): JSX.Element {
               Quote
             </div>
           </div>
+
+          {evidenceWarning ? (
+            <section
+              aria-live="polite"
+              className="mb-5 rounded-2xl border border-amber-400/40 bg-amber-500/10 p-4 text-amber-100"
+              role="status"
+            >
+              <h2 className="text-sm font-semibold">
+                Some evidence is temporarily unavailable
+              </h2>
+              <p className="mt-1 text-xs text-amber-100/90">
+                The quote details and approval actions are still available.
+              </p>
+              {evidenceWarning.requestId ? (
+                <p className="mt-2 text-[0.7rem] text-amber-100/70">
+                  Reference:{" "}
+                  <span className="font-mono">{evidenceWarning.requestId}</span>
+                </p>
+              ) : null}
+              {evidenceWarning.retryable ? (
+                <button
+                  type="button"
+                  onClick={() => void load()}
+                  className="mt-3 inline-flex min-h-10 items-center justify-center rounded-full border border-amber-300/50 bg-[color:var(--theme-surface-inset)] px-4 py-2 text-xs font-semibold text-amber-100 transition hover:bg-[color:var(--theme-surface-overlay)]"
+                >
+                  Retry evidence
+                </button>
+              ) : null}
+            </section>
+          ) : null}
 
           <div className="mb-6 space-y-1">
             <h1

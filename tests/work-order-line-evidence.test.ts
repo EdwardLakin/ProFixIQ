@@ -430,6 +430,10 @@ describe("premium work-order evidence UI contract", () => {
     "features/portal/app/quotes/[id]/QuotePageClient.tsx",
     "utf8",
   );
+  const optionalQuoteEvidence = readFileSync(
+    "features/portal/lib/loadOptionalQuoteEvidence.ts",
+    "utf8",
+  );
   const focusedJob = readFileSync(
     "features/work-orders/components/workorders/FocusedJobModal.tsx",
     "utf8",
@@ -465,7 +469,10 @@ describe("premium work-order evidence UI contract", () => {
   });
 
   it("shows canonical line evidence in customer and fleet portal experiences", () => {
-    expect(quote).toContain("/api/work-orders/${workOrderId}/media?scope=all");
+    expect(quote).toContain("loadOptionalQuoteEvidence");
+    expect(optionalQuoteEvidence).toContain(
+      "/api/work-orders/${workOrderId}/media?scope=all",
+    );
     expect(quote).toContain("item.quoteLineId === line.id");
     expect(quote).toContain("EvidenceImage");
     expect(

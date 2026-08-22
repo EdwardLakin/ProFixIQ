@@ -63,6 +63,48 @@ describe("failing route loader integration", () => {
     }
   });
 
+  it("keeps quote approval available when optional evidence is degraded", () => {
+    const source = read(
+      "features/portal/app/quotes/[id]/QuotePageClient.tsx",
+    );
+    expect(source).toContain("loadOptionalQuoteEvidence");
+    expect(source).toContain("setEvidenceWarning(evidenceWarningCandidate)");
+    expect(source).toContain(
+      "The quote details and approval actions are still available.",
+    );
+    expect(source).not.toContain("evidenceResponse");
+  });
+
+  it("keeps rapid intake usable with its defaults when settings are unavailable", () => {
+    const source = read("features/mobile/service/RapidServiceIntake.tsx");
+    expect(source).toContain(
+      "const [durationMinutes, setDurationMinutes] = useState(60)",
+    );
+    expect(source).toContain('title="Using default service settings"');
+    expect(source).not.toMatch(/if \(settingsFailure\)\s*\{\s*return/);
+  });
+
+  it("clears the protected Field snapshot and redirects signed-out users", () => {
+    const scopeGate = read(
+      "features/mobile/service/MobileServiceScopeGate.tsx",
+    );
+    const signedOutScope = scopeGate.match(
+      /if \(!authUserId\)\s*\{([\s\S]*?)\n\s*\}/,
+    )?.[1];
+    expect(signedOutScope).toContain("protectSnapshot(null)");
+    expect(signedOutScope).toContain('router.replace("/mobile")');
+    expect(signedOutScope).not.toContain("throw routeLoadFailureFromStatus");
+
+    const routeGate = read(
+      "features/mobile/service/MobileFieldServiceRouteGate.tsx",
+    );
+    const signedOutRoute = routeGate.match(
+      /if \(!authUserId\)\s*\{([\s\S]*?)\n\s*\}/,
+    )?.[1];
+    expect(signedOutRoute).toContain('router.replace("/mobile")');
+    expect(signedOutRoute).not.toContain("throw routeLoadFailureFromStatus");
+  });
+
   it("does not show zero owner-governance metrics while shops are loading", () => {
     const source = read(
       "features/dashboard/app/dashboard/admin/ShopsClient.tsx",

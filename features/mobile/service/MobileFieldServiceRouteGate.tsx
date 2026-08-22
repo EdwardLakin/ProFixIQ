@@ -72,10 +72,8 @@ export default function MobileFieldServiceRouteGate({
         if (!active) return;
 
         if (!authUserId) {
-          throw routeLoadFailureFromStatus(
-            401,
-            "Sign in to open Field Service.",
-          );
+          router.replace("/mobile");
+          return;
         }
 
         let access: FieldExistingSessionAccess | null = null;

@@ -115,10 +115,10 @@ export default function MobileServiceScopeGate() {
         const authUserId = session?.user?.id?.trim() ?? "";
 
         if (!authUserId) {
-          throw routeLoadFailureFromStatus(
-            401,
-            "Sign in to open Field Service.",
-          );
+          if (!active) return;
+          protectSnapshot(null);
+          router.replace("/mobile");
+          return;
         }
 
         const fieldAccess = (await fieldAccessResponse

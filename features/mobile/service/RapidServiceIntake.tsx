@@ -285,18 +285,6 @@ export default function RapidServiceIntake() {
     );
   }
 
-  if (settingsFailure) {
-    return (
-      <main className="mx-auto w-full max-w-3xl px-3 py-4 sm:px-4">
-        <RouteLoadPanel
-          failure={settingsFailure}
-          onRetry={() => void loadSettings()}
-          title="Service intake unavailable"
-        />
-      </main>
-    );
-  }
-
   return (
     <main className="mx-auto w-full max-w-2xl space-y-3 px-3 pb-28 pt-3 text-[color:var(--theme-text-primary)] sm:px-4">
       <header className="flex items-center gap-3 rounded-3xl border border-white/10 bg-slate-950 p-4 text-white shadow-card">
@@ -317,6 +305,14 @@ export default function RapidServiceIntake() {
           </p>
         </div>
       </header>
+
+      {settingsFailure ? (
+        <RouteLoadPanel
+          failure={settingsFailure}
+          onRetry={() => void loadSettings()}
+          title="Using default service settings"
+        />
+      ) : null}
 
       <section className="relative space-y-3 rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4 shadow-card">
         <div className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">
