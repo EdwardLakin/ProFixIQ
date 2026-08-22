@@ -12,6 +12,10 @@ const portalLoader = read("features/portal/server/portalWorkOrders.ts");
 const quoteClient = read(
   "features/portal/app/quotes/[id]/QuotePageClient.tsx",
 );
+const quoteDetailRoute = read("app/api/portal/quotes/[id]/route.ts");
+const quotePresentation = read(
+  "features/portal/lib/quoteApprovalPresentation.ts",
+);
 const quoteApprovalActions = read(
   "features/portal/components/QuoteApprovalActions.tsx",
 );
@@ -69,17 +73,20 @@ describe("work-order paid closeout boundary", () => {
   });
 
   it("shows the paid state on the read-only work-order story", () => {
-    expect(readOnlyWorkOrder).toContain(
-      "formatWorkOrderHeaderStatus(\n    wo?.status,\n    wo?.payment_status",
+    expect(readOnlyWorkOrder).toMatch(
+      /formatWorkOrderHeaderStatus\(\r?\n\s+wo\?\.status,\r?\n\s+wo\?\.payment_status/,
     );
     expect(readOnlyWorkOrder).toContain("{statusView.label}");
   });
 
   it("keeps direct lines visible and routes pending decisions to the line API", () => {
-    expect(quoteClient).toContain('.from("work_order_lines")');
-    expect(quoteClient).toContain('.from("work_order_parts")');
+    expect(quoteDetailRoute).toContain('.from("work_order_lines")');
+    expect(quoteDetailRoute).toContain('.from("work_order_parts")');
+    expect(quoteDetailRoute).toContain(
+      "isCustomerVisibleDirectWorkOrderLine",
+    );
     expect(quoteClient).toContain('source: "work_order" as const');
-    expect(quoteClient).toContain(
+    expect(quotePresentation).toContain(
       'approvalState === "pending" && status === "awaiting_approval"',
     );
     expect(quoteClient).toContain("partsAmount = directParts.reduce");
