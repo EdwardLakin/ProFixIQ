@@ -1321,7 +1321,7 @@ export default function QuoteReviewView(props: {
                             ) : partsDisclosure === "collapsed" ? (
                               <div className="mt-2 rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--theme-surface-inset)] p-2 text-[color:var(--theme-text-secondary)]">
                                 <div>
-                                  Parts: <span className="text-[color:var(--theme-text-primary)]">{resolvedParts.length} quoted {resolvedParts.length === 1 ? "part" : "parts"} linked</span>
+                                  Parts: <span className="text-[color:var(--theme-text-primary)]">{resolvedParts.length} linked {resolvedParts.length === 1 ? "part" : "parts"}</span>
                                 </div>
                                 <div>Select View {resolvedParts.length === 1 ? "part" : "parts"} to review details.</div>
                               </div>

@@ -447,6 +447,15 @@ describe("QuoteReviewView linked parts queries and persistence boundaries", () =
     expect(source).toContain("href={`/parts/requests/${request.id}`}");
   });
 
+  it("does not label every collapsed linked part as quoted", () => {
+    expect(source).toContain(
+      '{resolvedParts.length} linked {resolvedParts.length === 1 ? "part" : "parts"}',
+    );
+    expect(source).not.toContain(
+      '{resolvedParts.length} quoted {resolvedParts.length === 1 ? "part" : "parts"} linked',
+    );
+  });
+
   it("renders quarantined pricing as manual review without a $0 or live-price claim", () => {
     expect(source).toContain("Manual pricing review required");
     expect(source).toContain(
