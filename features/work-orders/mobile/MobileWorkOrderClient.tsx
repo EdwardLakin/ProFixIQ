@@ -54,6 +54,13 @@ import {
   type MobileWorkOrderSnapshot,
 } from "@/features/work-orders/mobile/technicianOfflineExecution";
 import { useTabs } from "@/features/shared/components/tabs/TabsProvider";
+import RouteLoadPanel from "@/features/shared/components/ui/RouteLoadPanel";
+import {
+  asRouteLoadFailure,
+  routeLoadFailureFromStatus,
+  runBoundedRouteLoad,
+  type RouteLoadFailure,
+} from "@/features/shared/lib/route-load";
 
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -255,8 +262,9 @@ export default function MobileWorkOrderClient({
     null,
   );
 
-  const [loading, setLoading] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(true);
   const [viewError, setViewError] = useState<string | null>(null);
+  const [loadFailure, setLoadFailure] = useState<RouteLoadFailure | null>(null);
 
   const [techNamesById, setTechNamesById] = useState<Record<string, string>>(
     {},
@@ -298,58 +306,85 @@ export default function MobileWorkOrderClient({
     let mounted = true;
 
     const waitForSession = async () => {
-      let {
-        data: { session },
-      } = await supabase.auth.getSession();
+      setLoading(true);
+      setLoadFailure(null);
+      try {
+        await runBoundedRouteLoad(
+          {
+            route: `/mobile/work-orders/${routeId}`,
+            operation: "resolve mobile work order actor",
+          },
+          async ({ signal }) => {
+            let {
+              data: { session },
+            } = await supabase.auth.getSession();
 
-      if (!session) {
-        for (let i = 0; i < 8; i++) {
-          await new Promise((r) => setTimeout(r, 150 * (i + 1)));
-          const res = await supabase.auth.getSession();
-          session = res.data.session;
-          if (session) break;
-        }
-      }
+            if (!session) {
+              for (let i = 0; i < 8; i++) {
+                await new Promise((resolve) =>
+                  setTimeout(resolve, 150 * (i + 1)),
+                );
+                if (signal.aborted) return;
+                const result = await supabase.auth.getSession();
+                session = result.data.session;
+                if (session) break;
+              }
+            }
 
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+            const {
+              data: { user },
+            } = await supabase.auth.getUser();
+            if (!mounted || signal.aborted) return;
 
-      if (!mounted) return;
+            const uid = user?.id ?? session?.user.id ?? null;
+            if (!uid) {
+              throw routeLoadFailureFromStatus(
+                401,
+                "Sign in to view this work order.",
+              );
+            }
 
-      const uid = user?.id ?? session?.user.id ?? null;
-      setCurrentUserId(uid);
-      setUserId(uid);
+            setCurrentUserId(uid);
+            setUserId(uid);
 
-      if (uid) {
-        const cachedScope = getOfflineMutationScope();
-        if (!navigator.onLine && cachedScope?.userId === uid) {
-          setCurrentUserRole(session?.user.user_metadata?.role ?? null);
-          setShopId(cachedScope.shopId);
-          setLoading(false);
-          return;
-        }
-        const { data: prof, error: profErr } = await supabase
-          .from("profiles")
-          .select("role, shop_id")
-          .eq("id", uid)
-          .maybeSingle();
+            const cachedScope = getOfflineMutationScope();
+            if (!navigator.onLine && cachedScope?.userId === uid) {
+              setCurrentUserRole(session?.user.user_metadata?.role ?? null);
+              setShopId(cachedScope.shopId);
+              setLoading(false);
+              return;
+            }
 
-        if (!profErr) {
-          setCurrentUserRole(prof?.role ?? null);
-          setShopId((prof?.shop_id as string | null) ?? null);
-          if (prof?.shop_id)
-            setOfflineMutationScope({ userId: uid, shopId: prof.shop_id });
-        } else {
-          setCurrentUserRole(null);
-          setShopId(null);
-        }
-      } else {
+            const { data: prof, error: profErr } = await supabase
+              .from("profiles")
+              .select("role, shop_id")
+              .eq("id", uid)
+              .abortSignal(signal)
+              .maybeSingle();
+            if (profErr) throw profErr;
+            if (!mounted || signal.aborted) return;
+
+            setCurrentUserRole(prof?.role ?? null);
+            setShopId((prof?.shop_id as string | null) ?? null);
+            if (prof?.shop_id) {
+              setOfflineMutationScope({ userId: uid, shopId: prof.shop_id });
+            }
+          },
+        );
+      } catch (error) {
+        if (!mounted) return;
+        setCurrentUserId(null);
+        setUserId(null);
         setCurrentUserRole(null);
         setShopId(null);
+        setLoadFailure(
+          asRouteLoadFailure(
+            error,
+            "The signed-in user could not be verified.",
+          ),
+        );
+        setLoading(false);
       }
-
-      if (!uid) setLoading(false);
     };
 
     void waitForSession();
@@ -382,6 +417,7 @@ export default function MobileWorkOrderClient({
       if (!routeId) return;
       setLoading(true);
       setViewError(null);
+      setLoadFailure(null);
 
       const scope =
         currentUserId && shopId ? { userId: currentUserId, shopId } : null;
@@ -414,250 +450,281 @@ export default function MobileWorkOrderClient({
       }
 
       try {
-        let woRow: WorkOrder | null = null;
+        await runBoundedRouteLoad(
+          {
+            route: `/mobile/work-orders/${routeId}`,
+            operation: "load mobile work order",
+            tenantId: shopId,
+            actorId: currentUserId,
+            role: currentUserRole,
+          },
+          async ({ signal }) => {
+            let woRow: WorkOrder | null = null;
 
-        // 1) by UUID
-        if (looksLikeUuid(routeId)) {
-          const { data, error } = await supabase
-            .from("work_orders")
-            .select("*")
-            .eq("id", routeId)
-            .maybeSingle();
-          if (!error) woRow = (data as WorkOrder | null) ?? null;
-        }
-
-        // 2) by custom_id (NOW SHOP-SCOPED when we have shopId)
-        if (!woRow) {
-          // exact match
-          const eqQuery = supabase
-            .from("work_orders")
-            .select("*")
-            .eq("custom_id", routeId);
-
-          const eqRes = shopId
-            ? await eqQuery.eq("shop_id", shopId).maybeSingle()
-            : await eqQuery.maybeSingle();
-
-          woRow = (eqRes.data as WorkOrder | null) ?? null;
-
-          // ilike match
-          if (!woRow) {
-            const ilikeQuery = supabase
-              .from("work_orders")
-              .select("*")
-              .ilike("custom_id", routeId.toUpperCase());
-
-            const ilikeRes = shopId
-              ? await ilikeQuery.eq("shop_id", shopId).maybeSingle()
-              : await ilikeQuery.maybeSingle();
-
-            woRow = (ilikeRes.data as WorkOrder | null) ?? null;
-          }
-
-          // prefix + number normalization fallback
-          if (!woRow) {
-            const { prefix, n } = splitCustomId(routeId);
-            if (n !== null) {
-              const candQuery = supabase
+            // 1) by UUID
+            if (looksLikeUuid(routeId)) {
+              const { data, error } = await supabase
                 .from("work_orders")
                 .select("*")
-                .ilike("custom_id", `${prefix}%`)
-                .limit(50);
-
-              const { data: cands } = shopId
-                ? await candQuery.eq("shop_id", shopId)
-                : await candQuery;
-
-              const wanted = `${prefix}${n}`;
-              const match = (cands ?? []).find(
-                (r) =>
-                  (r.custom_id ?? "")
-                    .toUpperCase()
-                    .replace(/^([A-Z]+)0+/, "$1") === wanted,
-              );
-              if (match) woRow = match as WorkOrder;
+                .eq("id", routeId)
+                .abortSignal(signal)
+                .maybeSingle();
+              if (!error) woRow = (data as WorkOrder | null) ?? null;
             }
-          }
-        }
 
-        if (!woRow) {
-          if (retry < 2) {
-            await new Promise((r) => setTimeout(r, 200 * Math.pow(2, retry)));
-            return fetchAll(retry + 1);
-          }
-          setViewError("Work order not visible / not found.");
-          setWo(null);
-          setLines([]);
-          setQuoteLines([]);
-          setVehicle(null);
-          setCustomer(null);
-          setLineContext(emptyCanonicalWorkOrderLineContext());
-          setShopLaborRate(null);
-          setLoading(false);
-          return;
-        }
+            // 2) by custom_id (NOW SHOP-SCOPED when we have shopId)
+            if (!woRow) {
+              // exact match
+              const eqQuery = supabase
+                .from("work_orders")
+                .select("*")
+                .eq("custom_id", routeId);
 
-        if (!warnedMissing && (!woRow.vehicle_id || !woRow.customer_id)) {
-          toast.error(
-            "This work order is missing vehicle and/or customer. Open the Create form to set them.",
-          );
-          setWarnedMissing(true);
-        }
+              const eqRes = shopId
+                ? await eqQuery
+                    .eq("shop_id", shopId)
+                    .abortSignal(signal)
+                    .maybeSingle()
+                : await eqQuery.abortSignal(signal).maybeSingle();
 
-        const [linesRes, vehRes, custRes, quotesRes, shopRes] =
-          await Promise.all([
-            supabase
-              .from("work_order_lines")
-              .select("*")
-              .eq("work_order_id", woRow.id)
-              .order("created_at", { ascending: true }),
-            woRow.vehicle_id
-              ? supabase
-                  .from("vehicles")
+              woRow = (eqRes.data as WorkOrder | null) ?? null;
+
+              // ilike match
+              if (!woRow) {
+                const ilikeQuery = supabase
+                  .from("work_orders")
                   .select("*")
-                  .eq("id", woRow.vehicle_id)
-                  .maybeSingle()
-              : Promise.resolve({ data: null, error: null } as const),
-            woRow.customer_id
-              ? supabase
-                  .from("customers")
+                  .ilike("custom_id", routeId.toUpperCase());
+
+                const ilikeRes = shopId
+                  ? await ilikeQuery
+                      .eq("shop_id", shopId)
+                      .abortSignal(signal)
+                      .maybeSingle()
+                  : await ilikeQuery.abortSignal(signal).maybeSingle();
+
+                woRow = (ilikeRes.data as WorkOrder | null) ?? null;
+              }
+
+              // prefix + number normalization fallback
+              if (!woRow) {
+                const { prefix, n } = splitCustomId(routeId);
+                if (n !== null) {
+                  const candQuery = supabase
+                    .from("work_orders")
+                    .select("*")
+                    .ilike("custom_id", `${prefix}%`)
+                    .limit(50);
+
+                  const { data: cands } = shopId
+                    ? await candQuery.eq("shop_id", shopId).abortSignal(signal)
+                    : await candQuery.abortSignal(signal);
+
+                  const wanted = `${prefix}${n}`;
+                  const match = (cands ?? []).find(
+                    (r) =>
+                      (r.custom_id ?? "")
+                        .toUpperCase()
+                        .replace(/^([A-Z]+)0+/, "$1") === wanted,
+                  );
+                  if (match) woRow = match as WorkOrder;
+                }
+              }
+            }
+
+            if (!woRow) {
+              if (retry < 2) {
+                await new Promise((r) =>
+                  setTimeout(r, 200 * Math.pow(2, retry)),
+                );
+                return fetchAll(retry + 1);
+              }
+              setViewError("Work order not visible / not found.");
+              setWo(null);
+              setLines([]);
+              setQuoteLines([]);
+              setVehicle(null);
+              setCustomer(null);
+              setLineContext(emptyCanonicalWorkOrderLineContext());
+              setShopLaborRate(null);
+              throw routeLoadFailureFromStatus(
+                404,
+                "Work order not visible or not found.",
+              );
+            }
+
+            if (!warnedMissing && (!woRow.vehicle_id || !woRow.customer_id)) {
+              toast.error(
+                "This work order is missing vehicle and/or customer. Open the Create form to set them.",
+              );
+              setWarnedMissing(true);
+            }
+
+            const [linesRes, vehRes, custRes, quotesRes, shopRes] =
+              await Promise.all([
+                supabase
+                  .from("work_order_lines")
                   .select("*")
-                  .eq("id", woRow.customer_id)
-                  .maybeSingle()
-              : Promise.resolve({ data: null, error: null } as const),
-            supabase
-              .from("work_order_quote_lines")
-              .select("*")
-              .eq("work_order_id", woRow.id)
-              .order("created_at", { ascending: true }),
-            supabase
-              .from("shops")
-              .select("labor_rate")
-              .eq("id", woRow.shop_id)
-              .maybeSingle<{ labor_rate: number | null }>(),
-          ]);
+                  .eq("work_order_id", woRow.id)
+                  .order("created_at", { ascending: true })
+                  .abortSignal(signal),
+                woRow.vehicle_id
+                  ? supabase
+                      .from("vehicles")
+                      .select("*")
+                      .eq("id", woRow.vehicle_id)
+                      .abortSignal(signal)
+                      .maybeSingle()
+                  : Promise.resolve({ data: null, error: null } as const),
+                woRow.customer_id
+                  ? supabase
+                      .from("customers")
+                      .select("*")
+                      .eq("id", woRow.customer_id)
+                      .abortSignal(signal)
+                      .maybeSingle()
+                  : Promise.resolve({ data: null, error: null } as const),
+                supabase
+                  .from("work_order_quote_lines")
+                  .select("*")
+                  .eq("work_order_id", woRow.id)
+                  .order("created_at", { ascending: true })
+                  .abortSignal(signal),
+                supabase
+                  .from("shops")
+                  .select("labor_rate")
+                  .eq("id", woRow.shop_id)
+                  .abortSignal(signal)
+                  .maybeSingle<{ labor_rate: number | null }>(),
+              ]);
 
-        if (linesRes.error) throw linesRes.error;
-        const lineRows = (linesRes.data ?? []) as WorkOrderLine[];
-        const freshCore = applyFetchedMobileDetailSnapshot({
-          cachedWorkOrder: null,
-          cachedLines: [],
-          fetchedWorkOrder: woRow,
-          fetchedLines: lineRows,
-        });
-        setWo(freshCore.workOrder);
-        setLines(freshCore.lines);
-
-        const freshLineContext = await loadCanonicalWorkOrderLineContext({
-          supabase,
-          workOrderId: woRow.id,
-          shopId: woRow.shop_id,
-          lineIds: lineRows.map((line) => line.id),
-        });
-        setLineContext(freshLineContext);
-        if (shopRes.error) throw shopRes.error;
-        const freshShopLaborRate =
-          typeof shopRes.data?.labor_rate === "number"
-            ? shopRes.data.labor_rate
-            : null;
-        setShopLaborRate(freshShopLaborRate);
-
-        // Populate names for every visible primary or shared assignment.
-        const techIds = collectTechnicianIdsForLineContexts(
-          [freshLineContext],
-          lineRows.map((line) => line.assigned_tech_id),
-        );
-
-        const techMap: Record<string, string> = {};
-        if (techIds.length > 0) {
-          const { data: techProfiles, error: techErr } = await supabase
-            .from("profiles")
-            .select("id, full_name")
-            .in("id", techIds);
-
-          if (!techErr && techProfiles) {
-            techProfiles.forEach((p) => {
-              techMap[p.id] = p.full_name ?? "Technician";
+            if (linesRes.error) throw linesRes.error;
+            const lineRows = (linesRes.data ?? []) as WorkOrderLine[];
+            const freshCore = applyFetchedMobileDetailSnapshot({
+              cachedWorkOrder: null,
+              cachedLines: [],
+              fetchedWorkOrder: woRow,
+              fetchedLines: lineRows,
             });
-            setTechNamesById(techMap);
-          } else {
-            setTechNamesById({});
-          }
-        } else {
-          setTechNamesById({});
-        }
+            setWo(freshCore.workOrder);
+            setLines(freshCore.lines);
 
-        const freshQuoteLines = quotesRes.error
-          ? []
-          : ((quotesRes.data as WorkOrderQuoteLine[] | null) ?? []);
-        const freshVehicle = vehRes?.error
-          ? null
-          : ((vehRes?.data as Vehicle | null) ?? null);
-        const freshCustomer = custRes?.error
-          ? null
-          : ((custRes?.data as Customer | null) ?? null);
+            const freshLineContext = await loadCanonicalWorkOrderLineContext({
+              supabase,
+              workOrderId: woRow.id,
+              shopId: woRow.shop_id,
+              lineIds: lineRows.map((line) => line.id),
+            });
+            setLineContext(freshLineContext);
+            if (shopRes.error) throw shopRes.error;
+            const freshShopLaborRate =
+              typeof shopRes.data?.labor_rate === "number"
+                ? shopRes.data.labor_rate
+                : null;
+            setShopLaborRate(freshShopLaborRate);
 
-        if (quotesRes.error) {
-          setQuoteLines([]);
-          console.error(
-            "[Mobile WO id page] quote lines load error:",
-            quotesRes.error,
-          );
-        } else {
-          setQuoteLines((quotesRes.data as WorkOrderQuoteLine[] | null) ?? []);
-        }
+            // Populate names for every visible primary or shared assignment.
+            const techIds = collectTechnicianIdsForLineContexts(
+              [freshLineContext],
+              lineRows.map((line) => line.assigned_tech_id),
+            );
 
-        if (vehRes?.error) {
-          setVehicle(null);
-          console.error(
-            "[Mobile WO id page] vehicle load error:",
-            vehRes.error,
-          );
-        } else {
-          setVehicle((vehRes?.data as Vehicle | null) ?? null);
-        }
+            const techMap: Record<string, string> = {};
+            if (techIds.length > 0) {
+              const { data: techProfiles, error: techErr } = await supabase
+                .from("profiles")
+                .select("id, full_name")
+                .abortSignal(signal)
+                .in("id", techIds);
 
-        if (custRes?.error) {
-          setCustomer(null);
-          console.error(
-            "[Mobile WO id page] customer load error:",
-            custRes.error,
-          );
-        } else {
-          setCustomer((custRes?.data as Customer | null) ?? null);
-        }
-        if (scope) {
-          const snapshot: MobileWorkOrderSnapshot = {
-            workOrder: freshCore.workOrder,
-            lines: freshCore.lines,
-            quoteLines: freshQuoteLines,
-            vehicle: freshVehicle,
-            customer: freshCustomer,
-            techNamesById: techMap,
-            lineContext: freshLineContext,
-            shopLaborRate: freshShopLaborRate,
-          };
-          await Promise.all([
-            saveOfflineSnapshot({
-              scope,
-              kind: "mobile-work-order-detail",
-              entityId: routeId,
-              data: snapshot,
-            }),
-            saveOfflineSnapshot({
-              scope,
-              kind: "mobile-work-order-detail",
-              entityId: woRow.id,
-              data: snapshot,
-            }),
-          ]);
-        }
+              if (!techErr && techProfiles) {
+                techProfiles.forEach((p) => {
+                  techMap[p.id] = p.full_name ?? "Technician";
+                });
+                setTechNamesById(techMap);
+              } else {
+                setTechNamesById({});
+              }
+            } else {
+              setTechNamesById({});
+            }
+
+            const freshQuoteLines = quotesRes.error
+              ? []
+              : ((quotesRes.data as WorkOrderQuoteLine[] | null) ?? []);
+            const freshVehicle = vehRes?.error
+              ? null
+              : ((vehRes?.data as Vehicle | null) ?? null);
+            const freshCustomer = custRes?.error
+              ? null
+              : ((custRes?.data as Customer | null) ?? null);
+
+            if (quotesRes.error) {
+              setQuoteLines([]);
+              console.error(
+                "[Mobile WO id page] quote lines load error:",
+                quotesRes.error,
+              );
+            } else {
+              setQuoteLines(
+                (quotesRes.data as WorkOrderQuoteLine[] | null) ?? [],
+              );
+            }
+
+            if (vehRes?.error) {
+              setVehicle(null);
+              console.error(
+                "[Mobile WO id page] vehicle load error:",
+                vehRes.error,
+              );
+            } else {
+              setVehicle((vehRes?.data as Vehicle | null) ?? null);
+            }
+
+            if (custRes?.error) {
+              setCustomer(null);
+              console.error(
+                "[Mobile WO id page] customer load error:",
+                custRes.error,
+              );
+            } else {
+              setCustomer((custRes?.data as Customer | null) ?? null);
+            }
+            if (scope) {
+              const snapshot: MobileWorkOrderSnapshot = {
+                workOrder: freshCore.workOrder,
+                lines: freshCore.lines,
+                quoteLines: freshQuoteLines,
+                vehicle: freshVehicle,
+                customer: freshCustomer,
+                techNamesById: techMap,
+                lineContext: freshLineContext,
+                shopLaborRate: freshShopLaborRate,
+              };
+              await Promise.all([
+                saveOfflineSnapshot({
+                  scope,
+                  kind: "mobile-work-order-detail",
+                  entityId: routeId,
+                  data: snapshot,
+                }),
+                saveOfflineSnapshot({
+                  scope,
+                  kind: "mobile-work-order-detail",
+                  entityId: woRow.id,
+                  data: snapshot,
+                }),
+              ]);
+            }
+          },
+        );
       } catch (e: unknown) {
-        const msg =
-          e instanceof Error ? e.message : "Failed to load work order.";
-        setViewError(msg);
-        await loadCached();
-        // eslint-disable-next-line no-console
+        const usedCache = await loadCached();
+        if (!usedCache) {
+          setLoadFailure(
+            asRouteLoadFailure(e, "The work order could not be loaded."),
+          );
+        }
         console.error("[Mobile WO id page] load error:", e);
       } finally {
         setLoading(false);
@@ -667,6 +734,7 @@ export default function MobileWorkOrderClient({
       routeId,
       shopId,
       currentUserId,
+      currentUserRole,
       warnedMissing,
       setWo,
       setLines,
@@ -1421,6 +1489,13 @@ export default function MobileWorkOrderClient({
           {viewError}
         </div>
       )}
+      {loadFailure ? (
+        <RouteLoadPanel
+          failure={loadFailure}
+          onRetry={() => void fetchAll()}
+          title="Work order unavailable"
+        />
+      ) : null}
       {(offlineSummary.queued > 0 ||
         offlineSummary.syncing > 0 ||
         offlineSummary.failed > 0 ||
@@ -1438,7 +1513,7 @@ export default function MobileWorkOrderClient({
           <Skeleton className="h-32" />
           <Skeleton className="h-40" />
         </div>
-      ) : !wo ? (
+      ) : loadFailure && !wo ? null : !wo ? (
         <div className="text-sm text-red-300">Work order not found.</div>
       ) : (
         <div className="space-y-5">

@@ -11,7 +11,14 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import RouteLoadPanel from "@/features/shared/components/ui/RouteLoadPanel";
+import {
+  asRouteLoadFailure,
+  routeLoadFailureFromStatus,
+  runBoundedRouteLoad,
+  type RouteLoadFailure,
+} from "@/features/shared/lib/route-load";
 
 function key(): string {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -88,24 +95,54 @@ export default function RapidServiceIntake() {
   const [suggestions, setSuggestions] = useState<SuggestedCustomer[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [settingsLoading, setSettingsLoading] = useState(true);
+  const [settingsFailure, setSettingsFailure] =
+    useState<RouteLoadFailure | null>(null);
+
+  const loadSettings = useCallback(async () => {
+    setSettingsLoading(true);
+    setSettingsFailure(null);
+    try {
+      const body = await runBoundedRouteLoad(
+        { route: "/mobile/service/new", operation: "load service settings" },
+        async ({ recordStatus, signal }) => {
+          const response = await fetch("/api/mobile/service/settings", {
+            credentials: "include",
+            cache: "no-store",
+            signal,
+          });
+          recordStatus(response.status);
+          if (!response.ok) {
+            throw routeLoadFailureFromStatus(
+              response.status,
+              "Field Service settings could not be loaded.",
+            );
+          }
+          return response.json();
+        },
+      );
+      const value = Number(body?.settings?.default_visit_minutes);
+      if (Number.isFinite(value) && value >= 5) setDurationMinutes(value);
+      const model = body?.settings?.service_model;
+      if (model === "shop" || model === "mobile" || model === "both") {
+        setConfiguredServiceModel(model);
+        if (model !== "both") setServiceMode(model);
+      }
+    } catch (loadError) {
+      setSettingsFailure(
+        asRouteLoadFailure(
+          loadError,
+          "Field Service settings could not be loaded.",
+        ),
+      );
+    } finally {
+      setSettingsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    void fetch("/api/mobile/service/settings", {
-      credentials: "include",
-      cache: "no-store",
-    })
-      .then((response) => (response.ok ? response.json() : null))
-      .then((body) => {
-        const value = Number(body?.settings?.default_visit_minutes);
-        if (Number.isFinite(value) && value >= 5) setDurationMinutes(value);
-        const model = body?.settings?.service_model;
-        if (model === "shop" || model === "mobile" || model === "both") {
-          setConfiguredServiceModel(model);
-          if (model !== "both") setServiceMode(model);
-        }
-      })
-      .catch(() => undefined);
-  }, []);
+    void loadSettings();
+  }, [loadSettings]);
 
   const searchValue = (phone.trim() || customerName.trim()).slice(0, 80);
   useEffect(() => {
@@ -123,13 +160,9 @@ export default function RapidServiceIntake() {
           signal: controller.signal,
         },
       )
-        .then((response) =>
-          response.ok ? response.json() : { customers: [] },
-        )
+        .then((response) => (response.ok ? response.json() : { customers: [] }))
         .then((body) =>
-          setSuggestions(
-            Array.isArray(body?.customers) ? body.customers : [],
-          ),
+          setSuggestions(Array.isArray(body?.customers) ? body.customers : []),
         )
         .catch(() => undefined);
     }, 220);
@@ -214,9 +247,9 @@ export default function RapidServiceIntake() {
           operationKey: operationKey.current,
         }),
       });
-      const body = (await response.json().catch(() => null)) as
-        | IntakeResult
-        | null;
+      const body = (await response
+        .json()
+        .catch(() => null)) as IntakeResult | null;
       if (!response.ok) {
         throw new Error(body?.error || "Service call could not be saved.");
       }
@@ -242,6 +275,26 @@ export default function RapidServiceIntake() {
     } finally {
       setBusy(false);
     }
+  }
+
+  if (settingsLoading) {
+    return (
+      <main className="mx-auto w-full max-w-3xl px-3 py-4 sm:px-4">
+        <div className="h-32 animate-pulse rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)]" />
+      </main>
+    );
+  }
+
+  if (settingsFailure) {
+    return (
+      <main className="mx-auto w-full max-w-3xl px-3 py-4 sm:px-4">
+        <RouteLoadPanel
+          failure={settingsFailure}
+          onRetry={() => void loadSettings()}
+          title="Service intake unavailable"
+        />
+      </main>
+    );
   }
 
   return (
@@ -383,45 +436,46 @@ export default function RapidServiceIntake() {
 
       {serviceMode === "mobile" ? (
         <section className="space-y-3 rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4 shadow-card">
-        <div className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">
-          <MapPin className="h-4 w-4" /> Where
-        </div>
-        <input
-          value={address}
-          onChange={(event) => setAddress(event.target.value)}
-          placeholder="Service address"
-          autoComplete="street-address"
-          className="min-h-12 w-full rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 text-base"
-        />
-        <div className="grid grid-cols-3 gap-2">
+          <div className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">
+            <MapPin className="h-4 w-4" /> Where
+          </div>
           <input
-            value={city}
-            onChange={(event) => setCity(event.target.value)}
-            placeholder="City"
-            className="min-h-11 min-w-0 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 text-sm"
+            value={address}
+            onChange={(event) => setAddress(event.target.value)}
+            placeholder="Service address"
+            autoComplete="street-address"
+            className="min-h-12 w-full rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 text-base"
           />
-          <input
-            value={province}
-            onChange={(event) => setProvince(event.target.value)}
-            placeholder="Province / State"
-            className="min-h-11 min-w-0 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 text-sm"
-          />
-          <input
-            value={postal}
-            onChange={(event) => setPostal(event.target.value)}
-            placeholder="Postal / ZIP"
-            autoCapitalize="characters"
-            className="min-h-11 min-w-0 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 text-sm"
-          />
-        </div>
-      </section>
+          <div className="grid grid-cols-3 gap-2">
+            <input
+              value={city}
+              onChange={(event) => setCity(event.target.value)}
+              placeholder="City"
+              className="min-h-11 min-w-0 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 text-sm"
+            />
+            <input
+              value={province}
+              onChange={(event) => setProvince(event.target.value)}
+              placeholder="Province / State"
+              className="min-h-11 min-w-0 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 text-sm"
+            />
+            <input
+              value={postal}
+              onChange={(event) => setPostal(event.target.value)}
+              placeholder="Postal / ZIP"
+              autoCapitalize="characters"
+              className="min-h-11 min-w-0 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 text-sm"
+            />
+          </div>
+        </section>
       ) : (
         <section className="rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4 shadow-card">
           <div className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">
             <MapPin className="h-4 w-4" /> At the shop
           </div>
           <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">
-            This call uses shop scheduling/capacity. No customer service address is required.
+            This call uses shop scheduling/capacity. No customer service address
+            is required.
           </p>
         </section>
       )}
@@ -468,7 +522,9 @@ export default function RapidServiceIntake() {
             Time allowed
             <select
               value={durationMinutes}
-              onChange={(event) => setDurationMinutes(Number(event.target.value))}
+              onChange={(event) =>
+                setDurationMinutes(Number(event.target.value))
+              }
               className="mt-1 min-h-12 w-full rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 text-base"
             >
               {[30, 45, 60, 90, 120, 180].map((value) => (

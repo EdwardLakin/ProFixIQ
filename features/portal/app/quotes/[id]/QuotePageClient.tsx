@@ -28,6 +28,13 @@ import {
   type WorkOrderEvidenceItem,
 } from "@/features/work-orders/lib/evidence/workOrderEvidence";
 import { selectCustomerVisibleQuoteParts } from "@/features/portal/lib/customerVisibleQuoteParts";
+import RouteLoadPanel from "@/features/shared/components/ui/RouteLoadPanel";
+import {
+  asRouteLoadFailure,
+  routeLoadFailureFromStatus,
+  runBoundedRouteLoad,
+  type RouteLoadFailure,
+} from "@/features/shared/lib/route-load";
 
 const COPPER = "#C57A4A";
 const CUSTOMER_VISIBLE_QUOTE_STATUSES = new Set([
@@ -358,342 +365,405 @@ export default function QuotePageClient(): JSX.Element {
   const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const [loading, setLoading] = useState(true);
+  const [loadFailure, setLoadFailure] = useState<RouteLoadFailure | null>(null);
   const [workOrder, setWorkOrder] = useState<WorkOrderRow | null>(null);
   const [shop, setShop] = useState<ShopRow | null>(null);
   const [lines, setLines] = useState<LineView[]>([]);
 
   const load = useCallback(async () => {
     if (!workOrderId) {
-      router.replace("/portal");
-      return;
-    }
-
-    setLoading(true);
-
-    const {
-      data: { user },
-      error: userErr,
-    } = await supabase.auth.getUser();
-
-    if (userErr || !user) {
-      router.replace("/customer/sign-in");
-      return;
-    }
-
-    const { data: customer, error: custErr } = await supabase
-      .from("customers")
-      .select("id")
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    if (custErr || !customer?.id) {
-      router.replace("/portal");
-      return;
-    }
-
-    const { data: wo, error: woErr } = await supabase
-      .from("work_orders")
-      .select("*")
-      .eq("id", workOrderId)
-      .eq("customer_id", customer.id)
-      .maybeSingle();
-
-    if (woErr || !wo?.id || !wo.shop_id) {
-      router.replace("/portal");
-      return;
-    }
-
-    setWorkOrder(wo as WorkOrderRow);
-
-    let shopRow: ShopRow | null = null;
-    let laborRate = 0;
-
-    const { data: shopData } = await supabase
-      .from("shops")
-      .select("*")
-      .eq("id", wo.shop_id)
-      .maybeSingle();
-    shopRow = (shopData ?? null) as ShopRow | null;
-    laborRate = asNumber(
-      (shopData as { labor_rate?: unknown } | null)?.labor_rate,
-    );
-    setShop(shopRow);
-
-    const [quoteResult, directLineResult, directPartResult] = await Promise.all([
-      supabase
-        .from("work_order_quote_lines")
-        .select(
-          "id, description, ai_complaint, ai_cause, ai_correction, notes, job_type, labor_hours, est_labor_hours, labor_total, parts_total, subtotal, tax_total, grand_total, status, stage, sent_to_customer_at, approved_at, declined_at, work_order_line_id, metadata, created_at, updated_at",
-        )
-        .eq("work_order_id", workOrderId)
-        .eq("shop_id", wo.shop_id)
-        .order("created_at", { ascending: true }),
-      supabase
-        .from("work_order_lines")
-        .select(
-          "id,line_no,description,complaint,cause,correction,notes,technician_notes,labor_time,price_estimate,status,line_status,approval_state,approval_at,quoted_at,created_at,updated_at,voided_at",
-        )
-        .eq("work_order_id", workOrderId)
-        .eq("shop_id", wo.shop_id)
-        .order("line_no", { ascending: true }),
-      supabase
-        .from("work_order_parts")
-        .select(
-          "id,work_order_line_id,description_snapshot,part_number_snapshot,manufacturer_snapshot,quantity,unit_price,total_price,is_active",
-        )
-        .eq("work_order_id", workOrderId)
-        .eq("shop_id", wo.shop_id)
-        .eq("is_active", true),
-    ]);
-    const { data: quoteRowsRaw, error: quoteErr } = quoteResult;
-    const { data: directRowsRaw, error: directLineErr } = directLineResult;
-    const { data: directPartsRaw, error: directPartErr } = directPartResult;
-
-    if (quoteErr || directLineErr || directPartErr) {
-      setLines([]);
+      setLoadFailure(
+        routeLoadFailureFromStatus(404, "The quote link is incomplete."),
+      );
       setLoading(false);
       return;
     }
 
-    let inspectionPhotos: Array<
-      Pick<InspectionPhotoRow, "image_url" | "item_name">
-    > = [];
-    const inspectionId = safeTrim(
-      (wo as { inspection_id?: unknown } | null)?.inspection_id,
-    );
-    if (inspectionId) {
-      const { data: photos } = await supabase
-        .from("inspection_photos")
-        .select("image_url,item_name")
-        .eq("inspection_id", inspectionId)
-        .order("created_at", { ascending: false })
-        .limit(100);
-      inspectionPhotos = (photos ?? []) as Array<
-        Pick<InspectionPhotoRow, "image_url" | "item_name">
-      >;
-    }
+    setLoading(true);
+    setLoadFailure(null);
 
-    const evidenceResponse = await fetch(
-      `/api/work-orders/${workOrderId}/media?scope=all`,
-      { cache: "no-store" },
-    );
-    const evidenceBody = (await evidenceResponse.json().catch(() => null)) as {
-      items?: WorkOrderEvidenceItem[];
-    } | null;
-    const canonicalEvidence = evidenceResponse.ok
-      ? (evidenceBody?.items ?? [])
-      : [];
+    try {
+      await runBoundedRouteLoad(
+        {
+          route: `/portal/quotes/${workOrderId}`,
+          operation: "load customer quote",
+        },
+        async ({ recordStatus, signal }) => {
+          const {
+            data: { user },
+            error: userErr,
+          } = await supabase.auth.getUser();
 
-    const mappedQuoteLines: LineView[] = ((quoteRowsRaw ?? []) as QuoteLineRow[])
-      .filter(isCustomerVisibleQuoteLine)
-      .map((line, index) => {
-        const parts = getQuoteParts(line, Boolean(wo.estimate_number));
-        const metadata = quoteMetadata(line);
-        const customerLineNotes = wo.estimate_number
-          ? ""
-          : safeTrim(line.notes);
-        const requestKind = safeTrim(metadata.request_kind);
-        const fulfillment = safeTrim(metadata.fulfillment);
-        const laborHours =
-          nullableNumber(line.labor_hours) ??
-          nullableNumber(line.est_labor_hours) ??
-          0;
-        const computedLabor =
-          laborHours * (nullableNumber(metadata.labor_rate) ?? laborRate);
-        const partsAmount =
-          nullableNumber(line.parts_total) ??
-          parts.reduce((sum, part) => sum + (part.total ?? 0), 0);
-        const laborAmount = nullableNumber(line.labor_total) ?? computedLabor;
-        const subtotalAmount =
-          nullableNumber(line.subtotal) ?? laborAmount + partsAmount;
-        const taxAmount = nullableNumber(line.tax_total) ?? 0;
-        const totalAmount =
-          nullableNumber(line.grand_total) ?? subtotalAmount + taxAmount;
+          if (userErr || !user) {
+            throw routeLoadFailureFromStatus(
+              401,
+              "Sign in to view this quote.",
+            );
+          }
 
-        const linkedEvidence = canonicalEvidence.filter(
-          (item) =>
-            item.quoteLineId === line.id ||
-            (line.work_order_line_id != null &&
-              item.workOrderLineId === line.work_order_line_id),
-        );
-        const fallbackEvidence: WorkOrderEvidenceItem[] =
-          linkedEvidence.length > 0
-            ? []
-            : getEvidencePhotos(line, inspectionPhotos).map(
-                (url, photoIndex) => ({
-                  id: `${line.id}-legacy-${photoIndex}`,
-                  workOrderId,
-                  workOrderLineId: line.work_order_line_id,
-                  quoteLineId: line.id,
-                  kind: "photo",
-                  source: "inspection_finding",
-                  visibility: "customer",
-                  fileName: null,
-                  contentType: "image/jpeg",
-                  fileSize: null,
-                  createdAt: null,
-                  displayUrl: url,
-                  annotation: null,
-                }),
+          const { data: customer, error: custErr } = await supabase
+            .from("customers")
+            .select("id")
+            .eq("user_id", user.id)
+            .abortSignal(signal)
+            .maybeSingle();
+
+          if (custErr) throw custErr;
+          if (!customer?.id) {
+            throw routeLoadFailureFromStatus(
+              403,
+              "This account is not linked to a customer portal profile.",
+            );
+          }
+
+          const { data: wo, error: woErr } = await supabase
+            .from("work_orders")
+            .select("*")
+            .eq("id", workOrderId)
+            .eq("customer_id", customer.id)
+            .abortSignal(signal)
+            .maybeSingle();
+
+          if (woErr) throw woErr;
+          if (!wo?.id || !wo.shop_id) {
+            throw routeLoadFailureFromStatus(
+              404,
+              "This quote is unavailable or does not belong to this account.",
+            );
+          }
+
+          setWorkOrder(wo as WorkOrderRow);
+
+          let shopRow: ShopRow | null = null;
+          let laborRate = 0;
+
+          const { data: shopData, error: shopError } = await supabase
+            .from("shops")
+            .select("*")
+            .eq("id", wo.shop_id)
+            .abortSignal(signal)
+            .maybeSingle();
+          if (shopError) throw shopError;
+          shopRow = (shopData ?? null) as ShopRow | null;
+          laborRate = asNumber(
+            (shopData as { labor_rate?: unknown } | null)?.labor_rate,
+          );
+          setShop(shopRow);
+
+          const [quoteResult, directLineResult, directPartResult] =
+            await Promise.all([
+              supabase
+                .from("work_order_quote_lines")
+                .select(
+                  "id, description, ai_complaint, ai_cause, ai_correction, notes, job_type, labor_hours, est_labor_hours, labor_total, parts_total, subtotal, tax_total, grand_total, status, stage, sent_to_customer_at, approved_at, declined_at, work_order_line_id, metadata, created_at, updated_at",
+                )
+                .eq("work_order_id", workOrderId)
+                .eq("shop_id", wo.shop_id)
+                .order("created_at", { ascending: true })
+                .abortSignal(signal),
+              supabase
+                .from("work_order_lines")
+                .select(
+                  "id,line_no,description,complaint,cause,correction,notes,technician_notes,labor_time,price_estimate,status,line_status,approval_state,approval_at,quoted_at,created_at,updated_at,voided_at",
+                )
+                .eq("work_order_id", workOrderId)
+                .eq("shop_id", wo.shop_id)
+                .order("line_no", { ascending: true })
+                .abortSignal(signal),
+              supabase
+                .from("work_order_parts")
+                .select(
+                  "id,work_order_line_id,description_snapshot,part_number_snapshot,manufacturer_snapshot,quantity,unit_price,total_price,is_active",
+                )
+                .eq("work_order_id", workOrderId)
+                .eq("shop_id", wo.shop_id)
+                .eq("is_active", true)
+                .abortSignal(signal),
+            ]);
+          const { data: quoteRowsRaw, error: quoteErr } = quoteResult;
+          const { data: directRowsRaw, error: directLineErr } =
+            directLineResult;
+          const { data: directPartsRaw, error: directPartErr } =
+            directPartResult;
+
+          if (quoteErr || directLineErr || directPartErr) {
+            throw quoteErr ?? directLineErr ?? directPartErr;
+          }
+
+          let inspectionPhotos: Array<
+            Pick<InspectionPhotoRow, "image_url" | "item_name">
+          > = [];
+          const inspectionId = safeTrim(
+            (wo as { inspection_id?: unknown } | null)?.inspection_id,
+          );
+          if (inspectionId) {
+            const { data: photos, error: photosError } = await supabase
+              .from("inspection_photos")
+              .select("image_url,item_name")
+              .eq("inspection_id", inspectionId)
+              .order("created_at", { ascending: false })
+              .abortSignal(signal)
+              .limit(100);
+            if (photosError) throw photosError;
+            inspectionPhotos = (photos ?? []) as Array<
+              Pick<InspectionPhotoRow, "image_url" | "item_name">
+            >;
+          }
+
+          const evidenceResponse = await fetch(
+            `/api/work-orders/${workOrderId}/media?scope=all`,
+            { cache: "no-store", signal },
+          );
+          recordStatus(evidenceResponse.status);
+          const evidenceBody = (await evidenceResponse
+            .json()
+            .catch(() => null)) as {
+            items?: WorkOrderEvidenceItem[];
+          } | null;
+          if (!evidenceResponse.ok) {
+            throw routeLoadFailureFromStatus(
+              evidenceResponse.status,
+              "Quote evidence could not be loaded.",
+            );
+          }
+          const canonicalEvidence = evidenceBody?.items ?? [];
+
+          const mappedQuoteLines: LineView[] = (
+            (quoteRowsRaw ?? []) as QuoteLineRow[]
+          )
+            .filter(isCustomerVisibleQuoteLine)
+            .map((line, index) => {
+              const parts = getQuoteParts(line, Boolean(wo.estimate_number));
+              const metadata = quoteMetadata(line);
+              const customerLineNotes = wo.estimate_number
+                ? ""
+                : safeTrim(line.notes);
+              const requestKind = safeTrim(metadata.request_kind);
+              const fulfillment = safeTrim(metadata.fulfillment);
+              const laborHours =
+                nullableNumber(line.labor_hours) ??
+                nullableNumber(line.est_labor_hours) ??
+                0;
+              const computedLabor =
+                laborHours * (nullableNumber(metadata.labor_rate) ?? laborRate);
+              const partsAmount =
+                nullableNumber(line.parts_total) ??
+                parts.reduce((sum, part) => sum + (part.total ?? 0), 0);
+              const laborAmount =
+                nullableNumber(line.labor_total) ?? computedLabor;
+              const subtotalAmount =
+                nullableNumber(line.subtotal) ?? laborAmount + partsAmount;
+              const taxAmount = nullableNumber(line.tax_total) ?? 0;
+              const totalAmount =
+                nullableNumber(line.grand_total) ?? subtotalAmount + taxAmount;
+
+              const linkedEvidence = canonicalEvidence.filter(
+                (item) =>
+                  item.quoteLineId === line.id ||
+                  (line.work_order_line_id != null &&
+                    item.workOrderLineId === line.work_order_line_id),
               );
+              const fallbackEvidence: WorkOrderEvidenceItem[] =
+                linkedEvidence.length > 0
+                  ? []
+                  : getEvidencePhotos(line, inspectionPhotos).map(
+                      (url, photoIndex) => ({
+                        id: `${line.id}-legacy-${photoIndex}`,
+                        workOrderId,
+                        workOrderLineId: line.work_order_line_id,
+                        quoteLineId: line.id,
+                        kind: "photo",
+                        source: "inspection_finding",
+                        visibility: "customer",
+                        fileName: null,
+                        contentType: "image/jpeg",
+                        fileSize: null,
+                        createdAt: null,
+                        displayUrl: url,
+                        annotation: null,
+                      }),
+                    );
 
-        return {
-          id: line.id,
-          source: "quote" as const,
-          lineNo: index + 1,
-          title:
-            safeTrim(line.description) ||
-            safeTrim(line.ai_complaint) ||
-            "Quote line",
-          complaint: safeTrim(line.ai_complaint) || customerLineNotes || null,
-          cause: safeTrim(line.ai_cause) || null,
-          correction: safeTrim(line.ai_correction) || null,
-          notes: customerLineNotes || null,
-          laborHours,
-          laborAmount,
-          partsAmount,
-          subtotalAmount,
-          taxAmount,
-          totalAmount,
-          approvalState: quoteApprovalState(line),
-          status: line.status,
-          stage: line.stage,
-          sentAt: line.sent_to_customer_at ?? null,
-          approvedAt: line.approved_at ?? null,
-          declinedAt: line.declined_at ?? null,
-          convertedWorkOrderLineId: line.work_order_line_id ?? null,
-          createdAt: line.created_at ?? null,
-          updatedAt: line.updated_at ?? null,
-          parts,
-          evidence:
-            linkedEvidence.length > 0 ? linkedEvidence : fallbackEvidence,
-          requestKind:
-            requestKind === "parts_only"
-              ? "parts_only"
-              : requestKind === "repair"
-                ? "repair"
-                : null,
-          fulfillment:
-            fulfillment === "pickup"
-              ? "pickup"
-              : fulfillment === "appointment"
-                ? "appointment"
-                : null,
-        };
-      });
+              return {
+                id: line.id,
+                source: "quote" as const,
+                lineNo: index + 1,
+                title:
+                  safeTrim(line.description) ||
+                  safeTrim(line.ai_complaint) ||
+                  "Quote line",
+                complaint:
+                  safeTrim(line.ai_complaint) || customerLineNotes || null,
+                cause: safeTrim(line.ai_cause) || null,
+                correction: safeTrim(line.ai_correction) || null,
+                notes: customerLineNotes || null,
+                laborHours,
+                laborAmount,
+                partsAmount,
+                subtotalAmount,
+                taxAmount,
+                totalAmount,
+                approvalState: quoteApprovalState(line),
+                status: line.status,
+                stage: line.stage,
+                sentAt: line.sent_to_customer_at ?? null,
+                approvedAt: line.approved_at ?? null,
+                declinedAt: line.declined_at ?? null,
+                convertedWorkOrderLineId: line.work_order_line_id ?? null,
+                createdAt: line.created_at ?? null,
+                updatedAt: line.updated_at ?? null,
+                parts,
+                evidence:
+                  linkedEvidence.length > 0 ? linkedEvidence : fallbackEvidence,
+                requestKind:
+                  requestKind === "parts_only"
+                    ? "parts_only"
+                    : requestKind === "repair"
+                      ? "repair"
+                      : null,
+                fulfillment:
+                  fulfillment === "pickup"
+                    ? "pickup"
+                    : fulfillment === "appointment"
+                      ? "appointment"
+                      : null,
+              };
+            });
 
-    const linkedWorkOrderLineIds = new Set(
-      mappedQuoteLines
-        .map((line) => line.convertedWorkOrderLineId)
-        .filter((id): id is string => Boolean(id)),
-    );
-    const mappedDirectLines: LineView[] = (
-      (directRowsRaw ?? []) as DirectLineRow[]
-    )
-      .filter((line) => {
-        if (line.voided_at || linkedWorkOrderLineIds.has(line.id)) return false;
-        const status = safeTrim(line.status).toLowerCase();
-        const lineStatus = safeTrim(line.line_status).toLowerCase();
-        const approvalState = safeTrim(line.approval_state).toLowerCase();
-        return (
-          (approvalState === "pending" && status === "awaiting_approval") ||
-          approvalState === "approved" ||
-          approvalState === "declined" ||
-          approvalState === "deferred" ||
-          lineStatus === "authorized" ||
-          Boolean(line.approval_at) ||
-          ["completed", "ready_to_invoice", "invoiced"].includes(status)
-        );
-      })
-      .map((line, index) => {
-        const laborHours = asNumber(line.labor_time);
-        const computedLabor = laborHours * laborRate;
-        const laborAmount = nullableNumber(line.price_estimate) ?? computedLabor;
-        const directParts: QuotePartView[] = (
-          (directPartsRaw ?? []) as DirectPartRow[]
-        )
-          .filter((part) => part.work_order_line_id === line.id)
-          .map((part) => {
-            const qty = asNumber(part.quantity);
-            const unitPrice = asNumber(part.unit_price);
-            return {
-              name: safeTrim(part.description_snapshot) || "Part",
-              qty,
-              unitPrice,
-              total: nullableNumber(part.total_price) ?? qty * unitPrice,
-              pricingUnavailable: false,
-              meta:
-                [
-                  safeTrim(part.manufacturer_snapshot),
-                  safeTrim(part.part_number_snapshot),
-                ]
-                  .filter(Boolean)
-                  .join(" • ") || null,
-            };
-          });
-        const partsAmount = directParts.reduce(
-          (sum, part) => sum + (part.total ?? 0),
-          0,
-        );
-        const totalAmount = laborAmount + partsAmount;
-        const linkedEvidence = canonicalEvidence.filter(
-          (item) => item.workOrderLineId === line.id,
-        );
-        const normalizedApprovalState = safeTrim(
-          line.approval_state,
-        ).toLowerCase();
-        const approvalState: LineView["approvalState"] = [
-          "pending",
-          "approved",
-          "declined",
-          "deferred",
-        ].includes(normalizedApprovalState)
-          ? (normalizedApprovalState as Exclude<
-              LineView["approvalState"],
-              null
-            >)
-          : ["completed", "ready_to_invoice", "invoiced"].includes(
-                safeTrim(line.status).toLowerCase(),
-              ) || safeTrim(line.line_status).toLowerCase() === "authorized"
-            ? "approved"
-            : null;
-        return {
-          id: line.id,
-          source: "work_order" as const,
-          lineNo: line.line_no ?? index + 1,
-          title:
-            safeTrim(line.description) ||
-            safeTrim(line.complaint) ||
-            "Authorized work",
-          complaint: safeTrim(line.complaint) || null,
-          cause: safeTrim(line.cause) || null,
-          correction: safeTrim(line.correction) || null,
-          notes:
-            safeTrim(line.technician_notes) || safeTrim(line.notes) || null,
-          laborHours,
-          laborAmount,
-          partsAmount,
-          subtotalAmount: totalAmount,
-          taxAmount: 0,
-          totalAmount,
-          approvalState,
-          status: line.status,
-          stage: null,
-          sentAt: line.quoted_at ?? null,
-          approvedAt: line.approval_at ?? null,
-          declinedAt: null,
-          convertedWorkOrderLineId: line.id,
-          createdAt: line.created_at ?? null,
-          updatedAt: line.updated_at ?? null,
-          parts: directParts,
-          evidence: linkedEvidence,
-          requestKind: null,
-          fulfillment: null,
-        };
-      });
+          const linkedWorkOrderLineIds = new Set(
+            mappedQuoteLines
+              .map((line) => line.convertedWorkOrderLineId)
+              .filter((id): id is string => Boolean(id)),
+          );
+          const mappedDirectLines: LineView[] = (
+            (directRowsRaw ?? []) as DirectLineRow[]
+          )
+            .filter((line) => {
+              if (line.voided_at || linkedWorkOrderLineIds.has(line.id))
+                return false;
+              const status = safeTrim(line.status).toLowerCase();
+              const lineStatus = safeTrim(line.line_status).toLowerCase();
+              const approvalState = safeTrim(line.approval_state).toLowerCase();
+              return (
+                (approvalState === "pending" &&
+                  status === "awaiting_approval") ||
+                approvalState === "approved" ||
+                approvalState === "declined" ||
+                approvalState === "deferred" ||
+                lineStatus === "authorized" ||
+                Boolean(line.approval_at) ||
+                ["completed", "ready_to_invoice", "invoiced"].includes(status)
+              );
+            })
+            .map((line, index) => {
+              const laborHours = asNumber(line.labor_time);
+              const computedLabor = laborHours * laborRate;
+              const laborAmount =
+                nullableNumber(line.price_estimate) ?? computedLabor;
+              const directParts: QuotePartView[] = (
+                (directPartsRaw ?? []) as DirectPartRow[]
+              )
+                .filter((part) => part.work_order_line_id === line.id)
+                .map((part) => {
+                  const qty = asNumber(part.quantity);
+                  const unitPrice = asNumber(part.unit_price);
+                  return {
+                    name: safeTrim(part.description_snapshot) || "Part",
+                    qty,
+                    unitPrice,
+                    total: nullableNumber(part.total_price) ?? qty * unitPrice,
+                    pricingUnavailable: false,
+                    meta:
+                      [
+                        safeTrim(part.manufacturer_snapshot),
+                        safeTrim(part.part_number_snapshot),
+                      ]
+                        .filter(Boolean)
+                        .join(" • ") || null,
+                  };
+                });
+              const partsAmount = directParts.reduce(
+                (sum, part) => sum + (part.total ?? 0),
+                0,
+              );
+              const totalAmount = laborAmount + partsAmount;
+              const linkedEvidence = canonicalEvidence.filter(
+                (item) => item.workOrderLineId === line.id,
+              );
+              const normalizedApprovalState = safeTrim(
+                line.approval_state,
+              ).toLowerCase();
+              const approvalState: LineView["approvalState"] = [
+                "pending",
+                "approved",
+                "declined",
+                "deferred",
+              ].includes(normalizedApprovalState)
+                ? (normalizedApprovalState as Exclude<
+                    LineView["approvalState"],
+                    null
+                  >)
+                : ["completed", "ready_to_invoice", "invoiced"].includes(
+                      safeTrim(line.status).toLowerCase(),
+                    ) ||
+                    safeTrim(line.line_status).toLowerCase() === "authorized"
+                  ? "approved"
+                  : null;
+              return {
+                id: line.id,
+                source: "work_order" as const,
+                lineNo: line.line_no ?? index + 1,
+                title:
+                  safeTrim(line.description) ||
+                  safeTrim(line.complaint) ||
+                  "Authorized work",
+                complaint: safeTrim(line.complaint) || null,
+                cause: safeTrim(line.cause) || null,
+                correction: safeTrim(line.correction) || null,
+                notes:
+                  safeTrim(line.technician_notes) ||
+                  safeTrim(line.notes) ||
+                  null,
+                laborHours,
+                laborAmount,
+                partsAmount,
+                subtotalAmount: totalAmount,
+                taxAmount: 0,
+                totalAmount,
+                approvalState,
+                status: line.status,
+                stage: null,
+                sentAt: line.quoted_at ?? null,
+                approvedAt: line.approval_at ?? null,
+                declinedAt: null,
+                convertedWorkOrderLineId: line.id,
+                createdAt: line.created_at ?? null,
+                updatedAt: line.updated_at ?? null,
+                parts: directParts,
+                evidence: linkedEvidence,
+                requestKind: null,
+                fulfillment: null,
+              };
+            });
 
-    setLines([...mappedQuoteLines, ...mappedDirectLines]);
-    setLoading(false);
+          setLines([...mappedQuoteLines, ...mappedDirectLines]);
+        },
+      );
+    } catch (error) {
+      const failure = asRouteLoadFailure(
+        error,
+        "This quote could not be loaded.",
+      );
+      setLoadFailure(failure);
+      setWorkOrder(null);
+      setShop(null);
+      setLines([]);
+      if (failure.kind === "unauthenticated") {
+        router.replace("/customer/sign-in");
+      }
+    } finally {
+      setLoading(false);
+    }
   }, [router, supabase, workOrderId]);
 
   useEffect(() => {
@@ -708,10 +778,27 @@ export default function QuotePageClient(): JSX.Element {
     );
   }
 
-  if (loading || !workOrder) {
+  if (loading) {
     return (
       <div className="min-h-screen px-4 py-10 flex items-center justify-center text-[color:var(--theme-text-secondary)]">
         Loading quote...
+      </div>
+    );
+  }
+
+  if (loadFailure || !workOrder) {
+    const failure =
+      loadFailure ??
+      routeLoadFailureFromStatus(404, "This quote is unavailable.");
+    return (
+      <div className="mx-auto min-h-screen w-full max-w-2xl px-4 py-10">
+        <RouteLoadPanel failure={failure} onRetry={() => void load()} />
+        <Link
+          href="/portal"
+          className="mt-4 inline-flex min-h-10 items-center text-sm font-semibold text-[var(--accent-copper-light)]"
+        >
+          Back to portal
+        </Link>
       </div>
     );
   }

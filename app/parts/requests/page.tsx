@@ -17,6 +17,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { Database } from "@shared/types/types/supabase";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import RouteLoadPanel from "@/features/shared/components/ui/RouteLoadPanel";
+import {
+  asRouteLoadFailure,
+  runBoundedRouteLoad,
+  type RouteLoadFailure,
+} from "@/features/shared/lib/route-load";
 import PickOrderTaskModal from "@/features/parts/components/PickOrderTaskModal";
 import MenuItemPartsIntakeModal, {
   type MenuIntakeQueueItem,
@@ -687,6 +693,7 @@ export default function PartsRequestsPage(): JSX.Element {
   >({});
   const [menuItems, setMenuItems] = useState<Record<string, MenuItemLite>>({});
   const [loading, setLoading] = useState(true);
+  const [loadFailure, setLoadFailure] = useState<RouteLoadFailure | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState<QueueTab>("active");
@@ -708,140 +715,154 @@ export default function PartsRequestsPage(): JSX.Element {
     else setRefreshing(true);
 
     try {
-      const requestRows: PartRequest[] = [];
-      const requestPageSize = 500;
-      for (let offset = 0; ; offset += requestPageSize) {
-        const { data: requests, error: requestError } = await supabase
-          .from("part_requests")
-          .select("*")
-          .in("status", REQUEST_STATUSES)
-          .order("created_at", { ascending: false })
-          .order("id", { ascending: true })
-          .range(offset, offset + requestPageSize - 1);
-        if (requestError) throw requestError;
-        const requestPage = (requests ?? []) as PartRequest[];
-        requestRows.push(...requestPage);
-        if (requestPage.length < requestPageSize) break;
-      }
-
-      const requestIds = requestRows.map((request) => request.id);
-      const itemRows: QueueItem[] = [];
-
-      if (requestIds.length > 0) {
-        const pageSize = 1000;
-        for (
-          let chunkStart = 0;
-          chunkStart < requestIds.length;
-          chunkStart += 200
-        ) {
-          const requestChunk = requestIds.slice(chunkStart, chunkStart + 200);
-          for (let offset = 0; ; offset += pageSize) {
-            const { data: items, error: itemError } = await supabase
-              .from("part_request_items")
-              .select(
-                "id,request_id,description,part_id,requested_part_number,requested_manufacturer,quoted_price,unit_price,unit_cost,qty,qty_requested,qty_approved,qty_ordered,qty_received,qty_reserved,qty_consumed,qty_returned,status,updated_at",
-              )
-              .in("request_id", requestChunk)
+      setLoadFailure(null);
+      await runBoundedRouteLoad(
+        { route: "/parts/requests", operation: "load parts request queue" },
+        async ({ signal }) => {
+          const requestRows: PartRequest[] = [];
+          const requestPageSize = 500;
+          for (let offset = 0; ; offset += requestPageSize) {
+            const { data: requests, error: requestError } = await supabase
+              .from("part_requests")
+              .select("*")
+              .in("status", REQUEST_STATUSES)
+              .order("created_at", { ascending: false })
               .order("id", { ascending: true })
-              .range(offset, offset + pageSize - 1);
-            if (itemError) throw itemError;
-            const itemPage = (items ?? []) as QueueItem[];
-            itemRows.push(...itemPage);
-            if (itemPage.length < pageSize) break;
+              .abortSignal(signal)
+              .range(offset, offset + requestPageSize - 1);
+            if (requestError) throw requestError;
+            const requestPage = (requests ?? []) as PartRequest[];
+            requestRows.push(...requestPage);
+            if (requestPage.length < requestPageSize) break;
           }
-        }
-      }
 
-      const itemsByRequest = new Map<string, QueueItem[]>();
-      for (const item of itemRows) {
-        itemsByRequest.set(item.request_id, [
-          ...(itemsByRequest.get(item.request_id) ?? []),
-          item,
-        ]);
-      }
+          const requestIds = requestRows.map((request) => request.id);
+          const itemRows: QueueItem[] = [];
 
-      const nextModels = requestRows.map((request) => {
-        const items = itemsByRequest.get(request.id) ?? [];
-        const stageItems = items.map(stageItem);
-        const isMenuIntake =
-          Boolean(request.source_menu_item_id) && !request.work_order_id;
-        return {
-          request,
-          items,
-          stage: isMenuIntake
-            ? toMenuIntakeStage({
-                rawStatus: request.status,
-                items: stageItems,
-              })
-            : toPartsRequestStage({
-                rawStatus: request.status,
-                items: stageItems,
-              }),
-        } satisfies RequestModel;
-      });
-
-      const workOrderIds = [
-        ...new Set(
-          requestRows
-            .map((request) => request.work_order_id)
-            .filter((value): value is string => Boolean(value)),
-        ),
-      ];
-      const nextWorkOrders: Record<string, WorkOrderListRow> = {};
-      if (workOrderIds.length > 0) {
-        for (
-          let chunkStart = 0;
-          chunkStart < workOrderIds.length;
-          chunkStart += 200
-        ) {
-          const { data: rows, error: workOrderError } = await supabase
-            .from("work_orders")
-            .select(
-              "id,custom_id,estimate_number,customers(business_name,first_name,last_name),vehicles(year,make,model,vin,unit_number)",
-            )
-            .in("id", workOrderIds.slice(chunkStart, chunkStart + 200));
-          if (workOrderError) throw workOrderError;
-          for (const row of rows ?? []) {
-            const workOrder = row as WorkOrderListRow;
-            nextWorkOrders[workOrder.id] = workOrder;
+          if (requestIds.length > 0) {
+            const pageSize = 1000;
+            for (
+              let chunkStart = 0;
+              chunkStart < requestIds.length;
+              chunkStart += 200
+            ) {
+              const requestChunk = requestIds.slice(
+                chunkStart,
+                chunkStart + 200,
+              );
+              for (let offset = 0; ; offset += pageSize) {
+                const { data: items, error: itemError } = await supabase
+                  .from("part_request_items")
+                  .select(
+                    "id,request_id,description,part_id,requested_part_number,requested_manufacturer,quoted_price,unit_price,unit_cost,qty,qty_requested,qty_approved,qty_ordered,qty_received,qty_reserved,qty_consumed,qty_returned,status,updated_at",
+                  )
+                  .in("request_id", requestChunk)
+                  .order("id", { ascending: true })
+                  .abortSignal(signal)
+                  .range(offset, offset + pageSize - 1);
+                if (itemError) throw itemError;
+                const itemPage = (items ?? []) as QueueItem[];
+                itemRows.push(...itemPage);
+                if (itemPage.length < pageSize) break;
+              }
+            }
           }
-        }
-      }
 
-      const menuItemIds = [
-        ...new Set(
-          requestRows
-            .map((request) => request.source_menu_item_id ?? null)
-            .filter((value): value is string => Boolean(value)),
-        ),
-      ];
-      const nextMenuItems: Record<string, MenuItemLite> = {};
-      if (menuItemIds.length > 0) {
-        for (
-          let chunkStart = 0;
-          chunkStart < menuItemIds.length;
-          chunkStart += 200
-        ) {
-          const { data: rows, error: menuItemError } = await supabase
-            .from("menu_items")
-            .select("id, name")
-            .in("id", menuItemIds.slice(chunkStart, chunkStart + 200));
-          if (menuItemError) throw menuItemError;
-          for (const row of rows ?? []) {
-            nextMenuItems[row.id] = row;
+          const itemsByRequest = new Map<string, QueueItem[]>();
+          for (const item of itemRows) {
+            itemsByRequest.set(item.request_id, [
+              ...(itemsByRequest.get(item.request_id) ?? []),
+              item,
+            ]);
           }
-        }
-      }
 
-      if (sequence === reloadSequence.current) {
-        setModels(nextModels);
-        setWorkOrders(nextWorkOrders);
-        setMenuItems(nextMenuItems);
-      }
+          const nextModels = requestRows.map((request) => {
+            const items = itemsByRequest.get(request.id) ?? [];
+            const stageItems = items.map(stageItem);
+            const isMenuIntake =
+              Boolean(request.source_menu_item_id) && !request.work_order_id;
+            return {
+              request,
+              items,
+              stage: isMenuIntake
+                ? toMenuIntakeStage({
+                    rawStatus: request.status,
+                    items: stageItems,
+                  })
+                : toPartsRequestStage({
+                    rawStatus: request.status,
+                    items: stageItems,
+                  }),
+            } satisfies RequestModel;
+          });
+
+          const workOrderIds = [
+            ...new Set(
+              requestRows
+                .map((request) => request.work_order_id)
+                .filter((value): value is string => Boolean(value)),
+            ),
+          ];
+          const nextWorkOrders: Record<string, WorkOrderListRow> = {};
+          if (workOrderIds.length > 0) {
+            for (
+              let chunkStart = 0;
+              chunkStart < workOrderIds.length;
+              chunkStart += 200
+            ) {
+              const { data: rows, error: workOrderError } = await supabase
+                .from("work_orders")
+                .select(
+                  "id,custom_id,estimate_number,customers(business_name,first_name,last_name),vehicles(year,make,model,vin,unit_number)",
+                )
+                .abortSignal(signal)
+                .in("id", workOrderIds.slice(chunkStart, chunkStart + 200));
+              if (workOrderError) throw workOrderError;
+              for (const row of rows ?? []) {
+                const workOrder = row as WorkOrderListRow;
+                nextWorkOrders[workOrder.id] = workOrder;
+              }
+            }
+          }
+
+          const menuItemIds = [
+            ...new Set(
+              requestRows
+                .map((request) => request.source_menu_item_id ?? null)
+                .filter((value): value is string => Boolean(value)),
+            ),
+          ];
+          const nextMenuItems: Record<string, MenuItemLite> = {};
+          if (menuItemIds.length > 0) {
+            for (
+              let chunkStart = 0;
+              chunkStart < menuItemIds.length;
+              chunkStart += 200
+            ) {
+              const { data: rows, error: menuItemError } = await supabase
+                .from("menu_items")
+                .select("id, name")
+                .abortSignal(signal)
+                .in("id", menuItemIds.slice(chunkStart, chunkStart + 200));
+              if (menuItemError) throw menuItemError;
+              for (const row of rows ?? []) {
+                nextMenuItems[row.id] = row;
+              }
+            }
+          }
+
+          if (sequence === reloadSequence.current) {
+            setModels(nextModels);
+            setWorkOrders(nextWorkOrders);
+            setMenuItems(nextMenuItems);
+          }
+        },
+      );
     } catch (error) {
       if (sequence === reloadSequence.current) {
-        console.error("[parts/requests] queue load failed", error);
-        toast.error("Unable to load the Parts request queue.");
+        setLoadFailure(
+          asRouteLoadFailure(error, "Unable to load the Parts request queue."),
+        );
       }
     } finally {
       if (sequence === reloadSequence.current) {
@@ -1164,11 +1185,19 @@ export default function PartsRequestsPage(): JSX.Element {
         </div>
       </section>
 
+      {loadFailure ? (
+        <RouteLoadPanel
+          failure={loadFailure}
+          onRetry={() => void reload()}
+          title="Parts request queue unavailable"
+        />
+      ) : null}
+
       {loading ? (
         <div className="rounded-xl border border-dashed border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-8 text-center text-sm text-[color:var(--theme-text-secondary)]">
           Loading the live Parts workflow…
         </div>
-      ) : tab === "active" ? (
+      ) : loadFailure && models.length === 0 ? null : tab === "active" ? (
         <div
           className={`grid gap-3 ${stageFilter === "all" ? "md:grid-cols-2 xl:grid-cols-4" : "max-w-xl"}`}
         >

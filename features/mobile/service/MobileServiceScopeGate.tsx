@@ -23,6 +23,14 @@ import {
   writeFieldServiceOfflineAccess,
   type FieldServiceAccessPayload,
 } from "./fieldOfflineAccess";
+import RouteLoadPanel from "@/features/shared/components/ui/RouteLoadPanel";
+import {
+  asRouteLoadFailure,
+  RouteLoadFailure,
+  routeLoadFailureFromStatus,
+  runBoundedRouteLoad,
+  type RouteLoadFailure as RouteLoadFailureState,
+} from "@/features/shared/lib/route-load";
 
 const SNAPSHOT_CACHE_KEY = "profixiq:mobile-service:active:v1";
 const SNAPSHOT_SCOPE_KEY = "profixiq:mobile-service:active-scope:v1";
@@ -79,103 +87,143 @@ export default function MobileServiceScopeGate() {
   const [scope, setScope] = useState<OfflineMutationScope | null>(null);
   const [workspaceCapabilities, setWorkspaceCapabilities] =
     useState<FieldWorkspaceCapabilities>(EMPTY_FIELD_WORKSPACE_CAPABILITIES);
+  const [attempt, setAttempt] = useState(0);
+  const [loadFailure, setLoadFailure] = useState<RouteLoadFailureState | null>(
+    null,
+  );
   const router = useRouter();
 
   useEffect(() => {
     let active = true;
+    setReady(false);
+    setLoadFailure(null);
 
-    void (async () => {
-      const supabase = createBrowserSupabase();
-      const [sessionResult, fieldAccessResponse] = await Promise.all([
-        supabase.auth.getSession(),
-        fetch("/api/mobile/field-service/access", {
-          credentials: "include",
-          cache: "no-store",
-        }).catch(() => null),
-      ]);
-      const session = sessionResult.data.session;
-      const authUserId = session?.user?.id?.trim() ?? "";
+    void runBoundedRouteLoad(
+      { route: "/mobile/service", operation: "load field service scope" },
+      async ({ recordStatus, signal }) => {
+        const supabase = createBrowserSupabase();
+        const [sessionResult, fieldAccessResponse] = await Promise.all([
+          supabase.auth.getSession(),
+          fetch("/api/mobile/field-service/access", {
+            credentials: "include",
+            cache: "no-store",
+            signal,
+          }).catch(() => null),
+        ]);
+        if (fieldAccessResponse) recordStatus(fieldAccessResponse.status);
+        const session = sessionResult.data.session;
+        const authUserId = session?.user?.id?.trim() ?? "";
 
-      if (!authUserId) {
+        if (!authUserId) {
+          throw routeLoadFailureFromStatus(
+            401,
+            "Sign in to open Field Service.",
+          );
+        }
+
+        const fieldAccess = (await fieldAccessResponse
+          ?.json()
+          .catch(() => null)) as FieldServiceAccessPayload | null;
         if (!active) return;
-        protectSnapshot(null);
-        router.replace("/mobile");
-        return;
-      }
 
-      const fieldAccess = (await fieldAccessResponse
-        ?.json()
-        .catch(() => null)) as FieldServiceAccessPayload | null;
-      if (!active) return;
+        const cached = getOfflineMutationScope();
+        const cachedScope = cached?.userId === authUserId ? cached : null;
 
-      const cached = getOfflineMutationScope();
-      const cachedScope = cached?.userId === authUserId ? cached : null;
+        if (fieldAccessResponse?.ok && fieldAccess?.canAccessFieldService) {
+          const verifiedScope = resolveFieldServiceAccessScope(
+            fieldAccess,
+            authUserId,
+          );
+          if (!verifiedScope) {
+            if (cachedScope) clearFieldServiceOfflineAccess(cachedScope);
+            protectSnapshot(null);
+            router.replace("/mobile");
+            return;
+          }
 
-      if (fieldAccessResponse?.ok && fieldAccess?.canAccessFieldService) {
-        const verifiedScope = resolveFieldServiceAccessScope(
-          fieldAccess,
-          authUserId,
-        );
-        if (!verifiedScope) {
-          if (cachedScope) clearFieldServiceOfflineAccess(cachedScope);
-          protectSnapshot(null);
-          router.replace("/mobile");
+          setOfflineMutationScope(verifiedScope);
+          writeFieldServiceOfflineAccess(verifiedScope, fieldAccess);
+          setWorkspaceCapabilities(
+            normalizeFieldWorkspaceCapabilities(
+              fieldAccess.workspaceCapabilities,
+            ),
+          );
+          setScope(verifiedScope);
+          protectSnapshot(verifiedScope);
+          setReady(true);
           return;
         }
 
-        setOfflineMutationScope(verifiedScope);
-        writeFieldServiceOfflineAccess(verifiedScope, fieldAccess);
-        setWorkspaceCapabilities(
-          normalizeFieldWorkspaceCapabilities(
-            fieldAccess.workspaceCapabilities,
+        const verificationUnavailable =
+          !fieldAccessResponse ||
+          fieldAccessResponse.status >= 500 ||
+          isRetryableOfflineStatus(fieldAccessResponse.status);
+        const offlineAccess =
+          verificationUnavailable && cachedScope
+            ? readFieldServiceOfflineAccess(cachedScope)
+            : null;
+        if (offlineAccess) {
+          setWorkspaceCapabilities(offlineAccess.workspaceCapabilities);
+          setScope(cachedScope);
+          protectSnapshot(cachedScope);
+          setReady(true);
+          return;
+        }
+
+        if (!fieldAccessResponse) {
+          throw new RouteLoadFailure({
+            kind: "network",
+            message: "Field Service access could not be verified.",
+          });
+        }
+
+        if (!fieldAccessResponse.ok) {
+          throw routeLoadFailureFromStatus(
+            fieldAccessResponse.status,
+            fieldAccessResponse.status === 403
+              ? "Your account does not have access to Field Service."
+              : "Field Service access could not be verified.",
+          );
+        }
+
+        if (cachedScope && !verificationUnavailable) {
+          clearFieldServiceOfflineAccess(cachedScope);
+        }
+        if (!fieldAccessResponse?.ok || !fieldAccess?.canAccessFieldService) {
+          protectSnapshot(null);
+          router.replace(
+            fieldAccess?.canConfigure ? "/mobile/service/setup" : "/mobile",
+          );
+          return;
+        }
+      },
+    ).catch((error) => {
+      if (active) {
+        setLoadFailure(
+          asRouteLoadFailure(
+            error,
+            "Field Service access could not be verified.",
           ),
         );
-        setScope(verifiedScope);
-        protectSnapshot(verifiedScope);
-        setReady(true);
-        return;
       }
-
-      const verificationUnavailable =
-        !fieldAccessResponse ||
-        fieldAccessResponse.status >= 500 ||
-        isRetryableOfflineStatus(fieldAccessResponse.status);
-      const offlineAccess =
-        verificationUnavailable && cachedScope
-          ? readFieldServiceOfflineAccess(cachedScope)
-          : null;
-      if (offlineAccess) {
-        setWorkspaceCapabilities(offlineAccess.workspaceCapabilities);
-        setScope(cachedScope);
-        protectSnapshot(cachedScope);
-        setReady(true);
-        return;
-      }
-
-      if (cachedScope && !verificationUnavailable) {
-        clearFieldServiceOfflineAccess(cachedScope);
-      }
-      if (!fieldAccessResponse?.ok || !fieldAccess?.canAccessFieldService) {
-        protectSnapshot(null);
-        router.replace(
-          fieldAccess?.canConfigure ? "/mobile/service/setup" : "/mobile",
-        );
-        return;
-      }
-    })().catch(() => {
-      if (!active) return;
-      router.replace("/mobile");
     });
 
     return () => {
       active = false;
     };
-  }, [router]);
+  }, [attempt, router]);
 
   if (!ready) {
     return (
       <main className="mx-auto w-full max-w-3xl px-3 py-4 sm:px-4">
-        <div className="h-32 animate-pulse rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)]" />
+        {loadFailure ? (
+          <RouteLoadPanel
+            failure={loadFailure}
+            onRetry={() => setAttempt((value) => value + 1)}
+          />
+        ) : (
+          <div className="h-32 animate-pulse rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)]" />
+        )}
       </main>
     );
   }
