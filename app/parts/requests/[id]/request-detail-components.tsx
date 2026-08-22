@@ -2,6 +2,11 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
+import {
+  REQUEST_STATUS_CANONICAL,
+  requestFlowLabel,
+  type RequestFlowCounts,
+} from "@/features/parts/lib/status-display";
 
 type Option = { value: string; label: string };
 
@@ -15,25 +20,20 @@ const LINK_BTN =
   "rounded-md border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2 py-1 text-[color:var(--theme-text-primary)] hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_80%,_var(--theme-surface-page))]";
 
 export function RequestStatusSummary({
-  waiting,
-  ordered,
-  partiallyReceived,
-  complete,
+  counts,
 }: {
-  waiting: number;
-  ordered: number;
-  partiallyReceived: number;
-  complete: number;
+  counts: RequestFlowCounts;
 }): JSX.Element {
   const pill =
     "rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-xs text-[color:var(--theme-text-secondary)]";
 
   return (
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-      <div className={pill}>Waiting: <span className="text-[color:var(--theme-text-primary)]">{waiting}</span></div>
-      <div className={pill}>Ordered: <span className="text-[color:var(--theme-text-primary)]">{ordered}</span></div>
-      <div className={pill}>Partial: <span className="text-[color:var(--theme-text-primary)]">{partiallyReceived}</span></div>
-      <div className={pill}>Complete: <span className="text-[color:var(--theme-text-primary)]">{complete}</span></div>
+      {REQUEST_STATUS_CANONICAL.map((status) => (
+        <div key={status} className={pill}>
+          {requestFlowLabel(status)}: <span className="text-[color:var(--theme-text-primary)]">{counts[status]}</span>
+        </div>
+      ))}
     </div>
   );
 }

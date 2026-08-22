@@ -177,18 +177,17 @@ describe("enforcement layers", () => {
       "features/work-orders/components/workorders/FocusedJobModal.tsx",
     );
     expect(workOrderClient).toContain(
-      'techId={canAssign ? (currentUserId ?? "system") : "system"}',
+      "WORKSPACE_CAPABILITIES.manageWorkOrderAssignments",
     );
     expect(focusedJob).toContain("canAssignTechnician");
 
     const addJobModal = read(
       "features/work-orders/components/workorders/AddJobModal.tsx",
     );
-    expect(addJobModal).toContain(
+    expect(addJobModal).toContain("assignedTechId: null");
+    expect(addJobModal).not.toContain("techId");
+    expect(addJobModal).not.toContain(
       "WORKSPACE_CAPABILITIES.manageWorkOrderAssignments",
-    );
-    expect(addJobModal).toContain(
-      "canAssignTechnician && techId && techId !== \"system\"",
     );
   });
 });

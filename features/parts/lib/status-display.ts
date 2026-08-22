@@ -1,4 +1,5 @@
 export type RequestFlowDisplay = "pending" | "in_progress" | "ready" | "complete";
+export type RequestFlowCounts = Record<RequestFlowDisplay, number>;
 export type PartsRequestStage = "needs_quote" | "awaiting_approval" | "order_receive" | "ready_for_tech" | "completed";
 export type ItemFlowDisplay = "requested" | "ordered" | "partially_received" | "received" | "consumed";
 
@@ -19,6 +20,20 @@ export function requestFlowLabel(status: RequestFlowDisplay): string {
   if (status === "in_progress") return "In Progress";
   if (status === "ready") return "Ready to Allocate";
   return "Complete";
+}
+
+export function summarizeRequestFlowDisplays(
+  states: RequestFlowDisplay[],
+): RequestFlowCounts {
+  const counts: RequestFlowCounts = {
+    pending: 0,
+    in_progress: 0,
+    ready: 0,
+    complete: 0,
+  };
+
+  for (const state of states) counts[state] += 1;
+  return counts;
 }
 
 export function itemFlowLabel(status: ItemFlowDisplay): string {

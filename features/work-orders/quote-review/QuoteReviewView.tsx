@@ -21,6 +21,7 @@ import {
   quoteLinePartsPricingSanitization,
   quoteLineTotalResolved,
   resolveQuoteLineParts,
+  resolveQuoteLinePartsDisclosure,
   type CatalogPart,
   type PartRequest,
   type PartRequestItem,
@@ -509,7 +510,6 @@ export default function QuoteReviewView(props: {
   const [pendingCustomerEmail, setPendingCustomerEmail] = useState("");
   const [sendBlocker, setSendBlocker] = useState<string | null>(null);
   const [addJobOpen, setAddJobOpen] = useState(false);
-  const [currentUserId, setCurrentUserId] = useState<string>("system");
   const [suppliesEnabledDraft, setSuppliesEnabledDraft] = useState<boolean | null>(null);
   const [suppliesAmountDraft, setSuppliesAmountDraft] = useState("");
   const [savingSuppliesOverride, setSavingSuppliesOverride] = useState(false);
@@ -776,18 +776,6 @@ export default function QuoteReviewView(props: {
     setLoadedOnce(false);
     void reload();
   }, [reload]);
-
-  useEffect(() => {
-    let alive = true;
-    async function loadUser() {
-      const { data } = await supabase.auth.getUser();
-      if (alive) setCurrentUserId(data.user?.id ?? "system");
-    }
-    void loadUser();
-    return () => {
-      alive = false;
-    };
-  }, [supabase]);
 
   const quoteTotals = useMemo(() => {
     const labor = quoteLines.reduce((sum, line) => sum + quoteLineLaborTotal(line, laborRate), 0);
@@ -1188,6 +1176,12 @@ export default function QuoteReviewView(props: {
                     const workflow = workflowDisplay(line);
                     const partsWorkflow = partsWorkflowLabel(line);
                     const partsSummary = partsQuoteSummary(line);
+                    const resolvedParts = partsByQuoteLine[line.id] ?? [];
+                    const partsDisclosure = resolveQuoteLinePartsDisclosure({
+                      resolvedCount: resolvedParts.length,
+                      requiredCount: partsSummary?.requiredCount ?? 0,
+                      expanded: openParts[line.id] === true,
+                    });
                     const meta = quoteMetadata(line);
                     const photos = [...jsonStringArray(meta.photo_urls), ...jsonStringArray(meta.evidence_urls)];
                     const techNotes = jsonString(meta.technician_notes) || jsonString(meta.tech_notes) || safeTrim(line.ai_cause);
@@ -1281,12 +1275,12 @@ export default function QuoteReviewView(props: {
                               <div className="font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">Required parts</div>
                               <div className="flex flex-wrap items-center gap-2">
                                 {partsSummary ? <div className="text-[color:var(--theme-text-secondary)]">Sync: <span className="text-[color:var(--theme-text-primary)]">{partsSummary.customerPricingQuarantined ? "manual review • customer item pricing quarantined" : <>{partsSummary.pendingCount > 0 ? "pending" : "quoted"} • {partsSummary.quotedCount}/{partsSummary.requiredCount} quoted • {partsSummary.partsTotal == null ? "total pending" : fmt(partsSummary.partsTotal)}</>}</span></div> : null}
-                                {(partsByQuoteLine[line.id] ?? []).length > 0 ? <button type="button" onClick={() => setOpenParts((prev) => ({ ...prev, [line.id]: !prev[line.id] }))} className="rounded-lg border border-[color:var(--desktop-border)] px-2.5 py-1.5 font-semibold text-[color:var(--theme-text-primary)]">{openParts[line.id] ? "Hide parts" : `View ${(partsByQuoteLine[line.id] ?? []).length} parts`}</button> : null}
+                                {resolvedParts.length > 0 ? <button type="button" onClick={() => setOpenParts((prev) => ({ ...prev, [line.id]: !prev[line.id] }))} className="rounded-lg border border-[color:var(--desktop-border)] px-2.5 py-1.5 font-semibold text-[color:var(--theme-text-primary)]">{partsDisclosure === "details" ? "Hide parts" : `View ${resolvedParts.length} ${resolvedParts.length === 1 ? "part" : "parts"}`}</button> : null}
                               </div>
                             </div>
-                            {(partsByQuoteLine[line.id] ?? []).length > 0 && openParts[line.id] ? (
+                            {partsDisclosure === "details" ? (
                               <div className="mt-2 space-y-2">
-                                {(partsByQuoteLine[line.id] ?? []).map((part) => {
+                                {resolvedParts.map((part) => {
                                   const request = part.requestId ? (requestsByQuoteLine[line.id] ?? []).find((candidate) => candidate.id === part.requestId) ?? null : null;
                                   const selected = selectedPartLabel(part);
                                   return (
@@ -1323,6 +1317,18 @@ export default function QuoteReviewView(props: {
                                     </div>
                                   );
                                 })}
+                              </div>
+                            ) : partsDisclosure === "collapsed" ? (
+                              <div className="mt-2 rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--theme-surface-inset)] p-2 text-[color:var(--theme-text-secondary)]">
+                                <div>
+                                  Parts: <span className="text-[color:var(--theme-text-primary)]">{resolvedParts.length} quoted {resolvedParts.length === 1 ? "part" : "parts"} linked</span>
+                                </div>
+                                <div>Select View {resolvedParts.length === 1 ? "part" : "parts"} to review details.</div>
+                              </div>
+                            ) : partsDisclosure === "unavailable" ? (
+                              <div role="status" className="mt-2 rounded-lg border border-amber-300/35 bg-amber-400/10 p-2 text-amber-50">
+                                <div>Parts: <span className="font-semibold">Details temporarily unavailable</span></div>
+                                <div>Parts Request: <span className="font-semibold">{partsSummary?.requiredCount ?? 0} required {(partsSummary?.requiredCount ?? 0) === 1 ? "part" : "parts"} recorded</span></div>
                               </div>
                             ) : (
                               <div className="mt-2 rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--theme-surface-inset)] p-2 text-[color:var(--theme-text-secondary)]">
@@ -1568,7 +1574,6 @@ export default function QuoteReviewView(props: {
           workOrderId={wo.id}
           vehicleId={wo.vehicle_id}
           shopId={wo.shop_id}
-          techId={currentUserId}
           onJobAdded={() => {
             setAddJobOpen(false);
             void reload();

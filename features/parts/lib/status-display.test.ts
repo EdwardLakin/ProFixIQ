@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   earliestPartsRequestStage,
   isMenuIntakeItemReviewed,
+  summarizeRequestFlowDisplays,
   toMenuIntakeStage,
   toPartsRequestStage,
   type PartsRequestStageItem,
@@ -24,6 +25,23 @@ const pricedItem: PartsRequestStageItem = {
 };
 
 describe("parts request operational stages", () => {
+  it("counts canonical request states without relabeling in-progress as ordered", () => {
+    expect(
+      summarizeRequestFlowDisplays([
+        "pending",
+        "in_progress",
+        "in_progress",
+        "ready",
+        "complete",
+      ]),
+    ).toEqual({
+      pending: 1,
+      in_progress: 2,
+      ready: 1,
+      complete: 1,
+    });
+  });
+
   it("accepts a priced manual part without an inventory link", () => {
     expect(
       toPartsRequestStage({

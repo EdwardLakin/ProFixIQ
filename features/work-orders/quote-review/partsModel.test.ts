@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import {
   resolveQuoteLineParts,
+  resolveQuoteLinePartsDisclosure,
   quoteLineTotalResolved,
   type CatalogPart,
   type PartRequest,
@@ -334,6 +335,37 @@ describe("Quote Review parts model", () => {
         } as Json),
       }),
     ).toEqual([]);
+  });
+});
+
+describe("Quote Review parts disclosure", () => {
+  it.each([
+    {
+      resolvedCount: 1,
+      requiredCount: 1,
+      expanded: true,
+      expected: "details",
+    },
+    {
+      resolvedCount: 1,
+      requiredCount: 1,
+      expanded: false,
+      expected: "collapsed",
+    },
+    {
+      resolvedCount: 0,
+      requiredCount: 1,
+      expanded: false,
+      expected: "unavailable",
+    },
+    {
+      resolvedCount: 0,
+      requiredCount: 0,
+      expanded: false,
+      expected: "none",
+    },
+  ])("returns $expected for $resolvedCount resolved and $requiredCount required", (input) => {
+    expect(resolveQuoteLinePartsDisclosure(input)).toBe(input.expected);
   });
 });
 
