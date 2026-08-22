@@ -8,7 +8,21 @@ import {
   REGRESSION_FIXTURE_VERSION,
 } from "./fixtures/regression/manifest";
 
-const seed = readFileSync(resolve(process.cwd(), "supabase/seed.sql"), "utf8");
+const seed = readFileSync(
+  resolve(process.cwd(), "supabase/fixtures/regression.sql"),
+  "utf8",
+);
+const configuredSeed = readFileSync(
+  resolve(process.cwd(), "supabase/seed.sql"),
+  "utf8",
+);
+const packageJson = readFileSync(
+  resolve(process.cwd(), "package.json"),
+  "utf8",
+);
+const packageScripts = (
+  JSON.parse(packageJson) as { scripts?: Record<string, string> }
+).scripts;
 
 const ALLOWED_REGRESSION_MUTATION_TARGETS = [
   "auth.identities",
@@ -24,6 +38,7 @@ const ALLOWED_REGRESSION_MUTATION_TARGETS = [
   "public.mobile_field_operators",
   "public.mobile_service_settings",
   "public.profiles",
+  "public.scheduling_resources",
   "public.shop_members",
   "public.shops",
   "public.vehicles",
@@ -56,7 +71,7 @@ describe("deterministic regression fixture contract", () => {
     }
   });
 
-  it("locks every required actor to a named id, email, and role", () => {
+  it("locks every required actor to a database-verified identity/role/tenant tuple", () => {
     const personas = REGRESSION_FIXTURE.personas;
     expect(personas.proOwner.role).toBe("owner");
     expect(personas.manager.role).toBe("manager");
@@ -74,10 +89,21 @@ describe("deterministic regression fixture contract", () => {
     const ids = Object.values(personas).map((persona) => persona.id);
     expect(new Set(ids).size).toBe(ids.length);
     for (const persona of Object.values(personas)) {
+      const shopId = persona.shop
+        ? REGRESSION_FIXTURE.shops[persona.shop].id
+        : null;
+      const expectedTuple = shopId
+        ? `('${persona.id}'::uuid, '${persona.email}', '${persona.role}', '${shopId}'::uuid)`
+        : `('${persona.id}'::uuid, '${persona.email}', '${persona.role}', null)`;
+
       expect(persona.email.endsWith("@regression.profixiq.invalid")).toBe(true);
       expect(seed).toContain(persona.id);
       expect(seed).toContain(persona.email);
+      expect(seed).toContain(expectedTuple);
     }
+    expect(seed).toContain(
+      "Regression fixture persona identity/role/tenant tuples are incomplete",
+    );
   });
 
   it("anchors every resource by deterministic id instead of row order or session", () => {
@@ -111,6 +137,26 @@ describe("deterministic regression fixture contract", () => {
     expect(REGRESSION_FIXTURE.dispatchAssignments).toHaveLength(2);
     expect(seed).toContain(REGRESSION_FIXTURE.vehicles.fleetAssetOne);
     expect(seed).toContain(REGRESSION_FIXTURE.vehicles.fleetAssetTwo);
+  });
+
+  it("rebuilds trigger-owned scheduler capacity while triggers are suppressed", () => {
+    expect(Object.values(REGRESSION_FIXTURE.schedulingResources)).toHaveLength(
+      6,
+    );
+    for (const id of Object.values(REGRESSION_FIXTURE.schedulingResources)) {
+      expect(seed).toContain(id);
+    }
+    expect(seed).toContain("insert into public.scheduling_resources");
+    expect(seed).toContain(REGRESSION_FIXTURE.personas.fieldOperator.id);
+    expect(seed).toContain("Scheduler capacity fixtures are incomplete");
+  });
+
+  it("keeps predictable credentials outside the configured linked seed path", () => {
+    expect(configuredSeed).not.toContain(REGRESSION_FIXTURE_PASSWORD);
+    expect(configuredSeed.toLowerCase()).not.toMatch(/\binsert\s+into\b/);
+    expect(packageScripts?.["fixtures:regression:recreate"]).toBe(
+      "supabase db reset --local --sql-paths ./fixtures/regression.sql",
+    );
   });
 
   it("is replay-safe and cannot emit real outbound work", () => {
