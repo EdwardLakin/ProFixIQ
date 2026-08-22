@@ -645,8 +645,7 @@ export default function QuotePageClient(): JSX.Element {
               const lineStatus = safeTrim(line.line_status).toLowerCase();
               const approvalState = safeTrim(line.approval_state).toLowerCase();
               return (
-                (approvalState === "pending" &&
-                  status === "awaiting_approval") ||
+                (approvalState === "pending" && status === "awaiting_approval") ||
                 approvalState === "approved" ||
                 approvalState === "declined" ||
                 approvalState === "deferred" ||
