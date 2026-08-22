@@ -1,0 +1,66 @@
+name: Regression Fixture Validation
+
+on:
+  pull_request:
+    paths:
+      - "supabase/fixtures/regression.sql"
+      - "supabase/seed.sql"
+      - "tests/fixtures/regression/**"
+      - "tests/regression-fixture-contract.test.ts"
+      - "package.json"
+      - ".github/workflows/regression-fixture-validation.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: regression-fixture-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v2
+        with:
+          version: 2.114.0
+          github-token: ${{ github.token }}
+
+      - name: Start an ephemeral local database
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase db start 2>&1 | tee regression-fixture-db-start.log
+
+      - name: Load and replay deterministic fixtures
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+            -f supabase/fixtures/regression.sql \
+            2>&1 | tee regression-fixture-load.log
+
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+            -f supabase/fixtures/regression.sql \
+            2>&1 | tee regression-fixture-replay.log
+
+      - name: Upload fixture diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: regression-fixture-${{ github.run_id }}
+          path: |
+            regression-fixture-db-start.log
+            regression-fixture-load.log
+            regression-fixture-replay.log
+          if-no-files-found: ignore

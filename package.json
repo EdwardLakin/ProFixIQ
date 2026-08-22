@@ -27,7 +27,7 @@
     "audit:api-routes": "node scripts/audit-api-routes.mjs",
     "seed:demo-shop": "node scripts/seed-demo-shop.mjs",
     "qa:demo-seed": "node scripts/qa-demo-seed.mjs",
-    "fixtures:regression:recreate": "supabase db reset --local",
+    "fixtures:regression:recreate": "supabase db reset --local --sql-paths ./fixtures/regression.sql",
     "fixtures:regression:check": "vitest run tests/regression-fixture-contract.test.ts",
     "regression:inventory": "node scripts/regression-inventory/cli.mjs",
     "regression:inventory:check": "node scripts/regression-inventory/cli.mjs --check",
