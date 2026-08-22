@@ -39,7 +39,9 @@ export function localPartByCode(
     all.find((part) =>
       [part.partNumber, part.sku, ...part.barcodes]
         .filter(Boolean)
-        .some((identity) => String(identity).trim().toLowerCase() === normalized),
+        .some(
+          (identity) => String(identity).trim().toLowerCase() === normalized,
+        ),
     ) ?? null
   );
 }
@@ -47,18 +49,22 @@ export function localPartByCode(
 export async function fetchTruckInventorySnapshot(args: {
   search?: string;
   serviceVehicleId?: string;
+  signal?: AbortSignal;
 }): Promise<FieldTruckInventorySnapshot> {
   const params = new URLSearchParams();
   if (args.search?.trim()) params.set("query", args.search.trim());
-  if (args.serviceVehicleId) params.set("serviceVehicleId", args.serviceVehicleId);
+  if (args.serviceVehicleId)
+    params.set("serviceVehicleId", args.serviceVehicleId);
   const response = await fetch(
     `/api/mobile/service/truck-inventory?${params.toString()}`,
-    { credentials: "include", cache: "no-store" },
+    { credentials: "include", cache: "no-store", signal: args.signal },
   );
   return responseJson<FieldTruckInventorySnapshot>(response);
 }
 
-export async function resolveTruckPartCode(code: string): Promise<FieldPartIdentityResult> {
+export async function resolveTruckPartCode(
+  code: string,
+): Promise<FieldPartIdentityResult> {
   const response = await fetch("/api/mobile/service/truck-inventory/resolve", {
     method: "POST",
     credentials: "include",

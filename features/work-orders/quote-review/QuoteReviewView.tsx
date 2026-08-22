@@ -28,6 +28,13 @@ import {
 } from "./partsModel";
 import { useTabs } from "@/features/shared/components/tabs/TabsProvider";
 import { PricingQuarantineRemediation } from "./PricingQuarantineRemediation";
+import RouteLoadPanel from "@/features/shared/components/ui/RouteLoadPanel";
+import {
+  asRouteLoadFailure,
+  routeLoadFailureFromStatus,
+  runBoundedRouteLoad,
+  type RouteLoadFailure,
+} from "@/features/shared/lib/route-load";
 
 const COPPER = "#C57A4A";
 const SEND_READY_STAGES = new Set(["advisor_pending", "ready_to_send"]);
@@ -90,7 +97,6 @@ const inputCls = `${inputBase} ${inputFocus}`;
 function safeTrim(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
-
 function asNumber(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string") {
@@ -479,6 +485,7 @@ export default function QuoteReviewView(props: {
   const { updateActiveTab } = useTabs();
 
   const [loading, setLoading] = useState(true);
+  const [loadFailure, setLoadFailure] = useState<RouteLoadFailure | null>(null);
   const [loadedOnce, setLoadedOnce] = useState(false);
   const loadedOnceRef = useRef(false);
   const [wo, setWo] = useState<WorkOrder | null>(null);
@@ -541,15 +548,215 @@ export default function QuoteReviewView(props: {
   const reload = useCallback(async () => {
     if (!woId) return;
     setLoading(true);
+    setLoadFailure(null);
 
-    const { data: woRow, error: woErr } = await supabase
-      .from("work_orders")
-      .select("*")
-      .eq("id", woId)
-      .maybeSingle();
+    try {
+      await runBoundedRouteLoad(
+        { route: `/quote-review/${woId}`, operation: "load quote review" },
+        async ({ signal }) => {
+          const { data: woRow, error: woErr } = await supabase
+            .from("work_orders")
+            .select("*")
+            .eq("id", woId)
+            .abortSignal(signal)
+            .maybeSingle();
 
-    if (woErr) {
-      toast.error(woErr.message);
+          if (woErr) throw woErr;
+          if (!woRow) {
+            throw routeLoadFailureFromStatus(404, "Work order not found.");
+          }
+
+          setWo(woRow);
+          const loadedSuppliesEnabled = (
+            woRow as { shop_supplies_enabled_override?: unknown }
+          ).shop_supplies_enabled_override;
+          setSuppliesEnabledDraft(
+            typeof loadedSuppliesEnabled === "boolean"
+              ? loadedSuppliesEnabled
+              : null,
+          );
+          const loadedSuppliesAmount = (
+            woRow as { shop_supplies_amount_override?: unknown }
+          ).shop_supplies_amount_override;
+          setSuppliesAmountDraft(
+            typeof loadedSuppliesAmount === "number"
+              ? String(loadedSuppliesAmount)
+              : "",
+          );
+          const shopId = woRow.shop_id ?? null;
+
+          if (shopId) {
+            const pricingResponse = await fetch(
+              `/api/work-orders/${woId}/customer-pricing`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ quoteLineIds: [] }),
+                signal,
+              },
+            );
+            if (!pricingResponse.ok && pricingResponse.status !== 403) {
+              const pricingPayload = (await pricingResponse
+                .json()
+                .catch(() => null)) as { error?: string } | null;
+              throw routeLoadFailureFromStatus(
+                pricingResponse.status,
+                pricingPayload?.error ??
+                  "Customer pricing could not be resolved.",
+              );
+            }
+
+            const [
+              { data: shopRow, error: shopErr },
+              { data: qRows, error: qErr },
+              { data: wlRows, error: wlErr },
+            ] = await Promise.all([
+              supabase
+                .from("shops")
+                .select("*")
+                .eq("id", shopId)
+                .abortSignal(signal)
+                .maybeSingle(),
+              supabase
+                .from("work_order_quote_lines")
+                .select("*")
+                .eq("shop_id", shopId)
+                .eq("work_order_id", woId)
+                .order("created_at", { ascending: true })
+                .abortSignal(signal),
+              supabase
+                .from("work_order_lines")
+                .select("*")
+                .eq("shop_id", shopId)
+                .eq("work_order_id", woId)
+                .order("line_no", { ascending: true })
+                .abortSignal(signal),
+            ]);
+
+            if (shopErr) throw shopErr;
+            if (qErr) throw qErr;
+            if (wlErr) throw wlErr;
+            setShop(shopRow ?? null);
+            const loadedQuoteLines = ((qRows ?? []) as QuoteLine[]).map(
+              (line) => ({
+                ...line,
+                _dirty: false,
+                _laborRateDraft: jsonNumber(quoteMetadata(line).labor_rate),
+              }),
+            );
+            const quoteLineIds = loadedQuoteLines
+              .map((line) => line.id)
+              .filter(Boolean);
+            let liveRequests: PartRequest[] = [];
+            let liveItems: PartRequestItem[] = [];
+            let selectedParts = new Map<string, CatalogPart>();
+
+            if (quoteLineIds.length > 0) {
+              const [
+                { data: requestRows, error: requestErr },
+                { data: itemRows, error: itemErr },
+              ] = await Promise.all([
+                supabase
+                  .from("part_requests")
+                  .select("*")
+                  .eq("shop_id", shopId)
+                  .eq("work_order_id", woId)
+                  .in("quote_line_id", quoteLineIds)
+                  .abortSignal(signal),
+                supabase
+                  .from("part_request_items")
+                  .select("*")
+                  .eq("shop_id", shopId)
+                  .eq("work_order_id", woId)
+                  .in("quote_line_id", quoteLineIds)
+                  .order("created_at", { ascending: true })
+                  .abortSignal(signal),
+              ]);
+              if (requestErr) throw requestErr;
+              if (itemErr) throw itemErr;
+              liveRequests = (requestRows ?? []) as PartRequest[];
+              liveItems = (itemRows ?? []) as PartRequestItem[];
+
+              const selectedPartIds = [
+                ...new Set(
+                  liveItems
+                    .map((item) => safeTrim(item.part_id ?? ""))
+                    .filter(Boolean),
+                ),
+              ];
+              if (selectedPartIds.length > 0) {
+                const { data: partRows, error: partErr } = await supabase
+                  .from("parts")
+                  .select(
+                    "id,name,sku,part_number,supplier,cost,default_cost,price,default_price",
+                  )
+                  .eq("shop_id", shopId)
+                  .in("id", selectedPartIds)
+                  .abortSignal(signal);
+                if (partErr) throw partErr;
+                selectedParts = new Map(
+                  ((partRows ?? []) as CatalogPart[]).map((part) => [
+                    part.id,
+                    part,
+                  ]),
+                );
+              }
+            }
+
+            const nextPartsByLine: PartsByQuoteLine = {};
+            const nextRequestsByLine: RequestByQuoteLine = {};
+            for (const line of loadedQuoteLines) {
+              nextPartsByLine[line.id] = resolveQuoteLineParts({
+                line,
+                liveItems,
+                requests: liveRequests,
+                selectedParts,
+              });
+              nextRequestsByLine[line.id] = liveRequests.filter(
+                (request) => request.quote_line_id === line.id,
+              );
+            }
+
+            setQuoteLines(loadedQuoteLines);
+            setPartsByQuoteLine(nextPartsByLine);
+            setRequestsByQuoteLine(nextRequestsByLine);
+            setWorkLines(
+              ((wlRows ?? []) as WorkOrderLine[]).filter(activeWorkLine),
+            );
+          } else {
+            setShop(null);
+            setQuoteLines([]);
+            setPartsByQuoteLine({});
+            setRequestsByQuoteLine({});
+            setWorkLines([]);
+          }
+
+          if (woRow.customer_id) {
+            const { data: custRow, error: custErr } = await supabase
+              .from("customers")
+              .select("*")
+              .eq("id", woRow.customer_id)
+              .abortSignal(signal)
+              .maybeSingle();
+            if (custErr) throw custErr;
+            setCustomer((custRow as Customer | null) ?? null);
+            setPendingCustomerEmail(safeTrim(custRow?.email ?? ""));
+          } else {
+            setCustomer(null);
+            setPendingCustomerEmail("");
+          }
+        },
+      );
+
+      loadedOnceRef.current = true;
+      setLoadedOnce(true);
+      void loadHistoryInsights();
+    } catch (error) {
+      const failure = asRouteLoadFailure(
+        error,
+        "The quote review could not be loaded.",
+      );
+      setLoadFailure(failure);
       if (!loadedOnceRef.current) {
         setWo(null);
         setShop(null);
@@ -559,136 +766,9 @@ export default function QuoteReviewView(props: {
         setRequestsByQuoteLine({});
         setWorkLines([]);
       }
+    } finally {
       setLoading(false);
-      return;
     }
-
-    setWo(woRow ?? null);
-    const loadedSuppliesEnabled = (woRow as { shop_supplies_enabled_override?: unknown } | null)?.shop_supplies_enabled_override;
-    setSuppliesEnabledDraft(typeof loadedSuppliesEnabled === "boolean" ? loadedSuppliesEnabled : null);
-    const loadedSuppliesAmount = (woRow as { shop_supplies_amount_override?: unknown } | null)?.shop_supplies_amount_override;
-    setSuppliesAmountDraft(typeof loadedSuppliesAmount === "number" ? String(loadedSuppliesAmount) : "");
-    const shopId = woRow?.shop_id ?? null;
-
-    if (shopId) {
-      const pricingResponse = await fetch(
-        `/api/work-orders/${woId}/customer-pricing`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ quoteLineIds: [] }),
-        },
-      );
-      if (!pricingResponse.ok && pricingResponse.status !== 403) {
-        const pricingPayload = (await pricingResponse
-          .json()
-          .catch(() => null)) as { error?: string } | null;
-        toast.error(
-          pricingPayload?.error ?? "Customer pricing could not be resolved.",
-        );
-      }
-
-      const [{ data: shopRow, error: shopErr }, { data: qRows, error: qErr }, { data: wlRows, error: wlErr }] = await Promise.all([
-        supabase.from("shops").select("*").eq("id", shopId).maybeSingle(),
-        supabase
-          .from("work_order_quote_lines")
-          .select("*")
-          .eq("shop_id", shopId)
-          .eq("work_order_id", woId)
-          .order("created_at", { ascending: true }),
-        supabase
-          .from("work_order_lines")
-          .select("*")
-          .eq("shop_id", shopId)
-          .eq("work_order_id", woId)
-          .order("line_no", { ascending: true }),
-      ]);
-
-      if (shopErr) toast.error(shopErr.message);
-      if (qErr) toast.error(qErr.message);
-      if (wlErr) toast.error(wlErr.message);
-      setShop(shopRow ?? null);
-      const loadedQuoteLines = ((qRows ?? []) as QuoteLine[]).map((line) => ({ ...line, _dirty: false, _laborRateDraft: jsonNumber(quoteMetadata(line).labor_rate) }));
-      const quoteLineIds = loadedQuoteLines.map((line) => line.id).filter(Boolean);
-      let liveRequests: PartRequest[] = [];
-      let liveItems: PartRequestItem[] = [];
-      let selectedParts = new Map<string, CatalogPart>();
-
-      if (quoteLineIds.length > 0) {
-        const [{ data: requestRows, error: requestErr }, { data: itemRows, error: itemErr }] = await Promise.all([
-          supabase
-            .from("part_requests")
-            .select("*")
-            .eq("shop_id", shopId)
-            .eq("work_order_id", woId)
-            .in("quote_line_id", quoteLineIds),
-          supabase
-            .from("part_request_items")
-            .select("*")
-            .eq("shop_id", shopId)
-            .eq("work_order_id", woId)
-            .in("quote_line_id", quoteLineIds)
-            .order("created_at", { ascending: true }),
-        ]);
-        if (requestErr) toast.error(requestErr.message);
-        if (itemErr) toast.error(itemErr.message);
-        liveRequests = (requestRows ?? []) as PartRequest[];
-        liveItems = (itemRows ?? []) as PartRequestItem[];
-
-        const selectedPartIds = [...new Set(liveItems.map((item) => safeTrim(item.part_id ?? "")).filter(Boolean))];
-        if (selectedPartIds.length > 0) {
-          const { data: partRows, error: partErr } = await supabase
-            .from("parts")
-            .select("id,name,sku,part_number,supplier,cost,default_cost,price,default_price")
-            .eq("shop_id", shopId)
-            .in("id", selectedPartIds);
-          if (partErr) toast.error(partErr.message);
-          selectedParts = new Map(((partRows ?? []) as CatalogPart[]).map((part) => [part.id, part]));
-        }
-      }
-
-      const nextPartsByLine: PartsByQuoteLine = {};
-      const nextRequestsByLine: RequestByQuoteLine = {};
-      for (const line of loadedQuoteLines) {
-        nextPartsByLine[line.id] = resolveQuoteLineParts({ line, liveItems, requests: liveRequests, selectedParts });
-        nextRequestsByLine[line.id] = liveRequests.filter((request) => request.quote_line_id === line.id);
-      }
-
-      setQuoteLines(loadedQuoteLines);
-      setPartsByQuoteLine(nextPartsByLine);
-      setRequestsByQuoteLine(nextRequestsByLine);
-      setWorkLines(((wlRows ?? []) as WorkOrderLine[]).filter(activeWorkLine));
-    } else {
-      setShop(null);
-      setQuoteLines([]);
-      setPartsByQuoteLine({});
-      setRequestsByQuoteLine({});
-      setWorkLines([]);
-    }
-
-    if (woRow?.customer_id) {
-      const { data: custRow, error: custErr } = await supabase
-        .from("customers")
-        .select("*")
-        .eq("id", woRow.customer_id)
-        .maybeSingle();
-      if (custErr) {
-        toast.error(custErr.message);
-        setCustomer(null);
-        setPendingCustomerEmail("");
-      } else {
-        setCustomer((custRow as Customer | null) ?? null);
-        setPendingCustomerEmail(safeTrim(custRow?.email ?? ""));
-      }
-    } else {
-      setCustomer(null);
-      setPendingCustomerEmail("");
-    }
-
-    setLoading(false);
-    loadedOnceRef.current = true;
-    setLoadedOnce(true);
-    void loadHistoryInsights();
   }, [loadHistoryInsights, supabase, woId]);
 
   useEffect(() => {
@@ -995,6 +1075,13 @@ export default function QuoteReviewView(props: {
 
   if (!woId) return <div className="p-6 text-red-300">Missing work order id.</div>;
   if (loading && !loadedOnce) return <div className="p-6 text-[color:var(--theme-text-secondary)]">Loading…</div>;
+  if (loadFailure && !loadedOnce) {
+    return (
+      <div className="mx-auto max-w-2xl p-6">
+        <RouteLoadPanel failure={loadFailure} onRetry={() => void reload()} />
+      </div>
+    );
+  }
   if (!wo) return <div className="p-6 text-red-300">Work order not found.</div>;
 
   const outerCls = embedded ? "min-h-full w-full px-0 py-0 text-foreground" : "min-h-screen px-4 py-6 text-foreground";
@@ -1008,6 +1095,15 @@ export default function QuoteReviewView(props: {
   return (
     <div className={outerCls} style={{ ["--copper" as never]: COPPER }}>
       <div className={containerCls}>
+        {loadFailure ? (
+          <div className="mb-3">
+            <RouteLoadPanel
+              failure={loadFailure}
+              onRetry={() => void reload()}
+              title="Quote refresh failed"
+            />
+          </div>
+        ) : null}
         {loading ? (
           <div className="mb-2 rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-xs text-[color:var(--theme-text-secondary)]">
             Refreshing canonical quote lines…

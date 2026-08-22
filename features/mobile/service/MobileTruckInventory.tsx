@@ -7,6 +7,7 @@ import { useTruckInventorySnapshot } from "./useTruckInventorySnapshot";
 import { useTruckInventoryStocking } from "./useTruckInventoryStocking";
 import { useTruckInventoryUsage } from "./useTruckInventoryUsage";
 import type { TruckInventoryView } from "./truckInventoryUi";
+import RouteLoadPanel from "@/features/shared/components/ui/RouteLoadPanel";
 
 export default function MobileTruckInventory() {
   const [view, setView] = useState<TruckInventoryView>("stock");
@@ -34,6 +35,18 @@ export default function MobileTruckInventory() {
     stocking.setSelectedReceiptId("");
     state.handleTruckChange(truckId);
   };
+
+  if (state.loadFailure && !state.snapshot) {
+    return (
+      <main className="mx-auto w-full max-w-5xl px-3 py-4 sm:px-4">
+        <RouteLoadPanel
+          failure={state.loadFailure}
+          onRetry={() => void state.load()}
+          title="Truck inventory unavailable"
+        />
+      </main>
+    );
+  }
 
   return (
     <MobileTruckInventoryScreen

@@ -6,6 +6,7 @@ import {
   PortalPageHeader,
   PortalEmptyState,
 } from "@/features/portal/components/PortalUi";
+import { runBoundedRouteLoad } from "@/features/shared/lib/route-load";
 
 export const dynamic = "force-dynamic";
 
@@ -51,17 +52,28 @@ export default async function PortalQuotesPage() {
   const actor = await requirePortalCustomerActor(supabase);
   const shopId = actor.customer.shop_id;
 
-  const { data: workOrders, error } = shopId
-    ? await supabase
-        .from("work_orders")
-        .select(
-          "id,vehicle_id,created_at,scheduled_at,invoice_sent_at,estimate_number,work_order_quote_lines(id,description,status,stage,approved_at,work_order_line_id,sent_to_customer_at,metadata)",
-        )
-        .eq("shop_id", shopId)
-        .eq("customer_id", actor.customer.id)
-        .or("external_id.like.portal_quote:%,estimate_number.not.is.null")
-        .order("created_at", { ascending: false })
-    : { data: [], error: null };
+  const { data: workOrders, error } = await runBoundedRouteLoad(
+    {
+      route: "/portal/quotes",
+      operation: "load customer quotes",
+      tenantId: shopId,
+      actorId: actor.userId,
+      role: "customer",
+    },
+    async ({ signal }) =>
+      shopId
+        ? await supabase
+            .from("work_orders")
+            .select(
+              "id,vehicle_id,created_at,scheduled_at,invoice_sent_at,estimate_number,work_order_quote_lines(id,description,status,stage,approved_at,work_order_line_id,sent_to_customer_at,metadata)",
+            )
+            .eq("shop_id", shopId)
+            .eq("customer_id", actor.customer.id)
+            .or("external_id.like.portal_quote:%,estimate_number.not.is.null")
+            .order("created_at", { ascending: false })
+            .abortSignal(signal)
+        : { data: [], error: null },
+  );
 
   if (error) throw new Error(error.message);
   const rows = (workOrders ?? [])

@@ -1,7 +1,7 @@
 // app/portal/approvals/page.tsx
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Toaster, toast } from "sonner";
 import StatusBadge from "@/features/shared/components/ui/StatusBadge";
@@ -15,6 +15,13 @@ import {
   resolveDecisionStatus,
 } from "@/features/shared/lib/decisionStatus";
 import { deriveEventsFromPortalApproval } from "@/features/shared/lib/decisionEvents";
+import RouteLoadPanel from "@/features/shared/components/ui/RouteLoadPanel";
+import {
+  asRouteLoadFailure,
+  routeLoadFailureFromStatus,
+  runBoundedRouteLoad,
+  type RouteLoadFailure,
+} from "@/features/shared/lib/route-load";
 
 const COPPER = "#C57A4A";
 
@@ -106,7 +113,8 @@ async function readJson(res: Response): Promise<unknown> {
 }
 
 function safePayload(v: unknown): ApprovalsPayload {
-  if (!isRecord(v)) return { lines: [], partRequestHeaders: [], quoteApprovals: [] };
+  if (!isRecord(v))
+    return { lines: [], partRequestHeaders: [], quoteApprovals: [] };
 
   const linesRaw = v.lines;
   const headersRaw = v.partRequestHeaders;
@@ -128,41 +136,50 @@ export default function PortalApprovalsPage() {
 
   const [lines, setLines] = useState<ApprovalLine[]>([]);
   const [headers, setHeaders] = useState<PartRequestHeader[]>([]);
-  const [quoteApprovals, setQuoteApprovals] = useState<QuoteApprovalSummary[]>([]);
+  const [quoteApprovals, setQuoteApprovals] = useState<QuoteApprovalSummary[]>(
+    [],
+  );
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<RouteLoadFailure | null>(null);
   const [busyItemId, setBusyItemId] = useState<string | null>(null);
 
-  const fetchApprovals = async (opts?: { silent?: boolean }) => {
+  const fetchApprovals = useCallback(async (opts?: { silent?: boolean }) => {
     const silent = Boolean(opts?.silent);
     if (!silent) setLoading(true);
     else setRefreshing(true);
 
     setError(null);
     try {
-      const res = await fetch("/api/portal/approvals", { method: "GET", cache: "no-store" });
-      const parsed = await readJson(res);
+      const payload = await runBoundedRouteLoad(
+        { route: "/portal/approvals", operation: "load approvals" },
+        async ({ recordStatus, signal }) => {
+          const res = await fetch("/api/portal/approvals", {
+            method: "GET",
+            cache: "no-store",
+            signal,
+          });
+          recordStatus(res.status);
+          const parsed = await readJson(res);
 
-      if (!res.ok) {
-        const msg =
-          (isRecord(parsed) && typeof parsed.error === "string" && parsed.error) ||
-          (typeof parsed === "string" ? parsed : null) ||
-          `Failed to load approvals (status ${res.status})`;
+          if (!res.ok) {
+            const msg =
+              (isRecord(parsed) &&
+                typeof parsed.error === "string" &&
+                parsed.error) ||
+              (typeof parsed === "string" ? parsed : null) ||
+              "Approvals could not be loaded.";
+            throw routeLoadFailureFromStatus(res.status, msg);
+          }
 
-        setError(msg);
-        setLines([]);
-        setHeaders([]);
-        setQuoteApprovals([]);
-        return;
-      }
-
-      const payload = safePayload(parsed);
+          return safePayload(parsed);
+        },
+      );
       setLines(payload.lines);
       setHeaders(payload.partRequestHeaders);
       setQuoteApprovals(payload.quoteApprovals);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Failed to load approvals");
+      setError(asRouteLoadFailure(e, "Approvals could not be loaded."));
       setLines([]);
       setHeaders([]);
       setQuoteApprovals([]);
@@ -170,16 +187,20 @@ export default function PortalApprovalsPage() {
       if (!silent) setLoading(false);
       else setRefreshing(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     void fetchApprovals();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [fetchApprovals]);
 
   const flattenedCount = useMemo(() => {
     let n = 0;
-    lines.forEach((ln) => (n += Array.isArray(ln.part_request_items) ? ln.part_request_items.length : 0));
+    lines.forEach(
+      (ln) =>
+        (n += Array.isArray(ln.part_request_items)
+          ? ln.part_request_items.length
+          : 0),
+    );
     quoteApprovals.forEach((quote) => (n += quote.lineCount));
     return n;
   }, [lines, quoteApprovals]);
@@ -203,17 +224,22 @@ export default function PortalApprovalsPage() {
     setBusyItemId(itemId);
 
     try {
-      const res = await fetch(`/api/work-orders/lines/${encodeURIComponent(lineId)}/approval-decision`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        cache: "no-store",
-        body: JSON.stringify({ decision, workOrderId }),
-      });
+      const res = await fetch(
+        `/api/work-orders/lines/${encodeURIComponent(lineId)}/approval-decision`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          cache: "no-store",
+          body: JSON.stringify({ decision, workOrderId }),
+        },
+      );
 
       const parsed = await readJson(res);
       if (!res.ok) {
         const msg =
-          (isRecord(parsed) && typeof parsed.error === "string" && parsed.error) ||
+          (isRecord(parsed) &&
+            typeof parsed.error === "string" &&
+            parsed.error) ||
           (typeof parsed === "string" ? parsed : null) ||
           `${decision === "approve" ? "Approve" : "Decline"} failed (${res.status})`;
 
@@ -237,12 +263,15 @@ export default function PortalApprovalsPage() {
   };
 
   const lineSummary = (ln: ApprovalLine) => {
-    const items = Array.isArray(ln.part_request_items) ? ln.part_request_items : [];
+    const items = Array.isArray(ln.part_request_items)
+      ? ln.part_request_items
+      : [];
     if (items.length === 0) return getDecisionStatusView("recommended");
 
     const approvedCount = items.filter((it) => Boolean(it.approved)).length;
     if (approvedCount === 0) return getDecisionStatusView("awaiting_approval");
-    if (approvedCount === items.length) return getDecisionStatusView("approved");
+    if (approvedCount === items.length)
+      return getDecisionStatusView("approved");
     return getDecisionStatusView("in_progress");
   };
 
@@ -258,16 +287,25 @@ export default function PortalApprovalsPage() {
       <Toaster position="top-center" />
       <div className="mx-auto w-full max-w-5xl px-3 py-4 md:px-6">
         <div className={shell}>
-          <div className={cx(metalHeader, "flex items-start justify-between gap-3")}>
+          <div
+            className={cx(
+              metalHeader,
+              "flex items-start justify-between gap-3",
+            )}
+          >
             <div className="min-w-0">
-              <div className="font-blackops text-[0.9rem] tracking-[0.18em]" style={{ color: COPPER }}>
+              <div
+                className="font-blackops text-[0.9rem] tracking-[0.18em]"
+                style={{ color: COPPER }}
+              >
                 APPROVALS
               </div>
               <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
                 Review estimates and approve work waiting for your confirmation.
               </div>
               <div className="mt-2 text-[0.7rem] text-[color:var(--theme-text-secondary)]">
-                When all items on a job are approved, the job automatically moves forward.
+                When all items on a job are approved, the job automatically
+                moves forward.
               </div>
             </div>
 
@@ -302,18 +340,11 @@ export default function PortalApprovalsPage() {
           </div>
 
           {error ? (
-            <div className="mt-4 rounded-2xl border border-red-400/40 bg-red-500/10 p-4">
-              <div className="text-sm font-semibold text-red-100">Error</div>
-              <div className="mt-1 whitespace-pre-wrap text-xs text-red-200">{error}</div>
-              <div className="mt-3 flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => void fetchApprovals()}
-                  className="inline-flex items-center rounded-full border border-red-400/40 bg-[color:var(--theme-surface-inset)] px-4 py-2 text-xs font-semibold text-red-100 hover:bg-[color:var(--theme-surface-overlay)]"
-                >
-                  Try again
-                </button>
-              </div>
+            <div className="mt-4">
+              <RouteLoadPanel
+                failure={error}
+                onRetry={() => void fetchApprovals()}
+              />
             </div>
           ) : null}
 
@@ -335,10 +366,14 @@ export default function PortalApprovalsPage() {
                         <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
                           Estimate {quote.reference}
                         </div>
-                        <StatusBadge variant="warning">Awaiting approval</StatusBadge>
+                        <StatusBadge variant="warning">
+                          Awaiting approval
+                        </StatusBadge>
                       </div>
                       <div className="mt-2 text-xs text-[color:var(--theme-text-secondary)]">
-                        {quote.lineCount} quote item{quote.lineCount === 1 ? "" : "s"} ready for your decision
+                        {quote.lineCount} quote item
+                        {quote.lineCount === 1 ? "" : "s"} ready for your
+                        decision
                         {quote.total > 0 ? ` · ${fmtMoney(quote.total)}` : ""}.
                       </div>
                       <div className="mt-1 text-[0.7rem] text-[color:var(--theme-text-muted)]">
@@ -347,7 +382,9 @@ export default function PortalApprovalsPage() {
                     </div>
                     <button
                       type="button"
-                      onClick={() => router.push(`/portal/quotes/${quote.workOrderId}`)}
+                      onClick={() =>
+                        router.push(`/portal/quotes/${quote.workOrderId}`)
+                      }
                       className="inline-flex min-h-10 items-center rounded-full border border-[var(--accent-copper)] bg-[color:color-mix(in_srgb,var(--accent-copper)_14%,transparent)] px-4 py-2 text-xs font-semibold text-[var(--accent-copper-light)]"
                     >
                       Review estimate
@@ -358,9 +395,14 @@ export default function PortalApprovalsPage() {
             </div>
           ) : null}
 
-          {!loading && !error && lines.length === 0 && quoteApprovals.length === 0 ? (
+          {!loading &&
+          !error &&
+          lines.length === 0 &&
+          quoteApprovals.length === 0 ? (
             <div className="mt-4 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-6 text-center">
-              <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">Nothing to approve</div>
+              <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                Nothing to approve
+              </div>
               <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
                 You don’t have any jobs waiting for approval right now.
               </div>
@@ -388,14 +430,24 @@ export default function PortalApprovalsPage() {
               {lines.map((ln) => {
                 const title = (ln.description ?? ln.complaint ?? "Job").trim();
                 const summary = lineSummary(ln);
-                const items = Array.isArray(ln.part_request_items) ? ln.part_request_items : [];
+                const items = Array.isArray(ln.part_request_items)
+                  ? ln.part_request_items
+                  : [];
                 const lineDecisionStatus = formatDecisionStatus({
                   approvalState: ln.approval_state,
                   workStatus: ln.status,
                 });
                 const timelineStages: DecisionTimelineStage[] = [
-                  { key: "inspection", label: "Inspection completed", state: "past" },
-                  { key: "recommendation", label: "Recommendation issued", state: "past" },
+                  {
+                    key: "inspection",
+                    label: "Inspection completed",
+                    state: "past",
+                  },
+                  {
+                    key: "recommendation",
+                    label: "Recommendation issued",
+                    state: "past",
+                  },
                   {
                     key: "approval",
                     label: "Awaiting approval",
@@ -447,11 +499,16 @@ export default function PortalApprovalsPage() {
                     <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[color:var(--theme-border-soft)] px-4 py-4">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <div className="truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">{title}</div>
-                          <StatusBadge variant={summary.variant}>{summary.label}</StatusBadge>
+                          <div className="truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                            {title}
+                          </div>
+                          <StatusBadge variant={summary.variant}>
+                            {summary.label}
+                          </StatusBadge>
                         </div>
                         <div className="mt-2 text-xs text-[color:var(--theme-text-secondary)]">
-                          Decision needed: approve required parts so this work order can continue.
+                          Decision needed: approve required parts so this work
+                          order can continue.
                         </div>
 
                         <div className="mt-1 flex flex-wrap items-center gap-2 text-[0.7rem] text-[color:var(--theme-text-secondary)]">
@@ -459,7 +516,12 @@ export default function PortalApprovalsPage() {
                             Work: {lineDecisionStatus.label}
                           </span>
                           <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5">
-                            Approval: {formatDecisionStatus({ approvalState: ln.approval_state }).label}
+                            Approval:{" "}
+                            {
+                              formatDecisionStatus({
+                                approvalState: ln.approval_state,
+                              }).label
+                            }
                           </span>
                           {ln.hold_reason ? (
                             <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5">
@@ -483,19 +545,32 @@ export default function PortalApprovalsPage() {
                     </div>
 
                     <div className="px-4 py-4">
-                      <DecisionTimeline stages={timelineStages} orientation="vertical" className="mb-3" />
-                      <DecisionEventFeed events={decisionEvents} compact className="mb-3" maxVisible={4} />
+                      <DecisionTimeline
+                        stages={timelineStages}
+                        orientation="vertical"
+                        className="mb-3"
+                      />
+                      <DecisionEventFeed
+                        events={decisionEvents}
+                        compact
+                        className="mb-3"
+                        maxVisible={4}
+                      />
                       <div className="mb-2 grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
                         <div>
                           <div className="text-[0.75rem] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                             Evidence-backed recommendation
                           </div>
                           <div className="text-[0.7rem] text-[color:var(--theme-text-muted)]">
-                            Review pricing and approve each required part. This is the action step for this job.
+                            Review pricing and approve each required part. This
+                            is the action step for this job.
                           </div>
                         </div>
                         <div className="text-[0.68rem] text-[color:var(--theme-text-secondary)]">
-                          Primary action: <span className="text-[color:var(--theme-text-primary)]">Approve</span>
+                          Primary action:{" "}
+                          <span className="text-[color:var(--theme-text-primary)]">
+                            Approve
+                          </span>
                         </div>
                       </div>
 
@@ -519,7 +594,10 @@ export default function PortalApprovalsPage() {
                               const isBusy = busyItemId === it.id;
 
                               return (
-                                <div key={it.id} className="grid grid-cols-12 gap-2 px-3 py-3">
+                                <div
+                                  key={it.id}
+                                  className="grid grid-cols-12 gap-2 px-3 py-3"
+                                >
                                   <div className="col-span-6 min-w-0">
                                     <div className="truncate text-sm text-[color:var(--theme-text-primary)]">
                                       {it.description ?? "—"}
@@ -533,7 +611,9 @@ export default function PortalApprovalsPage() {
                                             : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-secondary)]",
                                         )}
                                       >
-                                        {approved ? "Approved" : "Awaiting approval"}
+                                        {approved
+                                          ? "Approved"
+                                          : "Awaiting approval"}
                                       </span>
                                     </div>
                                   </div>
@@ -595,8 +675,12 @@ export default function PortalApprovalsPage() {
                       </div>
 
                       <div className="mt-3 text-[0.7rem] text-[color:var(--theme-text-muted)]">
-                        If every item on this job is approved, the job will automatically move to{" "}
-                        <span className="text-[color:var(--theme-text-secondary)]">Queued</span>.
+                        If every item on this job is approved, the job will
+                        automatically move to{" "}
+                        <span className="text-[color:var(--theme-text-secondary)]">
+                          Queued
+                        </span>
+                        .
                       </div>
                     </div>
                   </div>
@@ -609,7 +693,10 @@ export default function PortalApprovalsPage() {
             <div className="mt-4 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
               <div className="text-xs text-[color:var(--theme-text-secondary)]">
                 If approvals never appear, confirm the portal user is linked by{" "}
-                <span className="font-mono text-[color:var(--theme-text-primary)]">customers.user_id = auth.uid()</span>.
+                <span className="font-mono text-[color:var(--theme-text-primary)]">
+                  customers.user_id = auth.uid()
+                </span>
+                .
               </div>
             </div>
           ) : null}
