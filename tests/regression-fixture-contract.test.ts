@@ -248,7 +248,6 @@ describe("deterministic regression fixture contract", () => {
       );
     },
   );
-
   it("names one Pro and one Starter tenant with stable selectors", () => {
     expect(REGRESSION_FIXTURE.shops.pro.plan).toBe("pro");
     expect(REGRESSION_FIXTURE.shops.starter.plan).toBe("starter");
