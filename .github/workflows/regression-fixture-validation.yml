@@ -2,7 +2,11 @@ name: Regression Fixture Validation
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
+    branches:
+      - main
     paths:
+      - "supabase/config.toml"
       - "supabase/fixtures/regression.sql"
       - "supabase/seed.sql"
       - "tests/fixtures/regression/**"
@@ -19,10 +23,17 @@ concurrency:
 
 jobs:
   validate:
+    if: ${{ github.event.pull_request.draft == false }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.8.1
+          run_install: false
 
       - uses: supabase/setup-cli@v2
         with:
@@ -35,7 +46,13 @@ jobs:
           set -euo pipefail
           supabase db start 2>&1 | tee regression-fixture-db-start.log
 
-      - name: Load and replay deterministic fixtures
+      - name: Recreate fixtures through the packaged command
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm fixtures:regression:recreate 2>&1 | tee regression-fixture-recreate.log
+
+      - name: Replay deterministic fixtures once
         shell: bash
         env:
           DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
@@ -46,13 +63,7 @@ jobs:
             sudo apt-get install -y postgresql-client
           fi
 
-          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
-            -f supabase/fixtures/regression.sql \
-            2>&1 | tee regression-fixture-load.log
-
-          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
-            -f supabase/fixtures/regression.sql \
-            2>&1 | tee regression-fixture-replay.log
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 -f supabase/fixtures/regression.sql 2>&1 | tee regression-fixture-replay.log
 
       - name: Upload fixture diagnostics
         if: always()
@@ -61,6 +72,7 @@ jobs:
           name: regression-fixture-${{ github.run_id }}
           path: |
             regression-fixture-db-start.log
-            regression-fixture-load.log
+            regression-fixture-recreate.log
             regression-fixture-replay.log
           if-no-files-found: ignore
+
