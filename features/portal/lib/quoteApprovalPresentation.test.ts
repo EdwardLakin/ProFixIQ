@@ -27,8 +27,14 @@ describe("customer portal quote visibility", () => {
     ).toBe(false);
   });
 
-  it("never exposes cancelled, rejected, or superseded revisions", () => {
-    for (const status of ["cancelled", "rejected", "superseded"]) {
+  it("never exposes canceled, voided, rejected, or superseded revisions", () => {
+    for (const status of [
+      "cancelled",
+      "canceled",
+      "voided",
+      "rejected",
+      "superseded",
+    ]) {
       const row = {
         status,
         stage: "customer_review",

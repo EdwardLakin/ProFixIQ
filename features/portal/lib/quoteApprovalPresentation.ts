@@ -1,3 +1,5 @@
+import { isHiddenQuoteLifecycleStatus } from "@/features/work-orders/lib/quotes/quoteLifecycleStatus";
+
 function text(value: unknown): string | null {
   return typeof value === "string" ? value : null;
 }
@@ -5,12 +7,6 @@ function text(value: unknown): string | null {
 function number(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
-
-const HIDDEN_QUOTE_REVISION_STATUSES = new Set([
-  "cancelled",
-  "rejected",
-  "superseded",
-]);
 
 const CUSTOMER_VISIBLE_QUOTE_STATUSES = new Set([
   "sent",
@@ -33,12 +29,15 @@ const TERMINAL_QUOTE_STATUSES = new Set([
   "converted",
   "declined",
   "deferred",
-  ...HIDDEN_QUOTE_REVISION_STATUSES,
+  "cancelled",
+  "canceled",
+  "rejected",
+  "superseded",
+  "voided",
 ]);
 
 export function isHiddenQuoteRevision(row: Record<string, unknown>): boolean {
-  const status = (text(row.status) ?? "").trim().toLowerCase();
-  return HIDDEN_QUOTE_REVISION_STATUSES.has(status);
+  return isHiddenQuoteLifecycleStatus(row.status);
 }
 
 export function isCustomerVisibleQuoteLine(

@@ -14,6 +14,9 @@ type RouteContext = {
   params: Promise<{ id: string }>;
 };
 
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 function portalError(message: string, status: number) {
   return NextResponse.json({ error: message }, { status });
 }
@@ -27,6 +30,9 @@ export async function GET(_request: Request, context: RouteContext) {
     const shopId = actor.customer.shop_id;
     if (!shopId) {
       return portalError("Customer portal is not connected to a shop.", 403);
+    }
+    if (!UUID_PATTERN.test(workOrderId)) {
+      return portalError("This quote is unavailable.", 404);
     }
 
     const { data: workOrder, error: workOrderError } = await supabase

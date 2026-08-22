@@ -53,7 +53,9 @@ describe("customer portal quote detail route", () => {
     const { GET } = await import("../app/api/portal/quotes/[id]/route");
 
     const response = await GET(new Request("https://profixiq.test"), {
-      params: Promise.resolve({ id: "foreign-work-order" }),
+      params: Promise.resolve({
+        id: "86ba5754-1694-42c9-9310-4144f9fbb6a4",
+      }),
     });
 
     expect(response.status).toBe(404);
@@ -62,13 +64,26 @@ describe("customer portal quote detail route", () => {
     });
     expect(workOrderQuery.eq).toHaveBeenCalledWith(
       "id",
-      "foreign-work-order",
+      "86ba5754-1694-42c9-9310-4144f9fbb6a4",
     );
     expect(workOrderQuery.eq).toHaveBeenCalledWith("shop_id", "shop-1");
-    expect(workOrderQuery.eq).toHaveBeenCalledWith(
-      "customer_id",
-      "customer-1",
-    );
+    expect(workOrderQuery.eq).toHaveBeenCalledWith("customer_id", "customer-1");
+  });
+
+  it("returns the non-disclosing 404 without querying an invalid UUID", async () => {
+    const { client } = notFoundClient();
+    mocks.createServerSupabaseRoute.mockReturnValue(client);
+    const { GET } = await import("../app/api/portal/quotes/[id]/route");
+
+    const response = await GET(new Request("https://profixiq.test"), {
+      params: Promise.resolve({ id: "truncated-link" }),
+    });
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({
+      error: "This quote is unavailable.",
+    });
+    expect(client.from).not.toHaveBeenCalled();
   });
 
   it("returns 401 before any quote lookup when the session is missing", async () => {

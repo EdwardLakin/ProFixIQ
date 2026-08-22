@@ -37,6 +37,10 @@ const portalQuotePresentation = readFileSync(
   "features/portal/lib/quoteApprovalPresentation.ts",
   "utf8",
 );
+const quoteLifecycleStatus = readFileSync(
+  "features/work-orders/lib/quotes/quoteLifecycleStatus.ts",
+  "utf8",
+);
 const roleSidebar = readFileSync(
   "features/shared/components/RoleSidebar.tsx",
   "utf8",
@@ -241,9 +245,16 @@ describe("advisor estimate workflow", () => {
   });
 
   it("hides superseded revisions and never prices customer parts from internal cost", () => {
-    expect(portalQuotePresentation).toMatch(
-      /"cancelled",\s*"rejected",\s*"superseded"/,
-    );
+    expect(portalQuotePresentation).toContain("isHiddenQuoteLifecycleStatus");
+    for (const status of [
+      "cancelled",
+      "canceled",
+      "voided",
+      "rejected",
+      "superseded",
+    ]) {
+      expect(quoteLifecycleStatus).toContain(`"${status}"`);
+    }
     expect(portalQuote).toContain(
       "part.unitPrice ?? part.unit_price ?? part.quoted_price ?? part.price",
     );

@@ -102,10 +102,12 @@ describe("quote pricing quarantine server guard", () => {
       }),
     ).toBe(false);
     expect(isQuoteCustomerPricingQuarantined(null)).toBe(false);
-    expect(isQuotePricingQuarantineError("QUOTE_PRICING_QUARANTINED"))
-      .toBe(true);
-    expect(isQuotePricingQuarantineError("requires pricing quarantine"))
-      .toBe(true);
+    expect(isQuotePricingQuarantineError("QUOTE_PRICING_QUARANTINED")).toBe(
+      true,
+    );
+    expect(isQuotePricingQuarantineError("requires pricing quarantine")).toBe(
+      true,
+    );
     expect(isQuotePricingQuarantineError("unrelated conflict")).toBe(false);
   });
 
@@ -238,6 +240,48 @@ describe("quote pricing quarantine server guard", () => {
       error: QUOTE_PRICING_QUARANTINED_MESSAGE,
     });
     expect(mock.rpc).not.toHaveBeenCalled();
+  });
+
+  it("never calls a decision RPC for hidden lifecycle states", async () => {
+    for (const status of [
+      "cancelled",
+      "canceled",
+      "voided",
+      "rejected",
+      "superseded",
+    ]) {
+      const mock = client({
+        quoteLines: [
+          {
+            id: `quote-${status}`,
+            work_order_line_id: null,
+            source_work_order_line_id: null,
+            status,
+            metadata: {},
+          },
+        ],
+      });
+
+      const result = await applyWorkOrderQuoteLineDecision({
+        supabase: mock.supabase,
+        quoteLineIds: [`quote-${status}`],
+        workOrderId: "work-order-a",
+        shopId: "shop-a",
+        customerId: "customer-a",
+        actorUserId: "actor-a",
+        decision: "approve",
+        operationKey: `stable-${status}`,
+        operationReceiptSupabase: mock.supabase,
+      });
+
+      expect(result).toMatchObject({
+        ok: false,
+        pricingQuarantined: false,
+        error:
+          "Canceled, voided, rejected, or superseded quote lines cannot be changed.",
+      });
+      expect(mock.rpc).not.toHaveBeenCalled();
+    }
   });
 
   it("keeps the canonical atomic RPC for clean pricing", async () => {

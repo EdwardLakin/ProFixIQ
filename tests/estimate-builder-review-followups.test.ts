@@ -96,8 +96,10 @@ describe("estimate builder review follow-ups", () => {
   });
 
   it("renders one aggregate portal card for a multi-line estimate", () => {
-    expect(portalListData).toContain("if (workOrder.estimate_number)");
-    expect(portalListData).toContain("key: `estimate:${workOrder.id}`");
+    expect(portalListData).toContain(
+      "Boolean(workOrder.estimate_number) || lineCount > 1",
+    );
+    expect(portalListData).toContain("key: `work-order:${workOrder.id}`");
     expect(portalList).toContain("cards.map((card)");
     expect(portalList).toContain('"Review estimate"');
   });

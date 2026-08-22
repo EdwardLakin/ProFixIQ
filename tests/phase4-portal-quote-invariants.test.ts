@@ -9,6 +9,9 @@ const detailRoute = read("app/api/portal/quotes/[id]/route.ts");
 const detailClient = read(
   "features/portal/app/quotes/[id]/QuotePageClient.tsx",
 );
+const decisionMigration = read(
+  "supabase/migrations/20260822223500_reject_hidden_quote_decisions.sql",
+);
 
 describe("Phase 4 customer portal quote invariants", () => {
   it("lists visible quote lines from every owned work order", () => {
@@ -16,8 +19,28 @@ describe("Phase 4 customer portal quote invariants", () => {
     expect(quoteList).toContain('.eq("shop_id", shopId)');
     expect(quoteList).toContain('.eq("customer_id", customerId)');
     expect(quoteList).toContain("isCustomerVisibleQuoteLine");
+    expect(quoteList).toContain("isCustomerVisibleDirectWorkOrderLine");
+    expect(quoteList).toContain(".range(offset, offset + PAGE_SIZE - 1)");
     expect(quoteList).not.toContain(
       'or("external_id.like.portal_quote:%,estimate_number.not.is.null")',
+    );
+  });
+
+  it("rejects hidden lifecycle spellings in presentation and atomic decisions", () => {
+    expect(decisionMigration).toContain(
+      "apply_customer_quote_decision_engine_atomic",
+    );
+    for (const status of [
+      "cancelled",
+      "canceled",
+      "voided",
+      "rejected",
+      "superseded",
+    ]) {
+      expect(decisionMigration).toContain(`'${status}'`);
+    }
+    expect(decisionMigration).toContain(
+      "Quote line cannot be changed from its current status.",
     );
   });
 
@@ -29,6 +52,7 @@ describe("Phase 4 customer portal quote invariants", () => {
 
   it("resolves quote ownership on the server with non-disclosing 404s", () => {
     expect(detailRoute).toContain("requirePortalCustomerActor");
+    expect(detailRoute).toContain("UUID_PATTERN.test(workOrderId)");
     expect(detailRoute).toContain('.eq("id", workOrderId)');
     expect(detailRoute).toContain('.eq("shop_id", shopId)');
     expect(detailRoute).toContain('.eq("customer_id", actor.customer.id)');
