@@ -1,5 +1,3 @@
-\set ON_ERROR_STOP on
-
 -- Local deterministic regression fixtures. Invoke this file only through the
 -- documented local `db reset` command; never seed a linked database. Trigger
 -- execution is disabled for the fixture writes so no notification, email, SMS,
