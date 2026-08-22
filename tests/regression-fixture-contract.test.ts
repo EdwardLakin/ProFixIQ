@@ -12,8 +12,12 @@ const seed = readFileSync(
   resolve(process.cwd(), "supabase/fixtures/regression.sql"),
   "utf8",
 );
-const configuredSeed = readFileSync(
+const inertDefaultSeed = readFileSync(
   resolve(process.cwd(), "supabase/seed.sql"),
+  "utf8",
+);
+const supabaseConfig = readFileSync(
+  resolve(process.cwd(), "supabase/config.toml"),
   "utf8",
 );
 const packageJson = readFileSync(
@@ -55,6 +59,55 @@ function collectStrings(value: unknown): string[] {
     return Object.values(value).flatMap(collectStrings);
   }
   return [];
+}
+
+function parseConfiguredSeedPaths(config: string): string[] {
+  const lines = config.split(/\r?\n/);
+  const sectionStart = lines.findIndex(
+    (line) => line.trim() === "[db.seed]",
+  );
+  if (sectionStart === -1) return [];
+
+  const sectionLines: string[] = [];
+  for (const line of lines.slice(sectionStart + 1)) {
+    if (/^\s*\[[^\]]+\]\s*$/.test(line)) break;
+    sectionLines.push(line);
+  }
+
+  const sqlPathsBody = sectionLines
+    .join("\n")
+    .match(/^\s*sql_paths\s*=\s*\[([\s\S]*?)\]/m)?.[1];
+  if (!sqlPathsBody) return [];
+
+  return [...sqlPathsBody.matchAll(/(["'])(.*?)\1/g)].map(
+    (match) => match[2],
+  );
+}
+
+function seedPatternIncludesRegressionFixture(pattern: string): boolean {
+  const normalizedPattern = pattern.replace(/\\/g, "/").replace(/^\.\//, "");
+  let expression = "^";
+
+  for (let index = 0; index < normalizedPattern.length; index += 1) {
+    const character = normalizedPattern[index];
+    if (character === "*" && normalizedPattern[index + 1] === "*") {
+      index += 1;
+      if (normalizedPattern[index + 1] === "/") {
+        index += 1;
+        expression += "(?:.*/)?";
+      } else {
+        expression += ".*";
+      }
+    } else if (character === "*") {
+      expression += "[^/]*";
+    } else if (character === "?") {
+      expression += "[^/]";
+    } else {
+      expression += character.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
+    }
+  }
+
+  return new RegExp(`${expression}$`).test("fixtures/regression.sql");
 }
 
 describe("deterministic regression fixture contract", () => {
@@ -151,9 +204,15 @@ describe("deterministic regression fixture contract", () => {
     expect(seed).toContain("Scheduler capacity fixtures are incomplete");
   });
 
-  it("keeps predictable credentials outside the configured linked seed path", () => {
-    expect(configuredSeed).not.toContain(REGRESSION_FIXTURE_PASSWORD);
-    expect(configuredSeed.toLowerCase()).not.toMatch(/\binsert\s+into\b/);
+  it("keeps predictable credentials outside every configured seed path", () => {
+    const configuredSeedPaths = parseConfiguredSeedPaths(supabaseConfig);
+
+    expect(configuredSeedPaths.length).toBeGreaterThan(0);
+    expect(
+      configuredSeedPaths.some(seedPatternIncludesRegressionFixture),
+    ).toBe(false);
+    expect(inertDefaultSeed).not.toContain(REGRESSION_FIXTURE_PASSWORD);
+    expect(inertDefaultSeed.toLowerCase()).not.toMatch(/\binsert\s+into\b/);
     expect(packageScripts?.["fixtures:regression:recreate"]).toBe(
       "supabase db reset --local --sql-paths ./fixtures/regression.sql",
     );
