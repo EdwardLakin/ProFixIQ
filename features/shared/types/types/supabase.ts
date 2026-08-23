@@ -27695,7 +27695,9 @@ export type Database = {
       assign_work_order_line_technician_atomic:
         | {
             Args: {
-              p_assigned_by: string
+              p_action: string
+              p_actor_user_id: string
+              p_expected_updated_at?: string
               p_operation_key: string
               p_shop_id: string
               p_technician_id: string
@@ -27705,9 +27707,7 @@ export type Database = {
           }
         | {
             Args: {
-              p_action: string
-              p_actor_user_id: string
-              p_expected_updated_at?: string
+              p_assigned_by: string
               p_operation_key: string
               p_shop_id: string
               p_technician_id: string
@@ -29839,6 +29839,10 @@ export type Database = {
         }
         Returns: Json
       }
+      report_work_order_line_assignment_ambiguities: {
+        Args: { p_shop_id?: string }
+        Returns: Json
+      }
       reserve_estimate_send_atomic: {
         Args: {
           p_actor_profile_id: string
@@ -29850,10 +29854,6 @@ export type Database = {
           p_shop_id: string
           p_work_order_id: string
         }
-        Returns: Json
-      }
-      report_work_order_line_assignment_ambiguities: {
-        Args: { p_shop_id?: string }
         Returns: Json
       }
       respond_fleet_defect_clarification: {
