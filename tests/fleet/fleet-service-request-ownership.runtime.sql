@@ -223,6 +223,11 @@ values (
   '81510000-0000-4000-8000-000000000001'
 );
 
+-- Current schemas prevent duplicate unit enrollment. Drop the standalone
+-- index inside this rollback-only transaction to reproduce a legacy ambiguous
+-- state and prove the compatibility resolver still fails closed.
+drop index public.ux_fleet_vehicles_vehicle_id;
+
 insert into public.fleet_vehicles (fleet_id, vehicle_id, shop_id, active)
 values (
   '81550000-0000-4000-8000-000000000002',
