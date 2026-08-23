@@ -10,9 +10,7 @@ describe("focused-job add-job payload", () => {
       "utf8",
     );
 
-    expect(source).toMatch(
-      /buildAddJobLinePayload\(\{[\s\S]*assignedTechId: null/,
-    );
+    expect(source).not.toContain("assignedTechId");
     expect(source).not.toContain("techId");
     expect(source).not.toContain("manageWorkOrderAssignments");
   });
@@ -28,7 +26,6 @@ describe("focused-job add-job payload", () => {
       parts: [{ description: "left rear wheel speed sensor", qty: 1 }],
       shopId: "shop-1",
       userId: "user-1",
-      assignedTechId: "tech-1",
       urgency: "medium",
     });
 
@@ -45,7 +42,6 @@ describe("focused-job add-job payload", () => {
       job_type: "repair",
       shop_id: "shop-1",
       user_id: "user-1",
-      assigned_tech_id: "tech-1",
       urgency: "medium",
     });
     expect(payload).not.toHaveProperty("approval_decision");
@@ -63,7 +59,6 @@ describe("focused-job add-job payload", () => {
       parts: [],
       shopId: "shop-2",
       userId: null,
-      assignedTechId: null,
       urgency: "low",
     });
 

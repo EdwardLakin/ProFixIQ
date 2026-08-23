@@ -15,11 +15,11 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import type { Database } from "@shared/types/types/supabase";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import RouteLoadPanel from "@/features/shared/components/ui/RouteLoadPanel";
 import {
   asRouteLoadFailure,
+  routeLoadFailureFromStatus,
   runBoundedRouteLoad,
   type RouteLoadFailure,
 } from "@/features/shared/lib/route-load";
@@ -29,85 +29,31 @@ import MenuItemPartsIntakeModal, {
 } from "@/features/parts/components/MenuItemPartsIntakeModal";
 import { isDismissibleEmptyPartRequestBucket } from "@/features/parts/lib/requests/empty-request";
 import {
+  buildPartsRequestQueueModels,
+  isPartsRequestQueueSnapshot,
+  readPartsRequestIdFromRealtimePayload,
+  reconcilePartsRequestQueueSnapshot,
+  type PartsRequestQueueItem,
+  type PartsRequestQueueMenuItem,
+  type PartsRequestQueueModel,
+  type PartsRequestQueueSnapshot,
+  type PartsRequestQueueWorkOrder,
+} from "@/features/parts/lib/requests/parts-request-queue";
+import {
   earliestPartsRequestStage,
   isPartsRequestItemHandedOff,
   isMenuIntakeItemReviewed,
   isPartsRequestItemPriced,
   isPartsRequestItemStaged,
   partsRequestStageLabel,
-  toMenuIntakeStage,
-  toPartsRequestStage,
   type PartsRequestStage,
   type PartsRequestStageItem,
 } from "@/features/parts/lib/status-display";
 
-type DB = Database;
-type PartRequest = DB["public"]["Tables"]["part_requests"]["Row"];
-type PartRequestItem = DB["public"]["Tables"]["part_request_items"]["Row"];
-type MenuItemLite = { id: string; name: string | null };
-
-type QueueItem = Pick<
-  PartRequestItem,
-  | "id"
-  | "request_id"
-  | "description"
-  | "part_id"
-  | "requested_part_number"
-  | "requested_manufacturer"
-  | "quoted_price"
-  | "unit_price"
-  | "qty"
-  | "qty_requested"
-  | "qty_approved"
-  | "qty_ordered"
-  | "qty_received"
-  | "qty_reserved"
-  | "qty_consumed"
-  | "qty_returned"
-  | "status"
-  | "unit_cost"
-  | "updated_at"
->;
-
-type RequestModel = {
-  request: PartRequest;
-  items: QueueItem[];
-  stage: PartsRequestStage;
-};
-
-type WorkOrderListRow = {
-  id: string;
-  custom_id: string | null;
-  estimate_number: string | null;
-  customers:
-    | {
-        business_name: string | null;
-        first_name: string | null;
-        last_name: string | null;
-      }
-    | {
-        business_name: string | null;
-        first_name: string | null;
-        last_name: string | null;
-      }[]
-    | null;
-  vehicles:
-    | {
-        year: string | number | null;
-        make: string | null;
-        model: string | null;
-        vin: string | null;
-        unit_number: string | null;
-      }
-    | {
-        year: string | number | null;
-        make: string | null;
-        model: string | null;
-        vin: string | null;
-        unit_number: string | null;
-      }[]
-    | null;
-};
+type QueueItem = PartsRequestQueueItem;
+type RequestModel = PartsRequestQueueModel;
+type WorkOrderListRow = PartsRequestQueueWorkOrder;
+type MenuItemLite = PartsRequestQueueMenuItem;
 
 type WoBucket = {
   bucketId: string;
@@ -135,20 +81,6 @@ const ACTIVE_STAGES: Exclude<PartsRequestStage, "completed">[] = [
   "awaiting_approval",
   "order_receive",
   "ready_for_tech",
-];
-
-const REQUEST_STATUSES: PartRequest["status"][] = [
-  "requested",
-  "quoted",
-  "approved",
-  "partially_ordered",
-  "partially_consumed",
-  "partially_returned",
-  "returned",
-  "fulfilled",
-  "rejected",
-  "deferred",
-  "cancelled",
 ];
 
 const STAGE_META = {
@@ -196,26 +128,6 @@ const STAGE_META = {
 function num(value: unknown): number {
   const parsed = typeof value === "number" ? value : Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function stageItem(item: QueueItem): PartsRequestStageItem {
-  return {
-    description: item.description,
-    partId: item.part_id,
-    requestedPartNumber: item.requested_part_number,
-    requestedManufacturer: item.requested_manufacturer,
-    quotedPrice: item.quoted_price,
-    unitPrice: item.unit_price,
-    qty: item.qty,
-    qtyRequested: item.qty_requested,
-    qtyApproved: item.qty_approved,
-    qtyOrdered: item.qty_ordered,
-    qtyReceived: item.qty_received,
-    qtyReserved: item.qty_reserved,
-    qtyConsumed: item.qty_consumed,
-    qtyReturned: item.qty_returned,
-    rawStatus: item.status,
-  };
 }
 
 function firstJoin<T>(value: T | T[] | null | undefined): T | null {
@@ -647,6 +559,58 @@ function QueueCard({
   );
 }
 
+async function fetchPartsRequestQueue(input: {
+  signal: AbortSignal;
+  recordStatus: (status: number) => void;
+  requestId?: string;
+}): Promise<PartsRequestQueueSnapshot> {
+  const params = new URLSearchParams();
+  if (input.requestId) params.set("requestId", input.requestId);
+  const response = await fetch(
+    `/api/parts/requests/queue${params.size ? `?${params.toString()}` : ""}`,
+    {
+      cache: "no-store",
+      signal: input.signal,
+    },
+  );
+  input.recordStatus(response.status);
+  const payload = (await response.json().catch(() => null)) as {
+    ok?: boolean;
+    snapshot?: unknown;
+    error?: string;
+  } | null;
+  if (!response.ok) {
+    throw routeLoadFailureFromStatus(
+      response.status,
+      payload?.error || "Unable to load the Parts request queue.",
+    );
+  }
+  if (!payload?.ok || !isPartsRequestQueueSnapshot(payload.snapshot)) {
+    throw new Error("The Parts request queue returned an invalid response.");
+  }
+  return payload.snapshot;
+}
+
+function stageItem(item: QueueItem): PartsRequestStageItem {
+  return {
+    description: item.description,
+    partId: item.part_id,
+    requestedPartNumber: item.requested_part_number,
+    requestedManufacturer: item.requested_manufacturer,
+    quotedPrice: item.quoted_price,
+    unitPrice: item.unit_price,
+    qty: item.qty,
+    qtyRequested: item.qty_requested,
+    qtyApproved: item.qty_approved,
+    qtyOrdered: item.qty_ordered,
+    qtyReceived: item.qty_received,
+    qtyReserved: item.qty_reserved,
+    qtyConsumed: item.qty_consumed,
+    qtyReturned: item.qty_returned,
+    rawStatus: item.status,
+  };
+}
+
 function Metric({
   icon: Icon,
   value,
@@ -654,7 +618,7 @@ function Metric({
   tone,
 }: {
   icon: typeof ClipboardList;
-  value: number;
+  value: number | null;
   label: string;
   tone: "copper" | "amber" | "green";
 }) {
@@ -673,7 +637,7 @@ function Metric({
       </span>
       <div className="min-w-0">
         <div className="text-xl font-semibold leading-none text-[color:var(--theme-text-primary)]">
-          {value}
+          {value ?? "—"}
         </div>
         <div className="mt-1 truncate text-sm text-[color:var(--theme-text-secondary)]">
           {label}
@@ -687,14 +651,24 @@ export default function PartsRequestsPage(): JSX.Element {
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const initialLoad = useRef(true);
   const reloadSequence = useRef(0);
-  const [models, setModels] = useState<RequestModel[]>([]);
-  const [workOrders, setWorkOrders] = useState<
-    Record<string, WorkOrderListRow>
-  >({});
-  const [menuItems, setMenuItems] = useState<Record<string, MenuItemLite>>({});
+  const reconciliationSequence = useRef(0);
+  const latestRequestReconciliation = useRef(new Map<string, number>());
+  const pendingRequestIds = useRef(new Set<string>());
+  const pendingFullReload = useRef(false);
+  const realtimeTimer = useRef<number | null>(null);
+  const [snapshot, setSnapshot] = useState<PartsRequestQueueSnapshot | null>(
+    null,
+  );
   const [loading, setLoading] = useState(true);
   const [loadFailure, setLoadFailure] = useState<RouteLoadFailure | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [liveState, setLiveState] = useState<
+    "connecting" | "live" | "degraded" | null
+  >(null);
+  const [liveMessage, setLiveMessage] = useState<string | null>(null);
+  const [reconciliationMessage, setReconciliationMessage] = useState<
+    string | null
+  >(null);
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState<QueueTab>("active");
   const [stageFilter, setStageFilter] = useState<StageFilter>("all");
@@ -716,148 +690,15 @@ export default function PartsRequestsPage(): JSX.Element {
 
     try {
       setLoadFailure(null);
-      await runBoundedRouteLoad(
+      const nextSnapshot = await runBoundedRouteLoad(
         { route: "/parts/requests", operation: "load parts request queue" },
-        async ({ signal }) => {
-          const requestRows: PartRequest[] = [];
-          const requestPageSize = 500;
-          for (let offset = 0; ; offset += requestPageSize) {
-            const { data: requests, error: requestError } = await supabase
-              .from("part_requests")
-              .select("*")
-              .in("status", REQUEST_STATUSES)
-              .order("created_at", { ascending: false })
-              .order("id", { ascending: true })
-              .abortSignal(signal)
-              .range(offset, offset + requestPageSize - 1);
-            if (requestError) throw requestError;
-            const requestPage = (requests ?? []) as PartRequest[];
-            requestRows.push(...requestPage);
-            if (requestPage.length < requestPageSize) break;
-          }
-
-          const requestIds = requestRows.map((request) => request.id);
-          const itemRows: QueueItem[] = [];
-
-          if (requestIds.length > 0) {
-            const pageSize = 1000;
-            for (
-              let chunkStart = 0;
-              chunkStart < requestIds.length;
-              chunkStart += 200
-            ) {
-              const requestChunk = requestIds.slice(
-                chunkStart,
-                chunkStart + 200,
-              );
-              for (let offset = 0; ; offset += pageSize) {
-                const { data: items, error: itemError } = await supabase
-                  .from("part_request_items")
-                  .select(
-                    "id,request_id,description,part_id,requested_part_number,requested_manufacturer,quoted_price,unit_price,unit_cost,qty,qty_requested,qty_approved,qty_ordered,qty_received,qty_reserved,qty_consumed,qty_returned,status,updated_at",
-                  )
-                  .in("request_id", requestChunk)
-                  .order("id", { ascending: true })
-                  .abortSignal(signal)
-                  .range(offset, offset + pageSize - 1);
-                if (itemError) throw itemError;
-                const itemPage = (items ?? []) as QueueItem[];
-                itemRows.push(...itemPage);
-                if (itemPage.length < pageSize) break;
-              }
-            }
-          }
-
-          const itemsByRequest = new Map<string, QueueItem[]>();
-          for (const item of itemRows) {
-            itemsByRequest.set(item.request_id, [
-              ...(itemsByRequest.get(item.request_id) ?? []),
-              item,
-            ]);
-          }
-
-          const nextModels = requestRows.map((request) => {
-            const items = itemsByRequest.get(request.id) ?? [];
-            const stageItems = items.map(stageItem);
-            const isMenuIntake =
-              Boolean(request.source_menu_item_id) && !request.work_order_id;
-            return {
-              request,
-              items,
-              stage: isMenuIntake
-                ? toMenuIntakeStage({
-                    rawStatus: request.status,
-                    items: stageItems,
-                  })
-                : toPartsRequestStage({
-                    rawStatus: request.status,
-                    items: stageItems,
-                  }),
-            } satisfies RequestModel;
-          });
-
-          const workOrderIds = [
-            ...new Set(
-              requestRows
-                .map((request) => request.work_order_id)
-                .filter((value): value is string => Boolean(value)),
-            ),
-          ];
-          const nextWorkOrders: Record<string, WorkOrderListRow> = {};
-          if (workOrderIds.length > 0) {
-            for (
-              let chunkStart = 0;
-              chunkStart < workOrderIds.length;
-              chunkStart += 200
-            ) {
-              const { data: rows, error: workOrderError } = await supabase
-                .from("work_orders")
-                .select(
-                  "id,custom_id,estimate_number,customers(business_name,first_name,last_name),vehicles(year,make,model,vin,unit_number)",
-                )
-                .abortSignal(signal)
-                .in("id", workOrderIds.slice(chunkStart, chunkStart + 200));
-              if (workOrderError) throw workOrderError;
-              for (const row of rows ?? []) {
-                const workOrder = row as WorkOrderListRow;
-                nextWorkOrders[workOrder.id] = workOrder;
-              }
-            }
-          }
-
-          const menuItemIds = [
-            ...new Set(
-              requestRows
-                .map((request) => request.source_menu_item_id ?? null)
-                .filter((value): value is string => Boolean(value)),
-            ),
-          ];
-          const nextMenuItems: Record<string, MenuItemLite> = {};
-          if (menuItemIds.length > 0) {
-            for (
-              let chunkStart = 0;
-              chunkStart < menuItemIds.length;
-              chunkStart += 200
-            ) {
-              const { data: rows, error: menuItemError } = await supabase
-                .from("menu_items")
-                .select("id, name")
-                .abortSignal(signal)
-                .in("id", menuItemIds.slice(chunkStart, chunkStart + 200));
-              if (menuItemError) throw menuItemError;
-              for (const row of rows ?? []) {
-                nextMenuItems[row.id] = row;
-              }
-            }
-          }
-
-          if (sequence === reloadSequence.current) {
-            setModels(nextModels);
-            setWorkOrders(nextWorkOrders);
-            setMenuItems(nextMenuItems);
-          }
-        },
+        ({ signal, recordStatus }) =>
+          fetchPartsRequestQueue({ signal, recordStatus }),
       );
+      if (sequence === reloadSequence.current) {
+        setSnapshot(nextSnapshot);
+        setReconciliationMessage(null);
+      }
     } catch (error) {
       if (sequence === reloadSequence.current) {
         setLoadFailure(
@@ -871,37 +712,213 @@ export default function PartsRequestsPage(): JSX.Element {
         setRefreshing(false);
       }
     }
-  }, [supabase]);
+  }, []);
 
   useEffect(() => {
     void reload();
-
-    const channel = supabase
-      .channel("parts-request-queue")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "part_requests" },
-        () => void reload(),
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "part_request_items" },
-        () => void reload(),
-      )
-      .subscribe();
-    const fallback = window.setInterval(() => void reload(), 45_000);
-
     const onLocalChange = () => void reload();
     window.addEventListener("parts-request:submitted", onLocalChange);
     window.addEventListener("parts:received", onLocalChange);
 
     return () => {
-      window.clearInterval(fallback);
       window.removeEventListener("parts-request:submitted", onLocalChange);
       window.removeEventListener("parts:received", onLocalChange);
+    };
+  }, [reload]);
+
+  const reconcileRequest = useCallback(async (requestId: string) => {
+    const sequence = ++reconciliationSequence.current;
+    latestRequestReconciliation.current.set(requestId, sequence);
+    try {
+      const delta = await runBoundedRouteLoad(
+        {
+          route: "/parts/requests",
+          operation: "reconcile parts request realtime update",
+        },
+        ({ signal, recordStatus }) =>
+          fetchPartsRequestQueue({ signal, recordStatus, requestId }),
+      );
+      if (latestRequestReconciliation.current.get(requestId) !== sequence) {
+        return;
+      }
+      setSnapshot((current) =>
+        current
+          ? reconcilePartsRequestQueueSnapshot(current, delta, requestId)
+          : delta,
+      );
+      setReconciliationMessage(null);
+    } catch {
+      if (latestRequestReconciliation.current.get(requestId) !== sequence) {
+        return;
+      }
+      setReconciliationMessage(
+        "A live Parts update could not be reconciled. Refresh to confirm the latest workflow state.",
+      );
+    }
+  }, []);
+
+  const scheduleRealtimeReconciliation = useCallback(
+    (requestId: string | null) => {
+      if (requestId) pendingRequestIds.current.add(requestId);
+      else pendingFullReload.current = true;
+      if (realtimeTimer.current !== null) return;
+
+      realtimeTimer.current = window.setTimeout(() => {
+        realtimeTimer.current = null;
+        if (pendingFullReload.current) {
+          pendingFullReload.current = false;
+          pendingRequestIds.current.clear();
+          void reload();
+          return;
+        }
+        const requestIds = [...pendingRequestIds.current];
+        pendingRequestIds.current.clear();
+        void Promise.all(requestIds.map((id) => reconcileRequest(id)));
+      }, 75);
+    },
+    [reconcileRequest, reload],
+  );
+
+  const shopId = snapshot?.shopId ?? null;
+  useEffect(() => {
+    if (!shopId) return;
+    const effectPendingRequestIds = pendingRequestIds.current;
+    let disposed = false;
+    setLiveState("connecting");
+    setLiveMessage(null);
+
+    const filter = `shop_id=eq.${shopId}`;
+    // DELETE changes cannot be filtered without full replica identity. Ignore
+    // their payload and use them only to trigger the server-scoped queue read.
+    const reloadAfterRemoval = () => scheduleRealtimeReconciliation(null);
+    const channel = supabase
+      .channel(`parts-request-queue:${shopId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "part_requests",
+          filter,
+        },
+        (payload) =>
+          scheduleRealtimeReconciliation(
+            readPartsRequestIdFromRealtimePayload(payload, "request"),
+          ),
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "part_requests",
+          filter,
+        },
+        (payload) =>
+          scheduleRealtimeReconciliation(
+            readPartsRequestIdFromRealtimePayload(payload, "request"),
+          ),
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "DELETE",
+          schema: "public",
+          table: "part_requests",
+        },
+        reloadAfterRemoval,
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "part_request_items",
+          filter,
+        },
+        (payload) =>
+          scheduleRealtimeReconciliation(
+            readPartsRequestIdFromRealtimePayload(payload, "item"),
+          ),
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "part_request_items",
+          filter,
+        },
+        (payload) =>
+          scheduleRealtimeReconciliation(
+            readPartsRequestIdFromRealtimePayload(payload, "item"),
+          ),
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "DELETE",
+          schema: "public",
+          table: "part_request_items",
+        },
+        reloadAfterRemoval,
+      )
+      .subscribe((status) => {
+        if (disposed) return;
+        if (status === "SUBSCRIBED") {
+          setLiveState("live");
+          setLiveMessage(null);
+        } else if (
+          status === "CHANNEL_ERROR" ||
+          status === "TIMED_OUT" ||
+          status === "CLOSED"
+        ) {
+          setLiveState("degraded");
+          setLiveMessage(
+            "Live Parts updates are unavailable. Loaded results remain visible; use Refresh for current data.",
+          );
+        }
+      });
+    const fallback = window.setInterval(() => void reload(), 45_000);
+
+    return () => {
+      disposed = true;
+      window.clearInterval(fallback);
+      if (realtimeTimer.current !== null) {
+        window.clearTimeout(realtimeTimer.current);
+        realtimeTimer.current = null;
+      }
+      effectPendingRequestIds.clear();
+      pendingFullReload.current = false;
       void supabase.removeChannel(channel);
     };
-  }, [reload, supabase]);
+  }, [reload, scheduleRealtimeReconciliation, shopId, supabase]);
+
+  const activeLiveMessage =
+    reconciliationMessage ??
+    (liveState === "degraded" ? liveMessage : null);
+
+  const models = useMemo(
+    () => (snapshot ? buildPartsRequestQueueModels(snapshot) : []),
+    [snapshot],
+  );
+  const workOrders = useMemo(
+    () =>
+      Object.fromEntries(
+        (snapshot?.workOrders ?? []).map((workOrder) => [
+          workOrder.id,
+          workOrder,
+        ]),
+      ) as Record<string, WorkOrderListRow>,
+    [snapshot],
+  );
+  const menuItems = useMemo(
+    () =>
+      Object.fromEntries(
+        (snapshot?.menuItems ?? []).map((menuItem) => [menuItem.id, menuItem]),
+      ) as Record<string, MenuItemLite>,
+    [snapshot],
+  );
 
   const activeModels = useMemo(
     () => models.filter((model) => model.stage !== "completed"),
@@ -1164,7 +1181,7 @@ export default function PartsRequestsPage(): JSX.Element {
         <div className="grid overflow-hidden rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] sm:grid-cols-3 sm:divide-x sm:divide-[color:var(--theme-border-soft)]">
           <Metric
             icon={ClipboardList}
-            value={metricBuckets.length}
+            value={snapshot ? metricBuckets.length : null}
             label={
               tab === "active" ? "Active request groups" : "Completed groups"
             }
@@ -1172,13 +1189,19 @@ export default function PartsRequestsPage(): JSX.Element {
           />
           <Metric
             icon={ListChecks}
-            value={metricModels.length}
+            value={snapshot ? metricModels.length : null}
             label={tab === "active" ? "Open requests" : "Closed requests"}
             tone="amber"
           />
           <Metric
             icon={PackageCheck}
-            value={tab === "active" ? activeItemCount : metricItems}
+            value={
+              snapshot
+                ? tab === "active"
+                  ? activeItemCount
+                  : metricItems
+                : null
+            }
             label="Items"
             tone="green"
           />
@@ -1191,6 +1214,27 @@ export default function PartsRequestsPage(): JSX.Element {
           onRetry={() => void reload()}
           title="Parts request queue unavailable"
         />
+      ) : null}
+
+      {activeLiveMessage ? (
+        <section
+          aria-live="polite"
+          className="flex flex-col gap-3 rounded-xl border border-amber-400/40 bg-amber-500/10 p-4 text-sm text-amber-100 sm:flex-row sm:items-center sm:justify-between"
+          role="status"
+        >
+          <p>{activeLiveMessage}</p>
+          <button
+            type="button"
+            onClick={() => void reload()}
+            disabled={refreshing}
+            className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-amber-300/40 bg-[color:var(--theme-surface-page)] px-3 font-semibold transition hover:bg-[color:var(--theme-surface-overlay)] disabled:opacity-60"
+          >
+            <RefreshCw
+              className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`}
+            />
+            Refresh now
+          </button>
+        </section>
       ) : null}
 
       {loading ? (

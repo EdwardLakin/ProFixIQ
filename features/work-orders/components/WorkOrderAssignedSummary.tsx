@@ -6,6 +6,7 @@ import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
 type Props = {
   workOrderId: string;
+  refreshVersion?: number;
 };
 
 type AssignmentRow = {
@@ -15,11 +16,16 @@ type AssignmentRow = {
   has_active: boolean | null;
 };
 
-export function WorkOrderAssignedSummary({ workOrderId }: Props) {
+export function WorkOrderAssignedSummary({
+  workOrderId,
+  refreshVersion = 0,
+}: Props) {
   const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<AssignmentRow[]>([]);
+  const [error, setError] = useState(false);
+  const [retryVersion, setRetryVersion] = useState(0);
 
   useEffect(() => {
     if (!workOrderId) return;
@@ -28,6 +34,7 @@ export function WorkOrderAssignedSummary({ workOrderId }: Props) {
 
     const load = async () => {
       setLoading(true);
+      setError(false);
       try {
         const { data, error } = await supabase.rpc(
           "get_work_order_assignments",
@@ -35,10 +42,10 @@ export function WorkOrderAssignedSummary({ workOrderId }: Props) {
         );
 
         if (error) {
-          // eslint-disable-next-line no-console
           console.error("[WorkOrderAssignedSummary] rpc error:", error);
           if (!cancelled) {
             setRows([]);
+            setError(true);
           }
           return;
         }
@@ -47,9 +54,11 @@ export function WorkOrderAssignedSummary({ workOrderId }: Props) {
           setRows((data as AssignmentRow[] | null) ?? []);
         }
       } catch (e) {
-        // eslint-disable-next-line no-console
         console.error("[WorkOrderAssignedSummary] unexpected error:", e);
-        if (!cancelled) setRows([]);
+        if (!cancelled) {
+          setRows([]);
+          setError(true);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -60,7 +69,7 @@ export function WorkOrderAssignedSummary({ workOrderId }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [supabase, workOrderId]);
+  }, [refreshVersion, retryVersion, supabase, workOrderId]);
 
   // ---------- derived values ----------
 
@@ -69,7 +78,8 @@ export function WorkOrderAssignedSummary({ workOrderId }: Props) {
   const firstTechLabel = useMemo(() => {
     if (!rows.length) return null;
     const first = rows[0];
-    const full = first.full_name || "Primary tech";
+    if (!first.full_name) return "Unavailable technician";
+    const full = first.full_name;
     const firstName = full.split(" ")[0] || full;
     return firstName;
   }, [rows]);
@@ -83,6 +93,21 @@ export function WorkOrderAssignedSummary({ workOrderId }: Props) {
       <span className="inline-flex animate-pulse items-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-2.5 py-0.5 text-[0.7rem] text-[color:var(--theme-text-secondary)]">
         Loading…
       </span>
+    );
+  }
+
+  if (error) {
+    return (
+      <button
+        type="button"
+        className="inline-flex items-center rounded-full border border-rose-500/50 bg-rose-500/10 px-2.5 py-0.5 text-[0.7rem] font-medium text-rose-800 dark:text-rose-100"
+        onClick={(event) => {
+          event.stopPropagation();
+          setRetryVersion((version) => version + 1);
+        }}
+      >
+        Assignment unavailable · Retry
+      </button>
     );
   }
 

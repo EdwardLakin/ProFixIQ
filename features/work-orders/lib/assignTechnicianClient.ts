@@ -1,8 +1,16 @@
 type AssignTechnicianInput = {
   lineId: string;
-  technicianId: string;
+  technicianId: string | null;
+  action?: AssignmentAction;
+  expectedUpdatedAt?: string | null;
   operationKey?: string;
 };
+
+export type AssignmentAction =
+  | "set_primary"
+  | "add_supporting"
+  | "remove_supporting"
+  | "clear";
 
 type AssignTechnicianResult = {
   ok?: boolean;
@@ -16,26 +24,33 @@ type ApiErrorPayload = {
 
 export function createAssignTechnicianOperationKey(
   lineId: string,
-  technicianId: string,
+  technicianId: string | null,
+  action: AssignmentAction = technicianId ? "set_primary" : "clear",
 ): string {
   const randomId =
     typeof globalThis.crypto?.randomUUID === "function"
       ? globalThis.crypto.randomUUID()
       : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
-  return `assign-technician:${lineId}:${technicianId}:${randomId}`;
+  return `assign-technician:${action}:${lineId}:${technicianId ?? "unassigned"}:${randomId}`;
 }
 
 export async function assignWorkOrderLineTechnician({
   lineId,
   technicianId,
+  action,
+  expectedUpdatedAt,
   operationKey,
 }: AssignTechnicianInput): Promise<AssignTechnicianResult> {
   const normalizedLineId = lineId.trim();
-  const normalizedTechnicianId = technicianId.trim();
+  const normalizedTechnicianId = technicianId?.trim() || null;
+  const normalizedAction = action ?? (normalizedTechnicianId ? "set_primary" : "clear");
 
-  if (!normalizedLineId || !normalizedTechnicianId) {
-    throw new Error("A work-order line and technician are required.");
+  if (!normalizedLineId) {
+    throw new Error("A work-order line is required.");
+  }
+  if (normalizedAction !== "clear" && !normalizedTechnicianId) {
+    throw new Error("A technician is required for this assignment action.");
   }
 
   const normalizedOperationKey =
@@ -43,6 +58,7 @@ export async function assignWorkOrderLineTechnician({
     createAssignTechnicianOperationKey(
       normalizedLineId,
       normalizedTechnicianId,
+      normalizedAction,
     );
 
   const response = await fetch("/api/work-orders/assign-line", {
@@ -54,6 +70,8 @@ export async function assignWorkOrderLineTechnician({
     body: JSON.stringify({
       work_order_line_id: normalizedLineId,
       tech_id: normalizedTechnicianId,
+      action: normalizedAction,
+      expected_updated_at: expectedUpdatedAt?.trim() || null,
       operationKey: normalizedOperationKey,
       idempotencyKey: normalizedOperationKey,
     }),

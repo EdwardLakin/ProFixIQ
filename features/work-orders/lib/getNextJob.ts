@@ -1,4 +1,6 @@
- // features/work-orders/lib/getNextJob.ts
+import "server-only";
+
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { createServerSupabaseRSC } from "@shared/lib/supabase/server";
 import {
   getWorkOrderLineStatusDbFilter,
@@ -9,145 +11,121 @@ type NextLine = {
   id: string;
   work_order_id: string | null;
   created_at: string;
-  status:
-    | "ready"
-    | "in_progress"
-    | "on_hold"
-    | "completed"
-    | "awaiting";
+  updated_at: string | null;
+  status: "ready" | "in_progress" | "on_hold" | "completed" | "awaiting";
   priority?: number | null;
 };
 
+type AssignmentRpcClient = {
+  rpc: (
+    name: "assign_work_order_line_technician_atomic",
+    args: Record<string, unknown>,
+  ) => PromiseLike<{
+    data: unknown;
+    error: { message: string } | null;
+  }>;
+};
+
 export async function getNextAvailableLine(
-  technicianId: string
+  technicianId: string,
 ): Promise<NextLine | null> {
   const supabase = await createServerSupabaseRSC();
-  const resumableStatuses: WorkOrderLineStatus[] = ["in_progress", "on_hold", "awaiting"];
-  const activeStatuses: WorkOrderLineStatus[] = ["in_progress"];
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user || user.id !== technicianId) return null;
 
-  // 0) what shop is this tech in?
-  const { data: prof } = await supabase
+  const { data: profile } = await supabase
     .from("profiles")
     .select("shop_id")
     .eq("id", technicianId)
     .single();
+  const shopId = profile?.shop_id;
+  if (!shopId) return null;
 
-  const shopId = prof?.shop_id;
-  if (!shopId) {
-    // if the tech has no shop, we can't safely scope — bail
-    return null;
-  }
-
-  // 1) resume this tech's own job first
-  {
-    const { data: resume } = await supabase
-      .from("work_order_lines")
-      .select("id, work_order_id, created_at, status, priority")
-      .eq("assigned_tech_id", technicianId)
-      .in("status", getWorkOrderLineStatusDbFilter(resumableStatuses))
-      .order("priority", { ascending: true, nullsFirst: false })
-      .order("created_at", { ascending: true })
-      .limit(1);
-
-    if (resume && resume.length > 0) {
-      return resume[0] as NextLine;
-    }
-  }
-
-  // helper that tries to find one in-progress+unassigned line
-  async function tryFindInProgress(
-    allowNullShop: boolean
-  ): Promise<
-    | {
-        id: string;
-        work_order_id: string | null;
-        created_at: string;
-        status: string;
-        priority: number | null;
-      }
-    | null
-  > {
-    let query = supabase
-      .from("work_order_lines")
-      .select(
-        `
-        id,
-        work_order_id,
-        created_at,
-        status,
-        priority,
-        work_orders!inner ( id, shop_id )
-      `
-      )
-      .in("status", getWorkOrderLineStatusDbFilter(activeStatuses))
-      .is("assigned_tech_id", null)
-      .order("priority", { ascending: true, nullsFirst: false })
-      .order("created_at", { ascending: true })
-      .limit(1);
-
-    // normal path: only lines whose WO belongs to this shop
-    if (!allowNullShop) {
-      query = query.eq("work_orders.shop_id", shopId);
-    } else {
-      // fallback: pick in-progress/unassigned where the WO has no shop yet
-      query = query.is("work_orders.shop_id", null);
-    }
-
-    const { data, error } = await query;
-    if (error) {
-      console.warn("getNextAvailableLine: in-progress lookup failed:", error.message);
-      return null;
-    }
-    return (data && data[0]) || null;
-  }
-
-  // 2) preferred: in-progress, unassigned, same shop
-  let candidate = await tryFindInProgress(false);
-
-  // 3) fallback: in-progress, unassigned, WO has no shop_id yet
-  if (!candidate) {
-    candidate = await tryFindInProgress(true);
-  }
-
-  if (!candidate) {
-    return null;
-  }
-
-  // 4) claim it conditionally (race-safe)
-  const { data: claimed, error: claimErr } = await supabase
-    .from("work_order_lines")
-    .update({ assigned_tech_id: technicianId, status: "awaiting" })
-    .eq("id", candidate.id)
-    .is("assigned_tech_id", null)
-    .select("id, work_order_id, created_at, status, priority")
-    .single();
-
-  if (claimErr || !claimed) {
-    return null;
-  }
-
-  // 5) also reflect in the multi-tech table (best-effort)
-  const { error: linkErr } = await supabase
+  const resumableStatuses: WorkOrderLineStatus[] = [
+    "in_progress",
+    "on_hold",
+    "awaiting",
+  ];
+  const { data: bridgeRows, error: bridgeError } = await supabase
     .from("work_order_line_technicians")
-    .upsert(
-      [
-        {
-          work_order_line_id: claimed.id,
-          technician_id: technicianId,
-        },
-      ],
-      {
-        onConflict: "work_order_line_id,technician_id",
-      }
-    );
+    .select("work_order_line_id")
+    .eq("technician_id", technicianId);
+  if (bridgeError) return null;
 
-  if (linkErr) {
-    // not fatal, we already claimed the line
-    console.warn(
-      "getNextAvailableLine: failed to upsert line technician:",
-      linkErr.message
-    );
-  }
+  const assignedLineIds = (bridgeRows ?? []).map(
+    (assignment) => assignment.work_order_line_id,
+  );
+  let resumeQuery = supabase
+    .from("work_order_lines")
+    .select("id, work_order_id, created_at, updated_at, status, priority")
+    .eq("shop_id", shopId)
+    .in("status", getWorkOrderLineStatusDbFilter(resumableStatuses))
+    .order("priority", { ascending: true, nullsFirst: false })
+    .order("created_at", { ascending: true })
+    .limit(1);
+  resumeQuery =
+    assignedLineIds.length > 0
+      ? resumeQuery.or(
+          `assigned_tech_id.eq.${technicianId},id.in.(${assignedLineIds.join(",")})`,
+        )
+      : resumeQuery.eq("assigned_tech_id", technicianId);
+  const { data: resume } = await resumeQuery;
+  if (resume?.[0]) return resume[0] as NextLine;
 
+  // Load several candidates so a legacy/canonical supporting assignment on the
+  // first row cannot make the self-claim logic choose someone else's job.
+  const { data: candidates, error: candidateError } = await supabase
+    .from("work_order_lines")
+    .select("id, work_order_id, created_at, updated_at, status, priority")
+    .eq("shop_id", shopId)
+    .in("status", getWorkOrderLineStatusDbFilter(["in_progress"]))
+    .is("assigned_tech_id", null)
+    .is("assigned_to", null)
+    .order("priority", { ascending: true, nullsFirst: false })
+    .order("created_at", { ascending: true })
+    .limit(25);
+  if (candidateError || !candidates?.length) return null;
+
+  const candidateIds = candidates.map((candidate) => candidate.id);
+  const admin = await createAdminSupabase();
+  const { data: existingAssignments, error: assignmentError } = await admin
+    .from("work_order_line_technicians")
+    .select("work_order_line_id")
+    .in("work_order_line_id", candidateIds);
+  if (assignmentError) return null;
+  const alreadyAssigned = new Set(
+    (existingAssignments ?? []).map(
+      (assignment) => assignment.work_order_line_id,
+    ),
+  );
+  const candidate = candidates.find((line) => !alreadyAssigned.has(line.id));
+  if (!candidate) return null;
+
+  const assignmentAdmin = admin as unknown as AssignmentRpcClient;
+  const operationKey = `self-claim:${technicianId}:${candidate.id}:${crypto.randomUUID()}`;
+  const { error: claimError } = await assignmentAdmin.rpc(
+    "assign_work_order_line_technician_atomic",
+    {
+      p_shop_id: shopId,
+      p_work_order_line_id: candidate.id,
+      p_technician_id: technicianId,
+      p_actor_user_id: technicianId,
+      p_action: "set_primary",
+      p_operation_key: operationKey,
+      p_expected_updated_at: candidate.updated_at,
+    },
+  );
+  if (claimError) return null;
+
+  const { data: claimed, error: statusError } = await supabase
+    .from("work_order_lines")
+    .update({ status: "awaiting" })
+    .eq("id", candidate.id)
+    .eq("shop_id", shopId)
+    .select("id, work_order_id, created_at, updated_at, status, priority")
+    .single();
+  if (statusError || !claimed) return null;
   return claimed as NextLine;
 }

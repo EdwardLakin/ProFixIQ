@@ -111,6 +111,7 @@ type TechnicianOption = {
 };
 
 const EMPTY_TECHNICIAN_OPTIONS: readonly TechnicianOption[] = [];
+const EMPTY_TECHNICIAN_IDS: readonly string[] = [];
 
 type AllocationRow = DB["public"]["Tables"]["work_order_part_allocations"]["Row"] & {
   parts?: { name: string | null } | null;
@@ -192,6 +193,7 @@ export default function FocusedJobModal(props: {
   workOrderLineId: string;
   lineSnapshot?: WorkOrderLine | null;
   primaryTechSnapshot?: TechnicianOption | null;
+  assignedTechnicianIds?: readonly string[];
   isPunchedInSnapshot?: boolean;
   canAssignTechnician?: boolean;
   technicianOptions?: readonly TechnicianOption[];
@@ -212,6 +214,7 @@ export default function FocusedJobModal(props: {
     workOrderLineId,
     lineSnapshot,
     primaryTechSnapshot,
+    assignedTechnicianIds = EMPTY_TECHNICIAN_IDS,
     isPunchedInSnapshot,
     canAssignTechnician = false,
     technicianOptions = EMPTY_TECHNICIAN_OPTIONS,
@@ -777,7 +780,7 @@ export default function FocusedJobModal(props: {
     holdReason: line?.hold_reason ?? null,
     partsTotal: Number(pricing?.partsTotal ?? 0),
   });
-  const primaryTechDisplay =
+  const resolvedPrimaryTechDisplay =
     line
       ? (
           assignedTechProfile?.full_name ??
@@ -785,6 +788,11 @@ export default function FocusedJobModal(props: {
           ""
         ).trim() || resolvePrimaryTechDisplay(line, assignedTechProfile)
       : "Unassigned";
+  const primaryTechDisplay =
+    resolvedPrimaryTechDisplay === "Unassigned" &&
+    assignedTechnicianIds.length > 0
+      ? `Primary not set · ${assignedTechnicianIds.length} assigned`
+      : resolvedPrimaryTechDisplay;
   const assignedTechnicianIsSelectable = Boolean(
     line?.assigned_tech_id &&
       technicianOptions.some((technician) => technician.id === line.assigned_tech_id),
@@ -1839,8 +1847,8 @@ export default function FocusedJobModal(props: {
                         disabled={busy || assigningTechnician}
                         className="h-10 w-full appearance-none rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] py-2 pl-9 pr-3 text-sm font-semibold text-[color:var(--theme-text-primary)] outline-none transition focus:border-[color:var(--brand-primary)] focus:ring-2 focus:ring-[color:var(--brand-primary)]/20 disabled:cursor-wait disabled:opacity-60"
                       >
-                        <option value="" disabled>
-                          Choose technician
+                        <option value="">
+                          Unassigned (clear all)
                         </option>
                         {line.assigned_tech_id && !assignedTechnicianIsSelectable ? (
                           <option value={line.assigned_tech_id}>

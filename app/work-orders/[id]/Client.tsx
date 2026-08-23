@@ -28,7 +28,6 @@ import AddJobModal from "@/features/work-orders/components/workorders/AddJobModa
 import VoiceContextSetter from "@/features/shared/voice/VoiceContextSetter";
 import { useTabState } from "@/features/shared/hooks/useTabState";
 import PartsDrawer from "@/features/parts/components/PartsDrawer";
-import AssignTechModal from "@/features/work-orders/components/workorders/extras/AssignTechModal";
 import { JobCard } from "@/features/work-orders/components/JobCard";
 import WorkOrderAiOperationalRecommendations from "@/features/work-orders/components/WorkOrderAiOperationalRecommendations";
 import WorkOrderAiFreshnessBadge from "@/features/work-orders/components/WorkOrderAiFreshnessBadge";
@@ -301,9 +300,6 @@ export default function WorkOrderIdClient(): JSX.Element {
   const [inspectionOpen, setInspectionOpen] = useState(false);
   const [inspectionSrc, setInspectionSrc] = useState<string | null>(null);
 
-  // assign mechanic
-  const [assignOpen, setAssignOpen] = useState(false);
-  const [assignLineId] = useState<string | null>(null);
   const [addJobOpen, setAddJobOpen] = useState(false);
 
   // delete/void line modal
@@ -318,6 +314,9 @@ export default function WorkOrderIdClient(): JSX.Element {
   >(new Map());
 
   const [activeTechsByLine, setActiveTechsByLine] = useState<Record<string, string[]>>({});
+  const [assignedTechsByLine, setAssignedTechsByLine] = useState<
+    Record<string, string[]>
+  >({});
 
   // ✅ AI review state for status icons
   const [, setReviewChecked] = useState<boolean>(false);
@@ -808,6 +807,7 @@ export default function WorkOrderIdClient(): JSX.Element {
           });
           setAllocsByLine(lineContext.allocationsByLine);
           setStagedPartsByLine(lineContext.canonicalPartsByLine);
+          setAssignedTechsByLine(lineContext.technicianIdsByLine);
           setActiveTechsByLine(lineContext.activeTechnicianIdsByLine);
           setPartRequestsByQuoteLine(lineContext.partRequestsByQuoteLine);
           setPartRequestsByLine(lineContext.partRequestsByLine);
@@ -816,6 +816,7 @@ export default function WorkOrderIdClient(): JSX.Element {
           setStagedPartsByLine({});
           setPartRequestsByQuoteLine({});
           setPartRequestsByLine({});
+          setAssignedTechsByLine({});
           setActiveTechsByLine({});
         }
 
@@ -1281,7 +1282,10 @@ export default function WorkOrderIdClient(): JSX.Element {
       try {
         await assignWorkOrderLineTechnician({
           lineId,
-          technicianId,
+          technicianId: technicianId || null,
+          action: technicianId ? "set_primary" : "clear",
+          expectedUpdatedAt:
+            lines.find((line) => line.id === lineId)?.updated_at ?? null,
           operationKey,
         });
         await fetchAll();
@@ -1290,14 +1294,21 @@ export default function WorkOrderIdClient(): JSX.Element {
         ) {
           assignmentOperationsRef.current.delete(lineId);
         }
-        toast.success("Primary tech updated.");
+        toast.success(
+          technicianId
+            ? "Primary tech updated."
+            : "Technician assignment cleared.",
+        );
       } catch (error) {
         const message =
           error instanceof Error ? error.message : "Failed to update primary tech.";
         toast.error(message);
+        if (message.includes("ASSIGNMENT_STALE")) {
+          await fetchAll();
+        }
       }
     },
-    [fetchAll],
+    [fetchAll, lines],
   );
 
   const selectedDelLine = useMemo(() => {
@@ -2318,6 +2329,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                         isPunchedIn={isPunchedIn}
                         isCurrentUserWorkingThisLine={isCurrentUserWorkingThisLine}
                         activeTechnicianNames={activeTechnicianNames}
+                        assignedTechnicianIds={assignedTechsByLine[ln.id] ?? []}
                         isSelectedForPanel={isSelectedForPanel}
                         onOpen={() => openFocusedJob(ln.id)}
                         onAssign={
@@ -2493,6 +2505,9 @@ export default function WorkOrderIdClient(): JSX.Element {
                   workOrderLineId={panelLineId}
                   lineSnapshot={panelLine}
                   primaryTechSnapshot={panelPrimaryTech}
+                  assignedTechnicianIds={
+                    assignedTechsByLine[panelLineId] ?? []
+                  }
                   isPunchedInSnapshot={panelLineIsPunchedIn}
                   canAssignTechnician={canAssign}
                   technicianOptions={assignables}
@@ -2594,19 +2609,6 @@ export default function WorkOrderIdClient(): JSX.Element {
           onClose={() => {
             setInspectionOpen(false);
             setInspectionSrc(null);
-          }}
-        />
-      )}
-
-      {/* Assign mechanic modal */}
-      {assignOpen && assignLineId && (
-        <AssignTechModal
-          isOpen={assignOpen}
-          onClose={() => setAssignOpen(false)}
-          workOrderLineId={assignLineId}
-          mechanics={assignables}
-          onAssigned={async () => {
-            await fetchAll();
           }}
         />
       )}

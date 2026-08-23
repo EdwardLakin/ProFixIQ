@@ -170,7 +170,8 @@ begin
      or v_line.status <> 'awaiting'
      or v_line.job_type <> 'diagnosis'
      or coalesce(v_line.punchable, false) is not true
-     or v_line.assigned_tech_id <> '9a500000-0000-4000-8000-000000000001' then
+     or v_line.assigned_tech_id <> '9a500000-0000-4000-8000-000000000001'
+     or v_line.assigned_to is not null then
     raise exception 'Postmerge hardening failed: initial line is not executable/assigned from intake concern';
   end if;
   if not exists (

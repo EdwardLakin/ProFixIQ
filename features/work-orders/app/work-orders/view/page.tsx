@@ -290,7 +290,7 @@ export default function WorkOrdersView(): JSX.Element {
   >([]);
   const [selectedTechId, setSelectedTechId] = useState<string>("");
 
-  const [, setAssignVersion] = useState(0);
+  const [assignVersion, setAssignVersion] = useState(0);
 
   const [reviewLoadingId, setReviewLoadingId] = useState<string | null>(null);
   const [reviewByWo, setReviewByWo] = useState<
@@ -798,13 +798,19 @@ export default function WorkOrdersView(): JSX.Element {
       }
 
       try {
+        const operationKey = `assign-all:${woId}:${selectedTechId}:${globalThis.crypto.randomUUID()}`;
         const res = await fetch("/api/work-orders/assign-all", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": operationKey,
+          },
           body: JSON.stringify({
             work_order_id: woId,
             tech_id: selectedTechId,
             only_unassigned: true,
+            operationKey,
+            idempotencyKey: operationKey,
           }),
         });
 
@@ -1254,7 +1260,10 @@ export default function WorkOrdersView(): JSX.Element {
                           Assigned
                         </div>
                         <div className="min-h-[28px]">
-                          <WorkOrderAssignedSummary workOrderId={row.id} />
+                          <WorkOrderAssignedSummary
+                            workOrderId={row.id}
+                            refreshVersion={assignVersion}
+                          />
                         </div>
                         {!hasAssignedTech ? (
                           <div className="mt-1 flex items-center gap-1 text-xs text-amber-700 dark:text-amber-100">

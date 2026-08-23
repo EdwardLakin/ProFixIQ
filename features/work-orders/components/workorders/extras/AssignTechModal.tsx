@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import { useEffect, useRef, useState } from "react";
 import ModalShell from "@/features/shared/components/ModalShell";
 import { toast } from "sonner";
 import {
@@ -19,20 +18,21 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
   workOrderLineId: string;
+  expectedUpdatedAt?: string | null;
   initialMechanics?: Assignable[];
   mechanics?: Assignable[];
-  onAssigned?: (techId: string) => void | Promise<void>;
+  onAssigned?: (techId: string | null) => void | Promise<void>;
 }
 
 export default function AssignTechModal({
   isOpen,
   onClose,
   workOrderLineId,
+  expectedUpdatedAt,
   initialMechanics,
   mechanics,
   onAssigned,
 }: Props) {
-  const supabase = useMemo(() => createBrowserSupabase(), []);
   const [users, setUsers] = useState<Assignable[]>(() => mechanics ?? initialMechanics ?? []);
   const [techId, setTechId] = useState<string>("");
   const [submitting, setSubmitting] = useState(false);
@@ -50,8 +50,7 @@ export default function AssignTechModal({
       return;
     }
 
-    (async () => {
-      // try API first
+    void (async () => {
       try {
         const res = await fetch("/api/assignables");
         const json = (await res.json().catch(() => null)) as { data?: Assignable[] } | null;
@@ -59,20 +58,14 @@ export default function AssignTechModal({
           setUsers(json.data);
           return;
         }
+        setUsers([]);
+        toast.error("Assignable technicians could not be loaded.");
       } catch {
-        // fall through
+        setUsers([]);
+        toast.error("Assignable technicians could not be loaded.");
       }
-
-      // fallback to profiles query
-      const { data } = await supabase
-        .from("profiles")
-        .select("id, full_name, role")
-        .in("role", ["mechanic", "tech", "foreman", "lead_hand"])
-        .order("full_name", { ascending: true });
-
-      setUsers((data as Assignable[]) ?? []);
     })();
-  }, [isOpen, mechanics, initialMechanics, supabase]);
+  }, [isOpen, mechanics, initialMechanics]);
 
   const submit = async () => {
     if (submitting) return;
@@ -83,24 +76,31 @@ export default function AssignTechModal({
     }
 
     setSubmitting(true);
+    const technicianId = techId === "__clear__" ? null : techId;
     const existingOperation = assignmentOperationRef.current;
     const operationKey =
       existingOperation?.technicianId === techId
         ? existingOperation.operationKey
-        : createAssignTechnicianOperationKey(workOrderLineId, techId);
+        : createAssignTechnicianOperationKey(workOrderLineId, technicianId);
     assignmentOperationRef.current = { technicianId: techId, operationKey };
 
     try {
       await assignWorkOrderLineTechnician({
         lineId: workOrderLineId,
-        technicianId: techId,
+        technicianId,
+        action: technicianId ? "set_primary" : "clear",
+        expectedUpdatedAt,
         operationKey,
       });
-      await onAssigned?.(techId);
+      await onAssigned?.(technicianId);
       if (assignmentOperationRef.current?.operationKey === operationKey) {
         assignmentOperationRef.current = null;
       }
-      toast.success("Primary tech updated.");
+      toast.success(
+        technicianId
+          ? "Primary tech updated."
+          : "Technician assignment cleared.",
+      );
       onClose();
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed to update primary tech.";
@@ -132,6 +132,7 @@ export default function AssignTechModal({
           onChange={(e) => setTechId(e.target.value)}
         >
           <option value="">Select…</option>
+          <option value="__clear__">Unassigned (clear all)</option>
           {users.map((u) => (
             <option key={u.id} value={u.id}>
               {u.full_name ?? "(no name)"} {u.role ? `(${u.role})` : ""}

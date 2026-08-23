@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import { requireShopPageAccess } from "@/features/shared/lib/server/admin-access";
-
-const PARTS_REQUEST_ACCESS_ROLES = ["owner", "admin", "manager", "parts"] as const;
+import { PARTS_REQUEST_ACCESS_ROLES } from "@/features/parts/server/loadPartsRequestQueue";
 
 export default async function PartsRequestsLayout({
   children,

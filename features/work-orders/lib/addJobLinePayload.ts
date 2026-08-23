@@ -18,7 +18,6 @@ export type AddJobLinePayloadInput = {
   parts: AddJobLinePart[];
   shopId: string;
   userId: string | null;
-  assignedTechId: string | null;
   urgency: "low" | "medium" | "high";
 };
 
@@ -43,8 +42,5 @@ export function buildAddJobLinePayload(
     shop_id: input.shopId,
     urgency: input.urgency,
     ...(input.userId ? { user_id: input.userId } : {}),
-    ...(input.assignedTechId
-      ? { assigned_tech_id: input.assignedTechId }
-      : {}),
   };
 }
