@@ -6,6 +6,7 @@ import {
   createServerSupabaseRoute,
 } from "@/features/shared/lib/supabase/server";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import { resolveAuthenticatedStaffProfile } from "@/features/shared/lib/server/admin-access";
 import type { Database } from "@shared/types/types/supabase";
 import type {
   TechnicianOfflineBundle,
@@ -43,11 +44,8 @@ export async function GET() {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  const { data: profile, error: profileError } = await authClient
-    .from("profiles")
-    .select("shop_id, role")
-    .eq("id", user.id)
-    .maybeSingle<{ shop_id: string | null; role: string | null }>();
+  const { profile, error: profileError } =
+    await resolveAuthenticatedStaffProfile(authClient, user.id);
   if (profileError || !profile?.shop_id) {
     return NextResponse.json({ error: "Missing shop" }, { status: 403 });
   }
@@ -75,7 +73,7 @@ export async function GET() {
   try {
     [directlyAssigned, sharedAssigned] = await Promise.all([
       loadRowsForIdChunks<{ id: string; work_order_id: string }>(
-        [user.id],
+        [profile.id],
         ([technicianId], from, to) =>
           admin
             .from("work_order_lines")
@@ -83,13 +81,13 @@ export async function GET() {
             .eq("shop_id", profile.shop_id)
             .eq("line_type", "job")
             .or(
-              `assigned_tech_id.eq.${technicianId},assigned_to.eq.${technicianId},user_id.eq.${technicianId}`,
+              `assigned_tech_id.eq.${technicianId},assigned_to.eq.${technicianId}`,
             )
             .order("id", { ascending: true })
             .range(from, to),
       ),
       loadRowsForIdChunks<{ work_order_line_id: string }>(
-        [user.id],
+        [profile.id],
         (technicianIds, from, to) =>
           admin
             .from("work_order_line_technicians")

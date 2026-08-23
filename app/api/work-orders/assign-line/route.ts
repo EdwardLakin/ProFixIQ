@@ -13,6 +13,13 @@ type RpcClient = {
   ) => PromiseLike<{ data: unknown; error: RpcError | null }>;
 };
 
+const ASSIGNMENT_ACTIONS = new Set([
+  "set_primary",
+  "add_supporting",
+  "remove_supporting",
+  "clear",
+]);
+
 function must(name: string): string {
   const value = process.env[name];
   if (!value) throw new Error(`Missing env ${name}`);
@@ -24,12 +31,16 @@ export async function POST(req: Request) {
     const body = (await req.json().catch(() => null)) as {
       work_order_line_id?: string;
       tech_id?: string;
+      action?: string;
+      expected_updated_at?: string;
       operationKey?: string;
       idempotencyKey?: string;
     } | null;
 
     const lineId = body?.work_order_line_id?.trim() ?? "";
     const techId = body?.tech_id?.trim() ?? "";
+    const action = body?.action?.trim() || (techId ? "set_primary" : "clear");
+    const expectedUpdatedAt = body?.expected_updated_at?.trim() || null;
     const rawOperationKey =
       req.headers.get("Idempotency-Key")?.trim() ||
       body?.operationKey?.trim() ||
@@ -42,9 +53,21 @@ export async function POST(req: Request) {
     });
     if (!access.ok) return access.response;
 
-    if (!lineId || !techId) {
+    if (!lineId) {
       return NextResponse.json(
-        { error: "work_order_line_id and tech_id are required" },
+        { error: "work_order_line_id is required" },
+        { status: 400 },
+      );
+    }
+    if (!ASSIGNMENT_ACTIONS.has(action)) {
+      return NextResponse.json(
+        { error: "Unsupported technician assignment action." },
+        { status: 400 },
+      );
+    }
+    if (action !== "clear" && !techId) {
+      return NextResponse.json(
+        { error: "tech_id is required for this assignment action" },
         { status: 400 },
       );
     }
@@ -65,9 +88,11 @@ export async function POST(req: Request) {
       {
         p_shop_id: access.profile.shop_id,
         p_work_order_line_id: lineId,
-        p_technician_id: techId,
-        p_assigned_by: access.profile.id,
-        p_operation_key: `${access.profile.shop_id}:assign-line:${rawOperationKey}`,
+        p_technician_id: techId || null,
+        p_actor_user_id: access.profile.id,
+        p_action: action,
+        p_operation_key: `${access.profile.shop_id}:line-assignment:${action}:${rawOperationKey}`,
+        p_expected_updated_at: expectedUpdatedAt,
       },
     );
 
@@ -75,7 +100,14 @@ export async function POST(req: Request) {
       const message = [error.message, error.details, error.hint]
         .filter(Boolean)
         .join(" — ");
-      const status = message.includes("FINANCIALLY_LOCKED") ? 409 : 400;
+      const status =
+        message.includes("not found for shop")
+          ? 404
+          : message.includes("FINANCIALLY_LOCKED") ||
+        message.includes("ASSIGNMENT_STALE") ||
+        message.includes("ACTIVE_LABOR")
+          ? 409
+          : 400;
       return NextResponse.json({ error: message }, { status });
     }
 

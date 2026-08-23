@@ -184,7 +184,7 @@ describe("enforcement layers", () => {
     const addJobModal = read(
       "features/work-orders/components/workorders/AddJobModal.tsx",
     );
-    expect(addJobModal).toContain("assignedTechId: null");
+    expect(addJobModal).not.toContain("assignedTechId");
     expect(addJobModal).not.toContain("techId");
     expect(addJobModal).not.toContain(
       "WORKSPACE_CAPABILITIES.manageWorkOrderAssignments",

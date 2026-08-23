@@ -6,6 +6,8 @@ import { useEffect, useMemo, useState } from "react";
 import WorkOrderAiIndicatorBadge from "@/features/work-orders/components/WorkOrderAiIndicatorBadge";
 import type { WorkOrderRecommendationIndicatorMap } from "@/features/ai/server/domains/workOrders/getWorkOrderRecommendationIndicators";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import { resolveCanonicalStaffProfile } from "@/features/shared/lib/authenticated-profile";
+import { resolveTechnicianAssignmentContract } from "@/features/work-orders/lib/technicianAssignmentContract";
 import type { Database } from "@shared/types/types/supabase";
 import Link from "next/link";
 import PageShell from "@/features/shared/components/PageShell";
@@ -82,6 +84,9 @@ export default function QueuePage() {
   // data
   const [workOrders, setWorkOrders] = useState<WO[]>([]);
   const [linesByWo, setLinesByWo] = useState<Record<string, Line[]>>({});
+  const [technicianIdsByLine, setTechnicianIdsByLine] = useState<
+    Record<string, string[]>
+  >({});
   const [indicatorsByWo, setIndicatorsByWo] = useState<WorkOrderRecommendationIndicatorMap>({});
 
   // ui state
@@ -111,17 +116,12 @@ export default function QueuePage() {
         return;
       }
 
-      setUserId(user.id);
-
       // 2) profile → shop + role
-      const { data: profile, error: profErr } = await supabase
-        .from("profiles")
-        .select("shop_id, role")
-        .eq("id", user.id)
-        .maybeSingle();
+      const { profile, error: profErr } =
+        await resolveCanonicalStaffProfile(supabase, user.id);
 
       if (profErr) {
-        setErr(profErr.message);
+        setErr(profErr);
         setLoading(false);
         return;
       }
@@ -132,6 +132,7 @@ export default function QueuePage() {
         return;
       }
 
+      setUserId(profile.id);
       setRole(profile.role ?? null);
       setShopId(profile.shop_id);
 
@@ -156,6 +157,7 @@ export default function QueuePage() {
       if (!wos?.length) {
         setWorkOrders([]);
         setLinesByWo({});
+        setTechnicianIdsByLine({});
         setLoading(false);
         return;
       }
@@ -173,6 +175,38 @@ export default function QueuePage() {
         return;
       }
 
+      const lineIds = (lines ?? []).map((line) => line.id);
+      const { data: assignments, error: assignmentError } =
+        lineIds.length > 0
+          ? await supabase
+              .from("work_order_line_technicians")
+              .select("work_order_line_id, technician_id")
+              .in("work_order_line_id", lineIds)
+          : { data: [], error: null };
+      if (assignmentError) {
+        setErr(assignmentError.message);
+        setLoading(false);
+        return;
+      }
+
+      const canonicalIdsByLine: Record<string, string[]> = {};
+      for (const assignment of assignments ?? []) {
+        canonicalIdsByLine[assignment.work_order_line_id] = [
+          ...(canonicalIdsByLine[assignment.work_order_line_id] ?? []),
+          assignment.technician_id,
+        ];
+      }
+      const resolvedIdsByLine = Object.fromEntries(
+        (lines ?? []).map((line) => [
+          line.id,
+          resolveTechnicianAssignmentContract({
+            primaryTechnicianId: line.assigned_tech_id,
+            legacyAssignedTo: line.assigned_to,
+            canonicalTechnicianIds: canonicalIdsByLine[line.id],
+          }).technicianIds,
+        ]),
+      );
+
       const map: Record<string, Line[]> = {};
       (lines ?? []).forEach((l) => {
         if (!l.work_order_id) return;
@@ -188,12 +222,15 @@ export default function QueuePage() {
 
       const visibleWos: WO[] = isTech
         ? wos.filter((wo) =>
-            (map[wo.id] ?? []).some((l) => l.assigned_tech_id === user.id),
+            (map[wo.id] ?? []).some((line) =>
+              resolvedIdsByLine[line.id]?.includes(profile.id),
+            ),
           )
         : wos;
 
       setWorkOrders(visibleWos);
       setLinesByWo(map);
+      setTechnicianIdsByLine(resolvedIdsByLine);
       setLoading(false);
     })();
   }, [supabase]);
@@ -272,12 +309,21 @@ export default function QueuePage() {
 
     if (showMineOnly && userId) {
       pool = pool.filter((wo) =>
-        (linesByWo[wo.id] ?? []).some((l) => l.assigned_tech_id === userId),
+        (linesByWo[wo.id] ?? []).some((line) =>
+          technicianIdsByLine[line.id]?.includes(userId),
+        ),
       );
     }
 
     return pool;
-  }, [activeFilter, showMineOnly, userId, workOrders, linesByWo]);
+  }, [
+    activeFilter,
+    showMineOnly,
+    userId,
+    workOrders,
+    linesByWo,
+    technicianIdsByLine,
+  ]);
 
   /* -------------------------------------------------------------------------
    * Render states

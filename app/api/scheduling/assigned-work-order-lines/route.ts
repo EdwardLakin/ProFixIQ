@@ -52,13 +52,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ lines: [] });
   }
 
-  // 1) Lines directly assigned via assigned_tech_id
+  // 1) Canonical primary plus legacy-only compatibility.
   const { data: directLines, error: dErr } = await admin
     .from("work_order_lines")
     .select("id, work_order_id, description, complaint, job_type, created_at, job_priority")
     .eq("shop_id", shopId)
     .eq("work_order_id", workOrderId)
-    .eq("assigned_tech_id", effectiveUserId)
+    .or(
+      `assigned_tech_id.eq.${effectiveUserId},assigned_to.eq.${effectiveUserId}`,
+    )
     .eq("line_type", "job")
     .order("created_at", { ascending: true });
 

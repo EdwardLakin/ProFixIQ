@@ -27692,13 +27692,37 @@ export type Database = {
         }
         Returns: Json
       }
-      assign_work_order_line_technician_atomic: {
+      assign_work_order_line_technician_atomic:
+        | {
+            Args: {
+              p_assigned_by: string
+              p_operation_key: string
+              p_shop_id: string
+              p_technician_id: string
+              p_work_order_line_id: string
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_action: string
+              p_actor_user_id: string
+              p_expected_updated_at?: string
+              p_operation_key: string
+              p_shop_id: string
+              p_technician_id: string
+              p_work_order_line_id: string
+            }
+            Returns: Json
+          }
+      assign_work_order_primary_technician_bulk_atomic: {
         Args: {
-          p_assigned_by: string
+          p_actor_user_id: string
+          p_only_unassigned: boolean
           p_operation_key: string
           p_shop_id: string
           p_technician_id: string
-          p_work_order_line_id: string
+          p_work_order_id: string
         }
         Returns: Json
       }
@@ -29113,6 +29137,18 @@ export type Database = {
         }
         Returns: Json
       }
+      mutate_work_order_line_assignment_atomic: {
+        Args: {
+          p_action: string
+          p_actor_user_id: string
+          p_expected_updated_at?: string
+          p_operation_key: string
+          p_shop_id: string
+          p_technician_id: string
+          p_work_order_line_id: string
+        }
+        Returns: Json
+      }
       open_work_order_correction_session: {
         Args: {
           p_actor_user_id: string
@@ -29814,6 +29850,10 @@ export type Database = {
           p_shop_id: string
           p_work_order_id: string
         }
+        Returns: Json
+      }
+      report_work_order_line_assignment_ambiguities: {
+        Args: { p_shop_id?: string }
         Returns: Json
       }
       respond_fleet_defect_clarification: {
@@ -31314,4 +31354,3 @@ export const Constants = {
     },
   },
 } as const
-

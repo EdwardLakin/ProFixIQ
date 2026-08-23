@@ -63,6 +63,7 @@ type JobCardProps = {
   isPunchedIn: boolean;
   isCurrentUserWorkingThisLine?: boolean;
   activeTechnicianNames?: string[];
+  assignedTechnicianIds?: string[];
   isSelectedForPanel?: boolean;
   onOpen: () => void;
   onAssign?: (techId: string) => void;
@@ -331,6 +332,7 @@ export function JobCard({
   isPunchedIn,
   isCurrentUserWorkingThisLine = false,
   activeTechnicianNames = [],
+  assignedTechnicianIds = [],
   isSelectedForPanel,
   onOpen,
   onAssign,
@@ -381,11 +383,22 @@ export function JobCard({
   const assignedTech = useMemo(() => {
     const techId = line.assigned_tech_id;
     const profile = technicians.find((tech) => tech.id === techId) ?? null;
-    return resolvePrimaryTechDisplay(
+    const primaryDisplay = resolvePrimaryTechDisplay(
       line,
       profile ? { ...profile, role: "tech" } : null,
     );
-  }, [line, technicians]);
+    if (
+      primaryDisplay === "Unassigned" &&
+      assignedTechnicianIds.length > 0
+    ) {
+      return `Primary not set · ${assignedTechnicianIds.length} assigned`;
+    }
+    return primaryDisplay;
+  }, [assignedTechnicianIds.length, line, technicians]);
+  const assignedTechnicianIsSelectable = Boolean(
+    line.assigned_tech_id &&
+      technicians.some((technician) => technician.id === line.assigned_tech_id),
+  );
 
   const effectivePartsCount = Math.max(
     parts.length,
@@ -490,16 +503,21 @@ export function JobCard({
             {canAssign && onAssign ? (
               <label className="relative mb-2 block">
                 <UserRound className="pointer-events-none absolute left-2 top-2 h-3.5 w-3.5 text-[color:var(--theme-text-muted)]" />
-                <span className="sr-only">Assigned technician</span>
+                <span className="sr-only">Primary technician</span>
                 <select
-                  aria-label="Assigned technician"
+                  aria-label="Primary technician"
                   value={line.assigned_tech_id ?? ""}
                   onChange={(event) => onAssign(event.target.value)}
                   className="h-8 w-full appearance-none truncate rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] py-1 pl-7 pr-3 text-[10px] font-semibold text-[color:var(--theme-text-primary)]"
                 >
-                  <option value="" disabled>
-                    Unassigned
+                  <option value="">
+                    Unassigned (clear all)
                   </option>
+                  {line.assigned_tech_id && !assignedTechnicianIsSelectable ? (
+                    <option value={line.assigned_tech_id}>
+                      Unavailable technician (current)
+                    </option>
+                  ) : null}
                   {technicians.map((tech) => (
                     <option key={tech.id} value={tech.id}>
                       {tech.full_name || "Unnamed tech"}
@@ -651,16 +669,21 @@ export function JobCard({
                     onClick={(event) => event.stopPropagation()}
                   >
                     <UserRound className="pointer-events-none absolute left-2 h-3.5 w-3.5 text-[color:var(--theme-text-muted)]" />
-                    <span className="sr-only">Assigned technician</span>
+                    <span className="sr-only">Primary technician</span>
                     <select
-                      aria-label="Assigned technician"
+                      aria-label="Primary technician"
                       value={line.assigned_tech_id ?? ""}
                       onChange={(event) => onAssign(event.target.value)}
                       className="h-8 max-w-44 appearance-none truncate rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] py-1 pl-7 pr-3 text-[10px] font-semibold text-[color:var(--theme-text-primary)]"
                     >
-                      <option value="" disabled>
-                        Unassigned
+                      <option value="">
+                        Unassigned (clear all)
                       </option>
+                      {line.assigned_tech_id && !assignedTechnicianIsSelectable ? (
+                        <option value={line.assigned_tech_id}>
+                          Unavailable technician (current)
+                        </option>
+                      ) : null}
                       {technicians.map((tech) => (
                         <option key={tech.id} value={tech.id}>
                           {tech.full_name || "Unnamed tech"}

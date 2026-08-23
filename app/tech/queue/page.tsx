@@ -6,6 +6,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import { resolveCanonicalStaffProfile } from "@/features/shared/lib/authenticated-profile";
+import { resolveTechnicianAssignmentContract } from "@/features/work-orders/lib/technicianAssignmentContract";
 import {
   buildTechQueueWorkOrderMap,
   TechQueueWorkOrderLabel,
@@ -212,14 +214,11 @@ export default function TechQueuePage() {
       }
 
       // 2) profile (for shop_id)
-      const { data: prof, error: profErr } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", user.id)
-        .maybeSingle();
+      const { profile: prof, error: profErr } =
+        await resolveCanonicalStaffProfile(supabase, user.id);
 
       if (profErr) {
-        setErr(profErr.message);
+        setErr(profErr);
         setLoading(false);
         return;
       }
@@ -230,17 +229,12 @@ export default function TechQueuePage() {
       }
 
       // 3) fetch work-order lines
-      const baseQuery = supabase
+      const { data: candidateLines, error: linesErr } = await supabase
         .from("work_order_lines")
         .select("*")
+        .eq("shop_id", prof.shop_id)
         .eq("line_type", "job")
         .order("created_at", { ascending: false });
-
-      const { data: techLines, error: linesErr } = prefs.showUnassigned
-        ? await baseQuery.or(
-            `assigned_tech_id.eq.${user.id},assigned_tech_id.is.null`,
-          )
-        : await baseQuery.eq("assigned_tech_id", user.id);
 
       if (linesErr) {
         setErr(linesErr.message);
@@ -248,7 +242,38 @@ export default function TechQueuePage() {
         return;
       }
 
-      const raw = (techLines ?? []) as Line[];
+      const allLines = (candidateLines ?? []) as Line[];
+      const candidateLineIds = allLines.map((line) => line.id);
+      const { data: assignmentRows, error: assignmentError } =
+        candidateLineIds.length > 0
+          ? await supabase
+              .from("work_order_line_technicians")
+              .select("work_order_line_id, technician_id")
+              .in("work_order_line_id", candidateLineIds)
+          : { data: [], error: null };
+      if (assignmentError) {
+        setErr(assignmentError.message);
+        setLoading(false);
+        return;
+      }
+      const assignmentIdsByLine = new Map<string, string[]>();
+      for (const assignment of assignmentRows ?? []) {
+        assignmentIdsByLine.set(assignment.work_order_line_id, [
+          ...(assignmentIdsByLine.get(assignment.work_order_line_id) ?? []),
+          assignment.technician_id,
+        ]);
+      }
+      const raw = allLines.filter((line) => {
+        const assignment = resolveTechnicianAssignmentContract({
+          primaryTechnicianId: line.assigned_tech_id,
+          legacyAssignedTo: line.assigned_to,
+          canonicalTechnicianIds: assignmentIdsByLine.get(line.id),
+        });
+        return (
+          assignment.technicianIds.includes(prof.id) ||
+          (prefs.showUnassigned && assignment.source === "unassigned")
+        );
+      });
       const woIds = Array.from(
         new Set(
           raw
@@ -297,7 +322,7 @@ export default function TechQueuePage() {
         )
         .eq("shop_id", prof.shop_id)
         .not("status", "in", `(${CLOSED_PART_STATUSES.join(",")})`)
-        .or(`requested_by.eq.${user.id},assigned_tech_id.eq.${user.id}`);
+        .or(`requested_by.eq.${prof.id},assigned_tech_id.eq.${prof.id}`);
 
       if (prErr) {
         console.error("[TechQueue] part_requests load error:", prErr);

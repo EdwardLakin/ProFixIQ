@@ -1,6 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database } from "@shared/types/types/supabase";
+import {
+  resolveTechnicianAssignmentContract,
+  type TechnicianAssignmentIssue,
+} from "@/features/work-orders/lib/technicianAssignmentContract";
 
 type DB = Database;
 
@@ -30,6 +34,11 @@ export type WorkOrderLineTechnicianRow = Pick<
   "work_order_line_id" | "technician_id"
 >;
 
+export type WorkOrderLineAssignmentMirrorRow = Pick<
+  DB["public"]["Tables"]["work_order_lines"]["Row"],
+  "id" | "assigned_tech_id" | "assigned_to"
+>;
+
 export type WorkOrderLineLaborSegmentRow = Pick<
   DB["public"]["Tables"]["work_order_line_labor_segments"]["Row"],
   "work_order_line_id" | "technician_id" | "ended_at"
@@ -39,6 +48,8 @@ export type CanonicalWorkOrderLineContext = {
   allocationsByLine: Record<string, WorkOrderAllocationRow[]>;
   canonicalPartsByLine: Record<string, CanonicalWorkOrderPartRow[]>;
   technicianIdsByLine: Record<string, string[]>;
+  primaryTechnicianIdByLine?: Record<string, string | null>;
+  assignmentIssuesByLine?: Record<string, TechnicianAssignmentIssue[]>;
   activeTechnicianIdsByLine: Record<string, string[]>;
   partRequestsByLine: Record<string, WorkOrderPartRequestRow[]>;
   partRequestsByQuoteLine: Record<string, WorkOrderPartRequestRow[]>;
@@ -49,6 +60,8 @@ export function emptyCanonicalWorkOrderLineContext(): CanonicalWorkOrderLineCont
     allocationsByLine: {},
     canonicalPartsByLine: {},
     technicianIdsByLine: {},
+    primaryTechnicianIdByLine: {},
+    assignmentIssuesByLine: {},
     activeTechnicianIdsByLine: {},
     partRequestsByLine: {},
     partRequestsByQuoteLine: {},
@@ -60,6 +73,7 @@ export function buildCanonicalWorkOrderLineContext(input: {
   allocations: WorkOrderAllocationRow[];
   canonicalParts: CanonicalWorkOrderPartRow[];
   technicians: WorkOrderLineTechnicianRow[];
+  assignmentMirrors?: WorkOrderLineAssignmentMirrorRow[];
   activeLaborSegments: WorkOrderLineLaborSegmentRow[];
   partRequests: WorkOrderPartRequestRow[];
 }): CanonicalWorkOrderLineContext {
@@ -84,6 +98,21 @@ export function buildCanonicalWorkOrderLineContext(input: {
     const ids = (result.technicianIdsByLine[lineId] ??= []);
     if (!ids.includes(assignment.technician_id)) {
       ids.push(assignment.technician_id);
+    }
+  }
+
+  for (const mirror of input.assignmentMirrors ?? []) {
+    if (!lineIds.has(mirror.id)) continue;
+    const assignment = resolveTechnicianAssignmentContract({
+      primaryTechnicianId: mirror.assigned_tech_id,
+      legacyAssignedTo: mirror.assigned_to,
+      canonicalTechnicianIds: result.technicianIdsByLine[mirror.id],
+    });
+    result.technicianIdsByLine[mirror.id] = assignment.technicianIds;
+    (result.primaryTechnicianIdByLine ??= {})[mirror.id] =
+      assignment.primaryTechnicianId;
+    if (assignment.issues.length > 0) {
+      (result.assignmentIssuesByLine ??= {})[mirror.id] = assignment.issues;
     }
   }
 
@@ -246,6 +275,7 @@ export async function loadCanonicalWorkOrderLineContexts(input: {
     allocations,
     canonicalParts,
     technicians,
+    assignmentMirrors,
     activeLaborSegments,
     partRequests,
   ] = await Promise.all([
@@ -286,6 +316,17 @@ export async function loadCanonicalWorkOrderLineContexts(input: {
         .order("work_order_line_id", { ascending: true })
         .order("technician_id", { ascending: true })
         .range(from, to),
+    ),
+    loadRowsForIdChunks<WorkOrderLineAssignmentMirrorRow>(
+      lineIds,
+      (ids, from, to) =>
+        input.supabase
+          .from("work_order_lines")
+          .select("id, assigned_tech_id, assigned_to")
+          .eq("shop_id", input.shopId)
+          .in("id", ids)
+          .order("id", { ascending: true })
+          .range(from, to),
     ),
     loadRowsForIdChunks<WorkOrderLineLaborSegmentRow>(
       lineIds,
@@ -329,6 +370,9 @@ export async function loadCanonicalWorkOrderLineContexts(input: {
           ),
           technicians: technicians.filter((row) =>
             scopedLineIds.has(row.work_order_line_id),
+          ),
+          assignmentMirrors: assignmentMirrors.filter((row) =>
+            scopedLineIds.has(row.id),
           ),
           activeLaborSegments: activeLaborSegments.filter((row) =>
             scopedLineIds.has(row.work_order_line_id),

@@ -124,14 +124,25 @@ async function filterComputedNotificationsForUser(params: {
 
   const activeStatuses = ["awaiting", "awaiting_approval", "queued", "in_progress", "on_hold"];
 
-  const [{ data: assignedLines, error: assignedError }, { data: activeSegments, error: segmentError }] =
+  const [
+    { data: assignedLines, error: assignedError },
+    { data: supportingAssignments, error: supportingError },
+    { data: activeSegments, error: segmentError },
+  ] =
     await Promise.all([
       supabase
         .from("work_order_lines")
         .select("id, work_order_id")
         .eq("shop_id", params.shopId)
-        .eq("assigned_tech_id", params.userId)
+        .or(
+          `assigned_tech_id.eq.${params.userId},assigned_to.eq.${params.userId}`,
+        )
         .in("status", activeStatuses)
+        .limit(200),
+      supabase
+        .from("work_order_line_technicians")
+        .select("work_order_line_id")
+        .eq("technician_id", params.userId)
         .limit(200),
       supabase
         .from("work_order_line_labor_segments")
@@ -143,6 +154,7 @@ async function filterComputedNotificationsForUser(params: {
     ]);
 
   if (assignedError) throw new Error(assignedError.message);
+  if (supportingError) throw new Error(supportingError.message);
   if (segmentError) throw new Error(segmentError.message);
 
   const lineIds = new Set<string>();
@@ -153,16 +165,20 @@ async function filterComputedNotificationsForUser(params: {
     if (row.work_order_id) workOrderIds.add(row.work_order_id);
   }
 
-  const activeLineIds = (activeSegments ?? [])
+  const relatedLineIds = [
+    ...(supportingAssignments ?? []),
+    ...(activeSegments ?? []),
+  ]
     .map((row) => row.work_order_line_id)
     .filter((value): value is string => typeof value === "string" && value.length > 0);
 
-  if (activeLineIds.length > 0) {
+  if (relatedLineIds.length > 0) {
     const { data: activeLineRows, error: activeLineError } = await supabase
       .from("work_order_lines")
       .select("id, work_order_id")
       .eq("shop_id", params.shopId)
-      .in("id", activeLineIds);
+      .in("id", [...new Set(relatedLineIds)])
+      .in("status", activeStatuses);
 
     if (activeLineError) throw new Error(activeLineError.message);
 
