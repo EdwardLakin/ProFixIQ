@@ -252,6 +252,13 @@ begin
 end;
 $reject_ambiguous_vehicle_resolution$;
 
+delete from public.fleet_vehicles
+where fleet_id = '81550000-0000-4000-8000-000000000002'
+  and vehicle_id = '81540000-0000-4000-8000-000000000001';
+
+create unique index ux_fleet_vehicles_vehicle_id
+  on public.fleet_vehicles using btree (vehicle_id);
+
 insert into auth.users (id, email, raw_user_meta_data)
 values (
   '81510000-0000-4000-8000-000000000002',
