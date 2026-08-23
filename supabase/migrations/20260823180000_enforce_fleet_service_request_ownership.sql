@@ -299,11 +299,11 @@ begin
     raise exception 'Work-order customer/vehicle guard is missing';
   end if;
 
-  if pg_catalog.position(
-    $$when l.line_kind = 'diagnostic' then 'diagnosis'$$ in
+  if pg_catalog.strpos(
     pg_catalog.pg_get_functiondef(
       'public.convert_fleet_service_request_to_work_order_atomic(uuid)'::pg_catalog.regprocedure
-    )
+    ),
+    $$when l.line_kind = 'diagnostic' then 'diagnosis'$$
   ) = 0 then
     raise exception 'Fleet diagnostic job-type translation is missing';
   end if;
