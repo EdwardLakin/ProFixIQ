@@ -54,6 +54,8 @@ export const REQUIRED_VIEWPORTS = Object.freeze([
   "360x800",
 ]);
 
+export const MAX_EVIDENCE_AGE_MS = 24 * 60 * 60 * 1000;
+
 export function createEvidenceTemplate(runId, candidateSha) {
   return {
     schemaVersion: 1,
@@ -86,11 +88,20 @@ export function createEvidenceTemplate(runId, candidateSha) {
     })),
     defects: [],
     scores: Object.fromEntries(Object.keys(CATEGORY_WEIGHTS).map((category) => [category, 0])),
-    lifecycles: REQUIRED_LIFECYCLES.map((id) => ({ id, status: "untested" })),
-    products: REQUIRED_PRODUCTS.map((id) => ({ id, status: "untested" })),
+    lifecycles: REQUIRED_LIFECYCLES.map((id) => ({
+      id,
+      candidateSha,
+      status: "untested",
+    })),
+    products: REQUIRED_PRODUCTS.map((id) => ({
+      id,
+      candidateSha,
+      status: "untested",
+    })),
     refreshRuns: [],
     roles: REQUIRED_ROLES.map((id) => ({
       id,
+      candidateSha,
       plans: [],
       navigationPassed: false,
       allowedActionsPassed: false,
@@ -102,48 +113,56 @@ export function createEvidenceTemplate(runId, candidateSha) {
     })),
     planGates: ["Pro", "Starter"].map((plan) => ({
       plan,
+      candidateSha,
       uiPassed: false,
       serverPassed: false,
       noPartialDataPassed: false,
     })),
     viewports: REQUIRED_VIEWPORTS.map((id) => ({
       id,
+      candidateSha,
       status: "untested",
       noHorizontalOverflow: false,
     })),
     offline: {
+      candidateSha,
       status: "untested",
       reconnectPassed: false,
       noStaleProtectedDataPassed: false,
     },
     search: {
+      candidateSha,
       status: "untested",
       caseCoveragePassed: false,
       productsCoveragePassed: false,
     },
     performance: {
+      candidateSha,
       status: "untested",
       feedbackWithin100MsPassed: false,
       routeBudgetPassed: false,
       noStaleMutableDataPassed: false,
     },
     accessibility: {
+      candidateSha,
       status: "untested",
       keyboardPassed: false,
       touchTargetsPassed: false,
       dialogsPassed: false,
     },
     payment: {
+      candidateSha,
       status: "untested",
       sandboxOnly: true,
       noRealChargePassed: false,
     },
     diagnostics: {
+      candidateSha,
       networkObserved: false,
       consoleErrors: [],
       unexplainedFailedRequests: [],
     },
-    cleanup: { scopeConfirmed: false, records: [] },
+    cleanup: { candidateSha, scopeConfirmed: false, records: [] },
     topRisks: [],
     prioritizedFixes: [],
     coverageGaps: [
@@ -175,6 +194,14 @@ function list(value) {
   return Array.isArray(value) ? value : [];
 }
 
+function checkedList(value, failures, id, label) {
+  if (!Array.isArray(value)) {
+    addFailure(failures, `collection-${id}`, `${label} must be a JSON array.`);
+    return [];
+  }
+  return value;
+}
+
 function isSha(value) {
   return typeof value === "string" && /^[0-9a-f]{40}$/i.test(value);
 }
@@ -185,8 +212,30 @@ function addFailure(failures, id, message) {
   }
 }
 
-function hasPass(entries, id) {
-  return list(entries).some((entry) => entry?.id === id && entry?.status === "pass");
+function isCandidateBound(entry, candidateSha) {
+  return isSha(candidateSha) && entry?.candidateSha === candidateSha;
+}
+
+function hasPass(entries, id, candidateSha) {
+  return entries.some(
+    (entry) =>
+      entry?.id === id &&
+      entry?.status === "pass" &&
+      isCandidateBound(entry, candidateSha),
+  );
+}
+
+function rejectDuplicateKeys(entries, keyOf, failures, id, label) {
+  const seen = new Set();
+  for (const entry of entries) {
+    const key = keyOf(entry);
+    if (key === null || key === undefined || key === "") continue;
+    if (seen.has(key)) {
+      addFailure(failures, `duplicate-${id}`, `${label} identifiers must be unique.`);
+      return;
+    }
+    seen.add(key);
+  }
 }
 
 function scoreEvidence(scores, failures) {
@@ -215,6 +264,78 @@ function scoreEvidence(scores, failures) {
 
 export function evaluateReleaseEvidence(evidence) {
   const failures = [];
+  const prerequisites = checkedList(
+    evidence?.prerequisites,
+    failures,
+    "prerequisites",
+    "Prerequisites",
+  );
+  const defects = checkedList(evidence?.defects, failures, "defects", "Defects");
+  const lifecycles = checkedList(
+    evidence?.lifecycles,
+    failures,
+    "lifecycles",
+    "Lifecycles",
+  );
+  const products = checkedList(evidence?.products, failures, "products", "Products");
+  const refreshRuns = checkedList(
+    evidence?.refreshRuns,
+    failures,
+    "refresh-runs",
+    "Refresh runs",
+  );
+  const roles = checkedList(evidence?.roles, failures, "roles", "Roles");
+  const planGates = checkedList(
+    evidence?.planGates,
+    failures,
+    "plan-gates",
+    "Plan gates",
+  );
+  const viewports = checkedList(evidence?.viewports, failures, "viewports", "Viewports");
+  const diagnosticConsoleErrors = checkedList(
+    evidence?.diagnostics?.consoleErrors,
+    failures,
+    "diagnostics-console-errors",
+    "Diagnostic console errors",
+  );
+  const diagnosticFailedRequests = checkedList(
+    evidence?.diagnostics?.unexplainedFailedRequests,
+    failures,
+    "diagnostics-failed-requests",
+    "Diagnostic failed requests",
+  );
+  const cleanupRecords = checkedList(
+    evidence?.cleanup?.records,
+    failures,
+    "cleanup-records",
+    "Cleanup records",
+  );
+  const topRisks = checkedList(
+    evidence?.topRisks,
+    failures,
+    "top-risks",
+    "Top risks",
+  );
+  checkedList(
+    evidence?.prioritizedFixes,
+    failures,
+    "prioritized-fixes",
+    "Prioritized fixes",
+  );
+  const coverageGaps = checkedList(
+    evidence?.coverageGaps,
+    failures,
+    "coverage-gaps",
+    "Coverage gaps",
+  );
+
+  rejectDuplicateKeys(prerequisites, (entry) => entry?.phase, failures, "phases", "Phase");
+  rejectDuplicateKeys(lifecycles, (entry) => entry?.id, failures, "lifecycles", "Lifecycle");
+  rejectDuplicateKeys(products, (entry) => entry?.id, failures, "products", "Product");
+  rejectDuplicateKeys(refreshRuns, (entry) => entry?.sequence, failures, "refresh-runs", "Refresh run");
+  rejectDuplicateKeys(roles, (entry) => entry?.id, failures, "roles", "Role");
+  rejectDuplicateKeys(planGates, (entry) => entry?.plan, failures, "plan-gates", "Plan gate");
+  rejectDuplicateKeys(viewports, (entry) => entry?.id, failures, "viewports", "Viewport");
 
   if (evidence?.schemaVersion !== 1) {
     addFailure(failures, "schema-version", "Evidence schemaVersion must be 1.");
@@ -235,12 +356,15 @@ export function evaluateReleaseEvidence(evidence) {
   const execution = evidence?.execution;
   const executionStart = Date.parse(execution?.startedAt ?? "");
   const executionEnd = Date.parse(execution?.completedAt ?? "");
+  const evaluatedAt = Date.now();
   if (
     execution?.candidateSha !== candidate?.sha ||
     !execution?.operator ||
     !Number.isFinite(executionStart) ||
     !Number.isFinite(executionEnd) ||
-    executionEnd < executionStart
+    executionEnd <= executionStart ||
+    executionEnd > evaluatedAt ||
+    evaluatedAt - executionEnd > MAX_EVIDENCE_AGE_MS
   ) {
     addFailure(
       failures,
@@ -252,6 +376,7 @@ export function evaluateReleaseEvidence(evidence) {
   const rollback = candidate?.rollback;
   if (
     !isSha(rollback?.previousStableSha) ||
+    rollback?.previousStableSha === candidate?.sha ||
     !rollback?.owner ||
     !rollback?.runbook ||
     rollback?.applicationRollbackVerified !== true ||
@@ -265,12 +390,18 @@ export function evaluateReleaseEvidence(evidence) {
     );
   }
 
+  const prerequisitePrs = new Set();
   for (const phase of REQUIRED_PHASES) {
-    const prerequisite = list(evidence?.prerequisites).find(
+    const prerequisite = prerequisites.find(
       (entry) => entry?.phase === phase,
     );
+    const validPr =
+      Number.isInteger(prerequisite?.pr) &&
+      prerequisite.pr > 0 &&
+      !prerequisitePrs.has(prerequisite.pr);
     if (
       !prerequisite ||
+      !validPr ||
       prerequisite.status !== "merged" ||
       prerequisite.deployed !== true ||
       !isSha(prerequisite.headSha)
@@ -278,25 +409,28 @@ export function evaluateReleaseEvidence(evidence) {
       addFailure(
         failures,
         `phase-${phase}`,
-        `Phase ${phase} must be merged, deployed, and tied to an exact head SHA.`,
+        `Phase ${phase} must have a unique PR, be merged and deployed, and be tied to an exact head SHA.`,
       );
+    }
+    if (Number.isInteger(prerequisite?.pr) && prerequisite.pr > 0) {
+      prerequisitePrs.add(prerequisite.pr);
     }
   }
 
-  const defects = list(evidence?.defects);
   const defectIds = new Set();
   for (const defect of defects) {
     const validDefect =
       typeof defect?.id === "string" &&
       defect.id.length > 0 &&
       !defectIds.has(defect.id) &&
+      isCandidateBound(defect, candidate?.sha) &&
       ["Sev-1", "Sev-2", "Sev-3", "Sev-4"].includes(defect?.severity) &&
       ["open", "closed"].includes(defect?.status);
     if (!validDefect) {
       addFailure(
         failures,
         `defect-${defect?.id ?? "unknown"}`,
-        "Every defect needs a unique ID, recognized severity, and open or closed status.",
+        "Every defect needs a unique ID, exact candidate SHA, recognized severity, and open or closed status.",
       );
     }
     if (typeof defect?.id === "string") defectIds.add(defect.id);
@@ -324,7 +458,7 @@ export function evaluateReleaseEvidence(evidence) {
   }
 
   for (const lifecycle of REQUIRED_LIFECYCLES) {
-    if (!hasPass(evidence?.lifecycles, lifecycle)) {
+    if (!hasPass(lifecycles, lifecycle, candidate?.sha)) {
       addFailure(
         failures,
         `lifecycle-${lifecycle}`,
@@ -334,7 +468,7 @@ export function evaluateReleaseEvidence(evidence) {
   }
 
   for (const product of REQUIRED_PRODUCTS) {
-    if (!hasPass(evidence?.products, product)) {
+    if (!hasPass(products, product, candidate?.sha)) {
       addFailure(
         failures,
         `product-${product}`,
@@ -343,19 +477,33 @@ export function evaluateReleaseEvidence(evidence) {
     }
   }
 
-  const refreshRuns = list(evidence?.refreshRuns);
   const tenConsecutiveRunsPass =
     refreshRuns.length >= 10 &&
     refreshRuns.slice(-10).every(
-      (run, index) =>
-        run?.sequence === refreshRuns.length - 9 + index &&
-        run?.candidateSha === candidate?.sha &&
-        run?.status === "pass" &&
-        run?.refreshPassed === true &&
-        run?.coldNavigationPassed === true &&
-        run?.backForwardPassed === true &&
-        list(run?.consoleErrors).length === 0 &&
-        list(run?.unexplainedFailedRequests).length === 0,
+      (run, index) => {
+        const consoleErrors = checkedList(
+          run?.consoleErrors,
+          failures,
+          `refresh-${run?.sequence ?? "unknown"}-console-errors`,
+          "Refresh-run console errors",
+        );
+        const failedRequests = checkedList(
+          run?.unexplainedFailedRequests,
+          failures,
+          `refresh-${run?.sequence ?? "unknown"}-failed-requests`,
+          "Refresh-run failed requests",
+        );
+        return (
+          run?.sequence === refreshRuns.length - 9 + index &&
+          isCandidateBound(run, candidate?.sha) &&
+          run?.status === "pass" &&
+          run?.refreshPassed === true &&
+          run?.coldNavigationPassed === true &&
+          run?.backForwardPassed === true &&
+          consoleErrors.length === 0 &&
+          failedRequests.length === 0
+        );
+      },
     );
   if (!tenConsecutiveRunsPass) {
     addFailure(
@@ -366,11 +514,20 @@ export function evaluateReleaseEvidence(evidence) {
   }
 
   for (const roleId of REQUIRED_ROLES) {
-    const role = list(evidence?.roles).find((entry) => entry?.id === roleId);
+    const role = roles.find((entry) => entry?.id === roleId);
+    const rolePlans = role
+      ? checkedList(
+          role.plans,
+          failures,
+          `role-${roleId}-plans`,
+          `${roleId} plans`,
+        )
+      : [];
     const roleChecksPass =
       role &&
+      isCandidateBound(role, candidate?.sha) &&
       ROLE_CHECKS.every((check) => role[check] === true) &&
-      ["Pro", "Starter"].every((plan) => list(role.plans).includes(plan));
+      ["Pro", "Starter"].every((plan) => rolePlans.includes(plan));
     if (!roleChecksPass) {
       addFailure(
         failures,
@@ -381,9 +538,10 @@ export function evaluateReleaseEvidence(evidence) {
   }
 
   for (const plan of ["Pro", "Starter"]) {
-    const planGate = list(evidence?.planGates).find((entry) => entry?.plan === plan);
+    const planGate = planGates.find((entry) => entry?.plan === plan);
     if (
       !planGate ||
+      !isCandidateBound(planGate, candidate?.sha) ||
       planGate.uiPassed !== true ||
       planGate.serverPassed !== true ||
       planGate.noPartialDataPassed !== true
@@ -397,9 +555,10 @@ export function evaluateReleaseEvidence(evidence) {
   }
 
   for (const viewportId of REQUIRED_VIEWPORTS) {
-    const viewport = list(evidence?.viewports).find((entry) => entry?.id === viewportId);
+    const viewport = viewports.find((entry) => entry?.id === viewportId);
     if (
       !viewport ||
+      !isCandidateBound(viewport, candidate?.sha) ||
       viewport.status !== "pass" ||
       viewport.noHorizontalOverflow !== true
     ) {
@@ -412,6 +571,7 @@ export function evaluateReleaseEvidence(evidence) {
   }
 
   if (
+    !isCandidateBound(evidence?.offline, candidate?.sha) ||
     evidence?.offline?.status !== "pass" ||
     evidence?.offline?.reconnectPassed !== true ||
     evidence?.offline?.noStaleProtectedDataPassed !== true
@@ -424,6 +584,7 @@ export function evaluateReleaseEvidence(evidence) {
   }
 
   if (
+    !isCandidateBound(evidence?.search, candidate?.sha) ||
     evidence?.search?.status !== "pass" ||
     evidence?.search?.caseCoveragePassed !== true ||
     evidence?.search?.productsCoveragePassed !== true
@@ -436,6 +597,7 @@ export function evaluateReleaseEvidence(evidence) {
   }
 
   if (
+    !isCandidateBound(evidence?.performance, candidate?.sha) ||
     evidence?.performance?.status !== "pass" ||
     evidence?.performance?.feedbackWithin100MsPassed !== true ||
     evidence?.performance?.routeBudgetPassed !== true ||
@@ -449,6 +611,7 @@ export function evaluateReleaseEvidence(evidence) {
   }
 
   if (
+    !isCandidateBound(evidence?.accessibility, candidate?.sha) ||
     evidence?.accessibility?.status !== "pass" ||
     evidence?.accessibility?.keyboardPassed !== true ||
     evidence?.accessibility?.touchTargetsPassed !== true ||
@@ -462,6 +625,7 @@ export function evaluateReleaseEvidence(evidence) {
   }
 
   if (
+    !isCandidateBound(evidence?.payment, candidate?.sha) ||
     evidence?.payment?.status !== "pass" ||
     evidence?.payment?.sandboxOnly !== true ||
     evidence?.payment?.noRealChargePassed !== true
@@ -476,8 +640,9 @@ export function evaluateReleaseEvidence(evidence) {
   const diagnostics = evidence?.diagnostics;
   if (
     !diagnostics ||
-    list(diagnostics.consoleErrors).length > 0 ||
-    list(diagnostics.unexplainedFailedRequests).length > 0 ||
+    !isCandidateBound(diagnostics, candidate?.sha) ||
+    diagnosticConsoleErrors.length > 0 ||
+    diagnosticFailedRequests.length > 0 ||
     diagnostics.networkObserved !== true
   ) {
     addFailure(
@@ -488,8 +653,8 @@ export function evaluateReleaseEvidence(evidence) {
   }
 
   const cleanup = evidence?.cleanup;
-  const cleanupRecords = list(cleanup?.records);
   const cleanupPassed =
+    isCandidateBound(cleanup, candidate?.sha) &&
     cleanup?.scopeConfirmed === true &&
     cleanupRecords.every(
       (record) =>
@@ -504,16 +669,41 @@ export function evaluateReleaseEvidence(evidence) {
     );
   }
 
-  if (list(evidence?.topRisks).some((risk) => risk?.releaseBlocking === true)) {
+  const riskIds = new Set();
+  for (const risk of topRisks) {
+    const validRisk =
+      typeof risk?.id === "string" &&
+      risk.id.length > 0 &&
+      !riskIds.has(risk.id) &&
+      typeof risk?.summary === "string" &&
+      risk.summary.length > 0 &&
+      typeof risk?.releaseBlocking === "boolean";
+    if (!validRisk) {
+      addFailure(
+        failures,
+        `risk-${risk?.id ?? "unknown"}`,
+        "Every risk needs a unique ID, summary, and explicit boolean releaseBlocking disposition.",
+      );
+    }
+    if (typeof risk?.id === "string") riskIds.add(risk.id);
+  }
+  if (topRisks.some((risk) => risk?.releaseBlocking === true)) {
     addFailure(failures, "blocking-risk", "No release-blocking risk may remain unmitigated.");
   }
-  if (list(evidence?.coverageGaps).length > 0) {
+  if (coverageGaps.length > 0) {
     addFailure(failures, "coverage-gaps", "All required release coverage gaps must be closed.");
   }
 
   const rawScore = scoreEvidence(evidence?.scores, failures);
+  if (rawScore !== 100) {
+    addFailure(
+      failures,
+      "score-completeness",
+      "Release readiness requires the complete 100-point evidence score.",
+    );
+  }
   const failedCoreLifecycle = REQUIRED_LIFECYCLES.some(
-    (lifecycle) => !hasPass(evidence?.lifecycles, lifecycle),
+    (lifecycle) => !hasPass(lifecycles, lifecycle, candidate?.sha),
   );
   let scoreCap = 100;
   if (openSev1.length > 0) scoreCap = Math.min(scoreCap, 30);
@@ -573,7 +763,7 @@ ${markdownList(defects, "No defects recorded.", (defect) => `**${defect.severity
 
 ## Top risks
 
-${markdownList(list(evidence?.topRisks), "No residual risks recorded.", (risk) => `**${risk.id}:** ${risk.summary} (${risk.releaseBlocking ? "blocking" : "mitigated/accepted"})`)}
+${markdownList(list(evidence?.topRisks), "No residual risks recorded.", (risk) => `**${risk.id}:** ${risk.summary} (${risk.releaseBlocking === true ? "blocking" : "mitigated/accepted"})`)}
 
 ## Prioritized fixes
 
@@ -628,6 +818,31 @@ function option(name) {
   return index >= 0 ? process.argv[index + 1] : undefined;
 }
 
+export async function initializeEvidenceTemplate(
+  templatePath,
+  runId,
+  candidateSha,
+  { overwrite = false } = {},
+) {
+  const resolvedTemplatePath = resolve(templatePath);
+  await mkdir(dirname(resolvedTemplatePath), { recursive: true });
+  try {
+    await writeFile(
+      resolvedTemplatePath,
+      `${JSON.stringify(createEvidenceTemplate(runId, candidateSha), null, 2)}\n`,
+      { encoding: "utf8", flag: overwrite ? "w" : "wx" },
+    );
+  } catch (error) {
+    if (error?.code === "EEXIST") {
+      throw new Error(
+        `Evidence already exists at ${resolvedTemplatePath}; use --overwrite only after preserving the completed audit.`,
+      );
+    }
+    throw error;
+  }
+  return resolvedTemplatePath;
+}
+
 async function main() {
   const templatePath = option("--template");
   if (templatePath) {
@@ -636,12 +851,11 @@ async function main() {
     if (!runId || !candidateSha) {
       throw new Error("Template creation requires --run-id and --candidate-sha.");
     }
-    const resolvedTemplatePath = resolve(templatePath);
-    await mkdir(dirname(resolvedTemplatePath), { recursive: true });
-    await writeFile(
-      resolvedTemplatePath,
-      `${JSON.stringify(createEvidenceTemplate(runId, candidateSha), null, 2)}\n`,
-      "utf8",
+    const resolvedTemplatePath = await initializeEvidenceTemplate(
+      templatePath,
+      runId,
+      candidateSha,
+      { overwrite: process.argv.includes("--overwrite") },
     );
     process.stdout.write(`Created fail-closed evidence template at ${resolvedTemplatePath}.\n`);
     return;

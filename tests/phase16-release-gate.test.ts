@@ -1,3 +1,6 @@
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -9,11 +12,14 @@ import {
   REQUIRED_VIEWPORTS,
   createEvidenceTemplate,
   evaluateReleaseEvidence,
+  initializeEvidenceTemplate,
   renderReleaseReport,
 } from "../scripts/release-validation/phase16-gate.mjs";
 
 function passingEvidence() {
   const sha = "a".repeat(40);
+  const completedAt = new Date(Date.now() - 60_000);
+  const startedAt = new Date(completedAt.getTime() - 60 * 60 * 1000);
   return {
     schemaVersion: 1,
     runId: "QA-20260823-P16",
@@ -32,8 +38,8 @@ function passingEvidence() {
     },
     execution: {
       candidateSha: sha,
-      startedAt: "2026-08-23T09:00:00.000Z",
-      completedAt: "2026-08-23T10:00:00.000Z",
+      startedAt: startedAt.toISOString(),
+      completedAt: completedAt.toISOString(),
       operator: "release-lead",
     },
     prerequisites: REQUIRED_PHASES.map((phase) => ({
@@ -46,6 +52,7 @@ function passingEvidence() {
     defects: [
       {
         id: "PFX-TEST",
+        candidateSha: sha,
         severity: "Sev-2",
         status: "closed",
         automatedRegressionPassed: true,
@@ -55,8 +62,16 @@ function passingEvidence() {
     scores: Object.fromEntries(
       Object.entries(CATEGORY_WEIGHTS).map(([category, maximum]) => [category, maximum]),
     ),
-    lifecycles: REQUIRED_LIFECYCLES.map((id) => ({ id, status: "pass" })),
-    products: REQUIRED_PRODUCTS.map((id) => ({ id, status: "pass" })),
+    lifecycles: REQUIRED_LIFECYCLES.map((id) => ({
+      id,
+      candidateSha: sha,
+      status: "pass",
+    })),
+    products: REQUIRED_PRODUCTS.map((id) => ({
+      id,
+      candidateSha: sha,
+      status: "pass",
+    })),
     refreshRuns: Array.from({ length: 10 }, (_, index) => ({
       sequence: index + 1,
       candidateSha: sha,
@@ -69,6 +84,7 @@ function passingEvidence() {
     })),
     roles: REQUIRED_ROLES.map((id) => ({
       id,
+      candidateSha: sha,
       plans: ["Pro", "Starter"],
       navigationPassed: true,
       allowedActionsPassed: true,
@@ -80,48 +96,57 @@ function passingEvidence() {
     })),
     planGates: ["Pro", "Starter"].map((plan) => ({
       plan,
+      candidateSha: sha,
       uiPassed: true,
       serverPassed: true,
       noPartialDataPassed: true,
     })),
     viewports: REQUIRED_VIEWPORTS.map((id) => ({
       id,
+      candidateSha: sha,
       status: "pass",
       noHorizontalOverflow: true,
     })),
     offline: {
+      candidateSha: sha,
       status: "pass",
       reconnectPassed: true,
       noStaleProtectedDataPassed: true,
     },
     search: {
+      candidateSha: sha,
       status: "pass",
       caseCoveragePassed: true,
       productsCoveragePassed: true,
     },
     performance: {
+      candidateSha: sha,
       status: "pass",
       feedbackWithin100MsPassed: true,
       routeBudgetPassed: true,
       noStaleMutableDataPassed: true,
     },
     accessibility: {
+      candidateSha: sha,
       status: "pass",
       keyboardPassed: true,
       touchTargetsPassed: true,
       dialogsPassed: true,
     },
     payment: {
+      candidateSha: sha,
       status: "pass",
       sandboxOnly: true,
       noRealChargePassed: true,
     },
     diagnostics: {
+      candidateSha: sha,
       networkObserved: true,
       consoleErrors: [] as string[],
       unexplainedFailedRequests: [] as string[],
     },
     cleanup: {
+      candidateSha: sha,
       scopeConfirmed: true,
       records: [
         { id: "QA-20260823-P16-WO", state: "archived" },
@@ -165,6 +190,170 @@ describe("Phase 16 release and rollback gate", () => {
       score: 100,
       failures: [],
     });
+  });
+
+  it("never marks incomplete scoring ready", () => {
+    const evidence = passingEvidence();
+    (evidence as unknown as { scores: Record<string, number> }).scores = Object.fromEntries(
+      Object.keys(CATEGORY_WEIGHTS).map((category) => [category, 0]),
+    );
+
+    const result = evaluateReleaseEvidence(evidence);
+    expect(result).toMatchObject({ ready: false, score: 0 });
+    expect(result.failures.map((failure) => failure.id)).toContain(
+      "score-completeness",
+    );
+  });
+
+  it("binds every observed pass to the exact candidate", () => {
+    const evidence = passingEvidence();
+    const staleSha = "c".repeat(40);
+    evidence.lifecycles[0].candidateSha = staleSha;
+    evidence.products[0].candidateSha = staleSha;
+    evidence.roles[0].candidateSha = staleSha;
+    evidence.planGates[0].candidateSha = staleSha;
+    evidence.viewports[0].candidateSha = staleSha;
+    evidence.offline.candidateSha = staleSha;
+    evidence.diagnostics.candidateSha = staleSha;
+
+    expect(evaluateReleaseEvidence(evidence).failures.map((failure) => failure.id)).toEqual(
+      expect.arrayContaining([
+        `lifecycle-${REQUIRED_LIFECYCLES[0]}`,
+        `product-${REQUIRED_PRODUCTS[0]}`,
+        `role-${REQUIRED_ROLES[0]}`,
+        "plan-pro",
+        `viewport-${REQUIRED_VIEWPORTS[0]}`,
+        "offline",
+        "diagnostics",
+      ]),
+    );
+  });
+
+  it("requires a distinct rollback target", () => {
+    const evidence = passingEvidence();
+    evidence.candidate.rollback.previousStableSha = evidence.candidate.sha;
+
+    expect(evaluateReleaseEvidence(evidence).failures.map((failure) => failure.id)).toContain(
+      "rollback-readiness",
+    );
+  });
+
+  it("requires a usable unique PR for every prerequisite phase", () => {
+    const evidence = passingEvidence();
+    (evidence.prerequisites[0] as { pr: number | null }).pr = null;
+    evidence.prerequisites[1].pr = evidence.prerequisites[2].pr;
+
+    const ids = evaluateReleaseEvidence(evidence).failures.map((failure) => failure.id);
+    expect(ids).toEqual(expect.arrayContaining(["phase-6", "phase-8"]));
+  });
+
+  it("fails closed when evidence collections have the wrong JSON shape", () => {
+    const evidence = passingEvidence();
+    (evidence as unknown as { defects: unknown }).defects = {
+      id: "PFX-HIDDEN-SEV1",
+      severity: "Sev-1",
+      status: "open",
+    };
+    (
+      evidence.diagnostics as unknown as { consoleErrors: unknown }
+    ).consoleErrors = "Uncaught Error";
+    (evidence as unknown as { coverageGaps: unknown }).coverageGaps = {
+      summary: "Untested product",
+    };
+
+    expect(evaluateReleaseEvidence(evidence).failures.map((failure) => failure.id)).toEqual(
+      expect.arrayContaining([
+        "collection-defects",
+        "collection-diagnostics-console-errors",
+        "collection-coverage-gaps",
+      ]),
+    );
+  });
+
+  it("rejects duplicate or contradictory observed results", () => {
+    const evidence = passingEvidence();
+    evidence.lifecycles.push({
+      ...evidence.lifecycles[0],
+      status: "fail",
+    });
+    evidence.roles.push({
+      ...evidence.roles[0],
+      navigationPassed: false,
+    });
+
+    expect(evaluateReleaseEvidence(evidence).failures.map((failure) => failure.id)).toEqual(
+      expect.arrayContaining(["duplicate-lifecycles", "duplicate-roles"]),
+    );
+  });
+
+  it("requires an explicit boolean disposition for every risk", () => {
+    const evidence = passingEvidence();
+    delete (
+      evidence.topRisks[0] as { releaseBlocking?: boolean }
+    ).releaseBlocking;
+
+    expect(evaluateReleaseEvidence(evidence).failures.map((failure) => failure.id)).toContain(
+      "risk-RISK-1",
+    );
+  });
+
+  it("rejects zero-duration, future, and stale execution windows", () => {
+    const zeroDuration = passingEvidence();
+    zeroDuration.execution.completedAt = zeroDuration.execution.startedAt;
+    expect(
+      evaluateReleaseEvidence(zeroDuration).failures.map((failure) => failure.id),
+    ).toContain("execution-identity");
+
+    const future = passingEvidence();
+    future.execution.startedAt = new Date(Date.now() + 60_000).toISOString();
+    future.execution.completedAt = new Date(Date.now() + 120_000).toISOString();
+    expect(evaluateReleaseEvidence(future).failures.map((failure) => failure.id)).toContain(
+      "execution-identity",
+    );
+
+    const stale = passingEvidence();
+    stale.execution.startedAt = new Date(
+      Date.now() - 26 * 60 * 60 * 1000,
+    ).toISOString();
+    stale.execution.completedAt = new Date(
+      Date.now() - 25 * 60 * 60 * 1000,
+    ).toISOString();
+    expect(evaluateReleaseEvidence(stale).failures.map((failure) => failure.id)).toContain(
+      "execution-identity",
+    );
+  });
+
+  it("does not overwrite existing evidence unless explicitly requested", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "profixiq-phase16-"));
+    const evidencePath = join(directory, "evidence.json");
+    try {
+      await initializeEvidenceTemplate(
+        evidencePath,
+        "QA-20260823-P16",
+        "a".repeat(40),
+      );
+      await expect(
+        initializeEvidenceTemplate(
+          evidencePath,
+          "QA-20260823-P16-RERUN",
+          "b".repeat(40),
+        ),
+      ).rejects.toThrow("Evidence already exists");
+
+      const preserved = JSON.parse(await readFile(evidencePath, "utf8"));
+      expect(preserved.runId).toBe("QA-20260823-P16");
+
+      await initializeEvidenceTemplate(
+        evidencePath,
+        "QA-20260823-P16-RERUN",
+        "b".repeat(40),
+        { overwrite: true },
+      );
+      const replaced = JSON.parse(await readFile(evidencePath, "utf8"));
+      expect(replaced.runId).toBe("QA-20260823-P16-RERUN");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 
   it("caps an open Sev-1 at 30 and an open Sev-2 at 65", () => {

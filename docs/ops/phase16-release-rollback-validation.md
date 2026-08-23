@@ -25,15 +25,17 @@ pnpm release:validate:init -- --template outputs/phase16-evidence.json --run-id 
 ```
 
 The generated evidence file intentionally fails every untested gate. Record
-observed results; do not replace missing evidence with inferred passes.
+observed results; do not replace missing evidence with inferred passes. The
+initializer refuses to replace an existing file. If a deliberate restart is
+required, preserve the completed audit first and pass `--overwrite` explicitly.
 
 ## Required evidence
 
 The gate requires all of the following on the same candidate SHA:
 
-- A named operator and a bounded evidence window tied to the exact deployed
-  candidate SHA.
-- Phases 6–15 merged and deployed independently.
+- A named operator and a positive-duration evidence window completed within
+  the last 24 hours and tied to the exact deployed candidate SHA.
+- Phases 6–15 merged and deployed independently, each with a unique PR number.
 - Every Sev-2 closed with both automated and live regression passes; zero open
   Sev-1 or Sev-2 defects.
 - Connected repair, Field variation, and offline/reconnect lifecycle passes.
@@ -62,11 +64,16 @@ The gate requires all of the following on the same candidate SHA:
   confirmation.
 - No unmitigated release-blocking risk and no required coverage gap.
 
+Every lifecycle, product, role, plan, viewport, offline, search, performance,
+accessibility, payment, diagnostics, cleanup, and defect result carries the
+candidate SHA. Collections must remain JSON arrays and their identifiers must
+be unique; malformed or contradictory evidence fails closed.
+
 The weighted score is 30 core workflows, 25 authorization/security, 20
 cross-app integrity, 10 reliability/diagnostics, 10 responsive/offline/
 accessibility, and 5 AI Copilot. An open Sev-1 caps the score at 30, an open
-Sev-2 at 65, and a failed core lifecycle at 70. Passing the numerical score
-does not override a failed mandatory gate.
+Sev-2 at 65, and a failed core lifecycle at 70. Readiness requires the complete
+100-point score; a numerical score never overrides a failed mandatory gate.
 
 ## Generate the executive report
 
