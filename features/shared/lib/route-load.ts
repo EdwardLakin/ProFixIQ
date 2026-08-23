@@ -82,11 +82,13 @@ export function asRouteLoadFailure(
 export function routeLoadFailureFromStatus(
   status: number,
   message: string,
+  requestId?: string,
 ): RouteLoadFailure {
   if (status === 401) {
     return new RouteLoadFailure({
       kind: "unauthenticated",
       message,
+      requestId,
       status,
       retryable: false,
     });
@@ -95,6 +97,7 @@ export function routeLoadFailureFromStatus(
     return new RouteLoadFailure({
       kind: "forbidden",
       message,
+      requestId,
       status,
       retryable: false,
     });
@@ -103,6 +106,7 @@ export function routeLoadFailureFromStatus(
     return new RouteLoadFailure({
       kind: "not-found",
       message,
+      requestId,
       status,
       retryable: false,
     });
@@ -110,6 +114,7 @@ export function routeLoadFailureFromStatus(
   return new RouteLoadFailure({
     kind: status >= 500 ? "network" : "error",
     message,
+    requestId,
     status,
   });
 }

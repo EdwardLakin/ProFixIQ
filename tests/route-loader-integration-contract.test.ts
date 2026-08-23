@@ -109,7 +109,8 @@ describe("failing route loader integration", () => {
     const source = read(
       "features/dashboard/app/dashboard/admin/ShopsClient.tsx",
     );
-    expect(source).toContain('value={rows ? summary.total : "—"}');
+    expect(source).toContain('value={directory ? summary.total : "—"}');
+    expect(source).not.toContain("value={summary.total ?? 0}");
     expect(source).toContain("Shop directory unavailable");
   });
 });

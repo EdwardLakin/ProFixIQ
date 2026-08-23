@@ -2,14 +2,18 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
-import type { Database } from "@shared/types/types/supabase";
 import RouteLoadPanel from "@/features/shared/components/ui/RouteLoadPanel";
 import {
   asRouteLoadFailure,
+  routeLoadFailureFromStatus,
   runBoundedRouteLoad,
   type RouteLoadFailure,
 } from "@/features/shared/lib/route-load";
+import {
+  filterOwnerShopDirectoryRows,
+  type OwnerShopDirectoryRow,
+  type OwnerShopHealthFilter,
+} from "@/features/dashboard/lib/ownerShopDirectory";
 import {
   AdminBadge,
   AdminEmptyState,
@@ -23,86 +27,102 @@ import {
   AdminToolbar,
 } from "@/features/dashboard/app/dashboard/admin/AdminSurface";
 
-type ShopRow = Pick<
-  Database["public"]["Tables"]["shops"]["Row"],
-  | "id"
-  | "name"
-  | "city"
-  | "province"
-  | "email"
-  | "phone_number"
-  | "timezone"
-  | "plan"
-  | "owner_id"
-  | "created_at"
->;
+type ShopDirectoryResponse = {
+  shops: OwnerShopDirectoryRow[];
+  secondary: {
+    profileHealth: "available" | "unavailable";
+    ownerSummary: "available" | "unavailable";
+  };
+  warnings: string[];
+  requestId: string;
+  loadedAt: string;
+};
 
-function healthLabel(shop: ShopRow): "Complete" | "Needs profile" {
-  return shop.email && shop.phone_number && shop.timezone
-    ? "Complete"
-    : "Needs profile";
+function isShopDirectoryResponse(
+  value: unknown,
+): value is ShopDirectoryResponse {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Partial<ShopDirectoryResponse>;
+  return (
+    Array.isArray(record.shops) &&
+    Array.isArray(record.warnings) &&
+    typeof record.requestId === "string" &&
+    typeof record.loadedAt === "string" &&
+    Boolean(record.secondary)
+  );
 }
 
 export default function AdminShopsClient() {
-  const supabase = useMemo(() => createBrowserSupabase(), []);
-
-  const [rows, setRows] = useState<ShopRow[] | null>(null);
+  const [directory, setDirectory] = useState<ShopDirectoryResponse | null>(
+    null,
+  );
   const [loadFailure, setLoadFailure] = useState<RouteLoadFailure | null>(null);
   const [search, setSearch] = useState("");
-  const [healthFilter, setHealthFilter] = useState<
-    "all" | "Complete" | "Needs profile"
-  >("all");
+  const [healthFilter, setHealthFilter] =
+    useState<OwnerShopHealthFilter>("all");
 
   const load = useCallback(async () => {
     setLoadFailure(null);
     try {
-      const nextRows = await runBoundedRouteLoad(
+      const nextDirectory = await runBoundedRouteLoad(
         { route: "/dashboard/admin/shops", operation: "load shop directory" },
-        async ({ signal }) => {
-          const { data, error } = await supabase
-            .from("shops")
-            .select(
-              "id, name, city, province, email, phone_number, timezone, plan, owner_id, created_at",
-            )
-            .order("name", { ascending: true })
-            .abortSignal(signal)
-            .limit(200);
-          if (error) throw error;
-          return (data as ShopRow[]) ?? [];
+        async ({ signal, recordStatus }) => {
+          const response = await fetch("/api/admin/shops", {
+            cache: "no-store",
+            credentials: "same-origin",
+            signal,
+          });
+          recordStatus(response.status);
+          const serverRequestId =
+            response.headers.get("x-request-id")?.trim() || undefined;
+          const body: unknown = await response.json().catch(() => null);
+
+          if (!response.ok) {
+            const message =
+              body &&
+              typeof body === "object" &&
+              "error" in body &&
+              typeof body.error === "string"
+                ? body.error
+                : "The shop directory could not be loaded.";
+            throw routeLoadFailureFromStatus(
+              response.status,
+              message,
+              serverRequestId,
+            );
+          }
+          if (!isShopDirectoryResponse(body)) {
+            throw new Error("Invalid shop directory response");
+          }
+          return body;
         },
       );
-      setRows(nextRows);
+      setDirectory(nextDirectory);
     } catch (error) {
       setLoadFailure(
         asRouteLoadFailure(error, "The shop directory could not be loaded."),
       );
     }
-  }, [supabase]);
+  }, []);
 
   useEffect(() => {
     void load();
   }, [load]);
 
   const filteredRows = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    return (rows ?? []).filter((row) => {
-      const matchesHealth =
-        healthFilter === "all" ? true : healthLabel(row) === healthFilter;
-      const matchesSearch =
-        !query ||
-        row.name?.toLowerCase().includes(query) ||
-        row.city?.toLowerCase().includes(query) ||
-        row.email?.toLowerCase().includes(query);
-      return Boolean(matchesHealth && matchesSearch);
-    });
-  }, [healthFilter, rows, search]);
+    return filterOwnerShopDirectoryRows(
+      directory?.shops ?? [],
+      search,
+      healthFilter,
+    );
+  }, [directory?.shops, healthFilter, search]);
 
   const summary = useMemo(() => {
-    const allRows = rows ?? [];
+    const allRows = directory?.shops ?? [];
     const needsProfile = allRows.filter(
-      (row) => healthLabel(row) === "Needs profile",
+      (row) => row.health === "Needs profile",
     ).length;
-    const withOwner = allRows.filter((row) => !!row.owner_id).length;
+    const withOwner = allRows.filter((row) => !!row.ownerId).length;
 
     return {
       total: allRows.length,
@@ -110,7 +130,9 @@ export default function AdminShopsClient() {
       withOwner,
       visible: filteredRows.length,
     };
-  }, [filteredRows.length, rows]);
+  }, [directory?.shops, filteredRows.length]);
+
+  const hasSecondaryWarning = Boolean(directory?.warnings.length);
 
   return (
     <AdminPageShell>
@@ -126,19 +148,28 @@ export default function AdminShopsClient() {
           description="Highlights for fast oversight triage."
         />
         <AdminStatGrid>
-          <AdminStatCard label="Shops" value={rows ? summary.total : "—"} />
+          <AdminStatCard
+            label="Shops"
+            value={directory ? summary.total : "—"}
+          />
           <AdminStatCard
             label="Needs profile follow-up"
-            value={rows ? summary.needsProfile : "—"}
-            hint="Missing email, phone, or timezone"
+            value={
+              !directory
+                ? "—"
+                : directory.secondary.profileHealth === "available"
+                  ? summary.needsProfile
+                  : "Unavailable"
+            }
+            hint="Missing profile email, phone, or shop timezone"
           />
           <AdminStatCard
             label="Has owner assigned"
-            value={rows ? summary.withOwner : "—"}
+            value={directory ? summary.withOwner : "—"}
           />
           <AdminStatCard
             label="Visible rows"
-            value={rows ? summary.visible : "—"}
+            value={directory ? summary.visible : "—"}
           />
         </AdminStatGrid>
       </AdminPanel>
@@ -162,17 +193,26 @@ export default function AdminShopsClient() {
               className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none focus:border-orange-400/70"
               value={healthFilter}
               onChange={(event) =>
-                setHealthFilter(
-                  event.target.value as "all" | "Complete" | "Needs profile",
-                )
+                setHealthFilter(event.target.value as OwnerShopHealthFilter)
               }
             >
               <option value="all">All shops</option>
               <option value="Complete">Complete profile</option>
               <option value="Needs profile">Needs profile</option>
+              <option value="Unavailable">Health unavailable</option>
             </select>
           </AdminField>
         </AdminToolbar>
+
+        {hasSecondaryWarning ? (
+          <div className="mx-4 mb-4 rounded-lg border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+            <p>{directory?.warnings.join(" ")}</p>
+            <p className="mt-1 text-[color:var(--theme-text-secondary)]">
+              The directory remains available. Request reference:{" "}
+              {directory?.requestId}
+            </p>
+          </div>
+        ) : null}
 
         {loadFailure ? (
           <div className="px-4 pb-4">
@@ -199,15 +239,20 @@ export default function AdminShopsClient() {
           }
         />
 
-        {!rows && !loadFailure ? (
+        {!directory && !loadFailure ? (
           <AdminEmptyState
             title="Loading shops"
             body="Reading tenant shop records."
           />
-        ) : !rows ? null : filteredRows.length === 0 ? (
+        ) : !directory ? null : directory.shops.length === 0 ? (
           <AdminEmptyState
-            title="No shops found"
-            body="Adjust filters or confirm shop records are available."
+            title="No shops are configured"
+            body="The tenant-scoped directory returned no shop records. Retry or contact support with the request reference below."
+          />
+        ) : filteredRows.length === 0 ? (
+          <AdminEmptyState
+            title="No shops match these filters"
+            body="Clear the search or health filter to return to the full directory."
           />
         ) : (
           <div className="overflow-x-auto">
@@ -224,33 +269,42 @@ export default function AdminShopsClient() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[color:var(--theme-border-soft)]">
-                {filteredRows.map((s) => (
+                {filteredRows.map((shop) => (
                   <tr
-                    key={s.id}
+                    key={shop.id}
                     className="text-[color:var(--theme-text-primary)]"
                   >
                     <td className="px-4 py-2.5 font-medium text-[color:var(--theme-text-primary)]">
-                      {s.name ?? s.id}
+                      {shop.name}
                     </td>
                     <td className="px-4 py-2.5">
-                      {[s.city, s.province].filter(Boolean).join(", ") || "—"}
+                      {[shop.city, shop.province].filter(Boolean).join(", ") ||
+                        "—"}
                     </td>
                     <td className="px-4 py-2.5 text-xs text-[color:var(--theme-text-secondary)]">
-                      <p>{s.email ?? "No email"}</p>
-                      <p>{s.phone_number ?? "No phone"}</p>
+                      <p>{shop.email ?? "No email"}</p>
+                      <p>{shop.phone ?? "No phone"}</p>
                     </td>
-                    <td className="px-4 py-2.5">{s.plan ?? "—"}</td>
+                    <td className="px-4 py-2.5">
+                      {shop.plan.source === "restricted"
+                        ? "Owner only"
+                        : shop.plan.label}
+                    </td>
                     <td className="px-4 py-2.5">
                       <AdminBadge>
-                        {s.owner_id ? "Assigned" : "Missing owner"}
+                        {!shop.ownerId
+                          ? "Missing owner"
+                          : !shop.ownerSummaryAvailable
+                            ? "Assigned · summary unavailable"
+                            : (shop.ownerName ?? shop.ownerEmail ?? "Assigned")}
                       </AdminBadge>
                     </td>
                     <td className="px-4 py-2.5">
-                      <AdminBadge>{healthLabel(s)}</AdminBadge>
+                      <AdminBadge>{shop.health}</AdminBadge>
                     </td>
                     <td className="whitespace-nowrap px-4 py-2.5 text-[color:var(--theme-text-secondary)]">
-                      {s.created_at
-                        ? new Date(s.created_at).toLocaleDateString()
+                      {shop.createdAt
+                        ? new Date(shop.createdAt).toLocaleDateString()
                         : "—"}
                     </td>
                   </tr>
@@ -259,6 +313,16 @@ export default function AdminShopsClient() {
             </table>
           </div>
         )}
+        {directory ? (
+          <div className="border-t border-[color:var(--theme-border-soft)] px-4 py-2 text-[11px] text-[color:var(--theme-text-muted)]">
+            Last updated {new Date(directory.loadedAt).toLocaleString()} ·
+            Request {directory.requestId}
+          </div>
+        ) : loadFailure?.requestId ? (
+          <div className="border-t border-[color:var(--theme-border-soft)] px-4 py-2 text-[11px] text-[color:var(--theme-text-muted)]">
+            Request reference: {loadFailure.requestId}
+          </div>
+        ) : null}
       </AdminPanel>
     </AdminPageShell>
   );
