@@ -4,7 +4,10 @@ import { NextResponse } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 
 import type { Database } from "@shared/types/types/supabase";
-import type { ToolContext } from "@/features/agent/lib/toolTypes";
+import {
+  createToolContext,
+  type ToolContext,
+} from "@/features/agent/lib/toolTypes";
 import { runFleetPlanner } from "@/features/agent/lib/plannerFleet";
 
 type DB = Database;
@@ -42,9 +45,9 @@ export async function POST(req: NextRequest) {
     // Resolve shopId for ToolContext
     const { data: profile, error: profileErr } = await supabase
       .from("profiles")
-      .select("id, shop_id")
+      .select("id, shop_id, role")
       .eq("id", user.id)
-      .maybeSingle<Pick<ProfileRow, "id" | "shop_id">>();
+      .maybeSingle<Pick<ProfileRow, "id" | "shop_id" | "role">>();
 
     if (profileErr || !profile?.shop_id) {
       return NextResponse.json(
@@ -53,10 +56,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const ctx: ToolContext = {
+    const ctx: ToolContext = createToolContext({
       shopId: profile.shop_id,
       userId: user.id,
-    };
+      profileId: profile.id,
+      role: profile.role,
+    });
 
     const plannerContext: Record<string, unknown> = {
       plannerKind: "fleet",
@@ -75,7 +80,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true, events });
   } catch (err) {
-    // eslint-disable-next-line no-console
     console.error("[api/agent/planner/fleet] error", err);
     return NextResponse.json(
       { error: "Failed to run fleet planner." },

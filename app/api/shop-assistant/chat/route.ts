@@ -33,6 +33,10 @@ import type {
   ShopAssistantTurn,
 } from "@/features/shop-assistant/types";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
+
 function uniqueLines(values: string[]): string[] {
   const seen = new Set<string>();
   const output: string[] = [];
@@ -49,7 +53,10 @@ function uniqueLines(values: string[]): string[] {
 }
 
 function answerContent(answer: AssistantAnswer): string {
-  return uniqueLines([answer.summary, ...answer.bullets]).join("\n");
+  const freshness = answer.grounding
+    ? `Data current as of ${answer.grounding.dataCurrentAsOf} • ${answer.grounding.recordCount} record(s).`
+    : "";
+  return uniqueLines([answer.summary, ...answer.bullets, freshness]).join("\n");
 }
 
 function conversationMessages(

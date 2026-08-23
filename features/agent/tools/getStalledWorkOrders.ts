@@ -1,17 +1,27 @@
 import { getServerSupabase } from "../server/supabase";
 import { ageHours, isWorkOrderFlowStalled } from "../server/flowHealth";
-import type { ToolContext } from "../lib/toolTypes";
+import { applyToolAbortSignal, type ToolContext } from "../lib/toolTypes";
 
 export async function runGetStalledWorkOrders(_: object, ctx: ToolContext) {
   const supabase = getServerSupabase();
 
-  const { data, error } = await supabase
-    .from("work_orders")
-    .select("id, custom_id, status, created_at, updated_at")
-    .eq("shop_id", ctx.shopId)
-    .in("status", ["awaiting", "awaiting_approval", "queued", "on_hold", "planned", "in_progress"])
-    .order("updated_at", { ascending: true })
-    .limit(50);
+  const { data, error } = await applyToolAbortSignal(
+    supabase
+      .from("work_orders")
+      .select("id, custom_id, status, created_at, updated_at")
+      .eq("shop_id", ctx.shopId)
+      .in("status", [
+        "awaiting",
+        "awaiting_approval",
+        "queued",
+        "on_hold",
+        "planned",
+        "in_progress",
+      ])
+      .order("updated_at", { ascending: true })
+      .limit(50),
+    ctx,
+  );
 
   if (error) throw new Error(error.message);
 
@@ -32,7 +42,8 @@ export async function runGetStalledWorkOrders(_: object, ctx: ToolContext) {
   if (stale.length === 0) {
     return {
       ok: true,
-      summary: "I did not find any stale work orders using the current thresholds.",
+      summary:
+        "I did not find any stale work orders using the current thresholds.",
       citations: [],
       notifications: [],
     };
@@ -44,11 +55,17 @@ export async function runGetStalledWorkOrders(_: object, ctx: ToolContext) {
     citations: stale.map((row) => ({
       type: "work_order",
       id: row.id,
-      href: row.status === "awaiting_approval" ? `/quote-review/${row.id}` : `/work-orders/${row.id}`,
+      href:
+        row.status === "awaiting_approval"
+          ? `/quote-review/${row.id}`
+          : `/work-orders/${row.id}`,
       label: `${row.custom_id ? `WO #${row.custom_id}` : `WO ${row.id.slice(0, 8)}`} • ${row.status ?? "unknown"}`,
     })),
     notifications: stale.map((row) => ({
-      level: row.status === "awaiting_approval" ? "warning" as const : "urgent" as const,
+      level:
+        row.status === "awaiting_approval"
+          ? ("warning" as const)
+          : ("urgent" as const),
       code:
         row.status === "awaiting_approval"
           ? "approval_waiting"
@@ -57,9 +74,11 @@ export async function runGetStalledWorkOrders(_: object, ctx: ToolContext) {
         row.status === "awaiting_approval"
           ? "Approval waiting too long"
           : "Work order stale",
-      message:
-        `${row.custom_id ? `WO #${row.custom_id}` : "Work order"} has been ${row.status ?? "active"} since ${row.updated_at ?? "unknown time"}.`,
-      href: row.status === "awaiting_approval" ? `/quote-review/${row.id}` : `/work-orders/${row.id}`,
+      message: `${row.custom_id ? `WO #${row.custom_id}` : "Work order"} has been ${row.status ?? "active"} since ${row.updated_at ?? "unknown time"}.`,
+      href:
+        row.status === "awaiting_approval"
+          ? `/quote-review/${row.id}`
+          : `/work-orders/${row.id}`,
       entityType: "work_order",
       entityId: row.id,
     })),

@@ -1,4 +1,9 @@
-import type { ToolContext } from "../../lib/toolTypes";
+import {
+  createToolContext,
+  withAiOperationalTimeout,
+  type ToolContext,
+} from "../../lib/toolTypes";
+import { groundAssistantAnswer } from "../../lib/operationalGrounding";
 import { runGetBookings } from "../../tools/getBookings";
 import { runGetCustomerVisitHistory } from "../../tools/getCustomerVisitHistory";
 import { runGetShopCurrentStatus } from "../../tools/getShopCurrentStatus";
@@ -6,7 +11,7 @@ import { runGetStalledWorkOrders } from "../../tools/getStalledWorkOrders";
 import { runGetTechCurrentWork } from "../../tools/getTechCurrentWork";
 import { runGetVehicleHistory } from "../../tools/getVehicleHistory";
 import { runGetWorkOrderStatusSummary } from "../../tools/getWorkOrderStatusSummary";
-import { toolListPendingApprovals } from "../../tools/listPendingApprovals";
+import { runListPendingApprovals } from "../../tools/listPendingApprovals";
 import { getServerSupabase } from "../../server/supabase";
 import {
   buildInspectionTemplateEfficiencyRecommendations,
@@ -509,16 +514,20 @@ async function answerDiagnosticConversation(args: {
   question: string;
   request: AssistantAskRequest;
   resolvedContext: AssistantResolvedContext;
+  signal: AbortSignal;
 }): Promise<AssistantAnswer> {
   if (!isOpenAIConfigured()) {
     return fallbackDiagnosticConversationAnswer(args);
   }
 
-  const completion = await getOpenAIClient().chat.completions.create({
-    model: getOpenAIModelForPurpose("reasoning"),
-    messages: buildDiagnosticMessages(args),
-    ...openAITemperatureParam(getOpenAIModelForPurpose("reasoning"), 0.2),
-  });
+  const completion = await getOpenAIClient().chat.completions.create(
+    {
+      model: getOpenAIModelForPurpose("reasoning"),
+      messages: buildDiagnosticMessages(args),
+      ...openAITemperatureParam(getOpenAIModelForPurpose("reasoning"), 0.2),
+    },
+    { signal: args.signal },
+  );
 
   const content = completion.choices[0]?.message?.content?.trim();
   if (!content) return fallbackDiagnosticConversationAnswer(args);
@@ -1409,13 +1418,18 @@ async function answerAuthoringDomain(args: {
   });
 }
 
-export async function answerAssistant({
+async function answerAssistantInternal({
   shopId,
   userId,
   profileId,
   role,
+  requestedAt,
+  signal,
   request: rawRequest,
-}: AskParams): Promise<AssistantAnswer> {
+}: AskParams & {
+  requestedAt: string;
+  signal: AbortSignal;
+}): Promise<AssistantAnswer> {
   const supabase = getServerSupabase();
   const actor = getActorCapabilities({ role });
   const question = normalizeQuestion(rawRequest.question);
@@ -1479,10 +1493,14 @@ export async function answerAssistant({
     }
   }
 
-  const ctx: ToolContext = {
+  const ctx: ToolContext = createToolContext({
     shopId,
     userId,
-  };
+    profileId,
+    role: actor.canonicalRole,
+    requestedAt,
+    signal,
+  });
 
   const nameCandidate = extractNameLikeValue(question);
   const plateOrVin = extractPlateOrVin(question);
@@ -1501,7 +1519,7 @@ export async function answerAssistant({
         "pending approval records",
       );
     }
-    const result = await toolListPendingApprovals.run({ limit: 20 }, ctx);
+    const result = await runListPendingApprovals({ limit: 20 }, ctx);
 
     if (result.items.length === 0) {
       return buildAnswer({
@@ -2079,7 +2097,12 @@ export async function answerAssistant({
         "technician diagnostic assistance",
       );
     }
-    return answerDiagnosticConversation({ question, request, resolvedContext });
+    return answerDiagnosticConversation({
+      question,
+      request,
+      resolvedContext,
+      signal,
+    });
   }
 
   return buildAnswer({
@@ -2106,5 +2129,20 @@ export async function answerAssistant({
       },
     ],
     resolvedContext,
+  });
+}
+
+export async function answerAssistant(
+  params: AskParams,
+): Promise<AssistantAnswer> {
+  const requestedAt = new Date().toISOString();
+  const answer = await withAiOperationalTimeout((signal) =>
+    answerAssistantInternal({ ...params, requestedAt, signal }),
+  );
+  return groundAssistantAnswer({
+    answer,
+    shopId: params.shopId,
+    role: getActorCapabilities({ role: params.role }).canonicalRole,
+    requestedAt,
   });
 }

@@ -13,8 +13,9 @@ import { postStoryEventToShopReel } from "@/features/integrations/shopreel/serve
 
 import {
   ListPendingApprovalsOut,
-  toolListPendingApprovals,
+  runListPendingApprovals,
 } from "@/features/agent/tools/listPendingApprovals";
+import { createToolContext } from "@/features/agent/lib/toolTypes";
 import {
   ageHours,
   isWorkOrderFlowStalled,
@@ -361,10 +362,15 @@ export const listPendingApprovalsTool = defineShopAssistantTool({
   }),
   outputSchema: PendingApprovalsSchema,
   async execute(input, context) {
-    const result = await toolListPendingApprovals.run(input, {
-      shopId: context.actor.shopId,
-      userId: context.actor.userId,
-    });
+    const result = await runListPendingApprovals(
+      input,
+      createToolContext({
+        shopId: context.actor.shopId,
+        userId: context.actor.userId,
+        profileId: context.actor.profileId,
+        role: context.actor.canonicalRole,
+      }),
+    );
     return {
       ok: true as const,
       ...result,

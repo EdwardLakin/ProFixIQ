@@ -1,6 +1,6 @@
 // features/agent/server/getRoleDailySummary.ts
 
-import type { ToolContext } from "../lib/toolTypes";
+import { createToolContext, type ToolContext } from "../lib/toolTypes";
 import { canonicalizeRole } from "@/features/shared/lib/rbac";
 import { syncAssistantNotifications } from "./syncAssistantNotifications";
 import { runGetBookings } from "../tools/getBookings";
@@ -144,7 +144,11 @@ function extractWorkOrderLabel(value: {
 function topUrgentAlerts(
   notifications: DailySummaryNotification[],
   limit: number,
-): Array<{ title: string; hours: number | null; workOrderLabel: string | null }> {
+): Array<{
+  title: string;
+  hours: number | null;
+  workOrderLabel: string | null;
+}> {
   return notifications
     .map((item) => ({
       title: item.title,
@@ -185,18 +189,24 @@ function buildLoadSignalActionItems(
   const items: string[] = [];
 
   if ((counts.shop_overloaded ?? 0) > 0 || (counts.tech_overloaded ?? 0) > 0) {
-    items.push("Utilization is running hot — rebalance queued work to available technicians.");
+    items.push(
+      "Utilization is running hot — rebalance queued work to available technicians.",
+    );
   }
 
   if ((counts.tech_underutilized_capacity ?? 0) > 0) {
-    items.push("Idle technician capacity detected — pull ready jobs forward and reassign now.");
+    items.push(
+      "Idle technician capacity detected — pull ready jobs forward and reassign now.",
+    );
   }
 
   if (
     (counts.active_job_running_too_long ?? 0) > 0 ||
     (counts.shop_throughput_below_capacity ?? 0) > 0
   ) {
-    items.push("Throughput drag detected — clear blockers on long-running jobs and tighten handoffs.");
+    items.push(
+      "Throughput drag detected — clear blockers on long-running jobs and tighten handoffs.",
+    );
   }
 
   return dedupeStrings(items, 2);
@@ -224,10 +234,14 @@ function buildOwnerSummary(params: {
     breakdown.push(`${counts.work_order_waiting_too_long} queued too long`);
   }
   if ((counts.parts_waiting_too_long ?? 0) > 0) {
-    breakdown.push(`${counts.parts_waiting_too_long} waiting on parts too long`);
+    breakdown.push(
+      `${counts.parts_waiting_too_long} waiting on parts too long`,
+    );
   }
   if ((counts.invoice_unsent_too_long ?? 0) > 0) {
-    breakdown.push(`${counts.invoice_unsent_too_long} invoices unsent too long`);
+    breakdown.push(
+      `${counts.invoice_unsent_too_long} invoices unsent too long`,
+    );
   }
   if ((counts.tech_overloaded ?? 0) > 0) {
     breakdown.push(`${counts.tech_overloaded} technician overloaded`);
@@ -241,22 +255,34 @@ function buildOwnerSummary(params: {
     );
   }
   if ((counts.active_job_running_too_long ?? 0) > 0) {
-    breakdown.push(`${counts.active_job_running_too_long} active jobs running too long`);
+    breakdown.push(
+      `${counts.active_job_running_too_long} active jobs running too long`,
+    );
   }
   if ((counts.shop_throughput_below_capacity ?? 0) > 0) {
-    breakdown.push(`${counts.shop_throughput_below_capacity} throughput below capacity`);
+    breakdown.push(
+      `${counts.shop_throughput_below_capacity} throughput below capacity`,
+    );
   }
   if ((counts.optimization_pricing_normalization ?? 0) > 0) {
-    breakdown.push(`${counts.optimization_pricing_normalization} pricing standardization opportunities`);
+    breakdown.push(
+      `${counts.optimization_pricing_normalization} pricing standardization opportunities`,
+    );
   }
   if ((counts.optimization_inspection_coverage_gap ?? 0) > 0) {
-    breakdown.push(`${counts.optimization_inspection_coverage_gap} inspection coverage opportunities`);
+    breakdown.push(
+      `${counts.optimization_inspection_coverage_gap} inspection coverage opportunities`,
+    );
   }
   if ((counts.optimization_missed_revenue ?? 0) > 0) {
-    breakdown.push(`${counts.optimization_missed_revenue} missed-revenue opportunities`);
+    breakdown.push(
+      `${counts.optimization_missed_revenue} missed-revenue opportunities`,
+    );
   }
   if ((counts.optimization_review_queued_suggestions ?? 0) > 0) {
-    breakdown.push(`${counts.optimization_review_queued_suggestions} queued ShopBoost review reminders`);
+    breakdown.push(
+      `${counts.optimization_review_queued_suggestions} queued ShopBoost review reminders`,
+    );
   }
 
   if (breakdown.length > 0) {
@@ -299,31 +325,43 @@ function buildAdvisorSummary(params: {
     parts.push(`${counts.approval_waiting} approvals waiting`);
   }
   if ((counts.work_order_on_hold_too_long ?? 0) > 0) {
-    parts.push(`${counts.work_order_on_hold_too_long} work orders on hold too long`);
+    parts.push(
+      `${counts.work_order_on_hold_too_long} work orders on hold too long`,
+    );
   }
   if ((counts.work_order_waiting_too_long ?? 0) > 0) {
     parts.push(`${counts.work_order_waiting_too_long} queued too long`);
   }
   if ((counts.parts_waiting_too_long ?? 0) > 0) {
-    parts.push(`${counts.parts_waiting_too_long} jobs waiting on parts too long`);
+    parts.push(
+      `${counts.parts_waiting_too_long} jobs waiting on parts too long`,
+    );
   }
   if ((counts.invoice_unsent_too_long ?? 0) > 0) {
     parts.push(`${counts.invoice_unsent_too_long} invoices unsent too long`);
   }
   if ((counts.active_job_running_too_long ?? 0) > 0) {
-    parts.push(`${counts.active_job_running_too_long} active jobs running too long`);
+    parts.push(
+      `${counts.active_job_running_too_long} active jobs running too long`,
+    );
   }
   if ((counts.shop_overloaded ?? 0) > 0) {
     parts.push(`${counts.shop_overloaded} shop overload alerts`);
   }
   if ((counts.shop_throughput_below_capacity ?? 0) > 0) {
-    parts.push(`${counts.shop_throughput_below_capacity} throughput below capacity`);
+    parts.push(
+      `${counts.shop_throughput_below_capacity} throughput below capacity`,
+    );
   }
   if ((counts.optimization_pricing_normalization ?? 0) > 0) {
-    parts.push(`${counts.optimization_pricing_normalization} pricing optimization actions`);
+    parts.push(
+      `${counts.optimization_pricing_normalization} pricing optimization actions`,
+    );
   }
   if ((counts.optimization_inspection_coverage_gap ?? 0) > 0) {
-    parts.push(`${counts.optimization_inspection_coverage_gap} inspection optimization actions`);
+    parts.push(
+      `${counts.optimization_inspection_coverage_gap} inspection optimization actions`,
+    );
   }
   if ((counts.optimization_missed_revenue ?? 0) > 0) {
     parts.push(`${counts.optimization_missed_revenue} missed-revenue actions`);
@@ -385,22 +423,34 @@ function buildManagerSummary(params: {
     items.push(`${counts.shop_overloaded} shop overloaded`);
   }
   if ((counts.tech_underutilized_capacity ?? 0) > 0) {
-    items.push(`${counts.tech_underutilized_capacity} underutilized capacity alerts`);
+    items.push(
+      `${counts.tech_underutilized_capacity} underutilized capacity alerts`,
+    );
   }
   if ((counts.active_job_running_too_long ?? 0) > 0) {
-    items.push(`${counts.active_job_running_too_long} active jobs running too long`);
+    items.push(
+      `${counts.active_job_running_too_long} active jobs running too long`,
+    );
   }
   if ((counts.shop_throughput_below_capacity ?? 0) > 0) {
-    items.push(`${counts.shop_throughput_below_capacity} throughput below capacity`);
+    items.push(
+      `${counts.shop_throughput_below_capacity} throughput below capacity`,
+    );
   }
   if ((counts.optimization_pricing_normalization ?? 0) > 0) {
-    items.push(`${counts.optimization_pricing_normalization} pricing optimization opportunities`);
+    items.push(
+      `${counts.optimization_pricing_normalization} pricing optimization opportunities`,
+    );
   }
   if ((counts.optimization_inspection_coverage_gap ?? 0) > 0) {
-    items.push(`${counts.optimization_inspection_coverage_gap} inspection optimization opportunities`);
+    items.push(
+      `${counts.optimization_inspection_coverage_gap} inspection optimization opportunities`,
+    );
   }
   if ((counts.optimization_missed_revenue ?? 0) > 0) {
-    items.push(`${counts.optimization_missed_revenue} missed-revenue opportunities`);
+    items.push(
+      `${counts.optimization_missed_revenue} missed-revenue opportunities`,
+    );
   }
 
   if (items.length > 0) {
@@ -430,7 +480,9 @@ function buildTechSummary(params: {
   lines.push("Tech snapshot for today.");
 
   lines.push("");
-  lines.push(params.techWorkSummary?.trim() || "No assigned active work found.");
+  lines.push(
+    params.techWorkSummary?.trim() || "No assigned active work found.",
+  );
 
   const items: string[] = [];
   if ((counts.work_order_on_hold_too_long ?? 0) > 0) {
@@ -440,7 +492,9 @@ function buildTechSummary(params: {
     items.push(`${counts.approval_waiting} approvals waiting`);
   }
   if ((counts.parts_waiting_too_long ?? 0) > 0) {
-    items.push(`${counts.parts_waiting_too_long} jobs waiting on parts too long`);
+    items.push(
+      `${counts.parts_waiting_too_long} jobs waiting on parts too long`,
+    );
   }
   if (items.length > 0) {
     lines.push("");
@@ -458,7 +512,9 @@ function buildFleetSummary(params: {
   const counts = countByCode(params.notifications);
   const lines: string[] = [];
 
-  lines.push(`${params.notifications.length} fleet-related alerts need attention today.`);
+  lines.push(
+    `${params.notifications.length} fleet-related alerts need attention today.`,
+  );
 
   const items: string[] = [];
   if ((counts.work_order_waiting_too_long ?? 0) > 0) {
@@ -471,10 +527,14 @@ function buildFleetSummary(params: {
     items.push(`${counts.approval_waiting} approvals waiting`);
   }
   if ((counts.parts_waiting_too_long ?? 0) > 0) {
-    items.push(`${counts.parts_waiting_too_long} jobs waiting on parts too long`);
+    items.push(
+      `${counts.parts_waiting_too_long} jobs waiting on parts too long`,
+    );
   }
   if ((counts.optimization_missed_revenue ?? 0) > 0) {
-    items.push(`${counts.optimization_missed_revenue} missed-revenue opportunities`);
+    items.push(
+      `${counts.optimization_missed_revenue} missed-revenue opportunities`,
+    );
   }
 
   if (items.length > 0) {
@@ -491,21 +551,25 @@ export async function getRoleDailySummary(params: {
   shopId: string;
   userId: string;
   role: string | null;
+  signal?: AbortSignal;
 }): Promise<DailySummaryResult> {
   const role = normalizeRole(params.role);
-  const ctx: ToolContext = {
+  const ctx: ToolContext = createToolContext({
     shopId: params.shopId,
     userId: params.userId,
-  };
+    role,
+    signal: params.signal,
+  });
 
   const persistedNotifications = await syncAssistantNotifications({
     shopId: params.shopId,
     userId: params.userId,
     role,
   });
+  params.signal?.throwIfAborted();
 
-  const rawNotifications: DailySummaryNotification[] = persistedNotifications.map(
-    (item) => ({
+  const rawNotifications: DailySummaryNotification[] =
+    persistedNotifications.map((item) => ({
       level: item.level,
       code: item.code,
       title: item.title,
@@ -513,8 +577,7 @@ export async function getRoleDailySummary(params: {
       href: item.href ?? undefined,
       entityType: item.entity_type ?? undefined,
       entityId: item.entity_id ?? undefined,
-    }),
-  );
+    }));
 
   const notifications =
     role === "mechanic"
@@ -523,7 +586,10 @@ export async function getRoleDailySummary(params: {
 
   const shouldFetchBookings = role === "advisor";
   const shouldFetchStalled =
-    role === "owner" || role === "admin" || role === "manager" || role === "advisor";
+    role === "owner" ||
+    role === "admin" ||
+    role === "manager" ||
+    role === "advisor";
   const shouldFetchShopStatus =
     role === "owner" || role === "admin" || role === "manager";
   const shouldFetchTechWork = role === "mechanic";
@@ -556,9 +622,11 @@ export async function getRoleDailySummary(params: {
             : item.title,
           href: item.href as string,
         })),
-      ...((Array.isArray(stalled?.citations)
-        ? stalled.citations
-        : []) as StalledCitation[]).map((citation) => ({
+      ...(
+        (Array.isArray(stalled?.citations)
+          ? stalled.citations
+          : []) as StalledCitation[]
+      ).map((citation) => ({
         label: citation.label,
         href: citation.href,
       })),
@@ -605,16 +673,18 @@ export async function getRoleDailySummary(params: {
         shopOverloaded: notificationCounts.shop_overloaded ?? 0,
         techOverloaded: notificationCounts.tech_overloaded ?? 0,
         idleCapacity: notificationCounts.tech_underutilized_capacity ?? 0,
-        throughputIssues: notificationCounts.shop_throughput_below_capacity ?? 0,
+        throughputIssues:
+          notificationCounts.shop_throughput_below_capacity ?? 0,
       },
       optimizationSignals: {
         pricing: notificationCounts.optimization_pricing_normalization ?? 0,
-        inspectionCoverage: notificationCounts.optimization_inspection_coverage_gap ?? 0,
+        inspectionCoverage:
+          notificationCounts.optimization_inspection_coverage_gap ?? 0,
         missedRevenue: notificationCounts.optimization_missed_revenue ?? 0,
         queuedSuggestions:
           role === "mechanic"
             ? 0
-            : notificationCounts.optimization_review_queued_suggestions ?? 0,
+            : (notificationCounts.optimization_review_queued_suggestions ?? 0),
       },
       bookingsSummary: bookings?.summary ?? null,
       stalledSummary: stalled?.summary ?? null,

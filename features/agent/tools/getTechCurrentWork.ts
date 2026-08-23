@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { getServerSupabase } from "../server/supabase";
-import type { ToolContext } from "../lib/toolTypes";
+import { applyToolAbortSignal, type ToolContext } from "../lib/toolTypes";
 
 const InputSchema = z.object({
   techId: z.string().uuid().optional(),
@@ -58,13 +58,15 @@ export async function runGetTechCurrentWork(rawInput: Input, ctx: ToolContext) {
   let techId = input.techId ?? null;
 
   if (!techId && input.techName) {
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("id, full_name, role")
-      .eq("shop_id", ctx.shopId)
-      .ilike("full_name", `%${input.techName}%`)
-      .limit(1)
-      .maybeSingle();
+    const { data: profile } = await applyToolAbortSignal(
+      supabase
+        .from("profiles")
+        .select("id, full_name, role")
+        .eq("shop_id", ctx.shopId)
+        .ilike("full_name", `%${input.techName}%`)
+        .limit(1),
+      ctx,
+    ).maybeSingle();
 
     techId = profile?.id ?? null;
   }
@@ -93,7 +95,13 @@ export async function runGetTechCurrentWork(rawInput: Input, ctx: ToolContext) {
     `,
     )
     .eq("shop_id", ctx.shopId)
-    .in("status", ["awaiting", "awaiting_approval", "queued", "in_progress", "on_hold"])
+    .in("status", [
+      "awaiting",
+      "awaiting_approval",
+      "queued",
+      "in_progress",
+      "on_hold",
+    ])
     .order("updated_at", { ascending: false })
     .limit(25);
 
@@ -101,7 +109,7 @@ export async function runGetTechCurrentWork(rawInput: Input, ctx: ToolContext) {
     query = query.eq("assigned_tech_id", techId);
   }
 
-  const { data, error } = await query;
+  const { data, error } = await applyToolAbortSignal(query, ctx);
   if (error) throw new Error(error.message);
 
   const rows = (data ?? []) as unknown as Row[];
@@ -110,14 +118,19 @@ export async function runGetTechCurrentWork(rawInput: Input, ctx: ToolContext) {
   const { data: activeSegments } =
     lineIds.length === 0
       ? { data: [] as Array<{ work_order_line_id: string }> }
-      : await supabase
-          .from("work_order_line_labor_segments")
-          .select("work_order_line_id")
-          .eq("shop_id", ctx.shopId)
-          .is("ended_at", null)
-          .in("work_order_line_id", lineIds);
+      : await applyToolAbortSignal(
+          supabase
+            .from("work_order_line_labor_segments")
+            .select("work_order_line_id")
+            .eq("shop_id", ctx.shopId)
+            .is("ended_at", null)
+            .in("work_order_line_id", lineIds),
+          ctx,
+        );
 
-  const activeLineIds = new Set((activeSegments ?? []).map((segment) => segment.work_order_line_id));
+  const activeLineIds = new Set(
+    (activeSegments ?? []).map((segment) => segment.work_order_line_id),
+  );
 
   if (rows.length === 0) {
     return {

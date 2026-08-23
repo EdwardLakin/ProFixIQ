@@ -5,8 +5,60 @@ import {
   REVIEWABLE_QUOTE_STAGES,
   REVIEWABLE_QUOTE_STATUSES,
 } from "@/features/work-orders/lib/quotes/reviewableQuoteLines";
+import { validatedAiSelect } from "../lib/aiQueryContract";
+import { assertToolContext, type ToolContext } from "../lib/toolTypes";
 import { getServerSupabase } from "../server/supabase";
 import type { ToolDef } from "../lib/toolTypes";
+
+const LEGACY_PENDING_LINE_SELECT = validatedAiSelect("work_order_lines", [
+  "id",
+  "work_order_id",
+  "description",
+  "job_type",
+  "labor_time",
+  "price_estimate",
+  "status",
+  "approval_state",
+  "notes",
+  "created_at",
+]);
+const QUOTE_PENDING_LINE_SELECT = validatedAiSelect(
+  "work_order_quote_lines",
+  [
+    "id",
+    "work_order_id",
+    "work_order_line_id",
+    "description",
+    "job_type",
+    "labor_hours",
+    "est_labor_hours",
+    "labor_total",
+    "parts_total",
+    "subtotal",
+    "grand_total",
+    "status",
+    "stage",
+    "approved_at",
+    "declined_at",
+    "notes",
+    "created_at",
+  ],
+);
+const QUOTE_LINK_SELECT = validatedAiSelect("work_order_quote_lines", [
+  "id",
+  "work_order_line_id",
+]);
+const WORK_ORDER_IDENTITY_SELECT = [
+  validatedAiSelect("work_orders", ["id", "custom_id"]),
+  `customer:customers (${validatedAiSelect("customers", ["first_name", "last_name"])})`,
+  `vehicle:vehicles (${validatedAiSelect("vehicles", [
+    "year",
+    "make",
+    "model",
+    "unit_number",
+    "license_plate",
+  ])})`,
+].join(", ");
 
 export const ListPendingApprovalsIn = z.object({
   limit: z.number().int().min(1).max(50).optional(),
@@ -127,7 +179,7 @@ async function loadLinkedLegacyLineIds(params: {
     for (let from = 0; ; from += 500) {
       const { data, error } = await params.supabase
         .from("work_order_quote_lines")
-        .select("id, work_order_line_id")
+        .select(QUOTE_LINK_SELECT)
         .eq("shop_id", params.shopId)
         .in("work_order_line_id", chunk)
         .order("id", { ascending: true })
@@ -178,6 +230,7 @@ export const toolListPendingApprovals: ToolDef<
   inputSchema: ListPendingApprovalsIn,
   outputSchema: ListPendingApprovalsOut,
   async run(input, ctx) {
+    assertToolContext(ctx);
     const supabase = getServerSupabase();
     const limit = input.limit ?? 20;
     const quoteReviewFilter = [
@@ -201,9 +254,7 @@ export const toolListPendingApprovals: ToolDef<
           ? Promise.resolve({ data: [] as LegacyPendingLine[], error: null })
           : supabase
               .from("work_order_lines")
-              .select(
-                "id, work_order_id, description, job_type, labor_time, price_estimate, status, approval_state, notes, created_at",
-              )
+              .select(LEGACY_PENDING_LINE_SELECT)
               .eq("shop_id", ctx.shopId)
               .eq("approval_state", "pending")
               .is("voided_at", null)
@@ -214,9 +265,7 @@ export const toolListPendingApprovals: ToolDef<
           ? Promise.resolve({ data: [] as ReviewableQuoteLine[], error: null })
           : supabase
               .from("work_order_quote_lines")
-              .select(
-                "id, work_order_id, work_order_line_id, description, job_type, labor_hours, est_labor_hours, labor_total, parts_total, subtotal, grand_total, status, stage, approved_at, declined_at, notes, created_at",
-              )
+              .select(QUOTE_PENDING_LINE_SELECT)
               .eq("shop_id", ctx.shopId)
               .is("work_order_line_id", null)
               .is("approved_at", null)
@@ -278,9 +327,7 @@ export const toolListPendingApprovals: ToolDef<
       const [legacyPage, quotePage, linkPage] = await Promise.all([
         supabase
           .from("work_order_lines")
-          .select(
-            "id, work_order_id, description, job_type, labor_time, price_estimate, status, approval_state, notes, created_at",
-          )
+          .select(LEGACY_PENDING_LINE_SELECT)
           .eq("shop_id", ctx.shopId)
           .in("work_order_id", workOrderIds)
           .eq("approval_state", "pending")
@@ -290,9 +337,7 @@ export const toolListPendingApprovals: ToolDef<
           .range(from, from + 499),
         supabase
           .from("work_order_quote_lines")
-          .select(
-            "id, work_order_id, work_order_line_id, description, job_type, labor_hours, est_labor_hours, labor_total, parts_total, subtotal, grand_total, status, stage, approved_at, declined_at, notes, created_at",
-          )
+          .select(QUOTE_PENDING_LINE_SELECT)
           .eq("shop_id", ctx.shopId)
           .in("work_order_id", workOrderIds)
           .is("work_order_line_id", null)
@@ -304,7 +349,7 @@ export const toolListPendingApprovals: ToolDef<
           .range(from, from + 499),
         supabase
           .from("work_order_quote_lines")
-          .select("id, work_order_line_id")
+          .select(QUOTE_LINK_SELECT)
           .eq("shop_id", ctx.shopId)
           .in("work_order_id", workOrderIds)
           .not("work_order_line_id", "is", null)
@@ -336,14 +381,7 @@ export const toolListPendingApprovals: ToolDef<
 
     const { data: workOrdersData, error: workOrdersError } = await supabase
       .from("work_orders")
-      .select(
-        `
-        id,
-        custom_id,
-        customer:customers (first_name, last_name),
-        vehicle:vehicles (year, make, model, unit_number, license_plate)
-      `,
-      )
+      .select(WORK_ORDER_IDENTITY_SELECT)
       .eq("shop_id", ctx.shopId)
       .in("id", workOrderIds);
     if (workOrdersError) throw new Error(workOrdersError.message);
@@ -435,3 +473,12 @@ export const toolListPendingApprovals: ToolDef<
     return { items };
   },
 };
+
+export async function runListPendingApprovals(
+  input: ListPendingApprovalsIn,
+  context: ToolContext,
+): Promise<ListPendingApprovalsOut> {
+  const validatedInput = ListPendingApprovalsIn.parse(input);
+  const output = await toolListPendingApprovals.run(validatedInput, context);
+  return ListPendingApprovalsOut.parse(output);
+}

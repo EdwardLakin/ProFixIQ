@@ -2,12 +2,19 @@ import { NextResponse } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { z } from "zod";
 
-import type { ToolContext } from "@/features/agent/lib/toolTypes";
+import {
+  createToolContext,
+  type ToolContext,
+} from "@/features/agent/lib/toolTypes";
 import { runSimplePlan } from "@/features/agent/lib/plannerSimple";
 import { runOpenAIPlanner } from "@/features/agent/lib/plannerOpenAI";
 import { runFleetPlanner } from "@/features/agent/lib/plannerFleet";
 import { runApprovalPlanner } from "@/features/agent/lib/plannerApprovals";
+import { resolveShopAssistantError } from "@/features/shop-assistant/server/requireShopAssistantActor";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
 
 type PlannerKind = "simple" | "openai" | "ops" | "fleet" | "approvals";
 
@@ -25,10 +32,6 @@ const BodySchema = z.object({
   idempotencyKey: z.string().optional().nullable(),
 });
 
-function toMsg(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
-}
-
 async function requireUser(
   supabase: ReturnType<typeof createServerSupabaseRoute>,
 ) {
@@ -41,18 +44,22 @@ async function requireUser(
   return user;
 }
 
-async function resolveShopId(
+async function resolvePlannerScope(
   supabase: ReturnType<typeof createServerSupabaseRoute>,
   userId: string,
-): Promise<string | null> {
+): Promise<{ profileId: string; shopId: string; role: string | null } | null> {
   const { data, error } = await supabase
     .from("profiles")
-    .select("shop_id")
+    .select("id, shop_id, role")
     .eq("id", userId)
     .maybeSingle();
 
-  if (error) return null;
-  return data?.shop_id ?? null;
+  if (error || !data?.shop_id) return null;
+  return {
+    profileId: data.id,
+    shopId: data.shop_id,
+    role: data.role,
+  };
 }
 
 export async function POST(req: Request) {
@@ -63,10 +70,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const shopId = await resolveShopId(supabase, user.id);
-  if (!shopId) {
+  const plannerScope = await resolvePlannerScope(supabase, user.id);
+  if (!plannerScope) {
     return NextResponse.json({ error: "No shop found for user" }, { status: 400 });
   }
+  const { shopId } = plannerScope;
 
   const raw = await req.json().catch(() => null);
   const parsed = BodySchema.safeParse(raw);
@@ -137,7 +145,12 @@ export async function POST(req: Request) {
   const runId = runRow.id as string;
   let step = 0;
 
-  const ctx: ToolContext = { shopId, userId: user.id };
+  const ctx: ToolContext = createToolContext({
+    shopId,
+    userId: user.id,
+    profileId: plannerScope.profileId,
+    role: plannerScope.role,
+  });
 
   const emit = async (e: PlannerEvent) => {
     step += 1;
@@ -150,7 +163,6 @@ export async function POST(req: Request) {
     });
 
     if (error) {
-      // eslint-disable-next-line no-console
       console.error("[planner/run] event insert error", error);
     }
   };
@@ -185,7 +197,8 @@ export async function POST(req: Request) {
       alreadyExists: false,
     });
   } catch (err) {
-    await emit({ kind: "final", text: `Planner failed: ${toMsg(err)}` });
+    const resolved = resolveShopAssistantError(err, "legacy-ai-planner");
+    await emit({ kind: "final", text: `Planner failed: ${resolved.message}` });
 
     await supabase
       .from("planner_runs")
@@ -196,7 +209,7 @@ export async function POST(req: Request) {
       {
         runId,
         alreadyExists: false,
-        error: toMsg(err),
+        error: resolved.message,
       },
       { status: 200 },
     );

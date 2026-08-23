@@ -15,6 +15,14 @@ function numberValue(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function groundingLine(record: Record<string, unknown>): string | null {
+  const grounding = asRecord(record.grounding);
+  const dataCurrentAsOf = stringValue(grounding.dataCurrentAsOf);
+  const recordCount = numberValue(grounding.recordCount);
+  if (!dataCurrentAsOf || recordCount == null) return null;
+  return `Data current as of ${dataCurrentAsOf} • ${recordCount} record(s).`;
+}
+
 function formatListRows(
   rows: unknown,
   formatter: (row: Record<string, unknown>) => string | null,
@@ -199,7 +207,14 @@ export function formatShopAssistantToolOutput(
     });
   }
 
-  return [summary, ...bullets.map((bullet) => `• ${bullet}`)].join("\n");
+  const groundedAt = groundingLine(record);
+  return [
+    summary,
+    ...bullets.map((bullet) => `• ${bullet}`),
+    groundedAt,
+  ]
+    .filter((line): line is string => Boolean(line))
+    .join("\n");
 }
 
 export function recordOutput(value: unknown): Record<string, unknown> {

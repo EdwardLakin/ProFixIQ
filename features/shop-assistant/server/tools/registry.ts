@@ -7,6 +7,8 @@ import type {
   ShopAssistantDomain,
 } from "@/features/shop-assistant/types";
 import type { CanonicalRole } from "@/features/shared/lib/rbac";
+import { withAiOperationalTimeout } from "@/features/agent/lib/toolTypes";
+import { groundShopAssistantToolOutput } from "@/features/agent/lib/operationalGrounding";
 import { sendConversationMessageTool } from "./domains/communications";
 import {
   createCustomerTool,
@@ -307,8 +309,11 @@ export async function runShopAssistantReadTool(params: {
   );
   const input = tool.inputSchema.parse(params.input) as unknown;
   await tool.authorize?.(input, params.context);
-  const output = await tool.execute(input, params.context);
-  return tool.outputSchema.parse(output) as unknown;
+  const output = await withAiOperationalTimeout((signal) =>
+    tool.execute(input, { ...params.context, signal }),
+  );
+  const parsed = tool.outputSchema.parse(output) as unknown;
+  return groundShopAssistantToolOutput(parsed, params.context.actor);
 }
 
 export async function previewShopAssistantWriteTool(params: {

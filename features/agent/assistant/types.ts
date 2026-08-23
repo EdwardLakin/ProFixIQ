@@ -63,6 +63,16 @@ export type AssistantResolvedContext = {
   fleetUnitId?: string;
 };
 
+export type AssistantGrounding = {
+  tenantId: string;
+  shopId: string;
+  role: string;
+  recordCount: number;
+  dataCurrentAsOf: string;
+  freshnessWindowMs: number;
+  schemaVersion: string;
+};
+
 export type AssistantAnswer = {
   summary: string;
   bullets: string[];
@@ -71,6 +81,7 @@ export type AssistantAnswer = {
   actions: AssistantAction[];
   resolvedContext?: AssistantResolvedContext;
   partSuggestions?: CanonicalPartSuggestion[];
+  grounding?: AssistantGrounding;
   intent:
     | "customer_visit_history"
     | "vehicle_history"

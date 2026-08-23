@@ -1,5 +1,5 @@
 import { getServerSupabase } from "../server/supabase";
-import type { ToolContext } from "../lib/toolTypes";
+import { applyToolAbortSignal, type ToolContext } from "../lib/toolTypes";
 
 type WorkOrderRef =
   | {
@@ -35,7 +35,7 @@ type ProfileRow = {
 };
 
 function getWorkOrder(workOrder: WorkOrderRef) {
-  return Array.isArray(workOrder) ? workOrder[0] ?? null : workOrder;
+  return Array.isArray(workOrder) ? (workOrder[0] ?? null) : workOrder;
 }
 
 export async function runGetShopCurrentStatus(_: object, ctx: ToolContext) {
@@ -45,8 +45,8 @@ export async function runGetShopCurrentStatus(_: object, ctx: ToolContext) {
     { data: lines, error: linesError },
     { data: profiles, error: profilesError },
     { data: activeSegments, error: activeSegmentsError },
-  ] =
-    await Promise.all([
+  ] = await Promise.all([
+    applyToolAbortSignal(
       supabase
         .from("work_order_lines")
         .select(
@@ -68,17 +68,25 @@ export async function runGetShopCurrentStatus(_: object, ctx: ToolContext) {
         .in("status", ["awaiting", "queued", "in_progress", "on_hold"])
         .order("updated_at", { ascending: false })
         .limit(100),
+      ctx,
+    ),
 
+    applyToolAbortSignal(
       supabase
         .from("profiles")
         .select("id, full_name")
         .eq("shop_id", ctx.shopId),
+      ctx,
+    ),
+    applyToolAbortSignal(
       supabase
         .from("work_order_line_labor_segments")
         .select("work_order_line_id, technician_id")
         .eq("shop_id", ctx.shopId)
         .is("ended_at", null),
-    ]);
+      ctx,
+    ),
+  ]);
 
   if (linesError) throw new Error(linesError.message);
   if (profilesError) throw new Error(profilesError.message);
@@ -114,11 +122,16 @@ export async function runGetShopCurrentStatus(_: object, ctx: ToolContext) {
 
   for (const row of rows) {
     const activeTechIds = activeTechByLineId.get(row.id) ?? [];
-    const groupingTechIds = activeTechIds.length > 0 ? activeTechIds : [row.assigned_tech_id ?? "unassigned"];
+    const groupingTechIds =
+      activeTechIds.length > 0
+        ? activeTechIds
+        : [row.assigned_tech_id ?? "unassigned"];
 
     const wo = getWorkOrder(row.work_orders);
     const woId = wo?.id ?? row.id;
-    const woLabel = wo?.custom_id ? `WO #${wo.custom_id}` : `WO ${woId.slice(0, 8)}`;
+    const woLabel = wo?.custom_id
+      ? `WO #${wo.custom_id}`
+      : `WO ${woId.slice(0, 8)}`;
 
     const lineLabel =
       row.description ?? row.complaint ?? row.status ?? "Active job";
@@ -127,7 +140,7 @@ export async function runGetShopCurrentStatus(_: object, ctx: ToolContext) {
       const techName =
         techId === "unassigned"
           ? "Unassigned"
-          : profileMap.get(techId) ?? techId;
+          : (profileMap.get(techId) ?? techId);
 
       if (!grouped.has(techName)) {
         grouped.set(techName, []);
@@ -135,7 +148,10 @@ export async function runGetShopCurrentStatus(_: object, ctx: ToolContext) {
 
       grouped.get(techName)!.push({
         id: woId,
-        href: techId !== "unassigned" ? `/work-orders/${woId}/focused-job/${row.id}` : `/work-orders/${woId}`,
+        href:
+          techId !== "unassigned"
+            ? `/work-orders/${woId}/focused-job/${row.id}`
+            : `/work-orders/${woId}`,
         label: `${woLabel} • ${lineLabel}`,
       });
     }
@@ -150,7 +166,10 @@ export async function runGetShopCurrentStatus(_: object, ctx: ToolContext) {
     techSections.length === 0
       ? "No technicians are currently assigned active work."
       : techSections
-          .map((section) => `${section.tech}: ${section.jobs.map((j) => j.label).join(", ")}`)
+          .map(
+            (section) =>
+              `${section.tech}: ${section.jobs.map((j) => j.label).join(", ")}`,
+          )
           .join(" | ");
 
   const citations = techSections.flatMap((section) =>
