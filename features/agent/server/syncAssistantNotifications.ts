@@ -1,5 +1,6 @@
 
 import { canonicalizeRole } from "@/features/shared/lib/rbac";
+import { resolveTechnicianAssignmentContract } from "@/features/work-orders/lib/technicianAssignmentContract";
 import { getServerSupabase } from "./supabase";
 import { getOpsNotifications, type OpsNotification } from "./getOpsNotifications";
 
@@ -124,14 +125,31 @@ async function filterComputedNotificationsForUser(params: {
 
   const activeStatuses = ["awaiting", "awaiting_approval", "queued", "in_progress", "on_hold"];
 
-  const [{ data: assignedLines, error: assignedError }, { data: activeSegments, error: segmentError }] =
+  const [
+    { data: primaryAssignments, error: primaryError },
+    { data: legacyCandidates, error: legacyError },
+    { data: supportingAssignments, error: supportingError },
+    { data: activeSegments, error: segmentError },
+  ] =
     await Promise.all([
       supabase
         .from("work_order_lines")
-        .select("id, work_order_id")
+        .select("id")
         .eq("shop_id", params.shopId)
         .eq("assigned_tech_id", params.userId)
         .in("status", activeStatuses)
+        .limit(200),
+      supabase
+        .from("work_order_lines")
+        .select("id")
+        .eq("shop_id", params.shopId)
+        .eq("assigned_to", params.userId)
+        .in("status", activeStatuses)
+        .limit(200),
+      supabase
+        .from("work_order_line_technicians")
+        .select("work_order_line_id")
+        .eq("technician_id", params.userId)
         .limit(200),
       supabase
         .from("work_order_line_labor_segments")
@@ -142,31 +160,68 @@ async function filterComputedNotificationsForUser(params: {
         .limit(50),
     ]);
 
-  if (assignedError) throw new Error(assignedError.message);
+  if (primaryError) throw new Error(primaryError.message);
+  if (legacyError) throw new Error(legacyError.message);
+  if (supportingError) throw new Error(supportingError.message);
   if (segmentError) throw new Error(segmentError.message);
 
   const lineIds = new Set<string>();
   const workOrderIds = new Set<string>();
+  const activeLaborLineIds = new Set(
+    (activeSegments ?? [])
+      .map((row) => row.work_order_line_id)
+      .filter(
+        (value): value is string =>
+          typeof value === "string" && value.length > 0,
+      ),
+  );
+  const candidateLineIds = [
+    ...(primaryAssignments ?? []).map((row) => row.id),
+    ...(legacyCandidates ?? []).map((row) => row.id),
+    ...(supportingAssignments ?? []).map((row) => row.work_order_line_id),
+    ...(activeSegments ?? []).map((row) => row.work_order_line_id),
+  ]
+    .filter(
+      (value): value is string =>
+        typeof value === "string" && value.length > 0,
+    );
 
-  for (const row of assignedLines ?? []) {
-    if (row.id) lineIds.add(row.id);
-    if (row.work_order_id) workOrderIds.add(row.work_order_id);
-  }
-
-  const activeLineIds = (activeSegments ?? [])
-    .map((row) => row.work_order_line_id)
-    .filter((value): value is string => typeof value === "string" && value.length > 0);
-
-  if (activeLineIds.length > 0) {
-    const { data: activeLineRows, error: activeLineError } = await supabase
-      .from("work_order_lines")
-      .select("id, work_order_id")
-      .eq("shop_id", params.shopId)
-      .in("id", activeLineIds);
+  if (candidateLineIds.length > 0) {
+    const uniqueCandidateLineIds = [...new Set(candidateLineIds)];
+    const [
+      { data: activeLineRows, error: activeLineError },
+      { data: canonicalAssignments, error: canonicalError },
+    ] = await Promise.all([
+      supabase
+        .from("work_order_lines")
+        .select("id, work_order_id, assigned_tech_id, assigned_to")
+        .eq("shop_id", params.shopId)
+        .in("id", uniqueCandidateLineIds)
+        .in("status", activeStatuses),
+      supabase
+        .from("work_order_line_technicians")
+        .select("work_order_line_id, technician_id")
+        .in("work_order_line_id", uniqueCandidateLineIds),
+    ]);
 
     if (activeLineError) throw new Error(activeLineError.message);
+    if (canonicalError) throw new Error(canonicalError.message);
+
+    const technicianIdsByLine = new Map<string, string[]>();
+    for (const assignment of canonicalAssignments ?? []) {
+      technicianIdsByLine.set(assignment.work_order_line_id, [
+        ...(technicianIdsByLine.get(assignment.work_order_line_id) ?? []),
+        assignment.technician_id,
+      ]);
+    }
 
     for (const row of activeLineRows ?? []) {
+      const isAssigned = resolveTechnicianAssignmentContract({
+        primaryTechnicianId: row.assigned_tech_id,
+        legacyAssignedTo: row.assigned_to,
+        canonicalTechnicianIds: technicianIdsByLine.get(row.id),
+      }).technicianIds.includes(params.userId);
+      if (!isAssigned && !activeLaborLineIds.has(row.id)) continue;
       if (row.id) lineIds.add(row.id);
       if (row.work_order_id) workOrderIds.add(row.work_order_id);
     }

@@ -13,9 +13,11 @@ describe("technician assigned-work offline download", () => {
   it("authenticates the actor and resolves only their shop assignments", () => {
     expect(route).toContain("auth.getUser()");
     expect(route).toContain("canPerformAssignedWork");
-    expect(route).toContain("assigned_tech_id.eq.${technicianId}");
-    expect(route).toContain("assigned_to.eq.${technicianId}");
+    expect(route).toContain('.eq("assigned_tech_id", technicianId)');
+    expect(route).toContain('.eq("assigned_to", technicianId)');
     expect(route).toContain('from("work_order_line_technicians")');
+    expect(route).toContain("resolveTechnicianAssignmentContract");
+    expect(route).toContain("technicianIds.includes(profile.id)");
     expect(route).toContain('.in("technician_id", technicianIds)');
     expect(route).toContain('.eq("shop_id", profile.shop_id)');
   });
@@ -24,7 +26,7 @@ describe("technician assigned-work offline download", () => {
     expect(route).toContain(
       "normal table policies remain the final authorization boundary",
     );
-    expect(route).toContain('authClient.rpc(\n    "set_current_shop_id"');
+    expect(route).toMatch(/authClient\.rpc\(\s*"set_current_shop_id"/);
     expect(route.indexOf('"set_current_shop_id"')).toBeLessThan(
       route.indexOf('.from("work_orders")'),
     );

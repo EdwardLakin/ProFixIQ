@@ -454,7 +454,7 @@ describe("premium work-order evidence UI contract", () => {
   it("removes job priority and moves line evidence and technician identity into the card", () => {
     expect(jobCard).not.toContain("onPriorityChange");
     expect(workOrder).not.toContain("updateLinePriority");
-    expect(jobCard).toContain("Assigned technician");
+    expect(jobCard).toContain("Primary technician");
     expect(jobCard).toContain("<JobEvidenceStrip evidence={evidence} />");
     expect(jobEvidenceStrip).toContain("evidence.slice(0, 3)");
     expect(jobEvidenceStrip).toContain("Open ${evidenceLabel(item, index)}");

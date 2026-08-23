@@ -1,7 +1,3 @@
-// features/work-orders/mobile/MobileWorkOrderLines.tsx (FULL FILE REPLACEMENT)
-// ✅ Theme alignment only (cards/pills closer to MobileTechHome)
-// ❗ No logic changes
-
 "use client";
 
 import { useState } from "react";
@@ -183,6 +179,9 @@ export function MobileWorkOrderLines({
           isOpen={assignOpen}
           onClose={() => setAssignOpen(false)}
           workOrderLineId={assignLineId}
+          expectedUpdatedAt={
+            lines.find((line) => line.id === assignLineId)?.updated_at ?? null
+          }
         />
       )}
     </>

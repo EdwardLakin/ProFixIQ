@@ -6,6 +6,7 @@ import { listTechnicianWorkCandidates } from "@/features/copilot/technician/serv
 import { canonicalizeRole } from "@/features/shared/lib/rbac";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { getTechnicianLoadMetricsWithClient } from "@/features/shared/lib/stats/getTechnicianLoadMetricsCore";
+import { resolveTechnicianAssignmentContract } from "@/features/work-orders/lib/technicianAssignmentContract";
 import { ageHours } from "@/features/agent/server/flowHealth";
 import { ShopAssistantHttpError } from "@/features/shop-assistant/server/requireShopAssistantActor";
 import { defineShopAssistantTool, runShopAssistantCommandRpc } from "../types";
@@ -500,6 +501,7 @@ export const assignWorkOrderTool = defineShopAssistantTool({
     const [
       { data: workOrder, error: workOrderError },
       { data: technician, error: technicianError },
+      { data: workforceStatus, error: workforceStatusError },
     ] = await Promise.all([
       admin
         .from("work_orders")
@@ -513,9 +515,16 @@ export const assignWorkOrderTool = defineShopAssistantTool({
         .eq("id", input.technicianId)
         .eq("shop_id", context.actor.shopId)
         .maybeSingle(),
+      admin
+        .from("people_workforce_profiles")
+        .select("employment_status")
+        .eq("shop_id", context.actor.shopId)
+        .eq("user_id", input.technicianId)
+        .maybeSingle(),
     ]);
     if (workOrderError) throw new Error(workOrderError.message);
     if (technicianError) throw new Error(technicianError.message);
+    if (workforceStatusError) throw new Error(workforceStatusError.message);
     if (!workOrder) {
       throw new ShopAssistantHttpError(
         404,
@@ -534,27 +543,61 @@ export const assignWorkOrderTool = defineShopAssistantTool({
         "Selected profile is not assignable as a technician.",
       );
     }
+    if (
+      workforceStatus &&
+      String(workforceStatus.employment_status ?? "").toLowerCase() !==
+        "active"
+    ) {
+      throw new ShopAssistantHttpError(
+        409,
+        "Selected technician is not active for this shop.",
+      );
+    }
 
     const eligibleLines: Array<{ id: string; updated_at: string | null }> = [];
     for (let from = 0; ; from += 500) {
-      let lineQuery = admin
+      const lineQuery = admin
         .from("work_order_lines")
-        .select("id, updated_at, status, line_status, assigned_tech_id")
+        .select(
+          "id, updated_at, status, line_status, assigned_tech_id, assigned_to",
+        )
         .eq("shop_id", context.actor.shopId)
         .eq("work_order_id", workOrder.id)
         .is("voided_at", null)
         .or("line_type.is.null,line_type.eq.job")
         .order("id", { ascending: true })
         .range(from, from + 499);
-      if (input.onlyUnassigned) {
-        lineQuery = lineQuery.is("assigned_tech_id", null);
-      }
       const { data: page, error: lineError } = await lineQuery;
       if (lineError) throw new Error(lineError.message);
+      const pageIds = (page ?? []).map((line) => line.id);
+      const bridgeIdsByLine = new Map<string, string[]>();
+      if (input.onlyUnassigned && pageIds.length > 0) {
+        const { data: bridgeRows, error: bridgeError } = await admin
+          .from("work_order_line_technicians")
+          .select("work_order_line_id, technician_id")
+          .in("work_order_line_id", pageIds);
+        if (bridgeError) throw new Error(bridgeError.message);
+        for (const bridge of bridgeRows ?? []) {
+          bridgeIdsByLine.set(bridge.work_order_line_id, [
+            ...(bridgeIdsByLine.get(bridge.work_order_line_id) ?? []),
+            bridge.technician_id,
+          ]);
+        }
+      }
       for (const line of page ?? []) {
         if (
           TERMINAL_ASSIGNMENT_STATUSES.has(normalizedStatus(line.status)) ||
           TERMINAL_ASSIGNMENT_STATUSES.has(normalizedStatus(line.line_status))
+        ) {
+          continue;
+        }
+        if (
+          input.onlyUnassigned &&
+          resolveTechnicianAssignmentContract({
+            primaryTechnicianId: line.assigned_tech_id,
+            legacyAssignedTo: line.assigned_to,
+            canonicalTechnicianIds: bridgeIdsByLine.get(line.id),
+          }).source !== "unassigned"
         ) {
           continue;
         }
