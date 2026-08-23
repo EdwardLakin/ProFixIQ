@@ -41,6 +41,7 @@ export type ShopAssistantToolContext = {
   actionId?: string;
   idempotencyKey: string;
   targetVersions?: Record<string, string>;
+  signal?: AbortSignal;
 };
 
 export type ShopAssistantToolDefinition<TInput, TOutput> = {

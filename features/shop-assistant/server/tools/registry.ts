@@ -309,8 +309,8 @@ export async function runShopAssistantReadTool(params: {
   );
   const input = tool.inputSchema.parse(params.input) as unknown;
   await tool.authorize?.(input, params.context);
-  const output = await withAiOperationalTimeout(
-    tool.execute(input, params.context),
+  const output = await withAiOperationalTimeout((signal) =>
+    tool.execute(input, { ...params.context, signal }),
   );
   const parsed = tool.outputSchema.parse(output) as unknown;
   return groundShopAssistantToolOutput(parsed, params.context.actor);

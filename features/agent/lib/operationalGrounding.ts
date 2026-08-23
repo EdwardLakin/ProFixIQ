@@ -19,6 +19,11 @@ const COLLECTION_KEYS = [
   "technicians",
   "changes",
   "alerts",
+  "inspections",
+  "blockers",
+  "recommendations",
+  "locations",
+  "suppliers",
 ] as const;
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -81,12 +86,22 @@ export function groundAssistantAnswer(params: {
   role: string;
   requestedAt: string;
 }): AssistantAnswer {
+  const canonicalHref = (href: string) =>
+    href
+      .trim()
+      .toLowerCase()
+      .replace(/[?#].*$/, "")
+      .replace(/\/$/, "");
   const linkedRecords = new Set(
     [
-      ...params.answer.entities.map(
-        (entity) => entity.id ?? entity.href ?? entity.label,
+      ...params.answer.entities.map((entity) =>
+        entity.href
+          ? `href:${canonicalHref(entity.href)}`
+          : entity.id
+            ? `${entity.type}:${entity.id}`
+            : `label:${entity.label.trim().toLowerCase()}`,
       ),
-      ...params.answer.links.map((link) => link.href),
+      ...params.answer.links.map((link) => `href:${canonicalHref(link.href)}`),
     ].filter(Boolean),
   );
   const summaryCount = params.answer.summary.match(

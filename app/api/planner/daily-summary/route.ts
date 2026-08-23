@@ -3,6 +3,7 @@ import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server
 
 import { getRoleDailySummary } from "@/features/agent/server/getRoleDailySummary";
 import { createOperationalGrounding } from "@/features/agent/lib/operationalGrounding";
+import { withAiOperationalTimeout } from "@/features/agent/lib/toolTypes";
 import { resolveShopAssistantError } from "@/features/shop-assistant/server/requireShopAssistantActor";
 
 export const dynamic = "force-dynamic";
@@ -58,11 +59,14 @@ export async function GET() {
   }
 
   try {
-    const result = await getRoleDailySummary({
-      shopId: profile.shopId,
-      userId: user.id,
-      role: profile.role,
-    });
+    const result = await withAiOperationalTimeout((signal) =>
+      getRoleDailySummary({
+        shopId: profile.shopId as string,
+        userId: user.id,
+        role: profile.role,
+        signal,
+      }),
+    );
 
     const today = new Date().toISOString().slice(0, 10);
 

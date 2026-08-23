@@ -514,16 +514,20 @@ async function answerDiagnosticConversation(args: {
   question: string;
   request: AssistantAskRequest;
   resolvedContext: AssistantResolvedContext;
+  signal: AbortSignal;
 }): Promise<AssistantAnswer> {
   if (!isOpenAIConfigured()) {
     return fallbackDiagnosticConversationAnswer(args);
   }
 
-  const completion = await getOpenAIClient().chat.completions.create({
-    model: getOpenAIModelForPurpose("reasoning"),
-    messages: buildDiagnosticMessages(args),
-    ...openAITemperatureParam(getOpenAIModelForPurpose("reasoning"), 0.2),
-  });
+  const completion = await getOpenAIClient().chat.completions.create(
+    {
+      model: getOpenAIModelForPurpose("reasoning"),
+      messages: buildDiagnosticMessages(args),
+      ...openAITemperatureParam(getOpenAIModelForPurpose("reasoning"), 0.2),
+    },
+    { signal: args.signal },
+  );
 
   const content = completion.choices[0]?.message?.content?.trim();
   if (!content) return fallbackDiagnosticConversationAnswer(args);
@@ -1420,8 +1424,12 @@ async function answerAssistantInternal({
   profileId,
   role,
   requestedAt,
+  signal,
   request: rawRequest,
-}: AskParams & { requestedAt: string }): Promise<AssistantAnswer> {
+}: AskParams & {
+  requestedAt: string;
+  signal: AbortSignal;
+}): Promise<AssistantAnswer> {
   const supabase = getServerSupabase();
   const actor = getActorCapabilities({ role });
   const question = normalizeQuestion(rawRequest.question);
@@ -1491,6 +1499,7 @@ async function answerAssistantInternal({
     profileId,
     role: actor.canonicalRole,
     requestedAt,
+    signal,
   });
 
   const nameCandidate = extractNameLikeValue(question);
@@ -2088,7 +2097,12 @@ async function answerAssistantInternal({
         "technician diagnostic assistance",
       );
     }
-    return answerDiagnosticConversation({ question, request, resolvedContext });
+    return answerDiagnosticConversation({
+      question,
+      request,
+      resolvedContext,
+      signal,
+    });
   }
 
   return buildAnswer({
@@ -2122,8 +2136,8 @@ export async function answerAssistant(
   params: AskParams,
 ): Promise<AssistantAnswer> {
   const requestedAt = new Date().toISOString();
-  const answer = await withAiOperationalTimeout(
-    answerAssistantInternal({ ...params, requestedAt }),
+  const answer = await withAiOperationalTimeout((signal) =>
+    answerAssistantInternal({ ...params, requestedAt, signal }),
   );
   return groundAssistantAnswer({
     answer,

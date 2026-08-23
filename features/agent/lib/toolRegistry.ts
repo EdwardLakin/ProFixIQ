@@ -1,6 +1,10 @@
 // features/agent/lib/toolRegistry.ts
 import { z } from "zod";
-import { assertToolContext, type ToolContext } from "./toolTypes";
+import {
+  assertToolContext,
+  normalizeToolContext,
+  type ToolContext,
+} from "./toolTypes";
 
 import {
   toolCreateWorkOrder,
@@ -208,9 +212,10 @@ export async function validateAndRun(
   ctx: ToolContext,
 ): Promise<unknown> {
   assertToolContext(ctx);
+  const runtimeContext = normalizeToolContext(ctx);
   const tool = TOOL_MAP[name];
   const parsed = (tool.inputSchema as z.ZodType<unknown>).parse(input);
-  const out = await tool.run(parsed as never, ctx);
+  const out = await tool.run(parsed as never, runtimeContext);
   return (tool.outputSchema as z.ZodType<unknown>).parse(out);
 }
 
@@ -219,25 +224,41 @@ export const runCreateWorkOrder = (
   input: CreateWorkOrderIn,
   ctx: ToolContext,
 ): Promise<CreateWorkOrderOut> =>
-  validateAndRun("create_work_order", input, ctx) as Promise<CreateWorkOrderOut>;
+  validateAndRun(
+    "create_work_order",
+    input,
+    ctx,
+  ) as Promise<CreateWorkOrderOut>;
 
 export const runAddWorkOrderLine = (
   input: AddWorkOrderLineIn,
   ctx: ToolContext,
 ): Promise<AddWorkOrderLineOut> =>
-  validateAndRun("add_work_order_line", input, ctx) as Promise<AddWorkOrderLineOut>;
+  validateAndRun(
+    "add_work_order_line",
+    input,
+    ctx,
+  ) as Promise<AddWorkOrderLineOut>;
 
 export const runFindCustomerVehicle = (
   input: FindCustomerVehicleIn,
   ctx: ToolContext,
 ): Promise<FindCustomerVehicleOut> =>
-  validateAndRun("find_customer_vehicle", input, ctx) as Promise<FindCustomerVehicleOut>;
+  validateAndRun(
+    "find_customer_vehicle",
+    input,
+    ctx,
+  ) as Promise<FindCustomerVehicleOut>;
 
 export const runGenerateInvoiceHtml = (
   input: GenerateInvoiceHtmlIn,
   ctx: ToolContext,
 ): Promise<GenerateInvoiceHtmlOut> =>
-  validateAndRun("generate_invoice_html", input, ctx) as Promise<GenerateInvoiceHtmlOut>;
+  validateAndRun(
+    "generate_invoice_html",
+    input,
+    ctx,
+  ) as Promise<GenerateInvoiceHtmlOut>;
 
 export const runEmailInvoice = (
   input: EmailInvoiceIn,
@@ -261,49 +282,81 @@ export const runAttachPhoto = (
   input: AttachPhotoIn,
   ctx: ToolContext,
 ): Promise<AttachPhotoOut> =>
-  validateAndRun("attach_photo_to_work_order", input, ctx) as Promise<AttachPhotoOut>;
+  validateAndRun(
+    "attach_photo_to_work_order",
+    input,
+    ctx,
+  ) as Promise<AttachPhotoOut>;
 
 export const runCreateCustomInspection = (
   input: CreateCustomInspectionIn,
   ctx: ToolContext,
 ): Promise<CreateCustomInspectionOut> =>
-  validateAndRun("create_custom_inspection", input, ctx) as Promise<CreateCustomInspectionOut>;
+  validateAndRun(
+    "create_custom_inspection",
+    input,
+    ctx,
+  ) as Promise<CreateCustomInspectionOut>;
 
 export const runFindOrCreateFleet = (
   input: FindOrCreateFleetIn,
   ctx: ToolContext,
 ): Promise<FindOrCreateFleetOut> =>
-  validateAndRun("find_or_create_fleet", input, ctx) as Promise<FindOrCreateFleetOut>;
+  validateAndRun(
+    "find_or_create_fleet",
+    input,
+    ctx,
+  ) as Promise<FindOrCreateFleetOut>;
 
 export const runFindOrCreateFleetProgram = (
   input: FindOrCreateFleetProgramIn,
   ctx: ToolContext,
 ): Promise<FindOrCreateFleetProgramOut> =>
-  validateAndRun("find_or_create_fleet_program", input, ctx) as Promise<FindOrCreateFleetProgramOut>;
+  validateAndRun(
+    "find_or_create_fleet_program",
+    input,
+    ctx,
+  ) as Promise<FindOrCreateFleetProgramOut>;
 
 export const runGenerateFleetWorkOrders = (
   input: GenerateFleetWorkOrdersIn,
   ctx: ToolContext,
 ): Promise<GenerateFleetWorkOrdersOut> =>
-  validateAndRun("generate_fleet_work_orders", input, ctx) as Promise<GenerateFleetWorkOrdersOut>;
+  validateAndRun(
+    "generate_fleet_work_orders",
+    input,
+    ctx,
+  ) as Promise<GenerateFleetWorkOrdersOut>;
 
 export const runListPendingApprovals = (
   input: ListPendingApprovalsIn,
   ctx: ToolContext,
 ): Promise<ListPendingApprovalsOut> =>
-  validateAndRun("list_pending_approvals", input, ctx) as Promise<ListPendingApprovalsOut>;
+  validateAndRun(
+    "list_pending_approvals",
+    input,
+    ctx,
+  ) as Promise<ListPendingApprovalsOut>;
 
 export const runSetLineApproval = (
   input: SetLineApprovalIn,
   ctx: ToolContext,
 ): Promise<SetLineApprovalOut> =>
-  validateAndRun("set_line_approval", input, ctx) as Promise<SetLineApprovalOut>;
+  validateAndRun(
+    "set_line_approval",
+    input,
+    ctx,
+  ) as Promise<SetLineApprovalOut>;
 
 export const runRecordWorkOrderApproval = (
   input: RecordWorkOrderApprovalIn,
   ctx: ToolContext,
 ): Promise<RecordWorkOrderApprovalOut> =>
-  validateAndRun("record_work_order_approval", input, ctx) as Promise<RecordWorkOrderApprovalOut>;
+  validateAndRun(
+    "record_work_order_approval",
+    input,
+    ctx,
+  ) as Promise<RecordWorkOrderApprovalOut>;
 
 /* new direct ops wrappers */
 export const runGetCustomerVisitHistory = (
@@ -326,15 +379,11 @@ export const runGetVehicleHistory = (
   ctx: ToolContext,
 ) => runGetVehicleHistoryTool(input, ctx);
 
-export const runGetShopCurrentStatus = (
-  input: object,
-  ctx: ToolContext,
-) => runGetShopCurrentStatusTool(input, ctx);
+export const runGetShopCurrentStatus = (input: object, ctx: ToolContext) =>
+  runGetShopCurrentStatusTool(input, ctx);
 
-export const runGetStalledWorkOrders = (
-  input: object,
-  ctx: ToolContext,
-) => runGetStalledWorkOrdersTool(input, ctx);
+export const runGetStalledWorkOrders = (input: object, ctx: ToolContext) =>
+  runGetStalledWorkOrdersTool(input, ctx);
 
 export const runGetBookings = (
   input: {

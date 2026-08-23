@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { getServerSupabase } from "../server/supabase";
-import type { ToolContext } from "../lib/toolTypes";
+import { applyToolAbortSignal, type ToolContext } from "../lib/toolTypes";
 import { runFindCustomerVehicle } from "../lib/toolRegistry";
 
 const InputSchema = z.object({
@@ -56,7 +56,7 @@ export async function runGetBookings(rawInput: Input, ctx: ToolContext) {
     query = query.eq("status", input.status);
   }
 
-  const { data, error } = await query;
+  const { data, error } = await applyToolAbortSignal(query, ctx);
   if (error) throw new Error(error.message);
 
   const rows = (data ?? []) as Array<{

@@ -55,7 +55,10 @@ const toolDomainSources = readdirSync(
 )
   .filter((name) => name.endsWith(".ts"))
   .map((name) =>
-    readFileSync(`features/shop-assistant/server/tools/domains/${name}`, "utf8"),
+    readFileSync(
+      `features/shop-assistant/server/tools/domains/${name}`,
+      "utf8",
+    ),
   );
 
 describe("phase 12 AI schema and grounding contracts", () => {
@@ -64,13 +67,10 @@ describe("phase 12 AI schema and grounding contracts", () => {
       validatedAiSelect("work_orders", ["id", "custom_id", "status"]),
     ).toBe("id, custom_id, status");
     expect(AI_QUERY_SCHEMA_VERSION).toContain("20260822223500");
-    expect(queryContract).toContain('import type { Database }');
+    expect(queryContract).toContain("import type { Database }");
 
     expect(() =>
-      validatedAiSelect(
-        "work_orders",
-        ["id", "estimated_total"] as never,
-      ),
+      validatedAiSelect("work_orders", ["id", "estimated_total"] as never),
     ).toThrow(AiQuerySchemaError);
   });
 
@@ -105,6 +105,9 @@ describe("phase 12 AI schema and grounding contracts", () => {
     expect(() =>
       assertToolContext({ ...context, tenantId: "other-tenant" }),
     ).toThrow("query scope is invalid");
+    expect(() =>
+      assertToolContext({ shopId: "shop-a", userId: "auth-a" }),
+    ).not.toThrow();
   });
 
   it("attaches a stable count and current-as-of timestamp to answers", () => {
@@ -134,6 +137,11 @@ describe("phase 12 AI schema and grounding contracts", () => {
       }),
     );
     expect(inferOperationalRecordCount({ requests: [{}, {}, {}] })).toBe(3);
+    expect(inferOperationalRecordCount({ inspections: [{}, {}] })).toBe(2);
+    expect(inferOperationalRecordCount({ blockers: [{}] })).toBe(1);
+    expect(inferOperationalRecordCount({ recommendations: [{}, {}, {}] })).toBe(
+      3,
+    );
     expect(
       groundAssistantAnswer({
         answer: {
@@ -142,7 +150,14 @@ describe("phase 12 AI schema and grounding contracts", () => {
           bullets: [],
           actions: [],
           links: [{ label: "WO #000014", href: "/work-orders/14" }],
-          entities: [],
+          entities: [
+            {
+              type: "work_order",
+              id: "14",
+              label: "WO #000014",
+              href: "/work-orders/14",
+            },
+          ],
         },
         shopId: "shop-a",
         role: "advisor",
@@ -154,12 +169,23 @@ describe("phase 12 AI schema and grounding contracts", () => {
   it("bounds a hung operational request with a safe retryable failure", async () => {
     vi.useFakeTimers();
     try {
-      const result = withAiOperationalTimeout(new Promise<never>(() => {}), 25);
+      let aborted = false;
+      const result = withAiOperationalTimeout(
+        (signal) =>
+          new Promise<never>((_resolve, reject) => {
+            signal.addEventListener("abort", () => {
+              aborted = true;
+              reject(signal.reason);
+            });
+          }),
+        25,
+      );
       const assertion = expect(result).rejects.toMatchObject({
         name: "AiOperationalTimeoutError",
       });
       await vi.advanceTimersByTimeAsync(25);
       await assertion;
+      expect(aborted).toBe(true);
     } finally {
       vi.useRealTimers();
     }
@@ -171,7 +197,7 @@ describe("phase 12 AI schema and grounding contracts", () => {
       const safe = toSafeDatabaseError(
         {
           code: "42703",
-          message: 'column work_orders.estimated_total does not exist',
+          message: "column work_orders.estimated_total does not exist",
           details: "select estimated_total from public.work_orders",
         },
         { context: "phase-12", fallback: "Current shop data is unavailable." },
@@ -190,12 +216,15 @@ describe("phase 12 AI schema and grounding contracts", () => {
       expect(route).toContain('export const fetchCache = "force-no-store"');
     }
     expect(toolRegistry).toContain("withAiOperationalTimeout");
+    expect(toolRegistry).toContain("signal");
     expect(toolRegistry).toContain("groundShopAssistantToolOutput");
     expect(toolFormatter).toContain("Data current as of");
     for (const route of assistantRoutes.slice(-3)) {
       expect(route).toContain("resolveShopAssistantError");
       expect(route).not.toContain("error instanceof Error ? error.message");
     }
+    expect(assistantRoutes.at(-1)).toContain("withAiOperationalTimeout");
+    expect(assistantRoutes.at(-1)).toContain("getRoleDailySummary");
   });
 
   it("treats prompts and tool text as untrusted and confirms every write", () => {
