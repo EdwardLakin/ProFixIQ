@@ -92,7 +92,7 @@ export default function OwnerPaymentsPage() {
   const [settings, setSettings] = useState<PaymentSettings>(DEFAULT_SETTINGS);
   const [savedSettings, setSavedSettings] = useState<PaymentSettings>(DEFAULT_SETTINGS);
   const [pinOpen, setPinOpen] = useState(false);
-  const [saveAfterPin, setSaveAfterPin] = useState(false);
+  const [pinContinuation, setPinContinuation] = useState<"settings" | "connect" | null>(null);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<
     "all" | "succeeded" | "pending" | "failed" | "refunded"
@@ -229,7 +229,7 @@ export default function OwnerPaymentsPage() {
       });
       const json = (await response.json().catch(() => ({}))) as SettingsResponse;
       if (response.status === 401 || response.status === 403) {
-        setSaveAfterPin(true);
+        setPinContinuation("settings");
         setPinOpen(true);
         return;
       }
@@ -253,6 +253,11 @@ export default function OwnerPaymentsPage() {
     try {
       const response = await fetch("/api/stripe/connect/onboard", { method: "POST" });
       const json = (await response.json().catch(() => ({}))) as OnboardingResponse;
+      if (response.status === 401 || response.status === 403) {
+        setPinContinuation("connect");
+        setPinOpen(true);
+        return;
+      }
       if (!response.ok || !json.onboardingUrl) {
         throw new Error(
           json.migration_required
@@ -565,13 +570,17 @@ export default function OwnerPaymentsPage() {
         open={pinOpen}
         onClose={() => {
           setPinOpen(false);
-          setSaveAfterPin(false);
+          setPinContinuation(null);
         }}
         onVerified={() => {
           setPinOpen(false);
-          if (saveAfterPin) {
-            setSaveAfterPin(false);
+          if (pinContinuation === "settings") {
+            setPinContinuation(null);
             void persistSettings();
+          }
+          if (pinContinuation === "connect") {
+            setPinContinuation(null);
+            void beginOnboarding();
           }
         }}
       />

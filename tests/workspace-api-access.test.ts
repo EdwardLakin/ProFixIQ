@@ -118,4 +118,38 @@ describe("shop-scoped API Workspace capability enforcement", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.response.status).toBe(503);
   });
+
+  it("rechecks the canonical role and denies a revoked billing session", async () => {
+    resolveCanonicalStaffProfileMock
+      .mockResolvedValueOnce({
+        profile: {
+          id: PROFILE_ID,
+          user_id: AUTH_USER_ID,
+          shop_id: SHOP_ID,
+          role: "owner",
+        },
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        profile: {
+          id: PROFILE_ID,
+          user_id: AUTH_USER_ID,
+          shop_id: SHOP_ID,
+          role: "manager",
+        },
+        error: null,
+      });
+
+    const options = {
+      allowRoles: ["owner", "admin"] as const,
+      requiredCapability: "canManageBilling" as const,
+    };
+    const beforeRevocation = await requireShopScopedApiAccess(options);
+    const afterRevocation = await requireShopScopedApiAccess(options);
+
+    expect(beforeRevocation.ok).toBe(true);
+    expect(afterRevocation.ok).toBe(false);
+    if (!afterRevocation.ok) expect(afterRevocation.response.status).toBe(403);
+    expect(resolveCanonicalStaffProfileMock).toHaveBeenCalledTimes(2);
+  });
 });

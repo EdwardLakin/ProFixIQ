@@ -4,18 +4,13 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createStripeClient } from "@/features/stripe/lib/stripe/client";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import type { Database } from "@shared/types/types/supabase";
-import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import { saveShopPaymentSettings } from "@/features/stripe/lib/server/shop-payment-settings";
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { OWNER_PIN_PURPOSES } from "@/features/shared/lib/server/owner-pin";
 
 type DB = Database;
-
-type ProfileScope = Pick<
-  DB["public"]["Tables"]["profiles"]["Row"],
-  "id" | "role" | "shop_id"
->;
 
 type ShopScope = Pick<
   DB["public"]["Tables"]["shops"]["Row"],
@@ -65,40 +60,27 @@ function isDirectChargeAccount(account: Stripe.Account): boolean {
   );
 }
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
+    const access = await requireShopScopedApiAccess({
+      requiredCapability: "canManageBilling",
+      allowRoles: ["owner", "admin"],
+      requireOwnerPin: true,
+      ownerPinRequest: request,
+      ownerPinAllowedPurposes: [
+        OWNER_PIN_PURPOSES.BILLING,
+        OWNER_PIN_PURPOSES.PRIVILEGED,
+      ],
+    });
+    if (!access.ok) return access.response;
+
     const stripe = createStripeClient(mustEnv("STRIPE_SECRET_KEY"));
-    const supabase = createServerSupabaseRoute();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("id, role, shop_id")
-      .eq("id", user.id)
-      .maybeSingle<ProfileScope>();
-    if (profileError) {
-      return NextResponse.json({ error: profileError.message }, { status: 500 });
-    }
-    if (!profile?.shop_id) {
-      return NextResponse.json({ error: "No shop found for this account." }, { status: 400 });
-    }
-
-    const actor = getActorCapabilities({ role: profile.role });
-    if (!actor.isKnownRole || !actor.canManageBilling) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    const supabase = access.supabase;
 
     const { data: shop, error: shopError } = await supabase
       .from("shops")
       .select("id, country, timezone, shop_name, name, stripe_account_id")
-      .eq("id", profile.shop_id)
+      .eq("id", access.profile.shop_id)
       .maybeSingle<ShopScope>();
     if (shopError) {
       return NextResponse.json({ error: shopError.message }, { status: 500 });

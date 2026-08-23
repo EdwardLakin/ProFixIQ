@@ -129,4 +129,38 @@ describe("shop page role-or-Workspace capability enforcement", () => {
     expect(result.canonicalRole).toBe("manager");
     expect(resolveCurrentWorkspaceCapabilitiesMock).not.toHaveBeenCalled();
   });
+
+  it("rechecks the canonical role and redirects a revoked owner page session", async () => {
+    resolveCanonicalStaffProfileMock
+      .mockResolvedValueOnce({
+        profile: {
+          id: PROFILE_ID,
+          user_id: AUTH_USER_ID,
+          shop_id: SHOP_ID,
+          role: "owner",
+        },
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        profile: {
+          id: PROFILE_ID,
+          user_id: AUTH_USER_ID,
+          shop_id: SHOP_ID,
+          role: "manager",
+        },
+        error: null,
+      });
+
+    const options = {
+      allowRoles: ["owner", "admin"] as const,
+      requiredCapability: "canManageBilling" as const,
+    };
+    const beforeRevocation = await requireShopPageAccess(options);
+
+    expect(beforeRevocation.canonicalRole).toBe("owner");
+    await expect(requireShopPageAccess(options)).rejects.toThrow(
+      "redirect:/dashboard",
+    );
+    expect(resolveCanonicalStaffProfileMock).toHaveBeenCalledTimes(2);
+  });
 });
