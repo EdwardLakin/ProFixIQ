@@ -13,25 +13,12 @@ import {
   type PendingMutation,
 } from "@/features/shared/lib/offline/mutations";
 import type { Database } from "@shared/types/types/supabase";
-import type { CanonicalWorkOrderLineContext } from "@/features/work-orders/lib/data/loadCanonicalWorkOrderLineContext";
+import type { MobileWorkOrderSnapshot } from "@/features/work-orders/mobile/mobileWorkOrderDetail";
+
+export type { MobileWorkOrderSnapshot } from "@/features/work-orders/mobile/mobileWorkOrderDetail";
 
 type DB = Database;
-type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
 type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"];
-type QuoteLine = DB["public"]["Tables"]["work_order_quote_lines"]["Row"];
-type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
-type Customer = DB["public"]["Tables"]["customers"]["Row"];
-
-export type MobileWorkOrderSnapshot = {
-  workOrder: WorkOrder;
-  lines: WorkOrderLine[];
-  quoteLines: QuoteLine[];
-  vehicle: Vehicle | null;
-  customer: Customer | null;
-  techNamesById: Record<string, string>;
-  lineContext?: CanonicalWorkOrderLineContext;
-  shopLaborRate?: number | null;
-};
 
 export type TechnicianJobEditorDraft = {
   lineId: string;
@@ -142,6 +129,31 @@ export async function loadProjectedWorkOrderSnapshot(args: {
         listPendingMutations(args.scope),
       )
     : null;
+}
+
+/**
+ * Removes every cached key for a mobile work-order detail snapshot. Routes may
+ * be opened by a human-facing alias, while the same payload is also stored by
+ * canonical work-order id after an authorized read.
+ */
+export async function removeMobileWorkOrderDetailSnapshots(args: {
+  scope: OfflineMutationScope;
+  entityId: string;
+}): Promise<void> {
+  const stored = await getOfflineSnapshot<MobileWorkOrderSnapshot>({
+    scope: args.scope,
+    kind: DETAIL_KIND,
+    entityId: args.entityId,
+  });
+  const canonicalId = stored?.data.workOrder?.id;
+  const entityIds = Array.from(
+    new Set([args.entityId, canonicalId].filter((id): id is string => !!id)),
+  );
+  await removeOfflineSnapshots({
+    scope: args.scope,
+    kind: DETAIL_KIND,
+    entityIds,
+  });
 }
 
 export async function findProjectedTechnicianJob(args: {

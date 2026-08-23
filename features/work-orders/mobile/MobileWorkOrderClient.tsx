@@ -32,10 +32,8 @@ import { isReviewableQuoteLine } from "@/features/work-orders/lib/quotes/reviewa
 import { resolveWorkOrderLinePricing } from "@/features/work-orders/lib/pricing/resolveWorkOrderLinePricing";
 import { filterAllocationsNotBackedByCanonicalParts } from "@/features/work-orders/lib/display/workOrderParts";
 import {
-  collectTechnicianIdsForLineContexts,
   emptyCanonicalWorkOrderLineContext,
   getPartsRequestStatusLabel,
-  loadCanonicalWorkOrderLineContext,
   type CanonicalWorkOrderLineContext,
 } from "@/features/work-orders/lib/data/loadCanonicalWorkOrderLineContext";
 import {
@@ -51,8 +49,12 @@ import {
 import { saveOfflineSnapshot } from "@/features/shared/lib/offline/database";
 import {
   loadProjectedWorkOrderSnapshot,
-  type MobileWorkOrderSnapshot,
+  removeMobileWorkOrderDetailSnapshots,
 } from "@/features/work-orders/mobile/technicianOfflineExecution";
+import {
+  parseMobileWorkOrderSnapshot,
+} from "@/features/work-orders/mobile/mobileWorkOrderDetail";
+import { resolveMobileWorkOrderReturnHref } from "@/features/mobile/work-orders/mobileWorkOrderRouting";
 import { useTabs } from "@/features/shared/components/tabs/TabsProvider";
 import RouteLoadPanel from "@/features/shared/components/ui/RouteLoadPanel";
 import {
@@ -87,15 +89,6 @@ type WorkOrderLineWithInspectionMeta = WorkOrderLine & {
     template?: string | null;
   } | null;
 };
-
-const looksLikeUuid = (s: string) => s.includes("-") && s.length >= 36;
-
-function splitCustomId(raw: string): { prefix: string; n: number | null } {
-  const m = raw.toUpperCase().match(/^([A-Z]+)\s*0*?(\d+)?$/);
-  if (!m) return { prefix: raw.toUpperCase(), n: null };
-  const n = m[2] ? parseInt(m[2], 10) : null;
-  return { prefix: m[1], n: Number.isFinite(n!) ? n : null };
-}
 
 // 🔹 Desktop-style helper for finding the inspection template id on a line
 function extractInspectionTemplateId(
@@ -146,6 +139,12 @@ function normalizeFieldInspectionStatus(value: unknown): string {
     .trim()
     .toLowerCase()
     .replace(/[\s-]+/g, "_");
+}
+
+function formatOptionalDateTime(value: string | null | undefined): string {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "—" : format(date, "PPpp");
 }
 
 /* ---------------------------- Badges (WO header) ---------------------------- */
@@ -214,6 +213,18 @@ const APPROVAL_ROLES = new Set([
   "leadhand",
 ]);
 
+function MobileWorkOrderDetailSkeleton({
+  className = "",
+}: {
+  className?: string;
+}) {
+  return (
+    <div
+      className={`metal-card animate-pulse rounded-2xl border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] backdrop-blur ${className}`}
+    />
+  );
+}
+
 /* Mobile detail operational status is derived in detailOperationalState.ts. */
 
 /* ------------------------------------------------------------------------- */
@@ -230,12 +241,19 @@ export default function MobileWorkOrderClient({
   // ✅ handle ?focus=<workOrderLineId>
   const focusParam = searchParams?.get("focus") ?? null;
   const inspectionTemplateId = searchParams?.get("templateId")?.trim() || null;
+  const returnHref = resolveMobileWorkOrderReturnHref(
+    searchParams?.get("returnTo"),
+  );
   const handledFocusRef = useRef<string | null>(null);
+  const loadGenerationRef = useRef(0);
 
   // 🔥 IMPORTANT: scope tab-state keys by routeId so different work orders don’t bleed state
   const keyBase = useMemo(() => `m:wo:${routeId}`, [routeId]);
 
   const [wo, setWo] = useTabState<WorkOrder | null>(`${keyBase}:wo`, null);
+  const hasRenderedDetailRef = useRef(Boolean(wo));
+  const serverLoadCountRef = useRef(0);
+  const backgroundRefreshTimerRef = useRef<number | null>(null);
   const [lines, setLines] = useTabState<WorkOrderLine[]>(
     `${keyBase}:lines`,
     [],
@@ -263,6 +281,7 @@ export default function MobileWorkOrderClient({
   );
 
   const [loading, setLoading] = useState<boolean>(true);
+  const [actorReady, setActorReady] = useState(false);
   const [viewError, setViewError] = useState<string | null>(null);
   const [loadFailure, setLoadFailure] = useState<RouteLoadFailure | null>(null);
 
@@ -289,7 +308,6 @@ export default function MobileWorkOrderClient({
     `${keyBase}:showDetails`,
     true,
   );
-  const [warnedMissing, setWarnedMissing] = useState(false);
   const [offlineSummary, setOfflineSummary] = useState(() =>
     getOfflineSyncSummary(),
   );
@@ -306,6 +324,7 @@ export default function MobileWorkOrderClient({
     let mounted = true;
 
     const waitForSession = async () => {
+      setActorReady(false);
       setLoading(true);
       setLoadFailure(null);
       try {
@@ -346,12 +365,11 @@ export default function MobileWorkOrderClient({
 
             setCurrentUserId(uid);
             setUserId(uid);
-
             const cachedScope = getOfflineMutationScope();
             if (!navigator.onLine && cachedScope?.userId === uid) {
               setCurrentUserRole(session?.user.user_metadata?.role ?? null);
               setShopId(cachedScope.shopId);
-              setLoading(false);
+              setActorReady(true);
               return;
             }
 
@@ -361,18 +379,30 @@ export default function MobileWorkOrderClient({
               .eq("id", uid)
               .abortSignal(signal)
               .maybeSingle();
-            if (profErr) throw profErr;
             if (!mounted || signal.aborted) return;
+            if (profErr) {
+              if (cachedScope?.userId === uid) {
+                setCurrentUserRole(
+                  session?.user.user_metadata?.role ?? null,
+                );
+                setShopId(cachedScope.shopId);
+                setActorReady(true);
+                return;
+              }
+              throw profErr;
+            }
 
             setCurrentUserRole(prof?.role ?? null);
             setShopId((prof?.shop_id as string | null) ?? null);
             if (prof?.shop_id) {
               setOfflineMutationScope({ userId: uid, shopId: prof.shop_id });
             }
+            setActorReady(true);
           },
         );
       } catch (error) {
         if (!mounted) return;
+        setActorReady(false);
         setCurrentUserId(null);
         setUserId(null);
         setCurrentUserRole(null);
@@ -392,6 +422,7 @@ export default function MobileWorkOrderClient({
     const { data: sub } = supabase.auth.onAuthStateChange((_evt, s) => {
       if (s?.user) void waitForSession();
       else {
+        setActorReady(false);
         setCurrentUserId(null);
         setUserId(null);
         setCurrentUserRole(null);
@@ -413,9 +444,13 @@ export default function MobileWorkOrderClient({
 
   /* ---------------------- FETCH ---------------------- */
   const fetchAll = useCallback(
-    async (retry = 0) => {
+    async (options: { background?: boolean } = {}) => {
       if (!routeId) return;
-      setLoading(true);
+      const loadGeneration = ++loadGenerationRef.current;
+      const isLatestLoad = () => loadGenerationRef.current === loadGeneration;
+      const preserveRenderedDetail =
+        options.background === true && hasRenderedDetailRef.current;
+      if (!preserveRenderedDetail) setLoading(true);
       setViewError(null);
       setLoadFailure(null);
 
@@ -427,7 +462,7 @@ export default function MobileWorkOrderClient({
           scope,
           entityId: routeId,
         });
-        if (!cached) return false;
+        if (!isLatestLoad() || !cached) return false;
         setWo(cached.workOrder);
         setLines(cached.lines);
         setQuoteLines(cached.quoteLines);
@@ -438,6 +473,7 @@ export default function MobileWorkOrderClient({
           cached.lineContext ?? emptyCanonicalWorkOrderLineContext(),
         );
         setShopLaborRate(cached.shopLaborRate ?? null);
+        hasRenderedDetailRef.current = true;
         setViewError("Offline copy · changes may be newer on the server.");
         return true;
       };
@@ -445,11 +481,12 @@ export default function MobileWorkOrderClient({
       if (!navigator.onLine) {
         if (!(await loadCached()))
           setViewError("No saved copy of this work order is available.");
-        setLoading(false);
+        if (isLatestLoad()) setLoading(false);
         return;
       }
 
       try {
+        serverLoadCountRef.current += 1;
         await runBoundedRouteLoad(
           {
             route: `/mobile/work-orders/${routeId}`,
@@ -458,260 +495,67 @@ export default function MobileWorkOrderClient({
             actorId: currentUserId,
             role: currentUserRole,
           },
-          async ({ signal }) => {
-            let woRow: WorkOrder | null = null;
-
-            // 1) by UUID
-            if (looksLikeUuid(routeId)) {
-              const { data, error } = await supabase
-                .from("work_orders")
-                .select("*")
-                .eq("id", routeId)
-                .abortSignal(signal)
-                .maybeSingle();
-              if (!error) woRow = (data as WorkOrder | null) ?? null;
+          async ({ recordStatus, signal }) => {
+            const response = await fetch(
+              `/api/mobile/work-orders/${encodeURIComponent(routeId)}`,
+              {
+                credentials: "include",
+                headers: { Accept: "application/json" },
+                signal,
+              },
+            );
+            recordStatus(response.status);
+            const body = await response.json().catch(() => null);
+            if (!response.ok) {
+              const message =
+                body &&
+                typeof body === "object" &&
+                "error" in body &&
+                typeof body.error === "string"
+                  ? body.error
+                  : "The work order could not be loaded.";
+              throw routeLoadFailureFromStatus(response.status, message);
             }
 
-            // 2) by custom_id (NOW SHOP-SCOPED when we have shopId)
-            if (!woRow) {
-              // exact match
-              const eqQuery = supabase
-                .from("work_orders")
-                .select("*")
-                .eq("custom_id", routeId);
-
-              const eqRes = shopId
-                ? await eqQuery
-                    .eq("shop_id", shopId)
-                    .abortSignal(signal)
-                    .maybeSingle()
-                : await eqQuery.abortSignal(signal).maybeSingle();
-
-              woRow = (eqRes.data as WorkOrder | null) ?? null;
-
-              // ilike match
-              if (!woRow) {
-                const ilikeQuery = supabase
-                  .from("work_orders")
-                  .select("*")
-                  .ilike("custom_id", routeId.toUpperCase());
-
-                const ilikeRes = shopId
-                  ? await ilikeQuery
-                      .eq("shop_id", shopId)
-                      .abortSignal(signal)
-                      .maybeSingle()
-                  : await ilikeQuery.abortSignal(signal).maybeSingle();
-
-                woRow = (ilikeRes.data as WorkOrder | null) ?? null;
-              }
-
-              // prefix + number normalization fallback
-              if (!woRow) {
-                const { prefix, n } = splitCustomId(routeId);
-                if (n !== null) {
-                  const candQuery = supabase
-                    .from("work_orders")
-                    .select("*")
-                    .ilike("custom_id", `${prefix}%`)
-                    .limit(50);
-
-                  const { data: cands } = shopId
-                    ? await candQuery.eq("shop_id", shopId).abortSignal(signal)
-                    : await candQuery.abortSignal(signal);
-
-                  const wanted = `${prefix}${n}`;
-                  const match = (cands ?? []).find(
-                    (r) =>
-                      (r.custom_id ?? "")
-                        .toUpperCase()
-                        .replace(/^([A-Z]+)0+/, "$1") === wanted,
-                  );
-                  if (match) woRow = match as WorkOrder;
-                }
-              }
-            }
-
-            if (!woRow) {
-              if (retry < 2) {
-                await new Promise((r) =>
-                  setTimeout(r, 200 * Math.pow(2, retry)),
-                );
-                return fetchAll(retry + 1);
-              }
-              setViewError("Work order not visible / not found.");
-              setWo(null);
-              setLines([]);
-              setQuoteLines([]);
-              setVehicle(null);
-              setCustomer(null);
-              setLineContext(emptyCanonicalWorkOrderLineContext());
-              setShopLaborRate(null);
-              throw routeLoadFailureFromStatus(
-                404,
-                "Work order not visible or not found.",
-              );
-            }
-
-            if (!warnedMissing && (!woRow.vehicle_id || !woRow.customer_id)) {
-              toast.error(
-                "This work order is missing vehicle and/or customer. Open the Create form to set them.",
-              );
-              setWarnedMissing(true);
-            }
-
-            const [linesRes, vehRes, custRes, quotesRes, shopRes] =
-              await Promise.all([
-                supabase
-                  .from("work_order_lines")
-                  .select("*")
-                  .eq("work_order_id", woRow.id)
-                  .order("created_at", { ascending: true })
-                  .abortSignal(signal),
-                woRow.vehicle_id
-                  ? supabase
-                      .from("vehicles")
-                      .select("*")
-                      .eq("id", woRow.vehicle_id)
-                      .abortSignal(signal)
-                      .maybeSingle()
-                  : Promise.resolve({ data: null, error: null } as const),
-                woRow.customer_id
-                  ? supabase
-                      .from("customers")
-                      .select("*")
-                      .eq("id", woRow.customer_id)
-                      .abortSignal(signal)
-                      .maybeSingle()
-                  : Promise.resolve({ data: null, error: null } as const),
-                supabase
-                  .from("work_order_quote_lines")
-                  .select("*")
-                  .eq("work_order_id", woRow.id)
-                  .order("created_at", { ascending: true })
-                  .abortSignal(signal),
-                supabase
-                  .from("shops")
-                  .select("labor_rate")
-                  .eq("id", woRow.shop_id)
-                  .abortSignal(signal)
-                  .maybeSingle<{ labor_rate: number | null }>(),
-              ]);
-
-            if (linesRes.error) throw linesRes.error;
-            const lineRows = (linesRes.data ?? []) as WorkOrderLine[];
+            const snapshot = parseMobileWorkOrderSnapshot(body);
+            if (!isLatestLoad()) return;
             const freshCore = applyFetchedMobileDetailSnapshot({
               cachedWorkOrder: null,
               cachedLines: [],
-              fetchedWorkOrder: woRow,
-              fetchedLines: lineRows,
+              fetchedWorkOrder: snapshot.workOrder,
+              fetchedLines: snapshot.lines,
             });
             setWo(freshCore.workOrder);
             setLines(freshCore.lines);
-
-            const freshLineContext = await loadCanonicalWorkOrderLineContext({
-              supabase,
-              workOrderId: woRow.id,
-              shopId: woRow.shop_id,
-              lineIds: lineRows.map((line) => line.id),
-            });
-            setLineContext(freshLineContext);
-            if (shopRes.error) throw shopRes.error;
-            const freshShopLaborRate =
-              typeof shopRes.data?.labor_rate === "number"
-                ? shopRes.data.labor_rate
-                : null;
-            setShopLaborRate(freshShopLaborRate);
-
-            // Populate names for every visible primary or shared assignment.
-            const techIds = collectTechnicianIdsForLineContexts(
-              [freshLineContext],
-              lineRows.map((line) => line.assigned_tech_id),
+            setQuoteLines(snapshot.quoteLines);
+            setVehicle(snapshot.vehicle);
+            setCustomer(snapshot.customer);
+            setTechNamesById(snapshot.techNamesById);
+            setLineContext(
+              snapshot.lineContext ?? emptyCanonicalWorkOrderLineContext(),
             );
+            setShopLaborRate(snapshot.shopLaborRate ?? null);
+            hasRenderedDetailRef.current = true;
 
-            const techMap: Record<string, string> = {};
-            if (techIds.length > 0) {
-              const { data: techProfiles, error: techErr } = await supabase
-                .from("profiles")
-                .select("id, full_name")
-                .abortSignal(signal)
-                .in("id", techIds);
-
-              if (!techErr && techProfiles) {
-                techProfiles.forEach((p) => {
-                  techMap[p.id] = p.full_name ?? "Technician";
-                });
-                setTechNamesById(techMap);
-              } else {
-                setTechNamesById({});
-              }
-            } else {
-              setTechNamesById({});
-            }
-
-            const freshQuoteLines = quotesRes.error
-              ? []
-              : ((quotesRes.data as WorkOrderQuoteLine[] | null) ?? []);
-            const freshVehicle = vehRes?.error
-              ? null
-              : ((vehRes?.data as Vehicle | null) ?? null);
-            const freshCustomer = custRes?.error
-              ? null
-              : ((custRes?.data as Customer | null) ?? null);
-
-            if (quotesRes.error) {
-              setQuoteLines([]);
-              console.error(
-                "[Mobile WO id page] quote lines load error:",
-                quotesRes.error,
-              );
-            } else {
-              setQuoteLines(
-                (quotesRes.data as WorkOrderQuoteLine[] | null) ?? [],
-              );
-            }
-
-            if (vehRes?.error) {
-              setVehicle(null);
-              console.error(
-                "[Mobile WO id page] vehicle load error:",
-                vehRes.error,
-              );
-            } else {
-              setVehicle((vehRes?.data as Vehicle | null) ?? null);
-            }
-
-            if (custRes?.error) {
-              setCustomer(null);
-              console.error(
-                "[Mobile WO id page] customer load error:",
-                custRes.error,
-              );
-            } else {
-              setCustomer((custRes?.data as Customer | null) ?? null);
-            }
-            if (scope) {
-              const snapshot: MobileWorkOrderSnapshot = {
-                workOrder: freshCore.workOrder,
-                lines: freshCore.lines,
-                quoteLines: freshQuoteLines,
-                vehicle: freshVehicle,
-                customer: freshCustomer,
-                techNamesById: techMap,
-                lineContext: freshLineContext,
-                shopLaborRate: freshShopLaborRate,
-              };
+            const authorizedScope = currentUserId
+              ? {
+                  userId: currentUserId,
+                  shopId: snapshot.workOrder.shop_id,
+                }
+              : null;
+            if (authorizedScope) {
+              setOfflineMutationScope(authorizedScope);
               await Promise.all([
                 saveOfflineSnapshot({
-                  scope,
+                  scope: authorizedScope,
                   kind: "mobile-work-order-detail",
                   entityId: routeId,
                   data: snapshot,
                 }),
                 saveOfflineSnapshot({
-                  scope,
+                  scope: authorizedScope,
                   kind: "mobile-work-order-detail",
-                  entityId: woRow.id,
+                  entityId: snapshot.workOrder.id,
                   data: snapshot,
                 }),
               ]);
@@ -719,15 +563,55 @@ export default function MobileWorkOrderClient({
           },
         );
       } catch (e: unknown) {
-        const usedCache = await loadCached();
-        if (!usedCache) {
-          setLoadFailure(
-            asRouteLoadFailure(e, "The work order could not be loaded."),
+        const failure = asRouteLoadFailure(
+          e,
+          "The work order could not be loaded.",
+        );
+        const mayUseCache = ![
+          "unauthenticated",
+          "forbidden",
+          "not-found",
+        ].includes(failure.kind);
+        if (!mayUseCache && scope) {
+          try {
+            await removeMobileWorkOrderDetailSnapshots({
+              scope,
+              entityId: routeId,
+            });
+          } catch (cacheError) {
+            console.error(
+              "[Mobile WO id page] cache eviction error:",
+              cacheError,
+            );
+          }
+        }
+        if (isLatestLoad() && preserveRenderedDetail && mayUseCache) {
+          setViewError(
+            "Refresh failed · showing the last loaded work order.",
           );
+          console.error("[Mobile WO id page] refresh error:", e);
+          return;
+        }
+        const usedCache = mayUseCache ? await loadCached() : false;
+        if (isLatestLoad() && !usedCache) {
+          setWo(null);
+          setLines([]);
+          setQuoteLines([]);
+          setVehicle(null);
+          setCustomer(null);
+          setTechNamesById({});
+          setLineContext(emptyCanonicalWorkOrderLineContext());
+          setShopLaborRate(null);
+          hasRenderedDetailRef.current = false;
+          setLoadFailure(failure);
         }
         console.error("[Mobile WO id page] load error:", e);
       } finally {
-        setLoading(false);
+        serverLoadCountRef.current = Math.max(
+          0,
+          serverLoadCountRef.current - 1,
+        );
+        if (isLatestLoad()) setLoading(false);
       }
     },
     [
@@ -735,7 +619,6 @@ export default function MobileWorkOrderClient({
       shopId,
       currentUserId,
       currentUserRole,
-      warnedMissing,
       setWo,
       setLines,
       setQuoteLines,
@@ -746,15 +629,53 @@ export default function MobileWorkOrderClient({
     ],
   );
 
-  useEffect(() => {
-    if (!routeId || !currentUserId) return;
-    void fetchAll();
-  }, [fetchAll, routeId, currentUserId]);
+  const scheduleBackgroundRefresh = useCallback(() => {
+    if (!navigator.onLine) return;
+    if (backgroundRefreshTimerRef.current !== null) return;
+    const runWhenIdle = () => {
+      backgroundRefreshTimerRef.current = null;
+      if (!navigator.onLine) return;
+      if (serverLoadCountRef.current > 0) {
+        backgroundRefreshTimerRef.current = window.setTimeout(runWhenIdle, 75);
+        return;
+      }
+      void fetchAll({ background: true });
+    };
+    backgroundRefreshTimerRef.current = window.setTimeout(runWhenIdle, 75);
+  }, [fetchAll]);
 
   useEffect(() => {
-    if (!routeId || !currentUserId) return;
-    return subscribeOfflineMutations(() => void fetchAll());
-  }, [fetchAll, routeId, currentUserId]);
+    if (!routeId || !currentUserId || !actorReady) return;
+    void fetchAll();
+  }, [actorReady, fetchAll, routeId, currentUserId]);
+
+  useEffect(() => {
+    if (!routeId || !currentUserId || !actorReady) return;
+    return subscribeOfflineMutations(scheduleBackgroundRefresh);
+  }, [actorReady, currentUserId, routeId, scheduleBackgroundRefresh]);
+
+  useEffect(() => {
+    if (!routeId || !currentUserId || !actorReady) return;
+    const refreshIfOnline = () => {
+      if (navigator.onLine) scheduleBackgroundRefresh();
+    };
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") refreshIfOnline();
+    };
+
+    window.addEventListener("online", refreshIfOnline);
+    window.addEventListener("focus", refreshIfOnline);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.removeEventListener("online", refreshIfOnline);
+      window.removeEventListener("focus", refreshIfOnline);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+      if (backgroundRefreshTimerRef.current !== null) {
+        window.clearTimeout(backgroundRefreshTimerRef.current);
+        backgroundRefreshTimerRef.current = null;
+      }
+    };
+  }, [actorReady, currentUserId, routeId, scheduleBackgroundRefresh]);
 
   /* ---------------------- REALTIME ---------------------- */
   useEffect(() => {
@@ -770,7 +691,7 @@ export default function MobileWorkOrderClient({
           table: "work_orders",
           filter: `id=eq.${wo.id}`,
         },
-        () => fetchAll(),
+        scheduleBackgroundRefresh,
       )
       .on(
         "postgres_changes",
@@ -780,7 +701,7 @@ export default function MobileWorkOrderClient({
           table: "work_order_lines",
           filter: `work_order_id=eq.${wo.id}`,
         },
-        () => fetchAll(),
+        scheduleBackgroundRefresh,
       )
       .on(
         "postgres_changes",
@@ -790,7 +711,7 @@ export default function MobileWorkOrderClient({
           table: "work_order_quote_lines",
           filter: `work_order_id=eq.${wo.id}`,
         },
-        () => fetchAll(),
+        scheduleBackgroundRefresh,
       )
       .on(
         "postgres_changes",
@@ -800,7 +721,7 @@ export default function MobileWorkOrderClient({
           table: "work_order_parts",
           filter: `work_order_id=eq.${wo.id}`,
         },
-        () => fetchAll(),
+        scheduleBackgroundRefresh,
       )
       .on(
         "postgres_changes",
@@ -810,7 +731,7 @@ export default function MobileWorkOrderClient({
           table: "work_order_part_allocations",
           filter: `work_order_id=eq.${wo.id}`,
         },
-        () => fetchAll(),
+        scheduleBackgroundRefresh,
       )
       .on(
         "postgres_changes",
@@ -820,7 +741,7 @@ export default function MobileWorkOrderClient({
           table: "part_requests",
           filter: `work_order_id=eq.${wo.id}`,
         },
-        () => fetchAll(),
+        scheduleBackgroundRefresh,
       )
       .on(
         "postgres_changes",
@@ -829,7 +750,7 @@ export default function MobileWorkOrderClient({
           schema: "public",
           table: "work_order_line_technicians",
         },
-        () => fetchAll(),
+        scheduleBackgroundRefresh,
       )
       .on(
         "postgres_changes",
@@ -839,7 +760,7 @@ export default function MobileWorkOrderClient({
           table: "work_order_line_labor_segments",
           filter: `work_order_id=eq.${wo.id}`,
         },
-        () => fetchAll(),
+        scheduleBackgroundRefresh,
       )
       .subscribe();
 
@@ -850,12 +771,12 @@ export default function MobileWorkOrderClient({
         //
       }
     };
-  }, [wo?.id, fetchAll]);
+  }, [wo?.id, scheduleBackgroundRefresh]);
 
   // 🔁 refresh when a parts request or inspection completes
   useEffect(() => {
     const handleParts = () => {
-      void fetchAll();
+      scheduleBackgroundRefresh();
     };
     const handleInspectionCompleted = (
       ev: CustomEvent<{
@@ -896,7 +817,7 @@ export default function MobileWorkOrderClient({
         handleInspectionCompleted as EventListener,
       );
     };
-  }, [fetchAll]);
+  }, [scheduleBackgroundRefresh]);
 
   /* ----------------------- Derived data ----------------------- */
 
@@ -1039,14 +960,10 @@ export default function MobileWorkOrderClient({
     });
   }, [mobileOperationalState.visibleLines, visibleLineState]);
 
-  const createdAt = wo?.created_at ? new Date(wo.created_at) : null;
-  const createdAtText =
-    createdAt && !Number.isNaN(createdAt.getTime())
-      ? format(createdAt, "PPpp")
-      : "—";
-  const expectedCompletionText = wo?.expected_completion_at
-    ? format(new Date(wo.expected_completion_at), "PPpp")
-    : "—";
+  const createdAtText = formatOptionalDateTime(wo?.created_at);
+  const expectedCompletionText = formatOptionalDateTime(
+    wo?.expected_completion_at,
+  );
 
   const canAssign = false; // assignments handled in focused view / desktop
   const canApprove = currentUserRole
@@ -1438,12 +1355,6 @@ export default function MobileWorkOrderClient({
   if (!routeId)
     return <div className="p-6 text-red-400">Missing work order id.</div>;
 
-  const Skeleton = ({ className = "" }: { className?: string }) => (
-    <div
-      className={`metal-card animate-pulse rounded-2xl border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] backdrop-blur ${className}`}
-    />
-  );
-
   return (
     <div className="relative space-y-5 overflow-hidden px-4 pb-24 pt-4 text-[color:var(--theme-text-primary)]">
       <div
@@ -1460,7 +1371,7 @@ export default function MobileWorkOrderClient({
 
       {/* compact operational header */}
       <div className="flex items-center justify-between gap-2">
-        <PreviousPageButton />
+        <PreviousPageButton to={returnHref ?? undefined} />
         {wo?.custom_id && (
           <span className="rounded-full border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-page)] px-2.5 py-1 text-[10px] text-[color:var(--theme-text-secondary)]">
             ID{" "}
@@ -1471,7 +1382,7 @@ export default function MobileWorkOrderClient({
         )}
       </div>
 
-      {!currentUserId && (
+      {!loading && !loadFailure && !currentUserId && (
         <div className="metal-panel metal-panel--card rounded-2xl border border-amber-500/40 px-3 py-3 text-xs text-amber-100 shadow-[var(--theme-shadow-medium)]">
           You appear signed out on this tab. If actions fail, open{" "}
           <Link
@@ -1493,7 +1404,6 @@ export default function MobileWorkOrderClient({
         <RouteLoadPanel
           failure={loadFailure}
           onRetry={() => void fetchAll()}
-          title="Work order unavailable"
         />
       ) : null}
       {(offlineSummary.queued > 0 ||
@@ -1508,10 +1418,13 @@ export default function MobileWorkOrderClient({
       )}
 
       {loading ? (
-        <div className="grid gap-4">
-          <Skeleton className="h-20" />
-          <Skeleton className="h-32" />
-          <Skeleton className="h-40" />
+        <div className="grid gap-4" role="status" aria-live="polite">
+          <p className="text-sm text-[color:var(--theme-text-secondary)]">
+            Loading work order…
+          </p>
+          <MobileWorkOrderDetailSkeleton className="h-20" />
+          <MobileWorkOrderDetailSkeleton className="h-32" />
+          <MobileWorkOrderDetailSkeleton className="h-40" />
         </div>
       ) : loadFailure && !wo ? null : !wo ? (
         <div className="text-sm text-red-300">Work order not found.</div>
