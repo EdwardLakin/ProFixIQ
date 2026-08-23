@@ -5,6 +5,7 @@ const read = (path: string) => readFileSync(path, "utf8");
 const migration = read(
   "supabase/migrations/20260823013000_establish_quoted_parts_status_contract.sql",
 );
+const runtime = read("tests/security/quote-review-cost-and-sell.runtime.sql");
 const sendRoute = read("app/api/quotes/send/route.ts");
 const workOrderClient = read("app/work-orders/[id]/Client.tsx");
 const invoiceSnapshot = read("features/invoices/server/getInvoiceSnapshot.ts");
@@ -18,6 +19,13 @@ describe("Phase 8 quoted-parts and workflow-status contract", () => {
     const statusSource = read("features/parts/lib/status-display.ts");
     expect(statusSource).toContain('if (status === "approved") return "approved"');
     expect(statusSource).not.toContain('status === "approved" || status === "reserved"');
+    const approvalIndex = runtime.indexOf("set status = 'approved'");
+    const orderingIndex = runtime.indexOf(
+      "set status = 'ordered', qty_ordered = qty",
+      approvalIndex,
+    );
+    expect(approvalIndex).toBeGreaterThanOrEqual(0);
+    expect(orderingIndex).toBeGreaterThan(approvalIndex);
   });
 
   it("derives work-order parts labels from the canonical quote snapshot", () => {

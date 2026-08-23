@@ -1615,6 +1615,9 @@ begin
     raise exception 'Manual/vendor quoted request used a divergent stage: %', v_stage;
   end if;
 
+  update public.part_requests
+  set status = 'approved'
+  where id = '40600000-0000-4000-8000-000000000001';
   update public.part_request_items
   set status = 'ordered', qty_ordered = qty
   where id = '40700000-0000-4000-8000-000000000001';
