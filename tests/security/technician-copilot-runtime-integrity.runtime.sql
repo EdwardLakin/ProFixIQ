@@ -135,7 +135,7 @@ values
     'job',
     'active',
     'a1438000-0000-4000-8000-000000000002',
-    'a1438000-0000-4000-8000-000000000002',
+    null,
     'Runtime lifecycle one'
   ),
   (
@@ -145,7 +145,7 @@ values
     'job',
     'waiting_parts',
     'a1438000-0000-4000-8000-000000000002',
-    'a1438000-0000-4000-8000-000000000002',
+    null,
     'Runtime lifecycle two'
   ),
   (
@@ -155,7 +155,7 @@ values
     'job',
     'active',
     'a1438000-0000-4000-8000-000000000002',
-    'a1438000-0000-4000-8000-000000000002',
+    null,
     'Runtime terminal guard'
   ),
   (
@@ -185,7 +185,7 @@ values
     'job',
     'awaiting',
     'a1438000-0000-4000-8000-000000000004',
-    'a1438000-0000-4000-8000-000000000004',
+    null,
     'Runtime split-identity completion'
   ),
   (
@@ -219,6 +219,34 @@ values
     'Runtime completion-learning bounded retry'
   )
 on conflict (id) do nothing;
+
+insert into public.work_order_line_technicians (
+  work_order_line_id,
+  technician_id,
+  assigned_by
+)
+values
+  (
+    'a1438000-0000-4000-8000-000000000201',
+    'a1438000-0000-4000-8000-000000000002',
+    'a1438000-0000-4000-8000-000000000001'
+  ),
+  (
+    'a1438000-0000-4000-8000-000000000202',
+    'a1438000-0000-4000-8000-000000000002',
+    'a1438000-0000-4000-8000-000000000001'
+  ),
+  (
+    'a1438000-0000-4000-8000-000000000203',
+    'a1438000-0000-4000-8000-000000000002',
+    'a1438000-0000-4000-8000-000000000001'
+  ),
+  (
+    'a1438000-0000-4000-8000-000000000209',
+    'a1438000-0000-4000-8000-000000000004',
+    'a1438000-0000-4000-8000-000000000001'
+  )
+on conflict (work_order_line_id, technician_id) do nothing;
 
 insert into public.tech_shifts (
   id,
@@ -258,6 +286,7 @@ set status = 'completed'
 where id = 'a1438000-0000-4000-8000-000000000103';
 
 set constraints all immediate;
+set constraints all deferred;
 
 do $technician_copilot_runtime_lifecycle$
 declare
@@ -1090,9 +1119,20 @@ begin
     raise exception 'CoPilot split-identity assertion failed: auth/profile ownership was conflated';
   end if;
 
+  insert into public.work_order_line_technicians (
+    work_order_line_id,
+    technician_id,
+    assigned_by
+  ) values (
+    'a1438000-0000-4000-8000-000000000210',
+    'a1438000-0000-4000-8000-000000000004',
+    'a1438000-0000-4000-8000-000000000001'
+  )
+  on conflict (work_order_line_id, technician_id) do nothing;
+
   update public.work_order_lines
   set assigned_tech_id = 'a1438000-0000-4000-8000-000000000004',
-      assigned_to = 'a1438000-0000-4000-8000-000000000004'
+      assigned_to = null
   where id = 'a1438000-0000-4000-8000-000000000210';
 
   perform copilot.technician_session_start_internal(

@@ -19,6 +19,13 @@ const cleanReplayWorkflow = fs.readFileSync(
   path.join(process.cwd(), ".github/workflows/supabase-clean-replay-audit.yml"),
   "utf8",
 );
+const copilotRuntime = fs.readFileSync(
+  path.join(
+    process.cwd(),
+    "tests/security/technician-copilot-runtime-integrity.runtime.sql",
+  ),
+  "utf8",
+);
 
 describe("PFX-004 atomic assignment SQL contract", () => {
   it("declares one canonical set, primary mirror, and report-only legacy drift", () => {
@@ -131,6 +138,16 @@ describe("PFX-004 atomic assignment SQL contract", () => {
     expect(mutation).not.toMatch(/insert into public\.work_order_line_labor_segments/i);
     expect(mutation).not.toMatch(/insert into public\.payroll/i);
     expect(mutation).not.toMatch(/insert into public\.[a-z_]*notifications/i);
+  });
+
+  it("keeps the existing Technician Copilot runtime on the canonical assignment set", () => {
+    expect(copilotRuntime).toContain(
+      "insert into public.work_order_line_technicians",
+    );
+    expect(copilotRuntime).toContain("set constraints all deferred");
+    expect(copilotRuntime).not.toContain(
+      "assigned_to = 'a1438000-0000-4000-8000-000000000004'",
+    );
   });
 
   it("preserves the authenticated legacy wrapper without permitting actor spoofing", () => {
