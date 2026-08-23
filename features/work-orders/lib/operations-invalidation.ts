@@ -6,6 +6,7 @@ export const OPERATIONS_REALTIME_TABLES = [
   "part_requests",
   "part_request_items",
   "work_order_quote_lines",
+  "bookings",
 ] as const;
 
 export type OperationsLiveStatus = "connecting" | "live" | "unavailable";

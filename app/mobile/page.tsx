@@ -213,148 +213,158 @@ export default function MobileHome() {
     }
   }, []);
 
+  const loadTechnicianState = useCallback(async () => {
+    if (!profile?.id || canonicalizeRole(profile.role) !== "mechanic") return;
+    const userId = profile.id;
+    setTechLoading(true);
+    try {
+      const now = new Date();
+      const day = dayWindow(now);
+      const week = weekWindow(now);
+      const [
+        todayShifts,
+        weekShifts,
+        todayDone,
+        weekDone,
+        activeLines,
+        todayJobs,
+      ] = await Promise.all([
+        supabase
+          .from("tech_shifts")
+          .select("*")
+          .eq("user_id", userId)
+          .eq("type", "shift")
+          .gte("start_time", day.start)
+          .lte("start_time", day.end),
+        supabase
+          .from("tech_shifts")
+          .select("*")
+          .eq("user_id", userId)
+          .eq("type", "shift")
+          .gte("start_time", week.start)
+          .lte("start_time", week.end),
+        supabase
+          .from("work_order_lines")
+          .select("*")
+          .or(`assigned_tech_id.eq.${userId},user_id.eq.${userId}`)
+          .eq("line_type", "job")
+          .eq("status", "completed")
+          .gte("punched_out_at", day.start)
+          .lte("punched_out_at", day.end),
+        supabase
+          .from("work_order_lines")
+          .select("*")
+          .or(`assigned_tech_id.eq.${userId},user_id.eq.${userId}`)
+          .eq("line_type", "job")
+          .eq("status", "completed")
+          .gte("punched_out_at", week.start)
+          .lte("punched_out_at", week.end),
+        supabase
+          .from("work_order_lines")
+          .select("*")
+          .or(`assigned_tech_id.eq.${userId},user_id.eq.${userId}`)
+          .eq("line_type", "job")
+          .in("status", [
+            "awaiting",
+            "assigned",
+            "active",
+            "in_progress",
+            "on_hold",
+          ]),
+        supabase
+          .from("work_order_lines")
+          .select("*")
+          .or(`assigned_tech_id.eq.${userId},user_id.eq.${userId}`)
+          .eq("line_type", "job")
+          .gte("created_at", day.start)
+          .lte("created_at", day.end)
+          .order("created_at", { ascending: false })
+          .limit(6),
+      ]);
+
+      const todayWorked = workedHours(
+        todayShifts.data as TechShift[] | null,
+        now.getTime(),
+      );
+      const weekWorked = workedHours(
+        weekShifts.data as TechShift[] | null,
+        now.getTime(),
+      );
+      const todayBilled = billedHours(todayDone.data as WorkOrderLine[] | null);
+      const weekBilled = billedHours(weekDone.data as WorkOrderLine[] | null);
+      const active = (activeLines.data as WorkOrderLine[] | null) ?? [];
+
+      setTechStats({
+        openJobs: active.length,
+        assignedJobs:
+          active.filter((line) => line.status === "assigned").length ||
+          active.length,
+        jobsCompletedToday: todayDone.data?.length ?? 0,
+        today: {
+          workedHours: todayWorked,
+          billedHours: todayBilled,
+          efficiencyPct:
+            todayWorked > 0 ? (todayBilled / todayWorked) * 100 : null,
+        },
+        week: {
+          workedHours: weekWorked,
+          billedHours: weekBilled,
+          efficiencyPct:
+            weekWorked > 0 ? (weekBilled / weekWorked) * 100 : null,
+        },
+      });
+      setTechJobs(
+        ((todayJobs.data as WorkOrderLine[] | null) ?? []).map((line) => ({
+          id: String(line.id),
+          label:
+            line.description ||
+            line.complaint ||
+            String(line.job_type ?? "Job"),
+          status: String(line.status ?? "awaiting"),
+          href: line.work_order_id
+            ? `/mobile/work-orders/${line.work_order_id}`
+            : "/mobile/tech/queue",
+        })),
+      );
+    } catch (error) {
+      setHomeError(
+        error instanceof Error
+          ? error.message
+          : "Technician metrics could not be refreshed.",
+      );
+    } finally {
+      setTechLoading(false);
+    }
+  }, [profile?.id, profile?.role, supabase]);
+
+  const refreshVisibleHome = useCallback(async () => {
+    if (canonicalizeRole(profile?.role) === "mechanic") {
+      await Promise.all([loadHomePayload(), loadTechnicianState()]);
+      return;
+    }
+    await loadHomePayload();
+  }, [loadHomePayload, loadTechnicianState, profile?.role]);
+
   useEffect(() => {
-    if (profile?.id) void loadHomePayload();
-  }, [loadHomePayload, profile?.id]);
+    if (profile?.id) void refreshVisibleHome();
+  }, [profile?.id, refreshVisibleHome]);
 
   const liveStatus = useOperationsLiveRefresh({
     shopId: profile?.shop_id ?? null,
-    onRefresh: loadHomePayload,
+    onRefresh: refreshVisibleHome,
   });
 
   const withFreshness = (content: ReactNode) => (
     <MobileHomeFreshness
       lastUpdatedAt={lastUpdatedAt}
       liveStatus={liveStatus}
-      refreshing={homeRefreshing}
+      refreshing={homeRefreshing || techLoading}
       error={homeError}
-      onRefresh={() => void loadHomePayload()}
+      onRefresh={() => void refreshVisibleHome()}
     >
       {content}
     </MobileHomeFreshness>
   );
-
-  useEffect(() => {
-    if (!profile?.id || canonicalizeRole(profile.role) !== "mechanic") return;
-    const userId = profile.id;
-    setTechLoading(true);
-    void (async () => {
-      try {
-        const now = new Date();
-        const day = dayWindow(now);
-        const week = weekWindow(now);
-        const [
-          todayShifts,
-          weekShifts,
-          todayDone,
-          weekDone,
-          activeLines,
-          todayJobs,
-        ] = await Promise.all([
-          supabase
-            .from("tech_shifts")
-            .select("*")
-            .eq("user_id", userId)
-            .eq("type", "shift")
-            .gte("start_time", day.start)
-            .lte("start_time", day.end),
-          supabase
-            .from("tech_shifts")
-            .select("*")
-            .eq("user_id", userId)
-            .eq("type", "shift")
-            .gte("start_time", week.start)
-            .lte("start_time", week.end),
-          supabase
-            .from("work_order_lines")
-            .select("*")
-            .or(`assigned_tech_id.eq.${userId},user_id.eq.${userId}`)
-            .eq("line_type", "job")
-            .eq("status", "completed")
-            .gte("punched_out_at", day.start)
-            .lte("punched_out_at", day.end),
-          supabase
-            .from("work_order_lines")
-            .select("*")
-            .or(`assigned_tech_id.eq.${userId},user_id.eq.${userId}`)
-            .eq("line_type", "job")
-            .eq("status", "completed")
-            .gte("punched_out_at", week.start)
-            .lte("punched_out_at", week.end),
-          supabase
-            .from("work_order_lines")
-            .select("*")
-            .or(`assigned_tech_id.eq.${userId},user_id.eq.${userId}`)
-            .eq("line_type", "job")
-            .in("status", [
-              "awaiting",
-              "assigned",
-              "active",
-              "in_progress",
-              "on_hold",
-            ]),
-          supabase
-            .from("work_order_lines")
-            .select("*")
-            .or(`assigned_tech_id.eq.${userId},user_id.eq.${userId}`)
-            .eq("line_type", "job")
-            .gte("created_at", day.start)
-            .lte("created_at", day.end)
-            .order("created_at", { ascending: false })
-            .limit(6),
-        ]);
-
-        const todayWorked = workedHours(
-          todayShifts.data as TechShift[] | null,
-          now.getTime(),
-        );
-        const weekWorked = workedHours(
-          weekShifts.data as TechShift[] | null,
-          now.getTime(),
-        );
-        const todayBilled = billedHours(
-          todayDone.data as WorkOrderLine[] | null,
-        );
-        const weekBilled = billedHours(weekDone.data as WorkOrderLine[] | null);
-        const active = (activeLines.data as WorkOrderLine[] | null) ?? [];
-
-        setTechStats({
-          openJobs: active.length,
-          assignedJobs:
-            active.filter((line) => line.status === "assigned").length ||
-            active.length,
-          jobsCompletedToday: todayDone.data?.length ?? 0,
-          today: {
-            workedHours: todayWorked,
-            billedHours: todayBilled,
-            efficiencyPct:
-              todayWorked > 0 ? (todayBilled / todayWorked) * 100 : null,
-          },
-          week: {
-            workedHours: weekWorked,
-            billedHours: weekBilled,
-            efficiencyPct:
-              weekWorked > 0 ? (weekBilled / weekWorked) * 100 : null,
-          },
-        });
-        setTechJobs(
-          ((todayJobs.data as WorkOrderLine[] | null) ?? []).map((line) => ({
-            id: String(line.id),
-            label:
-              line.description ||
-              line.complaint ||
-              String(line.job_type ?? "Job"),
-            status: String(line.status ?? "awaiting"),
-            href: line.work_order_id
-              ? `/mobile/work-orders/${line.work_order_id}`
-              : "/mobile/tech/queue",
-          })),
-        );
-      } finally {
-        setTechLoading(false);
-      }
-    })();
-  }, [profile?.id, profile?.role, supabase]);
 
   const canonical = canonicalizeRole(profile?.role);
   const role =

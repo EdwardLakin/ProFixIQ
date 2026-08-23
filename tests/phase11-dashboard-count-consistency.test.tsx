@@ -7,6 +7,7 @@ import {
   ACTIVE_WORK_ORDER_STATUSES,
   countActiveWorkOrders,
   isActiveWorkOrderStatus,
+  normalizeWorkOrderStatus,
 } from "@/features/work-orders/lib/work-order-status";
 import {
   createOperationsEventDeduper,
@@ -37,6 +38,15 @@ describe("phase 11 dashboard count consistency", () => {
     expect(isActiveWorkOrderStatus("closed")).toBe(false);
     expect(ACTIVE_WORK_ORDER_STATUSES).not.toContain("completed");
     expect(ACTIVE_WORK_ORDER_STATUSES).not.toContain("invoiced");
+    for (const legacyAlias of [
+      "recommended",
+      "estimate",
+      "authorized",
+      "waiting",
+      "ready",
+    ]) {
+      expect(normalizeWorkOrderStatus(legacyAlias)).toBe("new");
+    }
   });
 
   it("deduplicates repeated realtime delivery without suppressing a later update", () => {
@@ -100,10 +110,22 @@ describe("phase 11 dashboard count consistency", () => {
     const mobileList = read(
       "features/mobile/work-orders/MobileWorkOrderQueue.tsx",
     );
+    const assistant = read(
+      "features/shop-assistant/server/state/buildShopState.ts",
+    );
 
-    for (const source of [desktop, operations, mobileHome, mobileList]) {
+    for (const source of [
+      desktop,
+      operations,
+      mobileHome,
+      mobileList,
+      assistant,
+    ]) {
       expect(source).toContain("ACTIVE_WORK_ORDER_STATUSES");
+      expect(source).toContain('.eq("record_type", "work_order")');
     }
+    expect(operations).toContain('.gte("starts_at", todayStart)');
+    expect(operations).not.toContain('.gte("created_at", todayStart)');
     expect(mobileHome).toContain('.eq("is_waiter", true)');
     expect(mobileHome).toContain("activeWos");
     expect(mobileList).toContain('{ count: "exact" }');
@@ -117,6 +139,7 @@ describe("phase 11 dashboard count consistency", () => {
       "part_requests",
       "part_request_items",
       "work_order_quote_lines",
+      "bookings",
     ]);
 
     const hook = read("features/work-orders/hooks/useOperationsLiveRefresh.ts");
@@ -131,5 +154,32 @@ describe("phase 11 dashboard count consistency", () => {
 
     const route = read("app/api/mobile/home-payload/route.ts");
     expect(route).toContain('"Cache-Control": "private, no-store"');
+
+    const routedPage = read("app/dashboard/operations/page.tsx");
+    const routedFreshness = read(
+      "app/dashboard/_components/OperationsDashboardFreshness.tsx",
+    );
+    expect(routedPage).toContain("OperationsDashboardFreshness");
+    expect(routedFreshness).toContain("useOperationsLiveRefresh");
+    expect(routedFreshness).toContain("router.refresh()");
+    expect(routedFreshness).toContain("Live updates unavailable");
+
+    const mobilePage = read("app/mobile/page.tsx");
+    expect(mobilePage).toContain(
+      "Promise.all([loadHomePayload(), loadTechnicianState()])",
+    );
+  });
+
+  it("keeps the canonical active count independent from the board projection", () => {
+    const operations = read(
+      "features/dashboard/server/getOperationsDashboardPayload.ts",
+    );
+    const canonicalCount = operations.indexOf(
+      "payload.topSummary.activeJobs = activeWorkOrdersResult.count ?? 0",
+    );
+    const boardFailure = operations.indexOf("if (boardResult.error)");
+
+    expect(canonicalCount).toBeGreaterThan(-1);
+    expect(boardFailure).toBeGreaterThan(canonicalCount);
   });
 });

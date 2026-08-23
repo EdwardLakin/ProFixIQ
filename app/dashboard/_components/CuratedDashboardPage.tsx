@@ -101,6 +101,7 @@ async function loadDashboardCounts({
       .from("work_orders")
       .select("id", { count: "exact", head: true })
       .eq("shop_id", shopId)
+      .eq("record_type", "work_order")
       .in("status", [...ACTIVE_WORK_ORDER_STATUSES]),
     supabase
       .from("part_requests")

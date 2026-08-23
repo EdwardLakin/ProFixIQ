@@ -222,8 +222,8 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
       .from("bookings")
       .select("id", { count: "exact", head: true })
       .eq("shop_id", identity.shopId)
-      .gte("created_at", todayStart)
-      .lte("created_at", todayEnd),
+      .gte("starts_at", todayStart)
+      .lte("starts_at", todayEnd),
     supabase
       .from("tech_shifts")
       .select("id", { count: "exact", head: true })
@@ -240,6 +240,7 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
       .from("work_orders")
       .select("id", { count: "exact", head: true })
       .eq("shop_id", identity.shopId)
+      .eq("record_type", "work_order")
       .in("status", [...ACTIVE_WORK_ORDER_STATUSES]),
   ]);
 
@@ -390,6 +391,19 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
     activeBoardRows.find((row) => row.overall_stage === "waiting")
       ?.work_order_id ?? null;
 
+  if (!isTechnicianScoped) {
+    if (activeWorkOrdersResult.error) {
+      payload.sectionErrors.push(
+        "The canonical active work-order count is temporarily unavailable.",
+      );
+    } else {
+      payload.topSummary.activeJobs = activeWorkOrdersResult.count ?? 0;
+    }
+  }
+  payload.topSummary.completedToday = completedTodayResult.error
+    ? 0
+    : (completedTodayResult.count ?? 0);
+
   if (boardResult.error) {
     console.error("[Dashboard][Operations] live work query failed", {
       shopId: identity.shopId,
@@ -398,17 +412,9 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
     });
     payload.sectionErrors.push("Live work signal is temporarily unavailable.");
   } else {
-    payload.topSummary.activeJobs = isTechnicianScoped
-      ? activeBoardRows.length
-      : (activeWorkOrdersResult.count ?? activeBoardRows.length);
-    if (!isTechnicianScoped && activeWorkOrdersResult.error) {
-      payload.sectionErrors.push(
-        "The canonical active work-order count is temporarily unavailable.",
-      );
+    if (isTechnicianScoped) {
+      payload.topSummary.activeJobs = activeBoardRows.length;
     }
-    payload.topSummary.completedToday = completedTodayResult.error
-      ? 0
-      : (completedTodayResult.count ?? 0);
     payload.topSummary.blockedJobs = activeBoardRows.filter(
       (row) => row.overall_stage === "waiting",
     ).length;

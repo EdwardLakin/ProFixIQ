@@ -293,6 +293,7 @@ export default function MobileWorkOrderQueue({
             { count: "exact" },
           )
           .eq("shop_id", me.shop_id)
+          .eq("record_type", "work_order")
           .order("created_at", { ascending: false })
           .limit(100);
 
