@@ -1,15 +1,13 @@
-import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
 import FleetUnitsPage from "@/features/fleet/components/FleetUnitsPage";
-import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
 import { getFleetUiContext } from "@/features/fleet/lib/fleetUiCapabilities";
+import { getFleetPortalActorContext } from "../_lib/requireFleetPortalActor";
 
 export default async function PortalFleetUnitsPage() {
-  const supabase = createServerSupabaseRSC();
-  const actor = await resolveFleetActorContext(supabase);
+  const actor = await getFleetPortalActorContext();
 
   return (
     <FleetUnitsPage
-uiContext={getFleetUiContext(actor)}
+      uiContext={getFleetUiContext(actor)}
       routePrefix="/portal/fleet"
     />
   );

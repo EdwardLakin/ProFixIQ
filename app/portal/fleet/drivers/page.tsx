@@ -1,13 +1,11 @@
 import { redirect } from "next/navigation";
 
 import FleetDriversWorkspace from "@/features/fleet/components/FleetDriversWorkspace";
-import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
 import { getFleetUiContext } from "@/features/fleet/lib/fleetUiCapabilities";
-import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
+import { getFleetPortalActorContext } from "../_lib/requireFleetPortalActor";
 
 export default async function FleetDriversPage() {
-  const supabase = createServerSupabaseRSC();
-  const actor = await resolveFleetActorContext(supabase);
+  const actor = await getFleetPortalActorContext();
   const uiContext = getFleetUiContext(actor);
   if (!uiContext.capabilities.canManageUnits) redirect("/portal/fleet");
 

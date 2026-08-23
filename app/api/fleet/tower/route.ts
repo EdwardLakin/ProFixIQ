@@ -112,6 +112,7 @@ function normalizeDispatchState(
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
+  const requestStartedAt = performance.now();
   try {
     const supabase = createServerSupabaseRoute();
     const body = (await req.json().catch(() => ({}))) as {
@@ -142,51 +143,90 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // ────────────────────────────────────────────────────────────────────────
-    // 0) Fleet meta (name) – optional, but nice for UI
-    // ────────────────────────────────────────────────────────────────────────
-    const { data: fleetMeta, error: fleetMetaErr } = await supabase
-      .from("fleets")
-      .select("id, name")
-      .eq("id", fleetId)
-      .maybeSingle();
+    let dispatchQuery = supabase
+      .from("fleet_dispatch_assignments")
+      .select(
+        "id, fleet_id, shop_id, vehicle_id, driver_profile_id, driver_name, route_label, next_pretrip_due, state, unit_label, vehicle_identifier",
+      )
+      .eq("fleet_id", fleetId)
+      .eq("active", true);
+    if (actor.actorType === "fleet_driver") {
+      dispatchQuery = dispatchQuery.eq("driver_profile_id", actor.userId);
+    }
+
+    // These reads share only the resolved actor + fleet scope. Starting them
+    // together removes the dashboard's database waterfall without caching any
+    // mutable request, defect, approval, dispatch, or inspection state.
+    const [
+      fleetMetaResult,
+      fleetVehicleResult,
+      dispatchResult,
+      serviceRequestResult,
+      attentionDefectResult,
+      scheduleResult,
+    ] = await Promise.all([
+      supabase
+        .from("fleets")
+        .select("id, name")
+        .eq("id", fleetId)
+        .maybeSingle(),
+      supabase
+        .from("fleet_vehicles")
+        .select(
+          `
+          fleet_id,
+          vehicle_id,
+          active,
+          nickname,
+          custom_interval_km,
+          custom_interval_hours,
+          custom_interval_days,
+          vehicles!inner (
+            id,
+            unit_number,
+            license_plate,
+            vin,
+            make,
+            model,
+            year
+          )
+        `,
+        )
+        .eq("fleet_id", fleetId)
+        .or("active.is.null,active.eq.true"),
+      dispatchQuery,
+      actor.actorType === "fleet_driver"
+        ? Promise.resolve({ data: [], error: null })
+        : supabase
+            .from("fleet_service_requests")
+            .select(
+              "id, vehicle_id, title, summary, severity, status, created_at",
+            )
+            .eq("fleet_id", fleetId)
+            .neq("status", "cancelled"),
+      supabase
+        .from("fleet_unit_defects")
+        .select("vehicle_id,severity")
+        .eq("fleet_id", fleetId)
+        .eq("marks_vehicle_attention", true)
+        .in("state", ["open", "acknowledged", "deferred"]),
+      supabase
+        .from("fleet_inspection_schedules")
+        .select("vehicle_id, next_inspection_date")
+        .eq("fleet_id", fleetId),
+    ]);
+
+    const { data: fleetMeta, error: fleetMetaErr } = fleetMetaResult;
+    const { data: fleetRowsRaw, error: fleetError } = fleetVehicleResult;
+    const { data: dispatchRaw, error: dispatchError } = dispatchResult;
+    const { data: serviceRequests, error: srError } = serviceRequestResult;
+    const { data: scheduleRows, error: scheduleError } = scheduleResult;
 
     if (fleetMetaErr) {
-      // eslint-disable-next-line no-console
       console.error("[fleet/tower] fleets meta error", fleetMetaErr);
     }
 
-    // ────────────────────────────────────────────────────────────────────────
-    // 1) Fleet vehicles (enrolled units) for this fleet
-    // ────────────────────────────────────────────────────────────────────────
-    const { data: fleetRowsRaw, error: fleetError } = await supabase
-      .from("fleet_vehicles")
-      .select(
-        `
-        fleet_id,
-        vehicle_id,
-        active,
-        nickname,
-        custom_interval_km,
-        custom_interval_hours,
-        custom_interval_days,
-        vehicles!inner (
-          id,
-          unit_number,
-          license_plate,
-          vin,
-          make,
-          model,
-          year
-        )
-      `,
-      )
-      .eq("fleet_id", fleetId)
-      // IMPORTANT: treat active NULL as active (common in seeds) + active true
-      .or("active.is.null,active.eq.true");
-
     if (fleetError) {
-      // eslint-disable-next-line no-console
       console.error("[fleet/tower] fleet_vehicles error", fleetError);
       return NextResponse.json(
         { error: "Failed to load fleet units." },
@@ -221,23 +261,7 @@ export async function POST(req: NextRequest) {
     const vehicleIdSet = new Set<string>();
     for (const r of fleetRows) vehicleIdSet.add(r.vehicle_id);
 
-    // ────────────────────────────────────────────────────────────────────────
-    // 2) Dispatch assignments (pre-trip & who’s where)
-    // ────────────────────────────────────────────────────────────────────────
-    let dispatchQuery = supabase
-      .from("fleet_dispatch_assignments")
-      .select(
-        "id, fleet_id, shop_id, vehicle_id, driver_profile_id, driver_name, route_label, next_pretrip_due, state, unit_label, vehicle_identifier",
-      )
-      .eq("fleet_id", fleetId)
-      .eq("active", true);
-    if (actor.actorType === "fleet_driver") {
-      dispatchQuery = dispatchQuery.eq("driver_profile_id", actor.userId);
-    }
-    const { data: dispatchRaw, error: dispatchError } = await dispatchQuery;
-
     if (dispatchError) {
-      // eslint-disable-next-line no-console
       console.error("[fleet/tower] dispatch_assignments error", dispatchError);
       return NextResponse.json(
         { error: "Failed to load dispatch assignments." },
@@ -257,30 +281,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // ────────────────────────────────────────────────────────────────────────
-    // 3) Service requests (issues) – fleet scoped
-    // ────────────────────────────────────────────────────────────────────────
-    const [serviceRequestResult, attentionDefectResult] = await Promise.all([
-      actor.actorType === "fleet_driver"
-        ? Promise.resolve({ data: [], error: null })
-        : supabase
-            .from("fleet_service_requests")
-            .select(
-              "id, vehicle_id, title, summary, severity, status, created_at",
-            )
-            .eq("fleet_id", fleetId)
-            .neq("status", "cancelled"),
-      supabase
-        .from("fleet_unit_defects")
-        .select("vehicle_id,severity")
-        .eq("fleet_id", fleetId)
-        .eq("marks_vehicle_attention", true)
-        .in("state", ["open", "acknowledged", "deferred"]),
-    ]);
-    const { data: serviceRequests, error: srError } = serviceRequestResult;
-
     if (srError || attentionDefectResult.error) {
-      // eslint-disable-next-line no-console
       console.error("[fleet/tower] service_requests error", srError);
       return NextResponse.json(
         { error: "Failed to load fleet service requests." },
@@ -310,16 +311,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // ────────────────────────────────────────────────────────────────────────
-    // 4) Inspection schedules (CVIP) – fleet scoped
-    // ────────────────────────────────────────────────────────────────────────
-    const { data: scheduleRows, error: scheduleError } = await supabase
-      .from("fleet_inspection_schedules")
-      .select("vehicle_id, next_inspection_date")
-      .eq("fleet_id", fleetId);
-
     if (scheduleError) {
-      // eslint-disable-next-line no-console
       console.error("[fleet/tower] inspection_schedules error", scheduleError);
       return NextResponse.json(
         { error: "Failed to load inspection schedules." },
@@ -475,18 +467,27 @@ export async function POST(req: NextRequest) {
         };
       });
 
-    return NextResponse.json({
-      // helpful for the client if you add fleet switching later
-      fleet: {
-        id: fleetId,
-        name: (fleetMeta as Pick<FleetRow, "name"> | null)?.name ?? null,
+    const serverDurationMs = performance.now() - requestStartedAt;
+    return NextResponse.json(
+      {
+        // helpful for the client if you add fleet switching later
+        fleet: {
+          id: fleetId,
+          name: (fleetMeta as Pick<FleetRow, "name"> | null)?.name ?? null,
+        },
+        units,
+        issues,
+        assignments,
       },
-      units,
-      issues,
-      assignments,
-    });
+      {
+        headers: {
+          "Cache-Control": "private, no-store, max-age=0",
+          "Server-Timing": `fleet-data;dur=${serverDurationMs.toFixed(1)}`,
+          "X-ProFixIQ-Data-As-Of": new Date().toISOString(),
+        },
+      },
+    );
   } catch (err) {
-    // eslint-disable-next-line no-console
     console.error("[fleet/tower] error", err);
     return NextResponse.json(
       { error: "Failed to load fleet tower data." },

@@ -133,6 +133,7 @@ export default function FleetMaintenanceWorkspace({
           action: "list",
           fleetId: fleetId === "all" ? null : fleetId,
         }),
+        cache: "no-store",
       });
       const body = (await response.json().catch(() => ({}))) as
         | Payload

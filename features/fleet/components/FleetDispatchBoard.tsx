@@ -41,6 +41,7 @@ export default function FleetDispatchBoard({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ shopId: null }),
+          cache: "no-store",
         });
 
         if (!res.ok) {
