@@ -178,7 +178,7 @@ values (
   '81530000-0000-4000-8000-000000000001',
   'Phase 15 Former Owner',
   '81540000-0000-4000-8000-000000000002',
-  'closed',
+  'completed',
   'approved',
   '81510000-0000-4000-8000-000000000001',
   'Historical ownership-at-service fixture.'
