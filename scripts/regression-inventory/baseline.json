@@ -113,16 +113,6 @@
       "expiresOn": "2026-09-06"
     },
     {
-      "fingerprint": "610de67c47d4644c13fe",
-      "rule": "missing-column",
-      "severity": "error",
-      "domain": "core",
-      "file": "app/api/assignables/route.ts",
-      "subject": "work_orders.technician_id",
-      "message": "select references missing column work_orders.technician_id",
-      "expiresOn": "2026-09-06"
-    },
-    {
       "fingerprint": "0528e731124ebe000d33",
       "rule": "missing-column",
       "severity": "error",
@@ -1490,16 +1480,6 @@
       "file": "app/api/work-orders/[id]/intake/route.ts",
       "subject": "work_order_lines",
       "message": "insert payload for work_order_lines cannot be checked statically",
-      "expiresOn": "2026-09-06"
-    },
-    {
-      "fingerprint": "6e3cede7f108f49d2f70",
-      "rule": "dynamic-mutation-payload",
-      "severity": "warning",
-      "domain": "work-orders",
-      "file": "app/api/work-orders/assign-all/route.ts",
-      "subject": "work_order_line_technicians",
-      "message": "upsert payload for work_order_line_technicians cannot be checked statically",
       "expiresOn": "2026-09-06"
     },
     {

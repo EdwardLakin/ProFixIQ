@@ -14,8 +14,10 @@ import {
   setOfflineMutationScope,
 } from "@/features/shared/lib/offline/mutations";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import { resolveCanonicalStaffProfile } from "@/features/shared/lib/authenticated-profile";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
+import { resolveTechnicianAssignmentContract } from "@/features/work-orders/lib/technicianAssignmentContract";
 import {
   buildMobileWorkOrderListHref,
   resolveMobileWorkOrderHref,
@@ -33,11 +35,18 @@ type Row = WorkOrder & {
 
 type WorkOrderLineSummary = Pick<
   DB["public"]["Tables"]["work_order_lines"]["Row"],
+  | "id"
   | "work_order_id"
   | "status"
   | "approval_state"
   | "assigned_tech_id"
+  | "assigned_to"
   | "hold_reason"
+>;
+
+type WorkOrderLineAssignment = Pick<
+  DB["public"]["Tables"]["work_order_line_technicians"]["Row"],
+  "work_order_line_id" | "technician_id"
 >;
 
 type WorkOrderSignal = {
@@ -232,12 +241,14 @@ export default function MobileWorkOrderQueue({
           return;
         }
 
-        const { data: me } = await supabase
-          .from("profiles")
-          .select("role, shop_id")
-          .eq("id", auth.user.id)
-          .maybeSingle();
+        const { profile: me, error: profileError } =
+          await resolveCanonicalStaffProfile(supabase, auth.user.id);
         if (!isLatestLoad()) return;
+        if (profileError) {
+          setErrorMessage(profileError);
+          setRows([]);
+          return;
+        }
 
         const actor = getActorCapabilities({ role: me?.role ?? null });
         const canViewAssignedWork =
@@ -292,21 +303,88 @@ export default function MobileWorkOrderQueue({
         const list = (data ?? []) as Row[];
         const workOrderIds = list.map((item) => item.id);
         const signals: Record<string, WorkOrderSignal> = {};
+        let visibleList = list;
 
         if (workOrderIds.length > 0) {
-          const { data: linesData } = await supabase
+          const { data: linesData, error: linesError } = await supabase
             .from("work_order_lines")
             .select(
-              "work_order_id, status, approval_state, assigned_tech_id, hold_reason",
+              "id, work_order_id, status, approval_state, assigned_tech_id, assigned_to, hold_reason",
             )
             .eq("shop_id", me.shop_id)
             .in("work_order_id", workOrderIds);
           if (!isLatestLoad()) return;
+          if (linesError) {
+            setErrorMessage(linesError.message);
+            setRows([]);
+            return;
+          }
 
-          (linesData ?? []).forEach((line) => {
-            const item = line as WorkOrderLineSummary;
+          const lineRows = (linesData ?? []) as WorkOrderLineSummary[];
+          const lineIds = lineRows.map((line) => line.id);
+          const { data: assignmentData, error: assignmentError } =
+            lineIds.length > 0
+              ? await supabase
+                  .from("work_order_line_technicians")
+                  .select("work_order_line_id, technician_id")
+                  .in("work_order_line_id", lineIds)
+              : { data: [] as WorkOrderLineAssignment[], error: null };
+          if (!isLatestLoad()) return;
+          if (assignmentError) {
+            setErrorMessage(assignmentError.message);
+            setRows([]);
+            return;
+          }
+
+          const assignments =
+            (assignmentData ?? []) as WorkOrderLineAssignment[];
+          const canonicalIdsByLine = assignments.reduce<Map<string, string[]>>(
+            (map, assignment) => {
+              const ids = map.get(assignment.work_order_line_id) ?? [];
+              ids.push(assignment.technician_id);
+              map.set(assignment.work_order_line_id, ids);
+              return map;
+            },
+            new Map(),
+          );
+          const assignmentByLine = new Map(
+            lineRows.map((line) => [
+              line.id,
+              resolveTechnicianAssignmentContract({
+                primaryTechnicianId: line.assigned_tech_id,
+                legacyAssignedTo: line.assigned_to,
+                canonicalTechnicianIds: canonicalIdsByLine.get(line.id),
+              }),
+            ]),
+          );
+
+          if (canViewAssignedWork) {
+            const myAssignedLineIds = new Set(
+              lineRows
+                .filter((line) =>
+                  assignmentByLine
+                    .get(line.id)
+                    ?.technicianIds.includes(me.id),
+                )
+                .map((line) => line.id),
+            );
+            const myWorkOrderIds = new Set(
+              lineRows
+                .filter((line) => myAssignedLineIds.has(line.id))
+                .map((line) => line.work_order_id),
+            );
+            visibleList = list.filter((workOrder) =>
+              myWorkOrderIds.has(workOrder.id),
+            );
+          }
+
+          const visibleWorkOrderIds = new Set(
+            visibleList.map((workOrder) => workOrder.id),
+          );
+
+          lineRows.forEach((item) => {
             const workOrderId = item.work_order_id;
-            if (!workOrderId) return;
+            if (!workOrderId || !visibleWorkOrderIds.has(workOrderId)) return;
             if (!signals[workOrderId]) signals[workOrderId] = emptySignal();
             const target = signals[workOrderId];
             const lineStatus = String(item.status ?? "").toLowerCase();
@@ -316,7 +394,9 @@ export default function MobileWorkOrderQueue({
             if (String(item.approval_state ?? "").toLowerCase() === "pending") {
               target.pendingApproval += 1;
             }
-            if (!item.assigned_tech_id) target.unassigned += 1;
+            if (assignmentByLine.get(item.id)?.technicianIds.length === 0) {
+              target.unassigned += 1;
+            }
             if (
               (lineStatus === "on_hold" && holdReason.includes("part")) ||
               holdReason.includes("quote")
@@ -328,13 +408,13 @@ export default function MobileWorkOrderQueue({
 
         if (!isLatestLoad()) return;
         setLineSignals(signals);
-        setRows(list);
+        setRows(visibleList);
         await saveOfflineSnapshot({
           scope,
           kind: "mobile-work-order-list",
           entityId: status || "active",
           data: {
-            rows: list,
+            rows: visibleList,
             signals,
             assignedOnly: canViewAssignedWork,
           },
@@ -359,6 +439,20 @@ export default function MobileWorkOrderQueue({
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "work_orders" },
+        () => window.setTimeout(() => void load("refresh"), 80),
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "work_order_lines" },
+        () => window.setTimeout(() => void load("refresh"), 80),
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "work_order_line_technicians",
+        },
         () => window.setTimeout(() => void load("refresh"), 80),
       )
       .subscribe();

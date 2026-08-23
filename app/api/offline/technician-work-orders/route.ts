@@ -6,6 +6,7 @@ import {
   createServerSupabaseRoute,
 } from "@/features/shared/lib/supabase/server";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import { resolveAuthenticatedStaffProfile } from "@/features/shared/lib/server/admin-access";
 import type { Database } from "@shared/types/types/supabase";
 import type {
   TechnicianOfflineBundle,
@@ -17,6 +18,7 @@ import {
   loadCanonicalWorkOrderLineContexts,
   loadRowsForIdChunks,
 } from "@/features/work-orders/lib/data/loadCanonicalWorkOrderLineContext";
+import { resolveTechnicianAssignmentContract } from "@/features/work-orders/lib/technicianAssignmentContract";
 
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -24,6 +26,14 @@ type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"];
 type QuoteLine = DB["public"]["Tables"]["work_order_quote_lines"]["Row"];
 type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
 type Customer = DB["public"]["Tables"]["customers"]["Row"];
+type AssignmentCandidate = Pick<
+  WorkOrderLine,
+  "id" | "work_order_id" | "assigned_tech_id" | "assigned_to"
+>;
+type AssignmentRow = Pick<
+  DB["public"]["Tables"]["work_order_line_technicians"]["Row"],
+  "work_order_line_id" | "technician_id"
+>;
 
 function chunks<T>(items: T[], size = 100): T[][] {
   const result: T[][] = [];
@@ -43,11 +53,8 @@ export async function GET() {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  const { data: profile, error: profileError } = await authClient
-    .from("profiles")
-    .select("shop_id, role")
-    .eq("id", user.id)
-    .maybeSingle<{ shop_id: string | null; role: string | null }>();
+  const { profile, error: profileError } =
+    await resolveAuthenticatedStaffProfile(authClient, user.id);
   if (profileError || !profile?.shop_id) {
     return NextResponse.json({ error: "Missing shop" }, { status: 403 });
   }
@@ -70,26 +77,37 @@ export async function GET() {
   }
 
   const admin = createAdminSupabase();
-  let directlyAssigned: Array<{ id: string; work_order_id: string }>;
+  let primaryCandidates: Array<{ id: string }>;
+  let legacyCandidates: Array<{ id: string }>;
   let sharedAssigned: Array<{ work_order_line_id: string }>;
   try {
-    [directlyAssigned, sharedAssigned] = await Promise.all([
-      loadRowsForIdChunks<{ id: string; work_order_id: string }>(
-        [user.id],
+    [primaryCandidates, legacyCandidates, sharedAssigned] = await Promise.all([
+      loadRowsForIdChunks<{ id: string }>(
+        [profile.id],
         ([technicianId], from, to) =>
           admin
             .from("work_order_lines")
-            .select("id, work_order_id")
+            .select("id")
             .eq("shop_id", profile.shop_id)
             .eq("line_type", "job")
-            .or(
-              `assigned_tech_id.eq.${technicianId},assigned_to.eq.${technicianId},user_id.eq.${technicianId}`,
-            )
+            .eq("assigned_tech_id", technicianId)
+            .order("id", { ascending: true })
+            .range(from, to),
+      ),
+      loadRowsForIdChunks<{ id: string }>(
+        [profile.id],
+        ([technicianId], from, to) =>
+          admin
+            .from("work_order_lines")
+            .select("id")
+            .eq("shop_id", profile.shop_id)
+            .eq("line_type", "job")
+            .eq("assigned_to", technicianId)
             .order("id", { ascending: true })
             .range(from, to),
       ),
       loadRowsForIdChunks<{ work_order_line_id: string }>(
-        [user.id],
+        [profile.id],
         (technicianIds, from, to) =>
           admin
             .from("work_order_line_technicians")
@@ -114,18 +132,41 @@ export async function GET() {
   const sharedLineIds = (sharedAssigned ?? []).map(
     (row) => row.work_order_line_id,
   );
-  let sharedLines: Array<{ id: string; work_order_id: string }>;
+  const candidateLineIds = [
+    ...new Set([
+      ...primaryCandidates.map((row) => row.id),
+      ...legacyCandidates.map((row) => row.id),
+      ...sharedLineIds,
+    ]),
+  ];
+  let candidateLines: AssignmentCandidate[];
+  let candidateAssignments: AssignmentRow[];
   try {
-    sharedLines = await loadRowsForIdChunks(sharedLineIds, (ids, from, to) =>
-      admin
-        .from("work_order_lines")
-        .select("id, work_order_id")
-        .eq("shop_id", profile.shop_id)
-        .eq("line_type", "job")
-        .in("id", ids)
-        .order("id", { ascending: true })
-        .range(from, to),
-    );
+    [candidateLines, candidateAssignments] = await Promise.all([
+      loadRowsForIdChunks<AssignmentCandidate>(
+        candidateLineIds,
+        (ids, from, to) =>
+          admin
+            .from("work_order_lines")
+            .select("id, work_order_id, assigned_tech_id, assigned_to")
+            .eq("shop_id", profile.shop_id)
+            .eq("line_type", "job")
+            .in("id", ids)
+            .order("id", { ascending: true })
+            .range(from, to),
+      ),
+      loadRowsForIdChunks<AssignmentRow>(
+        candidateLineIds,
+        (ids, from, to) =>
+          admin
+            .from("work_order_line_technicians")
+            .select("work_order_line_id, technician_id")
+            .in("work_order_line_id", ids)
+            .order("work_order_line_id", { ascending: true })
+            .order("technician_id", { ascending: true })
+            .range(from, to),
+      ),
+    ]);
   } catch (error) {
     return NextResponse.json(
       {
@@ -138,7 +179,20 @@ export async function GET() {
     );
   }
 
-  const assignedRows = [...directlyAssigned, ...sharedLines];
+  const technicianIdsByLine = new Map<string, string[]>();
+  for (const assignment of candidateAssignments) {
+    technicianIdsByLine.set(assignment.work_order_line_id, [
+      ...(technicianIdsByLine.get(assignment.work_order_line_id) ?? []),
+      assignment.technician_id,
+    ]);
+  }
+  const assignedRows = candidateLines.filter((line) =>
+    resolveTechnicianAssignmentContract({
+      primaryTechnicianId: line.assigned_tech_id,
+      legacyAssignedTo: line.assigned_to,
+      canonicalTechnicianIds: technicianIdsByLine.get(line.id),
+    }).technicianIds.includes(profile.id),
+  );
   const assignedLineIds = new Set(assignedRows.map((row) => row.id));
   const workOrderIds = [
     ...new Set(assignedRows.map((row) => row.work_order_id).filter(Boolean)),

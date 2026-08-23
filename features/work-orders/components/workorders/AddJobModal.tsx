@@ -239,7 +239,6 @@ export default function AddJobModal(props: Props) {
         parts: validItems,
         shopId: useShopId,
         userId: user?.id ?? null,
-        assignedTechId: null,
         urgency,
       });
 
