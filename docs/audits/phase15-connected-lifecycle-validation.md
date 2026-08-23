@@ -10,17 +10,20 @@ Both failed conversions were atomic: the request stayed open, its work-order
 link stayed empty, and the source request produced zero work orders.
 
 This change repairs the Fleet-to-Shop boundary without rewriting ambiguous
-legacy ownership:
+legacy ownership or changing global work-order and request writers:
 
-- new service requests reject units whose vehicle owner differs from the Fleet
-  billing customer;
-- legacy-invalid requests fail closed at the work-order customer/vehicle guard;
+- a Shop-only conversion wrapper checks the authenticated staff member before
+  privileged reads and validates Fleet, enrollment, vehicle, shop, and billing
+  customer atomically;
+- legacy-invalid requests fail closed at that scoped handoff without exposing
+  whether copied cross-tenant request IDs exist;
 - Fleet `diagnostic` request lines translate to Shop's canonical `diagnosis`
   job type;
 - request and conversion routes return safe product errors instead of database
   messages, constraint names, or record identifiers;
-- clean replay exercises valid conversion, retry idempotency, invalid request
-  rejection, and atomic rejection of a legacy-invalid request.
+- clean replay exercises valid conversion, retry idempotency, ambiguous active
+  enrollment rejection, historical work-order preservation, role denial, and
+  atomic rejection of a legacy-invalid request.
 
 ## Live coverage
 
@@ -61,8 +64,9 @@ The valid request remains the post-deployment continuation fixture:
   work-order invariant was absent from migration history.
 - Likely modules: Fleet request creation RPC, Fleet-to-Shop conversion RPC,
   request-builder submit route, conversion route.
-- Fix: enforce ownership at request insertion, reconcile the work-order
-  invariant into a forward migration, sanitize known and unknown RPC errors.
+- Fix: enforce ownership in a dedicated Shop handoff RPC, leave shared request
+  and historical work-order contracts unchanged, and sanitize known and
+  unknown RPC errors.
 - Regression scope: new request, PM/pre-trip request creation, copied legacy
   request, retry, cross-shop scope, conversion atomicity, Fleet and Shop lists.
 
@@ -89,7 +93,7 @@ The valid request remains the post-deployment continuation fixture:
 
 ## Automated verification
 
-- Focused Vitest: 34 passed.
+- Focused review-regression Vitest: 24 passed.
 - TypeScript: passed.
 - Focused ESLint: zero errors and zero warnings.
 - Full ESLint: zero errors; 231 pre-existing warnings.

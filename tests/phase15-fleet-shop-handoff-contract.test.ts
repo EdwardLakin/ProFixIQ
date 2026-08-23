@@ -7,30 +7,31 @@ const runtimePath =
   "tests/fleet/fleet-service-request-ownership.runtime.sql";
 
 describe("Phase 15 Fleet to Shop handoff contract", () => {
-  it("enforces Fleet billing ownership before request and work-order writes", () => {
+  it("guards the Shop handoff without replacing shared writers", () => {
     const migration = readFileSync(migrationPath, "utf8");
 
-    expect(migration).toContain(
-      "trg_enforce_fleet_service_request_vehicle_ownership",
-    );
+    expect(migration).toContain("if to_regprocedure");
     expect(migration).toContain("resolve_fleet_id_from_vehicle");
-    expect(migration).toContain("PFX_FLEET_UNIT_ENROLLMENT_NOT_FOUND");
     expect(migration).toContain(
-      "revoke all on function public.resolve_fleet_id_from_vehicle(uuid)",
+      "count(distinct fv.fleet_id)::integer",
     );
+    expect(migration).not.toContain("limit 1");
     expect(migration).toContain(
-      "trg_enforce_work_order_customer_vehicle_consistency",
+      "convert_owned_fleet_service_request_to_work_order_atomic",
     );
-    expect(migration).toContain("PFX_FLEET_UNIT_OWNERSHIP_MISMATCH");
-    expect(migration).toContain("PFX_WORK_ORDER_CUSTOMER_VEHICLE_MISMATCH");
-    expect(migration).toContain(
-      "when l.line_kind = 'diagnostic' then 'diagnosis'",
+    expect(migration).toContain("profile.shop_id = request.shop_id");
+    expect(migration).toContain("vehicle.customer_id = fleet.customer_id");
+    expect(migration).toContain("set job_type = 'diagnosis'");
+    expect(migration).toContain("PFX_FLEET_HANDOFF_UNAVAILABLE");
+    expect(migration).not.toContain(
+      "create or replace function public.convert_fleet_service_request_to_work_order_atomic",
     );
     expect(migration).not.toContain(
-      "when l.line_kind = 'diagnostic' then 'diagnostic'",
+      "trg_enforce_fleet_service_request_vehicle_ownership",
     );
-    expect(migration).toContain("new.shop_id is distinct from v_fleet_shop_id");
-    expect(migration).not.toMatch(/customer_id % does not match vehicle/);
+    expect(migration).not.toContain(
+      "trg_enforce_work_order_customer_vehicle_consistency",
+    );
   });
 
   it("runs valid, mismatched, atomic, and idempotent cases in clean replay", () => {
@@ -41,8 +42,9 @@ describe("Phase 15 Fleet to Shop handoff contract", () => {
     const runtime = readFileSync(runtimePath, "utf8");
 
     expect(workflow).toContain(runtimePath);
-    expect(runtime).toContain("PFX_FLEET_UNIT_OWNERSHIP_MISMATCH");
-    expect(runtime).toContain("PFX_WORK_ORDER_CUSTOMER_VEHICLE_MISMATCH");
+    expect(runtime).toContain("PFX_FLEET_HANDOFF_UNAVAILABLE");
+    expect(runtime).toContain("historical_work_order_count <> 1");
+    expect(runtime).toContain("Ambiguous enrollment unexpectedly resolved");
     expect(runtime).toContain("converted_work_order_count <> 1");
     expect(runtime).toContain("legacy_request_work_order_count <> 0");
   });

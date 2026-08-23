@@ -119,35 +119,25 @@ select set_config(
   true
 );
 
-do $reject_new_mismatched_request$
+do $create_legacy_mismatched_request$
+declare
+  v_request_id uuid;
 begin
-  begin
-    perform public.create_fleet_service_request_atomic(
-      '81550000-0000-4000-8000-000000000001',
-      '81540000-0000-4000-8000-000000000002',
-      'Phase 15 mismatched request',
-      'This request must fail before Shop intake.',
-      null,
-      '[{"lineKind":"diagnostic","description":"Inspect legacy unit","quantity":1}]'::jsonb,
-      'phase15-ownership-mismatch'
-    );
-    raise exception 'Mismatched Fleet unit unexpectedly created a request';
-  exception
-    when others then
-      if sqlerrm <> 'PFX_FLEET_UNIT_OWNERSHIP_MISMATCH' then
-        raise;
-      end if;
-  end;
+  v_request_id := public.create_fleet_service_request_atomic(
+    '81550000-0000-4000-8000-000000000001',
+    '81540000-0000-4000-8000-000000000002',
+    'Phase 15 legacy mismatched request',
+    'This request must fail at the scoped Shop handoff.',
+    null,
+    '[{"lineKind":"diagnostic","description":"Inspect legacy unit","quantity":1}]'::jsonb,
+    'phase15-legacy-handoff'
+  );
 
-  if exists (
-    select 1
-    from public.fleet_service_requests
-    where operation_key = 'phase15-ownership-mismatch'
-  ) then
-    raise exception 'Rejected Fleet request left a partial row';
+  if v_request_id is null then
+    raise exception 'Legacy Fleet request did not return an id';
   end if;
 end;
-$reject_new_mismatched_request$;
+$create_legacy_mismatched_request$;
 
 do $create_valid_request$
 declare
@@ -166,6 +156,8 @@ begin
   if v_request_id is null then
     raise exception 'Valid Fleet request did not return an id';
   end if;
+
+  perform set_config('app.phase15_valid_request_id', v_request_id::text, true);
 end;
 $create_valid_request$;
 
@@ -173,49 +165,144 @@ reset role;
 select set_config('request.jwt.claims', '', true);
 select set_config('request.jwt.claim.role', '', true);
 
--- Reproduce a legacy enrollment that predates the ownership guard. The
--- conversion must still fail atomically at the work-order boundary.
-alter table public.fleet_service_requests
-  disable trigger trg_enforce_fleet_service_request_vehicle_ownership;
-
-insert into public.fleet_service_requests (
-  id, shop_id, fleet_id, vehicle_id, title, summary, severity, status,
-  created_by_profile_id, operation_key, request_fingerprint
+-- A historical work order may retain its original billed customer after the
+-- vehicle changes ownership. This migration must not install a global trigger
+-- that rewrites or rejects that durable historical relationship.
+insert into public.work_orders (
+  id, shop_id, customer_id, customer_name, vehicle_id, status,
+  approval_state, created_by, notes
 )
 values (
-  '81560000-0000-4000-8000-000000000002',
+  '81580000-0000-4000-8000-000000000001',
   '81520000-0000-4000-8000-000000000001',
-  '81550000-0000-4000-8000-000000000001',
+  '81530000-0000-4000-8000-000000000001',
+  'Phase 15 Former Owner',
   '81540000-0000-4000-8000-000000000002',
-  'Phase 15 legacy mismatched request',
-  'Legacy fixture for atomic conversion rejection.',
-  'recommend',
-  'open',
+  'closed',
+  'approved',
   '81510000-0000-4000-8000-000000000001',
-  'phase15-legacy-handoff',
-  md5('phase15-legacy-handoff')
+  'Historical ownership-at-service fixture.'
 );
 
-alter table public.fleet_service_requests
-  enable trigger trg_enforce_fleet_service_request_vehicle_ownership;
+do $assert_historical_work_order_preserved$
+declare
+  historical_work_order_count integer;
+begin
+  select count(*) into historical_work_order_count
+  from public.work_orders
+  where id = '81580000-0000-4000-8000-000000000001'
+    and customer_id = '81530000-0000-4000-8000-000000000001'
+    and vehicle_id = '81540000-0000-4000-8000-000000000002';
 
-insert into public.fleet_service_request_lines (
-  id, shop_id, fleet_id, service_request_id, vehicle_id, line_kind,
-  description, quantity, price_status, source_snapshot, created_by
+  if historical_work_order_count <> 1 then
+    raise exception 'Historical work-order customer relationship was not preserved';
+  end if;
+end;
+$assert_historical_work_order_preserved$;
+
+-- The replay-only resolver must never choose an arbitrary Fleet when legacy
+-- data contains multiple active enrollments.
+insert into public.fleets (
+  id, shop_id, customer_id, name, active, created_by
 )
 values (
-  '81570000-0000-4000-8000-000000000002',
+  '81550000-0000-4000-8000-000000000002',
   '81520000-0000-4000-8000-000000000001',
-  '81550000-0000-4000-8000-000000000001',
-  '81560000-0000-4000-8000-000000000002',
-  '81540000-0000-4000-8000-000000000002',
-  'diagnostic',
-  'Inspect legacy unit',
-  1,
-  'advisor_pending',
-  '{}'::jsonb,
+  '81530000-0000-4000-8000-000000000001',
+  'Phase 15 Ambiguous Fleet',
+  true,
   '81510000-0000-4000-8000-000000000001'
 );
+
+insert into public.fleet_vehicles (fleet_id, vehicle_id, shop_id, active)
+values (
+  '81550000-0000-4000-8000-000000000002',
+  '81540000-0000-4000-8000-000000000001',
+  '81520000-0000-4000-8000-000000000001',
+  true
+);
+
+do $reject_ambiguous_vehicle_resolution$
+begin
+  begin
+    perform public.resolve_fleet_id_from_vehicle(
+      '81540000-0000-4000-8000-000000000001'
+    );
+    raise exception 'Ambiguous enrollment unexpectedly resolved';
+  exception
+    when check_violation then
+      if sqlerrm <> 'PFX_FLEET_UNIT_ENROLLMENT_UNAVAILABLE' then
+        raise;
+      end if;
+  end;
+end;
+$reject_ambiguous_vehicle_resolution$;
+
+insert into auth.users (id, email, raw_user_meta_data)
+values (
+  '81510000-0000-4000-8000-000000000002',
+  'phase15-denied-technician@example.test',
+  '{"full_name":"Phase 15 Denied Technician"}'::jsonb
+)
+on conflict (id) do nothing;
+
+insert into public.profiles (id, user_id, shop_id, role, full_name)
+values (
+  '81510000-0000-4000-8000-000000000002',
+  '81510000-0000-4000-8000-000000000002',
+  '81520000-0000-4000-8000-000000000001',
+  'mechanic',
+  'Phase 15 Denied Technician'
+)
+on conflict (id) do nothing;
+
+set local role authenticated;
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"81510000-0000-4000-8000-000000000002","role":"authenticated"}',
+  true
+);
+
+do $deny_without_request_disclosure$
+declare
+  v_known_request_id uuid;
+begin
+  v_known_request_id := current_setting(
+    'app.phase15_valid_request_id',
+    true
+  )::uuid;
+
+  begin
+    perform 1
+    from public.convert_owned_fleet_service_request_to_work_order_atomic(
+      v_known_request_id
+    );
+    raise exception 'Denied role converted a known request';
+  exception
+    when no_data_found then
+      if sqlerrm <> 'Fleet service request is unavailable.' then
+        raise;
+      end if;
+  end;
+
+  begin
+    perform 1
+    from public.convert_owned_fleet_service_request_to_work_order_atomic(
+      '81560000-0000-4000-8000-000000000099'
+    );
+    raise exception 'Denied role distinguished a missing request';
+  exception
+    when no_data_found then
+      if sqlerrm <> 'Fleet service request is unavailable.' then
+        raise;
+      end if;
+  end;
+end;
+$deny_without_request_disclosure$;
+
+reset role;
+select set_config('request.jwt.claims', '', true);
+select set_config('request.jwt.claim.role', '', true);
 
 set local role authenticated;
 select set_config(
@@ -239,11 +326,11 @@ begin
 
   select result.work_order_id, result.conversion_status
   into v_first_work_order_id, v_first_status
-  from public.convert_fleet_service_request_to_work_order_atomic(v_request_id) result;
+  from public.convert_owned_fleet_service_request_to_work_order_atomic(v_request_id) result;
 
   select result.work_order_id, result.conversion_status
   into v_second_work_order_id, v_second_status
-  from public.convert_fleet_service_request_to_work_order_atomic(v_request_id) result;
+  from public.convert_owned_fleet_service_request_to_work_order_atomic(v_request_id) result;
 
   select count(*) into converted_work_order_count
   from public.work_orders
@@ -267,30 +354,43 @@ begin
   ) then
     raise exception 'Converted work order lost canonical customer ownership';
   end if;
+
+  if not exists (
+    select 1
+    from public.work_order_lines line
+    where line.work_order_id = v_first_work_order_id
+      and line.job_type = 'diagnosis'
+  ) then
+    raise exception 'Fleet diagnostic line was not translated to diagnosis';
+  end if;
 end;
 $convert_and_replay_valid_request$;
 
 do $reject_legacy_conversion_atomically$
 declare
+  v_request_id uuid;
   legacy_request_work_order_count integer;
 begin
+  select id into v_request_id
+  from public.fleet_service_requests
+  where operation_key = 'phase15-legacy-handoff';
+
   begin
     perform 1
-    from public.convert_fleet_service_request_to_work_order_atomic(
-      '81560000-0000-4000-8000-000000000002'
+    from public.convert_owned_fleet_service_request_to_work_order_atomic(
+      v_request_id
     );
     raise exception 'Legacy mismatched request unexpectedly converted';
   exception
     when others then
-      if sqlerrm <> 'PFX_WORK_ORDER_CUSTOMER_VEHICLE_MISMATCH' then
+      if sqlerrm <> 'PFX_FLEET_HANDOFF_UNAVAILABLE' then
         raise;
       end if;
   end;
 
   select count(*) into legacy_request_work_order_count
   from public.work_orders
-  where source_fleet_service_request_id =
-    '81560000-0000-4000-8000-000000000002';
+  where source_fleet_service_request_id = v_request_id;
 
   if legacy_request_work_order_count <> 0 then
     raise exception 'Rejected legacy conversion left a partial work order';
@@ -299,7 +399,7 @@ begin
   if not exists (
     select 1
     from public.fleet_service_requests
-    where id = '81560000-0000-4000-8000-000000000002'
+    where id = v_request_id
       and work_order_id is null
       and status = 'open'
   ) then

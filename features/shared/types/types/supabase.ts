@@ -28059,6 +28059,13 @@ export type Database = {
           work_order_id: string
         }[]
       }
+      convert_owned_fleet_service_request_to_work_order_atomic: {
+        Args: { p_service_request_id: string }
+        Returns: {
+          conversion_status: string
+          work_order_id: string
+        }[]
+      }
       correct_work_order_line_labor_segment: {
         Args: {
           p_action: string
@@ -31318,4 +31325,3 @@ export const Constants = {
     },
   },
 } as const
-

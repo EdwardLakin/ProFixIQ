@@ -3,6 +3,7 @@ import { mapFleetServiceRequestError } from "@/features/fleet/lib/fleetServiceRe
 
 describe("Fleet service-request error mapping", () => {
   it.each([
+    "PFX_FLEET_HANDOFF_UNAVAILABLE",
     "PFX_FLEET_UNIT_OWNERSHIP_MISMATCH",
     "PFX_FLEET_REQUEST_SCOPE_MISMATCH",
     "PFX_WORK_ORDER_CUSTOMER_VEHICLE_MISMATCH",
@@ -17,6 +18,18 @@ describe("Fleet service-request error mapping", () => {
       error:
         "This unit's billing ownership must be reviewed before service can continue.",
       status: 409,
+    });
+  });
+
+  it("does not distinguish missing from unauthorized request identifiers", () => {
+    expect(
+      mapFleetServiceRequestError(
+        { code: "P0002", message: "Fleet service request is unavailable." },
+        "Failed to process this service request.",
+      ),
+    ).toEqual({
+      error: "Fleet service request not found.",
+      status: 404,
     });
   });
 

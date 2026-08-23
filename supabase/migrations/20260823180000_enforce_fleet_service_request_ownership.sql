@@ -1,158 +1,57 @@
 begin;
 
--- The canonical Fleet fill trigger was imported into migration history without
--- the resolver it invokes. Production already carries this helper, so align
--- clean replay with the live contract before exercising any Fleet insert.
-create or replace function public.resolve_fleet_id_from_vehicle(
-  p_vehicle_id uuid
-)
-returns uuid
-language plpgsql
-stable
-security invoker
-set search_path = ''
-as $function$
-declare
-  v_fleet_id uuid;
+-- Clean migration replay is missing the resolver used by the pre-existing
+-- Fleet fill triggers. Production already has it, so create it only when it is
+-- absent and leave the live shared contract untouched. A replayed database
+-- fails closed when a vehicle has zero or multiple active Fleet enrollments.
+do $fleet_resolver_history$
 begin
-  select fv.fleet_id
-  into v_fleet_id
-  from public.fleet_vehicles fv
-  where fv.vehicle_id = p_vehicle_id
-  limit 1;
+  if to_regprocedure('public.resolve_fleet_id_from_vehicle(uuid)') is null then
+    execute $resolver$
+      create function public.resolve_fleet_id_from_vehicle(
+        p_vehicle_id uuid
+      )
+      returns uuid
+      language plpgsql
+      stable
+      security invoker
+      set search_path = ''
+      as $function$
+      declare
+        v_fleet_id uuid;
+        v_active_fleet_count integer;
+      begin
+        select (array_agg(distinct fv.fleet_id))[1],
+               count(distinct fv.fleet_id)::integer
+        into v_fleet_id, v_active_fleet_count
+        from public.fleet_vehicles fv
+        where fv.vehicle_id = p_vehicle_id
+          and coalesce(fv.active, true);
 
-  if v_fleet_id is null then
-    raise exception using
-      errcode = '23514',
-      message = 'PFX_FLEET_UNIT_ENROLLMENT_NOT_FOUND';
+        if v_active_fleet_count <> 1 then
+          raise exception using
+            errcode = '23514',
+            message = 'PFX_FLEET_UNIT_ENROLLMENT_UNAVAILABLE';
+        end if;
+
+        return v_fleet_id;
+      end;
+      $function$
+    $resolver$;
+
+    revoke all on function public.resolve_fleet_id_from_vehicle(uuid)
+      from public, anon;
+    grant execute on function public.resolve_fleet_id_from_vehicle(uuid)
+      to authenticated, service_role;
   end if;
-
-  return v_fleet_id;
 end;
-$function$;
+$fleet_resolver_history$;
 
-revoke all on function public.resolve_fleet_id_from_vehicle(uuid)
-  from public, anon;
-grant execute on function public.resolve_fleet_id_from_vehicle(uuid)
-  to authenticated, service_role;
-
--- Fleet service requests are billed to the Fleet customer account. Reject
--- stale or legacy enrollments whose vehicle is owned by another customer
--- before any request can enter the Shop handoff queue.
-create or replace function private.enforce_fleet_service_request_vehicle_ownership()
-returns trigger
-language plpgsql
-security definer
-set search_path = ''
-as $function$
-declare
-  v_fleet_shop_id uuid;
-  v_fleet_customer_id uuid;
-  v_vehicle_shop_id uuid;
-  v_vehicle_customer_id uuid;
-begin
-  select f.shop_id, f.customer_id
-  into v_fleet_shop_id, v_fleet_customer_id
-  from public.fleets f
-  where f.id = new.fleet_id;
-
-  select v.shop_id, v.customer_id
-  into v_vehicle_shop_id, v_vehicle_customer_id
-  from public.vehicles v
-  where v.id = new.vehicle_id;
-
-  if v_fleet_shop_id is null
-     or v_vehicle_shop_id is null
-     or new.shop_id is distinct from v_fleet_shop_id
-     or v_vehicle_shop_id is distinct from v_fleet_shop_id
-  then
-    raise exception using
-      errcode = 'P0001',
-      message = 'PFX_FLEET_REQUEST_SCOPE_MISMATCH';
-  end if;
-
-  if v_fleet_customer_id is null
-     or v_vehicle_customer_id is null
-     or v_vehicle_customer_id is distinct from v_fleet_customer_id
-  then
-    raise exception using
-      errcode = 'P0001',
-      message = 'PFX_FLEET_UNIT_OWNERSHIP_MISMATCH';
-  end if;
-
-  return new;
-end;
-$function$;
-
-revoke all on function private.enforce_fleet_service_request_vehicle_ownership()
-  from public, anon, authenticated;
-
-drop trigger if exists trg_enforce_fleet_service_request_vehicle_ownership
-  on public.fleet_service_requests;
-create trigger trg_enforce_fleet_service_request_vehicle_ownership
-before insert or update of shop_id, fleet_id, vehicle_id
-on public.fleet_service_requests
-for each row
-execute function private.enforce_fleet_service_request_vehicle_ownership();
-
--- Production already carried this invariant as schema drift. Reconcile it
--- into migration history and replace identifier-bearing exceptions with
--- stable product error codes.
-create or replace function public.enforce_work_order_customer_vehicle_consistency()
-returns trigger
-language plpgsql
-set search_path = ''
-as $function$
-declare
-  v_vehicle_customer_id uuid;
-begin
-  if new.vehicle_id is null then
-    return new;
-  end if;
-
-  select v.customer_id
-  into v_vehicle_customer_id
-  from public.vehicles v
-  where v.id = new.vehicle_id;
-
-  if not found then
-    raise exception using
-      errcode = 'P0001',
-      message = 'PFX_WORK_ORDER_VEHICLE_NOT_FOUND';
-  end if;
-
-  if v_vehicle_customer_id is null then
-    return new;
-  end if;
-
-  if new.customer_id is null then
-    new.customer_id := v_vehicle_customer_id;
-  elsif new.customer_id is distinct from v_vehicle_customer_id then
-    raise exception using
-      errcode = 'P0001',
-      message = 'PFX_WORK_ORDER_CUSTOMER_VEHICLE_MISMATCH';
-  end if;
-
-  return new;
-end;
-$function$;
-
-revoke all on function public.enforce_work_order_customer_vehicle_consistency()
-  from public, anon, authenticated;
-grant execute on function public.enforce_work_order_customer_vehicle_consistency()
-  to service_role;
-
-drop trigger if exists trg_enforce_work_order_customer_vehicle_consistency
-  on public.work_orders;
-create trigger trg_enforce_work_order_customer_vehicle_consistency
-before insert or update of customer_id, vehicle_id
-on public.work_orders
-for each row
-execute function public.enforce_work_order_customer_vehicle_consistency();
-
--- The Fleet request vocabulary uses `diagnostic`; Shop work-order lines use
--- the canonical `diagnosis` job type. Translate at the handoff boundary.
-create or replace function public.convert_fleet_service_request_to_work_order_atomic(
+-- Keep the established conversion RPC unchanged. The Shop intake route uses
+-- this narrowly scoped wrapper to authorize the caller before privileged
+-- reads, validate the Fleet/customer/vehicle relationship atomically, and
+-- translate Fleet's `diagnostic` vocabulary to Shop's `diagnosis` vocabulary.
+create function public.convert_owned_fleet_service_request_to_work_order_atomic(
   p_service_request_id uuid
 )
 returns table(work_order_id uuid, conversion_status text)
@@ -163,221 +62,117 @@ as $function$
 declare
   v_user_id uuid := auth.uid();
   v_request public.fleet_service_requests%rowtype;
-  v_fleet public.fleets%rowtype;
   v_work_order_id uuid;
+  v_conversion_status text;
 begin
   if v_user_id is null then
-    raise exception 'Authentication required';
+    raise exception using
+      errcode = '42501',
+      message = 'Fleet service request is unavailable.';
   end if;
 
-  select * into v_request
-  from public.fleet_service_requests
-  where id = p_service_request_id
-  for update;
+  -- Joining the caller's profile into the first lookup prevents this
+  -- SECURITY DEFINER function from disclosing whether a guessed request ID
+  -- exists in another tenant.
+  select request.*
+  into v_request
+  from public.fleet_service_requests request
+  join public.profiles profile
+    on profile.id = v_user_id
+   and profile.shop_id = request.shop_id
+   and profile.role in ('owner', 'admin', 'manager', 'advisor')
+  where request.id = p_service_request_id
+  for update of request;
 
   if v_request.id is null then
-    raise exception 'Service request not found';
+    raise exception using
+      errcode = 'P0002',
+      message = 'Fleet service request is unavailable.';
   end if;
 
   if not exists (
-    select 1 from public.profiles p
-    where p.id = v_user_id
-      and p.shop_id = v_request.shop_id
-      and p.role in ('owner', 'admin', 'manager', 'advisor')
+    select 1
+    from public.fleets fleet
+    join public.vehicles vehicle
+      on vehicle.id = v_request.vehicle_id
+     and vehicle.shop_id = v_request.shop_id
+     and vehicle.customer_id = fleet.customer_id
+    join public.fleet_vehicles enrollment
+      on enrollment.fleet_id = fleet.id
+     and enrollment.vehicle_id = vehicle.id
+     and (enrollment.shop_id is null or enrollment.shop_id = v_request.shop_id)
+     and coalesce(enrollment.active, true)
+    where fleet.id = v_request.fleet_id
+      and fleet.shop_id = v_request.shop_id
+      and fleet.customer_id is not null
   ) then
-    raise exception 'Shop staff review is required';
+    raise exception using
+      errcode = '23514',
+      message = 'PFX_FLEET_HANDOFF_UNAVAILABLE';
   end if;
 
-  select * into v_fleet
-  from public.fleets f
-  where f.id = v_request.fleet_id
-    and f.shop_id = v_request.shop_id;
+  select converted.work_order_id, converted.conversion_status
+  into v_work_order_id, v_conversion_status
+  from public.convert_fleet_service_request_to_work_order_atomic(
+    p_service_request_id
+  ) converted;
 
-  if v_fleet.id is null or v_fleet.customer_id is null then
-    raise exception 'Fleet billing account is unavailable';
+  if v_work_order_id is null then
+    raise exception using
+      errcode = '55000',
+      message = 'PFX_FLEET_HANDOFF_UNAVAILABLE';
   end if;
 
-  if not exists (
-    select 1 from public.fleet_vehicles fv
-    where fv.fleet_id = v_request.fleet_id
-      and fv.vehicle_id = v_request.vehicle_id
-      and (fv.shop_id is null or fv.shop_id = v_request.shop_id)
-      and coalesce(fv.active, true)
-  ) then
-    raise exception 'Vehicle is not actively enrolled in this Fleet';
-  end if;
-
-  if v_request.work_order_id is not null then
-    return query select v_request.work_order_id, 'already_linked'::text;
-    return;
-  end if;
-
-  if not exists (
-    select 1 from public.fleet_service_request_lines l
-    where l.service_request_id = v_request.id
-  ) or exists (
-    select 1 from public.fleet_service_request_lines l
-    where l.service_request_id = v_request.id
-      and (
-        l.shop_id <> v_request.shop_id
-        or l.fleet_id <> v_request.fleet_id
-        or l.vehicle_id <> v_request.vehicle_id
-      )
-  ) then
-    raise exception 'Structured request lines must match the request scope';
-  end if;
-
-  insert into public.work_orders (
-    shop_id,
-    customer_id,
-    customer_name,
-    vehicle_id,
-    status,
-    approval_state,
-    source_fleet_service_request_id,
-    created_by,
-    notes
-  ) values (
-    v_request.shop_id,
-    v_fleet.customer_id,
-    v_fleet.name,
-    v_request.vehicle_id,
-    'awaiting_approval',
-    'pending',
-    v_request.id,
-    v_user_id,
-    concat('Fleet request: ', v_request.title, E'\n', v_request.summary)
-  ) returning id into v_work_order_id;
-
-  insert into public.work_order_lines (
-    work_order_id,
-    shop_id,
-    vehicle_id,
-    description,
-    complaint,
-    notes,
-    labor_time,
-    job_type,
-    status,
-    approval_state,
-    menu_item_id,
-    inspection_template_id,
-    price_estimate,
-    line_type,
-    source_fleet_service_request_line_id
-  )
-  select
-    v_work_order_id,
-    l.shop_id,
-    l.vehicle_id,
-    l.description,
-    case when l.line_kind = 'diagnostic' then l.description else null end,
-    l.notes,
-    l.requested_labor_hours,
-    case
-      when l.line_kind = 'diagnostic' then 'diagnosis'
-      when l.line_kind in ('inspection', 'pm_package') then 'maintenance'
-      else 'repair'
-    end,
-    'awaiting',
-    'pending',
-    l.source_menu_item_id,
-    l.source_inspection_template_id,
-    case
-      when l.unit_price_snapshot is null then null
-      else l.unit_price_snapshot * l.quantity
-    end,
-    'job',
-    l.id
-  from public.fleet_service_request_lines l
-  where l.service_request_id = v_request.id
-  order by l.created_at, l.id;
-
-  update public.fleet_service_request_lines
-  set work_order_line_id = wol.id,
+  update public.work_order_lines line
+  set job_type = 'diagnosis',
       updated_at = now()
-  from public.work_order_lines wol
-  where wol.work_order_id = v_work_order_id
-    and wol.source_fleet_service_request_line_id = fleet_service_request_lines.id;
+  from public.fleet_service_request_lines source_line
+  where line.work_order_id = v_work_order_id
+    and line.source_fleet_service_request_line_id = source_line.id
+    and source_line.service_request_id = p_service_request_id
+    and source_line.line_kind = 'diagnostic'
+    and line.job_type is distinct from 'diagnosis';
 
-  update public.fleet_service_requests
-  set work_order_id = v_work_order_id,
-      status = 'scheduled',
-      updated_at = now()
-  where id = v_request.id;
-
-  update public.fleet_pm_due_events
-  set service_request_id = v_request.id,
-      status = 'converted',
-      updated_at = now()
-  where id = v_request.source_pm_due_event_id;
-
-  return query select v_work_order_id, 'converted'::text;
+  return query select v_work_order_id, v_conversion_status;
 end;
 $function$;
 
-revoke all on function public.convert_fleet_service_request_to_work_order_atomic(uuid)
+revoke all on function public.convert_owned_fleet_service_request_to_work_order_atomic(uuid)
   from public, anon;
-grant execute on function public.convert_fleet_service_request_to_work_order_atomic(uuid)
+grant execute on function public.convert_owned_fleet_service_request_to_work_order_atomic(uuid)
   to authenticated, service_role;
 
-do $fleet_request_ownership_postcheck$
+do $fleet_handoff_postcheck$
 begin
   if to_regprocedure(
     'public.resolve_fleet_id_from_vehicle(uuid)'
   ) is null then
-    raise exception 'Fleet vehicle resolver is missing';
+    raise exception 'Fleet vehicle resolver is missing from migration replay';
+  end if;
+
+  if to_regprocedure(
+    'public.convert_owned_fleet_service_request_to_work_order_atomic(uuid)'
+  ) is null then
+    raise exception 'Owned Fleet request conversion wrapper is missing';
   end if;
 
   if has_function_privilege(
     'anon',
-    'public.resolve_fleet_id_from_vehicle(uuid)',
+    'public.convert_owned_fleet_service_request_to_work_order_atomic(uuid)',
     'EXECUTE'
   ) then
-    raise exception 'Anonymous Fleet vehicle resolver access is unsafe';
-  end if;
-
-  if to_regprocedure(
-    'private.enforce_fleet_service_request_vehicle_ownership()'
-  ) is null then
-    raise exception 'Fleet request ownership guard is missing';
-  end if;
-
-  if to_regprocedure(
-    'public.enforce_work_order_customer_vehicle_consistency()'
-  ) is null then
-    raise exception 'Work-order customer/vehicle guard is missing';
+    raise exception 'Anonymous Fleet conversion access is unsafe';
   end if;
 
   if pg_catalog.strpos(
     pg_catalog.pg_get_functiondef(
-      'public.convert_fleet_service_request_to_work_order_atomic(uuid)'::pg_catalog.regprocedure
+      'public.convert_owned_fleet_service_request_to_work_order_atomic(uuid)'::pg_catalog.regprocedure
     ),
-    $$when l.line_kind = 'diagnostic' then 'diagnosis'$$
+    $$profile.shop_id = request.shop_id$$
   ) = 0 then
-    raise exception 'Fleet diagnostic job-type translation is missing';
-  end if;
-
-  if not exists (
-    select 1
-    from pg_catalog.pg_trigger t
-    where t.tgrelid = 'public.fleet_service_requests'::pg_catalog.regclass
-      and t.tgname = 'trg_enforce_fleet_service_request_vehicle_ownership'
-      and not t.tgisinternal
-  ) then
-    raise exception 'Fleet request ownership trigger is missing';
-  end if;
-
-  if not exists (
-    select 1
-    from pg_catalog.pg_trigger t
-    where t.tgrelid = 'public.work_orders'::pg_catalog.regclass
-      and t.tgname = 'trg_enforce_work_order_customer_vehicle_consistency'
-      and not t.tgisinternal
-  ) then
-    raise exception 'Work-order customer/vehicle trigger is missing';
+    raise exception 'Fleet conversion caller authorization is missing';
   end if;
 end;
-$fleet_request_ownership_postcheck$;
+$fleet_handoff_postcheck$;
 
 commit;

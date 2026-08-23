@@ -1,4 +1,5 @@
 type FleetServiceRequestError = {
+  code?: string | null;
   message?: string | null;
 };
 
@@ -15,8 +16,17 @@ export function mapFleetServiceRequestError(
   fallback: string,
 ): FleetServiceRequestFailure {
   const message = value?.message ?? "";
+  const code = value?.code?.trim() ?? "";
 
   if (
+    code === "P0002" ||
+    /fleet service request is unavailable/i.test(message)
+  ) {
+    return { error: "Fleet service request not found.", status: 404 };
+  }
+
+  if (
+    /PFX_FLEET_HANDOFF_UNAVAILABLE/i.test(message) ||
     /PFX_(?:FLEET_(?:UNIT_OWNERSHIP|REQUEST_SCOPE)|WORK_ORDER_CUSTOMER_VEHICLE)_MISMATCH/i.test(
       message,
     ) ||

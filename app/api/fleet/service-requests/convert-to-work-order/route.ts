@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
     }
 
     const { data, error } = await access.supabase.rpc(
-      "convert_fleet_service_request_to_work_order_atomic",
+      "convert_owned_fleet_service_request_to_work_order_atomic",
       {
         p_service_request_id: body.serviceRequestId,
       },

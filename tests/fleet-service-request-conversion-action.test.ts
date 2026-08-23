@@ -47,6 +47,9 @@ describe("fleet service-request conversion action", () => {
     expect(fleetPage).not.toContain("Create work order");
     expect(conversionRoute).toContain("requireShopScopedApiAccess");
     expect(conversionRoute).toContain("SHOP_FLEET_REQUEST_INTAKE_ROLES");
+    expect(conversionRoute).toContain(
+      "convert_owned_fleet_service_request_to_work_order_atomic",
+    );
     expect(conversionRoute).toContain("isFleetProductHostname(requestHost)");
     expect(conversionRoute).toContain(
       "Work orders are created in ProFixIQ Shop.",
@@ -109,6 +112,10 @@ describe("fleet service-request conversion action", () => {
     );
 
     expect(response.status).toBe(409);
+    expect(routeMocks.rpc).toHaveBeenCalledWith(
+      "convert_owned_fleet_service_request_to_work_order_atomic",
+      { p_service_request_id: "request-1" },
+    );
     await expect(response.json()).resolves.toEqual({
       error:
         "This unit's billing ownership must be reviewed before service can continue.",
