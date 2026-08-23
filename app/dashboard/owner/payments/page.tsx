@@ -7,6 +7,7 @@ import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import OwnerPinModal from "@/features/shared/components/OwnerPinModal";
+import { resolvePaymentAccessFailure } from "@/features/stripe/lib/client/paymentAccessFailure";
 
 type DB = Database;
 type PaymentRow = DB["public"]["Tables"]["payments"]["Row"];
@@ -86,13 +87,16 @@ export default function OwnerPaymentsPage() {
   const [saving, setSaving] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [accessFailure, setAccessFailure] = useState<
+    "authentication" | "authorization" | null
+  >(null);
   const [shopId, setShopId] = useState<string | null>(null);
   const [shop, setShop] = useState<ShopConnectRow | null>(null);
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [settings, setSettings] = useState<PaymentSettings>(DEFAULT_SETTINGS);
   const [savedSettings, setSavedSettings] = useState<PaymentSettings>(DEFAULT_SETTINGS);
   const [pinOpen, setPinOpen] = useState(false);
-  const [saveAfterPin, setSaveAfterPin] = useState(false);
+  const [pinContinuation, setPinContinuation] = useState<"settings" | "connect" | null>(null);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<
     "all" | "succeeded" | "pending" | "failed" | "refunded"
@@ -101,6 +105,7 @@ export default function OwnerPaymentsPage() {
   const loadWorkspace = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setAccessFailure(null);
 
     const {
       data: { user },
@@ -108,6 +113,7 @@ export default function OwnerPaymentsPage() {
     } = await supabase.auth.getUser();
     if (userError || !user) {
       setError("Sign in to manage shop payments.");
+      setAccessFailure("authentication");
       setLoading(false);
       return;
     }
@@ -126,6 +132,7 @@ export default function OwnerPaymentsPage() {
     const actor = getActorCapabilities({ role: profile?.role });
     if (!profile?.shop_id || !actor.canManageBilling) {
       setError("You do not have permission to manage shop payments.");
+      setAccessFailure("authorization");
       setLoading(false);
       return;
     }
@@ -228,9 +235,23 @@ export default function OwnerPaymentsPage() {
         }),
       });
       const json = (await response.json().catch(() => ({}))) as SettingsResponse;
-      if (response.status === 401 || response.status === 403) {
-        setSaveAfterPin(true);
+      const accessResult = resolvePaymentAccessFailure(
+        response.status,
+        json.error,
+      );
+      if (accessResult === "owner_pin") {
+        setPinContinuation("settings");
         setPinOpen(true);
+        return;
+      }
+      if (accessResult === "authentication") {
+        setAccessFailure("authentication");
+        setError("Your session expired. Sign in again to manage payments.");
+        return;
+      }
+      if (accessResult === "authorization") {
+        setAccessFailure("authorization");
+        setError("Your payment-management access has been revoked.");
         return;
       }
       if (!response.ok || !json.settings) {
@@ -253,6 +274,25 @@ export default function OwnerPaymentsPage() {
     try {
       const response = await fetch("/api/stripe/connect/onboard", { method: "POST" });
       const json = (await response.json().catch(() => ({}))) as OnboardingResponse;
+      const accessResult = resolvePaymentAccessFailure(
+        response.status,
+        json.error,
+      );
+      if (accessResult === "owner_pin") {
+        setPinContinuation("connect");
+        setPinOpen(true);
+        return;
+      }
+      if (accessResult === "authentication") {
+        setAccessFailure("authentication");
+        setError("Your session expired. Sign in again to connect Stripe.");
+        return;
+      }
+      if (accessResult === "authorization") {
+        setAccessFailure("authorization");
+        setError("Your Stripe onboarding access has been revoked.");
+        return;
+      }
       if (!response.ok || !json.onboardingUrl) {
         throw new Error(
           json.migration_required
@@ -285,6 +325,22 @@ export default function OwnerPaymentsPage() {
       <div className="p-6">
         <div className="rounded-2xl border border-red-500/30 bg-red-950/20 px-5 py-4 text-sm text-red-200">
           {error}
+          {accessFailure ? (
+            <div className="mt-3">
+              <Link
+                href={
+                  accessFailure === "authentication"
+                    ? "/shop/sign-in"
+                    : "/dashboard"
+                }
+                className="font-semibold underline underline-offset-4"
+              >
+                {accessFailure === "authentication"
+                  ? "Sign in"
+                  : "Return to dashboard"}
+              </Link>
+            </div>
+          ) : null}
         </div>
       </div>
     );
@@ -565,13 +621,17 @@ export default function OwnerPaymentsPage() {
         open={pinOpen}
         onClose={() => {
           setPinOpen(false);
-          setSaveAfterPin(false);
+          setPinContinuation(null);
         }}
         onVerified={() => {
           setPinOpen(false);
-          if (saveAfterPin) {
-            setSaveAfterPin(false);
+          if (pinContinuation === "settings") {
+            setPinContinuation(null);
             void persistSettings();
+          }
+          if (pinContinuation === "connect") {
+            setPinContinuation(null);
+            void beginOnboarding();
           }
         }}
       />
