@@ -19,13 +19,14 @@ describe("Phase 8 quoted-parts and workflow-status contract", () => {
     const statusSource = read("features/parts/lib/status-display.ts");
     expect(statusSource).toContain('if (status === "approved") return "approved"');
     expect(statusSource).not.toContain('status === "approved" || status === "reserved"');
-    const approvalIndex = runtime.indexOf("set status = 'approved'");
-    const orderingIndex = runtime.indexOf(
-      "set status = 'ordered', qty_ordered = qty",
-      approvalIndex,
+    expect(migration).toContain(
+      "if v_any_order_progress then\n    return 'order_receive';",
     );
-    expect(approvalIndex).toBeGreaterThanOrEqual(0);
-    expect(orderingIndex).toBeGreaterThan(approvalIndex);
+    expect(migration).toContain(
+      "if lower(v_request.status::text) in ('requested', 'quoted') then\n    return 'awaiting_approval';",
+    );
+    expect(runtime).toContain("set status = 'ordered'");
+    expect(runtime).not.toContain("set status = 'ordered', qty_ordered = qty");
   });
 
   it("derives work-order parts labels from the canonical quote snapshot", () => {

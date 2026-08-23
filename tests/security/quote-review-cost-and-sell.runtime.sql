@@ -1615,11 +1615,11 @@ begin
     raise exception 'Manual/vendor quoted request used a divergent stage: %', v_stage;
   end if;
 
-  update public.part_requests
-  set status = 'approved'
-  where id = '40600000-0000-4000-8000-000000000001';
+  -- This is a stage-mapping assertion, not an ordering mutation. Persist only
+  -- the canonical item status so the approval guard remains exercised by the
+  -- dedicated ordering integrations.
   update public.part_request_items
-  set status = 'ordered', qty_ordered = qty
+  set status = 'ordered'
   where id = '40700000-0000-4000-8000-000000000001';
   update public.part_requests
   set status = 'requested'
@@ -1631,7 +1631,7 @@ begin
     raise exception 'Stale parent status overrode durable ordering progress: %', v_stage;
   end if;
   update public.part_request_items
-  set status = 'quoted', qty_ordered = 0
+  set status = 'quoted'
   where id = '40700000-0000-4000-8000-000000000001';
   update public.part_requests
   set status = 'quoted'
