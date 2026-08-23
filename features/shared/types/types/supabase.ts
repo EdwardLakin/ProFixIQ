@@ -29816,6 +29816,10 @@ export type Database = {
         }
         Returns: Json
       }
+      resolve_fleet_id_from_vehicle: {
+        Args: { p_vehicle_id: string }
+        Returns: string
+      }
       respond_fleet_defect_clarification: {
         Args: {
           p_clarification_id: string
