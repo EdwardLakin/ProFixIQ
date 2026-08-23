@@ -118,6 +118,7 @@ declare
   v_employment_status text;
   v_existing jsonb;
   v_result jsonb;
+  v_next_updated_at timestamptz;
 begin
   if v_action not in ('set_primary', 'add_supporting', 'remove_supporting', 'clear') then
     raise exception using errcode = 'P0001', message = 'Unsupported technician assignment action.';
@@ -153,6 +154,14 @@ begin
     and v_line.updated_at is distinct from p_expected_updated_at then
     raise exception using errcode = 'P0001', message = 'ASSIGNMENT_STALE: reload the job before changing its technician assignment.';
   end if;
+  -- now() is fixed for the entire transaction, so two assignment commands in
+  -- one transaction could otherwise reuse the same optimistic-lock version.
+  -- Always advance the row version even when the wall clock has not ticked.
+  v_next_updated_at := greatest(
+    clock_timestamp(),
+    coalesce(v_line.updated_at, '-infinity'::timestamptz)
+      + interval '1 microsecond'
+  );
   if coalesce(v_line.line_type::text, 'job') = 'info' then
     raise exception using errcode = 'P0001', message = 'Info lines cannot be technician-assigned.';
   end if;
@@ -214,7 +223,7 @@ begin
     update public.work_order_lines
     set assigned_tech_id = p_technician_id,
         assigned_to = null,
-        updated_at = now()
+        updated_at = v_next_updated_at
     where id = p_work_order_line_id;
   elsif v_action = 'add_supporting' then
     if v_line.assigned_tech_id is null then
@@ -229,7 +238,7 @@ begin
     do update set assigned_by = excluded.assigned_by;
     update public.work_order_lines
     set assigned_to = null,
-        updated_at = now()
+        updated_at = v_next_updated_at
     where id = p_work_order_line_id;
   elsif v_action = 'remove_supporting' then
     if v_line.assigned_tech_id = p_technician_id then
@@ -240,7 +249,7 @@ begin
       and technician_id = p_technician_id;
     update public.work_order_lines
     set assigned_to = null,
-        updated_at = now()
+        updated_at = v_next_updated_at
     where id = p_work_order_line_id;
   else
     delete from public.work_order_line_technicians
@@ -248,7 +257,7 @@ begin
     update public.work_order_lines
     set assigned_tech_id = null,
         assigned_to = null,
-        updated_at = now()
+        updated_at = v_next_updated_at
     where id = p_work_order_line_id;
   end if;
 

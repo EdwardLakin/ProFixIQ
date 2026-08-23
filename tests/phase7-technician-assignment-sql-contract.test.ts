@@ -51,6 +51,18 @@ describe("PFX-004 atomic assignment SQL contract", () => {
   it("serializes edits, rejects stale sessions/inactive techs, and preserves active labor", () => {
     expect(migration).toContain("for update");
     expect(migration).toContain("ASSIGNMENT_STALE");
+    expect(migration).toContain("v_next_updated_at := greatest(");
+    expect(migration).toContain("clock_timestamp()");
+    expect(migration).toContain("interval '1 microsecond'");
+    const assignmentMutation = migration.slice(
+      migration.indexOf(
+        "create or replace function public.mutate_work_order_line_assignment_atomic",
+      ),
+      migration.indexOf(
+        "create or replace function public.assign_work_order_line_technician_atomic",
+      ),
+    );
+    expect(assignmentMutation).not.toContain("updated_at = now()");
     expect(migration).toContain(
       "coalesce(v_employment_status, '') <> 'active'",
     );
