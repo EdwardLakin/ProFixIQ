@@ -78,10 +78,14 @@ function enforceSignInRateLimits(
   identifier: string,
   authEmails: string[],
 ): RateLimitResult | null {
-  const keys = Array.from(new Set([
-    identifier.trim().toLowerCase(),
-    ...authEmails.map((email) => email.trim().toLowerCase()),
-  ].filter(Boolean)));
+  const keys = Array.from(
+    new Set(
+      [
+        identifier.trim().toLowerCase(),
+        ...authEmails.map((email) => email.trim().toLowerCase()),
+      ].filter(Boolean),
+    ),
+  );
 
   for (const key of keys) {
     const rateLimit = enforceAuthRateLimit(req, `sign-in:${surface}`, key, {
@@ -117,7 +121,12 @@ export async function POST(req: Request) {
   }
 
   const authEmails = await resolveAuthEmails(identifier);
-  const rateLimit = enforceSignInRateLimits(req, surface, identifier, authEmails);
+  const rateLimit = enforceSignInRateLimits(
+    req,
+    surface,
+    identifier,
+    authEmails,
+  );
   if (rateLimit) {
     return NextResponse.json(
       { ok: false, error: "Too many attempts. Wait a moment and try again." },
@@ -130,7 +139,9 @@ export async function POST(req: Request) {
 
   const supabase = createServerSupabaseRoute();
   let signedInUser:
-    | Awaited<ReturnType<typeof supabase.auth.signInWithPassword>>["data"]["user"]
+    | Awaited<
+        ReturnType<typeof supabase.auth.signInWithPassword>
+      >["data"]["user"]
     | null = null;
 
   for (const authEmail of authEmails) {
@@ -238,11 +249,16 @@ export async function POST(req: Request) {
         supabase,
       });
 
-      fieldDestination = fieldAccess.canAccessFieldService
-        ? "/mobile/service"
-        : fieldAccess.canConfigure
-          ? "/mobile/service/setup"
-          : null;
+      fieldDestination =
+        fieldAccess.decision === "ready"
+          ? "/mobile/service"
+          : fieldAccess.decision === "setup_required"
+            ? "/mobile/service/setup"
+            : fieldAccess.decision === "forbidden" &&
+                fieldAccess.productEntitled &&
+                fieldAccess.canConfigure
+              ? "/mobile/service/setup"
+              : null;
     } catch {
       await supabase.auth.signOut({ scope: rejectedSessionScope });
       return NextResponse.json(
@@ -262,11 +278,11 @@ export async function POST(req: Request) {
         : "/auth/set-password"
     : surface === "field"
       ? fieldDestination!
-    : surface === "mobile"
-      ? "/mobile"
-      : profile.completed_onboarding || profile.shop_id
-        ? "/dashboard"
-        : "/onboarding";
+      : surface === "mobile"
+        ? "/mobile"
+        : profile.completed_onboarding || profile.shop_id
+          ? "/dashboard"
+          : "/onboarding";
 
   return NextResponse.json({ ok: true, destination });
 }

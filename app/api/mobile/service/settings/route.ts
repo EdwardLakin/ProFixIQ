@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import type { Database } from "@shared/types/types/supabase";
 
-import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import {
+  requireMobileServiceConfigurationApiAccess,
+  requireMobileServiceSetupApiAccess,
+} from "@/features/mobile/service/server/access";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 type ConfigureRpcArgs =
@@ -22,7 +25,7 @@ type SettingsBody = {
 
 async function readSettings(
   access: Extract<
-    Awaited<ReturnType<typeof requireShopScopedApiAccess>>,
+    Awaited<ReturnType<typeof requireMobileServiceSetupApiAccess>>,
     { ok: true }
   >,
 ) {
@@ -71,25 +74,30 @@ async function readSettings(
 
   if (canConfigure) {
     const admin = createAdminSupabase();
-    const [operatorsResult, vehiclesResult, assignmentsResult] = await Promise.all([
-      access.supabase
-        .from("mobile_field_operators")
-        .select("profile_id")
-        .eq("shop_id", access.profile.shop_id)
-        .eq("enabled", true),
-      access.supabase
-        .from("service_vehicles")
-        .select("id,name,unit_number")
-        .eq("shop_id", access.profile.shop_id)
-        .eq("active", true)
-        .contains("capabilities", { mobile_v1: true })
-        .order("name", { ascending: true }),
-      admin
-        .from("field_service_vehicle_assignments")
-        .select("service_vehicle_id,profile_id")
-        .eq("shop_id", access.profile.shop_id),
-    ]);
-    if (operatorsResult.error || vehiclesResult.error || assignmentsResult.error) {
+    const [operatorsResult, vehiclesResult, assignmentsResult] =
+      await Promise.all([
+        access.supabase
+          .from("mobile_field_operators")
+          .select("profile_id")
+          .eq("shop_id", access.profile.shop_id)
+          .eq("enabled", true),
+        access.supabase
+          .from("service_vehicles")
+          .select("id,name,unit_number")
+          .eq("shop_id", access.profile.shop_id)
+          .eq("active", true)
+          .contains("capabilities", { mobile_v1: true })
+          .order("name", { ascending: true }),
+        admin
+          .from("field_service_vehicle_assignments")
+          .select("service_vehicle_id,profile_id")
+          .eq("shop_id", access.profile.shop_id),
+      ]);
+    if (
+      operatorsResult.error ||
+      vehiclesResult.error ||
+      assignmentsResult.error
+    ) {
       throw new Error(
         operatorsResult.error?.message ??
           vehiclesResult.error?.message ??
@@ -122,9 +130,8 @@ async function readSettings(
       profileId: profile.id,
       name: profile.full_name?.trim() || profile.email || "Field operator",
       vehicleId:
-        fieldVehicles.find(
-          (vehicle) => vehicle.primaryUserId === profile.id,
-        )?.id ?? null,
+        fieldVehicles.find((vehicle) => vehicle.primaryUserId === profile.id)
+          ?.id ?? null,
     }));
   }
 
@@ -139,7 +146,7 @@ async function readSettings(
 }
 
 export async function GET() {
-  const access = await requireShopScopedApiAccess();
+  const access = await requireMobileServiceSetupApiAccess();
   if (!access.ok) return access.response;
   try {
     return NextResponse.json(await readSettings(access));
@@ -157,9 +164,7 @@ export async function GET() {
 }
 
 export async function PUT(request: Request) {
-  const access = await requireShopScopedApiAccess({
-    allowRoles: ["owner", "admin"],
-  });
+  const access = await requireMobileServiceConfigurationApiAccess();
   if (!access.ok) return access.response;
 
   const body = (await request.json().catch(() => null)) as SettingsBody | null;
@@ -230,9 +235,7 @@ export async function PUT(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  const access = await requireShopScopedApiAccess({
-    allowRoles: ["owner", "admin"],
-  });
+  const access = await requireMobileServiceConfigurationApiAccess();
   if (!access.ok) return access.response;
 
   const body = (await request.json().catch(() => null)) as {

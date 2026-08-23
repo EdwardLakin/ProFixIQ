@@ -43,7 +43,7 @@ describe("dedicated product access surfaces", () => {
     expect(field).toContain("Sign in to ProFixIQ Field");
     expect(route).toContain('surface === "field"');
     expect(route).toContain("getMobileFieldServiceAccess");
-    expect(route).toContain('fieldAccess.canAccessFieldService');
+    expect(route).toContain('fieldAccess.decision === "ready"');
     expect(route).toContain('"/mobile/service/setup"');
     expect(field).toContain("resolveFieldPostSignInHref");
     expect(field).toContain("resolveFieldExistingSessionHref");
@@ -87,6 +87,36 @@ describe("dedicated product access surfaces", () => {
     ).toBe("/auth/set-password?redirect=%2Fmobile%2Fservice%2Fsetup");
 
     expect(resolveFieldExistingSessionHref({}, "/mobile/service")).toBeNull();
+    expect(
+      resolveFieldExistingSessionHref(
+        {
+          decision: "plan_required",
+          canConfigure: true,
+          mustChangePassword: false,
+        },
+        "/mobile/service",
+      ),
+    ).toBeNull();
+    expect(
+      resolveFieldExistingSessionHref(
+        {
+          decision: "forbidden",
+          canConfigure: true,
+          mustChangePassword: false,
+        },
+        "/mobile/service/setup",
+      ),
+    ).toBe("/mobile/service/setup");
+    expect(
+      resolveFieldExistingSessionHref(
+        {
+          decision: "forbidden",
+          canConfigure: true,
+          mustChangePassword: false,
+        },
+        "/mobile/service",
+      ),
+    ).toBeNull();
   });
 
   it("keeps the public AI CTA on the implemented assistant route", () => {

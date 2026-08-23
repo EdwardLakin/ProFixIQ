@@ -12,6 +12,11 @@ import {
   setOfflineMutationScope,
 } from "@/features/shared/lib/offline/mutations";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import FieldServiceAccessPanel from "./FieldServiceAccessPanel";
+import {
+  isFieldServiceAccessDecision,
+  type FieldServiceAccessDecision,
+} from "./fieldServiceAccessContract";
 import {
   clearFieldServiceOfflineAccess,
   readFieldServiceOfflineAccess,
@@ -37,6 +42,10 @@ export default function MobileFieldServiceRouteGate({
   const router = useRouter();
   const [allowed, setAllowed] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  const [blockedDecision, setBlockedDecision] = useState<Extract<
+    FieldServiceAccessDecision,
+    "plan_required" | "forbidden"
+  > | null>(null);
   const [loadFailure, setLoadFailure] = useState<RouteLoadFailureState | null>(
     null,
   );
@@ -44,6 +53,7 @@ export default function MobileFieldServiceRouteGate({
   useEffect(() => {
     let active = true;
     setAllowed(false);
+    setBlockedDecision(null);
     setLoadFailure(null);
 
     void runBoundedRouteLoad(
@@ -77,11 +87,43 @@ export default function MobileFieldServiceRouteGate({
         }
 
         let access: FieldExistingSessionAccess | null = null;
+        const verifiedResponseScope = responseAccess
+          ? resolveFieldServiceAccessScope(responseAccess, authUserId)
+          : null;
+        const responseDecision = isFieldServiceAccessDecision(
+          responseAccess?.decision,
+        )
+          ? responseAccess.decision
+          : null;
+
+        if (
+          response?.status === 403 &&
+          verifiedResponseScope &&
+          (responseDecision === "plan_required" ||
+            responseDecision === "forbidden")
+        ) {
+          clearFieldServiceOfflineAccess(verifiedResponseScope);
+          if (
+            operatorScope &&
+            operatorScope.shopId !== verifiedResponseScope.shopId
+          ) {
+            clearFieldServiceOfflineAccess(operatorScope);
+          }
+          if (
+            pathname === "/mobile/service/setup" &&
+            responseDecision === "forbidden" &&
+            responseAccess?.productEntitled === true &&
+            responseAccess.canConfigure === true
+          ) {
+            setAllowed(true);
+            return;
+          }
+          setBlockedDecision(responseDecision);
+          return;
+        }
+
         if (response?.ok && responseAccess) {
-          const verifiedScope = resolveFieldServiceAccessScope(
-            responseAccess,
-            authUserId,
-          );
+          const verifiedScope = verifiedResponseScope;
           if (verifiedScope) {
             access = responseAccess;
           }
@@ -125,6 +167,15 @@ export default function MobileFieldServiceRouteGate({
           return;
         }
 
+        if (
+          access?.decision === "ready" &&
+          pathname === "/mobile/service/setup" &&
+          access.canConfigure !== true
+        ) {
+          setBlockedDecision("forbidden");
+          return;
+        }
+
         router.replace(destination ?? "/mobile");
       },
     ).catch((error) => {
@@ -143,10 +194,28 @@ export default function MobileFieldServiceRouteGate({
     };
   }, [attempt, pathname, router]);
 
+  useEffect(() => {
+    const revalidate = () => setAttempt((value) => value + 1);
+    const revalidateWhenVisible = () => {
+      if (document.visibilityState === "visible") revalidate();
+    };
+    window.addEventListener("online", revalidate);
+    document.addEventListener("visibilitychange", revalidateWhenVisible);
+    return () => {
+      window.removeEventListener("online", revalidate);
+      document.removeEventListener("visibilitychange", revalidateWhenVisible);
+    };
+  }, []);
+
   if (!allowed) {
     return (
       <main className="mx-auto w-full max-w-3xl px-3 py-4 sm:px-4">
-        {loadFailure ? (
+        {blockedDecision ? (
+          <FieldServiceAccessPanel
+            decision={blockedDecision}
+            onRetry={() => setAttempt((value) => value + 1)}
+          />
+        ) : loadFailure ? (
           <RouteLoadPanel
             failure={loadFailure}
             onRetry={() => setAttempt((value) => value + 1)}

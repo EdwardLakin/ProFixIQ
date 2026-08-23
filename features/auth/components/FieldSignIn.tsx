@@ -64,15 +64,14 @@ export default function FieldSignIn() {
         const response = await fetch("/api/mobile/field-service/access", {
           cache: "no-store",
         });
-        const access = (await response.json().catch(() => null)) as
-          | FieldAccessResponse
-          | null;
+        const access = (await response
+          .json()
+          .catch(() => null)) as FieldAccessResponse | null;
         if (cancelled) return;
 
-        const destination =
-          response.ok && access
-            ? resolveFieldExistingSessionHref(access, requestedDestination)
-            : null;
+        const destination = access
+          ? resolveFieldExistingSessionHref(access, requestedDestination)
+          : null;
         if (destination) {
           router.replace(destination);
           return;
@@ -83,7 +82,9 @@ export default function FieldSignIn() {
         );
       } catch {
         if (!cancelled) {
-          setError("We couldn't verify Field access right now. Try again in a moment.");
+          setError(
+            "We couldn't verify Field access right now. Try again in a moment.",
+          );
         }
       }
     })();
@@ -132,7 +133,11 @@ export default function FieldSignIn() {
       productLabel="ProFixIQ Field"
       heroTitle="Your mobile service business, fully operational."
       heroDescription="Run the day from a tablet or laptop, then carry the same customers, work, parts, approvals, and invoices into the field on your phone."
-      highlights={["Field Hub ready", "Multi-device workflow", "Offline-resilient work"]}
+      highlights={[
+        "Field Hub ready",
+        "Multi-device workflow",
+        "Offline-resilient work",
+      ]}
       backHref="/sign-in"
     >
       <div className="mb-6">
@@ -223,15 +228,25 @@ export default function FieldSignIn() {
       </form>
 
       <div className="mt-5 flex items-start gap-2 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-3 text-xs leading-5 text-[color:var(--theme-text-secondary)]">
-        <WifiOff className="mt-0.5 h-4 w-4 shrink-0 text-[var(--accent-copper)]" aria-hidden />
-        Supported job work can continue through brief connection drops after you sign in.
+        <WifiOff
+          className="mt-0.5 h-4 w-4 shrink-0 text-[var(--accent-copper)]"
+          aria-hidden
+        />
+        Supported job work can continue through brief connection drops after you
+        sign in.
       </div>
 
       <div className="mt-5 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs">
-        <Link href="/compare-plans" className="font-semibold text-[var(--accent-copper)] hover:underline">
+        <Link
+          href="/compare-plans"
+          className="font-semibold text-[var(--accent-copper)] hover:underline"
+        >
           Start a Field trial
         </Link>
-        <Link href="/sign-in" className="font-semibold text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)] hover:underline">
+        <Link
+          href="/sign-in"
+          className="font-semibold text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)] hover:underline"
+        >
           Choose another app
         </Link>
       </div>

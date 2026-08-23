@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { requireMobileServiceOperatorApiAccess } from "@/features/mobile/service/server/access";
 import {
   fieldInventoryErrorResponse,
   fieldInventoryRpc,
@@ -21,7 +21,7 @@ function optionalNumber(value: unknown): number | null {
 }
 
 export async function POST(request: Request) {
-  const access = await requireShopScopedApiAccess();
+  const access = await requireMobileServiceOperatorApiAccess();
   if (!access.ok) return access.response;
 
   const body = (await request.json().catch(() => null)) as Body | null;
@@ -31,9 +31,12 @@ export async function POST(request: Request) {
   const externalId = text(payload.externalId ?? payload.external_id);
   const partNumber = text(payload.partNumber ?? payload.part_number);
   const supplierSku = text(payload.supplierSku ?? payload.supplier_sku);
-  const connectionId = optionalUuid(payload.connectionId ?? payload.connection_id);
+  const connectionId = optionalUuid(
+    payload.connectionId ?? payload.connection_id,
+  );
   const supplierId = optionalUuid(payload.supplierId ?? payload.supplier_id);
-  const packageQuantityRaw = payload.packageQuantity ?? payload.package_quantity;
+  const packageQuantityRaw =
+    payload.packageQuantity ?? payload.package_quantity;
   const packageQuantity =
     packageQuantityRaw == null || packageQuantityRaw === ""
       ? 1
@@ -55,10 +58,7 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
-  if (
-    (payload.connectionId || payload.connection_id) &&
-    !connectionId
-  ) {
+  if ((payload.connectionId || payload.connection_id) && !connectionId) {
     return NextResponse.json({ error: "Invalid connection." }, { status: 400 });
   }
   if ((payload.supplierId || payload.supplier_id) && !supplierId) {
@@ -82,7 +82,8 @@ export async function POST(request: Request) {
       p_supplier_sku: supplierSku,
       p_unit_of_measure: text(payload.unitOfMeasure ?? payload.unit_of_measure),
       p_package_quantity: packageQuantity,
-      p_create_if_missing: payload.createIfMissing === true || payload.create_if_missing === true,
+      p_create_if_missing:
+        payload.createIfMissing === true || payload.create_if_missing === true,
       p_unit_cost: unitCost,
       p_unit_sell_price: unitSellPrice,
       p_metadata:
@@ -92,6 +93,7 @@ export async function POST(request: Request) {
       p_operation_key: key,
     },
   );
-  if (error) return fieldInventoryErrorResponse(error, "field-truck-inventory/resolve");
+  if (error)
+    return fieldInventoryErrorResponse(error, "field-truck-inventory/resolve");
   return NextResponse.json(data);
 }

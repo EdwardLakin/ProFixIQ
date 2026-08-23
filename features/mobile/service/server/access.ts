@@ -3,11 +3,16 @@ import "server-only";
 import { NextResponse } from "next/server";
 
 import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
+import {
+  resolveFieldServiceAccessContract,
+  type FieldServiceAccessContract,
+} from "@/features/mobile/service/fieldServiceAccessContract";
 import type { FieldWorkspaceCapabilities } from "@/features/mobile/service/fieldWorkspaceCapabilities";
 import {
   getActorCapabilities,
   hasAnyRole,
   ROLE_GROUPS,
+  type ActorCapabilities,
 } from "@/features/shared/lib/rbac";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
@@ -18,12 +23,7 @@ type ShopAccess = Extract<
 
 const FIELD_ASSIGNMENT_PAGE_SIZE = 500;
 
-export type MobileFieldServiceAccess = {
-  fieldServiceEnabled: boolean;
-  isFieldOperator: boolean;
-  canConfigure: boolean;
-  canAccessFieldService: boolean;
-};
+export type MobileFieldServiceAccess = FieldServiceAccessContract;
 
 export type MobileFieldServiceWorkspaceAccess = MobileFieldServiceAccess & {
   workspaceCapabilities: FieldWorkspaceCapabilities;
@@ -55,19 +55,7 @@ export function resolveMobileFieldServiceAccess(input: {
   canonicalRole: string;
   productEntitled: boolean;
 }): MobileFieldServiceAccess {
-  const fieldServiceEnabled = Boolean(
-    input.productEntitled &&
-    input.onboardingCompletedAt &&
-    ["mobile", "both"].includes(input.serviceModel ?? ""),
-  );
-  const canConfigure = ["owner", "admin"].includes(input.canonicalRole);
-
-  return {
-    fieldServiceEnabled,
-    isFieldOperator: input.isFieldOperator,
-    canConfigure,
-    canAccessFieldService: fieldServiceEnabled && input.isFieldOperator,
-  };
+  return resolveFieldServiceAccessContract(input);
 }
 
 export async function getMobileFieldServiceAccess(
@@ -208,8 +196,35 @@ export async function listFieldOperatorAssignedWorkOrderIds(
   return [...workOrderIds];
 }
 
-export async function requireMobileServiceOperatorApiAccess() {
-  const access = await requireShopScopedApiAccess();
+function fieldAccessDeniedResponse(fieldAccess: MobileFieldServiceAccess) {
+  const error =
+    fieldAccess.decision === "plan_required"
+      ? "Field Service is not included in this shop's plan."
+      : fieldAccess.decision === "setup_required"
+        ? "Field Service setup must be completed before using this route."
+        : "Your account is not an enabled Field operator.";
+
+  return NextResponse.json(
+    {
+      error,
+      code: fieldAccess.code,
+      decision: fieldAccess.decision,
+      productEntitled: fieldAccess.productEntitled,
+      configurationComplete: fieldAccess.configurationComplete,
+      canConfigure: fieldAccess.canConfigure,
+      canAccessFieldService: false,
+    },
+    {
+      status: 403,
+      headers: { "Cache-Control": "private, no-store" },
+    },
+  );
+}
+
+export async function requireMobileServiceOperatorApiAccess(
+  options: { requiredCapability?: keyof ActorCapabilities } = {},
+) {
+  const access = await requireShopScopedApiAccess(options);
   if (!access.ok) return access;
 
   let fieldAccess: MobileFieldServiceAccess;
@@ -228,7 +243,7 @@ export async function requireMobileServiceOperatorApiAccess() {
   if (!fieldAccess.canAccessFieldService) {
     return {
       ok: false as const,
-      response: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
+      response: fieldAccessDeniedResponse(fieldAccess),
     };
   }
 
@@ -240,5 +255,67 @@ export async function requireMobileServiceOperatorApiAccess() {
       fieldAccess.canAccessFieldService &&
       hasAnyRole(access.canonicalRole, ROLE_GROUPS.billingOperators),
     fieldServiceEnabled: fieldAccess.fieldServiceEnabled,
+  };
+}
+
+export async function requireMobileServiceConfigurationApiAccess() {
+  const access = await requireShopScopedApiAccess({
+    allowRoles: ["owner", "admin"],
+  });
+  if (!access.ok) return access;
+
+  let fieldAccess: MobileFieldServiceAccess;
+  try {
+    fieldAccess = await getMobileFieldServiceAccess(access);
+  } catch {
+    return {
+      ok: false as const,
+      response: NextResponse.json(
+        { error: "Unable to verify Field Service access." },
+        { status: 500 },
+      ),
+    };
+  }
+
+  if (!fieldAccess.productEntitled) {
+    return {
+      ok: false as const,
+      response: fieldAccessDeniedResponse(fieldAccess),
+    };
+  }
+
+  return {
+    ...access,
+    fieldAccess,
+  };
+}
+
+export async function requireMobileServiceSetupApiAccess() {
+  const access = await requireShopScopedApiAccess();
+  if (!access.ok) return access;
+
+  let fieldAccess: MobileFieldServiceAccess;
+  try {
+    fieldAccess = await getMobileFieldServiceAccess(access);
+  } catch {
+    return {
+      ok: false as const,
+      response: NextResponse.json(
+        { error: "Unable to verify Field Service access." },
+        { status: 500 },
+      ),
+    };
+  }
+
+  if (!fieldAccess.productEntitled) {
+    return {
+      ok: false as const,
+      response: fieldAccessDeniedResponse(fieldAccess),
+    };
+  }
+
+  return {
+    ...access,
+    fieldAccess,
   };
 }

@@ -17,6 +17,8 @@ type StorageWriter = Pick<Storage, "setItem" | "removeItem">;
 export type FieldServiceAccessPayload = FieldExistingSessionAccess & {
   userId?: string;
   shopId?: string;
+  productEntitled?: boolean;
+  configurationComplete?: boolean;
   workspaceCapabilities?: unknown;
 };
 
@@ -24,6 +26,7 @@ export type FieldServiceOfflineAccessSnapshot = {
   version: 1;
   userId: string;
   shopId: string;
+  decision: "ready";
   canAccessFieldService: true;
   canConfigure: boolean;
   mustChangePassword: false;
@@ -104,6 +107,7 @@ export function readFieldServiceOfflineAccess(
       version: 1,
       userId: clean(parsed.userId),
       shopId: clean(parsed.shopId),
+      decision: "ready",
       canAccessFieldService: true,
       canConfigure: parsed.canConfigure === true,
       mustChangePassword: false,
@@ -129,6 +133,7 @@ export function writeFieldServiceOfflineAccess(
 
   if (
     verifiedScope?.shopId !== scope.shopId.trim() ||
+    (access.decision != null && access.decision !== "ready") ||
     access.canAccessFieldService !== true ||
     access.mustChangePassword === true
   ) {
@@ -144,6 +149,7 @@ export function writeFieldServiceOfflineAccess(
     version: 1,
     userId: scope.userId.trim(),
     shopId: scope.shopId.trim(),
+    decision: "ready",
     canAccessFieldService: true,
     canConfigure: access.canConfigure === true,
     mustChangePassword: false,

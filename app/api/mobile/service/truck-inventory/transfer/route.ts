@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { requireMobileServiceOperatorApiAccess } from "@/features/mobile/service/server/access";
 import {
   fieldInventoryErrorResponse,
   fieldInventoryRpc,
@@ -10,14 +10,15 @@ import {
 } from "../_lib";
 
 export async function POST(request: Request) {
-  const access = await requireShopScopedApiAccess({
+  const access = await requireMobileServiceOperatorApiAccess({
     requiredCapability: "canManageParts",
   });
   if (!access.ok) return access.response;
 
-  const body = (await request.json().catch(() => null)) as
-    | Record<string, unknown>
-    | null;
+  const body = (await request.json().catch(() => null)) as Record<
+    string,
+    unknown
+  > | null;
   const payload = body ?? {};
   const serviceVehicleId =
     payload.serviceVehicleId ?? payload.service_vehicle_id;
@@ -35,7 +36,10 @@ export async function POST(request: Request) {
     !key
   ) {
     return NextResponse.json(
-      { error: "Truck, source location, part, quantity, and operation key are required." },
+      {
+        error:
+          "Truck, source location, part, quantity, and operation key are required.",
+      },
       { status: 400 },
     );
   }
@@ -53,6 +57,7 @@ export async function POST(request: Request) {
       p_operation_key: key,
     },
   );
-  if (error) return fieldInventoryErrorResponse(error, "field-truck-inventory/transfer");
+  if (error)
+    return fieldInventoryErrorResponse(error, "field-truck-inventory/transfer");
   return NextResponse.json(data);
 }
