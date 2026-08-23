@@ -13,25 +13,12 @@ import {
   type PendingMutation,
 } from "@/features/shared/lib/offline/mutations";
 import type { Database } from "@shared/types/types/supabase";
-import type { CanonicalWorkOrderLineContext } from "@/features/work-orders/lib/data/loadCanonicalWorkOrderLineContext";
+import type { MobileWorkOrderSnapshot } from "@/features/work-orders/mobile/mobileWorkOrderDetail";
+
+export type { MobileWorkOrderSnapshot } from "@/features/work-orders/mobile/mobileWorkOrderDetail";
 
 type DB = Database;
-type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
 type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"];
-type QuoteLine = DB["public"]["Tables"]["work_order_quote_lines"]["Row"];
-type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
-type Customer = DB["public"]["Tables"]["customers"]["Row"];
-
-export type MobileWorkOrderSnapshot = {
-  workOrder: WorkOrder;
-  lines: WorkOrderLine[];
-  quoteLines: QuoteLine[];
-  vehicle: Vehicle | null;
-  customer: Customer | null;
-  techNamesById: Record<string, string>;
-  lineContext?: CanonicalWorkOrderLineContext;
-  shopLaborRate?: number | null;
-};
 
 export type TechnicianJobEditorDraft = {
   lineId: string;

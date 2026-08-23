@@ -5,6 +5,9 @@ const read = (path: string) => readFileSync(path, "utf8");
 
 const desktop = read("app/work-orders/[id]/Client.tsx");
 const mobile = read("features/work-orders/mobile/MobileWorkOrderClient.tsx");
+const mobileDetailServer = read(
+  "features/work-orders/mobile/server/loadMobileWorkOrderDetail.ts",
+);
 const focusedJob = read("features/work-orders/mobile/MobileFocusedJob.tsx");
 const offlineRoute = read("app/api/offline/technician-work-orders/route.ts");
 const offlineTypes = read(
@@ -20,7 +23,8 @@ const migration = read(
 describe("cross-device work-order source of truth", () => {
   it("makes desktop and mobile use the same tenant-scoped line-context loader", () => {
     expect(desktop).toContain("loadCanonicalWorkOrderLineContext");
-    expect(mobile).toContain("loadCanonicalWorkOrderLineContext");
+    expect(mobile).toContain("/api/mobile/work-orders/");
+    expect(mobileDetailServer).toContain("loadCanonicalWorkOrderLineContext");
     expect(contextLoader).toContain('.from("work_order_parts")');
     expect(contextLoader).toContain('.from("work_order_part_allocations")');
     expect(contextLoader).toContain('.from("part_requests")');

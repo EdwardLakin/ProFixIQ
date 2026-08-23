@@ -16,7 +16,10 @@ import {
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
-import { resolveMobileWorkOrderHref } from "./mobileWorkOrderRouting";
+import {
+  buildMobileWorkOrderListHref,
+  resolveMobileWorkOrderHref,
+} from "./mobileWorkOrderRouting";
 
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -426,6 +429,15 @@ export default function MobileWorkOrderQueue({
         .length,
     [rows],
   );
+  const listReturnHref = useMemo(
+    () =>
+      buildMobileWorkOrderListHref({
+        status,
+        readyToInvoiceCloseout,
+        inspectionTemplateId,
+      }),
+    [inspectionTemplateId, readyToInvoiceCloseout, status],
+  );
 
   return (
     <div className="mobile-work-order-queue">
@@ -612,6 +624,7 @@ export default function MobileWorkOrderQueue({
                   status: key,
                   readyToInvoiceCloseout,
                   inspectionTemplateId,
+                  returnTo: listReturnHref,
                 })}
                 className="mobile-command-row relative block overflow-hidden border p-4 pl-5 active:scale-[0.992]"
               >
