@@ -15,14 +15,9 @@ import {
   updateFleetWorkspace,
 } from "./actions";
 import FleetMemberRemoveButton from "@/features/fleet/components/FleetMemberRemoveButton";
-import {
-  canAdministerFleetForActor,
-  resolveFleetActorContext,
-} from "@/features/fleet/lib/resolveFleetActorContext";
-import {
-  createAdminSupabase,
-  createServerSupabaseRSC,
-} from "@/features/shared/lib/supabase/server";
+import { canAdministerFleetForActor } from "@/features/fleet/lib/resolveFleetActorContext";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import { getFleetPortalActorContext } from "../_lib/requireFleetPortalActor";
 
 type PageProps = {
   searchParams: Promise<{
@@ -64,14 +59,7 @@ function roleLabel(role: string): string {
 
 export default async function FleetSettingsPage({ searchParams }: PageProps) {
   const params = await searchParams;
-  const supabase = createServerSupabaseRSC();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) redirect("/portal/auth/fleet-sign-in");
-
-  const actor = await resolveFleetActorContext(supabase, { userId: user.id });
+  const actor = await getFleetPortalActorContext();
   if (!actor.shopId) redirect("/portal/fleet");
 
   const manageableFleetIds = actor.fleetIds.filter((fleetId) =>
@@ -339,7 +327,7 @@ export default async function FleetSettingsPage({ searchParams }: PageProps) {
           <div className="divide-y divide-[color:var(--theme-border-soft)]">
             {members.map((member) => {
               const profile = profiles.get(member.user_id);
-              const isCurrentUser = member.user_id === user.id;
+              const isCurrentUser = member.user_id === actor.userId;
               const protectedMember = ["owner", "admin"].includes(member.role);
               const editable = !isCurrentUser && !protectedMember;
 

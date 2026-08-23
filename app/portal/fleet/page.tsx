@@ -1,13 +1,11 @@
-import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
 import FleetControlTower from "@/features/fleet/components/FleetControlTower";
 import FleetDispatcherDashboard from "@/features/fleet/components/FleetDispatcherDashboard";
 import FleetDriverDashboard from "@/features/fleet/components/FleetDriverDashboard";
-import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
 import { getFleetUiContext } from "@/features/fleet/lib/fleetUiCapabilities";
+import { getFleetPortalActorContext } from "./_lib/requireFleetPortalActor";
 
 export default async function PortalFleetPage() {
-  const supabase = createServerSupabaseRSC();
-  const actor = await resolveFleetActorContext(supabase);
+  const actor = await getFleetPortalActorContext();
   const uiContext = getFleetUiContext(actor);
 
   if (actor.actorType === "fleet_driver") {

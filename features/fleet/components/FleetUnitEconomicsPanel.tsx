@@ -80,6 +80,7 @@ export default function FleetUnitEconomicsPanel({
             shopId: shopId ?? null,
             fleetId: fleetId ?? null,
           }),
+          cache: "no-store",
         });
         const body = (await response.json().catch(() => ({}))) as
           | Payload

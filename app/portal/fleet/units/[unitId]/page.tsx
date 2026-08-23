@@ -1,14 +1,13 @@
+import { redirect } from "next/navigation";
 import FleetUnitDetailWorkspace from "@/features/fleet/components/FleetUnitDetailWorkspace";
-import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
 import { getFleetUiContext } from "@/features/fleet/lib/fleetUiCapabilities";
-import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
+import { getFleetPortalActorContext } from "../../_lib/requireFleetPortalActor";
 
 type Props = { params: Promise<{ unitId: string }> };
 
 export default async function PortalFleetUnitDetailPage({ params }: Props) {
   const { unitId } = await params;
-  const supabase = createServerSupabaseRSC();
-  const actor = await resolveFleetActorContext(supabase);
+  const actor = await getFleetPortalActorContext();
   const uiContext = getFleetUiContext(actor);
   if (!uiContext.capabilities.canViewUnitMaintenanceRecord) {
     redirect("/portal/fleet/units");
@@ -23,4 +22,3 @@ export default async function PortalFleetUnitDetailPage({ params }: Props) {
     />
   );
 }
-import { redirect } from "next/navigation";

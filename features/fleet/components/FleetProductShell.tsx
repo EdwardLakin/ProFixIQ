@@ -2,7 +2,13 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import {
   CalendarDays,
   ChartNoAxesCombined,
@@ -29,6 +35,7 @@ import {
   toFleetInternalPath,
   toFleetPublicPath,
 } from "@/features/fleet/lib/fleetProductRouting";
+import { FLEET_PERFORMANCE_EVENT } from "@/features/fleet/lib/fleetPerformance";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { cn } from "@/features/shared/utils/cn";
 
@@ -245,6 +252,21 @@ function isActivePath(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
+function isPrimaryNavigation(event: ReactMouseEvent<HTMLAnchorElement>) {
+  return (
+    !event.defaultPrevented &&
+    event.button === 0 &&
+    !event.metaKey &&
+    !event.ctrlKey &&
+    !event.shiftKey &&
+    !event.altKey
+  );
+}
+
+function fleetNavigationHref(href: string, productHost: boolean): string {
+  return productHost ? (toFleetPublicPath(href) ?? href) : href;
+}
+
 function NavItem({
   item,
   href,
@@ -263,7 +285,9 @@ function NavItem({
   return (
     <Link
       href={href}
-      onClick={onNavigate}
+      onClick={(event) => {
+        if (isPrimaryNavigation(event)) onNavigate?.();
+      }}
       aria-current={active ? "page" : undefined}
       title={compact ? item.label : undefined}
       className={cn(
@@ -328,6 +352,12 @@ export default function FleetProductShell({
   const [compact, setCompact] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [mustChangePassword, setMustChangePassword] = useState(false);
+  const [navigationTarget, setNavigationTarget] = useState<string | null>(null);
+  const navigationRef = useRef<{
+    href: string;
+    fromPath: string;
+    startedAt: number;
+  } | null>(null);
 
   useEffect(() => {
     if (!userId) {
@@ -376,6 +406,68 @@ export default function FleetProductShell({
     [groups, internalPathname],
   );
 
+  const prefetchDestinations = useMemo(
+    () =>
+      groups
+        .flatMap((group) => group.items)
+        .slice(0, 6)
+        .map((item) => fleetNavigationHref(item.href, productHost)),
+    [groups, productHost],
+  );
+
+  useEffect(() => {
+    const prefetchTimer = window.setTimeout(() => {
+      for (const href of prefetchDestinations) router.prefetch(href);
+    }, 0);
+    return () => window.clearTimeout(prefetchTimer);
+  }, [prefetchDestinations, router]);
+
+  useEffect(() => {
+    const pending = navigationRef.current;
+    if (!pending || pending.fromPath === pathname) return;
+
+    requestAnimationFrame(() => {
+      const completedAt = performance.now();
+      performance.measure("profixiq:fleet:route-navigation", {
+        start: pending.startedAt,
+        end: completedAt,
+      });
+      window.dispatchEvent(
+        new CustomEvent(FLEET_PERFORMANCE_EVENT, {
+          detail: {
+            operation: "route-navigation",
+            serverMs: null,
+            networkMs: completedAt - pending.startedAt,
+            renderMs: null,
+            totalMs: completedAt - pending.startedAt,
+            measuredAt: new Date().toISOString(),
+          },
+        }),
+      );
+      navigationRef.current = null;
+      setNavigationTarget(null);
+    });
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!navigationTarget) return;
+    const safetyTimer = window.setTimeout(() => {
+      navigationRef.current = null;
+      setNavigationTarget(null);
+    }, 15_000);
+    return () => window.clearTimeout(safetyTimer);
+  }, [navigationTarget]);
+
+  function beginNavigation(href: string) {
+    if (navigationRef.current?.href === href) return;
+    navigationRef.current = {
+      href,
+      fromPath: pathname,
+      startedAt: performance.now(),
+    };
+    setNavigationTarget(href);
+  }
+
   async function signOut() {
     if (signingOut) return;
     setSigningOut(true);
@@ -422,20 +514,27 @@ export default function FleetProductShell({
               </div>
             )}
             <div className="space-y-1">
-              {group.items.map((item) => (
-                <NavItem
-                  key={item.href}
-                  item={item}
-                  href={
-                    productHost
-                      ? (toFleetPublicPath(item.href) ?? item.href)
-                      : item.href
-                  }
-                  compact={compact && !isMobile}
-                  active={activeItem?.href === item.href}
-                  onNavigate={isMobile ? () => setMobileOpen(false) : undefined}
-                />
-              ))}
+              {group.items.map((item) => {
+                const href = fleetNavigationHref(item.href, productHost);
+                const active = activeItem?.href === item.href;
+                return (
+                  <NavItem
+                    key={item.href}
+                    item={item}
+                    href={href}
+                    compact={compact && !isMobile}
+                    active={active}
+                    onNavigate={
+                      active
+                        ? undefined
+                        : () => {
+                            if (isMobile) setMobileOpen(false);
+                            beginNavigation(href);
+                          }
+                    }
+                  />
+                );
+              })}
             </div>
           </div>
         ))}
@@ -469,6 +568,17 @@ export default function FleetProductShell({
 
   return (
     <div className="min-h-dvh bg-[color:var(--theme-surface-page)] text-[color:var(--theme-text-primary)]">
+      {navigationTarget ? (
+        <div
+          className="fixed inset-x-0 top-0 z-[70] h-1 overflow-hidden bg-sky-400/15"
+          role="status"
+          aria-live="polite"
+          aria-label="Loading Fleet destination"
+        >
+          <span className="sr-only">Loading Fleet destination…</span>
+          <span className="block h-full w-1/3 animate-pulse rounded-r-full bg-sky-400" />
+        </div>
+      ) : null}
       <div
         className="pointer-events-none fixed inset-0 overflow-hidden"
         aria-hidden="true"
@@ -567,6 +677,7 @@ export default function FleetProductShell({
         </header>
 
         <main
+          aria-busy={navigationTarget ? true : undefined}
           className={cn(
             "relative mx-auto w-full max-w-[1680px] px-3 py-4 sm:px-5 sm:py-6 lg:px-7",
             experience === "external_driver" && "pb-24 lg:pb-7",
@@ -587,11 +698,14 @@ export default function FleetProductShell({
             return (
               <Link
                 key={item.href}
-                href={
-                  productHost
-                    ? (toFleetPublicPath(item.href) ?? item.href)
-                    : item.href
-                }
+                href={fleetNavigationHref(item.href, productHost)}
+                onClick={(event) => {
+                  if (!active && isPrimaryNavigation(event)) {
+                    beginNavigation(
+                      fleetNavigationHref(item.href, productHost),
+                    );
+                  }
+                }}
                 aria-current={active ? "page" : undefined}
                 className={cn(
                   "flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl px-1 text-[9px] font-semibold",

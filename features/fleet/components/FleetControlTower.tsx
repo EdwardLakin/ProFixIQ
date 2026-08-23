@@ -13,6 +13,10 @@ import {
   MaintenanceControlTower,
   getOperationsVerticalConfig,
 } from "@/features/operations";
+import {
+  recordFleetRenderTiming,
+  recordFleetRequestTiming,
+} from "@/features/fleet/lib/fleetPerformance";
 
 export type FleetUnitStatus = "in_service" | "limited" | "oos";
 
@@ -105,6 +109,7 @@ export default function FleetControlTower({
       try {
         setLoading(true);
         setError(null);
+        const requestStartedAt = performance.now();
         const res = await fetch("/api/fleet/tower", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -112,7 +117,13 @@ export default function FleetControlTower({
             shopId: shopId ?? null,
             fleetId: fleetId ?? null,
           }),
+          cache: "no-store",
         });
+        const timing = recordFleetRequestTiming(
+          "control-tower",
+          requestStartedAt,
+          res,
+        );
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));
           if (!cancelled)
@@ -123,7 +134,14 @@ export default function FleetControlTower({
           return;
         }
         const body = (await res.json()) as TowerPayload;
-        if (!cancelled) setData(body);
+        if (!cancelled) {
+          setData(body);
+          recordFleetRenderTiming(
+            "control-tower",
+            timing.responseReceivedAt,
+            timing.serverMs,
+          );
+        }
       } catch (err) {
         console.error("[FleetControlTower] fetch error:", err);
         if (!cancelled) setError("Failed to load fleet data.");
