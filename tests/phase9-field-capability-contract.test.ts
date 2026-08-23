@@ -154,7 +154,10 @@ describe("PFX-007 Field capability enforcement", () => {
 
     expect(routeGate).toContain("FieldServiceAccessPanel");
     expect(routeGate).toContain("response?.status === 403");
-    expect(routeGate).toContain('pathname === "/mobile/service/setup"');
+    expect(routeGate).toContain("resolveFieldExistingSessionHref");
+    expect(routeGate).not.toContain(
+      "let active = true;\n    setAllowed(false);",
+    );
     expect(routeGate).toContain("clearFieldServiceOfflineAccess");
     expect(routeGate).toContain('window.addEventListener("online"');
     expect(routeGate).toContain('document.addEventListener("visibilitychange"');

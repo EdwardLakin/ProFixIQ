@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   PRODUCT_SIGN_IN,
   resolveAcquisitionSignupHref,
+  resolveFieldExistingSessionHref,
   resolveFieldPostSignInHref,
   resolveLegacySignInHref,
 } from "./accessSurfaceRouting";
@@ -96,5 +97,55 @@ describe("product access surface routing", () => {
     expect(
       resolveFieldPostSignInHref("/dashboard", "/mobile/service/today"),
     ).toBe("/mobile/service");
+  });
+
+  it("routes configurators and setup-required users without bypassing password rotation", () => {
+    expect(
+      resolveFieldExistingSessionHref(
+        {
+          decision: "forbidden",
+          canConfigure: true,
+          mustChangePassword: false,
+        },
+        "/mobile/service",
+      ),
+    ).toBe("/mobile/service/setup");
+
+    expect(
+      resolveFieldExistingSessionHref(
+        {
+          decision: "forbidden",
+          canConfigure: true,
+          mustChangePassword: true,
+        },
+        "/mobile/service/setup",
+      ),
+    ).toBe(
+      "/auth/set-password?redirect=%2Fmobile%2Fservice%2Fsetup",
+    );
+
+    expect(
+      resolveFieldExistingSessionHref(
+        {
+          decision: "setup_required",
+          canConfigure: false,
+          mustChangePassword: false,
+        },
+        "/mobile/service",
+      ),
+    ).toBe("/mobile/service/setup");
+  });
+
+  it("does not let a ready non-configurator open setup directly", () => {
+    expect(
+      resolveFieldExistingSessionHref(
+        {
+          decision: "ready",
+          canConfigure: false,
+          mustChangePassword: false,
+        },
+        "/mobile/service/setup",
+      ),
+    ).toBeNull();
   });
 });

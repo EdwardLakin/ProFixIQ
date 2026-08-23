@@ -151,14 +151,12 @@ export function resolveFieldExistingSessionHref(
   access: FieldExistingSessionAccess,
   requestedDestination: string,
 ): string | null {
-  const canOpenSetup =
-    requestedDestination === FIELD_SETUP && access.canConfigure === true;
   const fieldDestination = access.decision
     ? access.decision === "ready"
       ? FIELD_HOME
       : access.decision === "setup_required"
         ? FIELD_SETUP
-        : access.decision === "forbidden" && canOpenSetup
+        : access.decision === "forbidden" && access.canConfigure === true
           ? FIELD_SETUP
           : null
     : access.canAccessFieldService
@@ -169,7 +167,11 @@ export function resolveFieldExistingSessionHref(
 
   if (!fieldDestination) return null;
 
-  if (requestedDestination === FIELD_SETUP && access.canConfigure !== true) {
+  if (
+    requestedDestination === FIELD_SETUP &&
+    access.canConfigure !== true &&
+    access.decision !== "setup_required"
+  ) {
     return null;
   }
 

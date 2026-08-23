@@ -52,7 +52,6 @@ export default function MobileFieldServiceRouteGate({
 
   useEffect(() => {
     let active = true;
-    setAllowed(false);
     setBlockedDecision(null);
     setLoadFailure(null);
 
@@ -82,6 +81,7 @@ export default function MobileFieldServiceRouteGate({
         if (!active) return;
 
         if (!authUserId) {
+          setAllowed(false);
           router.replace("/mobile");
           return;
         }
@@ -110,14 +110,24 @@ export default function MobileFieldServiceRouteGate({
             clearFieldServiceOfflineAccess(operatorScope);
           }
           if (
-            pathname === "/mobile/service/setup" &&
             responseDecision === "forbidden" &&
-            responseAccess?.productEntitled === true &&
-            responseAccess.canConfigure === true
+            responseAccess?.productEntitled === true
           ) {
-            setAllowed(true);
-            return;
+            const destination = resolveFieldExistingSessionHref(
+              responseAccess,
+              pathname,
+            );
+            if (destination === pathname) {
+              setAllowed(true);
+              return;
+            }
+            if (destination) {
+              setAllowed(false);
+              router.replace(destination);
+              return;
+            }
           }
+          setAllowed(false);
           setBlockedDecision(responseDecision);
           return;
         }
@@ -148,6 +158,7 @@ export default function MobileFieldServiceRouteGate({
             message: "Field Service access could not be verified.",
           });
         } else if (!response.ok) {
+          setAllowed(false);
           throw routeLoadFailureFromStatus(
             response.status,
             response.status === 403
@@ -172,10 +183,12 @@ export default function MobileFieldServiceRouteGate({
           pathname === "/mobile/service/setup" &&
           access.canConfigure !== true
         ) {
+          setAllowed(false);
           setBlockedDecision("forbidden");
           return;
         }
 
+        setAllowed(false);
         router.replace(destination ?? "/mobile");
       },
     ).catch((error) => {

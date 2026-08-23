@@ -116,7 +116,31 @@ describe("dedicated product access surfaces", () => {
         },
         "/mobile/service",
       ),
-    ).toBeNull();
+    ).toBe("/mobile/service/setup");
+
+    expect(
+      resolveFieldExistingSessionHref(
+        {
+          decision: "forbidden",
+          canConfigure: true,
+          mustChangePassword: true,
+        },
+        "/mobile/service/setup",
+      ),
+    ).toBe(
+      "/auth/set-password?redirect=%2Fmobile%2Fservice%2Fsetup",
+    );
+
+    expect(
+      resolveFieldExistingSessionHref(
+        {
+          decision: "setup_required",
+          canConfigure: false,
+          mustChangePassword: false,
+        },
+        "/mobile/service",
+      ),
+    ).toBe("/mobile/service/setup");
   });
 
   it("keeps the public AI CTA on the implemented assistant route", () => {
