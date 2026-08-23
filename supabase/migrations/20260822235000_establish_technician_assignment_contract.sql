@@ -10,6 +10,17 @@ begin;
 -- backfilled. That keeps a deploy from silently choosing a technician when two
 -- persisted sources disagree.
 
+-- Optimistic assignment edits need a version on every line. This backfill does
+-- not choose or change any technician; it only initializes the version field
+-- that the atomic assignment command compares.
+update public.work_order_lines
+set updated_at = coalesce(updated_at, created_at, clock_timestamp())
+where updated_at is null;
+
+alter table public.work_order_lines
+  alter column updated_at set default now(),
+  alter column updated_at set not null;
+
 create or replace function public.report_work_order_line_assignment_ambiguities(
   p_shop_id uuid default null
 ) returns jsonb

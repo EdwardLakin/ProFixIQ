@@ -33,7 +33,15 @@ describe("PFX-004 atomic assignment SQL contract", () => {
     );
     expect(migration).toContain("legacy_primary_conflict");
     expect(migration).toContain("No row in this report is automatically backfilled");
-    expect(migration).not.toMatch(/update public\.work_order_lines[\s\S]*from assignment_drift/i);
+    const ambiguityReport = migration.slice(
+      migration.indexOf(
+        "create or replace function public.report_work_order_line_assignment_ambiguities",
+      ),
+      migration.indexOf(
+        "comment on function public.report_work_order_line_assignment_ambiguities",
+      ),
+    );
+    expect(ambiguityReport).not.toContain("update public.work_order_lines");
   });
 
   it("supports explicit assign, supporting, reassign, remove, and clear actions", () => {
@@ -51,6 +59,11 @@ describe("PFX-004 atomic assignment SQL contract", () => {
   it("serializes edits, rejects stale sessions/inactive techs, and preserves active labor", () => {
     expect(migration).toContain("for update");
     expect(migration).toContain("ASSIGNMENT_STALE");
+    expect(migration).toContain(
+      "set updated_at = coalesce(updated_at, created_at, clock_timestamp())",
+    );
+    expect(migration).toContain("alter column updated_at set default now()");
+    expect(migration).toContain("alter column updated_at set not null");
     expect(migration).toContain("v_next_updated_at := greatest(");
     expect(migration).toContain("clock_timestamp()");
     expect(migration).toContain("interval '1 microsecond'");
