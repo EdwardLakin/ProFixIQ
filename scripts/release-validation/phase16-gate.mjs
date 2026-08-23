@@ -175,6 +175,10 @@ function list(value) {
   return Array.isArray(value) ? value : [];
 }
 
+function isSha(value) {
+  return typeof value === "string" && /^[0-9a-f]{40}$/i.test(value);
+}
+
 function addFailure(failures, id, message) {
   if (!failures.some((failure) => failure.id === id)) {
     failures.push({ id, message });
@@ -220,7 +224,7 @@ export function evaluateReleaseEvidence(evidence) {
   }
 
   const candidate = evidence?.candidate;
-  if (!candidate?.sha || !candidate?.environment || candidate?.deployed !== true) {
+  if (!isSha(candidate?.sha) || !candidate?.environment || candidate?.deployed !== true) {
     addFailure(
       failures,
       "candidate-deployment",
@@ -247,7 +251,7 @@ export function evaluateReleaseEvidence(evidence) {
 
   const rollback = candidate?.rollback;
   if (
-    !rollback?.previousStableSha ||
+    !isSha(rollback?.previousStableSha) ||
     !rollback?.owner ||
     !rollback?.runbook ||
     rollback?.applicationRollbackVerified !== true ||
@@ -269,7 +273,7 @@ export function evaluateReleaseEvidence(evidence) {
       !prerequisite ||
       prerequisite.status !== "merged" ||
       prerequisite.deployed !== true ||
-      !prerequisite.headSha
+      !isSha(prerequisite.headSha)
     ) {
       addFailure(
         failures,
@@ -280,6 +284,23 @@ export function evaluateReleaseEvidence(evidence) {
   }
 
   const defects = list(evidence?.defects);
+  const defectIds = new Set();
+  for (const defect of defects) {
+    const validDefect =
+      typeof defect?.id === "string" &&
+      defect.id.length > 0 &&
+      !defectIds.has(defect.id) &&
+      ["Sev-1", "Sev-2", "Sev-3", "Sev-4"].includes(defect?.severity) &&
+      ["open", "closed"].includes(defect?.status);
+    if (!validDefect) {
+      addFailure(
+        failures,
+        `defect-${defect?.id ?? "unknown"}`,
+        "Every defect needs a unique ID, recognized severity, and open or closed status.",
+      );
+    }
+    if (typeof defect?.id === "string") defectIds.add(defect.id);
+  }
   const openSev1 = defects.filter(
     (defect) => defect?.severity === "Sev-1" && defect?.status !== "closed",
   );
@@ -637,7 +658,11 @@ async function main() {
 
   const evidence = JSON.parse(await readFile(resolve(inputPath), "utf8"));
   const result = evaluateReleaseEvidence(evidence);
+  const resolvedInputPath = resolve(inputPath);
   const resolvedOutputPath = resolve(outputPath);
+  if (resolvedInputPath === resolvedOutputPath) {
+    throw new Error("Evidence input and Markdown output must use different paths.");
+  }
   await mkdir(dirname(resolvedOutputPath), { recursive: true });
   await writeFile(resolvedOutputPath, renderReleaseReport(evidence, result), "utf8");
   process.stdout.write(

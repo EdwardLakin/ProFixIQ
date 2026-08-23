@@ -236,6 +236,21 @@ describe("Phase 16 release and rollback gate", () => {
     );
   });
 
+  it("rejects placeholder SHAs and malformed defect evidence", () => {
+    const evidence = passingEvidence();
+    evidence.candidate.sha = "not-an-exact-sha";
+    evidence.prerequisites[0].headSha = "short";
+    evidence.defects[0].severity = "P2";
+
+    expect(evaluateReleaseEvidence(evidence).failures.map((failure) => failure.id)).toEqual(
+      expect.arrayContaining([
+        "candidate-deployment",
+        "phase-6",
+        "defect-PFX-TEST",
+      ]),
+    );
+  });
+
   it("renders the complete executive handoff contract", () => {
     const report = renderReleaseReport(passingEvidence());
 
