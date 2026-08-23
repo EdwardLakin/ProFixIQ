@@ -22,6 +22,10 @@ export const PARTS_REQUEST_QUEUE_ROLES: readonly CanonicalRole[] = [
   "parts",
 ];
 
+// Preserve the established page-guard contract while the queue API and loader
+// share the same canonical role set.
+export const PARTS_REQUEST_ACCESS_ROLES = PARTS_REQUEST_QUEUE_ROLES;
+
 type PageResult<T> = {
   data: T[] | null;
   error: { message: string } | null;
