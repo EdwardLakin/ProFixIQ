@@ -731,7 +731,19 @@ as $$
     select wol.*
     from public.work_order_lines wol
     where wol.work_order_id = p_work_order_id
-      and public.can_view_work_order(p_work_order_id)
+      and (
+        coalesce(auth.role(), '') = 'service_role'
+        or exists (
+          select 1
+          from public.profiles actor
+          where actor.shop_id = wol.shop_id
+            and (
+              actor.id = (select auth.uid())
+              or actor.user_id = (select auth.uid())
+            )
+            and private.workspace_is_shop_staff_role(actor.role::text)
+        )
+      )
   ), canonical_assignments as (
     select
       wol.id as work_order_line_id,

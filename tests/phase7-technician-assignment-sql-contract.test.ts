@@ -108,6 +108,17 @@ describe("PFX-004 atomic assignment SQL contract", () => {
     expect(mutation).not.toMatch(/insert into public\.[a-z_]*notifications/i);
   });
 
+  it("authorizes assignment summaries from canonical same-shop identity data", () => {
+    expect(migration).not.toContain("public.can_view_work_order");
+    expect(migration).not.toMatch(/current_user in \([^)]*postgres/i);
+    expect(migration).toContain("coalesce(auth.role(), '') = 'service_role'");
+    expect(migration).toContain("actor.shop_id = wol.shop_id");
+    expect(migration).toContain("actor.user_id = (select auth.uid())");
+    expect(migration).toContain(
+      "private.workspace_is_shop_staff_role(actor.role::text)",
+    );
+  });
+
   it("executes the contract against a clean replay database", () => {
     expect(runtime).toContain("runtime:set-primary");
     expect(runtime).toContain("runtime:reassign");
