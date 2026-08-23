@@ -29,9 +29,9 @@ export function recordFleetRequestTiming(
   operation: string,
   startedAt: number,
   response: Response,
-): { responseReceivedAt: number; serverMs: number | null } {
-  const responseReceivedAt = performance.now();
-  const totalMs = Math.max(0, responseReceivedAt - startedAt);
+): { responseConsumedAt: number; serverMs: number | null } {
+  const responseConsumedAt = performance.now();
+  const totalMs = Math.max(0, responseConsumedAt - startedAt);
   const serverMs = parseFleetServerTiming(
     response.headers.get("server-timing"),
   );
@@ -39,7 +39,7 @@ export function recordFleetRequestTiming(
 
   performance.measure(`profixiq:fleet:${operation}:request`, {
     start: startedAt,
-    end: responseReceivedAt,
+    end: responseConsumedAt,
   });
   emitFleetPerformance({
     operation,
@@ -50,19 +50,19 @@ export function recordFleetRequestTiming(
     measuredAt: new Date().toISOString(),
   });
 
-  return { responseReceivedAt, serverMs };
+  return { responseConsumedAt, serverMs };
 }
 
 export function recordFleetRenderTiming(
   operation: string,
-  responseReceivedAt: number,
+  responseConsumedAt: number,
   serverMs: number | null,
 ): void {
   requestAnimationFrame(() => {
     const renderedAt = performance.now();
-    const renderMs = Math.max(0, renderedAt - responseReceivedAt);
+    const renderMs = Math.max(0, renderedAt - responseConsumedAt);
     performance.measure(`profixiq:fleet:${operation}:render`, {
-      start: responseReceivedAt,
+      start: responseConsumedAt,
       end: renderedAt,
     });
     emitFleetPerformance({

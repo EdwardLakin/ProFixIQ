@@ -119,13 +119,9 @@ export default function FleetControlTower({
           }),
           cache: "no-store",
         });
-        const timing = recordFleetRequestTiming(
-          "control-tower",
-          requestStartedAt,
-          res,
-        );
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));
+          recordFleetRequestTiming("control-tower", requestStartedAt, res);
           if (!cancelled)
             setError(
               (body && body.error) ||
@@ -134,11 +130,16 @@ export default function FleetControlTower({
           return;
         }
         const body = (await res.json()) as TowerPayload;
+        const timing = recordFleetRequestTiming(
+          "control-tower",
+          requestStartedAt,
+          res,
+        );
         if (!cancelled) {
           setData(body);
           recordFleetRenderTiming(
             "control-tower",
-            timing.responseReceivedAt,
+            timing.responseConsumedAt,
             timing.serverMs,
           );
         }

@@ -45,6 +45,17 @@ describe("Phase 13 Fleet navigation performance contract", () => {
     expect(tower).toContain('cache: "no-store"');
     expect(maintenance).toContain('action: "list"');
     expect(maintenance).toContain('cache: "no-store"');
+
+    const bodyConsumed = tower.indexOf(
+      "const body = (await res.json()) as TowerPayload",
+    );
+    const requestCompleted = tower.indexOf(
+      "const timing = recordFleetRequestTiming(",
+    );
+    const renderStarted = tower.indexOf("timing.responseConsumedAt");
+    expect(bodyConsumed).toBeGreaterThan(-1);
+    expect(requestCompleted).toBeGreaterThan(bodyConsumed);
+    expect(renderStarted).toBeGreaterThan(requestCompleted);
   });
 
   it("provides an accessible responsive route-level pending surface", () => {
