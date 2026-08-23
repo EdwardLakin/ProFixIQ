@@ -1582,6 +1582,96 @@ begin
 end;
 $$;
 
+-- PFX-005/PFX-010: manual/vendor identity must advance through the same stage
+-- contract, and customer delivery must reject any snapshot/total drift.
+update public.part_request_items
+set part_id = null,
+    requested_part_number = 'MANUAL-COST-ONLY',
+    quoted_price = 40,
+    unit_price = 40
+where id = '40700000-0000-4000-8000-000000000002';
+
+do $$
+declare
+  v_stage text;
+  v_result jsonb;
+  v_mismatch_blocked boolean := false;
+begin
+  v_result := public.sync_quote_line_pricing_from_parts(
+    '40200000-0000-4000-8000-000000000001',
+    '40400000-0000-4000-8000-000000000001'
+  );
+  if (v_result ->> 'requiredCount')::integer <> 2
+     or (v_result ->> 'quotedCount')::integer <> 2
+     or (v_result ->> 'pendingCount')::integer <> 0
+     or (v_result ->> 'partsTotal')::numeric <> 120::numeric then
+    raise exception 'Canonical quoted-parts totals did not converge: %', v_result;
+  end if;
+
+  v_stage := public.parts_request_operational_stage(
+    '40600000-0000-4000-8000-000000000001'
+  );
+  if v_stage is distinct from 'awaiting_approval' then
+    raise exception 'Manual/vendor quoted request used a divergent stage: %', v_stage;
+  end if;
+
+  update public.part_request_items
+  set status = 'ordered', qty_ordered = qty
+  where id = '40700000-0000-4000-8000-000000000001';
+  update public.part_requests
+  set status = 'requested'
+  where id = '40600000-0000-4000-8000-000000000001';
+  v_stage := public.parts_request_operational_stage(
+    '40600000-0000-4000-8000-000000000001'
+  );
+  if v_stage is distinct from 'order_receive' then
+    raise exception 'Stale parent status overrode durable ordering progress: %', v_stage;
+  end if;
+  update public.part_request_items
+  set status = 'quoted', qty_ordered = 0
+  where id = '40700000-0000-4000-8000-000000000001';
+  update public.part_requests
+  set status = 'quoted'
+  where id = '40600000-0000-4000-8000-000000000001';
+
+  perform public.assert_quote_parts_publishable(
+    '40200000-0000-4000-8000-000000000001',
+    '40300000-0000-4000-8000-000000000001',
+    array['40400000-0000-4000-8000-000000000001'::uuid]
+  );
+
+  update public.work_order_quote_lines
+  set metadata = jsonb_set(
+    metadata,
+    '{parts_quote,parts_total}',
+    '999'::jsonb,
+    false
+  )
+  where id = '40400000-0000-4000-8000-000000000001';
+
+  begin
+    perform public.assert_quote_parts_publishable(
+      '40200000-0000-4000-8000-000000000001',
+      '40300000-0000-4000-8000-000000000001',
+      array['40400000-0000-4000-8000-000000000001'::uuid]
+    );
+  exception when others then
+    if sqlerrm not like '%QUOTE_PARTS_CONTRACT_MISMATCH%' then
+      raise;
+    end if;
+    v_mismatch_blocked := true;
+  end;
+  if not v_mismatch_blocked then
+    raise exception 'Quote publish guard accepted a mismatched parts snapshot';
+  end if;
+
+  perform public.sync_quote_line_pricing_from_parts(
+    '40200000-0000-4000-8000-000000000001',
+    '40400000-0000-4000-8000-000000000001'
+  );
+end;
+$$;
+
 do $$
 begin
   if has_function_privilege(
@@ -1628,6 +1718,24 @@ begin
     'execute'
   ) then
     raise exception 'Service role cannot execute quote pricing remediation';
+  end if;
+  if has_function_privilege(
+    'anon',
+    'public.assert_quote_parts_publishable(uuid,uuid,uuid[])',
+    'execute'
+  ) or has_function_privilege(
+    'authenticated',
+    'public.assert_quote_parts_publishable(uuid,uuid,uuid[])',
+    'execute'
+  ) then
+    raise exception 'Untrusted role can execute the quote publish guard';
+  end if;
+  if not has_function_privilege(
+    'service_role',
+    'public.assert_quote_parts_publishable(uuid,uuid,uuid[])',
+    'execute'
+  ) then
+    raise exception 'Service role cannot execute the quote publish guard';
   end if;
 end;
 $$;

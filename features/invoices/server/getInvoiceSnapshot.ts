@@ -11,6 +11,7 @@ import { resolveApprovedPartInvoiceQuantity } from "@/features/invoices/lib/appr
 import { shouldUsePersistedInvoiceTotals } from "@/features/invoices/lib/invoiceSnapshotState";
 import { filterInvoicePartAllocations } from "@/features/invoices/lib/filterInvoicePartAllocations";
 import type { InvoiceDocumentConfiguration } from "@/features/invoices/lib/invoiceDocumentTheme";
+import { canonicalQuotePartQuantity } from "@/features/parts/lib/quote-parts-contract";
 
 type DB = Database;
 
@@ -268,10 +269,7 @@ function itemUnitPrice(
 function itemQuantity(
   item: Pick<PartRequestItemRow, "qty" | "qty_requested" | "qty_approved">,
 ): number {
-  const qty = safeNumber(item.qty);
-  const requested = safeNumber(item.qty_requested);
-  const approved = safeNumber(item.qty_approved);
-  const resolved = qty > 0 ? qty : requested > 0 ? requested : approved;
+  const resolved = canonicalQuotePartQuantity(item);
   return resolved > 0 ? resolved : 1;
 }
 

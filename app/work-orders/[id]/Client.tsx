@@ -84,6 +84,7 @@ import {
 } from "@/features/work-orders/workspace/workOrderWorkspace";
 import { notifyWorkOrderPartsRefresh } from "@/features/work-orders/workspace/useWorkOrderPartsRefresh";
 import { WorkOrderFinancialWorkspace } from "@/features/work-orders/workspace/WorkOrderFinancialWorkspace";
+import { resolveQuotePartsRequirement } from "@/features/parts/lib/quote-parts-contract";
 
 import { prepareSectionsWithCornerGrid } from "@inspections/lib/inspection/prepareSectionsWithCornerGrid";
 
@@ -2379,11 +2380,29 @@ export default function WorkOrderIdClient(): JSX.Element {
                   <div className="grid gap-3">
                     {approvalPendingQuotes.map((q) => {
                       const meta = isRecord(q.metadata) ? q.metadata : {};
-                      const parts = Array.isArray(meta.parts) ? meta.parts : [];
                       const photoCount = Array.isArray(meta.photo_urls) ? meta.photo_urls.length : 0;
                       const menuMatch = isRecord(meta.menu_match) ? meta.menu_match : null;
-                      const pricingReviewRequired = menuMatch?.pricing_review_required === true || q.status === "pending_parts";
                       const partRequests = partRequestsByQuoteLine[q.id] ?? [];
+                      const partsRequirement = resolveQuotePartsRequirement({
+                        metadata: meta,
+                        linkedRequestCount: partRequests.length,
+                      });
+                      const pricingReviewRequired =
+                        menuMatch?.pricing_review_required === true ||
+                        q.status === "pending_parts" ||
+                        partsRequirement.snapshot.pendingCount > 0;
+                      const partsLabel =
+                        partsRequirement.state === "required"
+                          ? `${partsRequirement.displayCount} requirement(s)`
+                          : partsRequirement.state === "labor_only"
+                            ? "None / labor-only"
+                            : "Not recorded";
+                      const partsRequestLabel =
+                        partRequests.length > 0
+                          ? partRequests.map((request) => request.status ?? "requested").join(", ")
+                          : partsRequirement.state === "labor_only"
+                            ? "Not required"
+                            : "Not created";
                       const sourceFinding = asString(meta.source_finding_title) ?? q.ai_complaint ?? "Inspection finding";
                       const inspectionStatus = asString(meta.inspection_status)?.toUpperCase() ?? "RECOMMEND";
                       const technicianNotes = asString(meta.technician_notes) ?? q.notes ?? "—";
@@ -2404,9 +2423,9 @@ export default function WorkOrderIdClient(): JSX.Element {
                           <div className="mt-3 grid gap-2 text-xs text-[color:var(--theme-text-secondary)]">
                             <div>Tech notes: <span className="text-[color:var(--theme-text-primary)]">{technicianNotes}</span></div>
                             <div>Labor: <span className="text-[color:var(--theme-text-primary)]">{typeof q.labor_hours === "number" ? `${q.labor_hours}h` : typeof q.est_labor_hours === "number" ? `${q.est_labor_hours}h` : "—"}</span></div>
-                            <div>Parts: <span className="text-[color:var(--theme-text-primary)]">{parts.length > 0 ? `${parts.length} requirement(s)` : "None / labor-only"}</span></div>
+                            <div>Parts: <span className="text-[color:var(--theme-text-primary)]">{partsLabel}</span></div>
                             <div>Evidence: <span className="text-[color:var(--theme-text-primary)]">{photoCount}</span></div>
-                            <div>Parts Request: <span className="text-[color:var(--theme-text-primary)]">{partRequests.length > 0 ? partRequests.map((r) => r.status ?? "requested").join(", ") : "Not required / not created"}</span></div>
+                            <div>Parts Request: <span className="text-[color:var(--theme-text-primary)]">{partsRequestLabel}</span></div>
                             <div>Pricing: <span className={pricingReviewRequired ? "text-amber-200" : "text-emerald-200"}>{pricingReviewRequired ? "Review required" : "Pricing available"}</span></div>
                           </div>
                           {menuMatch ? (

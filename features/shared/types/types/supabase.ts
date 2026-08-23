@@ -27692,6 +27692,14 @@ export type Database = {
         }
         Returns: Json
       }
+      assert_quote_parts_publishable: {
+        Args: {
+          p_quote_line_ids: string[]
+          p_shop_id: string
+          p_work_order_id: string
+        }
+        Returns: Json
+      }
       assign_work_order_line_technician_atomic: {
         Args: {
           p_assigned_by: string

@@ -23,10 +23,10 @@ import {
 import {
   isPartsRequestItemPriced,
   itemFlowLabel,
-  requestFlowLabel,
-  summarizeRequestFlowDisplays,
+  partsRequestStageLabel,
+  summarizePartsRequestStages,
   toItemFlowDisplay,
-  toRequestFlowDisplay,
+  toPartsRequestStage,
 } from "@/features/parts/lib/status-display";
 import {
   buildPartTrustMeta,
@@ -1996,19 +1996,28 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
 
   const requestSummary = useMemo(() => {
     const requestStates = requests.map((r) =>
-      toRequestFlowDisplay({
+      toPartsRequestStage({
         rawStatus: r.req.status,
-        itemStates: r.items.map((it) =>
-          toItemFlowDisplay({
-            rawStatus: (it as { status?: string | null }).status,
-            qty: it.qty,
-            qtyApproved: (it as { qty_approved?: unknown }).qty_approved,
-            qtyReceived: (it as { qty_received?: unknown }).qty_received,
-          }),
-        ),
+        items: r.items.map((it) => ({
+          rawStatus: (it as { status?: string | null }).status,
+          description: it.description,
+          partId: it.part_id,
+          requestedPartNumber: it.requested_part_number,
+          requestedManufacturer: it.requested_manufacturer,
+          quotedPrice: it.quoted_price,
+          unitPrice: it.unit_price,
+          qty: it.qty,
+          qtyRequested: it.qty_requested,
+          qtyApproved: it.qty_approved,
+          qtyOrdered: it.qty_ordered,
+          qtyReceived: it.qty_received,
+          qtyReserved: it.qty_reserved,
+          qtyConsumed: it.qty_consumed,
+          qtyReturned: it.qty_returned,
+        })),
       }),
     );
-    return summarizeRequestFlowDisplays(requestStates);
+    return summarizePartsRequestStages(requestStates);
   }, [requests]);
 
   return (
@@ -2062,16 +2071,25 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                   batchNumber === 1
                     ? "Initial request"
                     : `Additional request ${batchNumber}`;
-                const requestState = toRequestFlowDisplay({
+                const requestState = toPartsRequestStage({
                   rawStatus: r.req.status,
-                  itemStates: r.items.map((it) =>
-                    toItemFlowDisplay({
-                      rawStatus: (it as { status?: string | null }).status,
-                      qty: it.qty,
-                      qtyApproved: (it as { qty_approved?: unknown }).qty_approved,
-                      qtyReceived: (it as { qty_received?: unknown }).qty_received,
-                    }),
-                  ),
+                  items: r.items.map((it) => ({
+                    rawStatus: it.status,
+                    description: it.description,
+                    partId: it.part_id,
+                    requestedPartNumber: it.requested_part_number,
+                    requestedManufacturer: it.requested_manufacturer,
+                    quotedPrice: it.quoted_price,
+                    unitPrice: it.unit_price,
+                    qty: it.qty,
+                    qtyRequested: it.qty_requested,
+                    qtyApproved: it.qty_approved,
+                    qtyOrdered: it.qty_ordered,
+                    qtyReceived: it.qty_received,
+                    qtyReserved: it.qty_reserved,
+                    qtyConsumed: it.qty_consumed,
+                    qtyReturned: it.qty_returned,
+                  })),
                 });
 
                 const linkedLineId = resolveWorkOrderLineId(r.req, r.items);
@@ -2546,16 +2564,16 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                         <div className="flex items-center gap-2">
                           <span
                             className={
-                              requestState === "pending"
+                              requestState === "needs_quote"
                                 ? pillNeedsQuote
-                                : requestState === "in_progress"
+                                : requestState === "order_receive"
                                   ? pillProgress
-                                  : requestState === "ready"
+                                  : requestState === "awaiting_approval" || requestState === "ready_for_tech"
                                     ? pillQuoted
                                     : pillComplete
                             }
                           >
-                            {requestFlowLabel(requestState)}
+                            {partsRequestStageLabel(requestState)}
                           </span>
 
                           <button
@@ -2576,7 +2594,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                         <div>
                           Request state:{" "}
                           <span className="font-semibold text-[color:var(--theme-text-primary)]">
-                            {requestFlowLabel(requestState)}
+                            {partsRequestStageLabel(requestState)}
                           </span>
                         </div>
                         <div>
@@ -2659,9 +2677,20 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                                   : "";
                                 const itemState = toItemFlowDisplay({
                                   rawStatus: (it as { status?: string | null }).status,
+                                  description: it.description,
+                                  partId: it.part_id,
+                                  requestedPartNumber: it.requested_part_number,
+                                  requestedManufacturer: it.requested_manufacturer,
+                                  quotedPrice: it.quoted_price,
+                                  unitPrice: it.unit_price,
                                   qty: it.qty,
+                                  qtyRequested: it.qty_requested,
                                   qtyApproved: (it as { qty_approved?: unknown }).qty_approved,
+                                  qtyOrdered: it.qty_ordered,
                                   qtyReceived: (it as { qty_received?: unknown }).qty_received,
+                                  qtyReserved: it.qty_reserved,
+                                  qtyConsumed: it.qty_consumed,
+                                  qtyReturned: it.qty_returned,
                                 });
                                 const itemHasQuoteLineOrigin = !!it.quote_line_id || hasQuoteLineOrigin;
                                 const isQuoteOnlyPreApprovalItem =

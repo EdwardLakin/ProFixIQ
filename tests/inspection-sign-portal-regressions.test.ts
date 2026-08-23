@@ -159,6 +159,10 @@ describe("inspection sign and portal approval regressions", () => {
       request_kind: "repair",
       internal_advisor_note: "Do not expose",
       parts_quote: {
+        required_count: 1,
+        quoted_count: 1,
+        pending_count: 0,
+        parts_total: 98.54,
         items: [
           {
             description: "Front brake pads",
@@ -175,6 +179,10 @@ describe("inspection sign and portal approval regressions", () => {
     expect(sanitized).toEqual({
       request_kind: "repair",
       parts_quote: {
+        required_count: 1,
+        quoted_count: 1,
+        pending_count: 0,
+        parts_total: 98.54,
         items: [
           {
             description: "Front brake pads",

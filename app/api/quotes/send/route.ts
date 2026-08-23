@@ -876,6 +876,36 @@ export async function POST(req: Request) {
       );
     }
 
+    const { error: partsContractError } = await supabaseAdmin.rpc(
+      "assert_quote_parts_publishable",
+      {
+        p_shop_id: wo.shop_id,
+        p_work_order_id: workOrderId,
+        p_quote_line_ids: pricingQuoteLineIds,
+      },
+    );
+    if (partsContractError) {
+      const contractMessage = String(partsContractError.message ?? "");
+      const contractCode = contractMessage.includes("QUOTE_PARTS_INCOMPLETE")
+        ? "QUOTE_PARTS_INCOMPLETE"
+        : contractMessage.includes("QUOTE_PARTS_PRICING_UNAVAILABLE")
+          ? "QUOTE_PARTS_PRICING_UNAVAILABLE"
+          : "QUOTE_PARTS_CONTRACT_MISMATCH";
+      return NextResponse.json(
+        {
+          ok: false,
+          trace,
+          code: contractCode,
+          error: contractCode === "QUOTE_PARTS_INCOMPLETE"
+            ? "Every required part needs a quantity and customer price before this quote can be sent."
+            : contractCode === "QUOTE_PARTS_PRICING_UNAVAILABLE"
+              ? "Customer-visible parts pricing is unavailable. Review and reprice the affected parts before sending."
+              : "Parts pricing changed while this quote was being prepared. Refresh the quote and review its parts before sending.",
+        },
+        { status: 409 },
+      );
+    }
+
     const {
       data: resolvedSuppliesOverrides,
       error: resolvedSuppliesOverrideError,

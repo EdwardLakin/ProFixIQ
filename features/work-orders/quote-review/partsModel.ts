@@ -1,4 +1,5 @@
 import type { Database, Json } from "@shared/types/types/supabase";
+import { canonicalQuotePartQuantity } from "@/features/parts/lib/quote-parts-contract";
 
 type DB = Database;
 export type QuoteLine = DB["public"]["Tables"]["work_order_quote_lines"]["Row"];
@@ -135,20 +136,6 @@ export function quoteLinePartsDisplayTotal(input: {
   return metadataTotal ?? persistedTotal ?? nonNegativeNumber(input.fallbackPartsTotal);
 }
 
-function quantityFrom(value: unknown, fallback = 1): number {
-  const n = asNumber(value);
-  return n != null && n > 0 ? n : fallback;
-}
-
-function canonicalRequestQuantity(item: PartRequestItem): number {
-  return Math.max(
-    asNumber(item.qty) ?? 0,
-    asNumber(item.qty_requested) ?? 0,
-    asNumber(item.qty_approved) ?? 0,
-    0,
-  );
-}
-
 function isActivePartsStatus(value: unknown): boolean {
   return ![
     "cancelled",
@@ -181,7 +168,7 @@ function durableKey(part: Pick<ResolvedQuotePart, "requestItemId" | "requestId" 
 
 function fromLiveItem(item: PartRequestItem, selectedPart: CatalogPart | null): ResolvedQuotePart | null {
   const description = safeString(item.description) || safeString(selectedPart?.name);
-  const quantity = canonicalRequestQuantity(item);
+  const quantity = canonicalQuotePartQuantity(item);
   if (!description || quantity <= 0) return null;
   const explicitUnitSellPrice = preferredNonNegativeNumber(
     item.quoted_price,
@@ -234,7 +221,7 @@ function fromLiveItem(item: PartRequestItem, selectedPart: CatalogPart | null): 
 
 function fromSyncedMetadata(item: Record<string, Json>): ResolvedQuotePart | null {
   const description = safeString(item.description);
-  const quantity = quantityFrom(item.qty, 0);
+  const quantity = canonicalQuotePartQuantity(item);
   if (!description || quantity <= 0) return null;
   const unitSellPrice = nonNegativeNumber(item.unit_price);
   const quoteReady =
@@ -268,7 +255,7 @@ function fromSyncedMetadata(item: Record<string, Json>): ResolvedQuotePart | nul
 
 function fromTechnicianSnapshot(item: Record<string, Json>): ResolvedQuotePart | null {
   const description = safeString(item.description) || safeString(item.name) || safeString(item.part) || safeString(item.part_name);
-  const quantity = quantityFrom(item.qty ?? item.quantity, 0);
+  const quantity = canonicalQuotePartQuantity(item);
   if (!description || quantity <= 0) return null;
   const unitCost =
     nonNegativeNumber(item.unitCost) ??

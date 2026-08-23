@@ -1,12 +1,51 @@
 export type RequestFlowDisplay = "pending" | "in_progress" | "ready" | "complete";
 export type RequestFlowCounts = Record<RequestFlowDisplay, number>;
 export type PartsRequestStage = "needs_quote" | "awaiting_approval" | "order_receive" | "ready_for_tech" | "completed";
-export type ItemFlowDisplay = "requested" | "ordered" | "partially_received" | "received" | "consumed";
+export type CanonicalPartsStatus =
+  | "requested"
+  | "quoted"
+  | "awaiting_approval"
+  | "approved"
+  | "ordered"
+  | "partially_received"
+  | "received"
+  | "allocated"
+  | "declined"
+  | "cancelled";
+export type ItemFlowDisplay = CanonicalPartsStatus;
+export type PartsRequestStageCounts = Record<PartsRequestStage, number>;
 
 export type ReceiveProgressDisplay = "not_received" | "partial" | "received" | "allocated";
 
 export const REQUEST_STATUS_CANONICAL: RequestFlowDisplay[] = ["pending", "in_progress", "ready", "complete"];
-export const ITEM_STATUS_CANONICAL: ItemFlowDisplay[] = ["requested", "ordered", "partially_received", "received", "consumed"];
+export const ITEM_STATUS_CANONICAL: ItemFlowDisplay[] = [
+  "requested",
+  "quoted",
+  "awaiting_approval",
+  "approved",
+  "ordered",
+  "partially_received",
+  "received",
+  "allocated",
+  "declined",
+  "cancelled",
+];
+
+const CANONICAL_STATUS_ALIASES = new Set([
+  ...ITEM_STATUS_CANONICAL,
+  "awaiting_customer_approval",
+  "partially_ordered",
+  "reserved",
+  "picking",
+  "picked",
+  "fulfilled",
+  "consumed",
+  "partially_consumed",
+  "rejected",
+  "deferred",
+  "canceled",
+  "voided",
+]);
 
 export const PARTS_REQUEST_STAGE_ORDER: PartsRequestStage[] = ["needs_quote", "awaiting_approval", "order_receive", "ready_for_tech", "completed"];
 
@@ -37,8 +76,9 @@ export function summarizeRequestFlowDisplays(
 }
 
 export function itemFlowLabel(status: ItemFlowDisplay): string {
+  if (status === "awaiting_approval") return "Awaiting Approval";
   if (status === "partially_received") return "Partially Received";
-  if (status === "consumed") return "Allocated / Consumed";
+  if (status === "allocated") return "Allocated";
   return status.charAt(0).toUpperCase() + status.slice(1).replace("_", " ");
 }
 
@@ -50,18 +90,11 @@ export function receiveProgressLabel(status: ReceiveProgressDisplay): string {
 }
 
 export function canonicalStatusLabel(rawStatus?: string | null): string {
-  const status = String(rawStatus ?? "")
-    .trim()
-    .toLowerCase();
+  const status = String(rawStatus ?? "").trim().toLowerCase();
   if (!status) return "Pending";
-  if (status === "requested") return "Requested";
-  if (status === "quoted") return "Quoted";
-  if (status === "approved") return "Approved";
-  if (status === "ordered") return "Ordered";
-  if (status === "partially_received") return "Partially Received";
-  if (status === "received") return "Received";
-  if (status === "fulfilled") return "Allocated / Consumed";
-  if (status === "consumed") return "Allocated / Consumed";
+  if (CANONICAL_STATUS_ALIASES.has(status)) {
+    return itemFlowLabel(toCanonicalPartsStatus({ rawStatus: status }));
+  }
   return status.replaceAll("_", " ").replace(/\b\w/g, (ch) => ch.toUpperCase());
 }
 
@@ -71,6 +104,20 @@ export function partsRequestStageLabel(stage: PartsRequestStage): string {
   if (stage === "order_receive") return "Order & Receive";
   if (stage === "ready_for_tech") return "Ready for Tech";
   return "Completed";
+}
+
+export function summarizePartsRequestStages(
+  stages: PartsRequestStage[],
+): PartsRequestStageCounts {
+  const counts: PartsRequestStageCounts = {
+    needs_quote: 0,
+    awaiting_approval: 0,
+    order_receive: 0,
+    ready_for_tech: 0,
+    completed: 0,
+  };
+  for (const stage of stages) counts[stage] += 1;
+  return counts;
 }
 
 export type PartsRequestStageItem = {
@@ -98,8 +145,21 @@ function targetQty(item: PartsRequestStageItem): number {
   return Math.max(approved, requested, qty, 0);
 }
 
+export function canonicalPartQuantity(item: {
+  qty?: unknown;
+  qtyRequested?: unknown;
+  qtyApproved?: unknown;
+}): number {
+  return Math.max(
+    asNum(item.qty),
+    asNum(item.qtyRequested),
+    asNum(item.qtyApproved),
+    0,
+  );
+}
+
 function requestedQty(item: PartsRequestStageItem): number {
-  return Math.max(asNum(item.qtyRequested), asNum(item.qty), 0);
+  return canonicalPartQuantity(item);
 }
 
 export function isPartsRequestItemPriced(item: PartsRequestStageItem): boolean {
@@ -169,6 +229,63 @@ export function isPartsRequestItemHandedOff(item: PartsRequestStageItem): boolea
   return target > 0 && netConsumed >= target;
 }
 
+const DECLINED_STATUSES = new Set([
+  "declined",
+  "rejected",
+  "deferred",
+]);
+const CANCELLED_STATUSES = new Set(["cancelled", "canceled", "voided"]);
+
+export function toCanonicalPartsStatus(
+  input: PartsRequestStageItem,
+): CanonicalPartsStatus {
+  const status = String(input.rawStatus ?? "")
+    .trim()
+    .toLowerCase();
+  if (CANCELLED_STATUSES.has(status)) return "cancelled";
+  if (DECLINED_STATUSES.has(status)) return "declined";
+
+  const target = targetQty(input);
+  const netConsumed = Math.max(
+    asNum(input.qtyConsumed) - asNum(input.qtyReturned),
+    0,
+  );
+  const staged = asNum(input.qtyReserved) + netConsumed;
+  const received = asNum(input.qtyReceived);
+  const ordered = asNum(input.qtyOrdered);
+
+  if (
+    status === "fulfilled" ||
+    status === "consumed" ||
+    status === "partially_consumed" ||
+    status === "returned" ||
+    status === "partially_returned" ||
+    (target > 0 && staged >= target)
+  ) {
+    return "allocated";
+  }
+  if (status === "received" || (target > 0 && received >= target)) {
+    return "received";
+  }
+  if (received > 0 || status === "partially_received") {
+    return "partially_received";
+  }
+  if (
+    ordered > 0 ||
+    ["ordered", "partially_ordered", "reserved", "picking", "picked"].includes(
+      status,
+    )
+  ) {
+    return "ordered";
+  }
+  if (status === "approved") return "approved";
+  if (status === "awaiting_customer_approval" || status === "awaiting_approval") {
+    return "awaiting_approval";
+  }
+  if (status === "quoted" || isPartsRequestItemPriced(input)) return "quoted";
+  return "requested";
+}
+
 export function toPartsRequestStage(input: { rawStatus?: string | null; items?: PartsRequestStageItem[] }): PartsRequestStage {
   const status = String(input.rawStatus ?? "")
     .trim()
@@ -182,10 +299,28 @@ export function toPartsRequestStage(input: { rawStatus?: string | null; items?: 
     return "needs_quote";
   }
   if (items.every(isPartsRequestItemHandedOff)) return "completed";
-  if (status === "requested" || status === "quoted") {
+  const itemStates = items.map(toCanonicalPartsStatus);
+  if (items.every(isPartsRequestItemStaged)) return "ready_for_tech";
+  if (
+    itemStates.some((state) =>
+      [
+        "approved",
+        "ordered",
+        "partially_received",
+        "received",
+        "allocated",
+      ].includes(state),
+    )
+  ) {
+    return "order_receive";
+  }
+  if (
+    status === "requested" ||
+    status === "quoted" ||
+    itemStates.some((state) => state === "awaiting_approval")
+  ) {
     return "awaiting_approval";
   }
-  if (items.every(isPartsRequestItemStaged)) return "ready_for_tech";
   return "order_receive";
 }
 
@@ -207,20 +342,28 @@ export function toReceiveProgressDisplay(input: { qty?: unknown; qtyApproved?: u
   return "not_received";
 }
 
-export function toItemFlowDisplay(input: { rawStatus?: string | null; qty?: unknown; qtyApproved?: unknown; qtyReceived?: unknown; qtyAllocated?: unknown }): ItemFlowDisplay {
-  const status = String(input.rawStatus ?? "").toLowerCase();
-  const receiveState = toReceiveProgressDisplay(input);
-
-  if (receiveState === "allocated") return "consumed";
-  if (status === "fulfilled") return "consumed";
-  if (receiveState === "received") return "received";
-  if (receiveState === "partial") return "partially_received";
-
-  if (status.includes("ordered") || status === "approved" || status === "reserved" || status === "picking" || status === "picked") {
-    return "ordered";
-  }
-
-  return "requested";
+export function toItemFlowDisplay(input: {
+  rawStatus?: string | null;
+  qty?: unknown;
+  qtyRequested?: unknown;
+  qtyApproved?: unknown;
+  qtyOrdered?: unknown;
+  qtyReceived?: unknown;
+  qtyAllocated?: unknown;
+  qtyReserved?: unknown;
+  qtyConsumed?: unknown;
+  qtyReturned?: unknown;
+  description?: string | null;
+  partId?: string | null;
+  requestedPartNumber?: string | null;
+  requestedManufacturer?: string | null;
+  quotedPrice?: unknown;
+  unitPrice?: unknown;
+}): ItemFlowDisplay {
+  return toCanonicalPartsStatus({
+    ...input,
+    qtyConsumed: input.qtyConsumed ?? input.qtyAllocated,
+  });
 }
 
 export function toRequestFlowDisplay(input: { rawStatus?: string | null; itemStates?: ItemFlowDisplay[] }): RequestFlowDisplay {
@@ -231,9 +374,9 @@ export function toRequestFlowDisplay(input: { rawStatus?: string | null; itemSta
   if (status === "fulfilled") return "complete";
 
   if (itemStates.length > 0) {
-    if (itemStates.every((s) => s === "consumed")) return "complete";
-    if (itemStates.every((s) => s === "received" || s === "consumed")) return "ready";
-    if (itemStates.some((s) => s !== "requested")) return "in_progress";
+    if (itemStates.every((s) => s === "allocated" || s === "declined" || s === "cancelled")) return "complete";
+    if (itemStates.every((s) => s === "received" || s === "allocated")) return "ready";
+    if (itemStates.some((s) => !["requested", "quoted", "awaiting_approval"].includes(s))) return "in_progress";
 
     // A request that has been quoted or approved is operationally in progress even
     // when its item rows have not yet moved into ordering/receiving states.

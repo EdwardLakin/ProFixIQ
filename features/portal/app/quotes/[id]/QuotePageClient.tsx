@@ -27,6 +27,7 @@ import {
   type WorkOrderEvidenceItem,
 } from "@/features/work-orders/lib/evidence/workOrderEvidence";
 import { selectCustomerVisibleQuoteParts } from "@/features/portal/lib/customerVisibleQuoteParts";
+import { canonicalQuotePartQuantity } from "@/features/parts/lib/quote-parts-contract";
 import {
   isCustomerVisibleDirectWorkOrderLine,
   isCustomerVisibleQuoteLine,
@@ -291,7 +292,7 @@ function getQuoteParts(
         Boolean(part) && typeof part === "object" && !Array.isArray(part),
     )
     .map((part) => {
-      const qty = asNumber(part.qty ?? part.quantity ?? 1) || 1;
+      const qty = canonicalQuotePartQuantity(part) || 1;
       const unitPrice = nullableNumber(
         part.unitPrice ?? part.unit_price ?? part.quoted_price ?? part.price,
       );
