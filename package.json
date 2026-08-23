@@ -32,7 +32,9 @@
     "regression:inventory": "node scripts/regression-inventory/cli.mjs",
     "regression:inventory:check": "node scripts/regression-inventory/cli.mjs --check",
     "regression:inventory:strict": "node scripts/regression-inventory/cli.mjs --strict",
-    "regression:inventory:baseline": "node scripts/regression-inventory/cli.mjs --write-baseline"
+    "regression:inventory:baseline": "node scripts/regression-inventory/cli.mjs --write-baseline",
+    "release:validate": "node scripts/release-validation/phase16-gate.mjs",
+    "release:validate:init": "node scripts/release-validation/phase16-gate.mjs"
   },
   "lint-staged": {
     "*.{ts,tsx,js,jsx}": [
