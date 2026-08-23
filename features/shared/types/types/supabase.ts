@@ -30554,6 +30554,23 @@ export type Database = {
         Args: { p_line_id: string }
         Returns: undefined
       }
+      transition_legacy_quote_send_atomic: {
+        Args: {
+          p_action: string
+          p_actor_profile_id: string
+          p_actor_user_id: string
+          p_allow_resend: boolean
+          p_expected_lines: Json
+          p_failure: string
+          p_operation_key: string
+          p_quote_line_ids: string[]
+          p_quote_url: string
+          p_sent_at: string
+          p_shop_id: string
+          p_work_order_id: string
+        }
+        Returns: Json
+      }
       transition_staff_time_off_request: {
         Args: {
           p_actor_profile_id: string
@@ -31322,4 +31339,3 @@ export const Constants = {
     },
   },
 } as const
-

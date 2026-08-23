@@ -492,6 +492,10 @@ export default function QuoteReviewView(props: {
   const [loadFailure, setLoadFailure] = useState<RouteLoadFailure | null>(null);
   const [loadedOnce, setLoadedOnce] = useState(false);
   const loadedOnceRef = useRef(false);
+  const quoteSendOperationKeys = useRef<{
+    initial: string | null;
+    resend: string | null;
+  }>({ initial: null, resend: null });
   const [wo, setWo] = useState<WorkOrder | null>(null);
   const [shop, setShop] = useState<Shop | null>(null);
   const [customer, setCustomer] = useState<Customer | null>(null);
@@ -1027,10 +1031,16 @@ export default function QuoteReviewView(props: {
       const saved = await saveAllDirty();
       if (!saved) return;
 
+      const keySlot = resend ? "resend" : "initial";
+      const operationKey =
+        quoteSendOperationKeys.current[keySlot] ?? crypto.randomUUID();
+      quoteSendOperationKeys.current[keySlot] = operationKey;
+
       const res = await fetch(`/api/work-orders/${woId}/send-quote`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "Idempotency-Key": operationKey,
           ...(resend ? { "x-profix-resend": "1" } : {}),
         },
         body: JSON.stringify({}),
@@ -1046,6 +1056,7 @@ export default function QuoteReviewView(props: {
 
       setSendBlocker(null);
       toast.success(resend ? "Quote resent to customer." : "Quote sent to customer using canonical quote lines.");
+      quoteSendOperationKeys.current[keySlot] = null;
       await reload();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to send quote.");

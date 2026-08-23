@@ -139,6 +139,12 @@ describe("parts request operational stages", () => {
     expect(
       toCanonicalPartsStatus({ ...pricedItem, qtyApproved: 2, qtyConsumed: 2 }),
     ).toBe("allocated");
+    expect(
+      toCanonicalPartsStatus({ ...pricedItem, rawStatus: "partially_returned" }),
+    ).toBe("partially_returned");
+    expect(
+      toCanonicalPartsStatus({ ...pricedItem, rawStatus: "returned" }),
+    ).toBe("returned");
     expect(toCanonicalPartsStatus({ ...pricedItem, rawStatus: "rejected" })).toBe("declined");
     expect(toCanonicalPartsStatus({ ...pricedItem, rawStatus: "cancelled" })).toBe("cancelled");
   });

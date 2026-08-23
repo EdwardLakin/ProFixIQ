@@ -10,6 +10,8 @@ export type CanonicalPartsStatus =
   | "partially_received"
   | "received"
   | "allocated"
+  | "partially_returned"
+  | "returned"
   | "declined"
   | "cancelled";
 export type ItemFlowDisplay = CanonicalPartsStatus;
@@ -27,6 +29,8 @@ export const ITEM_STATUS_CANONICAL: ItemFlowDisplay[] = [
   "partially_received",
   "received",
   "allocated",
+  "partially_returned",
+  "returned",
   "declined",
   "cancelled",
 ];
@@ -78,6 +82,7 @@ export function summarizeRequestFlowDisplays(
 export function itemFlowLabel(status: ItemFlowDisplay): string {
   if (status === "awaiting_approval") return "Awaiting Approval";
   if (status === "partially_received") return "Partially Received";
+  if (status === "partially_returned") return "Partially Returned";
   if (status === "allocated") return "Allocated";
   return status.charAt(0).toUpperCase() + status.slice(1).replace("_", " ");
 }
@@ -254,12 +259,13 @@ export function toCanonicalPartsStatus(
   const received = asNum(input.qtyReceived);
   const ordered = asNum(input.qtyOrdered);
 
+  if (status === "returned") return "returned";
+  if (status === "partially_returned") return "partially_returned";
+
   if (
     status === "fulfilled" ||
     status === "consumed" ||
     status === "partially_consumed" ||
-    status === "returned" ||
-    status === "partially_returned" ||
     (target > 0 && staged >= target)
   ) {
     return "allocated";
@@ -309,6 +315,8 @@ export function toPartsRequestStage(input: { rawStatus?: string | null; items?: 
         "partially_received",
         "received",
         "allocated",
+        "partially_returned",
+        "returned",
       ].includes(state),
     )
   ) {
@@ -374,7 +382,7 @@ export function toRequestFlowDisplay(input: { rawStatus?: string | null; itemSta
   if (status === "fulfilled") return "complete";
 
   if (itemStates.length > 0) {
-    if (itemStates.every((s) => s === "allocated" || s === "declined" || s === "cancelled")) return "complete";
+    if (itemStates.every((s) => s === "allocated" || s === "returned" || s === "declined" || s === "cancelled")) return "complete";
     if (itemStates.every((s) => s === "received" || s === "allocated")) return "ready";
     if (itemStates.some((s) => !["requested", "quoted", "awaiting_approval"].includes(s))) return "in_progress";
 

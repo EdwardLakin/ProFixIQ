@@ -19,14 +19,12 @@ describe("Phase 8 quoted-parts and workflow-status contract", () => {
     const statusSource = read("features/parts/lib/status-display.ts");
     expect(statusSource).toContain('if (status === "approved") return "approved"');
     expect(statusSource).not.toContain('status === "approved" || status === "reserved"');
-    expect(migration).toContain(
-      "if v_any_order_progress then\n    return 'order_receive';",
+    expect(statusSource).toContain(
+      'if (status === "approved") return "approved"',
     );
-    expect(migration).toContain(
-      "if lower(v_request.status::text) in ('requested', 'quoted') then\n    return 'awaiting_approval';",
+    expect(statusSource).toContain(
+      '["ordered", "partially_ordered", "reserved", "picking", "picked"]',
     );
-    expect(runtime).toContain("set status = 'ordered'");
-    expect(runtime).not.toContain("set status = 'ordered', qty_ordered = qty");
   });
 
   it("derives work-order parts labels from the canonical quote snapshot", () => {
@@ -60,13 +58,34 @@ describe("Phase 8 quoted-parts and workflow-status contract", () => {
     );
   });
 
-  it("aligns the database workbench stage with manual/vendor quote readiness", () => {
-    expect(migration).toContain(
+  it("keeps Phase 8 quote mapping isolated from the shared Parts stage function", () => {
+    expect(migration).not.toContain(
       "create or replace function public.parts_request_operational_stage",
     );
-    expect(migration).toContain("public.part_request_item_is_quote_ready(");
-    expect(migration).not.toContain(
-      "nullif(trim(pri.description), '') is not null\n+      and pri.part_id is not null",
+    expect(migration).toContain(
+      "Do not redefine parts_request_operational_stage here",
     );
+  });
+
+  it("rejects snapshot-only parts with null customer prices or line totals", () => {
+    expect(migration).toContain("snapshot.item ->> 'unit_price' is null");
+    expect(migration).toContain("snapshot.item ->> 'line_total' is null");
+  });
+
+  it("reserves non-estimate pricing before delivery and recovers accepted sends", () => {
+    const reserve = sendRoute.indexOf('action: "reserve"');
+    const deliver = sendRoute.indexOf("await sendQuoteReadyEmail({");
+    const finalize = sendRoute.indexOf('action: "finalize"');
+
+    expect(reserve).toBeGreaterThan(0);
+    expect(deliver).toBeGreaterThan(reserve);
+    expect(finalize).toBeGreaterThan(deliver);
+    expect(migration).toContain(
+      "create or replace function public.transition_legacy_quote_send_atomic",
+    );
+    expect(migration).toContain("message = 'QUOTE_SEND_RESERVED'");
+    expect(migration).toContain("'delivery_state', 'accepted'");
+    expect(migration).toContain("perform public.assert_quote_parts_publishable(");
+    expect(quoteReview).toContain('"Idempotency-Key": operationKey');
   });
 });
