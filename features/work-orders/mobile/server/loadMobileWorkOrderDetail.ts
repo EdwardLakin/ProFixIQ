@@ -3,14 +3,16 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database } from "@shared/types/types/supabase";
-import type { CanonicalRole } from "@/features/shared/lib/rbac";
 import {
   collectTechnicianIdsForLineContexts,
   loadCanonicalWorkOrderLineContext,
   loadRowsForIdChunks,
 } from "@/features/work-orders/lib/data/loadCanonicalWorkOrderLineContext";
 import type { MobileWorkOrderSnapshot } from "@/features/work-orders/mobile/mobileWorkOrderDetail";
-import { loadWorkOrderWorkspaceSnapshot } from "@/features/work-orders/workspace/server/loadWorkOrderWorkspaceSnapshot";
+import {
+  loadWorkOrderWorkspaceSnapshot,
+  WORK_ORDER_WORKSPACE_READER_ROLES,
+} from "@/features/work-orders/workspace/server/loadWorkOrderWorkspaceSnapshot";
 
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -19,16 +21,8 @@ type QuoteLine = DB["public"]["Tables"]["work_order_quote_lines"]["Row"];
 type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
 type Customer = DB["public"]["Tables"]["customers"]["Row"];
 
-export const MOBILE_WORK_ORDER_DETAIL_ROLES = [
-  "owner",
-  "admin",
-  "manager",
-  "advisor",
-  "service",
-  "mechanic",
-  "lead_hand",
-  "foreman",
-] as const satisfies readonly CanonicalRole[];
+export const MOBILE_WORK_ORDER_DETAIL_ROLES =
+  WORK_ORDER_WORKSPACE_READER_ROLES;
 
 function throwQueryError(
   error: { message: string } | null,
@@ -67,14 +61,18 @@ export async function loadMobileWorkOrderDetail(input: {
   if (!workspace) return null;
 
   const workOrderId = workspace.workOrder.id;
-  const [workOrderResult, lines, quoteLines, vehicle, customer, shopResult] =
+  const workOrderResult = await input.supabase
+    .from("work_orders")
+    .select("*")
+    .eq("id", workOrderId)
+    .eq("shop_id", input.shopId)
+    .maybeSingle();
+  throwQueryError(workOrderResult.error, "Unable to load mobile work order");
+  const workOrder = (workOrderResult.data as WorkOrder | null) ?? null;
+  if (!workOrder || workOrder.shop_id !== input.shopId) return null;
+
+  const [lines, quoteLines, vehicle, customer, shopResult] =
     await Promise.all([
-      input.supabase
-        .from("work_orders")
-        .select("*")
-        .eq("id", workOrderId)
-        .eq("shop_id", input.shopId)
-        .maybeSingle(),
       loadRowsForIdChunks<WorkOrderLine>([workOrderId], (ids, from, to) =>
         input.supabase
           .from("work_order_lines")
@@ -98,13 +96,13 @@ export async function loadMobileWorkOrderDetail(input: {
       loadRelatedRecord<Vehicle>({
         supabase: input.supabase,
         table: "vehicles",
-        id: workspace.workOrder.vehicleId,
+        id: workOrder.vehicle_id,
         shopId: input.shopId,
       }),
       loadRelatedRecord<Customer>({
         supabase: input.supabase,
         table: "customers",
-        id: workspace.workOrder.customerId,
+        id: workOrder.customer_id,
         shopId: input.shopId,
       }),
       input.supabase
@@ -114,13 +112,7 @@ export async function loadMobileWorkOrderDetail(input: {
         .maybeSingle<{ labor_rate: number | null }>(),
     ]);
 
-  throwQueryError(
-    workOrderResult.error,
-    "Unable to load mobile work order",
-  );
   throwQueryError(shopResult.error, "Unable to load mobile shop labor rate");
-  const workOrder = (workOrderResult.data as WorkOrder | null) ?? null;
-  if (!workOrder || workOrder.shop_id !== input.shopId) return null;
 
   const lineContext = await loadCanonicalWorkOrderLineContext({
     supabase: input.supabase,

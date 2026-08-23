@@ -8,6 +8,8 @@ const mocks = vi.hoisted(() => ({
   getUser: vi.fn(),
   getOfflineMutationScope: vi.fn(),
   loadProjectedWorkOrderSnapshot: vi.fn(),
+  profileLookup: vi.fn(),
+  removeMobileWorkOrderDetailSnapshots: vi.fn(async () => undefined),
   saveOfflineSnapshot: vi.fn(async () => undefined),
   search: "",
   updateActiveTab: vi.fn(),
@@ -43,10 +45,7 @@ vi.mock("@/features/shared/lib/supabase/client", () => {
   for (const method of ["select", "eq", "abortSignal"]) {
     profileQuery[method] = vi.fn(() => profileQuery);
   }
-  profileQuery.maybeSingle = vi.fn(async () => ({
-    data: { role: "advisor", shop_id: "shop-1" },
-    error: null,
-  }));
+  profileQuery.maybeSingle = mocks.profileLookup;
 
   const channel: Record<string, ReturnType<typeof vi.fn>> = {
     on: vi.fn(),
@@ -94,6 +93,8 @@ vi.mock("@/features/shared/lib/offline/mutations", () => ({
 
 vi.mock("@/features/work-orders/mobile/technicianOfflineExecution", () => ({
   loadProjectedWorkOrderSnapshot: mocks.loadProjectedWorkOrderSnapshot,
+  removeMobileWorkOrderDetailSnapshots:
+    mocks.removeMobileWorkOrderDetailSnapshots,
 }));
 
 vi.mock("@shared/components/ui/PreviousPageButton", () => ({
@@ -190,6 +191,10 @@ describe("mobile work-order detail client", () => {
       userId: "user-1",
       shopId: "shop-1",
     });
+    mocks.profileLookup.mockResolvedValue({
+      data: { role: "advisor", shop_id: "shop-1" },
+      error: null,
+    });
     mocks.loadProjectedWorkOrderSnapshot.mockResolvedValue(null);
     mocks.fetch.mockResolvedValue(response(detailSnapshot()));
     vi.stubGlobal("fetch", mocks.fetch);
@@ -230,6 +235,10 @@ describe("mobile work-order detail client", () => {
     await screen.findByText("Access denied");
     expect(screen.queryByText("WO-000014")).not.toBeInTheDocument();
     expect(mocks.loadProjectedWorkOrderSnapshot).not.toHaveBeenCalled();
+    expect(mocks.removeMobileWorkOrderDetailSnapshots).toHaveBeenCalledWith({
+      scope: { userId: "user-1", shopId: "shop-1" },
+      entityId: WORK_ORDER_ID,
+    });
 
     denied.unmount();
     mocks.fetch.mockResolvedValueOnce(
@@ -239,6 +248,57 @@ describe("mobile work-order detail client", () => {
 
     await screen.findByText("Record not found");
     expect(screen.queryByText("WO-000014")).not.toBeInTheDocument();
+    expect(mocks.removeMobileWorkOrderDetailSnapshots).toHaveBeenCalledWith({
+      scope: { userId: "user-1", shopId: "shop-1" },
+      entityId: "missing-work-order",
+    });
+  });
+
+  it("keeps the rendered detail visible and coalesces focus recovery events", async () => {
+    let resolveRefresh: ((value: Response) => void) | null = null;
+    render(<MobileWorkOrderClient routeId={WORK_ORDER_ID} />);
+    await screen.findByText("WO-000014");
+
+    mocks.fetch.mockImplementationOnce(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveRefresh = resolve;
+        }),
+    );
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+
+    await waitFor(() => expect(mocks.fetch).toHaveBeenCalledTimes(2));
+    expect(screen.getByText("WO-000014")).toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+
+    act(() => {
+      resolveRefresh?.(response(detailSnapshot("WO-REFRESHED")));
+    });
+    await screen.findByText("WO-REFRESHED");
+    expect(mocks.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("recovers from cached scope when the browser profile read fails", async () => {
+    mocks.profileLookup.mockResolvedValue({
+      data: null,
+      error: new Error("Temporary profile read failure"),
+    });
+    mocks.fetch.mockRejectedValue(new TypeError("Failed to fetch"));
+    mocks.loadProjectedWorkOrderSnapshot.mockResolvedValue(
+      detailSnapshot("WO-CACHED-ACTOR"),
+    );
+
+    render(<MobileWorkOrderClient routeId={WORK_ORDER_ID} />);
+
+    await screen.findByText("WO-CACHED-ACTOR");
+    expect(mocks.fetch).toHaveBeenCalledTimes(1);
+    expect(mocks.loadProjectedWorkOrderSnapshot).toHaveBeenCalledWith({
+      scope: { userId: "user-1", shopId: "shop-1" },
+      entityId: WORK_ORDER_ID,
+    });
   });
 
   it("renders an offline snapshot and replaces it after reconnect", async () => {

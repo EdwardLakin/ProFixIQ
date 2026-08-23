@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 import RecordManualPayment from "@/features/invoices/components/RecordManualPayment";
+import { resolveMobileWorkOrderReturnHref } from "@/features/mobile/work-orders/mobileWorkOrderRouting";
 
 type CloseoutState = {
   workOrder: { id: string; custom_id: string | null; status: string; payment_status: string; outstanding_balance: number };
@@ -18,6 +19,13 @@ function money(value: number, currency: string) { return new Intl.NumberFormat("
 export default function MobileServiceCloseout({ workOrderId }: { workOrderId: string }) {
   const search = useSearchParams();
   const paymentReturn = search.get("payment");
+  const returnHref =
+    resolveMobileWorkOrderReturnHref(search.get("returnTo")) ??
+    "/mobile/service";
+  const returnLabel =
+    returnHref === "/mobile/service"
+      ? "Back to field service"
+      : "Back to work orders";
   const [state, setState] = useState<CloseoutState | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -73,7 +81,7 @@ export default function MobileServiceCloseout({ workOrderId }: { workOrderId: st
   const paid = invoice ? invoice.outstandingTotal <= 0.005 : state?.workOrder.payment_status === "paid";
 
   return <main className="mx-auto w-full max-w-xl space-y-4 px-3 pb-8 pt-3 text-[color:var(--theme-text-primary)] sm:px-4">
-    <header className="flex items-center gap-3 rounded-3xl border border-white/10 bg-slate-950 p-4 text-white shadow-card"><Link href="/mobile/service" className="inline-grid h-11 w-11 place-items-center rounded-xl border border-white/15 bg-white/[0.07]"><ArrowLeft className="h-5 w-5" /></Link><div><div className="text-[0.62rem] font-extrabold uppercase tracking-[0.2em] text-sky-300">Field closeout</div><h1 className="text-xl font-extrabold">{state?.workOrder.custom_id ? `WO ${state.workOrder.custom_id}` : "Repair complete"}</h1><p className="text-xs text-slate-300">Invoice → payment → receipt → gone.</p></div></header>
+    <header className="flex items-center gap-3 rounded-3xl border border-white/10 bg-slate-950 p-4 text-white shadow-card"><Link href={returnHref} aria-label={returnLabel} className="inline-grid h-11 w-11 place-items-center rounded-xl border border-white/15 bg-white/[0.07]"><ArrowLeft className="h-5 w-5" /></Link><div><div className="text-[0.62rem] font-extrabold uppercase tracking-[0.2em] text-sky-300">Field closeout</div><h1 className="text-xl font-extrabold">{state?.workOrder.custom_id ? `WO ${state.workOrder.custom_id}` : "Repair complete"}</h1><p className="text-xs text-slate-300">Invoice → payment → receipt → gone.</p></div></header>
     {loading ? <div className="h-40 animate-pulse rounded-3xl bg-[color:var(--theme-surface-panel)]" /> : null}
     {!loading && state ? <>
       <section className="rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-5 shadow-card">

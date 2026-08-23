@@ -15,6 +15,17 @@ vi.mock(
   "@/features/work-orders/workspace/server/loadWorkOrderWorkspaceSnapshot",
   () => ({
     loadWorkOrderWorkspaceSnapshot: mocks.loadWorkOrderWorkspaceSnapshot,
+    WORK_ORDER_WORKSPACE_READER_ROLES: [
+      "owner",
+      "admin",
+      "manager",
+      "advisor",
+      "service",
+      "parts",
+      "mechanic",
+      "lead_hand",
+      "foreman",
+    ],
   }),
 );
 vi.mock(
@@ -44,11 +55,15 @@ function emptyContext() {
   };
 }
 
-function createClient() {
+function createClient(overrides: {
+  workOrder?: Record<string, unknown>;
+  vehicle?: Record<string, unknown> | null;
+  customer?: Record<string, unknown> | null;
+} = {}) {
   const calls: Array<{ table: string; operation: string; args: unknown[] }> = [];
   const results: Record<string, { data: unknown; error: null }> = {
     work_orders: {
-      data: {
+      data: overrides.workOrder ?? {
         id: WORK_ORDER_ID,
         shop_id: SHOP_ID,
         custom_id: "WO-000014",
@@ -58,6 +73,8 @@ function createClient() {
       },
       error: null,
     },
+    vehicles: { data: overrides.vehicle ?? null, error: null },
+    customers: { data: overrides.customer ?? null, error: null },
     shops: { data: { labor_rate: null }, error: null },
   };
   const client = {
@@ -156,5 +173,64 @@ describe("mobile work-order detail server snapshot", () => {
 
     expect(fixture.calls).toEqual([]);
     expect(mocks.loadCanonicalWorkOrderLineContext).not.toHaveBeenCalled();
+  });
+
+  it("derives related records from the same full work-order row", async () => {
+    mocks.loadWorkOrderWorkspaceSnapshot.mockResolvedValue({
+      workOrder: {
+        id: WORK_ORDER_ID,
+        shopId: SHOP_ID,
+        vehicleId: "vehicle-old",
+        customerId: "customer-old",
+      },
+    });
+    const fixture = createClient({
+      workOrder: {
+        id: WORK_ORDER_ID,
+        shop_id: SHOP_ID,
+        custom_id: "WO-000014",
+        status: "in_progress",
+        vehicle_id: "vehicle-new",
+        customer_id: "customer-new",
+      },
+      vehicle: {
+        id: "vehicle-new",
+        shop_id: SHOP_ID,
+      },
+      customer: {
+        id: "customer-new",
+        shop_id: SHOP_ID,
+      },
+    });
+
+    const snapshot = await loadMobileWorkOrderDetail({
+      supabase: fixture.client,
+      shopId: SHOP_ID,
+      routeId: "WO14",
+    });
+
+    expect(snapshot).toMatchObject({
+      workOrder: {
+        vehicle_id: "vehicle-new",
+        customer_id: "customer-new",
+      },
+      vehicle: { id: "vehicle-new" },
+      customer: { id: "customer-new" },
+    });
+    expect(fixture.calls).toContainEqual({
+      table: "vehicles",
+      operation: "eq",
+      args: ["id", "vehicle-new"],
+    });
+    expect(fixture.calls).toContainEqual({
+      table: "customers",
+      operation: "eq",
+      args: ["id", "customer-new"],
+    });
+    expect(fixture.calls).not.toContainEqual({
+      table: "vehicles",
+      operation: "eq",
+      args: ["id", "vehicle-old"],
+    });
   });
 });

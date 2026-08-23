@@ -131,6 +131,31 @@ export async function loadProjectedWorkOrderSnapshot(args: {
     : null;
 }
 
+/**
+ * Removes every cached key for a mobile work-order detail snapshot. Routes may
+ * be opened by a human-facing alias, while the same payload is also stored by
+ * canonical work-order id after an authorized read.
+ */
+export async function removeMobileWorkOrderDetailSnapshots(args: {
+  scope: OfflineMutationScope;
+  entityId: string;
+}): Promise<void> {
+  const stored = await getOfflineSnapshot<MobileWorkOrderSnapshot>({
+    scope: args.scope,
+    kind: DETAIL_KIND,
+    entityId: args.entityId,
+  });
+  const canonicalId = stored?.data.workOrder?.id;
+  const entityIds = Array.from(
+    new Set([args.entityId, canonicalId].filter((id): id is string => !!id)),
+  );
+  await removeOfflineSnapshots({
+    scope: args.scope,
+    kind: DETAIL_KIND,
+    entityIds,
+  });
+}
+
 export async function findProjectedTechnicianJob(args: {
   scope: OfflineMutationScope;
   lineId: string;

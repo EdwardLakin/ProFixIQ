@@ -9,20 +9,14 @@ vi.mock("@/features/shared/lib/server/admin-access", () => ({
   requireShopScopedApiAccess: mocks.requireShopScopedApiAccess,
 }));
 
+vi.mock("server-only", () => ({}));
 vi.mock(
   "@/features/work-orders/mobile/server/loadMobileWorkOrderDetail",
-  () => ({
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("@/features/work-orders/mobile/server/loadMobileWorkOrderDetail")
+    >()),
     loadMobileWorkOrderDetail: mocks.loadMobileWorkOrderDetail,
-    MOBILE_WORK_ORDER_DETAIL_ROLES: [
-      "owner",
-      "admin",
-      "manager",
-      "advisor",
-      "service",
-      "mechanic",
-      "lead_hand",
-      "foreman",
-    ],
   }),
 );
 
@@ -61,7 +55,7 @@ describe("mobile work-order detail route", () => {
     });
   });
 
-  it("allows advisor, technician, and lead-tech roles through the route gate", async () => {
+  it("preserves advisor, parts, technician, and lead-tech access", async () => {
     const { GET } = await import("../app/api/mobile/work-orders/[id]/route");
     const { MOBILE_WORK_ORDER_DETAIL_ROLES } = await import(
       "@/features/work-orders/mobile/server/loadMobileWorkOrderDetail"
@@ -73,10 +67,10 @@ describe("mobile work-order detail route", () => {
 
     expect(response.status).toBe(200);
     expect(MOBILE_WORK_ORDER_DETAIL_ROLES).toEqual(
-      expect.arrayContaining(["advisor", "mechanic", "lead_hand"]),
+      expect.arrayContaining(["advisor", "parts", "mechanic", "lead_hand"]),
     );
     expect(MOBILE_WORK_ORDER_DETAIL_ROLES).not.toEqual(
-      expect.arrayContaining(["parts", "customer", "driver"]),
+      expect.arrayContaining(["customer", "driver"]),
     );
     expect(mocks.requireShopScopedApiAccess).toHaveBeenCalledWith({
       allowRoles: MOBILE_WORK_ORDER_DETAIL_ROLES,

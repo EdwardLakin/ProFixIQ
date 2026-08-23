@@ -49,6 +49,7 @@ import {
 import { saveOfflineSnapshot } from "@/features/shared/lib/offline/database";
 import {
   loadProjectedWorkOrderSnapshot,
+  removeMobileWorkOrderDetailSnapshots,
 } from "@/features/work-orders/mobile/technicianOfflineExecution";
 import {
   parseMobileWorkOrderSnapshot,
@@ -250,6 +251,9 @@ export default function MobileWorkOrderClient({
   const keyBase = useMemo(() => `m:wo:${routeId}`, [routeId]);
 
   const [wo, setWo] = useTabState<WorkOrder | null>(`${keyBase}:wo`, null);
+  const hasRenderedDetailRef = useRef(Boolean(wo));
+  const serverLoadCountRef = useRef(0);
+  const backgroundRefreshTimerRef = useRef<number | null>(null);
   const [lines, setLines] = useTabState<WorkOrderLine[]>(
     `${keyBase}:lines`,
     [],
@@ -277,6 +281,7 @@ export default function MobileWorkOrderClient({
   );
 
   const [loading, setLoading] = useState<boolean>(true);
+  const [actorReady, setActorReady] = useState(false);
   const [viewError, setViewError] = useState<string | null>(null);
   const [loadFailure, setLoadFailure] = useState<RouteLoadFailure | null>(null);
 
@@ -319,6 +324,7 @@ export default function MobileWorkOrderClient({
     let mounted = true;
 
     const waitForSession = async () => {
+      setActorReady(false);
       setLoading(true);
       setLoadFailure(null);
       try {
@@ -357,13 +363,13 @@ export default function MobileWorkOrderClient({
               );
             }
 
+            setCurrentUserId(uid);
+            setUserId(uid);
             const cachedScope = getOfflineMutationScope();
             if (!navigator.onLine && cachedScope?.userId === uid) {
-              setCurrentUserId(uid);
-              setUserId(uid);
               setCurrentUserRole(session?.user.user_metadata?.role ?? null);
               setShopId(cachedScope.shopId);
-              setLoading(false);
+              setActorReady(true);
               return;
             }
 
@@ -373,20 +379,30 @@ export default function MobileWorkOrderClient({
               .eq("id", uid)
               .abortSignal(signal)
               .maybeSingle();
-            if (profErr) throw profErr;
             if (!mounted || signal.aborted) return;
+            if (profErr) {
+              if (cachedScope?.userId === uid) {
+                setCurrentUserRole(
+                  session?.user.user_metadata?.role ?? null,
+                );
+                setShopId(cachedScope.shopId);
+                setActorReady(true);
+                return;
+              }
+              throw profErr;
+            }
 
-            setCurrentUserId(uid);
-            setUserId(uid);
             setCurrentUserRole(prof?.role ?? null);
             setShopId((prof?.shop_id as string | null) ?? null);
             if (prof?.shop_id) {
               setOfflineMutationScope({ userId: uid, shopId: prof.shop_id });
             }
+            setActorReady(true);
           },
         );
       } catch (error) {
         if (!mounted) return;
+        setActorReady(false);
         setCurrentUserId(null);
         setUserId(null);
         setCurrentUserRole(null);
@@ -406,6 +422,7 @@ export default function MobileWorkOrderClient({
     const { data: sub } = supabase.auth.onAuthStateChange((_evt, s) => {
       if (s?.user) void waitForSession();
       else {
+        setActorReady(false);
         setCurrentUserId(null);
         setUserId(null);
         setCurrentUserRole(null);
@@ -427,11 +444,13 @@ export default function MobileWorkOrderClient({
 
   /* ---------------------- FETCH ---------------------- */
   const fetchAll = useCallback(
-    async () => {
+    async (options: { background?: boolean } = {}) => {
       if (!routeId) return;
       const loadGeneration = ++loadGenerationRef.current;
       const isLatestLoad = () => loadGenerationRef.current === loadGeneration;
-      setLoading(true);
+      const preserveRenderedDetail =
+        options.background === true && hasRenderedDetailRef.current;
+      if (!preserveRenderedDetail) setLoading(true);
       setViewError(null);
       setLoadFailure(null);
 
@@ -454,6 +473,7 @@ export default function MobileWorkOrderClient({
           cached.lineContext ?? emptyCanonicalWorkOrderLineContext(),
         );
         setShopLaborRate(cached.shopLaborRate ?? null);
+        hasRenderedDetailRef.current = true;
         setViewError("Offline copy · changes may be newer on the server.");
         return true;
       };
@@ -466,6 +486,7 @@ export default function MobileWorkOrderClient({
       }
 
       try {
+        serverLoadCountRef.current += 1;
         await runBoundedRouteLoad(
           {
             route: `/mobile/work-orders/${routeId}`,
@@ -514,6 +535,7 @@ export default function MobileWorkOrderClient({
               snapshot.lineContext ?? emptyCanonicalWorkOrderLineContext(),
             );
             setShopLaborRate(snapshot.shopLaborRate ?? null);
+            hasRenderedDetailRef.current = true;
 
             const authorizedScope = currentUserId
               ? {
@@ -550,6 +572,26 @@ export default function MobileWorkOrderClient({
           "forbidden",
           "not-found",
         ].includes(failure.kind);
+        if (!mayUseCache && scope) {
+          try {
+            await removeMobileWorkOrderDetailSnapshots({
+              scope,
+              entityId: routeId,
+            });
+          } catch (cacheError) {
+            console.error(
+              "[Mobile WO id page] cache eviction error:",
+              cacheError,
+            );
+          }
+        }
+        if (isLatestLoad() && preserveRenderedDetail && mayUseCache) {
+          setViewError(
+            "Refresh failed · showing the last loaded work order.",
+          );
+          console.error("[Mobile WO id page] refresh error:", e);
+          return;
+        }
         const usedCache = mayUseCache ? await loadCached() : false;
         if (isLatestLoad() && !usedCache) {
           setWo(null);
@@ -560,10 +602,15 @@ export default function MobileWorkOrderClient({
           setTechNamesById({});
           setLineContext(emptyCanonicalWorkOrderLineContext());
           setShopLaborRate(null);
+          hasRenderedDetailRef.current = false;
           setLoadFailure(failure);
         }
         console.error("[Mobile WO id page] load error:", e);
       } finally {
+        serverLoadCountRef.current = Math.max(
+          0,
+          serverLoadCountRef.current - 1,
+        );
         if (isLatestLoad()) setLoading(false);
       }
     },
@@ -582,20 +629,35 @@ export default function MobileWorkOrderClient({
     ],
   );
 
+  const scheduleBackgroundRefresh = useCallback(() => {
+    if (!navigator.onLine) return;
+    if (backgroundRefreshTimerRef.current !== null) return;
+    const runWhenIdle = () => {
+      backgroundRefreshTimerRef.current = null;
+      if (!navigator.onLine) return;
+      if (serverLoadCountRef.current > 0) {
+        backgroundRefreshTimerRef.current = window.setTimeout(runWhenIdle, 75);
+        return;
+      }
+      void fetchAll({ background: true });
+    };
+    backgroundRefreshTimerRef.current = window.setTimeout(runWhenIdle, 75);
+  }, [fetchAll]);
+
   useEffect(() => {
-    if (!routeId || !currentUserId) return;
+    if (!routeId || !currentUserId || !actorReady) return;
     void fetchAll();
-  }, [fetchAll, routeId, currentUserId]);
+  }, [actorReady, fetchAll, routeId, currentUserId]);
 
   useEffect(() => {
-    if (!routeId || !currentUserId) return;
-    return subscribeOfflineMutations(() => void fetchAll());
-  }, [fetchAll, routeId, currentUserId]);
+    if (!routeId || !currentUserId || !actorReady) return;
+    return subscribeOfflineMutations(scheduleBackgroundRefresh);
+  }, [actorReady, currentUserId, routeId, scheduleBackgroundRefresh]);
 
   useEffect(() => {
-    if (!routeId || !currentUserId) return;
+    if (!routeId || !currentUserId || !actorReady) return;
     const refreshIfOnline = () => {
-      if (navigator.onLine) void fetchAll();
+      if (navigator.onLine) scheduleBackgroundRefresh();
     };
     const refreshWhenVisible = () => {
       if (document.visibilityState === "visible") refreshIfOnline();
@@ -608,8 +670,12 @@ export default function MobileWorkOrderClient({
       window.removeEventListener("online", refreshIfOnline);
       window.removeEventListener("focus", refreshIfOnline);
       document.removeEventListener("visibilitychange", refreshWhenVisible);
+      if (backgroundRefreshTimerRef.current !== null) {
+        window.clearTimeout(backgroundRefreshTimerRef.current);
+        backgroundRefreshTimerRef.current = null;
+      }
     };
-  }, [currentUserId, fetchAll, routeId]);
+  }, [actorReady, currentUserId, routeId, scheduleBackgroundRefresh]);
 
   /* ---------------------- REALTIME ---------------------- */
   useEffect(() => {
@@ -625,7 +691,7 @@ export default function MobileWorkOrderClient({
           table: "work_orders",
           filter: `id=eq.${wo.id}`,
         },
-        () => fetchAll(),
+        scheduleBackgroundRefresh,
       )
       .on(
         "postgres_changes",
@@ -635,7 +701,7 @@ export default function MobileWorkOrderClient({
           table: "work_order_lines",
           filter: `work_order_id=eq.${wo.id}`,
         },
-        () => fetchAll(),
+        scheduleBackgroundRefresh,
       )
       .on(
         "postgres_changes",
@@ -645,7 +711,7 @@ export default function MobileWorkOrderClient({
           table: "work_order_quote_lines",
           filter: `work_order_id=eq.${wo.id}`,
         },
-        () => fetchAll(),
+        scheduleBackgroundRefresh,
       )
       .on(
         "postgres_changes",
@@ -655,7 +721,7 @@ export default function MobileWorkOrderClient({
           table: "work_order_parts",
           filter: `work_order_id=eq.${wo.id}`,
         },
-        () => fetchAll(),
+        scheduleBackgroundRefresh,
       )
       .on(
         "postgres_changes",
@@ -665,7 +731,7 @@ export default function MobileWorkOrderClient({
           table: "work_order_part_allocations",
           filter: `work_order_id=eq.${wo.id}`,
         },
-        () => fetchAll(),
+        scheduleBackgroundRefresh,
       )
       .on(
         "postgres_changes",
@@ -675,7 +741,7 @@ export default function MobileWorkOrderClient({
           table: "part_requests",
           filter: `work_order_id=eq.${wo.id}`,
         },
-        () => fetchAll(),
+        scheduleBackgroundRefresh,
       )
       .on(
         "postgres_changes",
@@ -684,7 +750,7 @@ export default function MobileWorkOrderClient({
           schema: "public",
           table: "work_order_line_technicians",
         },
-        () => fetchAll(),
+        scheduleBackgroundRefresh,
       )
       .on(
         "postgres_changes",
@@ -694,7 +760,7 @@ export default function MobileWorkOrderClient({
           table: "work_order_line_labor_segments",
           filter: `work_order_id=eq.${wo.id}`,
         },
-        () => fetchAll(),
+        scheduleBackgroundRefresh,
       )
       .subscribe();
 
@@ -705,12 +771,12 @@ export default function MobileWorkOrderClient({
         //
       }
     };
-  }, [wo?.id, fetchAll]);
+  }, [wo?.id, scheduleBackgroundRefresh]);
 
   // 🔁 refresh when a parts request or inspection completes
   useEffect(() => {
     const handleParts = () => {
-      void fetchAll();
+      scheduleBackgroundRefresh();
     };
     const handleInspectionCompleted = (
       ev: CustomEvent<{
@@ -751,7 +817,7 @@ export default function MobileWorkOrderClient({
         handleInspectionCompleted as EventListener,
       );
     };
-  }, [fetchAll]);
+  }, [scheduleBackgroundRefresh]);
 
   /* ----------------------- Derived data ----------------------- */
 
