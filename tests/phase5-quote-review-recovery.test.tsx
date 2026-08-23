@@ -1,15 +1,25 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { renderToString } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { TabsProvider } from "@/features/shared/components/tabs/TabsProvider";
+import {
+  TabsProvider,
+  useTabs,
+} from "@/features/shared/components/tabs/TabsProvider";
 import QuoteReviewView from "@/features/work-orders/quote-review/QuoteReviewView";
 
 const WORK_ORDER_ID = "e38e395a-e9c9-496e-8bc0-ac81cc1dcc4d";
+const SIBLING_WORK_ORDER_ID = "00000000-0000-4000-8000-000000000099";
 const SHOP_ID = "00000000-0000-4000-8000-000000000002";
 const QUOTE_LINE_ID = "00000000-0000-4000-8000-000000000003";
 const QUOTE_ROUTE = `/quote-review/${WORK_ORDER_ID}`;
@@ -105,9 +115,22 @@ vi.mock("@/features/shared/lib/supabase/client", () => ({
   }),
 }));
 
+function OpenWorkProbe() {
+  const { activeKey, tabs } = useTabs();
+  return (
+    <output data-testid="open-work-state">
+      {JSON.stringify({
+        activeKey,
+        tabs: tabs.map(({ href, key, title }) => ({ href, key, title })),
+      })}
+    </output>
+  );
+}
+
 function quoteReview() {
   return (
     <TabsProvider userId="phase-5-user">
+      <OpenWorkProbe />
       <QuoteReviewView workOrderId={WORK_ORDER_ID} />
     </TabsProvider>
   );
@@ -132,6 +155,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -150,6 +174,13 @@ describe("Phase 5 quote-review recovery", () => {
             kind: "work-order",
             lastOpenedAt: 1,
           },
+          {
+            key: `work-order:${SIBLING_WORK_ORDER_ID}`,
+            href: `/work-orders/${SIBLING_WORK_ORDER_ID}`,
+            title: "Saved sibling work order",
+            kind: "work-order",
+            lastOpenedAt: 2,
+          },
         ],
         activeKey: `work-order:${WORK_ORDER_ID}`,
       }),
@@ -165,6 +196,17 @@ describe("Phase 5 quote-review recovery", () => {
     expect(await screen.findByText("Advisor quote review")).toBeVisible();
     expect(screen.getByText("WO-000014")).toBeVisible();
     expect(screen.getByText(/Canonical quote lines: 1/)).toBeVisible();
+    await waitFor(() =>
+      expect(screen.getByTestId("open-work-state")).toHaveTextContent(
+        `"activeKey":"work-order:${WORK_ORDER_ID}"`,
+      ),
+    );
+    expect(screen.getByTestId("open-work-state")).toHaveTextContent(
+      `"key":"work-order:${SIBLING_WORK_ORDER_ID}"`,
+    );
+    expect(screen.getByTestId("open-work-state")).toHaveTextContent(
+      '"title":"Saved sibling work order"',
+    );
     expect(
       consoleError.mock.calls.some((call) =>
         /hydration|did not match|server html/i.test(call.map(String).join(" ")),
@@ -177,26 +219,36 @@ describe("Phase 5 quote-review recovery", () => {
 
     expect(await screen.findByText("Advisor quote review")).toBeVisible();
     await waitFor(() => expect(mocks.workOrderRequestCount).toBe(2));
+    expect(screen.getByTestId("open-work-state")).toHaveTextContent(
+      `"activeKey":"work-order:${WORK_ORDER_ID}"`,
+    );
+    expect(screen.getByTestId("open-work-state")).toHaveTextContent(
+      `"key":"work-order:${SIBLING_WORK_ORDER_ID}"`,
+    );
   });
 
-  it("replaces a failed first load with an actionable retry and canonical data", async () => {
+  it("times out a hung first load before retrying canonical data", async () => {
+    vi.useFakeTimers();
     mocks.workOrderResults.push(
-      Promise.resolve({
-        data: null,
-        error: new Error("Temporary work-order read failure"),
-      }),
+      new Promise<QueryResult>(() => {}),
       Promise.resolve(workOrderResult),
     );
     vi.spyOn(console, "error").mockImplementation(() => {});
 
     render(quoteReview());
 
+    expect(screen.getByText("Loading…")).toBeVisible();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(12_000);
+    });
+
     expect(
-      await screen.findByRole("heading", { name: "Unable to load this screen" }),
+      screen.getByRole("heading", { name: "Still waiting for data" }),
     ).toBeVisible();
     expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+    vi.useRealTimers();
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
 
     expect(await screen.findByText("Advisor quote review")).toBeVisible();
     expect(screen.getByText("WO-000014")).toBeVisible();
