@@ -1,8 +1,20 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import { resolveTechnicianAssignmentContract } from "@/features/work-orders/lib/technicianAssignmentContract";
 
 describe("PFX-004 technician assignment read contract", () => {
+  it("uses a schema-valid inactive workforce fixture", () => {
+    const runtime = readFileSync(
+      "tests/security/technician-assignment-contract.runtime.sql",
+      "utf8",
+    );
+    expect(runtime).toContain(
+      "'72100000-0000-4000-8000-000000000004', 'inactive', false",
+    );
+    expect(runtime).not.toContain("'terminated', false");
+  });
+
   it("keeps a newly created job explicitly unassigned", () => {
     expect(resolveTechnicianAssignmentContract({})).toEqual({
       primaryTechnicianId: null,
