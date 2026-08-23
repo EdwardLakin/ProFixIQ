@@ -853,6 +853,68 @@ as $$
     assignment.technician_id;
 $$;
 
+-- Preserve the established mode-aware Mobile handoff wrapper while adapting
+-- its legacy line producer to the canonical assignment representation before
+-- the deferred assignment constraints are evaluated.
+create or replace function public.mobile_materialize_service_visit_work_order_atomic(
+  p_shop_id uuid,
+  p_visit_id uuid,
+  p_actor_user_id uuid,
+  p_operation_key text
+) returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_mode text;
+  v_result jsonb;
+  v_line_id uuid;
+begin
+  if not public.scheduler_actor_matches(p_actor_user_id) then
+    raise exception using errcode = '42501', message = 'Authenticated actor mismatch.';
+  end if;
+
+  select sv.mode into v_mode
+  from public.service_visits sv
+  where sv.id = p_visit_id and sv.shop_id = p_shop_id;
+  if not found then
+    raise exception using errcode = 'P0001', message = 'Service visit not found.';
+  end if;
+
+  if v_mode = 'mobile'
+     and not public.mobile_actor_has_field_service_access(p_shop_id, p_actor_user_id) then
+    raise exception using errcode = '42501', message = 'Field Service access is required.';
+  end if;
+
+  v_result := private.mobile_materialize_visit_work_order_mode_core(
+    p_shop_id, p_visit_id, p_actor_user_id, p_operation_key
+  );
+  v_line_id := nullif(v_result ->> 'initialWorkOrderLineId', '')::uuid;
+
+  if v_line_id is not null then
+    update public.work_order_lines line
+    set assigned_to = null,
+        updated_at = greatest(
+          clock_timestamp(),
+          line.updated_at + interval '1 microsecond'
+        )
+    where line.id = v_line_id
+      and line.shop_id = p_shop_id
+      and line.assigned_to is not null
+      and line.assigned_tech_id is not null
+      and exists (
+        select 1
+        from public.work_order_line_technicians assignment
+        where assignment.work_order_line_id = line.id
+          and assignment.technician_id = line.assigned_tech_id
+      );
+  end if;
+
+  return v_result;
+end;
+$$;
+
 create or replace function private.enforce_work_order_line_assignment_contract()
 returns trigger
 language plpgsql

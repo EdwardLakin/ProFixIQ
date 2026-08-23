@@ -383,6 +383,9 @@ export function JobCard({
   const assignedTech = useMemo(() => {
     const techId = line.assigned_tech_id;
     const profile = technicians.find((tech) => tech.id === techId) ?? null;
+    if (techId && !profile) {
+      return "Unavailable technician (current)";
+    }
     const primaryDisplay = resolvePrimaryTechDisplay(
       line,
       profile ? { ...profile, role: "tech" } : null,

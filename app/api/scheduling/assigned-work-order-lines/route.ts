@@ -4,6 +4,24 @@ import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import { WORKFORCE_STAFF_ROLES } from "@/features/workforce/lib/roster";
+import { resolveTechnicianAssignmentContract } from "@/features/work-orders/lib/technicianAssignmentContract";
+
+type AssignedLineRow = {
+  id: string;
+  work_order_id: string | null;
+  description: string | null;
+  complaint: string | null;
+  job_type: string | null;
+  job_priority: string | null;
+  created_at: string | null;
+  assigned_tech_id: string | null;
+  assigned_to: string | null;
+};
+
+type AssignmentRow = {
+  work_order_line_id: string;
+  technician_id: string;
+};
 
 async function authz() {
   const access = await requireShopScopedApiAccess({
@@ -52,60 +70,61 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ lines: [] });
   }
 
-  // 1) Canonical primary plus legacy-only compatibility.
-  const { data: directLines, error: dErr } = await admin
+  const { data: lineData, error: lineError } = await admin
     .from("work_order_lines")
-    .select("id, work_order_id, description, complaint, job_type, created_at, job_priority")
+    .select(
+      "id, work_order_id, description, complaint, job_type, created_at, job_priority, assigned_tech_id, assigned_to",
+    )
     .eq("shop_id", shopId)
     .eq("work_order_id", workOrderId)
-    .or(
-      `assigned_tech_id.eq.${effectiveUserId},assigned_to.eq.${effectiveUserId}`,
-    )
     .eq("line_type", "job")
     .order("created_at", { ascending: true });
 
-  if (dErr) return NextResponse.json({ error: dErr.message }, { status: 500 });
-
-  // 2) Lines assigned via many-to-many join table
-  const { data: joinRows, error: jErr } = await admin
-    .from("work_order_line_technicians")
-    .select("work_order_line_id")
-    .eq("technician_id", effectiveUserId);
-
-  if (jErr) return NextResponse.json({ error: jErr.message }, { status: 500 });
-
-  const joinLineIds = Array.from(
-    new Set((joinRows ?? []).map((r) => r.work_order_line_id).filter(Boolean)),
-  ) as string[];
-
-  let joinLines: Array<{
-    id: string;
-    work_order_id: string | null;
-    description: string | null;
-    complaint: string | null;
-    job_type: string | null;
-    job_priority: string | null;
-    created_at: string | null;
-  }> = [];
-
-  if (joinLineIds.length > 0) {
-    const { data: jl, error: jlErr } = await admin
-      .from("work_order_lines")
-      .select("id, work_order_id, description, complaint, job_type, created_at, job_priority")
-      .eq("shop_id", shopId)
-      .eq("work_order_id", workOrderId)
-      .in("id", joinLineIds)
-      .eq("line_type", "job")
-      .order("created_at", { ascending: true });
-
-    if (jlErr) return NextResponse.json({ error: jlErr.message }, { status: 500 });
-    joinLines = jl ?? [];
+  if (lineError) {
+    return NextResponse.json({ error: lineError.message }, { status: 500 });
   }
 
-  // Merge + de-dupe
-  const map = new Map<string, (typeof joinLines)[number]>();
-  for (const l of directLines ?? []) map.set(l.id, l);
-  for (const l of joinLines) map.set(l.id, l);
+  const lines = (lineData ?? []) as AssignedLineRow[];
+  const lineIds = lines.map((line) => line.id);
+  const assignmentResult =
+    lineIds.length > 0
+      ? await admin
+          .from("work_order_line_technicians")
+          .select("work_order_line_id, technician_id")
+          .in("work_order_line_id", lineIds)
+      : { data: [] as AssignmentRow[], error: null };
+  if (assignmentResult.error) {
+    return NextResponse.json(
+      { error: assignmentResult.error.message },
+      { status: 500 },
+    );
+  }
 
-  return NextResponse.json({ lines: Array.from(map.values()) });
+  const technicianIdsByLine = new Map<string, string[]>();
+  for (const assignment of (assignmentResult.data ?? []) as AssignmentRow[]) {
+    technicianIdsByLine.set(assignment.work_order_line_id, [
+      ...(technicianIdsByLine.get(assignment.work_order_line_id) ?? []),
+      assignment.technician_id,
+    ]);
+  }
+
+  return NextResponse.json({
+    lines: lines
+      .filter((line) =>
+        resolveTechnicianAssignmentContract({
+          primaryTechnicianId: line.assigned_tech_id,
+          legacyAssignedTo: line.assigned_to,
+          canonicalTechnicianIds: technicianIdsByLine.get(line.id),
+        }).technicianIds.includes(effectiveUserId),
+      )
+      .map((line) => ({
+        id: line.id,
+        work_order_id: line.work_order_id,
+        description: line.description,
+        complaint: line.complaint,
+        job_type: line.job_type,
+        job_priority: line.job_priority,
+        created_at: line.created_at,
+      })),
+  });
 }

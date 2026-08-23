@@ -124,6 +124,22 @@ describe("PFX-004 atomic assignment SQL contract", () => {
     expect(migration).toContain(
       "primary technician in the canonical set",
     );
+    expect(migration).toContain(
+      "create or replace function public.mobile_materialize_service_visit_work_order_atomic",
+    );
+    expect(migration).toContain(
+      "private.mobile_materialize_visit_work_order_mode_core",
+    );
+    expect(migration).toContain("set assigned_to = null");
+    expect(
+      fs.readFileSync(
+        path.join(
+          process.cwd(),
+          "tests/mobile/mobile-v1-post-merge-hardening.runtime.sql",
+        ),
+        "utf8",
+      ),
+    ).toContain("v_line.assigned_to is not null");
   });
 
   it("does not create labor, payroll, or notification side effects", () => {

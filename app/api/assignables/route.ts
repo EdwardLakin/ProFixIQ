@@ -25,6 +25,10 @@ type TechnicianRow = {
   technician_id: string;
   work_order_line_id: string;
 };
+type LaborTechnicianRow = {
+  technician_id: string;
+  work_order_line_id: string;
+};
 type WorkforceStatusRow = {
   user_id: string;
   employment_status: string;
@@ -151,18 +155,32 @@ export async function GET(request: NextRequest) {
   }
 
   const lineIds = ((lineData ?? []) as LineRow[]).map((line) => line.id);
-  const assignmentResult =
+  const [assignmentResult, laborResult] =
     lineIds.length > 0
-      ? await admin
-          .from("work_order_line_technicians")
-          .select("technician_id, work_order_line_id")
-          .in("work_order_line_id", lineIds)
-      : { data: [] as TechnicianRow[], error: null };
+      ? await Promise.all([
+          admin
+            .from("work_order_line_technicians")
+            .select("technician_id, work_order_line_id")
+            .in("work_order_line_id", lineIds),
+          admin
+            .from("work_order_line_labor_segments")
+            .select("technician_id, work_order_line_id")
+            .eq("shop_id", access.profile.shop_id)
+            .in("work_order_line_id", lineIds)
+            .is("ended_at", null),
+        ])
+      : [
+          { data: [] as TechnicianRow[], error: null },
+          { data: [] as LaborTechnicianRow[], error: null },
+        ];
 
-  if (assignmentResult.error) {
+  if (assignmentResult.error || laborResult.error) {
     return NextResponse.json(
       {
-        error: assignmentResult.error.message,
+        error:
+          assignmentResult.error?.message ??
+          laborResult.error?.message ??
+          "Unable to load work-order technicians.",
       },
       { status: 400 },
     );
@@ -175,7 +193,7 @@ export async function GET(request: NextRequest) {
       row.technician_id,
     ]);
   }
-  const technicianIds = [
+  const assignmentTechnicianIds = [
     ...new Set(
       ((lineData ?? []) as LineRow[]).flatMap((line) =>
         resolveTechnicianAssignmentContract({
@@ -186,7 +204,17 @@ export async function GET(request: NextRequest) {
       ),
     ),
   ];
-  if (technicianIds.length === 0) {
+  // Active labor identifies who is performing the work for display purposes;
+  // it does not become or mutate a persisted assignment.
+  const displayTechnicianIds = [
+    ...new Set([
+      ...assignmentTechnicianIds,
+      ...((laborResult.data ?? []) as LaborTechnicianRow[]).map(
+        (row) => row.technician_id,
+      ),
+    ]),
+  ];
+  if (displayTechnicianIds.length === 0) {
     return NextResponse.json({ data: [] });
   }
 
@@ -194,7 +222,7 @@ export async function GET(request: NextRequest) {
     .from("profiles")
     .select("id, full_name, username, email, role")
     .eq("shop_id", access.profile.shop_id)
-    .in("id", technicianIds)
+    .in("id", displayTechnicianIds)
     .order("full_name", { ascending: true });
   if (profileError) {
     return NextResponse.json({ error: profileError.message }, { status: 400 });
@@ -204,7 +232,7 @@ export async function GET(request: NextRequest) {
     ((profiles ?? []) as ProfileRow[]).map((profile) => [profile.id, profile]),
   );
   return NextResponse.json({
-    data: technicianIds.map((technicianId) => {
+    data: displayTechnicianIds.map((technicianId) => {
       const profile = profilesById.get(technicianId);
       return profile
         ? displayProfile(profile)

@@ -51,8 +51,33 @@ describe("PFX-004 assignment surface regressions", () => {
     expect(assignables).toContain(
       '.select("id, assigned_tech_id, assigned_to")',
     );
+    expect(assignables).toContain(
+      '.from("work_order_line_labor_segments")',
+    );
+    expect(assignables).toContain('.is("ended_at", null)');
     expect(assignables).toContain('full_name: "Unavailable technician"');
     expect(assignables).not.toContain('.select("id, technician_id")');
+
+    const card = read("features/work-orders/components/JobCard.tsx");
+    expect(card).toContain("Unavailable technician (current)");
+  });
+
+  it("gates every legacy candidate through the canonical assignment resolver", () => {
+    const scheduling = read(
+      "app/api/scheduling/assigned-work-order-lines/route.ts",
+    );
+    const offline = read("app/api/offline/technician-work-orders/route.ts");
+    const notifications = read(
+      "features/agent/server/syncAssistantNotifications.ts",
+    );
+
+    for (const source of [scheduling, offline, notifications]) {
+      expect(source).toContain("resolveTechnicianAssignmentContract");
+      expect(source).toContain("technicianIds.includes");
+      expect(source).not.toMatch(
+        /assigned_tech_id\.eq\.\$\{[^}]+\},assigned_to\.eq\.\$\{/,
+      );
+    }
   });
 
   it("routes bulk writes through the atomic RPC rather than direct table updates", () => {
@@ -76,6 +101,10 @@ describe("PFX-004 assignment surface regressions", () => {
     expect(assistant).toContain("resolveTechnicianAssignmentContract");
     expect(assistant).toContain('.from("work_order_line_technicians")');
     expect(assistant).toContain("bridgeIdsByLine.get(line.id)");
+    expect(assistant).toContain('.from("people_workforce_profiles")');
+    expect(assistant).toContain(
+      "Selected technician is not active for this shop.",
+    );
 
     const notifications = read(
       "features/agent/server/syncAssistantNotifications.ts",

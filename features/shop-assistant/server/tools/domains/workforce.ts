@@ -501,6 +501,7 @@ export const assignWorkOrderTool = defineShopAssistantTool({
     const [
       { data: workOrder, error: workOrderError },
       { data: technician, error: technicianError },
+      { data: workforceStatus, error: workforceStatusError },
     ] = await Promise.all([
       admin
         .from("work_orders")
@@ -514,9 +515,16 @@ export const assignWorkOrderTool = defineShopAssistantTool({
         .eq("id", input.technicianId)
         .eq("shop_id", context.actor.shopId)
         .maybeSingle(),
+      admin
+        .from("people_workforce_profiles")
+        .select("employment_status")
+        .eq("shop_id", context.actor.shopId)
+        .eq("user_id", input.technicianId)
+        .maybeSingle(),
     ]);
     if (workOrderError) throw new Error(workOrderError.message);
     if (technicianError) throw new Error(technicianError.message);
+    if (workforceStatusError) throw new Error(workforceStatusError.message);
     if (!workOrder) {
       throw new ShopAssistantHttpError(
         404,
@@ -533,6 +541,16 @@ export const assignWorkOrderTool = defineShopAssistantTool({
       throw new ShopAssistantHttpError(
         400,
         "Selected profile is not assignable as a technician.",
+      );
+    }
+    if (
+      workforceStatus &&
+      String(workforceStatus.employment_status ?? "").toLowerCase() !==
+        "active"
+    ) {
+      throw new ShopAssistantHttpError(
+        409,
+        "Selected technician is not active for this shop.",
       );
     }
 

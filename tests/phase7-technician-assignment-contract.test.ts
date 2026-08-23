@@ -61,6 +61,7 @@ describe("PFX-004 technician assignment read contract", () => {
       "primary-tech",
       "supporting-tech",
     ]);
+    expect(conflict.technicianIds).not.toContain("legacy-tech");
     expect(conflict.issues).toEqual([
       "legacy_primary_conflict",
       "legacy_set_conflict",
