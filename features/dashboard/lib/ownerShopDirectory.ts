@@ -114,11 +114,7 @@ export function buildOwnerShopDirectoryRows(input: {
   const profilesByShop = new Map(
     (input.shopProfiles ?? []).map((profile) => [profile.shop_id, profile]),
   );
-  const ownersByShop = new Map(
-    (input.ownerProfiles ?? [])
-      .filter((owner) => owner.shop_id)
-      .map((owner) => [owner.shop_id as string, owner]),
-  );
+  const ownerProfiles = input.ownerProfiles ?? [];
 
   return [...input.shops]
     .sort((left, right) =>
@@ -128,10 +124,19 @@ export function buildOwnerShopDirectoryRows(input: {
     )
     .map((shop) => {
       const profile = profilesByShop.get(shop.id);
-      const owner = ownersByShop.get(shop.id);
+      const ownerId = clean(shop.owner_id);
+      const owner = ownerId
+        ? ownerProfiles.find(
+            (candidate) =>
+              candidate.shop_id === shop.id &&
+              (candidate.id === ownerId || candidate.user_id === ownerId),
+          )
+        : undefined;
       const profileAvailable = input.shopProfiles !== null;
+      const resolvedEmail = clean(profile?.email) ?? clean(shop.email);
+      const resolvedPhone = clean(profile?.phone) ?? clean(shop.phone_number);
       const profileComplete = Boolean(
-        clean(profile?.email) && clean(profile?.phone) && clean(shop.timezone),
+        resolvedEmail && resolvedPhone && clean(shop.timezone),
       );
 
       return {
@@ -139,10 +144,10 @@ export function buildOwnerShopDirectoryRows(input: {
         name: clean(shop.name) ?? shop.id,
         city: clean(profile?.city) ?? clean(shop.city),
         province: clean(profile?.province) ?? clean(shop.province),
-        email: clean(profile?.email) ?? clean(shop.email),
-        phone: clean(profile?.phone) ?? clean(shop.phone_number),
+        email: resolvedEmail,
+        phone: resolvedPhone,
         timezone: clean(shop.timezone),
-        ownerId: clean(shop.owner_id),
+        ownerId,
         ownerName: clean(owner?.full_name),
         ownerEmail: clean(owner?.email),
         ownerSummaryAvailable: input.ownerProfiles !== null,

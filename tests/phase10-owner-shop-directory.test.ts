@@ -115,14 +115,14 @@ describe("Phase 10 owner shop governance contract", () => {
     });
   });
 
-  it("does not disclose billing labels to an admin without owner access", () => {
+  it("can still restrict billing labels when the caller lacks billing capability", () => {
     expect(resolveOwnerShopPlan(shop(), false)).toEqual({
       label: null,
       source: "restricted",
     });
   });
 
-  it("reports missing profile fields as follow-up rather than dropping the shop", () => {
+  it("uses canonical shop contact fallbacks when profile contact fields are empty", () => {
     const rows = buildOwnerShopDirectoryRows({
       shops: [shop()],
       shopProfiles: [shopProfile({ email: null })],
@@ -131,8 +131,45 @@ describe("Phase 10 owner shop governance contract", () => {
     });
 
     expect(rows).toHaveLength(1);
-    expect(rows[0].health).toBe("Needs profile");
+    expect(rows[0].health).toBe("Complete");
     expect(rows[0].email).toBe("prairie@example.test");
+  });
+
+  it("reports missing resolved contact fields as follow-up", () => {
+    const rows = buildOwnerShopDirectoryRows({
+      shops: [shop({ email: null, phone_number: null })],
+      shopProfiles: [shopProfile({ email: null, phone: null })],
+      ownerProfiles: [owner()],
+      canViewBilling: true,
+    });
+
+    expect(rows[0].health).toBe("Needs profile");
+  });
+
+  it("displays the canonical owner_id instead of an arbitrary co-owner", () => {
+    const canonicalOwner = owner({
+      id: "profile-canonical",
+      user_id: "owner-prairie",
+      full_name: "Canonical Owner",
+    });
+    const rows = buildOwnerShopDirectoryRows({
+      shops: [shop()],
+      shopProfiles: [shopProfile()],
+      ownerProfiles: [
+        canonicalOwner,
+        owner({
+          id: "co-owner",
+          user_id: "auth-co-owner",
+          full_name: "Co-owner",
+        }),
+      ],
+      canViewBilling: true,
+    });
+
+    expect(rows[0]).toMatchObject({
+      ownerId: "owner-prairie",
+      ownerName: "Canonical Owner",
+    });
   });
 
   it("keeps primary shops visible when either secondary aggregation fails", () => {
@@ -184,7 +221,12 @@ describe("Phase 10 owner shop governance contract", () => {
     const rows = buildOwnerShopDirectoryRows({
       shops: [
         shop(),
-        shop({ id: "shop-pro-fix", name: "PRO FIX", owner_id: "owner-2" }),
+        shop({
+          id: "shop-pro-fix",
+          name: "PRO FIX",
+          owner_id: "owner-2",
+          email: null,
+        }),
       ],
       shopProfiles: [
         shopProfile(),
@@ -223,12 +265,13 @@ describe("Phase 10 owner shop governance contract", () => {
     );
 
     expect(route).toContain('allowRoles: ["owner", "admin"]');
-    expect(route).toContain(
-      '.eq("organization_id", currentShop.organization_id)',
-    );
+    expect(route).toContain('.from("shop_members")');
+    expect(route).toContain('.eq("role", "owner")');
+    expect(route).toContain('.in("id", authorizedShopIds)');
     expect(route).toContain('.in("owner_id", ownerIds)');
     expect(route).toContain("await Promise.allSettled([");
-    expect(route).toContain('canViewBilling: access.canonicalRole === "owner"');
+    expect(route).toContain("getActorCapabilities");
+    expect(route).toContain(".canManageBilling");
     expect(route).toContain('"X-Request-Id": requestId');
     expect(route).toContain('"Cache-Control": "private, no-store"');
     expect(page).toContain('allow: ["owner", "admin"]');

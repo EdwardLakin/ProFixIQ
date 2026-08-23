@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import type { PostgrestError } from "@supabase/supabase-js";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import {
   buildOwnerShopDirectoryRows,
   type OwnerShopDirectoryOwner,
@@ -76,10 +77,38 @@ export async function GET() {
       .limit(1);
     primaryResult = result as OptionalRead<OwnerShopDirectoryShop>;
   } else if (currentShop.organization_id) {
+    const membershipActorIds = [
+      ...new Set(
+        [access.authUserId, access.profile.id].filter(
+          (value): value is string => Boolean(value),
+        ),
+      ),
+    ];
+    const { data: memberships, error: membershipError } = await admin
+      .from("shop_members")
+      .select("shop_id")
+      .in("user_id", membershipActorIds)
+      .eq("role", "owner");
+
+    if (membershipError) {
+      return databaseFailure(
+        requestId,
+        "resolve owner shop memberships",
+        membershipError,
+      );
+    }
+
+    const authorizedShopIds = [
+      ...new Set([
+        currentShop.id,
+        ...(memberships ?? []).map((membership) => membership.shop_id),
+      ]),
+    ];
     const result = await admin
       .from("shops")
       .select(SHOP_FIELDS)
       .eq("organization_id", currentShop.organization_id)
+      .in("id", authorizedShopIds)
       .order("name", { ascending: true })
       .limit(200);
     primaryResult = result as OptionalRead<OwnerShopDirectoryShop>;
@@ -161,7 +190,8 @@ export async function GET() {
         shops,
         shopProfiles: profileRead,
         ownerProfiles: ownerRead,
-        canViewBilling: access.canonicalRole === "owner",
+        canViewBilling: getActorCapabilities({ role: access.canonicalRole })
+          .canManageBilling,
       }),
       secondary: {
         profileHealth: profileRead === null ? "unavailable" : "available",
