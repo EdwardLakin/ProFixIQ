@@ -28091,6 +28091,13 @@ export type Database = {
           work_order_id: string
         }[]
       }
+      convert_owned_fleet_service_request_to_work_order_atomic: {
+        Args: { p_service_request_id: string }
+        Returns: {
+          conversion_status: string
+          work_order_id: string
+        }[]
+      }
       correct_work_order_line_labor_segment: {
         Args: {
           p_action: string
@@ -29863,6 +29870,10 @@ export type Database = {
           p_work_order_id: string
         }
         Returns: Json
+      }
+      resolve_fleet_id_from_vehicle: {
+        Args: { p_vehicle_id: string }
+        Returns: string
       }
       respond_fleet_defect_clarification: {
         Args: {

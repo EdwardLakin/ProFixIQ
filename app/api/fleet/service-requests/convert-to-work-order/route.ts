@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isFleetProductHostname } from "@/features/fleet/lib/fleetProductRouting";
 import { SHOP_FLEET_REQUEST_INTAKE_ROLES } from "@/features/fleet/lib/shopFleetRequestIntake";
+import { mapFleetServiceRequestError } from "@/features/fleet/lib/fleetServiceRequestError";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
 type ConvertBody = {
@@ -57,7 +58,7 @@ export async function POST(req: NextRequest) {
     }
 
     const { data, error } = await access.supabase.rpc(
-      "convert_fleet_service_request_to_work_order_atomic",
+      "convert_owned_fleet_service_request_to_work_order_atomic",
       {
         p_service_request_id: body.serviceRequestId,
       },
@@ -65,18 +66,17 @@ export async function POST(req: NextRequest) {
 
     const conversion = firstConversionResult(data);
     if (error || !conversion?.work_order_id) {
-      // eslint-disable-next-line no-console
       console.error(
         "[service-requests/convert-to-work-order] rpc error",
         error,
       );
+      const failure = mapFleetServiceRequestError(
+        error,
+        "Failed to create a structured work order from this request.",
+      );
       return NextResponse.json(
-        {
-          error:
-            error?.message ??
-            "Failed to create a structured work order from this request.",
-        },
-        { status: 500 },
+        { error: failure.error },
+        { status: failure.status },
       );
     }
 
@@ -85,7 +85,6 @@ export async function POST(req: NextRequest) {
       status: conversion.conversion_status,
     });
   } catch (err) {
-    // eslint-disable-next-line no-console
     console.error(
       "[service-requests/convert-to-work-order] unexpected error",
       err,
