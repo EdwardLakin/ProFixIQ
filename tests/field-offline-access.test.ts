@@ -115,6 +115,17 @@ describe("Field offline access", () => {
     expect(
       writeFieldServiceOfflineAccess(
         scope,
+        {
+          ...grantedAccess,
+          decision: "forbidden",
+          canAccessFieldService: true,
+        },
+        storage,
+      ),
+    ).toBeNull();
+    expect(
+      writeFieldServiceOfflineAccess(
+        scope,
         { ...grantedAccess, mustChangePassword: true },
         storage,
       ),

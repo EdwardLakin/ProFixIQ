@@ -11,6 +11,11 @@ import {
 } from "@/features/shared/lib/offline/mutations";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import FieldHub from "./FieldHub";
+import FieldServiceAccessPanel from "./FieldServiceAccessPanel";
+import {
+  isFieldServiceAccessDecision,
+  type FieldServiceAccessDecision,
+} from "./fieldServiceAccessContract";
 import {
   EMPTY_FIELD_WORKSPACE_CAPABILITIES,
   normalizeFieldWorkspaceCapabilities,
@@ -88,6 +93,10 @@ export default function MobileServiceScopeGate() {
   const [workspaceCapabilities, setWorkspaceCapabilities] =
     useState<FieldWorkspaceCapabilities>(EMPTY_FIELD_WORKSPACE_CAPABILITIES);
   const [attempt, setAttempt] = useState(0);
+  const [blockedDecision, setBlockedDecision] = useState<Extract<
+    FieldServiceAccessDecision,
+    "plan_required" | "forbidden"
+  > | null>(null);
   const [loadFailure, setLoadFailure] = useState<RouteLoadFailureState | null>(
     null,
   );
@@ -96,6 +105,7 @@ export default function MobileServiceScopeGate() {
   useEffect(() => {
     let active = true;
     setReady(false);
+    setBlockedDecision(null);
     setLoadFailure(null);
 
     void runBoundedRouteLoad(
@@ -128,6 +138,33 @@ export default function MobileServiceScopeGate() {
 
         const cached = getOfflineMutationScope();
         const cachedScope = cached?.userId === authUserId ? cached : null;
+
+        const verifiedResponseScope = fieldAccess
+          ? resolveFieldServiceAccessScope(fieldAccess, authUserId)
+          : null;
+        const responseDecision = isFieldServiceAccessDecision(
+          fieldAccess?.decision,
+        )
+          ? fieldAccess.decision
+          : null;
+
+        if (
+          fieldAccessResponse?.status === 403 &&
+          verifiedResponseScope &&
+          (responseDecision === "plan_required" ||
+            responseDecision === "forbidden")
+        ) {
+          clearFieldServiceOfflineAccess(verifiedResponseScope);
+          if (
+            cachedScope &&
+            cachedScope.shopId !== verifiedResponseScope.shopId
+          ) {
+            clearFieldServiceOfflineAccess(cachedScope);
+          }
+          protectSnapshot(null);
+          setBlockedDecision(responseDecision);
+          return;
+        }
 
         if (fieldAccessResponse?.ok && fieldAccess?.canAccessFieldService) {
           const verifiedScope = resolveFieldServiceAccessScope(
@@ -216,7 +253,12 @@ export default function MobileServiceScopeGate() {
   if (!ready) {
     return (
       <main className="mx-auto w-full max-w-3xl px-3 py-4 sm:px-4">
-        {loadFailure ? (
+        {blockedDecision ? (
+          <FieldServiceAccessPanel
+            decision={blockedDecision}
+            onRetry={() => setAttempt((value) => value + 1)}
+          />
+        ) : loadFailure ? (
           <RouteLoadPanel
             failure={loadFailure}
             onRetry={() => setAttempt((value) => value + 1)}

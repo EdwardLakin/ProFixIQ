@@ -1,5 +1,6 @@
 import { safeInternalRedirect } from "@/features/auth/lib/safeRedirect";
 import { FLEET_PRODUCT_ORIGIN } from "@/features/fleet/lib/fleetProductRouting";
+import type { FieldServiceAccessDecision } from "@/features/mobile/service/fieldServiceAccessContract";
 
 export type ProductAccessSurface = "shop" | "field" | "fleet" | "customer";
 
@@ -111,6 +112,7 @@ const FIELD_SETUP = "/mobile/service/setup";
 const PASSWORD_CHANGE = "/auth/set-password";
 
 export type FieldExistingSessionAccess = {
+  decision?: FieldServiceAccessDecision;
   canAccessFieldService?: boolean;
   canConfigure?: boolean;
   mustChangePassword?: boolean;
@@ -149,13 +151,29 @@ export function resolveFieldExistingSessionHref(
   access: FieldExistingSessionAccess,
   requestedDestination: string,
 ): string | null {
-  const fieldDestination = access.canAccessFieldService
-    ? FIELD_HOME
-    : access.canConfigure
-      ? FIELD_SETUP
-      : null;
+  const fieldDestination = access.decision
+    ? access.decision === "ready"
+      ? FIELD_HOME
+      : access.decision === "setup_required"
+        ? FIELD_SETUP
+        : access.decision === "forbidden" && access.canConfigure === true
+          ? FIELD_SETUP
+          : null
+    : access.canAccessFieldService
+      ? FIELD_HOME
+      : access.canConfigure
+        ? FIELD_SETUP
+        : null;
 
   if (!fieldDestination) return null;
+
+  if (
+    requestedDestination === FIELD_SETUP &&
+    access.canConfigure !== true &&
+    access.decision !== "setup_required"
+  ) {
+    return null;
+  }
 
   const apiEquivalentDestination = access.mustChangePassword
     ? `${PASSWORD_CHANGE}?redirect=${encodeURIComponent(fieldDestination)}`

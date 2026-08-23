@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { requireMobileServiceOperatorApiAccess } from "@/features/mobile/service/server/access";
 import {
   fieldInventoryErrorResponse,
   fieldInventoryRpc,
@@ -10,19 +10,19 @@ import {
 } from "../_lib";
 
 export async function POST(request: Request) {
-  const access = await requireShopScopedApiAccess({
+  const access = await requireMobileServiceOperatorApiAccess({
     requiredCapability: "canManageParts",
   });
   if (!access.ok) return access.response;
 
-  const body = (await request.json().catch(() => null)) as
-    | Record<string, unknown>
-    | null;
+  const body = (await request.json().catch(() => null)) as Record<
+    string,
+    unknown
+  > | null;
   const payload = body ?? {};
   const serviceVehicleId =
     payload.serviceVehicleId ?? payload.service_vehicle_id;
-  const purchaseOrderId =
-    payload.purchaseOrderId ?? payload.purchase_order_id;
+  const purchaseOrderId = payload.purchaseOrderId ?? payload.purchase_order_id;
   const purchaseOrderLineId =
     payload.purchaseOrderLineId ?? payload.purchase_order_line_id;
   const quantity = positiveQuantity(payload.quantity ?? payload.qty);
@@ -36,15 +36,18 @@ export async function POST(request: Request) {
     !key
   ) {
     return NextResponse.json(
-      { error: "Truck, purchase-order line, quantity, and operation key are required." },
+      {
+        error:
+          "Truck, purchase-order line, quantity, and operation key are required.",
+      },
       { status: 400 },
-   );
+    );
   }
 
   const { data, error } = await fieldInventoryRpc(
     access.supabase,
     "field_receive_po_part_to_truck_atomic",
-   {
+    {
       p_shop_id: access.profile.shop_id,
       p_service_vehicle_id: serviceVehicleId,
       p_purchase_order_id: purchaseOrderId,
@@ -54,6 +57,7 @@ export async function POST(request: Request) {
       p_operation_key: key,
     },
   );
-  if (error) return fieldInventoryErrorResponse(error, "field-truck-inventory/receive");
+  if (error)
+    return fieldInventoryErrorResponse(error, "field-truck-inventory/receive");
   return NextResponse.json(data);
 }

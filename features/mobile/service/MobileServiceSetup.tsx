@@ -38,22 +38,53 @@ export default function MobileServiceSetup() {
   const [defaultVisitMinutes, setDefaultVisitMinutes] = useState(60);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [canConfigure, setCanConfigure] = useState(true);
+  const [canConfigure, setCanConfigure] = useState(false);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [fieldTeam, setFieldTeam] = useState<FieldTeamMember[]>([]);
   const [fieldVehicles, setFieldVehicles] = useState<FieldVehicle[]>([]);
 
   useEffect(() => {
+    let active = true;
+    setSettingsLoaded(false);
+    setError(null);
+
     void fetch("/api/mobile/service/settings", {
       credentials: "include",
       cache: "no-store",
+      signal: AbortSignal.timeout(15_000),
     })
-      .then(async (response) => (response.ok ? response.json() : null))
+      .then(async (response) => {
+        const body = (await response.json().catch(() => null)) as {
+          error?: string;
+          [key: string]: unknown;
+        } | null;
+        if (!response.ok) {
+          throw new Error(
+            body?.error || "Field Service setup could not be loaded.",
+          );
+        }
+        if (!body) {
+          throw new Error("Field Service setup returned an invalid response.");
+        }
+        return body;
+      })
       .then((body) => {
-        if (!body) return;
+        if (!active) return;
         setCanConfigure(body.canConfigure !== false);
-        const settings = body.settings;
+        const settings = body.settings as
+          | Record<string, string | number | boolean | null>
+          | null
+          | undefined;
         if (settings) {
-          setServiceModel(settings.service_model);
+          const configuredModel = settings.service_model;
+          if (
+            configuredModel === "shop" ||
+            configuredModel === "mobile" ||
+            configuredModel === "both"
+          ) {
+            setServiceModel(configuredModel);
+          }
           setSoloMode(Boolean(settings.solo_mode));
           setDispatchEnabled(Boolean(settings.dispatch_enabled));
           setOperatorCount(Number(settings.field_operator_count_target || 1));
@@ -62,17 +93,42 @@ export default function MobileServiceSetup() {
           setDefaultVisitMinutes(Number(settings.default_visit_minutes || 60));
         }
         setFieldOperator(Boolean(body.currentActorFieldOperator));
-        setFieldTeam(Array.isArray(body.fieldTeam) ? body.fieldTeam : []);
-        setFieldVehicles(
-          Array.isArray(body.fieldVehicles) ? body.fieldVehicles : [],
+        setFieldTeam(
+          Array.isArray(body.fieldTeam)
+            ? (body.fieldTeam as FieldTeamMember[])
+            : [],
         );
-        if (body.serviceVehicle) {
-          setTruckName(body.serviceVehicle.name || "Service Truck");
-          setUnitNumber(body.serviceVehicle.unit_number || "");
+        setFieldVehicles(
+          Array.isArray(body.fieldVehicles)
+            ? (body.fieldVehicles as FieldVehicle[])
+            : [],
+        );
+        const serviceVehicle = body.serviceVehicle as
+          | { name?: string | null; unit_number?: string | null }
+          | null
+          | undefined;
+        if (serviceVehicle) {
+          setTruckName(serviceVehicle.name || "Service Truck");
+          setUnitNumber(serviceVehicle.unit_number || "");
         }
       })
-      .catch(() => undefined);
-  }, []);
+      .catch((cause) => {
+        if (active) {
+          setError(
+            cause instanceof Error
+              ? cause.message
+              : "Field Service setup could not be loaded.",
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setSettingsLoaded(true);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [loadAttempt]);
 
   async function save() {
     setBusy(true);
@@ -144,6 +200,35 @@ export default function MobileServiceSetup() {
     } finally {
       setBusy(false);
     }
+  }
+
+  if (!settingsLoaded) {
+    return (
+      <main className="mx-auto w-full max-w-2xl px-3 pb-8 pt-3 sm:px-4">
+        <div className="h-40 animate-pulse rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)]" />
+      </main>
+    );
+  }
+
+  if (error && !canConfigure) {
+    return (
+      <main className="mx-auto w-full max-w-2xl px-3 pb-8 pt-3 sm:px-4">
+        <section
+          role="alert"
+          className="rounded-3xl border border-rose-400/30 bg-rose-500/10 p-5 text-sm text-rose-700 dark:text-rose-200"
+        >
+          <h1 className="text-lg font-extrabold">Field setup did not load</h1>
+          <p className="mt-2">{error}</p>
+          <button
+            type="button"
+            onClick={() => setLoadAttempt((value) => value + 1)}
+            className="mt-4 min-h-11 rounded-xl bg-[var(--accent-copper)] px-4 font-bold text-[color:var(--theme-text-on-accent)]"
+          >
+            Retry
+          </button>
+        </section>
+      </main>
+    );
   }
 
   return (
@@ -266,7 +351,9 @@ export default function MobileServiceSetup() {
           <h2 className="font-extrabold">Service vehicle</h2>
         </div>
         <label className="flex items-center justify-between">
-          <span className="text-sm font-semibold">Track a service truck/van</span>
+          <span className="text-sm font-semibold">
+            Track a service truck/van
+          </span>
           <input
             type="checkbox"
             checked={serviceVehicles}

@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { requireMobileServiceOperatorApiAccess } from "@/features/mobile/service/server/access";
 import { fieldInventoryErrorResponse, fieldInventoryRpc, isUuid } from "./_lib";
 
 export async function GET(request: NextRequest) {
-  const access = await requireShopScopedApiAccess();
+  const access = await requireMobileServiceOperatorApiAccess();
   if (!access.ok) return access.response;
 
   const visitId = request.nextUrl.searchParams.get("visitId")?.trim() || null;
@@ -47,10 +47,7 @@ export async function GET(request: NextRequest) {
       ? (data as Record<string, unknown>)
       : { movements: [] };
 
-  return NextResponse.json(
-    snapshot,
-    {
-      headers: { "Cache-Control": "private, no-store" },
-    },
-  );
+  return NextResponse.json(snapshot, {
+    headers: { "Cache-Control": "private, no-store" },
+  });
 }
