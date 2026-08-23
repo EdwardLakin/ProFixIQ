@@ -168,6 +168,12 @@ select set_config('request.jwt.claim.role', '', true);
 -- A historical work order may retain its original billed customer after the
 -- vehicle changes ownership. This migration must not install a global trigger
 -- that rewrites or rejects that durable historical relationship.
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"81510000-0000-4000-8000-000000000001","role":"authenticated"}',
+  true
+);
+
 insert into public.work_orders (
   id, shop_id, customer_id, customer_name, vehicle_id, status,
   approval_state, created_by, notes
@@ -199,6 +205,9 @@ begin
   end if;
 end;
 $assert_historical_work_order_preserved$;
+
+select set_config('request.jwt.claims', '', true);
+select set_config('request.jwt.claim.role', '', true);
 
 -- The replay-only resolver must never choose an arbitrary Fleet when legacy
 -- data contains multiple active enrollments.
