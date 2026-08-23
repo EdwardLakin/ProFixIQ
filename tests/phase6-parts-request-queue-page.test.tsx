@@ -20,10 +20,16 @@ vi.mock("@/features/parts/components/MenuItemPartsIntakeModal", () => ({
 
 type StatusCallback = (status: string) => void;
 type ChangeCallback = (payload: unknown) => void;
+type ChangeConfig = {
+  event: "INSERT" | "UPDATE" | "DELETE" | "*";
+  schema: string;
+  table: string;
+  filter?: string;
+};
 type FakeChannel = {
   on: (
     kind: string,
-    config: { table: string },
+    config: ChangeConfig,
     callback: ChangeCallback,
   ) => FakeChannel;
   subscribe: (callback: StatusCallback) => FakeChannel;
@@ -31,12 +37,15 @@ type FakeChannel = {
 
 function realtimeClient() {
   let statusCallback: StatusCallback | null = null;
-  const changeCallbacks = new Map<string, ChangeCallback>();
+  const changeCallbacks: Array<{
+    config: ChangeConfig;
+    callback: ChangeCallback;
+  }> = [];
   const channel = {} as FakeChannel;
   Object.assign(channel, {
     on: vi.fn(
-      (_kind: string, config: { table: string }, callback: ChangeCallback) => {
-        changeCallbacks.set(config.table, callback);
+      (_kind: string, config: ChangeConfig, callback: ChangeCallback) => {
+        changeCallbacks.push({ config, callback });
         return channel;
       },
     ),
@@ -54,10 +63,31 @@ function realtimeClient() {
     emitStatus(status: string) {
       statusCallback?.(status);
     },
-    emitChange(table: string, payload: unknown) {
-      changeCallbacks.get(table)?.(payload);
+    emitChange(
+      table: string,
+      payload: unknown,
+      event: ChangeConfig["event"] = "UPDATE",
+    ) {
+      for (const listener of changeCallbacks) {
+        if (
+          listener.config.table === table &&
+          (listener.config.event === event || listener.config.event === "*")
+        ) {
+          listener.callback(payload);
+        }
+      }
     },
   };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, reject, resolve };
 }
 
 function emptySnapshot() {
@@ -161,7 +191,31 @@ describe("Parts Requests page aggregate bootstrap", () => {
     await waitFor(() =>
       expect(realtime.client.channel).toHaveBeenCalledTimes(1),
     );
-    expect(realtime.channel.on).toHaveBeenCalledTimes(2);
+    expect(realtime.channel.on).toHaveBeenCalledTimes(6);
+    const listenerConfigs = vi
+      .mocked(realtime.channel.on)
+      .mock.calls.map((call) => call[1]);
+    for (const table of ["part_requests", "part_request_items"]) {
+      expect(listenerConfigs).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            event: "INSERT",
+            filter: `shop_id=eq.${emptySnapshot().shopId}`,
+            table,
+          }),
+          expect.objectContaining({
+            event: "UPDATE",
+            filter: `shop_id=eq.${emptySnapshot().shopId}`,
+            table,
+          }),
+        ]),
+      );
+      expect(
+        listenerConfigs.filter(
+          (config) => config.table === table && config.event === "DELETE",
+        ),
+      ).toEqual([{ event: "DELETE", schema: "public", table }]);
+    }
     expect(
       screen.getByText("Active request groups").previousElementSibling,
     ).toHaveTextContent("0");
@@ -243,5 +297,196 @@ describe("Parts Requests page aggregate bootstrap", () => {
     );
     expect(await screen.findByText("Customer pending")).toBeInTheDocument();
     expect(screen.getAllByText("WO-000014")).toHaveLength(1);
+  });
+
+  it("discards an older request response that completes after a newer response", async () => {
+    const realtime = realtimeClient();
+    mocks.createBrowserSupabase.mockReturnValue(realtime.client);
+    const olderResponse = deferred<Response>();
+    const newerResponse = deferred<Response>();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json(
+          { ok: true, snapshot: requestSnapshot("requested") },
+          { status: 200 },
+        ),
+      )
+      .mockImplementationOnce(() => olderResponse.promise)
+      .mockImplementationOnce(() => newerResponse.promise);
+    vi.stubGlobal("fetch", fetchMock);
+    const { default: PartsRequestsPage } =
+      await import("../app/parts/requests/page");
+
+    render(<PartsRequestsPage />);
+    await waitFor(() =>
+      expect(realtime.client.channel).toHaveBeenCalledTimes(1),
+    );
+
+    act(() =>
+      realtime.emitChange("part_requests", { new: { id: REQUEST_ID } }),
+    );
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    act(() =>
+      realtime.emitChange("part_requests", { new: { id: REQUEST_ID } }),
+    );
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+
+    await act(async () => {
+      newerResponse.resolve(
+        Response.json(
+          { ok: true, snapshot: requestSnapshot("quoted") },
+          { status: 200 },
+        ),
+      );
+      await newerResponse.promise;
+    });
+    expect(await screen.findByText("Customer pending")).toBeInTheDocument();
+
+    await act(async () => {
+      olderResponse.resolve(
+        Response.json(
+          { ok: true, snapshot: requestSnapshot("requested") },
+          { status: 200 },
+        ),
+      );
+      await olderResponse.promise;
+    });
+    expect(screen.getByText("Customer pending")).toBeInTheDocument();
+  });
+
+  it("uses unfiltered delete notifications only as a tenant-scoped full reload signal", async () => {
+    const realtime = realtimeClient();
+    mocks.createBrowserSupabase.mockReturnValue(realtime.client);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json(
+          { ok: true, snapshot: requestSnapshot("requested") },
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        Response.json({ ok: true, snapshot: emptySnapshot() }, { status: 200 }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const { default: PartsRequestsPage } =
+      await import("../app/parts/requests/page");
+
+    render(<PartsRequestsPage />);
+    expect(await screen.findByText("WO-000014")).toBeInTheDocument();
+
+    act(() => {
+      realtime.emitChange(
+        "part_request_items",
+        { old: { id: "44444444-4444-4444-8444-444444444444" } },
+        "DELETE",
+      );
+      realtime.emitChange(
+        "part_requests",
+        { old: { id: REQUEST_ID } },
+        "DELETE",
+      );
+    });
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(String(fetchMock.mock.calls[1]?.[0])).toBe(
+      "/api/parts/requests/queue",
+    );
+    await waitFor(() =>
+      expect(screen.queryByText("WO-000014")).not.toBeInTheDocument(),
+    );
+  });
+
+  it("clears a transient reconciliation warning after a successful delta", async () => {
+    const realtime = realtimeClient();
+    mocks.createBrowserSupabase.mockReturnValue(realtime.client);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json(
+          { ok: true, snapshot: requestSnapshot("requested") },
+          { status: 200 },
+        ),
+      )
+      .mockRejectedValueOnce(new Error("Temporary reconciliation failure"))
+      .mockResolvedValueOnce(
+        Response.json(
+          { ok: true, snapshot: requestSnapshot("quoted") },
+          { status: 200 },
+        ),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const { default: PartsRequestsPage } =
+      await import("../app/parts/requests/page");
+
+    render(<PartsRequestsPage />);
+    await waitFor(() =>
+      expect(realtime.client.channel).toHaveBeenCalledTimes(1),
+    );
+    act(() => realtime.emitStatus("SUBSCRIBED"));
+
+    act(() =>
+      realtime.emitChange("part_requests", { new: { id: REQUEST_ID } }),
+    );
+    expect(
+      await screen.findByText(/could not be reconciled/i),
+    ).toBeInTheDocument();
+
+    act(() =>
+      realtime.emitChange("part_requests", { new: { id: REQUEST_ID } }),
+    );
+    expect(await screen.findByText("Customer pending")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.queryByText(/could not be reconciled/i),
+      ).not.toBeInTheDocument(),
+    );
+  });
+
+  it("clears a transient reconciliation warning after a successful manual refresh", async () => {
+    const realtime = realtimeClient();
+    mocks.createBrowserSupabase.mockReturnValue(realtime.client);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json(
+          { ok: true, snapshot: requestSnapshot("requested") },
+          { status: 200 },
+        ),
+      )
+      .mockRejectedValueOnce(new Error("Temporary reconciliation failure"))
+      .mockResolvedValueOnce(
+        Response.json(
+          { ok: true, snapshot: requestSnapshot("quoted") },
+          { status: 200 },
+        ),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const { default: PartsRequestsPage } =
+      await import("../app/parts/requests/page");
+    const user = userEvent.setup();
+
+    render(<PartsRequestsPage />);
+    await waitFor(() =>
+      expect(realtime.client.channel).toHaveBeenCalledTimes(1),
+    );
+    act(() => realtime.emitStatus("SUBSCRIBED"));
+    act(() =>
+      realtime.emitChange("part_requests", { new: { id: REQUEST_ID } }),
+    );
+
+    expect(
+      await screen.findByText(/could not be reconciled/i),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Refresh now" }));
+
+    expect(await screen.findByText("Customer pending")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.queryByText(/could not be reconciled/i),
+      ).not.toBeInTheDocument(),
+    );
   });
 });

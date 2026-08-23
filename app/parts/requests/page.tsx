@@ -651,6 +651,8 @@ export default function PartsRequestsPage(): JSX.Element {
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const initialLoad = useRef(true);
   const reloadSequence = useRef(0);
+  const reconciliationSequence = useRef(0);
+  const latestRequestReconciliation = useRef(new Map<string, number>());
   const pendingRequestIds = useRef(new Set<string>());
   const pendingFullReload = useRef(false);
   const realtimeTimer = useRef<number | null>(null);
@@ -664,6 +666,9 @@ export default function PartsRequestsPage(): JSX.Element {
     "connecting" | "live" | "degraded" | null
   >(null);
   const [liveMessage, setLiveMessage] = useState<string | null>(null);
+  const [reconciliationMessage, setReconciliationMessage] = useState<
+    string | null
+  >(null);
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState<QueueTab>("active");
   const [stageFilter, setStageFilter] = useState<StageFilter>("all");
@@ -690,7 +695,10 @@ export default function PartsRequestsPage(): JSX.Element {
         ({ signal, recordStatus }) =>
           fetchPartsRequestQueue({ signal, recordStatus }),
       );
-      if (sequence === reloadSequence.current) setSnapshot(nextSnapshot);
+      if (sequence === reloadSequence.current) {
+        setSnapshot(nextSnapshot);
+        setReconciliationMessage(null);
+      }
     } catch (error) {
       if (sequence === reloadSequence.current) {
         setLoadFailure(
@@ -719,6 +727,8 @@ export default function PartsRequestsPage(): JSX.Element {
   }, [reload]);
 
   const reconcileRequest = useCallback(async (requestId: string) => {
+    const sequence = ++reconciliationSequence.current;
+    latestRequestReconciliation.current.set(requestId, sequence);
     try {
       const delta = await runBoundedRouteLoad(
         {
@@ -728,14 +738,20 @@ export default function PartsRequestsPage(): JSX.Element {
         ({ signal, recordStatus }) =>
           fetchPartsRequestQueue({ signal, recordStatus, requestId }),
       );
+      if (latestRequestReconciliation.current.get(requestId) !== sequence) {
+        return;
+      }
       setSnapshot((current) =>
         current
           ? reconcilePartsRequestQueueSnapshot(current, delta, requestId)
           : delta,
       );
+      setReconciliationMessage(null);
     } catch {
-      setLiveState("degraded");
-      setLiveMessage(
+      if (latestRequestReconciliation.current.get(requestId) !== sequence) {
+        return;
+      }
+      setReconciliationMessage(
         "A live Parts update could not be reconciled. Refresh to confirm the latest workflow state.",
       );
     }
@@ -772,12 +788,15 @@ export default function PartsRequestsPage(): JSX.Element {
     setLiveMessage(null);
 
     const filter = `shop_id=eq.${shopId}`;
+    // DELETE changes cannot be filtered without full replica identity. Ignore
+    // their payload and use them only to trigger the server-scoped queue read.
+    const reloadAfterRemoval = () => scheduleRealtimeReconciliation(null);
     const channel = supabase
       .channel(`parts-request-queue:${shopId}`)
       .on(
         "postgres_changes",
         {
-          event: "*",
+          event: "INSERT",
           schema: "public",
           table: "part_requests",
           filter,
@@ -790,7 +809,29 @@ export default function PartsRequestsPage(): JSX.Element {
       .on(
         "postgres_changes",
         {
-          event: "*",
+          event: "UPDATE",
+          schema: "public",
+          table: "part_requests",
+          filter,
+        },
+        (payload) =>
+          scheduleRealtimeReconciliation(
+            readPartsRequestIdFromRealtimePayload(payload, "request"),
+          ),
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "DELETE",
+          schema: "public",
+          table: "part_requests",
+        },
+        reloadAfterRemoval,
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
           schema: "public",
           table: "part_request_items",
           filter,
@@ -799,6 +840,28 @@ export default function PartsRequestsPage(): JSX.Element {
           scheduleRealtimeReconciliation(
             readPartsRequestIdFromRealtimePayload(payload, "item"),
           ),
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "part_request_items",
+          filter,
+        },
+        (payload) =>
+          scheduleRealtimeReconciliation(
+            readPartsRequestIdFromRealtimePayload(payload, "item"),
+          ),
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "DELETE",
+          schema: "public",
+          table: "part_request_items",
+        },
+        reloadAfterRemoval,
       )
       .subscribe((status) => {
         if (disposed) return;
@@ -830,6 +893,10 @@ export default function PartsRequestsPage(): JSX.Element {
       void supabase.removeChannel(channel);
     };
   }, [reload, scheduleRealtimeReconciliation, shopId, supabase]);
+
+  const activeLiveMessage =
+    reconciliationMessage ??
+    (liveState === "degraded" ? liveMessage : null);
 
   const models = useMemo(
     () => (snapshot ? buildPartsRequestQueueModels(snapshot) : []),
@@ -1149,13 +1216,13 @@ export default function PartsRequestsPage(): JSX.Element {
         />
       ) : null}
 
-      {liveState === "degraded" && liveMessage ? (
+      {activeLiveMessage ? (
         <section
           aria-live="polite"
           className="flex flex-col gap-3 rounded-xl border border-amber-400/40 bg-amber-500/10 p-4 text-sm text-amber-100 sm:flex-row sm:items-center sm:justify-between"
           role="status"
         >
-          <p>{liveMessage}</p>
+          <p>{activeLiveMessage}</p>
           <button
             type="button"
             onClick={() => void reload()}
