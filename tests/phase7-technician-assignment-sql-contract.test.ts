@@ -108,6 +108,16 @@ describe("PFX-004 atomic assignment SQL contract", () => {
     expect(mutation).not.toMatch(/insert into public\.[a-z_]*notifications/i);
   });
 
+  it("preserves the authenticated legacy wrapper without permitting actor spoofing", () => {
+    expect(migration).toContain(
+      "Authenticated actor does not match assigning user.",
+    );
+    expect(migration).toContain(
+      "Work-order assignment authority is required.",
+    );
+    expect(migration).toContain("to authenticated, service_role;");
+  });
+
   it("authorizes assignment summaries from canonical same-shop identity data", () => {
     expect(migration).not.toContain("public.can_view_work_order");
     expect(migration).not.toMatch(/current_user in \([^)]*postgres/i);

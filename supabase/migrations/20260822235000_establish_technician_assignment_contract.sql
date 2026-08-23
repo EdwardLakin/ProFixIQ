@@ -310,11 +310,53 @@ create or replace function public.assign_work_order_line_technician_atomic(
   p_assigned_by uuid,
   p_operation_key text
 ) returns jsonb
-language sql
+language plpgsql
 security definer
-set search_path = public
+set search_path = ''
 as $$
-  select public.mutate_work_order_line_assignment_atomic(
+declare
+  v_auth_user_id uuid := auth.uid();
+  v_authenticated_actor_matches boolean := false;
+  v_actor_can_assign boolean := false;
+begin
+  select
+    v_auth_user_id is not null
+      and (profile.id = v_auth_user_id or profile.user_id = v_auth_user_id)
+    into v_authenticated_actor_matches
+  from public.profiles profile
+  where profile.id = p_assigned_by
+    and profile.shop_id = p_shop_id;
+  if not found then
+    raise exception using
+      errcode = '42501',
+      message = 'Assigning user is not available for this shop.';
+  end if;
+  if v_auth_user_id is not null and not v_authenticated_actor_matches then
+    raise exception using
+      errcode = '42501',
+      message = 'Authenticated actor does not match assigning user.';
+  end if;
+  if v_auth_user_id is null
+     and coalesce(auth.jwt() ->> 'role', '') <> 'service_role' then
+    raise exception using
+      errcode = '42501',
+      message = 'Authentication is required.';
+  end if;
+
+  select decision.granted
+    into v_actor_can_assign
+  from private.resolve_workspace_profile_capability(
+    p_assigned_by,
+    p_shop_id,
+    'work_order.assignment.manage'
+  ) decision;
+  if not coalesce(v_actor_can_assign, false) then
+    raise exception using
+      errcode = '42501',
+      message = 'Work-order assignment authority is required.';
+  end if;
+
+  return public.mutate_work_order_line_assignment_atomic(
     p_shop_id,
     p_work_order_line_id,
     p_technician_id,
@@ -323,6 +365,7 @@ as $$
     p_operation_key,
     null
   );
+end;
 $$;
 
 create or replace function public.assign_work_order_line_technician_atomic(
@@ -891,13 +934,15 @@ grant execute on function public.assign_work_order_primary_technician_bulk_atomi
 ) to service_role;
 grant execute on function public.assign_work_order_line_technician_atomic(
   uuid, uuid, uuid, uuid, text
-) to service_role;
+) to authenticated, service_role;
 grant execute on function public.assign_work_order_line_technician_atomic(
   uuid, uuid, uuid, uuid, text, text, timestamptz
 ) to service_role;
 
--- Browser clients can continue to read the scoped summary. Assignment writes
--- stay behind capability-checked server routes using the service role.
+-- Browser clients can continue to read the scoped summary. New assignment
+-- routes use the service role; the legacy five-argument wrapper remains
+-- authenticated only because it rechecks actor identity and Workspace
+-- assignment capability before reaching the canonical mutation.
 revoke all on function public.get_work_order_assignments(uuid)
   from public, anon, authenticated;
 grant execute on function public.get_work_order_assignments(uuid)
