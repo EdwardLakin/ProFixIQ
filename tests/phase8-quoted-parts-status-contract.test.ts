@@ -5,7 +5,6 @@ const read = (path: string) => readFileSync(path, "utf8");
 const migration = read(
   "supabase/migrations/20260823013000_establish_quoted_parts_status_contract.sql",
 );
-const runtime = read("tests/security/quote-review-cost-and-sell.runtime.sql");
 const sendRoute = read("app/api/quotes/send/route.ts");
 const workOrderClient = read("app/work-orders/[id]/Client.tsx");
 const invoiceSnapshot = read("features/invoices/server/getInvoiceSnapshot.ts");
