@@ -101,7 +101,10 @@ function messageFromRpcError(error: RpcError): string {
   return [error.message, error.details, error.hint].filter(Boolean).join(" — ");
 }
 
-function decisionResultFromData(data: unknown, forceIdempotent = false): DecisionResult {
+function decisionResultFromData(
+  data: unknown,
+  forceIdempotent = false,
+): DecisionResult {
   const result = data && typeof data === "object" ? (data as RpcResult) : {};
   const workOrderLineIds = Array.isArray(result.work_order_line_ids)
     ? result.work_order_line_ids.filter(
@@ -218,8 +221,8 @@ export async function applyWorkOrderQuoteLineDecision(params: {
     shopId: params.shopId,
     workOrderId: params.workOrderId,
     quoteLineIds,
-    includeSentRemaining:
-      declineRemaining && params.decision === "approve",
+    includeSentRemaining: declineRemaining && params.decision === "approve",
+    requireDecisionEligible: true,
   });
   if (!quarantineCheck.ok) {
     return {

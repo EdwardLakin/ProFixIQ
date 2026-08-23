@@ -29,6 +29,18 @@ const quoteSaveRoute = readFileSync(
   "utf8",
 );
 const portalQuoteList = readFileSync("app/portal/quotes/page.tsx", "utf8");
+const portalQuoteListData = readFileSync(
+  "features/portal/server/listPortalQuotes.ts",
+  "utf8",
+);
+const portalQuotePresentation = readFileSync(
+  "features/portal/lib/quoteApprovalPresentation.ts",
+  "utf8",
+);
+const quoteLifecycleStatus = readFileSync(
+  "features/work-orders/lib/quotes/quoteLifecycleStatus.ts",
+  "utf8",
+);
 const roleSidebar = readFileSync(
   "features/shared/components/RoleSidebar.tsx",
   "utf8",
@@ -233,7 +245,16 @@ describe("advisor estimate workflow", () => {
   });
 
   it("hides superseded revisions and never prices customer parts from internal cost", () => {
-    expect(portalQuote).toMatch(/"cancelled",\s*"rejected",\s*"superseded"/);
+    expect(portalQuotePresentation).toContain("isHiddenQuoteLifecycleStatus");
+    for (const status of [
+      "cancelled",
+      "canceled",
+      "voided",
+      "rejected",
+      "superseded",
+    ]) {
+      expect(quoteLifecycleStatus).toContain(`"${status}"`);
+    }
     expect(portalQuote).toContain(
       "part.unitPrice ?? part.unit_price ?? part.quoted_price ?? part.price",
     );
@@ -249,12 +270,11 @@ describe("advisor estimate workflow", () => {
     );
     expect(quoteParts).not.toContain("part.unit_cost");
     expect(quoteParts).not.toContain("part.unitCost");
-    expect(portalQuoteList).toContain(
+    expect(portalQuoteList).toContain("listPortalQuotesForCustomer");
+    expect(portalQuoteListData).toContain("isCustomerVisibleQuoteLine");
+    expect(portalQuoteListData).toContain("isHiddenQuoteRevision");
+    expect(portalQuoteListData).not.toContain(
       'or("external_id.like.portal_quote:%,estimate_number.not.is.null")',
-    );
-    expect(portalQuoteList).toContain("isCustomerVisibleEstimateLine");
-    expect(portalQuoteList).toContain(
-      "workOrder.work_order_quote_lines.length > 0",
     );
     expect(estimateData).toMatch(
       /const includeInternalCost\s*=\s*\["owner",\s*"admin",\s*"manager",\s*"parts"\]\.includes\(\s*input\.role,?\s*\)/,

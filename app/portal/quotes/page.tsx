@@ -7,52 +7,16 @@ import {
   PortalEmptyState,
 } from "@/features/portal/components/PortalUi";
 import { runBoundedRouteLoad } from "@/features/shared/lib/route-load";
+import { listPortalQuotesForCustomer } from "@/features/portal/server/listPortalQuotes";
 
 export const dynamic = "force-dynamic";
-
-function clean(value: unknown): string {
-  return typeof value === "string" ? value.trim() : "";
-}
-
-function metadata(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
-}
-
-function isCustomerVisibleEstimateLine(line: {
-  status: unknown;
-  stage: unknown;
-  sent_to_customer_at: unknown;
-  approved_at: unknown;
-  work_order_line_id: unknown;
-}): boolean {
-  const status = clean(line.status).toLowerCase();
-  const stage = clean(line.stage).toLowerCase();
-  if (["cancelled", "rejected", "superseded"].includes(status)) return false;
-  return (
-    Boolean(
-      line.sent_to_customer_at || line.approved_at || line.work_order_line_id,
-    ) ||
-    ["sent", "approved", "converted", "declined", "deferred"].includes(
-      status,
-    ) ||
-    [
-      "sent",
-      "customer_review",
-      "customer_approved",
-      "customer_declined",
-      "customer_deferred",
-    ].includes(stage)
-  );
-}
 
 export default async function PortalQuotesPage() {
   const supabase = createServerSupabaseRSC();
   const actor = await requirePortalCustomerActor(supabase);
   const shopId = actor.customer.shop_id;
 
-  const { data: workOrders, error } = await runBoundedRouteLoad(
+  const cards = await runBoundedRouteLoad(
     {
       route: "/portal/quotes",
       operation: "load customer quotes",
@@ -62,115 +26,14 @@ export default async function PortalQuotesPage() {
     },
     async ({ signal }) =>
       shopId
-        ? await supabase
-            .from("work_orders")
-            .select(
-              "id,vehicle_id,created_at,scheduled_at,invoice_sent_at,estimate_number,work_order_quote_lines(id,description,status,stage,approved_at,work_order_line_id,sent_to_customer_at,metadata)",
-            )
-            .eq("shop_id", shopId)
-            .eq("customer_id", actor.customer.id)
-            .or("external_id.like.portal_quote:%,estimate_number.not.is.null")
-            .order("created_at", { ascending: false })
-            .abortSignal(signal)
-        : { data: [], error: null },
+        ? listPortalQuotesForCustomer({
+            supabase,
+            customerId: actor.customer.id,
+            shopId,
+            signal,
+          })
+        : [],
   );
-
-  if (error) throw new Error(error.message);
-  const rows = (workOrders ?? [])
-    .map((workOrder) => ({
-      ...workOrder,
-      work_order_quote_lines: workOrder.estimate_number
-        ? (workOrder.work_order_quote_lines ?? []).filter(
-            isCustomerVisibleEstimateLine,
-          )
-        : (workOrder.work_order_quote_lines ?? []),
-    }))
-    .filter(
-      (workOrder) =>
-        !workOrder.estimate_number ||
-        workOrder.work_order_quote_lines.length > 0,
-    );
-  const cards = rows.flatMap((workOrder) => {
-    const quoteLines = workOrder.work_order_quote_lines ?? [];
-    if (workOrder.estimate_number) {
-      const sent = quoteLines.some(
-        (line) =>
-          Boolean(line.sent_to_customer_at) ||
-          [
-            "sent",
-            "customer_review",
-            "customer_approved",
-            "customer_declined",
-            "customer_deferred",
-          ].includes(clean(line.stage).toLowerCase()),
-      );
-      const approvedCount = quoteLines.filter((line) =>
-        Boolean(line.approved_at || line.work_order_line_id),
-      ).length;
-      const approved =
-        quoteLines.length > 0 && approvedCount === quoteLines.length;
-      const descriptions = quoteLines
-        .map((line) => clean(line.description))
-        .filter(Boolean);
-      return [
-        {
-          key: `estimate:${workOrder.id}`,
-          workOrderId: workOrder.id,
-          title: workOrder.estimate_number,
-          detail: `${quoteLines.length} repair ${quoteLines.length === 1 ? "line" : "lines"}${
-            descriptions.length > 0
-              ? ` • ${descriptions.slice(0, 2).join(", ")}`
-              : ""
-          }`,
-          partsOnly: false,
-          sent,
-          approved,
-          status: approved
-            ? workOrder.scheduled_at
-              ? "Appointment requested"
-              : "Approved — book when ready"
-            : approvedCount > 0
-              ? "Partially approved"
-              : sent
-                ? "Ready for your review"
-                : "Shop is preparing your estimate",
-          aggregate: true,
-        },
-      ];
-    }
-
-    return quoteLines.map((line) => {
-      const meta = metadata(line.metadata);
-      const partsOnly = clean(meta.request_kind) === "parts_only";
-      const sent =
-        Boolean(line.sent_to_customer_at) ||
-        ["sent", "customer_review", "customer_approved"].includes(
-          clean(line.stage).toLowerCase(),
-        );
-      const approved = Boolean(line.approved_at || line.work_order_line_id);
-      return {
-        key: `line:${line.id}`,
-        workOrderId: workOrder.id,
-        title: clean(line.description) || "Quote request",
-        detail: partsOnly
-          ? "Parts-only • Pickup"
-          : "Repair quote • Appointment after approval",
-        partsOnly,
-        sent,
-        approved,
-        status: approved
-          ? partsOnly
-            ? "Approved for pickup order"
-            : workOrder.scheduled_at
-              ? "Appointment requested"
-              : "Approved — book when ready"
-          : sent
-            ? "Ready for your review"
-            : "Shop is preparing your quote",
-        aggregate: false,
-      };
-    });
-  });
 
   return (
     <div className="mx-auto w-full max-w-4xl space-y-5 text-[color:var(--theme-text-primary)]">

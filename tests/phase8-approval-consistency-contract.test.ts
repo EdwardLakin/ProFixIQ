@@ -23,9 +23,13 @@ describe("Phase 8 approval compatibility consistency", () => {
   });
 
   it("uses one route RPC and no service-role or obsolete helper", () => {
-    expect(route).toContain('rpc(\n    "apply_approval_compatibility_bundle_atomic"');
+    expect(route).toMatch(
+      /rpc\(\s*"apply_approval_compatibility_bundle_atomic"/,
+    );
     expect(route).not.toContain("SUPABASE_SERVICE_ROLE_KEY");
-    expect(route).not.toContain("applyAndPropagateWorkOrderLineApprovalDecision");
+    expect(route).not.toContain(
+      "applyAndPropagateWorkOrderLineApprovalDecision",
+    );
     expect(route).not.toContain('.from("work_orders")\n      .update');
   });
 

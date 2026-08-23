@@ -6,6 +6,7 @@ import {
   isQuoteCustomerPricingQuarantined,
   QUOTE_PRICING_QUARANTINED_MESSAGE,
 } from "@/features/work-orders/lib/quotes/quotePricingQuarantine";
+import { isHiddenQuoteLifecycleStatus } from "@/features/work-orders/lib/quotes/quoteLifecycleStatus";
 
 type DB = Database;
 
@@ -27,7 +28,11 @@ export type QuotePricingQuarantineCheck =
   | { ok: true }
   | {
       ok: false;
-      reason: "lookup_failed" | "quote_line_not_found" | "quarantined";
+      reason:
+        | "lookup_failed"
+        | "quote_line_not_found"
+        | "decision_ineligible"
+        | "quarantined";
       error: string;
       quoteLineIds: string[];
     };
@@ -58,6 +63,7 @@ export async function checkQuotePricingQuarantine(params: {
   workOrderLineIds?: string[];
   includeAllQuoteLines?: boolean;
   includeSentRemaining?: boolean;
+  requireDecisionEligible?: boolean;
 }): Promise<QuotePricingQuarantineCheck> {
   const quoteLineIds = uniqueIds(params.quoteLineIds);
   const workOrderLineIds = uniqueIds(params.workOrderLineIds);
@@ -153,6 +159,26 @@ export async function checkQuotePricingQuarantine(params: {
       }
     });
   });
+
+  if (params.requireDecisionEligible === true) {
+    const ineligibleQuoteLineIds = quoteLines
+      .filter(
+        (line) =>
+          selectedQuoteLineIds.has(line.id) &&
+          isHiddenQuoteLifecycleStatus(line.status),
+      )
+      .map((line) => line.id)
+      .sort();
+    if (ineligibleQuoteLineIds.length > 0) {
+      return {
+        ok: false,
+        reason: "decision_ineligible",
+        error:
+          "Canceled, voided, rejected, or superseded quote lines cannot be changed.",
+        quoteLineIds: ineligibleQuoteLineIds,
+      };
+    }
+  }
 
   const quarantinedQuoteLineIds = quoteLines
     .filter(

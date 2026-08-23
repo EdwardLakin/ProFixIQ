@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const source = (file: string) => readFileSync(file, "utf8");
+const patternIndex = (value: string, pattern: RegExp): number =>
+  value.search(pattern);
 
 describe("quote pricing quarantine server entry points", () => {
   it("blocks canonical delivery before reserving or sending email", () => {
@@ -50,17 +52,25 @@ describe("quote pricing quarantine server entry points", () => {
     const compatibilityGuard = compatibility.indexOf(
       "await checkQuotePricingQuarantine({",
     );
-    const compatibilityRpc = compatibility.indexOf(
-      'rpc.rpc(\n    "apply_approval_compatibility_bundle_atomic"',
+    const compatibilityRpc = patternIndex(
+      compatibility,
+      /rpc\.rpc\(\s*"apply_approval_compatibility_bundle_atomic"/,
     );
     expect(compatibilityReplay).toBeGreaterThan(-1);
     expect(compatibilityReplay).toBeLessThan(compatibilityGuard);
     expect(compatibilityGuard).toBeLessThan(compatibilityRpc);
-    expect(lineDecision.indexOf("await checkQuotePricingQuarantine({")).toBeLessThan(
-      lineDecision.indexOf('rpc.rpc("apply_portal_line_decision_atomic"'),
+    expect(
+      lineDecision.indexOf("await checkQuotePricingQuarantine({"),
+    ).toBeLessThan(
+      patternIndex(
+        lineDecision,
+        /rpc\.rpc\(\s*"apply_portal_line_decision_atomic"/,
+      ),
     );
-    expect(legacyApproval.indexOf("await checkQuotePricingQuarantine({")).toBeLessThan(
-      legacyApproval.indexOf('.from("work_orders")\n    .update'),
+    expect(
+      legacyApproval.indexOf("await checkQuotePricingQuarantine({"),
+    ).toBeLessThan(
+      patternIndex(legacyApproval, /\.from\("work_orders"\)\s*\.update/),
     );
   });
 
@@ -77,9 +87,9 @@ describe("quote pricing quarantine server entry points", () => {
     expect(workOrderClient).not.toContain(
       '.update({ status: "declined" })\n        .eq("id", quoteId)',
     );
-    expect(sendForApproval.indexOf("await checkQuotePricingQuarantine({")).toBeLessThan(
-      sendForApproval.indexOf('supabase.rpc("send_for_approval"'),
-    );
+    expect(
+      sendForApproval.indexOf("await checkQuotePricingQuarantine({"),
+    ).toBeLessThan(sendForApproval.indexOf('supabase.rpc("send_for_approval"'));
     expect(
       markQuoted.indexOf(
         "if (isQuoteCustomerPricingQuarantined(quoteLine.metadata))",
