@@ -151,6 +151,16 @@ insert into public.work_orders (
     'work_order',
     null,
     null
+  ),
+  (
+    '40300000-0000-4000-8000-000000000004',
+    '40200000-0000-4000-8000-000000000001',
+    '40800000-0000-4000-8000-000000000001',
+    'in_progress',
+    'repair',
+    'work_order',
+    null,
+    null
   );
 
 insert into public.work_order_quote_lines (
@@ -1652,7 +1662,7 @@ insert into public.work_order_quote_lines (
 ) values (
   '40400000-0000-4000-8000-000000000012',
   '40200000-0000-4000-8000-000000000001',
-  '40300000-0000-4000-8000-000000000003',
+  '40300000-0000-4000-8000-000000000004',
   'Null customer-price publish sentinel',
   'repair',
   'quoted',
@@ -1683,7 +1693,7 @@ begin
   begin
     perform public.assert_quote_parts_publishable(
       '40200000-0000-4000-8000-000000000001',
-      '40300000-0000-4000-8000-000000000003',
+      '40300000-0000-4000-8000-000000000004',
       array['40400000-0000-4000-8000-000000000012'::uuid]
     );
   exception when others then
