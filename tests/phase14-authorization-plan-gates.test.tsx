@@ -12,13 +12,6 @@ vi.mock("@/features/shared/lib/server/admin-access", () => ({
   requireShopScopedApiAccess: mocks.requireShopScopedApiAccess,
 }));
 
-vi.mock("@/features/shared/lib/server/owner-pin", () => ({
-  OWNER_PIN_PURPOSES: {
-    BILLING: "billing",
-    PRIVILEGED: "privileged",
-  },
-}));
-
 vi.mock("@/features/stripe/lib/stripe/client", () => ({
   createStripeClient: mocks.createStripeClient,
 }));
@@ -35,87 +28,145 @@ import { POST as startStripeOnboarding } from "../app/api/stripe/connect/onboard
 import OwnerBrandingLayout from "../app/dashboard/owner/branding/layout";
 import OwnerCustomerImportLayout from "../app/dashboard/owner/import-customers/layout";
 import OwnerPaymentsLayout from "../app/dashboard/owner/payments/layout";
-import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import {
+  getActorCapabilities,
+  type ActorCapabilities,
+  type CanonicalRole,
+} from "@/features/shared/lib/rbac";
+import { resolvePaymentAccessFailure } from "@/features/stripe/lib/client/paymentAccessFailure";
+
+const CAPABILITY_KEYS = [
+  "canManageUsers",
+  "canManageWorkforce",
+  "canAuthorizeQuotes",
+  "canEditPricing",
+  "canManageWorkOrders",
+  "canPerformAssignedWork",
+  "canAssignWork",
+  "canManageParts",
+  "canRunInspections",
+  "canViewShopWideData",
+  "canViewFinancials",
+  "canManageScheduling",
+  "canApproveTimeAway",
+  "canReviewWorkforceTime",
+  "canFinalizeWorkforceTime",
+  "canManageFleetApprovals",
+  "canViewFleetOnlyData",
+  "canManageBranding",
+  "canManageBilling",
+  "canOverrideOperationalState",
+  "canInvitePortalCustomers",
+  "canManagePortalQr",
+  "canInviteFleetMembers",
+] as const satisfies readonly (keyof ActorCapabilities)[];
+
+type CapabilityKey = (typeof CAPABILITY_KEYS)[number];
+
+const OWNER_ADMIN_CAPABILITIES = CAPABILITY_KEYS.filter(
+  (capability) =>
+    capability !== "canManageFleetApprovals" &&
+    capability !== "canViewFleetOnlyData",
+);
+
+const EXPECTED_ENABLED_CAPABILITIES = {
+  owner: OWNER_ADMIN_CAPABILITIES,
+  admin: OWNER_ADMIN_CAPABILITIES,
+  manager: [
+    "canManageWorkforce",
+    "canAuthorizeQuotes",
+    "canEditPricing",
+    "canManageWorkOrders",
+    "canPerformAssignedWork",
+    "canAssignWork",
+    "canManageParts",
+    "canRunInspections",
+    "canViewShopWideData",
+    "canViewFinancials",
+    "canManageScheduling",
+    "canApproveTimeAway",
+    "canReviewWorkforceTime",
+    "canInvitePortalCustomers",
+    "canManagePortalQr",
+    "canInviteFleetMembers",
+  ],
+  advisor: [
+    "canAuthorizeQuotes",
+    "canManageWorkOrders",
+    "canAssignWork",
+    "canRunInspections",
+    "canViewShopWideData",
+    "canManageScheduling",
+    "canInvitePortalCustomers",
+  ],
+  service: [
+    "canAuthorizeQuotes",
+    "canManageWorkOrders",
+    "canRunInspections",
+    "canInvitePortalCustomers",
+  ],
+  parts: ["canManageParts", "canViewShopWideData"],
+  mechanic: ["canPerformAssignedWork", "canRunInspections"],
+  lead_hand: [
+    "canManageWorkOrders",
+    "canPerformAssignedWork",
+    "canAssignWork",
+    "canManageParts",
+    "canRunInspections",
+    "canViewShopWideData",
+    "canManageScheduling",
+    "canInvitePortalCustomers",
+  ],
+  foreman: [
+    "canAuthorizeQuotes",
+    "canManageWorkOrders",
+    "canPerformAssignedWork",
+    "canAssignWork",
+    "canManageParts",
+    "canRunInspections",
+    "canViewShopWideData",
+    "canManageScheduling",
+    "canInvitePortalCustomers",
+  ],
+  fleet_manager: ["canManageFleetApprovals", "canViewFleetOnlyData"],
+  dispatcher: ["canManageFleetApprovals", "canViewFleetOnlyData"],
+  driver: ["canViewFleetOnlyData"],
+  customer: [],
+  unknown: [],
+} as const satisfies Record<CanonicalRole, readonly CapabilityKey[]>;
 
 describe("Phase 14 canonical role matrix", () => {
-  it.each([
-    [
-      "owner",
-      ["canManageUsers", "canManageBilling", "canManageWorkOrders"],
-      [],
-    ],
-    [
-      "admin",
-      ["canManageUsers", "canManageBilling", "canManageWorkOrders"],
-      [],
-    ],
-    [
-      "manager",
-      ["canManageWorkforce", "canViewFinancials", "canManageWorkOrders"],
-      ["canManageUsers", "canManageBilling"],
-    ],
-    [
-      "advisor",
-      ["canManageWorkOrders", "canAuthorizeQuotes", "canInvitePortalCustomers"],
-      [
-        "canManageUsers",
-        "canManageParts",
-        "canViewFinancials",
-        "canManageBilling",
-      ],
-    ],
-    [
-      "mechanic",
-      ["canPerformAssignedWork", "canRunInspections"],
-      ["canManageWorkOrders", "canViewShopWideData", "canViewFinancials"],
-    ],
-    [
-      "lead_hand",
-      ["canPerformAssignedWork", "canAssignWork", "canManageParts"],
-      ["canAuthorizeQuotes", "canManageUsers", "canManageBilling"],
-    ],
-    [
-      "parts",
-      ["canManageParts", "canViewShopWideData"],
-      ["canManageWorkOrders", "canManageWorkforce", "canManageBilling"],
-    ],
-    [
-      "fleet_manager",
-      ["canManageFleetApprovals", "canViewFleetOnlyData"],
-      ["canManageUsers", "canManageBilling", "canManageWorkOrders"],
-    ],
-    [
-      "dispatcher",
-      ["canManageFleetApprovals", "canViewFleetOnlyData"],
-      ["canManageUsers", "canManageBilling", "canManageWorkOrders"],
-    ],
-    [
-      "driver",
-      ["canViewFleetOnlyData"],
-      ["canManageFleetApprovals", "canManageUsers", "canManageWorkOrders"],
-    ],
-    [
-      "customer",
-      [],
-      ["canViewFleetOnlyData", "canManageUsers", "canManageWorkOrders"],
-    ],
-  ])(
-    "keeps %s inside its allowed capability boundary",
-    (role, allowed, denied) => {
+  it.each(
+    Object.entries(EXPECTED_ENABLED_CAPABILITIES) as Array<
+      [CanonicalRole, readonly CapabilityKey[]]
+    >,
+  )("locks every capability for %s", (role, enabledCapabilities) => {
       const capabilities = getActorCapabilities({ role });
+      const enabled = new Set<CapabilityKey>(enabledCapabilities);
 
-      for (const capability of allowed) {
-        expect(capabilities[capability as keyof typeof capabilities]).toBe(
-          true,
+      expect(capabilities.canonicalRole).toBe(role);
+      expect(capabilities.isKnownRole).toBe(role !== "unknown");
+      for (const capability of CAPABILITY_KEYS) {
+        expect(capabilities[capability], `${role}.${capability}`).toBe(
+          enabled.has(capability),
         );
       }
-      for (const capability of denied) {
-        expect(capabilities[capability as keyof typeof capabilities]).toBe(
-          false,
-        );
-      }
-    },
-  );
+    });
+
+  it("distinguishes PIN, expired-session, and revoked-role responses", () => {
+    expect(resolvePaymentAccessFailure(401, "Owner PIN required")).toBe(
+      "owner_pin",
+    );
+    expect(resolvePaymentAccessFailure(403, "Owner PIN purpose not allowed")).toBe(
+      "owner_pin",
+    );
+    expect(resolvePaymentAccessFailure(401, "Not authenticated")).toBe(
+      "authentication",
+    );
+    expect(resolvePaymentAccessFailure(403, "Forbidden")).toBe(
+      "authorization",
+    );
+  });
 });
 
 describe("Phase 14 owner governance boundaries", () => {
@@ -160,7 +211,7 @@ describe("Phase 14 owner governance boundaries", () => {
     },
   );
 
-  it("denies Stripe account creation before any provider or service-role call", async () => {
+  it("denies Stripe account creation before its provider and post-guard admin client", async () => {
     const denied = new Response(JSON.stringify({ error: "Forbidden" }), {
       status: 403,
       headers: { "content-type": "application/json" },
@@ -169,22 +220,12 @@ describe("Phase 14 owner governance boundaries", () => {
       ok: false,
       response: denied,
     });
-    const request = new Request(
-      "https://profixiq.test/api/stripe/connect/onboard",
-      {
-        method: "POST",
-      },
-    );
-
-    const response = await startStripeOnboarding(request);
+    const response = await startStripeOnboarding();
 
     expect(response).toBe(denied);
     expect(mocks.requireShopScopedApiAccess).toHaveBeenCalledWith({
       requiredCapability: "canManageBilling",
       allowRoles: ["owner", "admin"],
-      requireOwnerPin: true,
-      ownerPinRequest: request,
-      ownerPinAllowedPurposes: ["billing", "privileged"],
     });
     expect(mocks.createStripeClient).not.toHaveBeenCalled();
     expect(mocks.createAdminSupabase).not.toHaveBeenCalled();

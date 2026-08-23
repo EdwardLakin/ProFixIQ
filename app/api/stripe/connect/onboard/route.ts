@@ -8,7 +8,6 @@ import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import type { Database } from "@shared/types/types/supabase";
 import { saveShopPaymentSettings } from "@/features/stripe/lib/server/shop-payment-settings";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
-import { OWNER_PIN_PURPOSES } from "@/features/shared/lib/server/owner-pin";
 
 type DB = Database;
 
@@ -60,17 +59,11 @@ function isDirectChargeAccount(account: Stripe.Account): boolean {
   );
 }
 
-export async function POST(request: Request) {
+export async function POST() {
   try {
     const access = await requireShopScopedApiAccess({
       requiredCapability: "canManageBilling",
       allowRoles: ["owner", "admin"],
-      requireOwnerPin: true,
-      ownerPinRequest: request,
-      ownerPinAllowedPurposes: [
-        OWNER_PIN_PURPOSES.BILLING,
-        OWNER_PIN_PURPOSES.PRIVILEGED,
-      ],
     });
     if (!access.ok) return access.response;
 
