@@ -13,6 +13,11 @@ describe("Phase 15 Fleet to Shop handoff contract", () => {
     expect(migration).toContain(
       "trg_enforce_fleet_service_request_vehicle_ownership",
     );
+    expect(migration).toContain("resolve_fleet_id_from_vehicle");
+    expect(migration).toContain("PFX_FLEET_UNIT_ENROLLMENT_NOT_FOUND");
+    expect(migration).toContain(
+      "revoke all on function public.resolve_fleet_id_from_vehicle(uuid)",
+    );
     expect(migration).toContain(
       "trg_enforce_work_order_customer_vehicle_consistency",
     );

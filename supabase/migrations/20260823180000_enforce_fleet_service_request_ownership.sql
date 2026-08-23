@@ -1,5 +1,41 @@
 begin;
 
+-- The canonical Fleet fill trigger was imported into migration history without
+-- the resolver it invokes. Production already carries this helper, so align
+-- clean replay with the live contract before exercising any Fleet insert.
+create or replace function public.resolve_fleet_id_from_vehicle(
+  p_vehicle_id uuid
+)
+returns uuid
+language plpgsql
+stable
+security invoker
+set search_path = ''
+as $function$
+declare
+  v_fleet_id uuid;
+begin
+  select fv.fleet_id
+  into v_fleet_id
+  from public.fleet_vehicles fv
+  where fv.vehicle_id = p_vehicle_id
+  limit 1;
+
+  if v_fleet_id is null then
+    raise exception using
+      errcode = '23514',
+      message = 'PFX_FLEET_UNIT_ENROLLMENT_NOT_FOUND';
+  end if;
+
+  return v_fleet_id;
+end;
+$function$;
+
+revoke all on function public.resolve_fleet_id_from_vehicle(uuid)
+  from public, anon;
+grant execute on function public.resolve_fleet_id_from_vehicle(uuid)
+  to authenticated, service_role;
+
 -- Fleet service requests are billed to the Fleet customer account. Reject
 -- stale or legacy enrollments whose vehicle is owned by another customer
 -- before any request can enter the Shop handoff queue.
@@ -287,6 +323,20 @@ grant execute on function public.convert_fleet_service_request_to_work_order_ato
 
 do $fleet_request_ownership_postcheck$
 begin
+  if to_regprocedure(
+    'public.resolve_fleet_id_from_vehicle(uuid)'
+  ) is null then
+    raise exception 'Fleet vehicle resolver is missing';
+  end if;
+
+  if has_function_privilege(
+    'anon',
+    'public.resolve_fleet_id_from_vehicle(uuid)',
+    'EXECUTE'
+  ) then
+    raise exception 'Anonymous Fleet vehicle resolver access is unsafe';
+  end if;
+
   if to_regprocedure(
     'private.enforce_fleet_service_request_vehicle_ownership()'
   ) is null then
