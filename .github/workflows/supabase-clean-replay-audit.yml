@@ -9,6 +9,7 @@ on:
       - "supabase/migrations/**"
       - "tests/parts/*.runtime.sql"
       - "tests/parts/*.runtime.sh"
+      - "tests/fleet/*.runtime.sql"
       - "tests/security/*.runtime.sql"
       - "tests/customers/*.runtime.sql"
       - "db/sql/schema.sql"
@@ -114,6 +115,20 @@ jobs:
           set -euo pipefail
           supabase db reset --local --no-seed --debug \
             2>&1 | tee supabase-db-reset.log
+
+      - name: Execute Fleet service-request ownership integration
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+            -f tests/fleet/fleet-service-request-ownership.runtime.sql \
+            2>&1 | tee fleet-service-request-ownership-runtime.log
 
       - name: Execute parts lifecycle runtime integration
         shell: bash
@@ -514,6 +529,7 @@ jobs:
             parts-use-handoff-runtime.log
             parts-request-purchase-order-runtime.log
             parts-request-purchase-order-locking-runtime.log
+            fleet-service-request-ownership-runtime.log
             quote-review-cost-and-sell-runtime.log
             p0-001-relation-boundaries-runtime.log
             p0-002-rpc-privileges-runtime.log

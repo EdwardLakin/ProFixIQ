@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
+import { mapFleetServiceRequestError } from "@/features/fleet/lib/fleetServiceRequestError";
 
 const RequestLineSchema = z.object({
   lineKind: z.enum([
@@ -79,12 +80,13 @@ export async function POST(req: NextRequest) {
 
   if (error || !data) {
     console.error("[fleet/request-builder/submit] rpc error", error);
-    const replayConflict = /operation key.*different.*payload/i.test(
-      error?.message ?? "",
+    const failure = mapFleetServiceRequestError(
+      error,
+      "Failed to create fleet service request.",
     );
     return NextResponse.json(
-      { error: error?.message ?? "Failed to create fleet service request." },
-      { status: replayConflict ? 409 : 500 },
+      { error: failure.error },
+      { status: failure.status },
     );
   }
 

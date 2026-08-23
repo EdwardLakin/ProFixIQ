@@ -1,10 +1,28 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { convertFleetServiceRequest } from "@/features/fleet/lib/convertFleetServiceRequest";
+
+const routeMocks = vi.hoisted(() => ({
+  requireShopScopedApiAccess: vi.fn(),
+  rpc: vi.fn(),
+}));
+
+vi.mock("server-only", () => ({}));
+vi.mock("@/features/shared/lib/server/admin-access", () => ({
+  requireShopScopedApiAccess: routeMocks.requireShopScopedApiAccess,
+}));
 
 const componentPath = "features/fleet/components/ShopFleetRequestInbox.tsx";
 
 describe("fleet service-request conversion action", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    routeMocks.requireShopScopedApiAccess.mockResolvedValue({
+      ok: true,
+      supabase: { rpc: routeMocks.rpc },
+    });
+  });
+
   it("keeps conversion in the guarded Shop inbox and out of Fleet", () => {
     const source = readFileSync(componentPath, "utf8");
     const shopPage = readFileSync(
@@ -63,5 +81,67 @@ describe("fleet service-request conversion action", () => {
     await expect(
       convertFleetServiceRequest("service-request-1", fetchMock as never),
     ).rejects.toThrow("Request is not convertible");
+  });
+
+  it("returns a safe conflict for a legacy ownership mismatch", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    routeMocks.rpc.mockResolvedValue({
+      data: null,
+      error: {
+        message:
+          "work_order 11111111-1111-4111-8111-111111111111 customer_id 22222222-2222-4222-8222-222222222222 does not match vehicle 33333333-3333-4333-8333-333333333333 customer_id 44444444-4444-4444-8444-444444444444",
+      },
+    });
+    const { POST } = await import(
+      "../app/api/fleet/service-requests/convert-to-work-order/route"
+    );
+
+    const response = await POST(
+      new Request(
+        "https://profixiq.test/api/fleet/service-requests/convert-to-work-order",
+        {
+          method: "POST",
+          body: JSON.stringify({ serviceRequestId: "request-1" }),
+        },
+      ) as never,
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error:
+        "This unit's billing ownership must be reviewed before service can continue.",
+    });
+    consoleError.mockRestore();
+  });
+
+  it("does not expose unexpected database failures", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    routeMocks.rpc.mockResolvedValue({
+      data: null,
+      error: { message: "relation private.secret_table does not exist" },
+    });
+    const { POST } = await import(
+      "../app/api/fleet/service-requests/convert-to-work-order/route"
+    );
+
+    const response = await POST(
+      new Request(
+        "https://profixiq.test/api/fleet/service-requests/convert-to-work-order",
+        {
+          method: "POST",
+          body: JSON.stringify({ serviceRequestId: "request-1" }),
+        },
+      ) as never,
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({
+      error: "Failed to create a structured work order from this request.",
+    });
+    consoleError.mockRestore();
   });
 });
