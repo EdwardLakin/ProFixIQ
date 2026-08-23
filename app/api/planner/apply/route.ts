@@ -3,7 +3,13 @@ import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server
 import { z } from "zod";
 
 import type { PlannerProposal } from "@/features/agent/lib/plannerProposal";
+import { createToolContext } from "@/features/agent/lib/toolTypes";
 import { runRescheduleBooking, runSetLineApproval, runAddWorkOrderLine } from "@/features/agent/lib/toolRegistry";
+import { resolveShopAssistantError } from "@/features/shop-assistant/server/requireShopAssistantActor";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
 
 const ApplyBodySchema = z.object({
   runId: z.string().uuid(),
@@ -20,12 +26,18 @@ function asProposal(value: unknown): PlannerProposal | null {
   return candidate.proposal as PlannerProposal;
 }
 
-async function resolveShopId(
+async function resolvePlannerScope(
   supabase: ReturnType<typeof createServerSupabaseRoute>,
   userId: string,
-): Promise<string | null> {
-  const { data } = await supabase.from("profiles").select("shop_id").eq("id", userId).maybeSingle();
-  return data?.shop_id ?? null;
+): Promise<{ profileId: string; shopId: string; role: string | null } | null> {
+  const { data } = await supabase
+    .from("profiles")
+    .select("id, shop_id, role")
+    .eq("id", userId)
+    .maybeSingle();
+  return data?.shop_id
+    ? { profileId: data.id, shopId: data.shop_id, role: data.role }
+    : null;
 }
 
 export async function POST(req: Request) {
@@ -36,8 +48,15 @@ export async function POST(req: Request) {
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const shopId = await resolveShopId(supabase, user.id);
-  if (!shopId) return NextResponse.json({ error: "No shop found" }, { status: 400 });
+  const plannerScope = await resolvePlannerScope(supabase, user.id);
+  if (!plannerScope) return NextResponse.json({ error: "No shop found" }, { status: 400 });
+  const { shopId } = plannerScope;
+  const toolContext = createToolContext({
+    shopId,
+    userId: user.id,
+    profileId: plannerScope.profileId,
+    role: plannerScope.role,
+  });
 
   const raw = await req.json().catch(() => null);
   const parsed = ApplyBodySchema.safeParse(raw);
@@ -103,7 +122,7 @@ export async function POST(req: Request) {
       const lineId = String(payload.data.lineId ?? "");
       const approvalAction = String(payload.data.approvalAction ?? "approve");
       const state = approvalAction === "reject" ? "declined" : "approved";
-      await runSetLineApproval({ lineId, state }, { shopId, userId: user.id });
+      await runSetLineApproval({ lineId, state }, toolContext);
       changedRecords.push({
         type: "work_order_line",
         id: lineId,
@@ -114,7 +133,10 @@ export async function POST(req: Request) {
       const bookingId = String(payload.data.bookingId ?? "");
       const startsAt = String(payload.data.requestedStart ?? "");
       const endsAt = payload.data.requestedEnd ? String(payload.data.requestedEnd) : undefined;
-      await runRescheduleBooking({ bookingId, startsAt, endsAt }, { shopId, userId: user.id });
+      await runRescheduleBooking(
+        { bookingId, startsAt, endsAt },
+        toolContext,
+      );
       changedRecords.push({
         type: "booking",
         id: bookingId,
@@ -134,7 +156,7 @@ export async function POST(req: Request) {
           jobType,
           laborHours,
         },
-        { shopId, userId: user.id },
+        toolContext,
       );
       changedRecords.push({
         type: "work_order_line",
@@ -147,7 +169,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unsupported execution action." }, { status: 400 });
     }
   } catch (error) {
-    failures.push(error instanceof Error ? error.message : String(error));
+    failures.push(
+      resolveShopAssistantError(error, "legacy-ai-planner-apply").message,
+    );
   }
 
   const status = failures.length > 0 ? (changedRecords.length > 0 ? "partial" : "failed") : "success";

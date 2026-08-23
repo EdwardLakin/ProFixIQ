@@ -4,6 +4,7 @@ import { runSimplePlan } from "../lib/plannerSimple";
 import { runOpenAIPlanner } from "../lib/plannerOpenAI";
 import { runFleetPlanner } from "../lib/plannerFleet";
 import { runApprovalPlanner } from "../lib/plannerApprovals";
+import { createToolContext, type ToolContext } from "../lib/toolTypes";
 
 export type PlannerName =
   | "simple"
@@ -17,11 +18,6 @@ export type StartAgentOptions = {
   context: Record<string, unknown>;
   idempotencyKey?: string | null;
   planner?: PlannerName;
-};
-
-type PlannerRuntimeContext = {
-  shopId: string;
-  userId: string;
 };
 
 type AgentEvent = {
@@ -53,7 +49,8 @@ export async function startAgent(opts: StartAgentOptions) {
 
   const effectivePlanner: PlannerName = planner ?? defaultPlanner;
 
-  const { supabase, user, shopId } = await getUserAndShopId();
+  const { supabase, user, shopId, profileId, role } =
+    await getUserAndShopId();
 
   const { data: ok, error: canStartError } = await supabase.rpc("agent_can_start");
   if (canStartError) {
@@ -107,10 +104,12 @@ export async function startAgent(opts: StartAgentOptions) {
 
   let step = 1;
 
-  const runtimeContext: PlannerRuntimeContext = {
+  const runtimeContext: ToolContext = createToolContext({
     shopId,
     userId: user.id,
-  };
+    profileId,
+    role,
+  });
 
   const onEvent = async (event: AgentEvent) => {
     await appendEvent(run.id, step++, event.kind, {

@@ -1,6 +1,6 @@
 // features/agent/server/getRoleDailySummary.ts
 
-import type { ToolContext } from "../lib/toolTypes";
+import { createToolContext, type ToolContext } from "../lib/toolTypes";
 import { canonicalizeRole } from "@/features/shared/lib/rbac";
 import { syncAssistantNotifications } from "./syncAssistantNotifications";
 import { runGetBookings } from "../tools/getBookings";
@@ -493,10 +493,11 @@ export async function getRoleDailySummary(params: {
   role: string | null;
 }): Promise<DailySummaryResult> {
   const role = normalizeRole(params.role);
-  const ctx: ToolContext = {
+  const ctx: ToolContext = createToolContext({
     shopId: params.shopId,
     userId: params.userId,
-  };
+    role,
+  });
 
   const persistedNotifications = await syncAssistantNotifications({
     shopId: params.shopId,

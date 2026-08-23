@@ -1,4 +1,9 @@
-import type { ToolContext } from "../../lib/toolTypes";
+import {
+  createToolContext,
+  withAiOperationalTimeout,
+  type ToolContext,
+} from "../../lib/toolTypes";
+import { groundAssistantAnswer } from "../../lib/operationalGrounding";
 import { runGetBookings } from "../../tools/getBookings";
 import { runGetCustomerVisitHistory } from "../../tools/getCustomerVisitHistory";
 import { runGetShopCurrentStatus } from "../../tools/getShopCurrentStatus";
@@ -6,7 +11,7 @@ import { runGetStalledWorkOrders } from "../../tools/getStalledWorkOrders";
 import { runGetTechCurrentWork } from "../../tools/getTechCurrentWork";
 import { runGetVehicleHistory } from "../../tools/getVehicleHistory";
 import { runGetWorkOrderStatusSummary } from "../../tools/getWorkOrderStatusSummary";
-import { toolListPendingApprovals } from "../../tools/listPendingApprovals";
+import { runListPendingApprovals } from "../../tools/listPendingApprovals";
 import { getServerSupabase } from "../../server/supabase";
 import {
   buildInspectionTemplateEfficiencyRecommendations,
@@ -1409,13 +1414,14 @@ async function answerAuthoringDomain(args: {
   });
 }
 
-export async function answerAssistant({
+async function answerAssistantInternal({
   shopId,
   userId,
   profileId,
   role,
+  requestedAt,
   request: rawRequest,
-}: AskParams): Promise<AssistantAnswer> {
+}: AskParams & { requestedAt: string }): Promise<AssistantAnswer> {
   const supabase = getServerSupabase();
   const actor = getActorCapabilities({ role });
   const question = normalizeQuestion(rawRequest.question);
@@ -1479,10 +1485,13 @@ export async function answerAssistant({
     }
   }
 
-  const ctx: ToolContext = {
+  const ctx: ToolContext = createToolContext({
     shopId,
     userId,
-  };
+    profileId,
+    role: actor.canonicalRole,
+    requestedAt,
+  });
 
   const nameCandidate = extractNameLikeValue(question);
   const plateOrVin = extractPlateOrVin(question);
@@ -1501,7 +1510,7 @@ export async function answerAssistant({
         "pending approval records",
       );
     }
-    const result = await toolListPendingApprovals.run({ limit: 20 }, ctx);
+    const result = await runListPendingApprovals({ limit: 20 }, ctx);
 
     if (result.items.length === 0) {
       return buildAnswer({
@@ -2106,5 +2115,20 @@ export async function answerAssistant({
       },
     ],
     resolvedContext,
+  });
+}
+
+export async function answerAssistant(
+  params: AskParams,
+): Promise<AssistantAnswer> {
+  const requestedAt = new Date().toISOString();
+  const answer = await withAiOperationalTimeout(
+    answerAssistantInternal({ ...params, requestedAt }),
+  );
+  return groundAssistantAnswer({
+    answer,
+    shopId: params.shopId,
+    role: getActorCapabilities({ role: params.role }).canonicalRole,
+    requestedAt,
   });
 }

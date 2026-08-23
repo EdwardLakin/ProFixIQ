@@ -2,7 +2,12 @@ import { NextResponse } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 
 import { getRoleDailySummary } from "@/features/agent/server/getRoleDailySummary";
+import { createOperationalGrounding } from "@/features/agent/lib/operationalGrounding";
+import { resolveShopAssistantError } from "@/features/shop-assistant/server/requireShopAssistantActor";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
 
 async function requireUser(
   supabase: ReturnType<typeof createServerSupabaseRoute>,
@@ -91,16 +96,30 @@ export async function GET() {
       actionItems: result.actionItems,
       links: result.links,
       notifications: result.notifications,
+      grounding: createOperationalGrounding({
+        shopId: profile.shopId,
+        role: result.role,
+        recordCount: new Set([
+          ...result.links.map((link) => link.href),
+          ...result.notifications.map(
+            (notification) =>
+              notification.entityId ??
+              notification.href ??
+              `${notification.code}:${notification.title}`,
+          ),
+        ]).size,
+      }),
     });
   } catch (error: unknown) {
+    const resolved = resolveShopAssistantError(
+      error,
+      "legacy-ai-daily-summary",
+    );
     return NextResponse.json(
       {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to build daily summary",
+        error: resolved.message,
       },
-      { status: 500 },
+      { status: resolved.status },
     );
   }
 }

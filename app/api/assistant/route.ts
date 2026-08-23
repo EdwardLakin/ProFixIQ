@@ -15,6 +15,10 @@ import type {
   AssistantVehicleContext,
 } from "@/features/agent/assistant/types";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
+
 export async function POST(req: Request) {
   const supabase = createServerSupabaseRoute();
   let actor: Awaited<ReturnType<typeof requireShopAssistantActor>>;
@@ -147,6 +151,7 @@ export async function POST(req: Request) {
         })),
       ],
       resolvedContext: answer.resolvedContext,
+      grounding: answer.grounding,
     });
   } catch (error: unknown) {
     const resolved = resolveShopAssistantError(error, "legacy-assistant");

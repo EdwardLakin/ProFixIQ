@@ -1,6 +1,6 @@
 // features/agent/lib/toolRegistry.ts
 import { z } from "zod";
-import type { ToolContext } from "./toolTypes";
+import { assertToolContext, type ToolContext } from "./toolTypes";
 
 import {
   toolCreateWorkOrder,
@@ -207,6 +207,7 @@ export async function validateAndRun(
   input: unknown,
   ctx: ToolContext,
 ): Promise<unknown> {
+  assertToolContext(ctx);
   const tool = TOOL_MAP[name];
   const parsed = (tool.inputSchema as z.ZodType<unknown>).parse(input);
   const out = await tool.run(parsed as never, ctx);

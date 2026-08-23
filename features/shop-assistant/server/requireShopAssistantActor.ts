@@ -142,6 +142,13 @@ export function resolveShopAssistantError(
       retryable: false,
     };
   }
+  if (error instanceof Error && error.name === "AiOperationalTimeoutError") {
+    return {
+      status: 503,
+      message: "Current shop data took too long to load. Please try again.",
+      retryable: true,
+    };
+  }
 
   const safe = toSafeDatabaseError(
     error instanceof Error ? error : { message: String(error ?? "") },
