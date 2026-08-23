@@ -24597,7 +24597,7 @@ export type Database = {
           technician_notes: string | null
           template_id: string | null
           tools: string | null
-          updated_at: string | null
+          updated_at: string
           urgency: string | null
           user_id: string | null
           vehicle_id: string | null
@@ -24661,7 +24661,7 @@ export type Database = {
           technician_notes?: string | null
           template_id?: string | null
           tools?: string | null
-          updated_at?: string | null
+          updated_at?: string
           urgency?: string | null
           user_id?: string | null
           vehicle_id?: string | null
@@ -24725,7 +24725,7 @@ export type Database = {
           technician_notes?: string | null
           template_id?: string | null
           tools?: string | null
-          updated_at?: string | null
+          updated_at?: string
           urgency?: string | null
           user_id?: string | null
           vehicle_id?: string | null
