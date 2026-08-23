@@ -322,8 +322,11 @@ describe("advisor estimate workflow", () => {
     expect(quoteSendRoute).toMatch(
       /const pdfUrl\s*=\s*wo\.estimate_number\s*\?\s*null\s*:\s*\(body\?\.pdfUrl\s*\?\?\s*null\)/,
     );
-    expect(quoteSendRoute).toMatch(
-      /const shouldSkipAsDuplicate\s*=\s*!wo\.estimate_number/,
+    expect(quoteSendRoute).toContain(
+      "const shouldSkipAsDuplicate = legacyReservationAccepted",
+    );
+    expect(quoteSendRoute).toContain(
+      '"transition_legacy_quote_send_atomic"',
     );
     expect(quoteSendRoute).toContain(
       "shopSuppliesTaxableSubtotal(shopSupplies)",

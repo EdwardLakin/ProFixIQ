@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@shared/types/types/supabase";
@@ -112,6 +113,63 @@ function asNumber(v: unknown): number | null {
     return Number.isFinite(n) ? n : null;
   }
   return null;
+}
+
+function legacyQuoteSendKey(input: {
+  suppliedKey: string | null;
+  workOrderId: string;
+  allowResend: boolean;
+  expectedLines: Array<{ id: string; updated_at: string | null }>;
+}): string {
+  const supplied = input.suppliedKey?.trim() ?? "";
+  if (supplied && supplied.length <= 200) return supplied;
+  const fingerprint = createHash("sha256")
+    .update(
+      JSON.stringify({
+        workOrderId: input.workOrderId,
+        allowResend: input.allowResend,
+        lines: input.expectedLines,
+      }),
+    )
+    .digest("hex");
+  return `legacy-quote-send:${fingerprint}`;
+}
+
+async function transitionLegacyQuoteSend(input: {
+  action: "reserve" | "accept" | "finalize" | "release";
+  shopId: string;
+  workOrderId: string;
+  operationKey: string;
+  actorProfileId: string;
+  actorUserId: string;
+  quoteLineIds: string[];
+  expectedLines: Array<{ id: string; updated_at: string | null }>;
+  sentAt: string | null;
+  quoteUrl: string | null;
+  allowResend: boolean;
+  failure: string | null;
+}) {
+  const { data, error } = await supabaseAdmin.rpc(
+    "transition_legacy_quote_send_atomic" as never,
+    {
+      p_action: input.action,
+      p_shop_id: input.shopId,
+      p_work_order_id: input.workOrderId,
+      p_operation_key: input.operationKey,
+      p_actor_profile_id: input.actorProfileId,
+      p_actor_user_id: input.actorUserId,
+      p_quote_line_ids: input.quoteLineIds,
+      p_expected_lines: input.expectedLines,
+      p_sent_at: input.sentAt,
+      p_quote_url: input.quoteUrl,
+      p_allow_resend: input.allowResend,
+      p_failure: input.failure,
+    } as never,
+  );
+  return {
+    result: jsonRecord((data ?? {}) as Json),
+    error,
+  };
 }
 
 function buildCustomerName(
@@ -876,6 +934,36 @@ export async function POST(req: Request) {
       );
     }
 
+    const { error: partsContractError } = await supabaseAdmin.rpc(
+      "assert_quote_parts_publishable",
+      {
+        p_shop_id: wo.shop_id,
+        p_work_order_id: workOrderId,
+        p_quote_line_ids: pricingQuoteLineIds,
+      },
+    );
+    if (partsContractError) {
+      const contractMessage = String(partsContractError.message ?? "");
+      const contractCode = contractMessage.includes("QUOTE_PARTS_INCOMPLETE")
+        ? "QUOTE_PARTS_INCOMPLETE"
+        : contractMessage.includes("QUOTE_PARTS_PRICING_UNAVAILABLE")
+          ? "QUOTE_PARTS_PRICING_UNAVAILABLE"
+          : "QUOTE_PARTS_CONTRACT_MISMATCH";
+      return NextResponse.json(
+        {
+          ok: false,
+          trace,
+          code: contractCode,
+          error: contractCode === "QUOTE_PARTS_INCOMPLETE"
+            ? "Every required part needs a quantity and customer price before this quote can be sent."
+            : contractCode === "QUOTE_PARTS_PRICING_UNAVAILABLE"
+              ? "Customer-visible parts pricing is unavailable. Review and reprice the affected parts before sending."
+              : "Parts pricing changed while this quote was being prepared. Refresh the quote and review its parts before sending.",
+        },
+        { status: 409 },
+      );
+    }
+
     const {
       data: resolvedSuppliesOverrides,
       error: resolvedSuppliesOverrideError,
@@ -908,7 +996,7 @@ export async function POST(req: Request) {
     const { data: quoteLineRowsRaw, error: quoteLinesErr } = await supabaseAdmin
       .from("work_order_quote_lines")
       .select(
-        "id, description, ai_complaint, notes, labor_hours, est_labor_hours, labor_total, parts_total, subtotal, tax_total, grand_total, status, stage, sent_to_customer_at, approved_at, declined_at, work_order_line_id, metadata",
+        "id, description, ai_complaint, notes, labor_hours, est_labor_hours, labor_total, parts_total, subtotal, tax_total, grand_total, status, stage, sent_to_customer_at, approved_at, declined_at, work_order_line_id, metadata, updated_at",
       )
       .eq("shop_id", wo.shop_id)
       .eq("work_order_id", workOrderId)
@@ -947,6 +1035,7 @@ export async function POST(req: Request) {
         | "declined_at"
         | "work_order_line_id"
         | "metadata"
+        | "updated_at"
       >
     >;
 
@@ -1057,6 +1146,79 @@ export async function POST(req: Request) {
       : computedWithSupplies;
     sendableQuoteLineIds = sendableQuoteLines.map((line) => line.id);
 
+    const legacyExpectedLines = sendableQuoteLines.map((line) => ({
+      id: line.id,
+      updated_at: line.updated_at,
+    }));
+    let legacySendOperationKey: string | null = null;
+    let legacySendReservationId: string | null = null;
+    let legacyReservationAccepted = false;
+
+    if (!wo.estimate_number) {
+      legacySendOperationKey = legacyQuoteSendKey({
+        suppliedKey: req.headers.get("Idempotency-Key"),
+        workOrderId,
+        allowResend: requestAllowsResend,
+        expectedLines: legacyExpectedLines,
+      });
+      const legacyReservation = await transitionLegacyQuoteSend({
+        action: "reserve",
+        shopId: wo.shop_id,
+        workOrderId,
+        operationKey: legacySendOperationKey,
+        actorProfileId: access.profile.id,
+        actorUserId: access.authUserId,
+        quoteLineIds: sendableQuoteLineIds,
+        expectedLines: legacyExpectedLines,
+        sentAt: null,
+        quoteUrl: null,
+        allowResend: requestAllowsResend,
+        failure: null,
+      });
+      if (legacyReservation.error) {
+        const isConflict = ["23505", "40001", "55000"].includes(
+          legacyReservation.error.code ?? "",
+        );
+        return NextResponse.json(
+          {
+            ok: false,
+            trace,
+            error:
+              "Quote pricing changed before delivery could be reserved. Refresh and review the quote before sending.",
+          },
+          { status: isConflict ? 409 : 500 },
+        );
+      }
+
+      legacySendReservationId = safeStr(legacyReservation.result.eventId);
+      const legacyDeliveryState = safeStr(
+        legacyReservation.result.deliveryState,
+      );
+      if (legacyDeliveryState === "sent") {
+        return NextResponse.json({ ok: true, trace, deduped: true });
+      }
+      legacyReservationAccepted = legacyDeliveryState === "accepted";
+      if (
+        legacyReservation.result.replay === true &&
+        legacyDeliveryState === "sending"
+      ) {
+        return NextResponse.json(
+          { ok: true, trace, deduped: true, inProgress: true },
+          { status: 202 },
+        );
+      }
+      if (!isUuid(legacySendReservationId)) {
+        return NextResponse.json(
+          {
+            ok: false,
+            trace,
+            error: "Quote delivery reservation returned no event id.",
+          },
+          { status: 500 },
+        );
+      }
+    }
+
     let estimateSendReservationId: string | null = null;
     if (wo.estimate_number && estimateSendKey) {
       const { data: reservationData, error: reserveError } =
@@ -1162,16 +1324,13 @@ export async function POST(req: Request) {
     const portalQuoteUrl = portalQuoteUrlFor(workOrderId);
 
     const quoteUrlForSend = portalQuoteUrl ?? pdfUrl ?? wo.quote_url ?? "";
-    // Estimate delivery deduplication is owned by the durable revision event.
-    // A pre-existing portal URL proves only that a link was generated, not that
-    // the provider accepted an email for this revision.
-    const shouldSkipAsDuplicate =
-      !wo.estimate_number &&
-      Boolean(wo.quote_url) &&
-      wo.quote_url === quoteUrlForSend &&
-      !requestAllowsResend;
+    // A portal URL proves only that a link was generated. Delivery
+    // deduplication is owned by the durable reservation ledger for both modern
+    // estimates and compatibility quote sends.
+    const shouldSkipAsDuplicate = legacyReservationAccepted;
 
     let acceptedEstimateSentAt: string | null = null;
+    let acceptedLegacySentAt: string | null = null;
     try {
       if (!shouldSkipAsDuplicate) {
         const delivery = await sendQuoteReadyEmail({
@@ -1185,12 +1344,15 @@ export async function POST(req: Request) {
           brandPrimaryColor: brand?.colors.primary ?? null,
           brandSecondaryColor: brand?.colors.secondary ?? null,
           createdBy: access.profile.id,
-          idempotencyKey: estimateSendKey,
+          idempotencyKey: estimateSendKey ?? legacySendOperationKey,
           workOrderId,
           estimateRevision: wo.estimate_number ? wo.estimate_revision : null,
         });
 
-        if (wo.estimate_number && delivery.status === "suppressed") {
+        if (
+          (wo.estimate_number || legacySendReservationId) &&
+          delivery.status === "suppressed"
+        ) {
           throw new QuoteDeliveryBlockedError(
             `The customer email is suppressed and cannot receive this estimate: ${delivery.reason}`,
           );
@@ -1229,6 +1391,41 @@ export async function POST(req: Request) {
             );
           }
         }
+
+        if (
+          !wo.estimate_number &&
+          legacySendReservationId &&
+          legacySendOperationKey &&
+          delivery.status === "accepted"
+        ) {
+          acceptedLegacySentAt = delivery.acceptedAt;
+          const acceptedEvidence = await transitionLegacyQuoteSend({
+            action: "accept",
+            shopId: wo.shop_id,
+            workOrderId,
+            operationKey: legacySendOperationKey,
+            actorProfileId: access.profile.id,
+            actorUserId: access.authUserId,
+            quoteLineIds: sendableQuoteLineIds,
+            expectedLines: legacyExpectedLines,
+            sentAt: delivery.acceptedAt,
+            quoteUrl: quoteUrlForSend,
+            allowResend: requestAllowsResend,
+            failure: null,
+          });
+          if (acceptedEvidence.error) {
+            // The canonical email log is an independent recovery source for
+            // finalization and later retries.
+            console.error(
+              "[quotes/send] failed to persist accepted legacy quote evidence",
+              {
+                trace,
+                reservationId: legacySendReservationId,
+                error: acceptedEvidence.error.message,
+              },
+            );
+          }
+        }
       }
     } catch (sendError) {
       if (estimateSendReservationId) {
@@ -1262,11 +1459,44 @@ export async function POST(req: Request) {
           );
         }
       }
+      if (legacySendReservationId && legacySendOperationKey) {
+        const message =
+          sendError instanceof Error
+            ? sendError.message
+            : "Unknown quote delivery error";
+        const released = await transitionLegacyQuoteSend({
+          action: "release",
+          shopId: wo.shop_id,
+          workOrderId,
+          operationKey: legacySendOperationKey,
+          actorProfileId: access.profile.id,
+          actorUserId: access.authUserId,
+          quoteLineIds: sendableQuoteLineIds,
+          expectedLines: legacyExpectedLines,
+          sentAt: null,
+          quoteUrl: quoteUrlForSend,
+          allowResend: requestAllowsResend,
+          failure: message,
+        });
+        if (released.error) {
+          console.error(
+            "[quotes/send] failed to release legacy quote reservation",
+            {
+              trace,
+              reservationId: legacySendReservationId,
+              error: released.error.message,
+            },
+          );
+        }
+      }
       throw sendError;
     }
 
     const newQuoteUrl = portalQuoteUrl ?? pdfUrl ?? wo.quote_url ?? null;
-    const sentAt = acceptedEstimateSentAt ?? new Date().toISOString();
+    const sentAt =
+      acceptedEstimateSentAt ??
+      acceptedLegacySentAt ??
+      new Date().toISOString();
 
     if (wo.estimate_number && estimateSendReservationId) {
       const { error: finalizeError } = await supabaseAdmin.rpc(
@@ -1303,8 +1533,47 @@ export async function POST(req: Request) {
       }
     }
 
+    if (
+      !wo.estimate_number &&
+      legacySendReservationId &&
+      legacySendOperationKey
+    ) {
+      const finalized = await transitionLegacyQuoteSend({
+        action: "finalize",
+        shopId: wo.shop_id,
+        workOrderId,
+        operationKey: legacySendOperationKey,
+        actorProfileId: access.profile.id,
+        actorUserId: access.authUserId,
+        quoteLineIds: sendableQuoteLineIds,
+        expectedLines: legacyExpectedLines,
+        sentAt,
+        quoteUrl: newQuoteUrl,
+        allowResend: requestAllowsResend,
+        failure: null,
+      });
+      if (finalized.error) {
+        return NextResponse.json(
+          {
+            ok: true,
+            trace,
+            deduped: shouldSkipAsDuplicate,
+            inProgress: true,
+            sentWithWarnings: true,
+            warnings: [
+              {
+                step: "legacy_quote_send_finalize",
+                error: "Delivery was accepted and is awaiting local finalization.",
+              },
+            ],
+          },
+          { status: 202 },
+        );
+      }
+    }
+
     const postSendWarnings = await runPostSendPersistence([
-      ...(!wo.estimate_number && newQuoteUrl !== wo.quote_url
+      ...(!wo.estimate_number && !legacySendReservationId && newQuoteUrl !== wo.quote_url
         ? [
             {
               step: "work_order_quote_url_update",
@@ -1319,7 +1588,7 @@ export async function POST(req: Request) {
             },
           ]
         : []),
-      ...(!wo.estimate_number && sendableQuoteLineIds.length > 0
+      ...(!wo.estimate_number && !legacySendReservationId && sendableQuoteLineIds.length > 0
         ? [
             {
               step: "work_order_quote_lines_mark_sent",

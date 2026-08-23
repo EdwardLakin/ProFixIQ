@@ -151,6 +151,16 @@ insert into public.work_orders (
     'work_order',
     null,
     null
+  ),
+  (
+    '40300000-0000-4000-8000-000000000004',
+    '40200000-0000-4000-8000-000000000001',
+    '40800000-0000-4000-8000-000000000001',
+    'in_progress',
+    'repair',
+    'work_order',
+    null,
+    null
   );
 
 insert into public.work_order_quote_lines (
@@ -1582,6 +1592,234 @@ begin
 end;
 $$;
 
+-- PFX-005/PFX-010: manual/vendor identity must advance through the same stage
+-- contract, and customer delivery must reject any snapshot/total drift.
+update public.part_request_items
+set part_id = null,
+    requested_part_number = 'MANUAL-COST-ONLY',
+    quoted_price = 40,
+    unit_price = 40
+where id = '40700000-0000-4000-8000-000000000002';
+
+do $$
+declare
+  v_result jsonb;
+  v_mismatch_blocked boolean := false;
+begin
+  v_result := public.sync_quote_line_pricing_from_parts(
+    '40200000-0000-4000-8000-000000000001',
+    '40400000-0000-4000-8000-000000000001'
+  );
+  if (v_result ->> 'requiredCount')::integer <> 2
+     or (v_result ->> 'quotedCount')::integer <> 2
+     or (v_result ->> 'pendingCount')::integer <> 0
+     or (v_result ->> 'partsTotal')::numeric <> 120::numeric then
+    raise exception 'Canonical quoted-parts totals did not converge: %', v_result;
+  end if;
+
+  perform public.assert_quote_parts_publishable(
+    '40200000-0000-4000-8000-000000000001',
+    '40300000-0000-4000-8000-000000000001',
+    array['40400000-0000-4000-8000-000000000001'::uuid]
+  );
+
+  update public.work_order_quote_lines
+  set metadata = jsonb_set(
+    metadata,
+    '{parts_quote,parts_total}',
+    '999'::jsonb,
+    false
+  )
+  where id = '40400000-0000-4000-8000-000000000001';
+
+  begin
+    perform public.assert_quote_parts_publishable(
+      '40200000-0000-4000-8000-000000000001',
+      '40300000-0000-4000-8000-000000000001',
+      array['40400000-0000-4000-8000-000000000001'::uuid]
+    );
+  exception when others then
+    if sqlerrm not like '%QUOTE_PARTS_CONTRACT_MISMATCH%' then
+      raise;
+    end if;
+    v_mismatch_blocked := true;
+  end;
+  if not v_mismatch_blocked then
+    raise exception 'Quote publish guard accepted a mismatched parts snapshot';
+  end if;
+
+  perform public.sync_quote_line_pricing_from_parts(
+    '40200000-0000-4000-8000-000000000001',
+    '40400000-0000-4000-8000-000000000001'
+  );
+end;
+$$;
+
+-- Snapshot-only quote lines must have explicit numeric customer pricing.
+insert into public.work_order_quote_lines (
+  id, shop_id, work_order_id, description, job_type, status, stage,
+  parts_total, subtotal, grand_total, metadata
+) values (
+  '40400000-0000-4000-8000-000000000012',
+  '40200000-0000-4000-8000-000000000001',
+  '40300000-0000-4000-8000-000000000004',
+  'Null customer-price publish sentinel',
+  'repair',
+  'quoted',
+  'ready_to_send',
+  0,
+  0,
+  0,
+  jsonb_build_object(
+    'parts_quote', jsonb_build_object(
+      'required_count', 1,
+      'quoted_count', 1,
+      'pending_count', 0,
+      'parts_total', 0,
+      'items', jsonb_build_array(jsonb_build_object(
+        'description', 'Missing customer price',
+        'qty', 1,
+        'unit_price', null,
+        'line_total', null
+      ))
+    )
+  )
+);
+
+do $$
+declare
+  v_blocked boolean := false;
+begin
+  begin
+    perform public.assert_quote_parts_publishable(
+      '40200000-0000-4000-8000-000000000001',
+      '40300000-0000-4000-8000-000000000004',
+      array['40400000-0000-4000-8000-000000000012'::uuid]
+    );
+  exception when others then
+    if sqlerrm not like '%QUOTE_PARTS_CONTRACT_MISMATCH%' then
+      raise;
+    end if;
+    v_blocked := true;
+  end;
+  if not v_blocked then
+    raise exception 'Quote publish guard accepted a null customer price';
+  end if;
+end;
+$$;
+
+-- A non-estimate quote is frozen before delivery, recovers provider
+-- acceptance, and publishes the exact reserved line atomically.
+do $$
+declare
+  v_expected jsonb;
+  v_result jsonb;
+  v_blocked boolean := false;
+  v_sent_at timestamptz := clock_timestamp();
+begin
+  select jsonb_build_array(jsonb_build_object(
+    'id', line.id,
+    'updated_at', line.updated_at
+  )) into v_expected
+  from public.work_order_quote_lines line
+  where line.id = '40400000-0000-4000-8000-000000000001';
+
+  v_result := public.transition_legacy_quote_send_atomic(
+    'reserve',
+    '40200000-0000-4000-8000-000000000001',
+    '40300000-0000-4000-8000-000000000001',
+    'quote-cost-sell-legacy-send-1',
+    '40100000-0000-4000-8000-000000000011',
+    '40100000-0000-4000-8000-000000000001',
+    array['40400000-0000-4000-8000-000000000001'::uuid],
+    v_expected,
+    null,
+    null,
+    false,
+    null
+  );
+  if v_result ->> 'deliveryState' is distinct from 'sending' then
+    raise exception 'Legacy quote reservation did not enter sending state: %',
+      v_result;
+  end if;
+
+  begin
+    update public.part_request_items
+    set quoted_price = 41
+    where id = '40700000-0000-4000-8000-000000000002';
+  exception when serialization_failure then
+    if sqlerrm not like '%QUOTE_SEND_RESERVED%' then
+      raise;
+    end if;
+    v_blocked := true;
+  end;
+  if not v_blocked then
+    raise exception 'Reserved legacy quote allowed pricing to drift';
+  end if;
+
+  perform public.transition_legacy_quote_send_atomic(
+    'accept',
+    '40200000-0000-4000-8000-000000000001',
+    '40300000-0000-4000-8000-000000000001',
+    'quote-cost-sell-legacy-send-1',
+    '40100000-0000-4000-8000-000000000011',
+    '40100000-0000-4000-8000-000000000001',
+    '{}'::uuid[],
+    '[]'::jsonb,
+    v_sent_at,
+    'https://example.test/portal/quotes/40300000-0000-4000-8000-000000000001',
+    false,
+    null
+  );
+
+  v_result := public.transition_legacy_quote_send_atomic(
+    'finalize',
+    '40200000-0000-4000-8000-000000000001',
+    '40300000-0000-4000-8000-000000000001',
+    'quote-cost-sell-legacy-send-1',
+    '40100000-0000-4000-8000-000000000011',
+    '40100000-0000-4000-8000-000000000001',
+    '{}'::uuid[],
+    '[]'::jsonb,
+    v_sent_at,
+    'https://example.test/portal/quotes/40300000-0000-4000-8000-000000000001',
+    false,
+    null
+  );
+  if v_result ->> 'deliveryState' is distinct from 'sent'
+     or not exists (
+       select 1
+       from public.work_order_quote_lines line
+       where line.id = '40400000-0000-4000-8000-000000000001'
+         and line.status::text = 'sent'
+         and line.stage::text = 'sent'
+         and line.parts_total = 120
+     ) then
+    raise exception 'Legacy quote finalization did not preserve reserved pricing: %',
+      v_result;
+  end if;
+
+  v_result := public.transition_legacy_quote_send_atomic(
+    'reserve',
+    '40200000-0000-4000-8000-000000000001',
+    '40300000-0000-4000-8000-000000000001',
+    'quote-cost-sell-legacy-send-1',
+    '40100000-0000-4000-8000-000000000011',
+    '40100000-0000-4000-8000-000000000001',
+    array['40400000-0000-4000-8000-000000000001'::uuid],
+    v_expected,
+    null,
+    null,
+    false,
+    null
+  );
+  if coalesce((v_result ->> 'replay')::boolean, false) is not true
+     or v_result ->> 'deliveryState' is distinct from 'sent' then
+    raise exception 'Legacy quote send replay was not deduplicated: %', v_result;
+  end if;
+end;
+$$;
+
 do $$
 begin
   if has_function_privilege(
@@ -1628,6 +1866,35 @@ begin
     'execute'
   ) then
     raise exception 'Service role cannot execute quote pricing remediation';
+  end if;
+  if has_function_privilege(
+    'anon',
+    'public.assert_quote_parts_publishable(uuid,uuid,uuid[])',
+    'execute'
+  ) or has_function_privilege(
+    'authenticated',
+    'public.assert_quote_parts_publishable(uuid,uuid,uuid[])',
+    'execute'
+  ) then
+    raise exception 'Untrusted role can execute the quote publish guard';
+  end if;
+  if not has_function_privilege(
+    'service_role',
+    'public.assert_quote_parts_publishable(uuid,uuid,uuid[])',
+    'execute'
+  ) then
+    raise exception 'Service role cannot execute the quote publish guard';
+  end if;
+  if has_function_privilege(
+    'authenticated',
+    'public.transition_legacy_quote_send_atomic(text,uuid,uuid,text,uuid,uuid,uuid[],jsonb,timestamptz,text,boolean,text)',
+    'execute'
+  ) or not has_function_privilege(
+    'service_role',
+    'public.transition_legacy_quote_send_atomic(text,uuid,uuid,text,uuid,uuid,uuid[],jsonb,timestamptz,text,boolean,text)',
+    'execute'
+  ) then
+    raise exception 'Legacy quote send transition privileges are incorrect';
   end if;
 end;
 $$;

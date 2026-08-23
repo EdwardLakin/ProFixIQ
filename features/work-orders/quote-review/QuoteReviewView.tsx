@@ -36,6 +36,10 @@ import {
   runBoundedRouteLoad,
   type RouteLoadFailure,
 } from "@/features/shared/lib/route-load";
+import {
+  canonicalQuotePartQuantity,
+  readCanonicalQuotePartsSnapshot,
+} from "@/features/parts/lib/quote-parts-contract";
 
 const COPPER = "#C57A4A";
 const SEND_READY_STAGES = new Set(["advisor_pending", "ready_to_send"]);
@@ -196,7 +200,7 @@ function quoteLinePartsTotal(
     ? parts.reduce<number>((sum, part) => {
         if (!part || typeof part !== "object" || Array.isArray(part)) return sum;
         const p = part as Record<string, Json>;
-        const qty = jsonNumber(p.qty) ?? 1;
+        const qty = canonicalQuotePartQuantity(p) || 1;
         const unit =
           jsonMoney(p.unitSellPrice) ??
           jsonMoney(p.unit_sell_price) ??
@@ -254,15 +258,14 @@ function partsQuoteSummary(line: Pick<QuoteLine, "metadata">): {
   customerPricingQuarantined: boolean;
   manualReviewRequired: boolean;
 } | null {
-  const partsQuote = quoteMetadata(line).parts_quote;
-  if (!partsQuote || typeof partsQuote !== "object" || Array.isArray(partsQuote)) return null;
-  const record = partsQuote as Record<string, Json>;
+  const snapshot = readCanonicalQuotePartsSnapshot(line.metadata);
+  if (!snapshot.hasCanonicalSnapshot) return null;
   const sanitization = quoteLinePartsPricingSanitization(line);
   return {
-    requiredCount: jsonNumber(record.required_count) ?? 0,
-    quotedCount: jsonNumber(record.quoted_count) ?? 0,
-    pendingCount: jsonNumber(record.pending_count) ?? 0,
-    partsTotal: jsonNumber(record.parts_total),
+    requiredCount: snapshot.requiredCount,
+    quotedCount: snapshot.quotedCount,
+    pendingCount: snapshot.pendingCount,
+    partsTotal: snapshot.partsTotal,
     ...sanitization,
   };
 }
@@ -489,6 +492,10 @@ export default function QuoteReviewView(props: {
   const [loadFailure, setLoadFailure] = useState<RouteLoadFailure | null>(null);
   const [loadedOnce, setLoadedOnce] = useState(false);
   const loadedOnceRef = useRef(false);
+  const quoteSendOperationKeys = useRef<{
+    initial: string | null;
+    resend: string | null;
+  }>({ initial: null, resend: null });
   const [wo, setWo] = useState<WorkOrder | null>(null);
   const [shop, setShop] = useState<Shop | null>(null);
   const [customer, setCustomer] = useState<Customer | null>(null);
@@ -1024,10 +1031,16 @@ export default function QuoteReviewView(props: {
       const saved = await saveAllDirty();
       if (!saved) return;
 
+      const keySlot = resend ? "resend" : "initial";
+      const operationKey =
+        quoteSendOperationKeys.current[keySlot] ?? crypto.randomUUID();
+      quoteSendOperationKeys.current[keySlot] = operationKey;
+
       const res = await fetch(`/api/work-orders/${woId}/send-quote`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "Idempotency-Key": operationKey,
           ...(resend ? { "x-profix-resend": "1" } : {}),
         },
         body: JSON.stringify({}),
@@ -1043,6 +1056,7 @@ export default function QuoteReviewView(props: {
 
       setSendBlocker(null);
       toast.success(resend ? "Quote resent to customer." : "Quote sent to customer using canonical quote lines.");
+      quoteSendOperationKeys.current[keySlot] = null;
       await reload();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to send quote.");

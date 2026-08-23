@@ -77,6 +77,11 @@ export function sanitizeCustomerVisibleQuoteMetadata(
     const pricingSanitization = record(partsQuote.pricing_sanitization);
     safe.parts_quote = {
       ...(items.length > 0 ? { items } : {}),
+      ...Object.fromEntries(
+        ["required_count", "quoted_count", "pending_count", "parts_total"].flatMap(
+          (key) => partsQuote[key] == null ? [] : [[key, partsQuote[key]]],
+        ),
+      ),
       ...(pricingSanitization
         ? {
             pricing_sanitization: {

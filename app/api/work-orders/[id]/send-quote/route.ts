@@ -98,6 +98,12 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       "Content-Type": "application/json",
       "x-profix-trace": trace,
       cookie: req.headers.get("cookie") ?? "",
+      ...(req.headers.get("Idempotency-Key")
+        ? { "Idempotency-Key": req.headers.get("Idempotency-Key")! }
+        : {}),
+      ...(req.headers.get("x-profix-resend") === "1"
+        ? { "x-profix-resend": "1" }
+        : {}),
     },
     body: JSON.stringify(forwardBody),
     cache: "no-store",

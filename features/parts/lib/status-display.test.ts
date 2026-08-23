@@ -2,8 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   earliestPartsRequestStage,
+  canonicalPartQuantity,
   isMenuIntakeItemReviewed,
+  summarizePartsRequestStages,
   summarizeRequestFlowDisplays,
+  toCanonicalPartsStatus,
+  toItemFlowDisplay,
   toMenuIntakeStage,
   toPartsRequestStage,
   type PartsRequestStageItem,
@@ -96,6 +100,76 @@ describe("parts request operational stages", () => {
         items: [{ ...pricedItem, qtyApproved: 1, rawStatus: "approved" }],
       }),
     ).toBe("order_receive");
+    expect(
+      toItemFlowDisplay({
+        ...pricedItem,
+        qtyApproved: 1,
+        rawStatus: "approved",
+      }),
+    ).toBe("approved");
+  });
+
+  it("lets durable ordering progress override a stale requested parent status", () => {
+    expect(
+      toPartsRequestStage({
+        rawStatus: "requested",
+        items: [{ ...pricedItem, qtyOrdered: 1, rawStatus: "ordered" }],
+      }),
+    ).toBe("order_receive");
+  });
+
+  it("maps every persisted lifecycle state to the canonical contract", () => {
+    expect(toCanonicalPartsStatus(pricedItem)).toBe("quoted");
+    expect(
+      toCanonicalPartsStatus({ ...pricedItem, rawStatus: "awaiting_customer_approval" }),
+    ).toBe("awaiting_approval");
+    expect(
+      toCanonicalPartsStatus({ ...pricedItem, rawStatus: "approved", qtyApproved: 1 }),
+    ).toBe("approved");
+    expect(
+      toCanonicalPartsStatus({ ...pricedItem, rawStatus: "approved", qtyApproved: 1, qtyOrdered: 1 }),
+    ).toBe("ordered");
+    expect(
+      toCanonicalPartsStatus({ ...pricedItem, qtyApproved: 2, qtyReceived: 1 }),
+    ).toBe("partially_received");
+    expect(
+      toCanonicalPartsStatus({ ...pricedItem, qtyApproved: 2, qtyReceived: 2 }),
+    ).toBe("received");
+    expect(toCanonicalPartsStatus({ rawStatus: "received" })).toBe("received");
+    expect(
+      toCanonicalPartsStatus({ ...pricedItem, qtyApproved: 2, qtyConsumed: 2 }),
+    ).toBe("allocated");
+    expect(
+      toCanonicalPartsStatus({ ...pricedItem, rawStatus: "partially_returned" }),
+    ).toBe("partially_returned");
+    expect(
+      toCanonicalPartsStatus({ ...pricedItem, rawStatus: "returned" }),
+    ).toBe("returned");
+    expect(toCanonicalPartsStatus({ ...pricedItem, rawStatus: "rejected" })).toBe("declined");
+    expect(toCanonicalPartsStatus({ ...pricedItem, rawStatus: "cancelled" })).toBe("cancelled");
+  });
+
+  it("uses the greatest durable quantity across quote, portal, and invoice aliases", () => {
+    expect(canonicalPartQuantity({ qty: 1, qtyRequested: 3, qtyApproved: 2 })).toBe(3);
+  });
+
+  it("derives KPI counts from the same operational stage values", () => {
+    expect(
+      summarizePartsRequestStages([
+        "needs_quote",
+        "awaiting_approval",
+        "awaiting_approval",
+        "order_receive",
+        "ready_for_tech",
+        "completed",
+      ]),
+    ).toEqual({
+      needs_quote: 1,
+      awaiting_approval: 2,
+      order_receive: 1,
+      ready_for_tech: 1,
+      completed: 1,
+    });
   });
 
   it("requires staged stock before Ready for Tech", () => {

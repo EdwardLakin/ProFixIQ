@@ -3,9 +3,9 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import {
-  REQUEST_STATUS_CANONICAL,
-  requestFlowLabel,
-  type RequestFlowCounts,
+  PARTS_REQUEST_STAGE_ORDER,
+  partsRequestStageLabel,
+  type PartsRequestStageCounts,
 } from "@/features/parts/lib/status-display";
 
 type Option = { value: string; label: string };
@@ -22,16 +22,16 @@ const LINK_BTN =
 export function RequestStatusSummary({
   counts,
 }: {
-  counts: RequestFlowCounts;
+  counts: PartsRequestStageCounts;
 }): JSX.Element {
   const pill =
     "rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-xs text-[color:var(--theme-text-secondary)]";
 
   return (
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-      {REQUEST_STATUS_CANONICAL.map((status) => (
-        <div key={status} className={pill}>
-          {requestFlowLabel(status)}: <span className="text-[color:var(--theme-text-primary)]">{counts[status]}</span>
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+      {PARTS_REQUEST_STAGE_ORDER.map((stage) => (
+        <div key={stage} className={pill}>
+          {partsRequestStageLabel(stage)}: <span className="text-[color:var(--theme-text-primary)]">{counts[stage]}</span>
         </div>
       ))}
     </div>
