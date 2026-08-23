@@ -47,10 +47,10 @@ begin
 end;
 $fleet_resolver_history$;
 
--- Keep the established conversion RPC unchanged. The Shop intake route uses
--- this narrowly scoped wrapper to authorize the caller before privileged
--- reads, validate the Fleet/customer/vehicle relationship atomically, and
--- translate Fleet's `diagnostic` vocabulary to Shop's `diagnosis` vocabulary.
+-- The Shop intake route uses this narrowly scoped wrapper to authorize the
+-- caller before privileged reads, validate Fleet/customer/vehicle ownership,
+-- and materialize the handoff with canonical Shop line values. The legacy
+-- shared conversion RPC remains unchanged for compatibility.
 create function public.convert_owned_fleet_service_request_to_work_order_atomic(
   p_service_request_id uuid
 )
@@ -62,8 +62,9 @@ as $function$
 declare
   v_user_id uuid := auth.uid();
   v_request public.fleet_service_requests%rowtype;
+  v_customer_id uuid;
+  v_customer_name text;
   v_work_order_id uuid;
-  v_conversion_status text;
 begin
   if v_user_id is null then
     raise exception using
@@ -90,8 +91,8 @@ begin
       message = 'Fleet service request is unavailable.';
   end if;
 
-  if not exists (
-    select 1
+  select fleet.customer_id, fleet.name
+  into v_customer_id, v_customer_name
     from public.fleets fleet
     join public.vehicles vehicle
       on vehicle.id = v_request.vehicle_id
@@ -104,36 +105,127 @@ begin
      and coalesce(enrollment.active, true)
     where fleet.id = v_request.fleet_id
       and fleet.shop_id = v_request.shop_id
-      and fleet.customer_id is not null
+      and fleet.customer_id is not null;
+
+  if v_customer_id is null then
+    raise exception using
+      errcode = '23514',
+      message = 'PFX_FLEET_HANDOFF_UNAVAILABLE';
+  end if;
+
+  if v_request.work_order_id is not null then
+    return query select v_request.work_order_id, 'already_linked'::text;
+    return;
+  end if;
+
+  if not exists (
+    select 1
+    from public.fleet_service_request_lines line
+    where line.service_request_id = v_request.id
+  ) or exists (
+    select 1
+    from public.fleet_service_request_lines line
+    where line.service_request_id = v_request.id
+      and (
+        line.shop_id <> v_request.shop_id
+        or line.fleet_id <> v_request.fleet_id
+        or line.vehicle_id <> v_request.vehicle_id
+      )
   ) then
     raise exception using
       errcode = '23514',
       message = 'PFX_FLEET_HANDOFF_UNAVAILABLE';
   end if;
 
-  select converted.work_order_id, converted.conversion_status
-  into v_work_order_id, v_conversion_status
-  from public.convert_fleet_service_request_to_work_order_atomic(
-    p_service_request_id
-  ) converted;
+  insert into public.work_orders (
+    shop_id,
+    customer_id,
+    customer_name,
+    vehicle_id,
+    status,
+    approval_state,
+    source_fleet_service_request_id,
+    created_by,
+    notes
+  ) values (
+    v_request.shop_id,
+    v_customer_id,
+    v_customer_name,
+    v_request.vehicle_id,
+    'awaiting_approval',
+    'pending',
+    v_request.id,
+    v_user_id,
+    concat('Fleet request: ', v_request.title, E'\n', v_request.summary)
+  ) returning id into v_work_order_id;
 
-  if v_work_order_id is null then
-    raise exception using
-      errcode = '55000',
-      message = 'PFX_FLEET_HANDOFF_UNAVAILABLE';
-  end if;
+  insert into public.work_order_lines (
+    work_order_id,
+    shop_id,
+    vehicle_id,
+    description,
+    complaint,
+    notes,
+    labor_time,
+    job_type,
+    status,
+    approval_state,
+    menu_item_id,
+    inspection_template_id,
+    price_estimate,
+    line_type,
+    source_fleet_service_request_line_id
+  )
+  select
+    v_work_order_id,
+    line.shop_id,
+    line.vehicle_id,
+    line.description,
+    case
+      when line.line_kind = 'diagnostic' then line.description
+      else null
+    end,
+    line.notes,
+    line.requested_labor_hours,
+    case
+      when line.line_kind = 'diagnostic' then 'diagnosis'
+      when line.line_kind in ('inspection', 'pm_package') then 'maintenance'
+      else 'repair'
+    end,
+    'awaiting',
+    'pending',
+    line.source_menu_item_id,
+    line.source_inspection_template_id,
+    case
+      when line.unit_price_snapshot is null then null
+      else line.unit_price_snapshot * line.quantity
+    end,
+    'job',
+    line.id
+  from public.fleet_service_request_lines line
+  where line.service_request_id = v_request.id
+  order by line.created_at, line.id;
 
-  update public.work_order_lines line
-  set job_type = 'diagnosis',
+  update public.fleet_service_request_lines source_line
+  set work_order_line_id = work_order_line.id,
       updated_at = now()
-  from public.fleet_service_request_lines source_line
-  where line.work_order_id = v_work_order_id
-    and line.source_fleet_service_request_line_id = source_line.id
-    and source_line.service_request_id = p_service_request_id
-    and source_line.line_kind = 'diagnostic'
-    and line.job_type is distinct from 'diagnosis';
+  from public.work_order_lines work_order_line
+  where work_order_line.work_order_id = v_work_order_id
+    and work_order_line.source_fleet_service_request_line_id = source_line.id;
 
-  return query select v_work_order_id, v_conversion_status;
+  update public.fleet_service_requests
+  set work_order_id = v_work_order_id,
+      status = 'scheduled',
+      updated_at = now()
+  where id = v_request.id;
+
+  update public.fleet_pm_due_events
+  set service_request_id = v_request.id,
+      status = 'converted',
+      updated_at = now()
+  where id = v_request.source_pm_due_event_id;
+
+  return query select v_work_order_id, 'converted'::text;
 end;
 $function$;
 
@@ -171,6 +263,15 @@ begin
     $$profile.shop_id = request.shop_id$$
   ) = 0 then
     raise exception 'Fleet conversion caller authorization is missing';
+  end if;
+
+  if pg_catalog.strpos(
+    pg_catalog.pg_get_functiondef(
+      'public.convert_owned_fleet_service_request_to_work_order_atomic(uuid)'::pg_catalog.regprocedure
+    ),
+    $$when line.line_kind = 'diagnostic' then 'diagnosis'$$
+  ) = 0 then
+    raise exception 'Fleet diagnostic lines are not mapped to the Shop enum';
   end if;
 end;
 $fleet_handoff_postcheck$;

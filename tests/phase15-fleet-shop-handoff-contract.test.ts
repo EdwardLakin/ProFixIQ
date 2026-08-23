@@ -21,8 +21,13 @@ describe("Phase 15 Fleet to Shop handoff contract", () => {
     );
     expect(migration).toContain("profile.shop_id = request.shop_id");
     expect(migration).toContain("vehicle.customer_id = fleet.customer_id");
-    expect(migration).toContain("set job_type = 'diagnosis'");
+    expect(migration).toContain(
+      "when line.line_kind = 'diagnostic' then 'diagnosis'",
+    );
     expect(migration).toContain("PFX_FLEET_HANDOFF_UNAVAILABLE");
+    expect(migration).not.toContain(
+      "from public.convert_fleet_service_request_to_work_order_atomic",
+    );
     expect(migration).not.toContain(
       "create or replace function public.convert_fleet_service_request_to_work_order_atomic",
     );
