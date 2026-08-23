@@ -9,6 +9,7 @@ import {
   WORK_ORDER_OPERATIONAL_STAGE_LABELS,
 } from "@/features/work-orders/lib/operational-stage";
 import { isGenericWaitingWorkOrder } from "@/features/shared/lib/workboard/utils";
+import { ACTIVE_WORK_ORDER_STATUSES } from "@/features/work-orders/lib/work-order-status";
 
 const OPEN_PART_STATUSES = [
   "requested",
@@ -200,6 +201,7 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
     bookingsTodayResult,
     clockedInResult,
     completedTodayResult,
+    activeWorkOrdersResult,
   ] = await Promise.all([
     supabase
       .from("v_work_order_board_cards_shop")
@@ -234,6 +236,11 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
       .eq("status", "completed")
       .gte("updated_at", todayStart)
       .lte("updated_at", todayEnd),
+    supabase
+      .from("work_orders")
+      .select("id", { count: "exact", head: true })
+      .eq("shop_id", identity.shopId)
+      .in("status", [...ACTIVE_WORK_ORDER_STATUSES]),
   ]);
 
   const boardRows = boardResult.error ? [] : (boardResult.data ?? []);
@@ -380,9 +387,8 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
     (row) => row.overall_stage !== "closed",
   );
   const mostRecentBlockedWorkOrderId =
-    activeBoardRows.find(
-      (row) => row.overall_stage === "waiting",
-    )?.work_order_id ?? null;
+    activeBoardRows.find((row) => row.overall_stage === "waiting")
+      ?.work_order_id ?? null;
 
   if (boardResult.error) {
     console.error("[Dashboard][Operations] live work query failed", {
@@ -392,8 +398,17 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
     });
     payload.sectionErrors.push("Live work signal is temporarily unavailable.");
   } else {
-    payload.topSummary.activeJobs = activeBoardRows.length;
-    payload.topSummary.completedToday = completedTodayResult.error ? 0 : (completedTodayResult.count ?? 0);
+    payload.topSummary.activeJobs = isTechnicianScoped
+      ? activeBoardRows.length
+      : (activeWorkOrdersResult.count ?? activeBoardRows.length);
+    if (!isTechnicianScoped && activeWorkOrdersResult.error) {
+      payload.sectionErrors.push(
+        "The canonical active work-order count is temporarily unavailable.",
+      );
+    }
+    payload.topSummary.completedToday = completedTodayResult.error
+      ? 0
+      : (completedTodayResult.count ?? 0);
     payload.topSummary.blockedJobs = activeBoardRows.filter(
       (row) => row.overall_stage === "waiting",
     ).length;
@@ -537,8 +552,12 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
     },
   ];
 
-  payload.topSummary.appointmentsToday = bookingsTodayResult.error ? 0 : (bookingsTodayResult.count ?? 0);
-  payload.topSummary.techniciansClockedIn = clockedInResult.error ? 0 : (clockedInResult.count ?? 0);
+  payload.topSummary.appointmentsToday = bookingsTodayResult.error
+    ? 0
+    : (bookingsTodayResult.count ?? 0);
+  payload.topSummary.techniciansClockedIn = clockedInResult.error
+    ? 0
+    : (clockedInResult.count ?? 0);
 
   if (bookingsTodayResult.error) {
     console.error("[Dashboard][Operations] daily summary query failed", {
@@ -797,42 +816,115 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
     targetKind: waitingPartsTargetKind,
   };
   const waitingCount = activeBoardRows.filter(isGenericWaitingWorkOrder).length;
-  const waiterCount = activeBoardRows.filter((row) => Boolean(row.is_waiter)).length;
-  const longRunningCount = activeBoardRows.filter((row) => (row.time_in_stage_seconds ?? 0) >= 4 * 60 * 60).length;
-  const idleTechCount = Math.max(0, payload.topSummary.techniciansClockedIn - activeLines.length);
+  const waiterCount = activeBoardRows.filter((row) =>
+    Boolean(row.is_waiter),
+  ).length;
+  const longRunningCount = activeBoardRows.filter(
+    (row) => (row.time_in_stage_seconds ?? 0) >= 4 * 60 * 60,
+  ).length;
+  const idleTechCount = Math.max(
+    0,
+    payload.topSummary.techniciansClockedIn - activeLines.length,
+  );
 
   payload.immediateAttention = [
     payload.topSummary.waitingApprovals > 0 ? waitingApprovalCard : null,
     payload.topSummary.waitingParts > 0 ? waitingPartsCard : null,
-    waitingCount > 0 ? { label: "Jobs waiting", value: String(waitingCount), tone: "accent" as const, href: "/work-orders/board?stage=waiting", targetKind: "filtered" as const } : null,
-    idleTechCount > 0 ? { label: "Technician with no active job", value: String(idleTechCount), tone: "accent" as const, href: "/dashboard/workforce/attendance", targetKind: "filtered" as const } : null,
-    longRunningCount > 0 ? { label: "Long-running active jobs", value: String(longRunningCount), tone: "accent" as const, href: "/work-orders/board?stage=in_progress", targetKind: "filtered" as const } : null,
-    waiterCount > 0 ? { label: "Customers currently waiting", value: String(waiterCount), tone: "accent" as const, href: "/work-orders/board", targetKind: "filtered" as const } : null,
+    waitingCount > 0
+      ? {
+          label: "Jobs waiting",
+          value: String(waitingCount),
+          tone: "accent" as const,
+          href: "/work-orders/board?stage=waiting",
+          targetKind: "filtered" as const,
+        }
+      : null,
+    idleTechCount > 0
+      ? {
+          label: "Technician with no active job",
+          value: String(idleTechCount),
+          tone: "accent" as const,
+          href: "/dashboard/workforce/attendance",
+          targetKind: "filtered" as const,
+        }
+      : null,
+    longRunningCount > 0
+      ? {
+          label: "Long-running active jobs",
+          value: String(longRunningCount),
+          tone: "accent" as const,
+          href: "/work-orders/board?stage=in_progress",
+          targetKind: "filtered" as const,
+        }
+      : null,
+    waiterCount > 0
+      ? {
+          label: "Customers currently waiting",
+          value: String(waiterCount),
+          tone: "accent" as const,
+          href: "/work-orders/board",
+          targetKind: "filtered" as const,
+        }
+      : null,
   ].filter(Boolean) as OpSignal[];
 
   payload.todayOperations = [
-    { label: "Open work orders", value: String(payload.topSummary.activeJobs), href: "/work-orders/board" },
-    { label: "Vehicles in shop", value: String(payload.topSummary.activeJobs), href: "/work-orders/board" },
-    { label: "Technicians clocked in", value: String(payload.topSummary.techniciansClockedIn), href: "/dashboard/workforce/attendance" },
-    { label: "Jobs currently active", value: String(activeLines.length), href: "/work-orders/board?stage=in_progress" },
-    { label: "Appointments today", value: String(payload.topSummary.appointmentsToday), href: "/dashboard/bookings" },
-    { label: "Completed today", value: String(payload.topSummary.completedToday), href: "/work-orders/board?stage=closed" },
+    {
+      label: "Open work orders",
+      value: String(payload.topSummary.activeJobs),
+      href: "/work-orders/board",
+    },
+    {
+      label: "Vehicles in shop",
+      value: String(payload.topSummary.activeJobs),
+      href: "/work-orders/board",
+    },
+    {
+      label: "Technicians clocked in",
+      value: String(payload.topSummary.techniciansClockedIn),
+      href: "/dashboard/workforce/attendance",
+    },
+    {
+      label: "Jobs currently active",
+      value: String(activeLines.length),
+      href: "/work-orders/board?stage=in_progress",
+    },
+    {
+      label: "Appointments today",
+      value: String(payload.topSummary.appointmentsToday),
+      href: "/dashboard/bookings",
+    },
+    {
+      label: "Completed today",
+      value: String(payload.topSummary.completedToday),
+      href: "/work-orders/board?stage=closed",
+    },
   ];
 
   payload.quickActions = [
-    { label: "Create Work Order", href: "/work-orders/create", tone: "primary" },
+    {
+      label: "Create Work Order",
+      href: "/work-orders/create",
+      tone: "primary",
+    },
     { label: "Work Order Board", href: "/work-orders/board", tone: "neutral" },
-    { label: "Attendance & Activity", href: "/dashboard/workforce/attendance", tone: "neutral" },
+    {
+      label: "Attendance & Activity",
+      href: "/dashboard/workforce/attendance",
+      tone: "neutral",
+    },
     { label: "Customers", href: "/customers", tone: "neutral" },
     { label: "Vehicles", href: "/vehicles", tone: "neutral" },
     { label: "Schedule", href: "/dashboard/bookings", tone: "neutral" },
   ];
 
-  payload.recentOperationalActivity = payload.liveWork.slice(0, 5).map((item) => ({
-    label: `${item.label} is ${item.stage}`,
-    value: item.risk === "danger" ? "At risk" : "Updated",
-    href: `/work-orders/${item.id}`,
-  }));
+  payload.recentOperationalActivity = payload.liveWork
+    .slice(0, 5)
+    .map((item) => ({
+      label: `${item.label} is ${item.stage}`,
+      value: item.risk === "danger" ? "At risk" : "Updated",
+      href: `/work-orders/${item.id}`,
+    }));
 
   payload.fetchAudit.push(
     "Operations dashboard now renders from one server payload with composed panel data.",

@@ -1,6 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { RefreshCw } from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
 import MobileAdvisorHome from "@/features/mobile/dashboard/MobileAdvisorHome";
 import MobileLeadHome from "@/features/mobile/dashboard/MobileLeadHandHome";
@@ -16,6 +24,7 @@ import { resolveCurrentActor } from "@/features/shared/lib/currentActor";
 import { canonicalizeRole } from "@/features/shared/lib/rbac";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
+import { useOperationsLiveRefresh } from "@/features/work-orders/hooks/useOperationsLiveRefresh";
 
 type DB = Database;
 type Profile = DB["public"]["Tables"]["profiles"]["Row"];
@@ -24,9 +33,18 @@ type TechShift = DB["public"]["Tables"]["tech_shifts"]["Row"];
 type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"];
 
 type HomePayload = {
-  advisor: { awaitingApprovals: number; waiters: number; callbacks: number };
+  advisor: {
+    awaitingApprovals: number;
+    activeWos: number;
+    waiters: number;
+    appointmentsToday: number;
+  };
   manager: { activeWos: number; waiters: number; techniciansOnShift: number };
-  leadhand: { techsOnShift: number; jobsInProgress: number; jobsBlocked: number };
+  leadhand: {
+    techsOnShift: number;
+    jobsInProgress: number;
+    jobsBlocked: number;
+  };
 };
 
 function dayWindow(now: Date) {
@@ -71,6 +89,55 @@ function billedHours(rows: WorkOrderLine[] | null | undefined) {
   );
 }
 
+function MobileHomeFreshness({
+  children,
+  lastUpdatedAt,
+  liveStatus,
+  refreshing,
+  error,
+  onRefresh,
+}: {
+  children: ReactNode;
+  lastUpdatedAt: Date | null;
+  liveStatus: "connecting" | "live" | "unavailable";
+  refreshing: boolean;
+  error: string | null;
+  onRefresh: () => void;
+}) {
+  return (
+    <>
+      {children}
+      <section className="mx-4 mb-24 mt-3 flex items-center justify-between gap-3 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-3 py-2 text-xs text-[color:var(--theme-text-secondary)]">
+        <div className="min-w-0">
+          <div>
+            {liveStatus === "live"
+              ? "Live updates connected"
+              : liveStatus === "connecting"
+                ? "Connecting live updates…"
+                : "Live updates unavailable"}
+          </div>
+          <div className={error ? "text-amber-600 dark:text-amber-300" : ""}>
+            {error ??
+              `Last updated ${lastUpdatedAt ? lastUpdatedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "—"}`}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onRefresh}
+          disabled={refreshing}
+          className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl border border-[color:var(--theme-border-soft)] px-3 font-semibold text-[color:var(--accent-copper)] disabled:opacity-55"
+        >
+          <RefreshCw
+            aria-hidden
+            className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`}
+          />
+          Refresh
+        </button>
+      </section>
+    </>
+  );
+}
+
 export default function MobileHome() {
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -80,6 +147,10 @@ export default function MobileHome() {
   const [techStats, setTechStats] = useState<MobileTechStats | null>(null);
   const [techJobs, setTechJobs] = useState<MobileTechJob[]>([]);
   const [techLoading, setTechLoading] = useState(false);
+  const [homeRefreshing, setHomeRefreshing] = useState(false);
+  const [homeError, setHomeError] = useState<string | null>(null);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
+  const homeLoadGenerationRef = useRef(0);
 
   useEffect(() => {
     let active = true;
@@ -107,16 +178,61 @@ export default function MobileHome() {
     };
   }, [supabase]);
 
+  const loadHomePayload = useCallback(async () => {
+    const generation = ++homeLoadGenerationRef.current;
+    const isLatest = () => generation === homeLoadGenerationRef.current;
+    setHomeRefreshing(true);
+    setHomeError(null);
+    try {
+      const response = await fetch("/api/mobile/home-payload", {
+        method: "GET",
+        cache: "no-store",
+      });
+      const body = (await response.json().catch(() => null)) as {
+        ok?: boolean;
+        payload?: HomePayload;
+        error?: string;
+      } | null;
+      if (!response.ok || !body?.ok || !body.payload) {
+        throw new Error(body?.error || "Mobile counts could not be refreshed.");
+      }
+      if (isLatest()) {
+        setHomePayload(body.payload);
+        setLastUpdatedAt(new Date());
+      }
+    } catch (error) {
+      if (isLatest()) {
+        setHomeError(
+          error instanceof Error
+            ? error.message
+            : "Mobile counts could not be refreshed.",
+        );
+      }
+    } finally {
+      if (isLatest()) setHomeRefreshing(false);
+    }
+  }, []);
+
   useEffect(() => {
-    if (!profile?.id) return;
-    void (async () => {
-      const response = await fetch("/api/mobile/home-payload", { method: "GET" });
-      const body = (await response.json().catch(() => null)) as
-        | { ok?: boolean; payload?: HomePayload }
-        | null;
-      if (response.ok && body?.ok && body.payload) setHomePayload(body.payload);
-    })();
-  }, [profile?.id]);
+    if (profile?.id) void loadHomePayload();
+  }, [loadHomePayload, profile?.id]);
+
+  const liveStatus = useOperationsLiveRefresh({
+    shopId: profile?.shop_id ?? null,
+    onRefresh: loadHomePayload,
+  });
+
+  const withFreshness = (content: ReactNode) => (
+    <MobileHomeFreshness
+      lastUpdatedAt={lastUpdatedAt}
+      liveStatus={liveStatus}
+      refreshing={homeRefreshing}
+      error={homeError}
+      onRefresh={() => void loadHomePayload()}
+    >
+      {content}
+    </MobileHomeFreshness>
+  );
 
   useEffect(() => {
     if (!profile?.id || canonicalizeRole(profile.role) !== "mechanic") return;
@@ -127,60 +243,66 @@ export default function MobileHome() {
         const now = new Date();
         const day = dayWindow(now);
         const week = weekWindow(now);
-        const [todayShifts, weekShifts, todayDone, weekDone, activeLines, todayJobs] =
-          await Promise.all([
-            supabase
-              .from("tech_shifts")
-              .select("*")
-              .eq("user_id", userId)
-              .eq("type", "shift")
-              .gte("start_time", day.start)
-              .lte("start_time", day.end),
-            supabase
-              .from("tech_shifts")
-              .select("*")
-              .eq("user_id", userId)
-              .eq("type", "shift")
-              .gte("start_time", week.start)
-              .lte("start_time", week.end),
-            supabase
-              .from("work_order_lines")
-              .select("*")
-              .or(`assigned_tech_id.eq.${userId},user_id.eq.${userId}`)
-              .eq("line_type", "job")
-              .eq("status", "completed")
-              .gte("punched_out_at", day.start)
-              .lte("punched_out_at", day.end),
-            supabase
-              .from("work_order_lines")
-              .select("*")
-              .or(`assigned_tech_id.eq.${userId},user_id.eq.${userId}`)
-              .eq("line_type", "job")
-              .eq("status", "completed")
-              .gte("punched_out_at", week.start)
-              .lte("punched_out_at", week.end),
-            supabase
-              .from("work_order_lines")
-              .select("*")
-              .or(`assigned_tech_id.eq.${userId},user_id.eq.${userId}`)
-              .eq("line_type", "job")
-              .in("status", [
-                "awaiting",
-                "assigned",
-                "active",
-                "in_progress",
-                "on_hold",
-              ]),
-            supabase
-              .from("work_order_lines")
-              .select("*")
-              .or(`assigned_tech_id.eq.${userId},user_id.eq.${userId}`)
-              .eq("line_type", "job")
-              .gte("created_at", day.start)
-              .lte("created_at", day.end)
-              .order("created_at", { ascending: false })
-              .limit(6),
-          ]);
+        const [
+          todayShifts,
+          weekShifts,
+          todayDone,
+          weekDone,
+          activeLines,
+          todayJobs,
+        ] = await Promise.all([
+          supabase
+            .from("tech_shifts")
+            .select("*")
+            .eq("user_id", userId)
+            .eq("type", "shift")
+            .gte("start_time", day.start)
+            .lte("start_time", day.end),
+          supabase
+            .from("tech_shifts")
+            .select("*")
+            .eq("user_id", userId)
+            .eq("type", "shift")
+            .gte("start_time", week.start)
+            .lte("start_time", week.end),
+          supabase
+            .from("work_order_lines")
+            .select("*")
+            .or(`assigned_tech_id.eq.${userId},user_id.eq.${userId}`)
+            .eq("line_type", "job")
+            .eq("status", "completed")
+            .gte("punched_out_at", day.start)
+            .lte("punched_out_at", day.end),
+          supabase
+            .from("work_order_lines")
+            .select("*")
+            .or(`assigned_tech_id.eq.${userId},user_id.eq.${userId}`)
+            .eq("line_type", "job")
+            .eq("status", "completed")
+            .gte("punched_out_at", week.start)
+            .lte("punched_out_at", week.end),
+          supabase
+            .from("work_order_lines")
+            .select("*")
+            .or(`assigned_tech_id.eq.${userId},user_id.eq.${userId}`)
+            .eq("line_type", "job")
+            .in("status", [
+              "awaiting",
+              "assigned",
+              "active",
+              "in_progress",
+              "on_hold",
+            ]),
+          supabase
+            .from("work_order_lines")
+            .select("*")
+            .or(`assigned_tech_id.eq.${userId},user_id.eq.${userId}`)
+            .eq("line_type", "job")
+            .gte("created_at", day.start)
+            .lte("created_at", day.end)
+            .order("created_at", { ascending: false })
+            .limit(6),
+        ]);
 
         const todayWorked = workedHours(
           todayShifts.data as TechShift[] | null,
@@ -190,7 +312,9 @@ export default function MobileHome() {
           weekShifts.data as TechShift[] | null,
           now.getTime(),
         );
-        const todayBilled = billedHours(todayDone.data as WorkOrderLine[] | null);
+        const todayBilled = billedHours(
+          todayDone.data as WorkOrderLine[] | null,
+        );
         const weekBilled = billedHours(weekDone.data as WorkOrderLine[] | null);
         const active = (activeLines.data as WorkOrderLine[] | null) ?? [];
 
@@ -248,32 +372,32 @@ export default function MobileHome() {
   }
 
   if (role === "mechanic") {
-    return (
+    return withFreshness(
       <MobileTechHome
         techName={name}
         role={role}
         stats={techStats}
         jobs={techJobs}
         loadingStats={techLoading}
-      />
+      />,
     );
   }
   if (role === "advisor" || role === "service") {
-    return (
+    return withFreshness(
       <MobileAdvisorHome
         advisorName={name}
         role={role}
         stats={homePayload?.advisor}
-      />
+      />,
     );
   }
   if (role === "lead_hand") {
-    return (
+    return withFreshness(
       <MobileLeadHome
         leadName={name}
         role={role}
         stats={homePayload?.leadhand}
-      />
+      />,
     );
   }
   if (
@@ -282,12 +406,12 @@ export default function MobileHome() {
     role === "manager" ||
     role === "foreman"
   ) {
-    return (
+    return withFreshness(
       <MobileManagerHome
         managerName={name}
         role={role}
         stats={homePayload?.manager}
-      />
+      />,
     );
   }
   if (
