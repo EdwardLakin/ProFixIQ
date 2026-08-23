@@ -3,6 +3,7 @@ import { resolveAuthenticatedStaffProfile } from "@/features/shared/lib/server/a
 import { canonicalizeRole } from "@/features/shared/lib/rbac";
 import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
 import OperationsDashboardView from "../_components/OperationsDashboardView";
+import OperationsDashboardFreshness from "../_components/OperationsDashboardFreshness";
 
 export default async function OperationsDashboardPage() {
   const supabase = createServerSupabaseRSC();
@@ -16,9 +17,9 @@ export default async function OperationsDashboardPage() {
   const canViewObservability = ["owner", "admin", "manager"].includes(role);
 
   return (
-    <div className="space-y-4">
+    <OperationsDashboardFreshness shopId={profile?.shop_id ?? null}>
       {canViewObservability ? <OperationalHealthAlertStrip /> : null}
       <OperationsDashboardView />
-    </div>
+    </OperationsDashboardFreshness>
   );
 }

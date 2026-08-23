@@ -1,8 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@shared/types/types/supabase";
 
 import DashboardAlertStrip from "@/features/dashboard/components/DashboardAlertStrip";
 import DashboardWidgetBoard from "@/features/dashboard/components/DashboardWidgetBoard";
@@ -21,10 +24,15 @@ import type {
   DashboardWidgetLayout,
 } from "@/features/dashboard/types/layout";
 import DashboardViewSwitcher from "./DashboardViewSwitcher";
-
+import { ACTIVE_WORK_ORDER_STATUSES } from "@/features/work-orders/lib/work-order-status";
+import { useOperationsLiveRefresh } from "@/features/work-orders/hooks/useOperationsLiveRefresh";
 
 const CLOSED_PART_STATUSES = ["fulfilled", "rejected", "cancelled"] as const;
-const CLOSED_LINE_STATUSES = ["completed", "ready_to_invoice", "invoiced"] as const;
+const CLOSED_LINE_STATUSES = [
+  "completed",
+  "ready_to_invoice",
+  "invoiced",
+] as const;
 
 function sqlTextIn(values: readonly string[]): string {
   return `(${values.map((v) => `'${v}'`).join(",")})`;
@@ -46,17 +54,93 @@ type Props = {
   view: DashboardView;
 };
 
+async function loadDashboardCounts({
+  supabase,
+  shopId,
+  userId,
+  role,
+}: {
+  supabase: SupabaseClient<Database>;
+  shopId: string;
+  userId: string | null;
+  role: string | null;
+}): Promise<{ counts: DashboardCountState; hasError: boolean }> {
+  if (isTechRole(role) && userId) {
+    const [myJobs, myParts] = await Promise.all([
+      supabase
+        .from("work_order_lines")
+        .select("id", { count: "exact", head: true })
+        .eq("shop_id", shopId)
+        .eq("assigned_tech_id", userId)
+        .eq("line_type", "job")
+        .not("status", "in", sqlTextIn(CLOSED_LINE_STATUSES)),
+      supabase
+        .from("part_requests")
+        .select("id", { count: "exact", head: true })
+        .eq("shop_id", shopId)
+        .not("status", "in", sqlTextIn(CLOSED_PART_STATUSES))
+        .or(`requested_by.eq.${userId},assigned_tech_id.eq.${userId}`),
+    ]);
+
+    return {
+      counts: {
+        appointments: 0,
+        workOrders: myJobs.count ?? 0,
+        partsRequests: myParts.count ?? 0,
+      },
+      hasError: Boolean(myJobs.error || myParts.error),
+    };
+  }
+
+  const [appointments, workOrders, partsRequests] = await Promise.all([
+    supabase
+      .from("bookings")
+      .select("id", { count: "exact", head: true })
+      .eq("shop_id", shopId),
+    supabase
+      .from("work_orders")
+      .select("id", { count: "exact", head: true })
+      .eq("shop_id", shopId)
+      .eq("record_type", "work_order")
+      .in("status", [...ACTIVE_WORK_ORDER_STATUSES]),
+    supabase
+      .from("part_requests")
+      .select("id", { count: "exact", head: true })
+      .eq("shop_id", shopId)
+      .not("status", "in", sqlTextIn(CLOSED_PART_STATUSES)),
+  ]);
+
+  return {
+    counts: {
+      appointments: appointments.count ?? 0,
+      workOrders: workOrders.count ?? 0,
+      partsRequests: partsRequests.count ?? 0,
+    },
+    hasError: Boolean(
+      appointments.error || workOrders.error || partsRequests.error,
+    ),
+  };
+}
+
 export default function CuratedDashboardPage({ view }: Props) {
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const latestLayoutRef = useRef<DashboardWidgetLayout[] | undefined>(undefined);
+  const latestLayoutRef = useRef<DashboardWidgetLayout[] | undefined>(
+    undefined,
+  );
+  const countLoadGenerationRef = useRef(0);
 
   const [name, setName] = useState<string | null>(null);
   const [role, setRole] = useState<string | null>(null);
   const [shopId, setShopId] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
-  const [layout, setLayout] = useState<DashboardWidgetLayout[] | undefined>(undefined);
+  const [layout, setLayout] = useState<DashboardWidgetLayout[] | undefined>(
+    undefined,
+  );
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [countError, setCountError] = useState<string | null>(null);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
   const [counts, setCounts] = useState<DashboardCountState>({
     appointments: 0,
     workOrders: 0,
@@ -164,63 +248,64 @@ export default function CuratedDashboardPage({ view }: Props) {
         userId: uid,
         widgets: getDashboardWidgetRegistry(nextRole),
       });
+      const countGeneration = ++countLoadGenerationRef.current;
 
-      if (isTechRole(nextRole)) {
-        const [myJobs, myParts, loadedLayout] = await Promise.all([
-          supabase
-            .from("work_order_lines")
-            .select("id", { count: "exact", head: true })
-            .eq("shop_id", nextShopId)
-            .eq("assigned_tech_id", uid)
-            .eq("line_type", "job")
-            .not("status", "in", sqlTextIn(CLOSED_LINE_STATUSES)),
-          supabase
-            .from("part_requests")
-            .select("id", { count: "exact", head: true })
-            .eq("shop_id", nextShopId)
-            .not("status", "in", sqlTextIn(CLOSED_PART_STATUSES))
-            .or(`requested_by.eq.${uid},assigned_tech_id.eq.${uid}`),
-          layoutPromise,
-        ]);
-
-        setLayout(loadedLayout);
-        latestLayoutRef.current = loadedLayout;
-        setCounts({
-          appointments: 0,
-          workOrders: myJobs.error ? 0 : myJobs.count ?? 0,
-          partsRequests: myParts.error ? 0 : myParts.count ?? 0,
-        });
-        setLoading(false);
-        return;
-      }
-
-      const [appt, wo, parts, loadedLayout] = await Promise.all([
-        supabase
-          .from("bookings")
-          .select("id", { count: "exact", head: true })
-          .eq("shop_id", nextShopId),
-        supabase
-          .from("work_orders")
-          .select("id", { count: "exact", head: true })
-          .eq("shop_id", nextShopId),
-        supabase
-          .from("part_requests")
-          .select("id", { count: "exact", head: true })
-          .eq("shop_id", nextShopId)
-          .not("status", "in", sqlTextIn(CLOSED_PART_STATUSES)),
+      const [countResult, loadedLayout] = await Promise.all([
+        loadDashboardCounts({
+          supabase,
+          shopId: nextShopId,
+          userId: uid,
+          role: nextRole,
+        }),
         layoutPromise,
       ]);
 
       setLayout(loadedLayout);
       latestLayoutRef.current = loadedLayout;
-      setCounts({
-        appointments: appt.error ? 0 : appt.count ?? 0,
-        workOrders: wo.error ? 0 : wo.count ?? 0,
-        partsRequests: parts.error ? 0 : parts.count ?? 0,
-      });
+      if (countGeneration === countLoadGenerationRef.current) {
+        setCounts(countResult.counts);
+        setCountError(
+          countResult.hasError
+            ? "Some dashboard counts could not be refreshed."
+            : null,
+        );
+        if (!countResult.hasError) setLastUpdatedAt(new Date());
+      }
       setLoading(false);
     })();
   }, [supabase]);
+
+  const refreshCounts = useCallback(async () => {
+    if (!shopId) return;
+    const countGeneration = ++countLoadGenerationRef.current;
+    const isLatest = () => countGeneration === countLoadGenerationRef.current;
+    setRefreshing(true);
+    try {
+      const result = await loadDashboardCounts({
+        supabase,
+        shopId,
+        userId,
+        role,
+      });
+      if (!isLatest()) return;
+      if (result.hasError) {
+        setCountError(
+          "Some dashboard counts could not be refreshed. Showing the last known values.",
+        );
+        return;
+      }
+      setCounts(result.counts);
+      setCountError(null);
+      setLastUpdatedAt(new Date());
+    } finally {
+      if (isLatest()) setRefreshing(false);
+    }
+  }, [role, shopId, supabase, userId]);
+
+  const liveStatus = useOperationsLiveRefresh({
+    shopId,
+    onRefresh: refreshCounts,
+  });
 
   const displayName = name?.trim() || "there";
 
@@ -229,7 +314,8 @@ export default function CuratedDashboardPage({ view }: Props) {
       <section
         className="rounded-2xl border px-5 py-4 backdrop-blur-xl xl:px-6 xl:py-5"
         style={{
-          borderColor: "color-mix(in srgb, var(--theme-card-border,var(--theme-border-soft)) 72%, transparent)",
+          borderColor:
+            "color-mix(in srgb, var(--theme-card-border,var(--theme-border-soft)) 72%, transparent)",
           background: "var(--dashboard-hero-bg, var(--dashboard-shell-bg))",
         }}
       >
@@ -247,6 +333,31 @@ export default function CuratedDashboardPage({ view }: Props) {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            <div className="mr-1 text-right text-[11px] leading-4 text-[color:var(--theme-text-secondary)]">
+              <div>
+                {liveStatus === "live"
+                  ? "Live updates connected"
+                  : liveStatus === "connecting"
+                    ? "Connecting live updates…"
+                    : "Live updates unavailable"}
+              </div>
+              <div className={countError ? "text-amber-500" : ""}>
+                {countError ??
+                  `Last updated ${lastUpdatedAt ? lastUpdatedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "—"}`}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => void refreshCounts()}
+              disabled={refreshing || !shopId}
+              className="inline-flex min-h-10 items-center gap-1.5 rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 text-sm font-medium text-[color:var(--theme-text-primary)] transition hover:bg-[color:var(--theme-surface-panel)] disabled:opacity-55"
+            >
+              <RefreshCw
+                aria-hidden
+                className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`}
+              />
+              Refresh
+            </button>
             <DashboardViewSwitcher currentView={view} />
             <Link
               href="/work-orders/create"

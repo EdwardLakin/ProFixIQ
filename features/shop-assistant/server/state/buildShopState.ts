@@ -8,6 +8,7 @@ import type { ActorCapabilities } from "@/features/shared/lib/rbac";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { getTechnicianLoadMetricsWithClient } from "@/features/shared/lib/stats/getTechnicianLoadMetricsCore";
 import { getShopDayRange } from "@/features/shared/lib/utils/shopDayWindow";
+import { ACTIVE_WORK_ORDER_STATUSES } from "@/features/work-orders/lib/work-order-status";
 import type { ShopAssistantActor } from "@/features/shop-assistant/server/requireShopAssistantActor";
 import type {
   ShopAssistantAlert,
@@ -15,15 +16,6 @@ import type {
   ShopAssistantState,
   ShopAssistantSuggestion,
 } from "./types";
-
-const ACTIVE_WORK_ORDER_STATUSES = [
-  "awaiting",
-  "awaiting_approval",
-  "planned",
-  "queued",
-  "in_progress",
-  "on_hold",
-];
 
 const READY_TO_INVOICE_STATUSES = ["completed", "ready_to_invoice"];
 
@@ -542,7 +534,8 @@ export async function buildShopState(
           .from("work_orders")
           .select("id", { count: "exact", head: true })
           .eq("shop_id", actor.shopId)
-          .in("status", ACTIVE_WORK_ORDER_STATUSES)
+          .eq("record_type", "work_order")
+          .in("status", [...ACTIVE_WORK_ORDER_STATUSES])
       : Promise.resolve({ count: 0, error: null }),
     visibility.invoices
       ? actor.supabase

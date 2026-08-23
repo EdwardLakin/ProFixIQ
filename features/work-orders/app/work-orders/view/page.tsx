@@ -18,7 +18,11 @@ import {
   UserRound,
 } from "lucide-react";
 import { toast } from "sonner";
-import { normalizeWorkOrderStatus } from "@/features/work-orders/lib/work-order-status";
+import {
+  ACTIVE_WORK_ORDER_STATUSES,
+  isActiveWorkOrderStatus,
+  normalizeWorkOrderStatus,
+} from "@/features/work-orders/lib/work-order-status";
 import {
   countWorkOrdersBySummary,
   filterWorkOrdersBySummary,
@@ -70,35 +74,10 @@ type StatusKey =
 
 type TechRollup = "awaiting" | "in_progress" | "on_hold" | "completed";
 
-const ACTIVE_FLOW_STATUSES = [
-  "new",
-  "awaiting",
-  "awaiting_inspection",
-  "recommended",
-  "awaiting_approval",
-  "waiting_parts",
-  "approved",
-  "in_progress",
-  "on_hold",
-  "ready_to_invoice",
-] as const satisfies readonly StatusKey[];
-
-const LEGACY_ACTIVE_FLOW_STATUSES = [
-  "queued",
-  "planned",
-] as const satisfies readonly StatusKey[];
-
-const ACTIVE_STATUS_FILTER = [
-  ...ACTIVE_FLOW_STATUSES,
-  ...LEGACY_ACTIVE_FLOW_STATUSES,
-] as const satisfies readonly StatusKey[];
-
-const ACTIVE_STATUS_SET = new Set<string>(ACTIVE_STATUS_FILTER);
-
 const SEEDED_DEFAULT_STATUSES = [
-  ...ACTIVE_STATUS_FILTER,
+  ...ACTIVE_WORK_ORDER_STATUSES,
   "completed",
-] as const satisfies readonly StatusKey[];
+] as const;
 const ACTIVE_LINE_EXCLUDED = new Set([
   "completed",
   "invoiced",
@@ -331,7 +310,7 @@ export default function WorkOrdersView(): JSX.Element {
     if (status === "") {
       const defaultStatuses = isSeededShop
         ? SEEDED_DEFAULT_STATUSES
-        : ACTIVE_STATUS_FILTER;
+        : ACTIVE_WORK_ORDER_STATUSES;
       query = query.in("status", [...defaultStatuses]);
     } else {
       query = query.eq("status", status);
@@ -847,7 +826,7 @@ export default function WorkOrdersView(): JSX.Element {
 
   const activeCount = useMemo(
     () =>
-      rows.filter((r) => ACTIVE_STATUS_SET.has(normalizeStatusKey(r.status)))
+      rows.filter((r) => isActiveWorkOrderStatus(normalizeStatusKey(r.status)))
         .length,
     [rows],
   );
@@ -1177,7 +1156,7 @@ export default function WorkOrdersView(): JSX.Element {
                             ? "Final quality check"
                             : operationalStage === "ready"
                               ? "Invoice review ready"
-                            : `Technician ${techRollup.replaceAll("_", " ")}`;
+                              : `Technician ${techRollup.replaceAll("_", " ")}`;
 
                 return (
                   <article
@@ -1236,7 +1215,11 @@ export default function WorkOrdersView(): JSX.Element {
                           <span
                             className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] ${accent.badge}`}
                           >
-                            {WORK_ORDER_OPERATIONAL_STAGE_LABELS[operationalStage]}
+                            {
+                              WORK_ORDER_OPERATIONAL_STAGE_LABELS[
+                                operationalStage
+                              ]
+                            }
                           </span>
                           <span className="truncate text-xs font-medium text-[color:var(--theme-text-secondary)]">
                             {operationalNote}
@@ -1433,7 +1416,6 @@ export default function WorkOrdersView(): JSX.Element {
             </div>
           </section>
         )}
-
       </div>
     </div>
   );

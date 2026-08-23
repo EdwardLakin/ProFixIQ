@@ -19,9 +19,15 @@ import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import { resolveTechnicianAssignmentContract } from "@/features/work-orders/lib/technicianAssignmentContract";
 import {
+  ACTIVE_WORK_ORDER_STATUSES,
+  countActiveWorkOrders,
+  normalizeWorkOrderStatus,
+} from "@/features/work-orders/lib/work-order-status";
+import {
   buildMobileWorkOrderListHref,
   resolveMobileWorkOrderHref,
 } from "./mobileWorkOrderRouting";
+import { useOperationsLiveRefresh } from "@/features/work-orders/hooks/useOperationsLiveRefresh";
 
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -59,31 +65,27 @@ type WorkOrderSignal = {
 type WorkOrderListSnapshot = {
   rows: Row[];
   signals: Record<string, WorkOrderSignal>;
+  totalCount?: number;
   assignedOnly?: boolean;
 };
 
 type StatusKey =
   | "awaiting_approval"
   | "awaiting"
+  | "awaiting_inspection"
   | "assigned"
+  | "approved"
   | "queued"
   | "in_progress"
   | "on_hold"
   | "planned"
+  | "recommended"
+  | "waiting_parts"
   | "new"
+  | "cancelled"
   | "completed"
   | "ready_to_invoice"
   | "invoiced";
-
-// Preserve the existing mobile work-order query contract. The refactor changes
-// presentation only; it does not broaden or reinterpret the canonical list.
-const NORMAL_FLOW_STATUSES: StatusKey[] = [
-  "awaiting",
-  "queued",
-  "in_progress",
-  "on_hold",
-  "planned",
-];
 
 const FILTERS: Array<{ value: string; label: string }> = [
   { value: "", label: "Active" },
@@ -99,12 +101,17 @@ const FILTERS: Array<{ value: string; label: string }> = [
 const STATUS_LABEL: Record<StatusKey, string> = {
   awaiting_approval: "Awaiting approval",
   awaiting: "Ready",
+  awaiting_inspection: "Awaiting inspection",
   assigned: "Assigned",
+  approved: "Approved",
   queued: "Queued",
   in_progress: "Active",
   on_hold: "On hold",
   planned: "Planned",
+  recommended: "Recommended",
+  waiting_parts: "Waiting for parts",
   new: "New",
+  cancelled: "Cancelled",
   completed: "Completed",
   ready_to_invoice: "Ready to invoice",
   invoiced: "Invoiced",
@@ -113,12 +120,17 @@ const STATUS_LABEL: Record<StatusKey, string> = {
 const STATUS_RAIL: Record<StatusKey, string> = {
   awaiting_approval: "bg-violet-500",
   awaiting: "bg-sky-500",
+  awaiting_inspection: "bg-blue-500",
   assigned: "bg-blue-500",
+  approved: "bg-emerald-500",
   queued: "bg-indigo-500",
   in_progress: "bg-cyan-500",
   on_hold: "bg-amber-500",
   planned: "bg-purple-500",
+  recommended: "bg-violet-500",
+  waiting_parts: "bg-amber-500",
   new: "bg-blue-500",
+  cancelled: "bg-slate-500",
   completed: "bg-emerald-500",
   ready_to_invoice: "bg-emerald-500",
   invoiced: "bg-teal-500",
@@ -128,7 +140,7 @@ function statusKey(raw: string | null | undefined): StatusKey {
   const key = String(raw ?? "awaiting")
     .toLowerCase()
     .replaceAll(" ", "_") as StatusKey;
-  return key in STATUS_LABEL ? key : "awaiting";
+  return key in STATUS_LABEL ? key : normalizeWorkOrderStatus(key);
 }
 function cleanText(value: string | null | undefined): string {
   return String(value ?? "")
@@ -196,9 +208,12 @@ export default function MobileWorkOrderQueue({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [forbidden, setForbidden] = useState(false);
   const [assignedOnly, setAssignedOnly] = useState(false);
+  const [scopeShopId, setScopeShopId] = useState<string | null>(null);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
   const [lineSignals, setLineSignals] = useState<
     Record<string, WorkOrderSignal>
   >({});
+  const [totalCount, setTotalCount] = useState(0);
   const loadGenerationRef = useRef(0);
 
   const load = useCallback(
@@ -221,15 +236,19 @@ export default function MobileWorkOrderQueue({
           });
           if (!isLatestLoad()) return;
           if (cached) {
+            setScopeShopId(cachedScope.shopId);
             setRows(cached.data.rows);
             setLineSignals(cached.data.signals);
+            setTotalCount(cached.data.totalCount ?? cached.data.rows.length);
             setAssignedOnly(cached.data.assignedOnly ?? false);
+            setLastUpdatedAt(new Date(cached.updatedAt));
             return;
           }
           setErrorMessage(
             "No saved work orders are available on this device yet.",
           );
           setRows([]);
+          setTotalCount(0);
           return;
         }
 
@@ -238,6 +257,7 @@ export default function MobileWorkOrderQueue({
         if (!auth.user) {
           setErrorMessage("Unauthorized");
           setRows([]);
+          setTotalCount(0);
           return;
         }
 
@@ -257,6 +277,7 @@ export default function MobileWorkOrderQueue({
         if (!canView) {
           setForbidden(true);
           setRows([]);
+          setTotalCount(0);
           return;
         }
         setAssignedOnly(canViewAssignedWork);
@@ -264,11 +285,13 @@ export default function MobileWorkOrderQueue({
         if (!me?.shop_id) {
           setErrorMessage("Your shop scope could not be resolved.");
           setRows([]);
+          setTotalCount(0);
           return;
         }
 
         const scope = { userId: auth.user.id, shopId: me.shop_id };
         setOfflineMutationScope(scope);
+        setScopeShopId(me.shop_id);
 
         let query = supabase
           .from("work_orders")
@@ -278,25 +301,23 @@ export default function MobileWorkOrderQueue({
               customers:customers(first_name,last_name,phone),
               vehicles:vehicles(year,make,model,license_plate)
             `,
+            { count: "exact" },
           )
           .eq("shop_id", me.shop_id)
+          .eq("record_type", "work_order")
           .order("created_at", { ascending: false })
           .limit(100);
 
         if (status === "") {
-          query = query.in(
-            "status",
-            NORMAL_FLOW_STATUSES as unknown as string[],
-          );
+          query = query.in("status", [...ACTIVE_WORK_ORDER_STATUSES]);
         } else {
           query = query.eq("status", status);
         }
 
-        const { data, error } = await query;
+        const { data, error, count } = await query;
         if (!isLatestLoad()) return;
         if (error) {
           setErrorMessage(error.message);
-          setRows([]);
           return;
         }
 
@@ -409,6 +430,10 @@ export default function MobileWorkOrderQueue({
         if (!isLatestLoad()) return;
         setLineSignals(signals);
         setRows(visibleList);
+        setTotalCount(
+          canViewAssignedWork ? visibleList.length : (count ?? list.length),
+        );
+        setLastUpdatedAt(new Date());
         await saveOfflineSnapshot({
           scope,
           kind: "mobile-work-order-list",
@@ -416,6 +441,9 @@ export default function MobileWorkOrderQueue({
           data: {
             rows: visibleList,
             signals,
+            totalCount: canViewAssignedWork
+              ? visibleList.length
+              : (count ?? list.length),
             assignedOnly: canViewAssignedWork,
           },
         });
@@ -429,23 +457,19 @@ export default function MobileWorkOrderQueue({
     [status, supabase],
   );
 
+  const handleLiveRefresh = useCallback(() => load("refresh"), [load]);
+  const liveStatus = useOperationsLiveRefresh({
+    shopId: scopeShopId,
+    onRefresh: handleLiveRefresh,
+  });
+
   useEffect(() => {
     void load();
   }, [load]);
 
   useEffect(() => {
     const channel = supabase
-      .channel("mobile:work_orders:list")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "work_orders" },
-        () => window.setTimeout(() => void load("refresh"), 80),
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "work_order_lines" },
-        () => window.setTimeout(() => void load("refresh"), 80),
-      )
+      .channel("mobile:work_orders:assignments")
       .on(
         "postgres_changes",
         {
@@ -474,12 +498,10 @@ export default function MobileWorkOrderQueue({
       if (document.visibilityState === "visible") refreshIfOnline();
     };
 
-    window.addEventListener("online", refreshIfOnline);
     window.addEventListener("focus", refreshIfOnline);
     document.addEventListener("visibilitychange", refreshWhenVisible);
 
     return () => {
-      window.removeEventListener("online", refreshIfOnline);
       window.removeEventListener("focus", refreshIfOnline);
       document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
@@ -518,10 +540,8 @@ export default function MobileWorkOrderQueue({
   }, [queryText, rows]);
 
   const activeCount = useMemo(
-    () =>
-      rows.filter((row) => NORMAL_FLOW_STATUSES.includes(statusKey(row.status)))
-        .length,
-    [rows],
+    () => (status === "" ? totalCount : countActiveWorkOrders(rows)),
+    [rows, status, totalCount],
   );
   const listReturnHref = useMemo(
     () =>
@@ -605,6 +625,19 @@ export default function MobileWorkOrderQueue({
           ) : null}
         </section>
       ) : null}
+
+      <div className="mt-3 flex items-center justify-between gap-3 px-1 text-[11px] text-[color:var(--theme-text-muted)]">
+        <span>
+          {liveStatus === "live"
+            ? "Live updates connected"
+            : liveStatus === "connecting"
+              ? "Connecting live updates…"
+              : "Live updates unavailable — use Refresh"}
+        </span>
+        <span className="shrink-0">
+          Last updated {lastUpdatedAt ? format(lastUpdatedAt, "p") : "—"}
+        </span>
+      </div>
 
       <section className="mt-3 overflow-hidden rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] shadow-[var(--mobile-shadow)]">
         {!lockStatus ? (
