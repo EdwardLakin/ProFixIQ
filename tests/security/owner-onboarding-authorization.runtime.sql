@@ -110,6 +110,18 @@ reset role;
 select set_config('request.jwt.claims', '', true);
 select set_config('request.jwt.claim.role', '', true);
 
+do $assert_bootstrap_authorization_cleanup$
+begin
+  if exists (
+    select 1
+    from private.owner_bootstrap_authorizations
+    where actor_user_id = '82410000-0000-4000-8000-000000000001'
+  ) then
+    raise exception 'Canonical owner bootstrap left reusable authorization context';
+  end if;
+end;
+$assert_bootstrap_authorization_cleanup$;
+
 insert into auth.users (id, email, raw_user_meta_data)
 values (
   '82410000-0000-4000-8000-000000000002',
@@ -141,6 +153,15 @@ set local role authenticated;
 select set_config(
   'request.jwt.claims',
   '{"sub":"82410000-0000-4000-8000-000000000002","role":"authenticated"}',
+  true
+);
+
+-- A caller-controlled custom GUC is not proof that the SECURITY DEFINER RPC
+-- completed its eligibility checks. This reproduces the forged-marker path
+-- called out during review before attempting the direct shop insert.
+select set_config(
+  'profixiq.owner_bootstrap_actor_id',
+  '82410000-0000-4000-8000-000000000002',
   true
 );
 
@@ -206,6 +227,10 @@ begin
 end;
 $reject_direct_first_shop_insert$;
 
+reset role;
+select set_config('request.jwt.claims', '', true);
+select set_config('request.jwt.claim.role', '', true);
+
 do $assert_owner_bootstrap_acl$
 begin
   if has_function_privilege(
@@ -222,6 +247,26 @@ begin
     'execute'
   ) then
     raise exception 'Authenticated role cannot execute owner bootstrap';
+  end if;
+
+  if has_table_privilege(
+    'authenticated',
+    'private.owner_bootstrap_authorizations',
+    'select'
+  ) or has_table_privilege(
+    'authenticated',
+    'private.owner_bootstrap_authorizations',
+    'insert'
+  ) or has_table_privilege(
+    'authenticated',
+    'private.owner_bootstrap_authorizations',
+    'update'
+  ) or has_table_privilege(
+    'authenticated',
+    'private.owner_bootstrap_authorizations',
+    'delete'
+  ) then
+    raise exception 'Authenticated role can forge owner bootstrap authorization';
   end if;
 end;
 $assert_owner_bootstrap_acl$;
