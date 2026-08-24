@@ -4,6 +4,7 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import MobileTruckInventoryScreen from "@/features/mobile/service/MobileTruckInventoryScreen";
 import TruckHistoryPanel from "@/features/mobile/service/TruckHistoryPanel";
 import type { FieldTruckInventorySnapshot } from "@/features/mobile/service/truckInventoryContracts";
 
@@ -59,5 +60,69 @@ describe("Field truck inventory activity", () => {
     expect(screen.getByText("Wheel seal")).toBeInTheDocument();
     expect(screen.getByText(/MAIN → QA-01 Inventory/)).toBeInTheDocument();
     expect(screen.getByText(/Field Manager/)).toBeInTheDocument();
+  });
+
+  it("shows the recoverable setup state when the assigned truck has no inventory location", () => {
+    const unconfigured = snapshot();
+    unconfigured.truck = {
+      id: "truck-1",
+      name: "Service Truck",
+      unitNumber: "FT-01",
+      stockLocationId: null,
+      primaryUserId: "manager",
+      active: true,
+    };
+    unconfigured.trucks = [unconfigured.truck];
+
+    render(
+      <MobileTruckInventoryScreen
+        snapshot={unconfigured}
+        online
+        view="stock"
+        setView={vi.fn()}
+        loading={false}
+        busy={false}
+        error={null}
+        query=""
+        setQuery={vi.fn()}
+        load={vi.fn().mockResolvedValue(undefined)}
+        selectedTruckId="truck-1"
+        onTruckChange={vi.fn()}
+        selectedPartId={null}
+        setSelectedPartId={vi.fn()}
+        selectedLineId=""
+        setSelectedLineId={vi.fn()}
+        quantity={1}
+        setQuantity={vi.fn()}
+        identityDraft={null}
+        setIdentityDraft={vi.fn()}
+        createIdentity={vi.fn().mockResolvedValue(undefined)}
+        sourceLocationId=""
+        setSourceLocationId={vi.fn()}
+        sourceOptions={[]}
+        selectedReceiptId=""
+        setSelectedReceiptId={vi.fn()}
+        selectedReceipt={null}
+        truckItemById={new Map()}
+        handleUse={vi.fn().mockResolvedValue(undefined)}
+        handleReturn={vi.fn().mockResolvedValue(undefined)}
+        resolveCode={vi.fn().mockResolvedValue(undefined)}
+        transferToTruck={vi.fn().mockResolvedValue(undefined)}
+        receiveToTruck={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+
+    expect(
+      screen.getByRole("heading", { name: "Truck inventory isn't enabled" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Open Field setup" }),
+    ).toHaveAttribute("href", "/mobile/service/setup");
+    expect(
+      screen.queryByRole("navigation", { name: "Truck inventory views" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("This truck has no inventory yet."),
+    ).not.toBeInTheDocument();
   });
 });

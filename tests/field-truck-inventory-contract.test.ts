@@ -28,6 +28,9 @@ const additiveHardening = [
 const consistentActivity = read(
   "supabase/migrations/20260818184534_field_truck_inventory_consistent_activity.sql",
 );
+const unconfiguredSnapshotRepair = read(
+  "supabase/migrations/20260824190000_restore_unconfigured_field_truck_snapshot.sql",
+);
 const inventoryUi = [
   "features/mobile/service/MobileTruckInventory.tsx",
   "features/mobile/service/MobileTruckInventoryScreen.tsx",
@@ -157,6 +160,12 @@ describe("Field Service truck inventory", () => {
     );
     expect(contracts).toContain("movements: FieldTruckInventoryMovement[]");
     expect(inventoryUi).toContain("Truck movement history");
+    expect(unconfiguredSnapshotRepair).toContain(
+      "v_stock_location_id is not null",
+    );
+    expect(unconfiguredSnapshotRepair).toContain(
+      "jsonb_build_object('movements', v_activity)",
+    );
   });
 
   it("receives canonical or free-text PO lines directly to the truck without a setup detour", () => {
