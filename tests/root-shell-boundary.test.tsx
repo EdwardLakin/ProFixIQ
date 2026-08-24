@@ -84,4 +84,44 @@ describe("root shell route transition", () => {
       "true",
     );
   });
+
+  it("classifies rewritten Fleet product paths by their internal route", () => {
+    mocks.pathname = "/assets";
+
+    render(
+      <RootShellBoundary
+        initialIdentity={null}
+        initialSession={null}
+        productHost="fleet"
+      >
+        <div>Fleet assets</div>
+      </RootShellBoundary>,
+    );
+
+    expect(screen.getByTestId("session-providers")).toBeInTheDocument();
+    expect(screen.getByTestId("app-shell")).toHaveAttribute(
+      "data-outside-desktop-shell",
+      "true",
+    );
+  });
+
+  it("classifies the rewritten Ops root by its internal route", () => {
+    mocks.pathname = "/";
+
+    render(
+      <RootShellBoundary
+        initialIdentity={null}
+        initialSession={null}
+        productHost="ops"
+      >
+        <div>Operations portal</div>
+      </RootShellBoundary>,
+    );
+
+    expect(screen.getByTestId("session-providers")).toBeInTheDocument();
+    expect(screen.getByTestId("app-shell")).toHaveAttribute(
+      "data-outside-desktop-shell",
+      "true",
+    );
+  });
 });

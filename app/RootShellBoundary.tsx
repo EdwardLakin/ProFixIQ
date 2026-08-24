@@ -6,6 +6,7 @@ import type { Session } from "@supabase/supabase-js";
 
 import Providers from "./providers";
 import BrandThemeBoot from "@/features/branding/components/BrandThemeBoot";
+import { toFleetInternalPath } from "@/features/fleet/lib/fleetProductRouting";
 import AppShell from "@/features/shared/components/AppShell";
 import {
   isOutsideDesktopAppShell,
@@ -17,7 +18,26 @@ type RootShellBoundaryProps = {
   children: ReactNode;
   initialIdentity?: ComponentProps<typeof AppShell>["initialIdentity"];
   initialSession: Session | null;
+  productHost?: "fleet" | "ops" | null;
 };
+
+function resolveShellPathname(
+  pathname: string,
+  productHost: RootShellBoundaryProps["productHost"],
+): string {
+  if (productHost === "fleet") {
+    return toFleetInternalPath(pathname) ?? pathname;
+  }
+
+  if (
+    productHost === "ops" &&
+    (pathname === "/" || pathname === "/ops" || pathname === "/ops/")
+  ) {
+    return "/ops";
+  }
+
+  return pathname;
+}
 
 /**
  * Keeps root chrome aligned with the live route when authentication crosses
@@ -27,10 +47,12 @@ export default function RootShellBoundary({
   children,
   initialIdentity,
   initialSession,
+  productHost = null,
 }: RootShellBoundaryProps) {
   const pathname = usePathname() ?? "/";
+  const shellPathname = resolveShellPathname(pathname, productHost);
 
-  if (isStandalonePublicRoute(pathname)) {
+  if (isStandalonePublicRoute(shellPathname)) {
     return (
       <VoiceProvider>
         <BrandThemeBoot />
@@ -45,7 +67,7 @@ export default function RootShellBoundary({
         <BrandThemeBoot />
         <AppShell
           initialIdentity={initialIdentity}
-          initialOutsideDesktopShell={isOutsideDesktopAppShell(pathname)}
+          initialOutsideDesktopShell={isOutsideDesktopAppShell(shellPathname)}
         >
           {children}
         </AppShell>

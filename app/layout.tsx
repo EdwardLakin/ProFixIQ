@@ -66,9 +66,15 @@ export default async function RootLayout({
 }) {
   const hdrs = await headers();
   const pathname = hdrs.get("x-next-pathname") ?? "";
+  const productHostHeader = hdrs.get("x-profixiq-product-host");
   const isFleetProductHost =
-    hdrs.get("x-profixiq-product-host") === "fleet" ||
+    productHostHeader === "fleet" ||
     isFleetProductHostname(hdrs.get("x-forwarded-host") ?? hdrs.get("host"));
+  const productHost = isFleetProductHost
+    ? "fleet"
+    : productHostHeader === "ops"
+      ? "ops"
+      : null;
 
   const shouldPreloadAppShell = !isStandalonePublicRoute(pathname);
 
@@ -101,6 +107,7 @@ export default async function RootLayout({
         <RootShellBoundary
           initialIdentity={dashboardIdentity}
           initialSession={session}
+          productHost={productHost}
         >
           {children}
         </RootShellBoundary>
