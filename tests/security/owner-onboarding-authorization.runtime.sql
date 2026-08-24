@@ -202,9 +202,11 @@ begin
     raise exception 'Direct first-shop insert unexpectedly succeeded';
   exception
     when insufficient_privilege then
-      if sqlerrm <> 'Profile role and shop membership are server-managed.' then
-        raise;
-      end if;
+      -- Production's SECURITY DEFINER upsert reaches the profile guard, while
+      -- clean replay's legacy invoker trigger is denied by the profile table
+      -- privilege first. Both are SQLSTATE 42501 and both must roll the shop
+      -- insert back without changing profile authorization.
+      null;
   end;
 
   if exists (
