@@ -1,125 +1,196 @@
 // app/api/work-orders/[id]/invoice/route.ts
-// ✅ FULL FILE REPLACEMENT — Next.js 15 params fix
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 import { NextResponse, type NextRequest } from "next/server";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
-import { reviewWorkOrder } from "../_lib/reviewWorkOrder";
+
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { getIssuableInvoiceSnapshot } from "@/features/invoices/server/getIssuableInvoiceSnapshot";
 import { getActiveInvoiceVersion } from "@/features/invoices/server/financialLifecycle";
 import {
   getCanonicalDocumentIdentity,
   overlayCanonicalDocumentIdentity,
 } from "@/features/invoices/server/canonicalDocumentIdentity";
+import { resolveWorkOrderFinancialAccess } from "@/features/work-orders/workspace/server/workOrderFinancialAuthorization";
+import { reviewWorkOrder } from "../_lib/reviewWorkOrder";
 
+type RouteContext = { params: Promise<{ id: string }> };
 
-function isError(x: unknown): x is Error {
-  return typeof x === "object" && x !== null && "message" in x;
+type AuthorizedInvoiceRequest = {
+  supabase: Awaited<ReturnType<typeof requireShopScopedApiAccess>> extends infer T
+    ? T extends { ok: true; supabase: infer S }
+      ? S
+      : never
+    : never;
+  shopId: string;
+  workOrderId: string;
+};
+
+function invoiceError(message: string, status: number): NextResponse {
+  return NextResponse.json(
+    { error: message },
+    { status, headers: { "Cache-Control": "private, no-store" } },
+  );
+}
+
+async function authorizeInvoiceRequest(input: {
+  context: RouteContext;
+  required: "view" | "manage";
+}): Promise<
+  | { ok: true; value: AuthorizedInvoiceRequest }
+  | { ok: false; response: NextResponse }
+> {
+  const access = await requireShopScopedApiAccess();
+  if (!access.ok) return access;
+
+  const financial = await resolveWorkOrderFinancialAccess({
+    supabase: access.supabase,
+    profileId: access.profile.id,
+    shopId: access.profile.shop_id,
+  });
+  if (financial.error) {
+    return {
+      ok: false,
+      response: invoiceError("Authorization service unavailable", 503),
+    };
+  }
+
+  const permitted =
+    input.required === "manage"
+      ? financial.access.canManageInvoice
+      : financial.access.canViewInvoice;
+  if (!permitted) {
+    return { ok: false, response: invoiceError("Forbidden", 403) };
+  }
+
+  const params = await input.context.params;
+  const workOrderId = typeof params?.id === "string" ? params.id.trim() : "";
+  if (!workOrderId) {
+    return {
+      ok: false,
+      response: invoiceError("Missing work order id", 400),
+    };
+  }
+
+  const { data: workOrder, error: workOrderError } = await access.supabase
+    .from("work_orders")
+    .select("id")
+    .eq("id", workOrderId)
+    .eq("shop_id", access.profile.shop_id)
+    .maybeSingle<{ id: string }>();
+  if (workOrderError) {
+    console.error("[work-order invoice] scope check failed", {
+      workOrderId,
+      shopId: access.profile.shop_id,
+      actorId: access.authUserId,
+      message: workOrderError.message,
+    });
+    return {
+      ok: false,
+      response: invoiceError("Invoice could not be loaded", 500),
+    };
+  }
+  if (!workOrder?.id) {
+    return {
+      ok: false,
+      response: invoiceError("Work order not found", 404),
+    };
+  }
+
+  return {
+    ok: true,
+    value: {
+      supabase: access.supabase,
+      shopId: access.profile.shop_id,
+      workOrderId,
+    },
+  };
 }
 
 export async function POST(
-  _req: NextRequest,
-  ctx: { params: Promise<{ id: string }> },
-) {
-  const supabase = createServerSupabaseRoute();
+  _request: NextRequest,
+  context: RouteContext,
+): Promise<NextResponse> {
+  const authorization = await authorizeInvoiceRequest({
+    context,
+    required: "manage",
+  });
+  if (!authorization.ok) return authorization.response;
 
-  const params = await ctx.params;
-  const woId = typeof params?.id === "string" ? params.id : "";
-
-  if (!woId) {
-    return NextResponse.json(
-      {
-        ok: false,
-        issues: [{ kind: "bad_request", message: "Missing work order id" }],
-      },
-      { status: 400 },
-    );
-  }
-
+  const { supabase, shopId, workOrderId } = authorization.value;
   try {
-    const { data: scopedWorkOrder, error: scopedWorkOrderError } = await supabase
-      .from("work_orders")
-      .select("shop_id")
-      .eq("id", woId)
-      .maybeSingle<{ shop_id: string | null }>();
-
-    if (scopedWorkOrderError) throw scopedWorkOrderError;
-    if (!scopedWorkOrder?.shop_id) {
-      return NextResponse.json(
-        { ok: false, issues: [{ kind: "missing_wo", message: "WO not found" }] },
-        { status: 404 },
-      );
-    }
-
     const result = await reviewWorkOrder({
       supabase,
-      workOrderId: woId,
-      shopId: scopedWorkOrder.shop_id,
+      workOrderId,
+      shopId,
       kind: "invoice_review",
     });
-
-    if (!result.ok && result.issues.some((i) => i.kind === "missing_wo")) {
-      return NextResponse.json(result, { status: 404 });
+    if (!result.ok && result.issues.some((issue) => issue.kind === "missing_wo")) {
+      return NextResponse.json(result, {
+        status: 404,
+        headers: { "Cache-Control": "private, no-store" },
+      });
     }
-
-    return NextResponse.json(result);
-  } catch (e: unknown) {
-    const msg = isError(e) ? e.message : "Invoice review failed";
-    return NextResponse.json(
-      { ok: false, issues: [{ kind: "error", message: msg }] },
-      { status: 500 },
-    );
+    return NextResponse.json(result, {
+      headers: { "Cache-Control": "private, no-store" },
+    });
+  } catch (error) {
+    console.error("[work-order invoice] review failed", {
+      workOrderId,
+      shopId,
+      message: error instanceof Error ? error.message : "Unknown error",
+    });
+    return invoiceError("Invoice review failed", 500);
   }
 }
 
 export async function GET(
-  _req: NextRequest,
-  ctx: { params: Promise<{ id: string }> },
-) {
-  const supabase = createServerSupabaseRoute();
-  const params = await ctx.params;
-  const woId = typeof params?.id === "string" ? params.id : "";
-  if (!woId) return NextResponse.json({ error: "Missing work order id" }, { status: 400 });
-  try {
-    const { data: scopedWorkOrder, error: scopedWorkOrderError } = await supabase
-      .from("work_orders")
-      .select("shop_id")
-      .eq("id", woId)
-      .maybeSingle<{ shop_id: string | null }>();
-    if (scopedWorkOrderError) throw scopedWorkOrderError;
-    if (!scopedWorkOrder?.shop_id) {
-      return NextResponse.json({ error: "Work order not found" }, { status: 404 });
-    }
+  _request: NextRequest,
+  context: RouteContext,
+): Promise<NextResponse> {
+  const authorization = await authorizeInvoiceRequest({
+    context,
+    required: "view",
+  });
+  if (!authorization.ok) return authorization.response;
 
+  const { supabase, shopId, workOrderId } = authorization.value;
+  try {
     const activeInvoiceVersion = await getActiveInvoiceVersion({
       supabase,
-      workOrderId: woId,
-      shopId: scopedWorkOrder.shop_id,
+      workOrderId,
+      shopId,
     });
     const storedSnapshot =
       activeInvoiceVersion?.snapshot ??
       (await getIssuableInvoiceSnapshot({
         supabase,
-        workOrderId: woId,
-        shopId: scopedWorkOrder.shop_id,
+        workOrderId,
+        shopId,
       }));
     const identity = await getCanonicalDocumentIdentity({
       supabase,
-      workOrderId: woId,
-      shopId: scopedWorkOrder.shop_id,
+      workOrderId,
+      shopId,
       invoiceId: activeInvoiceVersion?.invoice_id,
     });
-    const snapshot = overlayCanonicalDocumentIdentity(
-      storedSnapshot,
-      identity,
-    );
+    const snapshot = overlayCanonicalDocumentIdentity(storedSnapshot, identity);
+
     return NextResponse.json(
-      { snapshot, activeInvoiceVersion, documentIdentity: identity },
+      {
+        snapshot,
+        activeInvoiceVersion,
+        documentIdentity: identity,
+      },
       { headers: { "Cache-Control": "private, no-store" } },
     );
-  } catch (e: unknown) {
-    const msg = isError(e) ? e.message : "Snapshot failed";
-    return NextResponse.json({ error: msg }, { status: 500 });
+  } catch (error) {
+    console.error("[work-order invoice] snapshot failed", {
+      workOrderId,
+      shopId,
+      message: error instanceof Error ? error.message : "Unknown error",
+    });
+    return invoiceError("Invoice snapshot failed", 500);
   }
 }

@@ -2,10 +2,10 @@
 "use client";
 
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { format } from "date-fns";
-import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { formatWorkOrderHeaderStatus } from "@/features/work-orders/lib/display/workOrderPresentation";
+import type { RoleShapedWorkOrderDetail } from "@/features/work-orders/workspace/workOrderFinancialProjection";
 import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
@@ -36,8 +36,6 @@ export default function WorkOrderReadOnlyStoryPage(): JSX.Element {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const supabase = useMemo(() => createBrowserSupabase(), []);
-
   const workOrderId = (params?.id ?? "").toString();
   const returnUrl = searchParams.get("return");
 
@@ -59,53 +57,29 @@ export default function WorkOrderReadOnlyStoryPage(): JSX.Element {
       setErr(null);
 
       try {
-        const { data: woRow, error: woErr } = await supabase
-          .from("work_orders")
-          .select("*")
-          .eq("id", workOrderId)
-          .maybeSingle<WorkOrder>();
-
-        if (woErr) throw woErr;
-        if (!woRow) throw new Error("Work order not found.");
+        const response = await fetch(
+          `/api/work-orders/${encodeURIComponent(
+            workOrderId,
+          )}/workspace-detail`,
+          { cache: "no-store" },
+        );
+        const snapshot = (await response.json().catch(() => null)) as
+          | RoleShapedWorkOrderDetail
+          | { error?: string }
+          | null;
+        if (!response.ok || !snapshot || !("workOrder" in snapshot)) {
+          throw new Error(
+            snapshot && "error" in snapshot && snapshot.error
+              ? snapshot.error
+              : "Work order not found.",
+          );
+        }
 
         if (cancelled) return;
-        setWo(woRow);
-
-        const { data: wol, error: wolErr } = await supabase
-          .from("work_order_lines")
-          .select(
-            "id, line_no, description, complaint, cause, correction, status, labor_time, line_type",
-          )
-          .eq("work_order_id", woRow.id)
-          .order("line_no", { ascending: true });
-
-        if (wolErr) throw wolErr;
-        if (!cancelled)
-          setLines((Array.isArray(wol) ? wol : []) as WorkOrderLine[]);
-
-        if (woRow.vehicle_id) {
-          const { data: v, error: ve } = await supabase
-            .from("vehicles")
-            .select("*")
-            .eq("id", woRow.vehicle_id)
-            .maybeSingle<Vehicle>();
-          if (ve) throw ve;
-          if (!cancelled) setVehicle(v ?? null);
-        } else if (!cancelled) {
-          setVehicle(null);
-        }
-
-        if (woRow.customer_id) {
-          const { data: c, error: ce } = await supabase
-            .from("customers")
-            .select("*")
-            .eq("id", woRow.customer_id)
-            .maybeSingle<Customer>();
-          if (ce) throw ce;
-          if (!cancelled) setCustomer(c ?? null);
-        } else if (!cancelled) {
-          setCustomer(null);
-        }
+        setWo(snapshot.workOrder);
+        setLines(snapshot.lines);
+        setVehicle(snapshot.vehicle);
+        setCustomer(snapshot.customer);
       } catch (e) {
         const msg =
           e instanceof Error ? e.message : "Failed to load work order.";
@@ -118,7 +92,7 @@ export default function WorkOrderReadOnlyStoryPage(): JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [supabase, workOrderId]);
+  }, [workOrderId]);
 
   const title = safeTrim(wo?.custom_id)
     ? `WO ${safeTrim(wo?.custom_id)}`
@@ -313,3 +287,4 @@ export default function WorkOrderReadOnlyStoryPage(): JSX.Element {
     </div>
   );
 }
+

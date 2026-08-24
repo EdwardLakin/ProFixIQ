@@ -8,13 +8,17 @@ import { canFieldOperatorAccessWorkOrder } from "@/features/mobile/service/serve
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import { WORKSPACE_CAPABILITIES } from "@/features/workspace/authorization/capabilities";
 
 type Body = { workOrderId?: string };
 
 export async function POST(request: Request) {
   let workOrderId = "";
   try {
-    const access = await requireShopScopedApiAccess();
+    const access = await requireShopScopedApiAccess({
+      requiredWorkspaceCapability:
+        WORKSPACE_CAPABILITIES.manageWorkOrderInvoice,
+    });
     if (!access.ok) return access.response;
 
     const body = (await request.json().catch(() => null)) as Body | null;

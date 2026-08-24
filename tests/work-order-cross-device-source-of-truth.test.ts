@@ -8,6 +8,9 @@ const mobile = read("features/work-orders/mobile/MobileWorkOrderClient.tsx");
 const mobileDetailServer = read(
   "features/work-orders/mobile/server/loadMobileWorkOrderDetail.ts",
 );
+const sharedRoleShapedDetail = read(
+  "features/work-orders/workspace/server/loadRoleShapedWorkOrderDetail.ts",
+);
 const focusedJob = read("features/work-orders/mobile/MobileFocusedJob.tsx");
 const offlineRoute = read("app/api/offline/technician-work-orders/route.ts");
 const offlineTypes = read(
@@ -22,9 +25,12 @@ const migration = read(
 
 describe("cross-device work-order source of truth", () => {
   it("makes desktop and mobile use the same tenant-scoped line-context loader", () => {
-    expect(desktop).toContain("loadCanonicalWorkOrderLineContext");
+    expect(desktop).toContain("/workspace-detail");
     expect(mobile).toContain("/api/mobile/work-orders/");
-    expect(mobileDetailServer).toContain("loadCanonicalWorkOrderLineContext");
+    expect(mobileDetailServer).toContain("loadRoleShapedWorkOrderDetail");
+    expect(sharedRoleShapedDetail).toContain(
+      "loadCanonicalWorkOrderLineContext",
+    );
     expect(contextLoader).toContain('.from("work_order_parts")');
     expect(contextLoader).toContain('.from("work_order_part_allocations")');
     expect(contextLoader).toContain('.from("part_requests")');

@@ -61,6 +61,7 @@ import {
   type WorkOrderJobWorkspaceTabId,
 } from "@/features/work-orders/workspace/workOrderWorkspace";
 import { useWorkOrderPartsRefresh } from "@/features/work-orders/workspace/useWorkOrderPartsRefresh";
+import type { RoleShapedWorkOrderDetail } from "@/features/work-orders/workspace/workOrderFinancialProjection";
 
 import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
@@ -341,91 +342,60 @@ export default function FocusedJobModal(props: {
     }
   }, [lineSnapshot, workOrderLineId]);
 
+  const loadProjectedDetail = useCallback(async (): Promise<void> => {
+    if (!workOrderLineId) return;
+
+    const response = await fetch(
+      `/api/work-order-lines/${encodeURIComponent(workOrderLineId)}/workspace-detail`,
+      { cache: "no-store" },
+    );
+    const snapshot = (await response.json().catch(() => null)) as
+      | (RoleShapedWorkOrderDetail & { selectedLineId?: string })
+      | { error?: string }
+      | null;
+    if (!response.ok || !snapshot || !("workOrder" in snapshot)) {
+      throw new Error(
+        snapshot && "error" in snapshot && snapshot.error
+          ? snapshot.error
+          : "Failed to load job",
+      );
+    }
+
+    const nextLine =
+      snapshot.lines.find((candidate) => candidate.id === workOrderLineId) ??
+      null;
+    setLine(nextLine);
+    setTechNotes(nextLine?.technician_notes ?? "");
+    setWorkOrder(snapshot.workOrder);
+    setShopLaborRate(snapshot.shopLaborRate);
+    setVehicle(snapshot.vehicle);
+    setCustomer(snapshot.customer);
+    setAllocs(snapshot.lineContext.allocationsByLine[workOrderLineId] ?? []);
+    setRequiredParts(
+      snapshot.lineContext.canonicalPartsByLine[workOrderLineId] ?? [],
+    );
+
+    try {
+      await ensureShopContext(snapshot.workOrder.shop_id);
+    } catch (error) {
+      console.warn("[FocusedJob] set_current_shop_id failed:", error);
+    }
+  }, [ensureShopContext, workOrderLineId]);
+
   useEffect(() => {
     if (!isOpen || !workOrderLineId) return;
-
     let cancelled = false;
 
-    (async () => {
+    void (async () => {
       setBusy(true);
       try {
-        const { data: l, error: le } = await supabase
-          .from("work_order_lines")
-          .select("*")
-          .eq("id", workOrderLineId)
-          .maybeSingle<WorkOrderLine>();
-        if (le) throw le;
-        if (cancelled) return;
-
-        setLine(l ?? null);
-        setTechNotes(l?.technician_notes ?? "");
-
-        if (l?.work_order_id) {
-          const { data: wo, error: we } = await supabase
-            .from("work_orders")
-            .select("*")
-            .eq("id", l.work_order_id)
-            .maybeSingle<WorkOrder>();
-          if (we) throw we;
-          if (cancelled) return;
-
-          setWorkOrder(wo ?? null);
-
-          const sid = (wo?.shop_id as string | null) ?? null;
-          if (sid) {
-            try {
-              await ensureShopContext(sid);
-            } catch (e) {
-              console.warn("[FocusedJob] set_current_shop_id failed:", e);
-            }
-
-            const { data: shopRow, error: shopError } = await supabase
-              .from("shops")
-              .select("labor_rate")
-              .eq("id", sid)
-              .maybeSingle<{ labor_rate: number | null }>();
-            if (shopError) throw shopError;
-            if (cancelled) return;
-            const parsedRate = Number(shopRow?.labor_rate);
-            setShopLaborRate(Number.isFinite(parsedRate) ? parsedRate : null);
-          } else {
-            setShopLaborRate(null);
-          }
-
-          if (wo?.vehicle_id) {
-            const { data: v, error: ve } = await supabase
-              .from("vehicles")
-              .select("*")
-              .eq("id", wo.vehicle_id)
-              .maybeSingle<Vehicle>();
-            if (ve) throw ve;
-            if (cancelled) return;
-            setVehicle(v ?? null);
-          } else {
-            setVehicle(null);
-          }
-
-          if (wo?.customer_id) {
-            const { data: c, error: ce } = await supabase
-              .from("customers")
-              .select("*")
-              .eq("id", wo.customer_id)
-              .maybeSingle<Customer>();
-            if (ce) throw ce;
-            if (cancelled) return;
-            setCustomer(c ?? null);
-          } else {
-            setCustomer(null);
-          }
-        } else {
-          setWorkOrder(null);
-          setShopLaborRate(null);
-          setVehicle(null);
-          setCustomer(null);
+        await loadProjectedDetail();
+      } catch (error) {
+        if (!cancelled) {
+          toast.error(
+            error instanceof Error ? error.message : "Failed to load job",
+          );
         }
-      } catch (e) {
-        const err = e as { message?: string };
-        toast.error(err?.message ?? "Failed to load job");
       } finally {
         if (!cancelled) setBusy(false);
       }
@@ -434,7 +404,7 @@ export default function FocusedJobModal(props: {
     return () => {
       cancelled = true;
     };
-  }, [isOpen, workOrderLineId, supabase, ensureShopContext]);
+  }, [isOpen, loadProjectedDetail, workOrderLineId]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -505,38 +475,13 @@ export default function FocusedJobModal(props: {
     if (!workOrderLineId) return;
     setAllocsLoading(true);
     try {
-      let allocBuilder = supabase
-        .from("work_order_part_allocations")
-        .select("*, parts(name)")
-        .eq("work_order_line_id", workOrderLineId);
-      let requiredBuilder = supabase
-        .from("work_order_parts")
-        .select("*, parts(name, part_number, sku, manufacturer, supplier)")
-        .eq("work_order_line_id", workOrderLineId)
-        .eq("is_active", true);
-      if (workOrder?.id) {
-        allocBuilder = allocBuilder.eq("work_order_id", workOrder.id);
-        requiredBuilder = requiredBuilder.eq("work_order_id", workOrder.id);
-      }
-      if (workOrder?.shop_id) {
-        allocBuilder = allocBuilder.eq("shop_id", workOrder.shop_id);
-        requiredBuilder = requiredBuilder.eq("shop_id", workOrder.shop_id);
-      }
-
-      const [allocQuery, requiredQuery] = await Promise.all([
-        allocBuilder.order("created_at", { ascending: true }),
-        requiredBuilder.order("created_at", { ascending: true }),
-      ]);
-      if (allocQuery.error) throw allocQuery.error;
-      if (requiredQuery.error) throw requiredQuery.error;
-      setAllocs((allocQuery.data as AllocationRow[]) ?? []);
-      setRequiredParts((requiredQuery.data as RequiredPartRow[]) ?? []);
-    } catch (e) {
-      console.warn("[FocusedJob] load allocations failed", e);
+      await loadProjectedDetail();
+    } catch (error) {
+      console.warn("[FocusedJob] load allocations failed", error);
     } finally {
       setAllocsLoading(false);
     }
-  }, [supabase, workOrder?.id, workOrder?.shop_id, workOrderLineId]);
+  }, [loadProjectedDetail, workOrderLineId]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -578,17 +523,9 @@ export default function FocusedJobModal(props: {
   }, [isOpen, workOrderLineId, supabase, loadAllocations]);
 
   const refresh = useCallback(async () => {
-    const { data: l } = await supabase
-      .from("work_order_lines")
-      .select("*")
-      .eq("id", workOrderLineId)
-      .maybeSingle<WorkOrderLine>();
-
-    setLine(l ?? null);
-    setTechNotes(l?.technician_notes ?? "");
+    await loadProjectedDetail();
     await onChanged?.();
-    await loadAllocations();
-  }, [supabase, workOrderLineId, onChanged, loadAllocations]);
+  }, [loadProjectedDetail, onChanged]);
 
   const assignTechnician = useCallback(
     async (technicianId: string): Promise<void> => {
@@ -2095,3 +2032,4 @@ export default function FocusedJobModal(props: {
     </>
   );
 }
+

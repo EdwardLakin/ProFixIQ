@@ -743,8 +743,8 @@ begin
   from public.work_order_line_technicians assignment
   where assignment.work_order_line_id = '71500000-0000-4000-8000-000000000002';
 
-  if v_shop_work_orders <> 1 or v_shop_lines <> 1 or v_shop_assignments <> 1 then
-    raise exception 'Delegated mechanic could not discover same-shop assignment work: %, %, %',
+  if v_shop_work_orders <> 0 or v_shop_lines <> 0 or v_shop_assignments <> 1 then
+    raise exception 'Delegated mechanic financial read boundary resolved incorrectly: %, %, %',
       v_shop_work_orders,
       v_shop_lines,
       v_shop_assignments;

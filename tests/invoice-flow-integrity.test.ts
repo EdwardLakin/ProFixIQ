@@ -47,7 +47,8 @@ describe("invoice flow financial integrity", () => {
     const modal = source(
       "features/work-orders/components/workorders/FocusedJobModal.tsx",
     );
-    expect(modal).toContain('select("labor_rate")');
+    expect(modal).toContain("/workspace-detail");
+    expect(modal).toContain("setShopLaborRate(snapshot.shopLaborRate)");
     expect(modal).toContain("const [shopLaborRate, setShopLaborRate]");
     expect(modal).toContain(
       "resolveWorkOrderLinePricing({ line, shopLaborRate",

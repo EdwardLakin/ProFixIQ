@@ -22,10 +22,8 @@ describe("technician assigned-work offline download", () => {
     expect(route).toContain('.eq("shop_id", profile.shop_id)');
   });
 
-  it("keeps authenticated table policies around downloaded business records", () => {
-    expect(route).toContain(
-      "normal table policies remain the final authorization boundary",
-    );
+  it("re-verifies assignment before trusted reads and role-shapes the bundle", () => {
+    expect(route).toContain("Every record is role-shaped below");
     expect(route).toMatch(/authClient\.rpc\(\s*"set_current_shop_id"/);
     expect(route.indexOf('"set_current_shop_id"')).toBeLessThan(
       route.indexOf('.from("work_orders")'),
@@ -34,8 +32,13 @@ describe("technician assigned-work offline download", () => {
     expect(route).not.toContain(".limit(50)");
     expect(route).toContain("loadRowsForIdChunks");
     expect(route).toContain(".range(from, to)");
-    expect(route).toMatch(/authClient\s*\.from\("work_order_lines"\)/);
-    expect(route).toMatch(/authClient\s*\.from\("work_order_quote_lines"\)/);
+    expect(route).toMatch(/admin\s*\.from\("work_order_lines"\)/);
+    expect(route).toMatch(/admin\s*\.from\("work_order_quote_lines"\)/);
+    expect(route).toContain("resolveWorkOrderFinancialAccess");
+    expect(route).toContain("projectWorkOrderFinancialFields");
+    expect(route).toContain("projectWorkOrderLineFinancialFields");
+    expect(route).toContain("projectQuoteLineFinancialFields");
+    expect(route).toContain("projectCanonicalLineContextFinancialFields");
     expect(route).toContain("collectTechnicianIdsForLineContexts");
     expect(route).toContain("lineContextsByWorkOrder.values()");
     expect(route).toContain('"Cache-Control": "private, no-store"');

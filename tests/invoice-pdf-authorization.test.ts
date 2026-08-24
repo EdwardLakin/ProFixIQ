@@ -1,15 +1,21 @@
 import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ROLE_GROUPS } from "@/features/shared/lib/rbac";
 
 const mocks = vi.hoisted(() => ({
   resolveAuthenticatedStaffProfile: vi.fn(),
+  resolveWorkOrderFinancialAccess: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/features/shared/lib/server/admin-access", () => ({
   resolveAuthenticatedStaffProfile: mocks.resolveAuthenticatedStaffProfile,
 }));
+vi.mock(
+  "@/features/work-orders/workspace/server/workOrderFinancialAuthorization",
+  () => ({
+    resolveWorkOrderFinancialAccess: mocks.resolveWorkOrderFinancialAccess,
+  }),
+);
 
 import { canAccessInvoicePdf } from "@/features/invoices/server/authorizeInvoicePdfAccess";
 
@@ -23,9 +29,7 @@ type RpcResult = {
   error: { message: string } | null;
 };
 
-type InvoicePdfSupabase = Parameters<
-  typeof canAccessInvoicePdf
->[0]["supabase"];
+type InvoicePdfSupabase = Parameters<typeof canAccessInvoicePdf>[0]["supabase"];
 
 function sessionClient(rpcResult: RpcResult = { data: false, error: null }) {
   const rpc = vi.fn().mockResolvedValue(rpcResult);
@@ -55,24 +59,20 @@ describe("invoice PDF authorization", () => {
       profile: null,
       error: null,
     });
+    mocks.resolveWorkOrderFinancialAccess.mockResolvedValue({
+      access: { canViewInvoice: false },
+      error: null,
+    });
   });
 
-  it("limits staff PDF access to the canonical billing roles", () => {
-    expect(ROLE_GROUPS.billingOperators).toEqual([
-      "owner",
-      "admin",
-      "manager",
-      "advisor",
-      "service",
-    ]);
-    expect(ROLE_GROUPS.billingOperators).not.toContain("mechanic");
-    expect(ROLE_GROUPS.billingOperators).not.toContain("parts");
-  });
-
-  it("allows a same-shop billing operator to render a working draft without consulting portal membership", async () => {
+  it("allows effective invoice-view capability to render a working draft without consulting portal membership", async () => {
     mocks.resolveAuthenticatedStaffProfile.mockResolvedValue(
       staffProfile("owner", "shop-a"),
     );
+    mocks.resolveWorkOrderFinancialAccess.mockResolvedValue({
+      access: { canViewInvoice: true },
+      error: null,
+    });
     const client = sessionClient();
 
     await expect(
@@ -85,10 +85,15 @@ describe("invoice PDF authorization", () => {
       }),
     ).resolves.toBe(true);
 
+    expect(mocks.resolveWorkOrderFinancialAccess).toHaveBeenCalledWith({
+      supabase: client.supabase,
+      profileId: "profile-1",
+      shopId: "shop-a",
+    });
     expect(client.rpc).not.toHaveBeenCalled();
   });
 
-  it("denies same-shop non-billing staff", async () => {
+  it("denies same-shop staff when effective invoice-view is denied", async () => {
     mocks.resolveAuthenticatedStaffProfile.mockResolvedValue(
       staffProfile("mechanic", "shop-a"),
     );
@@ -100,7 +105,7 @@ describe("invoice PDF authorization", () => {
         authUserId: "user-1",
         shopId: "shop-a",
         customerId: null,
-        customerVisibleDocument: true,
+        customerVisibleDocument: false,
       }),
     ).resolves.toBe(false);
 
@@ -123,6 +128,7 @@ describe("invoice PDF authorization", () => {
       }),
     ).resolves.toBe(false);
 
+    expect(mocks.resolveWorkOrderFinancialAccess).not.toHaveBeenCalled();
     expect(client.rpc).not.toHaveBeenCalled();
   });
 
@@ -139,13 +145,10 @@ describe("invoice PDF authorization", () => {
       }),
     ).resolves.toBe(true);
 
-    expect(client.rpc).toHaveBeenCalledWith(
-      "profixiq_is_portal_customer_for",
-      {
-        p_customer_id: "customer-a",
-        p_shop_id: "shop-a",
-      },
-    );
+    expect(client.rpc).toHaveBeenCalledWith("profixiq_is_portal_customer_for", {
+      p_customer_id: "customer-a",
+      p_shop_id: "shop-a",
+    });
   });
 
   it("denies a portal customer a draft before consulting otherwise-valid membership", async () => {
@@ -213,10 +216,14 @@ describe("invoice PDF authorization", () => {
 
   it("gates service-role invoice-version rendering on customer-visible lifecycle and work-order identity", () => {
     expect(versionRoute).toContain("canAccessInvoicePdf");
-    expect(versionRoute).toContain("customerId: workOrder?.customer_id ?? null");
+    expect(versionRoute).toContain(
+      "customerId: workOrder?.customer_id ?? null",
+    );
     expect(versionRoute).toContain("CUSTOMER_VISIBLE_INVOICE_STATES.includes(");
     expect(versionRoute).toContain("version.lifecycle_status");
-    expect(versionRoute).toContain('.eq("work_order_id", version.work_order_id)');
+    expect(versionRoute).toContain(
+      '.eq("work_order_id", version.work_order_id)',
+    );
     expect(versionRoute).toContain(
       'NextResponse.json({ error: "Forbidden" }, { status: 403 })',
     );
@@ -228,10 +235,14 @@ describe("invoice PDF authorization", () => {
     expect(workOrderRoute).toContain(
       '.select("id,shop_id,custom_id,customer_id")',
     );
-    expect(workOrderRoute).toContain("const activeVersion = await getActiveInvoiceVersion");
+    expect(workOrderRoute).toContain(
+      "const activeVersion = await getActiveInvoiceVersion",
+    );
     expect(workOrderRoute).toContain("canAccessInvoicePdf");
     expect(workOrderRoute).toContain("customerId: workOrder.customer_id");
-    expect(workOrderRoute).toContain("customerVisibleDocument: activeVersion !== null");
+    expect(workOrderRoute).toContain(
+      "customerVisibleDocument: activeVersion !== null",
+    );
     expect(workOrderRoute).toContain('.eq("work_order_id", workOrderId)');
     expect(workOrderRoute).toContain(
       'NextResponse.json({ error: "Forbidden" }, { status: 403 })',

@@ -17,6 +17,8 @@ import RecordManualPayment from "@/features/invoices/components/RecordManualPaym
 import InvoicePricingEditor from "@/features/invoices/components/InvoicePricingEditor";
 import { invoiceDisplayIdentity } from "@/features/invoices/lib/invoiceDisplayIdentity";
 import { useTabs } from "@/features/shared/components/tabs/TabsProvider";
+import { WORKSPACE_CAPABILITIES } from "@/features/workspace/authorization/capabilities";
+import { useWorkspaceCapabilities } from "@/features/workspace/authorization/useWorkspaceCapabilities";
 
 type DB = Database;
 
@@ -303,6 +305,13 @@ export default function InvoicePreviewPageClient({
   const router = useRouter();
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const { updateActiveTab } = useTabs();
+  const { can: canWorkspace } = useWorkspaceCapabilities();
+  const canManageInvoice = canWorkspace(
+    WORKSPACE_CAPABILITIES.manageWorkOrderInvoice,
+  );
+  const canEditPricing = canWorkspace(
+    WORKSPACE_CAPABILITIES.editWorkOrderPricing,
+  );
 
   const [loading, setLoading] = useState(false);
   const [shopId, setShopId] = useState<string | null>(null);
@@ -799,6 +808,13 @@ export default function InvoicePreviewPageClient({
   // -------------------------------------------------------------------
   useEffect(() => {
     if (!workOrderId) return;
+    if (!canManageInvoice) {
+      setReviewLoading(false);
+      setReviewError(null);
+      setReviewIssues([]);
+      setReviewOk(false);
+      return;
+    }
 
     let cancelled = false;
 
@@ -840,7 +856,7 @@ export default function InvoicePreviewPageClient({
     return () => {
       cancelled = true;
     };
-  }, [workOrderId]);
+  }, [canManageInvoice, workOrderId]);
 
   const issuesByLineId = useMemo(() => {
     const map = new Map<string, ReviewIssue[]>();
@@ -879,6 +895,7 @@ export default function InvoicePreviewPageClient({
   }, [inspectionPdf?.pdfUrl]);
 
   const sendInvoiceEmail = useCallback(async () => {
+    if (!canManageInvoice) return;
     if (sending) return;
     if (!activeInvoiceVersion && !reviewOk) return;
 
@@ -975,9 +992,11 @@ export default function InvoicePreviewPageClient({
     router,
     signatureImage,
     effectiveShopName,
+    canManageInvoice,
   ]);
 
   const finalizeInvoice = useCallback(async () => {
+    if (!canManageInvoice) return;
     if (finalizing || activeInvoiceVersion || !reviewOk) return;
     let serverIssues: ReviewIssue[] = [];
     try {
@@ -1020,7 +1039,14 @@ export default function InvoicePreviewPageClient({
     } finally {
       setFinalizing(false);
     }
-  }, [activeInvoiceVersion, finalizing, reviewOk, router, workOrderId]);
+  }, [
+    activeInvoiceVersion,
+    canManageInvoice,
+    finalizing,
+    reviewOk,
+    router,
+    workOrderId,
+  ]);
 
   return (
     <div className="min-h-[calc(100vh-0px)] bg-[color:var(--theme-surface-page)] px-3 py-3 sm:px-4 sm:py-4">
@@ -1064,6 +1090,10 @@ export default function InvoicePreviewPageClient({
                   ? "Paid in full"
                   : "Invoice issued"}
               </span>
+            ) : !canManageInvoice ? (
+              <span className="text-[0.7rem] text-[color:var(--theme-text-muted)]">
+                Read-only access
+              </span>
             ) : reviewLoading ? (
               <span className="text-[0.7rem] text-[color:var(--theme-text-secondary)]">Reviewing…</span>
             ) : reviewOk ? (
@@ -1074,7 +1104,7 @@ export default function InvoicePreviewPageClient({
           </div>
 
           <div className="flex flex-wrap items-center justify-end gap-2">
-            {!activeInvoiceVersion ? (
+            {!activeInvoiceVersion && canEditPricing ? (
               <InvoicePricingEditor
                 workOrderId={workOrderId}
                 snapshot={canonicalSnapshot ?? { lines: [], parts: [] }}
@@ -1085,7 +1115,7 @@ export default function InvoicePreviewPageClient({
               />
             ) : null}
 
-            {!activeInvoiceVersion ? (
+            {!activeInvoiceVersion && canManageInvoice ? (
               <button
                 type="button"
                 onClick={() => void finalizeInvoice()}
@@ -1105,7 +1135,8 @@ export default function InvoicePreviewPageClient({
               className="rounded-full border border-[color:var(--theme-border-soft)] px-3 py-1.5 text-xs font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-hover)]"
             />
 
-            <button
+            {canManageInvoice ? (
+              <button
                 type="button"
                 onClick={() => void sendInvoiceEmail()}
                 disabled={(!activeInvoiceVersion && (!reviewOk || reviewLoading)) || sending}
@@ -1118,9 +1149,10 @@ export default function InvoicePreviewPageClient({
                 title={activeInvoiceVersion || reviewOk ? "Email invoice" : "Blocked until required info is complete"}
               >
                 {sending ? "Sending…" : "Send invoice"}
-            </button>
+              </button>
+            ) : null}
 
-            {invoiceId ? (
+            {invoiceId && canManageInvoice ? (
               <SyncInvoiceToQuickBooksButton
                 invoiceId={invoiceId}
                 disabled={!activeInvoiceVersion}
@@ -1128,7 +1160,7 @@ export default function InvoicePreviewPageClient({
               />
             ) : null}
 
-            {activeInvoiceVersion ? (
+            {activeInvoiceVersion && canManageInvoice ? (
               <RecordManualPayment
                 workOrderId={workOrderId}
                 currency={invoiceCurrency}
@@ -1141,7 +1173,10 @@ export default function InvoicePreviewPageClient({
               />
             ) : null}
 
-            {canTakeStripePayment && activeInvoiceVersion && outstandingTotal > 0 ? (
+            {canManageInvoice &&
+            canTakeStripePayment &&
+            activeInvoiceVersion &&
+            outstandingTotal > 0 ? (
               <div>
                 <CustomerPaymentButton
                   shopId={shopId as string}
@@ -1542,3 +1577,4 @@ export default function InvoicePreviewPageClient({
     </div>
   );
 }
+

@@ -60,7 +60,12 @@ describe("Phase 4 customer portal quote invariants", () => {
       'portalError("This quote is unavailable.", 404)',
     );
     expect(detailRoute).toContain("sanitizeCustomerVisibleQuoteMetadata");
-    expect(detailRoute).not.toContain("createAdminSupabase");
+    expect(detailRoute).toContain("createAdminSupabase");
+    expect(
+      detailRoute.indexOf("const actor = await requirePortalCustomerActor"),
+    ).toBeLessThan(
+      detailRoute.indexOf("const admin = createAdminSupabase"),
+    );
   });
 
   it("loads quote detail through the owned portal endpoint", () => {

@@ -6,9 +6,7 @@ import { toast } from "sonner";
 
 import CauseCorrectionModal from "@work-orders/components/workorders/CauseCorrectionModal";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
-import {
-  runMutationWithOfflineQueue,
-} from "@/features/shared/lib/offline/mutations";
+import { runMutationWithOfflineQueue } from "@/features/shared/lib/offline/mutations";
 import { postOfflineServerMutation } from "@/features/shared/lib/offline/server-mutations";
 import { runJobPunchTransition } from "@/features/work-orders/lib/jobPunchTransitionsClient";
 import MobileFocusedJob from "@/features/work-orders/mobile/MobileFocusedJob";
@@ -45,16 +43,17 @@ export default function MobileJobPage() {
   const loadStory = useCallback(async () => {
     setLoadingStory(true);
     try {
-      const { data, error } = await supabase
-        .from("work_order_lines")
-        .select(
-          "id, work_order_id, complaint, description, cause, correction, status, updated_at",
-        )
-        .eq("id", lineId)
-        .maybeSingle<StoryLine>();
-
-      if (error) throw error;
-      setLine(data ?? null);
+      const response = await fetch(
+        `/api/work-order-lines/operational?lineId=${encodeURIComponent(
+          lineId,
+        )}&limit=1`,
+        { cache: "no-store" },
+      );
+      const body = (await response.json().catch(() => null)) as {
+        lines?: StoryLine[];
+      } | null;
+      if (!response.ok) throw new Error("Job line could not be loaded.");
+      setLine(body?.lines?.[0] ?? null);
     } catch (error) {
       // The focused job owns the primary load/error state. This supplemental
       // editor must never replace it with a second blocking screen.
@@ -73,12 +72,17 @@ export default function MobileJobPage() {
     async (mode: "story" | "finish"): Promise<string | null> => {
       if (!navigator.onLine) return null;
 
-      const { data, error } = await supabase
-        .from("work_order_lines")
-        .select("id, status")
-        .eq("id", lineId)
-        .maybeSingle<{ id: string; status: string | null }>();
-      if (error) throw error;
+      const response = await fetch(
+        `/api/work-order-lines/operational?lineId=${encodeURIComponent(
+          lineId,
+        )}&limit=1`,
+        { cache: "no-store" },
+      );
+      const body = (await response.json().catch(() => null)) as {
+        lines?: Array<{ id: string; status: string | null }>;
+      } | null;
+      if (!response.ok) throw new Error("Job line could not be loaded.");
+      const data = body?.lines?.[0] ?? null;
       if (!data?.id) return "Job line no longer exists.";
       if (data.status === "completed") {
         return mode === "finish"
@@ -120,7 +124,9 @@ export default function MobileJobPage() {
       });
 
       if (result.conflicted) {
-        throw new Error("Story conflict detected. Reload the latest job state.");
+        throw new Error(
+          "Story conflict detected. Reload the latest job state.",
+        );
       }
 
       setLine((current) =>
@@ -159,7 +165,9 @@ export default function MobileJobPage() {
   const openStory = () => {
     if (!line) {
       toast.error(
-        loadingStory ? "Job story is still loading." : "Job line was not found.",
+        loadingStory
+          ? "Job story is still loading."
+          : "Job line was not found.",
       );
       return;
     }

@@ -8,7 +8,11 @@ import {
   type CanonicalRole,
 } from "@/features/shared/lib/rbac";
 import { resolveAuthenticatedStaffProfile } from "@/features/shared/lib/server/admin-access";
-import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
+import {
+  createAdminSupabase,
+  createServerSupabaseRSC,
+} from "@/features/shared/lib/supabase/server";
+import { resolveTechnicianAssignmentContract } from "@/features/work-orders/lib/technicianAssignmentContract";
 import {
   createWorkOrderWorkspaceResource,
   type WorkOrderWorkspaceServerSnapshot,
@@ -49,9 +53,9 @@ export const WORK_ORDER_WORKSPACE_READER_ROLES = [
   "foreman",
 ] as const satisfies readonly CanonicalRole[];
 
-function normalizedCustomIdReference(value: string | null | undefined):
-  | { prefix: string; numericValue: number }
-  | null {
+function normalizedCustomIdReference(
+  value: string | null | undefined,
+): { prefix: string; numericValue: number } | null {
   const match = String(value ?? "")
     .trim()
     .toUpperCase()
@@ -132,7 +136,8 @@ async function resolveVisibleWorkOrder(
       caseInsensitiveResult.error,
       "Unable to resolve Work Order workspace alias",
     );
-    const caseInsensitiveRows = (caseInsensitiveResult.data ?? []) as WorkspaceWorkOrderRow[];
+    const caseInsensitiveRows = (caseInsensitiveResult.data ??
+      []) as WorkspaceWorkOrderRow[];
     if (caseInsensitiveRows.length === 1) return caseInsensitiveRows[0];
     if (caseInsensitiveRows.length > 1) return null;
   }
@@ -151,9 +156,9 @@ async function resolveVisibleWorkOrder(
     "Unable to resolve normalized Work Order workspace alias",
   );
 
-  const matches = ((candidatesResult.data ?? []) as WorkspaceWorkOrderRow[]).filter(
-    (row) => customIdReferencesMatch(row.custom_id, routeId),
-  );
+  const matches = (
+    (candidatesResult.data ?? []) as WorkspaceWorkOrderRow[]
+  ).filter((row) => customIdReferencesMatch(row.custom_id, routeId));
   return matches.length === 1 ? matches[0] : null;
 }
 
@@ -205,6 +210,73 @@ export async function loadWorkOrderWorkspaceSnapshot(input: {
 }
 
 /**
+ * Resolves identity with a trusted reader only after the authenticated actor's
+ * canonical profile is known, then replays the legacy visibility contract
+ * explicitly. This is the authorization bridge used once no-financial field
+ * roles can no longer select mixed base rows directly.
+ */
+export async function loadAuthorizedWorkOrderWorkspaceSnapshot(input: {
+  dataSupabase: SupabaseClient<Database>;
+  profileId: string;
+  shopId: string;
+  routeId: string;
+}): Promise<WorkOrderWorkspaceServerSnapshot | null> {
+  const { data: profile, error: profileError } = await input.dataSupabase
+    .from("profiles")
+    .select("id, role, shop_id")
+    .eq("id", input.profileId)
+    .eq("shop_id", input.shopId)
+    .maybeSingle<{ id: string; role: string | null; shop_id: string | null }>();
+  if (profileError || !profile) return null;
+
+  const actor = getActorCapabilities({ role: profile.role });
+  if (
+    !actor.isKnownRole ||
+    !(WORK_ORDER_WORKSPACE_READER_ROLES as readonly CanonicalRole[]).includes(
+      actor.canonicalRole,
+    )
+  ) {
+    return null;
+  }
+
+  const snapshot = await loadWorkOrderWorkspaceSnapshot({
+    supabase: input.dataSupabase,
+    shopId: input.shopId,
+    routeId: input.routeId,
+  });
+  if (!snapshot) return null;
+  if (actor.canonicalRole !== "mechanic") return snapshot;
+
+  const { data: candidateLines, error: lineError } = await input.dataSupabase
+    .from("work_order_lines")
+    .select("id, assigned_tech_id, assigned_to")
+    .eq("shop_id", input.shopId)
+    .eq("work_order_id", snapshot.workOrder.id)
+    .eq("line_type", "job");
+  if (lineError || !candidateLines?.length) return null;
+
+  const lineIds = candidateLines.map((line) => line.id);
+  const { data: bridgeRows, error: bridgeError } = await input.dataSupabase
+    .from("work_order_line_technicians")
+    .select("work_order_line_id, technician_id")
+    .in("work_order_line_id", lineIds)
+    .eq("technician_id", profile.id);
+  if (bridgeError) return null;
+  const bridgeLineIds = new Set(
+    (bridgeRows ?? []).map((row) => row.work_order_line_id),
+  );
+
+  const assigned = candidateLines.some((line) =>
+    resolveTechnicianAssignmentContract({
+      primaryTechnicianId: line.assigned_tech_id,
+      legacyAssignedTo: line.assigned_to,
+      canonicalTechnicianIds: bridgeLineIds.has(line.id) ? [profile.id] : [],
+    }).technicianIds.includes(profile.id),
+  );
+  return assigned ? snapshot : null;
+}
+
+/**
  * Best-effort server bootstrap for the existing Work Order screen. Returning
  * null preserves its current client-side authentication, retry, and not-found
  * behavior when the server snapshot is unavailable.
@@ -234,8 +306,9 @@ export async function loadCurrentWorkOrderWorkspaceSnapshot(input: {
       return null;
     }
 
-    return loadWorkOrderWorkspaceSnapshot({
-      supabase,
+    return loadAuthorizedWorkOrderWorkspaceSnapshot({
+      dataSupabase: createAdminSupabase(),
+      profileId: profile.id,
       shopId: profile.shop_id,
       routeId: input.routeId,
     });
