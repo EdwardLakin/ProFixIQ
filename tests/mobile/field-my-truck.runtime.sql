@@ -6,7 +6,8 @@ insert into auth.users (id, email, raw_user_meta_data)
 values
   ('8f100000-0000-4000-8000-000000000001', 'field-my-truck-one@example.com', '{}'::jsonb),
   ('8f100000-0000-4000-8000-000000000002', 'field-my-truck-two@example.com', '{}'::jsonb),
-  ('8f100000-0000-4000-8000-000000000003', 'standalone-field-owner@example.com', '{}'::jsonb)
+  ('8f100000-0000-4000-8000-000000000003', 'standalone-field-owner@example.com', '{}'::jsonb),
+  ('8f100000-0000-4000-8000-000000000004', 'standalone-field-impostor@example.com', '{}'::jsonb)
 on conflict (id) do nothing;
 
 insert into public.profiles (id, user_id, role, full_name, email, shop_id)
@@ -401,6 +402,23 @@ select public.field_configure_standalone_owner_atomic(
   '8f100000-0000-4000-8000-000000000003'
 );
 
+-- The legacy public setup RPC must enforce the same standalone invariants
+-- even when a direct PostgREST caller supplies Shop-linked team flags.
+select public.mobile_configure_service_v1_atomic(
+  '8f200000-0000-4000-8000-000000000003',
+  'both',
+  false,
+  true,
+  false,
+  false,
+  60,
+  25,
+  false,
+  'Owner Service Truck',
+  'OWNER-1',
+  '8f100000-0000-4000-8000-000000000003'
+);
+
 do $$
 begin
   if not exists (
@@ -428,6 +446,199 @@ begin
   ) then
     raise exception 'My Truck runtime failed: standalone Field owner was not assigned their truck';
   end if;
+end;
+$$;
+
+reset role;
+
+-- If historical data contains two eligible owner trucks, do not expose an
+-- arbitrary oldest vehicle or let setup silently choose one.
+insert into public.service_vehicles (
+  id, shop_id, name, unit_number, primary_user_id, active, capabilities
+)
+values (
+  '8f300000-0000-4000-8000-000000000005',
+  '8f200000-0000-4000-8000-000000000003',
+  'Ambiguous Owner Truck',
+  'OWNER-2',
+  '8f100000-0000-4000-8000-000000000003',
+  true,
+  '{"mobile_v1":true}'::jsonb
+)
+on conflict (id) do nothing;
+
+select set_config('request.jwt.claim.role', 'authenticated', true);
+select set_config('request.jwt.claim.sub', '8f100000-0000-4000-8000-000000000003', true);
+set local role authenticated;
+
+do $$
+begin
+  if exists (
+    select 1
+    from public.field_service_vehicle_assignments assignment
+    where assignment.shop_id = '8f200000-0000-4000-8000-000000000003'
+      and assignment.profile_id = '8f100000-0000-4000-8000-000000000003'
+  ) then
+    raise exception 'My Truck runtime failed: ambiguous standalone owner truck remained accessible';
+  end if;
+
+  begin
+    perform public.field_configure_standalone_owner_atomic(
+      '8f200000-0000-4000-8000-000000000003',
+      'mobile',
+      true,
+      false,
+      true,
+      false,
+      60,
+      1,
+      true,
+      'Owner Service Truck',
+      'OWNER-1',
+      '8f100000-0000-4000-8000-000000000003'
+    );
+    raise exception 'My Truck runtime failed: ambiguous standalone owner setup selected a truck';
+  exception when check_violation then
+    null;
+  end;
+end;
+$$;
+
+reset role;
+
+-- A historical second role-labelled owner and truck assignment must remain
+-- inaccessible inside a standalone Field workspace. Shop-linked workspaces
+-- keep the existing enabled-operator assignment contract tested above.
+insert into public.profiles (id, user_id, role, full_name, email, shop_id)
+values (
+  '8f100000-0000-4000-8000-000000000004',
+  '8f100000-0000-4000-8000-000000000004',
+  'owner',
+  'Standalone Field Impostor',
+  'standalone-field-impostor@example.com',
+  '8f200000-0000-4000-8000-000000000003'
+)
+on conflict (id) do update
+set user_id = excluded.user_id,
+    role = 'owner',
+    shop_id = excluded.shop_id;
+
+insert into public.mobile_field_operators (shop_id, profile_id, enabled)
+values (
+  '8f200000-0000-4000-8000-000000000003',
+  '8f100000-0000-4000-8000-000000000004',
+  true
+)
+on conflict (shop_id, profile_id) do update set enabled = true;
+
+insert into public.service_vehicles (
+  id, shop_id, name, unit_number, primary_user_id, active, capabilities
+)
+values (
+  '8f300000-0000-4000-8000-000000000004',
+  '8f200000-0000-4000-8000-000000000003',
+  'Historical Team Truck',
+  'TEAM-2',
+  '8f100000-0000-4000-8000-000000000004',
+  true,
+  '{"mobile_v1":true}'::jsonb
+)
+on conflict (id) do nothing;
+
+insert into public.field_service_vehicle_assignments (
+  shop_id, service_vehicle_id, profile_id, assigned_by_profile_id
+)
+values (
+  '8f200000-0000-4000-8000-000000000003',
+  '8f300000-0000-4000-8000-000000000004',
+  '8f100000-0000-4000-8000-000000000004',
+  '8f100000-0000-4000-8000-000000000003'
+)
+on conflict do nothing;
+
+insert into public.field_truck_records (
+  id, shop_id, service_vehicle_id, operation_key, record_type, title,
+  due_on, status, created_by_profile_id
+)
+values (
+  '8f400000-0000-4000-8000-000000000004',
+  '8f200000-0000-4000-8000-000000000003',
+  '8f300000-0000-4000-8000-000000000004',
+  'runtime-standalone-impostor-reminder',
+  'reminder',
+  'Historical team reminder',
+  current_date + 5,
+  'open',
+  '8f100000-0000-4000-8000-000000000004'
+);
+
+select set_config('request.jwt.claim.role', 'authenticated', true);
+select set_config('request.jwt.claim.sub', '8f100000-0000-4000-8000-000000000004', true);
+set local role authenticated;
+
+do $$
+begin
+  if public.field_actor_can_access_service_vehicle(
+    '8f200000-0000-4000-8000-000000000003',
+    '8f300000-0000-4000-8000-000000000004'
+  ) then
+    raise exception 'My Truck runtime failed: non-canonical standalone owner retained truck access';
+  end if;
+
+  if public.mobile_can_manage_work_orders(
+    '8f200000-0000-4000-8000-000000000003',
+    '8f100000-0000-4000-8000-000000000004'
+  ) then
+    raise exception 'My Truck runtime failed: non-canonical standalone owner retained Field management access';
+  end if;
+
+  if exists (
+    select 1
+    from public.field_service_vehicle_assignments assignment
+    where assignment.shop_id = '8f200000-0000-4000-8000-000000000003'
+      and assignment.profile_id = '8f100000-0000-4000-8000-000000000004'
+  ) then
+    raise exception 'My Truck runtime failed: standalone assignment RLS exposed a historical team role';
+  end if;
+
+  if exists (
+    select 1
+    from public.field_truck_records record
+    where record.id = '8f400000-0000-4000-8000-000000000004'
+  ) then
+    raise exception 'My Truck runtime failed: standalone truck RLS exposed a historical team role';
+  end if;
+
+  begin
+    perform public.mobile_configure_service_v1_atomic(
+      '8f200000-0000-4000-8000-000000000003',
+      'both',
+      false,
+      true,
+      false,
+      false,
+      60,
+      25,
+      false,
+      'Historical Team Truck',
+      'TEAM-2',
+      '8f100000-0000-4000-8000-000000000004'
+    );
+    raise exception 'My Truck runtime failed: non-canonical owner bypassed standalone setup';
+  exception when insufficient_privilege then
+    null;
+  end;
+
+  begin
+    perform public.field_assign_service_vehicle(
+      '8f200000-0000-4000-8000-000000000003',
+      '8f300000-0000-4000-8000-000000000004',
+      '8f100000-0000-4000-8000-000000000004'
+    );
+    raise exception 'My Truck runtime failed: direct standalone assignment RPC was accepted';
+  exception when insufficient_privilege then
+    null;
+  end;
 end;
 $$;
 

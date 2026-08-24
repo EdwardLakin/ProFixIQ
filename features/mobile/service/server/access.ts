@@ -36,13 +36,14 @@ export function resolveFieldWorkspaceCapabilities(input: {
   canSwitchWorkspace: boolean;
 }): FieldWorkspaceCapabilities {
   if (input.standaloneFieldWorkspace === true) {
-    const owner = input.role === "owner";
+    const standaloneOwner =
+      input.role === "owner" && input.canConfigureFieldService;
     return {
-      canManageScheduling: owner,
-      canManageParts: owner,
-      canManageOperations: owner,
-      canManageInspectionTemplates: owner,
-      canConfigureFieldService: owner && input.canConfigureFieldService,
+      canManageScheduling: standaloneOwner,
+      canManageParts: standaloneOwner,
+      canManageOperations: standaloneOwner,
+      canManageInspectionTemplates: standaloneOwner,
+      canConfigureFieldService: standaloneOwner,
       canSwitchWorkspace: input.canSwitchWorkspace,
     };
   }
@@ -68,6 +69,7 @@ export function resolveMobileFieldServiceAccess(input: {
   canonicalRole: string;
   productEntitled: boolean;
   subscriptionPackage?: string | null;
+  isCanonicalWorkspaceOwner?: boolean;
 }): MobileFieldServiceAccess {
   return resolveFieldServiceAccessContract(input);
 }
@@ -95,9 +97,12 @@ export async function getMobileFieldServiceAccess(
       }),
       access.supabase
         .from("shops")
-        .select("subscription_package")
+        .select("subscription_package,owner_id")
         .eq("id", access.profile.shop_id)
-        .maybeSingle<{ subscription_package: string | null }>(),
+        .maybeSingle<{
+          subscription_package: string | null;
+          owner_id: string | null;
+        }>(),
     ]);
 
   const error =
@@ -114,6 +119,9 @@ export async function getMobileFieldServiceAccess(
     canonicalRole: access.canonicalRole,
     productEntitled: entitlementResult.data === true,
     subscriptionPackage: shopResult.data?.subscription_package ?? null,
+    isCanonicalWorkspaceOwner:
+      shopResult.data?.owner_id === access.profile.id ||
+      shopResult.data?.owner_id === access.authUserId,
   });
 }
 

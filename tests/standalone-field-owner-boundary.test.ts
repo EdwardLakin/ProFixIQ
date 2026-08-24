@@ -16,6 +16,7 @@ describe("standalone Field owner boundary", () => {
       canonicalRole: "owner",
       productEntitled: true,
       subscriptionPackage: "field_service",
+      isCanonicalWorkspaceOwner: true,
     });
 
     expect(access).toMatchObject({
@@ -59,14 +60,15 @@ describe("standalone Field owner boundary", () => {
     });
   });
 
-  it("rejects a second role inside a standalone Field workspace", () => {
+  it("rejects a role-labelled owner who is not the canonical workspace owner", () => {
     const access = resolveFieldServiceAccessContract({
       serviceModel: "mobile",
       onboardingCompletedAt: "2026-08-24T12:00:00.000Z",
       isFieldOperator: true,
-      canonicalRole: "admin",
+      canonicalRole: "owner",
       productEntitled: true,
       subscriptionPackage: "field_service",
+      isCanonicalWorkspaceOwner: false,
     });
 
     expect(access).toMatchObject({
@@ -76,7 +78,7 @@ describe("standalone Field owner boundary", () => {
     });
     expect(
       resolveFieldWorkspaceCapabilities({
-        role: "admin",
+        role: "owner",
         standaloneFieldWorkspace: true,
         canConfigureFieldService: false,
         canSwitchWorkspace: false,
@@ -102,6 +104,10 @@ describe("standalone Field owner boundary", () => {
     const migration = read(
       "supabase/migrations/20260824153307_establish_standalone_field_owner_boundary.sql",
     );
+    const hardeningMigration = read(
+      "supabase/migrations/20260824161939_harden_standalone_field_owner_boundary.sql",
+    );
+    const serverAccess = read("features/mobile/service/server/access.ts");
     const settingsRoute = read("app/api/mobile/service/settings/route.ts");
     const settingsScreen = read(
       "features/mobile/service/MobileServiceSetup.tsx",
@@ -119,6 +125,45 @@ describe("standalone Field owner boundary", () => {
     );
     expect(migration).not.toContain(
       "grant execute on function public.mobile_profile_has_field_service_access",
+    );
+    expect(hardeningMigration).toContain(
+      "private.mobile_configure_service_v1_atomic_internal_v1",
+    );
+    expect(hardeningMigration).toContain(
+      ") from public, anon, authenticated, service_role;",
+    );
+    expect(hardeningMigration).toContain(
+      "v_subscription_package = 'field_service'",
+    );
+    expect(hardeningMigration).toContain(
+      "v_owner_id is distinct from v_profile.id",
+    );
+    expect(hardeningMigration).toContain(
+      "workspace.owner_id in (profile.id, profile.user_id)",
+    );
+    expect(hardeningMigration).toContain(
+      "workspace.subscription_package is distinct from 'field_service'",
+    );
+    expect(hardeningMigration).toContain(
+      "settings.dispatch_enabled is distinct from false",
+    );
+    expect(hardeningMigration).toContain(
+      "settings.field_operator_count_target is distinct from 1",
+    );
+    expect(hardeningMigration).toContain("select count(*)");
+    expect(hardeningMigration).toContain(") = 1");
+    expect(hardeningMigration).toContain("v_existing_vehicle_count > 1");
+    expect(hardeningMigration).toContain(
+      "create or replace function public.mobile_profile_has_field_service_access",
+    );
+    expect(hardeningMigration.indexOf("'field-truck-profile:'")).toBeLessThan(
+      hardeningMigration.indexOf(
+        "v_result := public.mobile_configure_service_v1_atomic",
+      ),
+    );
+    expect(serverAccess).toContain('.select("subscription_package,owner_id")');
+    expect(serverAccess).toContain(
+      "shopResult.data?.owner_id === access.profile.id",
     );
     expect(settingsRoute).toContain(
       '"field_configure_standalone_owner_atomic"',

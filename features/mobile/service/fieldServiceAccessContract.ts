@@ -29,11 +29,14 @@ export function resolveFieldServiceAccessContract(input: {
   canonicalRole: string;
   productEntitled: boolean;
   subscriptionPackage?: string | null;
+  isCanonicalWorkspaceOwner?: boolean;
 }): FieldServiceAccessContract {
   const standaloneFieldWorkspace =
     input.subscriptionPackage === "field_service";
   const standaloneOwner =
-    standaloneFieldWorkspace && input.canonicalRole === "owner";
+    standaloneFieldWorkspace &&
+    input.canonicalRole === "owner" &&
+    input.isCanonicalWorkspaceOwner === true;
   const canConfigure = standaloneFieldWorkspace
     ? standaloneOwner
     : ["owner", "admin"].includes(input.canonicalRole);
