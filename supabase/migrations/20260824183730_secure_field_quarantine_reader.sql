@@ -1,8 +1,8 @@
 begin;
 
--- Keep the quarantine relation private. Operational diagnostics use this
--- bounded SECURITY DEFINER reader instead of granting service_role access to
--- the entire private schema.
+-- Compatibility cleanup for development branches that recorded the earlier
+-- quarantine-reader ACL before the production-safe controlled reader replaced
+-- it. Production receives the same final least-privilege state.
 revoke usage on schema private from service_role;
 revoke all on table private.field_service_vehicle_assignment_quarantine
   from public, anon, authenticated, service_role;
@@ -53,8 +53,6 @@ grant execute on function public.field_service_vehicle_assignment_quarantine_rep
   integer
 ) to service_role;
 
-comment on table private.field_service_vehicle_assignment_quarantine is
-  'Private audit snapshots of standalone Field truck assignments quarantined by the canonical repair.';
 comment on function public.field_service_vehicle_assignment_quarantine_report(
   uuid,
   integer

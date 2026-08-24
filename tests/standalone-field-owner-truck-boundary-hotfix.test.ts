@@ -28,9 +28,7 @@ describe("standalone Field owner truck boundary hotfix", () => {
       "private.repair_standalone_field_vehicle_assignments",
     );
     expect(migration).toContain("'ambiguous_owner_vehicle_set'");
-    expect(migration).toContain(
-      "'assigned_vehicle_not_unique_owner_vehicle'",
-    );
+    expect(migration).toContain("'assigned_vehicle_not_unique_owner_vehicle'");
     expect(migration).toContain("'non_canonical_profile'");
     expect(migration).toContain(
       "select private.repair_standalone_field_vehicle_assignments();",
@@ -52,13 +50,21 @@ describe("standalone Field owner truck boundary hotfix", () => {
     expect(entitlement).toContain(
       "workspace.owner_id in (profile.id, profile.user_id)",
     );
+    expect(entitlement).not.toContain("profile.role");
     expect(entitlement).not.toContain("select count(*)");
     expect(entitlement).not.toContain("service_vehicles candidate");
     expect(runtime).toContain(
-      "truck ambiguity revoked standalone Field entitlement",
+      "truck ambiguity or historical role label revoked standalone Field entitlement",
     );
     expect(runtime).toContain(
       "canonical owner lost dispatch eligibility during truck repair",
+    );
+    expect(runtime).toContain("role = 'manager'");
+    expect(runtime).toContain(
+      "manager-labelled canonical owner assignment was removed",
+    );
+    expect(runtime).toContain(
+      "manager-labelled canonical owner was quarantined as non-canonical",
     );
   });
 
@@ -71,12 +77,11 @@ describe("standalone Field owner truck boundary hotfix", () => {
     expect(access).toContain("vehicle.primary_user_id = profile.id");
     expect(access).toContain("candidate.primary_user_id = profile.id");
     expect(access).toContain(") = 1");
+    expect(access).not.toContain("profile.role");
     expect(runtime).toContain(
       "non-owner-primary truck was exposed as My Truck",
     );
-    expect(runtime).toContain(
-      "unique canonical owner truck was not restored",
-    );
+    expect(runtime).toContain("unique canonical owner truck was not restored");
   });
 
   it("lands as a separate forward compatibility repair", () => {
@@ -85,10 +90,16 @@ describe("standalone Field owner truck boundary hotfix", () => {
     );
     expect(migration).not.toContain("set schema private");
     expect(migration).toContain(
-      "explicitly approved the shared compatibility integration",
+      "explicitly approved this shared compatibility integration for PR #1531",
     );
     expect(migration).toContain(
       "workspace.subscription_package is distinct from 'field_service'",
+    );
+    expect(runtime).toContain(
+      "Shop-linked enabled operator lost Field entitlement",
+    );
+    expect(runtime).toContain(
+      "Shop-linked explicit truck assignment was denied",
     );
   });
 });

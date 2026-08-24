@@ -36,8 +36,7 @@ export function resolveFieldWorkspaceCapabilities(input: {
   canSwitchWorkspace: boolean;
 }): FieldWorkspaceCapabilities {
   if (input.standaloneFieldWorkspace === true) {
-    const standaloneOwner =
-      input.role === "owner" && input.canConfigureFieldService;
+    const standaloneOwner = input.canConfigureFieldService;
     return {
       canManageScheduling: standaloneOwner,
       canManageParts: standaloneOwner,
@@ -292,9 +291,7 @@ export async function requireMobileServiceOperatorApiAccess(
 }
 
 export async function requireMobileServiceConfigurationApiAccess() {
-  const access = await requireShopScopedApiAccess({
-    allowRoles: ["owner", "admin"],
-  });
+  const access = await requireShopScopedApiAccess();
   if (!access.ok) return access;
 
   let fieldAccess: MobileFieldServiceAccess;

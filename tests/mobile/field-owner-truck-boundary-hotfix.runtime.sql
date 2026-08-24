@@ -12,13 +12,13 @@ insert into public.profiles (id, user_id, role, full_name, email, shop_id)
 values (
   '8fa00000-0000-4000-8000-000000000001',
   '8fa00000-0000-4000-8000-000000000001',
-  'owner',
-  'Field Hotfix Owner',
+  'manager',
+  'Historical Manager-Labeled Field Owner',
   'field-hotfix-owner@example.com',
   null
 )
 on conflict (id) do update
-set user_id = excluded.user_id, role = 'owner', shop_id = null;
+set user_id = excluded.user_id, role = 'manager', shop_id = null;
 
 insert into public.shops (
   id, owner_id, business_name, name, user_limit, accepts_online_booking,
@@ -142,7 +142,7 @@ begin
     '8fb00000-0000-4000-8000-000000000001',
     '8fa00000-0000-4000-8000-000000000001'
   ) then
-    raise exception 'Field boundary hotfix failed: truck ambiguity revoked standalone Field entitlement';
+    raise exception 'Field boundary hotfix failed: truck ambiguity or historical role label revoked standalone Field entitlement';
   end if;
 end;
 $$;
@@ -260,7 +260,36 @@ $$;
 
 reset role;
 
--- Historical role-labelled owners are quarantined rather than merely hidden.
+-- Production history includes a canonical standalone owner whose profile still
+-- has the manager label. Canonical identity comes from shops.owner_id, so the
+-- repair must not classify or remove that owner's valid assignment.
+select private.repair_standalone_field_vehicle_assignments();
+
+do $$
+begin
+  if not exists (
+    select 1
+    from public.field_service_vehicle_assignments assignment
+    where assignment.shop_id = '8fb00000-0000-4000-8000-000000000001'
+      and assignment.profile_id = '8fa00000-0000-4000-8000-000000000001'
+      and assignment.service_vehicle_id = '8fc00000-0000-4000-8000-000000000001'
+  ) then
+    raise exception 'Field boundary hotfix failed: manager-labelled canonical owner assignment was removed';
+  end if;
+
+  if exists (
+    select 1
+    from private.field_service_vehicle_assignment_quarantine quarantine
+    where quarantine.shop_id = '8fb00000-0000-4000-8000-000000000001'
+      and quarantine.profile_id = '8fa00000-0000-4000-8000-000000000001'
+      and quarantine.reason = 'non_canonical_profile'
+  ) then
+    raise exception 'Field boundary hotfix failed: manager-labelled canonical owner was quarantined as non-canonical';
+  end if;
+end;
+$$;
+
+-- A role-labelled profile that is not shops.owner_id remains non-canonical.
 insert into public.profiles (id, user_id, role, full_name, email, shop_id)
 values (
   '8fa00000-0000-4000-8000-000000000002',
@@ -331,5 +360,46 @@ begin
   end if;
 end;
 $$;
+
+-- Shop-linked Field keeps its established enabled-operator and explicit-truck
+-- assignment behavior. Canonical standalone owner restrictions must not leak
+-- into this branch.
+update public.shops
+set subscription_package = 'complete_operations'
+where id = '8fb00000-0000-4000-8000-000000000001';
+
+insert into public.field_service_vehicle_assignments (
+  shop_id, service_vehicle_id, profile_id, assigned_by_profile_id
+)
+values (
+  '8fb00000-0000-4000-8000-000000000001',
+  '8fc00000-0000-4000-8000-000000000003',
+  '8fa00000-0000-4000-8000-000000000002',
+  '8fa00000-0000-4000-8000-000000000001'
+);
+
+select set_config('request.jwt.claim.role', 'authenticated', true);
+select set_config('request.jwt.claim.sub', '8fa00000-0000-4000-8000-000000000002', true);
+set local role authenticated;
+
+do $$
+begin
+  if not public.mobile_profile_has_field_service_access(
+    '8fb00000-0000-4000-8000-000000000001',
+    '8fa00000-0000-4000-8000-000000000002'
+  ) then
+    raise exception 'Field boundary hotfix failed: Shop-linked enabled operator lost Field entitlement';
+  end if;
+
+  if not public.field_actor_can_access_service_vehicle(
+    '8fb00000-0000-4000-8000-000000000001',
+    '8fc00000-0000-4000-8000-000000000003'
+  ) then
+    raise exception 'Field boundary hotfix failed: Shop-linked explicit truck assignment was denied';
+  end if;
+end;
+$$;
+
+reset role;
 
 rollback;

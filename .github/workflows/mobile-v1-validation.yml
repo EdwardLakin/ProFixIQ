@@ -31,9 +31,14 @@ on:
       - "supabase/migrations/20260812230400_field_truck_inventory_work_order_commands.sql"
       - "supabase/migrations/20260824182500_repair_standalone_field_truck_boundary.sql"
       - "supabase/migrations/20260824183500_grant_field_quarantine_service_reader.sql"
+      - "supabase/migrations/20260824183730_secure_field_quarantine_reader.sql"
+      - "features/mobile/service/fieldServiceAccessContract.ts"
+      - "features/mobile/service/server/access.ts"
+      - "features/shared/types/types/supabase.ts"
       - "tests/field-truck-inventory-contract.test.ts"
       - "tests/mobile-v1-productization.test.ts"
       - "tests/mobile-v1-post-merge-hardening.test.ts"
+      - "tests/standalone-field-owner-boundary.test.ts"
       - "tests/standalone-field-owner-truck-boundary-hotfix.test.ts"
       - "tests/field-quarantine-service-reader.test.ts"
       - "tests/mobile/field-truck-inventory.runtime.sql"
@@ -86,6 +91,7 @@ jobs:
           tests/field-truck-inventory-contract.test.ts
           tests/mobile-v1-productization.test.ts
           tests/mobile-v1-post-merge-hardening.test.ts
+          tests/standalone-field-owner-boundary.test.ts
           tests/standalone-field-owner-truck-boundary-hotfix.test.ts
           tests/field-quarantine-service-reader.test.ts
           tests/mobile-service-shell.test.ts
