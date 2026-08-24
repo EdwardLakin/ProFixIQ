@@ -676,4 +676,54 @@ end;
 $$;
 
 reset role;
+
+-- Truck inventory is optional. The combined snapshot must preserve the
+-- assigned-truck setup state instead of failing when no stock location exists.
+update public.service_vehicles
+set stock_location_id = null,
+    updated_at = now()
+where id = (
+  select vehicle.id
+  from public.service_vehicles vehicle
+  where vehicle.shop_id = '9f200000-0000-4000-8000-000000000001'::uuid
+    and vehicle.active
+  order by vehicle.created_at desc, vehicle.id
+  limit 1
+);
+
+select set_config('request.jwt.claim.role', 'authenticated', true);
+select set_config('request.jwt.claim.sub', '9f100000-0000-4000-8000-000000000001', true);
+set local role authenticated;
+
+do $$
+declare
+  v_snapshot jsonb;
+  v_truck_id uuid;
+begin
+  select vehicle.id into v_truck_id
+  from public.service_vehicles vehicle
+  where vehicle.shop_id = '9f200000-0000-4000-8000-000000000001'::uuid
+    and vehicle.active
+  order by vehicle.created_at desc, vehicle.id
+  limit 1;
+
+  v_snapshot := public.field_truck_inventory_snapshot_with_activity(
+    '9f200000-0000-4000-8000-000000000001'::uuid,
+    '9f100000-0000-4000-8000-000000000001'::uuid,
+    null,
+    v_truck_id,
+    null,
+    50
+  );
+
+  if v_snapshot -> 'truck' ->> 'id'
+       is distinct from v_truck_id::text
+     or v_snapshot -> 'truck' ->> 'stockLocationId' is not null
+     or jsonb_array_length(coalesce(v_snapshot -> 'movements', '[]'::jsonb)) <> 0 then
+    raise exception 'Field truck runtime failed: unconfigured inventory snapshot was not preserved';
+  end if;
+end;
+$$;
+
+reset role;
 rollback;

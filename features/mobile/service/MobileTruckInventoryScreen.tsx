@@ -78,6 +78,7 @@ export default function MobileTruckInventoryScreen(props: Props) {
     selectedTruckId,
     onTruckChange,
   } = props;
+  const inventoryConfigured = Boolean(snapshot?.truck?.stockLocationId);
   const tabs: Array<{ key: TruckInventoryView; label: string; icon: typeof Boxes }> = [
     { key: "stock", label: "Truck stock", icon: Boxes },
     { key: "load", label: "Transfer", icon: MoveRight },
@@ -156,24 +157,26 @@ export default function MobileTruckInventoryScreen(props: Props) {
         </section>
       ) : null}
 
-      <nav className="grid grid-cols-4 gap-2" aria-label="Truck inventory views">
-        {tabs.map(({ key, label, icon: Icon }) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => setView(key)}
-            className={[
-              "min-h-16 rounded-2xl border px-2 py-2 text-xs font-bold",
-              view === key
-                ? "border-[color:var(--accent-copper)] bg-[color:var(--theme-surface-panel)]"
-                : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)]",
-            ].join(" ")}
-          >
-            <Icon className="mx-auto mb-1 h-4 w-4" />
-            {label}
-          </button>
-        ))}
-      </nav>
+      {!snapshot?.truck || inventoryConfigured ? (
+        <nav className="grid grid-cols-4 gap-2" aria-label="Truck inventory views">
+          {tabs.map(({ key, label, icon: Icon }) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setView(key)}
+              className={[
+                "min-h-16 rounded-2xl border px-2 py-2 text-xs font-bold",
+                view === key
+                  ? "border-[color:var(--accent-copper)] bg-[color:var(--theme-surface-panel)]"
+                  : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)]",
+              ].join(" ")}
+            >
+              <Icon className="mx-auto mb-1 h-4 w-4" />
+              {label}
+            </button>
+          ))}
+        </nav>
+      ) : null}
 
       {loading && !snapshot ? (
         <div className="flex min-h-48 items-center justify-center rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)]">
@@ -191,10 +194,30 @@ export default function MobileTruckInventoryScreen(props: Props) {
         </section>
       ) : null}
 
-      {snapshot?.truck && view === "stock" ? <TruckStockPanel {...props} snapshot={snapshot} /> : null}
-      {snapshot?.truck && view === "load" ? <TruckLoadPanel {...props} snapshot={snapshot} /> : null}
-      {snapshot?.truck && view === "receive" ? <TruckReceivePanel {...props} snapshot={snapshot} /> : null}
-      {snapshot?.truck && view === "history" ? <TruckHistoryPanel {...props} snapshot={snapshot} /> : null}
+      {snapshot?.truck && !inventoryConfigured ? (
+        <section className="rounded-3xl border border-amber-400/35 bg-amber-500/10 p-6 text-center">
+          <Boxes className="mx-auto h-8 w-8 text-amber-600 dark:text-amber-300" />
+          <h2 className="mt-3 text-lg font-bold">Truck inventory isn&apos;t enabled</h2>
+          <p className="mx-auto mt-1 max-w-lg text-sm text-[color:var(--theme-text-secondary)]">
+            {snapshot.canManageParts
+              ? "This truck is assigned, but it does not have an inventory location yet. Enable Truck carries inventory in Field setup to receive, transfer and use parts here."
+              : "This truck is assigned, but it does not have an inventory location yet. Ask a Field owner or parts manager to enable truck inventory."}
+          </p>
+          {snapshot.canManageParts ? (
+            <Link
+              href="/mobile/service/setup"
+              className="mt-4 inline-flex min-h-11 items-center justify-center rounded-xl bg-[color:var(--accent-copper)] px-4 text-sm font-bold text-[color:var(--theme-text-on-accent)]"
+            >
+              Open Field setup
+            </Link>
+          ) : null}
+        </section>
+      ) : null}
+
+      {inventoryConfigured && snapshot?.truck && view === "stock" ? <TruckStockPanel {...props} snapshot={snapshot} /> : null}
+      {inventoryConfigured && snapshot?.truck && view === "load" ? <TruckLoadPanel {...props} snapshot={snapshot} /> : null}
+      {inventoryConfigured && snapshot?.truck && view === "receive" ? <TruckReceivePanel {...props} snapshot={snapshot} /> : null}
+      {inventoryConfigured && snapshot?.truck && view === "history" ? <TruckHistoryPanel {...props} snapshot={snapshot} /> : null}
     </main>
   );
 }
