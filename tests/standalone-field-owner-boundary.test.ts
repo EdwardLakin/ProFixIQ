@@ -100,7 +100,7 @@ describe("standalone Field owner boundary", () => {
 
   it("configures and repairs My Truck without weakening protected helpers", () => {
     const migration = read(
-      "supabase/migrations/20260824142040_establish_standalone_field_owner_boundary.sql",
+      "supabase/migrations/20260824153307_establish_standalone_field_owner_boundary.sql",
     );
     const settingsRoute = read("app/api/mobile/service/settings/route.ts");
     const settingsScreen = read(
