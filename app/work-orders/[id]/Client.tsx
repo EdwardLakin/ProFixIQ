@@ -52,7 +52,6 @@ import { filterAllocationsNotBackedByCanonicalParts } from "@/features/work-orde
 import {
   getPartsRequestDisplayState,
   getPartsRequestStatusLabel,
-  loadCanonicalWorkOrderLineContext,
   type CanonicalWorkOrderPartRow as WorkOrderPartRow,
   type WorkOrderAllocationRow as AllocationRow,
   type WorkOrderPartRequestRow as PartRequestRow,
@@ -83,6 +82,7 @@ import {
 } from "@/features/work-orders/workspace/workOrderWorkspace";
 import { notifyWorkOrderPartsRefresh } from "@/features/work-orders/workspace/useWorkOrderPartsRefresh";
 import { WorkOrderFinancialWorkspace } from "@/features/work-orders/workspace/WorkOrderFinancialWorkspace";
+import type { RoleShapedWorkOrderDetail } from "@/features/work-orders/workspace/workOrderFinancialProjection";
 import { resolveQuotePartsRequirement } from "@/features/parts/lib/quote-parts-contract";
 
 import { prepareSectionsWithCornerGrid } from "@inspections/lib/inspection/prepareSectionsWithCornerGrid";
@@ -100,7 +100,6 @@ type WorkOrderQuoteLine = DB["public"]["Tables"]["work_order_quote_lines"]["Row"
 type WorkOrderQuoteLineWithLineId = WorkOrderQuoteLine & {
   work_order_line_id?: string | null;
 };
-type WorkOrderShopRateRow = Pick<DB["public"]["Tables"]["shops"]["Row"], "labor_rate">;
 type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
 type Customer = DB["public"]["Tables"]["customers"]["Row"];
 type Profile = DB["public"]["Tables"]["profiles"]["Row"];
@@ -136,15 +135,6 @@ type PropertyContext = {
   assetType: string | null;
   latestVendorAssignment: string | null;
 };
-
-const looksLikeUuid = (s: string) => s.includes("-") && s.length >= 36;
-
-function splitCustomId(raw: string): { prefix: string; n: number | null } {
-  const m = raw.toUpperCase().match(/^([A-Z]+)\s*0*?(\d+)?$/);
-  if (!m) return { prefix: raw.toUpperCase(), n: null };
-  const n = m[2] ? parseInt(m[2], 10) : null;
-  return { prefix: m[1], n: Number.isFinite(n!) ? n : null };
-}
 
 function isCompletedLineStatus(status: string | null | undefined): boolean {
   const normalized = String(status ?? "").trim().toLowerCase();
@@ -419,36 +409,6 @@ export default function WorkOrderIdClient(): JSX.Element {
     setFocusedOpen(false);
   }, [jobFromQuery, prefersPanel]);
 
-  const fetchLatestReview = useCallback(async (workOrderId: string) => {
-    if (!workOrderId) return;
-
-    try {
-      const { data, error } = await supabase
-        .from("work_order_invoice_reviews")
-        .select("ok, issues, created_at")
-        .eq("work_order_id", workOrderId)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (error || !data) {
-        setReviewChecked(true);
-        setReviewOk(undefined);
-        setReviewIssuesByLine({});
-        return;
-      }
-
-      const issues = toReviewIssues((data as unknown as { issues?: unknown }).issues);
-      setReviewChecked(true);
-      setReviewOk(Boolean((data as unknown as { ok?: unknown }).ok));
-      setReviewIssuesByLine(groupIssuesByLine(issues));
-    } catch {
-      setReviewChecked(true);
-      setReviewOk(undefined);
-      setReviewIssuesByLine({});
-    }
-  }, []);
-
   const openFocusedJob = useCallback(
     (lineId: string) => {
       if (!lineId) return;
@@ -574,62 +534,28 @@ export default function WorkOrderIdClient(): JSX.Element {
       setViewError(null);
 
       try {
-        let woRow: WorkOrder | null = null;
+        const response = await fetch(
+          `/api/work-orders/${encodeURIComponent(routeId)}/workspace-detail`,
+          { cache: "no-store" },
+        );
+        const snapshot = (await response.json().catch(() => null)) as
+          | RoleShapedWorkOrderDetail
+          | { error?: string }
+          | null;
 
-        // by UUID
-        if (looksLikeUuid(routeId)) {
-          const { data, error } = await supabase
-            .from("work_orders")
-            .select("*")
-            .eq("id", routeId)
-            .maybeSingle();
-          if (!error) woRow = (data as WorkOrder | null) ?? null;
-        }
-
-        // by custom_id
-        if (!woRow) {
-          const eqRes = await supabase
-            .from("work_orders")
-            .select("*")
-            .eq("custom_id", routeId)
-            .maybeSingle();
-          woRow = (eqRes.data as WorkOrder | null) ?? null;
-
-          if (!woRow) {
-            const ilikeRes = await supabase
-              .from("work_orders")
-              .select("*")
-              .ilike("custom_id", routeId.toUpperCase())
-              .maybeSingle();
-            woRow = (ilikeRes.data as WorkOrder | null) ?? null;
-          }
-
-          if (!woRow) {
-            const { prefix, n } = splitCustomId(routeId);
-            if (n !== null) {
-              const { data: cands } = await supabase
-                .from("work_orders")
-                .select("*")
-                .ilike("custom_id", `${prefix}%`)
-                .limit(50);
-              const wanted = `${prefix}${n}`;
-              const match = (cands ?? []).find(
-                (r) =>
-                  (r.custom_id ?? "")
-                    .toUpperCase()
-                    .replace(/^([A-Z]+)0+/, "$1") === wanted,
-              );
-              if (match) woRow = match as WorkOrder;
-            }
-          }
-        }
-
-        if (!woRow) {
-          if (retry < 2) {
-            await new Promise((r) => setTimeout(r, 200 * Math.pow(2, retry)));
+        if (!response.ok || !snapshot || !("workOrder" in snapshot)) {
+          if (response.status === 404 && retry < 2) {
+            await new Promise((resolve) =>
+              setTimeout(resolve, 200 * Math.pow(2, retry)),
+            );
             return fetchAll(retry + 1);
           }
-          setViewError("Work order not visible / not found.");
+
+          const message =
+            snapshot && "error" in snapshot && snapshot.error
+              ? snapshot.error
+              : "Work order not visible / not found.";
+          setViewError(message);
           if (!loadedOnce) {
             setWo(null);
             setLines([]);
@@ -640,25 +566,45 @@ export default function WorkOrderIdClient(): JSX.Element {
             setAllocsByLine({});
             setStagedPartsByLine({});
             setPartRequestsByQuoteLine({});
+            setPartRequestsByLine({});
             setEvidence([]);
             setActiveTechsByLine({});
+            setAssignedTechsByLine({});
           }
-
-          // ✅ reset review state
           setReviewChecked(true);
           setReviewOk(undefined);
           setReviewIssuesByLine({});
-
-          setLoading(false);
           return;
         }
 
+        const woRow = snapshot.workOrder;
+        const lineRows = snapshot.lines;
         setWo(woRow);
+        setLines(lineRows);
+        setQuoteLines(snapshot.quoteLines);
+        setVehicle(snapshot.vehicle);
+        setCustomer(snapshot.customer);
+        setShopLaborRate(snapshot.shopLaborRate);
+        setAllocsByLine(snapshot.lineContext.allocationsByLine);
+        setStagedPartsByLine(snapshot.lineContext.canonicalPartsByLine);
+        setAssignedTechsByLine(snapshot.lineContext.technicianIdsByLine);
+        setActiveTechsByLine(snapshot.lineContext.activeTechnicianIdsByLine);
+        setPartRequestsByQuoteLine(
+          snapshot.lineContext.partRequestsByQuoteLine,
+        );
+        setPartRequestsByLine(snapshot.lineContext.partRequestsByLine);
 
-        // ✅ reset review state until loaded for this WO
-        setReviewChecked(false);
-        setReviewOk(undefined);
-        setReviewIssuesByLine({});
+        const latestReview = snapshot.latestInvoiceReview;
+        if (latestReview) {
+          const issues = toReviewIssues(latestReview.issues);
+          setReviewChecked(true);
+          setReviewOk(Boolean(latestReview.ok));
+          setReviewIssuesByLine(groupIssuesByLine(issues));
+        } else {
+          setReviewChecked(true);
+          setReviewOk(undefined);
+          setReviewIssuesByLine({});
+        }
 
         if (!warnedMissing && (!woRow.vehicle_id || !woRow.customer_id)) {
           toast.error(
@@ -667,38 +613,7 @@ export default function WorkOrderIdClient(): JSX.Element {
           setWarnedMissing(true);
         }
 
-        const [linesRes, quoteRes, vehRes, custRes, shopRes, propertyReqRes, evidenceRes] = await Promise.all([
-          supabase
-            .from("work_order_lines")
-            .select("*")
-            .eq("work_order_id", woRow.id)
-            .order("created_at", { ascending: true }),
-          supabase
-            .from("work_order_quote_lines")
-            .select("*")
-            .eq("work_order_id", woRow.id)
-            .order("created_at", { ascending: true }),
-          woRow.vehicle_id
-            ? supabase
-                .from("vehicles")
-                .select("*")
-                .eq("id", woRow.vehicle_id)
-                .maybeSingle()
-            : Promise.resolve({ data: null, error: null } as const),
-          woRow.customer_id
-            ? supabase
-                .from("customers")
-                .select("*")
-                .eq("id", woRow.customer_id)
-                .maybeSingle()
-            : Promise.resolve({ data: null, error: null } as const),
-          woRow.shop_id
-            ? supabase
-                .from("shops")
-                .select("labor_rate")
-                .eq("id", woRow.shop_id)
-                .maybeSingle<WorkOrderShopRateRow>()
-            : Promise.resolve({ data: null, error: null } as const),
+        const [propertyReqRes, evidenceRes] = await Promise.all([
           supabase
             .from("property_maintenance_requests")
             .select("*")
@@ -709,14 +624,6 @@ export default function WorkOrderIdClient(): JSX.Element {
           }),
         ]);
 
-        if (linesRes.error) throw linesRes.error;
-        const lineRows = (linesRes.data ?? []) as WorkOrderLine[];
-        setLines(lineRows);
-
-        if (quoteRes.error) throw quoteRes.error;
-        const quoteRows = (quoteRes.data ?? []) as WorkOrderQuoteLine[];
-        setQuoteLines(quoteRows);
-
         if (evidenceRes.ok) {
           const evidenceBody = (await evidenceRes.json().catch(() => null)) as
             | { items?: WorkOrderEvidenceItem[] }
@@ -726,43 +633,44 @@ export default function WorkOrderIdClient(): JSX.Element {
           setEvidence([]);
         }
 
-        if (vehRes?.error) throw vehRes.error;
-        setVehicle((vehRes?.data as Vehicle | null) ?? null);
-
-        if (custRes?.error) throw custRes.error;
-        setCustomer((custRes?.data as Customer | null) ?? null);
-
-        if (shopRes?.error) throw shopRes.error;
-        setShopLaborRate(
-          typeof shopRes?.data?.labor_rate === "number" && Number.isFinite(shopRes.data.labor_rate)
-            ? shopRes.data.labor_rate
-            : null,
-        );
-
         if (propertyReqRes?.error) throw propertyReqRes.error;
-        const propertyRequest = (propertyReqRes?.data as Record<string, unknown> | null) ?? null;
+        const propertyRequest =
+          (propertyReqRes?.data as Record<string, unknown> | null) ?? null;
         if (!propertyRequest) {
           setPropertyContext(null);
         } else {
           const requestId = String(propertyRequest.id ?? "");
-          const [propertyRes, unitRes, assetRes, assignmentRes] = await Promise.all([
-            propertyRequest.property_id
-              ? supabase.from("property_properties").select("name").eq("id", String(propertyRequest.property_id)).maybeSingle()
-              : Promise.resolve({ data: null, error: null } as const),
-            propertyRequest.unit_id
-              ? supabase.from("property_units").select("label").eq("id", String(propertyRequest.unit_id)).maybeSingle()
-              : Promise.resolve({ data: null, error: null } as const),
-            propertyRequest.asset_id
-              ? supabase.from("property_assets").select("name, asset_type").eq("id", String(propertyRequest.asset_id)).maybeSingle()
-              : Promise.resolve({ data: null, error: null } as const),
-            supabase
-              .from("property_vendor_assignments")
-              .select("vendor_id, created_at")
-              .eq("property_request_id", requestId)
-              .order("created_at", { ascending: false })
-              .limit(1)
-              .maybeSingle(),
-          ]);
+          const [propertyRes, unitRes, assetRes, assignmentRes] =
+            await Promise.all([
+              propertyRequest.property_id
+                ? supabase
+                    .from("property_properties")
+                    .select("name")
+                    .eq("id", String(propertyRequest.property_id))
+                    .maybeSingle()
+                : Promise.resolve({ data: null, error: null } as const),
+              propertyRequest.unit_id
+                ? supabase
+                    .from("property_units")
+                    .select("label")
+                    .eq("id", String(propertyRequest.unit_id))
+                    .maybeSingle()
+                : Promise.resolve({ data: null, error: null } as const),
+              propertyRequest.asset_id
+                ? supabase
+                    .from("property_assets")
+                    .select("name, asset_type")
+                    .eq("id", String(propertyRequest.asset_id))
+                    .maybeSingle()
+                : Promise.resolve({ data: null, error: null } as const),
+              supabase
+                .from("property_vendor_assignments")
+                .select("vendor_id, created_at")
+                .eq("property_request_id", requestId)
+                .order("created_at", { ascending: false })
+                .limit(1)
+                .maybeSingle(),
+            ]);
 
           if (propertyRes?.error) throw propertyRes.error;
           if (unitRes?.error) throw unitRes.error;
@@ -770,7 +678,9 @@ export default function WorkOrderIdClient(): JSX.Element {
           if (assignmentRes?.error) throw assignmentRes.error;
 
           let latestVendorAssignment: string | null = null;
-          const latestAssignment = assignmentRes.data as { vendor_id?: string | null } | null;
+          const latestAssignment = assignmentRes.data as {
+            vendor_id?: string | null;
+          } | null;
           if (latestAssignment?.vendor_id) {
             const vendorRes = await supabase
               .from("property_vendors")
@@ -778,7 +688,8 @@ export default function WorkOrderIdClient(): JSX.Element {
               .eq("id", latestAssignment.vendor_id)
               .maybeSingle();
             if (vendorRes.error) throw vendorRes.error;
-            latestVendorAssignment = (vendorRes.data as { name?: string | null } | null)?.name ?? null;
+            latestVendorAssignment =
+              (vendorRes.data as { name?: string | null } | null)?.name ?? null;
           }
 
           setPropertyContext({
@@ -787,62 +698,44 @@ export default function WorkOrderIdClient(): JSX.Element {
             requestStatus: (propertyRequest.status as string | null) ?? null,
             severity: (propertyRequest.severity as string | null) ?? null,
             category: (propertyRequest.category as string | null) ?? null,
-            preferredWindow: (propertyRequest.preferred_window as string | null) ?? null,
-            accessNotes: (propertyRequest.access_notes as string | null) ?? null,
-            propertyName: (propertyRes.data as { name?: string | null } | null)?.name ?? null,
-            unitLabel: (unitRes.data as { label?: string | null } | null)?.label ?? null,
-            assetName: (assetRes.data as { name?: string | null } | null)?.name ?? null,
-            assetType: (assetRes.data as { asset_type?: string | null } | null)?.asset_type ?? null,
+            preferredWindow:
+              (propertyRequest.preferred_window as string | null) ?? null,
+            accessNotes:
+              (propertyRequest.access_notes as string | null) ?? null,
+            propertyName:
+              (propertyRes.data as { name?: string | null } | null)?.name ??
+              null,
+            unitLabel:
+              (unitRes.data as { label?: string | null } | null)?.label ?? null,
+            assetName:
+              (assetRes.data as { name?: string | null } | null)?.name ?? null,
+            assetType:
+              (assetRes.data as { asset_type?: string | null } | null)
+                ?.asset_type ?? null,
             latestVendorAssignment,
           });
         }
-
-        // allocations + line techs
-        if (lineRows.length) {
-          const lineContext = await loadCanonicalWorkOrderLineContext({
-            supabase,
-            workOrderId: woRow.id,
-            shopId: woRow.shop_id,
-            lineIds: lineRows.map((line) => line.id),
-          });
-          setAllocsByLine(lineContext.allocationsByLine);
-          setStagedPartsByLine(lineContext.canonicalPartsByLine);
-          setAssignedTechsByLine(lineContext.technicianIdsByLine);
-          setActiveTechsByLine(lineContext.activeTechnicianIdsByLine);
-          setPartRequestsByQuoteLine(lineContext.partRequestsByQuoteLine);
-          setPartRequestsByLine(lineContext.partRequestsByLine);
-        } else {
-          setAllocsByLine({});
-          setStagedPartsByLine({});
-          setPartRequestsByQuoteLine({});
-          setPartRequestsByLine({});
-          setAssignedTechsByLine({});
-          setActiveTechsByLine({});
-        }
-
-        // ✅ load latest AI invoice review (drives status icons in JobCard)
-        void fetchLatestReview(woRow.id);
-      } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : "Failed to load work order.";
-        setViewError(msg);
-        console.error("[WO id page] load error:", e);
+      } catch (error: unknown) {
+        const message =
+          error instanceof Error ? error.message : "Failed to load work order.";
+        setViewError(message);
+        console.error("[WO id page] load error:", error);
       } finally {
         setLoading(false);
         setLoadedOnce(true);
       }
     },
     [
+      loadedOnce,
       routeId,
-      warnedMissing,
-      setWo,
+      setCustomer,
       setLines,
       setQuoteLines,
-      setVehicle,
-      setCustomer,
-      setShopLaborRate,
-      fetchLatestReview,
-      loadedOnce,
       setReviewChecked,
+      setShopLaborRate,
+      setVehicle,
+      setWo,
+      warnedMissing,
     ],
   );
 
@@ -944,7 +837,7 @@ export default function WorkOrderIdClient(): JSX.Element {
           table: "work_order_invoice_reviews",
           filter: `work_order_id=eq.${wo.id}`,
         },
-        () => fetchLatestReview(wo.id),
+        () => fetchAll(),
       )
       .on(
         "postgres_changes",
@@ -979,7 +872,7 @@ export default function WorkOrderIdClient(): JSX.Element {
       }
       window.removeEventListener("wo:parts-used", local);
     };
-  }, [wo?.id, wo?.shop_id, fetchAll, fetchLatestReview]);
+  }, [wo?.id, wo?.shop_id, fetchAll]);
 
   // ---------- listen for inspection finish ----------
   useEffect(() => {
@@ -1244,7 +1137,9 @@ export default function WorkOrderIdClient(): JSX.Element {
 
   const currentActor = getActorCapabilities({ role: currentUserRole });
   const canApprove = currentActor.canAuthorizeQuotes;
-  const canViewFinancials = currentActor.canViewFinancials;
+  const canViewFinancials = canWorkspace(
+    WORKSPACE_CAPABILITIES.viewWorkOrderSellPricing,
+  );
   const canRequestParts = currentActor.canManageWorkOrders;
   const canUseInventoryPicker = currentActor.canManageParts;
   const canMessageCustomer = isCustomerMessagingRole(currentUserRole);
@@ -2637,3 +2532,4 @@ export default function WorkOrderIdClient(): JSX.Element {
     </div>
   );
 }
+

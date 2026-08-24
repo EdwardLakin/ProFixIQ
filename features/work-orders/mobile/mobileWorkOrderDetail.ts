@@ -1,5 +1,7 @@
 import type { Database } from "@shared/types/types/supabase";
 import type { CanonicalWorkOrderLineContext } from "@/features/work-orders/lib/data/loadCanonicalWorkOrderLineContext";
+import type { WorkOrderFinancialAccess } from "@/features/work-orders/workspace/workOrderFinancialAccess";
+import type { WorkOrderInvoiceReviewSummary } from "@/features/work-orders/workspace/workOrderFinancialProjection";
 
 type DB = Database;
 
@@ -12,6 +14,8 @@ export type MobileWorkOrderSnapshot = {
   techNamesById: Record<string, string>;
   lineContext?: CanonicalWorkOrderLineContext;
   shopLaborRate?: number | null;
+  financialAccess: WorkOrderFinancialAccess;
+  latestInvoiceReview: WorkOrderInvoiceReviewSummary | null;
 };
 
 const LINE_CONTEXT_KEYS = [
@@ -53,7 +57,8 @@ export function parseMobileWorkOrderSnapshot(
 
   const workOrder = value.workOrder;
   if (!isRecord(workOrder)) invalidSnapshot("workOrder is missing");
-  if (!isNonEmptyString(workOrder.id)) invalidSnapshot("workOrder.id is missing");
+  if (!isNonEmptyString(workOrder.id))
+    invalidSnapshot("workOrder.id is missing");
   if (!isNonEmptyString(workOrder.shop_id)) {
     invalidSnapshot("workOrder.shop_id is missing");
   }
@@ -130,6 +135,15 @@ export function parseMobileWorkOrderSnapshot(
       !Number.isFinite(value.shopLaborRate))
   ) {
     invalidSnapshot("shopLaborRate is invalid");
+  }
+
+  if (
+    !isRecord(value.financialAccess) ||
+    !Object.values(value.financialAccess).every(
+      (decision) => typeof decision === "boolean",
+    )
+  ) {
+    invalidSnapshot("financialAccess is invalid");
   }
 
   return value as unknown as MobileWorkOrderSnapshot;

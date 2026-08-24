@@ -59,6 +59,7 @@ import {
 
 import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
+import type { RoleShapedWorkOrderDetail } from "@/features/work-orders/workspace/workOrderFinancialProjection";
 
 type Mode = "tech" | "view";
 
@@ -214,12 +215,23 @@ export default function MobileFocusedJob(props: {
 
   const getLineConflict = useCallback(
     async (targetLineId: string, mode: "notes" | "finish" | "story"): Promise<string | null> => {
-      const { data, error } = await supabase
-        .from("work_order_lines")
-        .select("id,status,approval_state")
-        .eq("id", targetLineId)
-        .maybeSingle<{ id: string; status: string | null; approval_state: string | null }>();
-      if (error) throw error;
+      const response = await fetch(
+        `/api/work-order-lines/operational?lineId=${encodeURIComponent(
+          targetLineId,
+        )}&limit=1`,
+        { cache: "no-store" },
+      );
+      const body = (await response.json().catch(() => null)) as
+        | {
+            lines?: Array<{
+              id: string;
+              status: string | null;
+              approval_state: string | null;
+            }>;
+          }
+        | null;
+      if (!response.ok) throw new Error("Job line could not be loaded.");
+      const data = body?.lines?.[0] ?? null;
       if (!data?.id) return "Job line no longer exists.";
 
       if (mode === "finish" && data.status === "completed") return "Job line is already completed.";
@@ -265,62 +277,41 @@ export default function MobileFocusedJob(props: {
     setOpenVehicleHistory(false);
   };
 
-  const loadVehicle = useCallback(
-    async (vehicleId: string | null) => {
-      if (!vehicleId) {
-        setVehicle(null);
-        return;
-      }
-      const { data, error } = await supabase
-        .from("vehicles")
-        .select("*")
-        .eq("id", vehicleId)
-        .maybeSingle<Vehicle>();
-      if (error) throw error;
-      setVehicle(data ?? null);
-    },
-    [supabase],
-  );
-
-  const loadCustomer = useCallback(
-    async (customerId: string | null) => {
-      if (!customerId) {
-        setCustomer(null);
-        return;
-      }
-      const { data, error } = await supabase
-        .from("customers")
-        .select("*")
-        .eq("id", customerId)
-        .maybeSingle<Customer>();
-      if (error) throw error;
-      setCustomer(data ?? null);
-    },
-    [supabase],
-  );
-
-  const loadWorkOrder = useCallback(
-    async (workOrderId: string | null) => {
-      if (!workOrderId) {
-        setWorkOrder(null);
-        setVehicle(null);
-        setCustomer(null);
-        return;
+  const loadProjectedJob = useCallback(
+    async (id: string): Promise<void> => {
+      const response = await fetch(
+        `/api/work-order-lines/${encodeURIComponent(id)}/workspace-detail`,
+        { cache: "no-store" },
+      );
+      const snapshot = (await response.json().catch(() => null)) as
+        | (RoleShapedWorkOrderDetail & { selectedLineId?: string })
+        | { error?: string }
+        | null;
+      if (!response.ok || !snapshot || !("workOrder" in snapshot)) {
+        throw new Error(
+          snapshot && "error" in snapshot && snapshot.error
+            ? snapshot.error
+            : "Failed to load job",
+        );
       }
 
-      const { data: wo, error: we } = await supabase
-        .from("work_orders")
-        .select("*")
-        .eq("id", workOrderId)
-        .maybeSingle<WorkOrder>();
-      if (we) throw we;
-
-      setWorkOrder(wo ?? null);
-
-      await loadVehicle(wo?.vehicle_id ?? null);
-      await loadCustomer(wo?.customer_id ?? null);
+      const nextLine =
+        snapshot.lines.find((candidate) => candidate.id === id) ?? null;
+      setLine(nextLine);
+      setWorkOrder(snapshot.workOrder);
+      setVehicle(snapshot.vehicle);
+      setCustomer(snapshot.customer);
+      setAllocs(
+        (snapshot.lineContext.allocationsByLine[id] ?? []) as AllocationRow[],
+      );
+      setRequiredParts(
+        (snapshot.lineContext.canonicalPartsByLine[id] ?? []) as RequiredPartRow[],
+      );
+      if (!notesDirty) {
+        setTechNotes(nextLine?.technician_notes ?? "");
+      }
     },
-    [supabase, loadVehicle, loadCustomer],
+    [notesDirty],
   );
 
   const loadOfflineJob = useCallback(
@@ -368,26 +359,15 @@ export default function MobileFocusedJob(props: {
         }
         return;
       }
-      const { data: l, error: le } = await supabase
-        .from("work_order_lines")
-        .select("*")
-        .eq("id", id)
-        .maybeSingle<WorkOrderLine>();
-      if (le) {
+
+      try {
+        await loadProjectedJob(id);
+      } catch (error) {
         if (await loadOfflineJob(id)) return;
-        throw le;
+        throw error;
       }
-
-      setLine(l ?? null);
-
-      // ✅ align with app logic: keep notes in sync unless user is actively editing
-      if (!notesDirty) {
-        setTechNotes(l?.technician_notes ?? "");
-      }
-
-      await loadWorkOrder(l?.work_order_id ?? null);
     },
-    [supabase, loadWorkOrder, loadOfflineJob, notesDirty],
+    [loadOfflineJob, loadProjectedJob],
   );
 
   const loadAllocations = useCallback(async () => {
@@ -407,39 +387,13 @@ export default function MobileFocusedJob(props: {
     }
     setAllocsLoading(true);
     try {
-      let allocBuilder = supabase
-        .from("work_order_part_allocations")
-        .select("*, parts(name)")
-        .eq("work_order_line_id", workOrderLineId);
-      let requiredBuilder = supabase
-        .from("work_order_parts")
-        .select("*, parts(name, part_number, sku, manufacturer, supplier)")
-        .eq("work_order_line_id", workOrderLineId)
-        .eq("is_active", true);
-      if (workOrder?.id) {
-        allocBuilder = allocBuilder.eq("work_order_id", workOrder.id);
-        requiredBuilder = requiredBuilder.eq("work_order_id", workOrder.id);
-      }
-      if (workOrder?.shop_id) {
-        allocBuilder = allocBuilder.eq("shop_id", workOrder.shop_id);
-        requiredBuilder = requiredBuilder.eq("shop_id", workOrder.shop_id);
-      }
-
-      const [allocQuery, requiredQuery] = await Promise.all([
-        allocBuilder.order("created_at", { ascending: true }),
-        requiredBuilder.order("created_at", { ascending: true }),
-      ]);
-      if (allocQuery.error) throw allocQuery.error;
-      if (requiredQuery.error) throw requiredQuery.error;
-      setAllocs((allocQuery.data as AllocationRow[]) ?? []);
-      setRequiredParts((requiredQuery.data as RequiredPartRow[]) ?? []);
-    } catch (e) {
-      // eslint-disable-next-line no-console
-      console.warn("[MobileFocusedJob] load allocations failed", e);
+      await loadProjectedJob(workOrderLineId);
+    } catch (error) {
+      console.warn("[MobileFocusedJob] load allocations failed", error);
     } finally {
       setAllocsLoading(false);
     }
-  }, [supabase, workOrder?.id, workOrder?.shop_id, workOrderLineId]);
+  }, [loadProjectedJob, workOrderLineId]);
 
   useEffect(() => {
     if (!notesDirty || !workOrderLineId) return;
@@ -540,7 +494,7 @@ export default function MobileFocusedJob(props: {
             const nextWoId = nextLine.work_order_id ?? null;
             const currentWoId = line?.work_order_id ?? null;
             if (nextWoId !== currentWoId) {
-              void loadWorkOrder(nextWoId);
+              void loadProjectedJob(workOrderLineId);
             }
           }
         },
@@ -551,7 +505,7 @@ export default function MobileFocusedJob(props: {
       void supabase.removeChannel(ch);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workOrderLineId, supabase, notesDirty, loadWorkOrder]);
+  }, [workOrderLineId, supabase, notesDirty, loadProjectedJob]);
 
   // realtime: work order (keeps vehicle/customer/status aligned like app)
   useEffect(() => {
@@ -575,8 +529,7 @@ export default function MobileFocusedJob(props: {
             setWorkOrder(wo);
 
             // If vehicle/customer pointers change, reload them
-            void loadVehicle(wo.vehicle_id ?? null);
-            void loadCustomer(wo.customer_id ?? null);
+            void loadProjectedJob(workOrderLineId);
           }
         },
       )
@@ -585,7 +538,7 @@ export default function MobileFocusedJob(props: {
     return () => {
       void supabase.removeChannel(ch);
     };
-  }, [supabase, line?.work_order_id, loadVehicle, loadCustomer]);
+  }, [supabase, line?.work_order_id, loadProjectedJob, workOrderLineId]);
 
   // allocations
   useEffect(() => {
@@ -1710,3 +1663,4 @@ export default function MobileFocusedJob(props: {
     </>
   );
 }
+

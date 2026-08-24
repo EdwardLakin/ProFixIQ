@@ -19,6 +19,13 @@ import {
   loadRowsForIdChunks,
 } from "@/features/work-orders/lib/data/loadCanonicalWorkOrderLineContext";
 import { resolveTechnicianAssignmentContract } from "@/features/work-orders/lib/technicianAssignmentContract";
+import { resolveWorkOrderFinancialAccess } from "@/features/work-orders/workspace/server/workOrderFinancialAuthorization";
+import {
+  projectCanonicalLineContextFinancialFields,
+  projectQuoteLineFinancialFields,
+  projectWorkOrderFinancialFields,
+  projectWorkOrderLineFinancialFields,
+} from "@/features/work-orders/workspace/workOrderFinancialProjection";
 
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -77,6 +84,17 @@ export async function GET() {
   }
 
   const admin = createAdminSupabase();
+  const financial = await resolveWorkOrderFinancialAccess({
+    supabase: authClient,
+    profileId: profile.id,
+    shopId: profile.shop_id,
+  });
+  if (financial.error) {
+    return NextResponse.json(
+      { error: "Workspace authorization could not be resolved." },
+      { status: 500 },
+    );
+  }
   let primaryCandidates: Array<{ id: string }>;
   let legacyCandidates: Array<{ id: string }>;
   let sharedAssigned: Array<{ work_order_line_id: string }>;
@@ -155,16 +173,14 @@ export async function GET() {
             .order("id", { ascending: true })
             .range(from, to),
       ),
-      loadRowsForIdChunks<AssignmentRow>(
-        candidateLineIds,
-        (ids, from, to) =>
-          admin
-            .from("work_order_line_technicians")
-            .select("work_order_line_id, technician_id")
-            .in("work_order_line_id", ids)
-            .order("work_order_line_id", { ascending: true })
-            .order("technician_id", { ascending: true })
-            .range(from, to),
+      loadRowsForIdChunks<AssignmentRow>(candidateLineIds, (ids, from, to) =>
+        admin
+          .from("work_order_line_technicians")
+          .select("work_order_line_id, technician_id")
+          .in("work_order_line_id", ids)
+          .order("work_order_line_id", { ascending: true })
+          .order("technician_id", { ascending: true })
+          .range(from, to),
       ),
     ]);
   } catch (error) {
@@ -208,11 +224,12 @@ export async function GET() {
     });
   }
 
-  // Use the authenticated client for every downloaded business record so the
-  // normal table policies remain the final authorization boundary.
+  // Assignment candidates above are resolved and re-verified before the
+  // trusted reader is used. Every record is role-shaped below before it can
+  // cross the response/offline-cache boundary.
   const workOrderResults = await Promise.all(
     chunks(workOrderIds).map((ids) =>
-      authClient
+      admin
         .from("work_orders")
         .select("*")
         .eq("shop_id", profile.shop_id)
@@ -254,7 +271,7 @@ export async function GET() {
   const customerIds = [
     ...new Set(workOrders.map((row) => row.customer_id).filter(Boolean)),
   ] as string[];
-  const shopResultPromise = authClient
+  const shopResultPromise = admin
     .from("shops")
     .select("labor_rate")
     .eq("id", profile.shop_id)
@@ -266,7 +283,7 @@ export async function GET() {
   try {
     [lines, quoteLines, vehicles, customers] = await Promise.all([
       loadRowsForIdChunks<WorkOrderLine>(allowedWorkOrderIds, (ids, from, to) =>
-        authClient
+        admin
           .from("work_order_lines")
           .select("*")
           .eq("shop_id", profile.shop_id)
@@ -276,7 +293,7 @@ export async function GET() {
           .range(from, to),
       ),
       loadRowsForIdChunks<QuoteLine>(allowedWorkOrderIds, (ids, from, to) =>
-        authClient
+        admin
           .from("work_order_quote_lines")
           .select("*")
           .in("work_order_id", ids)
@@ -285,7 +302,7 @@ export async function GET() {
           .range(from, to),
       ),
       loadRowsForIdChunks<Vehicle>(vehicleIds, (ids, from, to) =>
-        authClient
+        admin
           .from("vehicles")
           .select("*")
           .eq("shop_id", profile.shop_id)
@@ -294,7 +311,7 @@ export async function GET() {
           .range(from, to),
       ),
       loadRowsForIdChunks<Customer>(customerIds, (ids, from, to) =>
-        authClient
+        admin
           .from("customers")
           .select("*")
           .eq("shop_id", profile.shop_id)
@@ -329,7 +346,7 @@ export async function GET() {
   >();
   try {
     lineContextsByWorkOrder = await loadCanonicalWorkOrderLineContexts({
-      supabase: authClient,
+      supabase: admin,
       shopId: profile.shop_id,
       workOrders: workOrders.map((workOrder) => ({
         workOrderId: workOrder.id,
@@ -357,7 +374,7 @@ export async function GET() {
   let technicians: Array<{ id: string; full_name: string | null }>;
   try {
     technicians = await loadRowsForIdChunks(techIds, (ids, from, to) =>
-      authClient
+      admin
         .from("profiles")
         .select("id, full_name")
         .eq("shop_id", profile.shop_id)
@@ -384,6 +401,7 @@ export async function GET() {
   );
 
   const shopLaborRate =
+    financial.access.canViewSellPricing &&
     typeof shopResult.data?.labor_rate === "number"
       ? shopResult.data.labor_rate
       : null;
@@ -392,21 +410,28 @@ export async function GET() {
     scope: { userId: user.id, shopId: profile.shop_id },
     downloadedAt: new Date().toISOString(),
     workOrders: workOrders.map<TechnicianOfflineWorkOrder>((workOrder) => ({
-      workOrder,
-      lines: lines.filter((line) => line.work_order_id === workOrder.id),
-      quoteLines: quoteLines.filter(
-        (line) => line.work_order_id === workOrder.id,
-      ),
+      workOrder: projectWorkOrderFinancialFields(workOrder, financial.access),
+      lines: lines
+        .filter((line) => line.work_order_id === workOrder.id)
+        .map((line) =>
+          projectWorkOrderLineFinancialFields(line, financial.access),
+        ),
+      quoteLines: quoteLines
+        .filter((line) => line.work_order_id === workOrder.id)
+        .map((line) => projectQuoteLineFinancialFields(line, financial.access)),
       vehicle:
         vehicles.find((vehicle) => vehicle.id === workOrder.vehicle_id) ?? null,
       customer:
         customers.find((customer) => customer.id === workOrder.customer_id) ??
         null,
       techNamesById,
-      lineContext:
+      lineContext: projectCanonicalLineContextFinancialFields(
         lineContextsByWorkOrder.get(workOrder.id) ??
-        emptyCanonicalWorkOrderLineContext(),
+          emptyCanonicalWorkOrderLineContext(),
+        financial.access,
+      ),
       shopLaborRate,
+      financialAccess: financial.access,
       assignedLineIds: lines
         .filter(
           (line) =>

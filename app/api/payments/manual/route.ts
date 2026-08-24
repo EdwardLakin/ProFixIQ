@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { WORKSPACE_CAPABILITIES } from "@/features/workspace/authorization/capabilities";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import { canFieldOperatorAccessWorkOrder } from "@/features/mobile/service/server/access";
 import {
@@ -10,7 +11,13 @@ import {
 } from "@/features/invoices/server/financialLifecycle";
 
 type DB = Database;
-const PAYMENT_ROLES = ["owner", "admin", "manager", "advisor", "service"] as const;
+const PAYMENT_ROLES = [
+  "owner",
+  "admin",
+  "manager",
+  "advisor",
+  "service",
+] as const;
 const METHODS = new Set([
   "cash",
   "cheque",
@@ -31,7 +38,9 @@ type Body = {
 };
 
 export async function POST(req: Request) {
-  const access = await requireShopScopedApiAccess();
+  const access = await requireShopScopedApiAccess({
+    requiredWorkspaceCapability: WORKSPACE_CAPABILITIES.manageWorkOrderInvoice,
+  });
   if (!access.ok) return access.response;
 
   try {
@@ -96,7 +105,9 @@ export async function POST(req: Request) {
         { status: 404 },
       );
     }
-    if (!["issued", "partially_paid"].includes(invoiceVersion.lifecycle_status)) {
+    if (
+      !["issued", "partially_paid"].includes(invoiceVersion.lifecycle_status)
+    ) {
       return NextResponse.json(
         { error: "This invoice is not payable" },
         { status: 409 },
@@ -109,7 +120,9 @@ export async function POST(req: Request) {
       );
     }
 
-    const occurredAt = body?.receivedAt ? new Date(body.receivedAt) : new Date();
+    const occurredAt = body?.receivedAt
+      ? new Date(body.receivedAt)
+      : new Date();
     if (Number.isNaN(occurredAt.getTime())) {
       return NextResponse.json(
         { error: "Invalid receivedAt timestamp" },

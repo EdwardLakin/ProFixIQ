@@ -8,7 +8,10 @@ import {
 import { sanitizeCustomerVisibleQuoteMetadata } from "@/features/portal/lib/customerVisibleQuoteParts";
 import { PortalAccessError } from "@/features/portal/server/portalAuth";
 import { requirePortalCustomerActor } from "@/features/portal/server/requirePortalActor";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import {
+  createAdminSupabase,
+  createServerSupabaseRoute,
+} from "@/features/shared/lib/supabase/server";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -56,17 +59,18 @@ export async function GET(_request: Request, context: RouteContext) {
     if (!workOrder?.id) {
       return portalError("This quote is unavailable.", 404);
     }
+    const admin = createAdminSupabase();
 
     const [shopResult, quoteResult, directLineResult, directPartResult] =
       await Promise.all([
-        supabase
+        admin
           .from("shops")
           .select(
             "id,labor_rate,province,supplies_percent,shop_supplies_enabled,shop_supplies_type,shop_supplies_percent,shop_supplies_flat_amount,shop_supplies_cap_amount",
           )
           .eq("id", shopId)
           .maybeSingle(),
-        supabase
+        admin
           .from("work_order_quote_lines")
           .select(
             "id,description,ai_complaint,ai_cause,ai_correction,notes,job_type,labor_hours,est_labor_hours,labor_total,parts_total,subtotal,tax_total,grand_total,status,stage,sent_to_customer_at,approved_at,declined_at,work_order_line_id,metadata,created_at,updated_at",
@@ -74,7 +78,7 @@ export async function GET(_request: Request, context: RouteContext) {
           .eq("work_order_id", workOrderId)
           .eq("shop_id", shopId)
           .order("created_at", { ascending: true }),
-        supabase
+        admin
           .from("work_order_lines")
           .select(
             "id,line_no,description,complaint,cause,correction,notes,technician_notes,labor_time,price_estimate,status,line_status,approval_state,approval_at,quoted_at,created_at,updated_at,voided_at",
@@ -82,7 +86,7 @@ export async function GET(_request: Request, context: RouteContext) {
           .eq("work_order_id", workOrderId)
           .eq("shop_id", shopId)
           .order("line_no", { ascending: true }),
-        supabase
+        admin
           .from("work_order_parts")
           .select(
             "id,work_order_line_id,description_snapshot,part_number_snapshot,manufacturer_snapshot,quantity,unit_price,total_price,is_active",

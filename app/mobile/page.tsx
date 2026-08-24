@@ -163,12 +163,14 @@ export default function MobileHome() {
           setShop(null);
           return;
         }
-        const { data } = await supabase
-          .from("shops")
-          .select("*")
-          .eq("id", actor.shopId)
-          .maybeSingle();
-        if (active) setShop(data ?? null);
+        const response = await fetch(
+          "/api/work-order-lines/operational?limit=1",
+          { cache: "no-store" },
+        );
+        const body = (await response.json().catch(() => null)) as {
+          shop?: Shop | null;
+        } | null;
+        if (active) setShop(response.ok ? (body?.shop ?? null) : null);
       } finally {
         if (active) setLoading(false);
       }
@@ -221,6 +223,18 @@ export default function MobileHome() {
       const now = new Date();
       const day = dayWindow(now);
       const week = weekWindow(now);
+      const operationalLinesPromise = fetch(
+        "/api/work-order-lines/operational?limit=2000",
+        { cache: "no-store" },
+      ).then(async (response) => {
+        const body = (await response.json().catch(() => null)) as {
+          lines?: WorkOrderLine[];
+        } | null;
+        if (!response.ok) {
+          throw new Error("Assigned jobs could not be loaded.");
+        }
+        return body?.lines ?? [];
+      });
       const [
         todayShifts,
         weekShifts,
@@ -243,43 +257,50 @@ export default function MobileHome() {
           .eq("type", "shift")
           .gte("start_time", week.start)
           .lte("start_time", week.end),
-        supabase
-          .from("work_order_lines")
-          .select("*")
-          .or(`assigned_tech_id.eq.${userId},user_id.eq.${userId}`)
-          .eq("line_type", "job")
-          .eq("status", "completed")
-          .gte("punched_out_at", day.start)
-          .lte("punched_out_at", day.end),
-        supabase
-          .from("work_order_lines")
-          .select("*")
-          .or(`assigned_tech_id.eq.${userId},user_id.eq.${userId}`)
-          .eq("line_type", "job")
-          .eq("status", "completed")
-          .gte("punched_out_at", week.start)
-          .lte("punched_out_at", week.end),
-        supabase
-          .from("work_order_lines")
-          .select("*")
-          .or(`assigned_tech_id.eq.${userId},user_id.eq.${userId}`)
-          .eq("line_type", "job")
-          .in("status", [
-            "awaiting",
-            "assigned",
-            "active",
-            "in_progress",
-            "on_hold",
-          ]),
-        supabase
-          .from("work_order_lines")
-          .select("*")
-          .or(`assigned_tech_id.eq.${userId},user_id.eq.${userId}`)
-          .eq("line_type", "job")
-          .gte("created_at", day.start)
-          .lte("created_at", day.end)
-          .order("created_at", { ascending: false })
-          .limit(6),
+        operationalLinesPromise.then((rows) => ({
+          data: rows.filter(
+            (line) =>
+              line.status === "completed" &&
+              Boolean(line.punched_out_at) &&
+              line.punched_out_at! >= day.start &&
+              line.punched_out_at! <= day.end,
+          ),
+        })),
+        operationalLinesPromise.then((rows) => ({
+          data: rows.filter(
+            (line) =>
+              line.status === "completed" &&
+              Boolean(line.punched_out_at) &&
+              line.punched_out_at! >= week.start &&
+              line.punched_out_at! <= week.end,
+          ),
+        })),
+        operationalLinesPromise.then((rows) => ({
+          data: rows.filter((line) =>
+            [
+              "awaiting",
+              "assigned",
+              "active",
+              "in_progress",
+              "on_hold",
+            ].includes(line.status),
+          ),
+        })),
+        operationalLinesPromise.then((rows) => ({
+          data: rows
+            .filter(
+              (line) =>
+                Boolean(line.created_at) &&
+                line.created_at! >= day.start &&
+                line.created_at! <= day.end,
+            )
+            .sort(
+              (left, right) =>
+                new Date(right.created_at ?? 0).getTime() -
+                new Date(left.created_at ?? 0).getTime(),
+            )
+            .slice(0, 6),
+        })),
       ]);
 
       const todayWorked = workedHours(

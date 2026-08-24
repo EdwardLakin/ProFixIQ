@@ -64,13 +64,21 @@ export function ActiveJobWidget(): JSX.Element {
         return;
       }
 
-      const { data: line, error: lineErr } = await supabase
-        .from("work_order_lines")
-        .select("*")
-        .eq("id", activeSegment.work_order_line_id)
-        .maybeSingle<WorkOrderLine>();
-
-      if (lineErr) throw lineErr;
+      const detailResponse = await fetch(
+        `/api/work-order-lines/operational?lineId=${encodeURIComponent(
+          activeSegment.work_order_line_id,
+        )}&limit=1`,
+        { cache: "no-store" },
+      );
+      const detail = (await detailResponse.json().catch(() => null)) as {
+        lines?: WorkOrderLine[];
+        workOrders?: WorkOrder[];
+        vehicles?: Vehicle[];
+      } | null;
+      if (!detailResponse.ok) {
+        throw new Error("Active job is no longer available.");
+      }
+      const line = detail?.lines?.[0] ?? null;
 
       if (!line) {
         setState({ line: null, workOrder: null, vehicle: null });
@@ -78,28 +86,12 @@ export function ActiveJobWidget(): JSX.Element {
         return;
       }
 
-      let workOrder: WorkOrder | null = null;
-      let vehicle: Vehicle | null = null;
-
-      if (line.work_order_id) {
-        const { data: wo, error: woErr } = await supabase
-          .from("work_orders")
-          .select("*")
-          .eq("id", line.work_order_id)
-          .maybeSingle<WorkOrder>();
-        if (woErr) throw woErr;
-        workOrder = wo ?? null;
-
-        if (workOrder?.vehicle_id) {
-          const { data: veh, error: vehErr } = await supabase
-            .from("vehicles")
-            .select("*")
-            .eq("id", workOrder.vehicle_id)
-            .maybeSingle<Vehicle>();
-          if (vehErr) throw vehErr;
-          vehicle = veh ?? null;
-        }
-      }
+      const workOrder =
+        detail?.workOrders?.find((row) => row.id === line.work_order_id) ??
+        null;
+      const vehicle =
+        detail?.vehicles?.find((row) => row.id === workOrder?.vehicle_id) ??
+        null;
 
       setState({ line, workOrder, vehicle });
     } catch (e) {

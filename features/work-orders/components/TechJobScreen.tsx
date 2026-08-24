@@ -28,15 +28,27 @@ export default function TechJobScreen() {
       return;
     }
 
-    const { data } = await supabase
-      .from("work_order_lines")
-      .select("*")
-      .or(`assigned_tech_id.eq.${user.id},assigned_tech_id.is.null`)
-      .or("line_type.eq.job,line_type.is.null")
-      .in("status", ["awaiting", "in_progress", "on_hold"])
-      .order("created_at", { ascending: true });
-
-    setJobs((data ?? []) as JobLine[]);
+    const response = await fetch(
+      "/api/work-order-lines/operational?limit=500",
+      {
+        cache: "no-store",
+      },
+    );
+    const body = (await response.json().catch(() => null)) as {
+      lines?: JobLine[];
+    } | null;
+    const jobs = (body?.lines ?? [])
+      .filter(
+        (line) =>
+          line.line_type === "job" &&
+          ["awaiting", "in_progress", "on_hold"].includes(line.status),
+      )
+      .sort(
+        (left, right) =>
+          new Date(left.created_at ?? 0).getTime() -
+          new Date(right.created_at ?? 0).getTime(),
+      );
+    setJobs(response.ok ? jobs : []);
     setLoading(false);
   }, [supabase]);
 
@@ -64,7 +76,9 @@ export default function TechJobScreen() {
       await runJobPunchTransition(job.id, "start");
       void fetchJobs();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to start job");
+      toast.error(
+        error instanceof Error ? error.message : "Failed to start job",
+      );
     }
   };
 
@@ -75,7 +89,9 @@ export default function TechJobScreen() {
       await runJobPunchTransition(job.id, "pause");
       void fetchJobs();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to pause job");
+      toast.error(
+        error instanceof Error ? error.message : "Failed to pause job",
+      );
     }
   };
 
@@ -101,27 +117,39 @@ export default function TechJobScreen() {
         Technician Job Queue
       </h1>
 
-      {loading && <p className="text-sm text-[color:var(--theme-text-muted)]">Loading jobs…</p>}
+      {loading && (
+        <p className="text-sm text-[color:var(--theme-text-muted)]">
+          Loading jobs…
+        </p>
+      )}
 
       {activeJob ? (
         <section className="space-y-2">
-          <h2 className="text-lg font-semibold text-[color:var(--theme-text-primary)]">Current Job</h2>
+          <h2 className="text-lg font-semibold text-[color:var(--theme-text-primary)]">
+            Current Job
+          </h2>
           {renderJobCard(activeJob)}
         </section>
       ) : (
         <section className="space-y-2">
-          <h2 className="text-lg font-semibold text-[color:var(--theme-text-primary)]">Available Jobs</h2>
+          <h2 className="text-lg font-semibold text-[color:var(--theme-text-primary)]">
+            Available Jobs
+          </h2>
           {readyJobs.length > 0 ? (
             readyJobs.map(renderJobCard)
           ) : (
-            <p className="text-[color:var(--theme-text-secondary)]">No jobs available.</p>
+            <p className="text-[color:var(--theme-text-secondary)]">
+              No jobs available.
+            </p>
           )}
         </section>
       )}
 
       {onHoldJobs.length > 0 && (
         <section className="space-y-2">
-          <h2 className="text-lg font-semibold text-[color:var(--theme-text-primary)]">On Hold</h2>
+          <h2 className="text-lg font-semibold text-[color:var(--theme-text-primary)]">
+            On Hold
+          </h2>
           {onHoldJobs.map(renderJobCard)}
         </section>
       )}

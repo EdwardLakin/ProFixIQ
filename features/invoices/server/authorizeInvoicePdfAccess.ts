@@ -2,15 +2,9 @@ import "server-only";
 
 import { resolveAuthenticatedStaffProfile } from "@/features/shared/lib/server/admin-access";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
-import {
-  getActorCapabilities,
-  ROLE_GROUPS,
-  type CanonicalRole,
-} from "@/features/shared/lib/rbac";
+import { resolveWorkOrderFinancialAccess } from "@/features/work-orders/workspace/server/workOrderFinancialAuthorization";
 
 type SessionClient = ReturnType<typeof createServerSupabaseRoute>;
-
-const BILLING_ROLES = new Set<CanonicalRole>(ROLE_GROUPS.billingOperators);
 
 export async function canAccessInvoicePdf(input: {
   supabase: SessionClient;
@@ -25,25 +19,26 @@ export async function canAccessInvoicePdf(input: {
   );
 
   if (profile?.shop_id === input.shopId) {
-    const actor = getActorCapabilities({ role: profile.role });
-    if (actor.isKnownRole && BILLING_ROLES.has(actor.canonicalRole)) {
+    const financial = await resolveWorkOrderFinancialAccess({
+      supabase: input.supabase,
+      profileId: profile.id,
+      shopId: input.shopId,
+    });
+    if (financial.error === null && financial.access.canViewInvoice) {
       return true;
     }
   }
 
-  // Staff billing operators may render a working draft, but portal customers
-  // must never receive mutable/unissued financial documents. Callers derive
-  // this bit from the canonical invoice-version lifecycle before we evaluate
-  // durable portal membership.
+  // Portal customers remain on their separate durable membership and
+  // immutable-document lifecycle path. Staff capability policy must never be
+  // used as a substitute for customer ownership.
   if (!input.customerVisibleDocument || !input.customerId) return false;
 
-  const { data: portalAccess, error: portalAccessError } = await input.supabase.rpc(
-    "profixiq_is_portal_customer_for",
-    {
+  const { data: portalAccess, error: portalAccessError } =
+    await input.supabase.rpc("profixiq_is_portal_customer_for", {
       p_customer_id: input.customerId,
       p_shop_id: input.shopId,
-    },
-  );
+    });
 
   return !portalAccessError && portalAccess === true;
 }

@@ -60,12 +60,10 @@ const PRIORITY_LABELS: Record<JobPriority, string> = {
 const PRIORITY_BADGE: Record<JobPriority, string> = {
   urgent:
     "inline-flex items-center whitespace-nowrap rounded-full border border-red-400/60 bg-red-900/30 px-2 py-0.5 text-[10px] font-semibold text-red-100",
-  high:
-    "inline-flex items-center whitespace-nowrap rounded-full border border-orange-400/60 bg-orange-900/25 px-2 py-0.5 text-[10px] font-semibold text-orange-100",
+  high: "inline-flex items-center whitespace-nowrap rounded-full border border-orange-400/60 bg-orange-900/25 px-2 py-0.5 text-[10px] font-semibold text-orange-100",
   normal:
     "inline-flex items-center whitespace-nowrap rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-[10px] font-semibold text-[color:var(--theme-text-primary)]",
-  low:
-    "inline-flex items-center whitespace-nowrap rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-2 py-0.5 text-[10px] font-semibold text-[color:var(--theme-text-primary)]",
+  low: "inline-flex items-center whitespace-nowrap rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-2 py-0.5 text-[10px] font-semibold text-[color:var(--theme-text-primary)]",
 };
 
 /**
@@ -107,16 +105,20 @@ function toBucket(line: Line): RollupStatus {
   if (punchedIn) return "in_progress";
 
   const s = (line.status ?? "").toLowerCase().replaceAll(" ", "_");
-  if (s === "in_progress" || s === "in-progress" || s === "active") return "in_progress";
+  if (s === "in_progress" || s === "in-progress" || s === "active")
+    return "in_progress";
   if (s === "on_hold") return "on_hold";
   return "awaiting";
 }
 
 function toPriority(line: Line): JobPriority {
-  const raw = String((line as Line & { job_priority?: string | null }).job_priority ?? "normal")
+  const raw = String(
+    (line as Line & { job_priority?: string | null }).job_priority ?? "normal",
+  )
     .toLowerCase()
     .trim();
-  if (raw === "urgent" || raw === "high" || raw === "normal" || raw === "low") return raw;
+  if (raw === "urgent" || raw === "high" || raw === "normal" || raw === "low")
+    return raw;
   return "normal";
 }
 
@@ -160,8 +162,7 @@ export default function TechQueuePage() {
   });
 
   const [lines, setLines] = useState<Line[]>([]);
-  const [workOrderMap, setWorkOrderMap] =
-    useState<WorkOrderDisplayMap>({});
+  const [workOrderMap, setWorkOrderMap] = useState<WorkOrderDisplayMap>({});
 
   // active job / work order highlighting
   const [activeLineId, setActiveLineId] = useState<string | null>(null);
@@ -228,21 +229,25 @@ export default function TechQueuePage() {
         return;
       }
 
-      // 3) fetch work-order lines
-      const { data: candidateLines, error: linesErr } = await supabase
-        .from("work_order_lines")
-        .select("*")
-        .eq("shop_id", prof.shop_id)
-        .eq("line_type", "job")
-        .order("created_at", { ascending: false });
-
-      if (linesErr) {
-        setErr(linesErr.message);
+      // 3) fetch the server-owned operational projection. Financial columns
+      // are redacted before this queue payload reaches the browser.
+      const operationalResponse = await fetch(
+        "/api/work-order-lines/operational?limit=2000",
+        { cache: "no-store" },
+      );
+      const operational = (await operationalResponse
+        .json()
+        .catch(() => null)) as {
+        lines?: Line[];
+        workOrders?: WorkOrderSlim[];
+      } | null;
+      if (!operationalResponse.ok) {
+        setErr("The technician queue could not be loaded.");
         setLoading(false);
         return;
       }
 
-      const allLines = (candidateLines ?? []) as Line[];
+      const allLines = operational?.lines ?? [];
       const candidateLineIds = allLines.map((line) => line.id);
       const { data: assignmentRows, error: assignmentError } =
         candidateLineIds.length > 0
@@ -284,12 +289,9 @@ export default function TechQueuePage() {
 
       let woTypeMap: Record<string, string | null> = {};
       if (woIds.length > 0) {
-        const { data: wos } = await supabase
-          .from("work_orders")
-          .select("id, custom_id, type")
-          .in("id", woIds);
-
-        const workOrders = (wos ?? []) as WorkOrderSlim[];
+        const workOrders = (operational?.workOrders ?? []).filter((row) =>
+          woIds.includes(row.id),
+        );
         woTypeMap = {};
         workOrders.forEach((row) => {
           woTypeMap[row.id] = row.type ?? null;
@@ -299,7 +301,11 @@ export default function TechQueuePage() {
         setWorkOrderMap({});
       }
 
-      const activeQueue = raw.filter((l) => !isCompletedLike(l.status) && woTypeMap[l.work_order_id ?? ""] !== "historical_import");
+      const activeQueue = raw.filter(
+        (l) =>
+          !isCompletedLike(l.status) &&
+          woTypeMap[l.work_order_id ?? ""] !== "historical_import",
+      );
       setLines(activeQueue);
 
       // 4) determine active punched-in line (strong highlight)
@@ -409,7 +415,11 @@ export default function TechQueuePage() {
   }, [sortedLines, activeFilter]);
 
   if (loading)
-    return <div className="p-6 text-[color:var(--theme-text-primary)]">Loading assigned jobs…</div>;
+    return (
+      <div className="p-6 text-[color:var(--theme-text-primary)]">
+        Loading assigned jobs…
+      </div>
+    );
   if (err) return <div className="p-6 text-red-200">{err}</div>;
 
   const compact = prefs.compactCards;
@@ -466,7 +476,9 @@ export default function TechQueuePage() {
                 "rounded-2xl border text-left transition",
                 compact ? "p-3" : "p-4",
                 STATUS_STYLES[s],
-                isActive ? "ring-1 ring-[color:var(--theme-border-strong)]" : "",
+                isActive
+                  ? "ring-1 ring-[color:var(--theme-border-strong)]"
+                  : "",
               ].join(" ")}
             >
               <div className="text-xs uppercase tracking-wide text-[color:var(--theme-text-secondary)]">
@@ -496,8 +508,11 @@ export default function TechQueuePage() {
         {filteredLines.map((line) => {
           const bucket = toBucket(line);
           const priority = toPriority(line);
-          const title = (line.description || line.complaint || "Untitled job")
-            .trim();
+          const title = (
+            line.description ||
+            line.complaint ||
+            "Untitled job"
+          ).trim();
 
           const isActiveJob = Boolean(activeLineId && line.id === activeLineId);
           const isSameWorkOrder =

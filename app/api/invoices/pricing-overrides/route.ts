@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { WORKSPACE_CAPABILITIES } from "@/features/workspace/authorization/capabilities";
 import { getActiveInvoiceVersion } from "@/features/invoices/server/financialLifecycle";
 import { getInvoiceSnapshotForWorkOrder } from "@/features/invoices/server/getInvoiceSnapshot";
 import { logOperationalEvent } from "@/features/work-orders/server/logOperationalEvent";
@@ -49,6 +50,7 @@ export async function POST(request: Request) {
     const access = await requireShopScopedApiAccess({
       requiredCapabilities: ["canManageWorkOrders", "canAuthorizeQuotes"],
       allowRoles: ["owner", "admin", "manager", "advisor", "service"],
+      requiredWorkspaceCapability: WORKSPACE_CAPABILITIES.editWorkOrderPricing,
     });
     if (!access.ok) return access.response;
 

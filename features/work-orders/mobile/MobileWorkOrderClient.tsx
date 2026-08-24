@@ -51,9 +51,11 @@ import {
   loadProjectedWorkOrderSnapshot,
   removeMobileWorkOrderDetailSnapshots,
 } from "@/features/work-orders/mobile/technicianOfflineExecution";
+import { parseMobileWorkOrderSnapshot } from "@/features/work-orders/mobile/mobileWorkOrderDetail";
 import {
-  parseMobileWorkOrderSnapshot,
-} from "@/features/work-orders/mobile/mobileWorkOrderDetail";
+  deniedWorkOrderFinancialAccess,
+  type WorkOrderFinancialAccess,
+} from "@/features/work-orders/workspace/workOrderFinancialAccess";
 import { resolveMobileWorkOrderReturnHref } from "@/features/mobile/work-orders/mobileWorkOrderRouting";
 import { useTabs } from "@/features/shared/components/tabs/TabsProvider";
 import RouteLoadPanel from "@/features/shared/components/ui/RouteLoadPanel";
@@ -279,6 +281,11 @@ export default function MobileWorkOrderClient({
     `${keyBase}:shopLaborRate`,
     null,
   );
+  const [financialAccess, setFinancialAccess] =
+    useTabState<WorkOrderFinancialAccess>(
+      `${keyBase}:financialAccess`,
+      deniedWorkOrderFinancialAccess(),
+    );
 
   const [loading, setLoading] = useState<boolean>(true);
   const [actorReady, setActorReady] = useState(false);
@@ -382,9 +389,7 @@ export default function MobileWorkOrderClient({
             if (!mounted || signal.aborted) return;
             if (profErr) {
               if (cachedScope?.userId === uid) {
-                setCurrentUserRole(
-                  session?.user.user_metadata?.role ?? null,
-                );
+                setCurrentUserRole(session?.user.user_metadata?.role ?? null);
                 setShopId(cachedScope.shopId);
                 setActorReady(true);
                 return;
@@ -473,6 +478,9 @@ export default function MobileWorkOrderClient({
           cached.lineContext ?? emptyCanonicalWorkOrderLineContext(),
         );
         setShopLaborRate(cached.shopLaborRate ?? null);
+        setFinancialAccess(
+          cached.financialAccess ?? deniedWorkOrderFinancialAccess(),
+        );
         hasRenderedDetailRef.current = true;
         setViewError("Offline copy · changes may be newer on the server.");
         return true;
@@ -535,6 +543,7 @@ export default function MobileWorkOrderClient({
               snapshot.lineContext ?? emptyCanonicalWorkOrderLineContext(),
             );
             setShopLaborRate(snapshot.shopLaborRate ?? null);
+            setFinancialAccess(snapshot.financialAccess);
             hasRenderedDetailRef.current = true;
 
             const authorizedScope = currentUserId
@@ -586,9 +595,7 @@ export default function MobileWorkOrderClient({
           }
         }
         if (isLatestLoad() && preserveRenderedDetail && mayUseCache) {
-          setViewError(
-            "Refresh failed · showing the last loaded work order.",
-          );
+          setViewError("Refresh failed · showing the last loaded work order.");
           console.error("[Mobile WO id page] refresh error:", e);
           return;
         }
@@ -602,6 +609,7 @@ export default function MobileWorkOrderClient({
           setTechNamesById({});
           setLineContext(emptyCanonicalWorkOrderLineContext());
           setShopLaborRate(null);
+          setFinancialAccess(deniedWorkOrderFinancialAccess());
           hasRenderedDetailRef.current = false;
           setLoadFailure(failure);
         }
@@ -626,6 +634,7 @@ export default function MobileWorkOrderClient({
       setCustomer,
       setLineContext,
       setShopLaborRate,
+      setFinancialAccess,
     ],
   );
 
@@ -844,6 +853,7 @@ export default function MobileWorkOrderClient({
       string,
       ReturnType<typeof resolveWorkOrderLinePricing>
     > = {};
+    if (!financialAccess.canViewSellPricing) return result;
     for (const line of lines) {
       const canonicalParts = lineContext.canonicalPartsByLine[line.id] ?? [];
       const allocations = filterAllocationsNotBackedByCanonicalParts(
@@ -860,7 +870,13 @@ export default function MobileWorkOrderClient({
       });
     }
     return result;
-  }, [activeQuotesByLine, lineContext, lines, shopLaborRate]);
+  }, [
+    activeQuotesByLine,
+    financialAccess.canViewSellPricing,
+    lineContext,
+    lines,
+    shopLaborRate,
+  ]);
 
   const mobileOperationalState = useMemo(
     () => deriveMobileDetailOperationalState(wo, lines),
@@ -1401,10 +1417,7 @@ export default function MobileWorkOrderClient({
         </div>
       )}
       {loadFailure ? (
-        <RouteLoadPanel
-          failure={loadFailure}
-          onRetry={() => void fetchAll()}
-        />
+        <RouteLoadPanel failure={loadFailure} onRetry={() => void fetchAll()} />
       ) : null}
       {(offlineSummary.queued > 0 ||
         offlineSummary.syncing > 0 ||
@@ -1849,8 +1862,8 @@ export default function MobileWorkOrderClient({
                     );
                   const hasDifferentTemplate = Boolean(
                     inspectionTemplateId &&
-                    attachedTemplateId &&
-                    attachedTemplateId !== inspectionTemplateId,
+                      attachedTemplateId &&
+                      attachedTemplateId !== inspectionTemplateId,
                   );
                   const activeTechnicianIds =
                     lineContext.activeTechnicianIdsByLine?.[ln.id] ?? [];
@@ -1901,8 +1914,8 @@ export default function MobileWorkOrderClient({
                         isPunchedIn={punchedIn}
                         isCurrentUserWorkingThisLine={Boolean(
                           punchedIn &&
-                          currentUserId &&
-                          activeTechnicianIds.includes(currentUserId),
+                            currentUserId &&
+                            activeTechnicianIds.includes(currentUserId),
                         )}
                         activeTechnicianNames={activeTechnicianNames}
                         onOpen={openFocused}

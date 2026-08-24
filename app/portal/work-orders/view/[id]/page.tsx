@@ -2,7 +2,10 @@
 
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
+import {
+  createAdminSupabase,
+  createServerSupabaseRSC,
+} from "@/features/shared/lib/supabase/server";
 
 import type { Database } from "@shared/types/types/supabase";
 import {
@@ -32,7 +35,7 @@ type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
 type CustomerRow = DB["public"]["Tables"]["customers"]["Row"];
 type ShopRow = DB["public"]["Tables"]["shops"]["Row"];
 type PartRow = DB["public"]["Tables"]["parts"]["Row"];
-type AllocationRow = DB["public"]["Tables"]["work_order_part_allocations"]["Row"];
+type WorkOrderPartRow = DB["public"]["Tables"]["work_order_parts"]["Row"];
 type QuoteLineRow = DB["public"]["Tables"]["work_order_quote_lines"]["Row"];
 
 type WorkOrderLite = Pick<
@@ -208,6 +211,7 @@ export default async function PortalWorkOrderViewerPage({
     const { id: userId } = await requireAuthedUser(supabase);
     const portalCustomer = await requirePortalCustomer(supabase, userId);
     await requireWorkOrderOwnedByCustomer(supabase, workOrderId, portalCustomer.id);
+    const admin = createAdminSupabase();
 
     const { data: wo, error: woErr } = await supabase
       .from("work_orders")
@@ -295,21 +299,39 @@ export default async function PortalWorkOrderViewerPage({
     });
     const visibleQuoteTotal = quoteLines.length > 0 ? quoteLineTotal + quoteSupplies.amount : null;
 
-    // Allocations (truth for parts)
-    const { data: allocRaw, error: allocErr } = await supabase
-      .from("work_order_part_allocations")
-      .select("id, work_order_line_id, part_id, qty, unit_cost")
-      .eq("work_order_id", workOrderId);
+    // The portal never reads inventory cost allocations. Ownership is already
+    // proven above; the trusted reader returns only customer sell snapshots.
+    const { data: workOrderPartRaw, error: workOrderPartError } = await admin
+      .from("work_order_parts")
+      .select(
+        "id, work_order_line_id, part_id, quantity, unit_price, total_price, description_snapshot, part_number_snapshot, sku_snapshot",
+      )
+      .eq("work_order_id", workOrderId)
+      .eq("shop_id", wo.shop_id)
+      .eq("is_active", true);
 
-    if (allocErr) throw allocErr;
+    if (workOrderPartError) throw workOrderPartError;
 
-    const allocations = (Array.isArray(allocRaw) ? allocRaw : []) as Array<
-      Pick<AllocationRow, "id" | "work_order_line_id" | "part_id" | "qty" | "unit_cost">
+    const customerParts = (
+      Array.isArray(workOrderPartRaw) ? workOrderPartRaw : []
+    ) as Array<
+      Pick<
+        WorkOrderPartRow,
+        | "id"
+        | "work_order_line_id"
+        | "part_id"
+        | "quantity"
+        | "unit_price"
+        | "total_price"
+        | "description_snapshot"
+        | "part_number_snapshot"
+        | "sku_snapshot"
+      >
     >;
 
     const partIds = Array.from(
       new Set(
-        allocations
+        customerParts
           .map((a) => a.part_id)
           .filter(
             (id): id is string => typeof id === "string" && id.trim().length > 0,
@@ -333,16 +355,19 @@ export default async function PortalWorkOrderViewerPage({
       }
     }
 
-    const parts: WorkOrderViewerPart[] = allocations.map((a) => {
+    const parts: WorkOrderViewerPart[] = customerParts.map((a) => {
       const meta = typeof a.part_id === "string" ? partsMap.get(a.part_id) : undefined;
 
-      const qty = Math.max(0, safeNumber(a.qty)) || 1;
-      const unitCost = Math.max(0, safeNumber(a.unit_cost));
-      const totalCost = qty * unitCost;
+      const qty = Math.max(0, safeNumber(a.quantity)) || 1;
+      const unitCost = Math.max(0, safeNumber(a.unit_price));
+      const totalCost =
+        Math.max(0, safeNumber(a.total_price)) || qty * unitCost;
 
-      const baseName = (meta?.name ?? "Part").trim() || "Part";
-      const partNumber = (meta?.part_number ?? "").trim() || undefined;
-      const sku = (meta?.sku ?? "").trim() || undefined;
+      const baseName =
+        (a.description_snapshot ?? meta?.name ?? "Part").trim() || "Part";
+      const partNumber =
+        (a.part_number_snapshot ?? meta?.part_number ?? "").trim() || undefined;
+      const sku = (a.sku_snapshot ?? meta?.sku ?? "").trim() || undefined;
       const unit = (meta?.unit ?? "").trim() || undefined;
 
       const pretty = partNumber ? `${baseName} (${partNumber})` : baseName;
@@ -457,3 +482,4 @@ export default async function PortalWorkOrderViewerPage({
     redirect("/portal");
   }
 }
+

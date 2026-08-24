@@ -19,6 +19,7 @@ import { attachInspectionReportToInvoice } from "@/features/invoices/server/atta
 import { reviewWorkOrder } from "../../work-orders/[id]/_lib/reviewWorkOrder";
 import { logOperationalEvent } from "@/features/work-orders/server/logOperationalEvent";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { WORKSPACE_CAPABILITIES } from "@/features/workspace/authorization/capabilities";
 import { upsertPortalNotification } from "@/features/portal/server/upsertPortalNotification";
 
 type DB = Database;
@@ -76,6 +77,8 @@ export async function POST(request: Request) {
     const access = await requireShopScopedApiAccess({
       requiredCapabilities: ["canManageWorkOrders", "canAuthorizeQuotes"],
       allowRoles: ["owner", "admin", "manager", "advisor", "service"],
+      requiredWorkspaceCapability:
+        WORKSPACE_CAPABILITIES.manageWorkOrderInvoice,
     });
     if (!access.ok) return access.response;
 

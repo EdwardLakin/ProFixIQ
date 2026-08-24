@@ -5,6 +5,15 @@ import {
   type WorkspaceCapabilityKey,
 } from "@/features/workspace/authorization/capabilities";
 import { resolveCurrentWorkspaceCapabilities } from "@/features/workspace/authorization/server/resolveWorkspaceCapabilities";
+import {
+  deniedWorkOrderFinancialAccess,
+  type WorkOrderFinancialAccess,
+} from "@/features/work-orders/workspace/workOrderFinancialAccess";
+
+export {
+  deniedWorkOrderFinancialAccess,
+  type WorkOrderFinancialAccess,
+} from "@/features/work-orders/workspace/workOrderFinancialAccess";
 
 export const WORK_ORDER_FINANCIAL_CAPABILITY_KEYS = [
   WORKSPACE_CAPABILITIES.viewWorkOrderSellPricing,
@@ -16,30 +25,6 @@ export const WORK_ORDER_FINANCIAL_CAPABILITY_KEYS = [
   WORKSPACE_CAPABILITIES.viewWorkOrderPartsSellPricing,
   WORKSPACE_CAPABILITIES.viewWorkOrderPartsCost,
 ] as const satisfies readonly WorkspaceCapabilityKey[];
-
-export type WorkOrderFinancialAccess = {
-  canViewSellPricing: boolean;
-  canViewCost: boolean;
-  canViewGrossProfit: boolean;
-  canViewInvoice: boolean;
-  canManageInvoice: boolean;
-  canEditPricing: boolean;
-  canViewPartsSellPricing: boolean;
-  canViewPartsCost: boolean;
-};
-
-export function deniedWorkOrderFinancialAccess(): WorkOrderFinancialAccess {
-  return {
-    canViewSellPricing: false,
-    canViewCost: false,
-    canViewGrossProfit: false,
-    canViewInvoice: false,
-    canManageInvoice: false,
-    canEditPricing: false,
-    canViewPartsSellPricing: false,
-    canViewPartsCost: false,
-  };
-}
 
 /**
  * Resolves the complete Work Order financial envelope in one fail-closed call.
