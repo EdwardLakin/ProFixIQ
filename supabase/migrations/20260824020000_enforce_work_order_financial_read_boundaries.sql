@@ -231,6 +231,7 @@ using (
 do $financial_staff_mutation_policies$
 declare
   v_table text;
+  v_action text;
 begin
   foreach v_table in array array[
     'invoices',
