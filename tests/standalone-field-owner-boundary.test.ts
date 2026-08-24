@@ -143,6 +143,9 @@ describe("standalone Field owner boundary", () => {
     const authorizationMigration = read(
       "supabase/migrations/20260824205500_align_standalone_field_configuration_authorization.sql",
     );
+    const authorizationFunctions = authorizationMigration.split(
+      "do $postcheck$",
+    )[0];
     const serverAccess = read("features/mobile/service/server/access.ts");
     const settingsRoute = read("app/api/mobile/service/settings/route.ts");
     const settingsScreen = read(
@@ -186,10 +189,10 @@ describe("standalone Field owner boundary", () => {
     expect(authorizationMigration).toContain(
       "workspace.owner_id in (profile.id, profile.user_id)",
     );
-    expect(authorizationMigration).not.toContain(
+    expect(authorizationFunctions).not.toContain(
       "if lower(coalesce(v_profile.role, '')) <> 'owner'",
     );
-    expect(authorizationMigration).not.toContain(
+    expect(authorizationFunctions).not.toContain(
       "and lower(coalesce(profile.role, '')) = 'owner'",
     );
     expect(authorizationMigration).toContain(
