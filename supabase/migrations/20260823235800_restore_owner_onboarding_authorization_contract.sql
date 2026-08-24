@@ -44,15 +44,25 @@ begin
   -- The private authorization row is transaction-specific and is written only
   -- after the canonical RPC has locked the actor's profile, verified it is
   -- unassigned, and confirmed the completed Stripe trial claim. Permit only
-  -- the exact initial owner assignment to a shop owned by that same actor.
+  -- the exact initial shop assignment and/or owner promotion to a shop owned
+  -- by that same actor. This accepts both deployed trigger shapes: production
+  -- upserts owner/shop together, while clean replay assigns shop_id first.
   if tg_op = 'UPDATE'
     and old.id = v_actor_user_id
-    and old.shop_id is null
     and old.role is null
     and new.id is not distinct from old.id
     and new.user_id is not distinct from old.user_id
-    and new.role = 'owner'
     and new.shop_id is not null
+    and (
+      (
+        old.shop_id is null
+        and (new.role is null or new.role = 'owner')
+      )
+      or (
+        old.shop_id = new.shop_id
+        and new.role = 'owner'
+      )
+    )
     and new.organization_id is not distinct from old.organization_id
     and new.agent_role is not distinct from old.agent_role
     and new.plan is not distinct from old.plan
@@ -361,7 +371,10 @@ begin
     and not coalesce(p.completed_onboarding, false)
     and (
       (p.shop_id is null and p.role is null)
-      or (p.shop_id = v_target_shop_id and p.role = 'owner')
+      or (
+        p.shop_id = v_target_shop_id
+        and (p.role is null or p.role = 'owner')
+      )
     );
 
   if not found then
