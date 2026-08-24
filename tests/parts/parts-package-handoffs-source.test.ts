@@ -11,6 +11,10 @@ describe("parts package handoff source contracts", () => {
     "features/work-orders/lib/data/loadCanonicalWorkOrderLineContext.ts",
     "utf8",
   );
+  const roleShapedWorkOrderDetail = readFileSync(
+    "features/work-orders/workspace/server/loadRoleShapedWorkOrderDetail.ts",
+    "utf8",
+  );
   const focusedJob = readFileSync("features/work-orders/components/workorders/FocusedJobModal.tsx", "utf8");
   const appShell = readFileSync("features/shared/components/AppShell.tsx", "utf8");
 
@@ -37,13 +41,18 @@ describe("parts package handoff source contracts", () => {
   });
 
   it("uses active canonical work_order_parts for work-order display before allocation", () => {
-    expect(workOrderClient).toContain("loadCanonicalWorkOrderLineContext");
+    expect(workOrderClient).toContain("/workspace-detail");
+    expect(roleShapedWorkOrderDetail).toContain(
+      "loadCanonicalWorkOrderLineContext",
+    );
     expect(workOrderContext).toContain('.from("work_order_parts")');
     expect(workOrderContext).toContain('.in("work_order_line_id", ids)');
     expect(workOrderContext).toContain('.eq("is_active", true)');
     expect(focusedJob).toContain("requiredParts");
-    expect(focusedJob).toContain('.from("work_order_parts")');
-    expect(focusedJob).toContain('.eq("is_active", true)');
+    expect(focusedJob).toContain("/workspace-detail");
+    expect(focusedJob).toContain(
+      "snapshot.lineContext.canonicalPartsByLine",
+    );
   });
 
   it("resolves canonical parts-request ids to their owning work order and scopes the result", () => {

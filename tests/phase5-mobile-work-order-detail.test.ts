@@ -45,6 +45,16 @@ function snapshot(
     techNamesById: {},
     lineContext: emptyLineContext(),
     shopLaborRate: null,
+    financialAccess: {
+      canViewSellPricing: false,
+      canViewPartsSellPricing: false,
+      canViewPartsCost: false,
+      canViewGrossProfit: false,
+      canViewInvoice: false,
+      canManageInvoice: false,
+      canEditPricing: false,
+    },
+    latestInvoiceReview: null,
     ...overrides,
   };
 }

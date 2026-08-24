@@ -171,8 +171,9 @@ describe("financial RLS hardening", () => {
     );
 
     const manualPaymentRoute = source("app/api/payments/manual/route.ts");
+    expect(manualPaymentRoute).toContain("const PAYMENT_ROLES = [");
     expect(manualPaymentRoute).toContain(
-      'const PAYMENT_ROLES = ["owner", "admin", "manager", "advisor", "service"] as const',
+      "requiredWorkspaceCapability: WORKSPACE_CAPABILITIES.manageWorkOrderInvoice",
     );
     expect(manualPaymentRoute).toContain("SUPABASE_SERVICE_ROLE_KEY");
     expect(manualPaymentRoute).toContain("postPaymentEvent");

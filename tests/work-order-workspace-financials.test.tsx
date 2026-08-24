@@ -149,7 +149,10 @@ describe("Work Order Workspace financials composition", () => {
 
   it("keeps the module behind the existing financial capability", () => {
     expect(workOrderClient).toContain(
-      "const canViewFinancials = currentActor.canViewFinancials;",
+      "const canViewFinancials = canWorkspace(",
+    );
+    expect(workOrderClient).toContain(
+      "WORKSPACE_CAPABILITIES.viewWorkOrderSellPricing",
     );
     expect(workOrderClient).toMatch(
       /\{canViewFinancials \? \(\s*<WorkOrderWorkspaceModule\s+module="financials"/,

@@ -1,12 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  createAdminSupabase: vi.fn(),
   requireShopScopedApiAccess: vi.fn(),
   loadMobileWorkOrderDetail: vi.fn(),
 }));
 
 vi.mock("@/features/shared/lib/server/admin-access", () => ({
   requireShopScopedApiAccess: mocks.requireShopScopedApiAccess,
+}));
+
+vi.mock("@/features/shared/lib/supabase/server", () => ({
+  createAdminSupabase: mocks.createAdminSupabase,
 }));
 
 vi.mock("server-only", () => ({}));
@@ -35,6 +40,7 @@ function allowedAccess() {
 describe("mobile work-order detail route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.createAdminSupabase.mockReturnValue({ from: vi.fn() });
     mocks.requireShopScopedApiAccess.mockResolvedValue(allowedAccess());
     mocks.loadMobileWorkOrderDetail.mockResolvedValue({
       workOrder: { id: WORK_ORDER_ID, shop_id: "shop-1" },
