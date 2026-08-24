@@ -127,7 +127,7 @@ jobs:
         env:
           DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
         run: |
-          set -o pipefail
+          set -euo pipefail
           {
             echo "=== Field My Truck isolation runtime ==="
             psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
