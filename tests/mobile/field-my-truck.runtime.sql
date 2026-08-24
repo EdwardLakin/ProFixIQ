@@ -5,7 +5,8 @@ begin;
 insert into auth.users (id, email, raw_user_meta_data)
 values
   ('8f100000-0000-4000-8000-000000000001', 'field-my-truck-one@example.com', '{}'::jsonb),
-  ('8f100000-0000-4000-8000-000000000002', 'field-my-truck-two@example.com', '{}'::jsonb)
+  ('8f100000-0000-4000-8000-000000000002', 'field-my-truck-two@example.com', '{}'::jsonb),
+  ('8f100000-0000-4000-8000-000000000003', 'standalone-field-owner@example.com', '{}'::jsonb)
 on conflict (id) do nothing;
 
 insert into public.profiles (id, user_id, role, full_name, email, shop_id)
@@ -144,6 +145,14 @@ do $$
 declare
   v_visible integer;
 begin
+  select count(*) into v_visible
+  from public.field_service_vehicle_assignments
+  where profile_id = '8f100000-0000-4000-8000-000000000001'
+    and service_vehicle_id = '8f300000-0000-4000-8000-000000000001';
+  if v_visible <> 1 then
+    raise exception 'My Truck runtime failed: assigned operator cannot resolve their truck assignment';
+  end if;
+
   select count(*) into v_visible
   from public.field_truck_records
   where service_vehicle_id = '8f300000-0000-4000-8000-000000000002';
@@ -327,6 +336,98 @@ begin
   exception when insufficient_privilege then
     null;
   end;
+end;
+$$;
+
+reset role;
+
+-- A standalone Field subscription is one self-configuring owner/operator. The
+-- wrapper must ignore Shop-linked team flags and atomically establish My Truck.
+insert into public.profiles (id, user_id, role, full_name, email, shop_id)
+values (
+  '8f100000-0000-4000-8000-000000000003',
+  '8f100000-0000-4000-8000-000000000003',
+  'owner',
+  'Standalone Field Owner',
+  'standalone-field-owner@example.com',
+  null
+)
+on conflict (id) do update
+set user_id = excluded.user_id, role = 'owner', shop_id = null;
+
+insert into public.shops (
+  id, owner_id, business_name, name, user_limit, accepts_online_booking,
+  min_notice_minutes, max_lead_days, location_type, country,
+  billing_entitlement_override, subscription_package
+)
+values (
+  '8f200000-0000-4000-8000-000000000003',
+  '8f100000-0000-4000-8000-000000000003',
+  'Standalone Field Runtime',
+  'Standalone Field Runtime',
+  1,
+  true,
+  0,
+  365,
+  'repair_facility',
+  'CA',
+  'internal_demo',
+  'field_service'
+)
+on conflict (id) do update
+set owner_id = excluded.owner_id,
+    subscription_package = 'field_service';
+
+update public.profiles
+set shop_id = '8f200000-0000-4000-8000-000000000003'
+where id = '8f100000-0000-4000-8000-000000000003';
+
+select set_config('request.jwt.claim.role', 'authenticated', true);
+select set_config('request.jwt.claim.sub', '8f100000-0000-4000-8000-000000000003', true);
+set local role authenticated;
+
+select public.field_configure_standalone_owner_atomic(
+  '8f200000-0000-4000-8000-000000000003',
+  'both',
+  false,
+  true,
+  false,
+  false,
+  60,
+  25,
+  false,
+  'Owner Service Truck',
+  'OWNER-1',
+  '8f100000-0000-4000-8000-000000000003'
+);
+
+do $$
+begin
+  if not exists (
+    select 1
+    from public.mobile_service_settings settings
+    where settings.shop_id = '8f200000-0000-4000-8000-000000000003'
+      and settings.service_model = 'mobile'
+      and settings.solo_mode
+      and not settings.dispatch_enabled
+      and settings.service_vehicles_enabled
+      and settings.field_operator_count_target = 1
+  ) then
+    raise exception 'My Truck runtime failed: standalone Field invariants were not enforced';
+  end if;
+
+  if not exists (
+    select 1
+    from public.field_service_vehicle_assignments assignment
+    join public.service_vehicles vehicle
+      on vehicle.id = assignment.service_vehicle_id
+     and vehicle.shop_id = assignment.shop_id
+    where assignment.shop_id = '8f200000-0000-4000-8000-000000000003'
+      and assignment.profile_id = '8f100000-0000-4000-8000-000000000003'
+      and vehicle.name = 'Owner Service Truck'
+  ) then
+    raise exception 'My Truck runtime failed: standalone Field owner was not assigned their truck';
+  end if;
 end;
 $$;
 

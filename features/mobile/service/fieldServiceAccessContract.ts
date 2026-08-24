@@ -17,6 +17,7 @@ export type FieldServiceAccessContract = {
   configurationComplete: boolean;
   fieldServiceEnabled: boolean;
   isFieldOperator: boolean;
+  standaloneFieldWorkspace: boolean;
   canConfigure: boolean;
   canAccessFieldService: boolean;
 };
@@ -27,8 +28,15 @@ export function resolveFieldServiceAccessContract(input: {
   isFieldOperator: boolean;
   canonicalRole: string;
   productEntitled: boolean;
+  subscriptionPackage?: string | null;
 }): FieldServiceAccessContract {
-  const canConfigure = ["owner", "admin"].includes(input.canonicalRole);
+  const standaloneFieldWorkspace =
+    input.subscriptionPackage === "field_service";
+  const standaloneOwner =
+    standaloneFieldWorkspace && input.canonicalRole === "owner";
+  const canConfigure = standaloneFieldWorkspace
+    ? standaloneOwner
+    : ["owner", "admin"].includes(input.canonicalRole);
   const configurationComplete = Boolean(
     input.onboardingCompletedAt &&
     ["mobile", "both"].includes(input.serviceModel ?? ""),
@@ -43,7 +51,22 @@ export function resolveFieldServiceAccessContract(input: {
       configurationComplete,
       fieldServiceEnabled: false,
       isFieldOperator: input.isFieldOperator,
+      standaloneFieldWorkspace,
       canConfigure,
+      canAccessFieldService: false,
+    };
+  }
+
+  if (standaloneFieldWorkspace && !standaloneOwner) {
+    return {
+      decision: "forbidden",
+      code: "FIELD_SERVICE_OPERATOR_REQUIRED",
+      productEntitled: true,
+      configurationComplete,
+      fieldServiceEnabled,
+      isFieldOperator: input.isFieldOperator,
+      standaloneFieldWorkspace: true,
+      canConfigure: false,
       canAccessFieldService: false,
     };
   }
@@ -56,6 +79,7 @@ export function resolveFieldServiceAccessContract(input: {
       configurationComplete: false,
       fieldServiceEnabled: false,
       isFieldOperator: input.isFieldOperator,
+      standaloneFieldWorkspace,
       canConfigure,
       canAccessFieldService: false,
     };
@@ -69,6 +93,7 @@ export function resolveFieldServiceAccessContract(input: {
       configurationComplete: true,
       fieldServiceEnabled: true,
       isFieldOperator: false,
+      standaloneFieldWorkspace,
       canConfigure,
       canAccessFieldService: false,
     };
@@ -81,6 +106,7 @@ export function resolveFieldServiceAccessContract(input: {
     configurationComplete: true,
     fieldServiceEnabled,
     isFieldOperator: true,
+    standaloneFieldWorkspace,
     canConfigure,
     canAccessFieldService: true,
   };

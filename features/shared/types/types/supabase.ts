@@ -28551,6 +28551,23 @@ export type Database = {
         }
         Returns: Json
       }
+      field_configure_standalone_owner_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_default_visit_minutes: number
+          p_dispatch_enabled: boolean
+          p_enable_current_actor_field_operator: boolean
+          p_field_operator_count_target: number
+          p_service_model: string
+          p_service_vehicle_name: string
+          p_service_vehicle_unit_number: string
+          p_service_vehicles_enabled: boolean
+          p_shop_id: string
+          p_solo_mode: boolean
+          p_truck_inventory_enabled: boolean
+        }
+        Returns: Json
+      }
       field_receive_po_part_to_truck_atomic: {
         Args: {
           p_actor_user_id: string

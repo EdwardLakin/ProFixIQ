@@ -14,6 +14,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 
 import type {
   FieldMyTruckSnapshot,
@@ -21,7 +22,10 @@ import type {
   FieldTruckRecordType,
 } from "./myTruck";
 
-type SnapshotResponse = FieldMyTruckSnapshot & { ok: true };
+type SnapshotResponse = FieldMyTruckSnapshot & {
+  ok: true;
+  standaloneFieldWorkspace: boolean;
+};
 
 const EMPTY_SNAPSHOT: FieldMyTruckSnapshot = {
   truck: null,
@@ -308,6 +312,7 @@ export default function FieldMyTruck() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [standaloneFieldWorkspace, setStandaloneFieldWorkspace] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -323,6 +328,7 @@ export default function FieldMyTruck() {
         );
       }
       setSnapshot(body);
+      setStandaloneFieldWorkspace(body.standaloneFieldWorkspace === true);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "My Truck could not be loaded.");
     } finally {
@@ -450,8 +456,20 @@ export default function FieldMyTruck() {
 
       {!snapshot.truck ? (
         <section className="rounded-3xl border border-amber-400/30 bg-amber-500/10 p-5 text-amber-100">
-          <div className="flex items-center gap-2 font-extrabold"><AlertTriangle className="h-5 w-5" /> No truck assigned</div>
-          <p className="mt-2 text-sm">An owner or admin must assign this Field profile as the primary operator of an active service vehicle before My Truck records can be accessed.</p>
+          <div className="flex items-center gap-2 font-extrabold"><AlertTriangle className="h-5 w-5" /> My Truck setup required</div>
+          <p className="mt-2 text-sm">
+            {standaloneFieldWorkspace
+              ? "Finish setting up your service truck to use maintenance, readiness, records and operating costs."
+              : "This Shop-linked Field profile does not have an active service truck assignment."}
+          </p>
+          {standaloneFieldWorkspace ? (
+            <Link
+              href="/mobile/service/setup"
+              className="mt-4 inline-flex min-h-11 items-center rounded-xl bg-amber-300 px-4 text-sm font-extrabold text-amber-950"
+            >
+              Set up My Truck
+            </Link>
+          ) : null}
         </section>
       ) : (
         <>

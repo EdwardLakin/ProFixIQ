@@ -225,7 +225,7 @@ export default function MobileInspectionsListPage() {
       >
         {canManageInspectionTemplates ? (
           <Link
-            href="/mobile/service/inspection-builder"
+            href="/mobile/service/inspection-builder/new"
             className="mobile-command-row col-span-2 flex min-h-[5.6rem] items-center gap-3 border p-3"
           >
             <span className="inline-grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-300">
