@@ -585,11 +585,11 @@ begin
     raise exception 'My Truck runtime failed: non-canonical standalone owner retained truck access';
   end if;
 
-  if public.mobile_can_manage_work_orders(
+  if public.mobile_dispatch_profile_eligible(
     '8f200000-0000-4000-8000-000000000003',
     '8f100000-0000-4000-8000-000000000004'
   ) then
-    raise exception 'My Truck runtime failed: non-canonical standalone owner retained Field management access';
+    raise exception 'My Truck runtime failed: non-canonical standalone owner retained dispatch eligibility';
   end if;
 
   if exists (
