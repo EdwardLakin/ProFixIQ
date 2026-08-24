@@ -14,7 +14,7 @@ set local statement_timeout = '5min';
 -- recognize exactly the canonical null -> owner/shop transition while the
 -- existing shop trigger retains its behavior for every other caller.
 
-create table private.owner_bootstrap_authorizations (
+create table if not exists private.owner_bootstrap_authorizations (
   transaction_id bigint primary key,
   actor_user_id uuid not null,
   created_at timestamptz not null default clock_timestamp()
