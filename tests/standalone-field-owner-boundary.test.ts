@@ -140,6 +140,9 @@ describe("standalone Field owner boundary", () => {
     const hardeningMigration = read(
       "supabase/migrations/20260824161939_harden_standalone_field_owner_boundary.sql",
     );
+    const authorizationMigration = read(
+      "supabase/migrations/20260824205500_align_standalone_field_configuration_authorization.sql",
+    );
     const serverAccess = read("features/mobile/service/server/access.ts");
     const settingsRoute = read("app/api/mobile/service/settings/route.ts");
     const settingsScreen = read(
@@ -173,6 +176,24 @@ describe("standalone Field owner boundary", () => {
     );
     expect(hardeningMigration).toContain(
       "workspace.owner_id in (profile.id, profile.user_id)",
+    );
+    expect(authorizationMigration).toContain(
+      "v_owner_id is distinct from v_profile.id",
+    );
+    expect(authorizationMigration).toContain(
+      "v_owner_id is distinct from v_profile.user_id",
+    );
+    expect(authorizationMigration).toContain(
+      "workspace.owner_id in (profile.id, profile.user_id)",
+    );
+    expect(authorizationMigration).not.toContain(
+      "if lower(coalesce(v_profile.role, '')) <> 'owner'",
+    );
+    expect(authorizationMigration).not.toContain(
+      "and lower(coalesce(profile.role, '')) = 'owner'",
+    );
+    expect(authorizationMigration).toContain(
+      "elsif lower(coalesce(v_profile.role, '')) not in ('owner', 'admin')",
     );
     expect(hardeningMigration).toContain(
       "workspace.subscription_package is distinct from 'field_service'",
