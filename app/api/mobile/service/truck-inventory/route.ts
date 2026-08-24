@@ -47,7 +47,10 @@ export async function GET(request: NextRequest) {
       ? (data as Record<string, unknown>)
       : { movements: [] };
 
-  return NextResponse.json(snapshot, {
-    headers: { "Cache-Control": "private, no-store" },
-  });
+  return NextResponse.json(
+    { ...snapshot, canConfigure: access.canConfigure },
+    {
+      headers: { "Cache-Control": "private, no-store" },
+    },
+  );
 }
