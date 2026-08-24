@@ -39,6 +39,7 @@ on:
       - "tests/mobile/field-truck-inventory.runtime.sql"
       - "tests/mobile/field-my-truck.runtime.sql"
       - "tests/mobile/field-owner-truck-boundary-hotfix.runtime.sql"
+      - "tests/mobile/field-owner-truck-boundary-hotfix.runner.sql"
       - "tests/mobile/field-quarantine-service-reader.runtime.sql"
       - "tests/mobile/mobile-v1-fake-day.runtime.sql"
       - "tests/mobile/mobile-v1-team-dispatch.runtime.sql"
@@ -127,7 +128,7 @@ jobs:
               -f tests/mobile/field-my-truck.runtime.sql
             echo "=== Standalone Field owner truck boundary hotfix ==="
             psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
-              -f tests/mobile/field-owner-truck-boundary-hotfix.runtime.sql
+              -f tests/mobile/field-owner-truck-boundary-hotfix.runner.sql
             echo "=== Field quarantine service-role reader ==="
             psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
               -f tests/mobile/field-quarantine-service-reader.runtime.sql
