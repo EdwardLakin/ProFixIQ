@@ -208,10 +208,9 @@ begin
   into visible_ids
   from public.work_order_parts;
 
-  if visible_ids is distinct from array[
-    'fa100000-0000-4000-8000-000000000001'::uuid
-  ] then
-    raise exception 'Portal-only customer saw the wrong work-order parts: %', visible_ids;
+  if visible_ids is not null then
+    raise exception 'Portal-only customer directly read cost-bearing work-order parts: %',
+      visible_ids;
   end if;
 end
 $portal_policy$;
