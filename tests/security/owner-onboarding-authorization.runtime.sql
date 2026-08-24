@@ -232,6 +232,8 @@ select set_config('request.jwt.claims', '', true);
 select set_config('request.jwt.claim.role', '', true);
 
 do $assert_owner_bootstrap_acl$
+declare
+  v_untrusted_role text;
 begin
   if has_function_privilege(
     'anon',
@@ -249,25 +251,29 @@ begin
     raise exception 'Authenticated role cannot execute owner bootstrap';
   end if;
 
-  if has_table_privilege(
-    'authenticated',
-    'private.owner_bootstrap_authorizations',
-    'select'
-  ) or has_table_privilege(
-    'authenticated',
-    'private.owner_bootstrap_authorizations',
-    'insert'
-  ) or has_table_privilege(
-    'authenticated',
-    'private.owner_bootstrap_authorizations',
-    'update'
-  ) or has_table_privilege(
-    'authenticated',
-    'private.owner_bootstrap_authorizations',
-    'delete'
-  ) then
-    raise exception 'Authenticated role can forge owner bootstrap authorization';
-  end if;
+  foreach v_untrusted_role in array array['anon', 'authenticated', 'service_role']
+  loop
+    if has_table_privilege(
+      v_untrusted_role,
+      'private.owner_bootstrap_authorizations',
+      'select'
+    ) or has_table_privilege(
+      v_untrusted_role,
+      'private.owner_bootstrap_authorizations',
+      'insert'
+    ) or has_table_privilege(
+      v_untrusted_role,
+      'private.owner_bootstrap_authorizations',
+      'update'
+    ) or has_table_privilege(
+      v_untrusted_role,
+      'private.owner_bootstrap_authorizations',
+      'delete'
+    ) then
+      raise exception '% role can forge owner bootstrap authorization',
+        v_untrusted_role;
+    end if;
+  end loop;
 end;
 $assert_owner_bootstrap_acl$;
 
