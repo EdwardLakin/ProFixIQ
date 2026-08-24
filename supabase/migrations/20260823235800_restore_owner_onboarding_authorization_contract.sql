@@ -9,10 +9,22 @@ set local statement_timeout = '5min';
 -- not distinguish that trusted transition from a direct self-promotion, so it
 -- rejected every first-shop bootstrap with SQLSTATE 42501.
 --
--- Use a transaction-local actor marker set only inside the validated bootstrap.
--- The marker lets the two profile-related triggers recognize exactly the
--- canonical null -> owner/shop transition without admitting direct profile or
--- first-shop writes from the authenticated role.
+-- Record the validated actor in a private transaction-scoped authorization
+-- context that authenticated callers cannot forge. The profile guard can then
+-- recognize exactly the canonical null -> owner/shop transition while the
+-- existing shop trigger retains its behavior for every other caller.
+
+create table private.owner_bootstrap_authorizations (
+  transaction_id bigint primary key,
+  actor_user_id uuid not null,
+  created_at timestamptz not null default clock_timestamp()
+);
+
+revoke all on table private.owner_bootstrap_authorizations
+  from public, anon, authenticated, service_role;
+
+comment on table private.owner_bootstrap_authorizations is
+  'Ephemeral transaction authorization written only by bootstrap_owner_atomic and deleted before the RPC returns.';
 
 create or replace function public.prevent_profile_authorization_self_write()
 returns trigger
@@ -22,10 +34,6 @@ set search_path = public
 as $profile_authorization_guard$
 declare
   v_actor_user_id uuid := auth.uid();
-  v_bootstrap_actor_id text := current_setting(
-    'profixiq.owner_bootstrap_actor_id',
-    true
-  );
 begin
   -- Service-role and trusted database administration have no end-user JWT and
   -- remain able to provision or move memberships.
@@ -33,12 +41,11 @@ begin
     return new;
   end if;
 
-  -- The bootstrap marker is transaction-local and is set only after the
-  -- canonical RPC has locked the actor's profile, verified it is unassigned,
-  -- and confirmed the completed Stripe trial claim. Permit only the exact
-  -- initial owner assignment to a shop already owned by that same actor.
+  -- The private authorization row is transaction-specific and is written only
+  -- after the canonical RPC has locked the actor's profile, verified it is
+  -- unassigned, and confirmed the completed Stripe trial claim. Permit only
+  -- the exact initial owner assignment to a shop owned by that same actor.
   if tg_op = 'UPDATE'
-    and v_bootstrap_actor_id = v_actor_user_id::text
     and old.id = v_actor_user_id
     and old.shop_id is null
     and old.role is null
@@ -50,6 +57,57 @@ begin
     and new.agent_role is not distinct from old.agent_role
     and new.plan is not distinct from old.plan
     and new.created_by is not distinct from old.created_by
+    and exists (
+      select 1
+      from private.owner_bootstrap_authorizations as bootstrap_authorization
+      where bootstrap_authorization.transaction_id = txid_current()
+        and bootstrap_authorization.actor_user_id = v_actor_user_id
+    )
+    and exists (
+      select 1
+      from public.shops as bootstrap_shop
+      where bootstrap_shop.id = new.shop_id
+        and bootstrap_shop.owner_id = v_actor_user_id
+    )
+  then
+    return new;
+  end if;
+
+  -- set_owner_shop_id uses INSERT ... ON CONFLICT DO UPDATE. PostgreSQL fires
+  -- the INSERT trigger before it resolves that conflict, so allow only that
+  -- exact bootstrap-owned row shape when the locked, unassigned profile is
+  -- already present. The subsequent UPDATE trigger is checked above.
+  if tg_op = 'INSERT'
+    and new.id = v_actor_user_id
+    and new.user_id = v_actor_user_id
+    and new.role = 'owner'
+    and new.shop_id is not null
+    and new.created_by = v_actor_user_id
+    and exists (
+      select 1
+      from private.owner_bootstrap_authorizations as bootstrap_authorization
+      where bootstrap_authorization.transaction_id = txid_current()
+        and bootstrap_authorization.actor_user_id = v_actor_user_id
+    )
+    and exists (
+      select 1
+      from public.profiles as bootstrap_profile
+      where bootstrap_profile.id = v_actor_user_id
+        and (
+          (
+            bootstrap_profile.shop_id is null
+            and bootstrap_profile.role is null
+            and not coalesce(bootstrap_profile.completed_onboarding, false)
+          )
+          or (
+            bootstrap_profile.shop_id = new.shop_id
+            and bootstrap_profile.role = 'owner'
+          )
+        )
+        and new.organization_id is not distinct from bootstrap_profile.organization_id
+        and new.agent_role is not distinct from bootstrap_profile.agent_role
+        and new.plan is not distinct from bootstrap_profile.plan
+    )
     and exists (
       select 1
       from public.shops as bootstrap_shop
@@ -96,41 +154,6 @@ begin
   return new;
 end;
 $profile_authorization_guard$;
-
-create or replace function public.set_owner_shop_id()
-returns trigger
-language plpgsql
-security definer
-set search_path = ''
-as $set_owner_shop_id$
-begin
-  if new.owner_id is null then
-    return new;
-  end if;
-
-  -- bootstrap_owner_atomic owns this profile transition explicitly. Skipping
-  -- the legacy trigger write avoids performing the same assignment before the
-  -- RPC reaches its guarded compare-and-set update. Other shop creation paths
-  -- retain the existing trigger behavior and remain subject to the profile
-  -- authorization guard.
-  if current_setting('profixiq.owner_bootstrap_actor_id', true)
-    = new.owner_id::text
-  then
-    return new;
-  end if;
-
-  insert into public.profiles (id, user_id, shop_id, role, created_by)
-  values (new.owner_id, new.owner_id, new.id, 'owner', new.owner_id)
-  on conflict (id)
-  do update
-    set shop_id = excluded.shop_id,
-        user_id = coalesce(public.profiles.user_id, excluded.user_id),
-        role = 'owner',
-        updated_at = now();
-
-  return new;
-end;
-$set_owner_shop_id$;
 
 create or replace function public.bootstrap_owner_atomic(
   p_business_name text,
@@ -267,13 +290,13 @@ begin
     raise exception 'Owner bootstrap not allowed';
   end if;
 
-  -- The transaction-local marker is established only after the complete
-  -- authorization and commercial eligibility checks above have passed.
-  perform set_config(
-    'profixiq.owner_bootstrap_actor_id',
-    v_uid::text,
-    true
-  );
+  -- The private transaction authorization is established only after the
+  -- complete authorization and commercial eligibility checks above pass.
+  insert into private.owner_bootstrap_authorizations (
+    transaction_id,
+    actor_user_id
+  )
+  values (txid_current(), v_uid);
 
   select count(*)
     into v_owned_shop_count
@@ -335,9 +358,11 @@ begin
         shop_id = v_target_shop_id,
         completed_onboarding = not v_pending_protocol
   where p.id = v_uid
-    and p.shop_id is null
-    and p.role is null
-    and not coalesce(p.completed_onboarding, false);
+    and not coalesce(p.completed_onboarding, false)
+    and (
+      (p.shop_id is null and p.role is null)
+      or (p.shop_id = v_target_shop_id and p.role = 'owner')
+    );
 
   if not found then
     raise exception 'Owner bootstrap not allowed';
@@ -395,6 +420,14 @@ begin
     set role = 'owner',
         created_by = coalesce(shop_members.created_by, excluded.created_by);
 
+  delete from private.owner_bootstrap_authorizations as bootstrap_authorization
+  where bootstrap_authorization.transaction_id = txid_current()
+    and bootstrap_authorization.actor_user_id = v_uid;
+
+  if not found then
+    raise exception 'Owner bootstrap authorization context missing';
+  end if;
+
   return query
   select v_target_shop_id, v_created;
 end;
@@ -435,6 +468,6 @@ comment on function public.bootstrap_owner_atomic(
   text,
   text
 ) is
-  'Atomically creates or recovers the first owner shop after trial-claim validation and delegates the guarded profile transition through a transaction-local actor marker.';
+  'Atomically creates or recovers the first owner shop after trial-claim validation and delegates the guarded profile transition through a private transaction authorization.';
 
 commit;
