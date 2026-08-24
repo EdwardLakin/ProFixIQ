@@ -378,9 +378,9 @@ values (
   '8fa00000-0000-4000-8000-000000000001'
 );
 
-select set_config('request.jwt.claim.role', 'authenticated', true);
+select set_config('request.jwt.claim.role', 'service_role', true);
 select set_config('request.jwt.claim.sub', '8fa00000-0000-4000-8000-000000000002', true);
-set local role authenticated;
+set local role service_role;
 
 do $$
 begin
@@ -390,7 +390,15 @@ begin
   ) then
     raise exception 'Field boundary hotfix failed: Shop-linked enabled operator lost Field entitlement';
   end if;
+end;
+$$;
 
+reset role;
+select set_config('request.jwt.claim.role', 'authenticated', true);
+set local role authenticated;
+
+do $$
+begin
   if not public.field_actor_can_access_service_vehicle(
     '8fb00000-0000-4000-8000-000000000001',
     '8fc00000-0000-4000-8000-000000000003'
