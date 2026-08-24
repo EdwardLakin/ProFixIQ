@@ -29,11 +29,23 @@ on:
       - "supabase/migrations/20260812230200_field_truck_inventory_snapshot.sql"
       - "supabase/migrations/20260812230300_field_truck_inventory_movement_commands.sql"
       - "supabase/migrations/20260812230400_field_truck_inventory_work_order_commands.sql"
+      - "supabase/migrations/20260824182500_repair_standalone_field_truck_boundary.sql"
+      - "supabase/migrations/20260824183500_grant_field_quarantine_service_reader.sql"
+      - "supabase/migrations/20260824183730_secure_field_quarantine_reader.sql"
+      - "features/mobile/service/fieldServiceAccessContract.ts"
+      - "features/mobile/service/server/access.ts"
+      - "features/shared/types/types/supabase.ts"
       - "tests/field-truck-inventory-contract.test.ts"
       - "tests/mobile-v1-productization.test.ts"
       - "tests/mobile-v1-post-merge-hardening.test.ts"
+      - "tests/standalone-field-owner-boundary.test.ts"
+      - "tests/standalone-field-owner-truck-boundary-hotfix.test.ts"
+      - "tests/field-quarantine-service-reader.test.ts"
       - "tests/mobile/field-truck-inventory.runtime.sql"
       - "tests/mobile/field-my-truck.runtime.sql"
+      - "tests/mobile/field-owner-truck-boundary-hotfix.runtime.sql"
+      - "tests/mobile/field-owner-truck-boundary-hotfix.runner.sql"
+      - "tests/mobile/field-quarantine-service-reader.runtime.sql"
       - "tests/mobile/mobile-v1-fake-day.runtime.sql"
       - "tests/mobile/mobile-v1-team-dispatch.runtime.sql"
       - "tests/mobile/mobile-v1-codex-hardening.runtime.sql"
@@ -79,6 +91,9 @@ jobs:
           tests/field-truck-inventory-contract.test.ts
           tests/mobile-v1-productization.test.ts
           tests/mobile-v1-post-merge-hardening.test.ts
+          tests/standalone-field-owner-boundary.test.ts
+          tests/standalone-field-owner-truck-boundary-hotfix.test.ts
+          tests/field-quarantine-service-reader.test.ts
           tests/mobile-service-shell.test.ts
           tests/mobile-native-route-audit.test.ts
           tests/phase-d3-dashboard-navigation.test.tsx
@@ -117,6 +132,12 @@ jobs:
             echo "=== Field My Truck isolation runtime ==="
             psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
               -f tests/mobile/field-my-truck.runtime.sql
+            echo "=== Standalone Field owner truck boundary hotfix ==="
+            psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+              -f tests/mobile/field-owner-truck-boundary-hotfix.runner.sql
+            echo "=== Field quarantine service-role reader ==="
+            psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+              -f tests/mobile/field-quarantine-service-reader.runtime.sql
             echo "=== Solo Mobile V1 fake day ==="
             psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
               -f tests/mobile/mobile-v1-fake-day.runtime.sql

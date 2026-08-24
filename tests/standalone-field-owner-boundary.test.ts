@@ -42,6 +42,39 @@ describe("standalone Field owner boundary", () => {
     });
   });
 
+  it("uses canonical workspace ownership instead of a historical role label", () => {
+    const access = resolveFieldServiceAccessContract({
+      serviceModel: "mobile",
+      onboardingCompletedAt: "2026-08-24T12:00:00.000Z",
+      isFieldOperator: true,
+      canonicalRole: "manager",
+      productEntitled: true,
+      subscriptionPackage: "field_service",
+      isCanonicalWorkspaceOwner: true,
+    });
+
+    expect(access).toMatchObject({
+      decision: "ready",
+      canAccessFieldService: true,
+      canConfigure: true,
+      standaloneFieldWorkspace: true,
+    });
+    expect(
+      resolveFieldWorkspaceCapabilities({
+        role: "manager",
+        standaloneFieldWorkspace: true,
+        canConfigureFieldService: access.canConfigure,
+        canSwitchWorkspace: false,
+      }),
+    ).toMatchObject({
+      canManageScheduling: true,
+      canManageParts: true,
+      canManageOperations: true,
+      canManageInspectionTemplates: true,
+      canConfigureFieldService: true,
+    });
+  });
+
   it("preserves role-aware capabilities for Shop-linked Field", () => {
     expect(
       resolveFieldWorkspaceCapabilities({
@@ -164,6 +197,12 @@ describe("standalone Field owner boundary", () => {
     expect(serverAccess).toContain('.select("subscription_package,owner_id")');
     expect(serverAccess).toContain(
       "shopResult.data?.owner_id === access.profile.id",
+    );
+    expect(serverAccess).toContain(
+      "export async function requireMobileServiceConfigurationApiAccess()",
+    );
+    expect(serverAccess).not.toContain(
+      'requireShopScopedApiAccess({\n    allowRoles: ["owner", "admin"],\n  })',
     );
     expect(settingsRoute).toContain(
       '"field_configure_standalone_owner_atomic"',

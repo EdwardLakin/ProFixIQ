@@ -28614,6 +28614,21 @@ export type Database = {
         }
         Returns: Json
       }
+      field_service_vehicle_assignment_quarantine_report: {
+        Args: { p_limit?: number; p_shop_id?: string }
+        Returns: {
+          assigned_by_profile_id: string
+          assignment_created_at: string
+          assignment_updated_at: string
+          profile_id: string
+          quarantine_id: number
+          quarantined_at: string
+          reason: string
+          service_vehicle_id: string
+          shop_id: string
+          source_migration: string
+        }[]
+      }
       field_storage_path_uuid: { Args: { p_value: string }; Returns: string }
       field_transfer_stock_to_truck_atomic: {
         Args: {
