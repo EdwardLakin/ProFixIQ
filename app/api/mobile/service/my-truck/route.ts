@@ -55,7 +55,11 @@ export async function GET(request: Request) {
       monthKey: /^\d{4}-(0[1-9]|1[0-2])$/.test(monthKey) ? monthKey : undefined,
     });
     return NextResponse.json(
-      { ok: true, ...snapshot },
+      {
+        ok: true,
+        ...snapshot,
+        standaloneFieldWorkspace: access.standaloneFieldWorkspace,
+      },
       { headers: { "Cache-Control": "private, no-store" } },
     );
   } catch (error) {

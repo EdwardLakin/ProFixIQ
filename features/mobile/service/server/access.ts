@@ -31,9 +31,23 @@ export type MobileFieldServiceWorkspaceAccess = MobileFieldServiceAccess & {
 
 export function resolveFieldWorkspaceCapabilities(input: {
   role: string | null | undefined;
+  standaloneFieldWorkspace?: boolean;
   canConfigureFieldService: boolean;
   canSwitchWorkspace: boolean;
 }): FieldWorkspaceCapabilities {
+  if (input.standaloneFieldWorkspace === true) {
+    const standaloneOwner =
+      input.role === "owner" && input.canConfigureFieldService;
+    return {
+      canManageScheduling: standaloneOwner,
+      canManageParts: standaloneOwner,
+      canManageOperations: standaloneOwner,
+      canManageInspectionTemplates: standaloneOwner,
+      canConfigureFieldService: standaloneOwner,
+      canSwitchWorkspace: input.canSwitchWorkspace,
+    };
+  }
+
   const actor = getActorCapabilities({ role: input.role });
   return {
     canManageScheduling: actor.canManageScheduling,
@@ -54,6 +68,8 @@ export function resolveMobileFieldServiceAccess(input: {
   isFieldOperator: boolean;
   canonicalRole: string;
   productEntitled: boolean;
+  subscriptionPackage?: string | null;
+  isCanonicalWorkspaceOwner?: boolean;
 }): MobileFieldServiceAccess {
   return resolveFieldServiceAccessContract(input);
 }
@@ -61,8 +77,8 @@ export function resolveMobileFieldServiceAccess(input: {
 export async function getMobileFieldServiceAccess(
   access: ShopAccess,
 ): Promise<MobileFieldServiceAccess> {
-  const [settingsResult, operatorResult, entitlementResult] = await Promise.all(
-    [
+  const [settingsResult, operatorResult, entitlementResult, shopResult] =
+    await Promise.all([
       access.supabase
         .from("mobile_service_settings")
         .select("service_model,onboarding_completed_at")
@@ -79,11 +95,21 @@ export async function getMobileFieldServiceAccess(
         p_capability: "field_service",
         p_shop_id: access.profile.shop_id,
       }),
-    ],
-  );
+      access.supabase
+        .from("shops")
+        .select("subscription_package,owner_id")
+        .eq("id", access.profile.shop_id)
+        .maybeSingle<{
+          subscription_package: string | null;
+          owner_id: string | null;
+        }>(),
+    ]);
 
   const error =
-    settingsResult.error || operatorResult.error || entitlementResult.error;
+    settingsResult.error ||
+    operatorResult.error ||
+    entitlementResult.error ||
+    shopResult.error;
   if (error) throw new Error(error.message);
 
   return resolveMobileFieldServiceAccess({
@@ -92,6 +118,10 @@ export async function getMobileFieldServiceAccess(
     isFieldOperator: Boolean(operatorResult.data),
     canonicalRole: access.canonicalRole,
     productEntitled: entitlementResult.data === true,
+    subscriptionPackage: shopResult.data?.subscription_package ?? null,
+    isCanonicalWorkspaceOwner:
+      shopResult.data?.owner_id === access.profile.id ||
+      shopResult.data?.owner_id === access.authUserId,
   });
 }
 
@@ -128,6 +158,7 @@ export async function getMobileFieldServiceWorkspaceAccess(
     ...fieldAccess,
     workspaceCapabilities: resolveFieldWorkspaceCapabilities({
       role: access.profile.role,
+      standaloneFieldWorkspace: fieldAccess.standaloneFieldWorkspace,
       canConfigureFieldService: fieldAccess.canConfigure,
       canSwitchWorkspace: canAccessShop || canAccessFleet,
     }),
@@ -251,9 +282,11 @@ export async function requireMobileServiceOperatorApiAccess(
     ...access,
     actor: getActorCapabilities({ role: access.profile.role }),
     isFieldOperator: fieldAccess.isFieldOperator,
+    standaloneFieldWorkspace: fieldAccess.standaloneFieldWorkspace,
     managementRole:
       fieldAccess.canAccessFieldService &&
-      hasAnyRole(access.canonicalRole, ROLE_GROUPS.billingOperators),
+      (fieldAccess.standaloneFieldWorkspace ||
+        hasAnyRole(access.canonicalRole, ROLE_GROUPS.billingOperators)),
     fieldServiceEnabled: fieldAccess.fieldServiceEnabled,
   };
 }
@@ -278,6 +311,13 @@ export async function requireMobileServiceConfigurationApiAccess() {
   }
 
   if (!fieldAccess.productEntitled) {
+    return {
+      ok: false as const,
+      response: fieldAccessDeniedResponse(fieldAccess),
+    };
+  }
+
+  if (!fieldAccess.canConfigure) {
     return {
       ok: false as const,
       response: fieldAccessDeniedResponse(fieldAccess),

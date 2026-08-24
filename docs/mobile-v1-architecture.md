@@ -12,6 +12,20 @@ Mobile V1 is a productization layer over the existing ProFixIQ platform. It must
 - **Future opportunity:** `mobile_service_followups` stores user-authored future work separately from today's invoice.
 - **Offline field state:** lifecycle actions use the existing user/shop-scoped offline mutation queue and replay through a state-aware adapter into the canonical Dispatch state machine.
 
+## Field ownership boundary
+
+A standalone Field subscription (`shops.subscription_package = 'field_service'`)
+is its own owner-controlled workspace. The single owner is also its Field
+operator, receives every Field capability, and owns the required My Truck
+assignment created during setup. No Shop role, Shop administrator, or separate
+tenant can gate those capabilities. The `shops` relation is shared tenant
+storage; it does not make a standalone Field subscription Shop-controlled.
+
+A Shop-linked Field workspace is a different mode. It uses the Shop's existing
+memberships, role-aware capabilities, and explicit truck assignments. Linking
+Field from a Shop may add those capabilities, but standalone Field must remain
+independent unless that activation occurs.
+
 ## Intake principle
 
 The conversation is the intake form. Rapid intake records only what is needed to get to the customer: identity, vehicle, location, concern, ETA, time allocation, and optional preliminary price. It creates a normal mobile booking; existing scheduler/dispatch projection creates the Service Visit. It does not create a work order or invoice merely because the phone call was saved.

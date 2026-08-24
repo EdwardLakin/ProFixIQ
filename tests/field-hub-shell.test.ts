@@ -85,7 +85,7 @@ describe("Field Hub workspace", () => {
     expect(inspectionPage).toContain("body?.canAccessFieldService");
     expect(inspectionPage).toContain(".canManageInspectionTemplates");
     expect(inspectionPage).toContain(
-      'href="/mobile/service/inspection-builder"',
+      'href="/mobile/service/inspection-builder/new"',
     );
     expect(inspectionPage).toContain("Build inspection");
     expect(fieldShell).toContain(

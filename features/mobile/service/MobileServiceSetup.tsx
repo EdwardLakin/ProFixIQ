@@ -38,6 +38,8 @@ export default function MobileServiceSetup() {
   const [defaultVisitMinutes, setDefaultVisitMinutes] = useState(60);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [standaloneFieldWorkspace, setStandaloneFieldWorkspace] =
+    useState(false);
   const [canConfigure, setCanConfigure] = useState(false);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [loadAttempt, setLoadAttempt] = useState(0);
@@ -71,6 +73,8 @@ export default function MobileServiceSetup() {
       })
       .then((body) => {
         if (!active) return;
+        const standalone = body.standaloneFieldWorkspace === true;
+        setStandaloneFieldWorkspace(standalone);
         setCanConfigure(body.canConfigure !== false);
         const settings = body.settings as
           | Record<string, string | number | boolean | null>
@@ -111,6 +115,14 @@ export default function MobileServiceSetup() {
           setTruckName(serviceVehicle.name || "Service Truck");
           setUnitNumber(serviceVehicle.unit_number || "");
         }
+        if (standalone) {
+          setServiceModel("mobile");
+          setSoloMode(true);
+          setDispatchEnabled(false);
+          setFieldOperator(true);
+          setOperatorCount(1);
+          setServiceVehicles(true);
+        }
       })
       .catch((cause) => {
         if (active) {
@@ -139,16 +151,28 @@ export default function MobileServiceSetup() {
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          serviceModel,
-          soloMode,
-          dispatchEnabled: soloMode ? false : dispatchEnabled,
-          serviceVehiclesEnabled: serviceVehicles,
+          serviceModel: standaloneFieldWorkspace ? "mobile" : serviceModel,
+          soloMode: standaloneFieldWorkspace ? true : soloMode,
+          dispatchEnabled: standaloneFieldWorkspace
+            ? false
+            : soloMode
+              ? false
+              : dispatchEnabled,
+          serviceVehiclesEnabled: standaloneFieldWorkspace
+            ? true
+            : serviceVehicles,
           truckInventoryEnabled: truckInventory,
           defaultVisitMinutes,
-          fieldOperatorCountTarget: operatorCount,
-          enableCurrentActorFieldOperator: fieldOperator,
-          serviceVehicleName: serviceVehicles ? truckName : null,
-          serviceVehicleUnitNumber: serviceVehicles ? unitNumber : null,
+          fieldOperatorCountTarget: standaloneFieldWorkspace
+            ? 1
+            : operatorCount,
+          enableCurrentActorFieldOperator: standaloneFieldWorkspace
+            ? true
+            : fieldOperator,
+          serviceVehicleName:
+            standaloneFieldWorkspace || serviceVehicles ? truckName : null,
+          serviceVehicleUnitNumber:
+            standaloneFieldWorkspace || serviceVehicles ? unitNumber : null,
         }),
       });
       const body = (await response.json().catch(() => null)) as {
@@ -249,101 +273,126 @@ export default function MobileServiceSetup() {
       </header>
 
       <section className="space-y-3 rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4 shadow-card">
-        <h2 className="font-extrabold">Where is service performed?</h2>
-        <div className="grid gap-2 sm:grid-cols-3">
-          {(
-            [
-              ["shop", "Customers come to us"],
-              ["mobile", "We go to customers"],
-              ["both", "Both"],
-            ] as const
-          ).map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => setServiceModel(value)}
-              className={`min-h-14 rounded-2xl border px-3 text-sm font-bold ${
-                serviceModel === value
-                  ? "border-sky-400 bg-sky-500/15 text-sky-200"
-                  : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)]"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        <h2 className="font-extrabold">
+          {standaloneFieldWorkspace
+            ? "Standalone Field workspace"
+            : "Where is service performed?"}
+        </h2>
+        {standaloneFieldWorkspace ? (
+          <p className="text-sm text-[color:var(--theme-text-secondary)]">
+            This Field subscription belongs to you. It is not controlled by a
+            Shop role, and all Field tools are available to the owner.
+          </p>
+        ) : (
+          <div className="grid gap-2 sm:grid-cols-3">
+            {(
+              [
+                ["shop", "Customers come to us"],
+                ["mobile", "We go to customers"],
+                ["both", "Both"],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setServiceModel(value)}
+                className={`min-h-14 rounded-2xl border px-3 text-sm font-bold ${
+                  serviceModel === value
+                    ? "border-sky-400 bg-sky-500/15 text-sky-200"
+                    : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)]"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
       </section>
 
-      <section className="space-y-3 rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4 shadow-card">
-        <div className="flex items-center gap-2">
-          <UsersRound className="h-5 w-5" />
-          <h2 className="font-extrabold">Field team</h2>
-        </div>
-        <label className="flex items-center justify-between gap-3 rounded-2xl bg-[color:var(--theme-surface-subtle)] p-3">
-          <span>
-            <strong className="block text-sm">I perform field work</strong>
-            <span className="text-xs text-[color:var(--theme-text-secondary)]">
-              Explicit field capability; your owner/admin role does not change.
+      {standaloneFieldWorkspace ? (
+        <section className="space-y-2 rounded-3xl border border-sky-400/30 bg-sky-500/10 p-4 shadow-card">
+          <div className="flex items-center gap-2">
+            <UsersRound className="h-5 w-5" />
+            <h2 className="font-extrabold">Owner operator</h2>
+          </div>
+          <p className="text-sm text-[color:var(--theme-text-secondary)]">
+            Your account is the Field owner and operator. There is no separate
+            Shop administrator required to unlock or assign your tools.
+          </p>
+        </section>
+      ) : (
+        <section className="space-y-3 rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4 shadow-card">
+          <div className="flex items-center gap-2">
+            <UsersRound className="h-5 w-5" />
+            <h2 className="font-extrabold">Field team</h2>
+          </div>
+          <label className="flex items-center justify-between gap-3 rounded-2xl bg-[color:var(--theme-surface-subtle)] p-3">
+            <span>
+              <strong className="block text-sm">I perform field work</strong>
+              <span className="text-xs text-[color:var(--theme-text-secondary)]">
+                Explicit field capability;
+                {" your owner/admin role does not change."}
+              </span>
             </span>
-          </span>
-          <input
-            type="checkbox"
-            checked={fieldOperator}
-            onChange={(event) => setFieldOperator(event.target.checked)}
-            className="h-5 w-5"
-          />
-        </label>
-        <label className="flex items-center justify-between gap-3">
-          <span className="text-sm font-semibold">Solo operator</span>
-          <input
-            type="checkbox"
-            checked={soloMode}
-            onChange={(event) => {
-              const checked = event.target.checked;
-              setSoloMode(checked);
-              if (checked) {
-                setOperatorCount(1);
-                setDispatchEnabled(false);
-              }
-            }}
-            className="h-5 w-5"
-          />
-        </label>
-        <label className="block text-xs text-[color:var(--theme-text-secondary)]">
-          Field operators
-          <input
-            type="number"
-            min={1}
-            max={500}
-            value={operatorCount}
-            disabled={soloMode}
-            onChange={(event) => {
-              const nextCount = Math.max(1, Number(event.target.value) || 1);
-              setOperatorCount(nextCount);
-              if (nextCount > 1) setDispatchEnabled(true);
-            }}
-            className="mt-1 min-h-11 w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 text-base"
-          />
-        </label>
-        <label className="flex items-center justify-between gap-3 rounded-2xl bg-[color:var(--theme-surface-subtle)] p-3">
-          <span>
-            <span className="flex items-center gap-2 text-sm font-semibold">
-              <Route className="h-4 w-4" /> Use dispatch/team assignment
+            <input
+              type="checkbox"
+              checked={fieldOperator}
+              onChange={(event) => setFieldOperator(event.target.checked)}
+              className="h-5 w-5"
+            />
+          </label>
+          <label className="flex items-center justify-between gap-3">
+            <span className="text-sm font-semibold">Solo operator</span>
+            <input
+              type="checkbox"
+              checked={soloMode}
+              onChange={(event) => {
+                const checked = event.target.checked;
+                setSoloMode(checked);
+                if (checked) {
+                  setOperatorCount(1);
+                  setDispatchEnabled(false);
+                }
+              }}
+              className="h-5 w-5"
+            />
+          </label>
+          <label className="block text-xs text-[color:var(--theme-text-secondary)]">
+            Field operators
+            <input
+              type="number"
+              min={1}
+              max={500}
+              value={operatorCount}
+              disabled={soloMode}
+              onChange={(event) => {
+                const nextCount = Math.max(1, Number(event.target.value) || 1);
+                setOperatorCount(nextCount);
+                if (nextCount > 1) setDispatchEnabled(true);
+              }}
+              className="mt-1 min-h-11 w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 text-base"
+            />
+          </label>
+          <label className="flex items-center justify-between gap-3 rounded-2xl bg-[color:var(--theme-surface-subtle)] p-3">
+            <span>
+              <span className="flex items-center gap-2 text-sm font-semibold">
+                <Route className="h-4 w-4" /> Use dispatch/team assignment
+              </span>
+              <span className="mt-0.5 block text-xs text-[color:var(--theme-text-secondary)]">
+                New calls stay unassigned for dispatch instead of automatically
+                going to the person who answered the call.
+              </span>
             </span>
-            <span className="mt-0.5 block text-xs text-[color:var(--theme-text-secondary)]">
-              New calls stay unassigned for dispatch instead of automatically
-              going to the person who answered the call.
-            </span>
-          </span>
-          <input
-            type="checkbox"
-            disabled={soloMode}
-            checked={!soloMode && dispatchEnabled}
-            onChange={(event) => setDispatchEnabled(event.target.checked)}
-            className="h-5 w-5"
-          />
-        </label>
-      </section>
+            <input
+              type="checkbox"
+              disabled={soloMode}
+              checked={!soloMode && dispatchEnabled}
+              onChange={(event) => setDispatchEnabled(event.target.checked)}
+              className="h-5 w-5"
+            />
+          </label>
+        </section>
+      )}
 
       <section className="space-y-3 rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4 shadow-card">
         <div className="flex items-center gap-2">
@@ -352,11 +401,14 @@ export default function MobileServiceSetup() {
         </div>
         <label className="flex items-center justify-between">
           <span className="text-sm font-semibold">
-            Track a service truck/van
+            {standaloneFieldWorkspace
+              ? "My Truck (required)"
+              : "Track a service truck/van"}
           </span>
           <input
             type="checkbox"
-            checked={serviceVehicles}
+            checked={standaloneFieldWorkspace || serviceVehicles}
+            disabled={standaloneFieldWorkspace}
             onChange={(event) => setServiceVehicles(event.target.checked)}
             className="h-5 w-5"
           />
@@ -391,7 +443,10 @@ export default function MobileServiceSetup() {
         </label>
       </section>
 
-      {canConfigure && fieldTeam.length > 0 && fieldVehicles.length > 0 ? (
+      {!standaloneFieldWorkspace &&
+      canConfigure &&
+      fieldTeam.length > 0 &&
+      fieldVehicles.length > 0 ? (
         <section className="space-y-3 rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4 shadow-card">
           <div className="flex items-center gap-2">
             <UsersRound className="h-5 w-5" />
@@ -453,7 +508,7 @@ export default function MobileServiceSetup() {
         </label>
       </section>
 
-      {!canConfigure ? (
+      {!canConfigure && !standaloneFieldWorkspace ? (
         <div className="rounded-2xl border border-amber-400/30 bg-amber-500/10 p-3 text-sm text-amber-200">
           Only an owner or admin can change Field Service setup.
         </div>
@@ -470,7 +525,7 @@ export default function MobileServiceSetup() {
         className="inline-flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl bg-sky-500 px-4 text-base font-extrabold text-white disabled:opacity-40"
       >
         <CheckCircle2 className="h-5 w-5" />
-        {busy ? "Saving…" : "Save Mobile setup"}
+        {busy ? "Saving…" : "Save Field setup"}
       </button>
     </main>
   );

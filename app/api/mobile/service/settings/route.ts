@@ -9,6 +9,8 @@ import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 type ConfigureRpcArgs =
   Database["public"]["Functions"]["mobile_configure_service_v1_atomic"]["Args"];
+type StandaloneConfigureRpcArgs =
+  Database["public"]["Functions"]["field_configure_standalone_owner_atomic"]["Args"];
 
 type SettingsBody = {
   serviceModel?: "shop" | "mobile" | "both";
@@ -59,7 +61,7 @@ async function readSettings(
     settingsResult.error || operatorResult.error || vehicleResult.error;
   if (firstError) throw new Error(firstError.message);
 
-  const canConfigure = ["owner", "admin"].includes(access.canonicalRole);
+  const canConfigure = access.fieldAccess.canConfigure;
   let fieldTeam: Array<{
     profileId: string;
     name: string;
@@ -72,7 +74,7 @@ async function readSettings(
     primaryUserId: string | null;
   }> = [];
 
-  if (canConfigure) {
+  if (canConfigure && !access.fieldAccess.standaloneFieldWorkspace) {
     const admin = createAdminSupabase();
     const [operatorsResult, vehiclesResult, assignmentsResult] =
       await Promise.all([
@@ -139,6 +141,7 @@ async function readSettings(
     settings: settingsResult.data ?? null,
     currentActorFieldOperator: operatorResult.data?.enabled === true,
     serviceVehicle: vehicleResult.data ?? null,
+    standaloneFieldWorkspace: access.fieldAccess.standaloneFieldWorkspace,
     canConfigure,
     fieldTeam,
     fieldVehicles,
@@ -211,10 +214,12 @@ export async function PUT(request: Request) {
     p_actor_user_id: access.authUserId,
   } as unknown as ConfigureRpcArgs;
 
-  const { data, error } = await access.supabase.rpc(
-    "mobile_configure_service_v1_atomic",
-    rpcArgs,
-  );
+  const { data, error } = access.fieldAccess.standaloneFieldWorkspace
+    ? await access.supabase.rpc(
+        "field_configure_standalone_owner_atomic",
+        rpcArgs as StandaloneConfigureRpcArgs,
+      )
+    : await access.supabase.rpc("mobile_configure_service_v1_atomic", rpcArgs);
 
   if (error) {
     return NextResponse.json(
@@ -237,6 +242,16 @@ export async function PUT(request: Request) {
 export async function PATCH(request: Request) {
   const access = await requireMobileServiceConfigurationApiAccess();
   if (!access.ok) return access.response;
+
+  if (access.fieldAccess.standaloneFieldWorkspace) {
+    return NextResponse.json(
+      {
+        error:
+          "Standalone Field assigns My Truck to its owner during Field setup.",
+      },
+      { status: 409 },
+    );
+  }
 
   const body = (await request.json().catch(() => null)) as {
     profileId?: unknown;
