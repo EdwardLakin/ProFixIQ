@@ -2,21 +2,15 @@ import "./globals.css";
 import "./light-mode-contrast.css";
 import { Inter, Black_Ops_One } from "next/font/google";
 import Script from "next/script";
-import Providers from "./providers";
-import AppShell from "@/features/shared/components/AppShell";
 import { headers } from "next/headers";
 import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
 import { getDashboardIdentity } from "@/features/dashboard/server/dashboard-shell-data";
-import { VoiceProvider } from "@/features/shared/voice/VoiceProvider";
-import BrandThemeBoot from "@/features/branding/components/BrandThemeBoot";
 import PwaRuntime from "@/features/shared/components/pwa/PwaRuntime";
+import RootShellBoundary from "./RootShellBoundary";
 import type { Metadata, Viewport } from "next";
 
 import ThemedToaster from "@/features/shared/components/ThemedToaster";
-import {
-  isOutsideDesktopAppShell,
-  isStandalonePublicRoute,
-} from "@/features/shared/lib/routes/shellBoundaries";
+import { isStandalonePublicRoute } from "@/features/shared/lib/routes/shellBoundaries";
 import { isFleetProductHostname } from "@/features/fleet/lib/fleetProductRouting";
 
 const inter = Inter({
@@ -72,16 +66,19 @@ export default async function RootLayout({
 }) {
   const hdrs = await headers();
   const pathname = hdrs.get("x-next-pathname") ?? "";
+  const productHostHeader = hdrs.get("x-profixiq-product-host");
   const isFleetProductHost =
-    hdrs.get("x-profixiq-product-host") === "fleet" ||
+    productHostHeader === "fleet" ||
     isFleetProductHostname(hdrs.get("x-forwarded-host") ?? hdrs.get("host"));
+  const productHost = isFleetProductHost
+    ? "fleet"
+    : productHostHeader === "ops"
+      ? "ops"
+      : null;
 
-  const isPublicRoute = isStandalonePublicRoute(pathname);
-  const isOutsideDesktopShell = isOutsideDesktopAppShell(pathname);
+  const shouldPreloadAppShell = !isStandalonePublicRoute(pathname);
 
-  const useAppShell = !isPublicRoute;
-
-  const [session, dashboardIdentity] = useAppShell
+  const [session, dashboardIdentity] = shouldPreloadAppShell
     ? await Promise.all([
         createServerSupabaseRSC()
           .auth.getSession()
@@ -89,22 +86,6 @@ export default async function RootLayout({
         getDashboardIdentity(),
       ])
     : [null, null];
-
-  const appContent = (
-    <VoiceProvider>
-      <BrandThemeBoot />
-      {useAppShell ? (
-        <AppShell
-          initialIdentity={dashboardIdentity}
-          initialOutsideDesktopShell={isOutsideDesktopShell}
-        >
-          {children}
-        </AppShell>
-      ) : (
-        children
-      )}
-    </VoiceProvider>
-  );
 
   return (
     <html
@@ -123,11 +104,13 @@ export default async function RootLayout({
           backgroundImage: "var(--theme-gradient-panel)",
         }}
       >
-        {useAppShell ? (
-          <Providers initialSession={session}>{appContent}</Providers>
-        ) : (
-          appContent
-        )}
+        <RootShellBoundary
+          initialIdentity={dashboardIdentity}
+          initialSession={session}
+          productHost={productHost}
+        >
+          {children}
+        </RootShellBoundary>
 
         {isFleetProductHost ? null : <PwaRuntime />}
         <ThemedToaster />
