@@ -45,6 +45,7 @@ function snapshot(): FieldTruckInventorySnapshot {
     ],
   };
 }
+
 function unconfiguredSnapshot(input: {
   canConfigure?: boolean;
   canManageParts?: boolean;
@@ -157,5 +158,4 @@ describe("Field truck inventory activity", () => {
       ),
     ).toBeInTheDocument();
   });
-
 });
