@@ -199,7 +199,7 @@ begin
    and workspace.id = p_shop_id
    and workspace.subscription_package = 'field_service'
    and workspace.owner_id in (profile.id, profile.user_id)
-  where profile.id = p_actor_user_id or profile.user_id = p_actor_user_id
+  where (profile.id = p_actor_user_id or profile.user_id = p_actor_user_id)
   order by (profile.id = p_actor_user_id) desc, profile.id
   limit 1;
 
@@ -306,14 +306,14 @@ begin
   ) into v_owner_definition;
 
   if position(
-    'if lower(coalesce(v_profile.role, '''')) <> ''owner'''
+    $role_gate$if lower(coalesce(v_profile.role, '')) <> 'owner'$role_gate$
     in lower(v_mobile_definition)
   ) > 0 then
     raise exception 'mobile_configure_service_v1_atomic still requires the standalone owner role label';
   end if;
 
   if position(
-    'and lower(coalesce(profile.role, '''')) = ''owner'''
+    $role_gate$and lower(coalesce(profile.role, '')) = 'owner'$role_gate$
     in lower(v_owner_definition)
   ) > 0 then
     raise exception 'field_configure_standalone_owner_atomic still requires the standalone owner role label';
