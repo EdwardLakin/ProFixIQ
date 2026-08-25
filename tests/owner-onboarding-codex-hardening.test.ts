@@ -52,7 +52,10 @@ describe("owner onboarding Codex hardening", () => {
   it("preserves guided onboarding on mobile instead of collapsing it to generic mobile home", () => {
     expect(middlewareSource).toContain("isGuidedOnboardingPath");
     expect(middlewareSource).toContain('pathname === "/dashboard/onboarding-v2"');
-    expect(middlewareSource).toContain("!isGuidedOnboardingPath");
+    expect(middlewareSource).toContain("isGuidedOnboardingRequest");
+    expect(middlewareSource).toContain('"guidedSessionId"');
+    expect(middlewareSource).toContain('"returnTo"');
+    expect(middlewareSource).toContain("!isGuidedOnboardingRequest");
   });
 
   it("keeps an owner with a created shop but incomplete billing inside onboarding", () => {

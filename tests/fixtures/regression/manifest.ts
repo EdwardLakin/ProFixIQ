@@ -29,6 +29,12 @@ export const REGRESSION_FIXTURE = {
       role: "owner",
       shop: "starter",
     },
+    administrator: {
+      id: "f1100000-0000-4000-8000-000000000014",
+      email: "administrator@regression.profixiq.invalid",
+      role: "admin",
+      shop: "pro",
+    },
     manager: {
       id: "f1100000-0000-4000-8000-000000000003",
       email: "manager@regression.profixiq.invalid",
@@ -62,6 +68,12 @@ export const REGRESSION_FIXTURE = {
     customer: {
       id: "f1100000-0000-4000-8000-000000000008",
       email: "customer@regression.profixiq.invalid",
+      role: "customer",
+      shop: null,
+    },
+    revokedCustomer: {
+      id: "f1100000-0000-4000-8000-000000000015",
+      email: "revoked-customer@regression.profixiq.invalid",
       role: "customer",
       shop: null,
     },
@@ -102,6 +114,30 @@ export const REGRESSION_FIXTURE = {
     portal: "f1200000-0000-4000-8000-000000000001",
     unrelated: "f1200000-0000-4000-8000-000000000002",
     fleet: "f1200000-0000-4000-8000-000000000003",
+    revokedPortal: "f1200000-0000-4000-8000-000000000004",
+  },
+  portalInvites: {
+    active: {
+      id: "f2b00000-0000-4000-8000-000000000001",
+      token: "f2c00000-0000-4000-8000-000000000001",
+      state: "accepted_active",
+      customerId: "f1200000-0000-4000-8000-000000000001",
+      actorUserId: "f1100000-0000-4000-8000-000000000008",
+    },
+    revoked: {
+      id: "f2b00000-0000-4000-8000-000000000002",
+      token: "f2c00000-0000-4000-8000-000000000002",
+      state: "accepted_revoked",
+      customerId: "f1200000-0000-4000-8000-000000000004",
+      actorUserId: "f1100000-0000-4000-8000-000000000015",
+    },
+    expired: {
+      id: "f2b00000-0000-4000-8000-000000000003",
+      token: "f2c00000-0000-4000-8000-000000000003",
+      state: "pending_expired",
+      customerId: "f1200000-0000-4000-8000-000000000004",
+      actorUserId: "f1100000-0000-4000-8000-000000000015",
+    },
   },
   vehicles: {
     customer: "f1300000-0000-4000-8000-000000000001",
@@ -115,11 +151,45 @@ export const REGRESSION_FIXTURE = {
     unrelated: "f1500000-0000-4000-8000-000000000002",
   },
   workOrderLine: "f1600000-0000-4000-8000-000000000001",
+  workOrderLineTechnician: {
+    workOrderLineId: "f1600000-0000-4000-8000-000000000001",
+    technicianId: "f1100000-0000-4000-8000-000000000005",
+  },
+  capabilityOverrides: {
+    technicianWorkOrderAssignment: {
+      id: "f1e00000-0000-4000-8000-000000000001",
+      profileId: "f1100000-0000-4000-8000-000000000005",
+      capabilityKey: "work_order.assignment.manage",
+      effect: "allow",
+    },
+  },
+  inspection: "f1f00000-0000-4000-8000-000000000001",
+  inspectionSignature: "f2a00000-0000-4000-8000-000000000001",
+  inspectionItem: "f2000000-0000-4000-8000-000000000001",
+  laborSegment: "f2100000-0000-4000-8000-000000000001",
   quotes: {
     authorized: "f1700000-0000-4000-8000-000000000001",
     unrelated: "f1700000-0000-4000-8000-000000000002",
   },
   quotedPart: "f1800000-0000-4000-8000-000000000001",
+  receivedPart: "f1800000-0000-4000-8000-000000000002",
+  partRequest: "f2200000-0000-4000-8000-000000000001",
+  partRequestItems: {
+    pending: "f2300000-0000-4000-8000-000000000001",
+    received: "f2300000-0000-4000-8000-000000000002",
+  },
+  partRequestLine: "f2400000-0000-4000-8000-000000000001",
+  fieldTruck: {
+    stockLocation: "f2500000-0000-4000-8000-000000000001",
+    serviceVehicle: "f2600000-0000-4000-8000-000000000001",
+    inventoryPart: "f2700000-0000-4000-8000-000000000001",
+    stockMove: "f2800000-0000-4000-8000-000000000001",
+    partStock: "f2900000-0000-4000-8000-000000000001",
+  },
+  fieldServiceVehicleAssignment: {
+    serviceVehicleId: "f2600000-0000-4000-8000-000000000001",
+    profileId: "f1100000-0000-4000-8000-000000000012",
+  },
   fleetRequests: [
     "f1900000-0000-4000-8000-000000000001",
     "f1900000-0000-4000-8000-000000000002",
@@ -143,5 +213,6 @@ export const REGRESSION_FIXTURE = {
     leadTech: "f1d00000-0000-4000-8000-000000000004",
     fieldOperator: "f1d00000-0000-4000-8000-000000000005",
     fieldDisabled: "f1d00000-0000-4000-8000-000000000006",
+    serviceTruck: "f1d00000-0000-4000-8000-000000000007",
   },
 } as const;

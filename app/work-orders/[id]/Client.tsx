@@ -49,6 +49,7 @@ import {
   shouldUseReadOnlyWorkOrderView,
 } from "@/features/work-orders/lib/display/workOrderPresentation";
 import { filterAllocationsNotBackedByCanonicalParts } from "@/features/work-orders/lib/display/workOrderParts";
+import { resolveTechnicianDisplayName } from "@/features/work-orders/lib/display/linePresentation";
 import {
   getPartsRequestDisplayState,
   getPartsRequestStatusLabel,
@@ -78,6 +79,8 @@ import {
 import {
   canOpenWorkOrderInspectionModule,
   createWorkOrderWorkspaceResource,
+  isWorkOrderExecutionComplete,
+  isWorkOrderExecutionInProgress,
   resolveWorkOrderWorkspaceResource,
   workOrderWorkspaceCustomerMessageHref,
 } from "@/features/work-orders/workspace/workOrderWorkspace";
@@ -181,11 +184,6 @@ function extractInspectionTemplateId(ln: WorkOrderLineWithInspectionMeta): strin
 
 type TemplateSectionItem = { item: string; unit?: string | null };
 type TemplateSection = { title: string; items: TemplateSectionItem[] };
-
-// roles allowed to assign jobs
-
-// roles allowed to delete/void lines
-const LINE_DELETE_ROLES = new Set(["owner", "admin", "manager", "advisor"]);
 
 /* ----------------------- AI review icon support ----------------------- */
 
@@ -301,6 +299,20 @@ export default function WorkOrderIdClient(): JSX.Element {
   const [assignables, setAssignables] = useState<
     Array<Pick<Profile, "id" | "full_name" | "role">>
   >([]);
+  const [techNamesById, setTechNamesById] = useState<Record<string, string>>(
+    {},
+  );
+  const readableTechNamesById = useMemo(() => {
+    const result = { ...techNamesById };
+    for (const technician of assignables) {
+      const resolved = resolveTechnicianDisplayName(
+        result[technician.id],
+        technician.full_name,
+      );
+      if (resolved) result[technician.id] = resolved;
+    }
+    return result;
+  }, [assignables, techNamesById]);
   const assignmentOperationsRef = useRef<
     Map<string, { technicianId: string; operationKey: string }>
   >(new Map());
@@ -574,6 +586,7 @@ export default function WorkOrderIdClient(): JSX.Element {
             setEvidence([]);
             setActiveTechsByLine({});
             setAssignedTechsByLine({});
+            setTechNamesById({});
           }
           setReviewChecked(true);
           setReviewOk(undefined);
@@ -589,6 +602,7 @@ export default function WorkOrderIdClient(): JSX.Element {
         setVehicle(snapshot.vehicle);
         setCustomer(snapshot.customer);
         setShopLaborRate(snapshot.shopLaborRate);
+        setTechNamesById(snapshot.techNamesById ?? {});
         setAllocsByLine(snapshot.lineContext.allocationsByLine);
         setStagedPartsByLine(snapshot.lineContext.canonicalPartsByLine);
         setAssignedTechsByLine(snapshot.lineContext.technicianIdsByLine);
@@ -1037,15 +1051,14 @@ export default function WorkOrderIdClient(): JSX.Element {
           workStatus: line.status,
         }) === "declined",
     );
-    const hasInProgress = jobLines.some(
-      (line) =>
-        resolveDecisionStatus({
-          approvalState: line.approval_state,
-          workStatus: line.status,
-        }) === "in_progress",
-    );
-    const isCompleted =
-      resolveDecisionStatus({ workStatus: wo?.status ?? null }) === "completed";
+    const hasInProgress = isWorkOrderExecutionInProgress({
+      workOrderStatus: wo?.status,
+      lines: jobLines.map((line) => ({
+        approvalState: line.approval_state,
+        workStatus: line.status,
+      })),
+    });
+    const isCompleted = isWorkOrderExecutionComplete(wo?.status);
 
     return [
       { key: "inspection", label: "Inspection completed", state: "past" },
@@ -1148,7 +1161,7 @@ export default function WorkOrderIdClient(): JSX.Element {
   const canAddJobs =
     currentActor.canManageWorkOrders || currentActor.canPerformAssignedWork;
   const canViewFinancials = canWorkspace(
-    WORKSPACE_CAPABILITIES.viewWorkOrderSellPricing,
+    WORKSPACE_CAPABILITIES.viewWorkOrderInvoice,
   );
   const canRequestParts = currentActor.canManageWorkOrders;
   const canUseInventoryPicker = currentActor.canManageParts;
@@ -1161,7 +1174,7 @@ export default function WorkOrderIdClient(): JSX.Element {
     customerMergedIntoCustomerId: customer?.merged_into_customer_id,
   });
 
-  const canDeleteLine = currentUserRole ? LINE_DELETE_ROLES.has(currentUserRole) : false;
+  const canDeleteLine = currentActor.canManageWorkOrders;
   const openFinancialWorkspace = useCallback(() => {
     setShowWoContext(true);
     window.requestAnimationFrame(() => {
@@ -1584,8 +1597,19 @@ export default function WorkOrderIdClient(): JSX.Element {
   const panelInspectionTemplateId = panelLine
     ? extractInspectionTemplateId(panelLine)
     : null;
-  const panelPrimaryTech = panelLine?.assigned_tech_id
-    ? assignables.find((profile) => profile.id === panelLine.assigned_tech_id) ?? null
+  const panelPrimaryTechId = panelLine?.assigned_tech_id ?? null;
+  const panelPrimaryTechName = panelPrimaryTechId
+    ? readableTechNamesById[panelPrimaryTechId]?.trim() || null
+    : null;
+  const panelPrimaryTech = panelPrimaryTechId
+    ? assignables.find((profile) => profile.id === panelPrimaryTechId) ??
+      (panelPrimaryTechName
+        ? {
+            id: panelPrimaryTechId,
+            full_name: panelPrimaryTechName,
+            role: null,
+          }
+        : null)
     : null;
   const panelActiveTechnicianIds = panelLine
     ? activeTechsByLine[panelLine.id] ?? []
@@ -2216,7 +2240,10 @@ export default function WorkOrderIdClient(): JSX.Element {
                     const activeTechnicianNames = activeTechnicianIds
                       .map(
                         (techId) =>
-                          assignables.find((tech) => tech.id === techId)?.full_name?.trim() ??
+                          readableTechNamesById[techId]?.trim() ||
+                          assignables
+                            .find((tech) => tech.id === techId)
+                            ?.full_name?.trim() ||
                           null,
                       )
                       .filter((name): name is string => Boolean(name));
@@ -2224,6 +2251,8 @@ export default function WorkOrderIdClient(): JSX.Element {
                     const linePartRequests = partRequestsByLine[ln.id] ?? [];
                     const hasRequestableParts =
                       canRequestParts && (stagedPartsByLine[ln.id] ?? []).length > 0;
+                    const navigatorInspectionTemplateId =
+                      extractInspectionTemplateId(ln);
 
                     return (
                       <JobCard
@@ -2234,6 +2263,13 @@ export default function WorkOrderIdClient(): JSX.Element {
                         partsCount={pricingByLine[ln.id]?.partsCount ?? 0}
                         partsStatusLabel={getPartsRequestStatusLabel(linePartRequests)}
                         technicians={assignables}
+                        primaryTechnicianName={
+                          ln.assigned_tech_id
+                            ? readableTechNamesById[
+                                ln.assigned_tech_id
+                              ]?.trim() || null
+                            : null
+                        }
                         canAssign={canAssign}
                         isPunchedIn={isPunchedIn}
                         isCurrentUserWorkingThisLine={isCurrentUserWorkingThisLine}
@@ -2248,7 +2284,10 @@ export default function WorkOrderIdClient(): JSX.Element {
                             : undefined
                         }
                         onOpenInspection={
-                          ln.job_type === "inspection"
+                          canOpenWorkOrderInspectionModule({
+                            inspectionTemplateId: navigatorInspectionTemplateId,
+                            canRunInspections: currentActor.canRunInspections,
+                          })
                             ? () => void openInspectionForLine(ln)
                             : undefined
                         }

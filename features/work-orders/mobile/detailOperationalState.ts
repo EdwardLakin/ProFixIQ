@@ -1,6 +1,7 @@
-import { normalizeWorkOrderLineStatus, type WorkOrderLineStatus } from "@/features/work-orders/lib/line-status";
+import { normalizeWorkOrderLineStatus } from "@/features/work-orders/lib/line-status";
 
 type DetailLine = {
+  id?: string | null;
   status?: string | null;
   approval_state?: string | null;
   hold_reason?: string | null;
@@ -52,7 +53,19 @@ export type MobileDetailOperationalState<TLine extends DetailLine> = {
   headerStatus: MobileDetailHeaderStatus;
 };
 
+type MobileDetailOperationalEvidence = {
+  activeTechnicianIdsByLine?: Readonly<
+    Record<string, readonly string[] | undefined>
+  >;
+};
+
 const ACTIONABLE_PARENT_STATUSES = new Set(["ready_to_invoice", "invoiced"]);
+const ACTIVITY_SUPPRESSED_STATUSES = new Set([
+  "on_hold",
+  "completed",
+  "ready_to_invoice",
+  "invoiced",
+]);
 
 function normalizeRaw(value: unknown): string {
   return String(value ?? "").trim().toLowerCase().replaceAll(" ", "_").replaceAll("-", "_");
@@ -68,15 +81,29 @@ export function isPartsWaitingAdvisory(line: DetailLine): boolean {
   return status === "waiting_parts" || holdReason.includes("part") || holdReason.includes("quote");
 }
 
-function isLineInProgress(line: DetailLine, status: WorkOrderLineStatus): boolean {
-  return status === "in_progress" || (Boolean(line.punched_in_at) && !line.punched_out_at);
+function isLineInProgress(
+  line: DetailLine,
+  options?: { isActive?: boolean },
+): boolean {
+  return (
+    options?.isActive === true ||
+    (Boolean(line.punched_in_at) && !line.punched_out_at)
+  );
 }
 
-export function deriveMobileDetailLineState(line: DetailLine): MobileDetailLineState {
+export function deriveMobileDetailLineState(
+  line: DetailLine,
+  options?: { isActive?: boolean },
+): MobileDetailLineState {
   const status = normalizeWorkOrderLineStatus(line.status);
   const approval = normalizeRaw(line.approval_state);
 
-  if (isLineInProgress(line, status)) return "in_progress";
+  if (
+    !ACTIVITY_SUPPRESSED_STATUSES.has(status) &&
+    isLineInProgress(line, options)
+  ) {
+    return "in_progress";
+  }
   if (approval === "pending" || status === "awaiting_approval") return "awaiting_approval";
   if (status === "on_hold") return "on_hold";
   if (status === "waiting_parts" || isPartsWaitingAdvisory(line)) return "waiting_parts";
@@ -88,6 +115,7 @@ export function deriveMobileDetailLineState(line: DetailLine): MobileDetailLineS
 export function deriveMobileDetailOperationalState<TLine extends DetailLine>(
   workOrder: DetailWorkOrder | null | undefined,
   lines: readonly TLine[],
+  evidence: MobileDetailOperationalEvidence = {},
 ): MobileDetailOperationalState<TLine> {
   const visibleLines = lines.filter(isMobileDetailVisibleLine);
   const counters: MobileDetailCounters = {
@@ -102,7 +130,12 @@ export function deriveMobileDetailOperationalState<TLine extends DetailLine>(
   const lineStates = new Map<TLine, MobileDetailLineState>();
 
   for (const line of visibleLines) {
-    const state = deriveMobileDetailLineState(line);
+    const activeTechnicianIds = line.id
+      ? evidence.activeTechnicianIdsByLine?.[line.id]
+      : undefined;
+    const state = deriveMobileDetailLineState(line, {
+      isActive: Boolean(activeTechnicianIds?.length),
+    });
     lineStates.set(line, state);
     counters[state] += 1;
     if (isPartsWaitingAdvisory(line)) counters.waiting_parts += state === "waiting_parts" ? 0 : 1;
@@ -120,6 +153,22 @@ export function deriveMobileDetailOperationalState<TLine extends DetailLine>(
   else headerStatus = "completed";
 
   return { visibleLines, lineStates, counters, headerStatus };
+}
+
+export function selectMobileDetailPrimaryActionLine<
+  TLine extends DetailLine,
+>(
+  lines: readonly TLine[],
+  lineStates: ReadonlyMap<TLine, MobileDetailLineState>,
+): TLine | null {
+  const actionableLines = lines.filter(
+    (line) => lineStates.get(line) !== "completed",
+  );
+  return (
+    actionableLines.find((line) => lineStates.get(line) === "in_progress") ??
+    actionableLines[0] ??
+    null
+  );
 }
 
 export function applyFetchedMobileDetailSnapshot<TWorkOrder, TLine>(args: {

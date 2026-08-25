@@ -25,16 +25,16 @@ import {
 } from "@/features/shared/lib/offline/database";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
-import CauseCorrectionModal from "@work-orders/components/workorders/CauseCorrectionModal";
+import CauseCorrectionModal from "@/features/work-orders/components/workorders/CauseCorrectionModal";
 import PartsRequestModal from "@/features/work-orders/components/workorders/PartsRequestModal";
 import HoldModal from "@/features/work-orders/components/workorders/HoldModal";
 import PhotoCaptureModal from "@/features/work-orders/components/workorders/extras/PhotoCaptureModal";
 import WorkOrderMediaGallery from "@/features/work-orders/components/workorders/extras/WorkOrderMediaGallery";
-import AddJobModal from "@work-orders/components/workorders/AddJobModal";
-import AIAssistantModal from "@work-orders/components/workorders/AiAssistantModal";
+import AddJobModal from "@/features/work-orders/components/workorders/AddJobModal";
+import AIAssistantModal from "@/features/work-orders/components/workorders/AiAssistantModal";
 
 import NewChatModal from "@/features/ai/components/chat/NewChatModal";
-import SuggestedQuickAdd from "@work-orders/components/SuggestedQuickAdd";
+import SuggestedQuickAdd from "@/features/work-orders/components/SuggestedQuickAdd";
 import { runJobPunchTransition } from "@/features/work-orders/lib/jobPunchTransitionsClient";
 import {
   getWorkOrderJobChatContext,
@@ -56,6 +56,7 @@ import {
   getTechnicianJobEditorDraft,
   saveTechnicianJobEditorDraft,
 } from "@/features/work-orders/mobile/technicianOfflineExecution";
+import { deriveMobileDetailLineState } from "@/features/work-orders/mobile/detailOperationalState";
 
 import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
@@ -167,6 +168,7 @@ export default function MobileFocusedJob(props: {
 
   const [busy, setBusy] = useState(false);
   const [line, setLine] = useState<WorkOrderLine | null>(null);
+  const [activeTechnicianIds, setActiveTechnicianIds] = useState<string[]>([]);
   const [workOrder, setWorkOrder] = useState<WorkOrder | null>(null);
   const [vehicle, setVehicle] = useState<Vehicle | null>(null);
   const [customer, setCustomer] = useState<Customer | null>(null);
@@ -305,6 +307,9 @@ export default function MobileFocusedJob(props: {
       const nextLine =
         snapshot.lines.find((candidate) => candidate.id === id) ?? null;
       setLine(nextLine);
+      setActiveTechnicianIds(
+        snapshot.lineContext.activeTechnicianIdsByLine[id] ?? [],
+      );
       setWorkOrder(snapshot.workOrder);
       setVehicle(snapshot.vehicle);
       setCustomer(snapshot.customer);
@@ -329,6 +334,9 @@ export default function MobileFocusedJob(props: {
       if (!cached) return false;
 
       setLine(cached.line);
+      setActiveTechnicianIds(
+        cached.snapshot.lineContext?.activeTechnicianIdsByLine[id] ?? [],
+      );
       setWorkOrder(cached.snapshot.workOrder);
       setVehicle(cached.snapshot.vehicle);
       setCustomer(cached.snapshot.customer);
@@ -497,12 +505,12 @@ export default function MobileFocusedJob(props: {
             // ✅ keep notes synced unless user is editing
             if (!notesDirty) setTechNotes(nextLine.notes ?? "");
 
-            // ✅ if WO pointer changes, reload related entities
-            const nextWoId = nextLine.work_order_id ?? null;
-            const currentWoId = line?.work_order_id ?? null;
-            if (nextWoId !== currentWoId) {
-              void loadProjectedJob(workOrderLineId);
-            }
+            // The canonical activity signal lives in labor segments, not on
+            // the line row. Punch transitions also update the line, so reload
+            // the role-shaped projection for every line event to retire stale
+            // active technician IDs before a later hold release returns the
+            // line to `awaiting`.
+            void loadProjectedJob(workOrderLineId);
           }
         },
       )
@@ -850,19 +858,16 @@ export default function MobileFocusedJob(props: {
     [syncSummary],
   );
 
-  const isOnHold = line?.status === "on_hold";
-  const normalizedStatus = String(line?.status ?? "").toLowerCase();
-  const isCompleted =
-    normalizedStatus === "completed" ||
-    normalizedStatus === "ready_to_invoice" ||
-    normalizedStatus === "invoiced" ||
-    (!!line?.punched_out_at && normalizedStatus !== "on_hold");
-  const hasActivePunch = !!line?.punched_in_at && !line?.punched_out_at;
-  const isActive =
-    !isCompleted &&
-    !isOnHold &&
-    (normalizedStatus === "in_progress" || hasActivePunch);
-  const isAwaiting = !!line && !isActive && !isOnHold && !isCompleted;
+  const operationalState = line
+    ? deriveMobileDetailLineState(line, {
+        isActive: activeTechnicianIds.length > 0,
+      })
+    : null;
+  const isOnHold = operationalState === "on_hold";
+  const isCompleted = operationalState === "completed";
+  const isActive = operationalState === "in_progress";
+  const isAwaiting =
+    operationalState !== null && !isActive && !isOnHold && !isCompleted;
   const canStartOrResume = !!line && canPunch(line) && !isCompleted;
   const canPrimaryAction = isOnHold || (canStartOrResume && (isActive || isAwaiting));
   const needsApprovalGate =
@@ -1668,4 +1673,3 @@ export default function MobileFocusedJob(props: {
     </>
   );
 }
-

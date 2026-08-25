@@ -18,6 +18,7 @@ import {
   loadCanonicalWorkOrderLineContexts,
   loadRowsForIdChunks,
 } from "@/features/work-orders/lib/data/loadCanonicalWorkOrderLineContext";
+import { resolveTechnicianDisplayName } from "@/features/work-orders/lib/display/linePresentation";
 import { resolveTechnicianAssignmentContract } from "@/features/work-orders/lib/technicianAssignmentContract";
 import { resolveWorkOrderFinancialAccess } from "@/features/work-orders/workspace/server/workOrderFinancialAuthorization";
 import {
@@ -371,12 +372,17 @@ export async function GET() {
     lineContextsByWorkOrder.values(),
     lines.map((line) => line.assigned_tech_id),
   );
-  let technicians: Array<{ id: string; full_name: string | null }>;
+  let technicians: Array<{
+    id: string;
+    full_name: string | null;
+    username: string | null;
+    email: string | null;
+  }>;
   try {
     technicians = await loadRowsForIdChunks(techIds, (ids, from, to) =>
       admin
         .from("profiles")
-        .select("id, full_name")
+        .select("id, full_name, username, email")
         .eq("shop_id", profile.shop_id)
         .in("id", ids)
         .order("id", { ascending: true })
@@ -396,7 +402,10 @@ export async function GET() {
   const techNamesById = Object.fromEntries(
     technicians.map((technician) => [
       technician.id,
-      technician.full_name ?? "Technician",
+      resolveTechnicianDisplayName(
+        technician.full_name,
+        technician.username ?? technician.email,
+      ) ?? "Technician",
     ]),
   );
 

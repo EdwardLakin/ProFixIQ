@@ -217,7 +217,7 @@ export default function MobileJobPage() {
     line?.complaint?.trim() || line?.description?.trim() || "Job story";
 
   return (
-    <div className="pb-20">
+    <div className="mobile-focused-job-route pb-20">
       <MobileFocusedJob
         workOrderLineId={lineId}
         canAddJob={canAddJob}
@@ -231,7 +231,7 @@ export default function MobileJobPage() {
         }
       />
 
-      <div className="fixed inset-x-0 bottom-0 z-[120] border-t border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)]/95 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-12px_30px_rgba(0,0,0,0.22)] backdrop-blur-xl">
+      <div className="mobile-focused-job-story-rail fixed inset-x-0 bottom-0 z-[120] border-t border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)]/95 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-12px_30px_rgba(0,0,0,0.22)] backdrop-blur-xl">
         <button
           type="button"
           onClick={openStory}

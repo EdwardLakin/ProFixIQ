@@ -1,3 +1,5 @@
+"use client";
+
 import {
   ArrowRight,
   Boxes,
@@ -9,6 +11,7 @@ import {
 import Link from "next/link";
 
 import MobileWorkOrderQueue from "@/features/mobile/work-orders/MobileWorkOrderQueue";
+import { useFieldServiceVerifiedScope } from "./FieldServiceVerifiedScope";
 import MobileServiceShell from "./MobileServiceShell";
 
 const FIELD_JOB_ACTIONS = [
@@ -35,6 +38,8 @@ const FIELD_JOB_ACTIONS = [
 ] as const;
 
 export default function FieldActiveWork() {
+  const scope = useFieldServiceVerifiedScope();
+
   return (
     <main className="field-active-work">
       <section className="field-active-work__hero">
@@ -79,7 +84,7 @@ export default function FieldActiveWork() {
           </div>
           <span>Offline-safe status updates</span>
         </div>
-        <MobileServiceShell embedded />
+        <MobileServiceShell embedded scope={scope} />
       </section>
 
       <section

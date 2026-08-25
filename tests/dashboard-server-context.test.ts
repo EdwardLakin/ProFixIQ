@@ -2,9 +2,11 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import { resolveDashboardServerContext } from "@/features/dashboard/server/dashboard-shell-data";
+import { resolveRootShellContext } from "@/features/dashboard/server/root-shell-context";
 
 function createMockSupabase() {
   const calls: Array<Record<string, unknown>> = [];
+  let sessionAccessToken = "stale-access-token";
   const profile = {
     completed_onboarding: true,
     email: "edwardlakin35@gmail.com",
@@ -48,11 +50,28 @@ function createMockSupabase() {
       auth: {
         async getUser() {
           calls.push({ method: "auth.getUser" });
+          sessionAccessToken = "refreshed-access-token";
           return {
             data: {
               user: {
                 id: "cc4edd23-11e3-4a3c-8cd1-8851f1e13b2c",
                 email: "edwardlakin35@gmail.com",
+              },
+            },
+            error: null,
+          };
+        },
+        async getSession() {
+          calls.push({ method: "auth.getSession" });
+          return {
+            data: {
+              session: {
+                access_token: sessionAccessToken,
+                refresh_token: "refresh-token",
+                user: {
+                  id: "cc4edd23-11e3-4a3c-8cd1-8851f1e13b2c",
+                  email: "edwardlakin35@gmail.com",
+                },
               },
             },
             error: null,
@@ -110,6 +129,52 @@ describe("dashboard server shop context", () => {
       column: "id",
       value: "e9e87cda-3cbe-4785-956f-e8d05fcde539",
     });
+  });
+
+  it("reuses one request client and resolves validated identity before reading the shell session", async () => {
+    const { supabase, calls } = createMockSupabase();
+
+    const context = await resolveRootShellContext(supabase as never);
+
+    expect(context.dashboardIdentity).toMatchObject({
+      userId: "cc4edd23-11e3-4a3c-8cd1-8851f1e13b2c",
+      role: "owner",
+      shopId: "e9e87cda-3cbe-4785-956f-e8d05fcde539",
+    });
+    expect(context.session?.user.id).toBe(
+      "cc4edd23-11e3-4a3c-8cd1-8851f1e13b2c",
+    );
+    expect(context.session?.access_token).toBe("refreshed-access-token");
+
+    const getUserIndex = calls.findIndex(
+      (call) => call.method === "auth.getUser",
+    );
+    const getSessionIndex = calls.findIndex(
+      (call) => call.method === "auth.getSession",
+    );
+    expect(getUserIndex).toBeGreaterThanOrEqual(0);
+    expect(getSessionIndex).toBeGreaterThan(getUserIndex);
+  });
+
+  it("does not hydrate a session that disagrees with the validated identity", async () => {
+    const { supabase } = createMockSupabase();
+    supabase.auth.getSession = async () => ({
+      data: {
+        session: {
+          access_token: "other-access-token",
+          refresh_token: "other-refresh-token",
+          user: { id: "other-user", email: "other@example.com" },
+        },
+      },
+      error: null,
+    });
+
+    const context = await resolveRootShellContext(supabase as never);
+
+    expect(context.dashboardIdentity.userId).toBe(
+      "cc4edd23-11e3-4a3c-8cd1-8851f1e13b2c",
+    );
+    expect(context.session).toBeNull();
   });
 
   it("keeps dashboard identity aligned with the canonical staff profile lookup", () => {

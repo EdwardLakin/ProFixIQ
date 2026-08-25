@@ -1,4 +1,6 @@
 import type { WorkspaceResourceContext } from "@/features/workspace/lib/workspace";
+import { resolveDecisionStatus } from "@/features/shared/lib/decisionStatus";
+import { normalizeWorkOrderStatus } from "@/features/work-orders/lib/work-order-status";
 
 export type WorkOrderWorkspaceServerSnapshot = {
   routeId: string;
@@ -141,6 +143,48 @@ export function getWorkOrderJobChatContext(workOrderId: string): {
     contextId: workOrderId,
     restoreStoredConversation: false,
   };
+}
+
+export function isWorkOrderExecutionInProgress(input: {
+  workOrderStatus: string | null | undefined;
+  lines: ReadonlyArray<{
+    approvalState: string | null | undefined;
+    workStatus: string | null | undefined;
+  }>;
+}): boolean {
+  const parentStatus = normalizeWorkOrderStatus(input.workOrderStatus);
+  const parentDecisionStatus = resolveDecisionStatus({
+    workStatus: input.workOrderStatus,
+  });
+
+  if (
+    parentStatus === "cancelled" ||
+    isWorkOrderExecutionComplete(input.workOrderStatus) ||
+    parentDecisionStatus === "declined"
+  ) {
+    return false;
+  }
+
+  if (parentStatus === "in_progress") return true;
+
+  return input.lines.some(
+    (line) =>
+      resolveDecisionStatus({
+        approvalState: line.approvalState,
+        workStatus: line.workStatus,
+      }) === "in_progress",
+  );
+}
+
+export function isWorkOrderExecutionComplete(
+  workOrderStatus: string | null | undefined,
+): boolean {
+  const normalized = normalizeWorkOrderStatus(workOrderStatus);
+  return (
+    normalized === "completed" ||
+    normalized === "ready_to_invoice" ||
+    normalized === "invoiced"
+  );
 }
 
 export function canOpenWorkOrderInspectionModule(input: {

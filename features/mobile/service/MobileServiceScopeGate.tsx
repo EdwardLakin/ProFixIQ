@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import {
@@ -36,6 +36,7 @@ import {
   runBoundedRouteLoad,
   type RouteLoadFailure as RouteLoadFailureState,
 } from "@/features/shared/lib/route-load";
+import { removeFieldActiveSnapshot } from "./fieldActiveSnapshot";
 
 const SNAPSHOT_CACHE_KEY = "profixiq:mobile-service:active:v1";
 const SNAPSHOT_SCOPE_KEY = "profixiq:mobile-service:active-scope:v1";
@@ -101,10 +102,36 @@ export default function MobileServiceScopeGate() {
     null,
   );
   const router = useRouter();
+  const verificationEpochRef = useRef(0);
+  const scopeRef = useRef<OfflineMutationScope | null>(null);
+
+  const clearVerifiedWorkspace = useCallback(() => {
+    scopeRef.current = null;
+    setReady(false);
+    setScope(null);
+    setWorkspaceCapabilities(EMPTY_FIELD_WORKSPACE_CAPABILITIES);
+  }, []);
+
+  const acceptVerifiedWorkspace = useCallback(
+    (
+      verifiedScope: OfflineMutationScope,
+      capabilities: FieldWorkspaceCapabilities,
+    ) => {
+      scopeRef.current = verifiedScope;
+      setWorkspaceCapabilities(capabilities);
+      setScope(verifiedScope);
+      setReady(true);
+    },
+    [],
+  );
 
   useEffect(() => {
     let active = true;
-    setReady(false);
+    const previousVerifiedScope = scopeRef.current;
+    let preserveVerifiedOnFailure = Boolean(previousVerifiedScope);
+    const verificationEpoch = ++verificationEpochRef.current;
+    const isCurrent = () =>
+      active && verificationEpoch === verificationEpochRef.current;
     setBlockedDecision(null);
     setLoadFailure(null);
 
@@ -123,21 +150,41 @@ export default function MobileServiceScopeGate() {
         if (fieldAccessResponse) recordStatus(fieldAccessResponse.status);
         const session = sessionResult.data.session;
         const authUserId = session?.user?.id?.trim() ?? "";
+        preserveVerifiedOnFailure =
+          previousVerifiedScope?.userId === authUserId;
 
+        if (!isCurrent()) return;
         if (!authUserId) {
-          if (!active) return;
+          clearVerifiedWorkspace();
           protectSnapshot(null);
           router.replace("/mobile");
           return;
         }
 
+        if (
+          previousVerifiedScope &&
+          previousVerifiedScope.userId !== authUserId
+        ) {
+          setOfflineMutationScope(null);
+          protectSnapshot(null);
+          clearVerifiedWorkspace();
+          setAttempt((value) => value + 1);
+          return;
+        }
+
+        const persistedScope = getOfflineMutationScope();
+        if (persistedScope && persistedScope.userId !== authUserId) {
+          setOfflineMutationScope(null);
+          protectSnapshot(null);
+        }
+
         const fieldAccess = (await fieldAccessResponse
           ?.json()
           .catch(() => null)) as FieldServiceAccessPayload | null;
-        if (!active) return;
+        if (!isCurrent()) return;
 
-        const cached = getOfflineMutationScope();
-        const cachedScope = cached?.userId === authUserId ? cached : null;
+        const cachedScope =
+          persistedScope?.userId === authUserId ? persistedScope : null;
 
         const verifiedResponseScope = fieldAccess
           ? resolveFieldServiceAccessScope(fieldAccess, authUserId)
@@ -161,6 +208,7 @@ export default function MobileServiceScopeGate() {
           ) {
             clearFieldServiceOfflineAccess(cachedScope);
           }
+          clearVerifiedWorkspace();
           protectSnapshot(null);
           setBlockedDecision(responseDecision);
           return;
@@ -173,6 +221,7 @@ export default function MobileServiceScopeGate() {
           );
           if (!verifiedScope) {
             if (cachedScope) clearFieldServiceOfflineAccess(cachedScope);
+            clearVerifiedWorkspace();
             protectSnapshot(null);
             router.replace("/mobile");
             return;
@@ -180,14 +229,13 @@ export default function MobileServiceScopeGate() {
 
           setOfflineMutationScope(verifiedScope);
           writeFieldServiceOfflineAccess(verifiedScope, fieldAccess);
-          setWorkspaceCapabilities(
+          acceptVerifiedWorkspace(
+            verifiedScope,
             normalizeFieldWorkspaceCapabilities(
               fieldAccess.workspaceCapabilities,
             ),
           );
-          setScope(verifiedScope);
           protectSnapshot(verifiedScope);
-          setReady(true);
           return;
         }
 
@@ -199,11 +247,16 @@ export default function MobileServiceScopeGate() {
           verificationUnavailable && cachedScope
             ? readFieldServiceOfflineAccess(cachedScope)
             : null;
-        if (offlineAccess) {
-          setWorkspaceCapabilities(offlineAccess.workspaceCapabilities);
-          setScope(cachedScope);
+        if (verificationUnavailable && preserveVerifiedOnFailure) {
+          return;
+        }
+
+        if (offlineAccess && cachedScope) {
+          acceptVerifiedWorkspace(
+            cachedScope,
+            offlineAccess.workspaceCapabilities,
+          );
           protectSnapshot(cachedScope);
-          setReady(true);
           return;
         }
 
@@ -215,6 +268,7 @@ export default function MobileServiceScopeGate() {
         }
 
         if (!fieldAccessResponse.ok) {
+          clearVerifiedWorkspace();
           throw routeLoadFailureFromStatus(
             fieldAccessResponse.status,
             fieldAccessResponse.status === 403
@@ -227,6 +281,7 @@ export default function MobileServiceScopeGate() {
           clearFieldServiceOfflineAccess(cachedScope);
         }
         if (!fieldAccessResponse?.ok || !fieldAccess?.canAccessFieldService) {
+          clearVerifiedWorkspace();
           protectSnapshot(null);
           router.replace(
             fieldAccess?.canConfigure ? "/mobile/service/setup" : "/mobile",
@@ -235,7 +290,15 @@ export default function MobileServiceScopeGate() {
         }
       },
     ).catch((error) => {
-      if (active) {
+      if (isCurrent()) {
+        if (
+          preserveVerifiedOnFailure &&
+          previousVerifiedScope &&
+          scopeRef.current?.userId === previousVerifiedScope.userId
+        ) {
+          return;
+        }
+        clearVerifiedWorkspace();
         setLoadFailure(
           asRouteLoadFailure(
             error,
@@ -248,7 +311,43 @@ export default function MobileServiceScopeGate() {
     return () => {
       active = false;
     };
-  }, [attempt, router]);
+  }, [
+    acceptVerifiedWorkspace,
+    attempt,
+    clearVerifiedWorkspace,
+    router,
+  ]);
+
+  useEffect(() => {
+    const supabase = createBrowserSupabase();
+    const { data } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "TOKEN_REFRESHED") return;
+      const currentUserId = scopeRef.current?.userId ?? "";
+      const persistedScope = getOfflineMutationScope();
+      const persistedUserId = persistedScope?.userId ?? "";
+      const formerScope = scopeRef.current ?? persistedScope;
+      const nextUserId = session?.user.id?.trim() ?? "";
+      const failClosed =
+        event === "SIGNED_OUT" ||
+        !nextUserId ||
+        Boolean(currentUserId && currentUserId !== nextUserId) ||
+        Boolean(persistedUserId && persistedUserId !== nextUserId);
+      if (event === "INITIAL_SESSION" && !failClosed) return;
+
+      verificationEpochRef.current += 1;
+      if (failClosed) {
+        if (formerScope) removeFieldActiveSnapshot(formerScope);
+        setOfflineMutationScope(null);
+        protectSnapshot(null);
+        clearVerifiedWorkspace();
+      }
+      setBlockedDecision(null);
+      setLoadFailure(null);
+      setAttempt((value) => value + 1);
+    });
+
+    return () => data.subscription.unsubscribe();
+  }, [clearVerifiedWorkspace]);
 
   if (!ready) {
     return (
@@ -274,7 +373,7 @@ export default function MobileServiceScopeGate() {
 
   return (
     <FieldHub
-      key={`${scope.shopId}:${scope.userId}`}
+      key={scope.shopId}
       capabilities={workspaceCapabilities}
       scope={scope}
     />

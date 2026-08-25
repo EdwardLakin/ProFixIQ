@@ -67,6 +67,15 @@ describe("Work Order Workspace Inspection and Parts composition", () => {
     );
   });
 
+  it("applies the inspection capability gate to navigator actions", () => {
+    expect(workOrderClient).toContain(
+      "inspectionTemplateId: navigatorInspectionTemplateId",
+    );
+    expect(workOrderClient).not.toContain(
+      'ln.job_type === "inspection"\n                            ? () => void openInspectionForLine(ln)',
+    );
+  });
+
   it("keeps Inspection and Parts on distinct canonical module boundaries", () => {
     expect(WORK_ORDER_WORKSPACE_MODULES.inspection.anchorId).not.toBe(
       WORK_ORDER_WORKSPACE_MODULES.parts.anchorId,

@@ -20,15 +20,15 @@ import {
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { cn } from "@shared/lib/utils";
 
-import CauseCorrectionModal from "@work-orders/components/workorders/CauseCorrectionModal";
+import CauseCorrectionModal from "@/features/work-orders/components/workorders/CauseCorrectionModal";
 import PartsRequestModal from "@/features/work-orders/components/workorders/PartsRequestModal";
 import HoldModal from "@/features/work-orders/components/workorders/HoldModal";
 import PhotoCaptureModal from "@/features/work-orders/components/workorders/extras/PhotoCaptureModal";
 import WorkOrderMediaGallery from "@/features/work-orders/components/workorders/extras/WorkOrderMediaGallery";
-import AddJobModal from "@work-orders/components/workorders/AddJobModal";
-import AIAssistantModal from "@work-orders/components/workorders/AiAssistantModal";
+import AddJobModal from "@/features/work-orders/components/workorders/AddJobModal";
+import AIAssistantModal from "@/features/work-orders/components/workorders/AiAssistantModal";
 import NewChatModal from "@/features/ai/components/chat/NewChatModal";
-import SuggestedQuickAdd from "@work-orders/components/SuggestedQuickAdd";
+import SuggestedQuickAdd from "@/features/work-orders/components/SuggestedQuickAdd";
 import JobPunchButton from "@/features/work-orders/components/JobPunchButton";
 import { runJobPunchTransition } from "@/features/work-orders/lib/jobPunchTransitionsClient";
 import { normalizeWorkOrderLineStatus } from "@/features/work-orders/lib/line-status";
@@ -279,6 +279,8 @@ export default function FocusedJobModal(props: {
     [allocs, requiredParts],
   );
   const [assignedTechProfile, setAssignedTechProfile] = useState<TechnicianOption | null>(null);
+  const [projectedPrimaryTech, setProjectedPrimaryTech] =
+    useState<TechnicianOption | null>(null);
   const [assigningTechnician, setAssigningTechnician] = useState(false);
   const [allocsLoading, setAllocsLoading] = useState(false);
 
@@ -366,6 +368,19 @@ export default function FocusedJobModal(props: {
     const nextLine =
       snapshot.lines.find((candidate) => candidate.id === workOrderLineId) ??
       null;
+    const nextPrimaryTechId = nextLine?.assigned_tech_id ?? null;
+    const nextPrimaryTechName = nextPrimaryTechId
+      ? snapshot.techNamesById[nextPrimaryTechId]?.trim() || null
+      : null;
+    setProjectedPrimaryTech(
+      nextPrimaryTechId && nextPrimaryTechName
+        ? {
+            id: nextPrimaryTechId,
+            full_name: nextPrimaryTechName,
+            role: null,
+          }
+        : null,
+    );
     setLine(nextLine);
     setTechNotes(nextLine?.technician_notes ?? "");
     setWorkOrder(snapshot.workOrder);
@@ -416,8 +431,14 @@ export default function FocusedJobModal(props: {
       setAssignedTechProfile(null);
       return;
     }
-    if (primaryTechSnapshot?.id === assignedTechId) {
-      setAssignedTechProfile(primaryTechSnapshot);
+    const displayTechSnapshot =
+      primaryTechSnapshot?.id === assignedTechId
+        ? primaryTechSnapshot
+        : projectedPrimaryTech?.id === assignedTechId
+          ? projectedPrimaryTech
+          : null;
+    if (displayTechSnapshot) {
+      setAssignedTechProfile(displayTechSnapshot);
       return;
     }
 
@@ -442,7 +463,13 @@ export default function FocusedJobModal(props: {
     return () => {
       cancelled = true;
     };
-  }, [isOpen, line?.assigned_tech_id, primaryTechSnapshot, supabase]);
+  }, [
+    isOpen,
+    line?.assigned_tech_id,
+    primaryTechSnapshot,
+    projectedPrimaryTech,
+    supabase,
+  ]);
 
   useEffect(() => {
     if (!isOpen || !workOrderLineId) return;
@@ -2032,4 +2059,3 @@ export default function FocusedJobModal(props: {
     </>
   );
 }
-
