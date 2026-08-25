@@ -26,6 +26,7 @@ import VoiceContextSetter from "@/features/shared/voice/VoiceContextSetter";
 import { useTabState } from "@/features/shared/hooks/useTabState";
 import { JobCard } from "@/features/work-orders/components/JobCard";
 import MobileFocusedJob from "@/features/work-orders/mobile/MobileFocusedJob";
+import { registerMobileWorkflowDock } from "@/features/copilot/technician/client/mobileWorkflowDock";
 import AskAssistantEntry from "@/features/assistant/components/AskAssistantEntry";
 import { runJobPunchTransition } from "@/features/work-orders/lib/jobPunchTransitionsClient";
 import { isReviewableQuoteLine } from "@/features/work-orders/lib/quotes/reviewableQuoteLines";
@@ -1353,6 +1354,11 @@ export default function MobileWorkOrderClient({
     setFocusedJobId(focusParam);
     setFocusedOpen(true);
   }, [focusParam, loading]);
+
+  useEffect(() => {
+    if (!focusedOpen || !focusedJobId) return;
+    return registerMobileWorkflowDock("work-order");
+  }, [focusedJobId, focusedOpen]);
 
   /* ----------------------- mobile focused job view ----------------------- */
 
