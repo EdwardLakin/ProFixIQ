@@ -260,6 +260,33 @@
   padding-bottom: calc(7.6rem + env(safe-area-inset-bottom, 0px)) !important;
 }
 
+/* Standalone focused jobs add a story rail below the shared primary actions. */
+.profixiq-mobile-command .mobile-focused-job-route {
+  --mobile-job-primary-dock-bottom: calc(
+    4.2625rem + max(0.75rem, env(safe-area-inset-bottom, 0px))
+  );
+  --mobile-job-workflow-bottom-safe-zone: calc(
+    var(--mobile-job-primary-dock-bottom) + 8.75rem
+  );
+}
+
+.profixiq-mobile-command
+  .mobile-focused-job-route
+  .app-shell
+  main.mobile-tech-page
+  > div
+  > .mobile-tech-panel:first-of-type
+  > .flex.flex-col.gap-2 {
+  bottom: var(--mobile-job-primary-dock-bottom);
+}
+
+.profixiq-mobile-command
+  .mobile-focused-job-route
+  .app-shell
+  main.mobile-tech-page {
+  padding-bottom: var(--mobile-job-workflow-bottom-safe-zone) !important;
+}
+
 /* Secondary operational actions read as a compact tool grid. */
 .profixiq-mobile-command
   .app-shell

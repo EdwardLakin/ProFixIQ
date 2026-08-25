@@ -385,9 +385,8 @@ describe("advisor estimate workflow", () => {
     expect(roleSidebar).not.toContain(
       'canonical === "customer" || canonical === "service"',
     );
-    expect(roleSidebar).toContain(
-      "if (profile?.role) setRole(normalizeRole(profile.role))",
-    );
+    expect(roleSidebar).toContain("const role = normalizeRole(initialRole)");
+    expect(roleSidebar).not.toContain('.from("profiles")');
     expect(dashboardIdentity).toContain("resolveAuthenticatedStaffProfile");
   });
 

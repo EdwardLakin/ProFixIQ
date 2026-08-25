@@ -147,12 +147,15 @@ describe("Work Order Workspace financials composition", () => {
     expect(invoiceFetch).toHaveBeenCalledTimes(2);
   });
 
-  it("keeps the module behind the existing financial capability", () => {
+  it("gates the invoice-backed module on invoice view rather than sell pricing", () => {
     expect(workOrderClient).toContain(
       "const canViewFinancials = canWorkspace(",
     );
     expect(workOrderClient).toContain(
-      "WORKSPACE_CAPABILITIES.viewWorkOrderSellPricing",
+      "WORKSPACE_CAPABILITIES.viewWorkOrderInvoice",
+    );
+    expect(workOrderClient).not.toMatch(
+      /const canViewFinancials = canWorkspace\(\s*WORKSPACE_CAPABILITIES\.viewWorkOrderSellPricing/,
     );
     expect(workOrderClient).toMatch(
       /\{canViewFinancials \? \(\s*<WorkOrderWorkspaceModule\s+module="financials"/,

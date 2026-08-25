@@ -180,11 +180,6 @@ function extractInspectionTemplateId(ln: WorkOrderLineWithInspectionMeta): strin
 type TemplateSectionItem = { item: string; unit?: string | null };
 type TemplateSection = { title: string; items: TemplateSectionItem[] };
 
-// roles allowed to assign jobs
-
-// roles allowed to delete/void lines
-const LINE_DELETE_ROLES = new Set(["owner", "admin", "manager", "advisor"]);
-
 /* ----------------------- AI review icon support ----------------------- */
 
 type ReviewIssue = { kind: string; message: string; lineId?: string };
@@ -1138,7 +1133,7 @@ export default function WorkOrderIdClient(): JSX.Element {
   const currentActor = getActorCapabilities({ role: currentUserRole });
   const canApprove = currentActor.canAuthorizeQuotes;
   const canViewFinancials = canWorkspace(
-    WORKSPACE_CAPABILITIES.viewWorkOrderSellPricing,
+    WORKSPACE_CAPABILITIES.viewWorkOrderInvoice,
   );
   const canRequestParts = currentActor.canManageWorkOrders;
   const canUseInventoryPicker = currentActor.canManageParts;
@@ -1151,7 +1146,7 @@ export default function WorkOrderIdClient(): JSX.Element {
     customerMergedIntoCustomerId: customer?.merged_into_customer_id,
   });
 
-  const canDeleteLine = currentUserRole ? LINE_DELETE_ROLES.has(currentUserRole) : false;
+  const canDeleteLine = currentActor.canManageWorkOrders;
   const openFinancialWorkspace = useCallback(() => {
     setShowWoContext(true);
     window.requestAnimationFrame(() => {
@@ -2210,6 +2205,8 @@ export default function WorkOrderIdClient(): JSX.Element {
                     const linePartRequests = partRequestsByLine[ln.id] ?? [];
                     const hasRequestableParts =
                       canRequestParts && (stagedPartsByLine[ln.id] ?? []).length > 0;
+                    const navigatorInspectionTemplateId =
+                      extractInspectionTemplateId(ln);
 
                     return (
                       <JobCard
@@ -2234,7 +2231,10 @@ export default function WorkOrderIdClient(): JSX.Element {
                             : undefined
                         }
                         onOpenInspection={
-                          ln.job_type === "inspection"
+                          canOpenWorkOrderInspectionModule({
+                            inspectionTemplateId: navigatorInspectionTemplateId,
+                            canRunInspections: currentActor.canRunInspections,
+                          })
                             ? () => void openInspectionForLine(ln)
                             : undefined
                         }
@@ -2532,4 +2532,3 @@ export default function WorkOrderIdClient(): JSX.Element {
     </div>
   );
 }
-

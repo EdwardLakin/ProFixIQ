@@ -1,7 +1,14 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import type { ComponentProps, ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -12,11 +19,16 @@ import type { WorkOrderEvidenceItem } from "@/features/work-orders/lib/evidence/
 
 const mocks = vi.hoisted(() => ({
   getSession: vi.fn(),
+  onAuthStateChange: vi.fn(),
+  authCallback: null as null | (
+    (event: string, session: { user: { id: string } } | null) => void
+  ),
+  unsubscribe: vi.fn(),
   replace: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ replace: mocks.replace }),
+  useRouter: () => mocks,
 }));
 
 vi.mock("next/link", () => ({
@@ -29,12 +41,27 @@ vi.mock("next/link", () => ({
 
 vi.mock("@/features/shared/lib/supabase/client", () => ({
   createBrowserSupabase: () => ({
-    auth: { getSession: mocks.getSession },
+    auth: {
+      getSession: mocks.getSession,
+      onAuthStateChange: mocks.onAuthStateChange,
+    },
   }),
 }));
 
 vi.mock("@/features/mobile/service/FieldHub", () => ({
-  default: ({ children }: { children?: ReactNode }) => <>{children}</>,
+  default: ({
+    children,
+    scope,
+  }: {
+    children?: ReactNode;
+    scope: { userId: string; shopId: string };
+  }) => (
+    <div>
+      {`${scope.userId}:${scope.shopId}`}
+      <input aria-label="field hub draft" defaultValue="" />
+      {children}
+    </div>
+  ),
 }));
 
 function response(body: unknown, status: number): Response {
@@ -48,6 +75,11 @@ function response(body: unknown, status: number): Response {
 beforeEach(() => {
   vi.clearAllMocks();
   window.localStorage.clear();
+  mocks.authCallback = null;
+  mocks.onAuthStateChange.mockImplementation((callback) => {
+    mocks.authCallback = callback;
+    return { data: { subscription: { unsubscribe: mocks.unsubscribe } } };
+  });
   mocks.getSession.mockResolvedValue({ data: { session: null } });
 });
 
@@ -102,7 +134,9 @@ describe("route loader recovery behavior", () => {
     expect(
       await screen.findByText("Using default service settings"),
     ).toBeVisible();
-    expect(screen.getByRole("heading", { name: "New service call" })).toBeVisible();
+    expect(
+      screen.getByRole("heading", { name: "New service call" }),
+    ).toBeVisible();
     expect(screen.getByLabelText("Time allowed")).toHaveValue("60");
     expect(
       screen.getByRole("button", { name: "Save call · ETA 30 min" }),
@@ -130,10 +164,89 @@ describe("route loader recovery behavior", () => {
       window.localStorage.getItem("profixiq:mobile-service:active:v1"),
     ).toBeNull();
     expect(
-      window.localStorage.getItem(
-        "profixiq:mobile-service:active-scope:v1",
-      ),
+      window.localStorage.getItem("profixiq:mobile-service:active-scope:v1"),
     ).toBeNull();
     expect(screen.queryByText("Sign in required")).not.toBeInTheDocument();
+  });
+
+  it("unmounts the Field hub immediately on a cross-tab sign-out", async () => {
+    const userId = "00000000-0000-4000-8000-000000000001";
+    const shopId = "00000000-0000-4000-8000-000000000002";
+    mocks.getSession.mockResolvedValue({
+      data: { session: { user: { id: userId } } },
+    });
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce(
+        response(
+          {
+            decision: "ready",
+            canAccessFieldService: true,
+            canConfigure: false,
+            mustChangePassword: false,
+            productEntitled: true,
+            shopId,
+            userId,
+            workspaceCapabilities: {},
+          },
+          200,
+        ),
+      )
+      .mockResolvedValueOnce(response({ error: "unauthenticated" }, 401));
+    vi.stubGlobal("fetch", request);
+
+    render(<MobileServiceScopeGate />);
+
+    expect(await screen.findByText(`${userId}:${shopId}`)).toBeInTheDocument();
+
+    mocks.getSession.mockResolvedValue({ data: { session: null } });
+    act(() => mocks.authCallback?.("SIGNED_OUT", null));
+
+    expect(screen.queryByText(`${userId}:${shopId}`)).not.toBeInTheDocument();
+    await waitFor(() => expect(mocks.replace).toHaveBeenCalledWith("/mobile"));
+  });
+
+  it("preserves the same-user Field hub through SIGNED_IN refocus and transient 5xx", async () => {
+    const userId = "00000000-0000-4000-8000-000000000001";
+    const shopId = "00000000-0000-4000-8000-000000000002";
+    mocks.getSession.mockResolvedValue({
+      data: { session: { user: { id: userId } } },
+    });
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce(
+        response(
+          {
+            decision: "ready",
+            canAccessFieldService: true,
+            canConfigure: false,
+            mustChangePassword: false,
+            productEntitled: true,
+            shopId,
+            userId,
+            workspaceCapabilities: {},
+          },
+          200,
+        ),
+      )
+      .mockResolvedValueOnce(
+        response({ error: "temporarily unavailable" }, 503),
+      );
+    vi.stubGlobal("fetch", request);
+
+    render(<MobileServiceScopeGate />);
+
+    const draft = await screen.findByLabelText("field hub draft");
+    fireEvent.change(draft, { target: { value: "unsaved hub note" } });
+
+    act(() =>
+      mocks.authCallback?.("SIGNED_IN", { user: { id: userId } }),
+    );
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+
+    expect(screen.getByLabelText("field hub draft")).toHaveValue(
+      "unsaved hub note",
+    );
+    expect(mocks.replace).not.toHaveBeenCalled();
   });
 });
