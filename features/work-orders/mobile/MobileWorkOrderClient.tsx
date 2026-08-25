@@ -978,8 +978,8 @@ export default function MobileWorkOrderClient({
   }, [mobileOperationalState.visibleLines, visibleLineState]);
 
   const displayNumberByLine = useMemo(
-    () => resolveMobileLineDisplayNumbers(mobileOperationalState.visibleLines),
-    [mobileOperationalState.visibleLines],
+    () => resolveMobileLineDisplayNumbers(lines),
+    [lines],
   );
 
   const createdAtText = formatOptionalDateTime(wo?.created_at);
@@ -1661,7 +1661,7 @@ export default function MobileWorkOrderClient({
                           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                             <div className="min-w-0">
                               <div className="truncate text-sm font-medium text-[color:var(--theme-text-primary)]">
-                                {idx + 1}.{" "}
+                                {displayNumberByLine[ln.id] ?? idx + 1}.{" "}
                                 {ln.description ||
                                   ln.complaint ||
                                   "Untitled job"}
