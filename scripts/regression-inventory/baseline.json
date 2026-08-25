@@ -2043,16 +2043,6 @@
       "expiresOn": "2026-09-06"
     },
     {
-      "fingerprint": "37453b360ae73a391867",
-      "rule": "dynamic-mutation-payload",
-      "severity": "warning",
-      "domain": "work-orders",
-      "file": "features/work-orders/components/workorders/AddJobModal.tsx",
-      "subject": "work_order_lines",
-      "message": "insert payload for work_order_lines cannot be checked statically",
-      "expiresOn": "2026-09-06"
-    },
-    {
       "fingerprint": "bdf2da39c54f727000bd",
       "rule": "dynamic-mutation-payload",
       "severity": "warning",
