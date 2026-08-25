@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { resolveMobileHref } from "@/features/mobile/navigation/mobile-route-continuity";
 import ShopAssistantConversation from "@/features/shop-assistant/components/ShopAssistantConversation";
@@ -119,6 +119,11 @@ export default function AskAssistantEntry({
   const plannerLabel = useMemo(() => getPlannerLabel(context), [context]);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+
+  useEffect(() => {
+    setOpen(false);
+  }, [pathname, searchKey]);
+
   const contextKey = [
     context.pageType,
     context.workOrderId,
