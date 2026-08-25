@@ -63,6 +63,7 @@ import {
   createAssignTechnicianOperationKey,
 } from "@/features/work-orders/lib/assignTechnicianClient";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import { resolveCanonicalStaffProfile } from "@/features/shared/lib/authenticated-profile";
 import { isCustomerMessagingRole } from "@/features/ai/lib/chat/authorization";
 import { useTabs } from "@/features/shared/components/tabs/TabsProvider";
 import { WORKSPACE_CAPABILITIES } from "@/features/workspace/authorization/capabilities";
@@ -177,6 +178,7 @@ function extractInspectionTemplateId(ln: WorkOrderLineWithInspectionMeta): strin
     null
   );
 }
+
 
 // ----------------- Inspection template helpers -----------------
 
@@ -449,6 +451,7 @@ export default function WorkOrderIdClient(): JSX.Element {
   /* ---------------------- AUTH + assignables ---------------------- */
   useEffect(() => {
     let mounted = true;
+    const controller = new AbortController();
 
     const waitForSession = async () => {
       let {
@@ -475,12 +478,12 @@ export default function WorkOrderIdClient(): JSX.Element {
       setAuthChecked(true);
 
       if (uid) {
-        const { data: prof } = await supabase
-          .from("profiles")
-          .select("id, role")
-          .or(`id.eq.${uid},user_id.eq.${uid}`)
-          .limit(1)
-          .maybeSingle();
+        const { profile: prof } = await resolveCanonicalStaffProfile(
+          supabase,
+          uid,
+          { signal: controller.signal },
+        );
+        if (!mounted || controller.signal.aborted) return;
         const canonicalProfileId = prof?.id ?? uid;
         setCurrentUserId(canonicalProfileId);
         setUserId(canonicalProfileId);
@@ -504,6 +507,7 @@ export default function WorkOrderIdClient(): JSX.Element {
 
     return () => {
       mounted = false;
+      controller.abort();
       sub?.subscription?.unsubscribe?.();
     };
   }, [routeId, setCurrentUserId, setUserId]);
@@ -1150,6 +1154,12 @@ export default function WorkOrderIdClient(): JSX.Element {
 
   const currentActor = getActorCapabilities({ role: currentUserRole });
   const canApprove = currentActor.canAuthorizeQuotes;
+  // Mechanics can only load work orders assigned to them through the existing
+  // reader boundary. The server command repeats that assignment check before
+  // creating a line, so the focused workspace preserves their established
+  // Add Job flow without broadening unassigned access.
+  const canAddJobs =
+    currentActor.canManageWorkOrders || currentActor.canPerformAssignedWork;
   const canViewFinancials = canWorkspace(
     WORKSPACE_CAPABILITIES.viewWorkOrderInvoice,
   );
@@ -2155,14 +2165,16 @@ export default function WorkOrderIdClient(): JSX.Element {
                   <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--theme-text-muted)]">Jobs</div>
                   <div className="mt-0.5 text-xs text-[color:var(--theme-text-secondary)]">{sortedLines.length} on this work order</div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setAddJobOpen(true)}
-                  className="inline-flex h-8 items-center gap-1 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[color:var(--theme-text-primary)] transition hover:bg-[color:var(--theme-surface-subtle)]"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  Add
-                </button>
+                {canAddJobs ? (
+                  <button
+                    type="button"
+                    onClick={() => setAddJobOpen(true)}
+                    className="inline-flex h-8 items-center gap-1 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[color:var(--theme-text-primary)] transition hover:bg-[color:var(--theme-surface-subtle)]"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Add
+                  </button>
+                ) : null}
               </div>
               <div className="min-h-0 flex-1 overflow-y-auto">
               {sortedLines.length === 0 ? (
@@ -2174,13 +2186,15 @@ export default function WorkOrderIdClient(): JSX.Element {
                         Add the first labor line here, then assign it to a technician.
                       </p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setAddJobOpen(true)}
-                      className="rounded-full border border-sky-400/50 bg-sky-500/10 px-3 py-1.5 text-xs font-semibold text-sky-100 transition hover:bg-sky-500/20"
-                    >
-                      Add job
-                    </button>
+                    {canAddJobs ? (
+                      <button
+                        type="button"
+                        onClick={() => setAddJobOpen(true)}
+                        className="rounded-full border border-sky-400/50 bg-sky-500/10 px-3 py-1.5 text-xs font-semibold text-sky-100 transition hover:bg-sky-500/20"
+                      >
+                        Add job
+                      </button>
+                    ) : null}
                   </div>
                 </section>
               ) : (
@@ -2444,6 +2458,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                   }
                   isPunchedInSnapshot={panelLineIsPunchedIn}
                   canAssignTechnician={canAssign}
+                  canAddJob={canAddJobs}
                   technicianOptions={assignables}
                   onAssignTechnician={assignLineTechnician}
                   onOpenInspection={
@@ -2503,6 +2518,7 @@ export default function WorkOrderIdClient(): JSX.Element {
           isOpen={focusedOpen}
           onClose={() => setFocusedOpen(false)}
           workOrderLineId={focusedJobId}
+          canAddJob={canAddJobs}
           onChanged={fetchAll}
           mode="tech"
           variant="modal"
@@ -2558,13 +2574,11 @@ export default function WorkOrderIdClient(): JSX.Element {
         />
       )}
 
-      {addJobOpen && wo?.id ? (
+      {canAddJobs && addJobOpen && wo?.id ? (
         <AddJobModal
           isOpen={addJobOpen}
           onClose={() => setAddJobOpen(false)}
           workOrderId={wo.id}
-          vehicleId={wo.vehicle_id ?? vehicle?.id ?? null}
-          shopId={wo.shop_id ?? null}
           onJobAdded={() => void fetchAll()}
         />
       ) : null}
