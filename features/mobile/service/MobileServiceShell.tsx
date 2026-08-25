@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type {
   DispatchMutationResult,
@@ -34,10 +34,15 @@ import {
   hydrateOfflineMutationQueue,
   listPendingMutations,
   runMutationWithOfflineQueue,
+  type OfflineMutationScope,
 } from "@/features/shared/lib/offline/mutations";
 import { replayAndReconcileOfflineMutations } from "@/features/shared/lib/offline/replay";
+import {
+  isFieldActiveSnapshotForScope,
+  readFieldActiveSnapshot,
+  writeFieldActiveSnapshot,
+} from "./fieldActiveSnapshot";
 
-const SNAPSHOT_CACHE_KEY = "profixiq:mobile-service:active:v1";
 const PENDING_CLOSEOUT_CACHE_KEY =
   "profixiq:mobile-service:pending-closeout:v1";
 const REFRESH_INTERVAL_MS = 30_000;
@@ -196,8 +201,10 @@ function optimisticTransition(
 }
 
 async function transitionVisit(
+  scope: OfflineMutationScope,
   visit: DispatchVisit,
   toStatus: ServiceVisitStatus,
+  validateScope: (scope: OfflineMutationScope) => boolean,
   dependsOn?: string[],
 ): Promise<TransitionOutcome> {
   const mutationId = operationKey(visit.id, toStatus);
@@ -207,7 +214,7 @@ async function transitionVisit(
   if (resolvedDependencies === undefined) {
     await hydrateOfflineMutationQueue();
     const orderKey = `service-visit:${visit.id}`;
-    const previous = listPendingMutations()
+    const previous = listPendingMutations(scope)
       .filter(
         (mutation) =>
           mutation.actionType === "service-visit:transition" &&
@@ -240,6 +247,8 @@ async function transitionVisit(
     dependsOn:
       resolvedDependencies.length > 0 ? resolvedDependencies : undefined,
     orderKey: `service-visit:${visit.id}`,
+    scope,
+    validateScope,
     runner: async () => {
       const response = await fetch(
         `/api/mobile/service-visits/${visit.id}/transition`,
@@ -277,9 +286,11 @@ async function transitionVisit(
   };
 }
 
-function persistSnapshot(snapshot: MobileActiveJobContract): void {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(SNAPSHOT_CACHE_KEY, JSON.stringify(snapshot));
+function persistSnapshot(
+  scope: OfflineMutationScope,
+  snapshot: MobileActiveJobContract,
+): void {
+  writeFieldActiveSnapshot(scope, snapshot);
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
@@ -522,10 +533,17 @@ function VisitCard({
 export default function MobileServiceShell({
   embedded = false,
   canManageScheduling = false,
+  scope,
 }: {
   embedded?: boolean;
   canManageScheduling?: boolean;
+  scope: OfflineMutationScope;
 }) {
+  const boundScope = useMemo(
+    () => ({ userId: scope.userId.trim(), shopId: scope.shopId.trim() }),
+    [scope.shopId, scope.userId],
+  );
+  const scopeKey = `${boundScope.userId}:${boundScope.shopId}`;
   const router = useRouter();
   const [snapshot, setSnapshot] = useState<MobileActiveJobContract | null>(null);
   const [loading, setLoading] = useState(true);
@@ -535,75 +553,130 @@ export default function MobileServiceShell({
   const [busyVisitId, setBusyVisitId] = useState<string | null>(null);
   const [queuedNotice, setQueuedNotice] = useState<string | null>(null);
   const [online, setOnline] = useState(true);
+  const mountedRef = useRef(false);
+  const activeScopeKeyRef = useRef(scopeKey);
+  const loadAbortRef = useRef<AbortController | null>(null);
+  const workOrderAbortRef = useRef<AbortController | null>(null);
+  activeScopeKeyRef.current = scopeKey;
 
-  const applyVisit = useCallback((updated: DispatchVisit) => {
-    setSnapshot((previous) => {
-      if (!previous) return previous;
-      const replace = (item: DispatchVisit | null) =>
-        item?.id === updated.id ? updated : item;
-      const next = {
-        ...previous,
-        serverNow: new Date().toISOString(),
-        activeJob: replace(previous.activeJob),
-        nextJob: replace(previous.nextJob),
-      };
-      persistSnapshot(next);
-      return next;
-    });
+  const isCurrentScope = useCallback(
+    (expectedScopeKey: string) =>
+      mountedRef.current && activeScopeKeyRef.current === expectedScopeKey,
+    [],
+  );
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      loadAbortRef.current?.abort();
+      workOrderAbortRef.current?.abort();
+    };
   }, []);
 
-  const load = useCallback(async (manual = false) => {
-    if (manual) setRefreshing(true);
-    else setLoading(true);
+  useEffect(() => {
+    loadAbortRef.current?.abort();
+    workOrderAbortRef.current?.abort();
+    setSnapshot(null);
+    setLoading(true);
+    setRefreshing(false);
     setError(null);
-    try {
-      const response = await fetch("/api/mobile/service-visits/active", {
-        method: "GET",
-        credentials: "include",
-        cache: "no-store",
+    setStale(false);
+    setBusyVisitId(null);
+    setQueuedNotice(null);
+  }, [scopeKey]);
+
+  const applyVisit = useCallback(
+    (updated: DispatchVisit) => {
+      if (!isCurrentScope(scopeKey)) return;
+      setSnapshot((previous) => {
+        if (!previous || !isCurrentScope(scopeKey)) return previous;
+        const replace = (item: DispatchVisit | null) =>
+          item?.id === updated.id ? updated : item;
+        const next = {
+          ...previous,
+          serverNow: new Date().toISOString(),
+          activeJob: replace(previous.activeJob),
+          nextJob: replace(previous.nextJob),
+        };
+        persistSnapshot(boundScope, next);
+        return next;
       });
-      const body = (await response.json().catch(() => null)) as
-        | MobileActiveJobContract
-        | { error?: string }
-        | null;
-      if (!response.ok || !body || !("serverNow" in body)) {
-        throw new Error(
-          body && "error" in body && body.error
-            ? body.error
-            : "Unable to load Field Service calls.",
-        );
-      }
-      setSnapshot(body);
-      setStale(false);
-      persistSnapshot(body);
-    } catch (cause) {
-      const cached =
-        typeof window !== "undefined"
-          ? window.localStorage.getItem(SNAPSHOT_CACHE_KEY)
-          : null;
-      if (cached) {
-        try {
-          setSnapshot(JSON.parse(cached) as MobileActiveJobContract);
-          setStale(true);
-        } catch {
-          setSnapshot(null);
+    },
+    [boundScope, isCurrentScope, scopeKey],
+  );
+
+  const load = useCallback(
+    async (manual = false) => {
+      if (!isCurrentScope(scopeKey)) return;
+      loadAbortRef.current?.abort();
+      const controller = new AbortController();
+      loadAbortRef.current = controller;
+
+      if (manual) setRefreshing(true);
+      else setLoading(true);
+      setError(null);
+      try {
+        const response = await fetch("/api/mobile/service-visits/active", {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        const body = (await response.json().catch(() => null)) as
+          | MobileActiveJobContract
+          | { error?: string }
+          | null;
+        if (!isCurrentScope(scopeKey) || controller.signal.aborted) return;
+        if (!response.ok || !body || !("serverNow" in body)) {
+          throw new Error(
+            body && "error" in body && body.error
+              ? body.error
+              : "Unable to load Field Service calls.",
+          );
         }
+        if (!isFieldActiveSnapshotForScope(body, boundScope)) {
+          throw new Error(
+            "Field Service calls did not match the verified workspace.",
+          );
+        }
+        setSnapshot(body);
+        setStale(false);
+        persistSnapshot(boundScope, body);
+      } catch (cause) {
+        if (!isCurrentScope(scopeKey) || controller.signal.aborted) return;
+        const cached = readFieldActiveSnapshot(boundScope);
+        if (cached) {
+          setSnapshot(cached);
+          setStale(true);
+        }
+        setError(
+          cause instanceof Error
+            ? cause.message
+            : "Unable to load service calls.",
+        );
+      } finally {
+        if (isCurrentScope(scopeKey) && !controller.signal.aborted) {
+          setLoading(false);
+          setRefreshing(false);
+        }
+        if (loadAbortRef.current === controller) loadAbortRef.current = null;
       }
-      setError(
-        cause instanceof Error ? cause.message : "Unable to load service calls.",
-      );
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
+    },
+    [boundScope, isCurrentScope, scopeKey],
+  );
 
   const resumePendingCloseout = useCallback(async (): Promise<boolean> => {
-    if (typeof window === "undefined" || !navigator.onLine) return false;
+    if (
+      typeof window === "undefined" ||
+      !navigator.onLine ||
+      !isCurrentScope(scopeKey)
+    ) {
+      return false;
+    }
     await hydrateOfflineMutationQueue();
-    const scope = getOfflineMutationScope();
-    if (!scope) return false;
-    const key = pendingCloseoutKey(scope.userId, scope.shopId);
+    if (!isCurrentScope(scopeKey)) return false;
+    const key = pendingCloseoutKey(boundScope.userId, boundScope.shopId);
     const raw = window.localStorage.getItem(key);
     if (!raw) return false;
 
@@ -620,7 +693,7 @@ export default function MobileServiceShell({
       return false;
     }
 
-    const mutation = listPendingMutations().find(
+    const mutation = listPendingMutations(boundScope).find(
       (item) => item.clientMutationId === pendingCloseout.mutationId,
     );
     if (mutation) {
@@ -633,11 +706,12 @@ export default function MobileServiceShell({
     }
 
     window.localStorage.removeItem(key);
+    if (!isCurrentScope(scopeKey)) return false;
     router.push(
       `/mobile/service/closeout/${encodeURIComponent(pendingCloseout.workOrderId)}`,
     );
     return true;
-  }, [router]);
+  }, [boundScope, isCurrentScope, router, scopeKey]);
 
   useEffect(() => {
     void (async () => {
@@ -705,24 +779,52 @@ export default function MobileServiceShell({
 
   const runTransition = useCallback(
     async (visit: DispatchVisit, toStatus: ServiceVisitStatus) => {
-      if (busyVisitId) return null;
+      if (busyVisitId || !isCurrentScope(scopeKey)) return null;
       setBusyVisitId(visit.id);
       setError(null);
       setQueuedNotice(null);
       try {
+        const validateTransitionScope = (candidate: OfflineMutationScope) => {
+          const persistedScope = getOfflineMutationScope();
+          return Boolean(
+            isCurrentScope(scopeKey) &&
+              candidate.userId === boundScope.userId &&
+              candidate.shopId === boundScope.shopId &&
+              persistedScope?.userId === boundScope.userId &&
+              persistedScope.shopId === boundScope.shopId,
+          );
+        };
         let current = visit;
         let queued = false;
         let result: TransitionOutcome;
 
         if (toStatus === "en_route" && current.status === "scheduled") {
-          const dispatch = await transitionVisit(current, "dispatched");
+          const dispatch = await transitionVisit(
+            boundScope,
+            current,
+            "dispatched",
+            validateTransitionScope,
+          );
+          if (!isCurrentScope(scopeKey)) return null;
           current = dispatch.visit;
           queued ||= dispatch.queued;
           applyVisit(current);
-          result = await transitionVisit(current, toStatus, [dispatch.mutationId]);
+          result = await transitionVisit(
+            boundScope,
+            current,
+            toStatus,
+            validateTransitionScope,
+            [dispatch.mutationId],
+          );
         } else {
-          result = await transitionVisit(current, toStatus);
+          result = await transitionVisit(
+            boundScope,
+            current,
+            toStatus,
+            validateTransitionScope,
+          );
         }
+        if (!isCurrentScope(scopeKey)) return null;
         queued ||= result.queued;
         applyVisit(result.visit);
 
@@ -740,21 +842,27 @@ export default function MobileServiceShell({
           mutationId: result.mutationId,
         };
       } catch (cause) {
+        if (!isCurrentScope(scopeKey)) return null;
         setError(
           cause instanceof Error ? cause.message : "Service visit update failed.",
         );
         if (navigator.onLine) await load(true);
         return null;
       } finally {
-        setBusyVisitId(null);
+        if (isCurrentScope(scopeKey)) setBusyVisitId(null);
       }
     },
-    [applyVisit, busyVisitId, load],
+    [applyVisit, boundScope, busyVisitId, isCurrentScope, load, scopeKey],
   );
 
   const createWorkOrder = useCallback(
     async (visit: DispatchVisit) => {
-      if (busyVisitId || !navigator.onLine) return;
+      if (busyVisitId || !navigator.onLine || !isCurrentScope(scopeKey)) {
+        return;
+      }
+      workOrderAbortRef.current?.abort();
+      const controller = new AbortController();
+      workOrderAbortRef.current = controller;
       setBusyVisitId(visit.id);
       setError(null);
       setQueuedNotice(null);
@@ -770,30 +878,39 @@ export default function MobileServiceShell({
               "Idempotency-Key": opKey,
             },
             body: JSON.stringify({ operationKey: opKey }),
+            signal: controller.signal,
           },
         );
         const body = (await response.json().catch(() => null)) as
           | { workOrderId?: string; visit?: DispatchVisit; error?: string }
           | null;
+        if (!isCurrentScope(scopeKey) || controller.signal.aborted) return;
         if (!response.ok || !body?.workOrderId) {
           throw new Error(body?.error || "Work order could not be created.");
         }
         if (body.visit) applyVisit(body.visit);
         await load(true);
+        if (!isCurrentScope(scopeKey)) return;
         router.push(
           `/mobile/work-orders/${encodeURIComponent(body.workOrderId)}`,
         );
       } catch (cause) {
+        if (!isCurrentScope(scopeKey) || controller.signal.aborted) return;
         setError(
           cause instanceof Error
             ? cause.message
             : "Work order could not be created.",
         );
       } finally {
-        setBusyVisitId(null);
+        if (isCurrentScope(scopeKey) && !controller.signal.aborted) {
+          setBusyVisitId(null);
+        }
+        if (workOrderAbortRef.current === controller) {
+          workOrderAbortRef.current = null;
+        }
       }
     },
-    [applyVisit, busyVisitId, load, router],
+    [applyVisit, busyVisitId, isCurrentScope, load, router, scopeKey],
   );
 
   const handlePrimary = useCallback(
@@ -802,6 +919,7 @@ export default function MobileServiceShell({
       if (!action) return;
       if (action.confirm && !window.confirm(action.confirm)) return;
       const result = await runTransition(visit, action.toStatus);
+      if (!isCurrentScope(scopeKey)) return;
       if (
         result?.visit.status === "completed" &&
         result.visit.workOrderId &&
@@ -816,23 +934,21 @@ export default function MobileServiceShell({
         result.queued
       ) {
         await hydrateOfflineMutationQueue();
-        const scope = getOfflineMutationScope();
-        if (scope) {
-          window.localStorage.setItem(
-            pendingCloseoutKey(scope.userId, scope.shopId),
-            JSON.stringify({
-              workOrderId: result.visit.workOrderId,
-              visitId: result.visit.id,
-              mutationId: result.mutationId,
-            } satisfies PendingCloseout),
-          );
-        }
+        if (!isCurrentScope(scopeKey)) return;
+        window.localStorage.setItem(
+          pendingCloseoutKey(boundScope.userId, boundScope.shopId),
+          JSON.stringify({
+            workOrderId: result.visit.workOrderId,
+            visitId: result.visit.id,
+            mutationId: result.mutationId,
+          } satisfies PendingCloseout),
+        );
         setQueuedNotice(
           "Visit completion is saved offline. Reconnect to collect payment and issue the receipt.",
         );
       }
     },
-    [router, runTransition],
+    [boundScope, isCurrentScope, router, runTransition, scopeKey],
   );
 
   return (

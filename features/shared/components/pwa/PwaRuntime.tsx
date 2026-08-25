@@ -7,11 +7,13 @@ import { createPortal } from "react-dom";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import {
   clearOfflineState,
+  getOfflineMutationScope,
   getOfflineSyncSummary,
   hydrateOfflineMutationQueue,
   setOfflineMutationScope,
   subscribeOfflineMutations,
 } from "@/features/shared/lib/offline/mutations";
+import { removeFieldActiveSnapshot } from "@/features/mobile/service/fieldActiveSnapshot";
 import { replayAllOfflineMutations } from "@/features/shared/lib/offline/replay";
 import { isStandalonePublicRoute } from "@/features/shared/lib/routes/shellBoundaries";
 
@@ -173,7 +175,11 @@ export default function PwaRuntime() {
 
     const { data: authSubscription } = supabase.auth.onAuthStateChange(
       (event, session) => {
-        if (event === "SIGNED_OUT") void clearOfflineState();
+        if (event === "SIGNED_OUT") {
+          const formerScope = getOfflineMutationScope();
+          if (formerScope) removeFieldActiveSnapshot(formerScope);
+          void clearOfflineState();
+        }
         if (session?.user.id) {
           window.setTimeout(() => void resolveScope(session.user.id), 0);
         }

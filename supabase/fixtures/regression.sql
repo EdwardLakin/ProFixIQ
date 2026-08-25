@@ -19,7 +19,9 @@ with fixture_users(id, email, full_name) as (
     ('f1100000-0000-4000-8000-000000000010'::uuid, 'dispatcher@regression.profixiq.invalid', 'Regression Dispatcher'),
     ('f1100000-0000-4000-8000-000000000011'::uuid, 'driver@regression.profixiq.invalid', 'Regression Driver'),
     ('f1100000-0000-4000-8000-000000000012'::uuid, 'field-operator@regression.profixiq.invalid', 'Regression Field Operator'),
-    ('f1100000-0000-4000-8000-000000000013'::uuid, 'field-disabled@regression.profixiq.invalid', 'Regression Field Disabled')
+    ('f1100000-0000-4000-8000-000000000013'::uuid, 'field-disabled@regression.profixiq.invalid', 'Regression Field Disabled'),
+    ('f1100000-0000-4000-8000-000000000014'::uuid, 'administrator@regression.profixiq.invalid', 'Regression Administrator'),
+    ('f1100000-0000-4000-8000-000000000015'::uuid, 'revoked-customer@regression.profixiq.invalid', 'Revoked Regression Customer')
 )
 insert into auth.users (
   instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
@@ -60,7 +62,9 @@ with fixture_users(id, email) as (
     ('f1100000-0000-4000-8000-000000000010'::uuid, 'dispatcher@regression.profixiq.invalid'),
     ('f1100000-0000-4000-8000-000000000011'::uuid, 'driver@regression.profixiq.invalid'),
     ('f1100000-0000-4000-8000-000000000012'::uuid, 'field-operator@regression.profixiq.invalid'),
-    ('f1100000-0000-4000-8000-000000000013'::uuid, 'field-disabled@regression.profixiq.invalid')
+    ('f1100000-0000-4000-8000-000000000013'::uuid, 'field-disabled@regression.profixiq.invalid'),
+    ('f1100000-0000-4000-8000-000000000014'::uuid, 'administrator@regression.profixiq.invalid'),
+    ('f1100000-0000-4000-8000-000000000015'::uuid, 'revoked-customer@regression.profixiq.invalid')
 )
 insert into auth.identities (
   id, user_id, provider_id, identity_data, provider, last_sign_in_at,
@@ -99,7 +103,9 @@ values
   ('f1100000-0000-4000-8000-000000000010', 'f1100000-0000-4000-8000-000000000010', 'dispatcher@regression.profixiq.invalid', 'Regression Dispatcher', 'dispatcher', true, false, null, '2026-08-21T18:00:00Z', '2026-08-21T18:00:00Z'),
   ('f1100000-0000-4000-8000-000000000011', 'f1100000-0000-4000-8000-000000000011', 'driver@regression.profixiq.invalid', 'Regression Driver', 'driver', true, false, null, '2026-08-21T18:00:00Z', '2026-08-21T18:00:00Z'),
   ('f1100000-0000-4000-8000-000000000012', 'f1100000-0000-4000-8000-000000000012', 'field-operator@regression.profixiq.invalid', 'Regression Field Operator', 'mechanic', true, false, null, '2026-08-21T18:00:00Z', '2026-08-21T18:00:00Z'),
-  ('f1100000-0000-4000-8000-000000000013', 'f1100000-0000-4000-8000-000000000013', 'field-disabled@regression.profixiq.invalid', 'Regression Field Disabled', 'mechanic', true, false, null, '2026-08-21T18:00:00Z', '2026-08-21T18:00:00Z')
+  ('f1100000-0000-4000-8000-000000000013', 'f1100000-0000-4000-8000-000000000013', 'field-disabled@regression.profixiq.invalid', 'Regression Field Disabled', 'mechanic', true, false, null, '2026-08-21T18:00:00Z', '2026-08-21T18:00:00Z'),
+  ('f1100000-0000-4000-8000-000000000014', 'f1100000-0000-4000-8000-000000000014', 'administrator@regression.profixiq.invalid', 'Regression Administrator', 'admin', true, false, null, '2026-08-21T18:00:00Z', '2026-08-21T18:00:00Z'),
+  ('f1100000-0000-4000-8000-000000000015', 'f1100000-0000-4000-8000-000000000015', 'revoked-customer@regression.profixiq.invalid', 'Revoked Regression Customer', 'customer', true, false, null, '2026-08-21T18:00:00Z', '2026-08-21T18:00:00Z')
 on conflict (id) do update set
   user_id = excluded.user_id,
   email = excluded.email,
@@ -169,13 +175,14 @@ set shop_id = case
     'f1100000-0000-4000-8000-000000000006'::uuid,
     'f1100000-0000-4000-8000-000000000007'::uuid,
     'f1100000-0000-4000-8000-000000000012'::uuid,
-    'f1100000-0000-4000-8000-000000000013'::uuid
+    'f1100000-0000-4000-8000-000000000013'::uuid,
+    'f1100000-0000-4000-8000-000000000014'::uuid
   ) then 'f1000000-0000-4000-8000-000000000001'::uuid
   else null
 end
 where id between
   'f1100000-0000-4000-8000-000000000001'::uuid and
-  'f1100000-0000-4000-8000-000000000013'::uuid;
+  'f1100000-0000-4000-8000-000000000015'::uuid;
 
 insert into public.shop_members (shop_id, user_id, role, created_by)
 values
@@ -187,8 +194,29 @@ values
   ('f1000000-0000-4000-8000-000000000001', 'f1100000-0000-4000-8000-000000000006', 'lead_hand', 'f1100000-0000-4000-8000-000000000001'),
   ('f1000000-0000-4000-8000-000000000001', 'f1100000-0000-4000-8000-000000000007', 'parts', 'f1100000-0000-4000-8000-000000000001'),
   ('f1000000-0000-4000-8000-000000000001', 'f1100000-0000-4000-8000-000000000012', 'mechanic', 'f1100000-0000-4000-8000-000000000001'),
-  ('f1000000-0000-4000-8000-000000000001', 'f1100000-0000-4000-8000-000000000013', 'mechanic', 'f1100000-0000-4000-8000-000000000001')
+  ('f1000000-0000-4000-8000-000000000001', 'f1100000-0000-4000-8000-000000000013', 'mechanic', 'f1100000-0000-4000-8000-000000000001'),
+  ('f1000000-0000-4000-8000-000000000001', 'f1100000-0000-4000-8000-000000000014', 'admin', 'f1100000-0000-4000-8000-000000000001')
 on conflict (shop_id, user_id) do update set role = excluded.role;
+
+insert into public.staff_capability_overrides (
+  id, shop_id, profile_id, capability_key, effect, changed_by_profile_id,
+  created_at, updated_at
+)
+values (
+  'f1e00000-0000-4000-8000-000000000001',
+  'f1000000-0000-4000-8000-000000000001',
+  'f1100000-0000-4000-8000-000000000005',
+  'work_order.assignment.manage', 'allow',
+  'f1100000-0000-4000-8000-000000000014',
+  '2026-08-21T18:00:00Z', '2026-08-21T18:00:00Z'
+)
+on conflict (id) do update set
+  shop_id = excluded.shop_id,
+  profile_id = excluded.profile_id,
+  capability_key = excluded.capability_key,
+  effect = excluded.effect,
+  changed_by_profile_id = excluded.changed_by_profile_id,
+  updated_at = excluded.updated_at;
 
 insert into public.customers (
   id, shop_id, user_id, name, first_name, last_name, business_name, email,
@@ -197,7 +225,8 @@ insert into public.customers (
 values
   ('f1200000-0000-4000-8000-000000000001', 'f1000000-0000-4000-8000-000000000001', 'f1100000-0000-4000-8000-000000000008', 'Regression Customer', 'Regression', 'Customer', null, 'customer@regression.profixiq.invalid', '+1-555-010-0101', 'individual', false, true, 'regression-customer', '2026-08-21T18:00:00Z', '2026-08-21T18:00:00Z'),
   ('f1200000-0000-4000-8000-000000000002', 'f1000000-0000-4000-8000-000000000002', null, 'Unrelated Regression Customer', 'Unrelated', 'Customer', null, 'unrelated-customer@regression.profixiq.invalid', '+1-555-010-0102', 'individual', false, true, 'regression-unrelated-customer', '2026-08-21T18:00:00Z', '2026-08-21T18:00:00Z'),
-  ('f1200000-0000-4000-8000-000000000003', 'f1000000-0000-4000-8000-000000000001', null, 'Regression Fleet Account', null, null, 'Regression Fleet Account', 'fleet-contact@regression.profixiq.invalid', '+1-555-010-0103', 'fleet', true, true, 'regression-fleet-customer', '2026-08-21T18:00:00Z', '2026-08-21T18:00:00Z')
+  ('f1200000-0000-4000-8000-000000000003', 'f1000000-0000-4000-8000-000000000001', null, 'Regression Fleet Account', null, null, 'Regression Fleet Account', 'fleet-contact@regression.profixiq.invalid', '+1-555-010-0103', 'fleet', true, true, 'regression-fleet-customer', '2026-08-21T18:00:00Z', '2026-08-21T18:00:00Z'),
+  ('f1200000-0000-4000-8000-000000000004', 'f1000000-0000-4000-8000-000000000001', 'f1100000-0000-4000-8000-000000000015', 'Revoked Regression Customer', 'Revoked', 'Customer', null, 'revoked-customer@regression.profixiq.invalid', '+1-555-010-0104', 'individual', false, true, 'regression-revoked-customer', '2026-08-21T18:00:00Z', '2026-08-21T18:00:00Z')
 on conflict (id) do update set
   shop_id = excluded.shop_id,
   user_id = excluded.user_id,
@@ -340,10 +369,70 @@ on conflict (id) do update set
   customer_agreed_at = excluded.customer_agreed_at,
   updated_at = excluded.updated_at;
 
+insert into public.customer_portal_invites (
+  id, customer_id, email, token, created_at, accepted_at,
+  accepted_by_user_id, revoked_at, expires_at, acceptance_metadata,
+  shop_id, work_order_id, enrollment_campaign_id, source, created_by
+)
+values
+  (
+    'f2b00000-0000-4000-8000-000000000001',
+    'f1200000-0000-4000-8000-000000000001',
+    'customer@regression.profixiq.invalid',
+    'f2c00000-0000-4000-8000-000000000001',
+    '2026-08-21T18:00:00Z', '2026-08-21T18:05:00Z',
+    'f1100000-0000-4000-8000-000000000008', null,
+    '2099-01-01T00:00:00Z',
+    '{"accepted_email":"customer@regression.profixiq.invalid","accepted_at":"2026-08-21T18:05:00Z"}'::jsonb,
+    'f1000000-0000-4000-8000-000000000001',
+    'f1500000-0000-4000-8000-000000000001', null, 'work_order',
+    'f1100000-0000-4000-8000-000000000001'
+  ),
+  (
+    'f2b00000-0000-4000-8000-000000000002',
+    'f1200000-0000-4000-8000-000000000004',
+    'revoked-customer@regression.profixiq.invalid',
+    'f2c00000-0000-4000-8000-000000000002',
+    '2026-08-21T18:00:00Z', '2026-08-21T18:05:00Z',
+    'f1100000-0000-4000-8000-000000000015',
+    '2026-08-21T18:10:00Z', '2099-01-01T00:00:00Z',
+    '{"accepted_email":"revoked-customer@regression.profixiq.invalid","accepted_at":"2026-08-21T18:05:00Z"}'::jsonb,
+    'f1000000-0000-4000-8000-000000000001', null, null, 'qr',
+    'f1100000-0000-4000-8000-000000000001'
+  ),
+  (
+    'f2b00000-0000-4000-8000-000000000003',
+    'f1200000-0000-4000-8000-000000000004',
+    'revoked-customer@regression.profixiq.invalid',
+    'f2c00000-0000-4000-8000-000000000003',
+    '2026-08-01T18:00:00Z', null, null, null,
+    '2026-08-15T18:00:00Z', '{}'::jsonb,
+    'f1000000-0000-4000-8000-000000000001', null, null, 'qr',
+    'f1100000-0000-4000-8000-000000000001'
+  )
+on conflict (id) do update set
+  customer_id = excluded.customer_id,
+  email = excluded.email,
+  token = excluded.token,
+  created_at = excluded.created_at,
+  accepted_at = excluded.accepted_at,
+  accepted_by_user_id = excluded.accepted_by_user_id,
+  revoked_at = excluded.revoked_at,
+  expires_at = excluded.expires_at,
+  acceptance_metadata = excluded.acceptance_metadata,
+  shop_id = excluded.shop_id,
+  work_order_id = excluded.work_order_id,
+  enrollment_campaign_id = excluded.enrollment_campaign_id,
+  source = excluded.source,
+  created_by = excluded.created_by;
+
+-- Trigger suppression skips normalize_work_order_line_status(), so persist the
+-- canonical stored value that the punch workflow derives from `in_progress`.
 insert into public.work_order_lines (
   id, shop_id, work_order_id, vehicle_id, assigned_tech_id, description,
   complaint, job_type, line_type, status, line_status, approval_state,
-  approval_at, approval_by, labor_time, price_estimate,
+  approval_at, approval_by, labor_time, price_estimate, punched_in_at,
+  punched_out_at,
   external_id, created_at, updated_at
 )
 values (
@@ -353,10 +442,11 @@ values (
   'f1300000-0000-4000-8000-000000000001',
   'f1100000-0000-4000-8000-000000000005',
   'Replace air dryer cartridge', 'Air system purges frequently', 'repair',
-  'job', 'awaiting', 'authorized', 'approved',
+  'job', 'active', 'authorized', 'approved',
   '2026-08-21T18:10:00Z', 'f1100000-0000-4000-8000-000000000008',
-  2.50, 507.50, 'regression-authorized-repair-line',
-  '2026-08-21T18:00:00Z', '2026-08-21T18:10:00Z'
+  2.50, 507.50, '2026-08-21T18:22:00Z', '2026-08-21T18:52:00Z',
+  'regression-authorized-repair-line',
+  '2026-08-21T18:00:00Z', '2026-08-21T18:52:00Z'
 )
 on conflict (id) do update set
   shop_id = excluded.shop_id,
@@ -374,7 +464,139 @@ on conflict (id) do update set
   approval_by = excluded.approval_by,
   labor_time = excluded.labor_time,
   price_estimate = excluded.price_estimate,
+  punched_in_at = excluded.punched_in_at,
+  punched_out_at = excluded.punched_out_at,
   external_id = excluded.external_id,
+  updated_at = excluded.updated_at;
+
+insert into public.work_order_line_technicians (
+  work_order_line_id, technician_id, assigned_by, assigned_at
+)
+values (
+  'f1600000-0000-4000-8000-000000000001',
+  'f1100000-0000-4000-8000-000000000005',
+  'f1100000-0000-4000-8000-000000000004',
+  '2026-08-21T18:00:00Z'
+)
+on conflict (work_order_line_id, technician_id) do update set
+  assigned_by = excluded.assigned_by,
+  assigned_at = excluded.assigned_at;
+
+insert into public.inspections (
+  id, shop_id, work_order_id, work_order_line_id, vehicle_id, user_id,
+  inspection_type, status, completed, is_draft, locked, is_canonical,
+  sync_revision, signing_cycle, started_at, finalized_at, finalized_by,
+  summary, notes, created_at, updated_at
+)
+values (
+  'f1f00000-0000-4000-8000-000000000001',
+  'f1000000-0000-4000-8000-000000000001',
+  'f1500000-0000-4000-8000-000000000001',
+  'f1600000-0000-4000-8000-000000000001',
+  'f1300000-0000-4000-8000-000000000001',
+  'f1100000-0000-4000-8000-000000000005',
+  'maintenance50-air', 'completed', true, false, true, true,
+  1, 0, '2026-08-21T18:12:00Z', '2026-08-21T18:20:00Z',
+  'f1100000-0000-4000-8000-000000000004',
+  '{"id":"f1f00000-0000-4000-8000-000000000001","vehicleId":"f1300000-0000-4000-8000-000000000001","workOrderId":"f1500000-0000-4000-8000-000000000001","workOrderLineId":"f1600000-0000-4000-8000-000000000001","templateName":"50-point Air Brake Inspection","brakeType":"air","location":"shop","currentSectionIndex":0,"currentItemIndex":0,"isListening":false,"status":"completed","started":true,"completed":true,"isPaused":false,"syncRevision":1,"serverUpdatedAt":"2026-08-21T18:20:00Z","sections":[{"title":"Air system","items":[{"item":"Air dryer purge cycle","status":"recommend","notes":"Recommend replacing the air dryer cartridge.","parts":[{"description":"Air dryer cartridge","qty":1}],"laborHours":2.5}]}],"quote":[],"fixture":"profixiq-regression-v1"}'::jsonb,
+  'Completed inspection with one repair recommendation.',
+  '2026-08-21T18:12:00Z', '2026-08-21T18:20:00Z'
+)
+on conflict (id) do update set
+  shop_id = excluded.shop_id,
+  work_order_id = excluded.work_order_id,
+  work_order_line_id = excluded.work_order_line_id,
+  vehicle_id = excluded.vehicle_id,
+  user_id = excluded.user_id,
+  inspection_type = excluded.inspection_type,
+  status = excluded.status,
+  completed = excluded.completed,
+  is_draft = excluded.is_draft,
+  locked = excluded.locked,
+  is_canonical = excluded.is_canonical,
+  sync_revision = excluded.sync_revision,
+  signing_cycle = excluded.signing_cycle,
+  started_at = excluded.started_at,
+  finalized_at = excluded.finalized_at,
+  finalized_by = excluded.finalized_by,
+  summary = excluded.summary,
+  notes = excluded.notes,
+  updated_at = excluded.updated_at;
+
+insert into public.inspection_signatures (
+  id, inspection_id, role, signed_by, signed_name, signature_image_path,
+  signature_hash, signing_cycle, signed_sync_revision, signed_summary_hash,
+  signed_summary, signed_at, ip_address, user_agent
+)
+select
+  'f2a00000-0000-4000-8000-000000000001', inspection.id, 'advisor',
+  'f1100000-0000-4000-8000-000000000004', 'Regression Advisor', null, null,
+  inspection.signing_cycle, inspection.sync_revision,
+  encode(
+    extensions.digest(convert_to(inspection.summary::text, 'UTF8'), 'sha256'),
+    'hex'
+  ),
+  inspection.summary, '2026-08-21T18:20:00Z', '127.0.0.1',
+  'ProFixIQ deterministic regression fixture'
+from public.inspections inspection
+where inspection.id = 'f1f00000-0000-4000-8000-000000000001'
+on conflict (id) do update set
+  inspection_id = excluded.inspection_id,
+  role = excluded.role,
+  signed_by = excluded.signed_by,
+  signed_name = excluded.signed_name,
+  signature_image_path = excluded.signature_image_path,
+  signature_hash = excluded.signature_hash,
+  signing_cycle = excluded.signing_cycle,
+  signed_sync_revision = excluded.signed_sync_revision,
+  signed_summary_hash = excluded.signed_summary_hash,
+  signed_summary = excluded.signed_summary,
+  signed_at = excluded.signed_at,
+  ip_address = excluded.ip_address,
+  user_agent = excluded.user_agent;
+
+insert into public.inspection_items (
+  id, inspection_id, section, label, value, status, notes, created_at
+)
+values (
+  'f2000000-0000-4000-8000-000000000001',
+  'f1f00000-0000-4000-8000-000000000001',
+  'Air system', 'Air dryer purge cycle', 'Frequent purge', 'recommend',
+  'Recommend replacing the air dryer cartridge.',
+  '2026-08-21T18:18:00Z'
+)
+on conflict (id) do update set
+  inspection_id = excluded.inspection_id,
+  section = excluded.section,
+  label = excluded.label,
+  value = excluded.value,
+  status = excluded.status,
+  notes = excluded.notes;
+
+insert into public.work_order_line_labor_segments (
+  id, shop_id, work_order_id, work_order_line_id, technician_id, created_by,
+  source, pause_reason, started_at, ended_at, created_at, updated_at
+)
+values (
+  'f2100000-0000-4000-8000-000000000001',
+  'f1000000-0000-4000-8000-000000000001',
+  'f1500000-0000-4000-8000-000000000001',
+  'f1600000-0000-4000-8000-000000000001',
+  'f1100000-0000-4000-8000-000000000005',
+  'f1100000-0000-4000-8000-000000000005',
+  'job_punch', 'labor_pause', '2026-08-21T18:22:00Z', '2026-08-21T18:52:00Z',
+  '2026-08-21T18:22:00Z', '2026-08-21T18:52:00Z'
+)
+on conflict (id) do update set
+  shop_id = excluded.shop_id,
+  work_order_id = excluded.work_order_id,
+  work_order_line_id = excluded.work_order_line_id,
+  technician_id = excluded.technician_id,
+  created_by = excluded.created_by,
+  source = excluded.source,
+  pause_reason = excluded.pause_reason,
+  started_at = excluded.started_at,
+  ended_at = excluded.ended_at,
   updated_at = excluded.updated_at;
 
 insert into public.work_order_parts (
@@ -452,6 +674,237 @@ on conflict (id) do update set
   sent_to_customer_at = excluded.sent_to_customer_at,
   updated_at = excluded.updated_at;
 
+insert into public.stock_locations (id, shop_id, code, name)
+values (
+  'f2500000-0000-4000-8000-000000000001',
+  'f1000000-0000-4000-8000-000000000001',
+  'TRUCK-REG-01', 'Regression Service Truck Inventory'
+)
+on conflict (id) do update set
+  shop_id = excluded.shop_id,
+  code = excluded.code,
+  name = excluded.name;
+
+insert into public.parts (
+  id, shop_id, name, description, price, cost, part_number, category,
+  sku, supplier, warranty_months, created_at
+)
+values (
+  'f2700000-0000-4000-8000-000000000001',
+  'f1000000-0000-4000-8000-000000000001',
+  'Air-line fitting', 'DOT air-line fitting stocked on the Field service truck',
+  15.00, 3.50, 'REG-FIT-001', 'Air system', 'REG-FIT-001',
+  'Regression Supplier', 0, '2026-08-21T18:00:00Z'
+)
+on conflict (id) do update set
+  shop_id = excluded.shop_id,
+  name = excluded.name,
+  description = excluded.description,
+  price = excluded.price,
+  cost = excluded.cost,
+  part_number = excluded.part_number,
+  category = excluded.category,
+  sku = excluded.sku,
+  supplier = excluded.supplier,
+  warranty_months = excluded.warranty_months;
+
+insert into public.work_order_parts (
+  id, shop_id, work_order_id, work_order_line_id, part_id, lifecycle_status,
+  description_snapshot, manufacturer_snapshot, part_number_snapshot,
+  sku_snapshot, quantity, quantity_requested, quantity_ordered,
+  quantity_received, quantity_allocated, quantity_consumed, quantity_returned,
+  quantity_cancelled, unit_cost_snapshot, unit_sell_price_snapshot, unit_price,
+  total_price, is_active, created_at, updated_at
+)
+values (
+  'f1800000-0000-4000-8000-000000000002',
+  'f1000000-0000-4000-8000-000000000001',
+  'f1500000-0000-4000-8000-000000000001',
+  'f1600000-0000-4000-8000-000000000001',
+  'f2700000-0000-4000-8000-000000000001', 'received',
+  'Air-line fitting', 'DOT', 'REG-FIT-001', 'REG-FIT-001',
+  1, 1, 0, 1, 0, 0, 0, 0, 3.50, 0, 0, 0, true,
+  '2026-08-21T18:26:00Z', '2026-08-21T18:40:00Z'
+)
+on conflict (id) do update set
+  shop_id = excluded.shop_id,
+  work_order_id = excluded.work_order_id,
+  work_order_line_id = excluded.work_order_line_id,
+  part_id = excluded.part_id,
+  lifecycle_status = excluded.lifecycle_status,
+  description_snapshot = excluded.description_snapshot,
+  manufacturer_snapshot = excluded.manufacturer_snapshot,
+  part_number_snapshot = excluded.part_number_snapshot,
+  sku_snapshot = excluded.sku_snapshot,
+  quantity = excluded.quantity,
+  quantity_requested = excluded.quantity_requested,
+  quantity_ordered = excluded.quantity_ordered,
+  quantity_received = excluded.quantity_received,
+  quantity_allocated = excluded.quantity_allocated,
+  quantity_consumed = excluded.quantity_consumed,
+  quantity_returned = excluded.quantity_returned,
+  quantity_cancelled = excluded.quantity_cancelled,
+  unit_cost_snapshot = excluded.unit_cost_snapshot,
+  unit_sell_price_snapshot = excluded.unit_sell_price_snapshot,
+  unit_price = excluded.unit_price,
+  total_price = excluded.total_price,
+  is_active = excluded.is_active,
+  updated_at = excluded.updated_at;
+
+insert into public.part_requests (
+  id, shop_id, work_order_id, job_id, quote_line_id, requested_by,
+  assigned_to, status, notes, handoff_completed_at, handoff_completed_by,
+  created_at
+)
+values
+  (
+    'f2200000-0000-4000-8000-000000000001',
+    'f1000000-0000-4000-8000-000000000001',
+    'f1500000-0000-4000-8000-000000000001',
+    'f1600000-0000-4000-8000-000000000001',
+    'f1700000-0000-4000-8000-000000000001',
+    'f1100000-0000-4000-8000-000000000005',
+    'f1100000-0000-4000-8000-000000000007',
+    'approved', 'One received fitting and one pending mounting-hardware item.',
+    null, null, '2026-08-21T18:24:00Z'
+  )
+on conflict (id) do update set
+  shop_id = excluded.shop_id,
+  work_order_id = excluded.work_order_id,
+  job_id = excluded.job_id,
+  quote_line_id = excluded.quote_line_id,
+  requested_by = excluded.requested_by,
+  assigned_to = excluded.assigned_to,
+  status = excluded.status,
+  notes = excluded.notes,
+  handoff_completed_at = excluded.handoff_completed_at,
+  handoff_completed_by = excluded.handoff_completed_by;
+
+insert into public.part_request_items (
+  id, request_id, shop_id, work_order_id, work_order_line_id, quote_line_id,
+  part_id, source_work_order_part_id, location_id, description,
+  requested_manufacturer, requested_part_number, qty, qty_requested,
+  qty_approved, qty_ordered, qty_received, approved, status, unit_cost,
+  unit_price, quoted_price, source_row_id, created_at, updated_at
+)
+values
+  (
+    'f2300000-0000-4000-8000-000000000001',
+    'f2200000-0000-4000-8000-000000000001',
+    'f1000000-0000-4000-8000-000000000001',
+    'f1500000-0000-4000-8000-000000000001',
+    'f1600000-0000-4000-8000-000000000001', null, null, null, null,
+    'Air dryer mounting hardware', null, 'REG-MOUNT-001', 1, 1, 1, 0, 0, true,
+    'approved', 1.00, 0, 0, 'regression:pending-mounting-hardware',
+    '2026-08-21T18:24:00Z', '2026-08-21T18:24:00Z'
+  ),
+  (
+    'f2300000-0000-4000-8000-000000000002',
+    'f2200000-0000-4000-8000-000000000001',
+    'f1000000-0000-4000-8000-000000000001',
+    'f1500000-0000-4000-8000-000000000001',
+    'f1600000-0000-4000-8000-000000000001',
+    'f1700000-0000-4000-8000-000000000001',
+    'f2700000-0000-4000-8000-000000000001',
+    'f1800000-0000-4000-8000-000000000002',
+    'f2500000-0000-4000-8000-000000000001',
+    'Air-line fitting', 'DOT', 'REG-FIT-001', 1, 1, 1, 0, 1, true,
+    'received', 3.50, 0, 0,
+    'regression:received-air-line-fitting',
+    '2026-08-21T18:26:00Z', '2026-08-21T18:40:00Z'
+  )
+on conflict (id) do update set
+  request_id = excluded.request_id,
+  shop_id = excluded.shop_id,
+  work_order_id = excluded.work_order_id,
+  work_order_line_id = excluded.work_order_line_id,
+  quote_line_id = excluded.quote_line_id,
+  part_id = excluded.part_id,
+  source_work_order_part_id = excluded.source_work_order_part_id,
+  location_id = excluded.location_id,
+  description = excluded.description,
+  requested_manufacturer = excluded.requested_manufacturer,
+  requested_part_number = excluded.requested_part_number,
+  qty = excluded.qty,
+  qty_requested = excluded.qty_requested,
+  qty_approved = excluded.qty_approved,
+  qty_ordered = excluded.qty_ordered,
+  qty_received = excluded.qty_received,
+  approved = excluded.approved,
+  status = excluded.status,
+  unit_cost = excluded.unit_cost,
+  unit_price = excluded.unit_price,
+  quoted_price = excluded.quoted_price,
+  source_row_id = excluded.source_row_id,
+  updated_at = excluded.updated_at;
+
+insert into public.part_request_lines (
+  id, request_id, work_order_line_id, created_at
+)
+values
+  ('f2400000-0000-4000-8000-000000000001', 'f2200000-0000-4000-8000-000000000001', 'f1600000-0000-4000-8000-000000000001', '2026-08-21T18:24:00Z')
+on conflict (id) do update set
+  request_id = excluded.request_id,
+  work_order_line_id = excluded.work_order_line_id;
+
+update public.work_order_parts
+set source_parts_request_id = 'f2200000-0000-4000-8000-000000000001',
+    source_parts_request_item_id = 'f2300000-0000-4000-8000-000000000002',
+    updated_at = '2026-08-21T18:40:00Z'
+where id = 'f1800000-0000-4000-8000-000000000002';
+
+insert into public.stock_moves (
+  id, shop_id, part_id, location_id, qty_change, lifecycle_quantity, reason,
+  reference_kind, reference_id, part_request_item_id, work_order_part_id,
+  created_by, idempotency_key, metadata, created_at
+)
+values (
+  'f2800000-0000-4000-8000-000000000001',
+  'f1000000-0000-4000-8000-000000000001',
+  'f2700000-0000-4000-8000-000000000001',
+  'f2500000-0000-4000-8000-000000000001',
+  1, 1, 'receive', 'part_request_item',
+  'f2300000-0000-4000-8000-000000000002',
+  'f2300000-0000-4000-8000-000000000002',
+  'f1800000-0000-4000-8000-000000000002',
+  'f1100000-0000-4000-8000-000000000007',
+  'f1000000-0000-4000-8000-000000000001:regression:field-truck-receipt',
+  '{"fixture":"profixiq-regression-v1","operation":"receive","qty_received":1}'::jsonb,
+  '2026-08-21T18:40:00Z'
+)
+on conflict (id) do update set
+  shop_id = excluded.shop_id,
+  part_id = excluded.part_id,
+  location_id = excluded.location_id,
+  qty_change = excluded.qty_change,
+  lifecycle_quantity = excluded.lifecycle_quantity,
+  reason = excluded.reason,
+  reference_kind = excluded.reference_kind,
+  reference_id = excluded.reference_id,
+  part_request_item_id = excluded.part_request_item_id,
+  work_order_part_id = excluded.work_order_part_id,
+  created_by = excluded.created_by,
+  idempotency_key = excluded.idempotency_key,
+  metadata = excluded.metadata;
+
+insert into public.part_stock (
+  id, part_id, location_id, qty_on_hand, qty_reserved, reorder_point,
+  reorder_qty
+)
+values (
+  'f2900000-0000-4000-8000-000000000001',
+  'f2700000-0000-4000-8000-000000000001',
+  'f2500000-0000-4000-8000-000000000001',
+  1, 0, 1, 4
+)
+on conflict (id) do update set
+  part_id = excluded.part_id,
+  location_id = excluded.location_id,
+  qty_on_hand = excluded.qty_on_hand,
+  qty_reserved = excluded.qty_reserved,
+  reorder_point = excluded.reorder_point,
+  reorder_qty = excluded.reorder_qty;
+
 insert into public.mobile_service_settings (
   shop_id, service_model, solo_mode, dispatch_enabled,
   service_vehicles_enabled, truck_inventory_enabled, default_visit_minutes,
@@ -487,20 +940,63 @@ on conflict (shop_id, profile_id) do update set
   created_by = excluded.created_by,
   updated_at = excluded.updated_at;
 
+insert into public.service_vehicles (
+  id, shop_id, name, unit_number, primary_user_id, stock_location_id,
+  active, capabilities, created_by, created_at, updated_at
+)
+values (
+  'f2600000-0000-4000-8000-000000000001',
+  'f1000000-0000-4000-8000-000000000001',
+  'Regression Service Truck', 'FIELD-01',
+  'f1100000-0000-4000-8000-000000000012',
+  'f2500000-0000-4000-8000-000000000001', true,
+  '{"mobile_v1":true,"truck_inventory":true}'::jsonb,
+  'f1100000-0000-4000-8000-000000000014',
+  '2026-08-21T18:00:00Z', '2026-08-21T18:00:00Z'
+)
+on conflict (id) do update set
+  shop_id = excluded.shop_id,
+  name = excluded.name,
+  unit_number = excluded.unit_number,
+  primary_user_id = excluded.primary_user_id,
+  stock_location_id = excluded.stock_location_id,
+  active = excluded.active,
+  capabilities = excluded.capabilities,
+  created_by = excluded.created_by,
+  updated_at = excluded.updated_at;
+
+insert into public.field_service_vehicle_assignments (
+  shop_id, service_vehicle_id, profile_id, assigned_by_profile_id,
+  created_at, updated_at
+)
+values (
+  'f1000000-0000-4000-8000-000000000001',
+  'f2600000-0000-4000-8000-000000000001',
+  'f1100000-0000-4000-8000-000000000012',
+  'f1100000-0000-4000-8000-000000000014',
+  '2026-08-21T18:00:00Z', '2026-08-21T18:00:00Z'
+)
+on conflict (shop_id, service_vehicle_id) do update set
+  profile_id = excluded.profile_id,
+  assigned_by_profile_id = excluded.assigned_by_profile_id,
+  updated_at = excluded.updated_at;
+
 -- Trigger suppression also skips scheduler resource synchronization. Rebuild
 -- the same canonical capacity/technician state those triggers own.
 insert into public.scheduling_resources (
   id, shop_id, code, name, resource_type, mode, profile_id,
+  service_vehicle_id, stock_location_id,
   public_bookable, is_fallback, active, sort_order, metadata,
   created_at, updated_at
 )
 values
-  ('f1d00000-0000-4000-8000-000000000001', 'f1000000-0000-4000-8000-000000000001', 'default-capacity', 'Shop capacity', 'capacity', 'shop', null, true, true, true, 1000, '{"fixture":"profixiq-regression-v1"}'::jsonb, '2026-08-21T18:00:00Z', '2026-08-21T18:00:00Z'),
-  ('f1d00000-0000-4000-8000-000000000002', 'f1000000-0000-4000-8000-000000000002', 'default-capacity', 'Shop capacity', 'capacity', 'shop', null, true, true, true, 1000, '{"fixture":"profixiq-regression-v1"}'::jsonb, '2026-08-21T18:00:00Z', '2026-08-21T18:00:00Z'),
-  ('f1d00000-0000-4000-8000-000000000003', 'f1000000-0000-4000-8000-000000000001', 'tech:f1100000-0000-4000-8000-000000000005', 'Regression Technician', 'technician', 'both', 'f1100000-0000-4000-8000-000000000005', false, false, true, 200, '{"fixture":"profixiq-regression-v1"}'::jsonb, '2026-08-21T18:00:00Z', '2026-08-21T18:00:00Z'),
-  ('f1d00000-0000-4000-8000-000000000004', 'f1000000-0000-4000-8000-000000000001', 'tech:f1100000-0000-4000-8000-000000000006', 'Regression Lead Tech', 'technician', 'both', 'f1100000-0000-4000-8000-000000000006', false, false, true, 200, '{"fixture":"profixiq-regression-v1"}'::jsonb, '2026-08-21T18:00:00Z', '2026-08-21T18:00:00Z'),
-  ('f1d00000-0000-4000-8000-000000000005', 'f1000000-0000-4000-8000-000000000001', 'tech:f1100000-0000-4000-8000-000000000012', 'Regression Field Operator', 'technician', 'both', 'f1100000-0000-4000-8000-000000000012', false, false, true, 200, '{"fixture":"profixiq-regression-v1"}'::jsonb, '2026-08-21T18:00:00Z', '2026-08-21T18:00:00Z'),
-  ('f1d00000-0000-4000-8000-000000000006', 'f1000000-0000-4000-8000-000000000001', 'tech:f1100000-0000-4000-8000-000000000013', 'Regression Field Disabled', 'technician', 'both', 'f1100000-0000-4000-8000-000000000013', false, false, true, 200, '{"fixture":"profixiq-regression-v1"}'::jsonb, '2026-08-21T18:00:00Z', '2026-08-21T18:00:00Z')
+  ('f1d00000-0000-4000-8000-000000000001', 'f1000000-0000-4000-8000-000000000001', 'default-capacity', 'Shop capacity', 'capacity', 'shop', null, null, null, true, true, true, 1000, '{"fixture":"profixiq-regression-v1"}'::jsonb, '2026-08-21T18:00:00Z', '2026-08-21T18:00:00Z'),
+  ('f1d00000-0000-4000-8000-000000000002', 'f1000000-0000-4000-8000-000000000002', 'default-capacity', 'Shop capacity', 'capacity', 'shop', null, null, null, true, true, true, 1000, '{"fixture":"profixiq-regression-v1"}'::jsonb, '2026-08-21T18:00:00Z', '2026-08-21T18:00:00Z'),
+  ('f1d00000-0000-4000-8000-000000000003', 'f1000000-0000-4000-8000-000000000001', 'tech:f1100000-0000-4000-8000-000000000005', 'Regression Technician', 'technician', 'both', 'f1100000-0000-4000-8000-000000000005', null, null, false, false, true, 200, '{"fixture":"profixiq-regression-v1"}'::jsonb, '2026-08-21T18:00:00Z', '2026-08-21T18:00:00Z'),
+  ('f1d00000-0000-4000-8000-000000000004', 'f1000000-0000-4000-8000-000000000001', 'tech:f1100000-0000-4000-8000-000000000006', 'Regression Lead Tech', 'technician', 'both', 'f1100000-0000-4000-8000-000000000006', null, null, false, false, true, 200, '{"fixture":"profixiq-regression-v1"}'::jsonb, '2026-08-21T18:00:00Z', '2026-08-21T18:00:00Z'),
+  ('f1d00000-0000-4000-8000-000000000005', 'f1000000-0000-4000-8000-000000000001', 'tech:f1100000-0000-4000-8000-000000000012', 'Regression Field Operator', 'technician', 'both', 'f1100000-0000-4000-8000-000000000012', null, null, false, false, true, 200, '{"fixture":"profixiq-regression-v1"}'::jsonb, '2026-08-21T18:00:00Z', '2026-08-21T18:00:00Z'),
+  ('f1d00000-0000-4000-8000-000000000006', 'f1000000-0000-4000-8000-000000000001', 'tech:f1100000-0000-4000-8000-000000000013', 'Regression Field Disabled', 'technician', 'both', 'f1100000-0000-4000-8000-000000000013', null, null, false, false, true, 200, '{"fixture":"profixiq-regression-v1"}'::jsonb, '2026-08-21T18:00:00Z', '2026-08-21T18:00:00Z'),
+  ('f1d00000-0000-4000-8000-000000000007', 'f1000000-0000-4000-8000-000000000001', 'service-vehicle:f2600000-0000-4000-8000-000000000001', 'Regression Service Truck', 'service_vehicle', 'mobile', null, 'f2600000-0000-4000-8000-000000000001', 'f2500000-0000-4000-8000-000000000001', true, false, true, 100, '{"fixture":"profixiq-regression-v1"}'::jsonb, '2026-08-21T18:00:00Z', '2026-08-21T18:00:00Z')
 on conflict (id) do update set
   shop_id = excluded.shop_id,
   code = excluded.code,
@@ -508,6 +1004,8 @@ on conflict (id) do update set
   resource_type = excluded.resource_type,
   mode = excluded.mode,
   profile_id = excluded.profile_id,
+  service_vehicle_id = excluded.service_vehicle_id,
+  stock_location_id = excluded.stock_location_id,
   public_bookable = excluded.public_bookable,
   is_fallback = excluded.is_fallback,
   active = excluded.active,
@@ -622,7 +1120,9 @@ begin
         ('f1100000-0000-4000-8000-000000000010'::uuid, 'dispatcher@regression.profixiq.invalid', 'dispatcher', null),
         ('f1100000-0000-4000-8000-000000000011'::uuid, 'driver@regression.profixiq.invalid', 'driver', null),
         ('f1100000-0000-4000-8000-000000000012'::uuid, 'field-operator@regression.profixiq.invalid', 'mechanic', 'f1000000-0000-4000-8000-000000000001'::uuid),
-        ('f1100000-0000-4000-8000-000000000013'::uuid, 'field-disabled@regression.profixiq.invalid', 'mechanic', 'f1000000-0000-4000-8000-000000000001'::uuid)
+        ('f1100000-0000-4000-8000-000000000013'::uuid, 'field-disabled@regression.profixiq.invalid', 'mechanic', 'f1000000-0000-4000-8000-000000000001'::uuid),
+        ('f1100000-0000-4000-8000-000000000014'::uuid, 'administrator@regression.profixiq.invalid', 'admin', 'f1000000-0000-4000-8000-000000000001'::uuid),
+        ('f1100000-0000-4000-8000-000000000015'::uuid, 'revoked-customer@regression.profixiq.invalid', 'customer', null)
     )
     select 1
     from expected e
@@ -660,6 +1160,126 @@ begin
     raise exception 'Regression fixture persona identity/role/tenant tuples are incomplete';
   end if;
 
+  if exists (
+    select 1
+    from public.shop_members member
+    where member.user_id in (
+      'f1100000-0000-4000-8000-000000000008',
+      'f1100000-0000-4000-8000-000000000015'
+    )
+  ) then
+    raise exception 'Portal customer fixtures must not have staff membership';
+  end if;
+
+  if not exists (
+    select 1
+    from public.customer_portal_invites invite
+    join public.customers customer on customer.id = invite.customer_id
+    join public.profiles profile on profile.user_id = customer.user_id
+    join public.work_orders work_order on work_order.id = invite.work_order_id
+    where invite.id = 'f2b00000-0000-4000-8000-000000000001'
+      and invite.token = 'f2c00000-0000-4000-8000-000000000001'
+      and invite.customer_id = 'f1200000-0000-4000-8000-000000000001'
+      and invite.shop_id = 'f1000000-0000-4000-8000-000000000001'
+      and invite.email = 'customer@regression.profixiq.invalid'
+      and invite.accepted_by_user_id = 'f1100000-0000-4000-8000-000000000008'
+      and invite.accepted_at = '2026-08-21T18:05:00Z'
+      and invite.revoked_at is null
+      and invite.expires_at > '2026-08-21T18:00:00Z'
+      and invite.source = 'work_order'
+      and customer.user_id = invite.accepted_by_user_id
+      and customer.shop_id = invite.shop_id
+      and lower(customer.email) = lower(invite.email)
+      and profile.role = 'customer'
+      and profile.shop_id is null
+      and work_order.customer_id = customer.id
+      and work_order.shop_id = invite.shop_id
+  ) or not exists (
+    select 1
+    from public.customer_portal_invites invite
+    join public.customers customer on customer.id = invite.customer_id
+    join public.profiles profile on profile.user_id = customer.user_id
+    where invite.id = 'f2b00000-0000-4000-8000-000000000002'
+      and invite.token = 'f2c00000-0000-4000-8000-000000000002'
+      and invite.customer_id = 'f1200000-0000-4000-8000-000000000004'
+      and invite.shop_id = 'f1000000-0000-4000-8000-000000000001'
+      and invite.email = 'revoked-customer@regression.profixiq.invalid'
+      and invite.accepted_by_user_id = 'f1100000-0000-4000-8000-000000000015'
+      and invite.accepted_at = '2026-08-21T18:05:00Z'
+      and invite.revoked_at = '2026-08-21T18:10:00Z'
+      and invite.revoked_at > invite.accepted_at
+      and invite.expires_at > '2026-08-21T18:00:00Z'
+      and customer.user_id = invite.accepted_by_user_id
+      and customer.shop_id = invite.shop_id
+      and lower(customer.email) = lower(invite.email)
+      and profile.role = 'customer'
+      and profile.shop_id is null
+  ) or not exists (
+    select 1
+    from public.customer_portal_invites invite
+    where invite.id = 'f2b00000-0000-4000-8000-000000000003'
+      and invite.token = 'f2c00000-0000-4000-8000-000000000003'
+      and invite.customer_id = 'f1200000-0000-4000-8000-000000000004'
+      and invite.shop_id = 'f1000000-0000-4000-8000-000000000001'
+      and invite.email = 'revoked-customer@regression.profixiq.invalid'
+      and invite.accepted_at is null
+      and invite.accepted_by_user_id is null
+      and invite.revoked_at is null
+      and invite.expires_at = '2026-08-15T18:00:00Z'
+      and invite.expires_at < '2026-08-21T18:00:00Z'
+  ) then
+    raise exception 'Portal invite lifecycle fixtures are incomplete';
+  end if;
+
+  if exists (
+    select 1
+    from public.customer_portal_invites invite
+    where invite.customer_id = 'f1200000-0000-4000-8000-000000000004'
+      and invite.accepted_by_user_id = 'f1100000-0000-4000-8000-000000000015'
+      and invite.accepted_at is not null
+      and invite.revoked_at is null
+  ) then
+    raise exception 'Revoked Portal customer must not retain an active invite';
+  end if;
+
+  if not exists (
+    select 1
+    from public.staff_capability_overrides override
+    join public.profiles target
+      on target.id = override.profile_id
+    join public.profiles changer
+      on changer.id = override.changed_by_profile_id
+    where override.id = 'f1e00000-0000-4000-8000-000000000001'
+      and override.shop_id = 'f1000000-0000-4000-8000-000000000001'
+      and override.profile_id = 'f1100000-0000-4000-8000-000000000005'
+      and override.capability_key = 'work_order.assignment.manage'
+      and override.effect = 'allow'
+      and override.changed_by_profile_id = 'f1100000-0000-4000-8000-000000000014'
+      and target.shop_id = override.shop_id
+      and changer.shop_id = override.shop_id
+  ) then
+    raise exception 'Individual capability override fixture is incomplete';
+  end if;
+
+  if not exists (
+    select 1
+    from public.work_order_line_technicians assignment
+    join public.work_order_lines line
+      on line.id = assignment.work_order_line_id
+    join public.profiles technician
+      on technician.id = assignment.technician_id
+    join public.profiles assigner
+      on assigner.id = assignment.assigned_by
+    where assignment.work_order_line_id = 'f1600000-0000-4000-8000-000000000001'
+      and assignment.technician_id = 'f1100000-0000-4000-8000-000000000005'
+      and line.assigned_tech_id = assignment.technician_id
+      and line.shop_id = 'f1000000-0000-4000-8000-000000000001'
+      and technician.shop_id = line.shop_id
+      and assigner.shop_id = line.shop_id
+  ) then
+    raise exception 'Canonical technician assignment fixture is incomplete';
+  end if;
+
   if not exists (
     select 1
     from public.work_order_quote_lines quote_line
@@ -670,7 +1290,15 @@ begin
       and quote_line.stage = 'customer_approved'
       and quote_line.decision = 'approved'
       and quote_line.approved_at is not null
+      and quote_line.parts_total = 145.00
+      and quote_line.grand_total = 507.50
       and customer.user_id = 'f1100000-0000-4000-8000-000000000008'
+      and (
+        select coalesce(sum(part.total_price), 0)
+        from public.work_order_parts part
+        where part.work_order_id = work_order.id
+          and part.is_active
+      ) = quote_line.parts_total
   ) then
     raise exception 'Authorized customer quote fixture is incomplete';
   end if;
@@ -696,6 +1324,182 @@ begin
       and line.labor_time = 2.50
   ) then
     raise exception 'Labor and quoted-parts fixture is incomplete';
+  end if;
+
+  if not exists (
+    select 1
+    from public.inspections inspection
+    join public.work_orders work_order
+      on work_order.id = inspection.work_order_id
+    join public.work_order_lines line
+      on line.id = inspection.work_order_line_id
+    join public.vehicles vehicle
+      on vehicle.id = inspection.vehicle_id
+    join public.profiles inspector
+      on inspector.id = inspection.user_id
+    join public.profiles finalizer
+      on finalizer.id = inspection.finalized_by
+    join public.inspection_signatures signature
+      on signature.inspection_id = inspection.id
+    join public.profiles signer
+      on signer.id = signature.signed_by
+    join public.inspection_items item
+      on item.inspection_id = inspection.id
+    join public.work_order_line_labor_segments labor
+      on labor.work_order_line_id = inspection.work_order_line_id
+    join public.profiles technician
+      on technician.id = labor.technician_id
+    join public.profiles labor_creator
+      on labor_creator.id = labor.created_by
+    where inspection.id = 'f1f00000-0000-4000-8000-000000000001'
+      and inspection.shop_id = 'f1000000-0000-4000-8000-000000000001'
+      and inspection.work_order_id = 'f1500000-0000-4000-8000-000000000001'
+      and inspection.work_order_line_id = 'f1600000-0000-4000-8000-000000000001'
+      and work_order.shop_id = inspection.shop_id
+      and work_order.vehicle_id = inspection.vehicle_id
+      and line.shop_id = inspection.shop_id
+      and line.work_order_id = inspection.work_order_id
+      and line.status = 'active'
+      and line.punched_in_at = labor.started_at
+      and line.punched_out_at = labor.ended_at
+      and line.updated_at = labor.ended_at
+      and vehicle.shop_id = inspection.shop_id
+      and inspector.shop_id = inspection.shop_id
+      and finalizer.shop_id = inspection.shop_id
+      and signer.shop_id = inspection.shop_id
+      and inspection.is_canonical
+      and inspection.status = 'completed'
+      and inspection.completed
+      and not inspection.is_draft
+      and inspection.locked
+      and inspection.sync_revision = 1
+      and inspection.summary->>'id' = inspection.id::text
+      and inspection.summary->>'workOrderId' = inspection.work_order_id::text
+      and inspection.summary->>'workOrderLineId' = inspection.work_order_line_id::text
+      and inspection.summary->>'status' = 'completed'
+      and inspection.summary->>'syncRevision' = '1'
+      and jsonb_array_length(inspection.summary->'sections') = 1
+      and signature.id = 'f2a00000-0000-4000-8000-000000000001'
+      and signature.role = 'advisor'
+      and signature.signed_by = inspection.finalized_by
+      and signature.signing_cycle = inspection.signing_cycle
+      and signature.signed_sync_revision = inspection.sync_revision
+      and signature.signed_summary = inspection.summary
+      and signature.signed_summary_hash = encode(
+        extensions.digest(
+          convert_to(signature.signed_summary::text, 'UTF8'),
+          'sha256'
+        ),
+        'hex'
+      )
+      and item.id = 'f2000000-0000-4000-8000-000000000001'
+      and item.status = 'recommend'
+      and inspection.summary #>> '{sections,0,items,0,item}' = item.label
+      and inspection.summary #>> '{sections,0,items,0,status}' = item.status
+      and labor.id = 'f2100000-0000-4000-8000-000000000001'
+      and labor.shop_id = inspection.shop_id
+      and labor.work_order_id = inspection.work_order_id
+      and labor.technician_id = 'f1100000-0000-4000-8000-000000000005'
+      and technician.shop_id = labor.shop_id
+      and labor_creator.shop_id = labor.shop_id
+      and labor.pause_reason = 'labor_pause'
+      and labor.ended_at is not null
+      and labor.ended_at > labor.started_at
+  ) then
+    raise exception 'Inspection and labor evidence fixtures are incomplete';
+  end if;
+
+  if not exists (
+    select 1
+    from public.part_requests request
+    join public.work_orders work_order
+      on work_order.id = request.work_order_id
+    join public.work_order_lines line
+      on line.id = request.job_id
+    join public.work_order_quote_lines quote_line
+      on quote_line.id = request.quote_line_id
+    join public.profiles requester
+      on requester.id = request.requested_by
+    join public.profiles assignee
+      on assignee.id = request.assigned_to
+    join public.part_request_items item on item.request_id = request.id
+    join public.part_request_lines request_line on request_line.request_id = request.id
+    where request.id = 'f2200000-0000-4000-8000-000000000001'
+      and request.shop_id = 'f1000000-0000-4000-8000-000000000001'
+      and request.status = 'approved'
+      and request.handoff_completed_at is null
+      and request.handoff_completed_by is null
+      and work_order.shop_id = request.shop_id
+      and line.shop_id = request.shop_id
+      and line.work_order_id = request.work_order_id
+      and quote_line.shop_id = request.shop_id
+      and quote_line.work_order_id = request.work_order_id
+      and quote_line.work_order_line_id = request.job_id
+      and requester.shop_id = request.shop_id
+      and assignee.shop_id = request.shop_id
+      and item.id = 'f2300000-0000-4000-8000-000000000001'
+      and item.shop_id = request.shop_id
+      and item.work_order_id = request.work_order_id
+      and item.work_order_line_id = request.job_id
+      and item.status = 'approved'
+      and item.approved
+      and item.qty_requested = 1
+      and item.qty_approved = 1
+      and item.qty_ordered = 0
+      and item.qty_received = 0
+      and item.unit_cost = 1.00
+      and item.unit_price = 0
+      and item.quoted_price = 0
+      and request_line.id = 'f2400000-0000-4000-8000-000000000001'
+      and request_line.work_order_line_id = 'f1600000-0000-4000-8000-000000000001'
+  ) or not exists (
+    select 1
+    from public.part_requests request
+    join public.work_orders work_order
+      on work_order.id = request.work_order_id
+    join public.work_order_lines line
+      on line.id = request.job_id
+    join public.part_request_items item on item.request_id = request.id
+    join public.work_order_parts part
+      on part.id = item.source_work_order_part_id
+    join public.parts catalog_part
+      on catalog_part.id = item.part_id
+    join public.stock_locations location
+      on location.id = item.location_id
+    where request.id = 'f2200000-0000-4000-8000-000000000001'
+      and request.shop_id = 'f1000000-0000-4000-8000-000000000001'
+      and request.status = 'approved'
+      and work_order.shop_id = request.shop_id
+      and line.shop_id = request.shop_id
+      and line.work_order_id = request.work_order_id
+      and item.id = 'f2300000-0000-4000-8000-000000000002'
+      and item.shop_id = request.shop_id
+      and item.work_order_id = request.work_order_id
+      and item.work_order_line_id = request.job_id
+      and item.status = 'received'
+      and item.approved
+      and item.qty_requested = 1
+      and item.qty_approved = 1
+      and item.qty_ordered = 0
+      and item.qty_received = 1
+      and item.part_id = 'f2700000-0000-4000-8000-000000000001'
+      and item.location_id = 'f2500000-0000-4000-8000-000000000001'
+      and catalog_part.shop_id = request.shop_id
+      and location.shop_id = request.shop_id
+      and part.id = 'f1800000-0000-4000-8000-000000000002'
+      and part.shop_id = request.shop_id
+      and part.work_order_id = request.work_order_id
+      and part.work_order_line_id = request.job_id
+      and part.lifecycle_status = 'received'
+      and part.quantity_received = 1
+      and part.part_id = item.part_id
+      and part.source_parts_request_id = request.id
+      and part.source_parts_request_item_id = item.id
+      and part.unit_sell_price_snapshot = 0
+      and part.unit_price = 0
+      and part.total_price = 0
+  ) then
+    raise exception 'Pending and received Parts fixtures are incomplete';
   end if;
 
   select count(*) into v_count
@@ -727,15 +1531,100 @@ begin
   end if;
 
   if not exists (
-    select 1 from public.mobile_field_operators
-    where profile_id = 'f1100000-0000-4000-8000-000000000012'
-      and enabled
+    select 1
+    from public.mobile_field_operators operator
+    join public.profiles profile on profile.id = operator.profile_id
+    join public.profiles creator on creator.id = operator.created_by
+    where operator.profile_id = 'f1100000-0000-4000-8000-000000000012'
+      and operator.shop_id = 'f1000000-0000-4000-8000-000000000001'
+      and profile.shop_id = operator.shop_id
+      and creator.shop_id = operator.shop_id
+      and operator.enabled
   ) or not exists (
-    select 1 from public.mobile_field_operators
-    where profile_id = 'f1100000-0000-4000-8000-000000000013'
-      and not enabled
+    select 1
+    from public.mobile_field_operators operator
+    join public.profiles profile on profile.id = operator.profile_id
+    join public.profiles creator on creator.id = operator.created_by
+    where operator.profile_id = 'f1100000-0000-4000-8000-000000000013'
+      and operator.shop_id = 'f1000000-0000-4000-8000-000000000001'
+      and profile.shop_id = operator.shop_id
+      and creator.shop_id = operator.shop_id
+      and not operator.enabled
   ) then
     raise exception 'Field-enabled/disabled actor fixtures are incomplete';
+  end if;
+
+  if not exists (
+    select 1
+    from public.service_vehicles vehicle
+    join public.profiles primary_operator
+      on primary_operator.id = vehicle.primary_user_id
+    join public.profiles vehicle_creator
+      on vehicle_creator.id = vehicle.created_by
+    join public.field_service_vehicle_assignments assignment
+      on assignment.shop_id = vehicle.shop_id
+     and assignment.service_vehicle_id = vehicle.id
+    join public.profiles assigned_operator
+      on assigned_operator.id = assignment.profile_id
+    join public.profiles assignment_actor
+      on assignment_actor.id = assignment.assigned_by_profile_id
+    join public.stock_locations location on location.id = vehicle.stock_location_id
+    join public.parts part on part.shop_id = vehicle.shop_id
+    join public.stock_moves move
+      on move.shop_id = vehicle.shop_id
+     and move.part_id = part.id
+     and move.location_id = location.id
+    join public.profiles move_actor on move_actor.id = move.created_by
+    join public.part_request_items request_item
+      on request_item.id = move.part_request_item_id
+    join public.work_order_parts work_order_part
+      on work_order_part.id = move.work_order_part_id
+    join public.part_stock stock
+      on stock.part_id = part.id
+     and stock.location_id = location.id
+    where vehicle.id = 'f2600000-0000-4000-8000-000000000001'
+      and vehicle.shop_id = 'f1000000-0000-4000-8000-000000000001'
+      and vehicle.primary_user_id = 'f1100000-0000-4000-8000-000000000012'
+      and vehicle.capabilities @> '{"mobile_v1":true,"truck_inventory":true}'::jsonb
+      and assignment.profile_id = 'f1100000-0000-4000-8000-000000000012'
+      and primary_operator.shop_id = vehicle.shop_id
+      and vehicle_creator.shop_id = vehicle.shop_id
+      and assigned_operator.shop_id = vehicle.shop_id
+      and assignment_actor.shop_id = vehicle.shop_id
+      and location.id = 'f2500000-0000-4000-8000-000000000001'
+      and location.shop_id = vehicle.shop_id
+      and part.id = 'f2700000-0000-4000-8000-000000000001'
+      and move.id = 'f2800000-0000-4000-8000-000000000001'
+      and move_actor.shop_id = vehicle.shop_id
+      and move.qty_change = 1
+      and move.lifecycle_quantity = 1
+      and move.reason = 'receive'
+      and move.metadata->>'operation' = 'receive'
+      and (move.metadata->>'qty_received')::numeric = move.lifecycle_quantity
+      and move.reference_kind = 'part_request_item'
+      and move.reference_id = 'f2300000-0000-4000-8000-000000000002'
+      and move.part_request_item_id = 'f2300000-0000-4000-8000-000000000002'
+      and move.work_order_part_id = 'f1800000-0000-4000-8000-000000000002'
+      and request_item.shop_id = vehicle.shop_id
+      and request_item.part_id = part.id
+      and request_item.location_id = location.id
+      and work_order_part.shop_id = vehicle.shop_id
+      and work_order_part.part_id = part.id
+      and stock.id = 'f2900000-0000-4000-8000-000000000001'
+      and stock.qty_on_hand = 1
+      and stock.qty_reserved = 0
+      and stock.qty_on_hand >= 0
+      and stock.qty_reserved >= 0
+      and stock.qty_on_hand = (
+        select coalesce(sum(ledger.qty_change), 0)
+        from public.stock_moves ledger
+        where ledger.part_id = stock.part_id
+          and ledger.location_id = stock.location_id
+          and ledger.shop_id = vehicle.shop_id
+          and ledger.reason not in ('wo_allocate', 'wo_release')
+      )
+  ) then
+    raise exception 'Field service truck and inventory fixtures are incomplete';
   end if;
 
   select count(*) into v_count
@@ -746,9 +1635,10 @@ begin
     'f1d00000-0000-4000-8000-000000000003',
     'f1d00000-0000-4000-8000-000000000004',
     'f1d00000-0000-4000-8000-000000000005',
-    'f1d00000-0000-4000-8000-000000000006'
+    'f1d00000-0000-4000-8000-000000000006',
+    'f1d00000-0000-4000-8000-000000000007'
   ) and active;
-  if v_count <> 6 or not exists (
+  if v_count <> 7 or not exists (
     select 1
     from public.scheduling_resources r
     where r.id = 'f1d00000-0000-4000-8000-000000000005'
@@ -756,6 +1646,16 @@ begin
       and r.profile_id = 'f1100000-0000-4000-8000-000000000012'
       and r.resource_type = 'technician'
       and r.mode = 'both'
+      and r.active
+  ) or not exists (
+    select 1
+    from public.scheduling_resources r
+    where r.id = 'f1d00000-0000-4000-8000-000000000007'
+      and r.shop_id = 'f1000000-0000-4000-8000-000000000001'
+      and r.service_vehicle_id = 'f2600000-0000-4000-8000-000000000001'
+      and r.stock_location_id = 'f2500000-0000-4000-8000-000000000001'
+      and r.resource_type = 'service_vehicle'
+      and r.mode = 'mobile'
       and r.active
   ) then
     raise exception 'Scheduler capacity fixtures are incomplete';

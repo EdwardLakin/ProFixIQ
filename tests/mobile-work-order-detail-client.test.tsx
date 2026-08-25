@@ -1,12 +1,14 @@
 import React from "react";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   fetch: vi.fn(),
+  focusedJobProps: vi.fn(),
   getSession: vi.fn(),
   getUser: vi.fn(),
   getOfflineMutationScope: vi.fn(),
+  jobCardProps: vi.fn(),
   loadProjectedWorkOrderSnapshot: vi.fn(),
   profileLookup: vi.fn(),
   removeMobileWorkOrderDetailSnapshots: vi.fn(async () => undefined),
@@ -112,12 +114,24 @@ vi.mock("@/features/assistant/components/AskAssistantEntry", () => ({
   default: () => null,
 }));
 vi.mock("@/features/work-orders/mobile/MobileFocusedJob", () => ({
-  default: () => <div>Focused job</div>,
+  default: (props: { workOrderLineId: string }) => {
+    mocks.focusedJobProps(props);
+    return <div>Focused job {props.workOrderLineId}</div>;
+  },
 }));
 vi.mock("@/features/work-orders/components/JobCard", () => ({
-  JobCard: ({ line }: { line: { description?: string | null } }) => (
-    <article>{line.description ?? "Untitled job"}</article>
-  ),
+  JobCard: (props: {
+    line: { description?: string | null };
+    isPunchedIn?: boolean;
+    displayNumber?: number | string;
+  }) => {
+    mocks.jobCardProps(props);
+    return (
+      <article data-display-number={props.displayNumber}>
+        {props.line.description ?? "Untitled job"}
+      </article>
+    );
+  },
 }));
 vi.mock("@/features/work-orders/lib/jobPunchTransitionsClient", () => ({
   runJobPunchTransition: vi.fn(),
@@ -130,7 +144,11 @@ import MobileWorkOrderClient from "@/features/work-orders/mobile/MobileWorkOrder
 
 const WORK_ORDER_ID = "11111111-1111-4111-8111-111111111111";
 
-function detailSnapshot(customId = "WO-000014") {
+function detailSnapshot(
+  customId = "WO-000014",
+  lines: Array<Record<string, unknown>> = [],
+  activeTechnicianIdsByLine: Record<string, string[]> = {},
+) {
   return {
     workOrder: {
       id: WORK_ORDER_ID,
@@ -142,7 +160,7 @@ function detailSnapshot(customId = "WO-000014") {
       created_at: "2026-08-21T18:00:00.000Z",
       expected_completion_at: "invalid-legacy-date",
     },
-    lines: [],
+    lines,
     quoteLines: [],
     vehicle: null,
     customer: null,
@@ -151,7 +169,7 @@ function detailSnapshot(customId = "WO-000014") {
       allocationsByLine: {},
       canonicalPartsByLine: {},
       technicianIdsByLine: {},
-      activeTechnicianIdsByLine: {},
+      activeTechnicianIdsByLine,
       partRequestsByLine: {},
       partRequestsByQuoteLine: {},
     },
@@ -236,6 +254,92 @@ describe("mobile work-order detail client", () => {
       `/api/mobile/work-orders/${WORK_ORDER_ID}`,
       expect.objectContaining({ credentials: "include" }),
     );
+  });
+
+  it("keeps canonical line numbers when operational priority reorders cards", async () => {
+    const snapshot = detailSnapshot();
+    mocks.fetch.mockResolvedValue(
+      response({
+        ...snapshot,
+        lineContext: {
+          ...snapshot.lineContext,
+          activeTechnicianIdsByLine: { "line-2": ["tech-2"] },
+        },
+        lines: [
+          {
+            id: "line-1",
+            work_order_id: WORK_ORDER_ID,
+            shop_id: "shop-1",
+            line_no: 1,
+            description: "Brake inspection",
+            status: "awaiting",
+            approval_state: "approved",
+            created_at: "2026-08-21T18:00:00.000Z",
+          },
+          {
+            id: "line-2",
+            work_order_id: WORK_ORDER_ID,
+            shop_id: "shop-1",
+            line_no: 2,
+            description: "Front brake pads",
+            status: "in_progress",
+            approval_state: "approved",
+            created_at: "2026-08-21T18:01:00.000Z",
+          },
+        ],
+      }),
+    );
+
+    render(<MobileWorkOrderClient routeId={WORK_ORDER_ID} />);
+
+    const prioritized = await screen.findByText("Front brake pads");
+    const inspection = screen.getByText("Brake inspection");
+    expect(screen.getAllByRole("article").map((card) => card.textContent)).toEqual([
+      "Front brake pads",
+      "Brake inspection",
+    ]);
+    expect(prioritized).toHaveAttribute("data-display-number", "2");
+    expect(inspection).toHaveAttribute("data-display-number", "1");
+  });
+
+  it("keeps one canonical display number across hidden history and approval views", async () => {
+    const snapshot = detailSnapshot();
+    mocks.fetch.mockResolvedValue(
+      response({
+        ...snapshot,
+        lines: [
+          {
+            id: "voided-legacy-line",
+            work_order_id: WORK_ORDER_ID,
+            shop_id: "shop-1",
+            line_no: null,
+            description: "Voided diagnosis",
+            status: "completed",
+            approval_state: "approved",
+            voided_at: "2026-08-21T18:02:00.000Z",
+            created_at: "2026-08-21T18:00:00.000Z",
+          },
+          {
+            id: "visible-legacy-line",
+            work_order_id: WORK_ORDER_ID,
+            shop_id: "shop-1",
+            line_no: null,
+            description: "Customer approval",
+            status: "awaiting_approval",
+            approval_state: "pending",
+            created_at: "2026-08-21T18:01:00.000Z",
+          },
+        ],
+      }),
+    );
+
+    render(<MobileWorkOrderClient routeId={WORK_ORDER_ID} />);
+
+    const renderedCard = await screen.findByRole("article");
+    expect(renderedCard).toHaveTextContent("Customer approval");
+    expect(renderedCard).toHaveAttribute("data-display-number", "2");
+    expect(screen.getByText(/^2\.\s+Customer approval$/)).toBeInTheDocument();
+    expect(screen.queryByText("Voided diagnosis")).not.toBeInTheDocument();
   });
 
   it("renders explicit denied and missing states without stale detail", async () => {
@@ -331,5 +435,65 @@ describe("mobile work-order detail client", () => {
     await screen.findByText("WO-RECONNECTED");
     await waitFor(() => expect(mocks.fetch).toHaveBeenCalledTimes(1));
     expect(screen.queryByText("WO-OFFLINE")).not.toBeInTheDocument();
+  });
+
+  it("passes the genuine active line to the focused-job CTA", async () => {
+    const staleLineId = "22222222-2222-4222-8222-222222222222";
+    const activeLineId = "33333333-3333-4333-8333-333333333333";
+    mocks.fetch.mockResolvedValue(
+      response(
+        detailSnapshot(
+          "WO-ACTIVE-CTA",
+          [
+            {
+              id: staleLineId,
+              work_order_id: WORK_ORDER_ID,
+              shop_id: "shop-1",
+              description: "Older stale job",
+              status: "in_progress",
+              approval_state: "approved",
+              assigned_tech_id: "tech-1",
+              punched_in_at: null,
+              punched_out_at: null,
+              created_at: "2026-08-20T12:00:00.000Z",
+            },
+            {
+              id: activeLineId,
+              work_order_id: WORK_ORDER_ID,
+              shop_id: "shop-1",
+              description: "Canonical active job",
+              status: "awaiting",
+              approval_state: "approved",
+              assigned_tech_id: "tech-2",
+              punched_in_at: null,
+              punched_out_at: null,
+              created_at: "2026-08-21T12:00:00.000Z",
+            },
+          ],
+          { [activeLineId]: ["tech-2"] },
+        ),
+      ),
+    );
+
+    render(<MobileWorkOrderClient routeId={WORK_ORDER_ID} />);
+
+    await screen.findByText("WO-ACTIVE-CTA");
+    await waitFor(() => {
+      const jobCards = mocks.jobCardProps.mock.calls.map(([props]) => props);
+      expect(
+        jobCards.find((props) => props.line.id === staleLineId),
+      ).toEqual(expect.objectContaining({ isPunchedIn: false }));
+      expect(
+        jobCards.find((props) => props.line.id === activeLineId),
+      ).toEqual(expect.objectContaining({ isPunchedIn: true }));
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open active job" }),
+    );
+
+    await screen.findByText(`Focused job ${activeLineId}`);
+    expect(mocks.focusedJobProps).toHaveBeenLastCalledWith(
+      expect.objectContaining({ workOrderLineId: activeLineId }),
+    );
   });
 });

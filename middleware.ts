@@ -105,7 +105,15 @@ type PortalAccess = {
   fleet: boolean;
 };
 
-function createMiddlewareSupabase(req: NextRequest, res: NextResponse) {
+type MiddlewareResponseState = {
+  current: NextResponse;
+};
+
+function createMiddlewareSupabase(
+  req: NextRequest,
+  responseState: MiddlewareResponseState,
+  rebuildResponse: () => NextResponse,
+) {
   const { supabaseUrl, supabaseAnonKey } = readSupabasePublicEnv("middleware");
   return createServerClient<Database>(supabaseUrl, supabaseAnonKey, {
     cookies: {
@@ -113,10 +121,18 @@ function createMiddlewareSupabase(req: NextRequest, res: NextResponse) {
         return req.cookies.getAll();
       },
       setAll(cookiesToSet) {
-        cookiesToSet.forEach(({ name, value, options }) => {
+        cookiesToSet.forEach(({ name, value }) => {
           req.cookies.set(name, value);
-          res.cookies.set(name, value, options);
         });
+
+        const nextResponse = rebuildResponse();
+        responseState.current.cookies
+          .getAll()
+          .forEach((cookie) => nextResponse.cookies.set(cookie));
+        cookiesToSet.forEach(({ name, value, options }) => {
+          nextResponse.cookies.set(name, value, options);
+        });
+        responseState.current = nextResponse;
       },
     },
   });
@@ -245,14 +261,20 @@ export async function middleware(req: NextRequest) {
   const isGuidedOnboardingPath =
     pathname === "/dashboard/onboarding-v2" ||
     pathname.startsWith("/dashboard/onboarding-v2/");
-  const requestHeaders = new Headers(req.headers);
-  requestHeaders.set("x-next-pathname", pathname);
-  if (fleetProductRequest) {
-    requestHeaders.set("x-profixiq-product-host", "fleet");
-  } else if (opsProductRequest) {
-    requestHeaders.set("x-profixiq-product-host", "ops");
-  }
-
+  const guidedSessionId = req.nextUrl.searchParams
+    .get("guidedSessionId")
+    ?.trim();
+  const guidedStep = req.nextUrl.searchParams.get("guidedStep")?.trim();
+  const guidedReturnTo = safeRedirectPath(
+    req.nextUrl.searchParams.get("returnTo"),
+  );
+  const isGuidedOnboardingRequest =
+    isGuidedOnboardingPath ||
+    Boolean(
+      guidedSessionId &&
+        guidedStep &&
+        guidedReturnTo?.startsWith("/dashboard/onboarding-v2/"),
+    );
   if (
     pathname === "/portal/fleet/auth/sign-in" ||
     pathname === "/portal/fleet/auth/sign-in/"
@@ -269,18 +291,34 @@ export async function middleware(req: NextRequest) {
   if (fleetInternalPath) fleetRewriteTarget.pathname = fleetInternalPath;
   if (opsInternalPath) fleetRewriteTarget.pathname = opsInternalPath;
 
-  const res =
-    fleetInternalPath || opsInternalPath
+  const rebuildResponse = () => {
+    const requestHeaders = new Headers(req.headers);
+    requestHeaders.set("x-next-pathname", pathname);
+    if (fleetProductRequest) {
+      requestHeaders.set("x-profixiq-product-host", "fleet");
+    } else if (opsProductRequest) {
+      requestHeaders.set("x-profixiq-product-host", "ops");
+    }
+
+    return fleetInternalPath || opsInternalPath
       ? NextResponse.rewrite(fleetRewriteTarget, {
           request: { headers: requestHeaders },
         })
       : NextResponse.next({ request: { headers: requestHeaders } });
+  };
+  const responseState: MiddlewareResponseState = {
+    current: rebuildResponse(),
+  };
 
   if (pathname.startsWith("/api")) {
-    if (!hasSupabasePublicEnv()) return res;
-    const supabase = createMiddlewareSupabase(req, res);
+    if (!hasSupabasePublicEnv()) return responseState.current;
+    const supabase = createMiddlewareSupabase(
+      req,
+      responseState,
+      rebuildResponse,
+    );
     await supabase.auth.getUser();
-    return res;
+    return responseState.current;
   }
 
   const isPortal = pathname === "/portal" || pathname.startsWith("/portal/");
@@ -336,10 +374,14 @@ export async function middleware(req: NextRequest) {
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
       ),
     });
-    return res;
+    return responseState.current;
   }
 
-  const supabase = createMiddlewareSupabase(req, res);
+  const supabase = createMiddlewareSupabase(
+    req,
+    responseState,
+    rebuildResponse,
+  );
   const {
     data: { user },
     error: userError,
@@ -359,12 +401,11 @@ export async function middleware(req: NextRequest) {
 
   if (user && !isPortal) {
     try {
-      const { profile } = await resolveCanonicalStaffProfile(
-        supabase,
-        user.id,
-      );
+      const { profile } = await resolveCanonicalStaffProfile(supabase, user.id);
 
-      const normalizedRole = String(profile?.role ?? "").trim().toLowerCase();
+      const normalizedRole = String(profile?.role ?? "")
+        .trim()
+        .toLowerCase();
       const pendingOwnerBootstrap =
         normalizedRole === "owner" &&
         Boolean(profile?.shop_id) &&
@@ -397,7 +438,7 @@ export async function middleware(req: NextRequest) {
           access.fleet && !access.customer ? "/portal/fleet" : "/portal",
           fleetProductRequest,
         );
-        return redirectWithResponseHeaders(target, res);
+        return redirectWithResponseHeaders(target, responseState.current);
       }
 
       if (isFieldSignIn) {
@@ -407,9 +448,9 @@ export async function middleware(req: NextRequest) {
             "/onboarding",
             fleetProductRequest,
           );
-          return redirectWithResponseHeaders(target, res);
+          return redirectWithResponseHeaders(target, responseState.current);
         }
-        return res;
+        return responseState.current;
       }
 
       const defaultAuthenticatedPath = !completed
@@ -419,24 +460,24 @@ export async function middleware(req: NextRequest) {
           : "/dashboard";
       const to = redirectParam ?? defaultAuthenticatedPath;
       const target = productRequestUrl(req, to, fleetProductRequest);
-      return redirectWithResponseHeaders(target, res);
+      return redirectWithResponseHeaders(target, responseState.current);
     }
 
     if (user && isCustomerSignIn) {
       const access = await resolvePortalAccessServer(supabase, user.id);
-      if (!access.customer && !access.fleet) return res;
+      if (!access.customer && !access.fleet) return responseState.current;
 
       const surface: PortalSurface = access.customer ? "customer" : "fleet";
       const to = isPortalPathForSurface(redirectParam, surface)
         ? redirectParam!
         : PORTAL_HOME[surface];
       const target = productRequestUrl(req, to, fleetProductRequest);
-      return redirectWithResponseHeaders(target, res);
+      return redirectWithResponseHeaders(target, responseState.current);
     }
 
     if (fleetProductRequest && isFleetPortalAuthPage && user) {
       const access = await resolvePortalAccessServer(supabase, user.id);
-      if (!access.fleet) return res;
+      if (!access.fleet) return responseState.current;
 
       const target = productRequestUrl(
         req,
@@ -445,7 +486,7 @@ export async function middleware(req: NextRequest) {
           : "/portal/fleet",
         true,
       );
-      return redirectWithResponseHeaders(target, res);
+      return redirectWithResponseHeaders(target, responseState.current);
     }
 
     if (
@@ -477,7 +518,7 @@ export async function middleware(req: NextRequest) {
         : PORTAL_HOME[surface];
 
       const target = productRequestUrl(req, to, fleetProductRequest);
-      return redirectWithResponseHeaders(target, res);
+      return redirectWithResponseHeaders(target, responseState.current);
     }
 
     if (
@@ -498,10 +539,10 @@ export async function middleware(req: NextRequest) {
             : redirectParam!,
         );
       }
-      return redirectWithResponseHeaders(login, res);
+      return redirectWithResponseHeaders(login, responseState.current);
     }
 
-    return res;
+    return responseState.current;
   }
 
   if (!user) {
@@ -516,7 +557,7 @@ export async function middleware(req: NextRequest) {
         "redirect",
         fleetProductRequest ? requestPathname + search : pathname + search,
       );
-      return redirectWithResponseHeaders(login, res);
+      return redirectWithResponseHeaders(login, responseState.current);
     }
 
     const isFieldRoute =
@@ -529,7 +570,7 @@ export async function middleware(req: NextRequest) {
         : "/shop/sign-in";
     const login = productRequestUrl(req, loginPath, fleetProductRequest);
     login.searchParams.set("redirect", pathname + search);
-    return redirectWithResponseHeaders(login, res);
+    return redirectWithResponseHeaders(login, responseState.current);
   }
 
   if (isPortalOnlyAccount && !isPortal) {
@@ -539,37 +580,37 @@ export async function middleware(req: NextRequest) {
       access.fleet && !access.customer ? "/portal/fleet" : "/portal",
       fleetProductRequest,
     );
-    return redirectWithResponseHeaders(target, res);
+    return redirectWithResponseHeaders(target, responseState.current);
   }
 
   if (
     mobileDeviceRequest &&
     completed &&
     !isPortal &&
-    !isGuidedOnboardingPath &&
+    !isGuidedOnboardingRequest &&
     !pathname.startsWith("/mobile")
   ) {
     const requestedHref = `${pathname}${search}`;
     const mobileHref = resolveMobileHref(requestedHref);
     if (mobileHref && mobileHref !== requestedHref) {
       const target = productRequestUrl(req, mobileHref, fleetProductRequest);
-      return redirectWithResponseHeaders(target, res);
+      return redirectWithResponseHeaders(target, responseState.current);
     }
   }
 
   if (pathname.startsWith("/mobile") && !canUseMobile) {
     if (!completed) {
       const target = productRequestUrl(req, "/onboarding", fleetProductRequest);
-      return redirectWithResponseHeaders(target, res);
+      return redirectWithResponseHeaders(target, responseState.current);
     }
 
     // Keep completed but unsupported/legacy roles inside the mobile surface.
     // `/mobile` renders the role-not-configured state without exposing desktop.
     if (pathname !== "/mobile") {
       const target = productRequestUrl(req, "/mobile", fleetProductRequest);
-      return redirectWithResponseHeaders(target, res);
+      return redirectWithResponseHeaders(target, responseState.current);
     }
-    return res;
+    return responseState.current;
   }
 
   if (isPortal) {
@@ -581,7 +622,7 @@ export async function middleware(req: NextRequest) {
         "/portal/fleet",
         fleetProductRequest,
       );
-      return redirectWithResponseHeaders(target, res);
+      return redirectWithResponseHeaders(target, responseState.current);
     }
 
     if (!access.fleet && isFleetPortalPath) {
@@ -592,16 +633,16 @@ export async function middleware(req: NextRequest) {
           : "/portal",
         fleetProductRequest,
       );
-      return redirectWithResponseHeaders(target, res);
+      return redirectWithResponseHeaders(target, responseState.current);
     }
   }
 
   if (!isPortal && !completed && !pathname.startsWith("/onboarding")) {
     const target = productRequestUrl(req, "/onboarding", fleetProductRequest);
-    return redirectWithResponseHeaders(target, res);
+    return redirectWithResponseHeaders(target, responseState.current);
   }
 
-  return res;
+  return responseState.current;
 }
 
 export const config = {
@@ -651,13 +692,27 @@ export const config = {
     "/onboarding/:path*",
     "/ops/:path*",
     "/dashboard/:path*",
+    "/agent/:path*",
+    "/ai/assistant",
+    "/assistant/:path*",
+    "/billing/:path*",
+    "/chat/:path*",
+    "/copilot/:path*",
+    "/customers/:path*",
+    "/estimates/:path*",
     "/fleet/:path*",
+    "/inspection-reports/:path*",
+    "/inspection_template_suggestions",
     "/work-orders/:path*",
     "/quote-review/:path*",
     "/inspections/:path*",
+    "/menu/:path*",
+    "/menu_item_suggestions",
     "/mobile/:path*",
     "/parts/:path*",
     "/api/:path*",
     "/tech/queue",
+    "/tech/performance",
+    "/vehicles/:path*",
   ],
 };

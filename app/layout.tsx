@@ -3,8 +3,7 @@ import "./light-mode-contrast.css";
 import { Inter, Black_Ops_One } from "next/font/google";
 import Script from "next/script";
 import { headers } from "next/headers";
-import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
-import { getDashboardIdentity } from "@/features/dashboard/server/dashboard-shell-data";
+import { resolveRootShellContext } from "@/features/dashboard/server/root-shell-context";
 import PwaRuntime from "@/features/shared/components/pwa/PwaRuntime";
 import RootShellBoundary from "./RootShellBoundary";
 import type { Metadata, Viewport } from "next";
@@ -78,14 +77,11 @@ export default async function RootLayout({
 
   const shouldPreloadAppShell = !isStandalonePublicRoute(pathname);
 
-  const [session, dashboardIdentity] = shouldPreloadAppShell
-    ? await Promise.all([
-        createServerSupabaseRSC()
-          .auth.getSession()
-          .then((result) => result.data.session),
-        getDashboardIdentity(),
-      ])
-    : [null, null];
+  const rootShellContext = shouldPreloadAppShell
+    ? await resolveRootShellContext()
+    : null;
+  const session = rootShellContext?.session ?? null;
+  const dashboardIdentity = rootShellContext?.dashboardIdentity ?? null;
 
   return (
     <html
