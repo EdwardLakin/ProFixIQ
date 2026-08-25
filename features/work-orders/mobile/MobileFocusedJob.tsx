@@ -498,12 +498,12 @@ export default function MobileFocusedJob(props: {
             // ✅ keep notes synced unless user is editing
             if (!notesDirty) setTechNotes(nextLine.notes ?? "");
 
-            // ✅ if WO pointer changes, reload related entities
-            const nextWoId = nextLine.work_order_id ?? null;
-            const currentWoId = line?.work_order_id ?? null;
-            if (nextWoId !== currentWoId) {
-              void loadProjectedJob(workOrderLineId);
-            }
+            // The canonical activity signal lives in labor segments, not on
+            // the line row. Punch transitions also update the line, so reload
+            // the role-shaped projection for every line event to retire stale
+            // active technician IDs before a later hold release returns the
+            // line to `awaiting`.
+            void loadProjectedJob(workOrderLineId);
           }
         },
       )

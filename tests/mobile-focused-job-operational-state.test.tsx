@@ -1,11 +1,12 @@
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   fetch: vi.fn(),
   findProjectedTechnicianJob: vi.fn(),
   getTechnicianJobEditorDraft: vi.fn(),
+  realtimeHandlers: {} as Record<string, (payload: unknown) => void>,
 }));
 
 vi.mock("sonner", () => ({
@@ -56,7 +57,16 @@ vi.mock("@/features/shared/lib/offline/database", () => ({
 
 vi.mock("@/features/shared/lib/supabase/client", () => {
   const channel: Record<string, ReturnType<typeof vi.fn>> = {};
-  channel.on = vi.fn(() => channel);
+  channel.on = vi.fn(
+    (
+      _event: string,
+      config: { table?: string },
+      handler: (payload: unknown) => void,
+    ) => {
+      if (config.table) mocks.realtimeHandlers[config.table] = handler;
+      return channel;
+    },
+  );
   channel.subscribe = vi.fn(() => channel);
   return {
     createBrowserSupabase: vi.fn(() => ({
@@ -221,6 +231,9 @@ function renderFocusedJob() {
 describe("mobile focused-job operational state", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    for (const key of Object.keys(mocks.realtimeHandlers)) {
+      delete mocks.realtimeHandlers[key];
+    }
     setOnline(true);
     mocks.findProjectedTechnicianJob.mockResolvedValue(null);
     mocks.getTechnicianJobEditorDraft.mockResolvedValue(null);
@@ -260,6 +273,47 @@ describe("mobile focused-job operational state", () => {
       await screen.findByRole("button", { name: "Finish Job" }),
     ).toBeInTheDocument();
     expect(screen.getByText("Active", { selector: "span" })).toBeInTheDocument();
+  });
+
+  it("retires stale canonical activity after a realtime punch line change", async () => {
+    mocks.fetch.mockResolvedValue(
+      response(
+        workOrderSnapshot(
+          line({ status: "awaiting" }),
+          ["tech-1"],
+        ),
+      ),
+    );
+
+    renderFocusedJob();
+
+    expect(
+      await screen.findByRole("button", { name: "Finish Job" }),
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(mocks.realtimeHandlers.work_order_lines).toEqual(
+        expect.any(Function),
+      ),
+    );
+
+    mocks.fetch.mockResolvedValue(
+      response(workOrderSnapshot(line({ status: "awaiting" }))),
+    );
+    act(() => {
+      mocks.realtimeHandlers.work_order_lines({
+        new: line({ status: "awaiting" }),
+      });
+    });
+
+    expect(
+      await screen.findByRole("button", { name: "Start Job" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Finish Job" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText("Awaiting", { selector: "span" }),
+    ).toBeInTheDocument();
   });
 
   it.each([
