@@ -51,10 +51,14 @@ describe("Mobile Service shell", () => {
     expect(shell).toContain("canManageScheduling ?");
   });
 
-  it("keeps dispatch mutations online-only but preserves an authenticated actor-scoped snapshot", () => {
+  it("preserves authenticated actor scope for snapshots and queued dispatch mutations", () => {
     expect(shell).toContain("writeFieldActiveSnapshot(scope, snapshot)");
     expect(shell).toContain("readFieldActiveSnapshot(boundScope)");
-    expect(shell).not.toContain("getOfflineMutationScope");
+    expect(shell).toContain("const persistedScope = getOfflineMutationScope()");
+    expect(shell).toContain(
+      "persistedScope?.userId === boundScope.userId",
+    );
+    expect(shell).toContain("validateScope,");
     expect(shell).not.toContain('getItem("profixiq:mobile-service:active:v1")');
     expect(shell).toContain("online && !stale");
     expect(shell).toContain("existing offline mobile workflow");
