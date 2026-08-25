@@ -211,10 +211,8 @@ describe("persistent Technician CoPilot shell", () => {
       'shouldCheck={canonicalizeRole(role) === "mechanic"}',
     );
     expect(mobileShell.match(/<TechnicianCopilotShell/g)).toHaveLength(1);
-    expect(desktopShell).toContain(
-      "resolveCanonicalStaffProfile(supabase, uid)",
-    );
-    expect(desktopShell).toContain("if (profile) setRole(profile.role)");
+    expect(desktopShell).toContain("resolveCanonicalStaffProfile(");
+    expect(desktopShell).toContain("setRole(profile?.role ?? null)");
     expect(desktopRoute).not.toContain("<TechnicianTextCopilot");
     expect(mobileRoute).not.toContain("<TechnicianTextCopilot");
   });
