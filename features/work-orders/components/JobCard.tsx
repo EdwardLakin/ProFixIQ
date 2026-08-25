@@ -58,6 +58,7 @@ type JobCardProps = {
   partsCount?: number;
   partsStatusLabel?: string | null;
   technicians: Pick<ProfileRow, "id" | "full_name">[];
+  primaryTechnicianName?: string | null;
   canAssign: boolean;
   canDelete?: boolean;
   isPunchedIn: boolean;
@@ -327,6 +328,7 @@ export function JobCard({
   partsCount,
   partsStatusLabel,
   technicians,
+  primaryTechnicianName = null,
   canAssign,
   canDelete,
   isPunchedIn,
@@ -380,11 +382,14 @@ export function JobCard({
   }, [isCompletedLike]);
 
   const jobLabel = line.description || line.complaint || "Untitled job";
+  const primaryTechnicianDisplayName = primaryTechnicianName?.trim() || null;
   const assignedTech = useMemo(() => {
     const techId = line.assigned_tech_id;
     const profile = technicians.find((tech) => tech.id === techId) ?? null;
     if (techId && !profile) {
-      return "Unavailable technician (current)";
+      return (
+        primaryTechnicianDisplayName ?? "Unavailable technician (current)"
+      );
     }
     const primaryDisplay = resolvePrimaryTechDisplay(
       line,
@@ -397,7 +402,15 @@ export function JobCard({
       return `Primary not set · ${assignedTechnicianIds.length} assigned`;
     }
     return primaryDisplay;
-  }, [assignedTechnicianIds.length, line, technicians]);
+  }, [
+    assignedTechnicianIds.length,
+    line,
+    primaryTechnicianDisplayName,
+    technicians,
+  ]);
+  const currentTechnicianOptionLabel = primaryTechnicianDisplayName
+    ? `${primaryTechnicianDisplayName} (current)`
+    : "Unavailable technician (current)";
   const assignedTechnicianIsSelectable = Boolean(
     line.assigned_tech_id &&
       technicians.some((technician) => technician.id === line.assigned_tech_id),
@@ -518,7 +531,7 @@ export function JobCard({
                   </option>
                   {line.assigned_tech_id && !assignedTechnicianIsSelectable ? (
                     <option value={line.assigned_tech_id}>
-                      Unavailable technician (current)
+                      {currentTechnicianOptionLabel}
                     </option>
                   ) : null}
                   {technicians.map((tech) => (
@@ -684,7 +697,7 @@ export function JobCard({
                       </option>
                       {line.assigned_tech_id && !assignedTechnicianIsSelectable ? (
                         <option value={line.assigned_tech_id}>
-                          Unavailable technician (current)
+                          {currentTechnicianOptionLabel}
                         </option>
                       ) : null}
                       {technicians.map((tech) => (
