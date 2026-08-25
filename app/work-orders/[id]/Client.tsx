@@ -49,6 +49,7 @@ import {
   shouldUseReadOnlyWorkOrderView,
 } from "@/features/work-orders/lib/display/workOrderPresentation";
 import { filterAllocationsNotBackedByCanonicalParts } from "@/features/work-orders/lib/display/workOrderParts";
+import { resolveTechnicianDisplayName } from "@/features/work-orders/lib/display/linePresentation";
 import {
   getPartsRequestDisplayState,
   getPartsRequestStatusLabel,
@@ -302,6 +303,17 @@ export default function WorkOrderIdClient(): JSX.Element {
   const [techNamesById, setTechNamesById] = useState<Record<string, string>>(
     {},
   );
+  const readableTechNamesById = useMemo(() => {
+    const result = { ...techNamesById };
+    for (const technician of assignables) {
+      const resolved = resolveTechnicianDisplayName(
+        result[technician.id],
+        technician.full_name,
+      );
+      if (resolved) result[technician.id] = resolved;
+    }
+    return result;
+  }, [assignables, techNamesById]);
   const assignmentOperationsRef = useRef<
     Map<string, { technicianId: string; operationKey: string }>
   >(new Map());
@@ -1581,7 +1593,7 @@ export default function WorkOrderIdClient(): JSX.Element {
     : null;
   const panelPrimaryTechId = panelLine?.assigned_tech_id ?? null;
   const panelPrimaryTechName = panelPrimaryTechId
-    ? techNamesById[panelPrimaryTechId]?.trim() || null
+    ? readableTechNamesById[panelPrimaryTechId]?.trim() || null
     : null;
   const panelPrimaryTech = panelPrimaryTechId
     ? assignables.find((profile) => profile.id === panelPrimaryTechId) ??
@@ -2218,7 +2230,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                     const activeTechnicianNames = activeTechnicianIds
                       .map(
                         (techId) =>
-                          techNamesById[techId]?.trim() ||
+                          readableTechNamesById[techId]?.trim() ||
                           assignables
                             .find((tech) => tech.id === techId)
                             ?.full_name?.trim() ||
@@ -2241,7 +2253,9 @@ export default function WorkOrderIdClient(): JSX.Element {
                         technicians={assignables}
                         primaryTechnicianName={
                           ln.assigned_tech_id
-                            ? techNamesById[ln.assigned_tech_id]?.trim() || null
+                            ? readableTechNamesById[
+                                ln.assigned_tech_id
+                              ]?.trim() || null
                             : null
                         }
                         canAssign={canAssign}

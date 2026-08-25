@@ -3,6 +3,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { JobCard } from "@/features/work-orders/components/JobCard";
+import { resolveTechnicianDisplayName } from "@/features/work-orders/lib/display/linePresentation";
 
 const CURRENT_TECH_ID = "11111111-1111-4111-8111-111111111111";
 const AVAILABLE_TECH_ID = "22222222-2222-4222-8222-222222222222";
@@ -51,6 +52,15 @@ function renderNavigator(input?: {
 }
 
 describe("Work Order assignment display names", () => {
+  it("prefers an identifiable assignable fallback over a generic projection", () => {
+    expect(
+      resolveTechnicianDisplayName("Technician", "tech@example.test"),
+    ).toBe("tech@example.test");
+    expect(
+      resolveTechnicianDisplayName("Jordan Historical", "tech@example.test"),
+    ).toBe("Jordan Historical");
+  });
+
   it("shows the projected current name without adding it to assignable candidates", () => {
     const { onAssign } = renderNavigator({
       primaryTechnicianName: "Jordan Historical",
