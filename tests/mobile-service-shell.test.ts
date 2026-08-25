@@ -18,7 +18,9 @@ describe("Mobile Service shell", () => {
   it("uses the merged Dispatch contracts instead of duplicating service-visit state", () => {
     expect(page).toContain("MobileServiceScopeGate");
     expect(scopeGate).toContain("FieldHub");
-    expect(fieldHub).toContain("<MobileServiceShell");
+    expect(fieldHub).toMatch(
+      /<MobileServiceShell[\s\S]*?scope=\{scope\}[\s\S]*?\/>/,
+    );
     expect(shell).toContain("/api/mobile/service-visits/active");
     expect(shell).toContain("/api/dispatch/visits/${visit.id}");
     expect(shell).not.toContain('.from("service_visits")');
@@ -42,21 +44,31 @@ describe("Mobile Service shell", () => {
     expect(shell).toContain('label: "Complete visit"');
     expect(shell).toContain('toStatus: "completed"');
     expect(shell).toContain('runTransition(visit, "paused")');
-    expect(shell).toContain('transitionVisit(current, "dispatched")');
+    expect(shell).toMatch(
+      /transitionVisit\(\s*boundScope,\s*current,\s*"dispatched"/,
+    );
     expect(shell).toContain('href="/mobile/service/dispatch"');
     expect(shell).toContain("canManageScheduling ?");
   });
 
-  it("keeps dispatch mutations online-only but preserves an authenticated actor-scoped snapshot", () => {
-    expect(shell).toContain("SNAPSHOT_CACHE_KEY");
-    expect(shell).toContain("window.localStorage.setItem");
-    expect(shell).toContain("window.localStorage.getItem");
+  it("preserves authenticated actor scope for snapshots and queued dispatch mutations", () => {
+    expect(shell).toContain("writeFieldActiveSnapshot(scope, snapshot)");
+    expect(shell).toContain("readFieldActiveSnapshot(boundScope)");
+    expect(shell).toContain("const persistedScope = getOfflineMutationScope()");
+    expect(shell).toContain(
+      "persistedScope?.userId === boundScope.userId",
+    );
+    expect(shell).toContain("validateScope,");
+    expect(shell).not.toContain('getItem("profixiq:mobile-service:active:v1")');
     expect(shell).toContain("online && !stale");
     expect(shell).toContain("existing offline mobile workflow");
     expect(scopeGate).toContain("getOfflineMutationScope");
     expect(scopeGate).toContain("supabase.auth.getSession");
     expect(scopeGate).toContain("setOfflineMutationScope");
-    expect(scopeGate).toContain("cached?.userId === authUserId");
+    expect(scopeGate).toContain("persistedScope?.userId === authUserId");
+    expect(scopeGate).toContain(
+      "persistedUserId && persistedUserId !== nextUserId",
+    );
     expect(scopeGate).toContain("SNAPSHOT_SCOPE_KEY");
     expect(scopeGate).toContain("readFieldServiceOfflineAccess");
     expect(scopeGate).toContain("verificationUnavailable");

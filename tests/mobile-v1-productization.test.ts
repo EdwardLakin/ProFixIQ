@@ -166,7 +166,9 @@ describe("Mobile V1 productization", () => {
 
   it("resumes queued completion into closeout and keeps the payment sheet inside a phone viewport", () => {
     expect(shell).toContain("PENDING_CLOSEOUT_CACHE_KEY");
-    expect(shell).toContain("pendingCloseoutKey(scope.userId, scope.shopId)");
+    expect(shell).toContain(
+      "pendingCloseoutKey(boundScope.userId, boundScope.shopId)",
+    );
     expect(shell).toContain("resumePendingCloseout");
     expect(shell).toContain("mutationId: result.mutationId");
     expect(shell).toContain("Visit completion is saved offline");
