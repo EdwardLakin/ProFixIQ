@@ -96,7 +96,10 @@ describe("advisor offline foundation", () => {
     expect(appointments).toContain("Download this day");
     expect(worker).toContain('url.pathname === "/mobile/appointments"');
     expect(worker).toContain('url.pathname === "/mobile/work-orders/create"');
-    expect(worker).toContain('cacheName: "profixiq-advisor-shell-v1"');
+    expect(worker).toContain(
+      "cacheName: PRIVATE_NAVIGATION_CACHE_NAMES.advisor",
+    );
+    expect(offline).toContain("isSafePrivateNavigationShell");
     expect(offline).toContain("cacheAdvisorRouteShells");
   });
 });

@@ -10,7 +10,7 @@ import {
   saveOfflineSnapshot,
 } from "@/features/shared/lib/offline/database";
 import {
-  getOfflineMutationScope,
+  getSessionMatchedOfflineScope,
   setOfflineMutationScope,
 } from "@/features/shared/lib/offline/mutations";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
@@ -227,7 +227,9 @@ export default function MobileWorkOrderQueue({
       setForbidden(false);
 
       try {
-        const cachedScope = getOfflineMutationScope();
+        const cachedScope = !navigator.onLine
+          ? await getSessionMatchedOfflineScope()
+          : null;
         if (!navigator.onLine && cachedScope) {
           const cached = await getOfflineSnapshot<WorkOrderListSnapshot>({
             scope: cachedScope,

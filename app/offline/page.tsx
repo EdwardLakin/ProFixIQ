@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
-  getOfflineMutationScope,
   getOfflineSyncSummary,
+  getSessionMatchedOfflineScope,
   subscribeOfflineMutations,
 } from "@/features/shared/lib/offline/mutations";
 import { listOfflineSnapshots } from "@/features/shared/lib/offline/database";
@@ -41,7 +41,7 @@ export default function OfflinePage() {
   const [online, setOnline] = useState(
     () => typeof navigator !== "undefined" && navigator.onLine,
   );
-  const [summary, setSummary] = useState(() => getOfflineSyncSummary());
+  const [summary, setSummary] = useState(() => getOfflineSyncSummary(null));
   const [orders, setOrders] = useState<WorkOrderSummary[]>([]);
   const [details, setDetails] = useState<WorkOrderDetailSnapshot[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -52,13 +52,17 @@ export default function OfflinePage() {
   useEffect(() => {
     const refresh = () => {
       setOnline(navigator.onLine);
-      setSummary(getOfflineSyncSummary());
+      void getSessionMatchedOfflineScope().then((scope) =>
+        setSummary(getOfflineSyncSummary(scope)),
+      );
     };
+    refresh();
     const unsubscribe = subscribeOfflineMutations(refresh);
     window.addEventListener("online", refresh);
     window.addEventListener("offline", refresh);
-    const scope = getOfflineMutationScope();
-    if (scope) {
+    let active = true;
+    void getSessionMatchedOfflineScope().then((scope) => {
+      if (!active || !scope) return;
       void Promise.all([
         listOfflineSnapshots<WorkOrderListSnapshot>({
           scope,
@@ -69,6 +73,7 @@ export default function OfflinePage() {
           kind: "mobile-work-order-detail",
         }),
       ]).then(([listRows, detailRows]) => {
+        if (!active) return;
         setOrders(
           listRows
             .flatMap((row) => row.data.rows)
@@ -88,8 +93,9 @@ export default function OfflinePage() {
             ),
         );
       });
-    }
+    });
     return () => {
+      active = false;
       unsubscribe();
       window.removeEventListener("online", refresh);
       window.removeEventListener("offline", refresh);

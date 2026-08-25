@@ -24,7 +24,7 @@ import {
   removeOfflineSnapshots,
   saveOfflineSnapshot,
 } from "@/features/shared/lib/offline/database";
-import { getOfflineMutationScope } from "@/features/shared/lib/offline/mutations";
+import { getSessionMatchedOfflineScope } from "@/features/shared/lib/offline/mutations";
 
 type InvoiceHistoryResponse = {
   ok?: boolean;
@@ -102,7 +102,7 @@ export default function FieldInvoicesHistory() {
     else setLoading(true);
     setErrorMessage(null);
 
-    const scope = getOfflineMutationScope();
+    const scope = await getSessionMatchedOfflineScope();
     try {
       const response = await fetch("/api/mobile/service/invoices", {
         credentials: "include",

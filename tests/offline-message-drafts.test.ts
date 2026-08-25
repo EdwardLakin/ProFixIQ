@@ -10,6 +10,9 @@ const portal = read("features/chat/components/PortalMessagesWorkspace.tsx");
 const chatWindow = read("features/ai/components/chat/ChatWindow.tsx");
 const appShell = read("features/shared/components/AppShell.tsx");
 const serviceWorker = read("app/sw.ts");
+const privateNavigationCache = read(
+  "features/shared/lib/pwa/privateNavigationCache.ts",
+);
 
 describe("offline messaging drafts", () => {
   it("binds each new customer draft to its intended recipient", () => {
@@ -103,7 +106,13 @@ describe("offline messaging drafts", () => {
   it("makes the messaging shell reopenable after an offline restart", () => {
     expect(repository).toContain('"/portal/messages", "/chat"');
     expect(serviceWorker).toContain('url.pathname === "/portal/messages"');
-    expect(serviceWorker).toContain('cacheName: "profixiq-messaging-shell-v1"');
+    expect(serviceWorker).toContain(
+      "cacheName: PRIVATE_NAVIGATION_CACHE_NAMES.messaging",
+    );
+    expect(privateNavigationCache).toContain(
+      'messaging: "profixiq-messaging-shell-v2"',
+    );
+    expect(repository).toContain("isSafePrivateNavigationShell");
     expect(serviceWorker).toContain("new NetworkFirst");
   });
 

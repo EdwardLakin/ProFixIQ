@@ -8,10 +8,14 @@ import {
   type OfflineSnapshot,
 } from "@/features/shared/lib/offline/database";
 import type { TechnicianOfflineBundle } from "@/features/work-orders/mobile/technicianOfflineTypes";
+import {
+  isSafePrivateNavigationShell,
+  PRIVATE_NAVIGATION_CACHE_NAMES,
+} from "@/features/shared/lib/pwa/privateNavigationCache";
 
 const BUNDLE_KIND = "technician-assigned-work";
 const BUNDLE_ID = "current";
-const TECHNICIAN_SHELL_CACHE = "profixiq-technician-shell-v1";
+const TECHNICIAN_SHELL_CACHE = PRIVATE_NAVIGATION_CACHE_NAMES.technician;
 
 async function cacheTechnicianRouteShells(
   bundle: TechnicianOfflineBundle,
@@ -30,10 +34,13 @@ async function cacheTechnicianRouteShells(
   await Promise.all(
     urls.map(async (url) => {
       const response = await fetch(url, {
+        cache: "no-store",
         credentials: "include",
         headers: { Accept: "text/html" },
       });
-      if (response.ok) await cache.put(url, response.clone());
+      if (response.ok && (await isSafePrivateNavigationShell(response))) {
+        await cache.put(url, response.clone());
+      }
     }),
   );
 }

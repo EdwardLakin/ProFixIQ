@@ -28,6 +28,10 @@ vi.mock("@/features/shared/lib/offline/mutations", () => ({
     userId: "tech-1",
     shopId: "shop-1",
   })),
+  getSessionMatchedOfflineScope: vi.fn(async () => ({
+    userId: "tech-1",
+    shopId: "shop-1",
+  })),
   listOfflineMutations: vi.fn(() => []),
   listPendingMutations: vi.fn(() => []),
   runMutationWithOfflineQueue: vi.fn(),

@@ -9,6 +9,7 @@ import {
   clearOfflineState,
   getOfflineMutationScope,
   getOfflineSyncSummary,
+  getSessionMatchedOfflineScope,
   hydrateOfflineMutationQueue,
   setOfflineMutationScope,
   subscribeOfflineMutations,
@@ -16,6 +17,10 @@ import {
 import { removeFieldActiveSnapshot } from "@/features/mobile/service/fieldActiveSnapshot";
 import { replayAllOfflineMutations } from "@/features/shared/lib/offline/replay";
 import { isStandalonePublicRoute } from "@/features/shared/lib/routes/shellBoundaries";
+import {
+  clearPrivateNavigationCaches,
+  PRIVATE_NAVIGATION_CACHE_CLEAR_MESSAGE,
+} from "@/features/shared/lib/pwa/privateNavigationCache";
 
 type InstallPromptEvent = Event & {
   prompt(): Promise<void>;
@@ -48,7 +53,7 @@ const UPDATE_REQUEST_EVENT = "profixiq:pwa-update-request";
 export default function PwaRuntime() {
   const pathname = usePathname() ?? "/";
   const [online, setOnline] = useState(true);
-  const [summary, setSummary] = useState(() => getOfflineSyncSummary());
+  const [summary, setSummary] = useState(() => getOfflineSyncSummary(null));
   const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
   const [updateReady, setUpdateReady] = useState<ServiceWorker | null>(null);
   const [iosInstallAvailable, setIosInstallAvailable] = useState(false);
@@ -154,44 +159,87 @@ export default function PwaRuntime() {
 
     void hydrateOfflineMutationQueue();
     void navigator.storage?.persist?.().catch(() => false);
+    void clearPrivateNavigationCaches({ includeCurrent: false });
 
     const supabase = createBrowserSupabase();
-    const resolveScope = async (userId: string) => {
+    let authEpoch = 0;
+    const evictPrivateNavigationCaches = () => {
+      void clearPrivateNavigationCaches();
+      navigator.serviceWorker?.controller?.postMessage({
+        type: PRIVATE_NAVIGATION_CACHE_CLEAR_MESSAGE,
+      });
+    };
+    const evictPrivateNavigationForActorChange = (nextUserId: string | null) => {
+      const formerScope = getOfflineMutationScope();
+      if (nextUserId && formerScope?.userId === nextUserId) {
+        return;
+      }
+      evictPrivateNavigationCaches();
+      if (formerScope && nextUserId && formerScope.userId !== nextUserId) {
+        setOfflineMutationScope(null);
+      }
+    };
+    const resolveScope = async (userId: string, epoch: number) => {
       if (!navigator.onLine) return;
       const { data: profile } = await supabase
         .from("profiles")
         .select("shop_id")
         .eq("id", userId)
         .maybeSingle();
-      if (profile?.shop_id) {
-        setOfflineMutationScope({ userId, shopId: profile.shop_id });
+      if (epoch !== authEpoch || !profile?.shop_id) return;
+      const nextScope = { userId, shopId: profile.shop_id };
+      const formerScope = getOfflineMutationScope();
+      if (
+        !formerScope ||
+        formerScope.userId !== nextScope.userId ||
+        formerScope.shopId !== nextScope.shopId
+      ) {
+        evictPrivateNavigationCaches();
+      }
+      setOfflineMutationScope(nextScope);
+    };
+    const activateActor = (userId: string | null) => {
+      const epoch = ++authEpoch;
+      evictPrivateNavigationForActorChange(userId);
+      if (userId) {
+        window.setTimeout(() => void resolveScope(userId, epoch), 0);
       }
     };
 
-    void supabase.auth.getSession().then(async ({ data }) => {
-      const userId = data.session?.user.id;
-      if (userId) await resolveScope(userId);
-    });
+    void supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        if (authEpoch !== 0) return;
+        activateActor(data.session?.user.id ?? null);
+      })
+      .catch(() => {
+        if (authEpoch === 0) activateActor(null);
+      });
 
     const { data: authSubscription } = supabase.auth.onAuthStateChange(
       (event, session) => {
         if (event === "SIGNED_OUT") {
           const formerScope = getOfflineMutationScope();
           if (formerScope) removeFieldActiveSnapshot(formerScope);
+          activateActor(null);
           void clearOfflineState();
-        }
-        if (session?.user.id) {
-          window.setTimeout(() => void resolveScope(session.user.id), 0);
+        } else if (session?.user.id) {
+          activateActor(session.user.id);
         }
       },
     );
 
-    const unsubscribe = subscribeOfflineMutations(() =>
-      setSummary(getOfflineSyncSummary()),
-    );
+    const refreshSummary = () => {
+      void getSessionMatchedOfflineScope().then((scope) =>
+        setSummary(getOfflineSyncSummary(scope)),
+      );
+    };
+    refreshSummary();
+    const unsubscribe = subscribeOfflineMutations(refreshSummary);
 
     const sync = () => {
       setOnline(navigator.onLine);
+      void clearPrivateNavigationCaches({ includeCurrent: false });
       if (navigator.onLine) {
         void replayAllOfflineMutations()
           .then(() => setSyncBlocked(null))

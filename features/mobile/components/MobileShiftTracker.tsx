@@ -15,8 +15,8 @@ import {
   type MobileShiftAction,
 } from "@/features/mobile/shifts/offline";
 import {
-  getOfflineMutationScope,
   getOfflineSyncSummary,
+  getSessionMatchedOfflineScope,
   subscribeOfflineMutations,
 } from "@/features/shared/lib/offline/mutations";
 import { replayAndReconcileOfflineMutations } from "@/features/shared/lib/offline/replay";
@@ -30,7 +30,9 @@ export default function MobileShiftTracker({ userId }: Props) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [online, setOnline] = useState(true);
-  const [syncSummary, setSyncSummary] = useState(() => getOfflineSyncSummary());
+  const [syncSummary, setSyncSummary] = useState(() =>
+    getOfflineSyncSummary(null),
+  );
 
   const applyState = useCallback((state: MobileShiftState | null) => {
     setShiftId(state?.shiftId ?? null);
@@ -39,7 +41,9 @@ export default function MobileShiftTracker({ userId }: Props) {
   }, []);
 
   const refreshOfflineSummary = useCallback(() => {
-    setSyncSummary(getOfflineSyncSummary());
+    void getSessionMatchedOfflineScope().then((scope) =>
+      setSyncSummary(getOfflineSyncSummary(scope)),
+    );
   }, []);
 
   useEffect(() => {
@@ -57,7 +61,7 @@ export default function MobileShiftTracker({ userId }: Props) {
     if (!userId) return;
     setErr(null);
 
-    const scope = getOfflineMutationScope();
+    const scope = await getSessionMatchedOfflineScope();
     if (!navigator.onLine && scope) {
       applyState(await getCachedMobileShiftState(scope));
       return;

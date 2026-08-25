@@ -14,8 +14,8 @@ import { useCallback, useEffect, useState } from "react";
 
 import {
   clearSyncedOfflineMutations,
-  getOfflineMutationScope,
   getOfflineSyncSummary,
+  getSessionMatchedOfflineScope,
   hydrateOfflineMutationQueue,
   listOfflineMutations,
   subscribeOfflineMutations,
@@ -54,7 +54,7 @@ function statusIcon(status: PendingMutation["status"]) {
 
 export default function MobileOfflinePage() {
   const [items, setItems] = useState<PendingMutation[]>([]);
-  const [summary, setSummary] = useState(() => getOfflineSyncSummary());
+  const [summary, setSummary] = useState(() => getOfflineSyncSummary(null));
   const [online, setOnline] = useState(
     () => typeof navigator !== "undefined" && navigator.onLine,
   );
@@ -63,9 +63,9 @@ export default function MobileOfflinePage() {
 
   const refresh = useCallback(async () => {
     await hydrateOfflineMutationQueue();
-    const scope = getOfflineMutationScope();
+    const scope = await getSessionMatchedOfflineScope();
     setItems(listOfflineMutations(scope));
-    setSummary(getOfflineSyncSummary());
+    setSummary(getOfflineSyncSummary(scope));
   }, []);
 
   useEffect(() => {

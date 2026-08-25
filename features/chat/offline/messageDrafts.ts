@@ -6,14 +6,18 @@ import {
   saveOfflineSnapshot,
 } from "@/features/shared/lib/offline/database";
 import {
-  getOfflineMutationScope,
+  getSessionMatchedOfflineScope,
   setOfflineMutationScope,
   type OfflineMutationScope,
 } from "@/features/shared/lib/offline/mutations";
+import {
+  isSafePrivateNavigationShell,
+  PRIVATE_NAVIGATION_CACHE_NAMES,
+} from "@/features/shared/lib/pwa/privateNavigationCache";
 
 const KIND = "message-draft";
 const MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
-const SHELL_CACHE = "profixiq-messaging-shell-v1";
+const SHELL_CACHE = PRIVATE_NAVIGATION_CACHE_NAMES.messaging;
 
 export type OfflineMessageDraft = {
   targetId: string;
@@ -72,8 +76,8 @@ export function createMessageDraft(args: {
 export async function resolveMessagingDraftScope(
   expectedUserId?: string | null,
 ): Promise<OfflineMutationScope | null> {
-  const cached = getOfflineMutationScope();
   if (typeof navigator !== "undefined" && !navigator.onLine) {
+    const cached = await getSessionMatchedOfflineScope();
     return cached && (!expectedUserId || cached.userId === expectedUserId)
       ? cached
       : null;
@@ -86,7 +90,11 @@ export async function resolveMessagingDraftScope(
     });
     if (!response.ok) return null;
     const body = (await response.json()) as { userId?: string; shopId?: string };
-    if (!body.userId || !body.shopId || (expectedUserId && body.userId !== expectedUserId)) {
+    if (
+      !body.userId ||
+      !body.shopId ||
+      (expectedUserId && body.userId !== expectedUserId)
+    ) {
       return null;
     }
     const scope = { userId: body.userId, shopId: body.shopId };
@@ -139,10 +147,13 @@ export async function warmMessagingRouteShells(): Promise<void> {
     ["/portal/messages", "/chat"].map(async (url) => {
       try {
         const response = await fetch(url, {
+          cache: "no-store",
           credentials: "include",
           headers: { Accept: "text/html" },
         });
-        if (response.ok) await cache.put(url, response.clone());
+        if (response.ok && (await isSafePrivateNavigationShell(response))) {
+          await cache.put(url, response.clone());
+        }
       } catch {
         // A previously warmed shell remains usable when this refresh loses network.
       }

@@ -12,6 +12,7 @@ import { v4 as uuidv4 } from "uuid";
 import {
   getOfflineSyncSummary,
   getOfflineMutationScope,
+  getSessionMatchedOfflineScope,
   listOfflineMutations,
   listPendingMutations,
   runMutationWithOfflineQueue,
@@ -170,7 +171,9 @@ export default function MobileFocusedJob(props: {
   const [savingNotes, setSavingNotes] = useState(false);
   const [notesDirty, setNotesDirty] = useState(false);
   const [pendingWrites, setPendingWrites] = useState(0);
-  const [syncSummary, setSyncSummary] = useState<SyncSummary>(() => getOfflineSyncSummary());
+  const [syncSummary, setSyncSummary] = useState<SyncSummary>(() =>
+    getOfflineSyncSummary(null),
+  );
   const [elapsedNow, setElapsedNow] = useState<number>(() => Date.now());
   const [stagedPhotos, setStagedPhotos] = useState<StagedPhoto[]>([]);
   const [mediaRefreshKey, setMediaRefreshKey] = useState(0);
@@ -210,9 +213,16 @@ export default function MobileFocusedJob(props: {
   };
 
   const refreshSyncState = useCallback(() => {
-    const summary = getOfflineSyncSummary();
-    setSyncSummary(summary);
-    setPendingWrites(summary.queued + summary.syncing + summary.failed + summary.conflicted);
+    void getSessionMatchedOfflineScope().then((scope) => {
+      const summary = getOfflineSyncSummary(scope);
+      setSyncSummary(summary);
+      setPendingWrites(
+        summary.queued +
+          summary.syncing +
+          summary.failed +
+          summary.conflicted,
+      );
+    });
   }, []);
 
   const getLineConflict = useCallback(
@@ -321,7 +331,7 @@ export default function MobileFocusedJob(props: {
 
   const loadOfflineJob = useCallback(
     async (id: string): Promise<boolean> => {
-      const scope = getOfflineMutationScope();
+      const scope = await getSessionMatchedOfflineScope();
       if (!scope) return false;
       const cached = await findProjectedTechnicianJob({ scope, lineId: id });
       if (!cached) return false;
@@ -381,7 +391,7 @@ export default function MobileFocusedJob(props: {
   const loadAllocations = useCallback(async () => {
     if (!workOrderLineId) return;
     if (!navigator.onLine) {
-      const scope = getOfflineMutationScope();
+      const scope = await getSessionMatchedOfflineScope();
       const cached = scope
         ? await findProjectedTechnicianJob({ scope, lineId: workOrderLineId })
         : null;

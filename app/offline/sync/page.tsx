@@ -6,8 +6,8 @@ import {
   clearSyncedOfflineMutations,
   auditOfflineMutationAttachments,
   dismissOfflineMutation,
-  getOfflineMutationScope,
   getOfflinePersistenceHealth,
+  getSessionMatchedOfflineScope,
   hydrateOfflineMutationQueue,
   listOfflineMutations,
   pruneOfflineState,
@@ -119,7 +119,7 @@ export default function OfflineSyncPage() {
 
   const refresh = useCallback(async () => {
     await hydrateOfflineMutationQueue();
-    const scope = getOfflineMutationScope();
+    const scope = await getSessionMatchedOfflineScope();
     const [nextAttachmentAudit, nextPersistenceHealth] = scope
       ? await Promise.all([
           auditOfflineMutationAttachments(scope),
