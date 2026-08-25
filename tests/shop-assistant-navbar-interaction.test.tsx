@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -90,6 +90,24 @@ describe("global shop assistant entry and prefilled prompts", () => {
         pageTitle: "Parts Inventory",
       }),
     );
+  });
+
+  it("closes the navbar overlay after client navigation", async () => {
+    const user = userEvent.setup();
+    const view = render(<AskAssistantEntry placement="header" />);
+
+    await user.click(screen.getByRole("button", { name: "Assistant" }));
+    expect(
+      screen.getByRole("dialog", { name: "AI Assistant" }),
+    ).toBeVisible();
+
+    pathname = "/work-orders/quote-review";
+    search = "";
+    view.rerender(<AskAssistantEntry placement="header" />);
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
   });
 
   it("runs a prefilled question immediately instead of only filling the textarea", async () => {
