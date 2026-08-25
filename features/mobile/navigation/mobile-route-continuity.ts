@@ -116,7 +116,11 @@ function mapMessagePath(pathname: string): string {
 
 function mapCustomerPath(pathname: string): string {
   const customerId = firstPathSegmentAfter(pathname, "/customers");
-  return customerId ? `/mobile/customers/${customerId}` : "/mobile/work-orders";
+  const collectionRoutes = new Set(["search", "directory", "all"]);
+
+  return customerId && !collectionRoutes.has(customerId.toLowerCase())
+    ? `/mobile/customers/${customerId}`
+    : "/mobile/work-orders";
 }
 
 function mapFleetPath(pathname: string): string {
