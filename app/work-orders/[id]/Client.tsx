@@ -77,6 +77,8 @@ import {
 import {
   canOpenWorkOrderInspectionModule,
   createWorkOrderWorkspaceResource,
+  isWorkOrderExecutionComplete,
+  isWorkOrderExecutionInProgress,
   resolveWorkOrderWorkspaceResource,
   workOrderWorkspaceCustomerMessageHref,
 } from "@/features/work-orders/workspace/workOrderWorkspace";
@@ -1028,15 +1030,14 @@ export default function WorkOrderIdClient(): JSX.Element {
           workStatus: line.status,
         }) === "declined",
     );
-    const hasInProgress = jobLines.some(
-      (line) =>
-        resolveDecisionStatus({
-          approvalState: line.approval_state,
-          workStatus: line.status,
-        }) === "in_progress",
-    );
-    const isCompleted =
-      resolveDecisionStatus({ workStatus: wo?.status ?? null }) === "completed";
+    const hasInProgress = isWorkOrderExecutionInProgress({
+      workOrderStatus: wo?.status,
+      lines: jobLines.map((line) => ({
+        approvalState: line.approval_state,
+        workStatus: line.status,
+      })),
+    });
+    const isCompleted = isWorkOrderExecutionComplete(wo?.status);
 
     return [
       { key: "inspection", label: "Inspection completed", state: "past" },
