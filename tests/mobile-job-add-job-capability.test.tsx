@@ -93,7 +93,7 @@ describe("standalone mobile job Add Job capability", () => {
     ["manager", true],
     ["lead_hand", true],
     ["parts", false],
-    ["mechanic", false],
+    ["mechanic", true],
   ] as const)(
     "passes canAddJob=%s capability result %s without replacing the technician story flow",
     async (role, expected) => {
