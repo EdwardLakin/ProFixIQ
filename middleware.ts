@@ -261,6 +261,20 @@ export async function middleware(req: NextRequest) {
   const isGuidedOnboardingPath =
     pathname === "/dashboard/onboarding-v2" ||
     pathname.startsWith("/dashboard/onboarding-v2/");
+  const guidedSessionId = req.nextUrl.searchParams
+    .get("guidedSessionId")
+    ?.trim();
+  const guidedStep = req.nextUrl.searchParams.get("guidedStep")?.trim();
+  const guidedReturnTo = safeRedirectPath(
+    req.nextUrl.searchParams.get("returnTo"),
+  );
+  const isGuidedOnboardingRequest =
+    isGuidedOnboardingPath ||
+    Boolean(
+      guidedSessionId &&
+        guidedStep &&
+        guidedReturnTo?.startsWith("/dashboard/onboarding-v2/"),
+    );
   if (
     pathname === "/portal/fleet/auth/sign-in" ||
     pathname === "/portal/fleet/auth/sign-in/"
@@ -573,7 +587,7 @@ export async function middleware(req: NextRequest) {
     mobileDeviceRequest &&
     completed &&
     !isPortal &&
-    !isGuidedOnboardingPath &&
+    !isGuidedOnboardingRequest &&
     !pathname.startsWith("/mobile")
   ) {
     const requestedHref = `${pathname}${search}`;
@@ -678,13 +692,27 @@ export const config = {
     "/onboarding/:path*",
     "/ops/:path*",
     "/dashboard/:path*",
+    "/agent/:path*",
+    "/ai/assistant",
+    "/assistant/:path*",
+    "/billing/:path*",
+    "/chat/:path*",
+    "/copilot/:path*",
+    "/customers/:path*",
+    "/estimates/:path*",
     "/fleet/:path*",
+    "/inspection-reports/:path*",
+    "/inspection_template_suggestions",
     "/work-orders/:path*",
     "/quote-review/:path*",
     "/inspections/:path*",
+    "/menu/:path*",
+    "/menu_item_suggestions",
     "/mobile/:path*",
     "/parts/:path*",
     "/api/:path*",
     "/tech/queue",
+    "/tech/performance",
+    "/vehicles/:path*",
   ],
 };

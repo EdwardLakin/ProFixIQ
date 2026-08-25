@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { config, middleware } from "../middleware";
+import {
+  GUIDED_ONBOARDING_STEPS,
+  buildGuidedDestination,
+} from "@/features/onboarding-v2/guided/steps";
 
 const authFixture = vi.hoisted(() => ({
   user: null as null | {
@@ -199,6 +203,36 @@ describe("Product host middleware boundary", () => {
     expect(response.headers.get("location")).toBeNull();
   });
 
+  it.each(["/customers/search", "/customers/directory", "/customers/all"])(
+    "keeps the desktop customer collection alias %s out of the mobile customer id route",
+    async (pathname) => {
+      process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "test-anon-key";
+      authFixture.user = { id: "user-1", app_metadata: {} };
+      authFixture.profile = {
+        id: "user-1",
+        role: "owner",
+        shop_id: "shop-1",
+        completed_onboarding: true,
+      };
+
+      const response = await middleware(
+        new NextRequest(`https://profixiq.com${pathname}`, {
+          headers: {
+            host: "profixiq.com",
+            "user-agent":
+              "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)",
+          },
+        }),
+      );
+
+      expect(response.status).toBe(307);
+      expect(response.headers.get("location")).toBe(
+        "https://profixiq.com/mobile/work-orders",
+      );
+    },
+  );
+
   it("forwards refreshed auth cookies to API handlers and the browser", async () => {
     process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "test-anon-key";
@@ -327,6 +361,39 @@ describe("Product host middleware boundary", () => {
     );
     expect(response.headers.get("x-middleware-next")).toBeNull();
     expect(response.headers.get("x-middleware-rewrite")).toBeNull();
+  });
+
+  it("keeps guided customer setup on its desktop page for tablet onboarding", async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "test-anon-key";
+    authFixture.user = { id: "user-1", app_metadata: {} };
+    authFixture.profile = {
+      id: "user-1",
+      role: "owner",
+      shop_id: "shop-1",
+      completed_onboarding: true,
+    };
+
+    const customerStep = GUIDED_ONBOARDING_STEPS.find(
+      (step) => step.key === "customers",
+    );
+    expect(customerStep).toBeDefined();
+    if (!customerStep) throw new Error("Customers guided step is required.");
+    const destination = buildGuidedDestination(customerStep, "session-1");
+    expect(destination).not.toContain("setup=guided");
+
+    const response = await middleware(
+      new NextRequest(`https://profixiq.com${destination}`, {
+        headers: {
+          host: "profixiq.com",
+          "user-agent": "Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X)",
+        },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("location")).toBeNull();
+    expect(response.headers.get("x-middleware-next")).toBe("1");
   });
 
   it("moves legacy Fleet workspace URLs off the Shop hostname", async () => {

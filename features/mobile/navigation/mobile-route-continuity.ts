@@ -109,14 +109,18 @@ function mapQuoteReviewPath(pathname: string): string {
     : "/mobile/work-orders";
 }
 
-function mapMessagePath(pathname: string): string {
-  const suffix = pathname.slice("/messages".length);
+function mapMessagePath(pathname: string, desktopPrefix = "/messages"): string {
+  const suffix = pathname.slice(desktopPrefix.length);
   return `/mobile/messages${suffix}`;
 }
 
 function mapCustomerPath(pathname: string): string {
   const customerId = firstPathSegmentAfter(pathname, "/customers");
-  return customerId ? `/mobile/customers/${customerId}` : "/mobile/work-orders";
+  const collectionRoutes = new Set(["search", "directory", "all"]);
+
+  return customerId && !collectionRoutes.has(customerId.toLowerCase())
+    ? `/mobile/customers/${customerId}`
+    : "/mobile/work-orders";
 }
 
 function mapFleetPath(pathname: string): string {
@@ -223,6 +227,10 @@ export function resolveMobileHref(
     mobilePath = "/mobile/parts";
   } else if (isPathAtOrBelow(pathname, "/messages")) {
     mobilePath = mapMessagePath(pathname);
+  } else if (isPathAtOrBelow(pathname, "/chat")) {
+    mobilePath = mapMessagePath(pathname, "/chat");
+  } else if (isPathAtOrBelow(pathname, "/copilot/technician")) {
+    mobilePath = "/mobile/copilot/technician";
   } else if (isPathAtOrBelow(pathname, "/customers")) {
     mobilePath = mapCustomerPath(pathname);
   } else if (isPathAtOrBelow(pathname, "/fleet")) {
