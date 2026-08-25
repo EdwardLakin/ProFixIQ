@@ -2210,6 +2210,8 @@ export default function WorkOrderIdClient(): JSX.Element {
                     const linePartRequests = partRequestsByLine[ln.id] ?? [];
                     const hasRequestableParts =
                       canRequestParts && (stagedPartsByLine[ln.id] ?? []).length > 0;
+                    const navigatorInspectionTemplateId =
+                      extractInspectionTemplateId(ln);
 
                     return (
                       <JobCard
@@ -2234,7 +2236,10 @@ export default function WorkOrderIdClient(): JSX.Element {
                             : undefined
                         }
                         onOpenInspection={
-                          ln.job_type === "inspection"
+                          canOpenWorkOrderInspectionModule({
+                            inspectionTemplateId: navigatorInspectionTemplateId,
+                            canRunInspections: currentActor.canRunInspections,
+                          })
                             ? () => void openInspectionForLine(ln)
                             : undefined
                         }
@@ -2532,4 +2537,3 @@ export default function WorkOrderIdClient(): JSX.Element {
     </div>
   );
 }
-
