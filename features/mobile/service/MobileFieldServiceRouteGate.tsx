@@ -40,6 +40,7 @@ import {
   runBoundedRouteLoad,
   type RouteLoadFailure as RouteLoadFailureState,
 } from "@/features/shared/lib/route-load";
+import { removeFieldActiveSnapshot } from "./fieldActiveSnapshot";
 
 export default function MobileFieldServiceRouteGate({
   children,
@@ -300,7 +301,9 @@ export default function MobileFieldServiceRouteGate({
     const { data } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === "TOKEN_REFRESHED") return;
       const currentUserId = verifiedScopeRef.current?.userId ?? "";
-      const persistedUserId = getOfflineMutationScope()?.userId ?? "";
+      const persistedScope = getOfflineMutationScope();
+      const persistedUserId = persistedScope?.userId ?? "";
+      const formerScope = verifiedScopeRef.current ?? persistedScope;
       const nextUserId = session?.user.id?.trim() ?? "";
       const failClosed =
         event === "SIGNED_OUT" ||
@@ -311,6 +314,7 @@ export default function MobileFieldServiceRouteGate({
 
       verificationEpochRef.current += 1;
       if (failClosed) {
+        if (formerScope) removeFieldActiveSnapshot(formerScope);
         setOfflineMutationScope(null);
         clearVerifiedAccess();
       }

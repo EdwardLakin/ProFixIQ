@@ -118,3 +118,14 @@ export function readFieldActiveSnapshot(
     return null;
   }
 }
+
+export function removeFieldActiveSnapshot(
+  scope: SnapshotScope,
+  storage?: SnapshotStorage,
+): void {
+  const key = getFieldActiveSnapshotCacheKey(scope);
+  const target = browserStorage(storage);
+  if (!key || !target) return;
+  target.removeItem(key);
+  target.removeItem(FIELD_ACTIVE_SNAPSHOT_LEGACY_KEY);
+}

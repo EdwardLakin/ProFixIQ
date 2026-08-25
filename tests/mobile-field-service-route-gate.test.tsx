@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => ({
   unsubscribe: vi.fn(),
   offlineScope: null as { userId: string; shopId: string } | null,
   setOfflineMutationScope: vi.fn(),
+  removeFieldActiveSnapshot: vi.fn(),
   pathname: "/mobile/service",
   router: { replace: vi.fn() },
 }));
@@ -57,6 +58,10 @@ vi.mock("@/features/mobile/service/fieldOfflineAccess", () => ({
         : null,
   ),
   writeFieldServiceOfflineAccess: vi.fn(),
+}));
+
+vi.mock("@/features/mobile/service/fieldActiveSnapshot", () => ({
+  removeFieldActiveSnapshot: mocks.removeFieldActiveSnapshot,
 }));
 
 vi.mock("@/features/shared/lib/route-load", () => {
@@ -227,6 +232,28 @@ describe("MobileFieldServiceRouteGate", () => {
     expect(screen.queryByText(`${userA}:${shop}`)).not.toBeInTheDocument();
     await waitFor(() => expect(mocks.fetch).toHaveBeenCalledTimes(2));
     expect(screen.queryByText(`${userA}:${shop}`)).not.toBeInTheDocument();
+  });
+
+  it("removes the former actor's active-call snapshot on sign-out", async () => {
+    const user = "00000000-0000-4000-8000-000000000001";
+    const shop = "00000000-0000-4000-8000-000000000002";
+    mocks.fetch.mockResolvedValueOnce(response(accessPayload()));
+
+    render(
+      <MobileFieldServiceRouteGate>
+        <ScopeProbe />
+      </MobileFieldServiceRouteGate>,
+    );
+
+    expect(await screen.findByText(`${user}:${shop}`)).toBeInTheDocument();
+
+    act(() => mocks.authCallback?.("SIGNED_OUT", null));
+
+    expect(mocks.removeFieldActiveSnapshot).toHaveBeenCalledWith({
+      userId: user,
+      shopId: shop,
+    });
+    expect(screen.queryByText(`${user}:${shop}`)).not.toBeInTheDocument();
   });
 
   it("remounts descendants only after a same-user shop change is reverified", async () => {

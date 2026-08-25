@@ -36,6 +36,7 @@ import {
   runBoundedRouteLoad,
   type RouteLoadFailure as RouteLoadFailureState,
 } from "@/features/shared/lib/route-load";
+import { removeFieldActiveSnapshot } from "./fieldActiveSnapshot";
 
 const SNAPSHOT_CACHE_KEY = "profixiq:mobile-service:active:v1";
 const SNAPSHOT_SCOPE_KEY = "profixiq:mobile-service:active-scope:v1";
@@ -322,7 +323,9 @@ export default function MobileServiceScopeGate() {
     const { data } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === "TOKEN_REFRESHED") return;
       const currentUserId = scopeRef.current?.userId ?? "";
-      const persistedUserId = getOfflineMutationScope()?.userId ?? "";
+      const persistedScope = getOfflineMutationScope();
+      const persistedUserId = persistedScope?.userId ?? "";
+      const formerScope = scopeRef.current ?? persistedScope;
       const nextUserId = session?.user.id?.trim() ?? "";
       const failClosed =
         event === "SIGNED_OUT" ||
@@ -333,6 +336,7 @@ export default function MobileServiceScopeGate() {
 
       verificationEpochRef.current += 1;
       if (failClosed) {
+        if (formerScope) removeFieldActiveSnapshot(formerScope);
         setOfflineMutationScope(null);
         protectSnapshot(null);
         clearVerifiedWorkspace();

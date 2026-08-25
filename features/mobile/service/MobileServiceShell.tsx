@@ -30,6 +30,7 @@ import type {
 } from "@/features/dispatch/lib/contracts";
 import type { ServiceVisitStatus } from "@/features/scheduling/lib/service-visit-contract";
 import {
+  getOfflineMutationScope,
   hydrateOfflineMutationQueue,
   listPendingMutations,
   runMutationWithOfflineQueue,
@@ -203,6 +204,7 @@ async function transitionVisit(
   scope: OfflineMutationScope,
   visit: DispatchVisit,
   toStatus: ServiceVisitStatus,
+  validateScope: (scope: OfflineMutationScope) => boolean,
   dependsOn?: string[],
 ): Promise<TransitionOutcome> {
   const mutationId = operationKey(visit.id, toStatus);
@@ -246,6 +248,7 @@ async function transitionVisit(
       resolvedDependencies.length > 0 ? resolvedDependencies : undefined,
     orderKey: `service-visit:${visit.id}`,
     scope,
+    validateScope,
     runner: async () => {
       const response = await fetch(
         `/api/mobile/service-visits/${visit.id}/transition`,
@@ -781,6 +784,16 @@ export default function MobileServiceShell({
       setError(null);
       setQueuedNotice(null);
       try {
+        const validateTransitionScope = (candidate: OfflineMutationScope) => {
+          const persistedScope = getOfflineMutationScope();
+          return Boolean(
+            isCurrentScope(scopeKey) &&
+              candidate.userId === boundScope.userId &&
+              candidate.shopId === boundScope.shopId &&
+              persistedScope?.userId === boundScope.userId &&
+              persistedScope.shopId === boundScope.shopId,
+          );
+        };
         let current = visit;
         let queued = false;
         let result: TransitionOutcome;
@@ -790,16 +803,26 @@ export default function MobileServiceShell({
             boundScope,
             current,
             "dispatched",
+            validateTransitionScope,
           );
           if (!isCurrentScope(scopeKey)) return null;
           current = dispatch.visit;
           queued ||= dispatch.queued;
           applyVisit(current);
-          result = await transitionVisit(boundScope, current, toStatus, [
-            dispatch.mutationId,
-          ]);
+          result = await transitionVisit(
+            boundScope,
+            current,
+            toStatus,
+            validateTransitionScope,
+            [dispatch.mutationId],
+          );
         } else {
-          result = await transitionVisit(boundScope, current, toStatus);
+          result = await transitionVisit(
+            boundScope,
+            current,
+            toStatus,
+            validateTransitionScope,
+          );
         }
         if (!isCurrentScope(scopeKey)) return null;
         queued ||= result.queued;

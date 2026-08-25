@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import type { MobileActiveJobContract } from "@/features/dispatch/lib/contracts";
@@ -5,6 +6,7 @@ import {
   FIELD_ACTIVE_SNAPSHOT_LEGACY_KEY,
   getFieldActiveSnapshotCacheKey,
   readFieldActiveSnapshot,
+  removeFieldActiveSnapshot,
   writeFieldActiveSnapshot,
 } from "@/features/mobile/service/fieldActiveSnapshot";
 
@@ -26,6 +28,17 @@ function snapshot(): MobileActiveJobContract {
 }
 
 describe("Field active-call snapshot scope", () => {
+  it("wires former-scope removal into both Field gates and global sign-out", () => {
+    for (const path of [
+      "features/mobile/service/MobileServiceScopeGate.tsx",
+      "features/mobile/service/MobileFieldServiceRouteGate.tsx",
+      "features/shared/components/pwa/PwaRuntime.tsx",
+    ]) {
+      const source = readFileSync(path, "utf8");
+      expect(source).toContain("removeFieldActiveSnapshot(formerScope)");
+    }
+  });
+
   it("stores and reads a snapshot only for the same authenticated user and shop", () => {
     const storage = createMemoryStorage();
     const firstScope = { userId: "user-a", shopId: "shop-a" };
@@ -113,5 +126,19 @@ describe("Field active-call snapshot scope", () => {
     expect(storage.getItem(FIELD_ACTIVE_SNAPSHOT_LEGACY_KEY)).toBeNull();
     writeFieldActiveSnapshot(scope, snapshot(), storage);
     expect(storage.getItem(FIELD_ACTIVE_SNAPSHOT_LEGACY_KEY)).toBeNull();
+  });
+
+  it("removes the former actor's v2 snapshot on explicit auth cleanup", () => {
+    const storage = createMemoryStorage();
+    const scope = { userId: "user-a", shopId: "shop-a" };
+    const key = getFieldActiveSnapshotCacheKey(scope);
+    if (!key) throw new Error("Expected a scoped cache key");
+
+    writeFieldActiveSnapshot(scope, snapshot(), storage);
+    expect(storage.getItem(key)).not.toBeNull();
+
+    removeFieldActiveSnapshot(scope, storage);
+
+    expect(storage.getItem(key)).toBeNull();
   });
 });

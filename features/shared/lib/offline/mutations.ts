@@ -800,6 +800,7 @@ export async function runMutationWithOfflineQueue<T>(args: {
   payload: T;
   runner: () => Promise<void>;
   scope?: OfflineMutationScope | null;
+  validateScope?: (scope: OfflineMutationScope) => boolean;
   queueOnOffline?: boolean;
   dependsOn?: string[];
   orderKey?: string;
@@ -808,11 +809,28 @@ export async function runMutationWithOfflineQueue<T>(args: {
 }): Promise<{ queued: boolean; conflicted: boolean }> {
   await hydrateOfflineMutationQueue();
   const queueOnOffline = args.queueOnOffline !== false;
+
+  // A feature can bind a long-running command to its mounted auth/shop epoch.
+  // Validate a supplied scope synchronously immediately before resolution so
+  // a stale operation cannot replace a newer actor's global scope after an
+  // IndexedDB hydration pause.
+  if (args.scope) {
+    const suppliedScope = {
+      userId: args.scope.userId.trim(),
+      shopId: args.scope.shopId.trim(),
+    };
+    if (args.validateScope && !args.validateScope(suppliedScope)) {
+      throw new Error("Authenticated user or shop changed before this update.");
+    }
+  }
   const scope = await resolveOfflineMutationScope(args.payload, args.scope);
   if (!scope) {
     throw new Error(
       "Authenticated user and shop scope could not be resolved for offline sync.",
     );
+  }
+  if (args.validateScope && !args.validateScope(scope)) {
+    throw new Error("Authenticated user or shop changed before this update.");
   }
   const existing = queueCache.find(
     (item) => item.clientMutationId === args.clientMutationId,
@@ -845,11 +863,17 @@ export async function runMutationWithOfflineQueue<T>(args: {
   // connectivity returned between taps. Keep it queued until replay has synced
   // every predecessor in the chain.
   if (dependencyPending) {
+    if (args.validateScope && !args.validateScope(scope)) {
+      throw new Error("Authenticated user or shop changed before this update.");
+    }
     await queueEntry();
     return { queued: true, conflicted: false };
   }
 
   if (queueOnOffline && !navigator.onLine) {
+    if (args.validateScope && !args.validateScope(scope)) {
+      throw new Error("Authenticated user or shop changed before this update.");
+    }
     await queueEntry();
     return { queued: true, conflicted: false };
   }
@@ -867,6 +891,9 @@ export async function runMutationWithOfflineQueue<T>(args: {
         return { queued: false, conflicted: true };
       }
     }
+    if (args.validateScope && !args.validateScope(scope)) {
+      throw new Error("Authenticated user or shop changed before this update.");
+    }
     await args.runner();
     if (args.bestEffortOnlineHistory) {
       try {
@@ -881,6 +908,7 @@ export async function runMutationWithOfflineQueue<T>(args: {
     return { queued: false, conflicted: false };
   } catch (error) {
     if (queueOnOffline && isRetryableOfflineError(error)) {
+      if (args.validateScope && !args.validateScope(scope)) throw error;
       await queueEntry();
       return { queued: true, conflicted: false };
     }

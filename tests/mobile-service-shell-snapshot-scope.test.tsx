@@ -3,6 +3,7 @@
 import "@testing-library/jest-dom/vitest";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import type { ComponentProps } from "react";
+import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { MobileActiveJobContract } from "@/features/dispatch/lib/contracts";
@@ -31,6 +32,7 @@ vi.mock("next/link", () => ({
 }));
 
 vi.mock("@/features/shared/lib/offline/mutations", () => ({
+  getOfflineMutationScope: vi.fn(() => currentScope),
   hydrateOfflineMutationQueue: vi.fn(async () => undefined),
   listPendingMutations: vi.fn(() => []),
   runMutationWithOfflineQueue: vi.fn(),
@@ -99,6 +101,26 @@ afterEach(() => {
 });
 
 describe("Mobile Service active-call cache scope", () => {
+  it("revalidates the mounted actor after queue hydration before scope persistence", () => {
+    const shell = readFileSync(
+      "features/mobile/service/MobileServiceShell.tsx",
+      "utf8",
+    );
+    const mutations = readFileSync(
+      "features/shared/lib/offline/mutations.ts",
+      "utf8",
+    );
+
+    expect(shell).toContain("validateScope: (scope: OfflineMutationScope)");
+    expect(shell).toContain("persistedScope?.userId === boundScope.userId");
+    expect(shell).toContain("validateScope,");
+    expect(mutations).toContain("args.validateScope(suppliedScope)");
+    expect(mutations.indexOf("args.validateScope(suppliedScope)")).toBeLessThan(
+      mutations.indexOf(
+        "resolveOfflineMutationScope(args.payload, args.scope)",
+      ),
+    );
+  });
   it("does not render another authenticated user or shop's cached call after a load failure", async () => {
     writeFieldActiveSnapshot(
       { userId: "user-a", shopId: "shop-b" },
