@@ -199,11 +199,11 @@ export default function MobileTruckInventoryScreen(props: Props) {
           <Boxes className="mx-auto h-8 w-8 text-amber-600 dark:text-amber-300" />
           <h2 className="mt-3 text-lg font-bold">Truck inventory isn&apos;t enabled</h2>
           <p className="mx-auto mt-1 max-w-lg text-sm text-[color:var(--theme-text-secondary)]">
-            {snapshot.canManageParts
+            {snapshot.canConfigure
               ? "This truck is assigned, but it does not have an inventory location yet. Enable Truck carries inventory in Field setup to receive, transfer and use parts here."
-              : "This truck is assigned, but it does not have an inventory location yet. Ask a Field owner or parts manager to enable truck inventory."}
+              : "This truck is assigned, but it does not have an inventory location yet. Ask a Field owner or administrator to enable truck inventory."}
           </p>
-          {snapshot.canManageParts ? (
+          {snapshot.canConfigure ? (
             <Link
               href="/mobile/service/setup"
               className="mt-4 inline-flex min-h-11 items-center justify-center rounded-xl bg-[color:var(--accent-copper)] px-4 text-sm font-bold text-[color:var(--theme-text-on-accent)]"

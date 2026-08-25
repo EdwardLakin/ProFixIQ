@@ -15,6 +15,7 @@ function snapshot(): FieldTruckInventorySnapshot {
     generatedAt: "2026-08-18T15:00:00.000Z",
     actorProfileId: "manager",
     canManageParts: true,
+    canConfigure: true,
     hasFieldAccess: true,
     visit: null,
     trucks: [],
@@ -45,6 +46,65 @@ function snapshot(): FieldTruckInventorySnapshot {
   };
 }
 
+function unconfiguredSnapshot(input: {
+  canConfigure?: boolean;
+  canManageParts?: boolean;
+} = {}): FieldTruckInventorySnapshot {
+  const value = snapshot();
+  value.canConfigure = input.canConfigure ?? true;
+  value.canManageParts = input.canManageParts ?? true;
+  value.truck = {
+    id: "truck-1",
+    name: "Service Truck",
+    unitNumber: "FT-01",
+    stockLocationId: null,
+    primaryUserId: "manager",
+    active: true,
+  };
+  value.trucks = [value.truck];
+  return value;
+}
+
+function renderTruckInventory(value: FieldTruckInventorySnapshot) {
+  return render(
+    <MobileTruckInventoryScreen
+      snapshot={value}
+      online
+      view="stock"
+      setView={vi.fn()}
+      loading={false}
+      busy={false}
+      error={null}
+      query=""
+      setQuery={vi.fn()}
+      load={vi.fn().mockResolvedValue(undefined)}
+      selectedTruckId="truck-1"
+      onTruckChange={vi.fn()}
+      selectedPartId={null}
+      setSelectedPartId={vi.fn()}
+      selectedLineId=""
+      setSelectedLineId={vi.fn()}
+      quantity={1}
+      setQuantity={vi.fn()}
+      identityDraft={null}
+      setIdentityDraft={vi.fn()}
+      createIdentity={vi.fn().mockResolvedValue(undefined)}
+      sourceLocationId=""
+      setSourceLocationId={vi.fn()}
+      sourceOptions={[]}
+      selectedReceiptId=""
+      setSelectedReceiptId={vi.fn()}
+      selectedReceipt={null}
+      truckItemById={new Map()}
+      handleUse={vi.fn().mockResolvedValue(undefined)}
+      handleReturn={vi.fn().mockResolvedValue(undefined)}
+      resolveCode={vi.fn().mockResolvedValue(undefined)}
+      transferToTruck={vi.fn().mockResolvedValue(undefined)}
+      receiveToTruck={vi.fn().mockResolvedValue(undefined)}
+    />,
+  );
+}
+
 describe("Field truck inventory activity", () => {
   it("renders canonical movement context for the selected truck", () => {
     render(
@@ -63,54 +123,9 @@ describe("Field truck inventory activity", () => {
   });
 
   it("shows the recoverable setup state when the assigned truck has no inventory location", () => {
-    const unconfigured = snapshot();
-    unconfigured.truck = {
-      id: "truck-1",
-      name: "Service Truck",
-      unitNumber: "FT-01",
-      stockLocationId: null,
-      primaryUserId: "manager",
-      active: true,
-    };
-    unconfigured.trucks = [unconfigured.truck];
+    const unconfigured = unconfiguredSnapshot();
 
-    render(
-      <MobileTruckInventoryScreen
-        snapshot={unconfigured}
-        online
-        view="stock"
-        setView={vi.fn()}
-        loading={false}
-        busy={false}
-        error={null}
-        query=""
-        setQuery={vi.fn()}
-        load={vi.fn().mockResolvedValue(undefined)}
-        selectedTruckId="truck-1"
-        onTruckChange={vi.fn()}
-        selectedPartId={null}
-        setSelectedPartId={vi.fn()}
-        selectedLineId=""
-        setSelectedLineId={vi.fn()}
-        quantity={1}
-        setQuantity={vi.fn()}
-        identityDraft={null}
-        setIdentityDraft={vi.fn()}
-        createIdentity={vi.fn().mockResolvedValue(undefined)}
-        sourceLocationId=""
-        setSourceLocationId={vi.fn()}
-        sourceOptions={[]}
-        selectedReceiptId=""
-        setSelectedReceiptId={vi.fn()}
-        selectedReceipt={null}
-        truckItemById={new Map()}
-        handleUse={vi.fn().mockResolvedValue(undefined)}
-        handleReturn={vi.fn().mockResolvedValue(undefined)}
-        resolveCode={vi.fn().mockResolvedValue(undefined)}
-        transferToTruck={vi.fn().mockResolvedValue(undefined)}
-        receiveToTruck={vi.fn().mockResolvedValue(undefined)}
-      />,
-    );
+    renderTruckInventory(unconfigured);
 
     expect(
       screen.getByRole("heading", { name: "Truck inventory isn't enabled" }),
@@ -124,5 +139,23 @@ describe("Field truck inventory activity", () => {
     expect(
       screen.queryByText("This truck has no inventory yet."),
     ).not.toBeInTheDocument();
+  });
+
+  it("does not offer setup to a parts manager without configuration access", () => {
+    const unconfigured = unconfiguredSnapshot({
+      canConfigure: false,
+      canManageParts: true,
+    });
+
+    renderTruckInventory(unconfigured);
+
+    expect(
+      screen.queryByRole("link", { name: "Open Field setup" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Ask a Field owner or administrator to enable truck inventory/,
+      ),
+    ).toBeInTheDocument();
   });
 });

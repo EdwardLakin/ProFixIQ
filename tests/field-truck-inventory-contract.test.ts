@@ -138,6 +138,9 @@ describe("Field Service truck inventory", () => {
     expect(snapshotApi).toContain(
       "field_truck_inventory_snapshot_with_activity",
     );
+    expect(snapshotApi).toContain(
+      "{ ...snapshot, canConfigure: access.canConfigure }",
+    );
     expect(snapshotApi).not.toContain('"field_truck_inventory_activity"');
     expect(snapshotApi.match(/fieldInventoryRpc\(/g)).toHaveLength(1);
     expect(consistentActivity).toContain(
@@ -159,7 +162,9 @@ describe("Field Service truck inventory", () => {
       "when move.reason = 'wo_release' then 'in'",
     );
     expect(contracts).toContain("movements: FieldTruckInventoryMovement[]");
+    expect(contracts).toContain("canConfigure: boolean");
     expect(inventoryUi).toContain("Truck movement history");
+    expect(inventoryUi).toContain("snapshot.canConfigure");
     expect(unconfiguredSnapshotRepair).toContain(
       "v_stock_location_id is not null",
     );
@@ -307,6 +312,8 @@ describe("Field Service truck inventory", () => {
     expect(workflow).toContain("tests/field-truck-inventory-contract.test.ts");
     expect(workflow).toContain("tests/mobile/field-truck-inventory.runtime.sql");
     expect(workflow).toContain("Field truck inventory runtime");
+    expect(workflow).toContain("set -euo pipefail");
+    expect(workflow).not.toContain("set -o pipefail");
   });
 
   it("ships every route used by the field truck workflow", () => {

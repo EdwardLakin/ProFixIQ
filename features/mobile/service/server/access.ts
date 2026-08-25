@@ -287,6 +287,7 @@ export async function requireMobileServiceOperatorApiAccess(
       (fieldAccess.standaloneFieldWorkspace ||
         hasAnyRole(access.canonicalRole, ROLE_GROUPS.billingOperators)),
     fieldServiceEnabled: fieldAccess.fieldServiceEnabled,
+    canConfigure: fieldAccess.canConfigure,
   };
 }
 

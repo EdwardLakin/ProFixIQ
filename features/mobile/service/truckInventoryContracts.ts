@@ -177,6 +177,7 @@ export type FieldTruckInventorySnapshot = {
   generatedAt: string;
   actorProfileId: string;
   canManageParts: boolean;
+  canConfigure: boolean;
   hasFieldAccess: boolean;
   visit: FieldInventoryVisit | null;
   trucks: FieldTruck[];

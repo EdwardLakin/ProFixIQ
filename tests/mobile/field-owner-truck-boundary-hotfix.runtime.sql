@@ -289,6 +289,62 @@ begin
 end;
 $$;
 
+-- Both public configuration entry points must accept the canonical standalone
+-- owner even when that profile still carries a historical manager label.
+select set_config('request.jwt.claim.role', 'authenticated', true);
+select set_config('request.jwt.claim.sub', '8fa00000-0000-4000-8000-000000000001', true);
+set local role authenticated;
+
+do $$
+declare
+  v_result jsonb;
+begin
+  v_result := public.mobile_configure_service_v1_atomic(
+    '8fb00000-0000-4000-8000-000000000001',
+    'mobile',
+    true,
+    false,
+    true,
+    false,
+    60,
+    1,
+    true,
+    'Owner Truck A',
+    'HOTFIX-A',
+    '8fa00000-0000-4000-8000-000000000001'
+  );
+
+  if v_result ->> 'serviceVehicleId'
+       is distinct from '8fc00000-0000-4000-8000-000000000001' then
+    raise exception 'Field boundary hotfix failed: direct Mobile configuration rejected or changed the manager-labelled canonical owner truck';
+  end if;
+
+  v_result := public.field_configure_standalone_owner_atomic(
+    '8fb00000-0000-4000-8000-000000000001',
+    'mobile',
+    true,
+    false,
+    true,
+    false,
+    60,
+    1,
+    true,
+    'Owner Truck A',
+    'HOTFIX-A',
+    '8fa00000-0000-4000-8000-000000000001'
+  );
+
+  if v_result ->> 'fieldOwnerProfileId'
+       is distinct from '8fa00000-0000-4000-8000-000000000001'
+     or v_result ->> 'serviceVehicleId'
+       is distinct from '8fc00000-0000-4000-8000-000000000001' then
+    raise exception 'Field boundary hotfix failed: standalone configuration rejected or reassigned the manager-labelled canonical owner';
+  end if;
+end;
+$$;
+
+reset role;
+
 -- A role-labelled profile that is not shops.owner_id remains non-canonical.
 insert into public.profiles (id, user_id, role, full_name, email, shop_id)
 values (
@@ -325,6 +381,58 @@ values (
   '{"mobile_v1":true}'::jsonb
 )
 on conflict (id) do nothing;
+
+-- Role labels cannot substitute for canonical workspace ownership. Both direct
+-- configuration entry points must continue to reject this enabled impostor.
+select set_config('request.jwt.claim.role', 'authenticated', true);
+select set_config('request.jwt.claim.sub', '8fa00000-0000-4000-8000-000000000002', true);
+set local role authenticated;
+
+do $$
+begin
+  begin
+    perform public.mobile_configure_service_v1_atomic(
+      '8fb00000-0000-4000-8000-000000000001',
+      'mobile',
+      true,
+      false,
+      true,
+      false,
+      60,
+      1,
+      true,
+      'Historical Team Truck',
+      'HOTFIX-C',
+      '8fa00000-0000-4000-8000-000000000002'
+    );
+    raise exception 'Field boundary hotfix failed: direct Mobile configuration accepted a non-canonical role-labelled owner';
+  exception
+    when sqlstate '42501' then null;
+  end;
+
+  begin
+    perform public.field_configure_standalone_owner_atomic(
+      '8fb00000-0000-4000-8000-000000000001',
+      'mobile',
+      true,
+      false,
+      true,
+      false,
+      60,
+      1,
+      true,
+      'Historical Team Truck',
+      'HOTFIX-C',
+      '8fa00000-0000-4000-8000-000000000002'
+    );
+    raise exception 'Field boundary hotfix failed: standalone configuration accepted a non-canonical role-labelled owner';
+  exception
+    when sqlstate '42501' then null;
+  end;
+end;
+$$;
+
+reset role;
 
 insert into public.field_service_vehicle_assignments (
   shop_id, service_vehicle_id, profile_id, assigned_by_profile_id
