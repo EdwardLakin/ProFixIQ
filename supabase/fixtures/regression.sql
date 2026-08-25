@@ -365,6 +365,8 @@ on conflict (id) do update set
   customer_agreed_at = excluded.customer_agreed_at,
   updated_at = excluded.updated_at;
 
+-- Trigger suppression skips normalize_work_order_line_status(), so persist the
+-- canonical stored value that the punch workflow derives from `in_progress`.
 insert into public.work_order_lines (
   id, shop_id, work_order_id, vehicle_id, assigned_tech_id, description,
   complaint, job_type, line_type, status, line_status, approval_state,
@@ -379,7 +381,7 @@ values (
   'f1300000-0000-4000-8000-000000000001',
   'f1100000-0000-4000-8000-000000000005',
   'Replace air dryer cartridge', 'Air system purges frequently', 'repair',
-  'job', 'in_progress', 'authorized', 'approved',
+  'job', 'active', 'authorized', 'approved',
   '2026-08-21T18:10:00Z', 'f1100000-0000-4000-8000-000000000008',
   2.50, 507.50, '2026-08-21T18:22:00Z', '2026-08-21T18:52:00Z',
   'regression-authorized-repair-line',
@@ -1213,7 +1215,7 @@ begin
       and work_order.vehicle_id = inspection.vehicle_id
       and line.shop_id = inspection.shop_id
       and line.work_order_id = inspection.work_order_id
-      and line.status = 'in_progress'
+      and line.status = 'active'
       and line.punched_in_at = labor.started_at
       and line.punched_out_at = labor.ended_at
       and line.updated_at = labor.ended_at
