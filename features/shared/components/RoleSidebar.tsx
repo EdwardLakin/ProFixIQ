@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { useTechnicianCopilotAvailability } from "@/features/copilot/technician/client/useTechnicianCopilotAvailability";
 import {
   TILES,
@@ -62,12 +61,10 @@ export default function RoleSidebar({
   initialRole?: string | null;
   initialEmail?: string | null;
 }) {
-  const supabase = useMemo(() => createBrowserSupabase(), []);
-
   const pathname = usePathname();
 
-  const [role, setRole] = useState<Role | null>(normalizeRole(initialRole));
-  const [userEmail, setUserEmail] = useState<string | null>(initialEmail);
+  const role = normalizeRole(initialRole);
+  const userEmail = initialEmail;
   const [scopeFilter] = useState<Scope | "all">("all");
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
   const technicianCopilotAvailable = useTechnicianCopilotAvailability(
@@ -77,25 +74,6 @@ export default function RoleSidebar({
   const canManageWorkOrderAssignments = canWorkspace(
     WORKSPACE_CAPABILITIES.manageWorkOrderAssignments,
   );
-
-  useEffect(() => {
-    (async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      const uid = session?.user?.id;
-      setUserEmail(session?.user?.email ?? null);
-      if (!uid) return;
-
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", uid)
-        .single();
-
-      if (profile?.role) setRole(normalizeRole(profile.role));
-    })();
-  }, [supabase]);
 
   const tiles = useMemo(() => {
     if (!role) return [] as Tile[];
