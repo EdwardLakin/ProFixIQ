@@ -504,6 +504,7 @@ export default function FieldHub({
           <MobileServiceShell
             embedded
             canManageScheduling={capabilities.canManageScheduling}
+            scope={scope}
           />
         </section>
 

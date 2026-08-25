@@ -22,7 +22,8 @@ describe("Field active-work cockpit", () => {
   });
 
   it("composes canonical service-visit and work-order readers without direct data writes", () => {
-    expect(cockpit).toContain("<MobileServiceShell embedded />");
+    expect(cockpit).toContain("<MobileServiceShell embedded scope={scope} />");
+    expect(cockpit).toContain("useFieldServiceVerifiedScope");
     expect(cockpit).toContain(
       '<MobileWorkOrderQueue initialStatus="in_progress" embedded lockStatus />',
     );
