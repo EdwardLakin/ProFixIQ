@@ -63,8 +63,9 @@ export default function MobileJobPage() {
         return;
       }
 
+      const actor = getActorCapabilities({ role: profile.role });
       setCanAddJob(
-        getActorCapabilities({ role: profile.role }).canManageWorkOrders,
+        actor.canManageWorkOrders || actor.canPerformAssignedWork,
       );
     };
 

@@ -27,7 +27,10 @@ export default async function FocusedJobRoutePage(props: {
         <FocusedJobPanelClient
           workOrderLineId={lineId}
           mode="tech"
-          canAddJob={currentActor.canManageWorkOrders}
+          canAddJob={
+            currentActor.canManageWorkOrders ||
+            currentActor.canPerformAssignedWork
+          }
         />
       }
     />

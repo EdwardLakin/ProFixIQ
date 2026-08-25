@@ -5,6 +5,7 @@ const LINE_ID = "22222222-2222-4222-8222-222222222222";
 const SHOP_ID = "33333333-3333-4333-8333-333333333333";
 const PROFILE_ID = "44444444-4444-4444-8444-444444444444";
 const AUTH_USER_ID = "55555555-5555-4555-8555-555555555555";
+const UPPERCASE_LINE_ID = "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA";
 
 const mocks = vi.hoisted(() => ({
   requireAccess: vi.fn(),
@@ -81,18 +82,38 @@ afterEach(() => {
 describe("manual work-order line route", () => {
   it("rejects Parts before constructing a service-role client", async () => {
     mocks.requireAccess.mockResolvedValueOnce({
-      ok: false,
-      response: Response.json({ error: "Forbidden" }, { status: 403 }),
+      ok: true,
+      authUserId: AUTH_USER_ID,
+      profile: { id: PROFILE_ID, shop_id: SHOP_ID, role: "parts" },
+      supabase: {
+        from: mocks.authenticatedFrom,
+        rpc: mocks.authenticatedRpc,
+      },
     });
 
     const response = await POST(lineRequest(), context());
 
     expect(response.status).toBe(403);
-    expect(mocks.requireAccess).toHaveBeenCalledWith({
-      requiredCapability: "canManageWorkOrders",
-    });
+    expect(mocks.requireAccess).toHaveBeenCalledWith();
     expect(mocks.createAdmin).not.toHaveBeenCalled();
     expect(mocks.adminRpc).not.toHaveBeenCalled();
+  });
+
+  it("preserves assigned-mechanic eligibility for the database assignment check", async () => {
+    mocks.requireAccess.mockResolvedValueOnce({
+      ok: true,
+      authUserId: AUTH_USER_ID,
+      profile: { id: PROFILE_ID, shop_id: SHOP_ID, role: "mechanic" },
+      supabase: {
+        from: mocks.authenticatedFrom,
+        rpc: mocks.authenticatedRpc,
+      },
+    });
+
+    const response = await POST(lineRequest(), context());
+
+    expect(response.status).toBe(201);
+    expect(mocks.adminRpc).toHaveBeenCalledOnce();
   });
 
   it("uses the service-only command with tenant scope and both actor identities", async () => {
@@ -165,6 +186,31 @@ describe("manual work-order line route", () => {
       ok: true,
       lineId: LINE_ID,
       idempotent: true,
+    });
+  });
+
+  it("normalizes accepted uppercase UUIDs before invoking and validating the command", async () => {
+    mocks.adminRpc.mockResolvedValueOnce({
+      data: {
+        ok: true,
+        line_id: UPPERCASE_LINE_ID.toLowerCase(),
+        idempotent: false,
+      },
+      error: null,
+    });
+
+    const response = await POST(
+      lineRequest({ lineId: UPPERCASE_LINE_ID }, UPPERCASE_LINE_ID),
+      context(),
+    );
+
+    expect(response.status).toBe(201);
+    expect(mocks.adminRpc).toHaveBeenCalledWith(
+      "create_manual_work_order_line_atomic",
+      expect.objectContaining({ p_line_id: UPPERCASE_LINE_ID.toLowerCase() }),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      lineId: UPPERCASE_LINE_ID.toLowerCase(),
     });
   });
 

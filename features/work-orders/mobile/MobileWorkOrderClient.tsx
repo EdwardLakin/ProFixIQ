@@ -1370,7 +1370,9 @@ export default function MobileWorkOrderClient({
         onChanged={fetchAll}
         mode="tech"
         canAddJob={
-          actorRoleVerified && currentActor.canManageWorkOrders
+          actorRoleVerified &&
+          (currentActor.canManageWorkOrders ||
+            currentActor.canPerformAssignedWork)
         }
       />
     );

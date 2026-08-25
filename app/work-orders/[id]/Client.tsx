@@ -1141,7 +1141,12 @@ export default function WorkOrderIdClient(): JSX.Element {
 
   const currentActor = getActorCapabilities({ role: currentUserRole });
   const canApprove = currentActor.canAuthorizeQuotes;
-  const canAddJobs = currentActor.canManageWorkOrders;
+  // Mechanics can only load work orders assigned to them through the existing
+  // reader boundary. The server command repeats that assignment check before
+  // creating a line, so the focused workspace preserves their established
+  // Add Job flow without broadening unassigned access.
+  const canAddJobs =
+    currentActor.canManageWorkOrders || currentActor.canPerformAssignedWork;
   const canViewFinancials = canWorkspace(
     WORKSPACE_CAPABILITIES.viewWorkOrderSellPricing,
   );

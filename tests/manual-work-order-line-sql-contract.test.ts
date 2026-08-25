@@ -18,7 +18,7 @@ const functionBody = migration.slice(
 );
 
 describe("manual Work Order line atomic SQL contract", () => {
-  it("is an isolated additive function with a safe definer boundary", () => {
+  it("is an additive command and private durable-receipt boundary", () => {
     expect(functionBody).toContain(
       "create function public.create_manual_work_order_line_atomic",
     );
@@ -28,12 +28,20 @@ describe("manual Work Order line atomic SQL contract", () => {
       "coalesce(auth.role(), '') <> 'service_role'",
     );
     expect(migration).not.toContain("create or replace function");
-    expect(migration).not.toMatch(/\balter table\b/i);
+    expect(migration).toContain(
+      "create table public.manual_work_order_line_creation_receipts",
+    );
+    expect(migration).toContain(
+      "alter table public.manual_work_order_line_creation_receipts enable row level security",
+    );
+    expect(migration).toContain(
+      "revoke all on table public.manual_work_order_line_creation_receipts",
+    );
     expect(migration).not.toMatch(/\bcreate (?:constraint )?trigger\b/i);
     expect(migration).not.toMatch(/\bcreate policy\b/i);
   });
 
-  it("binds the canonical profile to auth identity, tenant, and static manager roles", () => {
+  it("binds the canonical profile to auth identity, tenant, and established roles", () => {
     expect(functionBody).toContain("profile.id = p_actor_profile_id");
     expect(functionBody).toContain("profile.shop_id = p_shop_id");
     expect(functionBody).toContain("profile.id = p_authenticated_user_id");
@@ -44,6 +52,7 @@ describe("manual Work Order line atomic SQL contract", () => {
       "manager",
       "advisor",
       "service",
+      "mechanic",
       "lead_hand",
       "foreman",
     ]) {
@@ -58,7 +67,13 @@ describe("manual Work Order line atomic SQL contract", () => {
       ),
     );
     expect(roleGuard).not.toContain("'parts'");
-    expect(roleGuard).not.toContain("'mechanic'");
+    expect(functionBody).toContain("v_actor_role = 'mechanic'");
+    expect(functionBody).toContain(
+      "assigned_line.work_order_id = v_work_order.id",
+    );
+    expect(functionBody).toContain(
+      "assignment.technician_id = v_actor.id",
+    );
   });
 
   it("locks the tenant-scoped parent and derives child tenant and vehicle identity", () => {
@@ -85,7 +100,15 @@ describe("manual Work Order line atomic SQL contract", () => {
     );
   });
 
-  it("accepts only an exact stable-UUID retry before lifecycle lock checks", () => {
+  it("persists a hashed stable-UUID receipt before lifecycle lock checks", () => {
+    expect(functionBody).toContain("jsonb_build_object(");
+    expect(functionBody).toContain("extensions.digest(");
+    expect(functionBody).toContain("'sha256'");
+    expect(functionBody).toContain(
+      "insert into public.manual_work_order_line_creation_receipts",
+    );
+    expect(functionBody).toContain("on conflict (line_id) do nothing");
+    expect(functionBody).toContain("if not v_receipt_inserted then");
     for (const comparison of [
       "v_existing.work_order_id is not distinct from v_work_order.id",
       "v_existing.vehicle_id is not distinct from v_work_order.vehicle_id",

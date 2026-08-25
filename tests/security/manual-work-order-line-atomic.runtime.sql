@@ -21,6 +21,24 @@ begin
   ) then
     raise exception 'Manual Work Order line RPC ACL is not service-role-only.';
   end if;
+
+  if has_table_privilege(
+    'anon',
+    'public.manual_work_order_line_creation_receipts',
+    'SELECT,INSERT,UPDATE,DELETE'
+  )
+  or has_table_privilege(
+    'authenticated',
+    'public.manual_work_order_line_creation_receipts',
+    'SELECT,INSERT,UPDATE,DELETE'
+  )
+  or has_table_privilege(
+    'service_role',
+    'public.manual_work_order_line_creation_receipts',
+    'SELECT,INSERT,UPDATE,DELETE'
+  ) then
+    raise exception 'Manual Work Order line receipts are directly accessible.';
+  end if;
 end;
 $manual_work_order_line_acl$;
 
@@ -337,8 +355,8 @@ begin
     raise exception 'Mismatched auth user and canonical profile were accepted.';
   end if;
 
-  -- Same-Shop identity alone is insufficient when the profile role cannot
-  -- manage Work Orders.
+  -- Same-Shop mechanic identity alone is insufficient without assignment to
+  -- this Work Order.
   v_denied := false;
   begin
     perform public.create_manual_work_order_line_atomic(
@@ -359,7 +377,59 @@ begin
         and position('MANUAL_WORK_ORDER_LINE_ACTOR_FORBIDDEN' in sqlerrm) > 0;
   end;
   if not v_denied then
-    raise exception 'Same-Shop non-manager actor executed the manual line RPC.';
+    raise exception 'Unassigned same-Shop mechanic executed the manual line RPC.';
+  end if;
+
+  insert into public.work_order_lines (
+    id,
+    work_order_id,
+    vehicle_id,
+    complaint,
+    status,
+    approval_state,
+    job_type,
+    shop_id,
+    user_id,
+    urgency
+  ) values (
+    '84570000-0000-4000-8000-000000000020',
+    '84560000-0000-4000-8000-000000000001',
+    '84550000-0000-4000-8000-000000000001',
+    'Existing assigned work',
+    'awaiting_approval',
+    'pending',
+    'repair',
+    '84530000-0000-4000-8000-000000000001',
+    '84510000-0000-4000-8000-000000000004',
+    'medium'
+  );
+
+  insert into public.work_order_line_technicians (
+    work_order_line_id,
+    technician_id,
+    assigned_by
+  ) values (
+    '84570000-0000-4000-8000-000000000020',
+    '84510000-0000-4000-8000-000000000004',
+    '84510000-0000-4000-8000-000000000001'
+  );
+
+  v_result := public.create_manual_work_order_line_atomic(
+    '84530000-0000-4000-8000-000000000001',
+    '84560000-0000-4000-8000-000000000001',
+    '84570000-0000-4000-8000-000000000007',
+    '84510000-0000-4000-8000-000000000004',
+    '84510000-0000-4000-8000-000000000004',
+    'Assigned mechanic follow-up',
+    null,
+    0.5::numeric,
+    null,
+    'medium'
+  );
+
+  if (v_result ->> 'ok')::boolean is distinct from true
+     or (v_result ->> 'idempotent')::boolean is distinct from false then
+    raise exception 'Assigned mechanic Add Job was not preserved: %', v_result;
   end if;
 
   v_result := public.create_manual_work_order_line_atomic(
@@ -427,6 +497,34 @@ begin
     raise exception 'Exact manual line replay was not idempotent: %', v_result;
   end if;
 
+  -- The established void path can hard-delete an empty line. The independent
+  -- receipt must recognize the original request after deletion and must not
+  -- resurrect the deliberately removed job, even after the parent closes.
+  delete from public.work_order_lines
+  where id = '84570000-0000-4000-8000-000000000001';
+
+  v_result := public.create_manual_work_order_line_atomic(
+    '84530000-0000-4000-8000-000000000001',
+    '84560000-0000-4000-8000-000000000001',
+    '84570000-0000-4000-8000-000000000001',
+    '84510000-0000-4000-8000-000000000002',
+    '84520000-0000-4000-8000-000000000002',
+    '  Brake vibration  ',
+    '   ',
+    1.5::numeric,
+    'Front pads',
+    'high'
+  );
+
+  if (v_result ->> 'idempotent')::boolean is distinct from true
+     or exists (
+       select 1
+       from public.work_order_lines
+       where id = '84570000-0000-4000-8000-000000000001'
+     ) then
+    raise exception 'Deleted manual line was resurrected by retry: %', v_result;
+  end if;
+
   v_denied := false;
   begin
     perform public.create_manual_work_order_line_atomic(
@@ -483,6 +581,7 @@ begin
       '84570000-0000-4000-8000-000000000004',
       '84570000-0000-4000-8000-000000000005',
       '84570000-0000-4000-8000-000000000006',
+      '84570000-0000-4000-8000-000000000007',
       '84570000-0000-4000-8000-000000000010'
     )
   ) <> 1 then

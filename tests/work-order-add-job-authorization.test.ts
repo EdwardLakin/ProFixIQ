@@ -15,7 +15,7 @@ describe("Work Order Add Job authorization", () => {
 
     const workspace = read("app/work-orders/[id]/Client.tsx");
     expect(workspace).toContain(
-      "const canAddJobs = currentActor.canManageWorkOrders",
+      "currentActor.canManageWorkOrders || currentActor.canPerformAssignedWork",
     );
     expect(workspace).toContain("{canAddJobs ? (");
     expect(workspace).toContain("{canAddJobs && addJobOpen && wo?.id ? (");
@@ -48,14 +48,12 @@ describe("Work Order Add Job authorization", () => {
     expect(mobile).toContain("canAddJob = false");
     expect(mobile).toContain("{canAddJob && workOrder?.id ? (");
     expect(mobile).toContain("{canAddJob && openAddJob && workOrder?.id && (");
-    expect(standaloneDesktop).toContain(
-      "canAddJob={currentActor.canManageWorkOrders}",
-    );
+    expect(standaloneDesktop).toContain("currentActor.canPerformAssignedWork");
     expect(standaloneMobile).toContain(
       "resolveCanonicalStaffProfile(supabase, user.id",
     );
     expect(standaloneMobile).toContain(
-      "getActorCapabilities({ role: profile.role }).canManageWorkOrders",
+      "actor.canManageWorkOrders || actor.canPerformAssignedWork",
     );
     expect(standaloneMobile).toContain("canAddJob={canAddJob}");
   });

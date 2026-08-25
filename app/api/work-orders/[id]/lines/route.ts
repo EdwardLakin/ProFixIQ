@@ -9,6 +9,7 @@ import {
   type DatabaseErrorLike,
 } from "@/features/shared/lib/server/safeDatabaseError";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import { buildAddJobLinePayload } from "@/features/work-orders/lib/addJobLinePayload";
 
 export const runtime = "nodejs";
@@ -16,7 +17,10 @@ export const dynamic = "force-dynamic";
 
 const manualLineSchema = z
   .object({
-    lineId: z.string().uuid(),
+    lineId: z
+      .string()
+      .uuid()
+      .transform((value) => value.toLowerCase()),
     jobName: z.string().trim().min(1).max(1000),
     notes: z.string().max(4000),
     laborHours: z.number().finite().min(0).max(1000),
@@ -110,19 +114,26 @@ export async function POST(
   request: Request,
   context: { params: Promise<{ id: string }> },
 ) {
-  const access = await requireShopScopedApiAccess({
-    requiredCapability: "canManageWorkOrders",
-  });
+  const access = await requireShopScopedApiAccess();
   if (!access.ok) return access.response;
 
+  const actor = getActorCapabilities({ role: access.profile.role });
+  if (!actor.canManageWorkOrders && !actor.canPerformAssignedWork) {
+    return NextResponse.json(
+      { ok: false, error: "You do not have permission to add this job." },
+      { status: 403 },
+    );
+  }
+
   const { id: rawWorkOrderId } = await context.params;
-  const workOrderId = rawWorkOrderId.trim();
-  if (!z.string().uuid().safeParse(workOrderId).success) {
+  const workOrderIdResult = z.string().uuid().safeParse(rawWorkOrderId.trim());
+  if (!workOrderIdResult.success) {
     return NextResponse.json(
       { ok: false, error: "Invalid work order id." },
       { status: 400 },
     );
   }
+  const workOrderId = workOrderIdResult.data.toLowerCase();
 
   const bodyResult = manualLineSchema.safeParse(
     await request.json().catch(() => null),
@@ -134,8 +145,14 @@ export async function POST(
     );
   }
 
-  const idempotencyKey = request.headers.get("Idempotency-Key")?.trim() ?? "";
-  if (idempotencyKey !== bodyResult.data.lineId) {
+  const idempotencyKeyResult = z
+    .string()
+    .uuid()
+    .safeParse(request.headers.get("Idempotency-Key")?.trim() ?? "");
+  if (
+    !idempotencyKeyResult.success ||
+    idempotencyKeyResult.data.toLowerCase() !== bodyResult.data.lineId
+  ) {
     return NextResponse.json(
       {
         ok: false,
@@ -183,7 +200,10 @@ export async function POST(
   if (error) return rpcFailureResponse(error);
 
   const result = manualLineRpcResultSchema.safeParse(data);
-  if (!result.success || result.data.line_id !== bodyResult.data.lineId) {
+  if (
+    !result.success ||
+    result.data.line_id.toLowerCase() !== bodyResult.data.lineId
+  ) {
     return rpcFailureResponse({
       message: "MANUAL_WORK_ORDER_LINE_INVALID_RESULT",
     });
@@ -192,7 +212,7 @@ export async function POST(
   return NextResponse.json(
     {
       ok: true,
-      lineId: result.data.line_id,
+      lineId: result.data.line_id.toLowerCase(),
       idempotent: result.data.idempotent,
     },
     { status: result.data.idempotent ? 200 : 201 },
