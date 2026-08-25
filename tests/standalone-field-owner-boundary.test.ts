@@ -146,6 +146,12 @@ describe("standalone Field owner boundary", () => {
     const authorizationFunctions = authorizationMigration.split(
       "do $postcheck$",
     )[0];
+    const internalAuthorizationMigration = read(
+      "supabase/migrations/20260825001000_align_standalone_field_internal_configuration_authorization.sql",
+    );
+    const internalAuthorizationFunctions = internalAuthorizationMigration.split(
+      "do $postcheck$",
+    )[0];
     const serverAccess = read("features/mobile/service/server/access.ts");
     const settingsRoute = read("app/api/mobile/service/settings/route.ts");
     const settingsScreen = read(
@@ -197,6 +203,27 @@ describe("standalone Field owner boundary", () => {
     );
     expect(authorizationMigration).toContain(
       "elsif lower(coalesce(v_profile.role, '')) not in ('owner', 'admin')",
+    );
+    expect(internalAuthorizationMigration).toContain(
+      "create or replace function private.mobile_configure_service_v1_atomic_internal_v1(",
+    );
+    expect(internalAuthorizationFunctions).toContain(
+      "v_subscription_package = 'field_service'",
+    );
+    expect(internalAuthorizationFunctions).toContain(
+      "v_owner_id is distinct from v_profile.id",
+    );
+    expect(internalAuthorizationFunctions).toContain(
+      "v_owner_id is distinct from v_profile.user_id",
+    );
+    expect(internalAuthorizationFunctions).toContain(
+      "elsif lower(coalesce(v_profile.role, '')) not in ('owner','admin')",
+    );
+    expect(internalAuthorizationFunctions).not.toContain(
+      "if not found or lower(coalesce(v_profile.role, '')) not in ('owner','admin')",
+    );
+    expect(internalAuthorizationMigration).toContain(
+      ") from public, anon, authenticated, service_role;",
     );
     expect(hardeningMigration).toContain(
       "workspace.subscription_package is distinct from 'field_service'",
