@@ -32,6 +32,7 @@ const ALLOWED_REGRESSION_MUTATION_TARGETS = [
   "auth.identities",
   "auth.users",
   "public.customers",
+  "public.field_service_vehicle_assignments",
   "public.fleet_dispatch_assignments",
   "public.fleet_members",
   "public.fleet_pretrip_reports",
@@ -39,13 +40,27 @@ const ALLOWED_REGRESSION_MUTATION_TARGETS = [
   "public.fleet_unit_defects",
   "public.fleet_vehicles",
   "public.fleets",
+  "public.inspection_items",
+  "public.inspection_signatures",
+  "public.inspections",
   "public.mobile_field_operators",
   "public.mobile_service_settings",
+  "public.part_request_items",
+  "public.part_request_lines",
+  "public.part_requests",
+  "public.part_stock",
+  "public.parts",
   "public.profiles",
   "public.scheduling_resources",
+  "public.service_vehicles",
   "public.shop_members",
   "public.shops",
+  "public.staff_capability_overrides",
+  "public.stock_locations",
+  "public.stock_moves",
   "public.vehicles",
+  "public.work_order_line_labor_segments",
+  "public.work_order_line_technicians",
   "public.work_order_lines",
   "public.work_order_parts",
   "public.work_order_quote_lines",
@@ -151,6 +166,7 @@ describe("deterministic regression fixture contract", () => {
   it("locks every required actor to a database-verified identity/role/tenant tuple", () => {
     const personas = REGRESSION_FIXTURE.personas;
     expect(personas.proOwner.role).toBe("owner");
+    expect(personas.administrator.role).toBe("admin");
     expect(personas.manager.role).toBe("manager");
     expect(personas.advisor.role).toBe("advisor");
     expect(personas.technician.role).toBe("mechanic");
@@ -207,6 +223,68 @@ describe("deterministic regression fixture contract", () => {
     expect(seed).toContain("'sent', 'sent', null");
   });
 
+  it("builds one operational repair container with inspection, labor, and mixed Parts states", () => {
+    expect(seed).toContain(REGRESSION_FIXTURE.inspection);
+    expect(seed).toContain(REGRESSION_FIXTURE.inspectionSignature);
+    expect(seed).toContain(REGRESSION_FIXTURE.inspectionItem);
+    expect(seed).toContain(REGRESSION_FIXTURE.laborSegment);
+    expect(seed).toContain(
+      "insert into public.work_order_line_technicians",
+    );
+    expect(seed).toContain(
+      "Canonical technician assignment fixture is incomplete",
+    );
+    expect(seed).toContain("'recommend'");
+    expect(seed).toContain(
+      "Inspection and labor evidence fixtures are incomplete",
+    );
+
+    expect(seed).toContain(REGRESSION_FIXTURE.receivedPart);
+    expect(seed).toContain(REGRESSION_FIXTURE.partRequest);
+    for (const id of Object.values(REGRESSION_FIXTURE.partRequestItems)) {
+      expect(seed).toContain(id);
+    }
+    expect(seed).toContain(REGRESSION_FIXTURE.partRequestLine);
+    expect(seed).toContain(
+      "'approved', 'One received fitting and one pending mounting-hardware item.'",
+    );
+    expect(seed).toContain("'approved', 1.00, 0, 0");
+    expect(seed).toContain("'received', 3.50, 0, 0");
+    expect(seed).toContain("1, 1, 'receive', 'part_request_item'");
+    expect(seed).toContain(
+      "Pending and received Parts fixtures are incomplete",
+    );
+  });
+
+  it("includes an individual capability override without changing the role preset", () => {
+    const override =
+      REGRESSION_FIXTURE.capabilityOverrides.technicianWorkOrderAssignment;
+
+    expect(seed).toContain(override.id);
+    expect(seed).toContain(override.profileId);
+    expect(seed).toContain(override.capabilityKey);
+    expect(seed).toContain(`'${override.capabilityKey}', '${override.effect}'`);
+    expect(seed).toContain(
+      "Individual capability override fixture is incomplete",
+    );
+  });
+
+  it("anchors the Field operator to one service truck and deterministic inventory", () => {
+    for (const id of Object.values(REGRESSION_FIXTURE.fieldTruck)) {
+      expect(seed).toContain(id);
+    }
+    expect(seed).toContain(
+      "insert into public.field_service_vehicle_assignments",
+    );
+    expect(seed).toContain(
+      "'TRUCK-REG-01', 'Regression Service Truck Inventory'",
+    );
+    expect(seed).toContain("'Regression Service Truck', 'FIELD-01'");
+    expect(seed).toContain(
+      "Field service truck and inventory fixtures are incomplete",
+    );
+  });
+
   it("includes plural Fleet assets, requests, defects, and pre-trips", () => {
     expect(REGRESSION_FIXTURE.fleetRequests).toHaveLength(2);
     expect(REGRESSION_FIXTURE.pretrips).toHaveLength(2);
@@ -218,7 +296,7 @@ describe("deterministic regression fixture contract", () => {
 
   it("rebuilds trigger-owned scheduler capacity while triggers are suppressed", () => {
     expect(Object.values(REGRESSION_FIXTURE.schedulingResources)).toHaveLength(
-      6,
+      7,
     );
     for (const id of Object.values(REGRESSION_FIXTURE.schedulingResources)) {
       expect(seed).toContain(id);
