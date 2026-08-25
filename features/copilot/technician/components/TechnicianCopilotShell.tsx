@@ -2,9 +2,18 @@
 
 import { Bot, Maximize2, Minimize2, X } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useState,
+  useSyncExternalStore,
+} from "react";
 
 import { useTechnicianCopilotAvailabilityState } from "@/features/copilot/technician/client/useTechnicianCopilotAvailability";
+import {
+  getMobileWorkflowDock,
+  subscribeToMobileWorkflowDock,
+} from "@/features/copilot/technician/client/mobileWorkflowDock";
 import { cn } from "@/features/shared/utils/cn";
 import { TechnicianTextCopilot } from "./TechnicianTextCopilot";
 
@@ -23,17 +32,23 @@ function isCopilotRoute(pathname: string): boolean {
   );
 }
 
-type MobileWorkflowDock = "job" | "work-order" | null;
-
-function mobileWorkflowDock(pathname: string): MobileWorkflowDock {
+function isStandaloneMobileJobRoute(pathname: string): boolean {
   const segments = pathname.split("/").filter(Boolean);
-  if (segments.length !== 3 || segments[0] !== "mobile") return null;
+  return (
+    segments.length === 3 &&
+    segments[0] === "mobile" &&
+    segments[1] === "jobs"
+  );
+}
 
-  if (segments[1] === "jobs") return "job";
-  if (segments[1] === "work-orders" && segments[2] !== "create") {
-    return "work-order";
-  }
-  return null;
+function isShortMobileViewport(): boolean {
+  if (typeof window === "undefined") return false;
+  const visualHeight = window.visualViewport?.height;
+  const viewportHeight =
+    typeof visualHeight === "number"
+      ? Math.min(window.innerHeight, visualHeight)
+      : window.innerHeight;
+  return viewportHeight <= 360;
 }
 
 export function TechnicianCopilotShell({
@@ -47,14 +62,28 @@ export function TechnicianCopilotShell({
   const router = useRouter();
   const availability = useTechnicianCopilotAvailabilityState(shouldCheck);
   const [open, setOpen] = useState(() => isCopilotRoute(pathname));
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(
+    () => surface === "mobile" && isShortMobileViewport(),
+  );
+  const [shortMobileViewport, setShortMobileViewport] = useState(
+    () => surface === "mobile" && isShortMobileViewport(),
+  );
+  const registeredWorkflowDock = useSyncExternalStore(
+    subscribeToMobileWorkflowDock,
+    getMobileWorkflowDock,
+    () => null,
+  );
   const workflowDock =
-    surface === "mobile" ? mobileWorkflowDock(pathname) : null;
+    surface === "mobile"
+      ? isStandaloneMobileJobRoute(pathname)
+        ? "job"
+        : registeredWorkflowDock
+      : null;
 
   const openCompact = useCallback(() => {
-    setExpanded(false);
+    setExpanded(shortMobileViewport);
     setOpen(true);
-  }, []);
+  }, [shortMobileViewport]);
 
   const close = useCallback(() => {
     setOpen(false);
@@ -67,9 +96,27 @@ export function TechnicianCopilotShell({
   useEffect(() => {
     if (isCopilotRoute(pathname)) {
       setOpen(true);
-      setExpanded(false);
+      setExpanded(shortMobileViewport);
     }
-  }, [pathname]);
+  }, [pathname, shortMobileViewport]);
+
+  useEffect(() => {
+    if (surface !== "mobile") return;
+
+    const updateViewportState = () => {
+      const isShort = isShortMobileViewport();
+      setShortMobileViewport(isShort);
+      if (isShort) setExpanded(true);
+    };
+
+    updateViewportState();
+    window.addEventListener("resize", updateViewportState);
+    window.visualViewport?.addEventListener("resize", updateViewportState);
+    return () => {
+      window.removeEventListener("resize", updateViewportState);
+      window.visualViewport?.removeEventListener("resize", updateViewportState);
+    };
+  }, [surface]);
 
   useEffect(() => {
     const handleOpen = () => openCompact();
@@ -169,26 +216,28 @@ export function TechnicianCopilotShell({
               </div>
             </div>
             <div className="flex shrink-0 gap-2">
-              <button
-                type="button"
-                onClick={() => setExpanded((current) => !current)}
-                aria-label={
-                  expanded
-                    ? "Return to compact voice controls"
-                    : "Show full CoPilot conversation"
-                }
-                className="inline-flex h-10 w-10 items-center justify-center rounded-full border"
-                style={{
-                  borderColor: "var(--theme-border-soft)",
-                  background: "var(--theme-surface-panel)",
-                }}
-              >
-                {expanded ? (
-                  <Minimize2 className="h-5 w-5" aria-hidden />
-                ) : (
-                  <Maximize2 className="h-5 w-5" aria-hidden />
-                )}
-              </button>
+              {!shortMobileViewport ? (
+                <button
+                  type="button"
+                  onClick={() => setExpanded((current) => !current)}
+                  aria-label={
+                    expanded
+                      ? "Return to compact voice controls"
+                      : "Show full CoPilot conversation"
+                  }
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-full border"
+                  style={{
+                    borderColor: "var(--theme-border-soft)",
+                    background: "var(--theme-surface-panel)",
+                  }}
+                >
+                  {expanded ? (
+                    <Minimize2 className="h-5 w-5" aria-hidden />
+                  ) : (
+                    <Maximize2 className="h-5 w-5" aria-hidden />
+                  )}
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={close}

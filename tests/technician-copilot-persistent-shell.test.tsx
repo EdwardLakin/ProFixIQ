@@ -60,6 +60,12 @@ describe("persistent Technician CoPilot shell", () => {
     availability.state = { status: "available", message: null };
     document.body.style.pointerEvents = "";
     document.body.removeAttribute("data-scroll-locked");
+    document.body.removeAttribute("data-mobile-workflow-dock");
+    document.body.removeAttribute("data-mobile-workflow-dock-owner");
+    Object.defineProperty(window, "innerHeight", {
+      configurable: true,
+      value: 768,
+    });
   });
 
   it("keeps one collaborator runtime mounted while the panel opens and closes", () => {
@@ -183,13 +189,6 @@ describe("persistent Technician CoPilot shell", () => {
 
   it.each([
     [
-      "/mobile/work-orders/work-order-id",
-      "bottom-[calc(10rem+env(safe-area-inset-bottom))]",
-      "max-h-[min(21rem,calc(100dvh-16rem))]",
-      "bottom-[calc(13.7rem+max(0.75rem,env(safe-area-inset-bottom,0px)))]",
-      "max-h-[min(21rem,calc(100dvh-14.7rem-max(0.75rem,env(safe-area-inset-bottom,0px))))]",
-    ],
-    [
       "/mobile/jobs/work-order-line-id",
       "bottom-[calc(13.7rem+max(0.75rem,env(safe-area-inset-bottom,0px)))]",
       "max-h-[min(21rem,calc(100dvh-14.7rem-max(0.75rem,env(safe-area-inset-bottom,0px))))]",
@@ -252,6 +251,76 @@ describe("persistent Technician CoPilot shell", () => {
         "data-compact",
         "false",
       );
+    },
+  );
+
+  it("reserves the embedded work-order dock only while the focused job is mounted", async () => {
+    pathname = "/mobile/work-orders/work-order-id";
+    const { registerMobileWorkflowDock } = await import(
+      "@/features/copilot/technician/client/mobileWorkflowDock"
+    );
+    render(<TechnicianCopilotShell shouldCheck surface="mobile" />);
+
+    const launcher = screen.getByRole("button", {
+      name: "Open Technician CoPilot",
+    });
+    expect(launcher).toHaveClass(
+      "bottom-[calc(4.75rem+env(safe-area-inset-bottom))]",
+    );
+
+    let unregister: () => void = () => undefined;
+    act(() => {
+      unregister = registerMobileWorkflowDock("work-order");
+    });
+    expect(launcher).toHaveClass(
+      "bottom-[calc(10rem+env(safe-area-inset-bottom))]",
+    );
+
+    act(() => unregister());
+    expect(launcher).toHaveClass(
+      "bottom-[calc(4.75rem+env(safe-area-inset-bottom))]",
+    );
+  });
+
+  it.each([
+    "/mobile/jobs/work-order-line-id",
+    "/mobile/work-orders/work-order-id",
+  ])(
+    "opens full-screen instead of clipping controls at 320px on %s",
+    async (route) => {
+      pathname = route;
+      Object.defineProperty(window, "innerHeight", {
+        configurable: true,
+        value: 320,
+      });
+      const { registerMobileWorkflowDock } = await import(
+        "@/features/copilot/technician/client/mobileWorkflowDock"
+      );
+      const unregister = route.includes("work-orders")
+        ? registerMobileWorkflowDock("work-order")
+        : () => undefined;
+
+      render(<TechnicianCopilotShell shouldCheck surface="mobile" />);
+      fireEvent.click(
+        screen.getByRole("button", { name: "Open Technician CoPilot" }),
+      );
+
+      const dialog = screen.getByRole("dialog", {
+        name: "Technician CoPilot",
+      });
+      expect(dialog).toHaveAttribute("aria-modal", "true");
+      expect(dialog).toHaveClass("inset-0", "h-[100dvh]", "z-[140]");
+      expect(screen.getByTestId("copilot-runtime")).toHaveAttribute(
+        "data-compact",
+        "false",
+      );
+      expect(
+        screen.queryByRole("button", {
+          name: "Return to compact voice controls",
+        }),
+      ).not.toBeInTheDocument();
+
+      act(() => unregister());
     },
   );
 
