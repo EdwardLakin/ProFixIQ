@@ -1,7 +1,7 @@
 // /features/work-orders/components/workorders/DeleteOrVoidLineModal.tsx
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { Database } from "@shared/types/types/supabase";
 
@@ -12,6 +12,7 @@ type Allocation = DB["public"]["Tables"]["work_order_part_allocations"]["Row"];
 
 type Disposition = "return_to_stock" | "keep_consumed" | "scrap";
 type Mode = "delete" | "void";
+type PendingOperation = { fingerprint: string; key: string };
 
 type Props = {
   open: boolean;
@@ -48,6 +49,7 @@ export default function DeleteOrVoidLineModal({
   const [reason, setReason] = useState<string>("Customer declined");
   const [note, setNote] = useState<string>("");
   const [busy, setBusy] = useState(false);
+  const pendingOperationRef = useRef<PendingOperation | null>(null);
 
   // ✅ Reset modal state when opening or switching lines
   useEffect(() => {
@@ -104,18 +106,42 @@ export default function DeleteOrVoidLineModal({
       return;
     }
 
+    const effectiveMode: Mode = hasAllocs ? "void" : mode;
+    const consumedDisposition: Disposition = hasAllocs
+      ? disposition
+      : "keep_consumed";
+    const normalizedNote = note.trim() || null;
+    const fingerprint = JSON.stringify({
+      lineId: line.id,
+      mode: effectiveMode,
+      consumedDisposition,
+      reason: r,
+      note: normalizedNote,
+    });
+    const existingOperation = pendingOperationRef.current;
+    const idempotencyKey =
+      existingOperation?.fingerprint === fingerprint
+        ? existingOperation.key
+        : globalThis.crypto.randomUUID();
+    pendingOperationRef.current = { fingerprint, key: idempotencyKey };
+
     setBusy(true);
     try {
       const res = await fetch(
         `/api/work-orders/lines/${encodeURIComponent(line.id)}/delete-or-void`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": idempotencyKey,
+          },
           body: JSON.stringify({
-            mode: hasAllocs ? "void" : mode, // ✅ safety: parts => void only
+            mode: effectiveMode, // ✅ safety: parts => void only
             disposition: hasAllocs ? disposition : undefined,
+            consumedDisposition,
             reason: r,
-            note: note.trim() ? note.trim() : null,
+            note: normalizedNote,
+            idempotencyKey,
           }),
         },
       );
@@ -128,6 +154,9 @@ export default function DeleteOrVoidLineModal({
         throw new Error(json?.error || "Failed.");
       }
 
+      if (pendingOperationRef.current?.key === idempotencyKey) {
+        pendingOperationRef.current = null;
+      }
       toast.success(json.mode === "deleted" ? "Line deleted." : "Line voided.");
       onClose();
       onDone?.();

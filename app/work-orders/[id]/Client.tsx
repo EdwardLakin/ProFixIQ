@@ -180,11 +180,6 @@ function extractInspectionTemplateId(ln: WorkOrderLineWithInspectionMeta): strin
 type TemplateSectionItem = { item: string; unit?: string | null };
 type TemplateSection = { title: string; items: TemplateSectionItem[] };
 
-// roles allowed to assign jobs
-
-// roles allowed to delete/void lines
-const LINE_DELETE_ROLES = new Set(["owner", "admin", "manager", "advisor"]);
-
 /* ----------------------- AI review icon support ----------------------- */
 
 type ReviewIssue = { kind: string; message: string; lineId?: string };
@@ -1151,7 +1146,7 @@ export default function WorkOrderIdClient(): JSX.Element {
     customerMergedIntoCustomerId: customer?.merged_into_customer_id,
   });
 
-  const canDeleteLine = currentUserRole ? LINE_DELETE_ROLES.has(currentUserRole) : false;
+  const canDeleteLine = currentActor.canManageWorkOrders;
   const openFinancialWorkspace = useCallback(() => {
     setShowWoContext(true);
     window.requestAnimationFrame(() => {
@@ -2532,4 +2527,3 @@ export default function WorkOrderIdClient(): JSX.Element {
     </div>
   );
 }
-

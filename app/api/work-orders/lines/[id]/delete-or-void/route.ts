@@ -84,7 +84,7 @@ export async function POST(
     p_reason: body.reason,
     p_note: body.note ?? null,
     p_operation_key: `${access.profile.shop_id}:line-void:${rawKey}`,
-    p_actor_user_id: access.profile.id,
+    p_actor_user_id: access.authUserId,
   });
 
   if (error) {
