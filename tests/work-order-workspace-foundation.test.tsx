@@ -11,6 +11,8 @@ import {
 import {
   WORK_ORDER_WORKSPACE_MODULES,
   createWorkOrderWorkspaceResource,
+  isWorkOrderExecutionComplete,
+  isWorkOrderExecutionInProgress,
   workOrderWorkspaceCustomerMessageHref,
 } from "@/features/work-orders/workspace/workOrderWorkspace";
 import { WorkspaceShell } from "@/features/workspace/components/WorkspaceShell";
@@ -66,6 +68,70 @@ function ResourceConsumer() {
 }
 
 describe("Work Order Workspace foundation", () => {
+  it("keeps the decision timeline aligned with canonical Work Order execution", () => {
+    expect(
+      isWorkOrderExecutionInProgress({
+        workOrderStatus: "in_progress",
+        lines: [{ approvalState: "approved", workStatus: "awaiting" }],
+      }),
+    ).toBe(true);
+
+    expect(
+      isWorkOrderExecutionInProgress({
+        workOrderStatus: "approved",
+        lines: [{ approvalState: "approved", workStatus: "queued" }],
+      }),
+    ).toBe(true);
+
+    expect(
+      isWorkOrderExecutionInProgress({
+        workOrderStatus: "approved",
+        lines: [{ approvalState: "approved", workStatus: "awaiting" }],
+      }),
+    ).toBe(false);
+
+    expect(
+      isWorkOrderExecutionInProgress({
+        workOrderStatus: "completed",
+        lines: [{ approvalState: "approved", workStatus: "queued" }],
+      }),
+    ).toBe(false);
+
+    expect(
+      isWorkOrderExecutionInProgress({
+        workOrderStatus: "queued",
+        lines: [{ approvalState: "approved", workStatus: "awaiting" }],
+      }),
+    ).toBe(false);
+
+    expect(
+      isWorkOrderExecutionInProgress({
+        workOrderStatus: "active",
+        lines: [{ approvalState: "approved", workStatus: "awaiting" }],
+      }),
+    ).toBe(true);
+
+    for (const terminalStatus of [
+      "ready_to_invoice",
+      "invoiced",
+      "done",
+      "cancelled",
+      "canceled",
+      "declined",
+    ]) {
+      expect(
+        isWorkOrderExecutionInProgress({
+          workOrderStatus: terminalStatus,
+          lines: [{ approvalState: "approved", workStatus: "queued" }],
+        }),
+      ).toBe(false);
+    }
+
+    expect(isWorkOrderExecutionComplete("done")).toBe(true);
+    expect(isWorkOrderExecutionComplete("ready_to_invoice")).toBe(true);
+    expect(isWorkOrderExecutionComplete("in_progress")).toBe(false);
+  });
+
   it("embeds the existing cockpit without contained-shell spacing", () => {
     render(<WorkspaceShell layout="embedded">Existing cockpit</WorkspaceShell>);
 
