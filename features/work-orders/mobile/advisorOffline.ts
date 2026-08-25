@@ -13,12 +13,16 @@ import type {
   AdvisorWorkOrderDraft,
   AdvisorWorkOrderDraftLine,
 } from "@/features/work-orders/mobile/advisorOfflineTypes";
+import {
+  isSafePrivateNavigationShell,
+  PRIVATE_NAVIGATION_CACHE_NAMES,
+} from "@/features/shared/lib/pwa/privateNavigationCache";
 
 const DAY_KIND = "advisor-offline-day";
 const DRAFT_KIND = "advisor-work-order-draft";
 const MATERIALIZATION_KIND = "advisor-draft-materialization";
 const CURRENT_DRAFT_ID = "current";
-const ADVISOR_SHELL_CACHE = "profixiq-advisor-shell-v1";
+const ADVISOR_SHELL_CACHE = PRIVATE_NAVIGATION_CACHE_NAMES.advisor;
 const DRAFT_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
 
 export function createAdvisorDraftId(): string {
@@ -50,10 +54,13 @@ async function cacheAdvisorRouteShells(bundle: AdvisorOfflineBundle) {
   await Promise.all(
     urls.map(async (url) => {
       const response = await fetch(url, {
+        cache: "no-store",
         credentials: "include",
         headers: { Accept: "text/html" },
       });
-      if (response.ok) await cache.put(url, response.clone());
+      if (response.ok && (await isSafePrivateNavigationShell(response))) {
+        await cache.put(url, response.clone());
+      }
     }),
   );
 }

@@ -10,6 +10,7 @@ import {
   replaceStoredMutations,
   type StoredOfflineMutation,
 } from "@/features/shared/lib/offline/database";
+import { checkOfflineReplaySession } from "@/features/shared/lib/offline/session";
 
 export type OfflineMutationStatus = StoredOfflineMutation["status"];
 export type OfflineMutationScope = { userId: string; shopId: string };
@@ -183,6 +184,34 @@ export function getOfflineMutationScope(): OfflineMutationScope | null {
     const userId = clean(value?.userId);
     const shopId = clean(value?.shopId);
     return userId && shopId ? { userId, shopId } : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Offline records are intentionally retained across sessions, but they must
+ * never be rendered for whichever account happens to sign in next. The local
+ * Supabase session must match first; while online, the canonical actor endpoint
+ * also verifies the Shop before any saved state is returned. Replay retains its
+ * separate under-lock server authorization checks.
+ */
+export async function getSessionMatchedOfflineScope(
+  candidate: OfflineMutationScope | null = getOfflineMutationScope(),
+): Promise<OfflineMutationScope | null> {
+  const scope = candidate;
+  if (!scope) return null;
+
+  try {
+    const {
+      data: { session },
+    } = await createBrowserSupabase().auth.getSession();
+    const currentUserId = session?.user.id?.trim() ?? "";
+    if (!currentUserId || currentUserId !== scope.userId) return null;
+    if (typeof navigator === "undefined" || !navigator.onLine) return scope;
+
+    const verification = await checkOfflineReplaySession(scope);
+    return verification.status === "verified" ? scope : null;
   } catch {
     return null;
   }

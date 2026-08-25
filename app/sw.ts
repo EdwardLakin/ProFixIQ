@@ -7,9 +7,61 @@ import {
   StaleWhileRevalidate,
 } from "serwist";
 
+import {
+  clearPrivateNavigationCaches,
+  isSafePrivateNavigationShell,
+  PRIVATE_NAVIGATION_CACHE_CLEAR_MESSAGE,
+  PRIVATE_NAVIGATION_CACHE_NAMES,
+} from "@/features/shared/lib/pwa/privateNavigationCache";
+
+type ExtendableEventLike = Event & {
+  waitUntil(promise: Promise<unknown>): void;
+};
+
+type MessageEventLike = ExtendableEventLike & {
+  data: unknown;
+};
+
 declare const self: {
   location: Location;
   __SW_MANIFEST: Array<string | { url: string; revision?: string | null }>;
+  addEventListener(
+    type: "activate",
+    listener: (event: ExtendableEventLike) => void,
+  ): void;
+  addEventListener(
+    type: "message",
+    listener: (event: MessageEventLike) => void,
+  ): void;
+};
+
+const privateNavigationCachePlugin = {
+  async cacheWillUpdate({
+    response,
+  }: {
+    response: Response;
+  }): Promise<Response | null> {
+    return (await isSafePrivateNavigationShell(response)) ? response : null;
+  },
+  async cachedResponseWillBeUsed({
+    cacheName,
+    cachedResponse,
+    request,
+  }: {
+    cacheName: string;
+    cachedResponse?: Response;
+    request: Request;
+  }): Promise<Response | null> {
+    if (!cachedResponse) return null;
+    if (await isSafePrivateNavigationShell(cachedResponse)) {
+      return cachedResponse;
+    }
+    await caches
+      .open(cacheName)
+      .then((cache) => cache.delete(request))
+      .catch(() => false);
+    return null;
+  },
 };
 
 const serwist = new Serwist({
@@ -29,9 +81,11 @@ const serwist = new Serwist({
         request.mode === "navigate" &&
         (url.pathname === "/portal/messages" || url.pathname === "/chat"),
       handler: new NetworkFirst({
-        cacheName: "profixiq-messaging-shell-v1",
+        cacheName: PRIVATE_NAVIGATION_CACHE_NAMES.messaging,
+        fetchOptions: { cache: "no-store" },
         networkTimeoutSeconds: 4,
         plugins: [
+          privateNavigationCachePlugin,
           new ExpirationPlugin({
             maxEntries: 10,
             maxAgeSeconds: 60 * 60 * 24 * 14,
@@ -45,9 +99,11 @@ const serwist = new Serwist({
         (url.pathname === "/mobile/appointments" ||
           url.pathname === "/mobile/work-orders/create"),
       handler: new NetworkFirst({
-        cacheName: "profixiq-advisor-shell-v1",
+        cacheName: PRIVATE_NAVIGATION_CACHE_NAMES.advisor,
+        fetchOptions: { cache: "no-store" },
         networkTimeoutSeconds: 4,
         plugins: [
+          privateNavigationCachePlugin,
           new ExpirationPlugin({
             maxEntries: 20,
             maxAgeSeconds: 60 * 60 * 24 * 14,
@@ -62,9 +118,11 @@ const serwist = new Serwist({
           url.pathname.startsWith("/mobile/work-orders/") ||
           url.pathname.startsWith("/mobile/jobs/")),
       handler: new NetworkFirst({
-        cacheName: "profixiq-technician-shell-v1",
+        cacheName: PRIVATE_NAVIGATION_CACHE_NAMES.technician,
+        fetchOptions: { cache: "no-store" },
         networkTimeoutSeconds: 4,
         plugins: [
+          privateNavigationCachePlugin,
           new ExpirationPlugin({
             maxEntries: 120,
             maxAgeSeconds: 60 * 60 * 24 * 14,
@@ -113,6 +171,20 @@ const serwist = new Serwist({
       },
     ],
   },
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(clearPrivateNavigationCaches({ includeCurrent: false }));
+});
+
+self.addEventListener("message", (event) => {
+  const message =
+    event.data && typeof event.data === "object"
+      ? (event.data as { type?: unknown })
+      : null;
+  if (message?.type === PRIVATE_NAVIGATION_CACHE_CLEAR_MESSAGE) {
+    event.waitUntil(clearPrivateNavigationCaches());
+  }
 });
 
 serwist.addEventListeners();

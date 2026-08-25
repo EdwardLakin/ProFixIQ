@@ -8,7 +8,7 @@ import { Toaster, toast } from "sonner";
 
 import type { Database } from "@shared/types/types/supabase";
 import { Button } from "@shared/components/ui/Button";
-import { getOfflineMutationScope } from "@/features/shared/lib/offline/mutations";
+import { getSessionMatchedOfflineScope } from "@/features/shared/lib/offline/mutations";
 import {
   downloadAdvisorOfflineDay,
   getCachedAdvisorDay,
@@ -86,7 +86,7 @@ export default function MobileAppointmentsPage() {
       if (error) {
         // eslint-disable-next-line no-console
         console.error(error);
-        const scope = getOfflineMutationScope();
+        const scope = await getSessionMatchedOfflineScope();
         const cached = scope ? await getLatestCachedAdvisorDay(scope) : null;
         if (cached) {
           setShops([cached.shop as ShopRow]);
@@ -139,7 +139,7 @@ export default function MobileAppointmentsPage() {
       setLoadingCustomers(true);
       try {
         if (!navigator.onLine) {
-          const scope = getOfflineMutationScope();
+          const scope = await getSessionMatchedOfflineScope();
           const cached = scope
             ? await getCachedAdvisorDay({ scope, day })
             : null;
@@ -198,7 +198,7 @@ export default function MobileAppointmentsPage() {
       } catch (err) {
         // eslint-disable-next-line no-console
         console.error(err);
-        const scope = getOfflineMutationScope();
+        const scope = await getSessionMatchedOfflineScope();
         const cached = scope ? await getCachedAdvisorDay({ scope, day }) : null;
         if (cached && cached.shop.slug === shopSlug) {
           setBookings(cached.bookings);

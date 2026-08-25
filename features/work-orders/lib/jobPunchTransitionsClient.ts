@@ -1,5 +1,5 @@
 import {
-  getOfflineMutationScope,
+  getSessionMatchedOfflineScope,
   runMutationWithOfflineQueue,
 } from "@/features/shared/lib/offline/mutations";
 
@@ -74,7 +74,7 @@ export async function runJobPunchTransition(
     throw error;
   };
 
-  const scope = getOfflineMutationScope();
+  const scope = await getSessionMatchedOfflineScope();
   if (!scope) {
     await post();
     return;

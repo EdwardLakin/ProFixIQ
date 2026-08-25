@@ -5,7 +5,7 @@ import {
   saveOfflineSnapshot,
 } from "@/features/shared/lib/offline/database";
 import {
-  getOfflineMutationScope,
+  getSessionMatchedOfflineScope,
   runMutationWithOfflineQueue,
   type OfflineMutationScope,
 } from "@/features/shared/lib/offline/mutations";
@@ -153,7 +153,7 @@ export async function runMobileShiftAction(args: {
   queued: boolean;
   conflicted: boolean;
 }> {
-  const scope = getOfflineMutationScope();
+  const scope = await getSessionMatchedOfflineScope();
   const key = operationKey(args.action);
 
   if (args.action === "start_shift") {

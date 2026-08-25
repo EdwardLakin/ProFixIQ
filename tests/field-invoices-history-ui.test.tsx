@@ -25,7 +25,7 @@ vi.mock("@/features/shared/lib/offline/database", () => ({
 }));
 
 vi.mock("@/features/shared/lib/offline/mutations", () => ({
-  getOfflineMutationScope: vi.fn(() => ({
+  getSessionMatchedOfflineScope: vi.fn(async () => ({
     userId: "user-1",
     shopId: "shop-1",
   })),

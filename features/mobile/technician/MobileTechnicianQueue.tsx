@@ -4,8 +4,8 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
-  getOfflineMutationScope,
   getOfflineSyncSummary,
+  getSessionMatchedOfflineScope,
   setOfflineMutationScope,
   subscribeOfflineMutations,
 } from "@/features/shared/lib/offline/mutations";
@@ -214,7 +214,9 @@ export default function MobileTechnicianQueue() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<QueueFilter>("all");
-  const [syncSummary, setSyncSummary] = useState(() => getOfflineSyncSummary());
+  const [syncSummary, setSyncSummary] = useState(() =>
+    getOfflineSyncSummary(null),
+  );
   const [scope, setScope] = useState<{ userId: string; shopId: string } | null>(
     null,
   );
@@ -236,7 +238,7 @@ export default function MobileTechnicianQueue() {
 
     try {
       if (!navigator.onLine) {
-        const cachedScope = getOfflineMutationScope();
+        const cachedScope = await getSessionMatchedOfflineScope();
         if (!cachedScope) {
           throw new Error(
             "No assigned work has been saved for offline use on this device.",
@@ -287,7 +289,11 @@ export default function MobileTechnicianQueue() {
   }, [applyOfflineBundle, supabase]);
 
   useEffect(() => {
-    const refresh = () => setSyncSummary(getOfflineSyncSummary());
+    const refresh = () => {
+      void getSessionMatchedOfflineScope().then((matchedScope) =>
+        setSyncSummary(getOfflineSyncSummary(matchedScope)),
+      );
+    };
     refresh();
     return subscribeOfflineMutations(refresh);
   }, []);

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
-  getOfflineMutationScope,
+  getSessionMatchedOfflineScope,
   resolveOfflineMutationScope,
   type OfflineMutationScope,
 } from "@/features/shared/lib/offline/mutations";
@@ -64,8 +64,7 @@ export function useTruckInventorySnapshot() {
             : actionable[0]?.id || "";
         });
         const resolvedScope =
-          scope ??
-          getOfflineMutationScope() ??
+          (await getSessionMatchedOfflineScope(scope)) ??
           (await resolveOfflineMutationScope({}));
         if (resolvedScope) {
           setScope(resolvedScope);
@@ -75,7 +74,7 @@ export function useTruckInventorySnapshot() {
           });
         }
       } catch (loadError) {
-        const resolvedScope = scope ?? getOfflineMutationScope();
+        const resolvedScope = await getSessionMatchedOfflineScope(scope);
         const cached = resolvedScope
           ? await loadCachedFieldTruckInventorySnapshot({
               scope: resolvedScope,
