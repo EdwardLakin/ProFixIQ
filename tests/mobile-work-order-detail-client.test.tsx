@@ -123,9 +123,14 @@ vi.mock("@/features/work-orders/components/JobCard", () => ({
   JobCard: (props: {
     line: { description?: string | null };
     isPunchedIn?: boolean;
+    displayNumber?: number | string;
   }) => {
     mocks.jobCardProps(props);
-    return <article>{props.line.description ?? "Untitled job"}</article>;
+    return (
+      <article data-display-number={props.displayNumber}>
+        {props.line.description ?? "Untitled job"}
+      </article>
+    );
   },
 }));
 vi.mock("@/features/work-orders/lib/jobPunchTransitionsClient", () => ({
@@ -249,6 +254,92 @@ describe("mobile work-order detail client", () => {
       `/api/mobile/work-orders/${WORK_ORDER_ID}`,
       expect.objectContaining({ credentials: "include" }),
     );
+  });
+
+  it("keeps canonical line numbers when operational priority reorders cards", async () => {
+    const snapshot = detailSnapshot();
+    mocks.fetch.mockResolvedValue(
+      response({
+        ...snapshot,
+        lineContext: {
+          ...snapshot.lineContext,
+          activeTechnicianIdsByLine: { "line-2": ["tech-2"] },
+        },
+        lines: [
+          {
+            id: "line-1",
+            work_order_id: WORK_ORDER_ID,
+            shop_id: "shop-1",
+            line_no: 1,
+            description: "Brake inspection",
+            status: "awaiting",
+            approval_state: "approved",
+            created_at: "2026-08-21T18:00:00.000Z",
+          },
+          {
+            id: "line-2",
+            work_order_id: WORK_ORDER_ID,
+            shop_id: "shop-1",
+            line_no: 2,
+            description: "Front brake pads",
+            status: "in_progress",
+            approval_state: "approved",
+            created_at: "2026-08-21T18:01:00.000Z",
+          },
+        ],
+      }),
+    );
+
+    render(<MobileWorkOrderClient routeId={WORK_ORDER_ID} />);
+
+    const prioritized = await screen.findByText("Front brake pads");
+    const inspection = screen.getByText("Brake inspection");
+    expect(screen.getAllByRole("article").map((card) => card.textContent)).toEqual([
+      "Front brake pads",
+      "Brake inspection",
+    ]);
+    expect(prioritized).toHaveAttribute("data-display-number", "2");
+    expect(inspection).toHaveAttribute("data-display-number", "1");
+  });
+
+  it("keeps one canonical display number across hidden history and approval views", async () => {
+    const snapshot = detailSnapshot();
+    mocks.fetch.mockResolvedValue(
+      response({
+        ...snapshot,
+        lines: [
+          {
+            id: "voided-legacy-line",
+            work_order_id: WORK_ORDER_ID,
+            shop_id: "shop-1",
+            line_no: null,
+            description: "Voided diagnosis",
+            status: "completed",
+            approval_state: "approved",
+            voided_at: "2026-08-21T18:02:00.000Z",
+            created_at: "2026-08-21T18:00:00.000Z",
+          },
+          {
+            id: "visible-legacy-line",
+            work_order_id: WORK_ORDER_ID,
+            shop_id: "shop-1",
+            line_no: null,
+            description: "Customer approval",
+            status: "awaiting_approval",
+            approval_state: "pending",
+            created_at: "2026-08-21T18:01:00.000Z",
+          },
+        ],
+      }),
+    );
+
+    render(<MobileWorkOrderClient routeId={WORK_ORDER_ID} />);
+
+    const renderedCard = await screen.findByRole("article");
+    expect(renderedCard).toHaveTextContent("Customer approval");
+    expect(renderedCard).toHaveAttribute("data-display-number", "2");
+    expect(screen.getByText(/^2\.\s+Customer approval$/)).toBeInTheDocument();
+    expect(screen.queryByText("Voided diagnosis")).not.toBeInTheDocument();
   });
 
   it("renders explicit denied and missing states without stale detail", async () => {

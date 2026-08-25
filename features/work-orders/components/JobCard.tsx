@@ -53,11 +53,13 @@ type PricingSummary = {
 
 type JobCardProps = {
   index: number;
+  displayNumber?: number | string;
   line: WorkOrderLine;
   parts: WorkOrderPartAllocation[];
   partsCount?: number;
   partsStatusLabel?: string | null;
   technicians: Pick<ProfileRow, "id" | "full_name">[];
+  primaryTechnicianName?: string | null;
   canAssign: boolean;
   canDelete?: boolean;
   isPunchedIn: boolean;
@@ -322,11 +324,13 @@ function MetaTile({ label, value }: { label: string; value: string }) {
 
 export function JobCard({
   index,
+  displayNumber,
   line,
   parts,
   partsCount,
   partsStatusLabel,
   technicians,
+  primaryTechnicianName = null,
   canAssign,
   canDelete,
   isPunchedIn,
@@ -351,6 +355,7 @@ export function JobCard({
   hideExecutionStageCompletenessPills = false,
   evidence = [],
 }: JobCardProps): JSX.Element {
+  const visibleLineNumber = displayNumber ?? index + 1;
   const [collapsed, setCollapsed] = useState<boolean>(false);
 
   const statusVisual = useMemo(() => {
@@ -380,11 +385,14 @@ export function JobCard({
   }, [isCompletedLike]);
 
   const jobLabel = line.description || line.complaint || "Untitled job";
+  const primaryTechnicianDisplayName = primaryTechnicianName?.trim() || null;
   const assignedTech = useMemo(() => {
     const techId = line.assigned_tech_id;
     const profile = technicians.find((tech) => tech.id === techId) ?? null;
     if (techId && !profile) {
-      return "Unavailable technician (current)";
+      return (
+        primaryTechnicianDisplayName ?? "Unavailable technician (current)"
+      );
     }
     const primaryDisplay = resolvePrimaryTechDisplay(
       line,
@@ -397,7 +405,15 @@ export function JobCard({
       return `Primary not set · ${assignedTechnicianIds.length} assigned`;
     }
     return primaryDisplay;
-  }, [assignedTechnicianIds.length, line, technicians]);
+  }, [
+    assignedTechnicianIds.length,
+    line,
+    primaryTechnicianDisplayName,
+    technicians,
+  ]);
+  const currentTechnicianOptionLabel = primaryTechnicianDisplayName
+    ? `${primaryTechnicianDisplayName} (current)`
+    : "Unavailable technician (current)";
   const assignedTechnicianIsSelectable = Boolean(
     line.assigned_tech_id &&
       technicians.some((technician) => technician.id === line.assigned_tech_id),
@@ -463,12 +479,12 @@ export function JobCard({
           type="button"
           onClick={onOpen}
           className="w-full px-3 py-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[color:var(--brand-primary)]"
-          aria-label={`Open job ${index + 1}: ${jobLabel}`}
+          aria-label={`Open job ${visibleLineNumber}: ${jobLabel}`}
           aria-pressed={isSelected}
         >
           <div className="flex items-start gap-2.5">
             <span className="mt-0.5 inline-flex h-6 min-w-6 items-center justify-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-1.5 text-[11px] font-semibold text-[color:var(--theme-text-primary)]">
-              {index + 1}
+              {visibleLineNumber}
             </span>
             <div className="min-w-0 flex-1">
               <div className="line-clamp-2 text-sm font-semibold leading-5 text-[color:var(--theme-text-primary)]">
@@ -518,7 +534,7 @@ export function JobCard({
                   </option>
                   {line.assigned_tech_id && !assignedTechnicianIsSelectable ? (
                     <option value={line.assigned_tech_id}>
-                      Unavailable technician (current)
+                      {currentTechnicianOptionLabel}
                     </option>
                   ) : null}
                   {technicians.map((tech) => (
@@ -581,7 +597,7 @@ export function JobCard({
         }
       }}
       className="outline-none"
-      aria-label={`Open job ${index + 1}: ${jobLabel}`}
+      aria-label={`Open job ${visibleLineNumber}: ${jobLabel}`}
       aria-pressed={isSelected}
     >
       <Card
@@ -620,7 +636,7 @@ export function JobCard({
               <div className="min-w-0 space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 text-xs font-semibold text-[color:var(--theme-text-primary)]">
-                    {index + 1}
+                    {visibleLineNumber}
                   </span>
                   <h3
                     className={cn(
@@ -684,7 +700,7 @@ export function JobCard({
                       </option>
                       {line.assigned_tech_id && !assignedTechnicianIsSelectable ? (
                         <option value={line.assigned_tech_id}>
-                          Unavailable technician (current)
+                          {currentTechnicianOptionLabel}
                         </option>
                       ) : null}
                       {technicians.map((tech) => (

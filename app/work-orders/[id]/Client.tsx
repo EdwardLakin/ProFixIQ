@@ -49,6 +49,7 @@ import {
   shouldUseReadOnlyWorkOrderView,
 } from "@/features/work-orders/lib/display/workOrderPresentation";
 import { filterAllocationsNotBackedByCanonicalParts } from "@/features/work-orders/lib/display/workOrderParts";
+import { resolveTechnicianDisplayName } from "@/features/work-orders/lib/display/linePresentation";
 import {
   getPartsRequestDisplayState,
   getPartsRequestStatusLabel,
@@ -296,6 +297,20 @@ export default function WorkOrderIdClient(): JSX.Element {
   const [assignables, setAssignables] = useState<
     Array<Pick<Profile, "id" | "full_name" | "role">>
   >([]);
+  const [techNamesById, setTechNamesById] = useState<Record<string, string>>(
+    {},
+  );
+  const readableTechNamesById = useMemo(() => {
+    const result = { ...techNamesById };
+    for (const technician of assignables) {
+      const resolved = resolveTechnicianDisplayName(
+        result[technician.id],
+        technician.full_name,
+      );
+      if (resolved) result[technician.id] = resolved;
+    }
+    return result;
+  }, [assignables, techNamesById]);
   const assignmentOperationsRef = useRef<
     Map<string, { technicianId: string; operationKey: string }>
   >(new Map());
@@ -567,6 +582,7 @@ export default function WorkOrderIdClient(): JSX.Element {
             setEvidence([]);
             setActiveTechsByLine({});
             setAssignedTechsByLine({});
+            setTechNamesById({});
           }
           setReviewChecked(true);
           setReviewOk(undefined);
@@ -582,6 +598,7 @@ export default function WorkOrderIdClient(): JSX.Element {
         setVehicle(snapshot.vehicle);
         setCustomer(snapshot.customer);
         setShopLaborRate(snapshot.shopLaborRate);
+        setTechNamesById(snapshot.techNamesById ?? {});
         setAllocsByLine(snapshot.lineContext.allocationsByLine);
         setStagedPartsByLine(snapshot.lineContext.canonicalPartsByLine);
         setAssignedTechsByLine(snapshot.lineContext.technicianIdsByLine);
@@ -1570,8 +1587,19 @@ export default function WorkOrderIdClient(): JSX.Element {
   const panelInspectionTemplateId = panelLine
     ? extractInspectionTemplateId(panelLine)
     : null;
-  const panelPrimaryTech = panelLine?.assigned_tech_id
-    ? assignables.find((profile) => profile.id === panelLine.assigned_tech_id) ?? null
+  const panelPrimaryTechId = panelLine?.assigned_tech_id ?? null;
+  const panelPrimaryTechName = panelPrimaryTechId
+    ? readableTechNamesById[panelPrimaryTechId]?.trim() || null
+    : null;
+  const panelPrimaryTech = panelPrimaryTechId
+    ? assignables.find((profile) => profile.id === panelPrimaryTechId) ??
+      (panelPrimaryTechName
+        ? {
+            id: panelPrimaryTechId,
+            full_name: panelPrimaryTechName,
+            role: null,
+          }
+        : null)
     : null;
   const panelActiveTechnicianIds = panelLine
     ? activeTechsByLine[panelLine.id] ?? []
@@ -2198,7 +2226,10 @@ export default function WorkOrderIdClient(): JSX.Element {
                     const activeTechnicianNames = activeTechnicianIds
                       .map(
                         (techId) =>
-                          assignables.find((tech) => tech.id === techId)?.full_name?.trim() ??
+                          readableTechNamesById[techId]?.trim() ||
+                          assignables
+                            .find((tech) => tech.id === techId)
+                            ?.full_name?.trim() ||
                           null,
                       )
                       .filter((name): name is string => Boolean(name));
@@ -2218,6 +2249,13 @@ export default function WorkOrderIdClient(): JSX.Element {
                         partsCount={pricingByLine[ln.id]?.partsCount ?? 0}
                         partsStatusLabel={getPartsRequestStatusLabel(linePartRequests)}
                         technicians={assignables}
+                        primaryTechnicianName={
+                          ln.assigned_tech_id
+                            ? readableTechNamesById[
+                                ln.assigned_tech_id
+                              ]?.trim() || null
+                            : null
+                        }
                         canAssign={canAssign}
                         isPunchedIn={isPunchedIn}
                         isCurrentUserWorkingThisLine={isCurrentUserWorkingThisLine}

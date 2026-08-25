@@ -8,6 +8,7 @@ import {
   loadCanonicalWorkOrderLineContext,
   loadRowsForIdChunks,
 } from "@/features/work-orders/lib/data/loadCanonicalWorkOrderLineContext";
+import { resolveTechnicianDisplayName } from "@/features/work-orders/lib/display/linePresentation";
 import {
   projectRoleShapedWorkOrderDetail,
   type RoleShapedWorkOrderDetail,
@@ -156,10 +157,12 @@ export async function loadRoleShapedWorkOrderDetail(input: {
   const technicians = await loadRowsForIdChunks<{
     id: string;
     full_name: string | null;
+    username: string | null;
+    email: string | null;
   }>(technicianIds, (ids, from, to) =>
     input.dataSupabase
       .from("profiles")
-      .select("id, full_name")
+      .select("id, full_name, username, email")
       .eq("shop_id", input.shopId)
       .in("id", ids)
       .order("id", { ascending: true })
@@ -175,7 +178,10 @@ export async function loadRoleShapedWorkOrderDetail(input: {
     techNamesById: Object.fromEntries(
       technicians.map((technician) => [
         technician.id,
-        technician.full_name ?? "Technician",
+        resolveTechnicianDisplayName(
+          technician.full_name,
+          technician.username ?? technician.email,
+        ) ?? "Technician",
       ]),
     ),
     lineContext,

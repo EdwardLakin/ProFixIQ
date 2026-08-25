@@ -54,6 +54,7 @@ import {
   removeMobileWorkOrderDetailSnapshots,
 } from "@/features/work-orders/mobile/technicianOfflineExecution";
 import { parseMobileWorkOrderSnapshot } from "@/features/work-orders/mobile/mobileWorkOrderDetail";
+import { resolveMobileLineDisplayNumbers } from "@/features/work-orders/mobile/mobileLineDisplay";
 import {
   deniedWorkOrderFinancialAccess,
   type WorkOrderFinancialAccess,
@@ -982,6 +983,11 @@ export default function MobileWorkOrderClient({
     });
   }, [mobileOperationalState.visibleLines, visibleLineState]);
 
+  const displayNumberByLine = useMemo(
+    () => resolveMobileLineDisplayNumbers(lines),
+    [lines],
+  );
+
   const createdAtText = formatOptionalDateTime(wo?.created_at);
   const expectedCompletionText = formatOptionalDateTime(
     wo?.expected_completion_at,
@@ -1669,7 +1675,7 @@ export default function MobileWorkOrderClient({
                           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                             <div className="min-w-0">
                               <div className="truncate text-sm font-medium text-[color:var(--theme-text-primary)]">
-                                {idx + 1}.{" "}
+                                {displayNumberByLine[ln.id] ?? idx + 1}.{" "}
                                 {ln.description ||
                                   ln.complaint ||
                                   "Untitled job"}
@@ -1915,6 +1921,7 @@ export default function MobileWorkOrderClient({
                     >
                       <JobCard
                         index={idx}
+                        displayNumber={displayNumberByLine[ln.id]}
                         line={ln}
                         parts={lineContext.allocationsByLine[ln.id] ?? []}
                         partsCount={pricing?.partsCount ?? 0}
