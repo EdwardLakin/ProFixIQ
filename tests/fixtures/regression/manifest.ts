@@ -71,6 +71,12 @@ export const REGRESSION_FIXTURE = {
       role: "customer",
       shop: null,
     },
+    revokedCustomer: {
+      id: "f1100000-0000-4000-8000-000000000015",
+      email: "revoked-customer@regression.profixiq.invalid",
+      role: "customer",
+      shop: null,
+    },
     fleetManager: {
       id: "f1100000-0000-4000-8000-000000000009",
       email: "fleet-manager@regression.profixiq.invalid",
@@ -108,6 +114,30 @@ export const REGRESSION_FIXTURE = {
     portal: "f1200000-0000-4000-8000-000000000001",
     unrelated: "f1200000-0000-4000-8000-000000000002",
     fleet: "f1200000-0000-4000-8000-000000000003",
+    revokedPortal: "f1200000-0000-4000-8000-000000000004",
+  },
+  portalInvites: {
+    active: {
+      id: "f2b00000-0000-4000-8000-000000000001",
+      token: "f2c00000-0000-4000-8000-000000000001",
+      state: "accepted_active",
+      customerId: "f1200000-0000-4000-8000-000000000001",
+      actorUserId: "f1100000-0000-4000-8000-000000000008",
+    },
+    revoked: {
+      id: "f2b00000-0000-4000-8000-000000000002",
+      token: "f2c00000-0000-4000-8000-000000000002",
+      state: "accepted_revoked",
+      customerId: "f1200000-0000-4000-8000-000000000004",
+      actorUserId: "f1100000-0000-4000-8000-000000000015",
+    },
+    expired: {
+      id: "f2b00000-0000-4000-8000-000000000003",
+      token: "f2c00000-0000-4000-8000-000000000003",
+      state: "pending_expired",
+      customerId: "f1200000-0000-4000-8000-000000000004",
+      actorUserId: "f1100000-0000-4000-8000-000000000015",
+    },
   },
   vehicles: {
     customer: "f1300000-0000-4000-8000-000000000001",

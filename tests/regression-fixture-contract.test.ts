@@ -31,6 +31,7 @@ const packageScripts = (
 const ALLOWED_REGRESSION_MUTATION_TARGETS = [
   "auth.identities",
   "auth.users",
+  "public.customer_portal_invites",
   "public.customers",
   "public.field_service_vehicle_assignments",
   "public.fleet_dispatch_assignments",
@@ -173,6 +174,7 @@ describe("deterministic regression fixture contract", () => {
     expect(personas.leadTech.role).toBe("lead_hand");
     expect(personas.parts.role).toBe("parts");
     expect(personas.customer.role).toBe("customer");
+    expect(personas.revokedCustomer.role).toBe("customer");
     expect(personas.fleetManager.role).toBe("fleet_manager");
     expect(personas.dispatcher.role).toBe("dispatcher");
     expect(personas.driver.role).toBe("driver");
@@ -197,6 +199,37 @@ describe("deterministic regression fixture contract", () => {
     expect(seed).toContain(
       "Regression fixture persona identity/role/tenant tuples are incomplete",
     );
+  });
+
+  it("models active, revoked, and expired Portal access without staff membership", () => {
+    const { active, revoked, expired } = REGRESSION_FIXTURE.portalInvites;
+
+    expect(active.state).toBe("accepted_active");
+    expect(active.customerId).toBe(REGRESSION_FIXTURE.customers.portal);
+    expect(active.actorUserId).toBe(REGRESSION_FIXTURE.personas.customer.id);
+    expect(revoked.state).toBe("accepted_revoked");
+    expect(revoked.customerId).toBe(REGRESSION_FIXTURE.customers.revokedPortal);
+    expect(revoked.actorUserId).toBe(
+      REGRESSION_FIXTURE.personas.revokedCustomer.id,
+    );
+    expect(expired.state).toBe("pending_expired");
+    expect(expired.customerId).toBe(REGRESSION_FIXTURE.customers.revokedPortal);
+
+    for (const invite of Object.values(REGRESSION_FIXTURE.portalInvites)) {
+      expect(seed).toContain(invite.id);
+      expect(seed).toContain(invite.token);
+    }
+
+    expect(seed).toContain("insert into public.customer_portal_invites");
+    expect(seed).toContain(
+      "Portal customer fixtures must not have staff membership",
+    );
+    expect(seed).toContain("Portal invite lifecycle fixtures are incomplete");
+    expect(seed).toContain(
+      "Revoked Portal customer must not retain an active invite",
+    );
+    expect(seed).toContain("'2099-01-01T00:00:00Z'");
+    expect(seed).toContain("'2026-08-15T18:00:00Z'");
   });
 
   it("anchors every resource by deterministic id instead of row order or session", () => {

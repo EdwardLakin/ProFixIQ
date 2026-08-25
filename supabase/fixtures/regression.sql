@@ -20,7 +20,8 @@ with fixture_users(id, email, full_name) as (
     ('f1100000-0000-4000-8000-000000000011'::uuid, 'driver@regression.profixiq.invalid', 'Regression Driver'),
     ('f1100000-0000-4000-8000-000000000012'::uuid, 'field-operator@regression.profixiq.invalid', 'Regression Field Operator'),
     ('f1100000-0000-4000-8000-000000000013'::uuid, 'field-disabled@regression.profixiq.invalid', 'Regression Field Disabled'),
-    ('f1100000-0000-4000-8000-000000000014'::uuid, 'administrator@regression.profixiq.invalid', 'Regression Administrator')
+    ('f1100000-0000-4000-8000-000000000014'::uuid, 'administrator@regression.profixiq.invalid', 'Regression Administrator'),
+    ('f1100000-0000-4000-8000-000000000015'::uuid, 'revoked-customer@regression.profixiq.invalid', 'Revoked Regression Customer')
 )
 insert into auth.users (
   instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
@@ -62,7 +63,8 @@ with fixture_users(id, email) as (
     ('f1100000-0000-4000-8000-000000000011'::uuid, 'driver@regression.profixiq.invalid'),
     ('f1100000-0000-4000-8000-000000000012'::uuid, 'field-operator@regression.profixiq.invalid'),
     ('f1100000-0000-4000-8000-000000000013'::uuid, 'field-disabled@regression.profixiq.invalid'),
-    ('f1100000-0000-4000-8000-000000000014'::uuid, 'administrator@regression.profixiq.invalid')
+    ('f1100000-0000-4000-8000-000000000014'::uuid, 'administrator@regression.profixiq.invalid'),
+    ('f1100000-0000-4000-8000-000000000015'::uuid, 'revoked-customer@regression.profixiq.invalid')
 )
 insert into auth.identities (
   id, user_id, provider_id, identity_data, provider, last_sign_in_at,
@@ -102,7 +104,8 @@ values
   ('f1100000-0000-4000-8000-000000000011', 'f1100000-0000-4000-8000-000000000011', 'driver@regression.profixiq.invalid', 'Regression Driver', 'driver', true, false, null, '2026-08-21T18:00:00Z', '2026-08-21T18:00:00Z'),
   ('f1100000-0000-4000-8000-000000000012', 'f1100000-0000-4000-8000-000000000012', 'field-operator@regression.profixiq.invalid', 'Regression Field Operator', 'mechanic', true, false, null, '2026-08-21T18:00:00Z', '2026-08-21T18:00:00Z'),
   ('f1100000-0000-4000-8000-000000000013', 'f1100000-0000-4000-8000-000000000013', 'field-disabled@regression.profixiq.invalid', 'Regression Field Disabled', 'mechanic', true, false, null, '2026-08-21T18:00:00Z', '2026-08-21T18:00:00Z'),
-  ('f1100000-0000-4000-8000-000000000014', 'f1100000-0000-4000-8000-000000000014', 'administrator@regression.profixiq.invalid', 'Regression Administrator', 'admin', true, false, null, '2026-08-21T18:00:00Z', '2026-08-21T18:00:00Z')
+  ('f1100000-0000-4000-8000-000000000014', 'f1100000-0000-4000-8000-000000000014', 'administrator@regression.profixiq.invalid', 'Regression Administrator', 'admin', true, false, null, '2026-08-21T18:00:00Z', '2026-08-21T18:00:00Z'),
+  ('f1100000-0000-4000-8000-000000000015', 'f1100000-0000-4000-8000-000000000015', 'revoked-customer@regression.profixiq.invalid', 'Revoked Regression Customer', 'customer', true, false, null, '2026-08-21T18:00:00Z', '2026-08-21T18:00:00Z')
 on conflict (id) do update set
   user_id = excluded.user_id,
   email = excluded.email,
@@ -179,7 +182,7 @@ set shop_id = case
 end
 where id between
   'f1100000-0000-4000-8000-000000000001'::uuid and
-  'f1100000-0000-4000-8000-000000000014'::uuid;
+  'f1100000-0000-4000-8000-000000000015'::uuid;
 
 insert into public.shop_members (shop_id, user_id, role, created_by)
 values
@@ -222,7 +225,8 @@ insert into public.customers (
 values
   ('f1200000-0000-4000-8000-000000000001', 'f1000000-0000-4000-8000-000000000001', 'f1100000-0000-4000-8000-000000000008', 'Regression Customer', 'Regression', 'Customer', null, 'customer@regression.profixiq.invalid', '+1-555-010-0101', 'individual', false, true, 'regression-customer', '2026-08-21T18:00:00Z', '2026-08-21T18:00:00Z'),
   ('f1200000-0000-4000-8000-000000000002', 'f1000000-0000-4000-8000-000000000002', null, 'Unrelated Regression Customer', 'Unrelated', 'Customer', null, 'unrelated-customer@regression.profixiq.invalid', '+1-555-010-0102', 'individual', false, true, 'regression-unrelated-customer', '2026-08-21T18:00:00Z', '2026-08-21T18:00:00Z'),
-  ('f1200000-0000-4000-8000-000000000003', 'f1000000-0000-4000-8000-000000000001', null, 'Regression Fleet Account', null, null, 'Regression Fleet Account', 'fleet-contact@regression.profixiq.invalid', '+1-555-010-0103', 'fleet', true, true, 'regression-fleet-customer', '2026-08-21T18:00:00Z', '2026-08-21T18:00:00Z')
+  ('f1200000-0000-4000-8000-000000000003', 'f1000000-0000-4000-8000-000000000001', null, 'Regression Fleet Account', null, null, 'Regression Fleet Account', 'fleet-contact@regression.profixiq.invalid', '+1-555-010-0103', 'fleet', true, true, 'regression-fleet-customer', '2026-08-21T18:00:00Z', '2026-08-21T18:00:00Z'),
+  ('f1200000-0000-4000-8000-000000000004', 'f1000000-0000-4000-8000-000000000001', 'f1100000-0000-4000-8000-000000000015', 'Revoked Regression Customer', 'Revoked', 'Customer', null, 'revoked-customer@regression.profixiq.invalid', '+1-555-010-0104', 'individual', false, true, 'regression-revoked-customer', '2026-08-21T18:00:00Z', '2026-08-21T18:00:00Z')
 on conflict (id) do update set
   shop_id = excluded.shop_id,
   user_id = excluded.user_id,
@@ -364,6 +368,63 @@ on conflict (id) do update set
   customer_approved_by = excluded.customer_approved_by,
   customer_agreed_at = excluded.customer_agreed_at,
   updated_at = excluded.updated_at;
+
+insert into public.customer_portal_invites (
+  id, customer_id, email, token, created_at, accepted_at,
+  accepted_by_user_id, revoked_at, expires_at, acceptance_metadata,
+  shop_id, work_order_id, enrollment_campaign_id, source, created_by
+)
+values
+  (
+    'f2b00000-0000-4000-8000-000000000001',
+    'f1200000-0000-4000-8000-000000000001',
+    'customer@regression.profixiq.invalid',
+    'f2c00000-0000-4000-8000-000000000001',
+    '2026-08-21T18:00:00Z', '2026-08-21T18:05:00Z',
+    'f1100000-0000-4000-8000-000000000008', null,
+    '2099-01-01T00:00:00Z',
+    '{"accepted_email":"customer@regression.profixiq.invalid","accepted_at":"2026-08-21T18:05:00Z"}'::jsonb,
+    'f1000000-0000-4000-8000-000000000001',
+    'f1500000-0000-4000-8000-000000000001', null, 'work_order',
+    'f1100000-0000-4000-8000-000000000001'
+  ),
+  (
+    'f2b00000-0000-4000-8000-000000000002',
+    'f1200000-0000-4000-8000-000000000004',
+    'revoked-customer@regression.profixiq.invalid',
+    'f2c00000-0000-4000-8000-000000000002',
+    '2026-08-21T18:00:00Z', '2026-08-21T18:05:00Z',
+    'f1100000-0000-4000-8000-000000000015',
+    '2026-08-21T18:10:00Z', '2099-01-01T00:00:00Z',
+    '{"accepted_email":"revoked-customer@regression.profixiq.invalid","accepted_at":"2026-08-21T18:05:00Z"}'::jsonb,
+    'f1000000-0000-4000-8000-000000000001', null, null, 'qr',
+    'f1100000-0000-4000-8000-000000000001'
+  ),
+  (
+    'f2b00000-0000-4000-8000-000000000003',
+    'f1200000-0000-4000-8000-000000000004',
+    'revoked-customer@regression.profixiq.invalid',
+    'f2c00000-0000-4000-8000-000000000003',
+    '2026-08-01T18:00:00Z', null, null, null,
+    '2026-08-15T18:00:00Z', '{}'::jsonb,
+    'f1000000-0000-4000-8000-000000000001', null, null, 'qr',
+    'f1100000-0000-4000-8000-000000000001'
+  )
+on conflict (id) do update set
+  customer_id = excluded.customer_id,
+  email = excluded.email,
+  token = excluded.token,
+  created_at = excluded.created_at,
+  accepted_at = excluded.accepted_at,
+  accepted_by_user_id = excluded.accepted_by_user_id,
+  revoked_at = excluded.revoked_at,
+  expires_at = excluded.expires_at,
+  acceptance_metadata = excluded.acceptance_metadata,
+  shop_id = excluded.shop_id,
+  work_order_id = excluded.work_order_id,
+  enrollment_campaign_id = excluded.enrollment_campaign_id,
+  source = excluded.source,
+  created_by = excluded.created_by;
 
 -- Trigger suppression skips normalize_work_order_line_status(), so persist the
 -- canonical stored value that the punch workflow derives from `in_progress`.
@@ -1060,7 +1121,8 @@ begin
         ('f1100000-0000-4000-8000-000000000011'::uuid, 'driver@regression.profixiq.invalid', 'driver', null),
         ('f1100000-0000-4000-8000-000000000012'::uuid, 'field-operator@regression.profixiq.invalid', 'mechanic', 'f1000000-0000-4000-8000-000000000001'::uuid),
         ('f1100000-0000-4000-8000-000000000013'::uuid, 'field-disabled@regression.profixiq.invalid', 'mechanic', 'f1000000-0000-4000-8000-000000000001'::uuid),
-        ('f1100000-0000-4000-8000-000000000014'::uuid, 'administrator@regression.profixiq.invalid', 'admin', 'f1000000-0000-4000-8000-000000000001'::uuid)
+        ('f1100000-0000-4000-8000-000000000014'::uuid, 'administrator@regression.profixiq.invalid', 'admin', 'f1000000-0000-4000-8000-000000000001'::uuid),
+        ('f1100000-0000-4000-8000-000000000015'::uuid, 'revoked-customer@regression.profixiq.invalid', 'customer', null)
     )
     select 1
     from expected e
@@ -1096,6 +1158,88 @@ begin
       )
   ) then
     raise exception 'Regression fixture persona identity/role/tenant tuples are incomplete';
+  end if;
+
+  if exists (
+    select 1
+    from public.shop_members member
+    where member.user_id in (
+      'f1100000-0000-4000-8000-000000000008',
+      'f1100000-0000-4000-8000-000000000015'
+    )
+  ) then
+    raise exception 'Portal customer fixtures must not have staff membership';
+  end if;
+
+  if not exists (
+    select 1
+    from public.customer_portal_invites invite
+    join public.customers customer on customer.id = invite.customer_id
+    join public.profiles profile on profile.user_id = customer.user_id
+    join public.work_orders work_order on work_order.id = invite.work_order_id
+    where invite.id = 'f2b00000-0000-4000-8000-000000000001'
+      and invite.token = 'f2c00000-0000-4000-8000-000000000001'
+      and invite.customer_id = 'f1200000-0000-4000-8000-000000000001'
+      and invite.shop_id = 'f1000000-0000-4000-8000-000000000001'
+      and invite.email = 'customer@regression.profixiq.invalid'
+      and invite.accepted_by_user_id = 'f1100000-0000-4000-8000-000000000008'
+      and invite.accepted_at = '2026-08-21T18:05:00Z'
+      and invite.revoked_at is null
+      and invite.expires_at > '2026-08-21T18:00:00Z'
+      and invite.source = 'work_order'
+      and customer.user_id = invite.accepted_by_user_id
+      and customer.shop_id = invite.shop_id
+      and lower(customer.email) = lower(invite.email)
+      and profile.role = 'customer'
+      and profile.shop_id is null
+      and work_order.customer_id = customer.id
+      and work_order.shop_id = invite.shop_id
+  ) or not exists (
+    select 1
+    from public.customer_portal_invites invite
+    join public.customers customer on customer.id = invite.customer_id
+    join public.profiles profile on profile.user_id = customer.user_id
+    where invite.id = 'f2b00000-0000-4000-8000-000000000002'
+      and invite.token = 'f2c00000-0000-4000-8000-000000000002'
+      and invite.customer_id = 'f1200000-0000-4000-8000-000000000004'
+      and invite.shop_id = 'f1000000-0000-4000-8000-000000000001'
+      and invite.email = 'revoked-customer@regression.profixiq.invalid'
+      and invite.accepted_by_user_id = 'f1100000-0000-4000-8000-000000000015'
+      and invite.accepted_at = '2026-08-21T18:05:00Z'
+      and invite.revoked_at = '2026-08-21T18:10:00Z'
+      and invite.revoked_at > invite.accepted_at
+      and invite.expires_at > '2026-08-21T18:00:00Z'
+      and customer.user_id = invite.accepted_by_user_id
+      and customer.shop_id = invite.shop_id
+      and lower(customer.email) = lower(invite.email)
+      and profile.role = 'customer'
+      and profile.shop_id is null
+  ) or not exists (
+    select 1
+    from public.customer_portal_invites invite
+    where invite.id = 'f2b00000-0000-4000-8000-000000000003'
+      and invite.token = 'f2c00000-0000-4000-8000-000000000003'
+      and invite.customer_id = 'f1200000-0000-4000-8000-000000000004'
+      and invite.shop_id = 'f1000000-0000-4000-8000-000000000001'
+      and invite.email = 'revoked-customer@regression.profixiq.invalid'
+      and invite.accepted_at is null
+      and invite.accepted_by_user_id is null
+      and invite.revoked_at is null
+      and invite.expires_at = '2026-08-15T18:00:00Z'
+      and invite.expires_at < '2026-08-21T18:00:00Z'
+  ) then
+    raise exception 'Portal invite lifecycle fixtures are incomplete';
+  end if;
+
+  if exists (
+    select 1
+    from public.customer_portal_invites invite
+    where invite.customer_id = 'f1200000-0000-4000-8000-000000000004'
+      and invite.accepted_by_user_id = 'f1100000-0000-4000-8000-000000000015'
+      and invite.accepted_at is not null
+      and invite.revoked_at is null
+  ) then
+    raise exception 'Revoked Portal customer must not retain an active invite';
   end if;
 
   if not exists (
