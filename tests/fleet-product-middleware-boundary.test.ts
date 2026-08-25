@@ -25,10 +25,29 @@ const authFixture = vi.hoisted(() => ({
     created_at: string;
   }>,
   customerId: null as string | null,
+  refreshedCookies: [] as Array<{
+    name: string;
+    value: string;
+    options?: {
+      httpOnly?: boolean;
+      maxAge?: number;
+      path?: string;
+      sameSite?: "lax" | "strict" | "none";
+      secure?: boolean;
+    };
+  }>,
 }));
 
 vi.mock("@supabase/ssr", () => ({
-  createServerClient: () => {
+  createServerClient: (
+    _url: string,
+    _key: string,
+    options: {
+      cookies: {
+        setAll: (cookies: typeof authFixture.refreshedCookies) => void;
+      };
+    },
+  ) => {
     class MockQuery {
       private readonly filters = new Map<string, unknown>();
 
@@ -77,10 +96,15 @@ vi.mock("@supabase/ssr", () => ({
 
     return {
       auth: {
-        getUser: async () => ({
-          data: { user: authFixture.user },
-          error: null,
-        }),
+        getUser: async () => {
+          if (authFixture.refreshedCookies.length > 0) {
+            options.cookies.setAll(authFixture.refreshedCookies);
+          }
+          return {
+            data: { user: authFixture.user },
+            error: null,
+          };
+        },
       },
       from: (table: string) => new MockQuery(table),
       rpc: async () => ({ data: true, error: null }),
@@ -96,6 +120,7 @@ afterEach(() => {
   authFixture.profile = null;
   authFixture.memberships = [];
   authFixture.customerId = null;
+  authFixture.refreshedCookies = [];
 
   if (originalSupabaseUrl === undefined) {
     delete process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -207,6 +232,136 @@ describe("Product host middleware boundary", () => {
       );
     },
   );
+
+  it("forwards refreshed auth cookies to API handlers and the browser", async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "test-anon-key";
+    authFixture.refreshedCookies = [
+      {
+        name: "sb-test-auth-token.0",
+        value: "refreshed-token-0",
+        options: { httpOnly: true, path: "/", sameSite: "lax" },
+      },
+      {
+        name: "sb-test-auth-token.1",
+        value: "refreshed-token-1",
+        options: { httpOnly: true, path: "/", sameSite: "lax" },
+      },
+      {
+        name: "sb-test-auth-token.2",
+        value: "",
+        options: { maxAge: 0, path: "/" },
+      },
+    ];
+
+    const response = await middleware(
+      new NextRequest("https://profixiq.com/api/chat/my-conversations", {
+        headers: {
+          cookie:
+            "sb-test-auth-token.0=stale-token-0; sb-test-auth-token.1=stale-token-1; sb-test-auth-token.2=stale-token-2; theme=dark",
+          host: "profixiq.com",
+        },
+      }),
+    );
+
+    expect(response.headers.get("x-middleware-request-cookie")).toContain(
+      "sb-test-auth-token.0=refreshed-token-0",
+    );
+    expect(response.headers.get("x-middleware-request-cookie")).toContain(
+      "sb-test-auth-token.1=refreshed-token-1",
+    );
+    expect(response.headers.get("x-middleware-request-cookie")).toContain(
+      "theme=dark",
+    );
+    expect(response.headers.get("x-middleware-request-cookie")).not.toContain(
+      "stale-token",
+    );
+    expect(response.cookies.get("sb-test-auth-token.0")?.value).toBe(
+      "refreshed-token-0",
+    );
+    expect(response.cookies.get("sb-test-auth-token.1")?.value).toBe(
+      "refreshed-token-1",
+    );
+    expect(response.cookies.get("sb-test-auth-token.2")?.value).toBe("");
+  });
+
+  it("preserves Fleet rewrites while forwarding a refreshed auth cookie", async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "test-anon-key";
+    authFixture.user = { id: "user-1", app_metadata: {} };
+    authFixture.profile = {
+      id: "user-1",
+      role: "owner",
+      shop_id: "shop-1",
+      completed_onboarding: true,
+    };
+    authFixture.memberships = [
+      {
+        fleet_id: "fleet-1",
+        shop_id: "shop-1",
+        role: "manager",
+        created_at: "2026-08-05T00:00:00.000Z",
+      },
+    ];
+    authFixture.refreshedCookies = [
+      {
+        name: "sb-test-auth-token",
+        value: "refreshed-token",
+        options: { path: "/" },
+      },
+    ];
+
+    const response = await middleware(
+      new NextRequest("https://fleet.profixiq.com/", {
+        headers: {
+          cookie: "sb-test-auth-token=stale-token",
+          host: "fleet.profixiq.com",
+        },
+      }),
+    );
+
+    expect(response.headers.get("x-middleware-rewrite")).toBe(
+      "https://fleet.profixiq.com/portal/fleet",
+    );
+    expect(response.headers.get("x-middleware-request-cookie")).toContain(
+      "sb-test-auth-token=refreshed-token",
+    );
+    expect(response.cookies.get("sb-test-auth-token")?.value).toBe(
+      "refreshed-token",
+    );
+  });
+
+  it("retains a cleared auth cookie when redirecting an invalid session", async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "test-anon-key";
+    authFixture.refreshedCookies = [
+      {
+        name: "sb-test-auth-token",
+        value: "",
+        options: { maxAge: 0, path: "/" },
+      },
+    ];
+
+    const response = await middleware(
+      new NextRequest("https://profixiq.com/dashboard", {
+        headers: {
+          cookie: "sb-test-auth-token=invalid-token",
+          host: "profixiq.com",
+        },
+      }),
+    );
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      "https://profixiq.com/shop/sign-in?redirect=%2Fdashboard",
+    );
+    expect(response.headers.get("set-cookie")).toContain("sb-test-auth-token=");
+    expect(response.headers.get("set-cookie")?.toLowerCase()).toContain(
+      "max-age=0",
+    );
+    expect(response.headers.get("x-middleware-next")).toBeNull();
+    expect(response.headers.get("x-middleware-rewrite")).toBeNull();
+  });
 
   it("keeps guided customer setup on its desktop page for tablet onboarding", async () => {
     process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
@@ -371,7 +526,8 @@ describe("Product host middleware boundary", () => {
       new NextRequest("https://profixiq.com/shop/sign-in", {
         headers: {
           host: "profixiq.com",
-          "user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)",
+          "user-agent":
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)",
         },
       }),
     );

@@ -166,56 +166,94 @@ export default function AppShell({
   }, [isAppRoute, userId]);
 
   useEffect(() => {
+    setUserId(initialIdentity?.userId ?? null);
+    setUserEmail(initialIdentity?.email ?? null);
+    setRole(initialIdentity?.role ?? null);
+    setShopId(initialIdentity?.shopId ?? null);
+  }, [
+    initialIdentity?.email,
+    initialIdentity?.role,
+    initialIdentity?.shopId,
+    initialIdentity?.userId,
+  ]);
+
+  useEffect(() => {
     if (!isAppRoute) return;
 
+    let active = true;
     let cleanup: (() => void) | null = null;
 
     (async () => {
       const {
         data: { session },
       } = await supabase.auth.getSession();
+      if (!active) return;
 
       const uid = session?.user?.id ?? null;
-      setUserId(uid);
-      setUserEmail(session?.user?.email ?? initialIdentity?.email ?? null);
-
-      if (!uid) return;
-
-      try {
-        const { profile } = await resolveCanonicalStaffProfile(supabase, uid);
-
-        setUserEmail(profile?.email ?? session?.user?.email ?? null);
-        setMustChangePassword(!!profile?.must_change_password);
-        if (profile) setRole(profile.role);
-
-        const sid = (profile?.shop_id as string | null) ?? null;
-        setShopId(sid);
-
-        if (sid) {
-          const { data: shop } = await supabase
-            .from("shops")
-            .select(
-              "stripe_subscription_status, stripe_trial_end, stripe_current_period_end",
-            )
-            .eq("id", sid)
-            .maybeSingle<ShopBillingScope>();
-
-          setSubStatus(
-            (shop?.stripe_subscription_status as string | null) ?? null,
-          );
-          setTrialEndIso((shop?.stripe_trial_end as string | null) ?? null);
-          setPeriodEndIso(
-            (shop?.stripe_current_period_end as string | null) ?? null,
-          );
-        } else {
+      if (!uid) {
+        if (!initialIdentity?.userId) {
+          setUserId(null);
+          setUserEmail(null);
+          setRole(null);
+          setShopId(null);
+          setMustChangePassword(false);
           setSubStatus(null);
           setTrialEndIso(null);
           setPeriodEndIso(null);
         }
-      } catch (err) {
-        console.error("Failed to load profile/shop for AppShell", err);
+        return;
       }
 
+      setUserId(uid);
+      setUserEmail(session?.user?.email ?? initialIdentity?.email ?? null);
+
+      try {
+        const { profile, error } = await resolveCanonicalStaffProfile(
+          supabase,
+          uid,
+        );
+        if (!active) return;
+
+        if (error) {
+          console.error("Failed to load profile for AppShell", error);
+        } else {
+          setUserEmail(profile?.email ?? session?.user?.email ?? null);
+          setMustChangePassword(!!profile?.must_change_password);
+          setRole(profile?.role ?? null);
+
+          const sid = (profile?.shop_id as string | null) ?? null;
+          setShopId(sid);
+
+          if (sid) {
+            const { data: shop } = await supabase
+              .from("shops")
+              .select(
+                "stripe_subscription_status, stripe_trial_end, stripe_current_period_end",
+              )
+              .eq("id", sid)
+              .maybeSingle<ShopBillingScope>();
+            if (!active) return;
+
+            setSubStatus(
+              (shop?.stripe_subscription_status as string | null) ?? null,
+            );
+            setTrialEndIso((shop?.stripe_trial_end as string | null) ?? null);
+            setPeriodEndIso(
+              (shop?.stripe_current_period_end as string | null) ?? null,
+            );
+          } else {
+            setSubStatus(null);
+            setTrialEndIso(null);
+            setPeriodEndIso(null);
+          }
+        }
+      } catch (err) {
+        if (active) {
+          console.error("Failed to load profile/shop for AppShell", err);
+        }
+      }
+
+      if (!active) return;
       const channel = supabase
         .channel("app-shell-messages")
         .on(
@@ -226,6 +264,7 @@ export default function AppShell({
             table: "messages",
           },
           (payload) => {
+            if (!active) return;
             const raw = payload.new as unknown;
             const msg =
               raw as Database["public"]["Tables"]["messages"]["Row"] & {
@@ -259,8 +298,18 @@ export default function AppShell({
       };
     })();
 
-    return () => cleanup?.();
-  }, [supabase, isAppRoute, initialIdentity?.email]);
+    return () => {
+      active = false;
+      cleanup?.();
+    };
+  }, [
+    supabase,
+    isAppRoute,
+    initialIdentity?.email,
+    initialIdentity?.role,
+    initialIdentity?.shopId,
+    initialIdentity?.userId,
+  ]);
 
   useEffect(() => {
     if (!isAppRoute || !userId) {
@@ -477,8 +526,8 @@ export default function AppShell({
             </div>
 
             <RoleSidebar
-              initialRole={initialIdentity?.role ?? null}
-              initialEmail={initialIdentity?.email ?? null}
+              initialRole={role}
+              initialEmail={userEmail}
             />
 
             <div className="mt-auto h-12 border-t border-[color:var(--theme-border-soft)]" />

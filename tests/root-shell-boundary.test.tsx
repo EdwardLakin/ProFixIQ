@@ -8,6 +8,13 @@ const mocks = vi.hoisted(() => ({
   pathname: "/shop/sign-in",
 }));
 
+const SIGNED_IN_OWNER = {
+  userId: "11111111-1111-4111-8111-111111111111",
+  email: "owner@example.test",
+  shopId: "22222222-2222-4222-8222-222222222222",
+  role: "owner",
+};
+
 vi.mock("next/navigation", () => ({
   usePathname: () => mocks.pathname,
 }));
@@ -68,6 +75,26 @@ describe("root shell route transition", () => {
     expect(screen.getByTestId("session-providers")).toBeInTheDocument();
     expect(screen.getByTestId("app-shell")).toHaveTextContent("Route content");
   });
+
+  it.each(["/field-service", "/fleet-maintenance"])(
+    "keeps the %s marketing page outside authenticated Shop chrome",
+    (pathname) => {
+      mocks.pathname = pathname;
+
+      render(
+        <RootShellBoundary
+          initialIdentity={SIGNED_IN_OWNER}
+          initialSession={null}
+        >
+          <div>Product marketing</div>
+        </RootShellBoundary>,
+      );
+
+      expect(screen.getByText("Product marketing")).toBeInTheDocument();
+      expect(screen.queryByTestId("app-shell")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("session-providers")).not.toBeInTheDocument();
+    },
+  );
 
   it("keeps dedicated mobile routes outside desktop chrome", () => {
     mocks.pathname = "/mobile";

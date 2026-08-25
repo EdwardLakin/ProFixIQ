@@ -13,6 +13,8 @@ describe("shell route boundaries", () => {
     "/customer/sign-in",
     "/signup",
     "/compare-plans",
+    "/field-service",
+    "/fleet-maintenance",
     "/mobile/sign-in",
     "/portal/auth/sign-in",
     "/portal/auth/sign-in?portal=fleet",
