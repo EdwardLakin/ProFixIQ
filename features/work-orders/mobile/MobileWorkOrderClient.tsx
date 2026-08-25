@@ -40,6 +40,7 @@ import {
 import {
   applyFetchedMobileDetailSnapshot,
   deriveMobileDetailOperationalState,
+  selectMobileDetailPrimaryActionLine,
 } from "@/features/work-orders/mobile/detailOperationalState";
 import {
   getOfflineMutationScope,
@@ -880,8 +881,12 @@ export default function MobileWorkOrderClient({
   ]);
 
   const mobileOperationalState = useMemo(
-    () => deriveMobileDetailOperationalState(wo, lines),
-    [wo, lines],
+    () =>
+      deriveMobileDetailOperationalState(wo, lines, {
+        activeTechnicianIdsByLine:
+          lineContext.activeTechnicianIdsByLine,
+      }),
+    [lineContext.activeTechnicianIdsByLine, lines, wo],
   );
 
   useEffect(() => {
@@ -1067,7 +1072,10 @@ export default function MobileWorkOrderClient({
         visibleLineState(line) === "assigned",
     )?.id ?? null;
 
-  const primaryActionLine = actionableLines[0] ?? null;
+  const primaryActionLine = selectMobileDetailPrimaryActionLine(
+    actionableLines,
+    mobileOperationalState.lineStates,
+  );
 
   useEffect(() => {
     if (!focusedJobId) return;
@@ -1076,12 +1084,12 @@ export default function MobileWorkOrderClient({
     );
     if (stillActionable) return;
 
-    const nextLineId = actionableLines[0]?.id ?? null;
+    const nextLineId = primaryActionLine?.id ?? null;
     setFocusedJobId(nextLineId);
     if (!nextLineId) {
       setFocusedOpen(false);
     }
-  }, [actionableLines, focusedJobId]);
+  }, [actionableLines, focusedJobId, primaryActionLine]);
 
   const operationalPills = useMemo(
     () => [
@@ -1874,8 +1882,7 @@ export default function MobileWorkOrderClient({
                   const activeTechnicianIds =
                     lineContext.activeTechnicianIdsByLine?.[ln.id] ?? [];
                   const punchedIn =
-                    activeTechnicianIds.length > 0 ||
-                    (!!ln.punched_in_at && !ln.punched_out_at);
+                    visibleLineState(ln) === "in_progress";
 
                   const openFocused = () => {
                     setFocusedJobId(ln.id);
