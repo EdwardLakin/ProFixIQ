@@ -153,8 +153,15 @@ export default function MobileFocusedJob(props: {
   onBack: () => void;
   onChanged?: () => void | Promise<void>;
   mode?: Mode;
+  canAddJob?: boolean;
 }): JSX.Element {
-  const { workOrderLineId, onBack, onChanged, mode = "tech" } = props;
+  const {
+    workOrderLineId,
+    onBack,
+    onChanged,
+    mode = "tech",
+    canAddJob = false,
+  } = props;
 
   const supabase = useMemo(() => createBrowserSupabase(), []);
 
@@ -917,7 +924,7 @@ export default function MobileFocusedJob(props: {
             )}
           </div>
 
-          {workOrder?.id ? (
+          {canAddJob && workOrder?.id ? (
             <button
               type="button"
               className="mobile-tech-btn-secondary rounded-full px-3 py-1.5 text-[11px] font-semibold"
@@ -1647,13 +1654,11 @@ export default function MobileFocusedJob(props: {
         />
       )}
 
-      {openAddJob && workOrder?.id && (
+      {canAddJob && openAddJob && workOrder?.id && (
         <AddJobModal
           isOpen={openAddJob}
           onClose={() => setOpenAddJob(false)}
           workOrderId={workOrder.id}
-          vehicleId={vehicle?.id ?? null}
-          shopId={workOrder?.shop_id ?? null}
           onJobAdded={async () => {
             await refresh();
             setOpenAddJob(false);

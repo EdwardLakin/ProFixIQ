@@ -197,6 +197,7 @@ export default function FocusedJobModal(props: {
   assignedTechnicianIds?: readonly string[];
   isPunchedInSnapshot?: boolean;
   canAssignTechnician?: boolean;
+  canAddJob?: boolean;
   technicianOptions?: readonly TechnicianOption[];
   onAssignTechnician?: (
     lineId: string,
@@ -218,6 +219,7 @@ export default function FocusedJobModal(props: {
     assignedTechnicianIds = EMPTY_TECHNICIAN_IDS,
     isPunchedInSnapshot,
     canAssignTechnician = false,
+    canAddJob = false,
     technicianOptions = EMPTY_TECHNICIAN_OPTIONS,
     onAssignTechnician,
     onOpenInspection,
@@ -780,7 +782,7 @@ export default function FocusedJobModal(props: {
             </div>
 
             <div className="flex shrink-0 items-center gap-2">
-              {workOrder?.id ? (
+              {canAddJob && workOrder?.id ? (
                 <button
                   type="button"
                   className="inline-flex items-center justify-center rounded-xl border border-[var(--accent-copper-soft)] bg-[var(--accent-copper-faint)] px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--accent-copper-light)] transition hover:bg-[var(--accent-copper-soft)]/20"
@@ -2016,13 +2018,11 @@ export default function FocusedJobModal(props: {
         />
       ) : null}
 
-      {openAddJob && workOrder?.id ? (
+      {canAddJob && openAddJob && workOrder?.id ? (
         <AddJobModal
           isOpen={openAddJob}
           onClose={() => setOpenAddJob(false)}
           workOrderId={workOrder.id}
-          vehicleId={vehicle?.id ?? null}
-          shopId={workOrder?.shop_id ?? null}
           onJobAdded={async () => {
             await refresh();
             setOpenAddJob(false);

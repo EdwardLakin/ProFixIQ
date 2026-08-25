@@ -28220,6 +28220,21 @@ export type Database = {
         }
         Returns: string
       }
+      create_manual_work_order_line_atomic: {
+        Args: {
+          p_actor_profile_id: string
+          p_authenticated_user_id: string
+          p_complaint: string
+          p_correction: string
+          p_labor_time: number
+          p_line_id: string
+          p_parts_text: string
+          p_shop_id: string
+          p_urgency: string
+          p_work_order_id: string
+        }
+        Returns: Json
+      }
       create_menu_item_with_parts_intake: {
         Args: {
           p_actor_auth_user_id: string
@@ -31430,4 +31445,3 @@ export const Constants = {
     },
   },
 } as const
-

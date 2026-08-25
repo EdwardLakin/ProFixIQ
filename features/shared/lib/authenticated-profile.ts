@@ -19,6 +19,7 @@ type ProfileClient = SupabaseClient<Database>;
 
 type CanonicalProfileOptions = {
   linkedProfileClient?: () => ProfileClient;
+  signal?: AbortSignal;
 };
 
 const PROFILE_SELECT =
@@ -38,11 +39,12 @@ export async function resolveCanonicalStaffProfile(
   profile: AuthenticatedStaffProfile | null;
   error: string | null;
 }> {
-  const byId = await supabase
+  const byIdQuery = supabase
     .from("profiles")
     .select(PROFILE_SELECT)
-    .eq("id", authUserId)
-    .maybeSingle<AuthenticatedStaffProfile>();
+    .eq("id", authUserId);
+  if (options.signal) byIdQuery.abortSignal(options.signal);
+  const byId = await byIdQuery.maybeSingle<AuthenticatedStaffProfile>();
 
   if (byId.error) {
     return { profile: null, error: byId.error.message };
@@ -52,11 +54,13 @@ export async function resolveCanonicalStaffProfile(
   }
 
   const linkedClient = options.linkedProfileClient?.() ?? supabase;
-  const byAuthUser = await linkedClient
+  const byAuthUserQuery = linkedClient
     .from("profiles")
     .select(PROFILE_SELECT)
-    .eq("user_id", authUserId)
-    .maybeSingle<AuthenticatedStaffProfile>();
+    .eq("user_id", authUserId);
+  if (options.signal) byAuthUserQuery.abortSignal(options.signal);
+  const byAuthUser =
+    await byAuthUserQuery.maybeSingle<AuthenticatedStaffProfile>();
 
   return {
     profile: byAuthUser.data ?? null,

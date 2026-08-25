@@ -8,6 +8,8 @@ const mocks = vi.hoisted(() => ({
   getUser: vi.fn(),
   getOfflineMutationScope: vi.fn(),
   loadProjectedWorkOrderSnapshot: vi.fn(),
+  profileAbortSignal: vi.fn(),
+  profileEq: vi.fn(),
   profileLookup: vi.fn(),
   removeMobileWorkOrderDetailSnapshots: vi.fn(async () => undefined),
   saveOfflineSnapshot: vi.fn(async () => undefined),
@@ -42,9 +44,11 @@ vi.mock("@/features/shared/components/tabs/TabsProvider", () => ({
 
 vi.mock("@/features/shared/lib/supabase/client", () => {
   const profileQuery: Record<string, ReturnType<typeof vi.fn>> = {};
-  for (const method of ["select", "eq", "abortSignal"]) {
-    profileQuery[method] = vi.fn(() => profileQuery);
-  }
+  profileQuery.select = vi.fn(() => profileQuery);
+  mocks.profileAbortSignal.mockImplementation(() => profileQuery);
+  profileQuery.abortSignal = mocks.profileAbortSignal;
+  mocks.profileEq.mockImplementation(() => profileQuery);
+  profileQuery.eq = mocks.profileEq;
   profileQuery.maybeSingle = mocks.profileLookup;
 
   const channel: Record<string, ReturnType<typeof vi.fn>> = {
@@ -112,7 +116,9 @@ vi.mock("@/features/assistant/components/AskAssistantEntry", () => ({
   default: () => null,
 }));
 vi.mock("@/features/work-orders/mobile/MobileFocusedJob", () => ({
-  default: () => <div>Focused job</div>,
+  default: ({ canAddJob }: { canAddJob?: boolean }) => (
+    <div>{canAddJob ? "Add job available" : "Add job unavailable"}</div>
+  ),
 }));
 vi.mock("@/features/work-orders/components/JobCard", () => ({
   JobCard: ({ line }: { line: { description?: string | null } }) => (
@@ -169,6 +175,23 @@ function detailSnapshot(customId = "WO-000014") {
   };
 }
 
+function actionableDetailSnapshot() {
+  return {
+    ...detailSnapshot(),
+    lines: [
+      {
+        id: "line-1",
+        work_order_id: WORK_ORDER_ID,
+        shop_id: "shop-1",
+        description: "Profile authorization",
+        status: "in_progress",
+        approval_state: "approved",
+        job_type: "repair",
+      },
+    ],
+  };
+}
+
 function response(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -218,8 +241,7 @@ describe("mobile work-order detail client", () => {
   });
 
   it("renders a meaningful sparse work order after a direct deep link", async () => {
-    mocks.search =
-      "returnTo=%2Fmobile%2Fwork-orders%3Fstatus%3Din_progress";
+    mocks.search = "returnTo=%2Fmobile%2Fwork-orders%3Fstatus%3Din_progress";
     render(<MobileWorkOrderClient routeId={WORK_ORDER_ID} />);
 
     expect(screen.getByRole("status")).toHaveTextContent("Loading work order");
@@ -235,6 +257,54 @@ describe("mobile work-order detail client", () => {
     expect(mocks.fetch).toHaveBeenCalledWith(
       `/api/mobile/work-orders/${WORK_ORDER_ID}`,
       expect.objectContaining({ credentials: "include" }),
+    );
+  });
+
+  it("preserves Add Job presentation for a manager whose profile id matches auth", async () => {
+    mocks.search = "focus=line-1";
+    mocks.profileLookup.mockResolvedValue({
+      data: {
+        id: "user-1",
+        role: "manager",
+        shop_id: "shop-1",
+      },
+      error: null,
+    });
+    mocks.fetch.mockResolvedValue(response(actionableDetailSnapshot()));
+
+    render(<MobileWorkOrderClient routeId={WORK_ORDER_ID} />);
+
+    await screen.findByText("Add job available");
+    expect(mocks.profileEq).toHaveBeenCalledOnce();
+    expect(mocks.profileEq).toHaveBeenCalledWith("id", "user-1");
+    expect(mocks.profileAbortSignal).toHaveBeenCalledOnce();
+    expect(mocks.profileAbortSignal).toHaveBeenCalledWith(
+      expect.any(AbortSignal),
+    );
+  });
+
+  it("presents Add Job for an imported manager linked through profiles.user_id", async () => {
+    mocks.search = "focus=line-1";
+    mocks.profileLookup
+      .mockResolvedValueOnce({ data: null, error: null })
+      .mockResolvedValueOnce({
+        data: {
+          id: "imported-manager-profile",
+          role: "manager",
+          shop_id: "shop-1",
+        },
+        error: null,
+      });
+    mocks.fetch.mockResolvedValue(response(actionableDetailSnapshot()));
+
+    render(<MobileWorkOrderClient routeId={WORK_ORDER_ID} />);
+
+    await screen.findByText("Add job available");
+    expect(mocks.profileEq).toHaveBeenNthCalledWith(1, "id", "user-1");
+    expect(mocks.profileEq).toHaveBeenNthCalledWith(2, "user_id", "user-1");
+    expect(mocks.profileAbortSignal).toHaveBeenCalledTimes(2);
+    expect(mocks.profileAbortSignal.mock.calls[1]?.[0]).toBe(
+      mocks.profileAbortSignal.mock.calls[0]?.[0],
     );
   });
 
@@ -309,6 +379,27 @@ describe("mobile work-order detail client", () => {
       scope: { userId: "user-1", shopId: "shop-1" },
       entityId: WORK_ORDER_ID,
     });
+  });
+
+  it("fails Add Job closed when cached fallback only has mutable role metadata", async () => {
+    mocks.search = "focus=line-1";
+    mocks.getSession.mockResolvedValue({
+      data: {
+        session: {
+          user: { id: "user-1", user_metadata: { role: "manager" } },
+        },
+      },
+    });
+    mocks.profileLookup.mockResolvedValue({
+      data: null,
+      error: new Error("Temporary profile read failure"),
+    });
+    mocks.fetch.mockResolvedValue(response(actionableDetailSnapshot()));
+
+    render(<MobileWorkOrderClient routeId={WORK_ORDER_ID} />);
+
+    await screen.findByText("Add job unavailable");
+    expect(mocks.profileLookup).toHaveBeenCalledOnce();
   });
 
   it("renders an offline snapshot and replaces it after reconnect", async () => {

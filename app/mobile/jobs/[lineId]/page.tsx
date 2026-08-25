@@ -4,10 +4,12 @@ import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
-import CauseCorrectionModal from "@work-orders/components/workorders/CauseCorrectionModal";
+import CauseCorrectionModal from "@/features/work-orders/components/workorders/CauseCorrectionModal";
+import { resolveCanonicalStaffProfile } from "@/features/shared/lib/authenticated-profile";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { runMutationWithOfflineQueue } from "@/features/shared/lib/offline/mutations";
 import { postOfflineServerMutation } from "@/features/shared/lib/offline/server-mutations";
+import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import { runJobPunchTransition } from "@/features/work-orders/lib/jobPunchTransitionsClient";
 import MobileFocusedJob from "@/features/work-orders/mobile/MobileFocusedJob";
 
@@ -39,6 +41,42 @@ export default function MobileJobPage() {
   const [storyOpen, setStoryOpen] = useState(false);
   const [line, setLine] = useState<StoryLine | null>(null);
   const [loadingStory, setLoadingStory] = useState(true);
+  const [canAddJob, setCanAddJob] = useState(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
+
+    const resolveActor = async () => {
+      setCanAddJob(false);
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser();
+      if (!active || controller.signal.aborted || authError || !user) return;
+
+      const { profile, error: profileError } =
+        await resolveCanonicalStaffProfile(supabase, user.id, {
+          signal: controller.signal,
+        });
+      if (!active || controller.signal.aborted || profileError || !profile) {
+        return;
+      }
+
+      setCanAddJob(
+        getActorCapabilities({ role: profile.role }).canManageWorkOrders,
+      );
+    };
+
+    void resolveActor().catch(() => {
+      if (active && !controller.signal.aborted) setCanAddJob(false);
+    });
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [supabase]);
 
   const loadStory = useCallback(async () => {
     setLoadingStory(true);
@@ -181,6 +219,7 @@ export default function MobileJobPage() {
     <div className="pb-20">
       <MobileFocusedJob
         workOrderLineId={lineId}
+        canAddJob={canAddJob}
         onChanged={loadStory}
         onBack={() =>
           router.push(
