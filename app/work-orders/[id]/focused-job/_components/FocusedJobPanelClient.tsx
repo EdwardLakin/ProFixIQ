@@ -9,6 +9,7 @@ import FocusedJobModal from "@/features/work-orders/components/workorders/Focuse
 export default function FocusedJobPanelClient(props: {
   workOrderLineId: string;
   mode?: "tech" | "view";
+  canAddJob: boolean;
 }): JSX.Element {
   const router = useRouter();
 
@@ -21,6 +22,7 @@ export default function FocusedJobPanelClient(props: {
           onClose={() => router.back()}
           workOrderLineId={props.workOrderLineId}
           mode={props.mode ?? "tech"}
+          canAddJob={props.canAddJob}
         />
       </div>
     </div>

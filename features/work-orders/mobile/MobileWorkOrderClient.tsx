@@ -68,6 +68,8 @@ import {
   runBoundedRouteLoad,
   type RouteLoadFailure,
 } from "@/features/shared/lib/route-load";
+import { resolveCanonicalStaffProfile } from "@/features/shared/lib/authenticated-profile";
+import { getActorCapabilities } from "@/features/shared/lib/rbac";
 
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -308,6 +310,7 @@ export default function MobileWorkOrderClient({
     null,
   );
   const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
+  const [actorRoleVerified, setActorRoleVerified] = useState(false);
 
   const [shopId, setShopId] = useTabState<string | null>(
     `${keyBase}:shopId`,
@@ -335,6 +338,7 @@ export default function MobileWorkOrderClient({
 
     const waitForSession = async () => {
       setActorReady(false);
+      setActorRoleVerified(false);
       setLoading(true);
       setLoadFailure(null);
       try {
@@ -378,29 +382,28 @@ export default function MobileWorkOrderClient({
             const cachedScope = getOfflineMutationScope();
             if (!navigator.onLine && cachedScope?.userId === uid) {
               setCurrentUserRole(session?.user.user_metadata?.role ?? null);
+              setActorRoleVerified(false);
               setShopId(cachedScope.shopId);
               setActorReady(true);
               return;
             }
 
-            const { data: prof, error: profErr } = await supabase
-              .from("profiles")
-              .select("role, shop_id")
-              .eq("id", uid)
-              .abortSignal(signal)
-              .maybeSingle();
+            const { profile: prof, error: profErr } =
+              await resolveCanonicalStaffProfile(supabase, uid, { signal });
             if (!mounted || signal.aborted) return;
             if (profErr) {
               if (cachedScope?.userId === uid) {
                 setCurrentUserRole(session?.user.user_metadata?.role ?? null);
+                setActorRoleVerified(false);
                 setShopId(cachedScope.shopId);
                 setActorReady(true);
                 return;
               }
-              throw profErr;
+              throw new Error(profErr);
             }
 
             setCurrentUserRole(prof?.role ?? null);
+            setActorRoleVerified(Boolean(prof));
             setShopId((prof?.shop_id as string | null) ?? null);
             if (prof?.shop_id) {
               setOfflineMutationScope({ userId: uid, shopId: prof.shop_id });
@@ -414,6 +417,7 @@ export default function MobileWorkOrderClient({
         setCurrentUserId(null);
         setUserId(null);
         setCurrentUserRole(null);
+        setActorRoleVerified(false);
         setShopId(null);
         setLoadFailure(
           asRouteLoadFailure(
@@ -434,6 +438,7 @@ export default function MobileWorkOrderClient({
         setCurrentUserId(null);
         setUserId(null);
         setCurrentUserRole(null);
+        setActorRoleVerified(false);
         setShopId(null);
         setLoading(false);
       }
@@ -994,6 +999,7 @@ export default function MobileWorkOrderClient({
   );
 
   const canAssign = false; // assignments handled in focused view / desktop
+  const currentActor = getActorCapabilities({ role: currentUserRole });
   const canApprove = currentUserRole
     ? APPROVAL_ROLES.has(currentUserRole)
     : false;
@@ -1383,6 +1389,11 @@ export default function MobileWorkOrderClient({
         onBack={() => setFocusedOpen(false)}
         onChanged={fetchAll}
         mode="tech"
+        canAddJob={
+          actorRoleVerified &&
+          (currentActor.canManageWorkOrders ||
+            currentActor.canPerformAssignedWork)
+        }
       />
     );
   }

@@ -116,6 +116,20 @@ jobs:
           supabase db reset --local --no-seed --debug \
             2>&1 | tee supabase-db-reset.log
 
+      - name: Execute manual Work Order line atomic integration
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+            -f tests/security/manual-work-order-line-atomic.runtime.sql \
+            2>&1 | tee manual-work-order-line-atomic-runtime.log
+
       - name: Execute Fleet service-request ownership integration
         shell: bash
         env:
@@ -568,6 +582,7 @@ jobs:
             supabase-db-start.log
             supabase-db-reset.log
             supabase-existing-baseline.log
+            manual-work-order-line-atomic-runtime.log
             parts-use-handoff-runtime.log
             parts-request-purchase-order-runtime.log
             parts-request-purchase-order-locking-runtime.log

@@ -40,6 +40,8 @@ import {
   canonicalQuotePartQuantity,
   readCanonicalQuotePartsSnapshot,
 } from "@/features/parts/lib/quote-parts-contract";
+import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import { resolveCanonicalStaffProfile } from "@/features/shared/lib/authenticated-profile";
 
 const COPPER = "#C57A4A";
 const SEND_READY_STAGES = new Set(["advisor_pending", "ready_to_send"]);
@@ -517,9 +519,45 @@ export default function QuoteReviewView(props: {
   const [pendingCustomerEmail, setPendingCustomerEmail] = useState("");
   const [sendBlocker, setSendBlocker] = useState<string | null>(null);
   const [addJobOpen, setAddJobOpen] = useState(false);
+  const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
   const [suppliesEnabledDraft, setSuppliesEnabledDraft] = useState<boolean | null>(null);
   const [suppliesAmountDraft, setSuppliesAmountDraft] = useState("");
   const [savingSuppliesOverride, setSavingSuppliesOverride] = useState(false);
+  const currentActor = getActorCapabilities({ role: currentUserRole });
+  const canAddJob = currentActor.canManageWorkOrders;
+
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+
+    async function loadCurrentActorRole() {
+      try {
+        const auth = supabase.auth;
+        if (!auth?.getUser) return;
+        const {
+          data: { user },
+        } = await auth.getUser();
+        if (!user || cancelled) return;
+
+        const { profile, error } = await resolveCanonicalStaffProfile(
+          supabase,
+          user.id,
+          { signal: controller.signal },
+        );
+        if (!cancelled && !controller.signal.aborted) {
+          setCurrentUserRole(error ? null : (profile?.role ?? null));
+        }
+      } catch {
+        if (!cancelled) setCurrentUserRole(null);
+      }
+    }
+
+    void loadCurrentActorRole();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [supabase]);
 
   useEffect(() => {
     if (embedded || !wo) return;
@@ -1546,13 +1584,15 @@ export default function QuoteReviewView(props: {
               </div>
             </div>
 
-            <div className={card}>
+            {canAddJob ? (
+              <div className={card}>
               <div className={`border-b ${divider} ${padX} py-3 text-sm font-semibold text-[color:var(--theme-text-primary)]`}>Quick add job</div>
               <div className={`${padX} py-4 text-sm text-[color:var(--theme-text-secondary)]`}>
                 Add active work only when intentionally needed. Inspection recommendations should stay in canonical quote lines until customer approval/materialization.
                 <button type="button" onClick={openAddJobWithPrefill} className="desktop-btn-primary mt-3 w-full rounded-xl px-4 py-2 text-sm font-semibold">+ Add job line</button>
               </div>
-            </div>
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -1582,17 +1622,17 @@ export default function QuoteReviewView(props: {
           </div>
         ) : null}
 
-        <AddJobModal
-          isOpen={addJobOpen}
-          onClose={() => setAddJobOpen(false)}
-          workOrderId={wo.id}
-          vehicleId={wo.vehicle_id}
-          shopId={wo.shop_id}
-          onJobAdded={() => {
-            setAddJobOpen(false);
-            void reload();
-          }}
-        />
+        {canAddJob ? (
+          <AddJobModal
+            isOpen={addJobOpen}
+            onClose={() => setAddJobOpen(false)}
+            workOrderId={wo.id}
+            onJobAdded={() => {
+              setAddJobOpen(false);
+              void reload();
+            }}
+          />
+        ) : null}
       </div>
     </div>
   );

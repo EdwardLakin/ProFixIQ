@@ -421,9 +421,7 @@ describe("premier workforce cohesion", () => {
     expect(workOrderDetail).toContain(
       "desktop keeps the focused cockpit open",
     );
-    expect(workOrderDetail).toContain(
-      ".or(`id.eq.${uid},user_id.eq.${uid}`)",
-    );
+    expect(workOrderDetail).toContain("resolveCanonicalStaffProfile(");
     expect(workOrderDetail).toContain("activeTechnicianNames");
     expect(assignablesRoute).toContain(
       '"Employee profile unavailable"',

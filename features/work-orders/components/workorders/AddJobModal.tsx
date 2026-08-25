@@ -1,26 +1,17 @@
 // /features/work-orders/components/AddJobModal.tsx (FULL FILE REPLACEMENT)
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { v4 as uuidv4 } from "uuid";
-import type { PostgrestError } from "@supabase/supabase-js";
 import { toast } from "sonner";
 
-import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import ModalShell from "@/features/shared/components/ModalShell";
-import type { Database } from "@shared/types/types/supabase";
-import { buildAddJobLinePayload } from "@/features/work-orders/lib/addJobLinePayload";
-
-type DB = Database;
-type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
 
 type Props = {
   isOpen: boolean;
   onClose: () => void;
   workOrderId: string;
-  vehicleId: string | null;
   onJobAdded?: () => void;
-  shopId?: string | null;
 };
 
 type Urgency = "low" | "medium" | "high";
@@ -29,8 +20,6 @@ type Urgency = "low" | "medium" | "high";
 
 function errorMessage(e: unknown): string {
   if (e instanceof Error) return e.message;
-  const pe = e as Partial<PostgrestError> | null;
-  if (pe && typeof pe.message === "string") return pe.message;
   return "Unknown error";
 }
 
@@ -54,6 +43,20 @@ type PartRequestCreateBody = {
   jobId?: string | null;
   items: { description: string; qty: number }[];
   notes?: string | null;
+};
+
+type LineCreationIntent = {
+  fingerprint: string;
+  lineId: string;
+};
+
+type ManualLineCreateBody = {
+  lineId: string;
+  jobName: string;
+  notes: string;
+  laborHours: number;
+  parts: { description: string; qty: number }[];
+  urgency: Urgency;
 };
 
 function parsePartsPaste(raw: string): { description: string; qty: number }[] {
@@ -84,10 +87,9 @@ function parsePartsPaste(raw: string): { description: string; qty: number }[] {
 }
 
 export default function AddJobModal(props: Props) {
-  const { isOpen, onClose, workOrderId, vehicleId, onJobAdded, shopId } = props;
-
-  const supabase = useMemo(() => createBrowserSupabase(), []);
-  const lastSetShopId = useRef<string | null>(null);
+  const { isOpen, onClose, workOrderId, onJobAdded } = props;
+  const submissionInFlightRef = useRef(false);
+  const lineIntentRef = useRef<LineCreationIntent | null>(null);
 
   const [jobName, setJobName] = useState("");
   const [notes, setNotes] = useState("");
@@ -105,18 +107,6 @@ export default function AddJobModal(props: Props) {
 
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-
-  async function ensureShopContext(id: string | null) {
-    if (!id) return;
-    if (lastSetShopId.current === id) return;
-
-    const { error } = await supabase.rpc("set_current_shop_id", {
-      p_shop_id: id,
-    });
-    if (error) throw error;
-
-    lastSetShopId.current = id;
-  }
 
   const addRow = () =>
     setRows((r) => [...r, { id: uuidv4(), description: "", qty: "1" }]);
@@ -164,9 +154,52 @@ export default function AddJobModal(props: Props) {
     setRows([{ id: uuidv4(), description: "", qty: "1" }]);
     setPartsPaste("");
     setErr(null);
+    lineIntentRef.current = null;
   }
 
-  async function createPartsRequest(body: PartRequestCreateBody): Promise<string> {
+  async function createManualLine(body: ManualLineCreateBody): Promise<string> {
+    const response = await fetch(
+      `/api/work-orders/${encodeURIComponent(workOrderId)}/lines`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": body.lineId,
+        },
+        body: JSON.stringify(body),
+      },
+    );
+
+    const raw = await response.text();
+    const result = (() => {
+      try {
+        return raw
+          ? (JSON.parse(raw) as {
+              lineId?: string;
+              error?: string;
+              correlationId?: string;
+            })
+          : null;
+      } catch {
+        return null;
+      }
+    })();
+
+    if (!response.ok || result?.lineId !== body.lineId) {
+      const reference = result?.correlationId
+        ? ` Reference: ${result.correlationId}.`
+        : "";
+      throw new Error(
+        `${result?.error || "Unable to add the work-order line."}${reference}`,
+      );
+    }
+
+    return body.lineId;
+  }
+
+  async function createPartsRequest(
+    body: PartRequestCreateBody,
+  ): Promise<string> {
     const res = await fetch("/api/parts/requests/create", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -176,13 +209,16 @@ export default function AddJobModal(props: Props) {
     const raw = await res.text();
     let json: { requestId?: string; error?: string } | null = null;
     try {
-      json = raw ? (JSON.parse(raw) as { requestId?: string; error?: string }) : null;
+      json = raw
+        ? (JSON.parse(raw) as { requestId?: string; error?: string })
+        : null;
     } catch {
       /* ignore */
     }
 
     if (!res.ok || !json?.requestId) {
-      const msg = json?.error || raw || `Request failed with status ${res.status}`;
+      const msg =
+        json?.error || raw || `Request failed with status ${res.status}`;
       throw new Error(msg);
     }
 
@@ -190,82 +226,49 @@ export default function AddJobModal(props: Props) {
   }
 
   const handleSubmit = async () => {
+    if (submissionInFlightRef.current) return;
     if (!jobName.trim()) {
       setErr("Job name is required.");
       return;
     }
 
+    submissionInFlightRef.current = true;
     setSubmitting(true);
     setErr(null);
 
     try {
-      // resolve shop_id
-      let useShopId = shopId ?? null;
-
-      if (!useShopId) {
-        const { data: wo, error: woErr } = await supabase
-          .from("work_orders")
-          .select("shop_id")
-          .eq("id", workOrderId)
-          .maybeSingle();
-
-        if (woErr) throw woErr;
-
-        useShopId = (wo as Pick<WorkOrderRow, "shop_id"> | null)?.shop_id ?? null;
-      }
-
-      if (!useShopId) throw new Error("Couldn’t resolve shop for this work order");
-
-      await ensureShopContext(useShopId);
-
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
       const laborNum = asNumber(labor);
       const laborHours = laborNum ?? 0;
-
       const hasParts = validItems.length > 0;
+      const fingerprint = JSON.stringify({
+        jobName: jobName.trim(),
+        notes: notes.trim(),
+        laborHours,
+        parts: validItems,
+        urgency,
+      });
+      if (lineIntentRef.current?.fingerprint !== fingerprint) {
+        lineIntentRef.current = { fingerprint, lineId: uuidv4() };
+      }
+      const lineId = lineIntentRef.current.lineId;
 
-      const newLineId = uuidv4();
-
-      const payload = buildAddJobLinePayload({
-        id: newLineId,
-        workOrderId,
-        vehicleId,
+      await createManualLine({
+        lineId,
         jobName,
         notes,
         laborHours,
         parts: validItems,
-        shopId: useShopId,
-        userId: user?.id ?? null,
         urgency,
       });
 
-      // 1) Create the line
-      const { error: insErr } = await supabase.from("work_order_lines").insert(payload);
-
-      if (insErr) {
-        const msg = insErr.message || "Failed to add job.";
-        if (/row-level security/i.test(msg)) {
-          setErr("Access denied (RLS). Check that your session is scoped to this shop.");
-          lastSetShopId.current = null;
-        } else if (/status.*check/i.test(msg)) {
-          setErr("This status isn’t allowed by the database.");
-        } else if (/job_type.*check/i.test(msg)) {
-          setErr("This job type isn’t allowed by the database.");
-        } else {
-          setErr(msg);
-        }
-        return;
-      }
-
-      // 2) Create parts request (keep this behavior)
+      // This intentionally remains a separate follow-up. Preserve the existing
+      // partial-success behavior; line idempotency does not make it atomic and
+      // a failed parts request is not retried automatically here.
       if (hasParts) {
         try {
           await createPartsRequest({
             workOrderId,
-            jobId: newLineId,
+            jobId: lineId,
             items: validItems,
             notes: safeTrim(headerNotes) || safeTrim(notes) || null,
           });
@@ -287,8 +290,8 @@ export default function AddJobModal(props: Props) {
       resetForm();
     } catch (e: unknown) {
       setErr(errorMessage(e) || "Failed to add job.");
-      lastSetShopId.current = null;
     } finally {
+      submissionInFlightRef.current = false;
       setSubmitting(false);
     }
   };
@@ -305,6 +308,7 @@ export default function AddJobModal(props: Props) {
       title="Add New Job Line"
       onSubmit={handleSubmit}
       submitText={submitting ? "Adding…" : "Add Job"}
+      busy={submitting}
       size="lg"
     >
       <div className="space-y-4">
@@ -397,7 +401,9 @@ export default function AddJobModal(props: Props) {
                 <input
                   className="col-span-8 rounded-md border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-2 py-1 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] outline-none transition focus:border-[var(--accent-copper-soft)] focus:ring-1 focus:ring-[var(--accent-copper-soft)]/60"
                   value={r.description}
-                  onChange={(e) => setCell(r.id, { description: e.target.value })}
+                  onChange={(e) =>
+                    setCell(r.id, { description: e.target.value })
+                  }
                   placeholder="e.g. rear pads, serp belt…"
                 />
 
@@ -412,7 +418,8 @@ export default function AddJobModal(props: Props) {
                   }}
                   onBlur={() => {
                     const n = Number.parseInt(r.qty, 10);
-                    const normalized = Number.isFinite(n) && n > 0 ? String(n) : "1";
+                    const normalized =
+                      Number.isFinite(n) && n > 0 ? String(n) : "1";
                     setCell(r.id, { qty: normalized });
                   }}
                   aria-label="Quantity"
@@ -424,7 +431,9 @@ export default function AddJobModal(props: Props) {
                     onClick={() => removeRow(r.id)}
                     disabled={rows.length <= 1}
                     title={
-                      rows.length <= 1 ? "At least one row is required" : "Remove row"
+                      rows.length <= 1
+                        ? "At least one row is required"
+                        : "Remove row"
                     }
                     type="button"
                   >
