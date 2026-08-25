@@ -141,6 +141,36 @@ describe("Work Order financial Workspace authorization", () => {
     );
   });
 
+  it("keeps sell-only Foreman access separate from the invoice-backed Workspace module", () => {
+    const migration = readFileSync(
+      join(
+        process.cwd(),
+        "supabase/migrations/20260823235900_work_order_workspace_financial_capabilities.sql",
+      ),
+      "utf8",
+    );
+    const client = readFileSync(
+      join(process.cwd(), "app/work-orders/[id]/Client.tsx"),
+      "utf8",
+    );
+
+    expect(migration).toContain(
+      "('work_order.financial.sell.view', 'foreman', 'allow')",
+    );
+    expect(migration).not.toContain(
+      "('work_order.invoice.view', 'foreman', 'allow')",
+    );
+    expect(migration).toContain(
+      "('work_order.invoice.view', 'advisor', 'allow')",
+    );
+    expect(client).toMatch(
+      /const canViewFinancials = canWorkspace\(\s*WORKSPACE_CAPABILITIES\.viewWorkOrderInvoice/,
+    );
+    expect(client).not.toMatch(
+      /const canViewFinancials = canWorkspace\(\s*WORKSPACE_CAPABILITIES\.viewWorkOrderSellPricing/,
+    );
+  });
+
   it("gates invoice API and page access at the server boundary", () => {
     const route = readFileSync(
       join(process.cwd(), "app/api/work-orders/[id]/invoice/route.ts"),

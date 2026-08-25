@@ -1138,7 +1138,7 @@ export default function WorkOrderIdClient(): JSX.Element {
   const currentActor = getActorCapabilities({ role: currentUserRole });
   const canApprove = currentActor.canAuthorizeQuotes;
   const canViewFinancials = canWorkspace(
-    WORKSPACE_CAPABILITIES.viewWorkOrderSellPricing,
+    WORKSPACE_CAPABILITIES.viewWorkOrderInvoice,
   );
   const canRequestParts = currentActor.canManageWorkOrders;
   const canUseInventoryPicker = currentActor.canManageParts;
@@ -2532,4 +2532,3 @@ export default function WorkOrderIdClient(): JSX.Element {
     </div>
   );
 }
-
