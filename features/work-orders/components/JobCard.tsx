@@ -53,6 +53,7 @@ type PricingSummary = {
 
 type JobCardProps = {
   index: number;
+  displayNumber?: number | string;
   line: WorkOrderLine;
   parts: WorkOrderPartAllocation[];
   partsCount?: number;
@@ -322,6 +323,7 @@ function MetaTile({ label, value }: { label: string; value: string }) {
 
 export function JobCard({
   index,
+  displayNumber,
   line,
   parts,
   partsCount,
@@ -351,6 +353,7 @@ export function JobCard({
   hideExecutionStageCompletenessPills = false,
   evidence = [],
 }: JobCardProps): JSX.Element {
+  const visibleLineNumber = displayNumber ?? index + 1;
   const [collapsed, setCollapsed] = useState<boolean>(false);
 
   const statusVisual = useMemo(() => {
@@ -463,12 +466,12 @@ export function JobCard({
           type="button"
           onClick={onOpen}
           className="w-full px-3 py-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[color:var(--brand-primary)]"
-          aria-label={`Open job ${index + 1}: ${jobLabel}`}
+          aria-label={`Open job ${visibleLineNumber}: ${jobLabel}`}
           aria-pressed={isSelected}
         >
           <div className="flex items-start gap-2.5">
             <span className="mt-0.5 inline-flex h-6 min-w-6 items-center justify-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-1.5 text-[11px] font-semibold text-[color:var(--theme-text-primary)]">
-              {index + 1}
+              {visibleLineNumber}
             </span>
             <div className="min-w-0 flex-1">
               <div className="line-clamp-2 text-sm font-semibold leading-5 text-[color:var(--theme-text-primary)]">
@@ -581,7 +584,7 @@ export function JobCard({
         }
       }}
       className="outline-none"
-      aria-label={`Open job ${index + 1}: ${jobLabel}`}
+      aria-label={`Open job ${visibleLineNumber}: ${jobLabel}`}
       aria-pressed={isSelected}
     >
       <Card
@@ -620,7 +623,7 @@ export function JobCard({
               <div className="min-w-0 space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 text-xs font-semibold text-[color:var(--theme-text-primary)]">
-                    {index + 1}
+                    {visibleLineNumber}
                   </span>
                   <h3
                     className={cn(

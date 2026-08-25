@@ -115,8 +115,16 @@ vi.mock("@/features/work-orders/mobile/MobileFocusedJob", () => ({
   default: () => <div>Focused job</div>,
 }));
 vi.mock("@/features/work-orders/components/JobCard", () => ({
-  JobCard: ({ line }: { line: { description?: string | null } }) => (
-    <article>{line.description ?? "Untitled job"}</article>
+  JobCard: ({
+    line,
+    displayNumber,
+  }: {
+    line: { description?: string | null };
+    displayNumber?: number | string;
+  }) => (
+    <article data-display-number={displayNumber}>
+      {line.description ?? "Untitled job"}
+    </article>
   ),
 }));
 vi.mock("@/features/work-orders/lib/jobPunchTransitionsClient", () => ({
@@ -236,6 +244,52 @@ describe("mobile work-order detail client", () => {
       `/api/mobile/work-orders/${WORK_ORDER_ID}`,
       expect.objectContaining({ credentials: "include" }),
     );
+  });
+
+  it("keeps canonical line numbers when operational priority reorders cards", async () => {
+    const snapshot = detailSnapshot();
+    mocks.fetch.mockResolvedValue(
+      response({
+        ...snapshot,
+        lineContext: {
+          ...snapshot.lineContext,
+          activeTechnicianIdsByLine: { "line-2": ["tech-2"] },
+        },
+        lines: [
+          {
+            id: "line-1",
+            work_order_id: WORK_ORDER_ID,
+            shop_id: "shop-1",
+            line_no: 1,
+            description: "Brake inspection",
+            status: "awaiting",
+            approval_state: "approved",
+            created_at: "2026-08-21T18:00:00.000Z",
+          },
+          {
+            id: "line-2",
+            work_order_id: WORK_ORDER_ID,
+            shop_id: "shop-1",
+            line_no: 2,
+            description: "Front brake pads",
+            status: "in_progress",
+            approval_state: "approved",
+            created_at: "2026-08-21T18:01:00.000Z",
+          },
+        ],
+      }),
+    );
+
+    render(<MobileWorkOrderClient routeId={WORK_ORDER_ID} />);
+
+    const prioritized = await screen.findByText("Front brake pads");
+    const inspection = screen.getByText("Brake inspection");
+    expect(screen.getAllByRole("article").map((card) => card.textContent)).toEqual([
+      "Front brake pads",
+      "Brake inspection",
+    ]);
+    expect(prioritized).toHaveAttribute("data-display-number", "2");
+    expect(inspection).toHaveAttribute("data-display-number", "1");
   });
 
   it("renders explicit denied and missing states without stale detail", async () => {

@@ -52,6 +52,7 @@ import {
   removeMobileWorkOrderDetailSnapshots,
 } from "@/features/work-orders/mobile/technicianOfflineExecution";
 import { parseMobileWorkOrderSnapshot } from "@/features/work-orders/mobile/mobileWorkOrderDetail";
+import { resolveMobileLineDisplayNumbers } from "@/features/work-orders/mobile/mobileLineDisplay";
 import {
   deniedWorkOrderFinancialAccess,
   type WorkOrderFinancialAccess,
@@ -975,6 +976,11 @@ export default function MobileWorkOrderClient({
       return ta - tb;
     });
   }, [mobileOperationalState.visibleLines, visibleLineState]);
+
+  const displayNumberByLine = useMemo(
+    () => resolveMobileLineDisplayNumbers(mobileOperationalState.visibleLines),
+    [mobileOperationalState.visibleLines],
+  );
 
   const createdAtText = formatOptionalDateTime(wo?.created_at);
   const expectedCompletionText = formatOptionalDateTime(
@@ -1902,6 +1908,7 @@ export default function MobileWorkOrderClient({
                     >
                       <JobCard
                         index={idx}
+                        displayNumber={displayNumberByLine[ln.id]}
                         line={ln}
                         parts={lineContext.allocationsByLine[ln.id] ?? []}
                         partsCount={pricing?.partsCount ?? 0}
