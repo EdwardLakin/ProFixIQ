@@ -23,6 +23,19 @@ function isCopilotRoute(pathname: string): boolean {
   );
 }
 
+type MobileWorkflowDock = "job" | "work-order" | null;
+
+function mobileWorkflowDock(pathname: string): MobileWorkflowDock {
+  const segments = pathname.split("/").filter(Boolean);
+  if (segments.length !== 3 || segments[0] !== "mobile") return null;
+
+  if (segments[1] === "jobs") return "job";
+  if (segments[1] === "work-orders" && segments[2] !== "create") {
+    return "work-order";
+  }
+  return null;
+}
+
 export function TechnicianCopilotShell({
   shouldCheck,
   surface,
@@ -35,6 +48,8 @@ export function TechnicianCopilotShell({
   const availability = useTechnicianCopilotAvailabilityState(shouldCheck);
   const [open, setOpen] = useState(() => isCopilotRoute(pathname));
   const [expanded, setExpanded] = useState(false);
+  const workflowDock =
+    surface === "mobile" ? mobileWorkflowDock(pathname) : null;
 
   const openCompact = useCallback(() => {
     setExpanded(false);
@@ -84,7 +99,14 @@ export function TechnicianCopilotShell({
       className={cn(
         "fixed z-30 inline-flex items-center gap-2 rounded-full border px-4 py-3 text-sm font-semibold shadow-xl backdrop-blur transition hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-ring",
         surface === "mobile"
-          ? "bottom-[calc(4.75rem+env(safe-area-inset-bottom))] right-4"
+          ? cn(
+              "right-4",
+              workflowDock === "job"
+                ? "bottom-[calc(13.7rem+max(0.75rem,env(safe-area-inset-bottom,0px)))]"
+                : workflowDock === "work-order"
+                  ? "bottom-[calc(10rem+env(safe-area-inset-bottom))]"
+                  : "bottom-[calc(4.75rem+env(safe-area-inset-bottom))]",
+            )
           : "bottom-[calc(4rem+env(safe-area-inset-bottom))] right-4 md:bottom-6 md:right-6",
         open && "pointer-events-none translate-y-2 opacity-0",
       )}
@@ -109,10 +131,20 @@ export function TechnicianCopilotShell({
           aria-label="Technician CoPilot"
           aria-hidden={!open}
           className={cn(
-            "fixed z-40 flex min-h-0 flex-col overflow-hidden border text-[color:var(--theme-text-primary)] shadow-[var(--theme-shadow-strong)] transition-[opacity,transform,border-radius] duration-200",
+            "fixed flex min-h-0 flex-col overflow-hidden border text-[color:var(--theme-text-primary)] shadow-[var(--theme-shadow-strong)] transition-[opacity,transform,border-radius] duration-200",
             expanded
-              ? "inset-0 h-[100dvh] w-full rounded-none"
-              : "inset-x-3 bottom-[calc(1rem+env(safe-area-inset-bottom))] max-h-[min(21rem,calc(100dvh-7rem))] rounded-2xl",
+              ? cn(
+                  "inset-0 h-[100dvh] w-full rounded-none",
+                  workflowDock ? "z-[140]" : "z-40",
+                )
+              : cn(
+                  "inset-x-3 rounded-2xl z-40",
+                  workflowDock === "job"
+                    ? "bottom-[calc(13.7rem+max(0.75rem,env(safe-area-inset-bottom,0px)))] max-h-[min(21rem,calc(100dvh-14.7rem-max(0.75rem,env(safe-area-inset-bottom,0px))))]"
+                    : workflowDock === "work-order"
+                      ? "bottom-[calc(10rem+env(safe-area-inset-bottom))] max-h-[min(21rem,calc(100dvh-16rem))]"
+                      : "bottom-[calc(1rem+env(safe-area-inset-bottom))] max-h-[min(21rem,calc(100dvh-7rem))]",
+                ),
             open
               ? "visible pointer-events-auto opacity-100"
               : "invisible pointer-events-none translate-y-3 opacity-0",
