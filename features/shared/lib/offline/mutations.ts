@@ -1121,7 +1121,7 @@ export async function replayQueuedMutations(args: {
   await hydrateOfflineMutationQueue();
   await refreshQueueCacheFromStorage();
   const scope = args.scope ?? getOfflineMutationScope();
-  if (!scope || !navigator.onLine) return emptyReplayResult();
+  if (!scope) return emptyReplayResult();
 
   const hasReplayWork = queueCache.some(
     (item) =>
@@ -1134,7 +1134,6 @@ export async function replayQueuedMutations(args: {
     scope,
     "Safe cross-tab offline replay is unavailable in this browser.",
     async () => {
-      if (!navigator.onLine) return emptyReplayResult();
       const recovered = await recoverInterruptedStoredMutations(scope);
       if (recovered === null) {
         throw new Error(
@@ -1142,6 +1141,10 @@ export async function replayQueuedMutations(args: {
         );
       }
       await refreshQueueCacheFromStorage();
+      // Recovery is useful even while disconnected: a crash-interrupted item
+      // must become retryable/removable instead of remaining stuck as syncing.
+      // The handler still never runs until the browser is online.
+      if (!navigator.onLine) return emptyReplayResult();
       return replayQueuedMutationsWhileLocked({
         handlers: args.handlers,
         scope,

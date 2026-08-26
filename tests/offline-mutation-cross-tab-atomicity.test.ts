@@ -419,6 +419,34 @@ describe("offline mutation cross-tab atomicity", () => {
     expect(storage.recoveriesOutsideLock).toBe(0);
   });
 
+  it("recovers an interrupted sync while offline without running its handler", async () => {
+    storage.rows.set("offline-interrupted", {
+      clientMutationId: "offline-interrupted",
+      actionType: "save_story_draft",
+      payload: { correction: "recover before connectivity" },
+      createdAt: new Date().toISOString(),
+      retryCount: 0,
+      userId: "user-1",
+      shopId: "shop-1",
+      status: "syncing",
+    });
+    const tab = await loadTab();
+    const handler = vi.fn(async () => undefined);
+    vi.stubGlobal("navigator", { onLine: false, locks: replayLocks });
+
+    await expect(
+      tab.replayQueuedMutations({
+        scope: { userId: "user-1", shopId: "shop-1" },
+        handlers: { save_story_draft: handler },
+      }),
+    ).resolves.toEqual({ replayed: 0, failed: 0, conflicted: 0 });
+
+    expect(handler).not.toHaveBeenCalled();
+    expect(storage.rows.get("offline-interrupted")?.status).toBe("failed");
+    expect(storage.recoveriesOutsideLock).toBe(0);
+    expect(replayLocks.maxActive).toBe(1);
+  });
+
   it("does not recover or replay another tab's active mutation", async () => {
     storage.rows.set("shared-replay", {
       clientMutationId: "shared-replay",
