@@ -373,9 +373,8 @@ reset role;
 
 -- A predecessor deployment could admit a tenant mismatch before this
 -- migration installed its canonical trigger. Reproduce that historical state
--- on a financially locked Work Order without weakening the repair path under
--- test, then invoke the exact private migration helper. Its ordinary DML must
--- pass through the financial guards under an audited data-repair session.
+-- on a financially locked Work Order and prove the migration preflight fails
+-- with bounded diagnostics without rewriting the root rows or audit history.
 insert into public.invoice_versions (
   id,
   shop_id,
@@ -407,93 +406,94 @@ set shop_id = 'bb250000-0000-4000-8000-000000000002'
 where id = 'be250000-0000-4000-8000-000000000001';
 set local session_replication_role = origin;
 
-do $locked_historical_child_tenant_reconciliation$
+do $locked_historical_child_tenant_preflight$
 declare
-  v_repair_lines_reconciled bigint;
-  v_quote_lines_reconciled bigint;
-  v_financial_work_orders_reconciled bigint;
+  v_denied boolean := false;
+  v_detail text;
+  v_repair_line_before jsonb;
+  v_repair_line_after jsonb;
+  v_quote_line_before jsonb;
+  v_quote_line_after jsonb;
 begin
-  select
-    reconciliation.repair_lines_reconciled,
-    reconciliation.quote_lines_reconciled,
-    reconciliation.financial_work_orders_reconciled
-  into strict
-    v_repair_lines_reconciled,
-    v_quote_lines_reconciled,
-    v_financial_work_orders_reconciled
-  from private.reconcile_work_order_child_parent_tenants() reconciliation;
+  select to_jsonb(line)
+    into strict v_repair_line_before
+  from public.work_order_lines line
+  where line.id = 'bd250000-0000-4000-8000-000000000001';
 
-  if v_repair_lines_reconciled <> 1
-     or v_quote_lines_reconciled <> 1
-     or v_financial_work_orders_reconciled <> 1 then
-    raise exception
-      'Locked historical child tenant repair returned unexpected counts: %, %, %',
-      v_repair_lines_reconciled,
-      v_quote_lines_reconciled,
-      v_financial_work_orders_reconciled;
+  select to_jsonb(quote_line)
+    into strict v_quote_line_before
+  from public.work_order_quote_lines quote_line
+  where quote_line.id = 'be250000-0000-4000-8000-000000000001';
+
+  begin
+    perform private.assert_work_order_child_parent_tenants_clean();
+  exception when sqlstate '23514' then
+    get stacked diagnostics v_detail = pg_exception_detail;
+    v_denied := position(
+      'WORK_ORDER_CHILD_TENANT_PREFLIGHT_FAILED' in sqlerrm
+    ) > 0
+      and position(
+        'bd250000-0000-4000-8000-000000000001' in coalesce(v_detail, '')
+      ) > 0
+      and position(
+        'be250000-0000-4000-8000-000000000001' in coalesce(v_detail, '')
+      ) > 0;
+  end;
+
+  select to_jsonb(line)
+    into strict v_repair_line_after
+  from public.work_order_lines line
+  where line.id = 'bd250000-0000-4000-8000-000000000001';
+
+  select to_jsonb(quote_line)
+    into strict v_quote_line_after
+  from public.work_order_quote_lines quote_line
+  where quote_line.id = 'be250000-0000-4000-8000-000000000001';
+
+  if not v_denied then
+    raise exception 'Historical mismatch did not fail the migration preflight';
   end if;
 
-  if not exists (
-    select 1
-    from public.work_order_lines line
-    where line.id = 'bd250000-0000-4000-8000-000000000001'
-      and line.shop_id = 'bb250000-0000-4000-8000-000000000001'
-  ) or not exists (
-    select 1
-    from public.work_order_quote_lines line
-    where line.id = 'be250000-0000-4000-8000-000000000001'
-      and line.shop_id = 'bb250000-0000-4000-8000-000000000001'
-  ) then
-    raise exception 'Locked historical child tenant repair did not reconcile both rows';
+  if v_repair_line_after is distinct from v_repair_line_before
+     or v_quote_line_after is distinct from v_quote_line_before then
+    raise exception 'Migration preflight mutated historical tenant data';
   end if;
 
-  if not exists (
+  if exists (
     select 1
     from public.work_order_correction_sessions correction
-    where correction.shop_id = 'bb250000-0000-4000-8000-000000000001'
-      and correction.work_order_id = 'bc250000-0000-4000-8000-000000000001'
+    where correction.work_order_id =
+      'bc250000-0000-4000-8000-000000000001'
       and starts_with(
         correction.operation_key,
         'migration:20260825210000:work-order-child-tenant:'
-          || 'bc250000-0000-4000-8000-000000000001:'
       )
-      and correction.scope = 'data_repair'
-      and correction.status = 'closed'
-      and correction.metadata @> jsonb_build_object(
-        'migration', '20260825210000',
-        'repair', 'work_order_child_parent_tenant',
-        'repair_lines_reconciled', 1,
-        'quote_lines_reconciled', 1
-      )
-  ) then
-    raise exception
-      'Locked historical child tenant repair did not use a closed data-repair session';
-  end if;
-
-  if not exists (
+  ) or exists (
     select 1
     from public.financial_domain_outbox outbox
-    where outbox.shop_id = 'bb250000-0000-4000-8000-000000000001'
-      and outbox.aggregate_type = 'work_order'
-      and outbox.aggregate_id = 'bc250000-0000-4000-8000-000000000001'
+    where outbox.aggregate_id =
+      'bc250000-0000-4000-8000-000000000001'
       and outbox.event_type = 'work_order.child_tenant_reconciled'
-      and starts_with(
-        outbox.dedupe_key,
-        'migration:20260825210000:work-order-child-tenant:'
-          || 'bc250000-0000-4000-8000-000000000001:'
-      )
-      and outbox.payload @> jsonb_build_object(
-        'repair_lines_reconciled', 1,
-        'quote_lines_reconciled', 1,
-        'financial_history', true,
-        'created_correction_session', true
-      )
   ) then
-    raise exception
-      'Locked historical child tenant repair was not emitted to the financial outbox';
+    raise exception 'Migration preflight co-mingled historical audit state';
   end if;
 end;
-$locked_historical_child_tenant_reconciliation$;
+$locked_historical_child_tenant_preflight$;
+
+set local session_replication_role = replica;
+update public.work_order_lines
+set shop_id = 'bb250000-0000-4000-8000-000000000001'
+where id = 'bd250000-0000-4000-8000-000000000001';
+update public.work_order_quote_lines
+set shop_id = 'bb250000-0000-4000-8000-000000000001'
+where id = 'be250000-0000-4000-8000-000000000001';
+set local session_replication_role = origin;
+
+do $clean_child_tenant_preflight$
+begin
+  perform private.assert_work_order_child_parent_tenants_clean();
+end;
+$clean_child_tenant_preflight$;
 
 insert into public.work_order_lines (
   id, shop_id, work_order_id, complaint, job_type, status,
