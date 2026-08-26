@@ -54,6 +54,51 @@ describe("technician offline hardening", () => {
     ]);
   });
 
+  it("never applies the history cap to unsynced device work", () => {
+    const pending = Array.from({ length: 325 }, (_, index) =>
+      mutation(
+        `pending-${index}`,
+        "save_story_draft",
+        new Date(Date.now() + index).toISOString(),
+      ),
+    );
+
+    expect(normalizeOfflineMutationQueue(pending)).toHaveLength(325);
+  });
+
+  it("caps only terminal synced history", () => {
+    const pending = Array.from({ length: 5 }, (_, index) =>
+      mutation(
+        `pending-${index}`,
+        "save_story_draft",
+        new Date(Date.now() + index).toISOString(),
+      ),
+    );
+    const synced = Array.from({ length: 305 }, (_, index) => ({
+      ...mutation(
+        `synced-${index}`,
+        "save_story_draft",
+        new Date(Date.now() + 1_000 + index).toISOString(),
+      ),
+      status: "synced" as const,
+      syncedAt: new Date().toISOString(),
+    }));
+
+    const normalized = normalizeOfflineMutationQueue([...pending, ...synced]);
+    expect(normalized.filter((item) => item.status !== "synced")).toHaveLength(
+      5,
+    );
+    expect(normalized.filter((item) => item.status === "synced")).toHaveLength(
+      300,
+    );
+    expect(normalized.some((item) => item.clientMutationId === "synced-0")).toBe(
+      false,
+    );
+    expect(
+      normalized.some((item) => item.clientMutationId === "synced-304"),
+    ).toBe(true);
+  });
+
   it("replays reconnect work chronologically and deterministically", () => {
     const sorted = sortOfflineMutationsForReplay([
       mutation("third", "save_story_draft", "2026-07-16T10:01:00Z", "line:002"),

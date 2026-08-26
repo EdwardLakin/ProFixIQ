@@ -3,11 +3,15 @@
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import {
   clearOfflineDatabase,
+  deleteStoredMutations,
+  deleteSyncedStoredMutations,
   getOfflineBlob,
+  insertStoredMutationsIfMissing,
+  offlineMutationStorageAvailable,
   pruneOfflineDatabase,
   readStoredMutations,
   removeOfflineBlob,
-  replaceStoredMutations,
+  upsertStoredMutations,
   type StoredOfflineMutation,
 } from "@/features/shared/lib/offline/database";
 import { checkOfflineReplaySession } from "@/features/shared/lib/offline/session";
@@ -49,6 +53,8 @@ const LEGACY_KEYS = [
 ];
 const SCOPE_KEY = "profixiq.pending_mutations.scope.v1";
 const PERSISTENCE_MARKER_KEY = "profixiq.offline.persistence.v1";
+const QUEUE_REVISION_KEY = "profixiq.pending_mutations.revision.v1";
+const QUEUE_CHANNEL_NAME = "profixiq.pending_mutations.channel.v1";
 const EVENT_NAME = "offline-mutations:updated";
 const MAX_HISTORY = 300;
 const TERMINAL_RETENTION_MS = 1000 * 60 * 60 * 24 * 7;
@@ -59,6 +65,9 @@ const PERMANENT_STATUS_CODES = new Set([
 
 let queueCache: PendingMutation[] = [];
 let hydrationPromise: Promise<void> | null = null;
+let storageRefreshGeneration = 0;
+let queueChannel: BroadcastChannel | null = null;
+let crossTabListenersInstalled = false;
 
 type OfflinePersistenceMarker = {
   userId: string;
@@ -93,9 +102,34 @@ function browserReady(): boolean {
   }
 }
 
-function emitQueueUpdate(): void {
-  if (typeof window !== "undefined") {
-    window.dispatchEvent(new CustomEvent(EVENT_NAME));
+function getQueueChannel(): BroadcastChannel | null {
+  if (queueChannel || typeof BroadcastChannel === "undefined") {
+    return queueChannel;
+  }
+  try {
+    queueChannel = new BroadcastChannel(QUEUE_CHANNEL_NAME);
+    return queueChannel;
+  } catch {
+    return null;
+  }
+}
+
+function emitQueueUpdate(options?: { crossTab?: boolean }): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(EVENT_NAME));
+  if (!options?.crossTab) return;
+  try {
+    localStorage.setItem(
+      QUEUE_REVISION_KEY,
+      `${Date.now()}:${Math.random().toString(36).slice(2)}`,
+    );
+  } catch {
+    // BroadcastChannel remains available when localStorage is blocked.
+  }
+  try {
+    getQueueChannel()?.postMessage({ type: "queue-changed" });
+  } catch {
+    // The storage event remains available when BroadcastChannel is blocked.
   }
 }
 
@@ -356,22 +390,108 @@ export function normalizeOfflineMutationQueue(
       now - new Date(item.syncedAt).getTime() < TERMINAL_RETENTION_MS,
     );
   });
-  if (retained.length <= MAX_HISTORY) return retained;
-  return retained
-    .sort(
-      (a, b) =>
-        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+  const synced = retained.filter((item) => item.status === "synced");
+  if (synced.length <= MAX_HISTORY) return retained;
+  const retainedSyncedIds = new Set(
+    synced
+      .sort(
+        (a, b) =>
+          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+      )
+      .slice(synced.length - MAX_HISTORY)
+      .map((item) => item.clientMutationId),
+  );
+  return retained.filter(
+    (item) =>
+      item.status !== "synced" ||
+      retainedSyncedIds.has(item.clientMutationId),
+  );
+}
+
+function restoreStoredQueue(rows: StoredOfflineMutation[]): PendingMutation[] {
+  return rows
+    .map(restoreOfflineMutation)
+    .filter((item): item is PendingMutation => Boolean(item));
+}
+
+function droppedSyncedMutationIds(
+  source: PendingMutation[],
+  normalized: PendingMutation[],
+): string[] {
+  const retainedIds = new Set(
+    normalized.map((item) => item.clientMutationId),
+  );
+  return source
+    .filter(
+      (item) =>
+        item.status === "synced" && !retainedIds.has(item.clientMutationId),
     )
-    .slice(retained.length - MAX_HISTORY);
+    .map((item) => item.clientMutationId);
+}
+
+async function loadStoredQueue(): Promise<PendingMutation[]> {
+  if (!offlineMutationStorageAvailable()) return queueCache;
+  const restored = restoreStoredQueue(await readStoredMutations());
+  const normalized = normalizeOfflineMutationQueue(restored);
+  const droppedIds = droppedSyncedMutationIds(restored, normalized);
+  if (droppedIds.length === 0) return normalized;
+
+  try {
+    await deleteSyncedStoredMutations({ clientMutationIds: droppedIds });
+    return normalizeOfflineMutationQueue(
+      restoreStoredQueue(await readStoredMutations()),
+    );
+  } catch {
+    // History cleanup is best-effort. A terminal-row deletion failure must not
+    // turn a successfully persisted pending command into an apparent failure.
+    return normalized;
+  }
+}
+
+async function refreshQueueCacheFromStorage(): Promise<void> {
+  if (!offlineMutationStorageAvailable()) return;
+  const generation = ++storageRefreshGeneration;
+  const stored = await loadStoredQueue();
+  if (generation === storageRefreshGeneration) queueCache = stored;
+}
+
+function installCrossTabQueueListeners(): void {
+  if (crossTabListenersInstalled || typeof window === "undefined") return;
+  crossTabListenersInstalled = true;
+
+  const refreshFromStorage = () => {
+    void refreshQueueCacheFromStorage()
+      .then(() => {
+        updatePersistenceMarker(queueCache);
+        emitQueueUpdate();
+      })
+      .catch(() => undefined);
+  };
+  const channel = getQueueChannel();
+  if (channel) {
+    channel.onmessage = (event: MessageEvent<unknown>) => {
+      const message =
+        event.data && typeof event.data === "object"
+          ? (event.data as { type?: unknown })
+          : null;
+      if (message?.type === "queue-changed") refreshFromStorage();
+    };
+  }
+  window.addEventListener("storage", (event) => {
+    if (event.key === QUEUE_REVISION_KEY) refreshFromStorage();
+    else if (event.key === SCOPE_KEY) emitQueueUpdate();
+  });
+  window.addEventListener("focus", refreshFromStorage);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") refreshFromStorage();
+  });
 }
 
 export async function hydrateOfflineMutationQueue(): Promise<void> {
   if (!browserReady()) return;
   if (hydrationPromise) return hydrationPromise;
   hydrationPromise = (async () => {
-    const stored = (await readStoredMutations())
-      .map(restoreOfflineMutation)
-      .filter((item): item is PendingMutation => Boolean(item));
+    const stored = restoreStoredQueue(await readStoredMutations());
     const legacy: PendingMutation[] = [];
     for (const key of LEGACY_KEYS) {
       try {
@@ -384,25 +504,31 @@ export async function hydrateOfflineMutationQueue(): Promise<void> {
           );
         }
       } catch {
-        // Invalid legacy data is ignored and removed below.
+        // Invalid legacy data is ignored and removed only after IndexedDB is
+        // confirmed writable, so a storage failure cannot erase recoverable
+        // legacy work.
       }
-      localStorage.removeItem(key);
     }
-    queueCache = normalizeOfflineMutationQueue([...stored, ...legacy]);
-    await replaceStoredMutations(queueCache);
+    const storedIds = new Set(stored.map((item) => item.clientMutationId));
+    const legacyToPersist = normalizeOfflineMutationQueue(legacy).filter(
+      (item) => !storedIds.has(item.clientMutationId),
+    );
+    const combined = [...stored, ...legacyToPersist];
+    queueCache = normalizeOfflineMutationQueue(combined);
+    const persisted = await insertStoredMutationsIfMissing(legacyToPersist);
+    await deleteSyncedStoredMutations({
+      clientMutationIds: droppedSyncedMutationIds(combined, queueCache),
+    });
+    if (persisted) {
+      await refreshQueueCacheFromStorage();
+      for (const key of LEGACY_KEYS) localStorage.removeItem(key);
+    }
     emitQueueUpdate();
   })().catch((error) => {
     hydrationPromise = null;
     console.warn("[offline] Unable to hydrate mutation queue", error);
   });
   return hydrationPromise;
-}
-
-async function writeQueue(queue: PendingMutation[]): Promise<void> {
-  queueCache = normalizeOfflineMutationQueue(queue);
-  await replaceStoredMutations(queueCache);
-  updatePersistenceMarker(queueCache);
-  emitQueueUpdate();
 }
 
 export async function getOfflinePersistenceHealth(
@@ -498,13 +624,25 @@ export function sortOfflineMutationsForReplay(
 }
 
 async function upsertMutation(next: PendingMutation): Promise<void> {
-  const queue = [...queueCache];
-  const index = queue.findIndex(
+  const localQueue = [...queueCache];
+  const localIndex = localQueue.findIndex(
     (item) => item.clientMutationId === next.clientMutationId,
   );
-  if (index >= 0) queue[index] = next;
-  else queue.push(next);
-  await writeQueue(queue);
+  if (localIndex >= 0) localQueue[localIndex] = next;
+  else localQueue.push(next);
+  const localNormalized = normalizeOfflineMutationQueue(localQueue);
+  const persisted = await upsertStoredMutations([next]);
+  if (persisted) {
+    try {
+      await refreshQueueCacheFromStorage();
+    } catch {
+      queueCache = localNormalized;
+    }
+  } else {
+    queueCache = localNormalized;
+  }
+  updatePersistenceMarker(queueCache);
+  emitQueueUpdate({ crossTab: true });
 }
 
 export async function enqueueMutation<T>(
@@ -513,6 +651,7 @@ export async function enqueueMutation<T>(
   },
 ): Promise<PendingMutation<T>> {
   await hydrateOfflineMutationQueue();
+  await refreshQueueCacheFromStorage();
   if (!entry.userId.trim() || !entry.shopId.trim()) {
     throw new Error("Offline mutation scope requires userId and shopId.");
   }
@@ -541,6 +680,7 @@ async function markMutationStatus(args: {
   conflictReason?: string;
   incrementRetry?: boolean;
 }): Promise<void> {
+  await refreshQueueCacheFromStorage();
   const existing = queueCache.find(
     (item) => item.clientMutationId === args.clientMutationId,
   );
@@ -597,12 +737,11 @@ export function getOfflineSyncSummary(
 
 export function subscribeOfflineMutations(listener: () => void): () => void {
   if (typeof window === "undefined") return () => undefined;
+  installCrossTabQueueListeners();
   void hydrateOfflineMutationQueue();
   window.addEventListener(EVENT_NAME, listener);
-  window.addEventListener("storage", listener);
   return () => {
     window.removeEventListener(EVENT_NAME, listener);
-    window.removeEventListener("storage", listener);
   };
 }
 
@@ -611,6 +750,7 @@ export async function retryOfflineMutation(
   payloadPatch?: Record<string, unknown>,
 ): Promise<void> {
   await hydrateOfflineMutationQueue();
+  await refreshQueueCacheFromStorage();
   const scope = getOfflineMutationScope();
   const mutation = queueCache.find(
     (item) =>
@@ -638,6 +778,7 @@ export async function dismissOfflineMutation(
   clientMutationId: string,
 ): Promise<void> {
   await hydrateOfflineMutationQueue();
+  await refreshQueueCacheFromStorage();
   const scope = getOfflineMutationScope();
   const mutation = queueCache.find(
     (item) =>
@@ -653,27 +794,55 @@ export async function dismissOfflineMutation(
   if (dependent) {
     throw new Error("Remove the dependent offline update first.");
   }
+  const persisted = await deleteStoredMutations([clientMutationId]);
+  if (persisted) {
+    try {
+      await refreshQueueCacheFromStorage();
+    } catch {
+      queueCache = queueCache.filter(
+        (item) => item.clientMutationId !== clientMutationId,
+      );
+    }
+  } else {
+    queueCache = queueCache.filter(
+      (item) => item.clientMutationId !== clientMutationId,
+    );
+  }
   if (
     mutation.actionType === "upload_job_photo" ||
     mutation.actionType === "inspection:upload-photo"
   ) {
     const payload = mutation.payload as { blobId?: unknown } | null;
-    if (typeof payload?.blobId === "string")
+    if (typeof payload?.blobId === "string") {
       await removeOfflineBlob(payload.blobId);
+    }
   }
-  await writeQueue(
-    queueCache.filter((item) => item.clientMutationId !== clientMutationId),
-  );
+  updatePersistenceMarker(queueCache);
+  emitQueueUpdate({ crossTab: true });
 }
 
 export async function clearSyncedOfflineMutations(): Promise<void> {
   await hydrateOfflineMutationQueue();
+  await refreshQueueCacheFromStorage();
   const scope = getOfflineMutationScope();
-  await writeQueue(
-    queueCache.filter(
+  const removed = await deleteSyncedStoredMutations({
+    scope: scope ?? undefined,
+  });
+  if (removed !== null) {
+    try {
+      await refreshQueueCacheFromStorage();
+    } catch {
+      queueCache = queueCache.filter(
+        (item) => item.status !== "synced" || !scopeMatches(item, scope),
+      );
+    }
+  } else {
+    queueCache = queueCache.filter(
       (item) => item.status !== "synced" || !scopeMatches(item, scope),
-    ),
-  );
+    );
+  }
+  updatePersistenceMarker(queueCache);
+  emitQueueUpdate({ crossTab: true });
 }
 
 export async function pruneOfflineState(): Promise<{
@@ -752,6 +921,7 @@ export async function replayQueuedMutations(args: {
   scope?: OfflineMutationScope | null;
 }): Promise<{ replayed: number; failed: number; conflicted: number }> {
   await hydrateOfflineMutationQueue();
+  await refreshQueueCacheFromStorage();
   const scope = args.scope ?? getOfflineMutationScope();
   if (!scope || !navigator.onLine)
     return { replayed: 0, failed: 0, conflicted: 0 };
@@ -837,6 +1007,7 @@ export async function runMutationWithOfflineQueue<T>(args: {
   bestEffortOnlineHistory?: boolean;
 }): Promise<{ queued: boolean; conflicted: boolean }> {
   await hydrateOfflineMutationQueue();
+  await refreshQueueCacheFromStorage();
   const queueOnOffline = args.queueOnOffline !== false;
 
   // A feature can bind a long-running command to its mounted auth/shop epoch.
@@ -946,11 +1117,14 @@ export async function runMutationWithOfflineQueue<T>(args: {
 }
 
 export async function clearOfflineState(): Promise<void> {
+  storageRefreshGeneration += 1;
   queueCache = [];
   hydrationPromise = null;
   setOfflineMutationScope(null);
   for (const key of LEGACY_KEYS) localStorage.removeItem(key);
   localStorage.removeItem(PERSISTENCE_MARKER_KEY);
   await clearOfflineDatabase();
-  emitQueueUpdate();
+  storageRefreshGeneration += 1;
+  queueCache = [];
+  emitQueueUpdate({ crossTab: true });
 }

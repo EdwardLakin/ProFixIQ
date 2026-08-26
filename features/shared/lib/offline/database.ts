@@ -75,14 +75,86 @@ export async function readStoredMutations(): Promise<StoredOfflineMutation[]> {
   return db ? db.mutations.toArray() : [];
 }
 
-export async function replaceStoredMutations(
+export function offlineMutationStorageAvailable(): boolean {
+  return getDatabase() !== null;
+}
+
+export async function upsertStoredMutations(
   mutations: StoredOfflineMutation[],
-): Promise<void> {
+): Promise<boolean> {
   const db = getDatabase();
-  if (!db) return;
+  if (!db) return false;
+  if (mutations.length > 0) await db.mutations.bulkPut(mutations);
+  return true;
+}
+
+export async function insertStoredMutationsIfMissing(
+  mutations: StoredOfflineMutation[],
+): Promise<boolean> {
+  const db = getDatabase();
+  if (!db) return false;
+  if (mutations.length === 0) return true;
+
   await db.transaction("rw", db.mutations, async () => {
-    await db.mutations.clear();
-    if (mutations.length > 0) await db.mutations.bulkPut(mutations);
+    const unique = [
+      ...new Map(
+        mutations.map((row) => [row.clientMutationId, row] as const),
+      ).values(),
+    ];
+    const existing = await db.mutations.bulkGet(
+      unique.map((row) => row.clientMutationId),
+    );
+    const missing = unique.filter((_, index) => !existing[index]);
+    if (missing.length > 0) await db.mutations.bulkAdd(missing);
+  });
+  return true;
+}
+
+export async function deleteStoredMutations(
+  clientMutationIds: string[],
+): Promise<boolean> {
+  const db = getDatabase();
+  if (!db) return false;
+  if (clientMutationIds.length > 0) {
+    await db.mutations.bulkDelete([...new Set(clientMutationIds)]);
+  }
+  return true;
+}
+
+/**
+ * History cleanup must never delete a row that another tab has revived as
+ * pending. IndexedDB serializes this read-and-delete transaction with other
+ * writers, and the status is rechecked inside the transaction.
+ */
+export async function deleteSyncedStoredMutations(args: {
+  scope?: { userId: string; shopId: string };
+  clientMutationIds?: string[];
+}): Promise<string[] | null> {
+  const db = getDatabase();
+  if (!db) return null;
+
+  return db.transaction("rw", db.mutations, async () => {
+    const requestedIds = args.clientMutationIds?.length
+      ? new Set(args.clientMutationIds)
+      : null;
+    const candidates = args.scope
+      ? await db.mutations
+          .where("[userId+shopId]")
+          .equals([args.scope.userId, args.scope.shopId])
+          .toArray()
+      : requestedIds
+        ? (
+            await db.mutations.bulkGet([...requestedIds])
+          ).filter((row): row is StoredOfflineMutation => Boolean(row))
+        : [];
+    const removable = candidates.filter(
+      (row) =>
+        row.status === "synced" &&
+        (!requestedIds || requestedIds.has(row.clientMutationId)),
+    );
+    const ids = removable.map((row) => row.clientMutationId);
+    if (ids.length > 0) await db.mutations.bulkDelete(ids);
+    return ids;
   });
 }
 
