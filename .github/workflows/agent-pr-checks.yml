@@ -16,7 +16,9 @@ jobs:
   checks:
     name: checks
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # The complete suite plus production build now reaches 30 minutes on cold
+    # hosted runners. Keep the gate bounded without cancelling green work.
+    timeout-minutes: 45
     env:
       TZ: UTC
       BASE_SHA: ${{ github.event.pull_request.base.sha }}
