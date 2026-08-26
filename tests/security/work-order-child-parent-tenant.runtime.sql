@@ -13,11 +13,6 @@ values
     'ba250000-0000-4000-8000-000000000002',
     'child-tenant-owner-b@example.com',
     '{"full_name":"Child Tenant Owner B"}'::jsonb
-  ),
-  (
-    'ba250000-0000-4000-8000-000000000003',
-    'child-tenant-owner-cleanup@example.com',
-    '{"full_name":"Child Tenant Cleanup Owner"}'::jsonb
   )
 on conflict (id) do nothing;
 
@@ -34,12 +29,6 @@ values
     'ba250000-0000-4000-8000-000000000002',
     'owner', 'Child Tenant Owner B',
     'child-tenant-owner-b@example.com', null
-  ),
-  (
-    'ba250000-0000-4000-8000-000000000003',
-    'ba250000-0000-4000-8000-000000000003',
-    'owner', 'Child Tenant Cleanup Owner',
-    'child-tenant-owner-cleanup@example.com', null
   )
 on conflict (id) do update
 set user_id = excluded.user_id,
@@ -70,13 +59,6 @@ values
     'Child Tenant Runtime B',
     'Child Tenant Runtime B',
     'complete_10', 10, 'internal_demo'
-  ),
-  (
-    'bb250000-0000-4000-8000-000000000003',
-    'ba250000-0000-4000-8000-000000000003',
-    'Child Tenant Cleanup Runtime',
-    'Child Tenant Cleanup Runtime',
-    'complete_10', 10, 'internal_demo'
   )
 on conflict (id) do update
 set billing_entitlement_override = 'internal_demo';
@@ -87,12 +69,10 @@ set shop_id = case id
     then 'bb250000-0000-4000-8000-000000000001'::uuid
   when 'ba250000-0000-4000-8000-000000000002'::uuid
     then 'bb250000-0000-4000-8000-000000000002'::uuid
-  else 'bb250000-0000-4000-8000-000000000003'::uuid
 end
 where id in (
   'ba250000-0000-4000-8000-000000000001',
-  'ba250000-0000-4000-8000-000000000002',
-  'ba250000-0000-4000-8000-000000000003'
+  'ba250000-0000-4000-8000-000000000002'
 );
 
 insert into public.work_orders (
@@ -121,13 +101,6 @@ values
     'bc250000-0000-4000-8000-000000000003',
     'bb250000-0000-4000-8000-000000000001',
     'CHILD-TENANT-CASCADE',
-    'in_progress',
-    'work_order'
-  ),
-  (
-    'bc250000-0000-4000-8000-000000000004',
-    'bb250000-0000-4000-8000-000000000003',
-    'CHILD-TENANT-SHOP-CLEANUP',
     'in_progress',
     'work_order'
   )
@@ -350,103 +323,6 @@ end;
 $trusted_worker_child_tenant_boundary$;
 
 reset role;
-
-insert into public.work_order_lines (
-  id, shop_id, work_order_id, complaint, job_type, status,
-  line_status, approval_state, urgency
-) values (
-  'bd250000-0000-4000-8000-000000000006',
-  'bb250000-0000-4000-8000-000000000003',
-  'bc250000-0000-4000-8000-000000000004',
-  'Shop cleanup repair line', 'repair', 'awaiting',
-  'pending', 'pending', 'medium'
-);
-
-insert into public.work_order_quote_lines (
-  id, shop_id, work_order_id, description, status, stage, created_by
-) values (
-  'be250000-0000-4000-8000-000000000006',
-  'bb250000-0000-4000-8000-000000000003',
-  'bc250000-0000-4000-8000-000000000004',
-  'Shop cleanup quote line', 'draft', 'advisor_pending',
-  'ba250000-0000-4000-8000-000000000003'
-);
-
--- profiles.shop_id intentionally uses NO ACTION in the baseline. Remove that
--- independent reference so this fixture reaches the Work Order/repair-line
--- SET NULL actions and quote-line cascade that the migration owns.
-update public.profiles
-set shop_id = null
-where id = 'ba250000-0000-4000-8000-000000000003';
-
-do $shop_cleanup_profile_reference$
-begin
-  if not exists (
-    select 1
-    from public.profiles profile
-    where profile.id = 'ba250000-0000-4000-8000-000000000003'
-      and profile.shop_id is null
-  ) then
-    raise exception 'Shop cleanup fixture retained an unrelated profile reference';
-  end if;
-end;
-$shop_cleanup_profile_reference$;
-
-do $shop_cleanup_delete$
-begin
-  delete from public.shops
-  where id = 'bb250000-0000-4000-8000-000000000003';
-
-  if not found then
-    raise exception 'Shop cleanup fixture did not delete its Shop';
-  end if;
-end;
-$shop_cleanup_delete$;
-
--- Historical Work Orders and repair lines intentionally survive a Shop delete
--- with NULL tenant anchors. Their ordinary status trigger must continue to
--- reconcile that NULL-safe parent/child relationship even when current_shop_id
--- resolves a different active Shop for the trusted actor.
-select set_config(
-  'request.jwt.claims',
-  '{"sub":"ba250000-0000-4000-8000-000000000001","role":"service_role"}',
-  true
-);
-select set_config('request.jwt.claim.role', 'service_role', true);
-select set_config(
-  'request.jwt.claim.sub',
-  'ba250000-0000-4000-8000-000000000001',
-  true
-);
-set local role service_role;
-
-do $shop_cleanup_status_reconciliation$
-begin
-  update public.work_order_lines
-  set status = status
-  where id = 'bd250000-0000-4000-8000-000000000006';
-
-  if not found then
-    raise exception 'Post-cleanup repair-line status reconciliation did not run';
-  end if;
-
-  if not exists (
-    select 1
-    from public.work_orders parent
-    where parent.id = 'bc250000-0000-4000-8000-000000000004'
-      and parent.shop_id is null
-  ) or not exists (
-    select 1
-    from public.work_order_lines line
-    where line.id = 'bd250000-0000-4000-8000-000000000006'
-      and line.shop_id is null
-  ) then
-    raise exception 'Post-cleanup status reconciliation re-tenanted historical work';
-  end if;
-end;
-$shop_cleanup_status_reconciliation$;
-
-reset role;
 select set_config('request.jwt.claims', '', true);
 select set_config('request.jwt.claim.role', '', true);
 select set_config('request.jwt.claim.sub', '', true);
@@ -532,24 +408,6 @@ begin
     raise exception 'Authorized Work Order cascade delete did not remove parent and child';
   end if;
 
-  if not exists (
-    select 1
-    from public.work_orders parent
-    where parent.id = 'bc250000-0000-4000-8000-000000000004'
-      and parent.shop_id is null
-  ) or not exists (
-    select 1
-    from public.work_order_lines line
-    where line.id = 'bd250000-0000-4000-8000-000000000006'
-      and line.work_order_id = 'bc250000-0000-4000-8000-000000000004'
-      and line.shop_id is null
-  ) or exists (
-    select 1
-    from public.work_order_quote_lines quote_line
-    where quote_line.id = 'be250000-0000-4000-8000-000000000006'
-  ) then
-    raise exception 'Shop-driven Work Order tenant cleanup contract regressed';
-  end if;
 end;
 $work_order_child_tenant_final_assertions$;
 

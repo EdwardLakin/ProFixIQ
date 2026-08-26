@@ -59,22 +59,6 @@ begin
     return new;
   end if;
 
-  -- Preserve the baseline shops -> child ON DELETE SET NULL contract. Legacy
-  -- BEFORE triggers can re-derive OLD.shop_id from the parent before this guard
-  -- runs, so normalize it after proving the referenced Shop is gone. Changing
-  -- the Work Order relationship at the same time remains guarded.
-  if tg_op = 'UPDATE'
-     and new.work_order_id is not distinct from old.work_order_id
-     and old.shop_id is not null
-     and not exists (
-       select 1
-       from public.shops shop
-       where shop.id = old.shop_id
-     ) then
-    new.shop_id := null;
-    return new;
-  end if;
-
   select parent.shop_id
     into v_parent_shop_id
   from public.work_orders parent
@@ -118,28 +102,6 @@ on public.work_order_quote_lines
 for each row
 execute function private.enforce_work_order_child_parent_tenant();
 
--- The baseline helper filled a NULL tenant during every UPDATE, not only
--- during creation. After a Shop deletion that could silently re-tenant a
--- historical Work Order when an unrelated status reconciliation ran with an
--- authenticated current Shop. Preserve the established insert default while
--- leaving UPDATE tenant changes visible to the invariant guard below.
-create or replace function public.assign_work_orders_shop_id()
-returns trigger
-language plpgsql
-security definer
-set search_path = ''
-as $$
-begin
-  if tg_op = 'INSERT' and new.shop_id is null then
-    new.shop_id := public.current_shop_id();
-  end if;
-  return new;
-end;
-$$;
-
-revoke all on function public.assign_work_orders_shop_id()
-  from public, anon, authenticated, service_role;
-
 -- Locking the parent in the child trigger closes the insert/update race. This
 -- matching parent-side guard prevents a trusted worker from moving an existing
 -- Work Order to another tenant while either canonical child relation still
@@ -152,20 +114,6 @@ security definer
 set search_path = ''
 as $$
 begin
-  -- The baseline Work Order FK intentionally retains historical Work Orders
-  -- and clears their tenant when a Shop is deleted. A legacy BEFORE trigger can
-  -- re-derive OLD.shop_id, so normalize it only after the referenced Shop has
-  -- actually disappeared.
-  if old.shop_id is not null
-     and not exists (
-       select 1
-       from public.shops shop
-       where shop.id = old.shop_id
-     ) then
-    new.shop_id := null;
-    return new;
-  end if;
-
   if new.shop_id is not distinct from old.shop_id then
     return new;
   end if;
@@ -194,7 +142,7 @@ revoke all on function private.enforce_work_order_parent_tenant_update()
 drop trigger if exists enforce_work_order_parent_tenant_update
   on public.work_orders;
 create trigger enforce_work_order_parent_tenant_update
-before update
+before update of shop_id
 on public.work_orders
 for each row
 execute function private.enforce_work_order_parent_tenant_update();
@@ -270,7 +218,7 @@ begin
       select 1
       from public.work_orders parent
       where parent.id = new.work_order_id
-        and parent.shop_id is not distinct from new.shop_id
+        and parent.shop_id = new.shop_id
     ) then
       raise exception using
         errcode = '23514',
@@ -412,7 +360,7 @@ begin
     and not trigger.tgisinternal;
 
   if v_trigger_definition is null
-     or position('BEFORE UPDATE ON' in v_trigger_definition) = 0 then
+     or position('BEFORE UPDATE OF shop_id ON' in v_trigger_definition) = 0 then
     raise exception 'Work Order parent tenant update guard is missing';
   end if;
 end;
