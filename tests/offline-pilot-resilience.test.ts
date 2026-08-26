@@ -68,7 +68,9 @@ describe("offline pilot resilience", () => {
     const mutations = read("features/shared/lib/offline/mutations.ts");
     const syncCenter = read("app/offline/sync/page.tsx");
     expect(mutations).toContain("auditOfflineMutationAttachments");
-    expect(mutations).toContain("await auditOfflineMutationAttachments(scope)");
+    expect(mutations).toContain(
+      "await auditOfflineMutationAttachmentsWhileLocked(scope)",
+    );
     expect(mutations).toContain("Browser storage removed the staged photo");
     expect(mutations).toContain('status: "conflicted"');
     expect(syncCenter).toContain("auditOfflineMutationAttachments(scope)");

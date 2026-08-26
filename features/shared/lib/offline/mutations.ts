@@ -2,6 +2,7 @@
 
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import {
+  claimStoredMutationForReplay,
   clearOfflineDatabase,
   deleteStoredMutations,
   deleteSyncedStoredMutations,
@@ -133,6 +134,16 @@ function getOfflineReplayLockManager(): OfflineReplayLockManager | null {
 
 function offlineReplayLockName(scope: OfflineMutationScope): string {
   return `${REPLAY_LOCK_PREFIX}:${scope.userId}:${scope.shopId}`;
+}
+
+async function withOfflineMutationScopeLock<T>(
+  scope: OfflineMutationScope,
+  unavailableMessage: string,
+  callback: () => Promise<T>,
+): Promise<T> {
+  const lockManager = getOfflineReplayLockManager();
+  if (!lockManager) throw new Error(unavailableMessage);
+  return lockManager.request(offlineReplayLockName(scope), callback);
 }
 
 function getQueueChannel(): BroadcastChannel | null {
@@ -596,11 +607,9 @@ export async function getOfflinePersistenceHealth(
   };
 }
 
-export async function auditOfflineMutationAttachments(
-  scope: OfflineMutationScope | null = getOfflineMutationScope(),
+async function auditOfflineMutationAttachmentsWhileLocked(
+  scope: OfflineMutationScope,
 ): Promise<OfflineAttachmentAudit> {
-  await hydrateOfflineMutationQueue();
-  if (!scope) return { checked: 0, missing: 0, invalid: 0 };
   const attachments = queueCache.filter(
     (item) =>
       item.status !== "synced" &&
@@ -649,6 +658,26 @@ export async function auditOfflineMutationAttachments(
   return { checked: attachments.length, missing, invalid };
 }
 
+export async function auditOfflineMutationAttachments(
+  scope: OfflineMutationScope | null = getOfflineMutationScope(),
+): Promise<OfflineAttachmentAudit> {
+  await hydrateOfflineMutationQueue();
+  if (!scope) return { checked: 0, missing: 0, invalid: 0 };
+  return withOfflineMutationScopeLock(
+    scope,
+    "Safe cross-tab offline attachment checks are unavailable in this browser.",
+    async () => {
+      if (!offlineMutationStorageAvailable()) {
+        throw new Error(
+          "Durable offline storage is unavailable; staged files were not changed.",
+        );
+      }
+      await refreshQueueCacheFromStorage();
+      return auditOfflineMutationAttachmentsWhileLocked(scope);
+    },
+  );
+}
+
 export function sortOfflineMutationsForReplay(
   queue: PendingMutation[],
 ): PendingMutation[] {
@@ -689,26 +718,41 @@ export async function enqueueMutation<T>(
   },
 ): Promise<PendingMutation<T>> {
   await hydrateOfflineMutationQueue();
-  await refreshQueueCacheFromStorage();
   if (!entry.userId.trim() || !entry.shopId.trim()) {
     throw new Error("Offline mutation scope requires userId and shopId.");
   }
-  const existing = queueCache.find(
-    (item) => item.clientMutationId === entry.clientMutationId,
-  );
-  const next: PendingMutation<T> = {
-    ...entry,
+  const scope = {
     userId: entry.userId.trim(),
     shopId: entry.shopId.trim(),
-    createdAt: existing?.createdAt ?? new Date().toISOString(),
-    retryCount: existing?.retryCount ?? 0,
-    status: entry.status ?? "queued",
-    lastError: existing?.lastError,
-    conflictReason: existing?.conflictReason,
-    syncedAt: existing?.syncedAt,
   };
-  await upsertMutation(next);
-  return next;
+  return withOfflineMutationScopeLock(
+    scope,
+    "Safe cross-tab offline queue updates are unavailable in this browser.",
+    async () => {
+      if (!offlineMutationStorageAvailable()) {
+        throw new Error(
+          "Durable offline storage is unavailable; saved work was not queued.",
+        );
+      }
+      await refreshQueueCacheFromStorage();
+      const existing = queueCache.find(
+        (item) => item.clientMutationId === entry.clientMutationId,
+      );
+      const next: PendingMutation<T> = {
+        ...entry,
+        userId: scope.userId,
+        shopId: scope.shopId,
+        createdAt: existing?.createdAt ?? new Date().toISOString(),
+        retryCount: existing?.retryCount ?? 0,
+        status: entry.status ?? "queued",
+        lastError: entry.lastError ?? existing?.lastError,
+        conflictReason: entry.conflictReason ?? existing?.conflictReason,
+        syncedAt: entry.syncedAt ?? existing?.syncedAt,
+      };
+      await upsertMutation(next);
+      return next;
+    },
+  );
 }
 
 async function markMutationStatus(args: {
@@ -788,75 +832,106 @@ export async function retryOfflineMutation(
   payloadPatch?: Record<string, unknown>,
 ): Promise<void> {
   await hydrateOfflineMutationQueue();
-  await refreshQueueCacheFromStorage();
   const scope = getOfflineMutationScope();
-  const mutation = queueCache.find(
-    (item) =>
-      item.clientMutationId === clientMutationId && scopeMatches(item, scope),
+  if (!scope) return;
+  await withOfflineMutationScopeLock(
+    scope,
+    "Safe cross-tab offline retry is unavailable in this browser.",
+    async () => {
+      if (!offlineMutationStorageAvailable()) {
+        throw new Error(
+          "Durable offline storage is unavailable; saved work was not retried.",
+        );
+      }
+      await refreshQueueCacheFromStorage();
+      const mutation = queueCache.find(
+        (item) =>
+          item.clientMutationId === clientMutationId &&
+          scopeMatches(item, scope),
+      );
+      if (
+        !mutation ||
+        mutation.status === "syncing" ||
+        mutation.status === "synced"
+      ) {
+        return;
+      }
+      await upsertMutation({
+        ...mutation,
+        payload:
+          payloadPatch &&
+          mutation.payload &&
+          typeof mutation.payload === "object"
+            ? {
+                ...(mutation.payload as Record<string, unknown>),
+                ...payloadPatch,
+              }
+            : mutation.payload,
+        status: "queued",
+        lastError: undefined,
+        conflictReason: undefined,
+      });
+    },
   );
-  if (
-    !mutation ||
-    mutation.status === "syncing" ||
-    mutation.status === "synced"
-  )
-    return;
-  await upsertMutation({
-    ...mutation,
-    payload:
-      payloadPatch && mutation.payload && typeof mutation.payload === "object"
-        ? { ...(mutation.payload as Record<string, unknown>), ...payloadPatch }
-        : mutation.payload,
-    status: "queued",
-    lastError: undefined,
-    conflictReason: undefined,
-  });
 }
 
 export async function dismissOfflineMutation(
   clientMutationId: string,
 ): Promise<void> {
   await hydrateOfflineMutationQueue();
-  await refreshQueueCacheFromStorage();
   const scope = getOfflineMutationScope();
-  const mutation = queueCache.find(
-    (item) =>
-      item.clientMutationId === clientMutationId && scopeMatches(item, scope),
-  );
-  if (!mutation || mutation.status === "syncing") return;
-  const dependent = queueCache.find(
-    (item) =>
-      scopeMatches(item, scope) &&
-      item.status !== "synced" &&
-      item.dependsOn?.includes(clientMutationId),
-  );
-  if (dependent) {
-    throw new Error("Remove the dependent offline update first.");
-  }
-  const persisted = await deleteStoredMutations([clientMutationId]);
-  if (persisted) {
-    try {
+  if (!scope) return;
+  await withOfflineMutationScopeLock(
+    scope,
+    "Safe cross-tab offline removal is unavailable in this browser.",
+    async () => {
+      if (!offlineMutationStorageAvailable()) {
+        throw new Error(
+          "Durable offline storage is unavailable; saved work was not removed.",
+        );
+      }
       await refreshQueueCacheFromStorage();
-    } catch {
-      queueCache = queueCache.filter(
-        (item) => item.clientMutationId !== clientMutationId,
+      const mutation = queueCache.find(
+        (item) =>
+          item.clientMutationId === clientMutationId &&
+          scopeMatches(item, scope),
       );
-    }
-  } else {
-    queueCache = queueCache.filter(
-      (item) => item.clientMutationId !== clientMutationId,
-    );
-  }
-  if (
-    mutation.actionType === "upload_job_photo" ||
-    mutation.actionType === "inspection:upload-photo"
-  ) {
-    const payload = mutation.payload as { blobId?: unknown } | null;
-    if (typeof payload?.blobId === "string") {
-      await removeOfflineBlob(payload.blobId);
-    }
-  }
-  updatePersistenceMarker(queueCache);
-  emitQueueUpdate({ crossTab: true });
+      if (!mutation || mutation.status === "syncing") return;
+      const dependent = queueCache.find(
+        (item) =>
+          scopeMatches(item, scope) &&
+          item.status !== "synced" &&
+          item.dependsOn?.includes(clientMutationId),
+      );
+      if (dependent) {
+        throw new Error("Remove the dependent offline update first.");
+      }
+      const persisted = await deleteStoredMutations([clientMutationId]);
+      if (!persisted) {
+        throw new Error(
+          "Durable offline storage is unavailable; saved work was not removed.",
+        );
+      }
+      try {
+        await refreshQueueCacheFromStorage();
+      } catch {
+        queueCache = queueCache.filter(
+          (item) => item.clientMutationId !== clientMutationId,
+        );
+      }
+      if (
+        mutation.actionType === "upload_job_photo" ||
+        mutation.actionType === "inspection:upload-photo"
+      ) {
+        const payload = mutation.payload as { blobId?: unknown } | null;
+        if (typeof payload?.blobId === "string") {
+          await removeOfflineBlob(payload.blobId);
+        }
+      }
+      updatePersistenceMarker(queueCache);
+      emitQueueUpdate({ crossTab: true });
+    },
+  );
 }
 
 export async function clearSyncedOfflineMutations(): Promise<void> {
@@ -959,7 +1034,7 @@ async function replayQueuedMutationsWhileLocked(args: {
   scope: OfflineMutationScope;
 }): Promise<OfflineReplayResult> {
   const { scope } = args;
-  await auditOfflineMutationAttachments(scope);
+  await auditOfflineMutationAttachmentsWhileLocked(scope);
   const queue = sortOfflineMutationsForReplay(
     queueCache.filter(
       (item) =>
@@ -978,25 +1053,37 @@ async function replayQueuedMutationsWhileLocked(args: {
           "synced",
       ) ?? false;
     if (dependencyPending) continue;
-    const handler = args.handlers[mutation.actionType];
+    const storedClaim = await claimStoredMutationForReplay({
+      clientMutationId: mutation.clientMutationId,
+      scope,
+    });
+    if (storedClaim === null) {
+      throw new Error(
+        "Durable offline storage is unavailable; saved work was not replayed.",
+      );
+    }
+    if (!storedClaim) continue;
+    const claimedMutation = restoreOfflineMutation(storedClaim);
+    if (!claimedMutation || !scopeMatches(claimedMutation, scope)) continue;
+    await refreshQueueCacheFromStorage();
+    updatePersistenceMarker(queueCache);
+    emitQueueUpdate({ crossTab: true });
+
+    const handler = args.handlers[claimedMutation.actionType];
     if (!handler) {
       await markMutationStatus({
-        clientMutationId: mutation.clientMutationId,
+        clientMutationId: claimedMutation.clientMutationId,
         status: "conflicted",
-        conflictReason: `No replay handler registered for ${mutation.actionType}`,
+        conflictReason: `No replay handler registered for ${claimedMutation.actionType}`,
       });
       conflicted += 1;
       continue;
     }
-    await markMutationStatus({
-      clientMutationId: mutation.clientMutationId,
-      status: "syncing",
-    });
     try {
-      const result = await handler(mutation);
+      const result = await handler(claimedMutation);
       if (result?.conflicted) {
         await markMutationStatus({
-          clientMutationId: mutation.clientMutationId,
+          clientMutationId: claimedMutation.clientMutationId,
           status: "conflicted",
           conflictReason: result.conflicted,
           incrementRetry: true,
@@ -1004,7 +1091,7 @@ async function replayQueuedMutationsWhileLocked(args: {
         conflicted += 1;
       } else {
         await markMutationStatus({
-          clientMutationId: mutation.clientMutationId,
+          clientMutationId: claimedMutation.clientMutationId,
           status: "synced",
         });
         replayed += 1;
@@ -1012,7 +1099,7 @@ async function replayQueuedMutationsWhileLocked(args: {
     } catch (error) {
       const retryable = isRetryableOfflineError(error);
       await markMutationStatus({
-        clientMutationId: mutation.clientMutationId,
+        clientMutationId: claimedMutation.clientMutationId,
         status: retryable ? "failed" : "conflicted",
         error: error instanceof Error ? error.message : "Replay failed",
         conflictReason: retryable
@@ -1043,27 +1130,24 @@ export async function replayQueuedMutations(args: {
   );
   if (!hasReplayWork) return emptyReplayResult();
 
-  const lockManager = getOfflineReplayLockManager();
-  if (!lockManager) {
-    throw new Error(
-      "Safe cross-tab offline replay is unavailable in this browser.",
-    );
-  }
-
-  return lockManager.request(offlineReplayLockName(scope), async () => {
-    if (!navigator.onLine) return emptyReplayResult();
-    const recovered = await recoverInterruptedStoredMutations(scope);
-    if (recovered === null) {
-      throw new Error(
-        "Durable offline storage is unavailable; saved work was not replayed.",
-      );
-    }
-    await refreshQueueCacheFromStorage();
-    return replayQueuedMutationsWhileLocked({
-      handlers: args.handlers,
-      scope,
-    });
-  });
+  return withOfflineMutationScopeLock(
+    scope,
+    "Safe cross-tab offline replay is unavailable in this browser.",
+    async () => {
+      if (!navigator.onLine) return emptyReplayResult();
+      const recovered = await recoverInterruptedStoredMutations(scope);
+      if (recovered === null) {
+        throw new Error(
+          "Durable offline storage is unavailable; saved work was not replayed.",
+        );
+      }
+      await refreshQueueCacheFromStorage();
+      return replayQueuedMutationsWhileLocked({
+        handlers: args.handlers,
+        scope,
+      });
+    },
+  );
 }
 
 export async function runMutationWithOfflineQueue<T>(args: {
@@ -1112,7 +1196,10 @@ export async function runMutationWithOfflineQueue<T>(args: {
     return { queued: false, conflicted: false };
   }
 
-  const queueEntry = (status: OfflineMutationStatus = "queued") =>
+  const queueEntry = (
+    status: OfflineMutationStatus = "queued",
+    details: Pick<PendingMutation, "conflictReason"> = {},
+  ) =>
     enqueueMutation({
       clientMutationId: args.clientMutationId,
       actionType: args.actionType,
@@ -1122,6 +1209,7 @@ export async function runMutationWithOfflineQueue<T>(args: {
       dependsOn: args.dependsOn,
       orderKey: args.orderKey,
       status,
+      ...details,
     });
 
   const dependencyPending =
@@ -1155,12 +1243,7 @@ export async function runMutationWithOfflineQueue<T>(args: {
     if (args.conflictCheck) {
       const conflict = await args.conflictCheck();
       if (conflict) {
-        await queueEntry("conflicted");
-        await markMutationStatus({
-          clientMutationId: args.clientMutationId,
-          status: "conflicted",
-          conflictReason: conflict,
-        });
+        await queueEntry("conflicted", { conflictReason: conflict });
         return { queued: false, conflicted: true };
       }
     }

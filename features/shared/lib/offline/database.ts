@@ -137,6 +137,33 @@ export async function recoverInterruptedStoredMutations(scope: {
   });
 }
 
+/**
+ * Claim the current durable mutation payload for replay. `null` means durable
+ * storage is unavailable; `undefined` means the row is no longer replayable.
+ */
+export async function claimStoredMutationForReplay(args: {
+  clientMutationId: string;
+  scope: { userId: string; shopId: string };
+}): Promise<StoredOfflineMutation | null | undefined> {
+  const db = getDatabase();
+  if (!db) return null;
+
+  return db.transaction("rw", db.mutations, async () => {
+    const row = await db.mutations.get(args.clientMutationId);
+    if (
+      !row ||
+      row.userId !== args.scope.userId ||
+      row.shopId !== args.scope.shopId ||
+      !["queued", "failed"].includes(row.status)
+    ) {
+      return undefined;
+    }
+    const claimed: StoredOfflineMutation = { ...row, status: "syncing" };
+    await db.mutations.put(claimed);
+    return claimed;
+  });
+}
+
 export async function deleteStoredMutations(
   clientMutationIds: string[],
 ): Promise<boolean> {

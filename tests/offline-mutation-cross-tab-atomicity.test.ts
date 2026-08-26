@@ -13,16 +13,8 @@ type StoredRow = {
   syncedAt?: string;
 };
 
-type ReadBarrier = {
-  expected: number;
-  seen: number;
-  promise: Promise<void>;
-  release: () => void;
-};
-
 const storage = vi.hoisted(() => ({
   rows: new Map<string, StoredRow>(),
-  barrier: null as ReadBarrier | null,
   blockedRead: null as
     | {
         started: Promise<void>;
@@ -34,11 +26,40 @@ const storage = vi.hoisted(() => ({
   failNextRead: null as Error | null,
   upsertFailure: null as Error | null,
   recoveriesOutsideLock: 0,
+  claimsOutsideLock: 0,
+  available: true,
 }));
 
 vi.mock("@/features/shared/lib/offline/database", () => ({
+  claimStoredMutationForReplay: vi.fn(
+    async (args: {
+      clientMutationId: string;
+      scope: { userId: string; shopId: string };
+    }) => {
+      if (!storage.available) return null;
+      const activeLocks = (
+        typeof navigator === "undefined"
+          ? null
+          : (navigator as Navigator & { locks?: { active?: number } }).locks
+      )?.active;
+      if (!activeLocks) storage.claimsOutsideLock += 1;
+      const row = storage.rows.get(args.clientMutationId);
+      if (
+        !row ||
+        row.userId !== args.scope.userId ||
+        row.shopId !== args.scope.shopId ||
+        !["queued", "failed"].includes(row.status)
+      ) {
+        return undefined;
+      }
+      const claimed = { ...row, status: "syncing" as const };
+      storage.rows.set(args.clientMutationId, claimed);
+      return claimed;
+    },
+  ),
   clearOfflineDatabase: vi.fn(async () => storage.rows.clear()),
   deleteStoredMutations: vi.fn(async (ids: string[]) => {
+    if (!storage.available) return false;
     for (const id of ids) storage.rows.delete(id);
     return true;
   }),
@@ -69,6 +90,7 @@ vi.mock("@/features/shared/lib/offline/database", () => ({
   ),
   getOfflineBlob: vi.fn(async () => null),
   insertStoredMutationsIfMissing: vi.fn(async (rows: StoredRow[]) => {
+    if (!storage.available) return false;
     for (const row of rows) {
       if (!storage.rows.has(row.clientMutationId)) {
         storage.rows.set(row.clientMutationId, { ...row });
@@ -76,7 +98,7 @@ vi.mock("@/features/shared/lib/offline/database", () => ({
     }
     return true;
   }),
-  offlineMutationStorageAvailable: vi.fn(() => true),
+  offlineMutationStorageAvailable: vi.fn(() => storage.available),
   pruneOfflineDatabase: vi.fn(async () => ({
     snapshotsRemoved: 0,
     blobsRemoved: 0,
@@ -95,16 +117,11 @@ vi.mock("@/features/shared/lib/offline/database", () => ({
       storage.failNextRead = null;
       throw error;
     }
-    const barrier = storage.barrier;
-    if (barrier && barrier.seen < barrier.expected) {
-      barrier.seen += 1;
-      if (barrier.seen === barrier.expected) barrier.release();
-      await barrier.promise;
-    }
     return snapshot;
   }),
   recoverInterruptedStoredMutations: vi.fn(
     async (scope: { userId: string; shopId: string }) => {
+      if (!storage.available) return null;
       const activeLocks = (
         typeof navigator === "undefined"
           ? null
@@ -127,6 +144,7 @@ vi.mock("@/features/shared/lib/offline/database", () => ({
   ),
   removeOfflineBlob: vi.fn(async () => undefined),
   upsertStoredMutations: vi.fn(async (rows: StoredRow[]) => {
+    if (!storage.available) return false;
     if (storage.upsertFailure) throw storage.upsertFailure;
     for (const row of rows) storage.rows.set(row.clientMutationId, { ...row });
     return true;
@@ -176,14 +194,6 @@ class TestReplayLockManager {
 
 let replayLocks: TestReplayLockManager;
 
-function armStaleReadBarrier(expected: number): void {
-  let release: () => void = () => {};
-  const promise = new Promise<void>((resolve) => {
-    release = () => resolve();
-  });
-  storage.barrier = { expected, seen: 0, promise, release };
-}
-
 function armSingleReadBarrier(): {
   started: Promise<void>;
   release: () => void;
@@ -208,14 +218,31 @@ async function loadTab() {
   return tab;
 }
 
+async function holdScopeReplayLock(): Promise<{
+  release: () => void;
+  completion: Promise<void>;
+}> {
+  let release: () => void = () => {};
+  const blocked = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const completion = replayLocks.request(
+    "profixiq.offline.replay.v1:user-1:shop-1",
+    () => blocked,
+  );
+  await vi.waitFor(() => expect(replayLocks.active).toBe(1));
+  return { release, completion };
+}
+
 describe("offline mutation cross-tab atomicity", () => {
   beforeEach(() => {
     storage.rows.clear();
-    storage.barrier = null;
     storage.blockedRead = null;
     storage.failNextRead = null;
     storage.upsertFailure = null;
     storage.recoveriesOutsideLock = 0;
+    storage.claimsOutsideLock = 0;
+    storage.available = true;
     localStorage.clear();
     replayLocks = new TestReplayLockManager();
     vi.stubGlobal("BroadcastChannel", TestBroadcastChannel);
@@ -249,10 +276,9 @@ describe("offline mutation cross-tab atomicity", () => {
     expect(mutations).toContain("refreshQueueCacheFromStorage");
   });
 
-  it("retains both unsynced photo mutations when two stale tabs write together", async () => {
+  it("serializes concurrent tabs without losing either unsynced photo mutation", async () => {
     const tabA = await loadTab();
     const tabB = await loadTab();
-    armStaleReadBarrier(2);
 
     await Promise.all([
       tabA.enqueueMutation({
@@ -280,6 +306,8 @@ describe("offline mutation cross-tab atomicity", () => {
         (row.payload as { blobId: string }).blobId,
       ),
     ).toEqual(expect.arrayContaining(["blob-a", "blob-b"]));
+    expect(replayLocks.requestCount).toBe(2);
+    expect(replayLocks.maxActive).toBe(1);
   });
 
   it("surfaces storage failure without discarding existing pending work", async () => {
@@ -372,7 +400,9 @@ describe("offline mutation cross-tab atomicity", () => {
       status: "syncing",
     });
     const tab = await loadTab();
-    const handler = vi.fn(async () => undefined);
+    const handler = vi.fn(
+      async (_mutation: { payload: unknown }) => undefined,
+    );
 
     expect(tab.listOfflineMutations()[0]?.status).toBe("syncing");
     await expect(
@@ -447,6 +477,91 @@ describe("offline mutation cross-tab atomicity", () => {
     expect(storage.rows.get("shared-replay")?.status).toBe("synced");
   });
 
+  it("replays the corrected retry payload instead of a stale cross-tab snapshot", async () => {
+    storage.rows.set("corrected-retry", {
+      clientMutationId: "corrected-retry",
+      actionType: "save_story_draft",
+      payload: { correction: "stale" },
+      createdAt: new Date().toISOString(),
+      retryCount: 1,
+      userId: "user-1",
+      shopId: "shop-1",
+      status: "failed",
+    });
+    const retryTab = await loadTab();
+    const replayTab = await loadTab();
+    const heldLock = await holdScopeReplayLock();
+    const retry = retryTab.retryOfflineMutation("corrected-retry", {
+      correction: "corrected",
+    });
+    await vi.waitFor(() => expect(replayLocks.requestCount).toBe(2));
+    const handler = vi.fn(
+      async (_mutation: { payload: unknown }) => undefined,
+    );
+    const replay = replayTab.replayQueuedMutations({
+      scope: { userId: "user-1", shopId: "shop-1" },
+      handlers: { save_story_draft: handler },
+    });
+    await vi.waitFor(() => expect(replayLocks.requestCount).toBe(3));
+
+    heldLock.release();
+    await heldLock.completion;
+    await retry;
+    await expect(replay).resolves.toEqual({
+      replayed: 1,
+      failed: 0,
+      conflicted: 0,
+    });
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler.mock.calls[0]?.[0].payload).toEqual({
+      correction: "corrected",
+    });
+    expect(storage.rows.get("corrected-retry")?.status).toBe("synced");
+    expect(storage.claimsOutsideLock).toBe(0);
+    expect(replayLocks.maxActive).toBe(1);
+  });
+
+  it("does not replay a mutation dismissed ahead of a snapshotted replay", async () => {
+    storage.rows.set("dismissed-before-claim", {
+      clientMutationId: "dismissed-before-claim",
+      actionType: "save_story_draft",
+      payload: { correction: "remove me" },
+      createdAt: new Date().toISOString(),
+      retryCount: 0,
+      userId: "user-1",
+      shopId: "shop-1",
+      status: "queued",
+    });
+    const dismissTab = await loadTab();
+    const replayTab = await loadTab();
+    const heldLock = await holdScopeReplayLock();
+    const dismiss = dismissTab.dismissOfflineMutation(
+      "dismissed-before-claim",
+    );
+    await vi.waitFor(() => expect(replayLocks.requestCount).toBe(2));
+    const handler = vi.fn(async () => undefined);
+    const replay = replayTab.replayQueuedMutations({
+      scope: { userId: "user-1", shopId: "shop-1" },
+      handlers: { save_story_draft: handler },
+    });
+    await vi.waitFor(() => expect(replayLocks.requestCount).toBe(3));
+
+    heldLock.release();
+    await heldLock.completion;
+    await dismiss;
+    await expect(replay).resolves.toEqual({
+      replayed: 0,
+      failed: 0,
+      conflicted: 0,
+    });
+
+    expect(handler).not.toHaveBeenCalled();
+    expect(storage.rows.has("dismissed-before-claim")).toBe(false);
+    expect(storage.claimsOutsideLock).toBe(0);
+    expect(replayLocks.maxActive).toBe(1);
+  });
+
   it("fails closed when the browser cannot safely lock queued replay", async () => {
     storage.rows.set("requires-lock", {
       clientMutationId: "requires-lock",
@@ -470,6 +585,83 @@ describe("offline mutation cross-tab atomicity", () => {
     ).rejects.toThrow("Safe cross-tab offline replay is unavailable");
     expect(handler).not.toHaveBeenCalled();
     expect(storage.rows.get("requires-lock")?.status).toBe("queued");
+  });
+
+  it("fails closed when lifecycle updates cannot take the scope lock", async () => {
+    storage.rows.set("locked-lifecycle", {
+      clientMutationId: "locked-lifecycle",
+      actionType: "save_story_draft",
+      payload: { correction: "retained" },
+      createdAt: new Date().toISOString(),
+      retryCount: 1,
+      userId: "user-1",
+      shopId: "shop-1",
+      status: "failed",
+    });
+    const tab = await loadTab();
+    vi.stubGlobal("navigator", { onLine: true });
+
+    await expect(
+      tab.retryOfflineMutation("locked-lifecycle", {
+        correction: "not persisted",
+      }),
+    ).rejects.toThrow("Safe cross-tab offline retry is unavailable");
+    await expect(
+      tab.dismissOfflineMutation("locked-lifecycle"),
+    ).rejects.toThrow("Safe cross-tab offline removal is unavailable");
+    await expect(
+      tab.enqueueMutation({
+        clientMutationId: "new-without-lock",
+        actionType: "save_story_draft",
+        payload: { correction: "not queued" },
+        userId: "user-1",
+        shopId: "shop-1",
+      }),
+    ).rejects.toThrow("Safe cross-tab offline queue updates are unavailable");
+
+    expect(storage.rows.get("locked-lifecycle")?.payload).toEqual({
+      correction: "retained",
+    });
+    expect(storage.rows.has("new-without-lock")).toBe(false);
+  });
+
+  it("fails closed when durable storage disappears before a lifecycle update", async () => {
+    storage.rows.set("durable-lifecycle", {
+      clientMutationId: "durable-lifecycle",
+      actionType: "save_story_draft",
+      payload: { correction: "retained" },
+      createdAt: new Date().toISOString(),
+      retryCount: 1,
+      userId: "user-1",
+      shopId: "shop-1",
+      status: "failed",
+    });
+    const tab = await loadTab();
+    storage.available = false;
+
+    await expect(
+      tab.retryOfflineMutation("durable-lifecycle", {
+        correction: "not persisted",
+      }),
+    ).rejects.toThrow("Durable offline storage is unavailable");
+    await expect(
+      tab.dismissOfflineMutation("durable-lifecycle"),
+    ).rejects.toThrow("Durable offline storage is unavailable");
+    await expect(
+      tab.enqueueMutation({
+        clientMutationId: "new-without-storage",
+        actionType: "save_story_draft",
+        payload: { correction: "not queued" },
+        userId: "user-1",
+        shopId: "shop-1",
+      }),
+    ).rejects.toThrow("Durable offline storage is unavailable");
+
+    expect(storage.rows.get("durable-lifecycle")?.payload).toEqual({
+      correction: "retained",
+    });
+    expect(storage.rows.has("new-without-storage")).toBe(false);
+    expect(replayLocks.maxActive).toBe(1);
   });
 
   it("applies an older successful refresh when a newer read fails", async () => {
