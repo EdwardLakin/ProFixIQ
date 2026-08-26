@@ -35,9 +35,7 @@ describe("Work Order child parent tenant invariant", () => {
       /create or replace function public\.assign_work_orders_shop_id\(\)[\s\S]*?if new\.shop_id is null[\s\S]*?tg_op = 'UPDATE'[\s\S]*?from public\.shops shop[\s\S]*?public\.current_shop_id\(\)/,
     );
     expect(migration).toContain("position('BEFORE UPDATE ON'");
-    expect(migration).toContain(
-      "WORK_ORDER_PARENT_TENANT_CHANGE_WITH_CHILDREN",
-    );
+    expect(migration).toContain("WORK_ORDER_PARENT_TENANT_IMMUTABLE");
     expect(migration).toMatch(
       /new\.work_order_id is not distinct from old\.work_order_id[\s\S]*?old\.shop_id is not null[\s\S]*?not exists \([\s\S]*?from public\.shops shop[\s\S]*?shop\.id = old\.shop_id[\s\S]*?new\.shop_id := null/,
     );
@@ -52,6 +50,12 @@ describe("Work Order child parent tenant invariant", () => {
     expect(parentGuard).toMatch(
       /old\.shop_id is not null[\s\S]*?not exists \([\s\S]*?from public\.shops shop[\s\S]*?shop\.id = old\.shop_id[\s\S]*?new\.shop_id := null/,
     );
+    expect(parentGuard).toMatch(
+      /if new\.shop_id is not distinct from old\.shop_id then[\s\S]*?return new;[\s\S]*?raise exception using[\s\S]*?message = 'WORK_ORDER_PARENT_TENANT_IMMUTABLE'/,
+    );
+    expect(parentGuard).not.toContain("WORK_ORDER_PARENT_TENANT_CHANGE_WITH_CHILDREN");
+    expect(parentGuard).not.toContain("from public.work_order_lines");
+    expect(parentGuard).not.toContain("from public.work_order_quote_lines");
   });
 
   it("serializes concurrent child inserts before parent reconciliation", () => {
@@ -96,8 +100,8 @@ describe("Work Order child parent tenant invariant", () => {
     );
   });
 
-  it("fails closed on predecessor mismatches and indexes parent-side quote lookups", () => {
-    expect(migration).toContain(
+  it("fails closed on predecessor mismatches under explicit table locks", () => {
+    expect(migration).not.toContain(
       "create index if not exists idx_work_order_quote_lines_work_order_id",
     );
     const preflightStart = migration.indexOf(
@@ -114,6 +118,25 @@ describe("Work Order child parent tenant invariant", () => {
     expect(preflight).toContain("'quote_line_count'");
     expect(preflight).toContain("limit 20");
     expect(preflight).not.toMatch(/\b(?:update|insert into|delete from)\b/i);
+    const parentLock = migration.indexOf("public.work_orders,");
+    const repairLineLock = migration.indexOf("public.work_order_lines,");
+    const quoteLineLock = migration.indexOf("public.work_order_quote_lines");
+    const lockMode = migration.indexOf(
+      "in share row exclusive mode nowait;",
+    );
+    const firstTriggerInstall = migration.indexOf(
+      "drop trigger if exists enforce_work_order_lines_parent_tenant",
+    );
+    const preflightInvocation = migration.indexOf(
+      "do $work_order_child_parent_tenant_preflight$",
+    );
+    expect(migration).toContain("set local lock_timeout = '5s';");
+    expect(parentLock).toBeGreaterThan(migration.indexOf("begin;"));
+    expect(repairLineLock).toBeGreaterThan(parentLock);
+    expect(quoteLineLock).toBeGreaterThan(repairLineLock);
+    expect(lockMode).toBeGreaterThan(quoteLineLock);
+    expect(firstTriggerInstall).toBeGreaterThan(lockMode);
+    expect(preflightInvocation).toBeGreaterThan(lockMode);
     expect(migration).toContain("WORK_ORDER_CHILD_TENANT_PREFLIGHT_OK");
     expect(migration).toMatch(
       /revoke all on function private\.assert_work_order_child_parent_tenants_clean\(\)[\s\S]*?from public, anon, authenticated, service_role;/,
@@ -161,13 +184,22 @@ describe("Work Order child parent tenant invariant", () => {
       "Service role moved a Work Order away from existing children",
     );
     expect(runtime).toContain(
+      "Service role moved a childless Work Order to another tenant",
+    );
+    expect(runtime).toContain(
       "Denied parent tenant change modified the Work Order",
+    );
+    expect(runtime).toContain(
+      "Denied childless parent tenant change modified the Work Order",
     );
     expect(runtime).toContain(
       "Service role manually cleared a parent tenant with children",
     );
     expect(runtime).toContain(
       "Ordinary Work Order update tenant normalization regressed",
+    );
+    expect(runtime).toContain(
+      "Ordinary Work Order update tenant normalization did not execute",
     );
     expect(runtime).toContain(
       "Shop cleanup fixture retained an unrelated profile reference",

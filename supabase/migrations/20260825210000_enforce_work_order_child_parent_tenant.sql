@@ -3,6 +3,18 @@ begin;
 set local lock_timeout = '5s';
 set local statement_timeout = '10min';
 
+-- Freeze the complete root-invariant write surface before inspecting historical
+-- rows or replacing its triggers. SHARE ROW EXCLUSIVE is the narrowest
+-- self-exclusive table lock that conflicts with ordinary ROW EXCLUSIVE DML;
+-- reads remain available. Acquire the parent and both children in one ordered
+-- NOWAIT statement so an already-running child writer makes the migration fail
+-- before schema work instead of forming a parent/child lock-order deadlock.
+lock table
+  public.work_orders,
+  public.work_order_lines,
+  public.work_order_quote_lines
+in share row exclusive mode nowait;
+
 -- RLS must be able to validate the canonical parent without inheriting the
 -- caller's potentially narrower Work Order SELECT projection. Keep the helper
 -- outside exposed Data API schemas and bind it to the authenticated shop.
@@ -118,12 +130,6 @@ on public.work_order_quote_lines
 for each row
 execute function private.enforce_work_order_child_parent_tenant();
 
--- Parent-side tenant guards probe quote children by Work Order alone. Existing
--- quote indexes lead with shop_id and cannot support that lookup once the
--- parent tenant is being changed or cleared.
-create index if not exists idx_work_order_quote_lines_work_order_id
-  on public.work_order_quote_lines(work_order_id);
-
 -- The predecessor policies allowed a caller to submit its own shop_id without
 -- proving that the referenced Work Order belonged to the same tenant. A root
 -- mismatch can already have tenant-owned descendants, immutable financial
@@ -202,9 +208,10 @@ comment on function private.assert_work_order_child_parent_tenants_clean() is
 
 do $work_order_child_parent_tenant_preflight$
 begin
-  -- CREATE TRIGGER holds table locks through commit. The preflight therefore
-  -- observes every writer that completed before the invariant was installed,
-  -- and no concurrent writer can introduce a mismatch after this check.
+  -- The explicit parent-first table locks are held through commit. The
+  -- preflight therefore observes every writer that completed before the
+  -- invariant was installed, and no concurrent writer can introduce a
+  -- mismatch after this check.
   perform private.assert_work_order_child_parent_tenants_clean();
   raise notice 'WORK_ORDER_CHILD_TENANT_PREFLIGHT_OK';
 end;
@@ -242,10 +249,10 @@ revoke all on function public.assign_work_orders_shop_id()
   from public, anon, authenticated, service_role;
 
 -- Locking the parent in the child trigger closes the insert/update race. This
--- matching parent-side guard prevents a trusted worker from moving an existing
--- Work Order to another tenant while either canonical child relation still
--- points at it. Childless legacy rows remain movable for established repair
--- tooling; once a child exists, the tenant becomes immutable.
+-- matching parent-side guard makes the canonical Work Order tenant immutable,
+-- including before its first child is created. The only exception is the
+-- already-proven Shop foreign-key cleanup path, which must preserve the
+-- baseline SET NULL attempt so the required-column contract fails closed.
 create or replace function private.enforce_work_order_parent_tenant_update()
 returns trigger
 language plpgsql
@@ -271,21 +278,9 @@ begin
     return new;
   end if;
 
-  if exists (
-    select 1
-    from public.work_order_lines line
-    where line.work_order_id = old.id
-  ) or exists (
-    select 1
-    from public.work_order_quote_lines line
-    where line.work_order_id = old.id
-  ) then
-    raise exception using
-      errcode = '23514',
-      message = 'WORK_ORDER_PARENT_TENANT_CHANGE_WITH_CHILDREN';
-  end if;
-
-  return new;
+  raise exception using
+    errcode = '23514',
+    message = 'WORK_ORDER_PARENT_TENANT_IMMUTABLE';
 end;
 $$;
 

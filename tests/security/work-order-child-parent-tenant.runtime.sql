@@ -169,6 +169,10 @@ begin
   set shop_id = null
   where id = 'bc250000-0000-4000-8000-000000000005';
 
+  if not found then
+    raise exception 'Ordinary Work Order update tenant normalization did not execute';
+  end if;
+
   if not exists (
     select 1
     from public.work_orders parent
@@ -290,6 +294,23 @@ do $trusted_worker_child_tenant_boundary$
 declare
   v_denied boolean := false;
 begin
+  -- Tenant identity is immutable even before the first child exists. Otherwise
+  -- a trusted writer could race a child insert or strand other tenant-owned
+  -- descendants not represented by the two root relations in this migration.
+  begin
+    update public.work_orders
+    set shop_id = 'bb250000-0000-4000-8000-000000000002'
+    where id = 'bc250000-0000-4000-8000-000000000005';
+  exception when sqlstate '23514' then
+    v_denied := position(
+      'WORK_ORDER_PARENT_TENANT_IMMUTABLE' in sqlerrm
+    ) > 0;
+  end;
+  if not v_denied then
+    raise exception 'Service role moved a childless Work Order to another tenant';
+  end if;
+
+  v_denied := false;
   begin
     insert into public.work_order_lines (
       id, shop_id, work_order_id, complaint, job_type, status,
@@ -346,7 +367,7 @@ begin
     where id = 'bc250000-0000-4000-8000-000000000001';
   exception when sqlstate '23514' then
     v_denied := position(
-      'WORK_ORDER_PARENT_TENANT_CHANGE_WITH_CHILDREN' in sqlerrm
+      'WORK_ORDER_PARENT_TENANT_IMMUTABLE' in sqlerrm
     ) > 0;
   end;
   if not v_denied then
@@ -360,7 +381,7 @@ begin
     where id = 'bc250000-0000-4000-8000-000000000001';
   exception when sqlstate '23514' then
     v_denied := position(
-      'WORK_ORDER_PARENT_TENANT_CHANGE_WITH_CHILDREN' in sqlerrm
+      'WORK_ORDER_PARENT_TENANT_IMMUTABLE' in sqlerrm
     ) > 0;
   end;
   if not v_denied then
@@ -631,6 +652,15 @@ begin
       and parent.shop_id = 'bb250000-0000-4000-8000-000000000001'
   ) then
     raise exception 'Denied parent tenant change modified the Work Order';
+  end if;
+
+  if not exists (
+    select 1
+    from public.work_orders parent
+    where parent.id = 'bc250000-0000-4000-8000-000000000005'
+      and parent.shop_id = 'bb250000-0000-4000-8000-000000000001'
+  ) then
+    raise exception 'Denied childless parent tenant change modified the Work Order';
   end if;
 
   if exists (
