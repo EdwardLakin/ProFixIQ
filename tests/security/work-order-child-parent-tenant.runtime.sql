@@ -371,6 +371,130 @@ $trusted_worker_child_tenant_boundary$;
 
 reset role;
 
+-- A predecessor deployment could admit a tenant mismatch before this
+-- migration installed its canonical trigger. Reproduce that historical state
+-- on a financially locked Work Order without weakening the repair path under
+-- test, then invoke the exact private migration helper. Its ordinary DML must
+-- pass through the financial guards under an audited data-repair session.
+insert into public.invoice_versions (
+  id,
+  shop_id,
+  work_order_id,
+  version_number,
+  lifecycle_status,
+  currency,
+  snapshot,
+  snapshot_hash,
+  issued_at
+) values (
+  'bf250000-0000-4000-8000-000000000001',
+  'bb250000-0000-4000-8000-000000000001',
+  'bc250000-0000-4000-8000-000000000001',
+  1,
+  'issued',
+  'CAD',
+  '{}'::jsonb,
+  'work-order-child-tenant-locked-fixture',
+  now()
+);
+
+set local session_replication_role = replica;
+update public.work_order_lines
+set shop_id = 'bb250000-0000-4000-8000-000000000002'
+where id = 'bd250000-0000-4000-8000-000000000001';
+update public.work_order_quote_lines
+set shop_id = 'bb250000-0000-4000-8000-000000000002'
+where id = 'be250000-0000-4000-8000-000000000001';
+set local session_replication_role = origin;
+
+do $locked_historical_child_tenant_reconciliation$
+declare
+  v_repair_lines_reconciled bigint;
+  v_quote_lines_reconciled bigint;
+  v_financial_work_orders_reconciled bigint;
+begin
+  select
+    reconciliation.repair_lines_reconciled,
+    reconciliation.quote_lines_reconciled,
+    reconciliation.financial_work_orders_reconciled
+  into strict
+    v_repair_lines_reconciled,
+    v_quote_lines_reconciled,
+    v_financial_work_orders_reconciled
+  from private.reconcile_work_order_child_parent_tenants() reconciliation;
+
+  if v_repair_lines_reconciled <> 1
+     or v_quote_lines_reconciled <> 1
+     or v_financial_work_orders_reconciled <> 1 then
+    raise exception
+      'Locked historical child tenant repair returned unexpected counts: %, %, %',
+      v_repair_lines_reconciled,
+      v_quote_lines_reconciled,
+      v_financial_work_orders_reconciled;
+  end if;
+
+  if not exists (
+    select 1
+    from public.work_order_lines line
+    where line.id = 'bd250000-0000-4000-8000-000000000001'
+      and line.shop_id = 'bb250000-0000-4000-8000-000000000001'
+  ) or not exists (
+    select 1
+    from public.work_order_quote_lines line
+    where line.id = 'be250000-0000-4000-8000-000000000001'
+      and line.shop_id = 'bb250000-0000-4000-8000-000000000001'
+  ) then
+    raise exception 'Locked historical child tenant repair did not reconcile both rows';
+  end if;
+
+  if not exists (
+    select 1
+    from public.work_order_correction_sessions correction
+    where correction.shop_id = 'bb250000-0000-4000-8000-000000000001'
+      and correction.work_order_id = 'bc250000-0000-4000-8000-000000000001'
+      and starts_with(
+        correction.operation_key,
+        'migration:20260825210000:work-order-child-tenant:'
+          || 'bc250000-0000-4000-8000-000000000001:'
+      )
+      and correction.scope = 'data_repair'
+      and correction.status = 'closed'
+      and correction.metadata @> jsonb_build_object(
+        'migration', '20260825210000',
+        'repair', 'work_order_child_parent_tenant',
+        'repair_lines_reconciled', 1,
+        'quote_lines_reconciled', 1
+      )
+  ) then
+    raise exception
+      'Locked historical child tenant repair did not use a closed data-repair session';
+  end if;
+
+  if not exists (
+    select 1
+    from public.financial_domain_outbox outbox
+    where outbox.shop_id = 'bb250000-0000-4000-8000-000000000001'
+      and outbox.aggregate_type = 'work_order'
+      and outbox.aggregate_id = 'bc250000-0000-4000-8000-000000000001'
+      and outbox.event_type = 'work_order.child_tenant_reconciled'
+      and starts_with(
+        outbox.dedupe_key,
+        'migration:20260825210000:work-order-child-tenant:'
+          || 'bc250000-0000-4000-8000-000000000001:'
+      )
+      and outbox.payload @> jsonb_build_object(
+        'repair_lines_reconciled', 1,
+        'quote_lines_reconciled', 1,
+        'financial_history', true,
+        'created_correction_session', true
+      )
+  ) then
+    raise exception
+      'Locked historical child tenant repair was not emitted to the financial outbox';
+  end if;
+end;
+$locked_historical_child_tenant_reconciliation$;
+
 insert into public.work_order_lines (
   id, shop_id, work_order_id, complaint, job_type, status,
   line_status, approval_state, urgency

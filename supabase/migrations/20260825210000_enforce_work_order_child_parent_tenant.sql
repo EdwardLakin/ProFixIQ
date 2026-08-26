@@ -127,34 +127,190 @@ create index if not exists idx_work_order_quote_lines_work_order_id
 -- The predecessor policies allowed a caller to submit its own shop_id without
 -- proving that the referenced Work Order belonged to the same tenant. Repair
 -- any rows admitted by that historical contract before the restrictive policy
--- and postcheck make the invariant mandatory. The parent is canonical, the
--- foreign keys already rule out orphans, and both updates are observable in
--- migration logs without discarding business rows.
+-- and postcheck make the invariant mandatory. Parents are locked in stable ID
+-- order before their children are changed so concurrent writers cannot race
+-- the repair. Finalized Work Orders are repaired only inside the established
+-- audited data-repair session; the financial lock is never disabled or
+-- bypassed. The helper remains private and ungrantable so the rollback-only
+-- integration can exercise the exact migration path against a locked fixture.
+create or replace function private.reconcile_work_order_child_parent_tenants()
+returns table (
+  repair_lines_reconciled bigint,
+  quote_lines_reconciled bigint,
+  financial_work_orders_reconciled bigint
+)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_parent record;
+  v_lock_state jsonb;
+  v_correction_session_id uuid;
+  v_created_correction_session boolean;
+  v_has_financial_history boolean;
+  v_repair_run_id uuid := gen_random_uuid();
+  v_operation_key text;
+  v_repair_count bigint;
+  v_quote_count bigint;
+begin
+  repair_lines_reconciled := 0;
+  quote_lines_reconciled := 0;
+  financial_work_orders_reconciled := 0;
+
+  for v_parent in
+    select parent.id, parent.shop_id
+    from public.work_orders parent
+    where parent.shop_id is not null
+      and (
+        exists (
+          select 1
+          from public.work_order_lines line
+          where line.work_order_id = parent.id
+            and line.shop_id is distinct from parent.shop_id
+        )
+        or exists (
+          select 1
+          from public.work_order_quote_lines line
+          where line.work_order_id = parent.id
+            and line.shop_id is distinct from parent.shop_id
+        )
+      )
+    order by parent.id
+    for update of parent
+  loop
+    v_lock_state := public.work_order_financial_lock_state(
+      v_parent.shop_id,
+      v_parent.id
+    );
+    v_has_financial_history := coalesce(
+      (v_lock_state ->> 'has_financial_history')::boolean,
+      false
+    );
+    v_correction_session_id := nullif(
+      v_lock_state ->> 'correction_session_id',
+      ''
+    )::uuid;
+    v_created_correction_session := false;
+    v_operation_key :=
+      'migration:20260825210000:work-order-child-tenant:'
+        || v_parent.id::text
+        || ':'
+        || v_repair_run_id::text;
+
+    if v_has_financial_history and v_correction_session_id is null then
+      select correction.id
+        into strict v_correction_session_id
+      from public.open_work_order_correction_session(
+        v_parent.shop_id,
+        v_parent.id,
+        null::uuid,
+        'Reconcile historical Work Order child tenant identity',
+        'data_repair',
+        v_operation_key,
+        jsonb_build_object(
+          'migration', '20260825210000',
+          'repair', 'work_order_child_parent_tenant',
+          'repair_run_id', v_repair_run_id
+        )
+      ) correction;
+      v_created_correction_session := true;
+    end if;
+
+    update public.work_order_lines line
+    set shop_id = v_parent.shop_id
+    where line.work_order_id = v_parent.id
+      and line.shop_id is distinct from v_parent.shop_id;
+    get diagnostics v_repair_count = row_count;
+
+    update public.work_order_quote_lines line
+    set shop_id = v_parent.shop_id
+    where line.work_order_id = v_parent.id
+      and line.shop_id is distinct from v_parent.shop_id;
+    get diagnostics v_quote_count = row_count;
+
+    repair_lines_reconciled :=
+      repair_lines_reconciled + v_repair_count;
+    quote_lines_reconciled :=
+      quote_lines_reconciled + v_quote_count;
+    if v_has_financial_history then
+      financial_work_orders_reconciled :=
+        financial_work_orders_reconciled + 1;
+    end if;
+
+    insert into public.financial_domain_outbox (
+      shop_id,
+      aggregate_type,
+      aggregate_id,
+      event_type,
+      dedupe_key,
+      payload
+    ) values (
+      v_parent.shop_id,
+      'work_order',
+      v_parent.id,
+      'work_order.child_tenant_reconciled',
+      v_operation_key,
+      jsonb_build_object(
+        'migration', '20260825210000',
+        'repair_run_id', v_repair_run_id,
+        'work_order_id', v_parent.id,
+        'repair_lines_reconciled', v_repair_count,
+        'quote_lines_reconciled', v_quote_count,
+        'financial_history', v_has_financial_history,
+        'correction_session_id', v_correction_session_id,
+        'created_correction_session', v_created_correction_session
+      )
+    ) on conflict (shop_id, dedupe_key) do nothing;
+
+    if v_created_correction_session then
+      perform public.close_work_order_correction_session(
+        v_parent.shop_id,
+        v_parent.id,
+        v_correction_session_id,
+        null::uuid,
+        jsonb_build_object(
+          'migration', '20260825210000',
+          'repair', 'work_order_child_parent_tenant',
+          'repair_run_id', v_repair_run_id,
+          'repair_lines_reconciled', v_repair_count,
+          'quote_lines_reconciled', v_quote_count
+        )
+      );
+    end if;
+  end loop;
+
+  return next;
+end;
+$$;
+
+revoke all on function private.reconcile_work_order_child_parent_tenants()
+  from public, anon, authenticated, service_role;
+
+comment on function private.reconcile_work_order_child_parent_tenants() is
+  'Repairs predecessor child-tenant mismatches under ordered parent locks and audited financial correction sessions; executable only by its owner.';
+
 do $work_order_child_parent_tenant_reconciliation$
 declare
-  v_repair_lines_reconciled bigint := 0;
-  v_quote_lines_reconciled bigint := 0;
+  v_repair_lines_reconciled bigint;
+  v_quote_lines_reconciled bigint;
+  v_financial_work_orders_reconciled bigint;
 begin
-  update public.work_order_lines line
-  set shop_id = parent.shop_id
-  from public.work_orders parent
-  where parent.id = line.work_order_id
-    and parent.shop_id is not null
-    and line.shop_id is distinct from parent.shop_id;
-  get diagnostics v_repair_lines_reconciled = row_count;
-
-  update public.work_order_quote_lines line
-  set shop_id = parent.shop_id
-  from public.work_orders parent
-  where parent.id = line.work_order_id
-    and parent.shop_id is not null
-    and line.shop_id is distinct from parent.shop_id;
-  get diagnostics v_quote_lines_reconciled = row_count;
+  select
+    reconciliation.repair_lines_reconciled,
+    reconciliation.quote_lines_reconciled,
+    reconciliation.financial_work_orders_reconciled
+  into strict
+    v_repair_lines_reconciled,
+    v_quote_lines_reconciled,
+    v_financial_work_orders_reconciled
+  from private.reconcile_work_order_child_parent_tenants() reconciliation;
 
   raise notice
-    'WORK_ORDER_CHILD_TENANT_RECONCILIATION repair_lines=% quote_lines=%',
+    'WORK_ORDER_CHILD_TENANT_RECONCILIATION repair_lines=% quote_lines=% financial_work_orders=%',
     v_repair_lines_reconciled,
-    v_quote_lines_reconciled;
+    v_quote_lines_reconciled,
+    v_financial_work_orders_reconciled;
 end;
 $work_order_child_parent_tenant_reconciliation$;
 

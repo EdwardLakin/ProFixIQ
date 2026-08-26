@@ -101,13 +101,24 @@ describe("Work Order child parent tenant invariant", () => {
       "create index if not exists idx_work_order_quote_lines_work_order_id",
     );
     expect(migration).toMatch(
-      /update public\.work_order_lines line[\s\S]*?set shop_id = parent\.shop_id[\s\S]*?line\.shop_id is distinct from parent\.shop_id/,
+      /update public\.work_order_lines line[\s\S]*?set shop_id = v_parent\.shop_id[\s\S]*?line\.shop_id is distinct from v_parent\.shop_id/,
     );
     expect(migration).toMatch(
-      /update public\.work_order_quote_lines line[\s\S]*?set shop_id = parent\.shop_id[\s\S]*?line\.shop_id is distinct from parent\.shop_id/,
+      /update public\.work_order_quote_lines line[\s\S]*?set shop_id = v_parent\.shop_id[\s\S]*?line\.shop_id is distinct from v_parent\.shop_id/,
     );
     expect(migration).toContain(
       "WORK_ORDER_CHILD_TENANT_RECONCILIATION repair_lines=% quote_lines=%",
+    );
+    expect(migration).toMatch(
+      /create or replace function private\.reconcile_work_order_child_parent_tenants\(\)[\s\S]*?order by parent\.id[\s\S]*?for update of parent/,
+    );
+    expect(migration).toContain("open_work_order_correction_session");
+    expect(migration).toContain("close_work_order_correction_session");
+    expect(migration).toContain("'data_repair'");
+    expect(migration).toContain("work_order.child_tenant_reconciled");
+    expect(migration).toContain("v_repair_run_id uuid := gen_random_uuid()");
+    expect(migration).toMatch(
+      /revoke all on function private\.reconcile_work_order_child_parent_tenants\(\)[\s\S]*?from public, anon, authenticated, service_role;/,
     );
   });
 
@@ -165,6 +176,12 @@ describe("Work Order child parent tenant invariant", () => {
     );
     expect(runtime).toContain(
       "Authorized Work Order cascade delete did not remove parent and child",
+    );
+    expect(runtime).toContain(
+      "Locked historical child tenant repair did not use a closed data-repair session",
+    );
+    expect(runtime).toContain(
+      "Locked historical child tenant repair was not emitted to the financial outbox",
     );
   });
 });
