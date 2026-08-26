@@ -1,0 +1,152 @@
+import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+
+const read = (path: string) => readFileSync(path, "utf8");
+const migration = read(
+  "supabase/migrations/20260825210000_enforce_work_order_child_parent_tenant.sql",
+);
+const runtime = read(
+  "tests/security/work-order-child-parent-tenant.runtime.sql",
+);
+const lockingRuntime = read(
+  "tests/security/work-order-child-parent-tenant-locking.runtime.sh",
+);
+const workflow = read(".github/workflows/supabase-clean-replay-audit.yml");
+
+describe("Work Order child parent tenant invariant", () => {
+  it("enforces parent equality before repair and quote child writes", () => {
+    expect(migration).toContain(
+      "private.enforce_work_order_child_parent_tenant",
+    );
+    expect(migration).toMatch(
+      /create trigger enforce_work_order_lines_parent_tenant[\s\S]*?before insert or update of work_order_id, shop_id[\s\S]*?private\.enforce_work_order_child_parent_tenant\(\)/,
+    );
+    expect(migration).toMatch(
+      /create trigger enforce_work_order_quote_lines_parent_tenant[\s\S]*?before insert or update of work_order_id, shop_id[\s\S]*?private\.enforce_work_order_child_parent_tenant\(\)/,
+    );
+    expect(migration).toContain("WORK_ORDER_CHILD_TENANT_MISMATCH");
+    expect(migration).toMatch(
+      /from public\.work_orders parent[\s\S]*?where parent\.id = new\.work_order_id[\s\S]*?for no key update;/,
+    );
+    expect(migration).toMatch(
+      /create trigger enforce_work_order_parent_tenant_update[\s\S]*?before update\s+on public\.work_orders[\s\S]*?private\.enforce_work_order_parent_tenant_update\(\)/,
+    );
+    expect(migration).toMatch(
+      /create or replace function public\.assign_work_orders_shop_id\(\)[\s\S]*?if tg_op = 'INSERT' and new\.shop_id is null[\s\S]*?public\.current_shop_id\(\)/,
+    );
+    expect(migration).toContain("position('BEFORE UPDATE ON'");
+    expect(migration).toContain(
+      "WORK_ORDER_PARENT_TENANT_CHANGE_WITH_CHILDREN",
+    );
+    expect(migration).toMatch(
+      /new\.work_order_id is not distinct from old\.work_order_id[\s\S]*?old\.shop_id is not null[\s\S]*?not exists \([\s\S]*?from public\.shops shop[\s\S]*?shop\.id = old\.shop_id[\s\S]*?new\.shop_id := null/,
+    );
+    const parentGuard = migration.slice(
+      migration.indexOf(
+        "create or replace function private.enforce_work_order_parent_tenant_update()",
+      ),
+      migration.indexOf(
+        "revoke all on function private.enforce_work_order_parent_tenant_update()",
+      ),
+    );
+    expect(parentGuard).toMatch(
+      /old\.shop_id is not null[\s\S]*?not exists \([\s\S]*?from public\.shops shop[\s\S]*?shop\.id = old\.shop_id[\s\S]*?new\.shop_id := null/,
+    );
+  });
+
+  it("serializes concurrent child inserts before parent reconciliation", () => {
+    expect(lockingRuntime).toContain("work-order-child-lock-probe-a");
+    expect(lockingRuntime).toContain("work-order-child-lock-probe-b");
+    expect(lockingRuntime).toContain("pg_blocking_pids(contender.pid)");
+    expect(lockingRuntime).toContain("pg_advisory_xact_lock(782510, 1)");
+    expect(lockingRuntime).toContain("pg_advisory_xact_lock(782510, 2)");
+    expect(lockingRuntime).toContain(
+      "Concurrent child inserts did not both commit",
+    );
+    expect(workflow).toContain(
+      "tests/security/work-order-child-parent-tenant-locking.runtime.sh",
+    );
+    expect(workflow).toContain(
+      "work-order-child-parent-tenant-locking-runtime.log",
+    );
+  });
+
+  it("adds restrictive parent checks without replacing role policies", () => {
+    for (const policy of [
+      "work_order_lines_parent_tenant_insert",
+      "work_order_lines_parent_tenant_update",
+      "work_order_quote_lines_parent_tenant_insert",
+      "work_order_quote_lines_parent_tenant_update",
+    ]) {
+      const start = migration.indexOf(`create policy ${policy}`);
+      expect(start).toBeGreaterThan(0);
+      expect(migration.slice(start, start + 420)).toContain("as restrictive");
+      expect(migration.slice(start, start + 520)).toContain(
+        "rls_helpers.work_order_parent_matches_shop",
+      );
+    }
+
+    expect(migration).not.toContain("drop policy work_order_lines_role_insert");
+    expect(migration).not.toContain("drop policy woql_insert");
+    expect(migration).toMatch(
+      /revoke all on function rls_helpers\.work_order_parent_matches_shop\(uuid, uuid\)[\s\S]*?from public, anon, authenticated, service_role;/,
+    );
+    expect(migration).toMatch(
+      /grant execute on function rls_helpers\.work_order_parent_matches_shop\(uuid, uuid\)[\s\S]*?to authenticated, service_role;/,
+    );
+  });
+
+  it("binds SECURITY DEFINER parent reconciliation to the line tenant", () => {
+    expect(migration).toMatch(
+      /create or replace function public\.refresh_work_order_status\(\)[\s\S]*?parent\.id = new\.work_order_id[\s\S]*?parent\.shop_id is not distinct from new\.shop_id[\s\S]*?private\.reconcile_work_order_state\(new\.work_order_id\)/,
+    );
+    expect(migration).toMatch(
+      /create or replace function public\.refresh_work_order_status_del\(\)[\s\S]*?parent\.shop_id[\s\S]*?parent\.id = old\.work_order_id[\s\S]*?if found then[\s\S]*?v_parent_shop_id is distinct from old\.shop_id[\s\S]*?private\.reconcile_work_order_state\(old\.work_order_id\)/,
+    );
+  });
+
+  it("covers authenticated and trusted-worker attempts without losing valid derivation", () => {
+    expect(runtime).toContain(
+      "Authenticated repair line crossed the parent tenant",
+    );
+    expect(runtime).toContain(
+      "Authenticated quote line crossed the parent tenant",
+    );
+    expect(runtime).toContain(
+      "Service role bypassed the repair-line parent tenant invariant",
+    );
+    expect(runtime).toContain(
+      "Service role bypassed the quote-line parent tenant invariant",
+    );
+    expect(runtime).toContain(
+      "Verified parent shop derivation was not preserved",
+    );
+    expect(runtime).toContain(
+      "Denied child write changed the foreign Work Order",
+    );
+    expect(runtime).toContain(
+      "Service role moved a Work Order away from existing children",
+    );
+    expect(runtime).toContain(
+      "Denied parent tenant change modified the Work Order",
+    );
+    expect(runtime).toContain(
+      "Service role manually cleared a parent tenant with children",
+    );
+    expect(runtime).toContain(
+      "Shop-driven Work Order tenant cleanup contract regressed",
+    );
+    expect(runtime).toContain(
+      "Shop cleanup fixture retained an unrelated profile reference",
+    );
+    expect(runtime).toContain(
+      "Post-cleanup repair-line status reconciliation did not run",
+    );
+    expect(runtime).toContain(
+      "Post-cleanup status reconciliation re-tenanted historical work",
+    );
+    expect(runtime).toContain(
+      "Authorized Work Order cascade delete did not remove parent and child",
+    );
+  });
+});
