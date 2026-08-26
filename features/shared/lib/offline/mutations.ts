@@ -397,6 +397,7 @@ export function restoreOfflineMutation(raw: unknown): PendingMutation | null {
   const parsedStatus = (
     validStatus ? item.status : "queued"
   ) as OfflineMutationStatus;
+  const status = parsedStatus;
   const missingScope = !userId || !shopId;
 
   return {
@@ -411,8 +412,7 @@ export function restoreOfflineMutation(raw: unknown): PendingMutation | null {
       ? item.dependsOn.map(String)
       : undefined,
     orderKey: clean(item.orderKey) || undefined,
-    status:
-      missingScope && parsedStatus !== "synced" ? "conflicted" : parsedStatus,
+    status: missingScope && status !== "synced" ? "conflicted" : status,
     lastError: clean(item.lastError) || undefined,
     conflictReason: missingScope
       ? "Legacy offline mutation has no authenticated user/shop scope. Re-enter the action."
