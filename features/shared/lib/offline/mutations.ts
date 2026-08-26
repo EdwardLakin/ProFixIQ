@@ -10,6 +10,7 @@ import {
   offlineMutationStorageAvailable,
   pruneOfflineDatabase,
   readStoredMutations,
+  recoverInterruptedStoredMutations,
   removeOfflineBlob,
   upsertStoredMutations,
   type StoredOfflineMutation,
@@ -46,6 +47,16 @@ export type OfflineMutationRunner = (
   mutation: PendingMutation,
 ) => Promise<{ conflicted?: string | null } | void>;
 
+type OfflineReplayResult = {
+  replayed: number;
+  failed: number;
+  conflicted: number;
+};
+
+type OfflineReplayLockManager = {
+  request<T>(name: string, callback: () => Promise<T>): Promise<T>;
+};
+
 const LEGACY_KEYS = [
   "profixiq.pending_mutations.v3",
   "profixiq.pending_mutations.v2",
@@ -56,6 +67,7 @@ const PERSISTENCE_MARKER_KEY = "profixiq.offline.persistence.v1";
 const QUEUE_REVISION_KEY = "profixiq.pending_mutations.revision.v1";
 const QUEUE_CHANNEL_NAME = "profixiq.pending_mutations.channel.v1";
 const EVENT_NAME = "offline-mutations:updated";
+const REPLAY_LOCK_PREFIX = "profixiq.offline.replay.v1";
 const MAX_HISTORY = 300;
 const TERMINAL_RETENTION_MS = 1000 * 60 * 60 * 24 * 7;
 const RETRYABLE_STATUS_CODES = new Set([408, 425, 429, 500, 502, 503, 504]);
@@ -101,6 +113,26 @@ function browserReady(): boolean {
   } catch {
     return false;
   }
+}
+
+function emptyReplayResult(): OfflineReplayResult {
+  return { replayed: 0, failed: 0, conflicted: 0 };
+}
+
+function getOfflineReplayLockManager(): OfflineReplayLockManager | null {
+  if (typeof navigator === "undefined") return null;
+  const candidate = (
+    navigator as Navigator & {
+      locks?: { request?: unknown };
+    }
+  ).locks;
+  return candidate && typeof candidate.request === "function"
+    ? (candidate as OfflineReplayLockManager)
+    : null;
+}
+
+function offlineReplayLockName(scope: OfflineMutationScope): string {
+  return `${REPLAY_LOCK_PREFIX}:${scope.userId}:${scope.shopId}`;
 }
 
 function getQueueChannel(): BroadcastChannel | null {
@@ -331,10 +363,7 @@ export async function resolveOfflineMutationScope(
   return scope;
 }
 
-export function restoreOfflineMutation(
-  raw: unknown,
-  options: { recoverInterruptedSync?: boolean } = {},
-): PendingMutation | null {
+export function restoreOfflineMutation(raw: unknown): PendingMutation | null {
   if (!raw || typeof raw !== "object") return null;
   const item = raw as Partial<PendingMutation> & {
     id?: unknown;
@@ -357,10 +386,6 @@ export function restoreOfflineMutation(
   const parsedStatus = (
     validStatus ? item.status : "queued"
   ) as OfflineMutationStatus;
-  const status =
-    parsedStatus === "syncing" && options.recoverInterruptedSync !== false
-      ? "failed"
-      : parsedStatus;
   const missingScope = !userId || !shopId;
 
   return {
@@ -375,7 +400,8 @@ export function restoreOfflineMutation(
       ? item.dependsOn.map(String)
       : undefined,
     orderKey: clean(item.orderKey) || undefined,
-    status: missingScope && status !== "synced" ? "conflicted" : status,
+    status:
+      missingScope && parsedStatus !== "synced" ? "conflicted" : parsedStatus,
     lastError: clean(item.lastError) || undefined,
     conflictReason: missingScope
       ? "Legacy offline mutation has no authenticated user/shop scope. Re-enter the action."
@@ -415,12 +441,9 @@ export function normalizeOfflineMutationQueue(
   );
 }
 
-function restoreStoredQueue(
-  rows: StoredOfflineMutation[],
-  options: { recoverInterruptedSync?: boolean } = {},
-): PendingMutation[] {
+function restoreStoredQueue(rows: StoredOfflineMutation[]): PendingMutation[] {
   return rows
-    .map((row) => restoreOfflineMutation(row, options))
+    .map(restoreOfflineMutation)
     .filter((item): item is PendingMutation => Boolean(item));
 }
 
@@ -441,11 +464,7 @@ function droppedSyncedMutationIds(
 
 async function loadStoredQueue(): Promise<PendingMutation[]> {
   if (!offlineMutationStorageAvailable()) return queueCache;
-  const liveRestoreOptions = { recoverInterruptedSync: false };
-  const restored = restoreStoredQueue(
-    await readStoredMutations(),
-    liveRestoreOptions,
-  );
+  const restored = restoreStoredQueue(await readStoredMutations());
   const normalized = normalizeOfflineMutationQueue(restored);
   const droppedIds = droppedSyncedMutationIds(restored, normalized);
   if (droppedIds.length === 0) return normalized;
@@ -453,7 +472,7 @@ async function loadStoredQueue(): Promise<PendingMutation[]> {
   try {
     await deleteSyncedStoredMutations({ clientMutationIds: droppedIds });
     return normalizeOfflineMutationQueue(
-      restoreStoredQueue(await readStoredMutations(), liveRestoreOptions),
+      restoreStoredQueue(await readStoredMutations()),
     );
   } catch {
     // History cleanup is best-effort. A terminal-row deletion failure must not
@@ -935,15 +954,11 @@ export function isRetryableOfflineStatus(status: unknown): boolean {
   return Number.isFinite(parsed) && RETRYABLE_STATUS_CODES.has(parsed);
 }
 
-export async function replayQueuedMutations(args: {
+async function replayQueuedMutationsWhileLocked(args: {
   handlers: Record<string, OfflineMutationRunner>;
-  scope?: OfflineMutationScope | null;
-}): Promise<{ replayed: number; failed: number; conflicted: number }> {
-  await hydrateOfflineMutationQueue();
-  await refreshQueueCacheFromStorage();
-  const scope = args.scope ?? getOfflineMutationScope();
-  if (!scope || !navigator.onLine)
-    return { replayed: 0, failed: 0, conflicted: 0 };
+  scope: OfflineMutationScope;
+}): Promise<OfflineReplayResult> {
+  const { scope } = args;
   await auditOfflineMutationAttachments(scope);
   const queue = sortOfflineMutationsForReplay(
     queueCache.filter(
@@ -1010,6 +1025,45 @@ export async function replayQueuedMutations(args: {
     }
   }
   return { replayed, failed, conflicted };
+}
+
+export async function replayQueuedMutations(args: {
+  handlers: Record<string, OfflineMutationRunner>;
+  scope?: OfflineMutationScope | null;
+}): Promise<OfflineReplayResult> {
+  await hydrateOfflineMutationQueue();
+  await refreshQueueCacheFromStorage();
+  const scope = args.scope ?? getOfflineMutationScope();
+  if (!scope || !navigator.onLine) return emptyReplayResult();
+
+  const hasReplayWork = queueCache.some(
+    (item) =>
+      ["queued", "syncing", "failed"].includes(item.status) &&
+      scopeMatches(item, scope),
+  );
+  if (!hasReplayWork) return emptyReplayResult();
+
+  const lockManager = getOfflineReplayLockManager();
+  if (!lockManager) {
+    throw new Error(
+      "Safe cross-tab offline replay is unavailable in this browser.",
+    );
+  }
+
+  return lockManager.request(offlineReplayLockName(scope), async () => {
+    if (!navigator.onLine) return emptyReplayResult();
+    const recovered = await recoverInterruptedStoredMutations(scope);
+    if (recovered === null) {
+      throw new Error(
+        "Durable offline storage is unavailable; saved work was not replayed.",
+      );
+    }
+    await refreshQueueCacheFromStorage();
+    return replayQueuedMutationsWhileLocked({
+      handlers: args.handlers,
+      scope,
+    });
+  });
 }
 
 export async function runMutationWithOfflineQueue<T>(args: {

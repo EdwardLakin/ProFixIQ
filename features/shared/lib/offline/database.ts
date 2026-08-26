@@ -110,6 +110,33 @@ export async function insertStoredMutationsIfMissing(
   return true;
 }
 
+/**
+ * Recover replay work only after the caller has acquired the cross-tab replay
+ * lock. The read and status transition share one IndexedDB transaction so a
+ * committed queue snapshot can never expose only part of the recovery.
+ */
+export async function recoverInterruptedStoredMutations(scope: {
+  userId: string;
+  shopId: string;
+}): Promise<number | null> {
+  const db = getDatabase();
+  if (!db) return null;
+
+  return db.transaction("rw", db.mutations, async () => {
+    const rows = await db.mutations
+      .where("[userId+shopId]")
+      .equals([scope.userId, scope.shopId])
+      .filter((row) => row.status === "syncing")
+      .toArray();
+    if (rows.length > 0) {
+      await db.mutations.bulkPut(
+        rows.map((row) => ({ ...row, status: "failed" as const })),
+      );
+    }
+    return rows.length;
+  });
+}
+
 export async function deleteStoredMutations(
   clientMutationIds: string[],
 ): Promise<boolean> {

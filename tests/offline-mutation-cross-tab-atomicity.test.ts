@@ -33,6 +33,7 @@ const storage = vi.hoisted(() => ({
     | null,
   failNextRead: null as Error | null,
   upsertFailure: null as Error | null,
+  recoveriesOutsideLock: 0,
 }));
 
 vi.mock("@/features/shared/lib/offline/database", () => ({
@@ -102,6 +103,28 @@ vi.mock("@/features/shared/lib/offline/database", () => ({
     }
     return snapshot;
   }),
+  recoverInterruptedStoredMutations: vi.fn(
+    async (scope: { userId: string; shopId: string }) => {
+      const activeLocks = (
+        typeof navigator === "undefined"
+          ? null
+          : (navigator as Navigator & { locks?: { active?: number } }).locks
+      )?.active;
+      if (!activeLocks) storage.recoveriesOutsideLock += 1;
+      let recovered = 0;
+      for (const [id, row] of storage.rows) {
+        if (
+          row.userId === scope.userId &&
+          row.shopId === scope.shopId &&
+          row.status === "syncing"
+        ) {
+          storage.rows.set(id, { ...row, status: "failed" });
+          recovered += 1;
+        }
+      }
+      return recovered;
+    },
+  ),
   removeOfflineBlob: vi.fn(async () => undefined),
   upsertStoredMutations: vi.fn(async (rows: StoredRow[]) => {
     if (storage.upsertFailure) throw storage.upsertFailure;
@@ -122,6 +145,36 @@ class TestBroadcastChannel {
     return undefined;
   }
 }
+
+class TestReplayLockManager {
+  requestCount = 0;
+  active = 0;
+  maxActive = 0;
+  private readonly tails = new Map<string, Promise<void>>();
+
+  async request<T>(name: string, callback: () => Promise<T>): Promise<T> {
+    this.requestCount += 1;
+    const previous = this.tails.get(name) ?? Promise.resolve();
+    let release: () => void = () => {};
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const tail = previous.then(() => current);
+    this.tails.set(name, tail);
+    await previous;
+    this.active += 1;
+    this.maxActive = Math.max(this.maxActive, this.active);
+    try {
+      return await callback();
+    } finally {
+      this.active -= 1;
+      release();
+      if (this.tails.get(name) === tail) this.tails.delete(name);
+    }
+  }
+}
+
+let replayLocks: TestReplayLockManager;
 
 function armStaleReadBarrier(expected: number): void {
   let release: () => void = () => {};
@@ -162,8 +215,11 @@ describe("offline mutation cross-tab atomicity", () => {
     storage.blockedRead = null;
     storage.failNextRead = null;
     storage.upsertFailure = null;
+    storage.recoveriesOutsideLock = 0;
     localStorage.clear();
+    replayLocks = new TestReplayLockManager();
     vi.stubGlobal("BroadcastChannel", TestBroadcastChannel);
+    vi.stubGlobal("navigator", { onLine: true, locks: replayLocks });
   });
 
   afterEach(() => {
@@ -292,6 +348,128 @@ describe("offline mutation cross-tab atomicity", () => {
       failed: 0,
       conflicted: 0,
     });
+  });
+
+  it("recovers and replays an interrupted sync only after taking the replay lock", async () => {
+    storage.rows.set("interrupted", {
+      clientMutationId: "interrupted",
+      actionType: "save_story_draft",
+      payload: { correction: "recover me" },
+      createdAt: new Date().toISOString(),
+      retryCount: 0,
+      userId: "user-1",
+      shopId: "shop-1",
+      status: "syncing",
+    });
+    storage.rows.set("other-shop-interrupted", {
+      clientMutationId: "other-shop-interrupted",
+      actionType: "save_story_draft",
+      payload: { correction: "leave isolated" },
+      createdAt: new Date().toISOString(),
+      retryCount: 0,
+      userId: "user-1",
+      shopId: "shop-2",
+      status: "syncing",
+    });
+    const tab = await loadTab();
+    const handler = vi.fn(async () => undefined);
+
+    expect(tab.listOfflineMutations()[0]?.status).toBe("syncing");
+    await expect(
+      tab.replayQueuedMutations({
+        scope: { userId: "user-1", shopId: "shop-1" },
+        handlers: { save_story_draft: handler },
+      }),
+    ).resolves.toEqual({ replayed: 1, failed: 0, conflicted: 0 });
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(storage.rows.get("interrupted")?.status).toBe("synced");
+    expect(storage.rows.get("other-shop-interrupted")?.status).toBe("syncing");
+    expect(replayLocks.maxActive).toBe(1);
+    expect(storage.recoveriesOutsideLock).toBe(0);
+  });
+
+  it("does not recover or replay another tab's active mutation", async () => {
+    storage.rows.set("shared-replay", {
+      clientMutationId: "shared-replay",
+      actionType: "save_story_draft",
+      payload: { correction: "one replay" },
+      createdAt: new Date().toISOString(),
+      retryCount: 0,
+      userId: "user-1",
+      shopId: "shop-1",
+      status: "queued",
+    });
+    const tabA = await loadTab();
+    const tabB = await loadTab();
+    let releaseFirstHandler: () => void = () => {};
+    const firstHandlerRelease = new Promise<void>((resolve) => {
+      releaseFirstHandler = resolve;
+    });
+    let markFirstHandlerEntered: () => void = () => {};
+    const firstHandlerEntered = new Promise<void>((resolve) => {
+      markFirstHandlerEntered = resolve;
+    });
+    const secondHandler = vi.fn(async () => undefined);
+
+    const firstReplay = tabA.replayQueuedMutations({
+      scope: { userId: "user-1", shopId: "shop-1" },
+      handlers: {
+        save_story_draft: async () => {
+          markFirstHandlerEntered();
+          await firstHandlerRelease;
+        },
+      },
+    });
+    await firstHandlerEntered;
+
+    const secondReplay = tabB.replayQueuedMutations({
+      scope: { userId: "user-1", shopId: "shop-1" },
+      handlers: { save_story_draft: secondHandler },
+    });
+    await vi.waitFor(() => expect(replayLocks.requestCount).toBe(2));
+    expect(storage.rows.get("shared-replay")?.status).toBe("syncing");
+    expect(secondHandler).not.toHaveBeenCalled();
+    expect(replayLocks.maxActive).toBe(1);
+
+    releaseFirstHandler();
+    await expect(firstReplay).resolves.toEqual({
+      replayed: 1,
+      failed: 0,
+      conflicted: 0,
+    });
+    await expect(secondReplay).resolves.toEqual({
+      replayed: 0,
+      failed: 0,
+      conflicted: 0,
+    });
+    expect(secondHandler).not.toHaveBeenCalled();
+    expect(storage.rows.get("shared-replay")?.status).toBe("synced");
+  });
+
+  it("fails closed when the browser cannot safely lock queued replay", async () => {
+    storage.rows.set("requires-lock", {
+      clientMutationId: "requires-lock",
+      actionType: "save_story_draft",
+      payload: { correction: "keep queued" },
+      createdAt: new Date().toISOString(),
+      retryCount: 0,
+      userId: "user-1",
+      shopId: "shop-1",
+      status: "queued",
+    });
+    const tab = await loadTab();
+    const handler = vi.fn(async () => undefined);
+    vi.stubGlobal("navigator", { onLine: true });
+
+    await expect(
+      tab.replayQueuedMutations({
+        scope: { userId: "user-1", shopId: "shop-1" },
+        handlers: { save_story_draft: handler },
+      }),
+    ).rejects.toThrow("Safe cross-tab offline replay is unavailable");
+    expect(handler).not.toHaveBeenCalled();
+    expect(storage.rows.get("requires-lock")?.status).toBe("queued");
   });
 
   it("applies an older successful refresh when a newer read fails", async () => {

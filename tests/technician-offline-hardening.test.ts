@@ -33,12 +33,12 @@ function mutation(
 }
 
 describe("technician offline hardening", () => {
-  it("recovers an interrupted sync as retryable after an app restart", () => {
+  it("preserves syncing state during ordinary queue restoration", () => {
     const restored = restoreOfflineMutation({
       ...mutation("restart-1", "job:punch-transition", "2026-07-16T10:00:00Z"),
       status: "syncing",
     });
-    expect(restored?.status).toBe("failed");
+    expect(restored?.status).toBe("syncing");
     expect(restored?.clientMutationId).toBe("restart-1");
   });
 
