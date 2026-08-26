@@ -35,12 +35,14 @@ on:
       - "supabase/migrations/20260824190000_restore_unconfigured_field_truck_snapshot.sql"
       - "supabase/migrations/20260824205500_align_standalone_field_configuration_authorization.sql"
       - "supabase/migrations/20260825001000_align_standalone_field_internal_configuration_authorization.sql"
+      - "supabase/migrations/20260825190000_restore_field_visit_execution_assignment.sql"
       - "features/mobile/service/fieldServiceAccessContract.ts"
       - "features/mobile/service/server/access.ts"
       - "features/shared/types/types/supabase.ts"
       - "tests/field-truck-inventory-contract.test.ts"
       - "tests/mobile-v1-productization.test.ts"
       - "tests/mobile-v1-post-merge-hardening.test.ts"
+      - "tests/field-service-visit-execution-boundary.test.ts"
       - "tests/standalone-field-owner-boundary.test.ts"
       - "tests/standalone-field-owner-truck-boundary-hotfix.test.ts"
       - "tests/field-quarantine-service-reader.test.ts"
@@ -49,6 +51,7 @@ on:
       - "tests/mobile/field-owner-truck-boundary-hotfix.runtime.sql"
       - "tests/mobile/field-owner-truck-boundary-hotfix.runner.sql"
       - "tests/mobile/field-quarantine-service-reader.runtime.sql"
+      - "tests/mobile/field-visit-execution-boundary.runtime.sql"
       - "tests/mobile/mobile-v1-fake-day.runtime.sql"
       - "tests/mobile/mobile-v1-team-dispatch.runtime.sql"
       - "tests/mobile/mobile-v1-codex-hardening.runtime.sql"
@@ -94,6 +97,7 @@ jobs:
           tests/field-truck-inventory-contract.test.ts
           tests/mobile-v1-productization.test.ts
           tests/mobile-v1-post-merge-hardening.test.ts
+          tests/field-service-visit-execution-boundary.test.ts
           tests/standalone-field-owner-boundary.test.ts
           tests/standalone-field-owner-truck-boundary-hotfix.test.ts
           tests/field-quarantine-service-reader.test.ts
@@ -141,6 +145,9 @@ jobs:
             echo "=== Field quarantine service-role reader ==="
             psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
               -f tests/mobile/field-quarantine-service-reader.runtime.sql
+            echo "=== Field Service Visit execution boundary ==="
+            psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+              -f tests/mobile/field-visit-execution-boundary.runtime.sql
             echo "=== Solo Mobile V1 fake day ==="
             psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
               -f tests/mobile/mobile-v1-fake-day.runtime.sql
