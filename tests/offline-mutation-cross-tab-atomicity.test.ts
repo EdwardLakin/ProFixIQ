@@ -23,6 +23,15 @@ type ReadBarrier = {
 const storage = vi.hoisted(() => ({
   rows: new Map<string, StoredRow>(),
   barrier: null as ReadBarrier | null,
+  blockedRead: null as
+    | {
+        started: Promise<void>;
+        markStarted: () => void;
+        promise: Promise<void>;
+        release: () => void;
+      }
+    | null,
+  failNextRead: null as Error | null,
   upsertFailure: null as Error | null,
 }));
 
@@ -73,6 +82,18 @@ vi.mock("@/features/shared/lib/offline/database", () => ({
   })),
   readStoredMutations: vi.fn(async () => {
     const snapshot = [...storage.rows.values()].map((row) => ({ ...row }));
+    const blockedRead = storage.blockedRead;
+    if (blockedRead) {
+      storage.blockedRead = null;
+      blockedRead.markStarted();
+      await blockedRead.promise;
+      return snapshot;
+    }
+    if (storage.failNextRead) {
+      const error = storage.failNextRead;
+      storage.failNextRead = null;
+      throw error;
+    }
     const barrier = storage.barrier;
     if (barrier && barrier.seen < barrier.expected) {
       barrier.seen += 1;
@@ -110,6 +131,22 @@ function armStaleReadBarrier(expected: number): void {
   storage.barrier = { expected, seen: 0, promise, release };
 }
 
+function armSingleReadBarrier(): {
+  started: Promise<void>;
+  release: () => void;
+} {
+  let markStarted: () => void = () => {};
+  let release: () => void = () => {};
+  const started = new Promise<void>((resolve) => {
+    markStarted = resolve;
+  });
+  const promise = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  storage.blockedRead = { started, markStarted, promise, release };
+  return { started, release };
+}
+
 async function loadTab() {
   vi.resetModules();
   const tab = await import("@/features/shared/lib/offline/mutations");
@@ -122,6 +159,8 @@ describe("offline mutation cross-tab atomicity", () => {
   beforeEach(() => {
     storage.rows.clear();
     storage.barrier = null;
+    storage.blockedRead = null;
+    storage.failNextRead = null;
     storage.upsertFailure = null;
     localStorage.clear();
     vi.stubGlobal("BroadcastChannel", TestBroadcastChannel);
@@ -212,5 +251,78 @@ describe("offline mutation cross-tab atomicity", () => {
     ).rejects.toThrow("IndexedDB quota exceeded");
     expect(storage.rows.get("existing")?.status).toBe("queued");
     expect(storage.rows.has("new-write")).toBe(false);
+  });
+
+  it("preserves an in-flight mutation during live storage refreshes", async () => {
+    storage.rows.set("in-flight", {
+      clientMutationId: "in-flight",
+      actionType: "save_story_draft",
+      payload: { correction: "running" },
+      createdAt: new Date().toISOString(),
+      retryCount: 0,
+      userId: "user-1",
+      shopId: "shop-1",
+      status: "queued",
+    });
+    const tab = await loadTab();
+    let releaseHandler: () => void = () => {};
+    const handlerRelease = new Promise<void>((resolve) => {
+      releaseHandler = resolve;
+    });
+    let markHandlerEntered: () => void = () => {};
+    const handlerEntered = new Promise<void>((resolve) => {
+      markHandlerEntered = resolve;
+    });
+
+    const replay = tab.replayQueuedMutations({
+      scope: { userId: "user-1", shopId: "shop-1" },
+      handlers: {
+        save_story_draft: async () => {
+          markHandlerEntered();
+          await handlerRelease;
+        },
+      },
+    });
+
+    await handlerEntered;
+    expect(tab.listOfflineMutations()[0]?.status).toBe("syncing");
+    releaseHandler();
+    await expect(replay).resolves.toEqual({
+      replayed: 1,
+      failed: 0,
+      conflicted: 0,
+    });
+  });
+
+  it("applies an older successful refresh when a newer read fails", async () => {
+    const tab = await loadTab();
+    const unsubscribe = tab.subscribeOfflineMutations(() => undefined);
+    storage.rows.set("committed-elsewhere", {
+      clientMutationId: "committed-elsewhere",
+      actionType: "save_story_draft",
+      payload: { correction: "retained" },
+      createdAt: new Date().toISOString(),
+      retryCount: 0,
+      userId: "user-1",
+      shopId: "shop-1",
+      status: "queued",
+    });
+    const blocked = armSingleReadBarrier();
+
+    window.dispatchEvent(new Event("focus"));
+    await blocked.started;
+    storage.failNextRead = new Error("temporary IndexedDB read failure");
+    window.dispatchEvent(new Event("focus"));
+    await Promise.resolve();
+    blocked.release();
+
+    await vi.waitFor(() => {
+      expect(
+        tab
+          .listOfflineMutations()
+          .some((row) => row.clientMutationId === "committed-elsewhere"),
+      ).toBe(true);
+    });
+    unsubscribe();
   });
 });

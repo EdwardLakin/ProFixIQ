@@ -65,7 +65,8 @@ const PERMANENT_STATUS_CODES = new Set([
 
 let queueCache: PendingMutation[] = [];
 let hydrationPromise: Promise<void> | null = null;
-let storageRefreshGeneration = 0;
+let storageRefreshRequestGeneration = 0;
+let storageRefreshAppliedGeneration = 0;
 let queueChannel: BroadcastChannel | null = null;
 let crossTabListenersInstalled = false;
 
@@ -330,7 +331,10 @@ export async function resolveOfflineMutationScope(
   return scope;
 }
 
-export function restoreOfflineMutation(raw: unknown): PendingMutation | null {
+export function restoreOfflineMutation(
+  raw: unknown,
+  options: { recoverInterruptedSync?: boolean } = {},
+): PendingMutation | null {
   if (!raw || typeof raw !== "object") return null;
   const item = raw as Partial<PendingMutation> & {
     id?: unknown;
@@ -353,7 +357,10 @@ export function restoreOfflineMutation(raw: unknown): PendingMutation | null {
   const parsedStatus = (
     validStatus ? item.status : "queued"
   ) as OfflineMutationStatus;
-  const status = parsedStatus === "syncing" ? "failed" : parsedStatus;
+  const status =
+    parsedStatus === "syncing" && options.recoverInterruptedSync !== false
+      ? "failed"
+      : parsedStatus;
   const missingScope = !userId || !shopId;
 
   return {
@@ -408,9 +415,12 @@ export function normalizeOfflineMutationQueue(
   );
 }
 
-function restoreStoredQueue(rows: StoredOfflineMutation[]): PendingMutation[] {
+function restoreStoredQueue(
+  rows: StoredOfflineMutation[],
+  options: { recoverInterruptedSync?: boolean } = {},
+): PendingMutation[] {
   return rows
-    .map(restoreOfflineMutation)
+    .map((row) => restoreOfflineMutation(row, options))
     .filter((item): item is PendingMutation => Boolean(item));
 }
 
@@ -431,7 +441,11 @@ function droppedSyncedMutationIds(
 
 async function loadStoredQueue(): Promise<PendingMutation[]> {
   if (!offlineMutationStorageAvailable()) return queueCache;
-  const restored = restoreStoredQueue(await readStoredMutations());
+  const liveRestoreOptions = { recoverInterruptedSync: false };
+  const restored = restoreStoredQueue(
+    await readStoredMutations(),
+    liveRestoreOptions,
+  );
   const normalized = normalizeOfflineMutationQueue(restored);
   const droppedIds = droppedSyncedMutationIds(restored, normalized);
   if (droppedIds.length === 0) return normalized;
@@ -439,7 +453,7 @@ async function loadStoredQueue(): Promise<PendingMutation[]> {
   try {
     await deleteSyncedStoredMutations({ clientMutationIds: droppedIds });
     return normalizeOfflineMutationQueue(
-      restoreStoredQueue(await readStoredMutations()),
+      restoreStoredQueue(await readStoredMutations(), liveRestoreOptions),
     );
   } catch {
     // History cleanup is best-effort. A terminal-row deletion failure must not
@@ -450,9 +464,14 @@ async function loadStoredQueue(): Promise<PendingMutation[]> {
 
 async function refreshQueueCacheFromStorage(): Promise<void> {
   if (!offlineMutationStorageAvailable()) return;
-  const generation = ++storageRefreshGeneration;
+  const generation = ++storageRefreshRequestGeneration;
   const stored = await loadStoredQueue();
-  if (generation === storageRefreshGeneration) queueCache = stored;
+  // A newer refresh supersedes this snapshot only after the newer read has
+  // succeeded. If that read fails, retain this successful committed view.
+  if (generation >= storageRefreshAppliedGeneration) {
+    queueCache = stored;
+    storageRefreshAppliedGeneration = generation;
+  }
 }
 
 function installCrossTabQueueListeners(): void {
@@ -499,7 +518,7 @@ export async function hydrateOfflineMutationQueue(): Promise<void> {
         if (Array.isArray(raw)) {
           legacy.push(
             ...raw
-              .map(restoreOfflineMutation)
+              .map((item) => restoreOfflineMutation(item))
               .filter((item): item is PendingMutation => Boolean(item)),
           );
         }
@@ -1117,14 +1136,14 @@ export async function runMutationWithOfflineQueue<T>(args: {
 }
 
 export async function clearOfflineState(): Promise<void> {
-  storageRefreshGeneration += 1;
+  storageRefreshAppliedGeneration = ++storageRefreshRequestGeneration;
   queueCache = [];
   hydrationPromise = null;
   setOfflineMutationScope(null);
   for (const key of LEGACY_KEYS) localStorage.removeItem(key);
   localStorage.removeItem(PERSISTENCE_MARKER_KEY);
   await clearOfflineDatabase();
-  storageRefreshGeneration += 1;
+  storageRefreshAppliedGeneration = ++storageRefreshRequestGeneration;
   queueCache = [];
   emitQueueUpdate({ crossTab: true });
 }
