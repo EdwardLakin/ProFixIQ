@@ -69,6 +69,10 @@ const QUEUE_REVISION_KEY = "profixiq.pending_mutations.revision.v1";
 const QUEUE_CHANNEL_NAME = "profixiq.pending_mutations.channel.v1";
 const EVENT_NAME = "offline-mutations:updated";
 const REPLAY_LOCK_PREFIX = "profixiq.offline.replay.v1";
+const REPLAY_RUN_LOCK_PREFIX = "profixiq.offline.replay-run.v1";
+const MUTATION_RUN_LOCK_PREFIX = "profixiq.offline.mutation-run.v1";
+const OFFLINE_STATE_LOCK_NAME = "profixiq.offline.state.v1";
+const QUEUE_EPOCH_KEY = "profixiq.pending_mutations.epoch.v1";
 const MAX_HISTORY = 300;
 const TERMINAL_RETENTION_MS = 1000 * 60 * 60 * 24 * 7;
 const RETRYABLE_STATUS_CODES = new Set([408, 425, 429, 500, 502, 503, 504]);
@@ -82,6 +86,12 @@ let storageRefreshRequestGeneration = 0;
 let storageRefreshAppliedGeneration = 0;
 let queueChannel: BroadcastChannel | null = null;
 let crossTabListenersInstalled = false;
+let queueLifecycleEpoch = 0;
+
+type QueueWriteEpoch = {
+  local: number;
+  shared: string;
+};
 
 type OfflinePersistenceMarker = {
   userId: string;
@@ -116,6 +126,52 @@ function browserReady(): boolean {
   }
 }
 
+function readSharedQueueEpoch(): string {
+  if (!browserReady()) return "";
+  try {
+    return localStorage.getItem(QUEUE_EPOCH_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function captureQueueWriteEpoch(): QueueWriteEpoch {
+  return {
+    local: queueLifecycleEpoch,
+    shared: readSharedQueueEpoch(),
+  };
+}
+
+function advanceQueueWriteEpoch(): void {
+  queueLifecycleEpoch += 1;
+  if (!browserReady()) return;
+  try {
+    localStorage.setItem(
+      QUEUE_EPOCH_KEY,
+      `${Date.now()}:${Math.random().toString(36).slice(2)}`,
+    );
+  } catch {
+    // The module-local epoch still fences this tab when localStorage is blocked.
+  }
+}
+
+function queueWriteEpochMatches(expected: QueueWriteEpoch): boolean {
+  return (
+    expected.local === queueLifecycleEpoch &&
+    expected.shared === readSharedQueueEpoch()
+  );
+}
+
+function assertQueueWriteEpoch(
+  expected: QueueWriteEpoch,
+  scope: OfflineMutationScope,
+): void {
+  const currentScope = getOfflineMutationScope();
+  if (!queueWriteEpochMatches(expected) || !scopeMatches(scope, currentScope)) {
+    throw new Error("Authenticated user or shop changed before this update.");
+  }
+}
+
 function emptyReplayResult(): OfflineReplayResult {
   return { replayed: 0, failed: 0, conflicted: 0 };
 }
@@ -136,6 +192,17 @@ function offlineReplayLockName(scope: OfflineMutationScope): string {
   return `${REPLAY_LOCK_PREFIX}:${scope.userId}:${scope.shopId}`;
 }
 
+function offlineReplayRunLockName(scope: OfflineMutationScope): string {
+  return `${REPLAY_RUN_LOCK_PREFIX}:${scope.userId}:${scope.shopId}`;
+}
+
+function offlineMutationRunLockName(
+  scope: OfflineMutationScope,
+  clientMutationId: string,
+): string {
+  return `${MUTATION_RUN_LOCK_PREFIX}:${scope.userId}:${scope.shopId}:${clientMutationId}`;
+}
+
 async function withOfflineMutationScopeLock<T>(
   scope: OfflineMutationScope,
   unavailableMessage: string,
@@ -144,6 +211,40 @@ async function withOfflineMutationScopeLock<T>(
   const lockManager = getOfflineReplayLockManager();
   if (!lockManager) throw new Error(unavailableMessage);
   return lockManager.request(offlineReplayLockName(scope), callback);
+}
+
+async function withOfflineReplayRunLock<T>(
+  scope: OfflineMutationScope,
+  unavailableMessage: string,
+  callback: () => Promise<T>,
+): Promise<T> {
+  const lockManager = getOfflineReplayLockManager();
+  if (!lockManager) throw new Error(unavailableMessage);
+  return lockManager.request(offlineReplayRunLockName(scope), callback);
+}
+
+async function withOfflineMutationRunLock<T>(
+  scope: OfflineMutationScope,
+  clientMutationId: string,
+  unavailableMessage: string,
+  callback: () => Promise<T>,
+): Promise<T> {
+  const lockManager = getOfflineReplayLockManager();
+  if (!lockManager) throw new Error(unavailableMessage);
+  return lockManager.request(
+    offlineMutationRunLockName(scope, clientMutationId),
+    callback,
+  );
+}
+
+async function withOfflineStateLock<T>(callback: () => Promise<T>): Promise<T> {
+  const lockManager = getOfflineReplayLockManager();
+  // Queue mutation/replay paths already fail closed without Web Locks. Keep
+  // hydration readable for online-only browsers while still serializing the
+  // clear/migration write whenever the cross-tab primitive is available.
+  return lockManager
+    ? lockManager.request(OFFLINE_STATE_LOCK_NAME, callback)
+    : callback();
 }
 
 function getQueueChannel(): BroadcastChannel | null {
@@ -234,17 +335,19 @@ export function setOfflineMutationScope(
   scope: OfflineMutationScope | null,
 ): void {
   if (!browserReady()) return;
+  const previous = getOfflineMutationScope();
+  const next =
+    scope?.userId.trim() && scope.shopId.trim()
+      ? { userId: scope.userId.trim(), shopId: scope.shopId.trim() }
+      : null;
+  if (previous?.userId !== next?.userId || previous?.shopId !== next?.shopId) {
+    advanceQueueWriteEpoch();
+  }
   try {
-    if (!scope?.userId.trim() || !scope.shopId.trim()) {
+    if (!next) {
       localStorage.removeItem(SCOPE_KEY);
     } else {
-      localStorage.setItem(
-        SCOPE_KEY,
-        JSON.stringify({
-          userId: scope.userId.trim(),
-          shopId: scope.shopId.trim(),
-        }),
-      );
+      localStorage.setItem(SCOPE_KEY, JSON.stringify(next));
     }
   } catch {
     // Scope persistence is best-effort; verified online access remains usable.
@@ -310,16 +413,29 @@ export async function resolveOfflineMutationScope(
   payload: unknown,
   supplied?: OfflineMutationScope | null,
 ): Promise<OfflineMutationScope | null> {
+  const resolutionEpoch = captureQueueWriteEpoch();
+  const cached = getOfflineMutationScope();
   if (supplied?.userId.trim() && supplied.shopId.trim()) {
     const scope = {
       userId: supplied.userId.trim(),
       shopId: supplied.shopId.trim(),
     };
+    if (scopeMatches(scope, cached)) return cached;
+
+    // A component-held scope can outlive SIGNED_OUT. Never let that stale
+    // value recreate the cleared global scope without matching the current
+    // authenticated session (and, while online, its canonical Shop).
+    const sessionMatched = await getSessionMatchedOfflineScope(scope);
+    if (
+      !sessionMatched ||
+      !queueWriteEpochMatches(resolutionEpoch)
+    ) {
+      return null;
+    }
     setOfflineMutationScope(scope);
     return scope;
   }
 
-  const cached = getOfflineMutationScope();
   const candidate = (
     payload && typeof payload === "object" ? payload : {}
   ) as ScopePayload;
@@ -370,6 +486,7 @@ export async function resolveOfflineMutationScope(
 
   if (!shopId) return null;
   const scope = { userId, shopId };
+  if (!queueWriteEpochMatches(resolutionEpoch)) return null;
   setOfflineMutationScope(scope);
   return scope;
 }
@@ -539,7 +656,7 @@ function installCrossTabQueueListeners(): void {
 export async function hydrateOfflineMutationQueue(): Promise<void> {
   if (!browserReady()) return;
   if (hydrationPromise) return hydrationPromise;
-  hydrationPromise = (async () => {
+  hydrationPromise = withOfflineStateLock(async () => {
     const stored = restoreStoredQueue(await readStoredMutations());
     const legacy: PendingMutation[] = [];
     for (const key of LEGACY_KEYS) {
@@ -573,7 +690,7 @@ export async function hydrateOfflineMutationQueue(): Promise<void> {
       for (const key of LEGACY_KEYS) localStorage.removeItem(key);
     }
     emitQueueUpdate();
-  })().catch((error) => {
+  }).catch((error) => {
     hydrationPromise = null;
     console.warn("[offline] Unable to hydrate mutation queue", error);
   });
@@ -712,12 +829,17 @@ async function upsertMutation(next: PendingMutation): Promise<void> {
   emitQueueUpdate({ crossTab: true });
 }
 
-export async function enqueueMutation<T>(
-  entry: Omit<PendingMutation<T>, "createdAt" | "retryCount" | "status"> & {
-    status?: OfflineMutationStatus;
-  },
+type EnqueueMutationEntry<T> = Omit<
+  PendingMutation<T>,
+  "createdAt" | "retryCount" | "status"
+> & {
+  status?: OfflineMutationStatus;
+};
+
+async function enqueueMutationAtEpoch<T>(
+  entry: EnqueueMutationEntry<T>,
+  expectedEpoch: QueueWriteEpoch,
 ): Promise<PendingMutation<T>> {
-  await hydrateOfflineMutationQueue();
   if (!entry.userId.trim() || !entry.shopId.trim()) {
     throw new Error("Offline mutation scope requires userId and shopId.");
   }
@@ -729,30 +851,50 @@ export async function enqueueMutation<T>(
     scope,
     "Safe cross-tab offline queue updates are unavailable in this browser.",
     async () => {
+      assertQueueWriteEpoch(expectedEpoch, scope);
       if (!offlineMutationStorageAvailable()) {
         throw new Error(
           "Durable offline storage is unavailable; saved work was not queued.",
         );
       }
       await refreshQueueCacheFromStorage();
+      assertQueueWriteEpoch(expectedEpoch, scope);
       const existing = queueCache.find(
         (item) => item.clientMutationId === entry.clientMutationId,
       );
+      // A replay handler owns its exact row until settlement. Allow unrelated
+      // queue writes to proceed, but never replace the payload currently being
+      // submitted under the same idempotency key.
+      if (existing?.status === "syncing") {
+        return existing as PendingMutation<T>;
+      }
+      const committedAt = new Date().toISOString();
+      const status = entry.status ?? "queued";
       const next: PendingMutation<T> = {
         ...entry,
         userId: scope.userId,
         shopId: scope.shopId,
-        createdAt: existing?.createdAt ?? new Date().toISOString(),
+        createdAt: existing?.createdAt ?? committedAt,
         retryCount: existing?.retryCount ?? 0,
-        status: entry.status ?? "queued",
+        status,
         lastError: entry.lastError ?? existing?.lastError,
         conflictReason: entry.conflictReason ?? existing?.conflictReason,
-        syncedAt: entry.syncedAt ?? existing?.syncedAt,
+        syncedAt:
+          status === "synced"
+            ? (entry.syncedAt ?? existing?.syncedAt ?? committedAt)
+            : (entry.syncedAt ?? existing?.syncedAt),
       };
       await upsertMutation(next);
       return next;
     },
   );
+}
+
+export async function enqueueMutation<T>(
+  entry: EnqueueMutationEntry<T>,
+): Promise<PendingMutation<T>> {
+  await hydrateOfflineMutationQueue();
+  return enqueueMutationAtEpoch(entry, captureQueueWriteEpoch());
 }
 
 async function markMutationStatus(args: {
@@ -761,12 +903,12 @@ async function markMutationStatus(args: {
   error?: string;
   conflictReason?: string;
   incrementRetry?: boolean;
-}): Promise<void> {
+}): Promise<boolean> {
   await refreshQueueCacheFromStorage();
   const existing = queueCache.find(
     (item) => item.clientMutationId === args.clientMutationId,
   );
-  if (!existing) return;
+  if (!existing) return false;
   await upsertMutation({
     ...existing,
     retryCount: args.incrementRetry
@@ -778,6 +920,7 @@ async function markMutationStatus(args: {
     syncedAt:
       args.status === "synced" ? new Date().toISOString() : existing.syncedAt,
   });
+  return true;
 }
 
 export function listPendingMutations(
@@ -834,16 +977,19 @@ export async function retryOfflineMutation(
   await hydrateOfflineMutationQueue();
   const scope = getOfflineMutationScope();
   if (!scope) return;
+  const expectedEpoch = captureQueueWriteEpoch();
   await withOfflineMutationScopeLock(
     scope,
     "Safe cross-tab offline retry is unavailable in this browser.",
     async () => {
+      assertQueueWriteEpoch(expectedEpoch, scope);
       if (!offlineMutationStorageAvailable()) {
         throw new Error(
           "Durable offline storage is unavailable; saved work was not retried.",
         );
       }
       await refreshQueueCacheFromStorage();
+      assertQueueWriteEpoch(expectedEpoch, scope);
       const mutation = queueCache.find(
         (item) =>
           item.clientMutationId === clientMutationId &&
@@ -881,16 +1027,19 @@ export async function dismissOfflineMutation(
   await hydrateOfflineMutationQueue();
   const scope = getOfflineMutationScope();
   if (!scope) return;
+  const expectedEpoch = captureQueueWriteEpoch();
   await withOfflineMutationScopeLock(
     scope,
     "Safe cross-tab offline removal is unavailable in this browser.",
     async () => {
+      assertQueueWriteEpoch(expectedEpoch, scope);
       if (!offlineMutationStorageAvailable()) {
         throw new Error(
           "Durable offline storage is unavailable; saved work was not removed.",
         );
       }
       await refreshQueueCacheFromStorage();
+      assertQueueWriteEpoch(expectedEpoch, scope);
       const mutation = queueCache.find(
         (item) =>
           item.clientMutationId === clientMutationId &&
@@ -1029,89 +1178,263 @@ export function isRetryableOfflineStatus(status: unknown): boolean {
   return Number.isFinite(parsed) && RETRYABLE_STATUS_CODES.has(parsed);
 }
 
-async function replayQueuedMutationsWhileLocked(args: {
+async function recoverInterruptedMutationScopeWhileReplayLocked(
+  scope: OfflineMutationScope,
+  expectedEpoch: QueueWriteEpoch,
+): Promise<number> {
+  return withOfflineMutationScopeLock(
+    scope,
+    "Safe cross-tab offline replay is unavailable in this browser.",
+    async () => {
+      if (
+        !queueWriteEpochMatches(expectedEpoch) ||
+        !scopeMatches(scope, getOfflineMutationScope())
+      ) {
+        return 0;
+      }
+      const recovered = await recoverInterruptedStoredMutations(scope);
+      if (recovered === null) {
+        throw new Error(
+          "Durable offline storage is unavailable; saved work was not replayed.",
+        );
+      }
+      await refreshQueueCacheFromStorage();
+      updatePersistenceMarker(queueCache);
+      if (recovered > 0) emitQueueUpdate({ crossTab: true });
+      return recovered;
+    },
+  );
+}
+
+async function findNextMutationForReplay(args: {
+  scope: OfflineMutationScope;
+  expectedEpoch: QueueWriteEpoch;
+  attempted: Set<string>;
+}): Promise<string | null> {
+  return withOfflineMutationScopeLock(
+    args.scope,
+    "Safe cross-tab offline replay is unavailable in this browser.",
+    async () => {
+      if (
+        !queueWriteEpochMatches(args.expectedEpoch) ||
+        !scopeMatches(args.scope, getOfflineMutationScope())
+      ) {
+        return null;
+      }
+      await refreshQueueCacheFromStorage();
+      const candidates = sortOfflineMutationsForReplay(
+        queueCache.filter(
+          (item) =>
+            ["queued", "failed"].includes(item.status) &&
+            scopeMatches(item, args.scope) &&
+            !args.attempted.has(item.clientMutationId),
+        ),
+      );
+
+      for (const mutation of candidates) {
+        const dependencyPending =
+          mutation.dependsOn?.some(
+            (id) =>
+              queueCache.find(
+                (item) =>
+                  item.clientMutationId === id &&
+                  scopeMatches(item, args.scope),
+              )?.status !== "synced",
+          ) ?? false;
+        if (dependencyPending) continue;
+        args.attempted.add(mutation.clientMutationId);
+        return mutation.clientMutationId;
+      }
+      return null;
+    },
+  );
+}
+
+async function claimMutationForReplay(args: {
+  scope: OfflineMutationScope;
+  expectedEpoch: QueueWriteEpoch;
+  clientMutationId: string;
+}): Promise<PendingMutation | null> {
+  return withOfflineMutationScopeLock(
+    args.scope,
+    "Safe cross-tab offline replay is unavailable in this browser.",
+    async () => {
+      if (
+        !queueWriteEpochMatches(args.expectedEpoch) ||
+        !scopeMatches(args.scope, getOfflineMutationScope())
+      ) {
+        return null;
+      }
+      const storedClaim = await claimStoredMutationForReplay({
+        clientMutationId: args.clientMutationId,
+        scope: args.scope,
+      });
+      if (storedClaim === null) {
+        throw new Error(
+          "Durable offline storage is unavailable; saved work was not replayed.",
+        );
+      }
+      if (!storedClaim) return null;
+      const claimedMutation = restoreOfflineMutation(storedClaim);
+      if (!claimedMutation || !scopeMatches(claimedMutation, args.scope)) {
+        return null;
+      }
+      await refreshQueueCacheFromStorage();
+      updatePersistenceMarker(queueCache);
+      emitQueueUpdate({ crossTab: true });
+      return claimedMutation;
+    },
+  );
+}
+
+async function settleMutationReplay(args: {
+  scope: OfflineMutationScope;
+  expectedEpoch: QueueWriteEpoch;
+  clientMutationId: string;
+  status: OfflineMutationStatus;
+  error?: string;
+  conflictReason?: string;
+  incrementRetry?: boolean;
+}): Promise<boolean> {
+  return withOfflineMutationScopeLock(
+    args.scope,
+    "Safe cross-tab offline replay is unavailable in this browser.",
+    async () => {
+      if (
+        !queueWriteEpochMatches(args.expectedEpoch) ||
+        !scopeMatches(args.scope, getOfflineMutationScope())
+      ) {
+        return false;
+      }
+      return markMutationStatus({
+        clientMutationId: args.clientMutationId,
+        status: args.status,
+        error: args.error,
+        conflictReason: args.conflictReason,
+        incrementRetry: args.incrementRetry,
+      });
+    },
+  );
+}
+
+async function replayQueuedMutationsWhileReplayLocked(args: {
   handlers: Record<string, OfflineMutationRunner>;
   scope: OfflineMutationScope;
+  expectedEpoch: QueueWriteEpoch;
 }): Promise<OfflineReplayResult> {
-  const { scope } = args;
-  await auditOfflineMutationAttachmentsWhileLocked(scope);
-  const queue = sortOfflineMutationsForReplay(
-    queueCache.filter(
-      (item) =>
-        ["queued", "failed"].includes(item.status) && scopeMatches(item, scope),
-    ),
-  );
   let replayed = 0;
   let failed = 0;
   let conflicted = 0;
+  const attempted = new Set<string>();
 
-  for (const mutation of queue) {
-    const dependencyPending =
-      mutation.dependsOn?.some(
-        (id) =>
-          queueCache.find((item) => item.clientMutationId === id)?.status !==
-          "synced",
-      ) ?? false;
-    if (dependencyPending) continue;
-    const storedClaim = await claimStoredMutationForReplay({
-      clientMutationId: mutation.clientMutationId,
-      scope,
+  while (true) {
+    const clientMutationId = await findNextMutationForReplay({
+      scope: args.scope,
+      expectedEpoch: args.expectedEpoch,
+      attempted,
     });
-    if (storedClaim === null) {
-      throw new Error(
-        "Durable offline storage is unavailable; saved work was not replayed.",
-      );
-    }
-    if (!storedClaim) continue;
-    const claimedMutation = restoreOfflineMutation(storedClaim);
-    if (!claimedMutation || !scopeMatches(claimedMutation, scope)) continue;
-    await refreshQueueCacheFromStorage();
-    updatePersistenceMarker(queueCache);
-    emitQueueUpdate({ crossTab: true });
+    if (!clientMutationId) break;
 
-    const handler = args.handlers[claimedMutation.actionType];
-    if (!handler) {
-      await markMutationStatus({
-        clientMutationId: claimedMutation.clientMutationId,
-        status: "conflicted",
-        conflictReason: `No replay handler registered for ${claimedMutation.actionType}`,
-      });
-      conflicted += 1;
-      continue;
-    }
-    try {
-      const result = await handler(claimedMutation);
-      if (result?.conflicted) {
-        await markMutationStatus({
-          clientMutationId: claimedMutation.clientMutationId,
-          status: "conflicted",
-          conflictReason: result.conflicted,
-          incrementRetry: true,
+    const outcome = await withOfflineMutationRunLock(
+      args.scope,
+      clientMutationId,
+      "Safe cross-tab offline replay is unavailable in this browser.",
+      async () => {
+        const claimedMutation = await claimMutationForReplay({
+          scope: args.scope,
+          expectedEpoch: args.expectedEpoch,
+          clientMutationId,
         });
-        conflicted += 1;
-      } else {
-        await markMutationStatus({
-          clientMutationId: claimedMutation.clientMutationId,
-          status: "synced",
-        });
-        replayed += 1;
-      }
-    } catch (error) {
-      const retryable = isRetryableOfflineError(error);
-      await markMutationStatus({
-        clientMutationId: claimedMutation.clientMutationId,
-        status: retryable ? "failed" : "conflicted",
-        error: error instanceof Error ? error.message : "Replay failed",
-        conflictReason: retryable
-          ? undefined
-          : "Server rejected this update. Review it before retrying.",
-        incrementRetry: true,
-      });
-      if (retryable) failed += 1;
-      else conflicted += 1;
-    }
+        if (!claimedMutation) return emptyReplayResult();
+
+        const handler = args.handlers[claimedMutation.actionType];
+        if (!handler) {
+          const settled = await settleMutationReplay({
+            scope: args.scope,
+            expectedEpoch: args.expectedEpoch,
+            clientMutationId: claimedMutation.clientMutationId,
+            status: "conflicted",
+            conflictReason: `No replay handler registered for ${claimedMutation.actionType}`,
+          });
+          return {
+            replayed: 0,
+            failed: 0,
+            conflicted: settled ? 1 : 0,
+          };
+        }
+        try {
+          const result = await handler(claimedMutation);
+          if (result?.conflicted) {
+            const settled = await settleMutationReplay({
+              scope: args.scope,
+              expectedEpoch: args.expectedEpoch,
+              clientMutationId: claimedMutation.clientMutationId,
+              status: "conflicted",
+              conflictReason: result.conflicted,
+              incrementRetry: true,
+            });
+            return {
+              replayed: 0,
+              failed: 0,
+              conflicted: settled ? 1 : 0,
+            };
+          }
+          const settled = await settleMutationReplay({
+            scope: args.scope,
+            expectedEpoch: args.expectedEpoch,
+            clientMutationId: claimedMutation.clientMutationId,
+            status: "synced",
+          });
+          return {
+            replayed: settled ? 1 : 0,
+            failed: 0,
+            conflicted: 0,
+          };
+        } catch (error) {
+          const retryable = isRetryableOfflineError(error);
+          const settled = await settleMutationReplay({
+            scope: args.scope,
+            expectedEpoch: args.expectedEpoch,
+            clientMutationId: claimedMutation.clientMutationId,
+            status: retryable ? "failed" : "conflicted",
+            error: error instanceof Error ? error.message : "Replay failed",
+            conflictReason: retryable
+              ? undefined
+              : "Server rejected this update. Review it before retrying.",
+            incrementRetry: true,
+          });
+          return {
+            replayed: 0,
+            failed: settled && retryable ? 1 : 0,
+            conflicted: settled && !retryable ? 1 : 0,
+          };
+        }
+      },
+    );
+    replayed += outcome.replayed;
+    failed += outcome.failed;
+    conflicted += outcome.conflicted;
   }
   return { replayed, failed, conflicted };
+}
+
+/**
+ * Recover crash-interrupted rows during lifecycle startup even while offline.
+ * The replay-only lock excludes another active handler without blocking normal
+ * enqueues, while the shorter scope lock protects the durable status rewrite.
+ */
+export async function recoverInterruptedOfflineMutations(
+  scope: OfflineMutationScope | null = getOfflineMutationScope(),
+): Promise<number> {
+  await hydrateOfflineMutationQueue();
+  if (!scope) return 0;
+  const expectedEpoch = captureQueueWriteEpoch();
+  return withOfflineReplayRunLock(
+    scope,
+    "Safe cross-tab offline recovery is unavailable in this browser.",
+    () =>
+      recoverInterruptedMutationScopeWhileReplayLocked(scope, expectedEpoch),
+  );
 }
 
 export async function replayQueuedMutations(args: {
@@ -1129,25 +1452,33 @@ export async function replayQueuedMutations(args: {
       scopeMatches(item, scope),
   );
   if (!hasReplayWork) return emptyReplayResult();
+  const expectedEpoch = captureQueueWriteEpoch();
 
-  return withOfflineMutationScopeLock(
+  return withOfflineReplayRunLock(
     scope,
     "Safe cross-tab offline replay is unavailable in this browser.",
     async () => {
-      const recovered = await recoverInterruptedStoredMutations(scope);
-      if (recovered === null) {
-        throw new Error(
-          "Durable offline storage is unavailable; saved work was not replayed.",
-        );
-      }
-      await refreshQueueCacheFromStorage();
+      await recoverInterruptedMutationScopeWhileReplayLocked(
+        scope,
+        expectedEpoch,
+      );
       // Recovery is useful even while disconnected: a crash-interrupted item
       // must become retryable/removable instead of remaining stuck as syncing.
       // The handler still never runs until the browser is online.
       if (!navigator.onLine) return emptyReplayResult();
-      return replayQueuedMutationsWhileLocked({
+      await withOfflineMutationScopeLock(
+        scope,
+        "Safe cross-tab offline replay is unavailable in this browser.",
+        async () => {
+          if (!queueWriteEpochMatches(expectedEpoch)) return;
+          await refreshQueueCacheFromStorage();
+          await auditOfflineMutationAttachmentsWhileLocked(scope);
+        },
+      );
+      return replayQueuedMutationsWhileReplayLocked({
         handlers: args.handlers,
         scope,
+        expectedEpoch,
       });
     },
   );
@@ -1166,8 +1497,11 @@ export async function runMutationWithOfflineQueue<T>(args: {
   conflictCheck?: () => Promise<string | null>;
   bestEffortOnlineHistory?: boolean;
 }): Promise<{ queued: boolean; conflicted: boolean }> {
+  const requestEpoch = captureQueueWriteEpoch();
   await hydrateOfflineMutationQueue();
-  await refreshQueueCacheFromStorage();
+  if (!queueWriteEpochMatches(requestEpoch)) {
+    throw new Error("Authenticated user or shop changed before this update.");
+  }
   const queueOnOffline = args.queueOnOffline !== false;
 
   // A feature can bind a long-running command to its mounted auth/shop epoch.
@@ -1192,97 +1526,147 @@ export async function runMutationWithOfflineQueue<T>(args: {
   if (args.validateScope && !args.validateScope(scope)) {
     throw new Error("Authenticated user or shop changed before this update.");
   }
-  const existing = queueCache.find(
-    (item) => item.clientMutationId === args.clientMutationId,
-  );
-  if (existing?.status === "synced" && scopeMatches(existing, scope)) {
-    return { queued: false, conflicted: false };
-  }
+  const expectedEpoch = captureQueueWriteEpoch();
+  assertQueueWriteEpoch(expectedEpoch, scope);
 
   const queueEntry = (
     status: OfflineMutationStatus = "queued",
     details: Pick<PendingMutation, "conflictReason"> = {},
   ) =>
-    enqueueMutation({
-      clientMutationId: args.clientMutationId,
-      actionType: args.actionType,
-      payload: args.payload,
-      userId: scope.userId,
-      shopId: scope.shopId,
-      dependsOn: args.dependsOn,
-      orderKey: args.orderKey,
-      status,
-      ...details,
-    });
+    enqueueMutationAtEpoch(
+      {
+        clientMutationId: args.clientMutationId,
+        actionType: args.actionType,
+        payload: args.payload,
+        userId: scope.userId,
+        shopId: scope.shopId,
+        dependsOn: args.dependsOn,
+        orderKey: args.orderKey,
+        status,
+        ...details,
+      },
+      expectedEpoch,
+    );
 
-  const dependencyPending =
-    args.dependsOn?.some((id) => {
-      const dependency = queueCache.find(
-        (item) => item.clientMutationId === id && scopeMatches(item, scope),
-      );
-      return Boolean(dependency && dependency.status !== "synced");
-    }) ?? false;
-
-  // A dependent command cannot bypass an earlier queued command merely because
-  // connectivity returned between taps. Keep it queued until replay has synced
-  // every predecessor in the chain.
-  if (dependencyPending) {
-    if (args.validateScope && !args.validateScope(scope)) {
-      throw new Error("Authenticated user or shop changed before this update.");
-    }
-    await queueEntry();
-    return { queued: true, conflicted: false };
-  }
-
-  if (queueOnOffline && !navigator.onLine) {
-    if (args.validateScope && !args.validateScope(scope)) {
-      throw new Error("Authenticated user or shop changed before this update.");
-    }
-    await queueEntry();
-    return { queued: true, conflicted: false };
-  }
-
-  try {
-    if (args.conflictCheck) {
-      const conflict = await args.conflictCheck();
-      if (conflict) {
-        await queueEntry("conflicted", { conflictReason: conflict });
-        return { queued: false, conflicted: true };
-      }
-    }
-    if (args.validateScope && !args.validateScope(scope)) {
-      throw new Error("Authenticated user or shop changed before this update.");
-    }
-    await args.runner();
-    if (args.bestEffortOnlineHistory) {
+  return withOfflineMutationRunLock(
+    scope,
+    args.clientMutationId,
+    "Safe cross-tab offline mutation execution is unavailable in this browser.",
+    async () => {
+      assertQueueWriteEpoch(expectedEpoch, scope);
       try {
-        await queueEntry("synced");
-      } catch {
-        // The server commit succeeded; unavailable device history must not
-        // turn an online mutation into an apparent submission failure.
+        await refreshQueueCacheFromStorage();
+      } catch (error) {
+        // A transient IndexedDB read failure must not prevent an independent
+        // canonical online command from reaching the server. Dependency order,
+        // however, may only be decided from the durable cross-tab queue.
+        if (typeof navigator === "undefined" || !navigator.onLine) throw error;
+        if (args.dependsOn?.length) {
+          throw new Error(
+            "Durable offline dependency state is unavailable; this update was not submitted.",
+          );
+        }
       }
-    } else {
-      await queueEntry("synced");
-    }
-    return { queued: false, conflicted: false };
-  } catch (error) {
-    if (queueOnOffline && isRetryableOfflineError(error)) {
-      if (args.validateScope && !args.validateScope(scope)) throw error;
-      await queueEntry();
-      return { queued: true, conflicted: false };
-    }
-    throw error;
-  }
+
+      const existing = queueCache.find(
+        (item) =>
+          item.clientMutationId === args.clientMutationId &&
+          scopeMatches(item, scope),
+      );
+      if (existing?.status === "synced") {
+        return { queued: false, conflicted: false };
+      }
+      // The per-mutation execution lock excludes an active new-protocol
+      // handler. A remaining syncing row is therefore crash-interrupted work;
+      // lifecycle recovery will make it retryable without issuing a duplicate.
+      if (existing?.status === "syncing") {
+        return { queued: true, conflicted: false };
+      }
+
+      const dependencyPending =
+        args.dependsOn?.some((id) => {
+          const dependency = queueCache.find(
+            (item) =>
+              item.clientMutationId === id && scopeMatches(item, scope),
+          );
+          return Boolean(dependency && dependency.status !== "synced");
+        }) ?? false;
+
+      // A dependent command cannot bypass an earlier queued command merely
+      // because connectivity returned between taps.
+      if (dependencyPending || (queueOnOffline && !navigator.onLine)) {
+        if (args.validateScope && !args.validateScope(scope)) {
+          throw new Error(
+            "Authenticated user or shop changed before this update.",
+          );
+        }
+        await queueEntry();
+        return { queued: true, conflicted: false };
+      }
+
+      try {
+        assertQueueWriteEpoch(expectedEpoch, scope);
+        if (args.conflictCheck) {
+          const conflict = await args.conflictCheck();
+          if (conflict) {
+            await queueEntry("conflicted", { conflictReason: conflict });
+            return { queued: false, conflicted: true };
+          }
+        }
+        if (args.validateScope && !args.validateScope(scope)) {
+          throw new Error(
+            "Authenticated user or shop changed before this update.",
+          );
+        }
+        assertQueueWriteEpoch(expectedEpoch, scope);
+        await args.runner();
+        if (args.bestEffortOnlineHistory) {
+          try {
+            await queueEntry("synced");
+          } catch {
+            // The server commit succeeded; unavailable device history must not
+            // turn an online mutation into an apparent submission failure.
+          }
+        } else {
+          await queueEntry("synced");
+        }
+        return { queued: false, conflicted: false };
+      } catch (error) {
+        if (queueOnOffline && isRetryableOfflineError(error)) {
+          if (args.validateScope && !args.validateScope(scope)) throw error;
+          await queueEntry();
+          return { queued: true, conflicted: false };
+        }
+        throw error;
+      }
+    },
+  );
 }
 
 export async function clearOfflineState(): Promise<void> {
+  const formerScope = getOfflineMutationScope();
+  // Advance before waiting for the scope lock. Any enqueue already queued
+  // behind a replay claim will observe the new epoch and abort; an enqueue
+  // already inside the lock commits before this clear and is then removed.
+  advanceQueueWriteEpoch();
   storageRefreshAppliedGeneration = ++storageRefreshRequestGeneration;
   queueCache = [];
   hydrationPromise = null;
   setOfflineMutationScope(null);
   for (const key of LEGACY_KEYS) localStorage.removeItem(key);
   localStorage.removeItem(PERSISTENCE_MARKER_KEY);
-  await clearOfflineDatabase();
+  const clearDatabase = () => clearOfflineDatabase();
+  const lockManager = getOfflineReplayLockManager();
+  await withOfflineStateLock(async () => {
+    if (formerScope && lockManager) {
+      await lockManager.request(
+        offlineReplayLockName(formerScope),
+        clearDatabase,
+      );
+    } else {
+      await clearDatabase();
+    }
+  });
   storageRefreshAppliedGeneration = ++storageRefreshRequestGeneration;
   queueCache = [];
   emitQueueUpdate({ crossTab: true });

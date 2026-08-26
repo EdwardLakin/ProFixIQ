@@ -46,10 +46,17 @@ export type OfflineDatabaseStats = {
   blobBytes: number;
 };
 
+type OfflineProtocolRecord = {
+  key: string;
+  version: number;
+  updatedAt: string;
+};
+
 class ProFixIQOfflineDatabase extends Dexie {
   mutations!: Table<StoredOfflineMutation, string>;
   snapshots!: Table<OfflineSnapshot, string>;
   blobs!: Table<OfflineBlobRecord, string>;
+  protocol!: Table<OfflineProtocolRecord, string>;
 
   constructor() {
     super("profixiq-offline-v1");
@@ -59,6 +66,26 @@ class ProFixIQOfflineDatabase extends Dexie {
       snapshots: "&key, [userId+shopId], kind, entityId, updatedAt, expiresAt",
       blobs: "&id, [userId+shopId], createdAt",
     });
+    // Version 2 is a rollout fence, not just a schema convenience. Dexie closes
+    // older v1 connections on `versionchange`, and an already-upgraded database
+    // cannot be reopened by the former full-table queue writer. That prevents a
+    // stale PWA bundle from clearing delta-written mutations after deployment.
+    this.version(2)
+      .stores({
+        mutations:
+          "&clientMutationId, [userId+shopId], status, actionType, createdAt",
+        snapshots:
+          "&key, [userId+shopId], kind, entityId, updatedAt, expiresAt",
+        blobs: "&id, [userId+shopId], createdAt",
+        protocol: "&key",
+      })
+      .upgrade(async (transaction) => {
+        await transaction.table<OfflineProtocolRecord, string>("protocol").put({
+          key: "mutation-writer",
+          version: 2,
+          updatedAt: new Date().toISOString(),
+        });
+      });
   }
 }
 

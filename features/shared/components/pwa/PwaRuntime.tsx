@@ -11,6 +11,7 @@ import {
   getOfflineSyncSummary,
   getSessionMatchedOfflineScope,
   hydrateOfflineMutationQueue,
+  recoverInterruptedOfflineMutations,
   setOfflineMutationScope,
   subscribeOfflineMutations,
 } from "@/features/shared/lib/offline/mutations";
@@ -157,7 +158,15 @@ export default function PwaRuntime() {
     window.visualViewport?.addEventListener("resize", updateViewportInsets);
     window.visualViewport?.addEventListener("scroll", updateViewportInsets);
 
-    void hydrateOfflineMutationQueue();
+    void hydrateOfflineMutationQueue()
+      .then(() => recoverInterruptedOfflineMutations())
+      .catch((cause: unknown) => {
+        setSyncBlocked(
+          cause instanceof Error
+            ? cause.message
+            : "Interrupted saved work could not be recovered.",
+        );
+      });
     void navigator.storage?.persist?.().catch(() => false);
     void clearPrivateNavigationCaches({ includeCurrent: false });
 
