@@ -52,6 +52,50 @@ type OfflineProtocolRecord = {
   updatedAt: string;
 };
 
+const OFFLINE_DATABASE_WRITE_LOCK_NAME = "profixiq.offline.state.v1";
+
+type OfflineDatabaseLockManager = {
+  request<T>(name: string, callback: () => Promise<T>): Promise<T>;
+};
+
+declare const offlineDatabaseWriteLockBrand: unique symbol;
+
+export type OfflineDatabaseWriteLock = {
+  readonly [offlineDatabaseWriteLockBrand]: true;
+};
+
+const offlineDatabaseWriteLock = {} as OfflineDatabaseWriteLock;
+
+function getOfflineDatabaseLockManager(): OfflineDatabaseLockManager | null {
+  if (typeof navigator === "undefined") return null;
+  const candidate = (
+    navigator as Navigator & {
+      locks?: { request?: unknown };
+    }
+  ).locks;
+  return candidate && typeof candidate.request === "function"
+    ? (candidate as OfflineDatabaseLockManager)
+    : null;
+}
+
+export async function withOfflineDatabaseWriteLock<T>(
+  callback: (lock: OfflineDatabaseWriteLock) => Promise<T>,
+): Promise<T> {
+  const lockManager = getOfflineDatabaseLockManager();
+  return lockManager
+    ? lockManager.request(OFFLINE_DATABASE_WRITE_LOCK_NAME, () =>
+        callback(offlineDatabaseWriteLock),
+      )
+    : callback(offlineDatabaseWriteLock);
+}
+
+function runOfflineDatabaseWrite<T>(
+  lock: OfflineDatabaseWriteLock | undefined,
+  callback: () => Promise<T>,
+): Promise<T> {
+  return lock ? callback() : withOfflineDatabaseWriteLock(() => callback());
+}
+
 class ProFixIQOfflineDatabase extends Dexie {
   mutations!: Table<StoredOfflineMutation, string>;
   snapshots!: Table<OfflineSnapshot, string>;
@@ -108,33 +152,39 @@ export function offlineMutationStorageAvailable(): boolean {
 
 export async function upsertStoredMutations(
   mutations: StoredOfflineMutation[],
+  lock?: OfflineDatabaseWriteLock,
 ): Promise<boolean> {
   const db = getDatabase();
   if (!db) return false;
-  if (mutations.length > 0) await db.mutations.bulkPut(mutations);
-  return true;
+  return runOfflineDatabaseWrite(lock, async () => {
+    if (mutations.length > 0) await db.mutations.bulkPut(mutations);
+    return true;
+  });
 }
 
 export async function insertStoredMutationsIfMissing(
   mutations: StoredOfflineMutation[],
+  lock?: OfflineDatabaseWriteLock,
 ): Promise<boolean> {
   const db = getDatabase();
   if (!db) return false;
   if (mutations.length === 0) return true;
 
-  await db.transaction("rw", db.mutations, async () => {
-    const unique = [
-      ...new Map(
-        mutations.map((row) => [row.clientMutationId, row] as const),
-      ).values(),
-    ];
-    const existing = await db.mutations.bulkGet(
-      unique.map((row) => row.clientMutationId),
-    );
-    const missing = unique.filter((_, index) => !existing[index]);
-    if (missing.length > 0) await db.mutations.bulkAdd(missing);
+  return runOfflineDatabaseWrite(lock, async () => {
+    await db.transaction("rw", db.mutations, async () => {
+      const unique = [
+        ...new Map(
+          mutations.map((row) => [row.clientMutationId, row] as const),
+        ).values(),
+      ];
+      const existing = await db.mutations.bulkGet(
+        unique.map((row) => row.clientMutationId),
+      );
+      const missing = unique.filter((_, index) => !existing[index]);
+      if (missing.length > 0) await db.mutations.bulkAdd(missing);
+    });
+    return true;
   });
-  return true;
 }
 
 /**
@@ -142,64 +192,77 @@ export async function insertStoredMutationsIfMissing(
  * lock. The read and status transition share one IndexedDB transaction so a
  * committed queue snapshot can never expose only part of the recovery.
  */
-export async function recoverInterruptedStoredMutations(scope: {
-  userId: string;
-  shopId: string;
-}): Promise<number | null> {
+export async function recoverInterruptedStoredMutations(
+  scope: {
+    userId: string;
+    shopId: string;
+  },
+  lock?: OfflineDatabaseWriteLock,
+): Promise<number | null> {
   const db = getDatabase();
   if (!db) return null;
 
-  return db.transaction("rw", db.mutations, async () => {
-    const rows = await db.mutations
-      .where("[userId+shopId]")
-      .equals([scope.userId, scope.shopId])
-      .filter((row) => row.status === "syncing")
-      .toArray();
-    if (rows.length > 0) {
-      await db.mutations.bulkPut(
-        rows.map((row) => ({ ...row, status: "failed" as const })),
-      );
-    }
-    return rows.length;
-  });
+  return runOfflineDatabaseWrite(lock, () =>
+    db.transaction("rw", db.mutations, async () => {
+      const rows = await db.mutations
+        .where("[userId+shopId]")
+        .equals([scope.userId, scope.shopId])
+        .filter((row) => row.status === "syncing")
+        .toArray();
+      if (rows.length > 0) {
+        await db.mutations.bulkPut(
+          rows.map((row) => ({ ...row, status: "failed" as const })),
+        );
+      }
+      return rows.length;
+    }),
+  );
 }
 
 /**
  * Claim the current durable mutation payload for replay. `null` means durable
  * storage is unavailable; `undefined` means the row is no longer replayable.
  */
-export async function claimStoredMutationForReplay(args: {
-  clientMutationId: string;
-  scope: { userId: string; shopId: string };
-}): Promise<StoredOfflineMutation | null | undefined> {
+export async function claimStoredMutationForReplay(
+  args: {
+    clientMutationId: string;
+    scope: { userId: string; shopId: string };
+  },
+  lock?: OfflineDatabaseWriteLock,
+): Promise<StoredOfflineMutation | null | undefined> {
   const db = getDatabase();
   if (!db) return null;
 
-  return db.transaction("rw", db.mutations, async () => {
-    const row = await db.mutations.get(args.clientMutationId);
-    if (
-      !row ||
-      row.userId !== args.scope.userId ||
-      row.shopId !== args.scope.shopId ||
-      !["queued", "failed"].includes(row.status)
-    ) {
-      return undefined;
-    }
-    const claimed: StoredOfflineMutation = { ...row, status: "syncing" };
-    await db.mutations.put(claimed);
-    return claimed;
-  });
+  return runOfflineDatabaseWrite(lock, () =>
+    db.transaction("rw", db.mutations, async () => {
+      const row = await db.mutations.get(args.clientMutationId);
+      if (
+        !row ||
+        row.userId !== args.scope.userId ||
+        row.shopId !== args.scope.shopId ||
+        !["queued", "failed"].includes(row.status)
+      ) {
+        return undefined;
+      }
+      const claimed: StoredOfflineMutation = { ...row, status: "syncing" };
+      await db.mutations.put(claimed);
+      return claimed;
+    }),
+  );
 }
 
 export async function deleteStoredMutations(
   clientMutationIds: string[],
+  lock?: OfflineDatabaseWriteLock,
 ): Promise<boolean> {
   const db = getDatabase();
   if (!db) return false;
-  if (clientMutationIds.length > 0) {
-    await db.mutations.bulkDelete([...new Set(clientMutationIds)]);
-  }
-  return true;
+  return runOfflineDatabaseWrite(lock, async () => {
+    if (clientMutationIds.length > 0) {
+      await db.mutations.bulkDelete([...new Set(clientMutationIds)]);
+    }
+    return true;
+  });
 }
 
 /**
@@ -207,36 +270,41 @@ export async function deleteStoredMutations(
  * pending. IndexedDB serializes this read-and-delete transaction with other
  * writers, and the status is rechecked inside the transaction.
  */
-export async function deleteSyncedStoredMutations(args: {
-  scope?: { userId: string; shopId: string };
-  clientMutationIds?: string[];
-}): Promise<string[] | null> {
+export async function deleteSyncedStoredMutations(
+  args: {
+    scope?: { userId: string; shopId: string };
+    clientMutationIds?: string[];
+  },
+  lock?: OfflineDatabaseWriteLock,
+): Promise<string[] | null> {
   const db = getDatabase();
   if (!db) return null;
 
-  return db.transaction("rw", db.mutations, async () => {
-    const requestedIds = args.clientMutationIds?.length
-      ? new Set(args.clientMutationIds)
-      : null;
-    const candidates = args.scope
-      ? await db.mutations
-          .where("[userId+shopId]")
-          .equals([args.scope.userId, args.scope.shopId])
-          .toArray()
-      : requestedIds
-        ? (
-            await db.mutations.bulkGet([...requestedIds])
-          ).filter((row): row is StoredOfflineMutation => Boolean(row))
-        : [];
-    const removable = candidates.filter(
-      (row) =>
-        row.status === "synced" &&
-        (!requestedIds || requestedIds.has(row.clientMutationId)),
-    );
-    const ids = removable.map((row) => row.clientMutationId);
-    if (ids.length > 0) await db.mutations.bulkDelete(ids);
-    return ids;
-  });
+  return runOfflineDatabaseWrite(lock, () =>
+    db.transaction("rw", db.mutations, async () => {
+      const requestedIds = args.clientMutationIds?.length
+        ? new Set(args.clientMutationIds)
+        : null;
+      const candidates = args.scope
+        ? await db.mutations
+            .where("[userId+shopId]")
+            .equals([args.scope.userId, args.scope.shopId])
+            .toArray()
+        : requestedIds
+          ? (await db.mutations.bulkGet([...requestedIds])).filter(
+              (row): row is StoredOfflineMutation => Boolean(row),
+            )
+          : [];
+      const removable = candidates.filter(
+        (row) =>
+          row.status === "synced" &&
+          (!requestedIds || requestedIds.has(row.clientMutationId)),
+      );
+      const ids = removable.map((row) => row.clientMutationId);
+      if (ids.length > 0) await db.mutations.bulkDelete(ids);
+      return ids;
+    }),
+  );
 }
 
 function snapshotKey(
@@ -247,34 +315,42 @@ function snapshotKey(
   return `${scope.userId}:${scope.shopId}:${kind}:${entityId}`;
 }
 
-export async function saveOfflineSnapshot<T>(args: {
-  scope: { userId: string; shopId: string };
-  kind: string;
-  entityId: string;
-  data: T;
-  maxAgeMs?: number;
-}): Promise<void> {
+export async function saveOfflineSnapshot<T>(
+  args: {
+    scope: { userId: string; shopId: string };
+    kind: string;
+    entityId: string;
+    data: T;
+    maxAgeMs?: number;
+  },
+  lock?: OfflineDatabaseWriteLock,
+): Promise<void> {
   const db = getDatabase();
   if (!db) return;
   const now = new Date();
   const maxAgeMs = args.maxAgeMs ?? 1000 * 60 * 60 * 24 * 7;
-  await db.snapshots.put({
-    key: snapshotKey(args.scope, args.kind, args.entityId),
-    kind: args.kind,
-    entityId: args.entityId,
-    userId: args.scope.userId,
-    shopId: args.scope.shopId,
-    updatedAt: now.toISOString(),
-    expiresAt: new Date(now.getTime() + maxAgeMs).toISOString(),
-    data: args.data,
-  });
+  await runOfflineDatabaseWrite(lock, () =>
+    db.snapshots.put({
+      key: snapshotKey(args.scope, args.kind, args.entityId),
+      kind: args.kind,
+      entityId: args.entityId,
+      userId: args.scope.userId,
+      shopId: args.scope.shopId,
+      updatedAt: now.toISOString(),
+      expiresAt: new Date(now.getTime() + maxAgeMs).toISOString(),
+      data: args.data,
+    }),
+  );
 }
 
-export async function getOfflineSnapshot<T>(args: {
-  scope: { userId: string; shopId: string };
-  kind: string;
-  entityId: string;
-}): Promise<OfflineSnapshot<T> | null> {
+export async function getOfflineSnapshot<T>(
+  args: {
+    scope: { userId: string; shopId: string };
+    kind: string;
+    entityId: string;
+  },
+  lock?: OfflineDatabaseWriteLock,
+): Promise<OfflineSnapshot<T> | null> {
   const db = getDatabase();
   if (!db) return null;
   const row = (await db.snapshots.get(
@@ -282,30 +358,45 @@ export async function getOfflineSnapshot<T>(args: {
   )) as OfflineSnapshot<T> | undefined;
   if (!row) return null;
   if (new Date(row.expiresAt).getTime() <= Date.now()) {
-    await db.snapshots.delete(row.key);
-    return null;
+    return runOfflineDatabaseWrite(lock, async () => {
+      const current = (await db.snapshots.get(row.key)) as
+        | OfflineSnapshot<T>
+        | undefined;
+      if (!current) return null;
+      if (new Date(current.expiresAt).getTime() > Date.now()) return current;
+      await db.snapshots.delete(current.key);
+      return null;
+    });
   }
   return row;
 }
 
-export async function removeOfflineSnapshots(args: {
-  scope: { userId: string; shopId: string };
-  kind: string;
-  entityIds: string[];
-}): Promise<void> {
+export async function removeOfflineSnapshots(
+  args: {
+    scope: { userId: string; shopId: string };
+    kind: string;
+    entityIds: string[];
+  },
+  lock?: OfflineDatabaseWriteLock,
+): Promise<void> {
   const db = getDatabase();
   if (!db || args.entityIds.length === 0) return;
-  await db.snapshots.bulkDelete(
-    args.entityIds.map((entityId) =>
-      snapshotKey(args.scope, args.kind, entityId),
+  await runOfflineDatabaseWrite(lock, () =>
+    db.snapshots.bulkDelete(
+      args.entityIds.map((entityId) =>
+        snapshotKey(args.scope, args.kind, entityId),
+      ),
     ),
   );
 }
 
-export async function listOfflineSnapshots<T>(args: {
-  scope: { userId: string; shopId: string };
-  kind: string;
-}): Promise<Array<OfflineSnapshot<T>>> {
+export async function listOfflineSnapshots<T>(
+  args: {
+    scope: { userId: string; shopId: string };
+    kind: string;
+  },
+  lock?: OfflineDatabaseWriteLock,
+): Promise<Array<OfflineSnapshot<T>>> {
   const db = getDatabase();
   if (!db) return [];
   const rows = (await db.snapshots
@@ -317,9 +408,24 @@ export async function listOfflineSnapshots<T>(args: {
   const expired = rows
     .filter((row) => new Date(row.expiresAt).getTime() <= now)
     .map((row) => row.key);
-  if (expired.length > 0) await db.snapshots.bulkDelete(expired);
+  let removedExpired = new Set<string>();
+  if (expired.length > 0) {
+    removedExpired = await runOfflineDatabaseWrite(lock, async () => {
+      const current = await db.snapshots.bulkGet(expired);
+      const stillExpired = current
+        .filter(
+          (row): row is OfflineSnapshot =>
+            row != null && new Date(row.expiresAt).getTime() <= Date.now(),
+        )
+        .map((row) => row.key);
+      if (stillExpired.length > 0) {
+        await db.snapshots.bulkDelete(stillExpired);
+      }
+      return new Set(stillExpired);
+    });
+  }
   return rows
-    .filter((row) => !expired.includes(row.key))
+    .filter((row) => !removedExpired.has(row.key))
     .sort(
       (a, b) =>
         new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
@@ -328,11 +434,12 @@ export async function listOfflineSnapshots<T>(args: {
 
 export async function saveOfflineBlob(
   record: OfflineBlobRecord,
+  lock?: OfflineDatabaseWriteLock,
 ): Promise<void> {
   const db = getDatabase();
   if (!db)
     throw new Error("Offline file storage is unavailable on this device.");
-  await db.blobs.put(record);
+  await runOfflineDatabaseWrite(lock, () => db.blobs.put(record));
 }
 
 export async function getOfflineBlob(
@@ -342,9 +449,14 @@ export async function getOfflineBlob(
   return db ? ((await db.blobs.get(id)) ?? null) : null;
 }
 
-export async function removeOfflineBlob(id: string): Promise<void> {
+export async function removeOfflineBlob(
+  id: string,
+  lock?: OfflineDatabaseWriteLock,
+): Promise<void> {
   const db = getDatabase();
-  if (db) await db.blobs.delete(id);
+  if (db) {
+    await runOfflineDatabaseWrite(lock, () => db.blobs.delete(id));
+  }
 }
 
 export async function getOfflineDatabaseStats(scope: {
@@ -367,57 +479,62 @@ export async function getOfflineDatabaseStats(scope: {
   };
 }
 
-export async function pruneOfflineDatabase(args: {
-  scope: { userId: string; shopId: string };
-  retainedBlobIds: Set<string>;
-}): Promise<{ snapshotsRemoved: number; blobsRemoved: number }> {
+export async function pruneOfflineDatabase(
+  args: {
+    scope: { userId: string; shopId: string };
+    retainedBlobIds: Set<string>;
+  },
+  lock?: OfflineDatabaseWriteLock,
+): Promise<{ snapshotsRemoved: number; blobsRemoved: number }> {
   const db = getDatabase();
   if (!db) return { snapshotsRemoved: 0, blobsRemoved: 0 };
-  const compoundScope: [string, string] = [
-    args.scope.userId,
-    args.scope.shopId,
-  ];
-  const [snapshots, blobs] = await Promise.all([
-    db.snapshots.where("[userId+shopId]").equals(compoundScope).toArray(),
-    db.blobs.where("[userId+shopId]").equals(compoundScope).toArray(),
-  ]);
-  const now = Date.now();
-  const expiredSnapshotKeys = snapshots
-    .filter((row) => new Date(row.expiresAt).getTime() <= now)
-    .map((row) => row.key);
-  const orphanBlobIds = blobs
-    .filter(
-      (row) =>
-        !args.retainedBlobIds.has(row.id) &&
-        now - new Date(row.createdAt).getTime() > 1000 * 60 * 60,
-    )
-    .map((row) => row.id);
-  await Promise.all([
-    expiredSnapshotKeys.length
-      ? db.snapshots.bulkDelete(expiredSnapshotKeys)
-      : Promise.resolve(),
-    orphanBlobIds.length
-      ? db.blobs.bulkDelete(orphanBlobIds)
-      : Promise.resolve(),
-  ]);
-  return {
-    snapshotsRemoved: expiredSnapshotKeys.length,
-    blobsRemoved: orphanBlobIds.length,
-  };
+  return runOfflineDatabaseWrite(lock, async () => {
+    const compoundScope: [string, string] = [
+      args.scope.userId,
+      args.scope.shopId,
+    ];
+    const [snapshots, blobs] = await Promise.all([
+      db.snapshots.where("[userId+shopId]").equals(compoundScope).toArray(),
+      db.blobs.where("[userId+shopId]").equals(compoundScope).toArray(),
+    ]);
+    const now = Date.now();
+    const expiredSnapshotKeys = snapshots
+      .filter((row) => new Date(row.expiresAt).getTime() <= now)
+      .map((row) => row.key);
+    const orphanBlobIds = blobs
+      .filter(
+        (row) =>
+          !args.retainedBlobIds.has(row.id) &&
+          now - new Date(row.createdAt).getTime() > 1000 * 60 * 60,
+      )
+      .map((row) => row.id);
+    await Promise.all([
+      expiredSnapshotKeys.length
+        ? db.snapshots.bulkDelete(expiredSnapshotKeys)
+        : Promise.resolve(),
+      orphanBlobIds.length
+        ? db.blobs.bulkDelete(orphanBlobIds)
+        : Promise.resolve(),
+    ]);
+    return {
+      snapshotsRemoved: expiredSnapshotKeys.length,
+      blobsRemoved: orphanBlobIds.length,
+    };
+  });
 }
 
-export async function clearOfflineDatabase(): Promise<void> {
+export async function clearOfflineDatabase(
+  lock?: OfflineDatabaseWriteLock,
+): Promise<void> {
   const db = getDatabase();
   if (!db) return;
-  await db.transaction(
-    "rw",
-    [db.mutations, db.snapshots, db.blobs],
-    async () => {
+  await runOfflineDatabaseWrite(lock, () =>
+    db.transaction("rw", [db.mutations, db.snapshots, db.blobs], async () => {
       await Promise.all([
         db.mutations.clear(),
         db.snapshots.clear(),
         db.blobs.clear(),
       ]);
-    },
+    }),
   );
 }

@@ -35,6 +35,10 @@ const storage = vi.hoisted(() => ({
 }));
 
 vi.mock("@/features/shared/lib/offline/database", () => ({
+  withOfflineDatabaseWriteLock: vi.fn(
+    async <T>(callback: (lock: object) => Promise<T>) =>
+      replayLocks.request("profixiq.offline.state.v1", () => callback({})),
+  ),
   claimStoredMutationForReplay: vi.fn(
     async (args: {
       clientMutationId: string;
@@ -367,7 +371,7 @@ describe("offline mutation cross-tab atomicity", () => {
         name.startsWith("profixiq.offline.replay.v1:"),
       ),
     ).toHaveLength(2);
-    expect(replayLocks.maxActive).toBe(1);
+    expect(replayLocks.maxActive).toBe(2);
   });
 
   it("surfaces storage failure without discarding existing pending work", async () => {
@@ -594,7 +598,7 @@ describe("offline mutation cross-tab atomicity", () => {
     expect(handler).toHaveBeenCalledTimes(1);
     expect(storage.rows.get("interrupted")?.status).toBe("synced");
     expect(storage.rows.get("other-shop-interrupted")?.status).toBe("syncing");
-    expect(replayLocks.maxActive).toBe(3);
+    expect(replayLocks.maxActive).toBe(4);
     expect(storage.recoveriesOutsideLock).toBe(0);
   });
 
@@ -621,7 +625,7 @@ describe("offline mutation cross-tab atomicity", () => {
 
     expect(storage.rows.get("offline-interrupted")?.status).toBe("failed");
     expect(storage.recoveriesOutsideLock).toBe(0);
-    expect(replayLocks.maxActive).toBe(2);
+    expect(replayLocks.maxActive).toBe(3);
     const runtime = readFileSync(
       "features/shared/components/pwa/PwaRuntime.tsx",
       "utf8",
@@ -676,7 +680,7 @@ describe("offline mutation cross-tab atomicity", () => {
     );
     expect(storage.rows.get("shared-replay")?.status).toBe("syncing");
     expect(secondHandler).not.toHaveBeenCalled();
-    expect(replayLocks.maxActive).toBe(3);
+    expect(replayLocks.maxActive).toBe(4);
 
     releaseFirstHandler();
     await expect(firstReplay).resolves.toEqual({
@@ -743,7 +747,7 @@ describe("offline mutation cross-tab atomicity", () => {
     });
     expect(storage.rows.get("corrected-retry")?.status).toBe("synced");
     expect(storage.claimsOutsideLock).toBe(0);
-    expect(replayLocks.maxActive).toBe(3);
+    expect(replayLocks.maxActive).toBe(4);
   });
 
   it("does not replay a mutation dismissed ahead of a snapshotted replay", async () => {
@@ -791,7 +795,7 @@ describe("offline mutation cross-tab atomicity", () => {
     expect(handler).not.toHaveBeenCalled();
     expect(storage.rows.has("dismissed-before-claim")).toBe(false);
     expect(storage.claimsOutsideLock).toBe(0);
-    expect(replayLocks.maxActive).toBe(2);
+    expect(replayLocks.maxActive).toBe(3);
   });
 
   it("fails closed when the browser cannot safely lock queued replay", async () => {
@@ -884,7 +888,7 @@ describe("offline mutation cross-tab atomicity", () => {
     await vi.waitFor(() =>
       expect(
         replayLocks.requestedNames.filter(
-          (name) => name === "profixiq.offline.replay.v1:user-1:shop-1",
+          (name) => name === "profixiq.offline.state.v1",
         ),
       ).toHaveLength(3),
     );
@@ -901,6 +905,48 @@ describe("offline mutation cross-tab atomicity", () => {
     expect(
       localStorage.getItem("profixiq.pending_mutations.scope.v1"),
     ).toBeNull();
+  });
+
+  it("preserves a new-session enqueue that starts while sign-out clear is waiting", async () => {
+    const tab = await loadTab();
+    const heldLock = await holdScopeReplayLock();
+    const stateRequestsBefore = replayLocks.requestedNames.filter(
+      (name) => name === "profixiq.offline.state.v1",
+    ).length;
+
+    const clearing = tab.clearOfflineState();
+    await vi.waitFor(() =>
+      expect(replayLocks.activeNames).toContain("profixiq.offline.state.v1"),
+    );
+
+    tab.setOfflineMutationScope({ userId: "user-2", shopId: "shop-2" });
+    const enqueuing = tab.enqueueMutation({
+      clientMutationId: "new-session-during-clear",
+      actionType: "save_story_draft",
+      payload: { correction: "must survive" },
+      userId: "user-2",
+      shopId: "shop-2",
+    });
+    await vi.waitFor(() =>
+      expect(
+        replayLocks.requestedNames.filter(
+          (name) => name === "profixiq.offline.state.v1",
+        ).length,
+      ).toBeGreaterThan(stateRequestsBefore + 1),
+    );
+    expect(storage.rows.has("new-session-during-clear")).toBe(false);
+
+    heldLock.release();
+    await heldLock.completion;
+    await clearing;
+    await enqueuing;
+
+    expect(storage.rows.get("new-session-during-clear")).toMatchObject({
+      userId: "user-2",
+      shopId: "shop-2",
+      status: "queued",
+    });
+    expect(replayLocks.maxActive).toBeGreaterThanOrEqual(2);
   });
 
   it("invalidates a wrapper call when sign-out occurs during hydration", async () => {
@@ -961,9 +1007,7 @@ describe("offline mutation cross-tab atomicity", () => {
     await clearing;
 
     expect(storage.rows.has("legacy-before-clear")).toBe(false);
-    expect(
-      localStorage.getItem("profixiq.pending_mutations.v3"),
-    ).toBeNull();
+    expect(localStorage.getItem("profixiq.pending_mutations.v3")).toBeNull();
     expect(tab.listOfflineMutations()).toEqual([]);
   });
 
@@ -1003,7 +1047,7 @@ describe("offline mutation cross-tab atomicity", () => {
       correction: "retained",
     });
     expect(storage.rows.has("new-without-storage")).toBe(false);
-    expect(replayLocks.maxActive).toBe(1);
+    expect(replayLocks.maxActive).toBe(2);
   });
 
   it("applies an older successful refresh when a newer read fails", async () => {

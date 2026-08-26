@@ -14,6 +14,8 @@ import {
   recoverInterruptedStoredMutations,
   removeOfflineBlob,
   upsertStoredMutations,
+  withOfflineDatabaseWriteLock,
+  type OfflineDatabaseWriteLock,
   type StoredOfflineMutation,
 } from "@/features/shared/lib/offline/database";
 import { checkOfflineReplaySession } from "@/features/shared/lib/offline/session";
@@ -71,7 +73,6 @@ const EVENT_NAME = "offline-mutations:updated";
 const REPLAY_LOCK_PREFIX = "profixiq.offline.replay.v1";
 const REPLAY_RUN_LOCK_PREFIX = "profixiq.offline.replay-run.v1";
 const MUTATION_RUN_LOCK_PREFIX = "profixiq.offline.mutation-run.v1";
-const OFFLINE_STATE_LOCK_NAME = "profixiq.offline.state.v1";
 const QUEUE_EPOCH_KEY = "profixiq.pending_mutations.epoch.v1";
 const MAX_HISTORY = 300;
 const TERMINAL_RETENTION_MS = 1000 * 60 * 60 * 24 * 7;
@@ -237,14 +238,22 @@ async function withOfflineMutationRunLock<T>(
   );
 }
 
-async function withOfflineStateLock<T>(callback: () => Promise<T>): Promise<T> {
-  const lockManager = getOfflineReplayLockManager();
-  // Queue mutation/replay paths already fail closed without Web Locks. Keep
-  // hydration readable for online-only browsers while still serializing the
-  // clear/migration write whenever the cross-tab primitive is available.
-  return lockManager
-    ? lockManager.request(OFFLINE_STATE_LOCK_NAME, callback)
-    : callback();
+function withOfflineStateLock<T>(
+  callback: (lock: OfflineDatabaseWriteLock) => Promise<T>,
+): Promise<T> {
+  return withOfflineDatabaseWriteLock(callback);
+}
+
+function withOfflineStateAndScopeLock<T>(
+  scope: OfflineMutationScope,
+  unavailableMessage: string,
+  callback: (lock: OfflineDatabaseWriteLock) => Promise<T>,
+): Promise<T> {
+  return withOfflineStateLock((lock) =>
+    withOfflineMutationScopeLock(scope, unavailableMessage, () =>
+      callback(lock),
+    ),
+  );
 }
 
 function getQueueChannel(): BroadcastChannel | null {
@@ -426,10 +435,7 @@ export async function resolveOfflineMutationScope(
     // value recreate the cleared global scope without matching the current
     // authenticated session (and, while online, its canonical Shop).
     const sessionMatched = await getSessionMatchedOfflineScope(scope);
-    if (
-      !sessionMatched ||
-      !queueWriteEpochMatches(resolutionEpoch)
-    ) {
+    if (!sessionMatched || !queueWriteEpochMatches(resolutionEpoch)) {
       return null;
     }
     setOfflineMutationScope(scope);
@@ -564,8 +570,7 @@ export function normalizeOfflineMutationQueue(
   );
   return retained.filter(
     (item) =>
-      item.status !== "synced" ||
-      retainedSyncedIds.has(item.clientMutationId),
+      item.status !== "synced" || retainedSyncedIds.has(item.clientMutationId),
   );
 }
 
@@ -579,9 +584,7 @@ function droppedSyncedMutationIds(
   source: PendingMutation[],
   normalized: PendingMutation[],
 ): string[] {
-  const retainedIds = new Set(
-    normalized.map((item) => item.clientMutationId),
-  );
+  const retainedIds = new Set(normalized.map((item) => item.clientMutationId));
   return source
     .filter(
       (item) =>
@@ -590,7 +593,9 @@ function droppedSyncedMutationIds(
     .map((item) => item.clientMutationId);
 }
 
-async function loadStoredQueue(): Promise<PendingMutation[]> {
+async function loadStoredQueue(
+  lock?: OfflineDatabaseWriteLock,
+): Promise<PendingMutation[]> {
   if (!offlineMutationStorageAvailable()) return queueCache;
   const restored = restoreStoredQueue(await readStoredMutations());
   const normalized = normalizeOfflineMutationQueue(restored);
@@ -598,7 +603,7 @@ async function loadStoredQueue(): Promise<PendingMutation[]> {
   if (droppedIds.length === 0) return normalized;
 
   try {
-    await deleteSyncedStoredMutations({ clientMutationIds: droppedIds });
+    await deleteSyncedStoredMutations({ clientMutationIds: droppedIds }, lock);
     return normalizeOfflineMutationQueue(
       restoreStoredQueue(await readStoredMutations()),
     );
@@ -609,10 +614,12 @@ async function loadStoredQueue(): Promise<PendingMutation[]> {
   }
 }
 
-async function refreshQueueCacheFromStorage(): Promise<void> {
+async function refreshQueueCacheFromStorage(
+  lock?: OfflineDatabaseWriteLock,
+): Promise<void> {
   if (!offlineMutationStorageAvailable()) return;
   const generation = ++storageRefreshRequestGeneration;
-  const stored = await loadStoredQueue();
+  const stored = await loadStoredQueue(lock);
   // A newer refresh supersedes this snapshot only after the newer read has
   // succeeded. If that read fails, retain this successful committed view.
   if (generation >= storageRefreshAppliedGeneration) {
@@ -656,7 +663,7 @@ function installCrossTabQueueListeners(): void {
 export async function hydrateOfflineMutationQueue(): Promise<void> {
   if (!browserReady()) return;
   if (hydrationPromise) return hydrationPromise;
-  hydrationPromise = withOfflineStateLock(async () => {
+  hydrationPromise = withOfflineStateLock(async (lock) => {
     const stored = restoreStoredQueue(await readStoredMutations());
     const legacy: PendingMutation[] = [];
     for (const key of LEGACY_KEYS) {
@@ -681,12 +688,18 @@ export async function hydrateOfflineMutationQueue(): Promise<void> {
     );
     const combined = [...stored, ...legacyToPersist];
     queueCache = normalizeOfflineMutationQueue(combined);
-    const persisted = await insertStoredMutationsIfMissing(legacyToPersist);
-    await deleteSyncedStoredMutations({
-      clientMutationIds: droppedSyncedMutationIds(combined, queueCache),
-    });
+    const persisted = await insertStoredMutationsIfMissing(
+      legacyToPersist,
+      lock,
+    );
+    await deleteSyncedStoredMutations(
+      {
+        clientMutationIds: droppedSyncedMutationIds(combined, queueCache),
+      },
+      lock,
+    );
     if (persisted) {
-      await refreshQueueCacheFromStorage();
+      await refreshQueueCacheFromStorage(lock);
       for (const key of LEGACY_KEYS) localStorage.removeItem(key);
     }
     emitQueueUpdate();
@@ -709,9 +722,9 @@ export async function getOfflinePersistenceHealth(
   const marker = readPersistenceMarker();
   const matches = Boolean(
     scope &&
-      marker &&
-      marker.userId === scope.userId &&
-      marker.shopId === scope.shopId,
+    marker &&
+    marker.userId === scope.userId &&
+    marker.shopId === scope.shopId,
   );
   const expectedPendingMutations = matches ? marker!.pendingMutations : 0;
   const expectedPendingAttachments = matches ? marker!.pendingAttachments : 0;
@@ -726,6 +739,7 @@ export async function getOfflinePersistenceHealth(
 
 async function auditOfflineMutationAttachmentsWhileLocked(
   scope: OfflineMutationScope,
+  lock: OfflineDatabaseWriteLock,
 ): Promise<OfflineAttachmentAudit> {
   const attachments = queueCache.filter(
     (item) =>
@@ -741,13 +755,13 @@ async function auditOfflineMutationAttachmentsWhileLocked(
     const record = blobId ? await getOfflineBlob(blobId) : null;
     const scopeMismatch = Boolean(
       record &&
-        (record.userId !== mutation.userId || record.shopId !== mutation.shopId),
+      (record.userId !== mutation.userId || record.shopId !== mutation.shopId),
     );
     const invalidBlob = Boolean(
       record &&
-        (!record.blob ||
-          typeof record.blob.size !== "number" ||
-          record.blob.size <= 0),
+      (!record.blob ||
+        typeof record.blob.size !== "number" ||
+        record.blob.size <= 0),
     );
     const reason = !blobId
       ? "The staged file reference is missing. Capture the photo again, then remove this update."
@@ -765,11 +779,14 @@ async function auditOfflineMutationAttachmentsWhileLocked(
       mutation.status !== "conflicted" ||
       mutation.conflictReason !== reason
     ) {
-      await markMutationStatus({
-        clientMutationId: mutation.clientMutationId,
-        status: "conflicted",
-        conflictReason: reason,
-      });
+      await markMutationStatus(
+        {
+          clientMutationId: mutation.clientMutationId,
+          status: "conflicted",
+          conflictReason: reason,
+        },
+        lock,
+      );
     }
   }
   return { checked: attachments.length, missing, invalid };
@@ -780,17 +797,17 @@ export async function auditOfflineMutationAttachments(
 ): Promise<OfflineAttachmentAudit> {
   await hydrateOfflineMutationQueue();
   if (!scope) return { checked: 0, missing: 0, invalid: 0 };
-  return withOfflineMutationScopeLock(
+  return withOfflineStateAndScopeLock(
     scope,
     "Safe cross-tab offline attachment checks are unavailable in this browser.",
-    async () => {
+    async (lock) => {
       if (!offlineMutationStorageAvailable()) {
         throw new Error(
           "Durable offline storage is unavailable; staged files were not changed.",
         );
       }
-      await refreshQueueCacheFromStorage();
-      return auditOfflineMutationAttachmentsWhileLocked(scope);
+      await refreshQueueCacheFromStorage(lock);
+      return auditOfflineMutationAttachmentsWhileLocked(scope, lock);
     },
   );
 }
@@ -807,7 +824,10 @@ export function sortOfflineMutationsForReplay(
   });
 }
 
-async function upsertMutation(next: PendingMutation): Promise<void> {
+async function upsertMutation(
+  next: PendingMutation,
+  lock: OfflineDatabaseWriteLock,
+): Promise<void> {
   const localQueue = [...queueCache];
   const localIndex = localQueue.findIndex(
     (item) => item.clientMutationId === next.clientMutationId,
@@ -815,10 +835,10 @@ async function upsertMutation(next: PendingMutation): Promise<void> {
   if (localIndex >= 0) localQueue[localIndex] = next;
   else localQueue.push(next);
   const localNormalized = normalizeOfflineMutationQueue(localQueue);
-  const persisted = await upsertStoredMutations([next]);
+  const persisted = await upsertStoredMutations([next], lock);
   if (persisted) {
     try {
-      await refreshQueueCacheFromStorage();
+      await refreshQueueCacheFromStorage(lock);
     } catch {
       queueCache = localNormalized;
     }
@@ -847,17 +867,17 @@ async function enqueueMutationAtEpoch<T>(
     userId: entry.userId.trim(),
     shopId: entry.shopId.trim(),
   };
-  return withOfflineMutationScopeLock(
+  return withOfflineStateAndScopeLock(
     scope,
     "Safe cross-tab offline queue updates are unavailable in this browser.",
-    async () => {
+    async (lock) => {
       assertQueueWriteEpoch(expectedEpoch, scope);
       if (!offlineMutationStorageAvailable()) {
         throw new Error(
           "Durable offline storage is unavailable; saved work was not queued.",
         );
       }
-      await refreshQueueCacheFromStorage();
+      await refreshQueueCacheFromStorage(lock);
       assertQueueWriteEpoch(expectedEpoch, scope);
       const existing = queueCache.find(
         (item) => item.clientMutationId === entry.clientMutationId,
@@ -884,7 +904,7 @@ async function enqueueMutationAtEpoch<T>(
             ? (entry.syncedAt ?? existing?.syncedAt ?? committedAt)
             : (entry.syncedAt ?? existing?.syncedAt),
       };
-      await upsertMutation(next);
+      await upsertMutation(next, lock);
       return next;
     },
   );
@@ -897,29 +917,35 @@ export async function enqueueMutation<T>(
   return enqueueMutationAtEpoch(entry, captureQueueWriteEpoch());
 }
 
-async function markMutationStatus(args: {
-  clientMutationId: string;
-  status: OfflineMutationStatus;
-  error?: string;
-  conflictReason?: string;
-  incrementRetry?: boolean;
-}): Promise<boolean> {
-  await refreshQueueCacheFromStorage();
+async function markMutationStatus(
+  args: {
+    clientMutationId: string;
+    status: OfflineMutationStatus;
+    error?: string;
+    conflictReason?: string;
+    incrementRetry?: boolean;
+  },
+  lock: OfflineDatabaseWriteLock,
+): Promise<boolean> {
+  await refreshQueueCacheFromStorage(lock);
   const existing = queueCache.find(
     (item) => item.clientMutationId === args.clientMutationId,
   );
   if (!existing) return false;
-  await upsertMutation({
-    ...existing,
-    retryCount: args.incrementRetry
-      ? existing.retryCount + 1
-      : existing.retryCount,
-    status: args.status,
-    lastError: args.error,
-    conflictReason: args.conflictReason,
-    syncedAt:
-      args.status === "synced" ? new Date().toISOString() : existing.syncedAt,
-  });
+  await upsertMutation(
+    {
+      ...existing,
+      retryCount: args.incrementRetry
+        ? existing.retryCount + 1
+        : existing.retryCount,
+      status: args.status,
+      lastError: args.error,
+      conflictReason: args.conflictReason,
+      syncedAt:
+        args.status === "synced" ? new Date().toISOString() : existing.syncedAt,
+    },
+    lock,
+  );
   return true;
 }
 
@@ -978,17 +1004,17 @@ export async function retryOfflineMutation(
   const scope = getOfflineMutationScope();
   if (!scope) return;
   const expectedEpoch = captureQueueWriteEpoch();
-  await withOfflineMutationScopeLock(
+  await withOfflineStateAndScopeLock(
     scope,
     "Safe cross-tab offline retry is unavailable in this browser.",
-    async () => {
+    async (lock) => {
       assertQueueWriteEpoch(expectedEpoch, scope);
       if (!offlineMutationStorageAvailable()) {
         throw new Error(
           "Durable offline storage is unavailable; saved work was not retried.",
         );
       }
-      await refreshQueueCacheFromStorage();
+      await refreshQueueCacheFromStorage(lock);
       assertQueueWriteEpoch(expectedEpoch, scope);
       const mutation = queueCache.find(
         (item) =>
@@ -1002,21 +1028,24 @@ export async function retryOfflineMutation(
       ) {
         return;
       }
-      await upsertMutation({
-        ...mutation,
-        payload:
-          payloadPatch &&
-          mutation.payload &&
-          typeof mutation.payload === "object"
-            ? {
-                ...(mutation.payload as Record<string, unknown>),
-                ...payloadPatch,
-              }
-            : mutation.payload,
-        status: "queued",
-        lastError: undefined,
-        conflictReason: undefined,
-      });
+      await upsertMutation(
+        {
+          ...mutation,
+          payload:
+            payloadPatch &&
+            mutation.payload &&
+            typeof mutation.payload === "object"
+              ? {
+                  ...(mutation.payload as Record<string, unknown>),
+                  ...payloadPatch,
+                }
+              : mutation.payload,
+          status: "queued",
+          lastError: undefined,
+          conflictReason: undefined,
+        },
+        lock,
+      );
     },
   );
 }
@@ -1028,17 +1057,17 @@ export async function dismissOfflineMutation(
   const scope = getOfflineMutationScope();
   if (!scope) return;
   const expectedEpoch = captureQueueWriteEpoch();
-  await withOfflineMutationScopeLock(
+  await withOfflineStateAndScopeLock(
     scope,
     "Safe cross-tab offline removal is unavailable in this browser.",
-    async () => {
+    async (lock) => {
       assertQueueWriteEpoch(expectedEpoch, scope);
       if (!offlineMutationStorageAvailable()) {
         throw new Error(
           "Durable offline storage is unavailable; saved work was not removed.",
         );
       }
-      await refreshQueueCacheFromStorage();
+      await refreshQueueCacheFromStorage(lock);
       assertQueueWriteEpoch(expectedEpoch, scope);
       const mutation = queueCache.find(
         (item) =>
@@ -1055,14 +1084,14 @@ export async function dismissOfflineMutation(
       if (dependent) {
         throw new Error("Remove the dependent offline update first.");
       }
-      const persisted = await deleteStoredMutations([clientMutationId]);
+      const persisted = await deleteStoredMutations([clientMutationId], lock);
       if (!persisted) {
         throw new Error(
           "Durable offline storage is unavailable; saved work was not removed.",
         );
       }
       try {
-        await refreshQueueCacheFromStorage();
+        await refreshQueueCacheFromStorage(lock);
       } catch {
         queueCache = queueCache.filter(
           (item) => item.clientMutationId !== clientMutationId,
@@ -1074,7 +1103,7 @@ export async function dismissOfflineMutation(
       ) {
         const payload = mutation.payload as { blobId?: unknown } | null;
         if (typeof payload?.blobId === "string") {
-          await removeOfflineBlob(payload.blobId);
+          await removeOfflineBlob(payload.blobId, lock);
         }
       }
       updatePersistenceMarker(queueCache);
@@ -1085,26 +1114,31 @@ export async function dismissOfflineMutation(
 
 export async function clearSyncedOfflineMutations(): Promise<void> {
   await hydrateOfflineMutationQueue();
-  await refreshQueueCacheFromStorage();
-  const scope = getOfflineMutationScope();
-  const removed = await deleteSyncedStoredMutations({
-    scope: scope ?? undefined,
-  });
-  if (removed !== null) {
-    try {
-      await refreshQueueCacheFromStorage();
-    } catch {
+  await withOfflineStateLock(async (lock) => {
+    await refreshQueueCacheFromStorage(lock);
+    const scope = getOfflineMutationScope();
+    const removed = await deleteSyncedStoredMutations(
+      {
+        scope: scope ?? undefined,
+      },
+      lock,
+    );
+    if (removed !== null) {
+      try {
+        await refreshQueueCacheFromStorage(lock);
+      } catch {
+        queueCache = queueCache.filter(
+          (item) => item.status !== "synced" || !scopeMatches(item, scope),
+        );
+      }
+    } else {
       queueCache = queueCache.filter(
         (item) => item.status !== "synced" || !scopeMatches(item, scope),
       );
     }
-  } else {
-    queueCache = queueCache.filter(
-      (item) => item.status !== "synced" || !scopeMatches(item, scope),
-    );
-  }
-  updatePersistenceMarker(queueCache);
-  emitQueueUpdate({ crossTab: true });
+    updatePersistenceMarker(queueCache);
+    emitQueueUpdate({ crossTab: true });
+  });
 }
 
 export async function pruneOfflineState(): Promise<{
@@ -1182,23 +1216,23 @@ async function recoverInterruptedMutationScopeWhileReplayLocked(
   scope: OfflineMutationScope,
   expectedEpoch: QueueWriteEpoch,
 ): Promise<number> {
-  return withOfflineMutationScopeLock(
+  return withOfflineStateAndScopeLock(
     scope,
     "Safe cross-tab offline replay is unavailable in this browser.",
-    async () => {
+    async (lock) => {
       if (
         !queueWriteEpochMatches(expectedEpoch) ||
         !scopeMatches(scope, getOfflineMutationScope())
       ) {
         return 0;
       }
-      const recovered = await recoverInterruptedStoredMutations(scope);
+      const recovered = await recoverInterruptedStoredMutations(scope, lock);
       if (recovered === null) {
         throw new Error(
           "Durable offline storage is unavailable; saved work was not replayed.",
         );
       }
-      await refreshQueueCacheFromStorage();
+      await refreshQueueCacheFromStorage(lock);
       updatePersistenceMarker(queueCache);
       if (recovered > 0) emitQueueUpdate({ crossTab: true });
       return recovered;
@@ -1211,17 +1245,17 @@ async function findNextMutationForReplay(args: {
   expectedEpoch: QueueWriteEpoch;
   attempted: Set<string>;
 }): Promise<string | null> {
-  return withOfflineMutationScopeLock(
+  return withOfflineStateAndScopeLock(
     args.scope,
     "Safe cross-tab offline replay is unavailable in this browser.",
-    async () => {
+    async (lock) => {
       if (
         !queueWriteEpochMatches(args.expectedEpoch) ||
         !scopeMatches(args.scope, getOfflineMutationScope())
       ) {
         return null;
       }
-      await refreshQueueCacheFromStorage();
+      await refreshQueueCacheFromStorage(lock);
       const candidates = sortOfflineMutationsForReplay(
         queueCache.filter(
           (item) =>
@@ -1255,20 +1289,23 @@ async function claimMutationForReplay(args: {
   expectedEpoch: QueueWriteEpoch;
   clientMutationId: string;
 }): Promise<PendingMutation | null> {
-  return withOfflineMutationScopeLock(
+  return withOfflineStateAndScopeLock(
     args.scope,
     "Safe cross-tab offline replay is unavailable in this browser.",
-    async () => {
+    async (lock) => {
       if (
         !queueWriteEpochMatches(args.expectedEpoch) ||
         !scopeMatches(args.scope, getOfflineMutationScope())
       ) {
         return null;
       }
-      const storedClaim = await claimStoredMutationForReplay({
-        clientMutationId: args.clientMutationId,
-        scope: args.scope,
-      });
+      const storedClaim = await claimStoredMutationForReplay(
+        {
+          clientMutationId: args.clientMutationId,
+          scope: args.scope,
+        },
+        lock,
+      );
       if (storedClaim === null) {
         throw new Error(
           "Durable offline storage is unavailable; saved work was not replayed.",
@@ -1279,7 +1316,7 @@ async function claimMutationForReplay(args: {
       if (!claimedMutation || !scopeMatches(claimedMutation, args.scope)) {
         return null;
       }
-      await refreshQueueCacheFromStorage();
+      await refreshQueueCacheFromStorage(lock);
       updatePersistenceMarker(queueCache);
       emitQueueUpdate({ crossTab: true });
       return claimedMutation;
@@ -1296,23 +1333,26 @@ async function settleMutationReplay(args: {
   conflictReason?: string;
   incrementRetry?: boolean;
 }): Promise<boolean> {
-  return withOfflineMutationScopeLock(
+  return withOfflineStateAndScopeLock(
     args.scope,
     "Safe cross-tab offline replay is unavailable in this browser.",
-    async () => {
+    async (lock) => {
       if (
         !queueWriteEpochMatches(args.expectedEpoch) ||
         !scopeMatches(args.scope, getOfflineMutationScope())
       ) {
         return false;
       }
-      return markMutationStatus({
-        clientMutationId: args.clientMutationId,
-        status: args.status,
-        error: args.error,
-        conflictReason: args.conflictReason,
-        incrementRetry: args.incrementRetry,
-      });
+      return markMutationStatus(
+        {
+          clientMutationId: args.clientMutationId,
+          status: args.status,
+          error: args.error,
+          conflictReason: args.conflictReason,
+          incrementRetry: args.incrementRetry,
+        },
+        lock,
+      );
     },
   );
 }
@@ -1466,13 +1506,13 @@ export async function replayQueuedMutations(args: {
       // must become retryable/removable instead of remaining stuck as syncing.
       // The handler still never runs until the browser is online.
       if (!navigator.onLine) return emptyReplayResult();
-      await withOfflineMutationScopeLock(
+      await withOfflineStateAndScopeLock(
         scope,
         "Safe cross-tab offline replay is unavailable in this browser.",
-        async () => {
+        async (lock) => {
           if (!queueWriteEpochMatches(expectedEpoch)) return;
-          await refreshQueueCacheFromStorage();
-          await auditOfflineMutationAttachmentsWhileLocked(scope);
+          await refreshQueueCacheFromStorage(lock);
+          await auditOfflineMutationAttachmentsWhileLocked(scope, lock);
         },
       );
       return replayQueuedMutationsWhileReplayLocked({
@@ -1586,8 +1626,7 @@ export async function runMutationWithOfflineQueue<T>(args: {
       const dependencyPending =
         args.dependsOn?.some((id) => {
           const dependency = queueCache.find(
-            (item) =>
-              item.clientMutationId === id && scopeMatches(item, scope),
+            (item) => item.clientMutationId === id && scopeMatches(item, scope),
           );
           return Boolean(dependency && dependency.status !== "synced");
         }) ?? false;
@@ -1655,19 +1694,22 @@ export async function clearOfflineState(): Promise<void> {
   setOfflineMutationScope(null);
   for (const key of LEGACY_KEYS) localStorage.removeItem(key);
   localStorage.removeItem(PERSISTENCE_MARKER_KEY);
-  const clearDatabase = () => clearOfflineDatabase();
+  const clearDatabase = (lock: OfflineDatabaseWriteLock) =>
+    clearOfflineDatabase(lock);
   const lockManager = getOfflineReplayLockManager();
-  await withOfflineStateLock(async () => {
+  await withOfflineStateLock(async (lock) => {
     if (formerScope && lockManager) {
-      await lockManager.request(
-        offlineReplayLockName(formerScope),
-        clearDatabase,
+      await lockManager.request(offlineReplayLockName(formerScope), () =>
+        clearDatabase(lock),
       );
     } else {
-      await clearDatabase();
+      await clearDatabase(lock);
     }
+    // Keep the final in-memory reset inside the same write lock. A newly
+    // authenticated writer can only begin after both durable and cached state
+    // from the former session have been cleared.
+    storageRefreshAppliedGeneration = ++storageRefreshRequestGeneration;
+    queueCache = [];
+    emitQueueUpdate({ crossTab: true });
   });
-  storageRefreshAppliedGeneration = ++storageRefreshRequestGeneration;
-  queueCache = [];
-  emitQueueUpdate({ crossTab: true });
 }
