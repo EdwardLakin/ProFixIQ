@@ -12,6 +12,9 @@ const repairedBoundary = read(
 const runtime = read(
   "tests/mobile/field-visit-execution-boundary.runtime.sql",
 );
+const lockingRuntime = read(
+  "tests/mobile/field-visit-execution-locking.runtime.sh",
+);
 
 describe("Field Service Visit execution boundary", () => {
   it("restores manager-or-assigned execution without weakening Field access", () => {
@@ -23,13 +26,20 @@ describe("Field Service Visit execution boundary", () => {
     );
     expect(repairedBoundary).toContain("public.dispatch_can_manage");
     expect(repairedBoundary).toContain(
-      "assigned_profile.id = visit.assigned_user_id",
+      "assigned_profile.id = p_assigned_user_id",
     );
     expect(repairedBoundary).toContain(
-      "assigned_profile.shop_id = visit.shop_id",
+      "assigned_profile.shop_id = p_shop_id",
     );
-    expect(repairedBoundary).toContain("visit.mode <> 'mobile'");
+    expect(repairedBoundary).toContain("p_visit_mode <> 'mobile'");
     expect(repairedBoundary).toContain("set search_path = ''");
+    expect(repairedBoundary).toContain(
+      "private.dispatch_visit_actor_can_execute",
+    );
+    expect(repairedBoundary).toContain(
+      "private.dispatch_lock_service_visit_for_execution",
+    );
+    expect(repairedBoundary).toContain("for update of visit");
   });
 
   it("keeps direct callers on the established ACL while denying unassigned actors", () => {
@@ -57,5 +67,17 @@ describe("Field Service Visit execution boundary", () => {
       "Shop dispatch manager lost established execution access",
     );
     expect(runtime).toContain("Denied Field execution created an idempotency receipt");
+  });
+
+  it("serializes transition authorization with concurrent reassignment", () => {
+    expect(lockingRuntime).toContain("field-visit-reassign-a");
+    expect(lockingRuntime).toContain("field-visit-transition-b");
+    expect(lockingRuntime).toContain("'dispatched', null, null, null,");
+    expect(lockingRuntime).toContain(
+      "Former assignee transitioned a concurrently reassigned visit",
+    );
+    expect(lockingRuntime).toContain(
+      "fa250000-0000-4000-8000-000000000012|scheduled|1",
+    );
   });
 });
