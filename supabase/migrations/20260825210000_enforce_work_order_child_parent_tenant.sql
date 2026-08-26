@@ -59,6 +59,22 @@ begin
     return new;
   end if;
 
+  -- Preserve the baseline shops -> child SET NULL attempt without allowing a
+  -- legacy BEFORE trigger to re-tenant the row. P0-008 later made shop_id
+  -- required, so a Shop deletion with retained commercial history still fails
+  -- closed at NOT NULL and rolls back atomically.
+  if tg_op = 'UPDATE'
+     and new.work_order_id is not distinct from old.work_order_id
+     and old.shop_id is not null
+     and not exists (
+       select 1
+       from public.shops shop
+       where shop.id = old.shop_id
+     ) then
+    new.shop_id := null;
+    return new;
+  end if;
+
   select parent.shop_id
     into v_parent_shop_id
   from public.work_orders parent
@@ -102,6 +118,77 @@ on public.work_order_quote_lines
 for each row
 execute function private.enforce_work_order_child_parent_tenant();
 
+-- Parent-side tenant guards probe quote children by Work Order alone. Existing
+-- quote indexes lead with shop_id and cannot support that lookup once the
+-- parent tenant is being changed or cleared.
+create index if not exists idx_work_order_quote_lines_work_order_id
+  on public.work_order_quote_lines(work_order_id);
+
+-- The predecessor policies allowed a caller to submit its own shop_id without
+-- proving that the referenced Work Order belonged to the same tenant. Repair
+-- any rows admitted by that historical contract before the restrictive policy
+-- and postcheck make the invariant mandatory. The parent is canonical, the
+-- foreign keys already rule out orphans, and both updates are observable in
+-- migration logs without discarding business rows.
+do $work_order_child_parent_tenant_reconciliation$
+declare
+  v_repair_lines_reconciled bigint := 0;
+  v_quote_lines_reconciled bigint := 0;
+begin
+  update public.work_order_lines line
+  set shop_id = parent.shop_id
+  from public.work_orders parent
+  where parent.id = line.work_order_id
+    and parent.shop_id is not null
+    and line.shop_id is distinct from parent.shop_id;
+  get diagnostics v_repair_lines_reconciled = row_count;
+
+  update public.work_order_quote_lines line
+  set shop_id = parent.shop_id
+  from public.work_orders parent
+  where parent.id = line.work_order_id
+    and parent.shop_id is not null
+    and line.shop_id is distinct from parent.shop_id;
+  get diagnostics v_quote_lines_reconciled = row_count;
+
+  raise notice
+    'WORK_ORDER_CHILD_TENANT_RECONCILIATION repair_lines=% quote_lines=%',
+    v_repair_lines_reconciled,
+    v_quote_lines_reconciled;
+end;
+$work_order_child_parent_tenant_reconciliation$;
+
+-- The baseline helper fills a NULL tenant during ordinary INSERT and UPDATE.
+-- Preserve that normalization, except while the Shop foreign key is attempting
+-- ON DELETE SET NULL: at that point OLD.shop_id no longer resolves. Leaving the
+-- attempted value NULL lets the later required-column contract fail closed
+-- instead of silently re-tenanting commercial history.
+create or replace function public.assign_work_orders_shop_id()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if new.shop_id is null
+     and not (
+       tg_op = 'UPDATE'
+       and old.shop_id is not null
+       and not exists (
+         select 1
+         from public.shops shop
+         where shop.id = old.shop_id
+       )
+     ) then
+    new.shop_id := public.current_shop_id();
+  end if;
+  return new;
+end;
+$$;
+
+revoke all on function public.assign_work_orders_shop_id()
+  from public, anon, authenticated, service_role;
+
 -- Locking the parent in the child trigger closes the insert/update race. This
 -- matching parent-side guard prevents a trusted worker from moving an existing
 -- Work Order to another tenant while either canonical child relation still
@@ -114,6 +201,20 @@ security definer
 set search_path = ''
 as $$
 begin
+  -- The baseline Work Order FK attempts to clear the tenant during Shop
+  -- deletion, while P0-008 requires that tenant and therefore rolls the delete
+  -- back. Do not let this guard or the legacy default re-tenant the Work Order
+  -- while that fail-closed action is in progress.
+  if old.shop_id is not null
+     and not exists (
+       select 1
+       from public.shops shop
+       where shop.id = old.shop_id
+     ) then
+    new.shop_id := null;
+    return new;
+  end if;
+
   if new.shop_id is not distinct from old.shop_id then
     return new;
   end if;
@@ -142,7 +243,7 @@ revoke all on function private.enforce_work_order_parent_tenant_update()
 drop trigger if exists enforce_work_order_parent_tenant_update
   on public.work_orders;
 create trigger enforce_work_order_parent_tenant_update
-before update of shop_id
+before update
 on public.work_orders
 for each row
 execute function private.enforce_work_order_parent_tenant_update();
@@ -218,7 +319,7 @@ begin
       select 1
       from public.work_orders parent
       where parent.id = new.work_order_id
-        and parent.shop_id = new.shop_id
+        and parent.shop_id is not distinct from new.shop_id
     ) then
       raise exception using
         errcode = '23514',
@@ -360,7 +461,7 @@ begin
     and not trigger.tgisinternal;
 
   if v_trigger_definition is null
-     or position('BEFORE UPDATE OF shop_id ON' in v_trigger_definition) = 0 then
+     or position('BEFORE UPDATE ON' in v_trigger_definition) = 0 then
     raise exception 'Work Order parent tenant update guard is missing';
   end if;
 end;

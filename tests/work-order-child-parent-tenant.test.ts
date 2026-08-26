@@ -29,16 +29,29 @@ describe("Work Order child parent tenant invariant", () => {
       /from public\.work_orders parent[\s\S]*?where parent\.id = new\.work_order_id[\s\S]*?for no key update;/,
     );
     expect(migration).toMatch(
-      /create trigger enforce_work_order_parent_tenant_update[\s\S]*?before update of shop_id\s+on public\.work_orders[\s\S]*?private\.enforce_work_order_parent_tenant_update\(\)/,
+      /create trigger enforce_work_order_parent_tenant_update[\s\S]*?before update\s+on public\.work_orders[\s\S]*?private\.enforce_work_order_parent_tenant_update\(\)/,
     );
-    expect(migration).not.toContain(
-      "create or replace function public.assign_work_orders_shop_id()",
+    expect(migration).toMatch(
+      /create or replace function public\.assign_work_orders_shop_id\(\)[\s\S]*?if new\.shop_id is null[\s\S]*?tg_op = 'UPDATE'[\s\S]*?from public\.shops shop[\s\S]*?public\.current_shop_id\(\)/,
     );
-    expect(migration).toContain("position('BEFORE UPDATE OF shop_id ON'");
+    expect(migration).toContain("position('BEFORE UPDATE ON'");
     expect(migration).toContain(
       "WORK_ORDER_PARENT_TENANT_CHANGE_WITH_CHILDREN",
     );
-    expect(migration).not.toContain("new.shop_id := null");
+    expect(migration).toMatch(
+      /new\.work_order_id is not distinct from old\.work_order_id[\s\S]*?old\.shop_id is not null[\s\S]*?not exists \([\s\S]*?from public\.shops shop[\s\S]*?shop\.id = old\.shop_id[\s\S]*?new\.shop_id := null/,
+    );
+    const parentGuard = migration.slice(
+      migration.indexOf(
+        "create or replace function private.enforce_work_order_parent_tenant_update()",
+      ),
+      migration.indexOf(
+        "revoke all on function private.enforce_work_order_parent_tenant_update()",
+      ),
+    );
+    expect(parentGuard).toMatch(
+      /old\.shop_id is not null[\s\S]*?not exists \([\s\S]*?from public\.shops shop[\s\S]*?shop\.id = old\.shop_id[\s\S]*?new\.shop_id := null/,
+    );
   });
 
   it("serializes concurrent child inserts before parent reconciliation", () => {
@@ -83,9 +96,24 @@ describe("Work Order child parent tenant invariant", () => {
     );
   });
 
+  it("reconciles predecessor mismatches and indexes parent-side quote lookups", () => {
+    expect(migration).toContain(
+      "create index if not exists idx_work_order_quote_lines_work_order_id",
+    );
+    expect(migration).toMatch(
+      /update public\.work_order_lines line[\s\S]*?set shop_id = parent\.shop_id[\s\S]*?line\.shop_id is distinct from parent\.shop_id/,
+    );
+    expect(migration).toMatch(
+      /update public\.work_order_quote_lines line[\s\S]*?set shop_id = parent\.shop_id[\s\S]*?line\.shop_id is distinct from parent\.shop_id/,
+    );
+    expect(migration).toContain(
+      "WORK_ORDER_CHILD_TENANT_RECONCILIATION repair_lines=% quote_lines=%",
+    );
+  });
+
   it("binds SECURITY DEFINER parent reconciliation to the line tenant", () => {
     expect(migration).toMatch(
-      /create or replace function public\.refresh_work_order_status\(\)[\s\S]*?parent\.id = new\.work_order_id[\s\S]*?parent\.shop_id = new\.shop_id[\s\S]*?private\.reconcile_work_order_state\(new\.work_order_id\)/,
+      /create or replace function public\.refresh_work_order_status\(\)[\s\S]*?parent\.id = new\.work_order_id[\s\S]*?parent\.shop_id is not distinct from new\.shop_id[\s\S]*?private\.reconcile_work_order_state\(new\.work_order_id\)/,
     );
     expect(migration).toMatch(
       /create or replace function public\.refresh_work_order_status_del\(\)[\s\S]*?parent\.shop_id[\s\S]*?parent\.id = old\.work_order_id[\s\S]*?if found then[\s\S]*?v_parent_shop_id is distinct from old\.shop_id[\s\S]*?private\.reconcile_work_order_state\(old\.work_order_id\)/,
@@ -119,6 +147,21 @@ describe("Work Order child parent tenant invariant", () => {
     );
     expect(runtime).toContain(
       "Service role manually cleared a parent tenant with children",
+    );
+    expect(runtime).toContain(
+      "Ordinary Work Order update tenant normalization regressed",
+    );
+    expect(runtime).toContain(
+      "Shop cleanup fixture retained an unrelated profile reference",
+    );
+    expect(runtime).toContain(
+      "Shop cleanup bypassed required Work Order tenant history",
+    );
+    expect(runtime).toContain(
+      "Denied Shop cleanup partially mutated tenant data",
+    );
+    expect(runtime).toContain(
+      "Shop cleanup guard did not preserve tenant history",
     );
     expect(runtime).toContain(
       "Authorized Work Order cascade delete did not remove parent and child",

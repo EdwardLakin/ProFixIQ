@@ -13,6 +13,11 @@ values
     'ba250000-0000-4000-8000-000000000002',
     'child-tenant-owner-b@example.com',
     '{"full_name":"Child Tenant Owner B"}'::jsonb
+  ),
+  (
+    'ba250000-0000-4000-8000-000000000003',
+    'child-tenant-owner-cleanup@example.com',
+    '{"full_name":"Child Tenant Cleanup Owner"}'::jsonb
   )
 on conflict (id) do nothing;
 
@@ -29,6 +34,12 @@ values
     'ba250000-0000-4000-8000-000000000002',
     'owner', 'Child Tenant Owner B',
     'child-tenant-owner-b@example.com', null
+  ),
+  (
+    'ba250000-0000-4000-8000-000000000003',
+    'ba250000-0000-4000-8000-000000000003',
+    'owner', 'Child Tenant Cleanup Owner',
+    'child-tenant-owner-cleanup@example.com', null
   )
 on conflict (id) do update
 set user_id = excluded.user_id,
@@ -59,6 +70,13 @@ values
     'Child Tenant Runtime B',
     'Child Tenant Runtime B',
     'complete_10', 10, 'internal_demo'
+  ),
+  (
+    'bb250000-0000-4000-8000-000000000003',
+    'ba250000-0000-4000-8000-000000000003',
+    'Child Tenant Cleanup Runtime',
+    'Child Tenant Cleanup Runtime',
+    'complete_10', 10, 'internal_demo'
   )
 on conflict (id) do update
 set billing_entitlement_override = 'internal_demo';
@@ -69,10 +87,12 @@ set shop_id = case id
     then 'bb250000-0000-4000-8000-000000000001'::uuid
   when 'ba250000-0000-4000-8000-000000000002'::uuid
     then 'bb250000-0000-4000-8000-000000000002'::uuid
+  else 'bb250000-0000-4000-8000-000000000003'::uuid
 end
 where id in (
   'ba250000-0000-4000-8000-000000000001',
-  'ba250000-0000-4000-8000-000000000002'
+  'ba250000-0000-4000-8000-000000000002',
+  'ba250000-0000-4000-8000-000000000003'
 );
 
 insert into public.work_orders (
@@ -103,6 +123,20 @@ values
     'CHILD-TENANT-CASCADE',
     'in_progress',
     'work_order'
+  ),
+  (
+    'bc250000-0000-4000-8000-000000000004',
+    'bb250000-0000-4000-8000-000000000003',
+    'CHILD-TENANT-SHOP-CLEANUP',
+    'in_progress',
+    'work_order'
+  ),
+  (
+    'bc250000-0000-4000-8000-000000000005',
+    'bb250000-0000-4000-8000-000000000001',
+    'CHILD-TENANT-UPDATE-NORMALIZATION',
+    'in_progress',
+    'work_order'
   )
 on conflict (id) do update
 set shop_id = excluded.shop_id,
@@ -131,6 +165,19 @@ do $authenticated_child_tenant_boundary$
 declare
   v_denied boolean;
 begin
+  update public.work_orders
+  set shop_id = null
+  where id = 'bc250000-0000-4000-8000-000000000005';
+
+  if not exists (
+    select 1
+    from public.work_orders parent
+    where parent.id = 'bc250000-0000-4000-8000-000000000005'
+      and parent.shop_id = 'bb250000-0000-4000-8000-000000000001'
+  ) then
+    raise exception 'Ordinary Work Order update tenant normalization regressed';
+  end if;
+
   insert into public.work_order_lines (
     id, shop_id, work_order_id, complaint, job_type, status,
     line_status, approval_state, urgency
@@ -323,6 +370,90 @@ end;
 $trusted_worker_child_tenant_boundary$;
 
 reset role;
+
+insert into public.work_order_lines (
+  id, shop_id, work_order_id, complaint, job_type, status,
+  line_status, approval_state, urgency
+) values (
+  'bd250000-0000-4000-8000-000000000006',
+  'bb250000-0000-4000-8000-000000000003',
+  'bc250000-0000-4000-8000-000000000004',
+  'Shop cleanup repair line', 'repair', 'awaiting',
+  'pending', 'pending', 'medium'
+);
+
+insert into public.work_order_quote_lines (
+  id, shop_id, work_order_id, description, status, stage, created_by
+) values (
+  'be250000-0000-4000-8000-000000000006',
+  'bb250000-0000-4000-8000-000000000003',
+  'bc250000-0000-4000-8000-000000000004',
+  'Shop cleanup quote line', 'draft', 'advisor_pending',
+  'ba250000-0000-4000-8000-000000000003'
+);
+
+-- profiles.shop_id intentionally uses NO ACTION in the baseline. Remove that
+-- independent reference so this fixture reaches the Work Order/repair-line
+-- SET NULL actions and quote-line cascade that the migration owns.
+update public.profiles
+set shop_id = null
+where id = 'ba250000-0000-4000-8000-000000000003';
+
+do $shop_cleanup_profile_reference$
+begin
+  if not exists (
+    select 1
+    from public.profiles profile
+    where profile.id = 'ba250000-0000-4000-8000-000000000003'
+      and profile.shop_id is null
+  ) then
+    raise exception 'Shop cleanup fixture retained an unrelated profile reference';
+  end if;
+end;
+$shop_cleanup_profile_reference$;
+
+-- P0-008 makes both work_orders.shop_id and work_order_lines.shop_id required.
+-- Their older SET NULL foreign keys therefore fail closed while commercial
+-- history exists; this migration must not weaken either required-column
+-- contract or partially delete cascading siblings.
+do $shop_cleanup_required_tenant_guard$
+declare
+  v_denied boolean := false;
+begin
+  begin
+    delete from public.shops
+    where id = 'bb250000-0000-4000-8000-000000000003';
+  exception when not_null_violation then
+    v_denied := position(
+      'work_order' in sqlerrm
+    ) > 0;
+  end;
+
+  if not v_denied then
+    raise exception 'Shop cleanup bypassed required Work Order tenant history';
+  end if;
+
+  if not exists (
+    select 1 from public.shops
+    where id = 'bb250000-0000-4000-8000-000000000003'
+  ) or not exists (
+    select 1 from public.work_orders
+    where id = 'bc250000-0000-4000-8000-000000000004'
+      and shop_id = 'bb250000-0000-4000-8000-000000000003'
+  ) or not exists (
+    select 1 from public.work_order_lines
+    where id = 'bd250000-0000-4000-8000-000000000006'
+      and shop_id = 'bb250000-0000-4000-8000-000000000003'
+  ) or not exists (
+    select 1 from public.work_order_quote_lines
+    where id = 'be250000-0000-4000-8000-000000000006'
+      and shop_id = 'bb250000-0000-4000-8000-000000000003'
+  ) then
+    raise exception 'Denied Shop cleanup partially mutated tenant data';
+  end if;
+end;
+$shop_cleanup_required_tenant_guard$;
+
 select set_config('request.jwt.claims', '', true);
 select set_config('request.jwt.claim.role', '', true);
 select set_config('request.jwt.claim.sub', '', true);
@@ -408,6 +539,30 @@ begin
     raise exception 'Authorized Work Order cascade delete did not remove parent and child';
   end if;
 
+  if not exists (
+    select 1
+    from public.shops shop
+    where shop.id = 'bb250000-0000-4000-8000-000000000003'
+  ) or not exists (
+    select 1
+    from public.work_orders parent
+    where parent.id = 'bc250000-0000-4000-8000-000000000004'
+      and parent.shop_id = 'bb250000-0000-4000-8000-000000000003'
+  ) or not exists (
+    select 1
+    from public.work_order_lines line
+    where line.id = 'bd250000-0000-4000-8000-000000000006'
+      and line.work_order_id = 'bc250000-0000-4000-8000-000000000004'
+      and line.shop_id = 'bb250000-0000-4000-8000-000000000003'
+  ) or not exists (
+    select 1
+    from public.work_order_quote_lines quote_line
+    where quote_line.id = 'be250000-0000-4000-8000-000000000006'
+      and quote_line.work_order_id = 'bc250000-0000-4000-8000-000000000004'
+      and quote_line.shop_id = 'bb250000-0000-4000-8000-000000000003'
+  ) then
+    raise exception 'Shop cleanup guard did not preserve tenant history';
+  end if;
 end;
 $work_order_child_tenant_final_assertions$;
 
