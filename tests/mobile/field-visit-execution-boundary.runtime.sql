@@ -184,6 +184,14 @@ values
     'shop', 'scheduled',
     'fa250000-0000-4000-8000-000000000002', 1,
     'fa250000-0000-4000-8000-000000000001'
+  ),
+  (
+    'fd250000-0000-4000-8000-000000000003',
+    'fb250000-0000-4000-8000-000000000001',
+    'fc250000-0000-4000-8000-000000000001',
+    'mobile', 'scheduled',
+    'fa250000-0000-4000-8000-000000000002', 1,
+    'fa250000-0000-4000-8000-000000000001'
   )
 on conflict (id) do update
 set shop_id = excluded.shop_id,
@@ -383,6 +391,73 @@ begin
   );
 end;
 $assigned_operator_execution$;
+
+-- A committed response-loss retry stays recoverable by its exact actor after
+-- reassignment, while a fresh operation from that former assignee is denied.
+select public.dispatch_transition_service_visit_atomic(
+  'fb250000-0000-4000-8000-000000000001',
+  'fd250000-0000-4000-8000-000000000003',
+  'dispatched', null, null, 1,
+  'fa250000-0000-4000-8000-000000000002',
+  'field-execution:assigned:committed-before-reassignment'
+);
+
+reset role;
+select set_config('request.jwt.claim.role', 'service_role', true);
+select set_config('request.jwt.claim.sub', '', true);
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+update public.service_visits
+set assigned_user_id = 'fa250000-0000-4000-8000-000000000003'
+where id = 'fd250000-0000-4000-8000-000000000003';
+
+select set_config('request.jwt.claim.role', 'authenticated', true);
+select set_config(
+  'request.jwt.claim.sub',
+  'fa250000-0000-4000-8000-000000000002',
+  true
+);
+select set_config(
+  'request.jwt.claims',
+  '{"role":"authenticated","sub":"fa250000-0000-4000-8000-000000000002"}',
+  true
+);
+set local role authenticated;
+
+do $committed_replay_after_reassignment$
+declare
+  v_denied boolean := false;
+  v_replay jsonb;
+begin
+  v_replay := public.mobile_replay_service_visit_transition_atomic(
+    'fb250000-0000-4000-8000-000000000001',
+    'fd250000-0000-4000-8000-000000000003',
+    'scheduled', 'dispatched', 1,
+    'fa250000-0000-4000-8000-000000000002',
+    'field-execution:assigned:committed-before-reassignment'
+  );
+
+  if not coalesce((v_replay ->> 'idempotent')::boolean, false)
+     or v_replay #>> '{visit,id}' <> 'fd250000-0000-4000-8000-000000000003' then
+    raise exception 'Former assignee could not recover its exact committed transition: %', v_replay;
+  end if;
+
+  begin
+    perform public.dispatch_transition_service_visit_atomic(
+      'fb250000-0000-4000-8000-000000000001',
+      'fd250000-0000-4000-8000-000000000003',
+      'en_route', null, null, 2,
+      'fa250000-0000-4000-8000-000000000002',
+      'field-execution:former-assignee:fresh'
+    );
+  exception when sqlstate '42501' then
+    v_denied := true;
+  end;
+
+  if not v_denied then
+    raise exception 'Former assignee created a fresh transition after reassignment';
+  end if;
+end;
+$committed_replay_after_reassignment$;
 
 select set_config(
   'request.jwt.claim.sub',

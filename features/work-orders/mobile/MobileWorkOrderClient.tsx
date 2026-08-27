@@ -50,6 +50,10 @@ import {
 } from "@/features/shared/lib/offline/mutations";
 import { saveOfflineSnapshot } from "@/features/shared/lib/offline/database";
 import {
+  clearWorkspaceAuthorizationSnapshot,
+  readWorkspaceAuthorizationSnapshot,
+} from "@/features/workspace/authorization/offlineWorkspaceAuthorization";
+import {
   loadProjectedWorkOrderSnapshot,
   removeMobileWorkOrderDetailSnapshots,
 } from "@/features/work-orders/mobile/technicianOfflineExecution";
@@ -393,8 +397,17 @@ export default function MobileWorkOrderClient({
             setUserId(uid);
             const cachedScope = getOfflineMutationScope();
             if (!navigator.onLine && cachedScope?.userId === uid) {
-              setCurrentUserRole(session?.user.user_metadata?.role ?? null);
-              setActorRoleVerified(false);
+              const authorization = readWorkspaceAuthorizationSnapshot({
+                userId: uid,
+                shopId: cachedScope.shopId,
+              });
+              setCurrentUserRole(
+                authorization?.actor.role ??
+                  session?.user.user_metadata?.role ??
+                  null,
+              );
+              setCurrentProfileId(authorization?.actor.profileId ?? null);
+              setActorRoleVerified(Boolean(authorization));
               setShopId(cachedScope.shopId);
               setActorReady(true);
               return;
@@ -405,8 +418,17 @@ export default function MobileWorkOrderClient({
             if (!mounted || signal.aborted) return;
             if (profErr) {
               if (cachedScope?.userId === uid) {
-                setCurrentUserRole(session?.user.user_metadata?.role ?? null);
-                setActorRoleVerified(false);
+                const authorization = readWorkspaceAuthorizationSnapshot({
+                  userId: uid,
+                  shopId: cachedScope.shopId,
+                });
+                setCurrentUserRole(
+                  authorization?.actor.role ??
+                    session?.user.user_metadata?.role ??
+                    null,
+                );
+                setCurrentProfileId(authorization?.actor.profileId ?? null);
+                setActorRoleVerified(Boolean(authorization));
                 setShopId(cachedScope.shopId);
                 setActorReady(true);
                 return;
@@ -448,6 +470,7 @@ export default function MobileWorkOrderClient({
     const { data: sub } = supabase.auth.onAuthStateChange((_evt, s) => {
       if (s?.user) void waitForSession();
       else {
+        clearWorkspaceAuthorizationSnapshot();
         setActorReady(false);
         setCurrentUserId(null);
         setUserId(null);
