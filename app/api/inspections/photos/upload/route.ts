@@ -326,19 +326,6 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const authorization = await authorizeInspectionMutation({
-    sessionClient: supabase,
-    shopId,
-    workOrderId,
-    workOrderLineId,
-  });
-  if (!authorization.ok) {
-    return NextResponse.json(
-      { error: authorization.error },
-      { status: authorization.status },
-    );
-  }
-
   // Keep service access for stable receipt lookups, standalone legacy uploads,
   // and signed previews. Work Order evidence itself is written through the
   // authenticated client so Storage RLS and the atomic receipt RPC revalidate
@@ -352,14 +339,38 @@ export async function POST(request: NextRequest) {
   const contentType =
     file.type || (extension === "png" ? "image/png" : "image/jpeg");
 
-  let bucket: "job-photos" | "inspection_photos";
-  let path: string;
+  const bucket: "job-photos" | "inspection_photos" =
+    workOrderId && workOrderLineId ? "job-photos" : "inspection_photos";
+  const path =
+    bucket === "job-photos" && workOrderId && workOrderLineId
+      ? `wo/${workOrderId}/lines/${workOrderLineId}/${clientMutationId}_${contentHash.slice(0, 32)}.${extension}`
+      : `shops/${shopId}/inspections/${inspection.id}/${clientMutationId}_${contentHash.slice(0, 32)}.${extension}`;
+
+  const authorization = await authorizeInspectionMutation({
+    sessionClient: supabase,
+    shopId,
+    workOrderId,
+    workOrderLineId,
+    committedPhotoReplay:
+      bucket === "job-photos" && workOrderId && workOrderLineId
+        ? {
+            inspectionId: inspection.id,
+            storageBucket: bucket,
+            storagePath: path,
+            clientMutationId,
+          }
+        : undefined,
+  });
+  if (!authorization.ok) {
+    return NextResponse.json(
+      { error: authorization.error },
+      { status: authorization.status },
+    );
+  }
+
   let idempotent = false;
 
   if (workOrderId && workOrderLineId) {
-    bucket = "job-photos";
-    path = `wo/${workOrderId}/lines/${workOrderLineId}/${clientMutationId}_${contentHash.slice(0, 32)}.${extension}`;
-
     const { data: existingMedia, error: existingMediaError } = await admin
       .from("work_order_media")
       .select("id,work_order_id,work_order_line_id,storage_bucket,storage_path")
@@ -397,8 +408,6 @@ export async function POST(request: NextRequest) {
     }
   } else {
     // Preserve legacy standalone inspections while keeping their retries stable.
-    bucket = "inspection_photos";
-    path = `shops/${shopId}/inspections/${inspection.id}/${clientMutationId}_${contentHash.slice(0, 32)}.${extension}`;
     const existingPhoto = await findInspectionPhotoForObject({
       supabase: admin,
       inspectionId: inspection.id,
@@ -471,7 +480,16 @@ export async function POST(request: NextRequest) {
     inserted: boolean;
     error?: string;
   };
-  if (bucket === "job-photos" && workOrderId && workOrderLineId) {
+  if (authorization.replay.kind === "photo") {
+    saved = {
+      row: {
+        ...authorization.replay.photo,
+        image_url: signed.signedUrl,
+      },
+      inserted: false,
+    };
+    idempotent = true;
+  } else if (bucket === "job-photos" && workOrderId && workOrderLineId) {
     const { data: savedData, error: savedError } = await supabase.rpc(
       "save_work_order_inspection_photo_evidence_atomic",
       {

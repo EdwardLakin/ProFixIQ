@@ -8,7 +8,7 @@ import {
 const read = (path: string) => readFileSync(path, "utf8");
 
 describe("inspection sign and portal approval regressions", () => {
-  it("imports findings through the idempotent canonical command before signing", () => {
+  it("imports findings and signs through one idempotent canonical command", () => {
     const route = read("app/api/inspections/sign/route.ts");
     const importAt = route.indexOf("insertPrioritizedJobsFromInspection({");
     const signAt = route.indexOf("callSignInspectionRpc(supabase");
@@ -17,6 +17,10 @@ describe("inspection sign and portal approval regressions", () => {
     expect(signAt).toBeGreaterThan(importAt);
     expect(route).toContain(
       "operationKey: `sign:${resolved.inspectionId}:${bodyUnknown.expectedSyncRevision}`",
+    );
+    expect(route).toContain("signing: {");
+    expect(route).toContain(
+      "signedAtomically = imported.signedAtomically === true",
     );
   });
 

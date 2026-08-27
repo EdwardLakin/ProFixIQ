@@ -268,6 +268,27 @@ describe("inspection write authorization", () => {
       "p_requested_vehicle_id,\n    v_core_actor_user_id,",
     );
 
+    const combinedSigningWrapper = migration.slice(
+      migration.indexOf(
+        "create or replace function public.import_inspection_findings_and_sign_atomic(",
+      ),
+      migration.indexOf(
+        "comment on function public.import_inspection_findings_and_sign_atomic(",
+      ),
+    );
+    const combinedImport = combinedSigningWrapper.indexOf(
+      "public.import_inspection_quote_package_atomic(",
+    );
+    const combinedSign = combinedSigningWrapper.indexOf(
+      "public.sign_inspection(",
+    );
+    expect(combinedSigningWrapper).toContain("security invoker");
+    expect(combinedSigningWrapper).toContain(
+      "p_role is distinct from 'technician'",
+    );
+    expect(combinedImport).toBeGreaterThan(0);
+    expect(combinedSign).toBeGreaterThan(combinedImport);
+
     const finalizeWrapper = migration.slice(
       migration.indexOf(
         "create or replace function public.finalize_inspection_pdf_atomic(",
@@ -333,6 +354,9 @@ describe("inspection write authorization", () => {
       "Linked auth subject did not recover its profile-alias receipt",
       "Unauthorized actor replayed an inspection import receipt.",
       "Unassigned mechanic imported inspection findings.",
+      "Atomic inspection import/sign did not commit both boundaries",
+      "Atomic inspection import/sign response-loss replay failed",
+      "Reassigned mechanic created a fresh import/sign side effect.",
       "Service role finalized an inspection for a denied actor.",
       "Imported finalization profile was not mapped to its auth subject.",
       "Denied Assistant actor replayed a completed inspection reopen action.",
@@ -397,7 +421,7 @@ describe("inspection write authorization", () => {
     );
     expect(
       photoUploadRoute.indexOf("authorizeInspectionMutation({"),
-    ).toBeLessThan(photoUploadRoute.indexOf("file.arrayBuffer()"));
+    ).toBeLessThan(photoUploadRoute.indexOf(".upload(path, bytes"));
     expect(
       finalizePdfRoute.indexOf("authorizeInspectionMutation({"),
     ).toBeLessThan(finalizePdfRoute.indexOf("publishInspectionPdf({"));

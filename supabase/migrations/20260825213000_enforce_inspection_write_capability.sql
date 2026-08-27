@@ -1140,6 +1140,79 @@ comment on function public.import_inspection_quote_package_atomic(
 ) is
   'Capability-gated compatibility wrapper for canonical inspection finding import; mechanics must be assigned to the exact source repair line.';
 
+-- Technician signing materializes eligible findings immediately before it
+-- finalizes the immutable inspection snapshot. Keep those two established
+-- commands, but execute them inside one database transaction so dispatch
+-- reassignment cannot commit between the import and signature boundaries.
+create or replace function public.import_inspection_findings_and_sign_atomic(
+  p_shop_id uuid,
+  p_work_order_id uuid,
+  p_inspection_id uuid,
+  p_requested_vehicle_id uuid,
+  p_actor_user_id uuid,
+  p_operation_key text,
+  p_items jsonb,
+  p_role text,
+  p_signed_name text,
+  p_expected_sync_revision bigint,
+  p_signature_image_path text default null,
+  p_signature_hash text default null,
+  p_at timestamptz default now()
+) returns jsonb
+language plpgsql
+volatile
+security invoker
+set search_path = ''
+as $$
+declare
+  v_import_result jsonb;
+begin
+  if p_role is distinct from 'technician' then
+    raise exception using
+      errcode = '22023',
+      message = 'Atomic inspection finding import is limited to technician signing.';
+  end if;
+
+  v_import_result := public.import_inspection_quote_package_atomic(
+    p_shop_id,
+    p_work_order_id,
+    p_inspection_id,
+    p_requested_vehicle_id,
+    p_actor_user_id,
+    p_operation_key,
+    p_items,
+    p_at
+  );
+
+  perform public.sign_inspection(
+    p_inspection_id,
+    p_role,
+    p_signed_name,
+    p_expected_sync_revision,
+    p_signature_image_path,
+    p_signature_hash
+  );
+
+  return coalesce(v_import_result, '{}'::jsonb)
+    || jsonb_build_object('signedAtomically', true);
+end;
+$$;
+
+revoke all on function public.import_inspection_findings_and_sign_atomic(
+  uuid, uuid, uuid, uuid, uuid, text, jsonb, text, text, bigint, text, text,
+  timestamptz
+) from public, anon, authenticated, service_role;
+grant execute on function public.import_inspection_findings_and_sign_atomic(
+  uuid, uuid, uuid, uuid, uuid, text, jsonb, text, text, bigint, text, text,
+  timestamptz
+) to authenticated;
+
+comment on function public.import_inspection_findings_and_sign_atomic(
+  uuid, uuid, uuid, uuid, uuid, text, jsonb, text, text, bigint, text, text,
+  timestamptz
+) is
+  'Authenticated technician command that imports canonical findings and signs the exact inspection revision in one transaction.';
+
 -- Work Order inspection photos are uploaded after their bytes are hashed, so
 -- the application-level authorization above that work can no longer be the
 -- final write decision.  Keep the established early check for fast failures,

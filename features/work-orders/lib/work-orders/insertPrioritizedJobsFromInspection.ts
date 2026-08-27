@@ -59,7 +59,11 @@ type InspectionResult = {
   }>;
 };
 
-type RpcError = { message: string; details?: string | null; hint?: string | null };
+type RpcError = {
+  message: string;
+  details?: string | null;
+  hint?: string | null;
+};
 type RpcClient = {
   rpc: (
     name: string,
@@ -83,6 +87,15 @@ type AtomicImportResult = {
   createdPartRequestItemCount?: number;
   skippedPartRequestItemCount?: number;
   idempotent?: boolean;
+  signedAtomically?: boolean;
+};
+
+export type InspectionImportSigning = {
+  role: "technician";
+  signedName: string;
+  expectedSyncRevision: number;
+  signatureImagePath: string | null;
+  signatureHash: string | null;
 };
 
 export type ImportFromInspectionArgs = {
@@ -93,6 +106,7 @@ export type ImportFromInspectionArgs = {
   userId: string;
   autoGenerateParts?: boolean;
   operationKey?: string;
+  signing?: InspectionImportSigning;
 };
 
 export type ImportFromInspectionResult =
@@ -110,6 +124,7 @@ export type ImportFromInspectionResult =
       insertedJobIds: null;
       workOrderLineIds: null;
       idempotent?: boolean;
+      signedAtomically?: boolean;
     }
   | { ok: false; error: string };
 
@@ -143,7 +158,8 @@ function itemPhotoUrls(item: InspectionItem): string[] {
   const raw = Array.isArray(item.photoUrls) ? item.photoUrls : item.photo_urls;
   return Array.isArray(raw)
     ? raw.filter(
-        (url): url is string => typeof url === "string" && url.trim().length > 0,
+        (url): url is string =>
+          typeof url === "string" && url.trim().length > 0,
       )
     : [];
 }
@@ -236,23 +252,38 @@ export async function insertPrioritizedJobsFromInspection(
     .eq("is_canonical", true)
     .maybeSingle<InspectionRow>();
   if (inspectionError) {
-    return { ok: false, error: `Failed to fetch inspection: ${inspectionError.message}` };
+    return {
+      ok: false,
+      error: `Failed to fetch inspection: ${inspectionError.message}`,
+    };
   }
   if (!inspection?.shop_id) {
     return { ok: false, error: "Inspection not found or missing shop scope." };
   }
 
-  const rawResult = inspection.summary as unknown as InspectionResult | undefined;
+  const rawResult = inspection.summary as unknown as
+    | InspectionResult
+    | undefined;
   if (!rawResult?.sections || !Array.isArray(rawResult.sections)) {
     return { ok: false, error: "Invalid inspection format: missing sections." };
   }
 
   const quoteItems: CanonicalQuoteItem[] = [];
-  const autoPartKeywords = ["brake", "pads", "rotor", "fluid", "coolant", "filter", "belt"];
+  const autoPartKeywords = [
+    "brake",
+    "pads",
+    "rotor",
+    "fluid",
+    "coolant",
+    "filter",
+    "belt",
+  ];
 
   for (const [sectionIndex, section] of rawResult.sections.entries()) {
     const sectionTitle =
-      safeString(section.title) || safeString(section.name) || `Section ${sectionIndex + 1}`;
+      safeString(section.title) ||
+      safeString(section.name) ||
+      `Section ${sectionIndex + 1}`;
     const sectionKey =
       safeString(section.key) ||
       safeString(section.id) ||
@@ -342,7 +373,8 @@ export async function insertPrioritizedJobsFromInspection(
         technician_notes: notes || undefined,
         measurement: measurement || undefined,
         inspection_status: safeString(item.status) || undefined,
-        recommend: typeof item.recommend === "boolean" ? item.recommend : undefined,
+        recommend:
+          typeof item.recommend === "boolean" ? item.recommend : undefined,
         recommendation_metadata: {
           severity: item.severity ?? null,
           recommendation: item.recommendation ?? null,
@@ -398,9 +430,11 @@ export async function insertPrioritizedJobsFromInspection(
       partsRequestsCount: 0,
       createdPartRequestIds: [],
       skippedPartsRequestsCount: 0,
-      message: "No failed or recommended inspection findings were eligible for Quote Review.",
+      message:
+        "No failed or recommended inspection findings were eligible for Quote Review.",
       insertedJobIds: null,
       workOrderLineIds: null,
+      signedAtomically: false,
     };
   }
 
@@ -408,7 +442,7 @@ export async function insertPrioritizedJobsFromInspection(
     args.operationKey?.trim() ||
     stableImportKey({ inspectionId, workOrderId, items: quoteItems });
   const rpc = supabase as unknown as RpcClient;
-  const { data, error } = await rpc.rpc("import_inspection_quote_package_atomic", {
+  const importArgs = {
     p_shop_id: inspection.shop_id,
     p_work_order_id: workOrderId,
     p_inspection_id: inspectionId,
@@ -417,7 +451,17 @@ export async function insertPrioritizedJobsFromInspection(
     p_operation_key: `${inspection.shop_id}:inspection-import:${operationKey}`,
     p_items: quoteItems,
     p_at: new Date().toISOString(),
-  });
+  };
+  const { data, error } = args.signing
+    ? await rpc.rpc("import_inspection_findings_and_sign_atomic", {
+        ...importArgs,
+        p_role: args.signing.role,
+        p_signed_name: args.signing.signedName,
+        p_expected_sync_revision: args.signing.expectedSyncRevision,
+        p_signature_image_path: args.signing.signatureImagePath,
+        p_signature_hash: args.signing.signatureHash,
+      })
+    : await rpc.rpc("import_inspection_quote_package_atomic", importArgs);
 
   if (error) {
     return {
@@ -428,7 +472,14 @@ export async function insertPrioritizedJobsFromInspection(
     };
   }
 
-  const result = data && typeof data === "object" ? (data as AtomicImportResult) : {};
+  const result =
+    data && typeof data === "object" ? (data as AtomicImportResult) : {};
+  if (args.signing && result.signedAtomically !== true) {
+    return {
+      ok: false,
+      error: "Atomic inspection signing did not return a committed receipt.",
+    };
+  }
   const items = Array.isArray(result.items) ? result.items : [];
   const createdQuoteLines = items
     .filter((item) => item.created === true && typeof item.id === "string")
@@ -457,13 +508,12 @@ export async function insertPrioritizedJobsFromInspection(
     skippedCount: Number(result.skippedDuplicateCount ?? 0),
     partsRequestsCount: createdPartRequestIds.length,
     createdPartRequestIds,
-    skippedPartsRequestsCount: Number(
-      result.skippedPartRequestItemCount ?? 0,
-    ),
+    skippedPartsRequestsCount: Number(result.skippedPartRequestItemCount ?? 0),
     message:
       "Imported findings to Quote Review. No work order lines were created before customer approval.",
     insertedJobIds: null,
     workOrderLineIds: null,
     idempotent: result.idempotent === true,
+    signedAtomically: result.signedAtomically === true,
   };
 }

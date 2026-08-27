@@ -6,6 +6,14 @@ const authorization = readFileSync(
   "features/inspections/server/authorizeInspectionMutation.ts",
   "utf8",
 );
+const importer = readFileSync(
+  "features/work-orders/lib/work-orders/insertPrioritizedJobsFromInspection.ts",
+  "utf8",
+);
+const migration = readFileSync(
+  "supabase/migrations/20260825213000_enforce_inspection_write_capability.sql",
+  "utf8",
+);
 
 describe("inspection committed-signature replay authorization", () => {
   it("authorizes every staff-captured evidence role before signing", () => {
@@ -35,8 +43,11 @@ describe("inspection committed-signature replay authorization", () => {
     const retryAt = authorization.indexOf(
       "const retry = input.committedSignatureReplay;",
     );
-    const inspectionAt = authorization.indexOf('.from("inspections")');
-    const signatureAt = authorization.indexOf('.from("inspection_signatures")');
+    const inspectionAt = authorization.indexOf('.from("inspections")', retryAt);
+    const signatureAt = authorization.indexOf(
+      '.from("inspection_signatures")',
+      inspectionAt,
+    );
 
     expect(lineAt).toBeGreaterThan(capabilityAt);
     expect(workOrderAt).toBeGreaterThan(lineAt);
@@ -69,5 +80,37 @@ describe("inspection committed-signature replay authorization", () => {
     expect(
       route.indexOf('authorization.replay.kind !== "signature"'),
     ).toBeLessThan(route.indexOf("insertPrioritizedJobsFromInspection({"));
+  });
+
+  it("commits technician finding import and signing in one transaction", () => {
+    expect(route).toContain("signing: {");
+    expect(route).toContain(
+      "signedAtomically = imported.signedAtomically === true",
+    );
+    expect(route).toContain("const { data, error } = signedAtomically");
+    expect(importer).toContain(
+      'rpc("import_inspection_findings_and_sign_atomic"',
+    );
+    expect(importer).toContain(
+      "Atomic inspection signing did not return a committed receipt.",
+    );
+
+    const command = migration.slice(
+      migration.indexOf(
+        "create or replace function public.import_inspection_findings_and_sign_atomic(",
+      ),
+      migration.indexOf(
+        "comment on function public.import_inspection_findings_and_sign_atomic(",
+      ),
+    );
+    const importAt = command.indexOf(
+      "public.import_inspection_quote_package_atomic(",
+    );
+    const signAt = command.indexOf("public.sign_inspection(");
+    expect(command).toContain("security invoker");
+    expect(command).toContain("p_role is distinct from 'technician'");
+    expect(importAt).toBeGreaterThan(0);
+    expect(signAt).toBeGreaterThan(importAt);
+    expect(command).toContain("'signedAtomically', true");
   });
 });

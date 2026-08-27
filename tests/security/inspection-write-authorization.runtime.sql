@@ -128,6 +128,15 @@ values
     'in_progress',
     'Committed signature replay line',
     '76100000-0000-4000-8000-000000000004'
+  ),
+  (
+    '76500000-0000-4000-8000-000000000006',
+    '76300000-0000-4000-8000-000000000001',
+    '76400000-0000-4000-8000-000000000001',
+    'job',
+    'in_progress',
+    'Atomic finding import and signature line',
+    '76100000-0000-4000-8000-000000000004'
   );
 
 insert into public.work_order_line_technicians (
@@ -240,11 +249,50 @@ values
     false,
     'draft',
     '2026-08-25T21:00:00Z'
+  ),
+  (
+    '76600000-0000-4000-8000-000000000006',
+    '76400000-0000-4000-8000-000000000001',
+    '76500000-0000-4000-8000-000000000006',
+    '76300000-0000-4000-8000-000000000001',
+    '76100000-0000-4000-8000-000000000004',
+    '{"syncRevision":1,"lastUpdated":"2026-08-25T21:00:00Z","sections":[],"quote":[]}'::jsonb,
+    true,
+    1,
+    true,
+    false,
+    false,
+    'draft',
+    '2026-08-25T21:00:00Z'
   );
 
 insert into storage.buckets (id, name, public)
 values ('job-photos', 'job-photos', true)
 on conflict (id) do nothing;
+
+insert into storage.buckets (id, name, public)
+values ('signatures', 'signatures', false)
+on conflict (id) do nothing;
+
+insert into storage.objects (
+  id, bucket_id, name, owner, owner_id, metadata
+) values (
+  '76800000-0000-4000-8000-000000000006',
+  'signatures',
+  'tech-signatures/76100000-0000-4000-8000-000000000004/' ||
+    repeat('a', 64) || '.png',
+  '76100000-0000-4000-8000-000000000004',
+  '76100000-0000-4000-8000-000000000004',
+  '{"mimetype":"image/png","size":13}'::jsonb
+);
+
+update public.profiles
+set
+  tech_signature_path =
+    'tech-signatures/76100000-0000-4000-8000-000000000004/' ||
+    repeat('a', 64) || '.png',
+  tech_signature_hash = repeat('a', 64)
+where id = '76100000-0000-4000-8000-000000000004';
 
 -- Model an existing dashboard-created broad INSERT policy. The restrictive
 -- inspection-photo boundary must still reject unauthorized ip-* paths without
@@ -395,6 +443,18 @@ begin
   ) or not has_function_privilege(
     'service_role',
     'public.import_inspection_quote_package_atomic(uuid,uuid,uuid,uuid,uuid,text,jsonb,timestamptz)',
+    'EXECUTE'
+  ) or has_function_privilege(
+    'anon',
+    'public.import_inspection_findings_and_sign_atomic(uuid,uuid,uuid,uuid,uuid,text,jsonb,text,text,bigint,text,text,timestamptz)',
+    'EXECUTE'
+  ) or not has_function_privilege(
+    'authenticated',
+    'public.import_inspection_findings_and_sign_atomic(uuid,uuid,uuid,uuid,uuid,text,jsonb,text,text,bigint,text,text,timestamptz)',
+    'EXECUTE'
+  ) or has_function_privilege(
+    'service_role',
+    'public.import_inspection_findings_and_sign_atomic(uuid,uuid,uuid,uuid,uuid,text,jsonb,text,text,bigint,text,text,timestamptz)',
     'EXECUTE'
   ) or has_function_privilege(
     'anon',
@@ -1571,6 +1631,139 @@ begin
   );
 end
 $inspection_import_service_binding$;
+
+-- Finding import and technician signing share one transaction. A dispatch
+-- reassignment can happen only before both writes (deny) or after both commit
+-- (exact response-loss replay); it cannot strand imported side effects on an
+-- unsigned inspection.
+reset role;
+set local role authenticated;
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"76100000-0000-4000-8000-000000000004","role":"authenticated"}',
+  true
+);
+
+do $inspection_import_and_sign_atomic$
+declare
+  v_result jsonb;
+  v_items jsonb := '[{"id":"76700000-0000-4000-8000-000000000002","description":"Atomic signing finding","findingIdentity":"inspection-auth:atomic-signing-finding","parts":[]}]'::jsonb;
+begin
+  v_result := public.import_inspection_findings_and_sign_atomic(
+    '76300000-0000-4000-8000-000000000001',
+    '76400000-0000-4000-8000-000000000001',
+    '76600000-0000-4000-8000-000000000006',
+    null,
+    '76100000-0000-4000-8000-000000000004',
+    '76300000-0000-4000-8000-000000000001:inspection-import:sign:76600000-0000-4000-8000-000000000006:1',
+    v_items,
+    'technician',
+    'Inspection Auth Assigned Tech',
+    1,
+    'tech-signatures/76100000-0000-4000-8000-000000000004/' ||
+      repeat('a', 64) || '.png',
+    repeat('a', 64),
+    '2026-08-25T21:36:00Z'
+  );
+
+  if not coalesce((v_result ->> 'signedAtomically')::boolean, false)
+     or not exists (
+       select 1
+       from public.work_order_quote_lines quote_line
+       where quote_line.id = '76700000-0000-4000-8000-000000000002'
+         and quote_line.work_order_id = '76400000-0000-4000-8000-000000000001'
+         and quote_line.shop_id = '76300000-0000-4000-8000-000000000001'
+     )
+     or not exists (
+       select 1
+       from public.inspection_signatures signature
+       where signature.inspection_id = '76600000-0000-4000-8000-000000000006'
+         and signature.role = 'technician'
+         and signature.signed_by = '76100000-0000-4000-8000-000000000004'
+         and signature.signed_sync_revision = 1
+     ) then
+    raise exception 'Atomic inspection import/sign did not commit both boundaries: %', v_result;
+  end if;
+end
+$inspection_import_and_sign_atomic$;
+
+reset role;
+update public.work_order_lines
+set assigned_tech_id = '76100000-0000-4000-8000-000000000005',
+    assigned_to = '76100000-0000-4000-8000-000000000005'
+where id = '76500000-0000-4000-8000-000000000006';
+
+set local role authenticated;
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"76100000-0000-4000-8000-000000000004","role":"authenticated"}',
+  true
+);
+
+do $inspection_import_and_sign_replay$
+declare
+  v_retry jsonb;
+  v_fresh_denied boolean := false;
+  v_items jsonb := '[{"id":"76700000-0000-4000-8000-000000000002","description":"Atomic signing finding","findingIdentity":"inspection-auth:atomic-signing-finding","parts":[]}]'::jsonb;
+begin
+  v_retry := public.import_inspection_findings_and_sign_atomic(
+    '76300000-0000-4000-8000-000000000001',
+    '76400000-0000-4000-8000-000000000001',
+    '76600000-0000-4000-8000-000000000006',
+    null,
+    '76100000-0000-4000-8000-000000000004',
+    '76300000-0000-4000-8000-000000000001:inspection-import:sign:76600000-0000-4000-8000-000000000006:1',
+    v_items,
+    'technician',
+    'Inspection Auth Assigned Tech',
+    1,
+    'tech-signatures/76100000-0000-4000-8000-000000000004/' ||
+      repeat('a', 64) || '.png',
+    repeat('a', 64),
+    '2026-08-25T21:36:00Z'
+  );
+  if not coalesce((v_retry ->> 'idempotent')::boolean, false)
+     or not coalesce((v_retry ->> 'signedAtomically')::boolean, false) then
+    raise exception 'Atomic inspection import/sign response-loss replay failed: %', v_retry;
+  end if;
+
+  begin
+    perform public.import_inspection_findings_and_sign_atomic(
+      '76300000-0000-4000-8000-000000000001',
+      '76400000-0000-4000-8000-000000000001',
+      '76600000-0000-4000-8000-000000000006',
+      null,
+      '76100000-0000-4000-8000-000000000004',
+      '76300000-0000-4000-8000-000000000001:inspection-import:sign:76600000-0000-4000-8000-000000000006:1:fresh',
+      '[{"id":"76700000-0000-4000-8000-000000000003","description":"Forbidden late finding","findingIdentity":"inspection-auth:late-finding","parts":[]}]'::jsonb,
+      'technician',
+      'Inspection Auth Assigned Tech',
+      1,
+      'tech-signatures/76100000-0000-4000-8000-000000000004/' ||
+        repeat('a', 64) || '.png',
+      repeat('a', 64),
+      '2026-08-25T21:36:01Z'
+    );
+  exception when insufficient_privilege then
+    v_fresh_denied := true;
+  end;
+  if not v_fresh_denied or exists (
+    select 1
+    from public.work_order_quote_lines quote_line
+    where quote_line.id = '76700000-0000-4000-8000-000000000003'
+  ) then
+    raise exception 'Reassigned mechanic created a fresh import/sign side effect.';
+  end if;
+end
+$inspection_import_and_sign_replay$;
+
+reset role;
+update public.work_order_lines
+set assigned_tech_id = '76100000-0000-4000-8000-000000000004',
+    assigned_to = null
+where id = '76500000-0000-4000-8000-000000000006';
+set local role service_role;
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
 
 -- PDF finalization remains service-only, but the service credential cannot
 -- substitute an unauthorized actor or bypass exact-line mechanic assignment.

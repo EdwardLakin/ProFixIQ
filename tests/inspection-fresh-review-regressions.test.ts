@@ -71,6 +71,23 @@ describe("inspection exact-head review regressions", () => {
     expect(importAssignment).toBeGreaterThan(receiptReturn);
   });
 
+  it("cannot strand imported findings between technician import and signing", () => {
+    const combined = functionBody(
+      "create or replace function public.import_inspection_findings_and_sign_atomic(",
+      "comment on function public.import_inspection_findings_and_sign_atomic(",
+    );
+    const imported = combined.indexOf(
+      "public.import_inspection_quote_package_atomic(",
+    );
+    const signed = combined.indexOf("public.sign_inspection(");
+
+    expect(combined).toContain("security invoker");
+    expect(combined).toContain("p_role is distinct from 'technician'");
+    expect(imported).toBeGreaterThan(0);
+    expect(signed).toBeGreaterThan(imported);
+    expect(combined).toContain("'signedAtomically', true");
+  });
+
   it("locks Work Orders before inspection rows for attach and reopen", () => {
     expect(migration).toContain("rename to attach_signed_inspection_pdf_core");
     expect(migration).toContain(

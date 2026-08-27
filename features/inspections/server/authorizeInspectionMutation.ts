@@ -28,6 +28,13 @@ export type InspectionCommittedSignatureReplay = {
   signedName: string;
 };
 
+export type InspectionCommittedPhotoReplay = {
+  inspectionId: string;
+  storageBucket: "job-photos";
+  storagePath: string;
+  clientMutationId: string;
+};
+
 export type InspectionMutationReplay =
   | { kind: "none" }
   | {
@@ -36,6 +43,17 @@ export type InspectionMutationReplay =
       role: InspectionSignatureRole;
       signingCycle: number;
       syncRevision: number;
+    }
+  | {
+      kind: "photo";
+      inspectionId: string;
+      storageBucket: "job-photos";
+      storagePath: string;
+      photo: {
+        id: string;
+        image_url: string;
+        item_name: string | null;
+      };
     };
 
 export type InspectionMutationAuthorization =
@@ -91,6 +109,7 @@ export async function authorizeInspectionMutation(input: {
   workOrderId?: string | null;
   workOrderLineId?: string | null;
   committedSignatureReplay?: InspectionCommittedSignatureReplay;
+  committedPhotoReplay?: InspectionCommittedPhotoReplay;
 }): Promise<InspectionMutationAuthorization> {
   const {
     data: { user },
@@ -209,8 +228,89 @@ export async function authorizeInspectionMutation(input: {
     }
 
     if (!assigned) {
+      const photoRetry = input.committedPhotoReplay;
+      if (photoRetry && line && workOrderId) {
+        const inspectionResult = await admin
+          .from("inspections")
+          .select("id")
+          .eq("id", photoRetry.inspectionId)
+          .eq("shop_id", profile.shop_id)
+          .eq("work_order_id", workOrderId)
+          .eq("work_order_line_id", line.id)
+          .eq("is_canonical", true)
+          .maybeSingle<{ id: string }>();
+        if (inspectionResult.error) {
+          return {
+            ok: false,
+            error: "Unable to verify committed inspection photo.",
+            status: 500,
+          };
+        }
+
+        const mediaResult = await admin
+          .from("work_order_media")
+          .select("id")
+          .eq("shop_id", profile.shop_id)
+          .eq("work_order_id", workOrderId)
+          .eq("work_order_line_id", line.id)
+          .eq("storage_bucket", photoRetry.storageBucket)
+          .eq("storage_path", photoRetry.storagePath)
+          .eq("client_mutation_id", photoRetry.clientMutationId)
+          .eq("user_id", user.id)
+          .maybeSingle<{ id: string }>();
+        if (mediaResult.error) {
+          return {
+            ok: false,
+            error: "Unable to verify committed inspection photo.",
+            status: 500,
+          };
+        }
+
+        const photoResult = await admin
+          .from("inspection_photos")
+          .select("id,image_url,item_name,user_id")
+          .eq("inspection_id", photoRetry.inspectionId)
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: true });
+        if (photoResult.error) {
+          return {
+            ok: false,
+            error: "Unable to verify committed inspection photo.",
+            status: 500,
+          };
+        }
+
+        const signedSuffix =
+          `/storage/v1/object/sign/${photoRetry.storageBucket}/` +
+          photoRetry.storagePath;
+        const publicSuffix =
+          `/storage/v1/object/public/${photoRetry.storageBucket}/` +
+          photoRetry.storagePath;
+        const photo = (photoResult.data ?? []).find((candidate) => {
+          const stableUrl = candidate.image_url.split("?", 1)[0] ?? "";
+          return (
+            stableUrl.endsWith(signedSuffix) || stableUrl.endsWith(publicSuffix)
+          );
+        });
+
+        if (inspectionResult.data?.id && mediaResult.data?.id && photo?.id) {
+          replay = {
+            kind: "photo",
+            inspectionId: inspectionResult.data.id,
+            storageBucket: photoRetry.storageBucket,
+            storagePath: photoRetry.storagePath,
+            photo: {
+              id: photo.id,
+              image_url: photo.image_url,
+              item_name: photo.item_name,
+            },
+          };
+        }
+      }
+
       const retry = input.committedSignatureReplay;
       if (
+        replay.kind === "none" &&
         retry &&
         line &&
         workOrderId &&

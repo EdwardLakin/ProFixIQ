@@ -51,12 +51,17 @@ describe("inspection photo preview and markup contract", () => {
   it("uses canonical evidence with content-bound upload idempotency", () => {
     const upload = source("app/api/inspections/photos/upload/route.ts");
 
-    expect(upload).toContain('bucket = "job-photos"');
+    expect(upload).toContain('? "job-photos" : "inspection_photos"');
     expect(upload).toContain('request.headers.get("Idempotency-Key")');
     expect(upload).toContain('crypto.createHash("sha256").update(bytes)');
     expect(upload).toContain("authorizeInspectionMutation");
+    expect(upload.indexOf("file.arrayBuffer()")).toBeLessThan(
+      upload.indexOf("authorizeInspectionMutation({"),
+    );
+    expect(upload).toContain("committedPhotoReplay:");
+    expect(upload).toContain('authorization.replay.kind === "photo"');
     expect(upload.indexOf("authorizeInspectionMutation({")).toBeLessThan(
-      upload.indexOf("file.arrayBuffer()"),
+      upload.indexOf(".upload(path, bytes"),
     );
     expect(upload).toContain("existingMedia.storage_path !== path");
     expect(upload).toMatch(

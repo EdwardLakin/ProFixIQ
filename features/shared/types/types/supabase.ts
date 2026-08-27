@@ -28909,6 +28909,24 @@ export type Database = {
         }[]
       }
       has_column: { Args: { _col: string; _table: unknown }; Returns: boolean }
+      import_inspection_findings_and_sign_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_at?: string
+          p_expected_sync_revision: number
+          p_inspection_id: string
+          p_items: Json
+          p_operation_key: string
+          p_requested_vehicle_id: string
+          p_role: string
+          p_shop_id: string
+          p_signature_hash?: string
+          p_signature_image_path?: string
+          p_signed_name: string
+          p_work_order_id: string
+        }
+        Returns: Json
+      }
       import_inspection_quote_package_atomic: {
         Args: {
           p_actor_user_id: string
@@ -31482,3 +31500,4 @@ export const Constants = {
     },
   },
 } as const
+

@@ -405,6 +405,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  let signedAtomically = false;
   if (
     bodyUnknown.role === "technician" &&
     authorization.replay.kind !== "signature"
@@ -426,21 +427,31 @@ export async function POST(req: NextRequest) {
       vehicleId: inspectionContext.vehicle_id,
       userId: user.id,
       operationKey: `sign:${resolved.inspectionId}:${bodyUnknown.expectedSyncRevision}`,
+      signing: {
+        role: "technician",
+        signedName: effectiveSignedName,
+        expectedSyncRevision: bodyUnknown.expectedSyncRevision,
+        signatureImagePath: effectiveSignaturePath,
+        signatureHash: effectiveSignatureHash,
+      },
     });
 
     if (!imported.ok) {
       return NextResponse.json({ error: imported.error }, { status: 400 });
     }
+    signedAtomically = imported.signedAtomically === true;
   }
 
-  const { data, error } = await callSignInspectionRpc(supabase, {
-    p_inspection_id: resolved.inspectionId,
-    p_role: bodyUnknown.role,
-    p_signed_name: effectiveSignedName,
-    p_signature_image_path: effectiveSignaturePath,
-    p_signature_hash: effectiveSignatureHash,
-    p_expected_sync_revision: bodyUnknown.expectedSyncRevision,
-  });
+  const { data, error } = signedAtomically
+    ? { data: null, error: null }
+    : await callSignInspectionRpc(supabase, {
+        p_inspection_id: resolved.inspectionId,
+        p_role: bodyUnknown.role,
+        p_signed_name: effectiveSignedName,
+        p_signature_image_path: effectiveSignaturePath,
+        p_signature_hash: effectiveSignatureHash,
+        p_expected_sync_revision: bodyUnknown.expectedSyncRevision,
+      });
 
   if (error) {
     const lower = error.message.toLowerCase();
