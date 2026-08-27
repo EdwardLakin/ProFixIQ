@@ -37,15 +37,84 @@ insert into public.workspace_role_capability_presets (
   role_key,
   effect
 ) values
-  ('work_order.job.execute', 'owner', 'allow'),
-  ('work_order.job.execute', 'admin', 'allow'),
-  ('work_order.job.execute', 'manager', 'allow'),
   ('work_order.job.execute', 'mechanic', 'allow'),
   ('work_order.job.execute', 'lead_hand', 'allow'),
   ('work_order.job.execute', 'foreman', 'allow')
 on conflict (capability_key, role_key) do update
 set effect = excluded.effect,
     updated_at = now();
+
+delete from public.workspace_role_capability_presets
+where capability_key = 'work_order.job.execute'
+  and role_key not in ('mechanic', 'lead_hand', 'foreman');
+delete from public.shop_role_capability_policies
+where capability_key = 'work_order.job.execute'
+  and public.canonical_shop_membership_role(role_key) not in (
+    'mechanic', 'lead_hand', 'foreman'
+  );
+delete from public.staff_capability_overrides override
+using public.profiles profile
+where override.capability_key = 'work_order.job.execute'
+  and profile.id = override.profile_id
+  and public.canonical_shop_membership_role(profile.role::text) not in (
+    'mechanic', 'lead_hand', 'foreman'
+  );
+
+-- Canonical labor intervals are transition output, never browser-authored rows.
+-- RLS tenant checks alone cannot enforce capability, assignment, receipt, or
+-- transition invariants, so authenticated callers must use the atomic RPC.
+revoke insert, update, delete
+  on table public.work_order_line_labor_segments
+  from authenticated;
+
+create or replace function private.enforce_job_execution_capability_target()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_role text;
+begin
+  if new.capability_key <> 'work_order.job.execute' then
+    return new;
+  end if;
+
+  if tg_table_name = 'shop_role_capability_policies' then
+    v_role := public.canonical_shop_membership_role(new.role_key);
+  else
+    select public.canonical_shop_membership_role(profile.role::text)
+      into v_role
+    from public.profiles profile
+    where profile.id = new.profile_id
+      and profile.shop_id = new.shop_id;
+  end if;
+
+  if v_role not in ('mechanic', 'lead_hand', 'foreman') then
+    raise exception using
+      errcode = '42501',
+      message = 'Job execution can only be delegated to an assignable technician role.';
+  end if;
+  return new;
+end;
+$$;
+
+revoke all on function private.enforce_job_execution_capability_target()
+  from public, anon, authenticated, service_role;
+
+drop trigger if exists trg_job_execution_role_policy_target
+  on public.shop_role_capability_policies;
+create trigger trg_job_execution_role_policy_target
+before insert or update of role_key, capability_key
+on public.shop_role_capability_policies
+for each row execute function private.enforce_job_execution_capability_target();
+
+drop trigger if exists trg_job_execution_staff_override_target
+  on public.staff_capability_overrides;
+create trigger trg_job_execution_staff_override_target
+before insert or update of profile_id, capability_key
+on public.staff_capability_overrides
+for each row execute function private.enforce_job_execution_capability_target();
 
 -- Preserve the established transition implementation as an unreachable core.
 -- The stable public signature below performs caller, effective-capability, and
@@ -383,6 +452,22 @@ begin
     'EXECUTE'
   ) then
     raise exception 'Job punch authorization postcheck failed: private core remains directly executable.';
+  end if;
+
+  if has_table_privilege(
+    'authenticated',
+    'public.work_order_line_labor_segments',
+    'INSERT'
+  ) or has_table_privilege(
+    'authenticated',
+    'public.work_order_line_labor_segments',
+    'UPDATE'
+  ) or has_table_privilege(
+    'authenticated',
+    'public.work_order_line_labor_segments',
+    'DELETE'
+  ) then
+    raise exception 'Job punch authorization postcheck failed: labor segments remain browser-writable.';
   end if;
 end
 $job_punch_authorization_postcheck$;

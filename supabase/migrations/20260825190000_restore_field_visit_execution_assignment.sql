@@ -142,10 +142,42 @@ revoke all on function private.dispatch_lock_service_visit_for_execution(
   uuid, uuid, uuid
 ) from public, anon, authenticated, service_role;
 
+-- A response-loss retry is authorized by the exact durable receipt that the
+-- same actor committed for the same visit. This lookup deliberately runs
+-- before current-assignment enforcement: reassignment may revoke fresh work,
+-- but it must not make an already-committed result unrecoverable.
+create or replace function private.dispatch_committed_visit_transition_receipt(
+  p_shop_id uuid,
+  p_visit_id uuid,
+  p_actor_user_id uuid,
+  p_operation_key text
+) returns jsonb
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select operation.result || pg_catalog.jsonb_build_object('idempotent', true)
+  from public.scheduler_operation_keys operation
+  where operation.shop_id = p_shop_id
+    and operation.operation_name = 'dispatch_visit_transition'
+    and operation.operation_key = p_operation_key
+    and operation.actor_user_id = public.dispatch_actor_profile_id(
+      p_shop_id,
+      p_actor_user_id
+    )
+    and operation.result #>> '{visit,id}' = p_visit_id::text
+  limit 1;
+$$;
+
+revoke all on function private.dispatch_committed_visit_transition_receipt(
+  uuid, uuid, uuid, text
+) from public, anon, authenticated, service_role;
+
 -- Preserve the established transition contract while making the row lock and
--- assignment decision one atomic operation. The lock is deliberately acquired
--- before receipt lookup so reassigned actors cannot recover or create a result
--- through a stale authorization decision.
+-- assignment decision one atomic operation. Exact committed receipts are
+-- recovered first; every fresh operation still reaches the locked current-
+-- assignment decision.
 create or replace function public.dispatch_transition_service_visit_atomic(
   p_shop_id uuid,
   p_visit_id uuid,
@@ -174,6 +206,20 @@ begin
     raise exception using errcode = '42501', message = 'Service visit transition denied.';
   end if;
 
+  if nullif(trim(coalesce(p_operation_key, '')), '') is null then
+    raise exception using errcode = 'P0001', message = 'A stable operation key is required.';
+  end if;
+
+  v_existing := private.dispatch_committed_visit_transition_receipt(
+    p_shop_id,
+    p_visit_id,
+    p_actor_user_id,
+    p_operation_key
+  );
+  if v_existing is not null then
+    return v_existing;
+  end if;
+
   select *
   into v_visit
   from private.dispatch_lock_service_visit_for_execution(
@@ -181,15 +227,6 @@ begin
     p_actor_user_id,
     p_visit_id
   );
-
-  if nullif(trim(coalesce(p_operation_key, '')), '') is null then
-    raise exception using errcode = 'P0001', message = 'A stable operation key is required.';
-  end if;
-
-  select result into v_existing from public.scheduler_operation_keys k
-  where k.shop_id = p_shop_id and k.operation_name = 'dispatch_visit_transition'
-    and k.operation_key = p_operation_key;
-  if found then return v_existing || jsonb_build_object('idempotent', true); end if;
 
   if p_expected_version is not null and v_visit.version <> p_expected_version then
     raise exception using errcode = '40001', message = 'Service visit changed since it was loaded.';
@@ -255,8 +292,9 @@ begin
 end;
 $$;
 
--- Offline replay uses the same atomic lock/assignment primitive before looking
--- up a receipt. Its required version and state checks remain unchanged.
+-- Offline replay uses the same exact-receipt recovery and then the same atomic
+-- lock/assignment primitive. Its required version and state checks remain
+-- unchanged for fresh operations.
 create or replace function public.mobile_replay_service_visit_transition_atomic(
   p_shop_id uuid,
   p_visit_id uuid,
@@ -278,6 +316,23 @@ begin
     raise exception using errcode = '42501', message = 'Authenticated actor mismatch.';
   end if;
 
+  if nullif(trim(coalesce(p_operation_key, '')), '') is null then
+    raise exception using errcode = '22023', message = 'Operation key is required.';
+  end if;
+  if p_expected_version is null then
+    raise exception using errcode = '22023', message = 'Expected visit version is required for offline replay.';
+  end if;
+
+  v_existing := private.dispatch_committed_visit_transition_receipt(
+    p_shop_id,
+    p_visit_id,
+    p_actor_user_id,
+    p_operation_key
+  );
+  if v_existing is not null then
+    return v_existing;
+  end if;
+
   select *
   into v_visit
   from private.dispatch_lock_service_visit_for_execution(
@@ -286,24 +341,9 @@ begin
     p_visit_id
   );
 
-  if nullif(trim(coalesce(p_operation_key, '')), '') is null then
-    raise exception using errcode = '22023', message = 'Operation key is required.';
-  end if;
-  if p_expected_version is null then
-    raise exception using errcode = '22023', message = 'Expected visit version is required for offline replay.';
-  end if;
   if lower(trim(coalesce(p_to_status, ''))) in ('working', 'completed')
      and v_visit.work_order_id is null then
     raise exception using errcode = 'P0001', message = 'A linked work order is required before starting or completing repair.';
-  end if;
-
-  select result into v_existing
-  from public.scheduler_operation_keys k
-  where k.shop_id = p_shop_id
-    and k.operation_name = 'dispatch_visit_transition'
-    and k.operation_key = p_operation_key;
-  if found then
-    return v_existing || jsonb_build_object('idempotent', true);
   end if;
 
   if v_visit.version <> p_expected_version then

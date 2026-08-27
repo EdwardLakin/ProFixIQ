@@ -86,9 +86,10 @@ vi.mock("@/features/shared/lib/supabase/client", () => {
 vi.mock(
   "@/features/work-orders/mobile/technicianOfflineExecution",
   async (importOriginal) => {
-    const actual = await importOriginal<
-      typeof import("@/features/work-orders/mobile/technicianOfflineExecution")
-    >();
+    const actual =
+      await importOriginal<
+        typeof import("@/features/work-orders/mobile/technicianOfflineExecution")
+      >();
     return {
       ...actual,
       clearTechnicianJobEditorDraftFields: vi.fn(),
@@ -111,10 +112,9 @@ vi.mock(
   "@/features/work-orders/components/workorders/PartsRequestModal",
   () => ({ default: () => null }),
 );
-vi.mock(
-  "@/features/work-orders/components/workorders/HoldModal",
-  () => ({ default: () => null }),
-);
+vi.mock("@/features/work-orders/components/workorders/HoldModal", () => ({
+  default: () => null,
+}));
 vi.mock(
   "@/features/work-orders/components/workorders/extras/PhotoCaptureModal",
   () => ({ default: () => null }),
@@ -126,9 +126,12 @@ vi.mock(
 vi.mock("@/features/work-orders/components/workorders/AddJobModal", () => ({
   default: () => null,
 }));
-vi.mock("@/features/work-orders/components/workorders/AiAssistantModal", () => ({
-  default: () => null,
-}));
+vi.mock(
+  "@/features/work-orders/components/workorders/AiAssistantModal",
+  () => ({
+    default: () => null,
+  }),
+);
 vi.mock("@/features/ai/components/chat/NewChatModal", () => ({
   default: () => null,
 }));
@@ -179,9 +182,7 @@ function lineContext(activeTechnicianIds: string[] = []) {
     canonicalPartsByLine: {},
     technicianIdsByLine: {},
     activeTechnicianIdsByLine:
-      activeTechnicianIds.length > 0
-        ? { [LINE_ID]: activeTechnicianIds }
-        : {},
+      activeTechnicianIds.length > 0 ? { [LINE_ID]: activeTechnicianIds } : {},
     partRequestsByLine: {},
     partRequestsByQuoteLine: {},
   };
@@ -229,6 +230,7 @@ function renderFocusedJob(canExecuteJob = true) {
       onBack={vi.fn()}
       mode="tech"
       canExecuteJob={canExecuteJob}
+      actorAssignedToLine
     />,
   );
 }
@@ -242,9 +244,7 @@ describe("mobile focused-job operational state", () => {
     setOnline(true);
     mocks.findProjectedTechnicianJob.mockResolvedValue(null);
     mocks.getTechnicianJobEditorDraft.mockResolvedValue(null);
-    mocks.fetch.mockResolvedValue(
-      response(workOrderSnapshot(line())),
-    );
+    mocks.fetch.mockResolvedValue(response(workOrderSnapshot(line())));
     vi.stubGlobal("fetch", mocks.fetch);
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -256,7 +256,9 @@ describe("mobile focused-job operational state", () => {
     expect(
       await screen.findByRole("button", { name: "Start Job" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("Awaiting", { selector: "span" })).toBeInTheDocument();
+    expect(
+      screen.getByText("Awaiting", { selector: "span" }),
+    ).toBeInTheDocument();
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Start Job" })).toBeEnabled(),
     );
@@ -279,12 +281,7 @@ describe("mobile focused-job operational state", () => {
 
   it("shows Active and Finish Job from canonical-only live evidence", async () => {
     mocks.fetch.mockResolvedValue(
-      response(
-        workOrderSnapshot(
-          line({ status: "awaiting" }),
-          ["tech-1"],
-        ),
-      ),
+      response(workOrderSnapshot(line({ status: "awaiting" }), ["tech-1"])),
     );
 
     renderFocusedJob();
@@ -292,17 +289,14 @@ describe("mobile focused-job operational state", () => {
     expect(
       await screen.findByRole("button", { name: "Finish Job" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("Active", { selector: "span" })).toBeInTheDocument();
+    expect(
+      screen.getByText("Active", { selector: "span" }),
+    ).toBeInTheDocument();
   });
 
   it("retires stale canonical activity after a realtime punch line change", async () => {
     mocks.fetch.mockResolvedValue(
-      response(
-        workOrderSnapshot(
-          line({ status: "awaiting" }),
-          ["tech-1"],
-        ),
-      ),
+      response(workOrderSnapshot(line({ status: "awaiting" }), ["tech-1"])),
     );
 
     renderFocusedJob();

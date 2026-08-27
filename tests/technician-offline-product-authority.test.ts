@@ -75,9 +75,12 @@ function bundle(productScope: "shop" | "field") {
   };
 }
 
-function authority(productScope: "shop" | "field") {
+function authority(
+  productScope: "shop" | "field",
+  authorizedWorkOrderIds?: string[] | null,
+) {
   return stored(
-    { ...scope, productScope },
+    { ...scope, productScope, authorizedWorkOrderIds },
     "mobile-product-authority",
     "current",
   );
@@ -182,6 +185,41 @@ describe("technician offline product authority", () => {
         kind: "technician-assigned-work",
         entityId: "current",
         data: expect.objectContaining({ productScope: "field" }),
+      }),
+    );
+  });
+
+  it("purges stale Field snapshots when the authorized Work Order set shrinks", async () => {
+    mocks.getOfflineSnapshot.mockImplementation(async (args) =>
+      args.kind === "mobile-product-authority"
+        ? authority("field", ["wo-field", "wo-removed"])
+        : null,
+    );
+    mocks.listOfflineSnapshots.mockImplementation(async (args) =>
+      args.kind === "mobile-work-order-detail"
+        ? [stored({}, "mobile-work-order-detail", "wo-removed")]
+        : [],
+    );
+    const { reconcileMobileProductScope } =
+      await import("@/features/work-orders/mobile/mobileProductScopeStorage");
+
+    await reconcileMobileProductScope({
+      scope,
+      productScope: "field",
+      authorizedWorkOrderIds: ["wo-field"],
+    });
+
+    expect(mocks.removeOfflineSnapshots).toHaveBeenCalledWith({
+      scope,
+      kind: "mobile-work-order-detail",
+      entityIds: ["wo-removed"],
+    });
+    expect(mocks.saveOfflineSnapshot).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          productScope: "field",
+          authorizedWorkOrderIds: ["wo-field"],
+        }),
       }),
     );
   });

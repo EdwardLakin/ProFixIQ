@@ -18,6 +18,7 @@ const migration = readFileSync(
 describe("inspection committed-signature replay authorization", () => {
   it("authorizes every staff-captured evidence role before signing", () => {
     const authorizeAt = route.indexOf("authorizeInspectionMutation({");
+    const productAt = route.indexOf("canExecuteInspectionForProduct({");
     const importAt = route.indexOf("insertPrioritizedJobsFromInspection({");
     const signAt = route.indexOf("callSignInspectionRpc(supabase");
 
@@ -26,6 +27,11 @@ describe("inspection committed-signature replay authorization", () => {
     expect(route).toContain("role: bodyUnknown.role");
     expect(route).toContain("signedName: effectiveSignedName");
     expect(authorizeAt).toBeGreaterThan(-1);
+    expect(productAt).toBeGreaterThan(authorizeAt);
+    expect(route).toContain('authorization.replay.kind !== "signature"');
+    expect(route).not.toContain(
+      'bodyUnknown.role === "technician" || bodyUnknown.role === "advisor"',
+    );
     expect(importAt).toBeGreaterThan(authorizeAt);
     expect(signAt).toBeGreaterThan(importAt);
   });

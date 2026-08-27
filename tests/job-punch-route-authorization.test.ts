@@ -18,7 +18,7 @@ vi.mock("@/features/shared/lib/supabase/server", () => ({
   createAdminSupabase: mocks.createAdmin,
 }));
 
-import { requireAssignedJobPunchAccess } from "@/features/work-orders/server/authorizeJobPunchTransition";
+import { requireJobPunchActorAccess } from "@/features/work-orders/server/authorizeJobPunchTransition";
 
 type QueryResult = { data: unknown; error: { message: string } | null };
 
@@ -37,10 +37,7 @@ function chain(result: QueryResult) {
   return query;
 }
 
-function installAdmin(input?: {
-  line?: QueryResult;
-  assignment?: QueryResult;
-}) {
+function installAdmin(input?: { line?: QueryResult; receipt?: QueryResult }) {
   const line = chain(
     input?.line ?? {
       data: {
@@ -54,12 +51,12 @@ function installAdmin(input?: {
       error: null,
     },
   );
-  const assignment = chain(input?.assignment ?? { data: null, error: null });
+  const receipt = chain(input?.receipt ?? { data: null, error: null });
   const from = vi.fn((table: string) =>
-    table === "work_order_lines" ? line : assignment,
+    table === "work_order_lines" ? line : receipt,
   );
   mocks.createAdmin.mockReturnValue({ from });
-  return { from, line, assignment };
+  return { from, line };
 }
 
 describe("direct job-punch route authorization", () => {
@@ -78,24 +75,29 @@ describe("direct job-punch route authorization", () => {
     });
   });
 
-  it("requires the effective job-execution capability before admin lookup", async () => {
+  it("requires a canonical shop actor before delegating to the receipt-aware RPC", async () => {
     const response = new Response(null, { status: 403 });
     mocks.requireAccess.mockResolvedValueOnce({ ok: false, response });
 
-    const result = await requireAssignedJobPunchAccess("line-1");
+    const result = await requireJobPunchActorAccess({
+      lineId: "line-1",
+      action: "start",
+      operationKey: "operation-1",
+    });
 
     expect(result).toEqual({ ok: false, response });
-    expect(mocks.requireAccess).toHaveBeenCalledWith({
-      requiredWorkspaceCapability: "work_order.job.execute",
-      requiredProductCapabilities: ["shop", "field_service"],
-    });
+    expect(mocks.requireAccess).toHaveBeenCalledWith();
     expect(mocks.createAdmin).not.toHaveBeenCalled();
   });
 
   it("accepts canonical imported-profile assignment", async () => {
     installAdmin();
 
-    const result = await requireAssignedJobPunchAccess("line-1");
+    const result = await requireJobPunchActorAccess({
+      lineId: "line-1",
+      action: "start",
+      operationKey: "operation-1",
+    });
 
     expect(result).toMatchObject({
       ok: true,
@@ -104,8 +106,8 @@ describe("direct job-punch route authorization", () => {
     });
   });
 
-  it("accepts an explicit supporting assignment linked by auth identity", async () => {
-    const { assignment } = installAdmin({
+  it("accepts an actor-bound receipt before current product authority", async () => {
+    installAdmin({
       line: {
         data: {
           id: "line-1",
@@ -117,43 +119,38 @@ describe("direct job-punch route authorization", () => {
         },
         error: null,
       },
-      assignment: { data: { id: "assignment-1" }, error: null },
+      receipt: {
+        data: {
+          actor_user_id: "auth-1",
+          work_order_line_id: "line-1",
+        },
+        error: null,
+      },
+    });
+    mocks.resolveProductAuthority.mockResolvedValueOnce({
+      authorized: false,
+      product: null,
     });
 
-    const result = await requireAssignedJobPunchAccess("line-1");
+    const result = await requireJobPunchActorAccess({
+      lineId: "line-1",
+      action: "finish",
+      operationKey: "committed-operation",
+    });
 
     expect(result.ok).toBe(true);
-    expect(assignment.in).toHaveBeenCalledWith("technician_id", [
-      "profile-1",
-      "auth-1",
-    ]);
+    expect(mocks.resolveProductAuthority).not.toHaveBeenCalled();
   });
 
-  it("fails closed for an unassigned or foreign-tenant line", async () => {
-    installAdmin({
-      line: {
-        data: {
-          id: "line-1",
-          shop_id: "shop-1",
-          work_order_id: "work-order-1",
-          line_type: "job",
-          assigned_tech_id: "another-profile",
-          assigned_to: null,
-        },
-        error: null,
-      },
-    });
-    const unassigned = await requireAssignedJobPunchAccess("line-1");
-    expect(unassigned).toMatchObject({
-      ok: false,
-      response: { status: 403 },
-    });
-
+  it("fails closed for a foreign-tenant line", async () => {
     installAdmin({
       line: { data: null, error: null },
-      assignment: { data: { id: "foreign-assignment" }, error: null },
     });
-    const foreign = await requireAssignedJobPunchAccess("foreign-line");
+    const foreign = await requireJobPunchActorAccess({
+      lineId: "foreign-line",
+      action: "start",
+      operationKey: "operation-1",
+    });
     expect(foreign).toMatchObject({
       ok: false,
       response: { status: 404 },

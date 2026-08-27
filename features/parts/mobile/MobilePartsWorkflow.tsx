@@ -71,6 +71,9 @@ type AllocationDraft = {
 };
 
 type ApiResult = { ok?: boolean; error?: string };
+type ProductScopeResponse =
+  | { scope: "shop"; workOrderIds: null }
+  | { scope: "field"; workOrderIds: string[] };
 
 const ACTIVE_REQUEST_STATUSES = ["requested", "quoted", "approved"] as const;
 const CANCELLED_ITEM_STATUSES = new Set([
@@ -134,24 +137,62 @@ export default function MobilePartsWorkflow(): JSX.Element {
   const [receiveEntry, setReceiveEntry] = useState<WorkflowEntry | null>(null);
   const [allocation, setAllocation] = useState<AllocationDraft | null>(null);
   const [allocating, setAllocating] = useState(false);
+  const [productScope, setProductScope] = useState<"shop" | "field" | null>(
+    null,
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
 
     try {
-      const [requestResult, locationResult] = await Promise.all([
-        supabase
-          .from("part_requests")
-          .select("id, work_order_id, job_id, status, notes, created_at")
-          .in("status", [...ACTIVE_REQUEST_STATUSES])
-          .order("created_at", { ascending: false })
-          .limit(300),
-        supabase
+      const scopeResponse = await fetch("/api/mobile/work-orders/scope", {
+        cache: "no-store",
+        credentials: "include",
+      });
+      const scopePayload = (await scopeResponse.json().catch(() => null)) as
+        | ProductScopeResponse
+        | { error?: string }
+        | null;
+      if (
+        !scopeResponse.ok ||
+        !scopePayload ||
+        !("scope" in scopePayload) ||
+        (scopePayload.scope !== "shop" && scopePayload.scope !== "field")
+      ) {
+        throw new Error(
+          (scopePayload && "error" in scopePayload && scopePayload.error) ||
+            "Unable to authorize the parts workspace.",
+        );
+      }
+      setProductScope(scopePayload.scope);
+
+      let requestQuery = supabase
+        .from("part_requests")
+        .select("id, work_order_id, job_id, status, notes, created_at")
+        .in("status", [...ACTIVE_REQUEST_STATUSES])
+        .order("created_at", { ascending: false })
+        .limit(300);
+      if (scopePayload.scope === "field") {
+        if (scopePayload.workOrderIds.length === 0) {
+          setEntries([]);
+          setLocations([]);
+          return;
+        }
+        requestQuery = requestQuery.in(
+          "work_order_id",
+          scopePayload.workOrderIds,
+        );
+      }
+
+      const requestResult = await requestQuery;
+      const locationResult =
+        scopePayload.scope === "shop"
+          ? await supabase
           .from("stock_locations")
           .select("id, code, name")
-          .order("code", { ascending: true }),
-      ]);
+              .order("code", { ascending: true })
+          : { data: [], error: null };
 
       if (requestResult.error) throw requestResult.error;
       if (locationResult.error) throw locationResult.error;
@@ -531,7 +572,9 @@ export default function MobilePartsWorkflow(): JSX.Element {
                 </div>
 
                 <div className="mt-3 flex flex-wrap gap-2">
-                  {lane === "ordered" && entry.itemId ? (
+                  {productScope === "shop" &&
+                  lane === "ordered" &&
+                  entry.itemId ? (
                     <button
                       type="button"
                       className={primaryActionClass}
@@ -542,7 +585,9 @@ export default function MobilePartsWorkflow(): JSX.Element {
                     </button>
                   ) : null}
 
-                  {lane === "ready" && entry.itemId ? (
+                  {productScope === "shop" &&
+                  lane === "ready" &&
+                  entry.itemId ? (
                     <button
                       type="button"
                       className={primaryActionClass}
@@ -553,9 +598,11 @@ export default function MobilePartsWorkflow(): JSX.Element {
                     </button>
                   ) : null}
 
-                  <Link className={actionClass} href={workbenchHref}>
-                    Open parts workbench
-                  </Link>
+                  {productScope === "shop" ? (
+                    <Link className={actionClass} href={workbenchHref}>
+                      Open parts workbench
+                    </Link>
+                  ) : null}
 
                   {entry.workOrderLineId ? (
                     <Link

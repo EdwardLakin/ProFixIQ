@@ -369,6 +369,7 @@ export default function MobileWorkOrderQueue({
           await reconcileMobileProductScope({
             scope,
             productScope: productScope.scope,
+            authorizedWorkOrderIds: fieldWorkOrderIds,
           });
         } catch (cacheError) {
           console.error(

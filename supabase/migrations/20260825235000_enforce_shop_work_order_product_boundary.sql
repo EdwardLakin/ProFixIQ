@@ -72,7 +72,6 @@ as $function$
           from public.fleet_members member
           join public.profiles profile
             on profile.id = member.user_id
-           and profile.shop_id = member.shop_id
           where member.shop_id = shop.id
             and (profile.id = auth.uid() or profile.user_id = auth.uid())
         )
@@ -114,7 +113,6 @@ as $function$
           from public.fleet_members member
           join public.profiles profile
             on profile.id = member.user_id
-           and profile.shop_id = member.shop_id
           where member.fleet_id = fleet.id
             and (profile.id = auth.uid() or profile.user_id = auth.uid())
         )
@@ -2173,6 +2171,203 @@ revoke all on function private.mobile_materialize_visit_work_order_mode_core(
   uuid, uuid, uuid, text
 ) from public, anon, authenticated, service_role;
 
+-- Quote decisions and line voids are public PostgREST entry points whose
+-- mature cores run as SECURITY DEFINER. Preserve committed, actor-bound
+-- receipts before applying current product authority, then keep the cores
+-- unreachable so RLS cannot be bypassed by calling them directly.
+alter function public.apply_shop_quote_decision_atomic(
+  uuid, uuid, uuid[], text, uuid, text, text, text, timestamptz
+) rename to apply_shop_quote_decision_product_core;
+alter function public.apply_shop_quote_decision_product_core(
+  uuid, uuid, uuid[], text, uuid, text, text, text, timestamptz
+) set schema private;
+revoke all on function private.apply_shop_quote_decision_product_core(
+  uuid, uuid, uuid[], text, uuid, text, text, text, timestamptz
+) from public, anon, authenticated, service_role;
+
+create function public.apply_shop_quote_decision_atomic(
+  p_shop_id uuid,
+  p_work_order_id uuid,
+  p_quote_line_ids uuid[],
+  p_decision text,
+  p_actor_user_id uuid,
+  p_contact_method text,
+  p_note text,
+  p_operation_key text,
+  p_at timestamptz default now()
+) returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_existing jsonb;
+  v_existing_actor uuid;
+  v_existing_work_order uuid;
+begin
+  if coalesce(auth.role(), '') <> 'service_role'
+     and auth.uid() is distinct from p_actor_user_id then
+    raise exception using
+      errcode = '42501',
+      message = 'Shop quote decision actor mismatch.';
+  end if;
+
+  select operation.result, operation.actor_user_id, operation.work_order_id
+    into v_existing, v_existing_actor, v_existing_work_order
+  from public.quote_lifecycle_operation_keys operation
+  where operation.shop_id = p_shop_id
+    and operation.operation_name = 'shop_quote_decision'
+    and operation.operation_key = p_operation_key;
+  if found then
+    if v_existing_actor is distinct from p_actor_user_id
+       or v_existing_work_order is distinct from p_work_order_id then
+      raise exception using
+        errcode = '23505',
+        message = 'SHOP_QUOTE_DECISION_OPERATION_CONFLICT';
+    end if;
+    return v_existing || jsonb_build_object('idempotent', true);
+  end if;
+
+  if coalesce(auth.role(), '') <> 'service_role'
+     and not public.profixiq_current_actor_can_read_work_order_product(
+       p_shop_id,
+       p_work_order_id
+     ) then
+    raise exception using
+      errcode = '42501',
+      message = 'Work Order product access is required.';
+  end if;
+
+  return private.apply_shop_quote_decision_product_core(
+    p_shop_id,
+    p_work_order_id,
+    p_quote_line_ids,
+    p_decision,
+    p_actor_user_id,
+    p_contact_method,
+    p_note,
+    p_operation_key,
+    p_at
+  );
+end;
+$function$;
+
+revoke all on function public.apply_shop_quote_decision_atomic(
+  uuid, uuid, uuid[], text, uuid, text, text, text, timestamptz
+) from public, anon, authenticated, service_role;
+grant execute on function public.apply_shop_quote_decision_atomic(
+  uuid, uuid, uuid[], text, uuid, text, text, text, timestamptz
+) to authenticated, service_role;
+
+alter function public.parts_void_work_order_line_atomic(
+  uuid, uuid, text, text, text, text, text, text, text, text, uuid
+) rename to parts_void_work_order_line_product_core;
+alter function public.parts_void_work_order_line_product_core(
+  uuid, uuid, text, text, text, text, text, text, text, text, uuid
+) set schema private;
+revoke all on function private.parts_void_work_order_line_product_core(
+  uuid, uuid, text, text, text, text, text, text, text, text, uuid
+) from public, anon, authenticated, service_role;
+
+create function public.parts_void_work_order_line_atomic(
+  p_shop_id uuid,
+  p_work_order_line_id uuid,
+  p_mode text,
+  p_reserved_disposition text,
+  p_ordered_disposition text,
+  p_received_disposition text,
+  p_consumed_disposition text,
+  p_reason text,
+  p_note text,
+  p_operation_key text,
+  p_actor_user_id uuid
+) returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_work_order_id uuid;
+  v_existing public.parts_operation_keys%rowtype;
+begin
+  if coalesce(auth.role(), '') <> 'service_role'
+     and not exists (
+       select 1
+       from public.profiles profile
+       where profile.shop_id = p_shop_id
+         and (profile.id = auth.uid() or profile.user_id = auth.uid())
+         and (profile.id = p_actor_user_id or profile.user_id = p_actor_user_id)
+         and public.canonical_shop_membership_role(profile.role::text) in (
+           'owner', 'admin', 'manager', 'advisor', 'service', 'foreman'
+         )
+     ) then
+    raise exception using
+      errcode = '42501',
+      message = 'Line void actor mismatch.';
+  end if;
+
+  select operation.*
+    into v_existing
+  from public.parts_operation_keys operation
+  where operation.shop_id = p_shop_id
+    and operation.operation_key = p_operation_key;
+  if found and v_existing.completed_at is not null then
+    if v_existing.operation_type <> 'void_work_order_line'
+       or v_existing.aggregate_type <> 'work_order_line'
+       or v_existing.aggregate_id <> p_work_order_line_id
+       or v_existing.created_by is distinct from p_actor_user_id then
+      raise exception using
+        errcode = '23505',
+        message = 'PARTS_VOID_OPERATION_CONFLICT';
+    end if;
+    return coalesce(v_existing.result, '{}'::jsonb)
+      || jsonb_build_object('idempotent', true);
+  end if;
+
+  select line.work_order_id
+    into v_work_order_id
+  from public.work_order_lines line
+  where line.id = p_work_order_line_id
+    and line.shop_id = p_shop_id;
+  if v_work_order_id is null then
+    raise exception using
+      errcode = 'P0001',
+      message = 'Work-order line not found for shop.';
+  end if;
+
+  if coalesce(auth.role(), '') <> 'service_role'
+     and not public.profixiq_current_actor_can_read_work_order_product(
+       p_shop_id,
+       v_work_order_id
+     ) then
+    raise exception using
+      errcode = '42501',
+      message = 'Work Order product access is required.';
+  end if;
+
+  return private.parts_void_work_order_line_product_core(
+    p_shop_id,
+    p_work_order_line_id,
+    p_mode,
+    p_reserved_disposition,
+    p_ordered_disposition,
+    p_received_disposition,
+    p_consumed_disposition,
+    p_reason,
+    p_note,
+    p_operation_key,
+    p_actor_user_id
+  );
+end;
+$function$;
+
+revoke all on function public.parts_void_work_order_line_atomic(
+  uuid, uuid, text, text, text, text, text, text, text, text, uuid
+) from public, anon, authenticated, service_role;
+grant execute on function public.parts_void_work_order_line_atomic(
+  uuid, uuid, text, text, text, text, text, text, text, text, uuid
+) to authenticated, service_role;
+
 do $product_boundary_acl_postcheck$
 declare
   v_signature regprocedure;
@@ -2192,7 +2387,9 @@ begin
     'private.convert_fleet_request_work_order_product_core(uuid)'::regprocedure,
     'private.mobile_create_service_call_field_service_core(uuid,uuid,text,text,uuid,integer,text,text,text,text,text,text,text,text,timestamptz,integer,numeric,text,text,uuid,text)'::regprocedure,
     'private.mobile_materialize_visit_wo_v1_core(uuid,uuid,uuid,text)'::regprocedure,
-    'private.mobile_materialize_visit_work_order_mode_core(uuid,uuid,uuid,text)'::regprocedure
+    'private.mobile_materialize_visit_work_order_mode_core(uuid,uuid,uuid,text)'::regprocedure,
+    'private.apply_shop_quote_decision_product_core(uuid,uuid,uuid[],text,uuid,text,text,text,timestamptz)'::regprocedure,
+    'private.parts_void_work_order_line_product_core(uuid,uuid,text,text,text,text,text,text,text,text,uuid)'::regprocedure
   ]
   loop
     foreach v_role in array array['anon', 'authenticated', 'service_role']::name[]

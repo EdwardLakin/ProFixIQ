@@ -74,10 +74,12 @@ describe("product boundary stabilization", () => {
     expect(access).toContain("resolveWorkOrderProductAuthority");
     expect(detail).toContain("resolveWorkOrderProductAuthority");
     expect(punches).toContain("resolveWorkOrderProductAuthority");
+    expect(punches).toContain('from("workforce_operation_keys")');
     expect(queue).toContain('"/api/mobile/work-orders/scope"');
     expect(queue).toContain('query.in("id", fieldWorkOrderIds)');
     expect(queue).toContain("getCachedMobileProductScope");
     expect(queue).toContain("reconcileMobileProductScope");
+    expect(queue).toContain("authorizedWorkOrderIds: fieldWorkOrderIds");
     expect(queue).toContain(
       'cached.data.fieldScoped === (cachedProductScope === "field")',
     );
@@ -115,6 +117,27 @@ describe("product boundary stabilization", () => {
     ]) {
       expect(read(route)).toContain("canExecuteInspectionForProduct");
     }
+  });
+
+  it("keeps shared Field navigation and data projections relationship-scoped", () => {
+    const middleware = read("middleware.ts");
+    const dispatch = read("features/dispatch/server/productScope.ts");
+    const cache = read(
+      "features/work-orders/mobile/mobileProductScopeStorage.ts",
+    );
+    const parts = read("features/parts/mobile/MobilePartsWorkflow.tsx");
+
+    expect(middleware).toContain('pathname.startsWith("/mobile/jobs/")');
+    expect(dispatch).toContain("getMobileFieldServiceAccess");
+    expect(dispatch).toContain("fieldAccess.canAccessFieldService");
+    expect(cache).toContain("authorizedWorkOrderIds");
+    expect(cache).toContain("!sameIds");
+    expect(parts).toContain('fetch("/api/mobile/work-orders/scope"');
+    expect(parts).toContain('requestQuery.in(\n          "work_order_id"');
+    expect(parts).toContain('productScope === "shop"');
+    expect(read("tests/security/shop-work-order-product-boundary.runtime.sql")).toContain(
+      "'PRODUCT-SHOP-DRAFT-PO', 'new'",
+    );
   });
 
   it("does not let a Field role become standard tenant-wide invoice authority", () => {
@@ -261,8 +284,6 @@ describe("product boundary stabilization", () => {
 
     for (const sharedApi of [
       "app/api/openai/realtime-token/route.ts",
-      "app/api/portal/bookings/route.ts",
-      "app/api/portal/bookings/[id]/route.ts",
       "app/api/inspection-form-imports/route.ts",
       "app/api/parts/requests/create/route.ts",
       "app/api/parts/requests/queue/route.ts",
@@ -270,6 +291,16 @@ describe("product boundary stabilization", () => {
       "app/api/work-orders/quotes/[id]/decline/route.ts",
     ]) {
       expect(read(sharedApi)).toContain("SHOP_OR_FIELD_PRODUCT_CAPABILITIES");
+    }
+
+    for (const shopBookingApi of [
+      "app/api/portal/bookings/route.ts",
+      "app/api/portal/bookings/[id]/route.ts",
+    ]) {
+      expect(read(shopBookingApi)).toContain("SHOP_PRODUCT_CAPABILITIES");
+      expect(read(shopBookingApi)).not.toContain(
+        "SHOP_OR_FIELD_PRODUCT_CAPABILITIES",
+      );
     }
 
     for (const quoteDecisionApi of [

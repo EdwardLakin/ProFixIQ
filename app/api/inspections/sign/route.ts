@@ -384,22 +384,6 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Signature role describes the immutable evidence being recorded. Every
-  // request still represents an authenticated staff mutation and must satisfy
-  // the same capability and exact repair-line assignment contract.
-  const requiresStaffProductAuthority =
-    bodyUnknown.role === "technician" || bodyUnknown.role === "advisor";
-  if (
-    requiresStaffProductAuthority &&
-    !(await canExecuteInspectionForProduct({
-      supabase,
-      shopId: profile.shop_id,
-      workOrderId: inspectionContext.work_order_id,
-    }))
-  ) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-
   const authorization = await authorizeInspectionMutation({
     sessionClient: supabase,
     shopId: profile.shop_id,
@@ -417,6 +401,21 @@ export async function POST(req: NextRequest) {
       { error: authorization.error },
       { status: authorization.status },
     );
+  }
+
+  // A committed signature is bound to the actor, evidence role, revision, and
+  // signed name and remains safely replayable after live access changes. Every
+  // fresh staff-captured signature, including customer evidence, must satisfy
+  // the same Work Order product relationship before durable evidence is added.
+  if (
+    authorization.replay.kind !== "signature" &&
+    !(await canExecuteInspectionForProduct({
+      supabase,
+      shopId: profile.shop_id,
+      workOrderId: inspectionContext.work_order_id,
+    }))
+  ) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   let signedAtomically = false;

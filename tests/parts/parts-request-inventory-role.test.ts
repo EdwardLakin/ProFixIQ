@@ -79,6 +79,13 @@ describe("parts request inventory route authorization", () => {
     }
   });
 
+  it("binds Field inventory mutations to the request's authorized Work Order", () => {
+    expect(routeSource).toContain("resolveWorkOrderProductAuthority");
+    expect(routeSource).toContain('.from("part_requests")');
+    expect(routeSource).toContain("request.work_order_id");
+    expect(routeSource).toContain("if (!authority.authorized)");
+  });
+
   it("forwards and persists the inventory cost and selected supplier", () => {
     expect(pageSource).toContain("cost: input.cost");
     expect(pageSource).toContain("input.defaultSupplierId");

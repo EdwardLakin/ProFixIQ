@@ -7,6 +7,7 @@ import {
   reconcileInspectionPhotoEvidence,
   type InspectionPhotoEvidenceRow,
 } from "@/features/inspections/server/reconcileInspectionPhotoEvidence";
+import { signInspectionPhotoRows } from "@/features/inspections/server/signInspectionPhotoRows";
 import { uniqueEvidenceUrls } from "@/features/work-orders/lib/evidence/workOrderEvidence";
 
 type InspectionRow = {
@@ -386,6 +387,11 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  const presentationPhotos = await signInspectionPhotoRows({
+    sessionClient: supabase,
+    rows: canonicalPhotos,
+  });
+
   const hydratedSession = mergeCanonicalPhotos(
     {
       ...session,
@@ -425,7 +431,7 @@ export async function GET(req: NextRequest) {
           }
         : session.vehicle,
     },
-    canonicalPhotos,
+    presentationPhotos,
   );
 
   return NextResponse.json({

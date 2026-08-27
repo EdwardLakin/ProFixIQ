@@ -226,6 +226,43 @@ async function ensureInspectionPhotoRow(args: {
     : { row: data, inserted: true };
 }
 
+async function compensateWorkOrderPhotoUpload(args: {
+  admin: ReturnType<typeof createAdminSupabase>;
+  shopId: string;
+  workOrderId: string;
+  workOrderLineId: string;
+  path: string;
+  clientMutationId: string;
+}): Promise<boolean> {
+  const { error: storageError } = await args.admin.storage
+    .from("job-photos")
+    .remove([args.path]);
+  if (storageError) {
+    console.error(
+      "[inspections/photos/upload] failed to compensate unattached object",
+      storageError,
+    );
+    return false;
+  }
+  const { error: mediaError } = await args.admin
+    .from("work_order_media")
+    .delete()
+    .eq("shop_id", args.shopId)
+    .eq("work_order_id", args.workOrderId)
+    .eq("work_order_line_id", args.workOrderLineId)
+    .eq("storage_bucket", "job-photos")
+    .eq("storage_path", args.path)
+    .eq("client_mutation_id", args.clientMutationId);
+  if (mediaError) {
+    console.error(
+      "[inspections/photos/upload] failed to compensate unattached media",
+      mediaError,
+    );
+    return false;
+  }
+  return true;
+}
+
 export async function POST(request: NextRequest) {
   const supabase = createServerSupabaseRoute();
   const {
@@ -379,6 +416,7 @@ export async function POST(request: NextRequest) {
   }
 
   let idempotent = false;
+  let uploadedThisRequest = false;
 
   if (workOrderId && workOrderLineId) {
     const { data: existingMedia, error: existingMediaError } = await admin
@@ -472,6 +510,8 @@ export async function POST(request: NextRequest) {
           { status: 500 },
         );
       }
+    } else if (bucket === "job-photos") {
+      uploadedThisRequest = true;
     }
   }
 
@@ -519,21 +559,44 @@ export async function POST(request: NextRequest) {
         savedError,
       );
       if (savedError.code === "42501") {
+        const compensated =
+          !uploadedThisRequest ||
+          (await compensateWorkOrderPhotoUpload({
+            admin,
+            shopId,
+            workOrderId,
+            workOrderLineId,
+            path,
+            clientMutationId,
+          }));
         return NextResponse.json(
           {
-            error:
-              "Inspection photo access changed before the evidence was attached.",
+            error: compensated
+              ? "Inspection photo access changed before the evidence was attached."
+              : "Inspection photo access changed and upload cleanup failed. Contact support before retrying.",
           },
-          { status: 403 },
+          { status: compensated ? 403 : 500 },
         );
       }
       if (savedError.code === "40001") {
+        const compensated =
+          !uploadedThisRequest ||
+          (await compensateWorkOrderPhotoUpload({
+            admin,
+            shopId,
+            workOrderId,
+            workOrderLineId,
+            path,
+            clientMutationId,
+          }));
         return NextResponse.json(
           {
-            error: "Inspection photo scope changed; retry the upload.",
-            retryable: true,
+            error: compensated
+              ? "Inspection photo scope changed; retry the upload."
+              : "Inspection photo scope changed and upload cleanup failed. Contact support before retrying.",
+            retryable: compensated,
           },
-          { status: 409 },
+          { status: compensated ? 409 : 500 },
         );
       }
     }

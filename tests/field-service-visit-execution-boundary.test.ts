@@ -67,6 +67,21 @@ describe("Field Service Visit execution boundary", () => {
       "Shop dispatch manager lost established execution access",
     );
     expect(runtime).toContain("Denied Field execution created an idempotency receipt");
+    expect(repairedBoundary).toContain(
+      "private.dispatch_committed_visit_transition_receipt",
+    );
+    expect(repairedBoundary).toContain(
+      "operation.actor_user_id = public.dispatch_actor_profile_id",
+    );
+    expect(repairedBoundary).toContain(
+      "operation.result #>> '{visit,id}' = p_visit_id::text",
+    );
+    expect(runtime).toContain(
+      "Former assignee could not recover its exact committed transition",
+    );
+    expect(runtime).toContain(
+      "Former assignee created a fresh transition after reassignment",
+    );
   });
 
   it("serializes transition authorization with concurrent reassignment", () => {

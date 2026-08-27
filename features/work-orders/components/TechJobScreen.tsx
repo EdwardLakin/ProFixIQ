@@ -19,6 +19,9 @@ export default function TechJobScreen() {
     WORKSPACE_CAPABILITIES.executeAssignedWorkOrderJobs,
   );
   const [jobs, setJobs] = useState<JobLine[]>([]);
+  const [executableLineIds, setExecutableLineIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -42,6 +45,7 @@ export default function TechJobScreen() {
     );
     const body = (await response.json().catch(() => null)) as {
       lines?: JobLine[];
+      executableLineIds?: string[];
     } | null;
     const jobs = (body?.lines ?? [])
       .filter(
@@ -55,6 +59,9 @@ export default function TechJobScreen() {
           new Date(right.created_at ?? 0).getTime(),
       );
     setJobs(response.ok ? jobs : []);
+    setExecutableLineIds(
+      response.ok ? new Set(body?.executableLineIds ?? []) : new Set(),
+    );
     setLoading(false);
   }, [supabase]);
 
@@ -106,8 +113,16 @@ export default function TechJobScreen() {
       key={job.id as string}
       job={job}
       isActive={activeJobId === job.id}
-      onPunchIn={canExecuteJob ? handlePunchIn : undefined}
-      onPunchOut={canExecuteJob ? handlePunchOut : undefined}
+      onPunchIn={
+        canExecuteJob && executableLineIds.has(job.id)
+          ? handlePunchIn
+          : undefined
+      }
+      onPunchOut={
+        canExecuteJob && executableLineIds.has(job.id)
+          ? handlePunchOut
+          : undefined
+      }
     />
   );
 

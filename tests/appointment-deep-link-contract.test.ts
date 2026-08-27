@@ -72,7 +72,7 @@ describe("vehicle workspace appointment deep links", () => {
   it("bootstraps the shop through the canonical server profile guard", () => {
     expect(staffBookingsRoute).toContain("await requireShopScopedApiAccess({");
     expect(staffBookingsRoute).toContain(
-      "requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES",
+      "requiredProductCapabilities: SHOP_PRODUCT_CAPABILITIES",
     );
     expect(staffBookingsRoute).toContain('.eq("id", profile.shop_id)');
     expect(appointmentsPage).toContain(

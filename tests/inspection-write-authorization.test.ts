@@ -125,6 +125,18 @@ describe("inspection write authorization", () => {
   });
 
   it("authorizes before invoking the receipt-bearing core", () => {
+    expect(migration).toContain(
+      "create or replace function private.lock_work_order_inspection_capability(",
+    );
+    expect(migration).toContain(
+      "'workspace-authorization:' || p_shop_id::text || ':work_order.inspection.run'",
+    );
+    expect(migration).toContain(
+      "revoke all on function private.lock_work_order_inspection_capability(uuid)",
+    );
+    expect(
+      migration.match(/perform private\.lock_work_order_inspection_capability\(/g),
+    ).toHaveLength(6);
     const capabilityCheck = migration.indexOf(
       "from private.resolve_workspace_profile_capability(",
     );

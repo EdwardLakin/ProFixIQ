@@ -53,6 +53,9 @@ describe("Shop Work Order product boundary", () => {
       "public.dispatch_can_manage(p_shop_id, auth.uid())",
     );
     expect(source).toContain("profile.id = member.user_id");
+    expect(source).not.toContain(
+      "profile.id = member.user_id\n           and profile.shop_id = member.shop_id",
+    );
     expect(source).toContain(
       "profile.id = auth.uid() or profile.user_id = auth.uid()",
     );
@@ -162,6 +165,8 @@ describe("Shop Work Order product boundary", () => {
       "get_work_order_assignments_product_core",
       "convert_owned_fleet_request_work_order_product_core",
       "convert_fleet_request_work_order_product_core",
+      "apply_shop_quote_decision_product_core",
+      "parts_void_work_order_line_product_core",
     ]) {
       expect(source).toContain(`set schema private`);
       expect(source).toContain(`private.${core}`);
@@ -170,6 +175,9 @@ describe("Shop Work Order product boundary", () => {
 
     expect(source).toContain("Shop product access is required.");
     expect(source).toContain("Work Order product access is required.");
+    expect(source).toContain("SHOP_QUOTE_DECISION_OPERATION_CONFLICT");
+    expect(source).toContain("PARTS_VOID_OPERATION_CONFLICT");
+    expect(source).toContain("Line void actor mismatch.");
     expect(source).toContain(
       "from private.create_work_order_with_custom_id_product_core(",
     );

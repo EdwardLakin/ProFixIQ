@@ -9,7 +9,7 @@ function read(path: string): string {
 }
 
 describe("job-punch authorization boundary", () => {
-  it("registers one grantable execution capability with established role presets", () => {
+  it("limits the grantable execution capability to assignable technician roles", () => {
     const migration = read(MIGRATION);
 
     expect(migration).toContain("'work_order.job.execute'");
@@ -18,6 +18,12 @@ describe("job-punch authorization boundary", () => {
     expect(migration).toContain("'foreman', 'allow'");
     expect(migration).not.toContain("'parts', 'allow'");
     expect(migration).not.toContain("'advisor', 'allow'");
+    expect(migration).toContain(
+      "create or replace function private.enforce_job_execution_capability_target()",
+    );
+    expect(migration).toContain(
+      "Job execution can only be delegated to an assignable technician role.",
+    );
     expect(migration).toContain(
       "private.resolve_workspace_profile_capability(\n    v_technician_profile_id",
     );
@@ -48,32 +54,38 @@ describe("job-punch authorization boundary", () => {
     expect(wrapper).toContain("v_can_coordinate_cleanup");
     expect(wrapper).toContain("segment.ended_at is null");
     expect(wrapper).toContain("from public.workforce_operation_keys operation");
-    expect(wrapper).toContain("v_existing_actor_user_id is distinct from v_core_actor_user_id");
+    expect(wrapper).toContain(
+      "v_existing_actor_user_id is distinct from v_core_actor_user_id",
+    );
     expect(wrapper).toContain("JOB_PUNCH_OPERATION_CONFLICT");
     expect(wrapper).toContain("private.apply_job_punch_transition_core(");
-    expect(wrapper.indexOf("from public.workforce_operation_keys operation")).toBeLessThan(
-      wrapper.indexOf("v_line.assigned_tech_id in ("),
-    );
+    expect(
+      wrapper.indexOf("from public.workforce_operation_keys operation"),
+    ).toBeLessThan(wrapper.indexOf("v_line.assigned_tech_id in ("));
     expect(wrapper.indexOf("work_order.job.execute")).toBeLessThan(
       wrapper.indexOf("private.apply_job_punch_transition_core("),
     );
+    expect(migration).toMatch(
+      /revoke insert, update, delete\s+on table public\.work_order_line_labor_segments\s+from authenticated/i,
+    );
+    expect(migration).toContain("labor segments remain browser-writable");
   });
 
-  it("authorizes every direct route before invoking the canonical transition", () => {
+  it("delegates receipt-aware authorization ordering to the atomic transition", () => {
     const helper = read(
       "features/work-orders/server/authorizeJobPunchTransition.ts",
     );
-    expect(helper).toContain("requireShopScopedApiAccess({");
-    expect(helper).toContain(
-      "WORKSPACE_CAPABILITIES.executeAssignedWorkOrderJobs",
-    );
+    expect(helper).toContain("requireShopScopedApiAccess()");
     expect(helper).toContain('.eq("shop_id", access.profile.shop_id)');
-    expect(helper).toContain('.from("work_order_line_technicians")');
-    expect(helper).toContain("access.profile.id, access.authUserId");
+    expect(helper).toContain('.from("workforce_operation_keys")');
+    expect(helper).toContain("resolveWorkOrderProductAuthority");
+    expect(helper.indexOf('from("workforce_operation_keys")')).toBeLessThan(
+      helper.indexOf("resolveWorkOrderProductAuthority("),
+    );
 
     for (const action of ["start", "pause", "resume", "finish"]) {
       const route = read(`app/api/work-orders/lines/[id]/${action}/route.ts`);
-      expect(route).toContain("await requireAssignedJobPunchAccess(id)");
+      expect(route).toContain("await requireJobPunchActorAccess({");
       expect(route).toContain("technicianId: access.profile.id");
       expect(route).toContain("actorUserId: access.authUserId");
       expect(route).not.toContain("createServerSupabaseRoute");
@@ -97,21 +109,19 @@ describe("job-punch authorization boundary", () => {
     const desktop = read(
       "features/work-orders/components/workorders/FocusedJobModal.tsx",
     );
-    const mobile = read(
-      "features/work-orders/mobile/MobileFocusedJob.tsx",
-    );
+    const mobile = read("features/work-orders/mobile/MobileFocusedJob.tsx");
     const mobileWorkOrder = read(
       "features/work-orders/mobile/MobileWorkOrderClient.tsx",
     );
-    const techQueue = read(
-      "features/work-orders/components/TechJobScreen.tsx",
-    );
+    const techQueue = read("features/work-orders/components/TechJobScreen.tsx");
     const standaloneMobile = read("app/mobile/jobs/[lineId]/page.tsx");
 
     expect(desktop).toContain("canExecuteJob: boolean");
-    expect(desktop).toContain("{canExecuteJob ? (");
+    expect(desktop).toContain("actorAssignedToLine?: boolean");
+    expect(desktop).toContain("actorAssignedToLine ?? serverActorAssigned");
     expect(desktop).toContain("canCompleteJob={canExecuteJob}");
     expect(mobile).toContain("canExecuteJob: boolean");
+    expect(mobile).toContain("actorAssignedToLine?: boolean");
     expect(mobile).toContain("{canExecuteJob && line && (");
     expect(mobile).toContain("canCompleteJob={canExecuteJob}");
     expect(mobileWorkOrder).toContain(
@@ -121,9 +131,7 @@ describe("job-punch authorization boundary", () => {
     expect(techQueue).toContain(
       "WORKSPACE_CAPABILITIES.executeAssignedWorkOrderJobs",
     );
-    expect(techQueue).toContain(
-      "onPunchIn={canExecuteJob ? handlePunchIn : undefined}",
-    );
+    expect(techQueue).toContain("executableLineIds.has(job.id)");
     expect(standaloneMobile).toContain(
       "WORKSPACE_CAPABILITIES.executeAssignedWorkOrderJobs",
     );
@@ -131,9 +139,7 @@ describe("job-punch authorization boundary", () => {
   });
 
   it("executes the adversarial SQL matrix during clean replay", () => {
-    const workflow = read(
-      ".github/workflows/supabase-clean-replay-audit.yml",
-    );
+    const workflow = read(".github/workflows/supabase-clean-replay-audit.yml");
     const runtime = read("tests/security/job-punch-authorization.runtime.sql");
 
     expect(workflow).toContain(
@@ -143,6 +149,9 @@ describe("job-punch authorization boundary", () => {
     expect(runtime).toContain("Mechanic executed a cross-Shop repair line.");
     expect(runtime).toContain(
       "Parts inherited job execution without a capability override.",
+    );
+    expect(runtime).toContain(
+      "Parts received a job-execution override despite being non-assignable.",
     );
     expect(runtime).toContain(
       "Revoked authenticated self cleanup did not close only active labor",
@@ -161,6 +170,9 @@ describe("job-punch authorization boundary", () => {
     );
     expect(runtime).toContain(
       "A different actor claimed an existing job-punch receipt.",
+    );
+    expect(runtime).toContain(
+      "Authenticated callers can bypass the job punch RPC with direct labor writes.",
     );
   });
 });

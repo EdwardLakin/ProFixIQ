@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import type { Database } from "@shared/types/types/supabase";
+import { resolveWorkOrderProductAuthority } from "@/features/mobile/service/server/access";
 import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
@@ -105,7 +106,7 @@ export async function POST(
 
   const { data: item, error: itemError } = await access.supabase
     .from("part_request_items")
-    .select("id,shop_id,part_id,requested_manufacturer")
+    .select("id,shop_id,request_id,part_id,requested_manufacturer")
     .eq("id", itemId)
     .eq("shop_id", access.profile.shop_id)
     .maybeSingle();
@@ -119,6 +120,42 @@ export async function POST(
     return NextResponse.json(
       { ok: false, error: "Request item not found." },
       { status: 404 },
+    );
+  }
+
+  const { data: request, error: requestError } = await access.supabase
+    .from("part_requests")
+    .select("work_order_id")
+    .eq("id", item.request_id)
+    .eq("shop_id", access.profile.shop_id)
+    .maybeSingle<{ work_order_id: string | null }>();
+  if (requestError) {
+    return NextResponse.json(
+      { ok: false, error: requestError.message },
+      { status: 500 },
+    );
+  }
+  if (!request?.work_order_id) {
+    return NextResponse.json(
+      { ok: false, error: "Request Work Order not found." },
+      { status: 404 },
+    );
+  }
+  try {
+    const authority = await resolveWorkOrderProductAuthority(
+      access,
+      request.work_order_id,
+    );
+    if (!authority.authorized) {
+      return NextResponse.json(
+        { ok: false, error: "Forbidden" },
+        { status: 403 },
+      );
+    }
+  } catch {
+    return NextResponse.json(
+      { ok: false, error: "Unable to authorize this parts request." },
+      { status: 503 },
     );
   }
 

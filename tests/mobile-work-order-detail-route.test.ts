@@ -130,7 +130,7 @@ describe("mobile work-order detail route", () => {
     expect(mocks.loadMobileWorkOrderDetail).not.toHaveBeenCalled();
   });
 
-  it("does not load a Work Order outside the caller's product relationship", async () => {
+  it("resolves the canonical Work Order before enforcing its product relationship", async () => {
     mocks.resolveWorkOrderProductAuthority.mockResolvedValue({
       authorized: false,
       product: null,
@@ -142,7 +142,11 @@ describe("mobile work-order detail route", () => {
     });
 
     expect(response.status).toBe(404);
-    expect(mocks.loadMobileWorkOrderDetail).not.toHaveBeenCalled();
+    expect(mocks.loadMobileWorkOrderDetail).toHaveBeenCalled();
+    expect(mocks.resolveWorkOrderProductAuthority).toHaveBeenCalledWith(
+      expect.anything(),
+      WORK_ORDER_ID,
+    );
   });
 
   it("returns a non-disclosing 404 for missing, stale, or cross-tenant ids", async () => {

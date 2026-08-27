@@ -86,22 +86,27 @@ const statusTextColor: Record<string, string> = {
   pending: "text-[color:var(--theme-text-primary)]",
 };
 
-const chip = (status: string) => statusTextColor[status] ?? "text-[color:var(--theme-text-primary)]";
+const chip = (status: string) =>
+  statusTextColor[status] ?? "text-[color:var(--theme-text-primary)]";
 
 const btnBase =
   "inline-flex items-center justify-center rounded-xl border px-3 py-2 text-sm font-medium transition";
 const btnNeutral =
-  btnBase + " border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]";
+  btnBase +
+  " border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]";
 const btnInfo =
   btnBase + " border-sky-500/45 bg-sky-500/10 text-sky-100 hover:bg-sky-500/20";
 const btnDanger =
   btnBase + " border-red-500/45 bg-red-500/10 text-red-100 hover:bg-red-500/20";
 const btnSecondary = btnInfo;
 const btnTertiary =
-  btnBase + " border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]";
+  btnBase +
+  " border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]";
 
 type DB = Database;
-type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"] & { technician_notes?: string | null };
+type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"] & {
+  technician_notes?: string | null;
+};
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
 type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
 type Customer = DB["public"]["Tables"]["customers"]["Row"];
@@ -114,9 +119,10 @@ type TechnicianOption = {
 const EMPTY_TECHNICIAN_OPTIONS: readonly TechnicianOption[] = [];
 const EMPTY_TECHNICIAN_IDS: readonly string[] = [];
 
-type AllocationRow = DB["public"]["Tables"]["work_order_part_allocations"]["Row"] & {
-  parts?: { name: string | null } | null;
-};
+type AllocationRow =
+  DB["public"]["Tables"]["work_order_part_allocations"]["Row"] & {
+    parts?: { name: string | null } | null;
+  };
 
 type RequiredPartRow = DB["public"]["Tables"]["work_order_parts"]["Row"] & {
   description_snapshot?: string | null;
@@ -125,12 +131,18 @@ type RequiredPartRow = DB["public"]["Tables"]["work_order_parts"]["Row"] & {
   unit_sell_price_snapshot?: number | null;
   lifecycle_status?: string | null;
   source_parts_request_item_id?: string | null;
-  parts?: { name: string | null; part_number?: string | null; manufacturer?: string | null } | null;
+  parts?: {
+    name: string | null;
+    part_number?: string | null;
+    manufacturer?: string | null;
+  } | null;
 };
 
-
 function money(value: number): string {
-  return new Intl.NumberFormat("en-CA", { style: "currency", currency: "CAD" }).format(value);
+  return new Intl.NumberFormat("en-CA", {
+    style: "currency",
+    currency: "CAD",
+  }).format(value);
 }
 
 type WorkflowStatus =
@@ -183,7 +195,9 @@ function MetaStat({
       <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
         {label}
       </div>
-      <div className={`mt-1 text-sm font-medium ${valueClassName}`}>{value}</div>
+      <div className={`mt-1 text-sm font-medium ${valueClassName}`}>
+        {value}
+      </div>
     </div>
   );
 }
@@ -197,6 +211,7 @@ export default function FocusedJobModal(props: {
   assignedTechnicianIds?: readonly string[];
   isPunchedInSnapshot?: boolean;
   canExecuteJob: boolean;
+  actorAssignedToLine?: boolean;
   canAssignTechnician?: boolean;
   canAddJob?: boolean;
   technicianOptions?: readonly TechnicianOption[];
@@ -219,7 +234,8 @@ export default function FocusedJobModal(props: {
     primaryTechSnapshot,
     assignedTechnicianIds = EMPTY_TECHNICIAN_IDS,
     isPunchedInSnapshot,
-    canExecuteJob,
+    canExecuteJob: hasExecutionCapability,
+    actorAssignedToLine,
     canAssignTechnician = false,
     canAddJob = false,
     technicianOptions = EMPTY_TECHNICIAN_OPTIONS,
@@ -237,10 +253,13 @@ export default function FocusedJobModal(props: {
 
   const [busy, setBusy] = useState(false);
   const [line, setLine] = useState<WorkOrderLine | null>(null);
+  const [serverActorAssigned, setServerActorAssigned] = useState(false);
   const [workOrder, setWorkOrder] = useState<WorkOrder | null>(null);
   const [shopLaborRate, setShopLaborRate] = useState<number | null>(null);
   const [vehicle, setVehicle] = useState<Vehicle | null>(null);
   const [customer, setCustomer] = useState<Customer | null>(null);
+  const canExecuteJob =
+    hasExecutionCapability && (actorAssignedToLine ?? serverActorAssigned);
 
   const [techNotes, setTechNotes] = useState("");
   const [savingNotes, setSavingNotes] = useState(false);
@@ -280,7 +299,8 @@ export default function FocusedJobModal(props: {
     () => filterAllocationsNotBackedByCanonicalParts(allocs, requiredParts),
     [allocs, requiredParts],
   );
-  const [assignedTechProfile, setAssignedTechProfile] = useState<TechnicianOption | null>(null);
+  const [assignedTechProfile, setAssignedTechProfile] =
+    useState<TechnicianOption | null>(null);
   const [projectedPrimaryTech, setProjectedPrimaryTech] =
     useState<TechnicianOption | null>(null);
   const [assigningTechnician, setAssigningTechnician] = useState(false);
@@ -335,9 +355,7 @@ export default function FocusedJobModal(props: {
   }, [workOrderLineId]);
 
   useEffect(() => {
-    if (
-      !workspaceTabs.some((tab) => tab.id === activeWorkspaceTab)
-    ) {
+    if (!workspaceTabs.some((tab) => tab.id === activeWorkspaceTab)) {
       setActiveWorkspaceTab("overview");
     }
   }, [activeWorkspaceTab, workspaceTabs]);
@@ -356,7 +374,10 @@ export default function FocusedJobModal(props: {
       { cache: "no-store" },
     );
     const snapshot = (await response.json().catch(() => null)) as
-      | (RoleShapedWorkOrderDetail & { selectedLineId?: string })
+      | (RoleShapedWorkOrderDetail & {
+          selectedLineId?: string;
+          actorAssignedToSelectedLine?: boolean;
+        })
       | { error?: string }
       | null;
     if (!response.ok || !snapshot || !("workOrder" in snapshot)) {
@@ -384,6 +405,7 @@ export default function FocusedJobModal(props: {
         : null,
     );
     setLine(nextLine);
+    setServerActorAssigned(snapshot.actorAssignedToSelectedLine === true);
     setTechNotes(nextLine?.technician_notes ?? "");
     setWorkOrder(snapshot.workOrder);
     setShopLaborRate(snapshot.shopLaborRate);
@@ -613,7 +635,8 @@ export default function FocusedJobModal(props: {
     };
 
     window.addEventListener("inspection:completed", onInspectionDone);
-    return () => window.removeEventListener("inspection:completed", onInspectionDone);
+    return () =>
+      window.removeEventListener("inspection:completed", onInspectionDone);
   }, [workOrderLineId, canExecuteJob, closeAllSubModals]);
 
   const applyHold = async (reason: string, notes?: string) => {
@@ -666,14 +689,22 @@ export default function FocusedJobModal(props: {
       return;
     }
 
-    const isVideo = file.type.startsWith("video/") || /\.(mov|m4v|mp4|webm)$/i.test(file.name);
+    const isVideo =
+      file.type.startsWith("video/") ||
+      /\.(mov|m4v|mp4|webm)$/i.test(file.name);
     const contentType = file.type || (isVideo ? "video/mp4" : "image/jpeg");
     const path = `wo/${workOrder.id}/lines/${workOrderLineId}/${uuidv4()}_${file.name}`;
-    const { error } = await supabase.storage.from("job-photos").upload(path, file, {
-      contentType,
-      upsert: true,
-    });
-    if (error) return showErr(isVideo ? "Video upload failed" : "Photo upload failed", error);
+    const { error } = await supabase.storage
+      .from("job-photos")
+      .upload(path, file, {
+        contentType,
+        upsert: true,
+      });
+    if (error)
+      return showErr(
+        isVideo ? "Video upload failed" : "Photo upload failed",
+        error,
+      );
     setMediaRefreshKey((key) => key + 1);
     toast.success(isVideo ? "Video attached" : "Photo attached");
   };
@@ -709,16 +740,16 @@ export default function FocusedJobModal(props: {
     (line?.job_type ? ` — ${String(line.job_type).replaceAll("_", " ")}` : "");
 
   const lineLabel =
-    (line?.complaint ?? "").trim() ||
-    (line?.description ?? "").trim() ||
-    "Job";
+    (line?.complaint ?? "").trim() || (line?.description ?? "").trim() || "Job";
 
   const normalizedLineStatus = normalizeWorkOrderLineStatus(line?.status);
   const isOperationallyActive =
     isPunchedInSnapshot ??
     (Boolean(line?.punched_in_at) && !line?.punched_out_at);
   const statusLabel = line
-    ? resolveOperationalLineStatusLabel(line, { isActive: isOperationallyActive })
+    ? resolveOperationalLineStatusLabel(line, {
+        isActive: isOperationallyActive,
+      })
     : "Loading";
 
   const createdStart = startAt
@@ -737,27 +768,44 @@ export default function FocusedJobModal(props: {
   const isPanelVariant = variant === "panel";
   const isExpandedPanel = isPanelVariant;
   const pricing = line
-    ? resolveWorkOrderLinePricing({ line, shopLaborRate, allocatedParts: filterAllocationsNotBackedByCanonicalParts(allocs, requiredParts), stagedParts: requiredParts })
+    ? resolveWorkOrderLinePricing({
+        line,
+        shopLaborRate,
+        allocatedParts: filterAllocationsNotBackedByCanonicalParts(
+          allocs,
+          requiredParts,
+        ),
+        stagedParts: requiredParts,
+      })
     : null;
-  const laborDisplay = formatLaborSummary(pricing?.laborHours, Number(pricing?.laborTotal ?? 0));
+  const laborDisplay = formatLaborSummary(
+    pricing?.laborHours,
+    Number(pricing?.laborTotal ?? 0),
+  );
   const lineTotal = Number(pricing?.lineTotal ?? 0);
   const hasPartsRequestedMarker =
-    String(line?.correction ?? "").toLowerCase().includes("demo_moment:parts_bottleneck") ||
-    String(line?.hold_reason ?? "").toLowerCase().includes("part") ||
-    String(line?.description ?? "").toLowerCase().includes("backorder");
+    String(line?.correction ?? "")
+      .toLowerCase()
+      .includes("demo_moment:parts_bottleneck") ||
+    String(line?.hold_reason ?? "")
+      .toLowerCase()
+      .includes("part") ||
+    String(line?.description ?? "")
+      .toLowerCase()
+      .includes("backorder");
   const partsBottleneckDisplay = resolvePartsBottleneckDisplay({
     hasRequestedMarker: hasPartsRequestedMarker,
     holdReason: line?.hold_reason ?? null,
     partsTotal: Number(pricing?.partsTotal ?? 0),
   });
-  const resolvedPrimaryTechDisplay =
-    line
-      ? (
-          assignedTechProfile?.full_name ??
-          (line as unknown as { assigned_tech_name?: string | null })?.assigned_tech_name ??
-          ""
-        ).trim() || resolvePrimaryTechDisplay(line, assignedTechProfile)
-      : "Unassigned";
+  const resolvedPrimaryTechDisplay = line
+    ? (
+        assignedTechProfile?.full_name ??
+        (line as unknown as { assigned_tech_name?: string | null })
+          ?.assigned_tech_name ??
+        ""
+      ).trim() || resolvePrimaryTechDisplay(line, assignedTechProfile)
+    : "Unassigned";
   const primaryTechDisplay =
     resolvedPrimaryTechDisplay === "Unassigned" &&
     assignedTechnicianIds.length > 0
@@ -765,11 +813,15 @@ export default function FocusedJobModal(props: {
       : resolvedPrimaryTechDisplay;
   const assignedTechnicianIsSelectable = Boolean(
     line?.assigned_tech_id &&
-      technicianOptions.some((technician) => technician.id === line.assigned_tech_id),
+    technicianOptions.some(
+      (technician) => technician.id === line.assigned_tech_id,
+    ),
   );
   const customerDisplay = customer
     ? customer.business_name?.trim() ||
-      [customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ") ||
+      [customer.first_name ?? "", customer.last_name ?? ""]
+        .filter(Boolean)
+        .join(" ") ||
       "Customer"
     : "No customer linked";
   const vehicleDisplay = vehicle
@@ -783,11 +835,7 @@ export default function FocusedJobModal(props: {
   const Body = (
     <div
       className={`relative overflow-hidden rounded-[26px] border border-[color:var(--theme-border-soft)] bg-[var(--theme-gradient-panel)] text-foreground shadow-[var(--theme-shadow-medium)] ${
-        isPanelVariant
-          ? ""
-          : openAi
-            ? ""
-            : "max-h-[82vh]"
+        isPanelVariant ? "" : openAi ? "" : "max-h-[82vh]"
       }`}
     >
       <div className="absolute inset-x-0 top-0 h-[3px] bg-[linear-gradient(90deg,rgba(184,115,51,0),rgba(184,115,51,0.95),rgba(253,186,116,0.95),rgba(184,115,51,0))]" />
@@ -842,7 +890,9 @@ export default function FocusedJobModal(props: {
           </div>
 
           <div className="flex flex-wrap gap-1.5">
-            <span className={`inline-flex rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${chip(normalizedLineStatus)}`}>
+            <span
+              className={`inline-flex rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${chip(normalizedLineStatus)}`}
+            >
               {statusLabel}
             </span>
 
@@ -873,15 +923,14 @@ export default function FocusedJobModal(props: {
               <div className="h-24 animate-pulse rounded-2xl bg-[color:var(--theme-surface-subtle)]" />
             </div>
           ) : !line ? (
-            <div className="text-sm text-[color:var(--theme-text-secondary)]">No job found.</div>
+            <div className="text-sm text-[color:var(--theme-text-secondary)]">
+              No job found.
+            </div>
           ) : (
-            <div
-              className="space-y-3"
-            >
+            <div className="space-y-3">
               <div className="space-y-3">
-              {canExecuteJob ? (
                 <SectionCard title="Operational actions">
-                  {line.status !== "completed" ? (
+                  {canExecuteJob && line.status !== "completed" ? (
                     <JobPunchButton
                       lineId={line.id}
                       punchedInAt={line.punched_in_at}
@@ -900,357 +949,444 @@ export default function FocusedJobModal(props: {
                   ) : null}
 
                   <div className="mt-2 grid gap-2">
-                    <button
-                      type="button"
-                      className={btnDanger}
-                      onClick={() => {
-                        closeAllSubModals();
-                        setPrefillCause(line?.cause ?? "");
-                        setPrefillCorrection(line?.correction ?? "");
-                        setOpenComplete(true);
-                      }}
-                      disabled={completionBlocked}
-                    >
-                      Complete
-                    </button>
+                    {canExecuteJob ? (
+                      <button
+                        type="button"
+                        className={btnDanger}
+                        onClick={() => {
+                          closeAllSubModals();
+                          setPrefillCause(line.cause ?? "");
+                          setPrefillCorrection(line.correction ?? "");
+                          setOpenComplete(true);
+                        }}
+                        disabled={completionBlocked}
+                      >
+                        Complete
+                      </button>
+                    ) : null}
 
-                    <div className={cn("grid gap-2", isExpandedPanel ? "sm:grid-cols-2 lg:grid-cols-3" : "sm:grid-cols-2")}>
-                    <button
-                      type="button"
-                      className={btnSecondary}
-                      onClick={() => {
-                        closeAllSubModals();
-                        setOpenHold(true);
-                      }}
-                      disabled={busy}
+                    <div
+                      className={cn(
+                        "grid gap-2",
+                        isExpandedPanel
+                          ? "sm:grid-cols-2 lg:grid-cols-3"
+                          : "sm:grid-cols-2",
+                      )}
                     >
-                      {normalizedLineStatus === "on_hold" ? "On Hold" : "Hold"}
-                    </button>
+                      {canExecuteJob ? (
+                        <button
+                          type="button"
+                          className={btnSecondary}
+                          onClick={() => {
+                            closeAllSubModals();
+                            setOpenHold(true);
+                          }}
+                          disabled={busy}
+                        >
+                          {normalizedLineStatus === "on_hold"
+                            ? "On Hold"
+                            : "Hold"}
+                        </button>
+                      ) : null}
 
-                    <button
-                      type="button"
-                      className={btnSecondary}
-                      onClick={() => {
-                        closeAllSubModals();
-                        setOpenParts(true);
-                      }}
-                      disabled={busy}
-                    >
-                      Request Parts
-                    </button>
+                      <button
+                        type="button"
+                        className={btnSecondary}
+                        onClick={() => {
+                          closeAllSubModals();
+                          setOpenParts(true);
+                        }}
+                        disabled={busy}
+                      >
+                        Request Parts
+                      </button>
 
-                    <button
-                      type="button"
-                      className={btnSecondary}
-                      onClick={() => {
-                        closeAllSubModals();
-                        setOpenAi(true);
-                      }}
-                    >
-                      AI Assist
-                    </button>
+                      <button
+                        type="button"
+                        className={btnSecondary}
+                        onClick={() => {
+                          closeAllSubModals();
+                          setOpenAi(true);
+                        }}
+                      >
+                        AI Assist
+                      </button>
 
-                    <button
-                      type="button"
-                      className={btnTertiary}
-                      onClick={() => {
-                        closeAllSubModals();
-                        setOpenPhoto(true);
-                      }}
-                      disabled={busy}
-                    >
-                      Add Photo
-                    </button>
+                      <button
+                        type="button"
+                        className={btnTertiary}
+                        onClick={() => {
+                          closeAllSubModals();
+                          setOpenPhoto(true);
+                        }}
+                        disabled={busy}
+                      >
+                        Add Photo
+                      </button>
 
-                    <button
-                      type="button"
-                      className={btnTertiary}
-                      onClick={() => {
-                        closeAllSubModals();
-                        setOpenChat(true);
-                      }}
-                    >
-                      Chat
-                    </button>
+                      <button
+                        type="button"
+                        className={btnTertiary}
+                        onClick={() => {
+                          closeAllSubModals();
+                          setOpenChat(true);
+                        }}
+                      >
+                        Chat
+                      </button>
 
-                    <button
-                      type="button"
-                      className={btnTertiary}
-                      onClick={() => {
-                        if (!vehicle?.id) {
-                          toast.error("No vehicle linked to this work order yet.");
-                          return;
-                        }
-                        closeAllSubModals();
-                        setOpenVehicleHistory(true);
-                      }}
-                      disabled={busy || !vehicle?.id}
-                    >
-                      Vehicle History
-                    </button>
+                      <button
+                        type="button"
+                        className={btnTertiary}
+                        onClick={() => {
+                          if (!vehicle?.id) {
+                            toast.error(
+                              "No vehicle linked to this work order yet.",
+                            );
+                            return;
+                          }
+                          closeAllSubModals();
+                          setOpenVehicleHistory(true);
+                        }}
+                        disabled={busy || !vehicle?.id}
+                      >
+                        Vehicle History
+                      </button>
+                    </div>
                   </div>
-                  </div>
 
-                  {completionBlocked ? (
+                  {canExecuteJob && completionBlocked ? (
                     <div className="mt-2 text-[11px] text-amber-300">
                       {normalizedLineStatus === "awaiting_approval"
                         ? "Awaiting approval — punching disabled"
                         : normalizedLineStatus === "declined"
                           ? "Declined — punching disabled"
-                          : line.approval_state && line.approval_state !== "approved"
+                          : line.approval_state &&
+                              line.approval_state !== "approved"
                             ? "Not approved — punching disabled"
                             : ""}
                     </div>
                   ) : null}
                 </SectionCard>
-              ) : null}
 
-              {!isPanelVariant ? (
-                <SectionCard title="Vehicle & customer">
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div>
-                      <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-                        Vehicle
+                {!isPanelVariant ? (
+                  <SectionCard title="Vehicle & customer">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
+                          Vehicle
+                        </div>
+                        <div className="mt-1 text-sm text-[color:var(--theme-text-primary)]">
+                          {vehicle
+                            ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`
+                                .trim()
+                                .replace(/\s+/g, " ") || "—"
+                            : "—"}
+                        </div>
+                        <div className="mt-1 text-[11px] text-[color:var(--theme-text-secondary)]">
+                          VIN: {vehicle?.vin ?? "—"} • Plate:{" "}
+                          {vehicle?.license_plate ?? "—"}
+                        </div>
                       </div>
-                      <div className="mt-1 text-sm text-[color:var(--theme-text-primary)]">
-                        {vehicle
-                          ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`
-                              .trim()
-                              .replace(/\s+/g, " ") || "—"
-                          : "—"}
-                      </div>
-                      <div className="mt-1 text-[11px] text-[color:var(--theme-text-secondary)]">
-                        VIN: {vehicle?.vin ?? "—"} • Plate: {vehicle?.license_plate ?? "—"}
+
+                      <div>
+                        <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
+                          Customer
+                        </div>
+                        <div className="mt-1 text-sm text-[color:var(--theme-text-primary)]">
+                          {customer
+                            ? [
+                                customer.first_name ?? "",
+                                customer.last_name ?? "",
+                              ]
+                                .filter(Boolean)
+                                .join(" ") || "—"
+                            : "—"}
+                        </div>
+                        <div className="mt-1 text-[11px] text-[color:var(--theme-text-secondary)]">
+                          {customer?.phone ?? "—"}{" "}
+                          {customer?.email ? `• ${customer.email}` : ""}
+                        </div>
                       </div>
                     </div>
+                  </SectionCard>
+                ) : null}
 
-                    <div>
-                      <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-                        Customer
-                      </div>
-                      <div className="mt-1 text-sm text-[color:var(--theme-text-primary)]">
-                        {customer
-                          ? [customer.first_name ?? "", customer.last_name ?? ""]
-                              .filter(Boolean)
-                              .join(" ") || "—"
-                          : "—"}
-                      </div>
-                      <div className="mt-1 text-[11px] text-[color:var(--theme-text-secondary)]">
-                        {customer?.phone ?? "—"} {customer?.email ? `• ${customer.email}` : ""}
-                      </div>
+                {mode !== "tech" ? (
+                  <SectionCard title="Actions">
+                    <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                      <button
+                        type="button"
+                        className={btnNeutral}
+                        onClick={() => {
+                          closeAllSubModals();
+                          setOpenChat(true);
+                        }}
+                      >
+                        Chat
+                      </button>
+
+                      <button
+                        type="button"
+                        className={btnInfo}
+                        onClick={() => {
+                          closeAllSubModals();
+                          setOpenAi(true);
+                        }}
+                      >
+                        AI Assist
+                      </button>
+
+                      <button
+                        type="button"
+                        className={btnInfo}
+                        onClick={() => {
+                          closeAllSubModals();
+                          setOpenDtc(true);
+                        }}
+                        disabled={busy}
+                      >
+                        DTC Assist
+                      </button>
                     </div>
-                  </div>
-                </SectionCard>
-              ) : null}
-
-              {mode !== "tech" ? (
-                <SectionCard title="Actions">
-                  <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                    <button
-                      type="button"
-                      className={btnNeutral}
-                      onClick={() => {
-                        closeAllSubModals();
-                        setOpenChat(true);
-                      }}
-                    >
-                      Chat
-                    </button>
-
-                    <button
-                      type="button"
-                      className={btnInfo}
-                      onClick={() => {
-                        closeAllSubModals();
-                        setOpenAi(true);
-                      }}
-                    >
-                      AI Assist
-                    </button>
-
-                    <button
-                      type="button"
-                      className={btnInfo}
-                      onClick={() => {
-                        closeAllSubModals();
-                        setOpenDtc(true);
-                      }}
-                      disabled={busy}
-                    >
-                      DTC Assist
-                    </button>
-                  </div>
-                </SectionCard>
-              ) : null}
+                  </SectionCard>
+                ) : null}
               </div>
 
               <div className="space-y-3">
-              <SectionCard title="Repair story">
-                <button
-                  type="button"
-                  className="w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-left text-xs text-[color:var(--theme-text-primary)] hover:border-[var(--accent-copper-light)]/60"
-                  onClick={() => {
-                    closeAllSubModals();
-                    setPrefillCause(line?.cause ?? "");
-                    setPrefillCorrection(line?.correction ?? "");
-                    setOpenComplete(true);
-                  }}
-                >
-                  <div><span className="text-[color:var(--theme-text-muted)]">Complaint:</span> {line?.complaint?.trim() || line?.description?.trim() || "Add complaint"}</div>
-                  <div className="mt-1"><span className="text-[color:var(--theme-text-muted)]">Cause:</span> {line?.cause?.trim() || "Add cause"}</div>
-                  <div className="mt-1"><span className="text-[color:var(--theme-text-muted)]">Correction:</span> {line?.correction?.trim() || "Add correction"}</div>
-                  <div className="mt-2 text-[11px] text-[var(--accent-copper-light)]">Edit story</div>
-                </button>
-              </SectionCard>
+                <SectionCard title="Repair story">
+                  <button
+                    type="button"
+                    className="w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-left text-xs text-[color:var(--theme-text-primary)] hover:border-[var(--accent-copper-light)]/60"
+                    onClick={() => {
+                      closeAllSubModals();
+                      setPrefillCause(line?.cause ?? "");
+                      setPrefillCorrection(line?.correction ?? "");
+                      setOpenComplete(true);
+                    }}
+                  >
+                    <div>
+                      <span className="text-[color:var(--theme-text-muted)]">
+                        Complaint:
+                      </span>{" "}
+                      {line?.complaint?.trim() ||
+                        line?.description?.trim() ||
+                        "Add complaint"}
+                    </div>
+                    <div className="mt-1">
+                      <span className="text-[color:var(--theme-text-muted)]">
+                        Cause:
+                      </span>{" "}
+                      {line?.cause?.trim() || "Add cause"}
+                    </div>
+                    <div className="mt-1">
+                      <span className="text-[color:var(--theme-text-muted)]">
+                        Correction:
+                      </span>{" "}
+                      {line?.correction?.trim() || "Add correction"}
+                    </div>
+                    <div className="mt-2 text-[11px] text-[var(--accent-copper-light)]">
+                      Edit story
+                    </div>
+                  </button>
+                </SectionCard>
 
-              <SectionCard title="Tech notes">
-                <textarea
-                  rows={isExpandedPanel ? 5 : 3}
-                  value={techNotes}
-                  onChange={(e) => setTechNotes(e.target.value)}
-                  onBlur={saveNotes}
-                  disabled={savingNotes}
-                  className="w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:border-[var(--accent-copper-light)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]/60"
-                  placeholder="Add notes for this job…"
-                />
-              </SectionCard>
-
-              {workOrder?.id ? (
-                <SectionCard>
-                  <WorkOrderMediaGallery
-                    workOrderId={workOrder.id}
-                    workOrderLineId={workOrderLineId}
-                    refreshKey={mediaRefreshKey}
+                <SectionCard title="Tech notes">
+                  <textarea
+                    rows={isExpandedPanel ? 5 : 3}
+                    value={techNotes}
+                    onChange={(e) => setTechNotes(e.target.value)}
+                    onBlur={saveNotes}
+                    disabled={savingNotes}
+                    className="w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:border-[var(--accent-copper-light)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]/60"
+                    placeholder="Add notes for this job…"
                   />
                 </SectionCard>
-              ) : null}
 
-              <SectionCard title={partsBottleneckDisplay?.heading ?? "Parts used"}>
-                {allocsLoading ? (
-                  <div className="text-sm text-[color:var(--theme-text-secondary)]">Loading…</div>
-                ) : partsBottleneckDisplay && (displayOnlyAllocations.length + requiredParts.length) === 0 ? (
-                  <div className="text-sm text-[color:var(--theme-text-primary)]">
-                    {partsBottleneckDisplay.detail}
-                  </div>
-                ) : (displayOnlyAllocations.length + requiredParts.length) === 0 ? (
-                  <div className="text-sm text-[color:var(--theme-text-secondary)]">No parts used yet.</div>
-                ) : (
-                  <div className="overflow-hidden rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]">
-                    <div className="grid grid-cols-12 bg-[color:var(--theme-surface-subtle)] px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
-                      <div className="col-span-7">Part</div>
-                      <div className="col-span-3">Location</div>
-                      <div className="col-span-2 text-right">Qty</div>
-                    </div>
-                    <ul className="max-h-56 overflow-auto divide-y divide-[color:var(--theme-border-soft)]">
-                      {requiredParts.map((p) => {
-                        const qty = getCanonicalPartQuantity(p);
-                        const unit = getCanonicalPartUnitPrice(p);
-                        const allocation = summarizeCanonicalPartAllocations(p, allocs);
-                        return (
-                          <li key={`required-${p.id}`} className="grid grid-cols-12 items-center gap-2 px-3 py-2 text-sm">
-                            <div className="col-span-7 min-w-0 break-words text-[color:var(--theme-text-primary)]">
-                              {getCanonicalPartDescription(p) ?? "—"}
-                              <div className="text-[11px] text-[color:var(--theme-text-secondary)]">{[getCanonicalPartNumber(p), getCanonicalPartManufacturer(p), p.lifecycle_status ?? "requested"].filter(Boolean).join(" • ")}</div>
-                            </div>
-                            <div className="col-span-3 truncate text-[color:var(--theme-text-secondary)]">
-                              {allocation.locations.length > 0
-                                ? allocation.locations.map((location) => `loc ${location.slice(0, 6)}…`).join(", ")
-                                : unit > 0 ? money(unit) : "—"}
-                            </div>
-                            <div className="col-span-2 text-right font-semibold text-[color:var(--theme-text-primary)]">
-                              {allocation.allocatedQuantity > 0 ? `${allocation.allocatedQuantity}/${qty}` : qty}
-                            </div>
-                          </li>
-                        );
-                      })}
-                      {displayOnlyAllocations.map((a) => {
-                        const qty =
-                          (a as unknown as { qty?: number | null }).qty ??
-                          (a as unknown as { quantity?: number | null }).quantity ??
-                          0;
-
-                        return (
-                          <li key={a.id} className="grid grid-cols-12 items-center gap-2 px-3 py-2 text-sm">
-                            <div className="col-span-7 min-w-0 break-words text-[color:var(--theme-text-primary)]">
-                              {a.parts?.name ?? "Part"}
-                            </div>
-                            <div className="col-span-3 truncate text-[color:var(--theme-text-secondary)]">
-                              {(a as unknown as { location_id?: string | null }).location_id
-                                ? `loc ${String((a as unknown as { location_id?: string | null }).location_id).slice(0, 6)}…`
-                                : "—"}
-                            </div>
-                            <div className="col-span-2 text-right font-semibold text-[color:var(--theme-text-primary)]">
-                              {qty}
-                            </div>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </div>
-                )}
-              </SectionCard>
-
-              <SectionCard title="Quick status">
-                <div className={cn("grid gap-2.5 sm:grid-cols-2", isExpandedPanel && "xl:grid-cols-3")}>
-                  <MetaStat
-                    label="Start"
-                    value={createdStart}
-                  />
-                  <MetaStat
-                    label="Finish"
-                    value={createdFinish}
-                  />
-                  <MetaStat
-                    label="Hold reason"
-                    value={line.hold_reason ?? "—"}
-                  />
-                  <MetaStat
-                    label="Job type"
-                    value={String(line.job_type ?? "—").replaceAll("_", " ")}
-                  />
-                  <MetaStat
-                    label="Primary tech"
-                    value={primaryTechDisplay}
-                  />
-                  <MetaStat label="Labor" value={laborDisplay} />
-                  <MetaStat
-                    label="Line total"
-                    value={lineTotal > 0 ? new Intl.NumberFormat("en-CA", {
-                      style: "currency",
-                      currency: "CAD",
-                      maximumFractionDigits: 2,
-                    }).format(lineTotal) : "Estimate pending"}
-                  />
-                </div>
-              </SectionCard>
-
-              <SectionCard title="AI suggested repairs">
-                <details className="group" open={!isPanelVariant}>
-                  <summary className="cursor-pointer text-xs text-[color:var(--theme-text-secondary)] transition group-open:mb-2 hover:text-[color:var(--theme-text-primary)]">
-                    {isPanelVariant ? "Expand AI suggestions" : "AI suggestions"}
-                  </summary>
-                  {line && workOrder ? (
-                    <SuggestedQuickAdd
-                      jobId={line.id}
+                {workOrder?.id ? (
+                  <SectionCard>
+                    <WorkOrderMediaGallery
                       workOrderId={workOrder.id}
-                      vehicleId={vehicle?.id ?? null}
-                      onAdded={async () => {
-                        toast.success("Suggested line added");
-                        await refresh();
-                      }}
+                      workOrderLineId={workOrderLineId}
+                      refreshKey={mediaRefreshKey}
                     />
-                  ) : (
-                    <div className="text-sm text-[color:var(--theme-text-secondary)]">Vehicle/work order details required.</div>
-                  )}
-                </details>
-              </SectionCard>
+                  </SectionCard>
+                ) : null}
 
-              <div className="px-1 text-xs text-[color:var(--theme-text-muted)]">
-                Job ID: {line.id}
-                {typeof line.labor_time === "number" ? ` • Labor: ${line.labor_time.toFixed(1)}h` : ""}
-                {line.hold_reason ? ` • Hold: ${line.hold_reason}` : ""}
-                {line.approval_state ? ` • Approval: ${line.approval_state}` : ""}
-              </div>
+                <SectionCard
+                  title={partsBottleneckDisplay?.heading ?? "Parts used"}
+                >
+                  {allocsLoading ? (
+                    <div className="text-sm text-[color:var(--theme-text-secondary)]">
+                      Loading…
+                    </div>
+                  ) : partsBottleneckDisplay &&
+                    displayOnlyAllocations.length + requiredParts.length ===
+                      0 ? (
+                    <div className="text-sm text-[color:var(--theme-text-primary)]">
+                      {partsBottleneckDisplay.detail}
+                    </div>
+                  ) : displayOnlyAllocations.length + requiredParts.length ===
+                    0 ? (
+                    <div className="text-sm text-[color:var(--theme-text-secondary)]">
+                      No parts used yet.
+                    </div>
+                  ) : (
+                    <div className="overflow-hidden rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]">
+                      <div className="grid grid-cols-12 bg-[color:var(--theme-surface-subtle)] px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
+                        <div className="col-span-7">Part</div>
+                        <div className="col-span-3">Location</div>
+                        <div className="col-span-2 text-right">Qty</div>
+                      </div>
+                      <ul className="max-h-56 overflow-auto divide-y divide-[color:var(--theme-border-soft)]">
+                        {requiredParts.map((p) => {
+                          const qty = getCanonicalPartQuantity(p);
+                          const unit = getCanonicalPartUnitPrice(p);
+                          const allocation = summarizeCanonicalPartAllocations(
+                            p,
+                            allocs,
+                          );
+                          return (
+                            <li
+                              key={`required-${p.id}`}
+                              className="grid grid-cols-12 items-center gap-2 px-3 py-2 text-sm"
+                            >
+                              <div className="col-span-7 min-w-0 break-words text-[color:var(--theme-text-primary)]">
+                                {getCanonicalPartDescription(p) ?? "—"}
+                                <div className="text-[11px] text-[color:var(--theme-text-secondary)]">
+                                  {[
+                                    getCanonicalPartNumber(p),
+                                    getCanonicalPartManufacturer(p),
+                                    p.lifecycle_status ?? "requested",
+                                  ]
+                                    .filter(Boolean)
+                                    .join(" • ")}
+                                </div>
+                              </div>
+                              <div className="col-span-3 truncate text-[color:var(--theme-text-secondary)]">
+                                {allocation.locations.length > 0
+                                  ? allocation.locations
+                                      .map(
+                                        (location) =>
+                                          `loc ${location.slice(0, 6)}…`,
+                                      )
+                                      .join(", ")
+                                  : unit > 0
+                                    ? money(unit)
+                                    : "—"}
+                              </div>
+                              <div className="col-span-2 text-right font-semibold text-[color:var(--theme-text-primary)]">
+                                {allocation.allocatedQuantity > 0
+                                  ? `${allocation.allocatedQuantity}/${qty}`
+                                  : qty}
+                              </div>
+                            </li>
+                          );
+                        })}
+                        {displayOnlyAllocations.map((a) => {
+                          const qty =
+                            (a as unknown as { qty?: number | null }).qty ??
+                            (a as unknown as { quantity?: number | null })
+                              .quantity ??
+                            0;
+
+                          return (
+                            <li
+                              key={a.id}
+                              className="grid grid-cols-12 items-center gap-2 px-3 py-2 text-sm"
+                            >
+                              <div className="col-span-7 min-w-0 break-words text-[color:var(--theme-text-primary)]">
+                                {a.parts?.name ?? "Part"}
+                              </div>
+                              <div className="col-span-3 truncate text-[color:var(--theme-text-secondary)]">
+                                {(
+                                  a as unknown as {
+                                    location_id?: string | null;
+                                  }
+                                ).location_id
+                                  ? `loc ${String((a as unknown as { location_id?: string | null }).location_id).slice(0, 6)}…`
+                                  : "—"}
+                              </div>
+                              <div className="col-span-2 text-right font-semibold text-[color:var(--theme-text-primary)]">
+                                {qty}
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  )}
+                </SectionCard>
+
+                <SectionCard title="Quick status">
+                  <div
+                    className={cn(
+                      "grid gap-2.5 sm:grid-cols-2",
+                      isExpandedPanel && "xl:grid-cols-3",
+                    )}
+                  >
+                    <MetaStat label="Start" value={createdStart} />
+                    <MetaStat label="Finish" value={createdFinish} />
+                    <MetaStat
+                      label="Hold reason"
+                      value={line.hold_reason ?? "—"}
+                    />
+                    <MetaStat
+                      label="Job type"
+                      value={String(line.job_type ?? "—").replaceAll("_", " ")}
+                    />
+                    <MetaStat label="Primary tech" value={primaryTechDisplay} />
+                    <MetaStat label="Labor" value={laborDisplay} />
+                    <MetaStat
+                      label="Line total"
+                      value={
+                        lineTotal > 0
+                          ? new Intl.NumberFormat("en-CA", {
+                              style: "currency",
+                              currency: "CAD",
+                              maximumFractionDigits: 2,
+                            }).format(lineTotal)
+                          : "Estimate pending"
+                      }
+                    />
+                  </div>
+                </SectionCard>
+
+                <SectionCard title="AI suggested repairs">
+                  <details className="group" open={!isPanelVariant}>
+                    <summary className="cursor-pointer text-xs text-[color:var(--theme-text-secondary)] transition group-open:mb-2 hover:text-[color:var(--theme-text-primary)]">
+                      {isPanelVariant
+                        ? "Expand AI suggestions"
+                        : "AI suggestions"}
+                    </summary>
+                    {line && workOrder ? (
+                      <SuggestedQuickAdd
+                        jobId={line.id}
+                        workOrderId={workOrder.id}
+                        vehicleId={vehicle?.id ?? null}
+                        onAdded={async () => {
+                          toast.success("Suggested line added");
+                          await refresh();
+                        }}
+                      />
+                    ) : (
+                      <div className="text-sm text-[color:var(--theme-text-secondary)]">
+                        Vehicle/work order details required.
+                      </div>
+                    )}
+                  </details>
+                </SectionCard>
+
+                <div className="px-1 text-xs text-[color:var(--theme-text-muted)]">
+                  Job ID: {line.id}
+                  {typeof line.labor_time === "number"
+                    ? ` • Labor: ${line.labor_time.toFixed(1)}h`
+                    : ""}
+                  {line.hold_reason ? ` • Hold: ${line.hold_reason}` : ""}
+                  {line.approval_state
+                    ? ` • Approval: ${line.approval_state}`
+                    : ""}
+                </div>
               </div>
             </div>
           )}
@@ -1285,13 +1421,23 @@ export default function FocusedJobModal(props: {
       </div>
       <dl className="grid gap-3 text-sm">
         {[
-          ["Complaint", line.complaint?.trim() || line.description?.trim() || "Add complaint"],
+          [
+            "Complaint",
+            line.complaint?.trim() ||
+              line.description?.trim() ||
+              "Add complaint",
+          ],
           ["Cause", line.cause?.trim() || "Add cause"],
           ["Correction", line.correction?.trim() || "Add correction"],
           ["Blocker", line.hold_reason?.trim() || "None"],
         ].map(([label, value]) => (
-          <div key={label} className="grid gap-1 sm:grid-cols-[7rem_minmax(0,1fr)] sm:gap-4">
-            <dt className="font-medium text-[color:var(--theme-text-secondary)]">{label}</dt>
+          <div
+            key={label}
+            className="grid gap-1 sm:grid-cols-[7rem_minmax(0,1fr)] sm:gap-4"
+          >
+            <dt className="font-medium text-[color:var(--theme-text-secondary)]">
+              {label}
+            </dt>
             <dd className="text-[color:var(--theme-text-primary)]">{value}</dd>
           </div>
         ))}
@@ -1324,11 +1470,17 @@ export default function FocusedJobModal(props: {
       </div>
       <div className="grid divide-y divide-[color:var(--theme-border-soft)] border-y border-[color:var(--theme-border-soft)] sm:grid-cols-3 sm:divide-x sm:divide-y-0">
         <div className="px-3 py-3 sm:first:pl-0">
-          <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">Labor</div>
-          <div className="mt-1 text-sm font-medium text-[color:var(--theme-text-primary)]">{laborDisplay}</div>
+          <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
+            Labor
+          </div>
+          <div className="mt-1 text-sm font-medium text-[color:var(--theme-text-primary)]">
+            {laborDisplay}
+          </div>
         </div>
         <div className="px-3 py-3">
-          <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">Parts</div>
+          <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
+            Parts
+          </div>
           <div className="mt-1 text-sm font-medium text-[color:var(--theme-text-primary)]">
             {allocsLoading
               ? "Loading…"
@@ -1336,7 +1488,9 @@ export default function FocusedJobModal(props: {
           </div>
         </div>
         <div className="px-3 py-3">
-          <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">Line total</div>
+          <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
+            Line total
+          </div>
           <div className="mt-1 font-mono text-sm font-semibold text-[color:var(--theme-text-primary)]">
             {lineTotal > 0 ? money(lineTotal) : "Estimate pending"}
           </div>
@@ -1346,8 +1500,12 @@ export default function FocusedJobModal(props: {
         <div className="mt-4 flex items-start gap-2 rounded-xl border border-amber-400/30 bg-amber-400/8 px-3 py-3 text-sm text-amber-100">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           <div>
-            <div className="font-semibold">{partsBottleneckDisplay.heading}</div>
-            <div className="mt-0.5 text-xs text-amber-100/80">{partsBottleneckDisplay.detail}</div>
+            <div className="font-semibold">
+              {partsBottleneckDisplay.heading}
+            </div>
+            <div className="mt-0.5 text-xs text-amber-100/80">
+              {partsBottleneckDisplay.detail}
+            </div>
           </div>
         </div>
       ) : null}
@@ -1390,7 +1548,9 @@ export default function FocusedJobModal(props: {
         </div>
       </div>
       {allocsLoading ? (
-        <div className="text-sm text-[color:var(--theme-text-secondary)]">Loading…</div>
+        <div className="text-sm text-[color:var(--theme-text-secondary)]">
+          Loading…
+        </div>
       ) : allocs.length + requiredParts.length === 0 ? (
         <div className="rounded-xl border border-dashed border-[color:var(--theme-border-soft)] px-4 py-8 text-center text-sm text-[color:var(--theme-text-secondary)]">
           {partsBottleneckDisplay?.detail ?? "No parts used yet."}
@@ -1407,29 +1567,56 @@ export default function FocusedJobModal(props: {
               const qty = getCanonicalPartQuantity(part);
               const unit = getCanonicalPartUnitPrice(part);
               return (
-                <li key={`cockpit-required-${part.id}`} className="grid grid-cols-12 items-center gap-2 px-3 py-3 text-sm">
+                <li
+                  key={`cockpit-required-${part.id}`}
+                  className="grid grid-cols-12 items-center gap-2 px-3 py-3 text-sm"
+                >
                   <div className="col-span-7 min-w-0 text-[color:var(--theme-text-primary)]">
-                    <div className="truncate font-medium">{getCanonicalPartDescription(part) ?? "Part"}</div>
+                    <div className="truncate font-medium">
+                      {getCanonicalPartDescription(part) ?? "Part"}
+                    </div>
                     <div className="mt-0.5 truncate text-[11px] text-[color:var(--theme-text-secondary)]">
-                      {[getCanonicalPartNumber(part), getCanonicalPartManufacturer(part), part.lifecycle_status ?? "requested"].filter(Boolean).join(" • ")}
+                      {[
+                        getCanonicalPartNumber(part),
+                        getCanonicalPartManufacturer(part),
+                        part.lifecycle_status ?? "requested",
+                      ]
+                        .filter(Boolean)
+                        .join(" • ")}
                     </div>
                   </div>
-                  <div className="col-span-3 truncate text-[color:var(--theme-text-secondary)]">{unit > 0 ? money(unit) : "—"}</div>
-                  <div className="col-span-2 text-right font-semibold text-[color:var(--theme-text-primary)]">{qty}</div>
+                  <div className="col-span-3 truncate text-[color:var(--theme-text-secondary)]">
+                    {unit > 0 ? money(unit) : "—"}
+                  </div>
+                  <div className="col-span-2 text-right font-semibold text-[color:var(--theme-text-primary)]">
+                    {qty}
+                  </div>
                 </li>
               );
             })}
             {allocs.map((allocation) => {
               const qty =
                 (allocation as unknown as { qty?: number | null }).qty ??
-                (allocation as unknown as { quantity?: number | null }).quantity ??
+                (allocation as unknown as { quantity?: number | null })
+                  .quantity ??
                 0;
-              const locationId = (allocation as unknown as { location_id?: string | null }).location_id;
+              const locationId = (
+                allocation as unknown as { location_id?: string | null }
+              ).location_id;
               return (
-                <li key={`cockpit-allocated-${allocation.id}`} className="grid grid-cols-12 items-center gap-2 px-3 py-3 text-sm">
-                  <div className="col-span-7 truncate font-medium text-[color:var(--theme-text-primary)]">{allocation.parts?.name ?? "Part"}</div>
-                  <div className="col-span-3 truncate text-[color:var(--theme-text-secondary)]">{locationId ? `loc ${locationId.slice(0, 6)}…` : "—"}</div>
-                  <div className="col-span-2 text-right font-semibold text-[color:var(--theme-text-primary)]">{qty}</div>
+                <li
+                  key={`cockpit-allocated-${allocation.id}`}
+                  className="grid grid-cols-12 items-center gap-2 px-3 py-3 text-sm"
+                >
+                  <div className="col-span-7 truncate font-medium text-[color:var(--theme-text-primary)]">
+                    {allocation.parts?.name ?? "Part"}
+                  </div>
+                  <div className="col-span-3 truncate text-[color:var(--theme-text-secondary)]">
+                    {locationId ? `loc ${locationId.slice(0, 6)}…` : "—"}
+                  </div>
+                  <div className="col-span-2 text-right font-semibold text-[color:var(--theme-text-primary)]">
+                    {qty}
+                  </div>
                 </li>
               );
             })}
@@ -1439,36 +1626,38 @@ export default function FocusedJobModal(props: {
     </section>
   ) : null;
 
-  const inspectionWorkspace = line && onOpenInspection ? (
-    <section>
-      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">
-            Inspection workflow
+  const inspectionWorkspace =
+    line && onOpenInspection ? (
+      <section>
+        <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">
+              Inspection workflow
+            </div>
+            <h3 className="mt-1 text-base font-semibold text-[color:var(--theme-text-primary)]">
+              Attached inspection
+            </h3>
           </div>
-          <h3 className="mt-1 text-base font-semibold text-[color:var(--theme-text-primary)]">
-            Attached inspection
-          </h3>
+          <button
+            type="button"
+            className="rounded-lg border border-sky-400/40 bg-sky-500/10 px-3 py-1.5 text-xs font-semibold text-sky-100 transition hover:bg-sky-500/20"
+            onClick={() => void onOpenInspection()}
+            disabled={busy}
+          >
+            Open inspection
+          </button>
         </div>
-        <button
-          type="button"
-          className="rounded-lg border border-sky-400/40 bg-sky-500/10 px-3 py-1.5 text-xs font-semibold text-sky-100 transition hover:bg-sky-500/20"
-          onClick={() => void onOpenInspection()}
-          disabled={busy}
-        >
-          Open inspection
-        </button>
-      </div>
-      <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-4">
-        <div className="text-sm font-medium text-[color:var(--theme-text-primary)]">
-          {lineLabel}
+        <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-4">
+          <div className="text-sm font-medium text-[color:var(--theme-text-primary)]">
+            {lineLabel}
+          </div>
+          <p className="mt-1 text-xs leading-5 text-[color:var(--theme-text-secondary)]">
+            Continue the existing inspection, evidence, autosave, and completion
+            flow for this job.
+          </p>
         </div>
-        <p className="mt-1 text-xs leading-5 text-[color:var(--theme-text-secondary)]">
-          Continue the existing inspection, evidence, autosave, and completion flow for this job.
-        </p>
-      </div>
-    </section>
-  ) : null;
+      </section>
+    ) : null;
 
   const CockpitBody = (
     <div
@@ -1481,9 +1670,15 @@ export default function FocusedJobModal(props: {
           <div className="flex flex-wrap items-start justify-between gap-3 pb-4">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="inline-flex h-2.5 w-2.5 rounded-full bg-[color:var(--brand-primary)]" aria-hidden="true" />
+                <span
+                  className="inline-flex h-2.5 w-2.5 rounded-full bg-[color:var(--brand-primary)]"
+                  aria-hidden="true"
+                />
                 <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
-                  {String(line?.job_type ?? "Selected job").replaceAll("_", " ")}
+                  {String(line?.job_type ?? "Selected job").replaceAll(
+                    "_",
+                    " ",
+                  )}
                 </span>
                 {line?.approval_state ? (
                   <span className="text-[10px] uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">
@@ -1496,7 +1691,9 @@ export default function FocusedJobModal(props: {
               </h2>
               <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-[color:var(--theme-text-muted)]">
                 <span className="font-mono">
-                  {workOrder ? `WO ${workOrder.custom_id || workOrder.id.slice(0, 8)}` : "Selected job"}
+                  {workOrder
+                    ? `WO ${workOrder.custom_id || workOrder.id.slice(0, 8)}`
+                    : "Selected job"}
                 </span>
                 <span aria-hidden="true">•</span>
                 <span>{customerDisplay}</span>
@@ -1505,7 +1702,11 @@ export default function FocusedJobModal(props: {
               </div>
             </div>
           </div>
-          <div className="flex gap-1 overflow-x-auto" role="tablist" aria-label="Selected job workspace">
+          <div
+            className="flex gap-1 overflow-x-auto"
+            role="tablist"
+            aria-label="Selected job workspace"
+          >
             {workspaceTabs.map((tab) => (
               <button
                 key={tab.id}
@@ -1534,7 +1735,9 @@ export default function FocusedJobModal(props: {
               <div className="h-32 animate-pulse rounded-xl bg-[color:var(--theme-surface-subtle)]" />
             </div>
           ) : !line ? (
-            <div className="text-sm text-[color:var(--theme-text-secondary)]">No job found.</div>
+            <div className="text-sm text-[color:var(--theme-text-secondary)]">
+              No job found.
+            </div>
           ) : activeWorkspaceTab === "overview" ? (
             <div className="space-y-6">
               {repairStoryWorkspace}
@@ -1614,11 +1817,22 @@ export default function FocusedJobModal(props: {
                 <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
                   <MetaStat label="Start" value={createdStart} />
                   <MetaStat label="Finish" value={createdFinish} />
-                  <MetaStat label="Hold reason" value={line.hold_reason ?? "—"} />
-                  <MetaStat label="Job type" value={String(line.job_type ?? "—").replaceAll("_", " ")} />
+                  <MetaStat
+                    label="Hold reason"
+                    value={line.hold_reason ?? "—"}
+                  />
+                  <MetaStat
+                    label="Job type"
+                    value={String(line.job_type ?? "—").replaceAll("_", " ")}
+                  />
                   <MetaStat label="Primary tech" value={primaryTechDisplay} />
                   <MetaStat label="Labor" value={laborDisplay} />
-                  <MetaStat label="Line total" value={lineTotal > 0 ? money(lineTotal) : "Estimate pending"} />
+                  <MetaStat
+                    label="Line total"
+                    value={
+                      lineTotal > 0 ? money(lineTotal) : "Estimate pending"
+                    }
+                  />
                 </div>
               </section>
               <section className="border-t border-[color:var(--theme-border-soft)] pt-6">
@@ -1658,16 +1872,33 @@ export default function FocusedJobModal(props: {
             <div className="flex items-start gap-3">
               <Clock3 className="mt-0.5 h-5 w-5 text-sky-300" />
               <div>
-                <div className="text-[11px] text-[color:var(--theme-text-secondary)]">Current state</div>
-                <div className={`mt-0.5 text-sm font-semibold ${chip(normalizedLineStatus)}`}>{statusLabel}</div>
+                <div className="text-[11px] text-[color:var(--theme-text-secondary)]">
+                  Current state
+                </div>
+                <div
+                  className={`mt-0.5 text-sm font-semibold ${chip(normalizedLineStatus)}`}
+                >
+                  {statusLabel}
+                </div>
               </div>
             </div>
             <div className="flex items-start gap-3">
-              <AlertTriangle className={cn("mt-0.5 h-5 w-5", line?.hold_reason ? "text-amber-300" : "text-[color:var(--theme-text-muted)]")} />
+              <AlertTriangle
+                className={cn(
+                  "mt-0.5 h-5 w-5",
+                  line?.hold_reason
+                    ? "text-amber-300"
+                    : "text-[color:var(--theme-text-muted)]",
+                )}
+              />
               <div>
-                <div className="text-[11px] text-[color:var(--theme-text-secondary)]">Blocker</div>
+                <div className="text-[11px] text-[color:var(--theme-text-secondary)]">
+                  Blocker
+                </div>
                 <div className="mt-0.5 text-sm font-semibold text-[color:var(--theme-text-primary)]">
-                  {line?.hold_reason || partsBottleneckDisplay?.detail || "None"}
+                  {line?.hold_reason ||
+                    partsBottleneckDisplay?.detail ||
+                    "None"}
                 </div>
               </div>
             </div>
@@ -1772,7 +2003,9 @@ export default function FocusedJobModal(props: {
                     className={cn(btnTertiary, "gap-1.5 text-xs")}
                     onClick={() => {
                       if (!vehicle?.id) {
-                        toast.error("No vehicle linked to this work order yet.");
+                        toast.error(
+                          "No vehicle linked to this work order yet.",
+                        );
                         return;
                       }
                       closeAllSubModals();
@@ -1791,7 +2024,8 @@ export default function FocusedJobModal(props: {
                       ? "Awaiting approval — labor actions disabled"
                       : normalizedLineStatus === "declined"
                         ? "Declined — labor actions disabled"
-                        : line.approval_state && line.approval_state !== "approved"
+                        : line.approval_state &&
+                            line.approval_state !== "approved"
                           ? "Not approved — labor actions disabled"
                           : ""}
                   </div>
@@ -1802,25 +2036,34 @@ export default function FocusedJobModal(props: {
             <section className="border-t border-[color:var(--theme-border-soft)] pt-4">
               <div className="grid gap-3 text-sm">
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-[color:var(--theme-text-secondary)]">Approval</span>
-                  <span className="font-semibold capitalize text-[color:var(--theme-text-primary)]">{line.approval_state ?? "Not required"}</span>
+                  <span className="text-[color:var(--theme-text-secondary)]">
+                    Approval
+                  </span>
+                  <span className="font-semibold capitalize text-[color:var(--theme-text-primary)]">
+                    {line.approval_state ?? "Not required"}
+                  </span>
                 </div>
-                {canAssignTechnician && onAssignTechnician && technicianOptions.length > 0 ? (
+                {canAssignTechnician &&
+                onAssignTechnician &&
+                technicianOptions.length > 0 ? (
                   <label className="grid gap-1.5">
-                    <span className="text-[color:var(--theme-text-secondary)]">Primary tech</span>
+                    <span className="text-[color:var(--theme-text-secondary)]">
+                      Primary tech
+                    </span>
                     <span className="relative block">
                       <UserRound className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-[color:var(--theme-text-muted)]" />
                       <select
                         aria-label="Primary technician"
                         value={line.assigned_tech_id ?? ""}
-                        onChange={(event) => void assignTechnician(event.target.value)}
+                        onChange={(event) =>
+                          void assignTechnician(event.target.value)
+                        }
                         disabled={busy || assigningTechnician}
                         className="h-10 w-full appearance-none rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] py-2 pl-9 pr-3 text-sm font-semibold text-[color:var(--theme-text-primary)] outline-none transition focus:border-[color:var(--brand-primary)] focus:ring-2 focus:ring-[color:var(--brand-primary)]/20 disabled:cursor-wait disabled:opacity-60"
                       >
-                        <option value="">
-                          Unassigned (clear all)
-                        </option>
-                        {line.assigned_tech_id && !assignedTechnicianIsSelectable ? (
+                        <option value="">Unassigned (clear all)</option>
+                        {line.assigned_tech_id &&
+                        !assignedTechnicianIsSelectable ? (
                           <option value={line.assigned_tech_id}>
                             {primaryTechDisplay === "Unassigned"
                               ? "Current technician"
@@ -1837,7 +2080,9 @@ export default function FocusedJobModal(props: {
                   </label>
                 ) : (
                   <div className="flex items-center justify-between gap-3">
-                    <span className="text-[color:var(--theme-text-secondary)]">Primary tech</span>
+                    <span className="text-[color:var(--theme-text-secondary)]">
+                      Primary tech
+                    </span>
                     <span className="inline-flex min-w-0 items-center gap-1.5 truncate font-semibold text-[color:var(--theme-text-primary)]">
                       <UserRound className="h-4 w-4 shrink-0" />
                       {primaryTechDisplay}
@@ -1848,10 +2093,26 @@ export default function FocusedJobModal(props: {
             </section>
 
             <section className="border-t border-[color:var(--theme-border-soft)] pt-4">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">Timing</div>
+              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
+                Timing
+              </div>
               <dl className="mt-3 grid gap-2 text-xs">
-                <div className="flex justify-between gap-3"><dt className="text-[color:var(--theme-text-secondary)]">Start</dt><dd className="text-right text-[color:var(--theme-text-primary)]">{createdStart}</dd></div>
-                <div className="flex justify-between gap-3"><dt className="text-[color:var(--theme-text-secondary)]">Finish</dt><dd className="text-right text-[color:var(--theme-text-primary)]">{createdFinish}</dd></div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-[color:var(--theme-text-secondary)]">
+                    Start
+                  </dt>
+                  <dd className="text-right text-[color:var(--theme-text-primary)]">
+                    {createdStart}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-[color:var(--theme-text-secondary)]">
+                    Finish
+                  </dt>
+                  <dd className="text-right text-[color:var(--theme-text-primary)]">
+                    {createdFinish}
+                  </dd>
+                </div>
               </dl>
             </section>
             <div
@@ -1878,7 +2139,10 @@ export default function FocusedJobModal(props: {
         }}
         className="fixed inset-0 z-[100] flex items-center justify-center"
       >
-        <div className="fixed inset-0 z-[100] bg-[color:var(--theme-surface-inset)] backdrop-blur-sm" aria-hidden="true" />
+        <div
+          className="fixed inset-0 z-[100] bg-[color:var(--theme-surface-inset)] backdrop-blur-sm"
+          aria-hidden="true"
+        />
         <div
           className="relative z-[110] mx-4 my-6 w-full max-w-5xl"
           onClick={(e) => e.stopPropagation()}
@@ -1914,7 +2178,9 @@ export default function FocusedJobModal(props: {
             if (!canExecuteJob) {
               throw new Error("Job execution capability is required.");
             }
-            await ensureShopContext((workOrder?.shop_id as string | null) ?? null);
+            await ensureShopContext(
+              (workOrder?.shop_id as string | null) ?? null,
+            );
 
             try {
               await runJobPunchTransition(line.id, "finish", {
@@ -1931,11 +2197,16 @@ export default function FocusedJobModal(props: {
             await refresh();
           }}
           onSaveDraft={async (cause: string, correction: string) => {
-            await ensureShopContext((workOrder?.shop_id as string | null) ?? null);
+            await ensureShopContext(
+              (workOrder?.shop_id as string | null) ?? null,
+            );
 
             const { error } = await supabase
               .from("work_order_lines")
-              .update({ cause, correction } as DB["public"]["Tables"]["work_order_lines"]["Update"])
+              .update({
+                cause,
+                correction,
+              } as DB["public"]["Tables"]["work_order_lines"]["Update"])
               .eq("id", line.id);
 
             if (error) {
@@ -1969,7 +2240,6 @@ export default function FocusedJobModal(props: {
         />
       ) : null}
 
-
       {openDtc && line?.id ? (
         <DtcSuggestionModal
           isOpen={openDtc}
@@ -1986,15 +2256,18 @@ export default function FocusedJobModal(props: {
                       ? vehicle.engine
                       : null,
                   fuelType:
-                    "fuel_type" in vehicle && typeof vehicle.fuel_type === "string"
+                    "fuel_type" in vehicle &&
+                    typeof vehicle.fuel_type === "string"
                       ? vehicle.fuel_type
                       : null,
                   drivetrain:
-                    "drivetrain" in vehicle && typeof vehicle.drivetrain === "string"
+                    "drivetrain" in vehicle &&
+                    typeof vehicle.drivetrain === "string"
                       ? vehicle.drivetrain
                       : null,
                   transmission:
-                    "transmission" in vehicle && typeof vehicle.transmission === "string"
+                    "transmission" in vehicle &&
+                    typeof vehicle.transmission === "string"
                       ? vehicle.transmission
                       : null,
                 }
