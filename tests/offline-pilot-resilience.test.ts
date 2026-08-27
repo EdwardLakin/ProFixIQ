@@ -68,7 +68,9 @@ describe("offline pilot resilience", () => {
     const mutations = read("features/shared/lib/offline/mutations.ts");
     const syncCenter = read("app/offline/sync/page.tsx");
     expect(mutations).toContain("auditOfflineMutationAttachments");
-    expect(mutations).toContain("await auditOfflineMutationAttachments(scope)");
+    expect(mutations).toContain(
+      "await auditOfflineMutationAttachmentsWhileLocked(scope, lock)",
+    );
     expect(mutations).toContain("Browser storage removed the staged photo");
     expect(mutations).toContain('status: "conflicted"');
     expect(syncCenter).toContain("auditOfflineMutationAttachments(scope)");
@@ -77,7 +79,9 @@ describe("offline pilot resilience", () => {
 
   it("detects a missing offline database using only aggregate persistence markers", () => {
     const mutations = read("features/shared/lib/offline/mutations.ts");
-    expect(mutations).toContain('const PERSISTENCE_MARKER_KEY = "profixiq.offline.persistence.v1"');
+    expect(mutations).toContain(
+      'const PERSISTENCE_MARKER_KEY = "profixiq.offline.persistence.v1"',
+    );
     expect(mutations).toContain("pendingMutations: pending.length");
     expect(mutations).toContain("expectedPendingMutations > 0");
     expect(mutations).toContain("storedPendingMutations === 0");

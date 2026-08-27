@@ -33,12 +33,12 @@ function mutation(
 }
 
 describe("technician offline hardening", () => {
-  it("recovers an interrupted sync as retryable after an app restart", () => {
+  it("preserves syncing state during ordinary queue restoration", () => {
     const restored = restoreOfflineMutation({
       ...mutation("restart-1", "job:punch-transition", "2026-07-16T10:00:00Z"),
       status: "syncing",
     });
-    expect(restored?.status).toBe("failed");
+    expect(restored?.status).toBe("syncing");
     expect(restored?.clientMutationId).toBe("restart-1");
   });
 
@@ -52,6 +52,51 @@ describe("technician offline hardening", () => {
     expect(normalizeOfflineMutationQueue([first, repeated])).toEqual([
       repeated,
     ]);
+  });
+
+  it("never applies the history cap to unsynced device work", () => {
+    const pending = Array.from({ length: 325 }, (_, index) =>
+      mutation(
+        `pending-${index}`,
+        "save_story_draft",
+        new Date(Date.now() + index).toISOString(),
+      ),
+    );
+
+    expect(normalizeOfflineMutationQueue(pending)).toHaveLength(325);
+  });
+
+  it("caps only terminal synced history", () => {
+    const pending = Array.from({ length: 5 }, (_, index) =>
+      mutation(
+        `pending-${index}`,
+        "save_story_draft",
+        new Date(Date.now() + index).toISOString(),
+      ),
+    );
+    const synced = Array.from({ length: 305 }, (_, index) => ({
+      ...mutation(
+        `synced-${index}`,
+        "save_story_draft",
+        new Date(Date.now() + 1_000 + index).toISOString(),
+      ),
+      status: "synced" as const,
+      syncedAt: new Date().toISOString(),
+    }));
+
+    const normalized = normalizeOfflineMutationQueue([...pending, ...synced]);
+    expect(normalized.filter((item) => item.status !== "synced")).toHaveLength(
+      5,
+    );
+    expect(normalized.filter((item) => item.status === "synced")).toHaveLength(
+      300,
+    );
+    expect(normalized.some((item) => item.clientMutationId === "synced-0")).toBe(
+      false,
+    );
+    expect(
+      normalized.some((item) => item.clientMutationId === "synced-304"),
+    ).toBe(true);
   });
 
   it("replays reconnect work chronologically and deterministically", () => {
