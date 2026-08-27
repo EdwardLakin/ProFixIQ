@@ -587,6 +587,23 @@ jobs:
           ")"
           test "$existing_mode" = "existing"
 
+      - name: Execute Work Order child parent-tenant integration
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+            -f tests/security/work-order-child-parent-tenant.runtime.sql \
+            2>&1 | tee work-order-child-parent-tenant-runtime.log
+          bash tests/security/work-order-child-parent-tenant-locking.runtime.sh \
+            "$DB_URL" \
+            2>&1 | tee work-order-child-parent-tenant-locking-runtime.log
+
       - name: Upload replay diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -624,6 +641,8 @@ jobs:
             p0-008-schema-reconciliation-runtime.log
             technician-copilot-runtime-integrity.log
             owner-onboarding-authorization-runtime.log
+            work-order-child-parent-tenant-runtime.log
+            work-order-child-parent-tenant-locking-runtime.log
             supabase-generated-types.diff
             generated-supabase-types.ts
             supabase/config.toml
