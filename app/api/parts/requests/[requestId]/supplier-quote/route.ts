@@ -4,6 +4,7 @@ import {
   buildSupplierQuoteDraft,
   supplierQuoteContactHref,
 } from "@/features/parts/lib/supplierQuoteRequest";
+import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { toSafeDatabaseError } from "@/features/shared/lib/server/safeDatabaseError";
 
@@ -53,8 +54,7 @@ export async function POST(
   const rawItemIds = Array.isArray(body?.itemIds) ? body.itemIds : [];
   const itemIds = [...new Set(rawItemIds.map(clean).filter(isUuid))];
   const requestKey =
-    req.headers.get("Idempotency-Key")?.trim() ||
-    clean(body?.idempotencyKey);
+    req.headers.get("Idempotency-Key")?.trim() || clean(body?.idempotencyKey);
 
   if (
     !isUuid(requestId) ||
@@ -77,6 +77,7 @@ export async function POST(
   const access = await requireShopScopedApiAccess({
     requiredCapability: "canManageParts",
     allowRoles: ["owner", "admin", "manager", "parts", "lead_hand", "foreman"],
+    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
   });
   if (!access.ok) return access.response;
 
@@ -139,19 +140,28 @@ export async function POST(
   }
   if (items.length !== itemIds.length) {
     return NextResponse.json(
-      { ok: false, error: "One or more selected parts are outside this request." },
+      {
+        ok: false,
+        error: "One or more selected parts are outside this request.",
+      },
       { status: 403 },
     );
   }
   if (channel === "email" && !clean(supplier.email)) {
     return NextResponse.json(
-      { ok: false, error: "The selected supplier does not have an email address." },
+      {
+        ok: false,
+        error: "The selected supplier does not have an email address.",
+      },
       { status: 409 },
     );
   }
   if (channel === "phone" && !clean(supplier.phone)) {
     return NextResponse.json(
-      { ok: false, error: "The selected supplier does not have a phone number." },
+      {
+        ok: false,
+        error: "The selected supplier does not have a phone number.",
+      },
       { status: 409 },
     );
   }

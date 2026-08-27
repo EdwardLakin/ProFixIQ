@@ -145,7 +145,10 @@ export async function POST(req: Request) {
       );
     }
 
-    if (!profile.completed_onboarding) {
+    if (
+      !profile.completed_onboarding &&
+      purpose !== OWNER_PIN_PURPOSES.BILLING
+    ) {
       return NextResponse.json(
         { error: "Complete profile setup before unlocking owner settings" },
         { status: 409 },

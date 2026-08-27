@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { normalizeInspectionFormSections } from "@/features/inspections/lib/form-import";
+import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
 type Context = { params: Promise<{ jobId: string }> };
@@ -8,14 +9,17 @@ type Context = { params: Promise<{ jobId: string }> };
 export async function POST(req: Request, context: Context) {
   const access = await requireShopScopedApiAccess({
     allowRoles: ["owner", "admin", "manager", "advisor", "service"],
+    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
   });
   if (!access.ok) return access.response;
 
   const { jobId } = await context.params;
-  const body = (await req.json().catch(() => null)) as
-    | { title?: unknown; sections?: unknown }
-    | null;
-  const title = typeof body?.title === "string" ? body.title.trim().slice(0, 160) : "";
+  const body = (await req.json().catch(() => null)) as {
+    title?: unknown;
+    sections?: unknown;
+  } | null;
+  const title =
+    typeof body?.title === "string" ? body.title.trim().slice(0, 160) : "";
   const sections = normalizeInspectionFormSections(body?.sections);
   if (!title || !sections.length) {
     return NextResponse.json(

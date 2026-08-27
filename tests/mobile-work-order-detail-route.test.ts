@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   createAdminSupabase: vi.fn(),
   requireShopScopedApiAccess: vi.fn(),
+  resolveWorkOrderProductAuthority: vi.fn(),
   loadMobileWorkOrderDetail: vi.fn(),
 }));
 
@@ -12,6 +13,9 @@ vi.mock("@/features/shared/lib/server/admin-access", () => ({
 
 vi.mock("@/features/shared/lib/supabase/server", () => ({
   createAdminSupabase: mocks.createAdminSupabase,
+}));
+vi.mock("@/features/mobile/service/server/access", () => ({
+  resolveWorkOrderProductAuthority: mocks.resolveWorkOrderProductAuthority,
 }));
 
 vi.mock("server-only", () => ({}));
@@ -42,6 +46,10 @@ describe("mobile work-order detail route", () => {
     vi.clearAllMocks();
     mocks.createAdminSupabase.mockReturnValue({ from: vi.fn() });
     mocks.requireShopScopedApiAccess.mockResolvedValue(allowedAccess());
+    mocks.resolveWorkOrderProductAuthority.mockResolvedValue({
+      authorized: true,
+      product: "shop",
+    });
     mocks.loadMobileWorkOrderDetail.mockResolvedValue({
       workOrder: { id: WORK_ORDER_ID, shop_id: "shop-1" },
       lines: [],
@@ -63,9 +71,8 @@ describe("mobile work-order detail route", () => {
 
   it("preserves advisor, parts, technician, and lead-tech access", async () => {
     const { GET } = await import("../app/api/mobile/work-orders/[id]/route");
-    const { MOBILE_WORK_ORDER_DETAIL_ROLES } = await import(
-      "@/features/work-orders/mobile/server/loadMobileWorkOrderDetail"
-    );
+    const { MOBILE_WORK_ORDER_DETAIL_ROLES } =
+      await import("@/features/work-orders/mobile/server/loadMobileWorkOrderDetail");
 
     const response = await GET(new Request("https://profixiq.test"), {
       params: Promise.resolve({ id: WORK_ORDER_ID }),
@@ -80,11 +87,32 @@ describe("mobile work-order detail route", () => {
     );
     expect(mocks.requireShopScopedApiAccess).toHaveBeenCalledWith({
       allowRoles: MOBILE_WORK_ORDER_DETAIL_ROLES,
+      requiredProductCapabilities: ["shop", "field_service"],
     });
     expect(mocks.loadMobileWorkOrderDetail).toHaveBeenCalledWith(
       expect.objectContaining({ shopId: "shop-1", routeId: WORK_ORDER_ID }),
     );
     expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    await expect(response.json()).resolves.toEqual(
+      expect.objectContaining({ productScope: "shop" }),
+    );
+  });
+
+  it("marks a relationship-authorized Field snapshot so Shop-only actions stay hidden", async () => {
+    mocks.resolveWorkOrderProductAuthority.mockResolvedValue({
+      authorized: true,
+      product: "field",
+    });
+    const { GET } = await import("../app/api/mobile/work-orders/[id]/route");
+
+    const response = await GET(new Request("https://profixiq.test"), {
+      params: Promise.resolve({ id: WORK_ORDER_ID }),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual(
+      expect.objectContaining({ productScope: "field" }),
+    );
   });
 
   it("returns the denied role response without looking up the work order", async () => {
@@ -99,6 +127,21 @@ describe("mobile work-order detail route", () => {
     });
 
     expect(response.status).toBe(403);
+    expect(mocks.loadMobileWorkOrderDetail).not.toHaveBeenCalled();
+  });
+
+  it("does not load a Work Order outside the caller's product relationship", async () => {
+    mocks.resolveWorkOrderProductAuthority.mockResolvedValue({
+      authorized: false,
+      product: null,
+    });
+    const { GET } = await import("../app/api/mobile/work-orders/[id]/route");
+
+    const response = await GET(new Request("https://profixiq.test"), {
+      params: Promise.resolve({ id: WORK_ORDER_ID }),
+    });
+
+    expect(response.status).toBe(404);
     expect(mocks.loadMobileWorkOrderDetail).not.toHaveBeenCalled();
   });
 
@@ -117,7 +160,9 @@ describe("mobile work-order detail route", () => {
   });
 
   it("returns a recoverable 500 without exposing the database error", async () => {
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
     mocks.loadMobileWorkOrderDetail.mockRejectedValue(
       new Error("database host secret"),
     );

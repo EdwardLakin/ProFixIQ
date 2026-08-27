@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
+import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
-type RpcError = { message: string; details?: string | null; hint?: string | null };
+type RpcError = {
+  message: string;
+  details?: string | null;
+  hint?: string | null;
+};
 type RpcClient = {
   rpc: (
     name: string,
@@ -28,17 +33,23 @@ export async function POST(
 ) {
   const { requestId } = await context.params;
   if (!isUuid(requestId)) {
-    return NextResponse.json({ ok: false, error: "Invalid requestId." }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "Invalid requestId." },
+      { status: 400 },
+    );
   }
 
   const access = await requireShopScopedApiAccess({
     requiredCapability: "canManageParts",
+    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
   });
   if (!access.ok) return access.response;
 
   const body = (await req.json().catch(() => null)) as Body | null;
   const rawKey =
-    body?.idempotencyKey?.trim() || req.headers.get("idempotency-key")?.trim() || "";
+    body?.idempotencyKey?.trim() ||
+    req.headers.get("idempotency-key")?.trim() ||
+    "";
   if (!rawKey) {
     return NextResponse.json(
       { ok: false, error: "A stable idempotency key is required." },
@@ -56,7 +67,9 @@ export async function POST(
   });
 
   if (error) {
-    const message = [error.message, error.details, error.hint].filter(Boolean).join(" — ");
+    const message = [error.message, error.details, error.hint]
+      .filter(Boolean)
+      .join(" — ");
     const status = error.message.includes("FINANCIALLY_LOCKED") ? 409 : 400;
     return NextResponse.json({ ok: false, error: message }, { status });
   }

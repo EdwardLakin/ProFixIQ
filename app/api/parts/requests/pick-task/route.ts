@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
 function isUuid(value: unknown): value is string {
@@ -18,6 +19,7 @@ function n(value: unknown): number {
 export async function GET(req: Request) {
   const access = await requireShopScopedApiAccess({
     allowRoles: ["owner", "admin", "manager", "parts"],
+    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
   });
   if (!access.ok) return access.response;
 

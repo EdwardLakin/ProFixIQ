@@ -1,6 +1,8 @@
 import "server-only";
 
 import { NextResponse } from "next/server";
+import { resolveWorkOrderProductAuthority } from "@/features/mobile/service/server/access";
+import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { WORKSPACE_CAPABILITIES } from "@/features/workspace/authorization/capabilities";
@@ -16,9 +18,7 @@ type JobPunchLine = {
 
 type JobPunchAccess = Awaited<ReturnType<typeof requireShopScopedApiAccess>>;
 
-export async function requireAssignedJobPunchAccess(
-  lineId: string,
-): Promise<
+export async function requireAssignedJobPunchAccess(lineId: string): Promise<
   | {
       ok: true;
       access: Extract<JobPunchAccess, { ok: true }>;
@@ -29,6 +29,7 @@ export async function requireAssignedJobPunchAccess(
   const access = await requireShopScopedApiAccess({
     requiredWorkspaceCapability:
       WORKSPACE_CAPABILITIES.executeAssignedWorkOrderJobs,
+    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
   });
   if (!access.ok) return access;
 
@@ -37,9 +38,7 @@ export async function requireAssignedJobPunchAccess(
   const [lineResult, assignmentResult] = await Promise.all([
     admin
       .from("work_order_lines")
-      .select(
-        "id,shop_id,work_order_id,line_type,assigned_tech_id,assigned_to",
-      )
+      .select("id,shop_id,work_order_id,line_type,assigned_tech_id,assigned_to")
       .eq("id", lineId)
       .eq("shop_id", access.profile.shop_id)
       .maybeSingle<JobPunchLine>(),
@@ -92,6 +91,27 @@ export async function requireAssignedJobPunchAccess(
       response: NextResponse.json(
         { error: "An assigned technician is required for this job action." },
         { status: 403 },
+      ),
+    };
+  }
+
+  try {
+    const authority = await resolveWorkOrderProductAuthority(
+      access,
+      line.work_order_id,
+    );
+    if (!authority.authorized) {
+      return {
+        ok: false,
+        response: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
+      };
+    }
+  } catch {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "Unable to authorize this job transition." },
+        { status: 503 },
       ),
     };
   }

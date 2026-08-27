@@ -1,11 +1,17 @@
 import { NextResponse } from "next/server";
 import type { Database } from "@shared/types/types/supabase";
+import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
 type DB = Database;
 type ItemUpdate = Pick<
   DB["public"]["Tables"]["part_request_items"]["Update"],
-  "description" | "requested_part_number" | "requested_manufacturer" | "qty" | "quoted_price" | "updated_at"
+  | "description"
+  | "requested_part_number"
+  | "requested_manufacturer"
+  | "qty"
+  | "quoted_price"
+  | "updated_at"
 >;
 
 type Body = {
@@ -17,12 +23,16 @@ type Body = {
 };
 
 function cleanString(value: unknown): string | null {
-  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : null;
 }
 
 function isUuid(value: unknown): value is string {
   if (typeof value !== "string") return false;
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.trim());
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value.trim(),
+  );
 }
 
 function numberOrNull(value: unknown, label: string): number | null {
@@ -39,17 +49,26 @@ export async function PATCH(
   const { itemId: rawItemId } = await ctx.params;
   const itemId = cleanString(rawItemId);
   if (!itemId || !isUuid(itemId)) {
-    return NextResponse.json({ ok: false, error: "Invalid itemId." }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "Invalid itemId." },
+      { status: 400 },
+    );
   }
 
-  const access = await requireShopScopedApiAccess({ requiredCapability: "canManageParts" });
+  const access = await requireShopScopedApiAccess({
+    requiredCapability: "canManageParts",
+    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
+  });
   if (!access.ok) return access.response;
 
   const supabase = access.supabase;
   const shopId = access.profile.shop_id;
   const body = (await req.json().catch(() => null)) as Body | null;
   if (!body) {
-    return NextResponse.json({ ok: false, error: "Invalid JSON body." }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "Invalid JSON body." },
+      { status: 400 },
+    );
   }
 
   const { data: item, error: itemError } = await supabase
@@ -59,8 +78,16 @@ export async function PATCH(
     .eq("shop_id", shopId)
     .maybeSingle();
 
-  if (itemError) return NextResponse.json({ ok: false, error: itemError.message }, { status: 500 });
-  if (!item) return NextResponse.json({ ok: false, error: "Request item not found or blocked by shop access." }, { status: 404 });
+  if (itemError)
+    return NextResponse.json(
+      { ok: false, error: itemError.message },
+      { status: 500 },
+    );
+  if (!item)
+    return NextResponse.json(
+      { ok: false, error: "Request item not found or blocked by shop access." },
+      { status: 404 },
+    );
 
   const { data: parentRequest, error: requestError } = await supabase
     .from("part_requests")
@@ -69,10 +96,26 @@ export async function PATCH(
     .eq("shop_id", shopId)
     .maybeSingle();
 
-  if (requestError) return NextResponse.json({ ok: false, error: requestError.message }, { status: 500 });
-  if (!parentRequest) return NextResponse.json({ ok: false, error: "Parent parts request is not available for this shop." }, { status: 403 });
-  if (cleanString(parentRequest.work_order_id) !== cleanString(item.work_order_id)) {
-    return NextResponse.json({ ok: false, error: "Request item work order context mismatch." }, { status: 403 });
+  if (requestError)
+    return NextResponse.json(
+      { ok: false, error: requestError.message },
+      { status: 500 },
+    );
+  if (!parentRequest)
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "Parent parts request is not available for this shop.",
+      },
+      { status: 403 },
+    );
+  if (
+    cleanString(parentRequest.work_order_id) !== cleanString(item.work_order_id)
+  ) {
+    return NextResponse.json(
+      { ok: false, error: "Request item work order context mismatch." },
+      { status: 403 },
+    );
   }
 
   if (parentRequest.work_order_id) {
@@ -82,28 +125,57 @@ export async function PATCH(
       .eq("id", parentRequest.work_order_id)
       .eq("shop_id", shopId)
       .maybeSingle();
-    if (workOrderError) return NextResponse.json({ ok: false, error: workOrderError.message }, { status: 500 });
-    if (!workOrder) return NextResponse.json({ ok: false, error: "Related work order is not available for this shop." }, { status: 403 });
+    if (workOrderError)
+      return NextResponse.json(
+        { ok: false, error: workOrderError.message },
+        { status: 500 },
+      );
+    if (!workOrder)
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Related work order is not available for this shop.",
+        },
+        { status: 403 },
+      );
   }
 
   const update: ItemUpdate = { updated_at: new Date().toISOString() };
-  if ("description" in body) update.description = cleanString(body.description) ?? "";
-  if ("requested_part_number" in body) update.requested_part_number = cleanString(body.requested_part_number);
-  if ("requested_manufacturer" in body) update.requested_manufacturer = cleanString(body.requested_manufacturer);
+  if ("description" in body)
+    update.description = cleanString(body.description) ?? "";
+  if ("requested_part_number" in body)
+    update.requested_part_number = cleanString(body.requested_part_number);
+  if ("requested_manufacturer" in body)
+    update.requested_manufacturer = cleanString(body.requested_manufacturer);
 
   try {
     if ("qty" in body) {
       const qty = numberOrNull(body.qty, "qty");
-      if (qty == null || qty <= 0) return NextResponse.json({ ok: false, error: "qty must be greater than zero." }, { status: 400 });
+      if (qty == null || qty <= 0)
+        return NextResponse.json(
+          { ok: false, error: "qty must be greater than zero." },
+          { status: 400 },
+        );
       update.qty = Math.max(1, Math.floor(qty));
     }
     if ("quoted_price" in body) {
       const quotedPrice = numberOrNull(body.quoted_price, "quoted_price");
-      if (quotedPrice != null && quotedPrice < 0) return NextResponse.json({ ok: false, error: "quoted_price must be zero or greater." }, { status: 400 });
+      if (quotedPrice != null && quotedPrice < 0)
+        return NextResponse.json(
+          { ok: false, error: "quoted_price must be zero or greater." },
+          { status: 400 },
+        );
       update.quoted_price = quotedPrice;
     }
   } catch (error) {
-    return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Invalid numeric field." }, { status: 400 });
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          error instanceof Error ? error.message : "Invalid numeric field.",
+      },
+      { status: 400 },
+    );
   }
 
   const { data: updatedItem, error: updateError } = await supabase
@@ -115,8 +187,16 @@ export async function PATCH(
     .select("*")
     .maybeSingle();
 
-  if (updateError) return NextResponse.json({ ok: false, error: updateError.message }, { status: 500 });
-  if (!updatedItem) return NextResponse.json({ ok: false, error: "Update did not apply." }, { status: 409 });
+  if (updateError)
+    return NextResponse.json(
+      { ok: false, error: updateError.message },
+      { status: 500 },
+    );
+  if (!updatedItem)
+    return NextResponse.json(
+      { ok: false, error: "Update did not apply." },
+      { status: 409 },
+    );
 
   return NextResponse.json({ ok: true, item: updatedItem });
 }

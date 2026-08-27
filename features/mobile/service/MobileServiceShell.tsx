@@ -1084,7 +1084,7 @@ export default function MobileServiceShell({
           </p>
           <div
             className={`mt-4 grid gap-2 ${
-              canManageScheduling ? "sm:grid-cols-3" : "sm:grid-cols-2"
+              canManageScheduling ? "sm:grid-cols-2" : "sm:grid-cols-1"
             }`}
           >
             <Link
@@ -1101,12 +1101,6 @@ export default function MobileServiceShell({
                 <Route className="h-4 w-4" /> Open dispatch
               </Link>
             ) : null}
-            <Link
-              href="/mobile/work-orders/create"
-              className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-4 text-sm font-bold"
-            >
-              Full work-order intake
-            </Link>
           </div>
         </section>
       )}

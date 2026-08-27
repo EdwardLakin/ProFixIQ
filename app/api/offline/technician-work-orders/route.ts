@@ -7,11 +7,20 @@ import {
 } from "@/features/shared/lib/supabase/server";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import { resolveAuthenticatedStaffProfile } from "@/features/shared/lib/server/admin-access";
+import {
+  listFieldOperatorAssignedWorkOrderIds,
+  type ShopAccess,
+} from "@/features/mobile/service/server/access";
+import {
+  resolveShopProductAccess,
+  SHOP_PRODUCT_CAPABILITIES,
+} from "@/features/shared/lib/product-access";
 import type { Database } from "@shared/types/types/supabase";
 import type {
   TechnicianOfflineBundle,
   TechnicianOfflineWorkOrder,
 } from "@/features/work-orders/mobile/technicianOfflineTypes";
+import { selectAuthorizedAssignedWorkOrderIds } from "@/features/work-orders/mobile/server/selectAuthorizedAssignedWorkOrderIds";
 import {
   collectTechnicianIdsForLineContexts,
   emptyCanonicalWorkOrderLineContext,
@@ -66,12 +75,47 @@ export async function GET() {
   if (profileError || !profile?.shop_id) {
     return NextResponse.json({ error: "Missing shop" }, { status: 403 });
   }
-  if (!getActorCapabilities({ role: profile.role }).canPerformAssignedWork) {
+  const actor = getActorCapabilities({ role: profile.role });
+  if (!actor.canPerformAssignedWork) {
     return NextResponse.json(
       { error: "Assigned technician work is not available for this role." },
       { status: 403 },
     );
   }
+
+  const shopProduct = await resolveShopProductAccess({
+    supabase: authClient,
+    shopId: profile.shop_id,
+    capabilities: SHOP_PRODUCT_CAPABILITIES,
+  });
+  if (shopProduct.error) {
+    return NextResponse.json(
+      { error: "Unable to authorize offline work." },
+      { status: 503 },
+    );
+  }
+
+  let fieldWorkOrderIds: Set<string> | null = null;
+  if (!shopProduct.entitled) {
+    try {
+      const fieldAccess: ShopAccess = {
+        ok: true,
+        profile: { ...profile, shop_id: profile.shop_id },
+        canonicalRole: actor.canonicalRole,
+        authUserId: user.id,
+        supabase: authClient,
+      };
+      fieldWorkOrderIds = new Set(
+        await listFieldOperatorAssignedWorkOrderIds(fieldAccess),
+      );
+    } catch {
+      return NextResponse.json(
+        { error: "Unable to authorize offline work." },
+        { status: 503 },
+      );
+    }
+  }
+  const productScope = shopProduct.entitled ? "shop" : "field";
 
   const { error: shopContextError } = await authClient.rpc(
     "set_current_shop_id",
@@ -211,12 +255,14 @@ export async function GET() {
     }).technicianIds.includes(profile.id),
   );
   const assignedLineIds = new Set(assignedRows.map((row) => row.id));
-  const workOrderIds = [
-    ...new Set(assignedRows.map((row) => row.work_order_id).filter(Boolean)),
-  ] as string[];
+  const workOrderIds = selectAuthorizedAssignedWorkOrderIds(
+    assignedRows,
+    fieldWorkOrderIds,
+  );
   if (workOrderIds.length === 0) {
     const empty: TechnicianOfflineBundle = {
       scope: { userId: user.id, shopId: profile.shop_id },
+      productScope,
       downloadedAt: new Date().toISOString(),
       workOrders: [],
     };
@@ -258,6 +304,7 @@ export async function GET() {
   if (workOrders.length === 0) {
     const empty: TechnicianOfflineBundle = {
       scope: { userId: user.id, shopId: profile.shop_id },
+      productScope,
       downloadedAt: new Date().toISOString(),
       workOrders: [],
     };
@@ -417,6 +464,7 @@ export async function GET() {
 
   const bundle: TechnicianOfflineBundle = {
     scope: { userId: user.id, shopId: profile.shop_id },
+    productScope,
     downloadedAt: new Date().toISOString(),
     workOrders: workOrders.map<TechnicianOfflineWorkOrder>((workOrder) => ({
       workOrder: projectWorkOrderFinancialFields(workOrder, financial.access),

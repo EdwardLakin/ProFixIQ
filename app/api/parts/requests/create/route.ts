@@ -2,6 +2,7 @@
 
 import { NextResponse } from "next/server";
 import type { Database } from "@shared/types/types/supabase";
+import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
 type DB = Database;
@@ -100,6 +101,7 @@ export async function POST(req: Request) {
       "lead_hand",
       "foreman",
     ],
+    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
   });
   if (!access.ok) return access.response;
 

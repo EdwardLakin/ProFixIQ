@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import {
   loadPartsRequestQueue,
@@ -20,6 +21,7 @@ function requestId(): string {
 export async function GET(request: Request) {
   const access = await requireShopScopedApiAccess({
     allowRoles: PARTS_REQUEST_QUEUE_ROLES,
+    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
   });
   if (!access.ok) return access.response;
 

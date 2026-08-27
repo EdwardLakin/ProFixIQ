@@ -3,6 +3,8 @@ export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
 
+import { resolveWorkOrderProductAuthority } from "@/features/mobile/service/server/access";
+import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { loadRoleShapedWorkOrderDetail } from "@/features/work-orders/workspace/server/loadRoleShapedWorkOrderDetail";
@@ -15,6 +17,7 @@ type RouteContext = {
 export async function GET(_request: Request, context: RouteContext) {
   const access = await requireShopScopedApiAccess({
     allowRoles: WORK_ORDER_WORKSPACE_READER_ROLES,
+    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
   });
   if (!access.ok) return access.response;
 
@@ -43,6 +46,14 @@ export async function GET(_request: Request, context: RouteContext) {
   }
 
   try {
+    const authority = await resolveWorkOrderProductAuthority(
+      access,
+      line.work_order_id,
+    );
+    if (!authority.authorized) {
+      return NextResponse.json({ error: "Job not found." }, { status: 404 });
+    }
+
     const snapshot = await loadRoleShapedWorkOrderDetail({
       authorizationSupabase: access.supabase,
       dataSupabase: admin,

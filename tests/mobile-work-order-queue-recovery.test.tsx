@@ -6,7 +6,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import MobileWorkOrderQueue from "@/features/mobile/work-orders/MobileWorkOrderQueue";
 
@@ -21,6 +21,8 @@ const mocks = vi.hoisted(() => ({
     error: null,
   })),
   defaultWorkOrderResult: { data: [], error: null } as WorkOrderResult,
+  getCachedMobileProductScope: vi.fn(),
+  reconcileMobileProductScope: vi.fn(),
   workOrderRequestCount: 0,
   workOrderResults: [] as Array<Promise<WorkOrderResult>>,
 }));
@@ -31,8 +33,13 @@ vi.mock("@/features/shared/lib/offline/database", () => ({
 }));
 
 vi.mock("@/features/shared/lib/offline/mutations", () => ({
-  getOfflineMutationScope: vi.fn(() => null),
+  getSessionMatchedOfflineScope: vi.fn(async () => null),
   setOfflineMutationScope: vi.fn(),
+}));
+
+vi.mock("@/features/work-orders/mobile/mobileProductScopeStorage", () => ({
+  getCachedMobileProductScope: mocks.getCachedMobileProductScope,
+  reconcileMobileProductScope: mocks.reconcileMobileProductScope,
 }));
 
 vi.mock("@/features/shared/lib/rbac", () => ({
@@ -133,8 +140,10 @@ function renderEmbeddedQueue() {
 
 describe("MobileWorkOrderQueue recovery", () => {
   beforeEach(() => {
-    mocks.authGetUser.mockClear();
+    vi.clearAllMocks();
     mocks.workOrderRequestCount = 0;
+    mocks.getCachedMobileProductScope.mockResolvedValue(null);
+    mocks.reconcileMobileProductScope.mockResolvedValue(undefined);
     mocks.workOrderResults.length = 0;
     mocks.defaultWorkOrderResult = {
       data: [workOrder("WO-INITIAL")],
@@ -148,6 +157,17 @@ describe("MobileWorkOrderQueue recovery", () => {
       configurable: true,
       value: "visible",
     });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        expect(String(input)).toBe("/api/mobile/work-orders/scope");
+        return Response.json({ scope: "shop", workOrderIds: null });
+      }),
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it("reloads from the embedded button and each browser recovery signal", async () => {
@@ -204,5 +224,57 @@ describe("MobileWorkOrderQueue recovery", () => {
 
     expect(screen.getByText(/WO-LATEST/)).toBeInTheDocument();
     expect(screen.queryByText(/WO-STALE/)).not.toBeInTheDocument();
+  });
+
+  it("never exposes Shop creation before product scope is verified", async () => {
+    const scopeResponse = deferred<Response>();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => scopeResponse.promise),
+    );
+
+    render(<MobileWorkOrderQueue initialStatus="in_progress" />);
+
+    expect(screen.queryByRole("link", { name: "Create" })).toBeNull();
+
+    await act(async () => {
+      scopeResponse.resolve(
+        Response.json({ scope: "field", workOrderIds: [] }),
+      );
+      await scopeResponse.promise;
+    });
+
+    await screen.findByText("Field work orders");
+    expect(screen.queryByRole("link", { name: "Create" })).toBeNull();
+  });
+
+  it("keeps Shop creation hidden when scope verification fails", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({ error: "Authorization unavailable" }, { status: 503 }),
+      ),
+    );
+
+    render(<MobileWorkOrderQueue initialStatus="in_progress" />);
+
+    await screen.findByText("Authorization unavailable");
+    expect(screen.queryByRole("link", { name: "Create" })).toBeNull();
+  });
+
+  it("rejects malformed scope responses instead of falling through to Shop", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({ scope: "shop", workOrderIds: ["unexpected"] }),
+      ),
+    );
+
+    render(<MobileWorkOrderQueue initialStatus="in_progress" />);
+
+    await screen.findByText("Unable to authorize this work-order queue.");
+    expect(mocks.reconcileMobileProductScope).not.toHaveBeenCalled();
+    expect(mocks.workOrderRequestCount).toBe(0);
+    expect(screen.queryByRole("link", { name: "Create" })).toBeNull();
   });
 });

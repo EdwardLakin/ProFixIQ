@@ -8,6 +8,7 @@ import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server
 import { createAdminClient } from "@/features/integrations/shopreel/server/createAdminClient";
 import type { Database } from "@shared/types/types/supabase";
 import type { InspectionSession } from "@/features/inspections/lib/inspection/types";
+import { canExecuteInspectionForProduct } from "@/features/inspections/server/inspectionExecutionProductAccess";
 import { publishInspectionPdf } from "@/features/inspections/server/publishInspectionPdf";
 import { authorizeInspectionMutation } from "@/features/inspections/server/authorizeInspectionMutation";
 
@@ -132,6 +133,16 @@ export async function POST(req: NextRequest) {
       { error: authorization.error },
       { status: authorization.status },
     );
+  }
+
+  if (
+    !(await canExecuteInspectionForProduct({
+      supabase,
+      shopId,
+      workOrderId,
+    }))
+  ) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   // Storage requests run in a separate transaction, so a transaction-local

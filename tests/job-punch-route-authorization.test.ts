@@ -3,6 +3,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   requireAccess: vi.fn(),
   createAdmin: vi.fn(),
+  resolveProductAuthority: vi.fn(),
+}));
+
+vi.mock("@/features/mobile/service/server/access", () => ({
+  resolveWorkOrderProductAuthority: mocks.resolveProductAuthority,
 }));
 
 vi.mock("@/features/shared/lib/server/admin-access", () => ({
@@ -49,9 +54,7 @@ function installAdmin(input?: {
       error: null,
     },
   );
-  const assignment = chain(
-    input?.assignment ?? { data: null, error: null },
-  );
+  const assignment = chain(input?.assignment ?? { data: null, error: null });
   const from = vi.fn((table: string) =>
     table === "work_order_lines" ? line : assignment,
   );
@@ -62,6 +65,10 @@ function installAdmin(input?: {
 describe("direct job-punch route authorization", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.resolveProductAuthority.mockResolvedValue({
+      authorized: true,
+      product: "shop",
+    });
     mocks.requireAccess.mockResolvedValue({
       ok: true,
       profile: { id: "profile-1", shop_id: "shop-1", role: "mechanic" },
@@ -80,6 +87,7 @@ describe("direct job-punch route authorization", () => {
     expect(result).toEqual({ ok: false, response });
     expect(mocks.requireAccess).toHaveBeenCalledWith({
       requiredWorkspaceCapability: "work_order.job.execute",
+      requiredProductCapabilities: ["shop", "field_service"],
     });
     expect(mocks.createAdmin).not.toHaveBeenCalled();
   });

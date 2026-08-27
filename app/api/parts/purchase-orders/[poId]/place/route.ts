@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
 import { toSafeDatabaseError } from "@/features/shared/lib/server/safeDatabaseError";
 
 type Body = {
@@ -65,6 +66,7 @@ export async function POST(
 
   const access = await requireShopScopedApiAccess({
     requiredCapability: "canManageParts",
+    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
   });
   if (!access.ok) return access.response;
 

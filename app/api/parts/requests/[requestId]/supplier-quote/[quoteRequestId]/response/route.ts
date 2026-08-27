@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { syncQuoteLinePartsStatus } from "@/features/parts/server/syncQuoteLinePartsStatus";
+import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { toSafeDatabaseError } from "@/features/shared/lib/server/safeDatabaseError";
 
@@ -55,7 +56,10 @@ function finiteNonnegative(value: unknown): number | null {
 }
 
 function validDate(value: string): boolean {
-  return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
+  return (
+    /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+    !Number.isNaN(Date.parse(`${value}T00:00:00Z`))
+  );
 }
 
 export async function POST(
@@ -89,7 +93,10 @@ export async function POST(
     new Set(itemIds).size !== itemIds.length
   ) {
     return NextResponse.json(
-      { ok: false, error: "Each supplier response line must identify one unique part." },
+      {
+        ok: false,
+        error: "Each supplier response line must identify one unique part.",
+      },
       { status: 400 },
     );
   }
@@ -102,9 +109,10 @@ export async function POST(
     const expectedAt = clean(item.expectedAt);
     if (
       (status !== "quoted" && status !== "unavailable") ||
-      (status === "quoted" && (quotedUnitCost == null || quotedSellPrice == null)) ||
-      (clean(item.supplierPartNumber).length > 200) ||
-      (clean(item.availability).length > 500) ||
+      (status === "quoted" &&
+        (quotedUnitCost == null || quotedSellPrice == null)) ||
+      clean(item.supplierPartNumber).length > 200 ||
+      clean(item.availability).length > 500 ||
       (expectedAt && !validDate(expectedAt))
     ) {
       return NextResponse.json(
@@ -131,6 +139,7 @@ export async function POST(
   const access = await requireShopScopedApiAccess({
     requiredCapability: "canManageParts",
     allowRoles: ["owner", "admin", "manager", "parts", "lead_hand", "foreman"],
+    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
   });
   if (!access.ok) return access.response;
 
@@ -149,7 +158,11 @@ export async function POST(
       fallback: "The supplier quote request could not be loaded.",
     });
     return NextResponse.json(
-      { ok: false, error: safeError.message, correlationId: safeError.correlationId },
+      {
+        ok: false,
+        error: safeError.message,
+        correlationId: safeError.correlationId,
+      },
       { status: 500 },
     );
   }
@@ -187,7 +200,11 @@ export async function POST(
       ],
     });
     return NextResponse.json(
-      { ok: false, error: safeError.message, correlationId: safeError.correlationId },
+      {
+        ok: false,
+        error: safeError.message,
+        correlationId: safeError.correlationId,
+      },
       { status: safeError.isPublicMessage ? 409 : 500 },
     );
   }
@@ -203,7 +220,8 @@ export async function POST(
     return NextResponse.json(
       {
         ok: false,
-        error: "The supplier response was recorded, but customer quote pricing could not be refreshed.",
+        error:
+          "The supplier response was recorded, but customer quote pricing could not be refreshed.",
       },
       { status: 500 },
     );

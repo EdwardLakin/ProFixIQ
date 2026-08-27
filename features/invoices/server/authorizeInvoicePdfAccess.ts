@@ -1,5 +1,10 @@
 import "server-only";
 
+import {
+  resolveWorkOrderProductAuthority,
+  type ShopAccess,
+} from "@/features/mobile/service/server/access";
+import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import { resolveAuthenticatedStaffProfile } from "@/features/shared/lib/server/admin-access";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { resolveWorkOrderFinancialAccess } from "@/features/work-orders/workspace/server/workOrderFinancialAuthorization";
@@ -9,23 +14,46 @@ type SessionClient = ReturnType<typeof createServerSupabaseRoute>;
 export async function canAccessInvoicePdf(input: {
   supabase: SessionClient;
   authUserId: string;
+  workOrderId: string;
   shopId: string;
   customerId: string | null;
   customerVisibleDocument: boolean;
 }): Promise<boolean> {
-  const { profile } = await resolveAuthenticatedStaffProfile(
-    input.supabase,
-    input.authUserId,
-  );
+  const { profile, error: profileError } =
+    await resolveAuthenticatedStaffProfile(input.supabase, input.authUserId);
 
-  if (profile?.shop_id === input.shopId) {
-    const financial = await resolveWorkOrderFinancialAccess({
-      supabase: input.supabase,
-      profileId: profile.id,
-      shopId: input.shopId,
-    });
-    if (financial.error === null && financial.access.canViewInvoice) {
-      return true;
+  const actor = getActorCapabilities({ role: profile?.role });
+  if (
+    !profileError &&
+    profile?.shop_id === input.shopId &&
+    actor.isKnownRole &&
+    actor.canonicalRole !== "customer"
+  ) {
+    try {
+      const access: ShopAccess = {
+        ok: true,
+        profile: { ...profile, shop_id: input.shopId },
+        canonicalRole: actor.canonicalRole,
+        authUserId: input.authUserId,
+        supabase: input.supabase as ShopAccess["supabase"],
+      };
+      const authority = await resolveWorkOrderProductAuthority(
+        access,
+        input.workOrderId,
+      );
+      if (authority.authorized) {
+        const financial = await resolveWorkOrderFinancialAccess({
+          supabase: input.supabase,
+          profileId: profile.id,
+          shopId: input.shopId,
+        });
+        if (financial.error === null && financial.access.canViewInvoice) {
+          return true;
+        }
+      }
+    } catch {
+      // Product and relationship checks fail closed. Portal ownership remains
+      // separately authoritative below for immutable customer documents.
     }
   }
 

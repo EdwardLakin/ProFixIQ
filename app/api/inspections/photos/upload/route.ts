@@ -11,6 +11,7 @@ import {
 } from "@/features/shared/lib/supabase/server";
 import { authorizeInspectionMutation } from "@/features/inspections/server/authorizeInspectionMutation";
 import { inspectionPhotoStorageObject } from "@/features/inspections/server/reconcileInspectionPhotoEvidence";
+import { canExecuteInspectionForProduct } from "@/features/inspections/server/inspectionExecutionProductAccess";
 import { buildInspectionMediaCapturedEvent } from "@/features/integrations/shopreel/server/buildProFixIQStoryEvents";
 import { postStoryEventToShopReel } from "@/features/integrations/shopreel/server/postStoryEventToShopReel";
 
@@ -324,6 +325,15 @@ export async function POST(request: NextRequest) {
       { error: "Inspection work-order scope does not match." },
       { status: 403 },
     );
+  }
+  if (
+    !(await canExecuteInspectionForProduct({
+      supabase,
+      shopId,
+      workOrderId,
+    }))
+  ) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   // Keep service access for stable receipt lookups, standalone legacy uploads,

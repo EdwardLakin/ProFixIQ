@@ -97,7 +97,6 @@ describe("Field Hub workspace", () => {
     for (const href of [
       "/mobile/appointments#new-appointment",
       "/mobile/service/new",
-      "/mobile/work-orders/create",
       "/mobile/service/truck-inventory",
       "/mobile/inspections",
       "/mobile/work-orders?status=ready_to_invoice&mode=field_closeout",
@@ -108,9 +107,8 @@ describe("Field Hub workspace", () => {
     expect(fieldHub).toContain("FIELD_DASHBOARD_LAYOUT_SCOPE");
     expect(fieldHub).toContain("moveFieldDashboardCard");
     expect(fieldHub).toContain("setFieldDashboardCardVisibility");
-    expect(fieldHub).toMatch(
-      /title: "New work order"[\s\S]*?requiredCapability: "canManageOperations"/,
-    );
+    expect(fieldHub).not.toContain('href: "/mobile/work-orders/create"');
+    expect(fieldHub).not.toContain('title: "New work order"');
     expect(fieldHub).toContain("getFieldDashboardLayoutCacheKey");
     expect(fieldHub).toContain("createFieldDashboardLayoutSaveQueue");
     expect(fieldHub).toContain("!saveQueue.hasWork()");

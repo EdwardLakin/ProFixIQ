@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const createServerSupabaseRouteMock = vi.hoisted(() => vi.fn());
 const resolveCanonicalStaffProfileMock = vi.hoisted(() => vi.fn());
 const resolveCurrentWorkspaceCapabilitiesMock = vi.hoisted(() => vi.fn());
+const productAccessRpcMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/features/shared/lib/supabase/server", () => ({
   createAdminSupabase: vi.fn(),
@@ -53,7 +54,9 @@ describe("shop-scoped API Workspace capability enforcement", () => {
           error: null,
         }),
       },
+      rpc: productAccessRpcMock,
     });
+    productAccessRpcMock.mockResolvedValue({ data: true, error: null });
     resolveCanonicalStaffProfileMock.mockResolvedValue({
       profile: {
         id: PROFILE_ID,
@@ -80,6 +83,46 @@ describe("shop-scoped API Workspace capability enforcement", () => {
       expect(result.profile.id).toBe(PROFILE_ID);
       expect(result.profile.shop_id).toBe(SHOP_ID);
     }
+    expect(productAccessRpcMock).toHaveBeenCalledWith(
+      "profixiq_shop_has_product_access",
+      { p_capability: "shop", p_shop_id: SHOP_ID },
+    );
+  });
+
+  it("denies a known same-shop role when the Shop product is not entitled", async () => {
+    productAccessRpcMock.mockResolvedValue({ data: false, error: null });
+
+    const result = await requireShopScopedApiAccess();
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.response.status).toBe(403);
+  });
+
+  it("fails closed when canonical product entitlement cannot be resolved", async () => {
+    productAccessRpcMock.mockResolvedValue({
+      data: null,
+      error: { message: "database unavailable" },
+    });
+
+    const result = await requireShopScopedApiAccess();
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.response.status).toBe(503);
+  });
+
+  it("allows a Field-only server surface to request the Field product explicitly", async () => {
+    productAccessRpcMock.mockImplementation(
+      async (_name: string, args: { p_capability: string }) => ({
+        data: args.p_capability === "field_service",
+        error: null,
+      }),
+    );
+
+    const result = await requireShopScopedApiAccess({
+      requiredProductCapabilities: ["field_service"],
+    });
+
+    expect(result.ok).toBe(true);
   });
 
   it("returns 403 when the effective capability is denied", async () => {

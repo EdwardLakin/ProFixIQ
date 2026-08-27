@@ -54,6 +54,7 @@ describe("Parts request queue API", () => {
     expect(response.status).toBe(200);
     expect(mocks.requireShopScopedApiAccess).toHaveBeenCalledWith({
       allowRoles: PARTS_REQUEST_QUEUE_ROLES,
+      requiredProductCapabilities: ["shop", "field_service"],
     });
     expect(mocks.loadPartsRequestQueue).toHaveBeenCalledWith(
       expect.objectContaining({

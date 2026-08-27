@@ -51,6 +51,7 @@ describe("request-backed free-text PO receipt route", () => {
     expect(response.status).toBe(403);
     expect(mocks.requireShopScopedApiAccess).toHaveBeenCalledWith({
       requiredCapability: "canManageParts",
+      requiredProductCapabilities: ["shop", "field_service"],
     });
     expect(rpc).not.toHaveBeenCalled();
   });

@@ -57,9 +57,7 @@ describe("vehicle workspace appointment deep links", () => {
       "if (bookingId && !actor.canManageScheduling)",
     );
     expect(staffBookingsRoute).toContain('.eq("shop_id", shop.id)');
-    expect(staffBookingsRoute).toContain(
-      '.eq("id", bookingId).limit(1)',
-    );
+    expect(staffBookingsRoute).toContain('.eq("id", bookingId).limit(1)');
     expect(staffBookingsRoute).toContain(
       'return bad("Appointment not found", 404)',
     );
@@ -72,8 +70,9 @@ describe("vehicle workspace appointment deep links", () => {
   });
 
   it("bootstraps the shop through the canonical server profile guard", () => {
+    expect(staffBookingsRoute).toContain("await requireShopScopedApiAccess({");
     expect(staffBookingsRoute).toContain(
-      "await requireShopScopedApiAccess()",
+      "requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES",
     );
     expect(staffBookingsRoute).toContain('.eq("id", profile.shop_id)');
     expect(appointmentsPage).toContain(

@@ -199,7 +199,7 @@ describe("MobileFieldServiceRouteGate", () => {
 
     await waitFor(() =>
       expect(mocks.router.replace).toHaveBeenCalledWith(
-        "/auth/set-password?redirect=%2Fmobile%2Fservice%2Fsetup",
+        "/auth/set-password?surface=field&redirect=%2Fmobile%2Fservice%2Fsetup",
       ),
     );
     expect(screen.queryByText("setup form")).not.toBeInTheDocument();

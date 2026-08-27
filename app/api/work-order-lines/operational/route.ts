@@ -3,7 +3,13 @@ export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
 
+import { listFieldOperatorAssignedWorkOrderIds } from "@/features/mobile/service/server/access";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import {
+  resolveShopProductAccess,
+  SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
+  SHOP_PRODUCT_CAPABILITIES,
+} from "@/features/shared/lib/product-access";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { resolveTechnicianAssignmentContract } from "@/features/work-orders/lib/technicianAssignmentContract";
@@ -23,6 +29,7 @@ type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
 export async function GET(request: Request) {
   const access = await requireShopScopedApiAccess({
     allowRoles: WORK_ORDER_WORKSPACE_READER_ROLES,
+    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
   });
   if (!access.ok) return access.response;
 
@@ -34,6 +41,23 @@ export async function GET(request: Request) {
     : 2_000;
   const admin = createAdminSupabase();
 
+  const shopProduct = await resolveShopProductAccess({
+    supabase: access.supabase,
+    shopId: access.profile.shop_id,
+    capabilities: SHOP_PRODUCT_CAPABILITIES,
+  });
+  let fieldWorkOrderIds: string[] | null = null;
+  if (!shopProduct.entitled) {
+    try {
+      fieldWorkOrderIds = await listFieldOperatorAssignedWorkOrderIds(access);
+    } catch {
+      return NextResponse.json(
+        { error: "Authorization service unavailable" },
+        { status: 503 },
+      );
+    }
+  }
+
   let lineQuery = admin
     .from("work_order_lines")
     .select("*")
@@ -42,6 +66,15 @@ export async function GET(request: Request) {
     .order("created_at", { ascending: false })
     .limit(limit);
   if (requestedLineId) lineQuery = lineQuery.eq("id", requestedLineId);
+  if (fieldWorkOrderIds) {
+    if (fieldWorkOrderIds.length === 0) {
+      return NextResponse.json(
+        { lines: [], workOrders: [], vehicles: [], shop: null },
+        { headers: { "Cache-Control": "private, no-store" } },
+      );
+    }
+    lineQuery = lineQuery.in("work_order_id", fieldWorkOrderIds);
+  }
 
   const { data: candidateData, error: candidateError } = await lineQuery;
   if (candidateError) {

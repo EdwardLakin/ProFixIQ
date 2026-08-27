@@ -49,6 +49,10 @@ type CanonicalInspectionRow = {
   } | null;
 };
 
+type WorkOrderProductScope =
+  | { scope: "shop"; workOrderIds: null }
+  | { scope: "field"; workOrderIds: string[] };
+
 function displayName(row: CanonicalInspectionRow): string | null {
   const customer = row.summary?.customer;
   const value =
@@ -153,7 +157,19 @@ export default function MobileInspectionsListPage() {
               role === "service",
           );
         }
-        const { data, error: queryError } = await supabase
+
+        const scopeResponse = await fetch("/api/mobile/work-orders/scope", {
+          cache: "no-store",
+          credentials: "include",
+        });
+        const productScope = (await scopeResponse
+          .json()
+          .catch(() => null)) as WorkOrderProductScope | null;
+        if (!scopeResponse.ok || !productScope) {
+          throw new Error("Unable to authorize the inspection list.");
+        }
+
+        let query = supabase
           .from("inspections")
           .select(
             "id, work_order_id, work_order_line_id, status, created_at, summary",
@@ -161,6 +177,15 @@ export default function MobileInspectionsListPage() {
           .eq("is_canonical", true)
           .order("created_at", { ascending: false })
           .limit(50);
+        if (productScope.scope === "field") {
+          if (productScope.workOrderIds.length === 0) {
+            if (active) setRows([]);
+            return;
+          }
+          query = query.in("work_order_id", productScope.workOrderIds);
+        }
+
+        const { data, error: queryError } = await query;
 
         if (queryError) throw queryError;
         if (!active) return;

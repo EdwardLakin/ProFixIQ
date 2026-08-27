@@ -6,6 +6,7 @@ import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server
 import { createAdminClient } from "@/features/integrations/shopreel/server/createAdminClient";
 import { publishInspectionPdf } from "@/features/inspections/server/publishInspectionPdf";
 import type { InspectionSession } from "@/features/inspections/lib/inspection/types";
+import { canExecuteInspectionForProduct } from "@/features/inspections/server/inspectionExecutionProductAccess";
 import { insertPrioritizedJobsFromInspection } from "@/features/work-orders/lib/work-orders/insertPrioritizedJobsFromInspection";
 import {
   authorizeInspectionMutation,
@@ -386,6 +387,19 @@ export async function POST(req: NextRequest) {
   // Signature role describes the immutable evidence being recorded. Every
   // request still represents an authenticated staff mutation and must satisfy
   // the same capability and exact repair-line assignment contract.
+  const requiresStaffProductAuthority =
+    bodyUnknown.role === "technician" || bodyUnknown.role === "advisor";
+  if (
+    requiresStaffProductAuthority &&
+    !(await canExecuteInspectionForProduct({
+      supabase,
+      shopId: profile.shop_id,
+      workOrderId: inspectionContext.work_order_id,
+    }))
+  ) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   const authorization = await authorizeInspectionMutation({
     sessionClient: supabase,
     shopId: profile.shop_id,

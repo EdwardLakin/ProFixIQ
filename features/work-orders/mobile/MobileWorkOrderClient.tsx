@@ -53,7 +53,15 @@ import {
   loadProjectedWorkOrderSnapshot,
   removeMobileWorkOrderDetailSnapshots,
 } from "@/features/work-orders/mobile/technicianOfflineExecution";
-import { parseMobileWorkOrderSnapshot } from "@/features/work-orders/mobile/mobileWorkOrderDetail";
+import {
+  canOpenMobileCustomerProfile,
+  parseMobileWorkOrderSnapshot,
+  type MobileWorkOrderSnapshot,
+} from "@/features/work-orders/mobile/mobileWorkOrderDetail";
+import {
+  reconcileMobileProductScope,
+  removeMobileProductScopedSnapshots,
+} from "@/features/work-orders/mobile/mobileProductScopeStorage";
 import { resolveMobileLineDisplayNumbers } from "@/features/work-orders/mobile/mobileLineDisplay";
 import {
   deniedWorkOrderFinancialAccess,
@@ -304,6 +312,9 @@ export default function MobileWorkOrderClient({
       `${keyBase}:financialAccess`,
       deniedWorkOrderFinancialAccess(),
     );
+  const [productScope, setProductScope] = useTabState<
+    MobileWorkOrderSnapshot["productScope"] | null
+  >(`${keyBase}:productScope`, null);
 
   const [loading, setLoading] = useState<boolean>(true);
   const [actorReady, setActorReady] = useState(false);
@@ -507,6 +518,7 @@ export default function MobileWorkOrderClient({
         setFinancialAccess(
           cached.financialAccess ?? deniedWorkOrderFinancialAccess(),
         );
+        setProductScope(cached.productScope ?? null);
         hasRenderedDetailRef.current = true;
         setViewError("Offline copy · changes may be newer on the server.");
         return true;
@@ -570,6 +582,7 @@ export default function MobileWorkOrderClient({
             );
             setShopLaborRate(snapshot.shopLaborRate ?? null);
             setFinancialAccess(snapshot.financialAccess);
+            setProductScope(snapshot.productScope ?? null);
             hasRenderedDetailRef.current = true;
 
             const authorizedScope = currentUserId
@@ -580,20 +593,39 @@ export default function MobileWorkOrderClient({
               : null;
             if (authorizedScope) {
               setOfflineMutationScope(authorizedScope);
-              await Promise.all([
-                saveOfflineSnapshot({
+              try {
+                await reconcileMobileProductScope({
                   scope: authorizedScope,
-                  kind: "mobile-work-order-detail",
-                  entityId: routeId,
-                  data: snapshot,
-                }),
-                saveOfflineSnapshot({
-                  scope: authorizedScope,
-                  kind: "mobile-work-order-detail",
-                  entityId: snapshot.workOrder.id,
-                  data: snapshot,
-                }),
-              ]);
+                  productScope: snapshot.productScope,
+                });
+                await Promise.all([
+                  saveOfflineSnapshot({
+                    scope: authorizedScope,
+                    kind: "mobile-work-order-detail",
+                    entityId: routeId,
+                    data: snapshot,
+                  }),
+                  saveOfflineSnapshot({
+                    scope: authorizedScope,
+                    kind: "mobile-work-order-detail",
+                    entityId: snapshot.workOrder.id,
+                    data: snapshot,
+                  }),
+                ]);
+              } catch (cacheError) {
+                try {
+                  await removeMobileProductScopedSnapshots(authorizedScope);
+                } catch (purgeError) {
+                  console.error(
+                    "[Mobile WO id page] offline authority purge error:",
+                    purgeError,
+                  );
+                }
+                console.error(
+                  "[Mobile WO id page] offline detail cache error:",
+                  cacheError,
+                );
+              }
             }
           },
         );
@@ -636,6 +668,7 @@ export default function MobileWorkOrderClient({
           setLineContext(emptyCanonicalWorkOrderLineContext());
           setShopLaborRate(null);
           setFinancialAccess(deniedWorkOrderFinancialAccess());
+          setProductScope(null);
           hasRenderedDetailRef.current = false;
           setLoadFailure(failure);
         }
@@ -661,6 +694,7 @@ export default function MobileWorkOrderClient({
       setLineContext,
       setShopLaborRate,
       setFinancialAccess,
+      setProductScope,
     ],
   );
 
@@ -907,8 +941,7 @@ export default function MobileWorkOrderClient({
   const mobileOperationalState = useMemo(
     () =>
       deriveMobileDetailOperationalState(wo, lines, {
-        activeTechnicianIdsByLine:
-          lineContext.activeTechnicianIdsByLine,
+        activeTechnicianIdsByLine: lineContext.activeTechnicianIdsByLine,
       }),
     [lineContext.activeTechnicianIdsByLine, lines, wo],
   );
@@ -1672,15 +1705,16 @@ export default function MobileWorkOrderClient({
                           </>
                         ) : null}
                       </p>
-                      {customer.id && (
-                        <Link
-                          href={`/mobile/work-orders/${wo.id}/vehicle`}
-                          className="mt-2 inline-flex text-[11px] font-medium text-sky-200 underline-offset-2 hover:underline"
-                          title="Open customer profile"
-                        >
-                          View customer profile →
-                        </Link>
-                      )}
+                      {customer.id &&
+                        canOpenMobileCustomerProfile(productScope) && (
+                          <Link
+                            href={`/mobile/work-orders/${wo.id}/vehicle`}
+                            className="mt-2 inline-flex text-[11px] font-medium text-sky-200 underline-offset-2 hover:underline"
+                            title="Open customer profile"
+                          >
+                            View customer profile →
+                          </Link>
+                        )}
                     </>
                   ) : (
                     <p className="text-sm text-[color:var(--theme-text-muted)]">
@@ -1951,13 +1985,12 @@ export default function MobileWorkOrderClient({
                     );
                   const hasDifferentTemplate = Boolean(
                     inspectionTemplateId &&
-                      attachedTemplateId &&
-                      attachedTemplateId !== inspectionTemplateId,
+                    attachedTemplateId &&
+                    attachedTemplateId !== inspectionTemplateId,
                   );
                   const activeTechnicianIds =
                     lineContext.activeTechnicianIdsByLine?.[ln.id] ?? [];
-                  const punchedIn =
-                    visibleLineState(ln) === "in_progress";
+                  const punchedIn = visibleLineState(ln) === "in_progress";
 
                   const openFocused = () => {
                     setFocusedJobId(ln.id);
@@ -2004,8 +2037,8 @@ export default function MobileWorkOrderClient({
                         isPunchedIn={punchedIn}
                         isCurrentUserWorkingThisLine={Boolean(
                           punchedIn &&
-                            currentUserId &&
-                            activeTechnicianIds.includes(currentUserId),
+                          currentUserId &&
+                          activeTechnicianIds.includes(currentUserId),
                         )}
                         activeTechnicianNames={activeTechnicianNames}
                         onOpen={openFocused}

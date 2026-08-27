@@ -2,7 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-import { readStripeAcquisitionMetadata } from "../features/stripe/lib/server/stripe-acquisition-intent";
+import {
+  readStripeAcquisitionMetadata,
+  verifyStripeAcquisitionCheckout,
+} from "../features/stripe/lib/server/stripe-acquisition-intent";
 
 const BASE_METADATA = {
   purpose: "profixiq_acquisition",
@@ -62,5 +65,50 @@ describe("Stripe acquisition product surface", () => {
         package_key: "unknown_product",
       }),
     ).toBeNull();
+  });
+
+  it("verifies completion, one matching price, email, and an access-bearing subscription", async () => {
+    const session = {
+      id: "cs_verified",
+      mode: "subscription",
+      status: "complete",
+      payment_status: "paid",
+      customer: { id: "cus_verified", email: "BUYER@example.com" },
+      customer_details: null,
+      subscription: { id: "sub_verified", status: "active" },
+      metadata: {
+        ...BASE_METADATA,
+        package_key: "field_service",
+        acquisition_surface: "field",
+      },
+    };
+    const listLineItems = vi.fn().mockResolvedValue({
+      data: [{ quantity: 1, price: { id: BASE_METADATA.price_id } }],
+    });
+    const stripe = {
+      checkout: {
+        sessions: {
+          retrieve: vi.fn().mockResolvedValue(session),
+          listLineItems,
+        },
+      },
+      customers: { retrieve: vi.fn() },
+      subscriptions: { retrieve: vi.fn() },
+    } as unknown as Parameters<typeof verifyStripeAcquisitionCheckout>[0];
+
+    await expect(
+      verifyStripeAcquisitionCheckout(stripe, session.id),
+    ).resolves.toMatchObject({
+      email: "buyer@example.com",
+      metadata: { packageKey: "field_service", surface: "field" },
+      subscription: { id: "sub_verified", status: "active" },
+    });
+
+    listLineItems.mockResolvedValueOnce({
+      data: [{ quantity: 1, price: { id: "price_wrong" } }],
+    });
+    await expect(
+      verifyStripeAcquisitionCheckout(stripe, session.id),
+    ).resolves.toBeNull();
   });
 });

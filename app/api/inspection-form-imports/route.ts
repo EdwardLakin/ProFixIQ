@@ -10,6 +10,7 @@ import {
   INSPECTION_FORM_IMPORT_BATCH_SIZE,
   processInspectionFormImportJobBatch,
 } from "@/features/inspections/server/inspection-form-import-job";
+import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import type { Database } from "@shared/types/types/supabase";
@@ -156,6 +157,7 @@ async function loadRelatedRecord(
 export async function GET() {
   const access = await requireShopScopedApiAccess({
     allowRoles: ["owner", "admin", "manager", "advisor", "service"],
+    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
   });
   if (!access.ok) return access.response;
 
@@ -243,6 +245,7 @@ export async function GET() {
 export async function POST(req: Request) {
   const access = await requireShopScopedApiAccess({
     allowRoles: ["owner", "admin", "manager", "advisor", "service"],
+    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
   });
   if (!access.ok) return access.response;
 

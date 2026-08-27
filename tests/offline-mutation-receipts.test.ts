@@ -37,7 +37,10 @@ describe("offline mutation receipts", () => {
       expect(source).toContain('headers.get("Idempotency-Key")');
       expect(source).toContain("A stable Idempotency-Key is required.");
     }
-    expect(offlineRoute).toContain("auth.getUser()");
+    expect(offlineRoute).toContain("requireShopScopedApiAccess");
+    expect(offlineRoute).toContain(
+      "p_actor_user_id: access.authUserId",
+    );
     expect(punchRoute).toContain("requireShopScopedApiAccess");
     expect(punchRoute).toContain(
       "apply_canonical_offline_shift_punch_atomic",

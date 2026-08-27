@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  canOpenMobileCustomerProfile,
   parseMobileWorkOrderSnapshot,
   type MobileWorkOrderSnapshot,
 } from "@/features/work-orders/mobile/mobileWorkOrderDetail";
@@ -55,6 +56,7 @@ function snapshot(
       canEditPricing: false,
     },
     latestInvoiceReview: null,
+    productScope: "shop",
     ...overrides,
   };
 }
@@ -152,16 +154,25 @@ describe("Phase 5 mobile work-order detail contract", () => {
 
   it("rejects external and unrelated Back destinations", () => {
     expect(
-      resolveMobileWorkOrderReturnHref("https://attacker.example/mobile/work-orders"),
+      resolveMobileWorkOrderReturnHref(
+        "https://attacker.example/mobile/work-orders",
+      ),
     ).toBeNull();
-    expect(resolveMobileWorkOrderReturnHref("//attacker.example/path")).toBeNull();
+    expect(
+      resolveMobileWorkOrderReturnHref("//attacker.example/path"),
+    ).toBeNull();
     expect(resolveMobileWorkOrderReturnHref("/mobile/settings")).toBeNull();
   });
 
   it("keeps the snapshot type compatible with existing offline storage", () => {
-    const parsed: MobileWorkOrderSnapshot = parseMobileWorkOrderSnapshot(
-      snapshot(),
-    );
+    const parsed: MobileWorkOrderSnapshot =
+      parseMobileWorkOrderSnapshot(snapshot());
     expect(parsed.workOrder.id).toBe(WORK_ORDER_ID);
+  });
+
+  it("only exposes the nested customer profile action to Shop-authorized snapshots", () => {
+    expect(canOpenMobileCustomerProfile("shop")).toBe(true);
+    expect(canOpenMobileCustomerProfile("field")).toBe(false);
+    expect(canOpenMobileCustomerProfile(undefined)).toBe(false);
   });
 });

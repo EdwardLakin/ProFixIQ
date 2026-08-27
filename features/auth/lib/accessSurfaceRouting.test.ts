@@ -82,6 +82,9 @@ describe("product access surface routing", () => {
         "/mobile/service/today",
       ),
     ).toBe("/auth/set-password?redirect=%2Fmobile%2Fservice");
+    expect(
+      resolveFieldPostSignInHref("/account/billing", "/mobile/service/today"),
+    ).toBe("/account/billing");
   });
 
   it("applies Field continuations only to a normal Field home response", () => {
@@ -121,7 +124,7 @@ describe("product access surface routing", () => {
         "/mobile/service/setup",
       ),
     ).toBe(
-      "/auth/set-password?redirect=%2Fmobile%2Fservice%2Fsetup",
+      "/auth/set-password?surface=field&redirect=%2Fmobile%2Fservice%2Fsetup",
     );
 
     expect(

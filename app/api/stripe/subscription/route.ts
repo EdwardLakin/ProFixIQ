@@ -69,7 +69,10 @@ type NormalizedSubscriptionPayload = {
   likely_mode_mismatch?: boolean;
   stripe_mode?: "live" | "test" | "unknown";
   customer_mode?: "live" | "test" | "unknown";
-  hydration_strategy?: "managed_filter" | "single_hydratable_subscription" | "none";
+  hydration_strategy?:
+    | "managed_filter"
+    | "single_hydratable_subscription"
+    | "none";
 };
 
 type CanonicalSubscriptionResolution =
@@ -134,20 +137,26 @@ function unixToIsoOrNull(value: number | null | undefined): string | null {
   return new Date(value * 1000).toISOString();
 }
 
-function normalizeSubscription(subscription: Stripe.Subscription): NormalizedSubscriptionPayload {
+function normalizeSubscription(
+  subscription: Stripe.Subscription,
+): NormalizedSubscriptionPayload {
   return {
     success: true,
     status: String(subscription.status ?? "").trim() || null,
     cancel_at_period_end: Boolean(subscription.cancel_at_period_end),
     canceled_at: unixToIsoOrNull(subscription.canceled_at ?? null),
-    current_period_end: unixToIsoOrNull(subscription.current_period_end ?? null),
+    current_period_end: unixToIsoOrNull(
+      subscription.current_period_end ?? null,
+    ),
     trial_end: unixToIsoOrNull(subscription.trial_end ?? null),
     resolved_plan: resolveCanonicalPlanFromSubscription(subscription),
     resolved_package: resolveProductPackageFromSubscription(subscription),
   };
 }
 
-function normalizeShopFallback(shop: ShopStripeScope): NormalizedSubscriptionPayload {
+function normalizeShopFallback(
+  shop: ShopStripeScope,
+): NormalizedSubscriptionPayload {
   return {
     success: true,
     status: String(shop.stripe_subscription_status ?? "").trim() || null,
@@ -158,10 +167,15 @@ function normalizeShopFallback(shop: ShopStripeScope): NormalizedSubscriptionPay
   };
 }
 
-function subscriptionMetadataMatchesShop(subscription: Stripe.Subscription, shop: ShopStripeScope): boolean {
+function subscriptionMetadataMatchesShop(
+  subscription: Stripe.Subscription,
+  shop: ShopStripeScope,
+): boolean {
   const customerId = String(shop.stripe_customer_id ?? "").trim();
   const subscriptionCustomerId =
-    typeof subscription.customer === "string" ? subscription.customer : String(subscription.customer?.id ?? "").trim();
+    typeof subscription.customer === "string"
+      ? subscription.customer
+      : String(subscription.customer?.id ?? "").trim();
   const metadataShopId = String(subscription.metadata?.shop_id ?? "").trim();
   const customerMatches = !customerId || subscriptionCustomerId === customerId;
   const metadataMatches = metadataShopId === "" || metadataShopId === shop.id;
@@ -174,7 +188,8 @@ async function findCanonicalSubscription(
 ): Promise<CanonicalSubscriptionResolution> {
   const subscriptionId = String(shop.stripe_subscription_id ?? "").trim();
   const customerId = String(shop.stripe_customer_id ?? "").trim();
-  let linkedSubscriptionMismatchDiagnostic: NormalizedSubscriptionPayload["subscription_diagnostics"] = [];
+  let linkedSubscriptionMismatchDiagnostic: NormalizedSubscriptionPayload["subscription_diagnostics"] =
+    [];
 
   if (subscriptionId) {
     try {
@@ -189,11 +204,17 @@ async function findCanonicalSubscription(
           subscriptionDiagnostics: [
             {
               subscription_id: byId.id,
-              status: String(byId.status ?? "").trim().toLowerCase() || "unknown",
+              status:
+                String(byId.status ?? "")
+                  .trim()
+                  .toLowerCase() || "unknown",
               customer_id:
-                typeof byId.customer === "string" ? byId.customer : String(byId.customer?.id ?? "") || null,
+                typeof byId.customer === "string"
+                  ? byId.customer
+                  : String(byId.customer?.id ?? "") || null,
               livemode: Boolean(byId.livemode),
-              metadata_shop_id: String(byId.metadata?.shop_id ?? "").trim() || null,
+              metadata_shop_id:
+                String(byId.metadata?.shop_id ?? "").trim() || null,
               excluded_reasons: [],
             },
           ],
@@ -211,11 +232,19 @@ async function findCanonicalSubscription(
       linkedSubscriptionMismatchDiagnostic = [
         {
           subscription_id: byId.id,
-          status: String(byId.status ?? "").trim().toLowerCase() || "unknown",
-          customer_id: typeof byId.customer === "string" ? byId.customer : String(byId.customer?.id ?? "") || null,
+          status:
+            String(byId.status ?? "")
+              .trim()
+              .toLowerCase() || "unknown",
+          customer_id:
+            typeof byId.customer === "string"
+              ? byId.customer
+              : String(byId.customer?.id ?? "") || null,
           livemode: Boolean(byId.livemode),
           metadata_shop_id: String(byId.metadata?.shop_id ?? "").trim() || null,
-          excluded_reasons: ["subscription_id_mismatch_with_shop_customer_or_metadata"],
+          excluded_reasons: [
+            "subscription_id_mismatch_with_shop_customer_or_metadata",
+          ],
         },
       ];
     } catch {
@@ -246,14 +275,19 @@ async function findCanonicalSubscription(
   });
 
   if (diagnostics.managed_subscription_ids.length === 1) {
-    const managedSub = await stripe.subscriptions.retrieve(diagnostics.managed_subscription_ids[0]!);
+    const managedSub = await stripe.subscriptions.retrieve(
+      diagnostics.managed_subscription_ids[0]!,
+    );
     return {
       state: "resolved",
       subscription: managedSub,
       metadataMatches: subscriptionMetadataMatchesShop(managedSub, shop),
       managedSubscriptionIds: diagnostics.managed_subscription_ids,
       allSubscriptionIds: diagnostics.all_subscription_ids,
-      subscriptionDiagnostics: [...(linkedSubscriptionMismatchDiagnostic ?? []), ...diagnostics.subscription_diagnostics],
+      subscriptionDiagnostics: [
+        ...(linkedSubscriptionMismatchDiagnostic ?? []),
+        ...diagnostics.subscription_diagnostics,
+      ],
       customerDiagnostics: {
         customer_exists_in_stripe: diagnostics.customer.customer_exists,
         customer_deleted_in_stripe: diagnostics.customer.customer_deleted,
@@ -266,15 +300,23 @@ async function findCanonicalSubscription(
     };
   }
 
-  if (diagnostics.managed_subscription_ids.length === 0 && diagnostics.single_hydratable_subscription_id) {
-    const hydratableSub = await stripe.subscriptions.retrieve(diagnostics.single_hydratable_subscription_id);
+  if (
+    diagnostics.managed_subscription_ids.length === 0 &&
+    diagnostics.single_hydratable_subscription_id
+  ) {
+    const hydratableSub = await stripe.subscriptions.retrieve(
+      diagnostics.single_hydratable_subscription_id,
+    );
     return {
       state: "resolved",
       subscription: hydratableSub,
       metadataMatches: subscriptionMetadataMatchesShop(hydratableSub, shop),
       managedSubscriptionIds: diagnostics.managed_subscription_ids,
       allSubscriptionIds: diagnostics.all_subscription_ids,
-      subscriptionDiagnostics: [...(linkedSubscriptionMismatchDiagnostic ?? []), ...diagnostics.subscription_diagnostics],
+      subscriptionDiagnostics: [
+        ...(linkedSubscriptionMismatchDiagnostic ?? []),
+        ...diagnostics.subscription_diagnostics,
+      ],
       customerDiagnostics: {
         customer_exists_in_stripe: diagnostics.customer.customer_exists,
         customer_deleted_in_stripe: diagnostics.customer.customer_deleted,
@@ -292,7 +334,10 @@ async function findCanonicalSubscription(
       state: "ambiguous_customer_subscriptions",
       subscriptionIds: diagnostics.managed_subscription_ids,
       allSubscriptionIds: diagnostics.all_subscription_ids,
-      subscriptionDiagnostics: [...(linkedSubscriptionMismatchDiagnostic ?? []), ...diagnostics.subscription_diagnostics],
+      subscriptionDiagnostics: [
+        ...(linkedSubscriptionMismatchDiagnostic ?? []),
+        ...diagnostics.subscription_diagnostics,
+      ],
       customerDiagnostics: {
         customer_exists_in_stripe: diagnostics.customer.customer_exists,
         customer_deleted_in_stripe: diagnostics.customer.customer_deleted,
@@ -308,7 +353,10 @@ async function findCanonicalSubscription(
     state: "no_subscription_found",
     managedSubscriptionIds: diagnostics.managed_subscription_ids,
     allSubscriptionIds: diagnostics.all_subscription_ids,
-    subscriptionDiagnostics: [...(linkedSubscriptionMismatchDiagnostic ?? []), ...diagnostics.subscription_diagnostics],
+    subscriptionDiagnostics: [
+      ...(linkedSubscriptionMismatchDiagnostic ?? []),
+      ...diagnostics.subscription_diagnostics,
+    ],
     customerDiagnostics: {
       customer_exists_in_stripe: diagnostics.customer.customer_exists,
       customer_deleted_in_stripe: diagnostics.customer.customer_deleted,
@@ -325,19 +373,29 @@ async function findUnlinkedSubscriptionEvidence(args: {
   supabase: SupabaseClient<DB>;
   userId: string;
   shop: ShopStripeScope;
-}): Promise<{ customerId: string | null; subscriptionId: string | null; checkoutSessionId: string | null } | null> {
+}): Promise<{
+  customerId: string | null;
+  subscriptionId: string | null;
+  checkoutSessionId: string | null;
+} | null> {
   const { stripe, supabase, userId, shop } = args;
   const profile = await getProfileStripeArtifacts(supabase, userId);
   if (!profile) return null;
 
-  const profileCustomerId = String(profile.stripe_customer_id ?? "").trim() || null;
-  const profileSubscriptionId = String(profile.stripe_subscription_id ?? "").trim() || null;
-  const profileCheckoutSessionId = String(profile.stripe_checkout_session_id ?? "").trim() || null;
+  const profileCustomerId =
+    String(profile.stripe_customer_id ?? "").trim() || null;
+  const profileSubscriptionId =
+    String(profile.stripe_subscription_id ?? "").trim() || null;
+  const profileCheckoutSessionId =
+    String(profile.stripe_checkout_session_id ?? "").trim() || null;
 
-  const canonicalCustomerId = String(shop.stripe_customer_id ?? "").trim() || null;
-  const canonicalSubscriptionId = String(shop.stripe_subscription_id ?? "").trim() || null;
+  const canonicalCustomerId =
+    String(shop.stripe_customer_id ?? "").trim() || null;
+  const canonicalSubscriptionId =
+    String(shop.stripe_subscription_id ?? "").trim() || null;
 
-  if (!profileCustomerId && !profileSubscriptionId && !profileCheckoutSessionId) return null;
+  if (!profileCustomerId && !profileSubscriptionId && !profileCheckoutSessionId)
+    return null;
 
   if (
     profileCustomerId &&
@@ -353,7 +411,9 @@ async function findUnlinkedSubscriptionEvidence(args: {
   if (profileSubscriptionId) {
     const sub = await stripe.subscriptions.retrieve(profileSubscriptionId);
     const subscriptionCustomerId =
-      typeof sub.customer === "string" ? sub.customer : String(sub.customer?.id ?? "").trim() || null;
+      typeof sub.customer === "string"
+        ? sub.customer
+        : String(sub.customer?.id ?? "").trim() || null;
     return {
       customerId: profileCustomerId ?? subscriptionCustomerId,
       subscriptionId: sub.id,
@@ -367,15 +427,27 @@ async function findUnlinkedSubscriptionEvidence(args: {
       status: "all",
       limit: 5,
     });
-    const latest = [...list.data].sort((a, b) => (b.created ?? 0) - (a.created ?? 0))[0] ?? null;
+    const latest =
+      [...list.data].sort((a, b) => (b.created ?? 0) - (a.created ?? 0))[0] ??
+      null;
     if (latest) {
-      return { customerId: profileCustomerId, subscriptionId: latest.id, checkoutSessionId: profileCheckoutSessionId };
+      return {
+        customerId: profileCustomerId,
+        subscriptionId: latest.id,
+        checkoutSessionId: profileCheckoutSessionId,
+      };
     }
-    return { customerId: profileCustomerId, subscriptionId: null, checkoutSessionId: profileCheckoutSessionId };
+    return {
+      customerId: profileCustomerId,
+      subscriptionId: null,
+      checkoutSessionId: profileCheckoutSessionId,
+    };
   }
 
   if (profileCheckoutSessionId) {
-    const session = await stripe.checkout.sessions.retrieve(profileCheckoutSessionId);
+    const session = await stripe.checkout.sessions.retrieve(
+      profileCheckoutSessionId,
+    );
     const customerId =
       typeof session.customer === "string" ? session.customer : null;
     const subscriptionId =
@@ -421,6 +493,7 @@ export async function GET() {
     const access = await requireShopScopedApiAccess({
       requiredCapability: "canManageBilling",
       allowRoles: ["owner", "admin"],
+      requiredProductCapabilities: [],
     });
     if (!access.ok) return access.response;
 
@@ -443,14 +516,21 @@ export async function GET() {
     const resolution = await findCanonicalSubscription(stripe, shop);
 
     if (resolution.state === "resolved") {
-      await syncShopSubscription(createAdminSupabase(), shop.id, resolution.subscription);
+      await syncShopSubscription(
+        createAdminSupabase(),
+        shop.id,
+        resolution.subscription,
+      );
       return NextResponse.json({
         ...normalizeSubscription(resolution.subscription),
         linkage_needed: false,
-        linkage_state: resolution.metadataMatches ? "linked_and_synced" : "metadata_mismatch",
+        linkage_state: resolution.metadataMatches
+          ? "linked_and_synced"
+          : "metadata_mismatch",
         sync_performed: true,
         sync_skipped_reason: null,
-        linked_customer_id: String(shop.stripe_customer_id ?? "").trim() || null,
+        linked_customer_id:
+          String(shop.stripe_customer_id ?? "").trim() || null,
         linked_subscription_id: resolution.subscription.id,
         linked_checkout_session_id: null,
         matching_subscription_ids: [resolution.subscription.id],
@@ -458,10 +538,14 @@ export async function GET() {
         resolved_subscription_id: resolution.subscription.id,
         all_customer_subscription_ids: resolution.allSubscriptionIds,
         subscription_diagnostics: resolution.subscriptionDiagnostics,
-        customer_exists_in_stripe: resolution.customerDiagnostics.customer_exists_in_stripe,
-        customer_deleted_in_stripe: resolution.customerDiagnostics.customer_deleted_in_stripe,
-        customer_lookup_error: resolution.customerDiagnostics.customer_lookup_error,
-        likely_mode_mismatch: resolution.customerDiagnostics.likely_mode_mismatch,
+        customer_exists_in_stripe:
+          resolution.customerDiagnostics.customer_exists_in_stripe,
+        customer_deleted_in_stripe:
+          resolution.customerDiagnostics.customer_deleted_in_stripe,
+        customer_lookup_error:
+          resolution.customerDiagnostics.customer_lookup_error,
+        likely_mode_mismatch:
+          resolution.customerDiagnostics.likely_mode_mismatch,
         stripe_mode: resolution.customerDiagnostics.stripe_mode,
         customer_mode: resolution.customerDiagnostics.customer_mode,
         hydration_strategy: resolution.hydrationStrategy,
@@ -475,7 +559,8 @@ export async function GET() {
         linkage_state: "ambiguous_customer_subscriptions",
         sync_performed: false,
         sync_skipped_reason: "ambiguous_customer_subscriptions",
-        linked_customer_id: String(shop.stripe_customer_id ?? "").trim() || null,
+        linked_customer_id:
+          String(shop.stripe_customer_id ?? "").trim() || null,
         linked_subscription_id: null,
         linked_checkout_session_id: null,
         matching_subscription_ids: [],
@@ -483,10 +568,14 @@ export async function GET() {
         resolved_subscription_id: null,
         all_customer_subscription_ids: resolution.allSubscriptionIds,
         subscription_diagnostics: resolution.subscriptionDiagnostics,
-        customer_exists_in_stripe: resolution.customerDiagnostics.customer_exists_in_stripe,
-        customer_deleted_in_stripe: resolution.customerDiagnostics.customer_deleted_in_stripe,
-        customer_lookup_error: resolution.customerDiagnostics.customer_lookup_error,
-        likely_mode_mismatch: resolution.customerDiagnostics.likely_mode_mismatch,
+        customer_exists_in_stripe:
+          resolution.customerDiagnostics.customer_exists_in_stripe,
+        customer_deleted_in_stripe:
+          resolution.customerDiagnostics.customer_deleted_in_stripe,
+        customer_lookup_error:
+          resolution.customerDiagnostics.customer_lookup_error,
+        likely_mode_mismatch:
+          resolution.customerDiagnostics.likely_mode_mismatch,
         stripe_mode: resolution.customerDiagnostics.stripe_mode,
         customer_mode: resolution.customerDiagnostics.customer_mode,
         hydration_strategy: "none",
@@ -511,15 +600,21 @@ export async function GET() {
           linked_customer_id: unlinked.customerId,
           linked_subscription_id: unlinked.subscriptionId,
           linked_checkout_session_id: unlinked.checkoutSessionId,
-          matching_subscription_ids: unlinked.subscriptionId ? [unlinked.subscriptionId] : [],
+          matching_subscription_ids: unlinked.subscriptionId
+            ? [unlinked.subscriptionId]
+            : [],
           managed_subscription_ids: resolution.managedSubscriptionIds,
           resolved_subscription_id: null,
           all_customer_subscription_ids: resolution.allSubscriptionIds,
           subscription_diagnostics: resolution.subscriptionDiagnostics,
-          customer_exists_in_stripe: resolution.customerDiagnostics.customer_exists_in_stripe,
-          customer_deleted_in_stripe: resolution.customerDiagnostics.customer_deleted_in_stripe,
-          customer_lookup_error: resolution.customerDiagnostics.customer_lookup_error,
-          likely_mode_mismatch: resolution.customerDiagnostics.likely_mode_mismatch,
+          customer_exists_in_stripe:
+            resolution.customerDiagnostics.customer_exists_in_stripe,
+          customer_deleted_in_stripe:
+            resolution.customerDiagnostics.customer_deleted_in_stripe,
+          customer_lookup_error:
+            resolution.customerDiagnostics.customer_lookup_error,
+          likely_mode_mismatch:
+            resolution.customerDiagnostics.likely_mode_mismatch,
           stripe_mode: resolution.customerDiagnostics.stripe_mode,
           customer_mode: resolution.customerDiagnostics.customer_mode,
           hydration_strategy: "none",
@@ -532,7 +627,8 @@ export async function GET() {
         linkage_state: "no_subscription_found",
         sync_performed: false,
         sync_skipped_reason: "no_subscription_found",
-        linked_customer_id: String(shop.stripe_customer_id ?? "").trim() || null,
+        linked_customer_id:
+          String(shop.stripe_customer_id ?? "").trim() || null,
         linked_subscription_id: null,
         linked_checkout_session_id: null,
         matching_subscription_ids: [],
@@ -540,10 +636,14 @@ export async function GET() {
         resolved_subscription_id: null,
         all_customer_subscription_ids: resolution.allSubscriptionIds,
         subscription_diagnostics: resolution.subscriptionDiagnostics,
-        customer_exists_in_stripe: resolution.customerDiagnostics.customer_exists_in_stripe,
-        customer_deleted_in_stripe: resolution.customerDiagnostics.customer_deleted_in_stripe,
-        customer_lookup_error: resolution.customerDiagnostics.customer_lookup_error,
-        likely_mode_mismatch: resolution.customerDiagnostics.likely_mode_mismatch,
+        customer_exists_in_stripe:
+          resolution.customerDiagnostics.customer_exists_in_stripe,
+        customer_deleted_in_stripe:
+          resolution.customerDiagnostics.customer_deleted_in_stripe,
+        customer_lookup_error:
+          resolution.customerDiagnostics.customer_lookup_error,
+        likely_mode_mismatch:
+          resolution.customerDiagnostics.likely_mode_mismatch,
         stripe_mode: resolution.customerDiagnostics.stripe_mode,
         customer_mode: resolution.customerDiagnostics.customer_mode,
         hydration_strategy: "none",
@@ -552,7 +652,10 @@ export async function GET() {
 
     return NextResponse.json(normalizeShopFallback(shop));
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to resolve subscription.";
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Failed to resolve subscription.";
     console.error("[stripe/subscription:get] error", error);
     return NextResponse.json({ error: message }, { status: 500 });
   }
@@ -564,9 +667,13 @@ export async function POST(req: Request) {
     const access = await requireShopScopedApiAccess({
       requiredCapability: "canManageBilling",
       allowRoles: ["owner", "admin"],
+      requiredProductCapabilities: [],
       requireOwnerPin: true,
       ownerPinRequest: req,
-      ownerPinAllowedPurposes: [OWNER_PIN_PURPOSES.BILLING, OWNER_PIN_PURPOSES.PRIVILEGED],
+      ownerPinAllowedPurposes: [
+        OWNER_PIN_PURPOSES.BILLING,
+        OWNER_PIN_PURPOSES.PRIVILEGED,
+      ],
     });
     if (!access.ok) return access.response;
 
@@ -599,7 +706,8 @@ export async function POST(req: Request) {
       if (unlinked) {
         return NextResponse.json(
           {
-            error: "Billing linkage is required before managing this subscription.",
+            error:
+              "Billing linkage is required before managing this subscription.",
             ...normalizeShopFallback(shop),
             linkage_needed: true,
             linkage_state: "subscription_found_not_linked",
@@ -614,11 +722,13 @@ export async function POST(req: Request) {
       if (resolution.state === "ambiguous_customer_subscriptions") {
         return NextResponse.json(
           {
-            error: "Multiple current managed subscriptions were found for this customer.",
+            error:
+              "Multiple current managed subscriptions were found for this customer.",
             ...normalizeShopFallback(shop),
             linkage_needed: true,
             linkage_state: "ambiguous_customer_subscriptions",
-            linked_customer_id: String(shop.stripe_customer_id ?? "").trim() || null,
+            linked_customer_id:
+              String(shop.stripe_customer_id ?? "").trim() || null,
             linked_subscription_id: null,
             linked_checkout_session_id: null,
             managed_subscription_ids: resolution.subscriptionIds,
@@ -633,7 +743,8 @@ export async function POST(req: Request) {
           ...normalizeShopFallback(shop),
           linkage_needed: true,
           linkage_state: "no_subscription_found",
-          linked_customer_id: String(shop.stripe_customer_id ?? "").trim() || null,
+          linked_customer_id:
+            String(shop.stripe_customer_id ?? "").trim() || null,
           linked_subscription_id: null,
           linked_checkout_session_id: null,
         },
@@ -643,10 +754,14 @@ export async function POST(req: Request) {
 
     const canonicalSubscription = resolution.subscription;
 
-    if (canonicalSubscription.status !== "active" && canonicalSubscription.status !== "trialing") {
+    if (
+      canonicalSubscription.status !== "active" &&
+      canonicalSubscription.status !== "trialing"
+    ) {
       return NextResponse.json(
         {
-          error: "Only active or trialing subscriptions can be scheduled for cancellation.",
+          error:
+            "Only active or trialing subscriptions can be scheduled for cancellation.",
           ...normalizeSubscription(canonicalSubscription),
         },
         { status: 409 },
@@ -654,19 +769,29 @@ export async function POST(req: Request) {
     }
 
     if (canonicalSubscription.cancel_at_period_end) {
-      await syncShopSubscription(createAdminSupabase(), shop.id, canonicalSubscription);
+      await syncShopSubscription(
+        createAdminSupabase(),
+        shop.id,
+        canonicalSubscription,
+      );
       return NextResponse.json(normalizeSubscription(canonicalSubscription));
     }
 
-    const updated = await stripe.subscriptions.update(canonicalSubscription.id, {
-      cancel_at_period_end: true,
-    });
+    const updated = await stripe.subscriptions.update(
+      canonicalSubscription.id,
+      {
+        cancel_at_period_end: true,
+      },
+    );
 
     await syncShopSubscription(createAdminSupabase(), shop.id, updated);
 
     return NextResponse.json(normalizeSubscription(updated));
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to schedule cancellation.";
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Failed to schedule cancellation.";
     console.error("[stripe/subscription:cancel] error", error);
     return NextResponse.json({ error: message }, { status: 500 });
   }

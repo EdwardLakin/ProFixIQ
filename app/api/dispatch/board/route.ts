@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDispatchBoard } from "@/features/dispatch/server/commands";
 import { dispatchErrorResponse } from "@/features/dispatch/server/http";
+import {
+  filterDispatchBoardForProduct,
+  resolveDispatchProductScope,
+} from "@/features/dispatch/server/productScope";
+import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
-function resolveWindow(request: NextRequest): { startsAt: string; endsAt: string } | null {
+function resolveWindow(
+  request: NextRequest,
+): { startsAt: string; endsAt: string } | null {
   const startsRaw = request.nextUrl.searchParams.get("startsAt")?.trim();
   const endsRaw = request.nextUrl.searchParams.get("endsAt")?.trim();
 
@@ -17,7 +24,11 @@ function resolveWindow(request: NextRequest): { startsAt: string; endsAt: string
   if (!startsRaw || !endsRaw) return null;
   const start = new Date(startsRaw);
   const end = new Date(endsRaw);
-  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start) {
+  if (
+    !Number.isFinite(start.getTime()) ||
+    !Number.isFinite(end.getTime()) ||
+    end <= start
+  ) {
     return null;
   }
   return { startsAt: start.toISOString(), endsAt: end.toISOString() };
@@ -26,6 +37,7 @@ function resolveWindow(request: NextRequest): { startsAt: string; endsAt: string
 export async function GET(request: NextRequest) {
   const access = await requireShopScopedApiAccess({
     requiredCapability: "canManageScheduling",
+    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
   });
   if (!access.ok) return access.response;
 
@@ -38,12 +50,16 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const board = await getDispatchBoard({
-      supabase: access.supabase,
-      shopId: access.profile.shop_id,
-      actorUserId: access.profile.id,
-      ...window,
-    });
+    const productScope = await resolveDispatchProductScope(access);
+    const board = filterDispatchBoardForProduct(
+      await getDispatchBoard({
+        supabase: access.supabase,
+        shopId: access.profile.shop_id,
+        actorUserId: access.profile.id,
+        ...window,
+      }),
+      productScope,
+    );
     return NextResponse.json(board, {
       headers: { "Cache-Control": "private, no-store" },
     });

@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import type { Database } from "@shared/types/types/supabase";
-import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { notifyBookingConfirmation } from "@/features/portal/server/notifyBookingConfirmation";
 
 type DB = Database;
@@ -27,47 +28,18 @@ type PatchBody = {
   idempotencyKey?: string;
 };
 
-async function getAuthedContext(
-  supabase: ReturnType<typeof createServerSupabaseRoute>,
-) {
-  const {
-    data: { user },
-    error: userErr,
-  } = await supabase.auth.getUser();
-
-  if (userErr || !user) {
-    return {
-      error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
-    };
-  }
-
-  const { data: profile, error: profileErr } = await supabase
-    .from("profiles")
-    .select("id, role, shop_id")
-    .eq("id", user.id)
-    .single();
-
-  if (profileErr || !profile?.shop_id) {
-    return {
-      error: NextResponse.json(
-        { error: "Profile/shop not found" },
-        { status: 403 },
-      ),
-    };
-  }
-
-  const actor = getActorCapabilities({ role: profile.role });
-  if (!actor.isKnownRole || !actor.canManageScheduling) {
-    return {
-      error: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
-    };
-  }
-
+async function getAuthedContext() {
+  const access = await requireShopScopedApiAccess({
+    requiredCapability: "canManageScheduling",
+    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
+  });
+  if (!access.ok) return { error: access.response };
   return {
-    user,
+    supabase: access.supabase,
+    user: { id: access.authUserId },
     profile: {
-      id: profile.id,
-      shop_id: profile.shop_id,
+      id: access.profile.id,
+      shop_id: access.profile.shop_id,
     },
   };
 }
@@ -161,12 +133,13 @@ export async function PATCH(
     return NextResponse.json({ error: "Missing booking id" }, { status: 400 });
   }
 
-  const supabase = createServerSupabaseRoute();
-  const auth = await getAuthedContext(supabase);
+  const auth = await getAuthedContext();
   if ("error" in auth) return auth.error;
+  const { supabase } = auth;
 
   const body = (await req.json().catch(() => ({}))) as PatchBody;
-  const isReschedule = body.starts_at !== undefined || body.ends_at !== undefined;
+  const isReschedule =
+    body.starts_at !== undefined || body.ends_at !== undefined;
   const lifecycleAction = isReschedule
     ? "reschedule"
     : body.status === "cancelled"
@@ -210,7 +183,10 @@ export async function PATCH(
       const message = [error.message, error.details, error.hint]
         .filter(Boolean)
         .join(" — ");
-      return NextResponse.json({ error: message }, { status: rpcStatus(message) });
+      return NextResponse.json(
+        { error: message },
+        { status: rpcStatus(message) },
+      );
     }
 
     const result = (data ?? {}) as {
@@ -229,7 +205,10 @@ export async function PATCH(
           : "skipped";
       } catch (notificationError) {
         confirmationNotification = "skipped";
-        console.error("booking confirmation notification failed", notificationError);
+        console.error(
+          "booking confirmation notification failed",
+          notificationError,
+        );
       }
     }
 
@@ -280,7 +259,10 @@ export async function PATCH(
   }
 
   if (Object.keys(update).length === 0) {
-    return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
+    return NextResponse.json(
+      { error: "No valid fields to update" },
+      { status: 400 },
+    );
   }
 
   const { data: updated, error: updateErr } = await supabase
@@ -311,9 +293,9 @@ export async function DELETE(
     return NextResponse.json({ error: "Missing booking id" }, { status: 400 });
   }
 
-  const supabase = createServerSupabaseRoute();
-  const auth = await getAuthedContext(supabase);
+  const auth = await getAuthedContext();
   if ("error" in auth) return auth.error;
+  const { supabase } = auth;
 
   const key = lifecycleOperationKey({
     supplied: req.headers.get("Idempotency-Key")?.trim() ?? "",
@@ -335,7 +317,10 @@ export async function DELETE(
     const message = [error.message, error.details, error.hint]
       .filter(Boolean)
       .join(" — ");
-    return NextResponse.json({ error: message }, { status: rpcStatus(message) });
+    return NextResponse.json(
+      { error: message },
+      { status: rpcStatus(message) },
+    );
   }
 
   return NextResponse.json(data);

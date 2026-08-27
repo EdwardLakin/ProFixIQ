@@ -2,11 +2,23 @@ import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextResponse } from "next/server";
 
-const routeSource = readFileSync("app/api/parts/requests/items/[itemId]/inventory/route.ts", "utf8");
+const routeSource = readFileSync(
+  "app/api/parts/requests/items/[itemId]/inventory/route.ts",
+  "utf8",
+);
 const pageSource = readFileSync("app/parts/requests/[id]/page.tsx", "utf8");
-const editRouteSource = readFileSync("app/api/parts/requests/items/[itemId]/edit/route.ts", "utf8");
-const addRouteSource = readFileSync("app/api/parts/requests/items/[itemId]/add/route.ts", "utf8");
-const commitRouteSource = readFileSync("app/api/parts/requests/[requestId]/commit-package/route.ts", "utf8");
+const editRouteSource = readFileSync(
+  "app/api/parts/requests/items/[itemId]/edit/route.ts",
+  "utf8",
+);
+const addRouteSource = readFileSync(
+  "app/api/parts/requests/items/[itemId]/add/route.ts",
+  "utf8",
+);
+const commitRouteSource = readFileSync(
+  "app/api/parts/requests/[requestId]/commit-package/route.ts",
+  "utf8",
+);
 
 const mocks = vi.hoisted(() => ({
   requireShopScopedApiAccess: vi.fn(),
@@ -27,9 +39,8 @@ describe("parts request inventory route authorization", () => {
       response: NextResponse.json({ error: "test boundary" }, { status: 403 }),
     });
 
-    const { POST } = await import(
-      "../../app/api/parts/requests/items/[itemId]/inventory/route"
-    );
+    const { POST } =
+      await import("../../app/api/parts/requests/items/[itemId]/inventory/route");
     const response = await POST(
       new Request(
         "http://localhost/api/parts/requests/items/11111111-1111-4111-8111-111111111111/inventory",
@@ -52,6 +63,7 @@ describe("parts request inventory route authorization", () => {
     expect(response.status).toBe(403);
     expect(mocks.requireShopScopedApiAccess).toHaveBeenCalledWith({
       requiredCapability: "canManageParts",
+      requiredProductCapabilities: ["shop", "field_service"],
     });
   });
 
@@ -73,6 +85,8 @@ describe("parts request inventory route authorization", () => {
     expect(routeSource).toContain("cost?: number | string | null");
     expect(routeSource).toContain("p_cost: cost.value");
     expect(routeSource).toContain("p_supplier: clean(body.supplier)");
-    expect(routeSource).toContain('rpc("parts_create_and_attach_inventory_atomic"');
+    expect(routeSource).toMatch(
+      /\.rpc\(\s*["']parts_create_and_attach_inventory_atomic["']/,
+    );
   });
 });

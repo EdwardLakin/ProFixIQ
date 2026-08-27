@@ -69,6 +69,7 @@ export async function GET(
     const allowed = await canAccessInvoicePdf({
       supabase: sessionClient,
       authUserId: user.id,
+      workOrderId: version.work_order_id,
       shopId: version.shop_id,
       customerId: workOrder?.customer_id ?? null,
       customerVisibleDocument: CUSTOMER_VISIBLE_INVOICE_STATES.includes(

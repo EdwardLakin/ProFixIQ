@@ -11,6 +11,7 @@ import {
   type ProductAcquisitionSurface,
   type ProductPackageKey,
 } from "@/features/stripe/lib/stripe/product-packages";
+import { isStripeSubscriptionAccessBearing } from "@/features/stripe/lib/stripe/subscriptionStatus";
 
 type AdminClient = ReturnType<typeof createAdminSupabase>;
 
@@ -48,6 +49,13 @@ export type BegunStripeAcquisitionIntent = {
 export type ClaimedStripeAcquisitionIntent =
   | { claimed: true; shopId: string | null; repeated: boolean }
   | { claimed: false; reason: string };
+
+export type VerifiedStripeAcquisitionCheckout = {
+  email: string;
+  metadata: StripeAcquisitionMetadata;
+  session: Stripe.Checkout.Session;
+  subscription: Stripe.Subscription;
+};
 
 function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
@@ -178,6 +186,41 @@ export async function getStripeCheckoutSubscription(
 
   const subscriptionId = toStripeId(session.subscription, "sub_");
   return subscriptionId ? stripe.subscriptions.retrieve(subscriptionId) : null;
+}
+
+/**
+ * Verify the complete server-owned acquisition contract before an existing
+ * account is allowed to establish a session for the claim handoff.
+ *
+ * Invalid or incomplete checkouts return null. Stripe/service failures throw
+ * so callers can fail closed without presenting a permanent eligibility
+ * denial for a transient billing outage.
+ */
+export async function verifyStripeAcquisitionCheckout(
+  stripe: Stripe,
+  sessionId: string,
+): Promise<VerifiedStripeAcquisitionCheckout | null> {
+  const session = await stripe.checkout.sessions.retrieve(sessionId, {
+    expand: ["subscription", "customer"],
+  });
+  const metadata = readStripeAcquisitionMetadata(session.metadata);
+  if (!metadata || !isCompletedStripeAcquisitionSession(session)) return null;
+
+  const [priceId, email, subscription] = await Promise.all([
+    getStripeCheckoutPriceId(stripe, session.id),
+    getStripeCheckoutEmail(stripe, session),
+    getStripeCheckoutSubscription(stripe, session),
+  ]);
+  if (
+    priceId !== metadata.priceId ||
+    !email ||
+    !subscription ||
+    !isStripeSubscriptionAccessBearing(subscription.status)
+  ) {
+    return null;
+  }
+
+  return { email, metadata, session, subscription };
 }
 
 export async function beginStripeAcquisitionIntent(input: {

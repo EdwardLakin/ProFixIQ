@@ -2,14 +2,7 @@ import { NextResponse } from "next/server";
 
 import { enforceAuthRateLimit } from "@/features/auth/server/authRateLimit";
 import { createStripeClient } from "@/features/stripe/lib/stripe/client";
-import { isStripeSubscriptionAccessBearing } from "@/features/stripe/lib/stripe/subscriptionStatus";
-import {
-  getStripeCheckoutEmail,
-  getStripeCheckoutPriceId,
-  getStripeCheckoutSubscription,
-  isCompletedStripeAcquisitionSession,
-  readStripeAcquisitionMetadata,
-} from "@/features/stripe/lib/server/stripe-acquisition-intent";
+import { verifyStripeAcquisitionCheckout } from "@/features/stripe/lib/server/stripe-acquisition-intent";
 
 const CHECKOUT_SESSION_PATTERN = /^cs_[A-Za-z0-9_]+$/;
 
@@ -52,35 +45,18 @@ export async function handleStripeAcquisitionContext(req: Request) {
     if (!secretKey) return noStoreJson({ error: "Billing unavailable" }, 503);
 
     const stripe = createStripeClient(secretKey);
-    const session = await stripe.checkout.sessions.retrieve(sessionId, {
-      expand: ["subscription", "customer"],
+    const verified = await verifyStripeAcquisitionCheckout(stripe, sessionId);
+    if (!verified) {
+      return noStoreJson(
+        { error: "Checkout is not eligible for account setup" },
+        400,
+      );
+    }
+
+    return noStoreJson({
+      email: verified.email,
+      surface: verified.metadata.surface,
     });
-    const metadata = readStripeAcquisitionMetadata(session.metadata);
-    if (!metadata || !isCompletedStripeAcquisitionSession(session)) {
-      return noStoreJson(
-        { error: "Checkout is not eligible for account setup" },
-        400,
-      );
-    }
-
-    const [priceId, checkoutEmail, subscription] = await Promise.all([
-      getStripeCheckoutPriceId(stripe, session.id),
-      getStripeCheckoutEmail(stripe, session),
-      getStripeCheckoutSubscription(stripe, session),
-    ]);
-    if (
-      priceId !== metadata.priceId ||
-      !checkoutEmail ||
-      !subscription ||
-      !isStripeSubscriptionAccessBearing(subscription.status)
-    ) {
-      return noStoreJson(
-        { error: "Checkout is not eligible for account setup" },
-        400,
-      );
-    }
-
-    return noStoreJson({ email: checkoutEmail, surface: metadata.surface });
   } catch (error) {
     console.error("stripe_acquisition_context_failed", {
       name: error instanceof Error ? error.name : "UnknownError",

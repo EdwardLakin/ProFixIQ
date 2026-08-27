@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { toSafeDatabaseError } from "@/features/shared/lib/server/safeDatabaseError";
 
@@ -22,8 +23,10 @@ export function idempotencyKey(
   _legacyFallback?: string,
 ): string | null {
   const header = req.headers.get("Idempotency-Key")?.trim();
-  const camel = typeof body.idempotencyKey === "string" ? body.idempotencyKey.trim() : "";
-  const snake = typeof body.idempotency_key === "string" ? body.idempotency_key.trim() : "";
+  const camel =
+    typeof body.idempotencyKey === "string" ? body.idempotencyKey.trim() : "";
+  const snake =
+    typeof body.idempotency_key === "string" ? body.idempotency_key.trim() : "";
 
   // The optional third argument exists only so older route callers compile during
   // the Phase 3 transition. It is deliberately ignored: retryable operations must
@@ -31,7 +34,11 @@ export function idempotencyKey(
   return header || camel || snake || null;
 }
 
-type RpcError = { message: string; details?: string | null; hint?: string | null };
+type RpcError = {
+  message: string;
+  details?: string | null;
+  hint?: string | null;
+};
 type RpcClient = {
   rpc: (
     name: string,
@@ -48,7 +55,9 @@ export async function runPartsLifecycleRpcWithAccess(
   args: Record<string, unknown>,
 ) {
   const rawKey =
-    typeof args.p_idempotency_key === "string" ? args.p_idempotency_key.trim() : "";
+    typeof args.p_idempotency_key === "string"
+      ? args.p_idempotency_key.trim()
+      : "";
   if (!rawKey) {
     return NextResponse.json(
       { ok: false, error: "A stable idempotency key is required." },
@@ -100,6 +109,7 @@ export async function runPartsLifecycleRpc(
 ) {
   const access = await requireShopScopedApiAccess({
     requiredCapability: "canManageParts",
+    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
   });
   if (!access.ok) return access.response;
   return runPartsLifecycleRpcWithAccess(access, rpcName, args);

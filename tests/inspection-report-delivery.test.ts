@@ -22,9 +22,20 @@ describe("inspection report delivery contracts", () => {
   });
 
   it("keeps dispatchers inside fleet authorization", () => {
-    expect(
-      source("features/inspections/server/inspectionReportAccess.ts"),
-    ).toContain('"dispatcher"');
+    const access = source(
+      "features/inspections/server/inspectionReportAccess.ts",
+    );
+    expect(access).toContain("!staffActor.canViewFleetOnlyData");
+    expect(access).toContain("resolveFleetActorContext");
+  });
+
+  it("requires Shop product or an exact linked Field job for staff reports", () => {
+    const access = source(
+      "features/inspections/server/inspectionReportAccess.ts",
+    );
+    expect(access).toContain("SHOP_PRODUCT_CAPABILITIES");
+    expect(access).toContain("canFieldOperatorAccessWorkOrder");
+    expect(access).toContain("workOrderId: workOrder.id");
   });
 
   it("binds every service-role report read to active portal access first", () => {
@@ -75,8 +86,10 @@ describe("inspection report delivery contracts", () => {
       "app/api/invoices/[id]/documents/[kind]/signed/route.ts",
     );
     expect(route).toContain(
-      "hasAnyRole(profile?.role, ROLE_GROUPS.billingOperators)",
+      "hasAnyRole(profile.role, ROLE_GROUPS.billingOperators)",
     );
+    expect(route).toContain("resolveWorkOrderProductAuthority");
+    expect(route).toContain("SHOP_PRODUCT_CAPABILITIES");
     expect(route).toContain("isExpectedDocumentStorage");
     expect(route).toContain('args.bucket !== "inspection_pdfs"');
   });

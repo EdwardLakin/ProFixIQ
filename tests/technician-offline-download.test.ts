@@ -35,6 +35,9 @@ describe("technician assigned-work offline download", () => {
     expect(route).toMatch(/admin\s*\.from\("work_order_lines"\)/);
     expect(route).toMatch(/admin\s*\.from\("work_order_quote_lines"\)/);
     expect(route).toContain("resolveWorkOrderFinancialAccess");
+    expect(route).toContain(
+      'productScope = shopProduct.entitled ? "shop" : "field"',
+    );
     expect(route).toContain("projectWorkOrderFinancialFields");
     expect(route).toContain("projectWorkOrderLineFinancialFields");
     expect(route).toContain("projectQuoteLineFinancialFields");
@@ -45,8 +48,9 @@ describe("technician assigned-work offline download", () => {
   });
 
   it("writes the bundle and every detail alias under one tenant scope", () => {
-    expect(download).toContain("result.scope.userId !== args.scope.userId");
-    expect(download).toContain("result.scope.shopId !== args.scope.shopId");
+    expect(download).toContain("isTechnicianOfflineBundle(result, args.scope)");
+    expect(download).toContain("bundle.scope?.userId === scope.userId");
+    expect(download).toContain("bundle.scope?.shopId === scope.shopId");
     expect(download).toContain('BUNDLE_KIND = "technician-assigned-work"');
     expect(download).toContain('kind: "mobile-work-order-detail"');
     expect(download).toContain("item.workOrder.custom_id");
@@ -55,11 +59,14 @@ describe("technician assigned-work offline download", () => {
     expect(download).toContain("existingDetails");
     expect(download).toContain("staleAliases");
     expect(download).toContain("removeOfflineSnapshots");
+    expect(download).toContain("existingBundle.data.productScope");
+    expect(download).toContain("productScope: bundle.productScope");
   });
 
   it("loads the assigned queue from IndexedDB and exposes an explicit download", () => {
     expect(queuePage).toContain("MobileTechnicianQueue");
     expect(queue).toContain("getCachedTechnicianWork");
+    expect(queue).toContain("refreshAssignedTechnicianWork");
     expect(queue).toContain("applyOfflineBundle(cached.data)");
     expect(queue).toContain("Download assigned work");
     expect(queue).toContain("navigator.storage?.persist?.()");

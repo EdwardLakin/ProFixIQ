@@ -115,6 +115,7 @@ describe("parts request purchase-order route", () => {
     expect(response.status).toBe(200);
     expect(mocks.requireShopScopedApiAccess).toHaveBeenCalledWith({
       requiredCapability: "canManageParts",
+      requiredProductCapabilities: ["shop", "field_service"],
     });
     expect(supabase.filters).toEqual([
       ["id", ITEM_ID],

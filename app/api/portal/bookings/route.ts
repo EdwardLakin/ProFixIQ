@@ -5,6 +5,7 @@ import {
   createServerSupabaseRoute,
 } from "@/features/shared/lib/supabase/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
 import type { Database } from "@shared/types/types/supabase";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import {
@@ -72,7 +73,9 @@ function bad(msg: string, status = 400): NextResponse {
   return NextResponse.json({ error: msg }, { status });
 }
 
-function schedulerWindow(rows: BookingRow[]): { start: string; end: string } | null {
+function schedulerWindow(
+  rows: BookingRow[],
+): { start: string; end: string } | null {
   if (rows.length === 0) return null;
   let first = Number.POSITIVE_INFINITY;
   let last = Number.NEGATIVE_INFINITY;
@@ -82,7 +85,8 @@ function schedulerWindow(rows: BookingRow[]): { start: string; end: string } | n
     if (Number.isFinite(start)) first = Math.min(first, start);
     if (Number.isFinite(end)) last = Math.max(last, end);
   }
-  if (!Number.isFinite(first) || !Number.isFinite(last) || last <= first) return null;
+  if (!Number.isFinite(first) || !Number.isFinite(last) || last <= first)
+    return null;
   return {
     start: new Date(first - 60_000).toISOString(),
     end: new Date(last + 60_000).toISOString(),
@@ -143,7 +147,9 @@ export async function GET(req: Request): Promise<Response> {
     return bad("Missing shop or date range");
   }
 
-  const access = await requireShopScopedApiAccess();
+  const access = await requireShopScopedApiAccess({
+    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
+  });
   if (!access.ok) return access.response;
 
   const { profile, supabase } = access;
@@ -203,7 +209,9 @@ export async function GET(req: Request): Promise<Response> {
     const endDate = new Date(`${end}T00:00:00.000Z`);
     endDate.setDate(endDate.getDate() + 1);
     const endIso = endDate.toISOString();
-    bookingsQuery = bookingsQuery.gte("starts_at", startIso).lt("starts_at", endIso);
+    bookingsQuery = bookingsQuery
+      .gte("starts_at", startIso)
+      .lt("starts_at", endIso);
   }
 
   const { data: rows, error: rowsErr } = await bookingsQuery;
@@ -223,7 +231,11 @@ export async function GET(req: Request): Promise<Response> {
   }
 
   const bookings = rows as unknown as BookingRow[];
-  const schedulerByBooking = await loadSchedulerEvents(supabase, shop.id, bookings);
+  const schedulerByBooking = await loadSchedulerEvents(
+    supabase,
+    shop.id,
+    bookings,
+  );
 
   const payload: BookingPayload[] = bookings.map((row) => {
     const customer = row.customers ?? null;
@@ -265,7 +277,9 @@ export async function POST(req: Request): Promise<Response> {
   } = await supabase.auth.getUser();
   if (authErr || !user) return bad("Not authenticated", 401);
 
-  const body = (await req.json().catch(() => null)) as CreatePortalBookingInput | null;
+  const body = (await req
+    .json()
+    .catch(() => null)) as CreatePortalBookingInput | null;
   if (!body) return bad("Invalid JSON body", 400);
   const operationKey =
     req.headers.get("Idempotency-Key")?.trim() ||

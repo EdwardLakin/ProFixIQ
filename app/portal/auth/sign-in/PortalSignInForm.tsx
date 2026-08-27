@@ -15,6 +15,7 @@ import {
   toFleetPublicHref,
 } from "@/features/fleet/lib/fleetProductRouting";
 import { signInWithIdentifier } from "@/features/auth/lib/signInClient";
+import { ACCOUNT_BILLING_RECOVERY_HREF } from "@/features/shared/lib/product-access";
 
 type PortalSignInFormProps = {
   portalType: PortalSurface;
@@ -82,19 +83,29 @@ export default function PortalSignInForm({
         return;
       }
 
+      const serverRecoveryDestination =
+        result.destination === ACCOUNT_BILLING_RECOVERY_HREF ||
+        result.destination.startsWith("/auth/set-password")
+          ? result.destination
+          : null;
       const requestedRedirect = searchParams.get("redirect");
       const internalRedirect =
         isFleet && productHost
-          ? toFleetInternalHref(requestedRedirect) ?? requestedRedirect
+          ? (toFleetInternalHref(requestedRedirect) ?? requestedRedirect)
           : requestedRedirect;
-      const internalDestination = resolvePortalSurfaceRedirect(
-        internalRedirect,
-        result.destination,
-        portalType,
-      );
-      const destination =
-        isFleet && productHost
-          ? toFleetPublicHref(internalDestination) ?? "/"
+      const internalDestination = serverRecoveryDestination
+        ? serverRecoveryDestination
+        : resolvePortalSurfaceRedirect(
+            internalRedirect,
+            result.destination,
+            portalType,
+          );
+      const destination = serverRecoveryDestination
+        ? isFleet && productHost
+          ? `${primarySiteOrigin}${serverRecoveryDestination}`
+          : serverRecoveryDestination
+        : isFleet && productHost
+          ? (toFleetPublicHref(internalDestination) ?? "/")
           : internalDestination;
       router.replace(destination);
       router.refresh();
@@ -106,7 +117,9 @@ export default function PortalSignInForm({
   return (
     <AuthShell
       productLabel={isFleet ? "ProFixIQ Fleet" : "Customer portal"}
-      heroTitle={isFleet ? "Keep every unit moving." : "Your service, all in one place."}
+      heroTitle={
+        isFleet ? "Keep every unit moving." : "Your service, all in one place."
+      }
       heroDescription={
         isFleet
           ? "Asset readiness, preventive maintenance, service decisions, and repair history in one dedicated Fleet workspace."
@@ -114,7 +127,11 @@ export default function PortalSignInForm({
       }
       highlights={
         isFleet
-          ? ["Fleet control tower", "Maintenance planning", "Connected repair history"]
+          ? [
+              "Fleet control tower",
+              "Maintenance planning",
+              "Connected repair history",
+            ]
           : ["Secure approvals", "Live progress", "Service history"]
       }
       backHref={accessChooserHref}
@@ -149,7 +166,9 @@ export default function PortalSignInForm({
             type="text"
             autoComplete="username"
             placeholder={
-              isFleet ? "dispatch@fleet.com or username" : "you@example.com or username"
+              isFleet
+                ? "dispatch@fleet.com or username"
+                : "you@example.com or username"
             }
             value={identifier}
             onChange={(event) => setIdentifier(event.target.value)}
@@ -215,14 +234,14 @@ export default function PortalSignInForm({
       <div className="mt-5 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3.5 py-3 text-xs leading-5 text-[color:var(--theme-text-secondary)]">
         {isFleet ? (
           <>
-            Fleet access is invitation-only. Contact your fleet administrator if you
-            need access to this workspace.
+            Fleet access is invitation-only. Contact your fleet administrator if
+            you need access to this workspace.
           </>
         ) : (
           <>
-            Portal access is created from your shop invitation. There is no separate
-            account sign-up. If you need access, ask your shop to resend the invitation
-            or{" "}
+            Portal access is created from your shop invitation. There is no
+            separate account sign-up. If you need access, ask your shop to
+            resend the invitation or{" "}
             <Link
               href="/portal/auth/sign-up"
               className="font-semibold text-[var(--accent-copper)] hover:underline"

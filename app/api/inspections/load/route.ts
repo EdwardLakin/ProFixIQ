@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import type { Json } from "@shared/types/types/supabase";
 import type { InspectionSession } from "@/features/inspections/lib/inspection/types";
+import { canExecuteInspectionForProduct } from "@/features/inspections/server/inspectionExecutionProductAccess";
 import {
   reconcileInspectionPhotoEvidence,
   type InspectionPhotoEvidenceRow,
@@ -156,13 +157,14 @@ export async function GET(req: NextRequest) {
     );
   }
 
+  let lineWorkOrderId: string | null = null;
   if (workOrderLineId) {
     const { data: line, error: lineError } = await supabase
       .from("work_order_lines")
-      .select("id")
+      .select("id, work_order_id")
       .eq("id", workOrderLineId)
       .eq("shop_id", shopId)
-      .maybeSingle<{ id: string }>();
+      .maybeSingle<{ id: string; work_order_id: string | null }>();
 
     if (lineError) {
       return NextResponse.json({ error: lineError.message }, { status: 500 });
@@ -173,6 +175,7 @@ export async function GET(req: NextRequest) {
         { status: 404 },
       );
     }
+    lineWorkOrderId = line.work_order_id;
   }
 
   const selectColumns =
@@ -217,6 +220,18 @@ export async function GET(req: NextRequest) {
 
   const resolvedWorkOrderLineId =
     inspectionRow?.work_order_line_id ?? workOrderLineId ?? null;
+
+  const authorizedWorkOrderId =
+    inspectionRow?.work_order_id ?? lineWorkOrderId ?? null;
+  if (
+    !(await canExecuteInspectionForProduct({
+      supabase,
+      shopId,
+      workOrderId: authorizedWorkOrderId,
+    }))
+  ) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   const session =
     (inspectionRow?.summary as unknown as InspectionSession | null) ?? null;

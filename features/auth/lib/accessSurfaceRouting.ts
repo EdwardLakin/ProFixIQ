@@ -1,4 +1,5 @@
 import { safeInternalRedirect } from "@/features/auth/lib/safeRedirect";
+import { ACCOUNT_BILLING_RECOVERY_HREF } from "@/features/shared/lib/product-access";
 import { FLEET_PRODUCT_ORIGIN } from "@/features/fleet/lib/fleetProductRouting";
 import type { FieldServiceAccessDecision } from "@/features/mobile/service/fieldServiceAccessContract";
 
@@ -136,6 +137,8 @@ export function resolveFieldPostSignInHref(
     return destination;
   }
 
+  if (destination === ACCOUNT_BILLING_RECOVERY_HREF) return destination;
+
   if (destination === FIELD_SETUP) return FIELD_SETUP;
   if (destination !== FIELD_HOME) return FIELD_HOME;
 
@@ -176,7 +179,7 @@ export function resolveFieldExistingSessionHref(
   }
 
   const apiEquivalentDestination = access.mustChangePassword
-    ? `${PASSWORD_CHANGE}?redirect=${encodeURIComponent(fieldDestination)}`
+    ? `${PASSWORD_CHANGE}?surface=field&redirect=${encodeURIComponent(fieldDestination)}`
     : fieldDestination;
 
   return resolveFieldPostSignInHref(

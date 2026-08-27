@@ -3,6 +3,8 @@ export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
 
+import { resolveWorkOrderProductAuthority } from "@/features/mobile/service/server/access";
+import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import {
@@ -21,6 +23,7 @@ function detailError(message: string, status: number) {
 export async function GET(_request: Request, context: RouteContext) {
   const access = await requireShopScopedApiAccess({
     allowRoles: MOBILE_WORK_ORDER_DETAIL_ROLES,
+    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
   });
   if (!access.ok) return access.response;
 
@@ -29,6 +32,11 @@ export async function GET(_request: Request, context: RouteContext) {
   if (!routeId) return detailError("Work order not found.", 404);
 
   try {
+    const authority = await resolveWorkOrderProductAuthority(access, routeId);
+    if (!authority.authorized) {
+      return detailError("Work order not found.", 404);
+    }
+
     const snapshot = await loadMobileWorkOrderDetail({
       supabase: access.supabase,
       dataSupabase: createAdminSupabase(),
@@ -38,9 +46,12 @@ export async function GET(_request: Request, context: RouteContext) {
     });
     if (!snapshot) return detailError("Work order not found.", 404);
 
-    return NextResponse.json(snapshot, {
-      headers: { "Cache-Control": "private, no-store" },
-    });
+    return NextResponse.json(
+      { ...snapshot, productScope: authority.product },
+      {
+        headers: { "Cache-Control": "private, no-store" },
+      },
+    );
   } catch (error) {
     console.error("[mobile/work-orders/detail] load failed", {
       routeId,

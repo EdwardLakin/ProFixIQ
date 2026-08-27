@@ -18,6 +18,7 @@ const authFixture = vi.hoisted(() => ({
     shop_id: string | null;
     completed_onboarding: boolean;
   },
+  profileError: null as string | null,
   memberships: [] as Array<{
     fleet_id: string;
     shop_id: string;
@@ -25,6 +26,11 @@ const authFixture = vi.hoisted(() => ({
     created_at: string;
   }>,
   customerId: null as string | null,
+  productEntitlements: {
+    shop: true,
+    field_service: true,
+    fleet_maintenance: true,
+  } as Record<string, boolean>,
   refreshedCookies: [] as Array<{
     name: string;
     value: string;
@@ -67,6 +73,12 @@ vi.mock("@supabase/ssr", () => ({
       }
 
       async maybeSingle() {
+        if (this.table === "profiles" && authFixture.profileError) {
+          return {
+            data: null,
+            error: { message: authFixture.profileError },
+          };
+        }
         const profileMatches =
           authFixture.profile &&
           ((this.filters.has("id") &&
@@ -107,7 +119,15 @@ vi.mock("@supabase/ssr", () => ({
         },
       },
       from: (table: string) => new MockQuery(table),
-      rpc: async () => ({ data: true, error: null }),
+      rpc: async (name: string, args?: Record<string, unknown>) => ({
+        data:
+          name === "profixiq_shop_has_product_access"
+            ? authFixture.productEntitlements[
+                String(args?.p_capability ?? "")
+              ] === true
+            : true,
+        error: null,
+      }),
     };
   },
 }));
@@ -118,8 +138,14 @@ const originalSupabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 afterEach(() => {
   authFixture.user = null;
   authFixture.profile = null;
+  authFixture.profileError = null;
   authFixture.memberships = [];
   authFixture.customerId = null;
+  authFixture.productEntitlements = {
+    shop: true,
+    field_service: true,
+    fleet_maintenance: true,
+  };
   authFixture.refreshedCookies = [];
 
   if (originalSupabaseUrl === undefined) {
@@ -183,6 +209,29 @@ describe("Product host middleware boundary", () => {
     expect(response.headers.get("location")).toBe(
       "https://profixiq.com/onboarding",
     );
+  });
+
+  it("lets an incomplete owner reach the narrowly scoped billing recovery route", async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "test-anon-key";
+    authFixture.user = { id: "owner-1", app_metadata: {} };
+    authFixture.profile = {
+      id: "owner-1",
+      role: "owner",
+      shop_id: "shop-1",
+      completed_onboarding: false,
+    };
+    authFixture.productEntitlements = {
+      shop: false,
+      field_service: false,
+      fleet_maintenance: false,
+    };
+
+    const response = await middleware(shopRequest("/account/billing"));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("location")).toBeNull();
+    expect(response.headers.get("x-middleware-next")).toBe("1");
   });
 
   it("uses the canonical linked profile for imported staff in middleware", async () => {
@@ -535,6 +584,251 @@ describe("Product host middleware boundary", () => {
     expect(response.status).toBe(307);
     expect(response.headers.get("location")).toBe(
       "https://profixiq.com/dashboard",
+    );
+  });
+
+  it("keeps a Field-only account out of Shop while preserving shared and dedicated Field routes", async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "test-anon-key";
+    authFixture.user = { id: "field-user-1", app_metadata: {} };
+    authFixture.profile = {
+      id: "field-user-1",
+      role: "owner",
+      shop_id: "field-shop-1",
+      completed_onboarding: true,
+    };
+    authFixture.productEntitlements = {
+      shop: false,
+      field_service: true,
+      fleet_maintenance: false,
+    };
+
+    const [desktop, mobile, field, shopOnlyCreate] = await Promise.all([
+      middleware(shopRequest("/dashboard")),
+      middleware(shopRequest("/mobile/work-orders")),
+      middleware(shopRequest("/mobile/service")),
+      middleware(shopRequest("/mobile/work-orders/create")),
+    ]);
+
+    expect(desktop.status).toBe(307);
+    expect(desktop.headers.get("location")).toBe(
+      "https://profixiq.com/shop/sign-in?access=shop_required",
+    );
+    expect(mobile.status).toBe(200);
+    expect(mobile.headers.get("location")).toBeNull();
+    expect(field.status).toBe(200);
+    expect(field.headers.get("location")).toBeNull();
+    expect(shopOnlyCreate.status).toBe(307);
+    expect(shopOnlyCreate.headers.get("location")).toBe(
+      "https://profixiq.com/mobile/sign-in?access=shop_required",
+    );
+  });
+
+  it("applies default-deny product contracts to staff APIs with narrow Field and recovery exceptions", async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "test-anon-key";
+    authFixture.user = { id: "field-user-1", app_metadata: {} };
+    authFixture.profile = {
+      id: "field-user-1",
+      role: "owner",
+      shop_id: "field-shop-1",
+      completed_onboarding: true,
+    };
+    authFixture.productEntitlements = {
+      shop: false,
+      field_service: true,
+      fleet_maintenance: false,
+    };
+
+    const [
+      shopOnly,
+      sharedField,
+      dedicatedField,
+      mobileShifts,
+      inspectionSave,
+      receiveScan,
+      relationshipOwnedMedia,
+      sharedBooking,
+      shopPortalStaff,
+      fleetPortalStaff,
+      recovery,
+      fleetOwned,
+    ] = await Promise.all([
+      middleware(shopRequest("/api/admin/users")),
+      middleware(shopRequest("/api/offline/mutations")),
+      middleware(shopRequest("/api/mobile/service/intake")),
+      middleware(shopRequest("/api/mobile/shifts")),
+      middleware(shopRequest("/api/inspection/save")),
+      middleware(shopRequest("/api/receive-scan")),
+      middleware(shopRequest("/api/work-orders/work-order-1/media")),
+      middleware(shopRequest("/api/portal/bookings/booking-1")),
+      middleware(shopRequest("/api/portal/qr/campaign")),
+      middleware(shopRequest("/api/portal/fleet/invites")),
+      middleware(shopRequest("/api/stripe/portal")),
+      middleware(shopRequest("/api/fleet/units")),
+    ]);
+
+    expect(shopOnly.status).toBe(403);
+    await expect(shopOnly.json()).resolves.toEqual({
+      error: "Product access required",
+    });
+    expect(shopPortalStaff.status).toBe(403);
+    await expect(shopPortalStaff.json()).resolves.toEqual({
+      error: "Product access required",
+    });
+    expect(fleetPortalStaff.status).toBe(403);
+    await expect(fleetPortalStaff.json()).resolves.toEqual({
+      error: "Product access required",
+    });
+    for (const response of [
+      sharedField,
+      dedicatedField,
+      mobileShifts,
+      inspectionSave,
+      receiveScan,
+      relationshipOwnedMedia,
+      sharedBooking,
+      recovery,
+      fleetOwned,
+    ]) {
+      expect(response.status).toBe(200);
+      expect(response.headers.get("x-middleware-next")).toBe("1");
+    }
+  });
+
+  it("preserves the Fleet product contract on staff invite management", async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "test-anon-key";
+    authFixture.user = { id: "fleet-owner-1", app_metadata: {} };
+    authFixture.profile = {
+      id: "fleet-owner-1",
+      role: "owner",
+      shop_id: "fleet-shop-1",
+      completed_onboarding: true,
+    };
+    authFixture.productEntitlements = {
+      shop: false,
+      field_service: false,
+      fleet_maintenance: true,
+    };
+
+    const response = await middleware(shopRequest("/api/portal/fleet/invites"));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-middleware-next")).toBe("1");
+  });
+
+  it("fails a staff API closed when its canonical profile cannot be resolved", async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "test-anon-key";
+    authFixture.user = { id: "staff-user-1", app_metadata: {} };
+    authFixture.profileError = "profile lookup unavailable";
+
+    const response = await middleware(shopRequest("/api/admin/users"));
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toEqual({
+      error: "Authorization service unavailable",
+    });
+  });
+
+  it("does not let an authenticated non-staff identity bypass a product API", async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "test-anon-key";
+    authFixture.user = { id: "customer-user-1", app_metadata: {} };
+    authFixture.profile = {
+      id: "customer-user-1",
+      role: "customer",
+      shop_id: "shop-1",
+      completed_onboarding: true,
+    };
+
+    const response = await middleware(shopRequest("/api/vin"));
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      error: "Product access required",
+    });
+  });
+
+  it("preserves exact relationship-owned portal report and approval APIs", async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "test-anon-key";
+    authFixture.user = { id: "customer-user-1", app_metadata: {} };
+    authFixture.profile = {
+      id: "customer-user-1",
+      role: "customer",
+      shop_id: "shop-1",
+      completed_onboarding: true,
+    };
+    authFixture.productEntitlements = {
+      shop: false,
+      field_service: false,
+      fleet_maintenance: false,
+    };
+
+    const responses = await Promise.all([
+      middleware(shopRequest("/api/portal/bookings")),
+      middleware(
+        shopRequest("/api/work-orders/lines/line-1/approval-decision"),
+      ),
+      middleware(
+        shopRequest("/api/work-orders/quotes/quote-1/approval-decision"),
+      ),
+      middleware(shopRequest("/api/inspections/reports")),
+      middleware(shopRequest("/api/inspections/inspection-1/report/pdf")),
+      middleware(
+        shopRequest("/api/invoices/invoice-1/documents/invoice_pdf/signed"),
+      ),
+    ]);
+
+    for (const response of responses) {
+      expect(response.status).toBe(200);
+      expect(response.headers.get("x-middleware-next")).toBe("1");
+    }
+  });
+
+  it("routes an authorized owner with no Shop entitlement only to billing recovery", async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "test-anon-key";
+    authFixture.user = { id: "fleet-user-1", app_metadata: {} };
+    authFixture.profile = {
+      id: "fleet-user-1",
+      role: "owner",
+      shop_id: "fleet-shop-1",
+      completed_onboarding: true,
+    };
+    authFixture.productEntitlements.shop = false;
+
+    const response = await middleware(shopRequest("/shop/sign-in"));
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      "https://profixiq.com/account/billing",
+    );
+  });
+
+  it("keeps Field owners on a billing recovery path when Field access lapses", async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "test-anon-key";
+    authFixture.user = { id: "field-owner-1", app_metadata: {} };
+    authFixture.profile = {
+      id: "field-owner-1",
+      role: "owner",
+      shop_id: "field-shop-1",
+      completed_onboarding: true,
+    };
+    authFixture.productEntitlements = {
+      shop: true,
+      field_service: false,
+      fleet_maintenance: false,
+    };
+
+    const response = await middleware(shopRequest("/field/sign-in"));
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      "https://profixiq.com/account/billing",
     );
   });
 

@@ -14,9 +14,14 @@ import {
   ROLE_GROUPS,
   type ActorCapabilities,
 } from "@/features/shared/lib/rbac";
+import {
+  FIELD_PRODUCT_CAPABILITIES,
+  resolveShopProductAccess,
+  SHOP_PRODUCT_CAPABILITIES,
+} from "@/features/shared/lib/product-access";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
-type ShopAccess = Extract<
+export type ShopAccess = Extract<
   Awaited<ReturnType<typeof requireShopScopedApiAccess>>,
   { ok: true }
 >;
@@ -176,18 +181,24 @@ export async function canFieldOperatorAccessWorkOrder(
 ): Promise<boolean> {
   const actor = getActorCapabilities({ role: access.profile.role });
   const fieldAccess = await getMobileFieldServiceAccess(access);
+  const canManageLinkedFieldWork =
+    fieldAccess.standaloneFieldWorkspace || actor.canManageScheduling;
   const fieldAuthorized =
-    fieldAccess.canAccessFieldService && actor.canPerformAssignedWork;
+    fieldAccess.canAccessFieldService &&
+    (canManageLinkedFieldWork || actor.canPerformAssignedWork);
   if (!fieldAuthorized) return false;
 
-  const { data, error } = await access.supabase
+  let query = access.supabase
     .from("service_visits")
     .select("id")
     .eq("shop_id", access.profile.shop_id)
     .eq("work_order_id", workOrderId)
-    .eq("assigned_user_id", access.profile.id)
-    .limit(1)
-    .maybeSingle<{ id: string }>();
+    .eq("mode", "mobile");
+  if (!canManageLinkedFieldWork) {
+    query = query.eq("assigned_user_id", access.profile.id);
+  }
+
+  const { data, error } = await query.limit(1).maybeSingle<{ id: string }>();
   if (error) throw new Error(error.message);
   return Boolean(data);
 }
@@ -197,7 +208,12 @@ export async function listFieldOperatorAssignedWorkOrderIds(
 ): Promise<string[]> {
   const actor = getActorCapabilities({ role: access.profile.role });
   const fieldAccess = await getMobileFieldServiceAccess(access);
-  if (!fieldAccess.canAccessFieldService || !actor.canPerformAssignedWork) {
+  const canManageLinkedFieldWork =
+    fieldAccess.standaloneFieldWorkspace || actor.canManageScheduling;
+  if (
+    !fieldAccess.canAccessFieldService ||
+    (!canManageLinkedFieldWork && !actor.canPerformAssignedWork)
+  ) {
     return [];
   }
 
@@ -205,11 +221,16 @@ export async function listFieldOperatorAssignedWorkOrderIds(
   let from = 0;
 
   while (true) {
-    const { data, error } = await access.supabase
+    let query = access.supabase
       .from("service_visits")
       .select("work_order_id")
       .eq("shop_id", access.profile.shop_id)
-      .eq("assigned_user_id", access.profile.id)
+      .eq("mode", "mobile");
+    if (!canManageLinkedFieldWork) {
+      query = query.eq("assigned_user_id", access.profile.id);
+    }
+
+    const { data, error } = await query
       .not("work_order_id", "is", null)
       .order("id", { ascending: true })
       .range(from, from + FIELD_ASSIGNMENT_PAGE_SIZE - 1);
@@ -224,6 +245,34 @@ export async function listFieldOperatorAssignedWorkOrderIds(
   }
 
   return [...workOrderIds];
+}
+
+export type WorkOrderProductAuthority =
+  | { authorized: true; product: "shop" | "field" }
+  | { authorized: false; product: null };
+
+/**
+ * Resolve one shared Work Order against its product and relationship contract.
+ * Shop retains tenant-wide role-shaped behavior. Field remains limited to a
+ * linked mobile visit managed by the caller or assigned to the caller.
+ */
+export async function resolveWorkOrderProductAuthority(
+  access: ShopAccess,
+  workOrderId: string,
+): Promise<WorkOrderProductAuthority> {
+  const shopAccess = await resolveShopProductAccess({
+    supabase: access.supabase,
+    shopId: access.profile.shop_id,
+    capabilities: SHOP_PRODUCT_CAPABILITIES,
+  });
+  if (shopAccess.entitled) return { authorized: true, product: "shop" };
+
+  if (await canFieldOperatorAccessWorkOrder(access, workOrderId)) {
+    return { authorized: true, product: "field" };
+  }
+
+  if (shopAccess.error) throw new Error(shopAccess.error);
+  return { authorized: false, product: null };
 }
 
 function fieldAccessDeniedResponse(fieldAccess: MobileFieldServiceAccess) {
@@ -254,7 +303,10 @@ function fieldAccessDeniedResponse(fieldAccess: MobileFieldServiceAccess) {
 export async function requireMobileServiceOperatorApiAccess(
   options: { requiredCapability?: keyof ActorCapabilities } = {},
 ) {
-  const access = await requireShopScopedApiAccess(options);
+  const access = await requireShopScopedApiAccess({
+    ...options,
+    requiredProductCapabilities: FIELD_PRODUCT_CAPABILITIES,
+  });
   if (!access.ok) return access;
 
   let fieldAccess: MobileFieldServiceAccess;
@@ -292,7 +344,9 @@ export async function requireMobileServiceOperatorApiAccess(
 }
 
 export async function requireMobileServiceConfigurationApiAccess() {
-  const access = await requireShopScopedApiAccess();
+  const access = await requireShopScopedApiAccess({
+    requiredProductCapabilities: FIELD_PRODUCT_CAPABILITIES,
+  });
   if (!access.ok) return access;
 
   let fieldAccess: MobileFieldServiceAccess;
@@ -329,7 +383,9 @@ export async function requireMobileServiceConfigurationApiAccess() {
 }
 
 export async function requireMobileServiceSetupApiAccess() {
-  const access = await requireShopScopedApiAccess();
+  const access = await requireShopScopedApiAccess({
+    requiredProductCapabilities: FIELD_PRODUCT_CAPABILITIES,
+  });
   if (!access.ok) return access;
 
   let fieldAccess: MobileFieldServiceAccess;

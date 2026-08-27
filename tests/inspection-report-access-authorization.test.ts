@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
     inspection_signatures: [] as Row[],
     vehicles: [] as Row[],
   },
+  adminRpc: vi.fn(),
   fleetActor: {
     isFleetActor: false,
     shopId: null as string | null,
@@ -74,6 +75,7 @@ vi.mock("server-only", () => ({}));
 vi.mock("@/features/integrations/shopreel/server/createAdminClient", () => ({
   createAdminClient: () => ({
     from: (table: TableName) => queryFor(table),
+    rpc: mocks.adminRpc,
     storage: { from: vi.fn() },
   }),
 }));
@@ -149,6 +151,7 @@ async function loadReport(
 describe("inspection report customer authorization", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.adminRpc.mockResolvedValue({ data: true, error: null });
     for (const table of Object.keys(mocks.rows) as TableName[]) {
       mocks.rows[table] = [];
     }
@@ -208,6 +211,13 @@ describe("inspection report customer authorization", () => {
     await expect(loadReport(client, "staff-user")).resolves.toMatchObject({
       inspectionId: "inspection-a",
     });
+    expect(mocks.adminRpc).toHaveBeenCalledWith(
+      "profixiq_shop_has_product_access",
+      {
+        p_capability: "shop",
+        p_shop_id: "shop-a",
+      },
+    );
     expect(client.rpc).not.toHaveBeenCalled();
   });
 

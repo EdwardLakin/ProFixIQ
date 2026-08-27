@@ -18,6 +18,9 @@ type TableName =
 type Row = Record<string, unknown>;
 
 const mocks = vi.hoisted(() => ({
+  canFieldOperatorAccessWorkOrder: vi.fn(),
+  resolveFleetActorContext: vi.fn(),
+  resolveShopProductAccess: vi.fn(),
   rows: {
     work_orders: [] as Row[],
     profiles: [] as Row[],
@@ -95,6 +98,16 @@ vi.mock("@/features/shared/lib/supabase/server", () => ({
     from: (table: TableName) => queryFor(table),
   }),
 }));
+vi.mock("@/features/mobile/service/server/access", () => ({
+  canFieldOperatorAccessWorkOrder: mocks.canFieldOperatorAccessWorkOrder,
+}));
+vi.mock("@/features/shared/lib/product-access", () => ({
+  SHOP_PRODUCT_CAPABILITIES: ["shop"],
+  resolveShopProductAccess: mocks.resolveShopProductAccess,
+}));
+vi.mock("@/features/fleet/lib/resolveFleetActorContext", () => ({
+  resolveFleetActorContext: mocks.resolveFleetActorContext,
+}));
 vi.mock("server-only", () => ({}));
 
 import { authorizeWorkOrderEvidence } from "@/features/work-orders/server/authorizeWorkOrderEvidence";
@@ -135,6 +148,15 @@ function seedWorkOrder() {
 describe("work-order line evidence authorization", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.canFieldOperatorAccessWorkOrder.mockResolvedValue(false);
+    mocks.resolveShopProductAccess.mockResolvedValue({
+      entitled: true,
+      error: null,
+    });
+    mocks.resolveFleetActorContext.mockResolvedValue({
+      fleetMemberships: [],
+      capabilities: { canAccessPortalFleetWrappers: false },
+    });
     mocks.filters.length = 0;
     for (const table of Object.keys(mocks.rows) as TableName[]) {
       mocks.rows[table] = [];
@@ -285,13 +307,16 @@ describe("work-order line evidence authorization", () => {
         role: "fleet_manager",
       },
     ];
-    mocks.rows.fleet_members = [
-      {
-        user_id: "fleet-user",
-        fleet_id: "fleet-a",
-        shop_id: "shop-b",
-      },
-    ];
+    mocks.resolveFleetActorContext.mockResolvedValue({
+      fleetMemberships: [
+        {
+          fleetId: "fleet-a",
+          shopId: "shop-b",
+          role: "manager",
+        },
+      ],
+      capabilities: { canAccessPortalFleetWrappers: true },
+    });
     mocks.rows.fleet_vehicles = [
       {
         fleet_id: "fleet-a",
@@ -306,12 +331,51 @@ describe("work-order line evidence authorization", () => {
     );
 
     expect(actor).toBeNull();
-    expect(mocks.filters).toContainEqual({
-      table: "fleet_members",
-      operation: "eq",
-      column: "shop_id",
-      value: "shop-a",
+    expect(mocks.resolveFleetActorContext).toHaveBeenCalledWith(
+      expect.any(Object),
+      {
+        userId: "fleet-user",
+        profileId: "fleet-user",
+      },
+    );
+  });
+
+  it("requires an active Fleet product before a related fleet member can view evidence", async () => {
+    mocks.rows.profiles = [
+      {
+        id: "fleet-user",
+        shop_id: "shop-a",
+        role: "fleet_manager",
+      },
+    ];
+    mocks.rows.fleet_vehicles = [
+      {
+        id: "fleet-vehicle-a",
+        fleet_id: "fleet-a",
+        vehicle_id: "vehicle-a",
+        shop_id: "shop-a",
+      },
+    ];
+    mocks.resolveFleetActorContext.mockResolvedValueOnce({
+      fleetMemberships: [
+        { fleetId: "fleet-a", shopId: "shop-a", role: "manager" },
+      ],
+      capabilities: { canAccessPortalFleetWrappers: false },
     });
+
+    await expect(
+      authorizeWorkOrderEvidence(sessionClient("fleet-user"), "work-order-a"),
+    ).resolves.toBeNull();
+
+    mocks.resolveFleetActorContext.mockResolvedValueOnce({
+      fleetMemberships: [
+        { fleetId: "fleet-a", shopId: "shop-a", role: "manager" },
+      ],
+      capabilities: { canAccessPortalFleetWrappers: true },
+    });
+    await expect(
+      authorizeWorkOrderEvidence(sessionClient("fleet-user"), "work-order-a"),
+    ).resolves.toMatchObject({ kind: "fleet", canEdit: false });
   });
 
   it("preserves Fleet evidence access through its independent membership", async () => {
@@ -337,6 +401,12 @@ describe("work-order line evidence authorization", () => {
         shop_id: "shop-a",
       },
     ];
+    mocks.resolveFleetActorContext.mockResolvedValueOnce({
+      fleetMemberships: [
+        { fleetId: "fleet-a", shopId: "shop-a", role: "manager" },
+      ],
+      capabilities: { canAccessPortalFleetWrappers: true },
+    });
 
     const actor = await authorizeWorkOrderEvidence(
       sessionClient("fleet-user"),

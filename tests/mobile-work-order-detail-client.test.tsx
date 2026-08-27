@@ -1,5 +1,11 @@
 import React from "react";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -13,7 +19,9 @@ const mocks = vi.hoisted(() => ({
   profileAbortSignal: vi.fn(),
   profileEq: vi.fn(),
   profileLookup: vi.fn(),
+  reconcileMobileProductScope: vi.fn(async () => undefined),
   removeMobileWorkOrderDetailSnapshots: vi.fn(async () => undefined),
+  removeMobileProductScopedSnapshots: vi.fn(async () => undefined),
   saveOfflineSnapshot: vi.fn(async () => undefined),
   search: "",
   updateActiveTab: vi.fn(),
@@ -115,6 +123,11 @@ vi.mock("@/features/work-orders/mobile/technicianOfflineExecution", () => ({
     mocks.removeMobileWorkOrderDetailSnapshots,
 }));
 
+vi.mock("@/features/work-orders/mobile/mobileProductScopeStorage", () => ({
+  reconcileMobileProductScope: mocks.reconcileMobileProductScope,
+  removeMobileProductScopedSnapshots: mocks.removeMobileProductScopedSnapshots,
+}));
+
 vi.mock("@shared/components/ui/PreviousPageButton", () => ({
   default: ({ to }: { to?: string }) => (
     <button type="button" data-return-to={to ?? ""}>
@@ -208,6 +221,7 @@ function detailSnapshot(
       canEditPricing: false,
     },
     latestInvoiceReview: null,
+    productScope: "shop" as const,
   };
 }
 
@@ -297,6 +311,22 @@ describe("mobile work-order detail client", () => {
     );
   });
 
+  it("reconciles product authority before saving an authorized detail", async () => {
+    render(<MobileWorkOrderClient routeId={WORK_ORDER_ID} />);
+
+    await screen.findByText("WO-000014");
+    await waitFor(() =>
+      expect(mocks.saveOfflineSnapshot).toHaveBeenCalledTimes(2),
+    );
+    expect(mocks.reconcileMobileProductScope).toHaveBeenCalledWith({
+      scope: { userId: "user-1", shopId: "shop-1" },
+      productScope: "shop",
+    });
+    expect(
+      mocks.reconcileMobileProductScope.mock.invocationCallOrder[0],
+    ).toBeLessThan(mocks.saveOfflineSnapshot.mock.invocationCallOrder[0]);
+  });
+
   it("preserves Add Job presentation for a manager whose profile id matches auth", async () => {
     mocks.search = "focus=line-1";
     mocks.profileLookup.mockResolvedValue({
@@ -383,10 +413,9 @@ describe("mobile work-order detail client", () => {
 
     const prioritized = await screen.findByText("Front brake pads");
     const inspection = screen.getByText("Brake inspection");
-    expect(screen.getAllByRole("article").map((card) => card.textContent)).toEqual([
-      "Front brake pads",
-      "Brake inspection",
-    ]);
+    expect(
+      screen.getAllByRole("article").map((card) => card.textContent),
+    ).toEqual(["Front brake pads", "Brake inspection"]);
     expect(prioritized).toHaveAttribute("data-display-number", "2");
     expect(inspection).toHaveAttribute("data-display-number", "1");
   });
@@ -663,16 +692,14 @@ describe("mobile work-order detail client", () => {
     await screen.findByText("WO-ACTIVE-CTA");
     await waitFor(() => {
       const jobCards = mocks.jobCardProps.mock.calls.map(([props]) => props);
-      expect(
-        jobCards.find((props) => props.line.id === staleLineId),
-      ).toEqual(expect.objectContaining({ isPunchedIn: false }));
-      expect(
-        jobCards.find((props) => props.line.id === activeLineId),
-      ).toEqual(expect.objectContaining({ isPunchedIn: true }));
+      expect(jobCards.find((props) => props.line.id === staleLineId)).toEqual(
+        expect.objectContaining({ isPunchedIn: false }),
+      );
+      expect(jobCards.find((props) => props.line.id === activeLineId)).toEqual(
+        expect.objectContaining({ isPunchedIn: true }),
+      );
     });
-    fireEvent.click(
-      screen.getByRole("button", { name: "Open active job" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Open active job" }));
 
     await screen.findByText(`Focused job ${activeLineId}`);
     expect(mocks.focusedJobProps).toHaveBeenLastCalledWith(

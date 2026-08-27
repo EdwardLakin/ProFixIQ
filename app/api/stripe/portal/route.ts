@@ -34,7 +34,10 @@ function getSiteUrl(): string {
   ).replace(/\/+$/, "");
 }
 
-function getShopDisplayName(shop: { shop_name?: string | null; name?: string | null }): string {
+function getShopDisplayName(shop: {
+  shop_name?: string | null;
+  name?: string | null;
+}): string {
   return (shop.shop_name ?? shop.name ?? "").trim() || "ProFixIQ Shop";
 }
 
@@ -81,9 +84,13 @@ export async function POST(req: Request) {
     const access = await requireShopScopedApiAccess({
       requiredCapability: "canManageBilling",
       allowRoles: ["owner", "admin"],
+      requiredProductCapabilities: [],
       requireOwnerPin: true,
       ownerPinRequest: req,
-      ownerPinAllowedPurposes: [OWNER_PIN_PURPOSES.BILLING, OWNER_PIN_PURPOSES.PRIVILEGED],
+      ownerPinAllowedPurposes: [
+        OWNER_PIN_PURPOSES.BILLING,
+        OWNER_PIN_PURPOSES.PRIVILEGED,
+      ],
     });
     if (!access.ok) return access.response;
 
@@ -102,12 +109,25 @@ export async function POST(req: Request) {
     }
 
     if (!String(shop.stripe_customer_id ?? "").trim()) {
-      const profile = await getProfileStripeArtifacts(access.supabase, access.profile.id);
-      const profileCustomerId = String(profile?.stripe_customer_id ?? "").trim();
-      const profileSubscriptionId = String(profile?.stripe_subscription_id ?? "").trim();
-      const profileCheckoutSessionId = String(profile?.stripe_checkout_session_id ?? "").trim();
+      const profile = await getProfileStripeArtifacts(
+        access.supabase,
+        access.profile.id,
+      );
+      const profileCustomerId = String(
+        profile?.stripe_customer_id ?? "",
+      ).trim();
+      const profileSubscriptionId = String(
+        profile?.stripe_subscription_id ?? "",
+      ).trim();
+      const profileCheckoutSessionId = String(
+        profile?.stripe_checkout_session_id ?? "",
+      ).trim();
 
-      if (profileCustomerId || profileSubscriptionId || profileCheckoutSessionId) {
+      if (
+        profileCustomerId ||
+        profileSubscriptionId ||
+        profileCheckoutSessionId
+      ) {
         return NextResponse.json(
           {
             error: "Billing linkage is required before opening the portal.",
@@ -128,7 +148,7 @@ export async function POST(req: Request) {
       shop,
       access.profile.id,
     );
-    const returnUrl = `${getSiteUrl()}/dashboard/owner/settings#billing`;
+    const returnUrl = `${getSiteUrl()}/account/billing`;
 
     const session = await stripe.billingPortal.sessions.create({
       customer: customerId,
@@ -143,7 +163,9 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Failed to create billing portal session.";
+      error instanceof Error
+        ? error.message
+        : "Failed to create billing portal session.";
 
     console.error("[stripe/portal] error", error);
 

@@ -107,6 +107,7 @@ describe("parts vendor management route", () => {
     expect(response.status).toBe(201);
     expect(mocks.requireShopScopedApiAccess).toHaveBeenCalledWith({
       requiredCapability: "canManageParts",
+      requiredProductCapabilities: ["shop", "field_service"],
     });
     expect(supabase.inserted).toEqual([
       expect.objectContaining({

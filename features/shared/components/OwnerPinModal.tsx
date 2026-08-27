@@ -3,12 +3,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/features/shared/components/ui/Button";
 import { Input } from "@/features/shared/components/ui/input";
+import type { OwnerPinPurpose } from "@/features/shared/lib/owner-pin-purpose";
 
 type Props = {
   shopId: string | null;
   open: boolean;
   onClose: () => void;
   onVerified?: (expiresAt: string | undefined) => void;
+  purpose?: OwnerPinPurpose;
 };
 
 type VerifyResponse = {
@@ -26,6 +28,7 @@ export default function OwnerPinModal({
   open,
   onClose,
   onVerified,
+  purpose,
 }: Props) {
   const [pin, setPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
@@ -62,7 +65,7 @@ export default function OwnerPinModal({
     const res = await fetch("/api/shop/owner-pin/verify", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ shopId, pin }),
+      body: JSON.stringify({ shopId, pin, purpose }),
     });
 
     const json = (await res.json().catch(() => ({}))) as VerifyResponse;
@@ -102,7 +105,7 @@ export default function OwnerPinModal({
     const res = await fetch("/api/shop/owner-pin/set", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ shopId, pin }),
+      body: JSON.stringify({ shopId, pin, purpose }),
     });
 
     const json = (await res.json().catch(() => ({}))) as VerifyResponse;

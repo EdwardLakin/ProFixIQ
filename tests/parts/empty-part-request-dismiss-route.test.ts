@@ -39,9 +39,8 @@ async function post(supabase: ReturnType<typeof buildSupabase>) {
     profile: { id: "actor-1", shop_id: "shop-1" },
     supabase,
   });
-  const { POST } = await import(
-    "../../app/api/parts/requests/[requestId]/dismiss-empty/route"
-  );
+  const { POST } =
+    await import("../../app/api/parts/requests/[requestId]/dismiss-empty/route");
   return POST(new Request("http://localhost"), {
     params: Promise.resolve({ requestId }),
   });
@@ -76,6 +75,7 @@ describe("dismiss empty parts request route", () => {
     });
     expect(mocks.requireShopScopedApiAccess).toHaveBeenCalledWith({
       allowRoles: ["owner", "admin", "manager", "advisor", "parts"],
+      requiredProductCapabilities: ["shop", "field_service"],
     });
     expect(db.rpc).toHaveBeenCalledWith("parts_dismiss_empty_request_atomic", {
       p_shop_id: "shop-1",
@@ -126,9 +126,8 @@ describe("dismiss empty parts request route", () => {
   });
 
   it("rejects malformed request IDs before authorization or mutation", async () => {
-    const { POST } = await import(
-      "../../app/api/parts/requests/[requestId]/dismiss-empty/route"
-    );
+    const { POST } =
+      await import("../../app/api/parts/requests/[requestId]/dismiss-empty/route");
     const response = await POST(new Request("http://localhost"), {
       params: Promise.resolve({ requestId: "not-a-uuid" }),
     });

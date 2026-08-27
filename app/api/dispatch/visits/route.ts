@@ -3,9 +3,14 @@ import { z } from "zod";
 import { createServiceVisit } from "@/features/dispatch/server/commands";
 import { dispatchErrorResponse } from "@/features/dispatch/server/http";
 import {
+  canCreateDispatchMode,
+  resolveDispatchProductScope,
+} from "@/features/dispatch/server/productScope";
+import {
   assertServiceVisitAnchor,
   assertServiceVisitSchedule,
 } from "@/features/scheduling/lib/service-visit-contract";
+import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
 const BodySchema = z
@@ -19,7 +24,13 @@ const BodySchema = z
     assignedUserId: z.string().uuid().nullable().optional(),
     serviceVehicleId: z.string().uuid().nullable().optional(),
     dispatchNotes: z.string().max(4000).nullable().optional(),
-    estimatedTravelMinutes: z.number().int().min(0).max(24 * 60).nullable().optional(),
+    estimatedTravelMinutes: z
+      .number()
+      .int()
+      .min(0)
+      .max(24 * 60)
+      .nullable()
+      .optional(),
     estimatedDistanceKm: z.number().min(0).max(100_000).nullable().optional(),
     operationKey: z.string().trim().min(8).max(300).optional(),
   })
@@ -50,6 +61,7 @@ const BodySchema = z
 export async function POST(request: Request) {
   const access = await requireShopScopedApiAccess({
     requiredCapability: "canManageScheduling",
+    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
   });
   if (!access.ok) return access.response;
 
@@ -62,18 +74,37 @@ export async function POST(request: Request) {
   }
 
   const input = parsed.data;
+  let productScope: Awaited<ReturnType<typeof resolveDispatchProductScope>>;
+  try {
+    productScope = await resolveDispatchProductScope(access);
+  } catch {
+    return NextResponse.json(
+      { error: "Unable to authorize this dispatch operation." },
+      { status: 503 },
+    );
+  }
+  if (!canCreateDispatchMode(productScope, input.mode)) {
+    return NextResponse.json(
+      { error: "Field access is limited to mobile service visits." },
+      { status: 403 },
+    );
+  }
   try {
     assertServiceVisitAnchor(input);
     assertServiceVisitSchedule(input.scheduledStart, input.scheduledEnd);
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Invalid service visit." },
+      {
+        error:
+          error instanceof Error ? error.message : "Invalid service visit.",
+      },
       { status: 400 },
     );
   }
 
   const operationKey =
-    request.headers.get("Idempotency-Key")?.trim() || input.operationKey?.trim();
+    request.headers.get("Idempotency-Key")?.trim() ||
+    input.operationKey?.trim();
   if (!operationKey || operationKey.length < 8) {
     return NextResponse.json(
       { error: "A stable Idempotency-Key is required." },

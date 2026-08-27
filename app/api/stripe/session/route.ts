@@ -28,9 +28,13 @@ export async function GET(req: Request) {
     const access = await requireShopScopedApiAccess({
       requiredCapability: "canManageBilling",
       allowRoles: ["owner", "admin"],
+      requiredProductCapabilities: [],
       requireOwnerPin: true,
       ownerPinRequest: req,
-      ownerPinAllowedPurposes: [OWNER_PIN_PURPOSES.BILLING, OWNER_PIN_PURPOSES.PRIVILEGED],
+      ownerPinAllowedPurposes: [
+        OWNER_PIN_PURPOSES.BILLING,
+        OWNER_PIN_PURPOSES.PRIVILEGED,
+      ],
     });
     if (!access.ok) return access.response;
 
@@ -51,7 +55,8 @@ export async function GET(req: Request) {
     }
 
     const metadataShopId = String(session.metadata?.shop_id ?? "").trim();
-    const sessionCustomer = typeof session.customer === "string" ? session.customer : null;
+    const sessionCustomer =
+      typeof session.customer === "string" ? session.customer : null;
     const shopCustomer = String(shop.stripe_customer_id ?? "").trim() || null;
 
     if (

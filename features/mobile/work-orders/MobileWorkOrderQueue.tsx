@@ -28,6 +28,11 @@ import {
   resolveMobileWorkOrderHref,
 } from "./mobileWorkOrderRouting";
 import { useOperationsLiveRefresh } from "@/features/work-orders/hooks/useOperationsLiveRefresh";
+import {
+  getCachedMobileProductScope,
+  reconcileMobileProductScope,
+  type MobileProductScope,
+} from "@/features/work-orders/mobile/mobileProductScopeStorage";
 
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -67,7 +72,32 @@ type WorkOrderListSnapshot = {
   signals: Record<string, WorkOrderSignal>;
   totalCount?: number;
   assignedOnly?: boolean;
+  fieldScoped?: boolean;
 };
+
+type WorkOrderProductScopeResponse =
+  | { scope: "shop"; workOrderIds: null }
+  | { scope: "field"; workOrderIds: string[] };
+
+function isWorkOrderProductScopeResponse(
+  value: unknown,
+): value is WorkOrderProductScopeResponse {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as { scope?: unknown; workOrderIds?: unknown };
+  if (candidate.scope === "shop") return candidate.workOrderIds === null;
+  return (
+    candidate.scope === "field" &&
+    Array.isArray(candidate.workOrderIds) &&
+    candidate.workOrderIds.every(
+      (id) => typeof id === "string" && id.length > 0,
+    )
+  );
+}
+
+function productScopeError(value: unknown): string | null {
+  if (!value || typeof value !== "object" || !("error" in value)) return null;
+  return typeof value.error === "string" ? value.error : null;
+}
 
 type StatusKey =
   | "awaiting_approval"
@@ -208,6 +238,8 @@ export default function MobileWorkOrderQueue({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [forbidden, setForbidden] = useState(false);
   const [assignedOnly, setAssignedOnly] = useState(false);
+  const [authorizedProductScope, setAuthorizedProductScope] =
+    useState<MobileProductScope | null>(null);
   const [scopeShopId, setScopeShopId] = useState<string | null>(null);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
   const [lineSignals, setLineSignals] = useState<
@@ -225,24 +257,40 @@ export default function MobileWorkOrderQueue({
       else setLoading(true);
       setErrorMessage(null);
       setForbidden(false);
+      setAuthorizedProductScope(null);
 
       try {
         const cachedScope = !navigator.onLine
           ? await getSessionMatchedOfflineScope()
           : null;
         if (!navigator.onLine && cachedScope) {
+          const cachedProductScope =
+            await getCachedMobileProductScope(cachedScope);
+          if (!isLatestLoad()) return;
+          if (!cachedProductScope) {
+            setErrorMessage(
+              "Connect once to verify which product may use this saved queue.",
+            );
+            setRows([]);
+            setTotalCount(0);
+            return;
+          }
           const cached = await getOfflineSnapshot<WorkOrderListSnapshot>({
             scope: cachedScope,
             kind: "mobile-work-order-list",
             entityId: status || "active",
           });
           if (!isLatestLoad()) return;
-          if (cached) {
+          if (
+            cached &&
+            cached.data.fieldScoped === (cachedProductScope === "field")
+          ) {
             setScopeShopId(cachedScope.shopId);
             setRows(cached.data.rows);
             setLineSignals(cached.data.signals);
             setTotalCount(cached.data.totalCount ?? cached.data.rows.length);
             setAssignedOnly(cached.data.assignedOnly ?? false);
+            setAuthorizedProductScope(cachedProductScope);
             setLastUpdatedAt(new Date(cached.updatedAt));
             return;
           }
@@ -295,6 +343,48 @@ export default function MobileWorkOrderQueue({
         setOfflineMutationScope(scope);
         setScopeShopId(me.shop_id);
 
+        const productScopeResponse = await fetch(
+          "/api/mobile/work-orders/scope",
+          { cache: "no-store", credentials: "include" },
+        );
+        const productScope: unknown = await productScopeResponse
+          .json()
+          .catch(() => null);
+        if (!isLatestLoad()) return;
+        if (
+          !productScopeResponse.ok ||
+          !isWorkOrderProductScopeResponse(productScope)
+        ) {
+          setErrorMessage(
+            productScopeError(productScope) ||
+              "Unable to authorize this work-order queue.",
+          );
+          setRows([]);
+          setTotalCount(0);
+          return;
+        }
+        const fieldWorkOrderIds =
+          productScope.scope === "field" ? productScope.workOrderIds : null;
+        try {
+          await reconcileMobileProductScope({
+            scope,
+            productScope: productScope.scope,
+          });
+        } catch (cacheError) {
+          console.error(
+            "[Mobile work-order queue] offline authority cache error:",
+            cacheError,
+          );
+          setErrorMessage(
+            "Unable to safely update offline work-order authorization.",
+          );
+          setRows([]);
+          setTotalCount(0);
+          return;
+        }
+        if (!isLatestLoad()) return;
+        setAuthorizedProductScope(productScope.scope);
+
         let query = supabase
           .from("work_orders")
           .select(
@@ -309,6 +399,29 @@ export default function MobileWorkOrderQueue({
           .eq("record_type", "work_order")
           .order("created_at", { ascending: false })
           .limit(100);
+
+        if (fieldWorkOrderIds) {
+          if (fieldWorkOrderIds.length === 0) {
+            setLineSignals({});
+            setRows([]);
+            setTotalCount(0);
+            setLastUpdatedAt(new Date());
+            await saveOfflineSnapshot({
+              scope,
+              kind: "mobile-work-order-list",
+              entityId: status || "active",
+              data: {
+                rows: [],
+                signals: {},
+                totalCount: 0,
+                assignedOnly: canViewAssignedWork,
+                fieldScoped: true,
+              },
+            });
+            return;
+          }
+          query = query.in("id", fieldWorkOrderIds);
+        }
 
         if (status === "") {
           query = query.in("status", [...ACTIVE_WORK_ORDER_STATUSES]);
@@ -359,8 +472,8 @@ export default function MobileWorkOrderQueue({
             return;
           }
 
-          const assignments =
-            (assignmentData ?? []) as WorkOrderLineAssignment[];
+          const assignments = (assignmentData ??
+            []) as WorkOrderLineAssignment[];
           const canonicalIdsByLine = assignments.reduce<Map<string, string[]>>(
             (map, assignment) => {
               const ids = map.get(assignment.work_order_line_id) ?? [];
@@ -385,9 +498,7 @@ export default function MobileWorkOrderQueue({
             const myAssignedLineIds = new Set(
               lineRows
                 .filter((line) =>
-                  assignmentByLine
-                    .get(line.id)
-                    ?.technicianIds.includes(me.id),
+                  assignmentByLine.get(line.id)?.technicianIds.includes(me.id),
                 )
                 .map((line) => line.id),
             );
@@ -447,6 +558,7 @@ export default function MobileWorkOrderQueue({
               ? visibleList.length
               : (count ?? list.length),
             assignedOnly: canViewAssignedWork,
+            fieldScoped: productScope.scope === "field",
           },
         });
       } finally {
@@ -564,9 +676,13 @@ export default function MobileWorkOrderQueue({
               <div className="mobile-dashboard-hero__eyebrow">
                 {inspectionTemplateId
                   ? "Inspection setup"
-                  : assignedOnly
-                    ? "Technician queue"
-                    : "Shop operations"}
+                  : authorizedProductScope === "field"
+                    ? "Field work orders"
+                    : assignedOnly
+                      ? "Technician queue"
+                      : authorizedProductScope === "shop"
+                        ? "Shop operations"
+                        : "Work orders"}
               </div>
               <h1 className="mobile-dashboard-hero__title">
                 {inspectionTemplateId
@@ -578,9 +694,13 @@ export default function MobileWorkOrderQueue({
               <p className="mobile-dashboard-hero__subtitle">
                 {inspectionTemplateId
                   ? "Select the work order that contains the job line for this template."
-                  : assignedOnly
-                    ? `${activeCount} active work order${activeCount === 1 ? "" : "s"} assigned to you.`
-                    : `${activeCount} active work order${activeCount === 1 ? "" : "s"} in the current shop flow.`}
+                  : authorizedProductScope === "field"
+                    ? `${activeCount} linked work order${activeCount === 1 ? "" : "s"} in the current Field flow.`
+                    : assignedOnly
+                      ? `${activeCount} active work order${activeCount === 1 ? "" : "s"} assigned to you.`
+                      : authorizedProductScope === "shop"
+                        ? `${activeCount} active work order${activeCount === 1 ? "" : "s"} in the current shop flow.`
+                        : "Verifying product access…"}
               </p>
             </div>
             <div className="flex shrink-0 gap-2">
@@ -688,7 +808,9 @@ export default function MobileWorkOrderQueue({
                 Refresh
               </button>
             ) : null}
-            {!assignedOnly && !inspectionTemplateId ? (
+            {!assignedOnly &&
+            authorizedProductScope === "shop" &&
+            !inspectionTemplateId ? (
               <Link
                 href="/mobile/work-orders/create"
                 className="inline-flex items-center gap-1.5 font-bold text-[color:var(--accent-copper)]"

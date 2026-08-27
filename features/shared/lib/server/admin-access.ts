@@ -17,6 +17,12 @@ import {
   type CanonicalRole,
 } from "@/features/shared/lib/rbac";
 import {
+  productAccessSignInHref,
+  resolveShopProductAccess,
+  SHOP_PRODUCT_CAPABILITIES,
+} from "@/features/shared/lib/product-access";
+import type { ProductCapability } from "@/features/stripe/lib/stripe/product-packages";
+import {
   OWNER_PIN_PURPOSES,
   type OwnerPinPurpose,
   requireOwnerPinVerified,
@@ -63,6 +69,12 @@ type ShopPageAccessOptions = {
   requiredCapability?: CapabilityKey;
   requiredCapabilities?: readonly CapabilityKey[];
   requiredWorkspaceCapability?: WorkspaceCapabilityKey;
+  /**
+   * Product packages that may authorize this tenant-scoped surface.
+   * Shop is the secure default. Use an empty list only for non-operational
+   * account recovery, never as a role/capability bypass.
+   */
+  requiredProductCapabilities?: readonly ProductCapability[];
   redirectTo?: string;
 };
 
@@ -85,6 +97,16 @@ export async function requireShopPageAccess(
 
   const actor = getActorCapabilities({ role: profile?.role });
   const role = actor.canonicalRole;
+  const requiredProductCapabilities =
+    options.requiredProductCapabilities ?? SHOP_PRODUCT_CAPABILITIES;
+  const productAccess =
+    profile?.shop_id && actor.isKnownRole
+      ? await resolveShopProductAccess({
+          supabase,
+          shopId: profile.shop_id,
+          capabilities: requiredProductCapabilities,
+        })
+      : null;
   const allowedRole = !options.allowRoles || options.allowRoles.includes(role);
   const allowedCapability =
     !options.requiredCapability || actor[options.requiredCapability];
@@ -140,6 +162,10 @@ export async function requireShopPageAccess(
     redirect(options.redirectTo ?? "/dashboard");
   }
 
+  if (productAccess?.error || !productAccess?.entitled) {
+    redirect(productAccessSignInHref(requiredProductCapabilities));
+  }
+
   return {
     profile: { ...profile, shop_id: profile.shop_id },
     canonicalRole: role,
@@ -164,6 +190,8 @@ type ApiAccessOptions = {
   requireOwnerPin?: boolean;
   ownerPinRequest?: Request;
   ownerPinAllowedPurposes?: OwnerPinPurpose[];
+  /** See ShopPageAccessOptions.requiredProductCapabilities. */
+  requiredProductCapabilities?: readonly ProductCapability[];
 };
 
 export async function requireShopScopedApiAccess(
@@ -218,6 +246,34 @@ export async function requireShopScopedApiAccess(
     return {
       ok: false,
       response: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
+    };
+  }
+
+  const requiredProductCapabilities =
+    options.requiredProductCapabilities ?? SHOP_PRODUCT_CAPABILITIES;
+  const productAccess = await resolveShopProductAccess({
+    supabase,
+    shopId: profile.shop_id,
+    capabilities: requiredProductCapabilities,
+  });
+
+  if (productAccess.error) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "Authorization service unavailable" },
+        { status: 503 },
+      ),
+    };
+  }
+
+  if (!productAccess.entitled) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "Product access required" },
+        { status: 403 },
+      ),
     };
   }
 

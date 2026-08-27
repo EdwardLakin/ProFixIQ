@@ -9,7 +9,16 @@ import {
 } from "@/features/inspections/lib/inspection/report";
 import { createAdminClient } from "@/features/integrations/shopreel/server/createAdminClient";
 import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
-import { canonicalizeRole } from "@/features/shared/lib/rbac";
+import {
+  canFieldOperatorAccessWorkOrder,
+  type ShopAccess,
+} from "@/features/mobile/service/server/access";
+import { resolveCanonicalStaffProfile } from "@/features/shared/lib/authenticated-profile";
+import {
+  resolveShopProductAccess,
+  SHOP_PRODUCT_CAPABILITIES,
+} from "@/features/shared/lib/product-access";
+import { getActorCapabilities } from "@/features/shared/lib/rbac";
 
 type DB = Database;
 
@@ -40,26 +49,45 @@ type RawInspection = {
 async function actorCanRead(args: {
   sessionClient: SupabaseClient<DB>;
   actorUserId: string;
+  workOrderId: string;
   shopId: string;
   customerId: string | null;
   vehicleId: string | null;
 }): Promise<boolean> {
   const admin = createAdminClient();
-  const { data: profile } = await admin
-    .from("profiles")
-    .select("shop_id,role")
-    .or(`id.eq.${args.actorUserId},user_id.eq.${args.actorUserId}`)
-    .eq("shop_id", args.shopId)
-    .limit(1)
-    .maybeSingle<{ shop_id: string | null; role: string | null }>();
-  const role = canonicalizeRole(profile?.role);
+  const { profile, error: profileError } = await resolveCanonicalStaffProfile(
+    admin,
+    args.actorUserId,
+  );
+  const staffActor = getActorCapabilities({ role: profile?.role });
   if (
+    !profileError &&
     profile?.shop_id === args.shopId &&
-    !["customer", "fleet_manager", "dispatcher", "driver", "unknown"].includes(
-      role,
-    )
+    staffActor.isKnownRole &&
+    staffActor.canonicalRole !== "customer" &&
+    !staffActor.canViewFleetOnlyData
   ) {
-    return true;
+    const shopProduct = await resolveShopProductAccess({
+      supabase: admin,
+      shopId: args.shopId,
+      capabilities: SHOP_PRODUCT_CAPABILITIES,
+    });
+    if (shopProduct.entitled) return true;
+
+    try {
+      const access: ShopAccess = {
+        ok: true,
+        profile: { ...profile, shop_id: args.shopId },
+        canonicalRole: staffActor.canonicalRole,
+        authUserId: args.actorUserId,
+        supabase: admin as ShopAccess["supabase"],
+      };
+      if (await canFieldOperatorAccessWorkOrder(access, args.workOrderId)) {
+        return true;
+      }
+    } catch {
+      // Customer and Fleet relationships remain independently authoritative.
+    }
   }
 
   if (args.customerId) {
@@ -203,6 +231,7 @@ async function hydrate(
     !(await actorCanRead({
       sessionClient,
       actorUserId,
+      workOrderId: workOrder.id,
       shopId: inspection.shop_id,
       customerId: workOrder.customer_id,
       vehicleId: workOrder.vehicle_id,

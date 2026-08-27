@@ -70,6 +70,7 @@ export async function GET(
     const allowed = await canAccessInvoicePdf({
       supabase,
       authUserId: user.id,
+      workOrderId,
       shopId: workOrder.shop_id,
       customerId: workOrder.customer_id,
       customerVisibleDocument: activeVersion !== null,

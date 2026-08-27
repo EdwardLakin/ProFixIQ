@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const createServerSupabaseRSCMock = vi.hoisted(() => vi.fn());
 const resolveCanonicalStaffProfileMock = vi.hoisted(() => vi.fn());
 const resolveCurrentWorkspaceCapabilitiesMock = vi.hoisted(() => vi.fn());
+const productAccessRpcMock = vi.hoisted(() => vi.fn());
 const redirectMock = vi.hoisted(() =>
   vi.fn((path: string): never => {
     throw new Error(`redirect:${path}`);
@@ -69,7 +70,9 @@ describe("shop page role-or-Workspace capability enforcement", () => {
           error: null,
         }),
       },
+      rpc: productAccessRpcMock,
     });
+    productAccessRpcMock.mockResolvedValue({ data: true, error: null });
     resolveCanonicalStaffProfileMock.mockResolvedValue({
       profile: {
         id: PROFILE_ID,
@@ -91,6 +94,17 @@ describe("shop page role-or-Workspace capability enforcement", () => {
     expect(result.profile.id).toBe(PROFILE_ID);
     expect(result.canonicalRole).toBe("mechanic");
     expect(redirectMock).not.toHaveBeenCalled();
+  });
+
+  it("redirects an otherwise valid role when Shop product access is denied", async () => {
+    productAccessRpcMock.mockResolvedValue({ data: false, error: null });
+    resolveCurrentWorkspaceCapabilitiesMock.mockResolvedValue(
+      capabilityResult(true),
+    );
+
+    await expect(requireWorkOrderListAccess()).rejects.toThrow(
+      "redirect:/shop/sign-in?access=shop_required",
+    );
   });
 
   it("keeps an ordinary mechanic out when the capability is denied", async () => {

@@ -2,17 +2,26 @@ import { NextResponse } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import {
   OWNER_PIN_PURPOSES,
+  type OwnerPinPurpose,
   setOwnerPinVerifiedCookie,
 } from "@/features/shared/lib/server/owner-pin";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
-import { hashOwnerPin, isValidOwnerPin, normalizeOwnerPin } from "@/features/shared/lib/server/owner-pin-crypto";
+import {
+  hashOwnerPin,
+  isValidOwnerPin,
+  normalizeOwnerPin,
+} from "@/features/shared/lib/server/owner-pin-crypto";
 import { resolveAuthenticatedStaffProfile } from "@/features/shared/lib/server/admin-access";
-
 
 type Body = {
   shopId?: string;
   pin?: string;
+  purpose?: string;
 };
+
+const OWNER_PIN_PURPOSE_VALUES = new Set<OwnerPinPurpose>(
+  Object.values(OWNER_PIN_PURPOSES),
+);
 
 export async function POST(req: Request) {
   try {
@@ -30,15 +39,31 @@ export async function POST(req: Request) {
     const body = (await req.json().catch(() => ({}))) as Body;
     const shopId = body.shopId?.trim() ?? "";
     const pin = normalizeOwnerPin(body.pin ?? "");
+    const requestedPurpose = body.purpose?.trim() ?? "";
+    if (
+      requestedPurpose &&
+      !OWNER_PIN_PURPOSE_VALUES.has(requestedPurpose as OwnerPinPurpose)
+    ) {
+      return NextResponse.json(
+        { error: "Invalid owner PIN purpose" },
+        { status: 400 },
+      );
+    }
+    const purpose = requestedPurpose
+      ? (requestedPurpose as OwnerPinPurpose)
+      : OWNER_PIN_PURPOSES.PRIVILEGED;
 
     if (!shopId || !pin) {
-      return NextResponse.json({ error: "shopId and pin are required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "shopId and pin are required" },
+        { status: 400 },
+      );
     }
 
     if (!isValidOwnerPin(pin)) {
       return NextResponse.json(
         { error: "PIN must be 4 to 8 digits" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -54,7 +79,31 @@ export async function POST(req: Request) {
 
     const actor = getActorCapabilities({ role: profile.role });
     if (!actor.isKnownRole || !actor.canOverrideOperationalState) {
-      return NextResponse.json({ error: "Only owner/admin can set PIN" }, { status: 403 });
+      return NextResponse.json(
+        { error: "Only owner/admin can set PIN" },
+        { status: 403 },
+      );
+    }
+
+    const { data: completion, error: completionError } = await supabase
+      .from("profiles")
+      .select("completed_onboarding")
+      .eq("id", profile.id)
+      .maybeSingle();
+    if (completionError || !completion) {
+      return NextResponse.json(
+        { error: "Profile authorization could not be verified" },
+        { status: 503 },
+      );
+    }
+    if (
+      completion.completed_onboarding !== true &&
+      purpose !== OWNER_PIN_PURPOSES.BILLING
+    ) {
+      return NextResponse.json(
+        { error: "Complete profile setup before unlocking owner settings" },
+        { status: 409 },
+      );
     }
 
     const hash = await hashOwnerPin(pin);
@@ -76,7 +125,7 @@ export async function POST(req: Request) {
     return setOwnerPinVerifiedCookie(res, {
       userId: user.id,
       shopId,
-      purpose: OWNER_PIN_PURPOSES.PRIVILEGED,
+      purpose,
     });
   } catch (err) {
     console.error("owner-pin.set error", err);

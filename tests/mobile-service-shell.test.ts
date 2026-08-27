@@ -30,7 +30,8 @@ describe("Mobile Service shell", () => {
 
   it("keeps repair execution in the existing mobile work-order surface", () => {
     expect(shell).toContain("/mobile/work-orders/${visit.workOrderId}");
-    expect(shell).toContain('href="/mobile/work-orders/create"');
+    expect(shell).not.toContain('href="/mobile/work-orders/create"');
+    expect(shell).toContain('href="/mobile/service/new"');
     expect(shell).not.toContain("work_order_lines");
   });
 
@@ -55,9 +56,7 @@ describe("Mobile Service shell", () => {
     expect(shell).toContain("writeFieldActiveSnapshot(scope, snapshot)");
     expect(shell).toContain("readFieldActiveSnapshot(boundScope)");
     expect(shell).toContain("const persistedScope = getOfflineMutationScope()");
-    expect(shell).toContain(
-      "persistedScope?.userId === boundScope.userId",
-    );
+    expect(shell).toContain("persistedScope?.userId === boundScope.userId");
     expect(shell).toContain("validateScope,");
     expect(shell).not.toContain('getItem("profixiq:mobile-service:active:v1")');
     expect(shell).toContain("online && !stale");

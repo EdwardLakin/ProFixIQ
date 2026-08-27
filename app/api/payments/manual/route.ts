@@ -4,7 +4,8 @@ import type { Database } from "@shared/types/types/supabase";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { WORKSPACE_CAPABILITIES } from "@/features/workspace/authorization/capabilities";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
-import { canFieldOperatorAccessWorkOrder } from "@/features/mobile/service/server/access";
+import { resolveWorkOrderProductAuthority } from "@/features/mobile/service/server/access";
+import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
 import {
   getActiveInvoiceVersion,
   postPaymentEvent,
@@ -40,6 +41,7 @@ type Body = {
 export async function POST(req: Request) {
   const access = await requireShopScopedApiAccess({
     requiredWorkspaceCapability: WORKSPACE_CAPABILITIES.manageWorkOrderInvoice,
+    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
   });
   if (!access.ok) return access.response;
 
@@ -59,14 +61,32 @@ export async function POST(req: Request) {
         { status: 400 },
       );
 
+    let productAuthority: Awaited<
+      ReturnType<typeof resolveWorkOrderProductAuthority>
+    >;
+    try {
+      productAuthority = await resolveWorkOrderProductAuthority(
+        access,
+        workOrderId,
+      );
+    } catch {
+      return NextResponse.json(
+        { error: "Authorization service unavailable" },
+        { status: 503 },
+      );
+    }
+    if (!productAuthority.authorized) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const actor = getActorCapabilities({ role: access.profile.role });
     const standardPaymentAuthority =
+      productAuthority.product === "shop" &&
       PAYMENT_ROLES.includes(
         access.canonicalRole as (typeof PAYMENT_ROLES)[number],
-      ) && actor.canManageWorkOrders;
-    const mobileFieldAuthority = standardPaymentAuthority
-      ? false
-      : await canFieldOperatorAccessWorkOrder(access, workOrderId);
+      ) &&
+      actor.canManageWorkOrders;
+    const mobileFieldAuthority = productAuthority.product === "field";
     if (!standardPaymentAuthority && !mobileFieldAuthority) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }

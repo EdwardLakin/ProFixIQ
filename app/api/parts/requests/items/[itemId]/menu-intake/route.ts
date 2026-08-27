@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
 type Body = {
@@ -38,6 +39,7 @@ export async function PATCH(
 ) {
   const access = await requireShopScopedApiAccess({
     requiredCapability: "canManageParts",
+    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
   });
   if (!access.ok) return access.response;
 
@@ -51,7 +53,11 @@ export async function PATCH(
 
   if (!itemId || !partId || !operationKey) {
     return NextResponse.json(
-      { ok: false, error: "A valid intake item, catalog part, and operation key are required." },
+      {
+        ok: false,
+        error:
+          "A valid intake item, catalog part, and operation key are required.",
+      },
       { status: 400 },
     );
   }
@@ -88,21 +94,17 @@ export async function PATCH(
 
   if (error || !data?.ok) {
     const detail = error?.message ?? "The menu part could not be reviewed.";
-    const status = /not authorized|identity|member|available to this shop/i.test(
-      detail,
-    )
-      ? 403
-      : /not found/i.test(detail)
-        ? 404
-        : /not an active service-menu intake/i.test(detail)
-          ? 409
-          : /required|quantity|unit cost/i.test(detail)
-            ? 400
-            : 500;
-    return NextResponse.json(
-      { ok: false, error: detail },
-      { status },
-    );
+    const status =
+      /not authorized|identity|member|available to this shop/i.test(detail)
+        ? 403
+        : /not found/i.test(detail)
+          ? 404
+          : /not an active service-menu intake/i.test(detail)
+            ? 409
+            : /required|quantity|unit cost/i.test(detail)
+              ? 400
+              : 500;
+    return NextResponse.json({ ok: false, error: detail }, { status });
   }
 
   return NextResponse.json({

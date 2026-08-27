@@ -18,7 +18,6 @@ async function fieldAccessAllowed(
   >,
   workOrderId: string,
 ): Promise<boolean> {
-  if (access.managementRole) return true;
   return canFieldOperatorAccessWorkOrder(access, workOrderId);
 }
 

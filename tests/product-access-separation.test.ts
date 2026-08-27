@@ -67,7 +67,7 @@ describe("dedicated product access surfaces", () => {
         },
         "/mobile/service/work-orders/work-order-1",
       ),
-    ).toBe("/auth/set-password?redirect=%2Fmobile%2Fservice");
+    ).toBe("/auth/set-password?surface=field&redirect=%2Fmobile%2Fservice");
 
     expect(
       resolveFieldExistingSessionHref(
@@ -84,7 +84,9 @@ describe("dedicated product access surfaces", () => {
         { canConfigure: true, mustChangePassword: true },
         "/mobile/service",
       ),
-    ).toBe("/auth/set-password?redirect=%2Fmobile%2Fservice%2Fsetup");
+    ).toBe(
+      "/auth/set-password?surface=field&redirect=%2Fmobile%2Fservice%2Fsetup",
+    );
 
     expect(resolveFieldExistingSessionHref({}, "/mobile/service")).toBeNull();
     expect(
@@ -128,7 +130,7 @@ describe("dedicated product access surfaces", () => {
         "/mobile/service/setup",
       ),
     ).toBe(
-      "/auth/set-password?redirect=%2Fmobile%2Fservice%2Fsetup",
+      "/auth/set-password?surface=field&redirect=%2Fmobile%2Fservice%2Fsetup",
     );
 
     expect(
