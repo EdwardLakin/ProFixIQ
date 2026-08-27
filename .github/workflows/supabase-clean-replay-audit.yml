@@ -568,6 +568,20 @@ jobs:
           bash tests/security/inspection-photo-upload-authorization-concurrency.runtime.sh "$DB_URL" \
             2>&1 | tee inspection-photo-upload-authorization-concurrency.log
 
+      - name: Execute Work Order media isolation integration
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+            -f tests/security/work-order-media-isolation.runtime.sql \
+            2>&1 | tee work-order-media-isolation-runtime.log
+
       - name: Verify bootstrap and existing-database baseline paths
         shell: bash
         env:
@@ -675,6 +689,7 @@ jobs:
             inspection-write-authorization-runtime.log
             inspection-write-authorization-concurrency.log
             inspection-photo-upload-authorization-concurrency.log
+            work-order-media-isolation-runtime.log
             owner-onboarding-authorization-runtime.log
             work-order-child-parent-tenant-runtime.log
             work-order-child-parent-tenant-locking-runtime.log

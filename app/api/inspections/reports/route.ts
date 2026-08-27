@@ -26,6 +26,7 @@ export async function GET(req: NextRequest) {
   }
 
   const reports = await listInspectionReportsForActor({
+    sessionClient: supabase,
     actorUserId: user.id,
     workOrderId,
     vehicleId,

@@ -27,6 +27,26 @@ describe("inspection report delivery contracts", () => {
     ).toContain('"dispatcher"');
   });
 
+  it("binds every service-role report read to active portal access first", () => {
+    const access = source(
+      "features/inspections/server/inspectionReportAccess.ts",
+    );
+    const page = source("app/inspection-reports/[id]/page.tsx");
+    const pdfRoute = source("app/api/inspections/[id]/report/pdf/route.ts");
+    const listRoute = source("app/api/inspections/reports/route.ts");
+
+    expect(access).toContain(
+      'args.sessionClient.rpc("profixiq_is_portal_customer_for"',
+    );
+    expect(access).not.toContain('.from("customers")');
+    for (const caller of [page, pdfRoute, listRoute]) {
+      expect(caller).toContain("sessionClient: supabase");
+    }
+    expect(pdfRoute.indexOf("getInspectionReportForActor")).toBeLessThan(
+      pdfRoute.indexOf("const admin = createAdminClient()"),
+    );
+  });
+
   it("labels technicians from current-cycle technician signatures", () => {
     const access = source(
       "features/inspections/server/inspectionReportAccess.ts",
@@ -54,7 +74,9 @@ describe("inspection report delivery contracts", () => {
     const route = source(
       "app/api/invoices/[id]/documents/[kind]/signed/route.ts",
     );
-    expect(route).toContain("hasAnyRole(profile?.role, ROLE_GROUPS.billingOperators)");
+    expect(route).toContain(
+      "hasAnyRole(profile?.role, ROLE_GROUPS.billingOperators)",
+    );
     expect(route).toContain("isExpectedDocumentStorage");
     expect(route).toContain('args.bucket !== "inspection_pdfs"');
   });

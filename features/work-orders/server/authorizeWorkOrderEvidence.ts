@@ -2,6 +2,7 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
+import { resolveCanonicalStaffProfile } from "@/features/shared/lib/authenticated-profile";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 
@@ -33,24 +34,15 @@ export async function authorizeWorkOrderEvidence(
     .maybeSingle();
   if (!workOrder?.id || !workOrder.shop_id) return null;
 
-  const profilePromise = admin
-    .from("profiles")
-    .select("id,shop_id,role")
-    .eq("id", user.id)
-    .maybeSingle();
-  const customerPromise = workOrder.customer_id
-    ? admin
-        .from("customers")
-        .select("id")
-        .eq("user_id", user.id)
-        .eq("id", workOrder.customer_id)
-        .eq("shop_id", workOrder.shop_id)
-        .maybeSingle()
-    : Promise.resolve({ data: null });
-  const [{ data: profile }, { data: customer }] = await Promise.all([
-    profilePromise,
-    customerPromise,
-  ]);
+  const profilePromise = resolveCanonicalStaffProfile(admin, user.id);
+  const portalAccessPromise = workOrder.customer_id
+    ? sessionClient.rpc("profixiq_is_portal_customer_for", {
+        p_customer_id: workOrder.customer_id,
+        p_shop_id: workOrder.shop_id,
+      })
+    : Promise.resolve({ data: false, error: null });
+  const [{ profile }, { data: portalAccess, error: portalAccessError }] =
+    await Promise.all([profilePromise, portalAccessPromise]);
 
   const capabilities = getActorCapabilities({ role: profile?.role });
   const isShopStaff =
@@ -67,12 +59,11 @@ export async function authorizeWorkOrderEvidence(
       workOrderId: workOrder.id,
       vehicleId: workOrder.vehicle_id,
       canEdit:
-        capabilities.canManageWorkOrders ||
-        capabilities.canRunInspections,
+        capabilities.canManageWorkOrders || capabilities.canRunInspections,
     };
   }
 
-  if (customer?.id && customer.id === workOrder.customer_id) {
+  if (!portalAccessError && portalAccess === true) {
     return {
       userId: user.id,
       kind: "customer",
