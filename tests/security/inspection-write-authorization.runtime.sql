@@ -1714,6 +1714,11 @@ end
 $inspection_import_and_sign_atomic_results$;
 
 reset role;
+-- RESET ROLE restores the database role, but transaction-local JWT claims
+-- still identify the technician. Fixture-only reassignment must explicitly
+-- restore service authority so the canonical assignment trigger continues to
+-- reject an equivalent authenticated actor mutation.
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
 update public.work_order_lines
 set assigned_tech_id = '76100000-0000-4000-8000-000000000005',
     assigned_to = '76100000-0000-4000-8000-000000000005'
