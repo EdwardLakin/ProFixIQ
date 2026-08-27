@@ -22,13 +22,21 @@ set user_id = excluded.user_id,
     role = excluded.role,
     full_name = excluded.full_name;
 
-insert into public.shops (id, owner_id, business_name, name, user_limit)
+insert into public.shops (
+  id, owner_id, business_name, name, user_limit,
+  subscription_package, stripe_subscription_status,
+  stripe_pricing_model, billing_entitlement_override
+)
 values (
   '81520000-0000-4000-8000-000000000001',
   '81510000-0000-4000-8000-000000000001',
   'Phase 15 Connected Lifecycle Shop',
   'Phase 15 Connected Lifecycle Shop',
-  5
+  5,
+  'shop_operations',
+  'active',
+  'product_packages_v1',
+  null
 )
 on conflict (id) do nothing;
 

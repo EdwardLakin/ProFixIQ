@@ -144,6 +144,20 @@ jobs:
             -f tests/security/approval-actor-binding.runtime.sql \
             2>&1 | tee approval-actor-binding-runtime.log
 
+      - name: Execute Shop Work Order product boundary integration
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+            -f tests/security/shop-work-order-product-boundary.runtime.sql \
+            2>&1 | tee shop-work-order-product-boundary-runtime.log
+
       - name: Execute Fleet service-request ownership integration
         shell: bash
         env:
@@ -674,6 +688,8 @@ jobs:
             supabase-db-reset.log
             supabase-existing-baseline.log
             manual-work-order-line-atomic-runtime.log
+            approval-actor-binding-runtime.log
+            shop-work-order-product-boundary-runtime.log
             parts-use-handoff-runtime.log
             parts-request-purchase-order-runtime.log
             parts-request-purchase-order-locking-runtime.log

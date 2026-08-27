@@ -21,15 +21,22 @@ set user_id = excluded.user_id,
 insert into public.shops (
   id, owner_id, business_name, name, user_limit,
   accepts_online_booking, min_notice_minutes, max_lead_days,
-  location_type, country
+  location_type, country, subscription_package, stripe_subscription_status,
+  stripe_pricing_model, billing_entitlement_override
 )
 values (
   '9b500000-0000-4000-8000-000000000001',
   '9a500000-0000-4000-8000-000000000001',
   'Mobile Postmerge Runtime', 'Mobile Postmerge Runtime', 10,
-  true, 0, 365, 'repair_facility', 'CA'
+  true, 0, 365, 'repair_facility', 'CA',
+  'shop_operations', 'active', 'product_packages_v1', null
 )
-on conflict (id) do update set country = 'CA';
+on conflict (id) do update set
+  country = excluded.country,
+  subscription_package = excluded.subscription_package,
+  stripe_subscription_status = excluded.stripe_subscription_status,
+  stripe_pricing_model = excluded.stripe_pricing_model,
+  billing_entitlement_override = excluded.billing_entitlement_override;
 
 update public.profiles
 set shop_id = '9b500000-0000-4000-8000-000000000001'
