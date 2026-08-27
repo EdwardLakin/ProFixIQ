@@ -71,6 +71,37 @@ using (
   )
 );
 
+-- Capability administration and every durable inspection writer share this
+-- tenant/capability transaction lock. Writers acquire it before resolving the
+-- effective decision, so a committed deny cannot be overtaken by an operation
+-- that was waiting on later Work Order, inspection, or line locks.
+create or replace function private.lock_work_order_inspection_capability(
+  p_shop_id uuid
+) returns void
+language plpgsql
+volatile
+security definer
+set search_path = ''
+as $$
+begin
+  if p_shop_id is null then
+    raise exception using
+      errcode = '22023',
+      message = 'Inspection capability lock requires a shop.';
+  end if;
+
+  perform pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended(
+      'workspace-authorization:' || p_shop_id::text || ':work_order.inspection.run',
+      0
+    )
+  );
+end;
+$$;
+
+revoke all on function private.lock_work_order_inspection_capability(uuid)
+  from public, anon, authenticated, service_role;
+
 -- Preserve the established canonical writer implementation as a private core.
 -- The public signature below remains stable for current and installed clients,
 -- while every public compatibility name passes through the same authorization
@@ -165,6 +196,8 @@ begin
     when not v_is_service_role then v_auth_user_id
     else coalesce(v_actor_linked_user_id, v_actor_profile_id)
   end;
+
+  perform private.lock_work_order_inspection_capability(p_shop_id);
 
   select decision.granted
     into v_actor_can_run_inspections
@@ -475,6 +508,8 @@ begin
       errcode = '42501',
       message = 'Inspection does not belong to the authenticated user shop.';
   end if;
+
+  perform private.lock_work_order_inspection_capability(v_inspection_shop_id);
 
   -- p_role describes the evidence being recorded, not the caller class. This
   -- staff-only RPC must authorize technician, advisor, and staff-captured
@@ -811,6 +846,8 @@ begin
       message = 'Inspection does not belong to the authenticated user shop.';
   end if;
 
+  perform private.lock_work_order_inspection_capability(v_inspection_shop_id);
+
   select decision.granted
     into v_actor_can_run_inspections
   from private.resolve_workspace_profile_capability(
@@ -972,6 +1009,8 @@ begin
       errcode = '42501',
       message = 'Inspection import actor is not linked to an authenticated user.';
   end if;
+
+  perform private.lock_work_order_inspection_capability(p_shop_id);
 
   select decision.granted
     into v_actor_can_run_inspections
@@ -1915,6 +1954,8 @@ begin
       message = 'Finalization actor is not linked to an authenticated user.';
   end if;
 
+  perform private.lock_work_order_inspection_capability(v_actor_shop_id);
+
   select decision.granted
     into v_actor_can_run_inspections
   from private.resolve_workspace_profile_capability(
@@ -2106,6 +2147,8 @@ begin
       errcode = '42501',
       message = 'Your role cannot reopen inspections.';
   end if;
+
+  perform private.lock_work_order_inspection_capability(p_shop_id);
 
   select decision.granted
     into v_actor_can_run_inspections

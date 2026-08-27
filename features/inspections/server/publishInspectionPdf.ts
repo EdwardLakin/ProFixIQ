@@ -6,11 +6,16 @@ import type { Database } from "@shared/types/types/supabase";
 import { getActiveBrandForRender } from "@/features/branding/server/getActiveBrandForRender";
 import { generateInspectionPDF } from "@/features/inspections/lib/inspection/pdf";
 import type { InspectionSession } from "@/features/inspections/lib/inspection/types";
+import { signCanonicalWorkOrderPhotoUrls } from "@/features/inspections/server/signCanonicalWorkOrderPhotoUrls";
 
 const BUCKET = "inspection_pdfs";
 
 function alreadyExists(error: unknown): boolean {
-  const candidate = error as { status?: number; statusCode?: number; message?: string };
+  const candidate = error as {
+    status?: number;
+    statusCode?: number;
+    message?: string;
+  };
   return (
     Number(candidate?.status ?? candidate?.statusCode) === 409 ||
     /already exists|duplicate/i.test(candidate?.message ?? "")
@@ -27,7 +32,29 @@ export async function publishInspectionPdf(args: {
   syncRevision: number;
 }) {
   const brand = await getActiveBrandForRender(args.shopId);
-  const bytes = await generateInspectionPDF(args.summary, {
+  const photoUrls = (args.summary.sections ?? []).flatMap((section) =>
+    (section.items ?? []).flatMap((item) => item.photoUrls ?? []),
+  );
+  const signedUrls = await signCanonicalWorkOrderPhotoUrls({
+    admin: args.admin,
+    shopId: args.shopId,
+    workOrderId: args.workOrderId,
+    urls: photoUrls,
+  });
+  let photoIndex = 0;
+  const presentationSummary: InspectionSession = {
+    ...args.summary,
+    sections: (args.summary.sections ?? []).map((section) => ({
+      ...section,
+      items: (section.items ?? []).map((item) => {
+        const nextUrls = (item.photoUrls ?? [])
+          .map(() => signedUrls[photoIndex++] ?? null)
+          .filter((url): url is string => Boolean(url));
+        return { ...item, photoUrls: nextUrls };
+      }),
+    })),
+  };
+  const bytes = await generateInspectionPDF(presentationSummary, {
     logoUrl: brand.logoUrl,
     shopName: null,
     colors: brand.colors,

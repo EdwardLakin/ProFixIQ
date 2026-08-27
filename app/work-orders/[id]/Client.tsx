@@ -40,7 +40,10 @@ import DecisionTimeline, {
 import DecisionEventFeed from "@/features/shared/components/ui/DecisionEventFeed";
 import { PANEL_VARIANTS } from "@/features/shared/components/ui/panelHierarchy";
 import { cn } from "@shared/lib/utils";
-import { formatDecisionStatus, resolveDecisionStatus } from "@/features/shared/lib/decisionStatus";
+import {
+  formatDecisionStatus,
+  resolveDecisionStatus,
+} from "@/features/shared/lib/decisionStatus";
 import { deriveEventsFromWorkOrder } from "@/features/shared/lib/decisionEvents";
 import { resolveWorkOrderLinePricing } from "@/features/work-orders/lib/pricing/resolveWorkOrderLinePricing";
 import {
@@ -101,7 +104,8 @@ const InspectionModal = dynamic(
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
 type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"];
-type WorkOrderQuoteLine = DB["public"]["Tables"]["work_order_quote_lines"]["Row"];
+type WorkOrderQuoteLine =
+  DB["public"]["Tables"]["work_order_quote_lines"]["Row"];
 type WorkOrderQuoteLineWithLineId = WorkOrderQuoteLine & {
   work_order_line_id?: string | null;
 };
@@ -142,18 +146,30 @@ type PropertyContext = {
 };
 
 function isCompletedLineStatus(status: string | null | undefined): boolean {
-  const normalized = String(status ?? "").trim().toLowerCase();
-  return normalized === "completed" || normalized === "ready_to_invoice" || normalized === "invoiced";
+  const normalized = String(status ?? "")
+    .trim()
+    .toLowerCase();
+  return (
+    normalized === "completed" ||
+    normalized === "ready_to_invoice" ||
+    normalized === "invoiced"
+  );
 }
 
 function partsRequestActionLabel(requests: PartRequestRow[]): string {
   switch (getPartsRequestDisplayState(requests)) {
-    case "none": return "Request all parts";
-    case "pick_order": return "Open Pick / Order";
-    case "awaiting_approval": return "Awaiting approval";
-    case "requested": return "Parts requested";
-    case "handoff": return "Parts handed off";
-    case "history": return "View parts history";
+    case "none":
+      return "Request all parts";
+    case "pick_order":
+      return "Open Pick / Order";
+    case "awaiting_approval":
+      return "Awaiting approval";
+    case "requested":
+      return "Parts requested";
+    case "handoff":
+      return "Parts handed off";
+    case "history":
+      return "View parts history";
   }
 }
 
@@ -166,7 +182,9 @@ function formatCurrency(value: number): string {
 }
 
 /** Normalize “where is the inspection template id stored for this line?” */
-function extractInspectionTemplateId(ln: WorkOrderLineWithInspectionMeta): string | null {
+function extractInspectionTemplateId(
+  ln: WorkOrderLineWithInspectionMeta,
+): string | null {
   return (
     ln.inspection_template_id ??
     ln.inspection_template ??
@@ -179,7 +197,6 @@ function extractInspectionTemplateId(ln: WorkOrderLineWithInspectionMeta): strin
     null
   );
 }
-
 
 // ----------------- Inspection template helpers -----------------
 
@@ -219,7 +236,9 @@ function toReviewIssues(raw: unknown): ReviewIssue[] {
   }
   return out;
 }
-function groupIssuesByLine(issues: ReviewIssue[]): Record<string, ReviewIssue[]> {
+function groupIssuesByLine(
+  issues: ReviewIssue[],
+): Record<string, ReviewIssue[]> {
   const m: Record<string, ReviewIssue[]> = {};
   for (const it of issues) {
     if (!it.lineId) continue;
@@ -246,21 +265,39 @@ export default function WorkOrderIdClient(): JSX.Element {
     [],
   );
   const [vehicle, setVehicle] = useTabState<Vehicle | null>("wo:id:veh", null);
-  const [customer, setCustomer] = useTabState<Customer | null>("wo:id:cust", null);
+  const [customer, setCustomer] = useTabState<Customer | null>(
+    "wo:id:cust",
+    null,
+  );
   const [shopLaborRate, setShopLaborRate] = useState<number | null>(null);
 
-  const [allocsByLine, setAllocsByLine] = useState<Record<string, AllocationRow[]>>({});
-  const [stagedPartsByLine, setStagedPartsByLine] = useState<Record<string, WorkOrderPartRow[]>>({});
-  const [partRequestsByQuoteLine, setPartRequestsByQuoteLine] = useState<Record<string, PartRequestRow[]>>({});
-  const [partRequestsByLine, setPartRequestsByLine] = useState<Record<string, PartRequestRow[]>>({});
+  const [allocsByLine, setAllocsByLine] = useState<
+    Record<string, AllocationRow[]>
+  >({});
+  const [stagedPartsByLine, setStagedPartsByLine] = useState<
+    Record<string, WorkOrderPartRow[]>
+  >({});
+  const [partRequestsByQuoteLine, setPartRequestsByQuoteLine] = useState<
+    Record<string, PartRequestRow[]>
+  >({});
+  const [partRequestsByLine, setPartRequestsByLine] = useState<
+    Record<string, PartRequestRow[]>
+  >({});
   const [evidence, setEvidence] = useState<WorkOrderEvidenceItem[]>([]);
-  const [requestingPartsLineId, setRequestingPartsLineId] = useState<string | null>(null);
+  const [requestingPartsLineId, setRequestingPartsLineId] = useState<
+    string | null
+  >(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [loadedOnce, setLoadedOnce] = useState<boolean>(false);
   const [viewError, setViewError] = useState<string | null>(null);
 
-  const [currentUserId, setCurrentUserId] = useTabState<string | null>("wo:id:uid", null);
-  const [currentAuthUserId, setCurrentAuthUserId] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useTabState<string | null>(
+    "wo:id:uid",
+    null,
+  );
+  const [currentAuthUserId, setCurrentAuthUserId] = useState<string | null>(
+    null,
+  );
   const [, setUserId] = useTabState<string | null>("wo:id:effectiveUid", null);
   const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
   const { can: canWorkspace } = useWorkspaceCapabilities();
@@ -325,7 +362,9 @@ export default function WorkOrderIdClient(): JSX.Element {
     Map<string, { technicianId: string; operationKey: string }>
   >(new Map());
 
-  const [activeTechsByLine, setActiveTechsByLine] = useState<Record<string, string[]>>({});
+  const [activeTechsByLine, setActiveTechsByLine] = useState<
+    Record<string, string[]>
+  >({});
   const [assignedTechsByLine, setAssignedTechsByLine] = useState<
     Record<string, string[]>
   >({});
@@ -333,10 +372,11 @@ export default function WorkOrderIdClient(): JSX.Element {
   // ✅ AI review state for status icons
   const [, setReviewChecked] = useState<boolean>(false);
   const [reviewOk, setReviewOk] = useState<boolean | undefined>(undefined);
-  const [reviewIssuesByLine, setReviewIssuesByLine] = useState<Record<string, ReviewIssue[]>>(
-    {},
-  );
-  const [propertyContext, setPropertyContext] = useState<PropertyContext | null>(null);
+  const [reviewIssuesByLine, setReviewIssuesByLine] = useState<
+    Record<string, ReviewIssue[]>
+  >({});
+  const [propertyContext, setPropertyContext] =
+    useState<PropertyContext | null>(null);
   const isPropertySourcedWorkOrder = propertyContext !== null;
   const workOrderStatusView = useMemo(
     () => formatWorkOrderHeaderStatus(wo?.status, wo?.payment_status),
@@ -437,7 +477,9 @@ export default function WorkOrderIdClient(): JSX.Element {
 
       if (prefersPanel) {
         // ✅ IMPORTANT: keep SAME route; just swap query param so it DOES NOT create a new tab
-        router.replace(`/work-orders/${routeId}?job=${encodeURIComponent(lineId)}`);
+        router.replace(
+          `/work-orders/${routeId}?job=${encodeURIComponent(lineId)}`,
+        );
         return;
       }
 
@@ -535,9 +577,9 @@ export default function WorkOrderIdClient(): JSX.Element {
     const loadReadableTechnicians = async () => {
       try {
         const res = await fetch(assignablesUrl);
-        const json = (await res.json().catch(() => null)) as
-          | { data?: Array<Pick<Profile, "id" | "full_name" | "role">> }
-          | null;
+        const json = (await res.json().catch(() => null)) as {
+          data?: Array<Pick<Profile, "id" | "full_name" | "role">>;
+        } | null;
         if (!cancelled && res.ok && Array.isArray(json?.data)) {
           setAssignables(json.data);
         }
@@ -653,9 +695,9 @@ export default function WorkOrderIdClient(): JSX.Element {
         ]);
 
         if (evidenceRes.ok) {
-          const evidenceBody = (await evidenceRes.json().catch(() => null)) as
-            | { items?: WorkOrderEvidenceItem[] }
-            | null;
+          const evidenceBody = (await evidenceRes.json().catch(() => null)) as {
+            items?: WorkOrderEvidenceItem[];
+          } | null;
           setEvidence(evidenceBody?.items ?? []);
         } else {
           setEvidence([]);
@@ -933,7 +975,10 @@ export default function WorkOrderIdClient(): JSX.Element {
 
     window.addEventListener("inspection:completed", handler as EventListener);
     return () => {
-      window.removeEventListener("inspection:completed", handler as EventListener);
+      window.removeEventListener(
+        "inspection:completed",
+        handler as EventListener,
+      );
     };
   }, [openFocusedJob]);
 
@@ -982,7 +1027,15 @@ export default function WorkOrderIdClient(): JSX.Element {
   }, [quoteLines]);
 
   const pricingByLine = useMemo(() => {
-    const byLine: Record<string, { laborTotal: number; partsTotal: number; lineTotal: number; partsCount: number }> = {};
+    const byLine: Record<
+      string,
+      {
+        laborTotal: number;
+        partsTotal: number;
+        lineTotal: number;
+        partsCount: number;
+      }
+    > = {};
     for (const line of lines) {
       const quoteCandidates = activeQuotesByLine[line.id] ?? [];
       const quote = quoteCandidates[quoteCandidates.length - 1];
@@ -991,7 +1044,10 @@ export default function WorkOrderIdClient(): JSX.Element {
         quote,
         shopLaborRate,
         stagedParts: stagedPartsByLine[line.id] ?? [],
-        allocatedParts: filterAllocationsNotBackedByCanonicalParts(allocsByLine[line.id] ?? [], stagedPartsByLine[line.id] ?? []),
+        allocatedParts: filterAllocationsNotBackedByCanonicalParts(
+          allocsByLine[line.id] ?? [],
+          stagedPartsByLine[line.id] ?? [],
+        ),
       });
       byLine[line.id] = {
         laborTotal: resolved.laborTotal,
@@ -1001,23 +1057,34 @@ export default function WorkOrderIdClient(): JSX.Element {
       };
     }
     return byLine;
-  }, [activeQuotesByLine, allocsByLine, lines, shopLaborRate, stagedPartsByLine]);
+  }, [
+    activeQuotesByLine,
+    allocsByLine,
+    lines,
+    shopLaborRate,
+    stagedPartsByLine,
+  ]);
 
   const workOrderTotal = useMemo(
     () =>
       lines
         .filter((line) => (line.line_type ?? "job") !== "info")
         .reduce(
-        (total, line) => total + Number(pricingByLine[line.id]?.lineTotal ?? 0),
-        0,
-      ),
+          (total, line) =>
+            total + Number(pricingByLine[line.id]?.lineTotal ?? 0),
+          0,
+        ),
     [lines, pricingByLine],
   );
 
   const isPendingApprovalLine = (l: WorkOrderLine) => {
     const a = (l.approval_state ?? "").toLowerCase();
     const s = (l.status ?? "").toLowerCase();
-    return a === "pending" || s === "waiting_for_approval" || s === "awaiting_approval";
+    return (
+      a === "pending" ||
+      s === "waiting_for_approval" ||
+      s === "awaiting_approval"
+    );
   };
 
   const jobLines = useMemo(
@@ -1029,18 +1096,28 @@ export default function WorkOrderIdClient(): JSX.Element {
     [lines],
   );
 
-  const approvalPending = useMemo(() => jobLines.filter(isPendingApprovalLine), [jobLines]);
+  const approvalPending = useMemo(
+    () => jobLines.filter(isPendingApprovalLine),
+    [jobLines],
+  );
 
   const activeJobLines = useMemo(() => jobLines, [jobLines]);
-  const activeJobCount = useMemo(() => countActiveWorkOrderLines(jobLines), [jobLines]);
+  const activeJobCount = useMemo(
+    () => countActiveWorkOrderLines(jobLines),
+    [jobLines],
+  );
 
   const approvalPendingQuotes = useMemo(
     () => quoteLines.filter((q) => isReviewableQuoteLine(q)),
     [quoteLines],
   );
 
-  const hasAnyApprovalItems = approvalPending.length > 0 || approvalPendingQuotes.length > 0;
-  const recentApprovalPending = useMemo(() => approvalPending.slice(0, 2), [approvalPending]);
+  const hasAnyApprovalItems =
+    approvalPending.length > 0 || approvalPendingQuotes.length > 0;
+  const recentApprovalPending = useMemo(
+    () => approvalPending.slice(0, 2),
+    [approvalPending],
+  );
   const recentApprovalPendingQuotes = useMemo(
     () => approvalPendingQuotes.slice(0, 2),
     [approvalPendingQuotes],
@@ -1080,7 +1157,11 @@ export default function WorkOrderIdClient(): JSX.Element {
       {
         key: "approval",
         label: hasDeclined ? "Declined" : "Awaiting approval",
-        state: hasAwaitingApproval ? "current" : hasDeclined || hasInProgress || isCompleted ? "past" : "future",
+        state: hasAwaitingApproval
+          ? "current"
+          : hasDeclined || hasInProgress || isCompleted
+            ? "past"
+            : "future",
       },
       {
         key: "execution",
@@ -1134,10 +1215,12 @@ export default function WorkOrderIdClient(): JSX.Element {
 
     const pinnedActiveId = activeForCurrentTech?.id ?? null;
     const nonCompleted = baseSorted.filter(
-      (line) => !isCompletedLineStatus(line.status) && line.id !== pinnedActiveId,
+      (line) =>
+        !isCompletedLineStatus(line.status) && line.id !== pinnedActiveId,
     );
     const completed = baseSorted.filter(
-      (line) => isCompletedLineStatus(line.status) && line.id !== pinnedActiveId,
+      (line) =>
+        isCompletedLineStatus(line.status) && line.id !== pinnedActiveId,
     );
 
     if (activeForCurrentTech) {
@@ -1152,17 +1235,33 @@ export default function WorkOrderIdClient(): JSX.Element {
     if (sortedLines.length === 0) return;
     const fallbackLineId = sortedLines[0]?.id;
     if (!fallbackLineId) return;
-    router.replace(`/work-orders/${routeId}?job=${encodeURIComponent(fallbackLineId)}`);
+    router.replace(
+      `/work-orders/${routeId}?job=${encodeURIComponent(fallbackLineId)}`,
+    );
   }, [prefersPanel, jobFromQuery, sortedLines, routeId, router]);
 
   const createdAt = wo?.created_at ? new Date(wo.created_at) : null;
   const createdAtText =
-    createdAt && !Number.isNaN(createdAt.getTime()) ? format(createdAt, "PPpp") : "—";
+    createdAt && !Number.isNaN(createdAt.getTime())
+      ? format(createdAt, "PPpp")
+      : "—";
   const expectedCompletionText = wo?.expected_completion_at
     ? format(new Date(wo.expected_completion_at), "PPpp")
     : "—";
 
   const currentActor = getActorCapabilities({ role: currentUserRole });
+  const actorAssignedToLine = (line: WorkOrderLine): boolean => {
+    const actorIds = new Set(
+      [currentUserId, currentAuthUserId].filter((id): id is string =>
+        Boolean(id),
+      ),
+    );
+    return [
+      line.assigned_tech_id,
+      line.assigned_to,
+      ...(assignedTechsByLine[line.id] ?? []),
+    ].some((id) => Boolean(id) && actorIds.has(id as string));
+  };
   const canRunInspectionForLine = (line: WorkOrderLine): boolean =>
     canRunWorkOrderLineInspection({
       canRunInspections,
@@ -1229,7 +1328,8 @@ export default function WorkOrderIdClient(): JSX.Element {
         });
         await fetchAll();
         if (
-          assignmentOperationsRef.current.get(lineId)?.operationKey === operationKey
+          assignmentOperationsRef.current.get(lineId)?.operationKey ===
+          operationKey
         ) {
           assignmentOperationsRef.current.delete(lineId);
         }
@@ -1240,7 +1340,9 @@ export default function WorkOrderIdClient(): JSX.Element {
         );
       } catch (error) {
         const message =
-          error instanceof Error ? error.message : "Failed to update primary tech.";
+          error instanceof Error
+            ? error.message
+            : "Failed to update primary tech.";
         toast.error(message);
         if (message.includes("ASSIGNMENT_STALE")) {
           await fetchAll();
@@ -1272,7 +1374,9 @@ export default function WorkOrderIdClient(): JSX.Element {
 
   const isWaiter = !!(
     waiterFlagSource &&
-    (waiterFlagSource.is_waiter || waiterFlagSource.waiter || waiterFlagSource.customer_waiting)
+    (waiterFlagSource.is_waiter ||
+      waiterFlagSource.waiter ||
+      waiterFlagSource.customer_waiting)
   );
   const inProgressCount = useMemo(
     () =>
@@ -1289,7 +1393,11 @@ export default function WorkOrderIdClient(): JSX.Element {
     () =>
       jobLines.filter((line) => {
         const status = (line.status ?? "").toLowerCase();
-        return status === "on_hold" || status === "waiting_for_parts" || status === "blocked";
+        return (
+          status === "on_hold" ||
+          status === "waiting_for_parts" ||
+          status === "blocked"
+        );
       }).length,
     [jobLines],
   );
@@ -1322,19 +1430,24 @@ export default function WorkOrderIdClient(): JSX.Element {
     async (lineId: string) => {
       if (!lineId) return;
 
-      const res = await fetch(`/api/work-orders/lines/${lineId}/approval-decision`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          decision: "approve",
-          workOrderId: wo?.id ?? null,
-          resetPunchClock: true,
-        }),
-      });
+      const res = await fetch(
+        `/api/work-orders/lines/${lineId}/approval-decision`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            decision: "approve",
+            workOrderId: wo?.id ?? null,
+            resetPunchClock: true,
+          }),
+        },
+      );
 
-      const json = (await res.json().catch(() => null)) as
-        | { ok?: boolean; error?: string; workOrderId?: string | null }
-        | null;
+      const json = (await res.json().catch(() => null)) as {
+        ok?: boolean;
+        error?: string;
+        workOrderId?: string | null;
+      } | null;
 
       if (!res.ok || !json?.ok) {
         toast.error(json?.error ?? "Failed to approve line");
@@ -1350,18 +1463,23 @@ export default function WorkOrderIdClient(): JSX.Element {
   const declineLine = useCallback(
     async (lineId: string) => {
       if (!lineId) return;
-      const res = await fetch(`/api/work-orders/lines/${lineId}/approval-decision`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          decision: "decline",
-          workOrderId: wo?.id ?? null,
-        }),
-      });
-      const json = (await res.json().catch(() => null)) as
-        | { ok?: boolean; error?: string }
-        | null;
-      if (!res.ok || !json?.ok) return toast.error(json?.error ?? "Failed to decline line");
+      const res = await fetch(
+        `/api/work-orders/lines/${lineId}/approval-decision`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            decision: "decline",
+            workOrderId: wo?.id ?? null,
+          }),
+        },
+      );
+      const json = (await res.json().catch(() => null)) as {
+        ok?: boolean;
+        error?: string;
+      } | null;
+      if (!res.ok || !json?.ok)
+        return toast.error(json?.error ?? "Failed to decline line");
       toast.success("Line declined");
       void fetchAll();
     },
@@ -1372,10 +1490,16 @@ export default function WorkOrderIdClient(): JSX.Element {
     async (quoteId: string) => {
       if (!quoteId) return;
       try {
-        const res = await fetch(`/api/work-orders/quotes/${quoteId}/authorize`, {
-          method: "POST",
-        });
-        const j = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
+        const res = await fetch(
+          `/api/work-orders/quotes/${quoteId}/authorize`,
+          {
+            method: "POST",
+          },
+        );
+        const j = (await res.json().catch(() => null)) as {
+          ok?: boolean;
+          error?: string;
+        } | null;
 
         if (!res.ok || j?.error) {
           throw new Error(j?.error || "Failed to authorize quote");
@@ -1384,7 +1508,8 @@ export default function WorkOrderIdClient(): JSX.Element {
         toast.success("Quote authorized");
         void fetchAll();
       } catch (e) {
-        const msg = e instanceof Error ? e.message : "Failed to authorize quote";
+        const msg =
+          e instanceof Error ? e.message : "Failed to authorize quote";
         toast.error(msg);
       }
     },
@@ -1402,9 +1527,10 @@ export default function WorkOrderIdClient(): JSX.Element {
           body: JSON.stringify({}),
         },
       );
-      const result = (await response.json().catch(() => null)) as
-        | { ok?: boolean; error?: string }
-        | null;
+      const result = (await response.json().catch(() => null)) as {
+        ok?: boolean;
+        error?: string;
+      } | null;
       if (!response.ok || !result?.ok) {
         toast.error(result?.error ?? "Failed to decline quote");
         return;
@@ -1442,7 +1568,11 @@ export default function WorkOrderIdClient(): JSX.Element {
 
       const rawSections = (data.sections ?? []) as TemplateSection[];
       const vehicleType = String(data.vehicle_type ?? "");
-      const sections = prepareSectionsWithCornerGrid(rawSections, vehicleType, null);
+      const sections = prepareSectionsWithCornerGrid(
+        rawSections,
+        vehicleType,
+        null,
+      );
 
       const templateName = data.template_name ?? null;
       const title = templateName ?? "Inspection";
@@ -1479,19 +1609,24 @@ export default function WorkOrderIdClient(): JSX.Element {
           if (customer.address) paramsObj.address = customer.address;
           if (customer.city) paramsObj.city = customer.city;
           if (customer.province) paramsObj.province = customer.province;
-          if (customer.postal_code) paramsObj.postal_code = customer.postal_code;
+          if (customer.postal_code)
+            paramsObj.postal_code = customer.postal_code;
         }
 
         if (vehicle) {
-          if (vehicle.year != null) paramsObj.year = String(vehicle.year as string | number);
+          if (vehicle.year != null)
+            paramsObj.year = String(vehicle.year as string | number);
           if (vehicle.make) paramsObj.make = vehicle.make;
           if (vehicle.model) paramsObj.model = vehicle.model;
           if (vehicle.vin) paramsObj.vin = vehicle.vin;
-          if (vehicle.license_plate) paramsObj.license_plate = vehicle.license_plate;
-          if (vehicle.mileage != null) paramsObj.mileage = String(vehicle.mileage);
+          if (vehicle.license_plate)
+            paramsObj.license_plate = vehicle.license_plate;
+          if (vehicle.mileage != null)
+            paramsObj.mileage = String(vehicle.mileage);
           if (vehicle.color) paramsObj.color = vehicle.color;
           if (vehicle.unit_number) paramsObj.unit_number = vehicle.unit_number;
-          if (vehicle.engine_hours != null) paramsObj.engine_hours = String(vehicle.engine_hours);
+          if (vehicle.engine_hours != null)
+            paramsObj.engine_hours = String(vehicle.engine_hours);
         }
 
         sessionStorage.setItem("inspection:sections", JSON.stringify(sections));
@@ -1530,7 +1665,7 @@ export default function WorkOrderIdClient(): JSX.Element {
       setInspectionOpen(true);
       toast.success("Inspection opened");
     },
-    [wo?.id, customer, vehicle,],
+    [wo?.id, customer, vehicle],
   );
 
   useEffect(() => {
@@ -1552,7 +1687,9 @@ export default function WorkOrderIdClient(): JSX.Element {
     async (lineId: string, existingRequests: PartRequestRow[]) => {
       if (!wo?.id || requestingPartsLineId) return;
       if (existingRequests.length > 0) {
-        router.push(`/parts/requests/${encodeURIComponent(wo.custom_id || wo.id)}`);
+        router.push(
+          `/parts/requests/${encodeURIComponent(wo.custom_id || wo.id)}`,
+        );
         return;
       }
 
@@ -1590,7 +1727,9 @@ export default function WorkOrderIdClient(): JSX.Element {
         await fetchAll();
       } catch (error) {
         toast.error(
-          error instanceof Error ? error.message : "Unable to request line parts.",
+          error instanceof Error
+            ? error.message
+            : "Unable to request line parts.",
           { id: toastId },
         );
       } finally {
@@ -1601,7 +1740,8 @@ export default function WorkOrderIdClient(): JSX.Element {
   );
 
   /* -------------------------- UI -------------------------- */
-  if (!routeId) return <div className="p-6 text-red-500">Missing work order id.</div>;
+  if (!routeId)
+    return <div className="p-6 text-red-500">Missing work order id.</div>;
 
   const Skeleton = ({ className = "" }: { className?: string }) => (
     <div className={`animate-pulse rounded-lg bg-muted ${className}`} />
@@ -1613,7 +1753,10 @@ export default function WorkOrderIdClient(): JSX.Element {
   // ✅ layout: desktop keeps the focused cockpit open with a selected (or first) line.
   const panelLineId = focusedJobId ?? sortedLines[0]?.id ?? null;
   const panelLine = panelLineId
-    ? sortedLines.find((line) => line.id === panelLineId) ?? null
+    ? (sortedLines.find((line) => line.id === panelLineId) ?? null)
+    : null;
+  const focusedModalLine = focusedJobId
+    ? (lines.find((line) => line.id === focusedJobId) ?? null)
     : null;
   const panelInspectionTemplateId = panelLine
     ? extractInspectionTemplateId(panelLine)
@@ -1623,22 +1766,22 @@ export default function WorkOrderIdClient(): JSX.Element {
     ? readableTechNamesById[panelPrimaryTechId]?.trim() || null
     : null;
   const panelPrimaryTech = panelPrimaryTechId
-    ? assignables.find((profile) => profile.id === panelPrimaryTechId) ??
+    ? (assignables.find((profile) => profile.id === panelPrimaryTechId) ??
       (panelPrimaryTechName
         ? {
             id: panelPrimaryTechId,
             full_name: panelPrimaryTechName,
             role: null,
           }
-        : null)
+        : null))
     : null;
   const panelActiveTechnicianIds = panelLine
-    ? activeTechsByLine[panelLine.id] ?? []
+    ? (activeTechsByLine[panelLine.id] ?? [])
     : [];
   const panelLineIsPunchedIn = Boolean(
     panelLine &&
-      (panelActiveTechnicianIds.length > 0 ||
-        (panelLine.punched_in_at && !panelLine.punched_out_at)),
+    (panelActiveTechnicianIds.length > 0 ||
+      (panelLine.punched_in_at && !panelLine.punched_out_at)),
   );
 
   return (
@@ -1651,168 +1794,203 @@ export default function WorkOrderIdClient(): JSX.Element {
         lineId={focusedJobId}
       />
 
-        {authChecked && !currentUserId && (
-          <section className={cn(PANEL_VARIANTS.secondary, "p-3 text-sm text-amber-100")}>
-            You appear signed out on this tab. If actions fail, open{" "}
-            <Link href="/sign-in" className="underline hover:text-[color:var(--theme-text-primary)]">
-              Sign In
-            </Link>{" "}
-            and return here.
-          </section>
-        )}
+      {authChecked && !currentUserId && (
+        <section
+          className={cn(PANEL_VARIANTS.secondary, "p-3 text-sm text-amber-100")}
+        >
+          You appear signed out on this tab. If actions fail, open{" "}
+          <Link
+            href="/sign-in"
+            className="underline hover:text-[color:var(--theme-text-primary)]"
+          >
+            Sign In
+          </Link>{" "}
+          and return here.
+        </section>
+      )}
 
-        {viewError && (
-          <section className={cn(PANEL_VARIANTS.secondary, "p-3 text-sm text-red-200")}>
-            {viewError}
-          </section>
-        )}
+      {viewError && (
+        <section
+          className={cn(PANEL_VARIANTS.secondary, "p-3 text-sm text-red-200")}
+        >
+          {viewError}
+        </section>
+      )}
 
-        {loading && !loadedOnce ? (
-          <div className="mt-1 grid gap-4">
-            <Skeleton className="h-24" />
-            <Skeleton className="h-40" />
-            <Skeleton className="h-56" />
-          </div>
-        ) : !wo ? (
-          <div className="mt-2 text-sm text-red-400">Work order not found.</div>
-        ) : (
-          <div className={cn("space-y-2", supportFullyCollapsed && "space-y-1.5")}>
-            <WorkOrderWorkspaceModule
-              module="statusCommand"
-              className="overflow-hidden rounded-[20px] border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3 shadow-[0_14px_36px_rgba(15,23,42,0.08)] sm:px-4"
-            >
-              <div className="flex flex-wrap items-center gap-2">
-                <PreviousPageButton />
-                <div className="text-sm font-semibold text-foreground">
-                  {wo.custom_id ?? `WO-${wo.id.slice(0, 8)}`}
-                </div>
-                <StatusBadge variant={workOrderStatusView.variant} size="sm">
-                  {workOrderStatusView.label}
+      {loading && !loadedOnce ? (
+        <div className="mt-1 grid gap-4">
+          <Skeleton className="h-24" />
+          <Skeleton className="h-40" />
+          <Skeleton className="h-56" />
+        </div>
+      ) : !wo ? (
+        <div className="mt-2 text-sm text-red-400">Work order not found.</div>
+      ) : (
+        <div
+          className={cn("space-y-2", supportFullyCollapsed && "space-y-1.5")}
+        >
+          <WorkOrderWorkspaceModule
+            module="statusCommand"
+            className="overflow-hidden rounded-[20px] border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3 shadow-[0_14px_36px_rgba(15,23,42,0.08)] sm:px-4"
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <PreviousPageButton />
+              <div className="text-sm font-semibold text-foreground">
+                {wo.custom_id ?? `WO-${wo.id.slice(0, 8)}`}
+              </div>
+              <StatusBadge variant={workOrderStatusView.variant} size="sm">
+                {workOrderStatusView.label}
+              </StatusBadge>
+              {isWaiter ? (
+                <StatusBadge variant="danger" size="sm">
+                  Waiter
                 </StatusBadge>
-                {isWaiter ? (
-                  <StatusBadge variant="danger" size="sm">
-                    Waiter
-                  </StatusBadge>
-                ) : null}
-                {hasAnyApprovalItems ? (
-                  <StatusBadge variant="warning" size="sm">
-                    {approvalPending.length + approvalPendingQuotes.length} awaiting approval
-                  </StatusBadge>
-                ) : null}
-              </div>
-              <div className="mt-1 text-xs text-muted-foreground">
-                {isPropertySourcedWorkOrder
-                  ? "Property-linked work order"
-                  : `${customer ? [customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ") || "Customer" : "No customer linked"} • ${vehicle ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`.trim() || "Vehicle linked" : "No vehicle linked"}`}
-              </div>
-              <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
-                <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-muted-foreground">State: {workOrderStatusView.label}</span>
-                <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-muted-foreground">Active jobs: {activeJobCount}</span>
-                <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-muted-foreground">In progress: {inProgressCount}</span>
-                <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-muted-foreground">Blocked: {blockedCount}</span>
-                {hasAnyApprovalItems ? (
-                  <span className="rounded-full border border-sky-400/30 bg-sky-500/10 px-2 py-0.5 text-sky-200">Approval queue: {approvalPending.length + approvalPendingQuotes.length}</span>
-                ) : null}
-              </div>
-              <WorkOrderWorkspaceCommandBar
-                className="mt-3 gap-1 border-t border-[color:var(--theme-border-soft)] pt-2"
-              >
-                <button
-                  type="button"
-                  onClick={() => setShowWoContext((prev) => !prev)}
-                  aria-expanded={showWoContext}
-                  className={cn(
-                    "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition",
-                    showWoContext
-                      ? "bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-primary)]"
-                      : "text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-surface-subtle)]",
-                  )}
-                >
-                  <BrainCircuit className="h-3.5 w-3.5" />
-                  Context &amp; AI
-                </button>
-                <button
-                  type="button"
-                  onClick={openQuoteReview}
-                  className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-[color:var(--theme-text-secondary)] transition hover:bg-[color:var(--theme-surface-subtle)] hover:text-[color:var(--theme-text-primary)]"
-                >
-                  <ReceiptText className="h-3.5 w-3.5" />
-                  Approvals{hasAnyApprovalItems ? ` (${approvalPending.length + approvalPendingQuotes.length})` : ""}
-                </button>
-                {canViewFinancials ? (
-                  <button
-                    type="button"
-                    onClick={openFinancialWorkspace}
-                    data-workspace-module-action="financials"
-                    className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-[color:var(--theme-text-secondary)] transition hover:bg-[color:var(--theme-surface-subtle)] hover:text-[color:var(--theme-text-primary)]"
-                  >
-                    <CircleDollarSign
-                      className="h-3.5 w-3.5"
-                      aria-hidden="true"
-                    />
-                    Financials
-                  </button>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowWoContext(true);
-                    setShowTimeline((prev) => !prev);
-                  }}
-                  aria-expanded={showTimeline}
-                  className={cn(
-                    "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition",
-                    showTimeline
-                      ? "bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-primary)]"
-                      : "text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-surface-subtle)]",
-                  )}
-                >
-                  <Clock3 className="h-3.5 w-3.5" />
-                  Activity
-                </button>
-                {canMessageCustomer && messageCustomerHref ? (
-                  <Link
-                    href={messageCustomerHref}
-                    data-workspace-module-action="communication"
-                    className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-[color:var(--theme-text-secondary)] transition hover:bg-[color:var(--theme-surface-subtle)] hover:text-[color:var(--theme-text-primary)]"
-                  >
-                    <MessageSquareText className="h-3.5 w-3.5" />
-                    Message
-                  </Link>
-                ) : null}
-                <span className="ml-auto inline-flex items-center gap-2 font-mono text-[11px] font-semibold text-[color:var(--theme-text-primary)]">
-                  <ListChecks className="h-3.5 w-3.5 text-[color:var(--theme-text-secondary)]" />
-                  {sortedLines.length} jobs · {formatCurrency(workOrderTotal)}
+              ) : null}
+              {hasAnyApprovalItems ? (
+                <StatusBadge variant="warning" size="sm">
+                  {approvalPending.length + approvalPendingQuotes.length}{" "}
+                  awaiting approval
+                </StatusBadge>
+              ) : null}
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              {isPropertySourcedWorkOrder
+                ? "Property-linked work order"
+                : `${customer ? [customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ") || "Customer" : "No customer linked"} • ${vehicle ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`.trim() || "Vehicle linked" : "No vehicle linked"}`}
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
+              <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-muted-foreground">
+                State: {workOrderStatusView.label}
+              </span>
+              <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-muted-foreground">
+                Active jobs: {activeJobCount}
+              </span>
+              <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-muted-foreground">
+                In progress: {inProgressCount}
+              </span>
+              <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-muted-foreground">
+                Blocked: {blockedCount}
+              </span>
+              {hasAnyApprovalItems ? (
+                <span className="rounded-full border border-sky-400/30 bg-sky-500/10 px-2 py-0.5 text-sky-200">
+                  Approval queue:{" "}
+                  {approvalPending.length + approvalPendingQuotes.length}
                 </span>
-              </WorkOrderWorkspaceCommandBar>
-            </WorkOrderWorkspaceModule>
-
-            {loading ? (
-              <div className="rounded-lg border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-xs text-muted-foreground">
-                Refreshing work order data…
-              </div>
-            ) : null}
-            <section className={cn(PANEL_VARIANTS.secondary, showWoContext ? "p-2" : "hidden")}>
+              ) : null}
+            </div>
+            <WorkOrderWorkspaceCommandBar className="mt-3 gap-1 border-t border-[color:var(--theme-border-soft)] pt-2">
               <button
                 type="button"
-                className="flex w-full items-center justify-between gap-2 text-left"
                 onClick={() => setShowWoContext((prev) => !prev)}
                 aria-expanded={showWoContext}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition",
+                  showWoContext
+                    ? "bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-primary)]"
+                    : "text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-surface-subtle)]",
+                )}
               >
-                <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Context &amp; AI
-                </span>
-                <span className="text-[11px] font-medium text-[rgba(184,115,51,0.95)]">{showWoContext ? "Hide" : "Show"}</span>
+                <BrainCircuit className="h-3.5 w-3.5" />
+                Context &amp; AI
               </button>
-              {!showWoContext ? (
-                <div className={cn(cardInner, "mt-2 p-2 text-[11px] text-muted-foreground")}>
-                  AI support, approvals, vehicle/customer, timeline, and context available on demand.
-                </div>
-              ) : (
-                <div className="mt-2 grid gap-2">
-                  <WorkOrderAiFreshnessBadge workOrderId={wo.id} />
-                  <WorkOrderAiOperationalRecommendations workOrderId={wo.id} />
-                  <div className="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-3">
+              <button
+                type="button"
+                onClick={openQuoteReview}
+                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-[color:var(--theme-text-secondary)] transition hover:bg-[color:var(--theme-surface-subtle)] hover:text-[color:var(--theme-text-primary)]"
+              >
+                <ReceiptText className="h-3.5 w-3.5" />
+                Approvals
+                {hasAnyApprovalItems
+                  ? ` (${approvalPending.length + approvalPendingQuotes.length})`
+                  : ""}
+              </button>
+              {canViewFinancials ? (
+                <button
+                  type="button"
+                  onClick={openFinancialWorkspace}
+                  data-workspace-module-action="financials"
+                  className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-[color:var(--theme-text-secondary)] transition hover:bg-[color:var(--theme-surface-subtle)] hover:text-[color:var(--theme-text-primary)]"
+                >
+                  <CircleDollarSign
+                    className="h-3.5 w-3.5"
+                    aria-hidden="true"
+                  />
+                  Financials
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => {
+                  setShowWoContext(true);
+                  setShowTimeline((prev) => !prev);
+                }}
+                aria-expanded={showTimeline}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition",
+                  showTimeline
+                    ? "bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-primary)]"
+                    : "text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-surface-subtle)]",
+                )}
+              >
+                <Clock3 className="h-3.5 w-3.5" />
+                Activity
+              </button>
+              {canMessageCustomer && messageCustomerHref ? (
+                <Link
+                  href={messageCustomerHref}
+                  data-workspace-module-action="communication"
+                  className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-[color:var(--theme-text-secondary)] transition hover:bg-[color:var(--theme-surface-subtle)] hover:text-[color:var(--theme-text-primary)]"
+                >
+                  <MessageSquareText className="h-3.5 w-3.5" />
+                  Message
+                </Link>
+              ) : null}
+              <span className="ml-auto inline-flex items-center gap-2 font-mono text-[11px] font-semibold text-[color:var(--theme-text-primary)]">
+                <ListChecks className="h-3.5 w-3.5 text-[color:var(--theme-text-secondary)]" />
+                {sortedLines.length} jobs · {formatCurrency(workOrderTotal)}
+              </span>
+            </WorkOrderWorkspaceCommandBar>
+          </WorkOrderWorkspaceModule>
+
+          {loading ? (
+            <div className="rounded-lg border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-xs text-muted-foreground">
+              Refreshing work order data…
+            </div>
+          ) : null}
+          <section
+            className={cn(
+              PANEL_VARIANTS.secondary,
+              showWoContext ? "p-2" : "hidden",
+            )}
+          >
+            <button
+              type="button"
+              className="flex w-full items-center justify-between gap-2 text-left"
+              onClick={() => setShowWoContext((prev) => !prev)}
+              aria-expanded={showWoContext}
+            >
+              <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                Context &amp; AI
+              </span>
+              <span className="text-[11px] font-medium text-[rgba(184,115,51,0.95)]">
+                {showWoContext ? "Hide" : "Show"}
+              </span>
+            </button>
+            {!showWoContext ? (
+              <div
+                className={cn(
+                  cardInner,
+                  "mt-2 p-2 text-[11px] text-muted-foreground",
+                )}
+              >
+                AI support, approvals, vehicle/customer, timeline, and context
+                available on demand.
+              </div>
+            ) : (
+              <div className="mt-2 grid gap-2">
+                <WorkOrderAiFreshnessBadge workOrderId={wo.id} />
+                <WorkOrderAiOperationalRecommendations workOrderId={wo.id} />
+                <div className="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-3">
                   <div className={cn(cardInner, "p-2")}>
                     <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                       Order state
@@ -1830,290 +2008,350 @@ export default function WorkOrderIdClient(): JSX.Element {
                     <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                       Target completion
                     </div>
-                    <div className="mt-1 text-sm font-medium text-foreground">{expectedCompletionText}</div>
+                    <div className="mt-1 text-sm font-medium text-foreground">
+                      {expectedCompletionText}
+                    </div>
                     <p className="mt-1 text-[11px] text-muted-foreground">
                       Planning target set from intake/advisor flow.
                     </p>
                   </div>
-                  <div className={cn(cardInner, "p-2 sm:col-span-2 xl:col-span-1")}>
+                  <div
+                    className={cn(cardInner, "p-2 sm:col-span-2 xl:col-span-1")}
+                  >
                     <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                       Created
                     </div>
-                    <div className="mt-1 text-xs font-medium text-muted-foreground">{createdAtText}</div>
+                    <div className="mt-1 text-xs font-medium text-muted-foreground">
+                      {createdAtText}
+                    </div>
                   </div>
                 </div>
-                  <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
-                    {isPropertySourcedWorkOrder ? (
-                      <div className={cn(cardInner, "sm:col-span-2 xl:col-span-1")}>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
+                  {isPropertySourcedWorkOrder ? (
+                    <div
+                      className={cn(cardInner, "sm:col-span-2 xl:col-span-1")}
+                    >
+                      <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        Property-linked work order
+                      </h3>
+                      <p className="text-xs text-muted-foreground">
+                        Vehicle and customer details are hidden for
+                        property-sourced work orders. Use the property context
+                        panel above for location, request, and assignment.
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Vehicle */}
+                      <div className={cardInner}>
                         <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                          Property-linked work order
+                          Vehicle
                         </h3>
-                        <p className="text-xs text-muted-foreground">
-                          Vehicle and customer details are hidden for property-sourced work orders.
-                          Use the property context panel above for location, request, and assignment.
-                        </p>
+                        {vehicle ? (
+                          <>
+                            <p className="text-sm font-medium text-foreground">
+                              {(vehicle.year ?? "").toString()}{" "}
+                              {vehicle.make ?? ""} {vehicle.model ?? ""}
+                            </p>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              VIN:{" "}
+                              <span className="font-mono">
+                                {vehicle.vin ?? "—"}
+                              </span>
+                              <br />
+                              Plate:{" "}
+                              {vehicle.license_plate ?? (
+                                <span className="text-muted-foreground">—</span>
+                              )}
+                              <br />
+                              Mileage:{" "}
+                              {vehicle.mileage
+                                ? vehicle.mileage
+                                : wo?.odometer_km != null
+                                  ? `${wo.odometer_km} km`
+                                  : "—"}
+                            </p>
+                          </>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">
+                            No vehicle linked yet.
+                          </p>
+                        )}
                       </div>
-                    ) : (
-                      <>
-                        {/* Vehicle */}
-                        <div className={cardInner}>
-                          <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                            Vehicle
-                          </h3>
-                          {vehicle ? (
-                            <>
-                              <p className="text-sm font-medium text-foreground">
-                                {(vehicle.year ?? "").toString()} {vehicle.make ?? ""}{" "}
-                                {vehicle.model ?? ""}
-                              </p>
-                              <p className="mt-1 text-xs text-muted-foreground">
-                                VIN: <span className="font-mono">{vehicle.vin ?? "—"}</span>
-                                <br />
-                                Plate:{" "}
-                                {vehicle.license_plate ?? (
-                                  <span className="text-muted-foreground">—</span>
-                                )}
-                                <br />
-                                Mileage:{" "}
-                                {vehicle.mileage
-                                  ? vehicle.mileage
-                                  : wo?.odometer_km != null
-                                    ? `${wo.odometer_km} km`
-                                    : "—"}
-                              </p>
-                            </>
-                          ) : (
-                            <p className="text-sm text-muted-foreground">No vehicle linked yet.</p>
-                          )}
-                        </div>
 
-                        {/* Customer */}
-                        <div className={cardInner}>
-                          <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                            Customer
-                          </h3>
-                          {customer ? (
-                            <>
-                              <p className="text-sm font-medium text-foreground">
-                                {[customer.first_name ?? "", customer.last_name ?? ""]
-                                  .filter(Boolean)
-                                  .join(" ") || "—"}
-                              </p>
-                              <p className="mt-1 text-xs text-muted-foreground">
-                                {customer.phone ?? "—"}{" "}
-                                {customer.email ? (
-                                  <>
-                                    <span className="mx-1 text-muted-foreground">•</span>
-                                    {customer.email}
-                                  </>
-                                ) : null}
-                              </p>
-                              {customer.id && (
-                                <Link
-                                  href={`/customers/${customer.id}`}
-                                  className="mt-2 inline-flex text-[11px] font-medium text-[rgba(184,115,51,0.95)] hover:underline"
-                                  title="Open customer profile"
-                                >
-                                  View customer profile →
-                                </Link>
-                              )}
-                            </>
-                          ) : (
-                            <p className="text-sm text-muted-foreground">No customer linked yet.</p>
-                          )}
-                        </div>
-                      </>
-                    )}
-                  </div>
-                  <WorkOrderWorkspaceModule
-                    module="estimateApproval"
-                    className={cn(
-                      PANEL_VARIANTS.secondary,
-                      "p-2",
-                      hasAnyApprovalItems
-                        ? "cursor-pointer hover:border-sky-400/35"
-                        : "",
-                    )}
-                    onClick={hasAnyApprovalItems ? openQuoteReview : undefined}
-                    role={hasAnyApprovalItems ? "button" : undefined}
-                    tabIndex={hasAnyApprovalItems ? 0 : undefined}
-                    onKeyDown={
-                      hasAnyApprovalItems
-                        ? (e) => {
-                            if (e.key === "Enter" || e.key === " ") {
-                              e.preventDefault();
-                              openQuoteReview();
-                            }
-                          }
-                        : undefined
-                    }
-                    aria-label={
-                      hasAnyApprovalItems ? "Open quote review" : undefined
-                    }
-                  >
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Approval queue
-                </div>
-                <button
-                  type="button"
-                  className="text-[11px] font-medium text-[rgba(184,115,51,0.95)] hover:underline"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setShowApprovalSummary((prev) => !prev);
-                  }}
-                >
-                  {showApprovalSummary ? "Hide" : "Show"}
-                </button>
-              </div>
-              {!hasAnyApprovalItems ? (
-                <p className="text-[11px] text-muted-foreground">Approval queue clear.</p>
-              ) : showApprovalSummary ? (
-                <>
-                  {recentApprovalPending.length > 0 && (
-                    <div className="space-y-2">
-                      {recentApprovalPending.map((ln, idx) => {
-                        const isAwaitingPartsBase =
-                          (ln.status === "on_hold" &&
-                            (ln.hold_reason ?? "").toLowerCase().includes("part")) ||
-                          (ln.hold_reason ?? "").toLowerCase().includes("quote");
-
-                        const hasQuotedParts = (activeQuotesByLine[ln.id] ?? []).length > 0;
-                        const partsLabel = hasQuotedParts
-                          ? "Quoted, awaiting approval"
-                          : "Awaiting parts quote";
-
-                        return (
-                          <div key={ln.id} className={`${cardInner} p-3`}>
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0">
-                                <div className="truncate text-sm font-medium text-foreground">
-                                  {idx + 1}. {ln.description || ln.complaint || "Untitled job"}
-                                </div>
-                                <div className="mt-0.5 text-[11px] text-muted-foreground">
-                                  {String(ln.job_type ?? "job").replaceAll("_", " ")} •{" "}
-                                  {typeof ln.labor_time === "number" ? `${ln.labor_time}h` : "—"} •
-                                  Decision:{" "}
-                                  {
-                                    formatDecisionStatus({
-                                      approvalState: ln.approval_state,
-                                      workStatus: ln.status,
-                                    }).label
-                                  }
-                                </div>
-
-                                {isAwaitingPartsBase && (
-                                  <div className="mt-1 inline-flex items-center rounded-full border border-blue-500/50 bg-blue-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-200">
-                                    {partsLabel}
-                                  </div>
-                                )}
-
-                                {ln.notes && (
-                                  <div className="mt-1 text-[11px] text-muted-foreground">
-                                    Notes: {ln.notes}
-                                  </div>
-                                )}
-                              </div>
-
-                              {canApprove && (
-                                <div className="flex shrink-0 flex-wrap items-center gap-2">
-                                  <button
-                                    type="button"
-                                    className="rounded-md border border-green-700/60 px-2 py-1 text-[11px] font-medium text-green-200 hover:bg-green-900/25"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      void approveLine(ln.id);
-                                    }}
-                                  >
-                                    Approve
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="rounded-md border border-red-700/60 px-2 py-1 text-[11px] font-medium text-red-200 hover:bg-red-900/30"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      void declineLine(ln.id);
-                                    }}
-                                  >
-                                    Decline
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  {recentApprovalPendingQuotes.length > 0 && (
-                    <div className={recentApprovalPending.length > 0 ? "mt-3 space-y-2" : "space-y-2"}>
-                      <div className="text-[11px] font-semibold uppercase tracking-wide text-blue-300">
-                        Quote suggestions
-                      </div>
-                      {recentApprovalPendingQuotes.map((q, idx) => (
-                        <div key={q.id} className={`${cardInner} p-3`}>
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <div className="truncate text-sm font-medium text-foreground">
-                                {idx + 1}. {q.description || "Quoted item"}
-                              </div>
-                              <div className="mt-0.5 text-[11px] text-muted-foreground">
-                                {String(q.job_type ?? "job").replaceAll("_", " ")} •{" "}
-                                {typeof q.est_labor_hours === "number"
-                                  ? `${q.est_labor_hours}h`
-                                  : "—"}{" "}
-                                • Decision: {formatDecisionStatus({ workStatus: q.status }).label}
-                              </div>
-                              {q.notes && (
-                                <div className="mt-1 text-[11px] text-muted-foreground">
-                                  Notes: {q.notes}
-                                </div>
-                              )}
-                            </div>
-
-                            {canApprove && (
-                              <div className="flex shrink-0 flex-wrap items-center gap-2">
-                                <button
-                                  type="button"
-                                  className="rounded-md border border-green-700/60 px-2 py-1 text-[11px] font-medium text-green-200 hover:bg-green-900/25"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    void approveQuoteLine(q.id);
-                                  }}
-                                >
-                                  Approve
-                                </button>
-                                <button
-                                  type="button"
-                                  className="rounded-md border border-red-700/60 px-2 py-1 text-[11px] font-medium text-red-200 hover:bg-red-900/30"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    void declineQuoteLine(q.id);
-                                  }}
-                                >
-                                  Decline
-                                </button>
-                              </div>
+                      {/* Customer */}
+                      <div className={cardInner}>
+                        <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          Customer
+                        </h3>
+                        {customer ? (
+                          <>
+                            <p className="text-sm font-medium text-foreground">
+                              {[
+                                customer.first_name ?? "",
+                                customer.last_name ?? "",
+                              ]
+                                .filter(Boolean)
+                                .join(" ") || "—"}
+                            </p>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {customer.phone ?? "—"}{" "}
+                              {customer.email ? (
+                                <>
+                                  <span className="mx-1 text-muted-foreground">
+                                    •
+                                  </span>
+                                  {customer.email}
+                                </>
+                              ) : null}
+                            </p>
+                            {customer.id && (
+                              <Link
+                                href={`/customers/${customer.id}`}
+                                className="mt-2 inline-flex text-[11px] font-medium text-[rgba(184,115,51,0.95)] hover:underline"
+                                title="Open customer profile"
+                              >
+                                View customer profile →
+                              </Link>
                             )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                          </>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">
+                            No customer linked yet.
+                          </p>
+                        )}
+                      </div>
+                    </>
                   )}
-                  {(approvalPending.length > recentApprovalPending.length ||
-                    approvalPendingQuotes.length > recentApprovalPendingQuotes.length) && (
-                    <div className="pt-1 text-[11px] text-muted-foreground">
-                      Showing recent approvals. Open Quote Review for full queue.
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className={cn(cardInner, "p-2 text-[11px] text-muted-foreground")}>
-                  {approvalPending.length + approvalPendingQuotes.length} item(s) awaiting decision.
                 </div>
-              )}
-                  </WorkOrderWorkspaceModule>
+                <WorkOrderWorkspaceModule
+                  module="estimateApproval"
+                  className={cn(
+                    PANEL_VARIANTS.secondary,
+                    "p-2",
+                    hasAnyApprovalItems
+                      ? "cursor-pointer hover:border-sky-400/35"
+                      : "",
+                  )}
+                  onClick={hasAnyApprovalItems ? openQuoteReview : undefined}
+                  role={hasAnyApprovalItems ? "button" : undefined}
+                  tabIndex={hasAnyApprovalItems ? 0 : undefined}
+                  onKeyDown={
+                    hasAnyApprovalItems
+                      ? (e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            openQuoteReview();
+                          }
+                        }
+                      : undefined
+                  }
+                  aria-label={
+                    hasAnyApprovalItems ? "Open quote review" : undefined
+                  }
+                >
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                      Approval queue
+                    </div>
+                    <button
+                      type="button"
+                      className="text-[11px] font-medium text-[rgba(184,115,51,0.95)] hover:underline"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowApprovalSummary((prev) => !prev);
+                      }}
+                    >
+                      {showApprovalSummary ? "Hide" : "Show"}
+                    </button>
+                  </div>
+                  {!hasAnyApprovalItems ? (
+                    <p className="text-[11px] text-muted-foreground">
+                      Approval queue clear.
+                    </p>
+                  ) : showApprovalSummary ? (
+                    <>
+                      {recentApprovalPending.length > 0 && (
+                        <div className="space-y-2">
+                          {recentApprovalPending.map((ln, idx) => {
+                            const isAwaitingPartsBase =
+                              (ln.status === "on_hold" &&
+                                (ln.hold_reason ?? "")
+                                  .toLowerCase()
+                                  .includes("part")) ||
+                              (ln.hold_reason ?? "")
+                                .toLowerCase()
+                                .includes("quote");
+
+                            const hasQuotedParts =
+                              (activeQuotesByLine[ln.id] ?? []).length > 0;
+                            const partsLabel = hasQuotedParts
+                              ? "Quoted, awaiting approval"
+                              : "Awaiting parts quote";
+
+                            return (
+                              <div key={ln.id} className={`${cardInner} p-3`}>
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="min-w-0">
+                                    <div className="truncate text-sm font-medium text-foreground">
+                                      {idx + 1}.{" "}
+                                      {ln.description ||
+                                        ln.complaint ||
+                                        "Untitled job"}
+                                    </div>
+                                    <div className="mt-0.5 text-[11px] text-muted-foreground">
+                                      {String(ln.job_type ?? "job").replaceAll(
+                                        "_",
+                                        " ",
+                                      )}{" "}
+                                      •{" "}
+                                      {typeof ln.labor_time === "number"
+                                        ? `${ln.labor_time}h`
+                                        : "—"}{" "}
+                                      • Decision:{" "}
+                                      {
+                                        formatDecisionStatus({
+                                          approvalState: ln.approval_state,
+                                          workStatus: ln.status,
+                                        }).label
+                                      }
+                                    </div>
+
+                                    {isAwaitingPartsBase && (
+                                      <div className="mt-1 inline-flex items-center rounded-full border border-blue-500/50 bg-blue-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-200">
+                                        {partsLabel}
+                                      </div>
+                                    )}
+
+                                    {ln.notes && (
+                                      <div className="mt-1 text-[11px] text-muted-foreground">
+                                        Notes: {ln.notes}
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {canApprove && (
+                                    <div className="flex shrink-0 flex-wrap items-center gap-2">
+                                      <button
+                                        type="button"
+                                        className="rounded-md border border-green-700/60 px-2 py-1 text-[11px] font-medium text-green-200 hover:bg-green-900/25"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          void approveLine(ln.id);
+                                        }}
+                                      >
+                                        Approve
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="rounded-md border border-red-700/60 px-2 py-1 text-[11px] font-medium text-red-200 hover:bg-red-900/30"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          void declineLine(ln.id);
+                                        }}
+                                      >
+                                        Decline
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {recentApprovalPendingQuotes.length > 0 && (
+                        <div
+                          className={
+                            recentApprovalPending.length > 0
+                              ? "mt-3 space-y-2"
+                              : "space-y-2"
+                          }
+                        >
+                          <div className="text-[11px] font-semibold uppercase tracking-wide text-blue-300">
+                            Quote suggestions
+                          </div>
+                          {recentApprovalPendingQuotes.map((q, idx) => (
+                            <div key={q.id} className={`${cardInner} p-3`}>
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <div className="truncate text-sm font-medium text-foreground">
+                                    {idx + 1}. {q.description || "Quoted item"}
+                                  </div>
+                                  <div className="mt-0.5 text-[11px] text-muted-foreground">
+                                    {String(q.job_type ?? "job").replaceAll(
+                                      "_",
+                                      " ",
+                                    )}{" "}
+                                    •{" "}
+                                    {typeof q.est_labor_hours === "number"
+                                      ? `${q.est_labor_hours}h`
+                                      : "—"}{" "}
+                                    • Decision:{" "}
+                                    {
+                                      formatDecisionStatus({
+                                        workStatus: q.status,
+                                      }).label
+                                    }
+                                  </div>
+                                  {q.notes && (
+                                    <div className="mt-1 text-[11px] text-muted-foreground">
+                                      Notes: {q.notes}
+                                    </div>
+                                  )}
+                                </div>
+
+                                {canApprove && (
+                                  <div className="flex shrink-0 flex-wrap items-center gap-2">
+                                    <button
+                                      type="button"
+                                      className="rounded-md border border-green-700/60 px-2 py-1 text-[11px] font-medium text-green-200 hover:bg-green-900/25"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        void approveQuoteLine(q.id);
+                                      }}
+                                    >
+                                      Approve
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="rounded-md border border-red-700/60 px-2 py-1 text-[11px] font-medium text-red-200 hover:bg-red-900/30"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        void declineQuoteLine(q.id);
+                                      }}
+                                    >
+                                      Decline
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {(approvalPending.length > recentApprovalPending.length ||
+                        approvalPendingQuotes.length >
+                          recentApprovalPendingQuotes.length) && (
+                        <div className="pt-1 text-[11px] text-muted-foreground">
+                          Showing recent approvals. Open Quote Review for full
+                          queue.
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div
+                      className={cn(
+                        cardInner,
+                        "p-2 text-[11px] text-muted-foreground",
+                      )}
+                    >
+                      {approvalPending.length + approvalPendingQuotes.length}{" "}
+                      item(s) awaiting decision.
+                    </div>
+                  )}
+                </WorkOrderWorkspaceModule>
                 {canViewFinancials ? (
                   <WorkOrderWorkspaceModule
                     module="financials"
@@ -2126,54 +2364,65 @@ export default function WorkOrderIdClient(): JSX.Element {
                     />
                   </WorkOrderWorkspaceModule>
                 ) : null}
-                  <WorkOrderWorkspaceModule
-                    module="timeline"
-                    className={cn(PANEL_VARIANTS.secondary, "p-2")}
-                  >
-                <button
-                  type="button"
-                  className="flex w-full items-center justify-between gap-2 text-left"
-                  onClick={() => setShowTimeline((prev) => !prev)}
-                  aria-expanded={showTimeline}
+                <WorkOrderWorkspaceModule
+                  module="timeline"
+                  className={cn(PANEL_VARIANTS.secondary, "p-2")}
                 >
-                  <span className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                    Decision timeline & recent events
-                  </span>
-                  <span className="text-[11px] font-medium text-[rgba(184,115,51,0.95)]">
-                    {showTimeline ? "Hide" : "Show"}
-                  </span>
-                </button>
+                  <button
+                    type="button"
+                    className="flex w-full items-center justify-between gap-2 text-left"
+                    onClick={() => setShowTimeline((prev) => !prev)}
+                    aria-expanded={showTimeline}
+                  >
+                    <span className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                      Decision timeline & recent events
+                    </span>
+                    <span className="text-[11px] font-medium text-[rgba(184,115,51,0.95)]">
+                      {showTimeline ? "Hide" : "Show"}
+                    </span>
+                  </button>
 
-                {showTimeline ? (
-                  <div className="mt-2 grid gap-2.5">
-                    <DecisionTimeline stages={decisionTimelineStages} compact orientation="vertical" />
-                    <div className={cn(PANEL_VARIANTS.passive, "p-2")}>
-                      <DecisionEventFeed
-                        events={decisionEvents}
-                        filter="all"
-                        maxVisible={showFullHistory ? 10 : 3}
+                  {showTimeline ? (
+                    <div className="mt-2 grid gap-2.5">
+                      <DecisionTimeline
+                        stages={decisionTimelineStages}
                         compact
+                        orientation="vertical"
                       />
-                      {decisionEvents.length > 3 ? (
-                        <button
-                          type="button"
-                          onClick={() => setShowFullHistory((prev) => !prev)}
-                          className="mt-1.5 text-[11px] font-medium text-[rgba(184,115,51,0.95)] hover:underline"
-                        >
-                          {showFullHistory ? "Show recent only" : "View full history"}
-                        </button>
-                      ) : null}
+                      <div className={cn(PANEL_VARIANTS.passive, "p-2")}>
+                        <DecisionEventFeed
+                          events={decisionEvents}
+                          filter="all"
+                          maxVisible={showFullHistory ? 10 : 3}
+                          compact
+                        />
+                        {decisionEvents.length > 3 ? (
+                          <button
+                            type="button"
+                            onClick={() => setShowFullHistory((prev) => !prev)}
+                            className="mt-1.5 text-[11px] font-medium text-[rgba(184,115,51,0.95)] hover:underline"
+                          >
+                            {showFullHistory
+                              ? "Show recent only"
+                              : "View full history"}
+                          </button>
+                        ) : null}
+                      </div>
                     </div>
-                  </div>
-                ) : (
-                  <p className={cn(cardInner, "mt-2 p-2 text-[11px] text-muted-foreground")}>
-                    Recent decision history is available when needed.
-                  </p>
-                )}
-                  </WorkOrderWorkspaceModule>
-                </div>
-              )}
-            </section>
+                  ) : (
+                    <p
+                      className={cn(
+                        cardInner,
+                        "mt-2 p-2 text-[11px] text-muted-foreground",
+                      )}
+                    >
+                      Recent decision history is available when needed.
+                    </p>
+                  )}
+                </WorkOrderWorkspaceModule>
+              </div>
+            )}
+          </section>
 
           {/* Full-height cockpit: navigate left, work center, act right. */}
           <WorkOrderWorkspaceModule
@@ -2183,8 +2432,12 @@ export default function WorkOrderIdClient(): JSX.Element {
             <aside className="flex min-h-0 flex-col overflow-hidden rounded-[20px] border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] shadow-[0_16px_42px_rgba(15,23,42,0.08)]">
               <div className="flex items-center justify-between gap-3 border-b border-[color:var(--theme-border-soft)] px-3 py-3">
                 <div>
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--theme-text-muted)]">Jobs</div>
-                  <div className="mt-0.5 text-xs text-[color:var(--theme-text-secondary)]">{sortedLines.length} on this work order</div>
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--theme-text-muted)]">
+                    Jobs
+                  </div>
+                  <div className="mt-0.5 text-xs text-[color:var(--theme-text-secondary)]">
+                    {sortedLines.length} on this work order
+                  </div>
                 </div>
                 {canAddJobs ? (
                   <button
@@ -2198,270 +2451,384 @@ export default function WorkOrderIdClient(): JSX.Element {
                 ) : null}
               </div>
               <div className="min-h-0 flex-1 overflow-y-auto">
-              {sortedLines.length === 0 ? (
-                <section className="p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-foreground">No jobs added yet.</p>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        Add the first labor line here, then assign it to a technician.
-                      </p>
+                {sortedLines.length === 0 ? (
+                  <section className="p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-foreground">
+                          No jobs added yet.
+                        </p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          Add the first labor line here, then assign it to a
+                          technician.
+                        </p>
+                      </div>
+                      {canAddJobs ? (
+                        <button
+                          type="button"
+                          onClick={() => setAddJobOpen(true)}
+                          className="rounded-full border border-sky-400/50 bg-sky-500/10 px-3 py-1.5 text-xs font-semibold text-sky-100 transition hover:bg-sky-500/20"
+                        >
+                          Add job
+                        </button>
+                      ) : null}
                     </div>
-                    {canAddJobs ? (
-                      <button
-                        type="button"
-                        onClick={() => setAddJobOpen(true)}
-                        className="rounded-full border border-sky-400/50 bg-sky-500/10 px-3 py-1.5 text-xs font-semibold text-sky-100 transition hover:bg-sky-500/20"
-                      >
-                        Add job
-                      </button>
-                    ) : null}
-                  </div>
-                </section>
-              ) : (
-                <div>
-                  {sortedLines.map((ln, idx) => {
-                    const activeTechnicianIds = activeTechsByLine[ln.id] ?? [];
-                    const punchedIn =
-                      activeTechnicianIds.length > 0 ||
-                      (!!ln.punched_in_at && !ln.punched_out_at);
+                  </section>
+                ) : (
+                  <div>
+                    {sortedLines.map((ln, idx) => {
+                      const activeTechnicianIds =
+                        activeTechsByLine[ln.id] ?? [];
+                      const punchedIn =
+                        activeTechnicianIds.length > 0 ||
+                        (!!ln.punched_in_at && !ln.punched_out_at);
 
-                    const allocPartsForLine = allocsByLine[ln.id] ?? [];
-                    const stagedForLine = stagedPartsByLine[ln.id] ?? [];
+                      const allocPartsForLine = allocsByLine[ln.id] ?? [];
+                      const stagedForLine = stagedPartsByLine[ln.id] ?? [];
 
-                    const stagedAsAllocShape: AllocationRow[] = stagedForLine.map((p) => {
-                      return {
-                        id: p.id,
-                        work_order_line_id: p.work_order_line_id as string,
-                        shop_id: p.shop_id,
-                        created_at: p.created_at,
-                        part_id: p.part_id ?? null,
-                        quantity: (p.quantity as unknown as number) ?? 0,
-                        unit_cost: p.unit_price ?? null,
-                        unit_price: p.unit_price ?? null,
-                        total_cost: null,
-                        total_price: p.total_price ?? null,
-                        status: "staged",
-                        parts: { name: p.description_snapshot ?? p.parts?.name ?? null } as { name: string | null },
-                      } as unknown as AllocationRow;
-                    });
+                      const stagedAsAllocShape: AllocationRow[] =
+                        stagedForLine.map((p) => {
+                          return {
+                            id: p.id,
+                            work_order_line_id: p.work_order_line_id as string,
+                            shop_id: p.shop_id,
+                            created_at: p.created_at,
+                            part_id: p.part_id ?? null,
+                            quantity: (p.quantity as unknown as number) ?? 0,
+                            unit_cost: p.unit_price ?? null,
+                            unit_price: p.unit_price ?? null,
+                            total_cost: null,
+                            total_price: p.total_price ?? null,
+                            status: "staged",
+                            parts: {
+                              name:
+                                p.description_snapshot ?? p.parts?.name ?? null,
+                            } as { name: string | null },
+                          } as unknown as AllocationRow;
+                        });
 
-                    const displayAllocations = filterAllocationsNotBackedByCanonicalParts(
-                      allocPartsForLine,
-                      stagedForLine,
-                    );
-                    const partsForLine = [...displayAllocations, ...stagedAsAllocShape];
+                      const displayAllocations =
+                        filterAllocationsNotBackedByCanonicalParts(
+                          allocPartsForLine,
+                          stagedForLine,
+                        );
+                      const partsForLine = [
+                        ...displayAllocations,
+                        ...stagedAsAllocShape,
+                      ];
 
-                    const isPunchedIn = punchedIn;
-                    const isCurrentUserWorkingThisLine = Boolean(
-                      isPunchedIn &&
+                      const isPunchedIn = punchedIn;
+                      const isCurrentUserWorkingThisLine = Boolean(
+                        isPunchedIn &&
                         currentUserId &&
                         activeTechnicianIds.includes(currentUserId),
-                    );
-                    const activeTechnicianNames = activeTechnicianIds
-                      .map(
-                        (techId) =>
-                          readableTechNamesById[techId]?.trim() ||
-                          assignables
-                            .find((tech) => tech.id === techId)
-                            ?.full_name?.trim() ||
-                          null,
-                      )
-                      .filter((name): name is string => Boolean(name));
-                    const isSelectedForPanel = panelLineId === ln.id;
-                    const linePartRequests = partRequestsByLine[ln.id] ?? [];
-                    const hasRequestableParts =
-                      canRequestParts && (stagedPartsByLine[ln.id] ?? []).length > 0;
-                    const navigatorInspectionTemplateId =
-                      extractInspectionTemplateId(ln);
-
-                    return (
-                      <JobCard
-                        key={ln.id}
-                        index={idx}
-                        line={ln}
-                        parts={partsForLine}
-                        partsCount={pricingByLine[ln.id]?.partsCount ?? 0}
-                        partsStatusLabel={getPartsRequestStatusLabel(linePartRequests)}
-                        technicians={assignables}
-                        primaryTechnicianName={
-                          ln.assigned_tech_id
-                            ? readableTechNamesById[
-                                ln.assigned_tech_id
-                              ]?.trim() || null
-                            : null
-                        }
-                        canAssign={canAssign}
-                        isPunchedIn={isPunchedIn}
-                        isCurrentUserWorkingThisLine={isCurrentUserWorkingThisLine}
-                        activeTechnicianNames={activeTechnicianNames}
-                        assignedTechnicianIds={assignedTechsByLine[ln.id] ?? []}
-                        isSelectedForPanel={isSelectedForPanel}
-                        onOpen={() => openFocusedJob(ln.id)}
-                        onAssign={
-                          canAssign
-                            ? (technicianId: string) =>
-                                void assignLineTechnician(ln.id, technicianId)
-                            : undefined
-                        }
-                        onOpenInspection={
-                          canOpenWorkOrderInspectionModule({
-                            inspectionTemplateId: navigatorInspectionTemplateId,
-                            canRunInspections: canRunInspectionForLine(ln),
-                          })
-                            ? () => void openInspectionForLine(ln)
-                            : undefined
-                        }
-                        onAddPart={
-                          canUseInventoryPicker
-                            ? () => setPartsLineId(ln.id)
-                            : undefined
-                        }
-                        onRequestParts={
-                          hasRequestableParts
-                            ? () => void requestAllPartsForLine(ln.id, linePartRequests)
-                            : undefined
-                        }
-                        requestPartsLabel={partsRequestActionLabel(linePartRequests)}
-                        requestPartsBusy={requestingPartsLineId === ln.id}
-                        pricing={pricingByLine[ln.id] ?? null}
-                        reviewOk={reviewOk}
-                        reviewIssues={reviewIssuesByLine[ln.id] ?? []}
-                        canDelete={canDeleteLine}
-                        onDelete={() => openDeleteForLine(ln.id)}
-                        display="navigator"
-                        compact
-                        selected={isSelectedForPanel}
-                        hideExecutionStageCompletenessPills
-                        evidence={evidence.filter(
-                          (item) => item.workOrderLineId === ln.id,
-                        )}
-                      />
-                    );
-                  })}
-                </div>
-              )}
-
-
-              {approvalPendingQuotes.length > 0 && (
-                <section className={cn(PANEL_VARIANTS.secondary, "rounded-xl p-3")}>
-                  <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-sky-300">
-                        Pending quote items
-                      </div>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Recommended repairs stay here until advisor/customer approval materializes work lines.
-                      </p>
-                    </div>
-                    <Link href={`/quote-review/${wo?.id ?? routeId}`} className="rounded-full border border-sky-400/40 bg-sky-500/10 px-3 py-1.5 text-xs font-semibold text-sky-100 hover:bg-sky-500/20">
-                      Open Quote Review
-                    </Link>
-                  </div>
-                  <div className="grid gap-3">
-                    {approvalPendingQuotes.map((q) => {
-                      const meta = isRecord(q.metadata) ? q.metadata : {};
-                      const photoCount = Array.isArray(meta.photo_urls) ? meta.photo_urls.length : 0;
-                      const menuMatch = isRecord(meta.menu_match) ? meta.menu_match : null;
-                      const partRequests = partRequestsByQuoteLine[q.id] ?? [];
-                      const partsRequirement = resolveQuotePartsRequirement({
-                        metadata: meta,
-                        linkedRequestCount: partRequests.length,
-                      });
-                      const pricingReviewRequired =
-                        menuMatch?.pricing_review_required === true ||
-                        q.status === "pending_parts" ||
-                        partsRequirement.snapshot.pendingCount > 0;
-                      const partsLabel =
-                        partsRequirement.state === "required"
-                          ? `${partsRequirement.displayCount} requirement(s)`
-                          : partsRequirement.state === "labor_only"
-                            ? "None / labor-only"
-                            : "Not recorded";
-                      const partsRequestLabel =
-                        partRequests.length > 0
-                          ? partRequests.map((request) => request.status ?? "requested").join(", ")
-                          : partsRequirement.state === "labor_only"
-                            ? "Not required"
-                            : "Not created";
-                      const sourceFinding = asString(meta.source_finding_title) ?? q.ai_complaint ?? "Inspection finding";
-                      const inspectionStatus = asString(meta.inspection_status)?.toUpperCase() ?? "RECOMMEND";
-                      const technicianNotes = asString(meta.technician_notes) ?? q.notes ?? "—";
+                      );
+                      const activeTechnicianNames = activeTechnicianIds
+                        .map(
+                          (techId) =>
+                            readableTechNamesById[techId]?.trim() ||
+                            assignables
+                              .find((tech) => tech.id === techId)
+                              ?.full_name?.trim() ||
+                            null,
+                        )
+                        .filter((name): name is string => Boolean(name));
+                      const isSelectedForPanel = panelLineId === ln.id;
+                      const linePartRequests = partRequestsByLine[ln.id] ?? [];
+                      const hasRequestableParts =
+                        canRequestParts &&
+                        (stagedPartsByLine[ln.id] ?? []).length > 0;
+                      const navigatorInspectionTemplateId =
+                        extractInspectionTemplateId(ln);
 
                       return (
-                        <article key={q.id} className="rounded-xl border border-sky-400/20 bg-sky-950/20 p-3">
-                          <div className="flex flex-wrap items-start justify-between gap-2">
-                            <div className="min-w-0">
-                              <div className="text-sm font-semibold text-foreground">{q.description || "Recommended repair"}</div>
-                              <div className="mt-1 text-[11px] uppercase tracking-[0.14em] text-sky-200">
-                                {inspectionStatus} • {sourceFinding}
-                              </div>
-                            </div>
-                            <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-1 text-[10px] uppercase tracking-wide text-[color:var(--theme-text-secondary)]">
-                              {String(q.stage ?? q.status ?? "advisor_pending").replaceAll("_", " ")}
-                            </span>
-                          </div>
-                          <div className="mt-3 grid gap-2 text-xs text-[color:var(--theme-text-secondary)]">
-                            <div>Tech notes: <span className="text-[color:var(--theme-text-primary)]">{technicianNotes}</span></div>
-                            <div>Labor: <span className="text-[color:var(--theme-text-primary)]">{typeof q.labor_hours === "number" ? `${q.labor_hours}h` : typeof q.est_labor_hours === "number" ? `${q.est_labor_hours}h` : "—"}</span></div>
-                            <div>Parts: <span className="text-[color:var(--theme-text-primary)]">{partsLabel}</span></div>
-                            <div>Evidence: <span className="text-[color:var(--theme-text-primary)]">{photoCount}</span></div>
-                            <div>Parts Request: <span className="text-[color:var(--theme-text-primary)]">{partsRequestLabel}</span></div>
-                            <div>Pricing: <span className={pricingReviewRequired ? "text-amber-200" : "text-emerald-200"}>{pricingReviewRequired ? "Review required" : "Pricing available"}</span></div>
-                          </div>
-                          {menuMatch ? (
-                            <div className="mt-2 text-[11px] text-[color:var(--theme-text-secondary)]">
-                              Menu source: {asString(menuMatch.label) ?? asString(menuMatch.menu_repair_item_id) ?? asString(menuMatch.menu_item_id) ?? "matched repair"}
-                            </div>
-                          ) : null}
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            <Link href={`/quote-review/${wo?.id ?? routeId}`} className="rounded-md border border-sky-400/40 px-2.5 py-1 text-[11px] font-semibold text-sky-100 hover:bg-sky-500/10">
-                              Review
-                            </Link>
-                            {partRequests[0]?.id ? (
-                              <Link href={`/parts/requests?requestId=${encodeURIComponent(partRequests[0].id)}`} className="rounded-md border border-[color:var(--theme-border-soft)] px-2.5 py-1 text-[11px] font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]">
-                                View Parts Request
-                              </Link>
-                            ) : null}
-                          </div>
-                        </article>
+                        <JobCard
+                          key={ln.id}
+                          index={idx}
+                          line={ln}
+                          parts={partsForLine}
+                          partsCount={pricingByLine[ln.id]?.partsCount ?? 0}
+                          partsStatusLabel={getPartsRequestStatusLabel(
+                            linePartRequests,
+                          )}
+                          technicians={assignables}
+                          primaryTechnicianName={
+                            ln.assigned_tech_id
+                              ? readableTechNamesById[
+                                  ln.assigned_tech_id
+                                ]?.trim() || null
+                              : null
+                          }
+                          canAssign={canAssign}
+                          isPunchedIn={isPunchedIn}
+                          isCurrentUserWorkingThisLine={
+                            isCurrentUserWorkingThisLine
+                          }
+                          activeTechnicianNames={activeTechnicianNames}
+                          assignedTechnicianIds={
+                            assignedTechsByLine[ln.id] ?? []
+                          }
+                          isSelectedForPanel={isSelectedForPanel}
+                          onOpen={() => openFocusedJob(ln.id)}
+                          onAssign={
+                            canAssign
+                              ? (technicianId: string) =>
+                                  void assignLineTechnician(ln.id, technicianId)
+                              : undefined
+                          }
+                          onOpenInspection={
+                            canOpenWorkOrderInspectionModule({
+                              inspectionTemplateId:
+                                navigatorInspectionTemplateId,
+                              canRunInspections: canRunInspectionForLine(ln),
+                            })
+                              ? () => void openInspectionForLine(ln)
+                              : undefined
+                          }
+                          onAddPart={
+                            canUseInventoryPicker
+                              ? () => setPartsLineId(ln.id)
+                              : undefined
+                          }
+                          onRequestParts={
+                            hasRequestableParts
+                              ? () =>
+                                  void requestAllPartsForLine(
+                                    ln.id,
+                                    linePartRequests,
+                                  )
+                              : undefined
+                          }
+                          requestPartsLabel={partsRequestActionLabel(
+                            linePartRequests,
+                          )}
+                          requestPartsBusy={requestingPartsLineId === ln.id}
+                          pricing={pricingByLine[ln.id] ?? null}
+                          reviewOk={reviewOk}
+                          reviewIssues={reviewIssuesByLine[ln.id] ?? []}
+                          canDelete={canDeleteLine}
+                          onDelete={() => openDeleteForLine(ln.id)}
+                          display="navigator"
+                          compact
+                          selected={isSelectedForPanel}
+                          hideExecutionStageCompletenessPills
+                          evidence={evidence.filter(
+                            (item) => item.workOrderLineId === ln.id,
+                          )}
+                        />
                       );
                     })}
                   </div>
-                </section>
-              )}
+                )}
 
-              {infoLines.length > 0 && (
-                <section className={cn(PANEL_VARIANTS.passive, "rounded-xl p-3")}>
-                  <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                    Info / Context (non-actionable)
-                  </div>
-                  <div className="space-y-2">
-                    {infoLines.map((line) => (
-                      <div key={line.id} className="rounded-lg border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] p-2.5">
-                        <div className="text-sm text-foreground">
-                          {line.description || line.complaint || "Context line"}
+                {approvalPendingQuotes.length > 0 && (
+                  <section
+                    className={cn(PANEL_VARIANTS.secondary, "rounded-xl p-3")}
+                  >
+                    <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <div className="text-xs font-semibold uppercase tracking-[0.16em] text-sky-300">
+                          Pending quote items
                         </div>
-                        {line.notes && <div className="mt-1 text-xs text-muted-foreground">{line.notes}</div>}
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Recommended repairs stay here until advisor/customer
+                          approval materializes work lines.
+                        </p>
                       </div>
-                    ))}
-                  </div>
-                </section>
-              )}
+                      <Link
+                        href={`/quote-review/${wo?.id ?? routeId}`}
+                        className="rounded-full border border-sky-400/40 bg-sky-500/10 px-3 py-1.5 text-xs font-semibold text-sky-100 hover:bg-sky-500/20"
+                      >
+                        Open Quote Review
+                      </Link>
+                    </div>
+                    <div className="grid gap-3">
+                      {approvalPendingQuotes.map((q) => {
+                        const meta = isRecord(q.metadata) ? q.metadata : {};
+                        const photoCount = Array.isArray(meta.photo_urls)
+                          ? meta.photo_urls.length
+                          : 0;
+                        const menuMatch = isRecord(meta.menu_match)
+                          ? meta.menu_match
+                          : null;
+                        const partRequests =
+                          partRequestsByQuoteLine[q.id] ?? [];
+                        const partsRequirement = resolveQuotePartsRequirement({
+                          metadata: meta,
+                          linkedRequestCount: partRequests.length,
+                        });
+                        const pricingReviewRequired =
+                          menuMatch?.pricing_review_required === true ||
+                          q.status === "pending_parts" ||
+                          partsRequirement.snapshot.pendingCount > 0;
+                        const partsLabel =
+                          partsRequirement.state === "required"
+                            ? `${partsRequirement.displayCount} requirement(s)`
+                            : partsRequirement.state === "labor_only"
+                              ? "None / labor-only"
+                              : "Not recorded";
+                        const partsRequestLabel =
+                          partRequests.length > 0
+                            ? partRequests
+                                .map((request) => request.status ?? "requested")
+                                .join(", ")
+                            : partsRequirement.state === "labor_only"
+                              ? "Not required"
+                              : "Not created";
+                        const sourceFinding =
+                          asString(meta.source_finding_title) ??
+                          q.ai_complaint ??
+                          "Inspection finding";
+                        const inspectionStatus =
+                          asString(meta.inspection_status)?.toUpperCase() ??
+                          "RECOMMEND";
+                        const technicianNotes =
+                          asString(meta.technician_notes) ?? q.notes ?? "—";
 
-              {wo?.id ? (
-                <WorkOrderMediaGallery
-                  workOrderId={wo.id}
-                  scope="unassigned"
-                  hideWhenEmpty
-                  lineOptions={sortedLines.map((line, index) => ({
-                    id: line.id,
-                    label: `${index + 1}. ${line.description || line.complaint || "Job"}`,
-                  }))}
-                  className={cn(PANEL_VARIANTS.passive, "rounded-xl p-3")}
-                />
-              ) : null}
-            </div>
+                        return (
+                          <article
+                            key={q.id}
+                            className="rounded-xl border border-sky-400/20 bg-sky-950/20 p-3"
+                          >
+                            <div className="flex flex-wrap items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <div className="text-sm font-semibold text-foreground">
+                                  {q.description || "Recommended repair"}
+                                </div>
+                                <div className="mt-1 text-[11px] uppercase tracking-[0.14em] text-sky-200">
+                                  {inspectionStatus} • {sourceFinding}
+                                </div>
+                              </div>
+                              <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-1 text-[10px] uppercase tracking-wide text-[color:var(--theme-text-secondary)]">
+                                {String(
+                                  q.stage ?? q.status ?? "advisor_pending",
+                                ).replaceAll("_", " ")}
+                              </span>
+                            </div>
+                            <div className="mt-3 grid gap-2 text-xs text-[color:var(--theme-text-secondary)]">
+                              <div>
+                                Tech notes:{" "}
+                                <span className="text-[color:var(--theme-text-primary)]">
+                                  {technicianNotes}
+                                </span>
+                              </div>
+                              <div>
+                                Labor:{" "}
+                                <span className="text-[color:var(--theme-text-primary)]">
+                                  {typeof q.labor_hours === "number"
+                                    ? `${q.labor_hours}h`
+                                    : typeof q.est_labor_hours === "number"
+                                      ? `${q.est_labor_hours}h`
+                                      : "—"}
+                                </span>
+                              </div>
+                              <div>
+                                Parts:{" "}
+                                <span className="text-[color:var(--theme-text-primary)]">
+                                  {partsLabel}
+                                </span>
+                              </div>
+                              <div>
+                                Evidence:{" "}
+                                <span className="text-[color:var(--theme-text-primary)]">
+                                  {photoCount}
+                                </span>
+                              </div>
+                              <div>
+                                Parts Request:{" "}
+                                <span className="text-[color:var(--theme-text-primary)]">
+                                  {partsRequestLabel}
+                                </span>
+                              </div>
+                              <div>
+                                Pricing:{" "}
+                                <span
+                                  className={
+                                    pricingReviewRequired
+                                      ? "text-amber-200"
+                                      : "text-emerald-200"
+                                  }
+                                >
+                                  {pricingReviewRequired
+                                    ? "Review required"
+                                    : "Pricing available"}
+                                </span>
+                              </div>
+                            </div>
+                            {menuMatch ? (
+                              <div className="mt-2 text-[11px] text-[color:var(--theme-text-secondary)]">
+                                Menu source:{" "}
+                                {asString(menuMatch.label) ??
+                                  asString(menuMatch.menu_repair_item_id) ??
+                                  asString(menuMatch.menu_item_id) ??
+                                  "matched repair"}
+                              </div>
+                            ) : null}
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              <Link
+                                href={`/quote-review/${wo?.id ?? routeId}`}
+                                className="rounded-md border border-sky-400/40 px-2.5 py-1 text-[11px] font-semibold text-sky-100 hover:bg-sky-500/10"
+                              >
+                                Review
+                              </Link>
+                              {partRequests[0]?.id ? (
+                                <Link
+                                  href={`/parts/requests?requestId=${encodeURIComponent(partRequests[0].id)}`}
+                                  className="rounded-md border border-[color:var(--theme-border-soft)] px-2.5 py-1 text-[11px] font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]"
+                                >
+                                  View Parts Request
+                                </Link>
+                              ) : null}
+                            </div>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  </section>
+                )}
+
+                {infoLines.length > 0 && (
+                  <section
+                    className={cn(PANEL_VARIANTS.passive, "rounded-xl p-3")}
+                  >
+                    <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                      Info / Context (non-actionable)
+                    </div>
+                    <div className="space-y-2">
+                      {infoLines.map((line) => (
+                        <div
+                          key={line.id}
+                          className="rounded-lg border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] p-2.5"
+                        >
+                          <div className="text-sm text-foreground">
+                            {line.description ||
+                              line.complaint ||
+                              "Context line"}
+                          </div>
+                          {line.notes && (
+                            <div className="mt-1 text-xs text-muted-foreground">
+                              {line.notes}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                )}
+
+                {wo?.id ? (
+                  <WorkOrderMediaGallery
+                    workOrderId={wo.id}
+                    scope="unassigned"
+                    hideWhenEmpty
+                    lineOptions={sortedLines.map((line, index) => ({
+                      id: line.id,
+                      label: `${index + 1}. ${line.description || line.complaint || "Job"}`,
+                    }))}
+                    className={cn(PANEL_VARIANTS.passive, "rounded-xl p-3")}
+                  />
+                ) : null}
+              </div>
             </aside>
 
             {/* Center workspace and right command center are owned by the selected job. */}
@@ -2474,11 +2841,12 @@ export default function WorkOrderIdClient(): JSX.Element {
                   workOrderLineId={panelLineId}
                   lineSnapshot={panelLine}
                   primaryTechSnapshot={panelPrimaryTech}
-                  assignedTechnicianIds={
-                    assignedTechsByLine[panelLineId] ?? []
-                  }
+                  assignedTechnicianIds={assignedTechsByLine[panelLineId] ?? []}
                   isPunchedInSnapshot={panelLineIsPunchedIn}
                   canExecuteJob={canExecuteJobs}
+                  actorAssignedToLine={
+                    panelLine ? actorAssignedToLine(panelLine) : false
+                  }
                   canAssignTechnician={canAssign}
                   canAddJob={canAddJobs}
                   technicianOptions={assignables}
@@ -2522,15 +2890,21 @@ export default function WorkOrderIdClient(): JSX.Element {
               className="flex w-full items-center gap-2 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-left text-[11px] text-[color:var(--theme-text-secondary)] shadow-[0_8px_22px_rgba(15,23,42,0.06)] transition hover:bg-[color:var(--theme-surface-subtle)]"
             >
               <Clock3 className="h-3.5 w-3.5 shrink-0 text-[color:var(--brand-primary)]" />
-              <span className="font-semibold text-[color:var(--theme-text-primary)]">Work order activity</span>
+              <span className="font-semibold text-[color:var(--theme-text-primary)]">
+                Work order activity
+              </span>
               <span className="h-1 w-1 rounded-full bg-[color:var(--brand-primary)]" />
-              <span className="truncate">{latestDecisionEvent.label}{latestDecisionEvent.meta ? ` · ${latestDecisionEvent.meta}` : ""}</span>
+              <span className="truncate">
+                {latestDecisionEvent.label}
+                {latestDecisionEvent.meta
+                  ? ` · ${latestDecisionEvent.meta}`
+                  : ""}
+              </span>
               <time className="ml-auto hidden shrink-0 font-mono text-[10px] sm:inline">
                 {format(new Date(latestDecisionEvent.timestamp), "PP p")}
               </time>
             </button>
           ) : null}
-
         </div>
       )}
 
@@ -2541,6 +2915,9 @@ export default function WorkOrderIdClient(): JSX.Element {
           onClose={() => setFocusedOpen(false)}
           workOrderLineId={focusedJobId}
           canExecuteJob={canExecuteJobs}
+          actorAssignedToLine={
+            focusedModalLine ? actorAssignedToLine(focusedModalLine) : false
+          }
           canAddJob={canAddJobs}
           onChanged={fetchAll}
           mode="tech"
@@ -2557,7 +2934,9 @@ export default function WorkOrderIdClient(): JSX.Element {
           vehicleSummary={
             vehicle
               ? {
-                  year: (vehicle.year as string | number | null)?.toString() ?? null,
+                  year:
+                    (vehicle.year as string | number | null)?.toString() ??
+                    null,
                   make: vehicle.make ?? null,
                   model: vehicle.model ?? null,
                 }

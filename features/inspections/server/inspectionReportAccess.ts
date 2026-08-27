@@ -10,6 +10,7 @@ import {
 import { createAdminClient } from "@/features/integrations/shopreel/server/createAdminClient";
 import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
 import { canonicalizeRole } from "@/features/shared/lib/rbac";
+import { signCanonicalWorkOrderPhotoUrls } from "@/features/inspections/server/signCanonicalWorkOrderPhotoUrls";
 
 type DB = Database;
 
@@ -43,7 +44,7 @@ async function actorCanRead(args: {
   shopId: string;
   customerId: string | null;
   vehicleId: string | null;
-}): Promise<boolean> {
+}): Promise<"staff" | "portal" | null> {
   const admin = createAdminClient();
   const { data: profile } = await admin
     .from("profiles")
@@ -59,7 +60,7 @@ async function actorCanRead(args: {
       role,
     )
   ) {
-    return true;
+    return "staff";
   }
 
   if (args.customerId) {
@@ -68,106 +69,57 @@ async function actorCanRead(args: {
         p_customer_id: args.customerId,
         p_shop_id: args.shopId,
       });
-    if (!portalAccessError && portalAccess === true) return true;
+    if (!portalAccessError && portalAccess === true) return "portal";
   }
 
-  if (!args.vehicleId) return false;
+  if (!args.vehicleId) return null;
   const actor = await resolveFleetActorContext(admin, {
     userId: args.actorUserId,
   });
-  if (!actor.isFleetActor || actor.shopId !== args.shopId) return false;
+  if (!actor.isFleetActor || actor.shopId !== args.shopId) return null;
   const { data: vehicle } = await admin
     .from("vehicles")
     .select("fleet_id")
     .eq("id", args.vehicleId)
     .eq("shop_id", args.shopId)
     .maybeSingle<{ fleet_id: string | null }>();
-  return !!vehicle?.fleet_id && actor.fleetIds.includes(vehicle.fleet_id);
-}
-
-function storageObject(url: string): { bucket: string; path: string } | null {
-  const configuredUrl =
-    process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
-  if (!configuredUrl) return null;
-  try {
-    const parsed = new URL(url);
-    if (parsed.origin !== new URL(configuredUrl).origin) return null;
-    const match = parsed.pathname.match(
-      /\/storage\/v1\/object\/(?:sign|public)\/([^/]+)\/(.+)$/,
-    );
-    return match
-      ? {
-          bucket: decodeURIComponent(match[1]),
-          path: decodeURIComponent(match[2]),
-        }
-      : null;
-  } catch {
-    return null;
-  }
+  return vehicle?.fleet_id && actor.fleetIds.includes(vehicle.fleet_id)
+    ? "portal"
+    : null;
 }
 
 async function refreshEvidence(
   report: InspectionReport,
-  scope: { shopId: string; workOrderId: string },
+  scope: {
+    shopId: string;
+    workOrderId: string;
+    customerVisibleOnly: boolean;
+  },
 ): Promise<InspectionReport> {
   const admin = createAdminClient();
-  const { data: media, error } = await admin
-    .from("work_order_media")
-    .select("storage_bucket,storage_path")
-    .eq("shop_id", scope.shopId)
-    .eq("work_order_id", scope.workOrderId)
-    .eq("storage_bucket", "job-photos")
-    .not("storage_path", "is", null);
-  if (error) throw new Error(error.message);
-
-  const canonicalObjects = new Set(
-    (media ?? [])
-      .filter(
-        (
-          row,
-        ): row is {
-          storage_bucket: string;
-          storage_path: string;
-        } =>
-          row.storage_bucket === "job-photos" &&
-          typeof row.storage_path === "string" &&
-          row.storage_path.startsWith(`wo/${scope.workOrderId}/`),
-      )
-      .map((row) => `${row.storage_bucket}/${row.storage_path}`),
+  const originalUrls = report.sections.flatMap((section) =>
+    section.items.flatMap((item) => item.photoUrls),
+  );
+  const signedUrls = await signCanonicalWorkOrderPhotoUrls({
+    admin,
+    shopId: scope.shopId,
+    workOrderId: scope.workOrderId,
+    urls: originalUrls,
+    customerVisibleOnly: scope.customerVisibleOnly,
+  });
+  const replacements = new Map(
+    originalUrls.map((url, index) => [url, signedUrls[index]]),
   );
 
-  const refreshed = await Promise.all(
-    report.sections.map(async (section) => ({
-      ...section,
-      items: await Promise.all(
-        section.items.map(async (item) => {
-          const photoUrls = await Promise.all(
-            item.photoUrls.map(async (url) => {
-              const object = storageObject(url);
-              if (
-                !object ||
-                object.bucket !== "job-photos" ||
-                !object.path.startsWith(`wo/${scope.workOrderId}/`) ||
-                !canonicalObjects.has(`${object.bucket}/${object.path}`)
-              ) {
-                return null;
-              }
-              const signed = await admin.storage
-                .from("job-photos")
-                .createSignedUrl(object.path, 60 * 10);
-              return signed.data?.signedUrl ?? null;
-            }),
-          );
-          return {
-            ...item,
-            photoUrls: photoUrls.filter(
-              (url): url is string => typeof url === "string",
-            ),
-          };
-        }),
-      ),
+  const refreshed = report.sections.map((section) => ({
+    ...section,
+    items: section.items.map((item) => ({
+      ...item,
+      photoUrls: item.photoUrls
+        .map((url) => replacements.get(url) ?? null)
+        .filter((url): url is string => typeof url === "string"),
     })),
-  );
+  }));
   return { ...report, sections: refreshed };
 }
 
@@ -198,16 +150,16 @@ async function hydrate(
       customer_id: string | null;
       shop_id: string;
     }>();
-  if (
-    !workOrder ||
-    !(await actorCanRead({
-      sessionClient,
-      actorUserId,
-      shopId: inspection.shop_id,
-      customerId: workOrder.customer_id,
-      vehicleId: workOrder.vehicle_id,
-    }))
-  ) {
+  const actorKind = workOrder
+    ? await actorCanRead({
+        sessionClient,
+        actorUserId,
+        shopId: inspection.shop_id,
+        customerId: workOrder.customer_id,
+        vehicleId: workOrder.vehicle_id,
+      })
+    : null;
+  if (!workOrder || !actorKind) {
     return null;
   }
   const { data: technicianSignature } = await admin
@@ -227,6 +179,7 @@ async function hydrate(
     report = await refreshEvidence(report, {
       shopId: inspection.shop_id,
       workOrderId: workOrder.id,
+      customerVisibleOnly: actorKind === "portal",
     });
   }
   return {

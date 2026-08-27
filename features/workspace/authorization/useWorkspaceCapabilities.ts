@@ -6,8 +6,17 @@ import {
   type EffectiveWorkspaceCapabilities,
   type WorkspaceCapabilityKey,
 } from "@/features/workspace/authorization/capabilities";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import {
+  clearWorkspaceAuthorizationSnapshot,
+  normalizeWorkspaceCapabilities,
+  persistWorkspaceAuthorizationSnapshot,
+  readWorkspaceAuthorizationSnapshot,
+  type WorkspaceAuthorizationActor,
+} from "@/features/workspace/authorization/offlineWorkspaceAuthorization";
 
 type CapabilityResponse = {
+  actor?: WorkspaceAuthorizationActor;
   capabilities?: Partial<
     Record<WorkspaceCapabilityKey, { granted?: boolean; source?: string }>
   >;
@@ -35,30 +44,31 @@ export function useWorkspaceCapabilities(): {
         const payload = (await response.json().catch(() => null)) as
           | CapabilityResponse
           | null;
-        if (!response.ok || !payload?.capabilities) {
+        if (!response.ok || !payload?.capabilities || !payload.actor) {
+          if (response.status === 401 || response.status === 403) {
+            clearWorkspaceAuthorizationSnapshot();
+          }
           setCapabilities(createDeniedWorkspaceCapabilities());
           return;
         }
 
-        const next = createDeniedWorkspaceCapabilities();
-        for (const capabilityKey of Object.keys(next) as WorkspaceCapabilityKey[]) {
-          const decision = payload.capabilities[capabilityKey];
-          if (!decision) continue;
-          next[capabilityKey] = {
-            ...next[capabilityKey],
-            granted: Boolean(decision.granted),
-            source:
-              decision.source === "individual_override" ||
-              decision.source === "shop_role_policy" ||
-              decision.source === "profixiq_preset"
-                ? decision.source
-                : "unavailable",
-          };
-        }
+        const next = normalizeWorkspaceCapabilities(payload.capabilities);
+        persistWorkspaceAuthorizationSnapshot({
+          actor: payload.actor,
+          capabilities: next,
+        });
         setCapabilities(next);
       } catch (error) {
         if (!(error instanceof DOMException && error.name === "AbortError")) {
-          setCapabilities(createDeniedWorkspaceCapabilities());
+          const {
+            data: { session },
+          } = await createBrowserSupabase().auth.getSession();
+          const snapshot = session?.user.id
+            ? readWorkspaceAuthorizationSnapshot({ userId: session.user.id })
+            : null;
+          setCapabilities(
+            snapshot?.capabilities ?? createDeniedWorkspaceCapabilities(),
+          );
         }
       } finally {
         if (!controller.signal.aborted) setLoading(false);

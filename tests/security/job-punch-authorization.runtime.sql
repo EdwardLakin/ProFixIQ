@@ -134,6 +134,22 @@ begin
   ) then
     raise exception 'Private job punch core is directly executable.';
   end if;
+
+  if has_table_privilege(
+    'authenticated',
+    'public.work_order_line_labor_segments',
+    'INSERT'
+  ) or has_table_privilege(
+    'authenticated',
+    'public.work_order_line_labor_segments',
+    'UPDATE'
+  ) or has_table_privilege(
+    'authenticated',
+    'public.work_order_line_labor_segments',
+    'DELETE'
+  ) then
+    raise exception 'Authenticated callers can bypass the job punch RPC with direct labor writes.';
+  end if;
 end
 $job_punch_contract$;
 
@@ -555,8 +571,8 @@ $job_punch_advisor_default_deny$;
 reset role;
 select set_config('request.jwt.claims', '', true);
 
--- Parts is denied by the preset even when directly assigned. An explicit
--- tenant-scoped individual override can delegate the existing capability.
+-- Parts is denied even when directly assigned, and the permission model must
+-- reject delegation to a role the canonical assignment RPC cannot assign.
 select set_config(
   'request.jwt.claims',
   '{"sub":"58100000-0000-4000-8000-000000000004","role":"authenticated"}',
@@ -588,42 +604,29 @@ $job_punch_parts_default_deny$;
 
 reset role;
 
-insert into public.staff_capability_overrides (
-  shop_id, profile_id, capability_key, effect,
-  changed_by_profile_id
-) values (
-  '58300000-0000-4000-8000-000000000001',
-  '58100000-0000-4000-8000-000000000004',
-  'work_order.job.execute',
-  'allow',
-  '58100000-0000-4000-8000-000000000001'
-);
-
-set local role authenticated;
-do $job_punch_parts_delegated$
+do $job_punch_parts_delegation_denied$
+declare
+  v_denied boolean := false;
 begin
-  perform public.apply_job_punch_transition_atomic(
-    '58300000-0000-4000-8000-000000000001',
-    '58600000-0000-4000-8000-000000000003',
-    'start',
-    '58100000-0000-4000-8000-000000000004',
-    '58100000-0000-4000-8000-000000000004',
-    'job-punch-runtime:parts:delegated:start',
-    false,
-    now() - interval '15 minutes'
-  );
-  perform public.apply_job_punch_transition_atomic(
-    '58300000-0000-4000-8000-000000000001',
-    '58600000-0000-4000-8000-000000000003',
-    'pause',
-    '58100000-0000-4000-8000-000000000004',
-    '58100000-0000-4000-8000-000000000004',
-    'job-punch-runtime:parts:delegated:pause',
-    false,
-    now() - interval '10 minutes'
-  );
+  begin
+    insert into public.staff_capability_overrides (
+      shop_id, profile_id, capability_key, effect,
+      changed_by_profile_id
+    ) values (
+      '58300000-0000-4000-8000-000000000001',
+      '58100000-0000-4000-8000-000000000004',
+      'work_order.job.execute',
+      'allow',
+      '58100000-0000-4000-8000-000000000001'
+    );
+  exception when insufficient_privilege then
+    v_denied := true;
+  end;
+  if not v_denied then
+    raise exception 'Parts received a job-execution override despite being non-assignable.';
+  end if;
 end
-$job_punch_parts_delegated$;
+$job_punch_parts_delegation_denied$;
 
 reset role;
 select set_config('request.jwt.claims', '', true);

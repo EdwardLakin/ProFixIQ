@@ -143,6 +143,40 @@ values
     '{"mimetype":"image/jpeg","size":12,"fixture":"internal-b"}'::jsonb
   );
 
+insert into public.work_order_quote_lines (
+  id, shop_id, work_order_id, work_order_line_id, description, status, stage,
+  created_by, metadata
+) values (
+  '57800000-0000-4000-8000-000000000001',
+  '57300000-0000-4000-8000-000000000001',
+  '57500000-0000-4000-8000-000000000001',
+  '57600000-0000-4000-8000-000000000001',
+  'Customer-visible inspection finding',
+  'draft',
+  'advisor_pending',
+  '57100000-0000-4000-8000-000000000001',
+  jsonb_build_object(
+    'photo_urls',
+    jsonb_build_array(
+      '/storage/v1/object/public/job-photos/wo/57500000-0000-4000-8000-000000000001/lines/57600000-0000-4000-8000-000000000001/57700000-0000-4000-8000-000000000011_internal.jpg'
+    )
+  )
+);
+
+do $canonical_quote_media_promotion$
+begin
+  if not exists (
+    select 1
+    from public.work_order_media media
+    where media.storage_bucket = 'job-photos'
+      and media.storage_path = 'wo/57500000-0000-4000-8000-000000000001/lines/57600000-0000-4000-8000-000000000001/57700000-0000-4000-8000-000000000011_internal.jpg'
+      and media.visibility = 'customer'
+  ) then
+    raise exception 'Quote evidence did not promote its canonical storage row.';
+  end if;
+end;
+$canonical_quote_media_promotion$;
+
 update public.work_order_media
 set visibility = 'customer'
 where storage_path = 'wo/57500000-0000-4000-8000-000000000001/lines/57600000-0000-4000-8000-000000000001/57700000-0000-4000-8000-000000000012_customer.jpg';
@@ -260,8 +294,34 @@ begin
   ) then
     raise exception 'The drifted broad media read policy still exists.';
   end if;
+
+  if (
+    select count(*)
+    from pg_catalog.pg_policies
+    where schemaname = 'storage'
+      and tablename = 'objects'
+      and policyname in (
+        'job_photos_select_boundary',
+        'job_photos_insert_boundary',
+        'job_photos_update_boundary',
+        'job_photos_delete_boundary'
+      )
+      and permissive = 'RESTRICTIVE'
+  ) <> 4 then
+    raise exception 'Private job-photo restrictive boundaries are incomplete.';
+  end if;
 end
 $media_isolation_contract$;
+
+-- Recreate the class of permissive dashboard policy found in production after
+-- the migration has run. The restrictive bucket boundary must still deny every
+-- cross-tenant, unassigned, and spoofed write exercised below.
+create policy media_runtime_drift_job_photo_insert
+on storage.objects
+as permissive
+for insert
+to authenticated
+with check (bucket_id = 'job-photos');
 
 -- Linked/imported technicians must retain legitimate same-Shop upload,
 -- retry, direct media, and annotation behavior without inheriting another

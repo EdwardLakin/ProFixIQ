@@ -48,6 +48,9 @@ export default function MobileJobPage() {
   const [line, setLine] = useState<StoryLine | null>(null);
   const [loadingStory, setLoadingStory] = useState(true);
   const [canAddJob, setCanAddJob] = useState(false);
+  const [actorAssignedToLine, setActorAssignedToLine] = useState<
+    boolean | undefined
+  >(undefined);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -70,9 +73,7 @@ export default function MobileJobPage() {
       }
 
       const actor = getActorCapabilities({ role: profile.role });
-      setCanAddJob(
-        actor.canManageWorkOrders || actor.canPerformAssignedWork,
-      );
+      setCanAddJob(actor.canManageWorkOrders || actor.canPerformAssignedWork);
     };
 
     void resolveActor().catch(() => {
@@ -96,9 +97,13 @@ export default function MobileJobPage() {
       );
       const body = (await response.json().catch(() => null)) as {
         lines?: StoryLine[];
+        executableLineIds?: string[];
       } | null;
       if (!response.ok) throw new Error("Job line could not be loaded.");
       setLine(body?.lines?.[0] ?? null);
+      setActorAssignedToLine(
+        body?.executableLineIds?.includes(lineId) === true,
+      );
     } catch (error) {
       // The focused job owns the primary load/error state. This supplemental
       // editor must never replace it with a second blocking screen.
@@ -230,6 +235,7 @@ export default function MobileJobPage() {
       <MobileFocusedJob
         workOrderLineId={lineId}
         canExecuteJob={canExecuteJob}
+        actorAssignedToLine={actorAssignedToLine}
         canAddJob={canAddJob}
         onChanged={loadStory}
         onBack={() =>

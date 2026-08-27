@@ -3,7 +3,6 @@ import "server-only";
 import { NextResponse } from "next/server";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
-import { WORKSPACE_CAPABILITIES } from "@/features/workspace/authorization/capabilities";
 
 type JobPunchLine = {
   id: string;
@@ -16,9 +15,7 @@ type JobPunchLine = {
 
 type JobPunchAccess = Awaited<ReturnType<typeof requireShopScopedApiAccess>>;
 
-export async function requireAssignedJobPunchAccess(
-  lineId: string,
-): Promise<
+export async function requireJobPunchActorAccess(lineId: string): Promise<
   | {
       ok: true;
       access: Extract<JobPunchAccess, { ok: true }>;
@@ -26,33 +23,17 @@ export async function requireAssignedJobPunchAccess(
     }
   | { ok: false; response: NextResponse }
 > {
-  const access = await requireShopScopedApiAccess({
-    requiredWorkspaceCapability:
-      WORKSPACE_CAPABILITIES.executeAssignedWorkOrderJobs,
-  });
+  const access = await requireShopScopedApiAccess();
   if (!access.ok) return access;
 
-  const admin = createAdminSupabase();
-  const actorIds = [...new Set([access.profile.id, access.authUserId])];
-  const [lineResult, assignmentResult] = await Promise.all([
-    admin
-      .from("work_order_lines")
-      .select(
-        "id,shop_id,work_order_id,line_type,assigned_tech_id,assigned_to",
-      )
-      .eq("id", lineId)
-      .eq("shop_id", access.profile.shop_id)
-      .maybeSingle<JobPunchLine>(),
-    admin
-      .from("work_order_line_technicians")
-      .select("id")
-      .eq("work_order_line_id", lineId)
-      .in("technician_id", actorIds)
-      .limit(1)
-      .maybeSingle<{ id: string }>(),
-  ]);
+  const lineResult = await createAdminSupabase()
+    .from("work_order_lines")
+    .select("id,shop_id,work_order_id,line_type,assigned_tech_id,assigned_to")
+    .eq("id", lineId)
+    .eq("shop_id", access.profile.shop_id)
+    .maybeSingle<JobPunchLine>();
 
-  if (lineResult.error || assignmentResult.error) {
+  if (lineResult.error) {
     return {
       ok: false,
       response: NextResponse.json(
@@ -82,19 +63,8 @@ export async function requireAssignedJobPunchAccess(
     };
   }
 
-  const assigned =
-    actorIds.includes(line.assigned_tech_id ?? "") ||
-    actorIds.includes(line.assigned_to ?? "") ||
-    Boolean(assignmentResult.data?.id);
-  if (!assigned) {
-    return {
-      ok: false,
-      response: NextResponse.json(
-        { error: "An assigned technician is required for this job action." },
-        { status: 403 },
-      ),
-    };
-  }
-
+  // The atomic RPC checks an actor/action/line/key receipt before current
+  // capability and assignment. Keep the HTTP layer identity/shop scoped, then
+  // delegate that ordered decision to the transaction boundary.
   return { ok: true, access, line };
 }

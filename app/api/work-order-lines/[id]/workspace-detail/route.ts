@@ -54,8 +54,20 @@ export async function GET(_request: Request, context: RouteContext) {
       return NextResponse.json({ error: "Job not found." }, { status: 404 });
     }
 
+    const selectedLine = snapshot.lines.find((row) => row.id === line.id)!;
+    const actorIds = new Set([access.profile.id, access.authUserId]);
+    const assignedIds = [
+      selectedLine.assigned_tech_id,
+      selectedLine.assigned_to,
+      ...(snapshot.lineContext.technicianIdsByLine[line.id] ?? []),
+    ].filter((value): value is string => Boolean(value));
+
     return NextResponse.json(
-      { ...snapshot, selectedLineId: line.id },
+      {
+        ...snapshot,
+        selectedLineId: line.id,
+        actorAssignedToSelectedLine: assignedIds.some((id) => actorIds.has(id)),
+      },
       { headers: { "Cache-Control": "private, no-store" } },
     );
   } catch (error) {

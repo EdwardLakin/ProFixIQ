@@ -1,7 +1,7 @@
 export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
-import { requireAssignedJobPunchAccess } from "@/features/work-orders/server/authorizeJobPunchTransition";
+import { requireJobPunchActorAccess } from "@/features/work-orders/server/authorizeJobPunchTransition";
 import { stopTechnicianJobLabor } from "@/features/work-orders/server/technicianJobLabor";
 
 function getId(req: NextRequest) {
@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
   const id = getId(req);
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
 
-  const authorization = await requireAssignedJobPunchAccess(id);
+  const authorization = await requireJobPunchActorAccess(id);
   if (!authorization.ok) return authorization.response;
   const { access, line } = authorization;
 

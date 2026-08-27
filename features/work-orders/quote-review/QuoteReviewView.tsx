@@ -180,6 +180,41 @@ function jsonStringArray(value: Json | undefined): string[] {
   return value.map((item) => safeTrim(item)).filter(Boolean).slice(0, 6);
 }
 
+async function signQuoteEvidence(args: { workOrderId: string; lines: QuoteLine[]; signal: AbortSignal }): Promise<QuoteLine[]> {
+  const urls = [...new Set(args.lines.flatMap((line) => {
+    const metadata = quoteMetadata(line);
+    return [...jsonStringArray(metadata.photo_urls), ...jsonStringArray(metadata.evidence_urls)];
+  }))];
+  if (urls.length === 0) return args.lines;
+
+  const response = await fetch(`/api/work-orders/${args.workOrderId}/quote-evidence/sign`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ urls }),
+    cache: "no-store",
+    signal: args.signal,
+  });
+  const payload = (await response.json().catch(() => null)) as { urls?: Array<string | null>; error?: string } | null;
+  if (!response.ok || !Array.isArray(payload?.urls)) {
+    throw routeLoadFailureFromStatus(response.status, payload?.error ?? "Quote evidence could not be loaded.");
+  }
+  const replacements = new Map(urls.map((url, index) => [url, payload.urls?.[index] ?? null]));
+  return args.lines.map((line) => {
+    const metadata = quoteMetadata(line);
+    const replace = (value: Json | undefined) => jsonStringArray(value)
+      .map((url) => replacements.get(url) ?? null)
+      .filter((url): url is string => Boolean(url));
+    return {
+      ...line,
+      metadata: {
+        ...metadata,
+        photo_urls: replace(metadata.photo_urls),
+        evidence_urls: replace(metadata.evidence_urls),
+      },
+    };
+  });
+}
+
 function quoteLineLaborRate(line: EditableQuoteLine, shopLaborRate: number): number {
   return line._laborRateDraft ?? jsonNumber(quoteMetadata(line).labor_rate) ?? shopLaborRate;
 }
@@ -682,7 +717,8 @@ export default function QuoteReviewView(props: {
             if (qErr) throw qErr;
             if (wlErr) throw wlErr;
             setShop(shopRow ?? null);
-            const loadedQuoteLines = ((qRows ?? []) as QuoteLine[]).map(
+            const signedQuoteLines = await signQuoteEvidence({ workOrderId: woId, lines: (qRows ?? []) as QuoteLine[], signal });
+            const loadedQuoteLines = signedQuoteLines.map(
               (line) => ({
                 ...line,
                 _dirty: false,

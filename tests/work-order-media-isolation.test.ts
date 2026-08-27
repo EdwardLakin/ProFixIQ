@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
+const source = (path: string) => readFileSync(path, "utf8");
+
 const migration = readFileSync(
   "supabase/migrations/20260825220000_isolate_work_order_media_storage.sql",
   "utf8",
@@ -16,6 +18,13 @@ const evidenceAuthorization = readFileSync(
 const mediaRoute = readFileSync(
   "app/api/work-orders/[id]/media/route.ts",
   "utf8",
+);
+const photoUploadRoute = source("app/api/inspections/photos/upload/route.ts");
+const quoteReview = source(
+  "features/work-orders/quote-review/QuoteReviewView.tsx",
+);
+const quoteEvidenceSigner = source(
+  "app/api/work-orders/[id]/quote-evidence/sign/route.ts",
 );
 
 describe("Work Order evidence and job-photo isolation", () => {
@@ -81,7 +90,30 @@ describe("Work Order evidence and job-photo isolation", () => {
         `drop policy if exists job_photos_${operation}`,
       );
       expect(migration).toContain(`'${operation}'`);
+      expect(migration).toContain(
+        `create policy job_photos_${operation}_boundary`,
+      );
     }
+    expect(migration).toContain("as restrictive");
+    expect(migration).toContain("drop_legacy_job_photo_policies");
+    expect(runtime).toContain("media_runtime_drift_job_photo_insert");
+  });
+
+  it("signs private inspection photos through the current authorized session", () => {
+    const signer = source(
+      "features/inspections/server/signInspectionPhotoRows.ts",
+    );
+    const load = source("app/api/inspections/load/route.ts");
+    const portalQuote = source("app/api/portal/quotes/[id]/route.ts");
+
+    expect(signer).toContain('object.bucket !== "job-photos"');
+    expect(signer).toContain("args.sessionClient.storage");
+    expect(signer).toContain(".createSignedUrl(object.path, expiresIn)");
+    expect(signer).toContain("error || !data?.signedUrl ? null");
+    expect(load).toContain("signInspectionPhotoRows");
+    expect(load).toContain("rows: canonicalPhotos");
+    expect(portalQuote).toContain("signInspectionPhotoRows");
+    expect(portalQuote).toContain("rows: data ?? []");
   });
 
   it("makes the established job-photo bucket private", () => {
@@ -108,6 +140,39 @@ describe("Work Order evidence and job-photo isolation", () => {
     expect(runtime).toContain(
       "Revoked customer retained Work Order evidence access.",
     );
+  });
+
+  it("promotes the canonical path-backed row before portal signing", () => {
+    expect(migration).toContain(
+      "create or replace function private.job_photo_path_from_locator",
+    );
+    expect(migration).toContain(
+      "canonical.storage_path = private.job_photo_path_from_locator(promoted.url)",
+    );
+    expect(migration).toContain(
+      "v_storage_path := private.job_photo_path_from_locator(v_url)",
+    );
+    expect(migration).toContain("set visibility = 'customer'");
+  });
+
+  it("compensates an uploaded object when atomic attachment loses authority", () => {
+    expect(photoUploadRoute).toContain(
+      "async function compensateWorkOrderPhotoUpload",
+    );
+    expect(photoUploadRoute).toContain('.from("job-photos")');
+    expect(photoUploadRoute).toContain(".remove([args.path])");
+    expect(photoUploadRoute).toContain('.from("work_order_media")');
+    expect(photoUploadRoute).toContain("uploadedThisRequest");
+    expect(photoUploadRoute).toMatch(
+      /savedError\.code === "42501"[\s\S]*?compensateWorkOrderPhotoUpload/,
+    );
+  });
+
+  it("re-signs staff Quote Review evidence through an authorized route", () => {
+    expect(quoteReview).toContain("signQuoteEvidence");
+    expect(quoteReview).toContain("/quote-evidence/sign");
+    expect(quoteEvidenceSigner).toContain("requireShopScopedApiAccess");
+    expect(quoteEvidenceSigner).toContain("signInspectionPhotoRows");
   });
 
   it("binds every customer evidence read path to active portal access", () => {
@@ -162,7 +227,9 @@ describe("Work Order evidence and job-photo isolation", () => {
     expect(writer).toContain("private.work_order_media_write_access(");
     expect(writer).toContain("v_existing.created_by <> v_actor_user_id");
     expect(writer).toContain("v_actor_user_id,");
-    expect(writer.indexOf("private.work_order_media_write_access(")).toBeLessThan(
+    expect(
+      writer.indexOf("private.work_order_media_write_access("),
+    ).toBeLessThan(
       writer.indexOf("client_mutation_id = btrim(p_client_mutation_id)"),
     );
     expect(runtime).toContain(

@@ -8,6 +8,7 @@ import {
 import { sanitizeCustomerVisibleQuoteMetadata } from "@/features/portal/lib/customerVisibleQuoteParts";
 import { PortalAccessError } from "@/features/portal/server/portalAuth";
 import { requirePortalCustomerActor } from "@/features/portal/server/requirePortalActor";
+import { signInspectionPhotoRows } from "@/features/inspections/server/signInspectionPhotoRows";
 import {
   createAdminSupabase,
   createServerSupabaseRoute,
@@ -110,14 +111,39 @@ export async function GET(_request: Request, context: RouteContext) {
       return portalError("This quote could not be loaded.", 500);
     }
 
-    const quoteLines = (quoteResult.data ?? [])
-      .filter((line) =>
-        isCustomerVisibleQuoteLine(line as unknown as Record<string, unknown>),
-      )
-      .map((line) => ({
-        ...line,
-        metadata: sanitizeCustomerVisibleQuoteMetadata(line.metadata),
-      }));
+    const quoteLines = await Promise.all(
+      (quoteResult.data ?? [])
+        .filter((line) =>
+          isCustomerVisibleQuoteLine(
+            line as unknown as Record<string, unknown>,
+          ),
+        )
+        .map(async (line) => {
+          const metadata = sanitizeCustomerVisibleQuoteMetadata(line.metadata);
+          const photoUrls = Array.isArray(metadata.photo_urls)
+            ? metadata.photo_urls.filter(
+                (url): url is string => typeof url === "string",
+              )
+            : [];
+          const signedPhotos = await signInspectionPhotoRows({
+            sessionClient: supabase,
+            rows: photoUrls.map((image_url) => ({ image_url })),
+          });
+          return {
+            ...line,
+            metadata: {
+              ...metadata,
+              ...(photoUrls.length > 0
+                ? {
+                    photo_urls: signedPhotos
+                      .map((photo) => photo.image_url)
+                      .filter((url): url is string => Boolean(url)),
+                  }
+                : {}),
+            },
+          };
+        }),
+    );
     const linkedWorkOrderLineIds = new Set(
       quoteLines
         .map((line) => line.work_order_line_id)
@@ -162,7 +188,10 @@ export async function GET(_request: Request, context: RouteContext) {
       if (error) {
         inspectionPhotosUnavailable = true;
       } else {
-        inspectionPhotos = data ?? [];
+        inspectionPhotos = await signInspectionPhotoRows({
+          sessionClient: supabase,
+          rows: data ?? [],
+        });
       }
     }
 

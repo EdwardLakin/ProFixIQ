@@ -28,7 +28,6 @@ import { JobCard } from "@/features/work-orders/components/JobCard";
 import MobileFocusedJob from "@/features/work-orders/mobile/MobileFocusedJob";
 import { registerMobileWorkflowDock } from "@/features/copilot/technician/client/mobileWorkflowDock";
 import AskAssistantEntry from "@/features/assistant/components/AskAssistantEntry";
-import { runJobPunchTransition } from "@/features/work-orders/lib/jobPunchTransitionsClient";
 import { isReviewableQuoteLine } from "@/features/work-orders/lib/quotes/reviewableQuoteLines";
 import { resolveWorkOrderLinePricing } from "@/features/work-orders/lib/pricing/resolveWorkOrderLinePricing";
 import { filterAllocationsNotBackedByCanonicalParts } from "@/features/work-orders/lib/display/workOrderParts";
@@ -49,6 +48,10 @@ import {
   subscribeOfflineMutations,
 } from "@/features/shared/lib/offline/mutations";
 import { saveOfflineSnapshot } from "@/features/shared/lib/offline/database";
+import {
+  clearWorkspaceAuthorizationSnapshot,
+  readWorkspaceAuthorizationSnapshot,
+} from "@/features/workspace/authorization/offlineWorkspaceAuthorization";
 import {
   loadProjectedWorkOrderSnapshot,
   removeMobileWorkOrderDetailSnapshots,
@@ -342,6 +345,7 @@ export default function MobileWorkOrderClient({
   // mobile focused job view
   const [focusedJobId, setFocusedJobId] = useState<string | null>(null);
   const [focusedOpen, setFocusedOpen] = useState(false);
+  const partsQuoteOperationKeys = useRef(new Map<string, string>());
   const [attachingTemplateLineId, setAttachingTemplateLineId] = useState<
     string | null
   >(null);
@@ -396,8 +400,17 @@ export default function MobileWorkOrderClient({
             setUserId(uid);
             const cachedScope = getOfflineMutationScope();
             if (!navigator.onLine && cachedScope?.userId === uid) {
-              setCurrentUserRole(session?.user.user_metadata?.role ?? null);
-              setActorRoleVerified(false);
+              const authorization = readWorkspaceAuthorizationSnapshot({
+                userId: uid,
+                shopId: cachedScope.shopId,
+              });
+              setCurrentUserRole(
+                authorization?.actor.role ??
+                  session?.user.user_metadata?.role ??
+                  null,
+              );
+              setCurrentProfileId(authorization?.actor.profileId ?? null);
+              setActorRoleVerified(Boolean(authorization));
               setShopId(cachedScope.shopId);
               setActorReady(true);
               return;
@@ -408,8 +421,17 @@ export default function MobileWorkOrderClient({
             if (!mounted || signal.aborted) return;
             if (profErr) {
               if (cachedScope?.userId === uid) {
-                setCurrentUserRole(session?.user.user_metadata?.role ?? null);
-                setActorRoleVerified(false);
+                const authorization = readWorkspaceAuthorizationSnapshot({
+                  userId: uid,
+                  shopId: cachedScope.shopId,
+                });
+                setCurrentUserRole(
+                  authorization?.actor.role ??
+                    session?.user.user_metadata?.role ??
+                    null,
+                );
+                setCurrentProfileId(authorization?.actor.profileId ?? null);
+                setActorRoleVerified(Boolean(authorization));
                 setShopId(cachedScope.shopId);
                 setActorReady(true);
                 return;
@@ -451,6 +473,7 @@ export default function MobileWorkOrderClient({
     const { data: sub } = supabase.auth.onAuthStateChange((_evt, s) => {
       if (s?.user) void waitForSession();
       else {
+        clearWorkspaceAuthorizationSnapshot();
         setActorReady(false);
         setCurrentUserId(null);
         setUserId(null);
@@ -907,8 +930,7 @@ export default function MobileWorkOrderClient({
   const mobileOperationalState = useMemo(
     () =>
       deriveMobileDetailOperationalState(wo, lines, {
-        activeTechnicianIdsByLine:
-          lineContext.activeTechnicianIdsByLine,
+        activeTechnicianIdsByLine: lineContext.activeTechnicianIdsByLine,
       }),
     [lineContext.activeTechnicianIdsByLine, lines, wo],
   );
@@ -1037,6 +1059,25 @@ export default function MobileWorkOrderClient({
       currentUserId,
       lineContext.technicianIdsByLine,
     ],
+  );
+  const actorIds = useMemo(
+    () =>
+      new Set(
+        [currentProfileId, currentUserId].filter((id): id is string =>
+          Boolean(id),
+        ),
+      ),
+    [currentProfileId, currentUserId],
+  );
+  const actorAssignedToLine = useCallback(
+    (line: WorkOrderLine): boolean => {
+      return [
+        line.assigned_tech_id,
+        line.assigned_to,
+        ...(lineContext.technicianIdsByLine[line.id] ?? []),
+      ].some((id) => Boolean(id) && actorIds.has(id as string));
+    },
+    [actorIds, lineContext.technicianIdsByLine],
   );
   const inspectionAccessError =
     canRunInspections && currentActor.canonicalRole === "mechanic"
@@ -1234,28 +1275,51 @@ export default function MobileWorkOrderClient({
     [fetchAll, wo?.id],
   );
 
-  const sendToParts = useCallback(async (lineId: string) => {
-    if (!lineId) return;
-    try {
-      await runJobPunchTransition(lineId, "pause", {
-        holdReason: "Awaiting parts quote",
-      });
-      toast.success("Sent to parts for quoting");
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Failed to send line to parts",
-      );
-    }
-  }, []);
+  const sendToParts = useCallback(
+    async (lineId: string, notify = true) => {
+      if (!lineId || !wo?.id) return false;
+      const operationKey =
+        partsQuoteOperationKeys.current.get(lineId) ?? crypto.randomUUID();
+      partsQuoteOperationKeys.current.set(lineId, operationKey);
+      try {
+        const response = await fetch(
+          `/api/work-orders/${wo.id}/lines/${lineId}/parts-request`,
+          { method: "POST", headers: { "Idempotency-Key": operationKey } },
+        );
+        const payload = (await response.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        if (!response.ok) {
+          throw new Error(payload?.error ?? "Failed to send line to parts");
+        }
+        partsQuoteOperationKeys.current.delete(lineId);
+        if (notify) toast.success("Sent to parts for quoting");
+        void fetchAll();
+        return true;
+      } catch (error) {
+        if (notify) {
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : "Failed to send line to parts",
+          );
+        }
+        return false;
+      }
+    },
+    [fetchAll, wo?.id],
+  );
 
   const sendAllPendingToParts = useCallback(async () => {
     if (!approvalPending.length) return;
     const ids = approvalPending.map((l) => l.id).filter(Boolean) as string[];
     try {
       for (const lineId of ids) {
-        await runJobPunchTransition(lineId, "pause", {
-          holdReason: "Awaiting parts quote",
-        });
+        if (!(await sendToParts(lineId, false))) {
+          throw new Error(
+            "Failed to queue one or more pending lines for parts",
+          );
+        }
       }
       toast.success("Queued all pending lines for parts quoting");
     } catch (error) {
@@ -1265,7 +1329,7 @@ export default function MobileWorkOrderClient({
           : "Failed to queue pending lines for parts",
       );
     }
-  }, [approvalPending]);
+  }, [approvalPending, sendToParts]);
 
   const authorizeQuote = useCallback(
     async (quoteId: string) => {
@@ -1439,11 +1503,18 @@ export default function MobileWorkOrderClient({
 
   /* ----------------------- mobile focused job view ----------------------- */
 
+  const focusedLine = focusedJobId
+    ? (lines.find((line) => line.id === focusedJobId) ?? null)
+    : null;
+
   if (focusedOpen && focusedJobId) {
     return (
       <MobileFocusedJob
         workOrderLineId={focusedJobId}
         canExecuteJob={canExecuteJobs}
+        actorAssignedToLine={
+          focusedLine ? actorAssignedToLine(focusedLine) : false
+        }
         onBack={() => setFocusedOpen(false)}
         onChanged={fetchAll}
         mode="tech"
@@ -1951,13 +2022,12 @@ export default function MobileWorkOrderClient({
                     );
                   const hasDifferentTemplate = Boolean(
                     inspectionTemplateId &&
-                      attachedTemplateId &&
-                      attachedTemplateId !== inspectionTemplateId,
+                    attachedTemplateId &&
+                    attachedTemplateId !== inspectionTemplateId,
                   );
                   const activeTechnicianIds =
                     lineContext.activeTechnicianIdsByLine?.[ln.id] ?? [];
-                  const punchedIn =
-                    visibleLineState(ln) === "in_progress";
+                  const punchedIn = visibleLineState(ln) === "in_progress";
 
                   const openFocused = () => {
                     setFocusedJobId(ln.id);
@@ -2004,8 +2074,8 @@ export default function MobileWorkOrderClient({
                         isPunchedIn={punchedIn}
                         isCurrentUserWorkingThisLine={Boolean(
                           punchedIn &&
-                            currentUserId &&
-                            activeTechnicianIds.includes(currentUserId),
+                          currentUserId &&
+                          activeTechnicianIds.includes(currentUserId),
                         )}
                         activeTechnicianNames={activeTechnicianNames}
                         onOpen={openFocused}
