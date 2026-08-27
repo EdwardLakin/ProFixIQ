@@ -1667,7 +1667,24 @@ begin
   );
 
   if not coalesce((v_result ->> 'signedAtomically')::boolean, false)
-     or not exists (
+     or not (
+       coalesce(v_result -> 'ids', '[]'::jsonb) @>
+         '["76700000-0000-4000-8000-000000000002"]'::jsonb
+     ) then
+    raise exception 'Atomic inspection import/sign did not report both boundaries: %', v_result;
+  end if;
+end
+$inspection_import_and_sign_atomic$;
+
+-- Verify the durable result through the privileged test connection. The
+-- authenticated invocation above is the authorization boundary under test;
+-- querying the signature through that same actor would also exercise the
+-- older inspection-signature SELECT policy and can hide a committed row.
+reset role;
+
+do $inspection_import_and_sign_atomic_results$
+begin
+  if not exists (
        select 1
        from public.work_order_quote_lines quote_line
        where quote_line.id = '76700000-0000-4000-8000-000000000002'
@@ -1681,11 +1698,20 @@ begin
          and signature.role = 'technician'
          and signature.signed_by = '76100000-0000-4000-8000-000000000004'
          and signature.signed_sync_revision = 1
+     )
+     or not exists (
+       select 1
+       from public.inspections inspection
+       where inspection.id = '76600000-0000-4000-8000-000000000006'
+         and inspection.locked
+         and inspection.completed
+         and not inspection.is_draft
+         and inspection.finalized_at is not null
      ) then
-    raise exception 'Atomic inspection import/sign did not commit both boundaries: %', v_result;
+    raise exception 'Atomic inspection import/sign did not commit both boundaries durably.';
   end if;
 end
-$inspection_import_and_sign_atomic$;
+$inspection_import_and_sign_atomic_results$;
 
 reset role;
 update public.work_order_lines
