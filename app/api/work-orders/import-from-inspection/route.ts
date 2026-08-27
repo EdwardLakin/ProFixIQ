@@ -4,6 +4,8 @@ export const dynamic = "force-dynamic";
 import "server-only";
 
 import { NextResponse } from "next/server";
+import { authorizeInspectionMutation } from "@/features/inspections/server/authorizeInspectionMutation";
+import { resolveAuthenticatedStaffProfile } from "@/features/shared/lib/server/admin-access";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { insertPrioritizedJobsFromInspection } from "@/features/work-orders/lib/work-orders/insertPrioritizedJobsFromInspection";
 
@@ -55,11 +57,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("shop_id")
-      .eq("id", user.id)
-      .maybeSingle<{ shop_id: string | null }>();
+    const { profile, error: profileError } =
+      await resolveAuthenticatedStaffProfile(supabase, user.id);
     if (profileError || !profile?.shop_id) {
       return NextResponse.json(
         { error: "Profile for current user not found." },
@@ -134,12 +133,25 @@ export async function POST(req: Request) {
       );
     }
 
+    const authorization = await authorizeInspectionMutation({
+      sessionClient: supabase,
+      shopId: profile.shop_id,
+      workOrderId: workOrder.id,
+      workOrderLineId: inspection.work_order_line_id,
+    });
+    if (!authorization.ok) {
+      return NextResponse.json(
+        { error: authorization.error },
+        { status: authorization.status },
+      );
+    }
+
     const result = await insertPrioritizedJobsFromInspection({
       supabase,
       inspectionId,
       workOrderId,
       vehicleId: requestedVehicleId,
-      userId: user.id,
+      userId: authorization.actor.authUserId,
       autoGenerateParts: body?.autoGenerateParts ?? true,
       operationKey,
     });

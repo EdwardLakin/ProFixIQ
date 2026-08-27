@@ -70,6 +70,12 @@ import {
 } from "@/features/shared/lib/route-load";
 import { resolveCanonicalStaffProfile } from "@/features/shared/lib/authenticated-profile";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import { WORKSPACE_CAPABILITIES } from "@/features/workspace/authorization/capabilities";
+import { useWorkspaceCapabilities } from "@/features/workspace/authorization/useWorkspaceCapabilities";
+import {
+  canOpenWorkOrderInspectionModule,
+  canRunWorkOrderLineInspection,
+} from "@/features/work-orders/workspace/workOrderWorkspace";
 
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -244,6 +250,10 @@ export default function MobileWorkOrderClient({
   const router = useRouter();
   const searchParams = useSearchParams();
   const { updateActiveTab } = useTabs();
+  const { can: canWorkspace } = useWorkspaceCapabilities();
+  const canRunInspections = canWorkspace(
+    WORKSPACE_CAPABILITIES.runWorkOrderInspections,
+  );
 
   // ✅ handle ?focus=<workOrderLineId>
   const focusParam = searchParams?.get("focus") ?? null;
@@ -310,6 +320,7 @@ export default function MobileWorkOrderClient({
     null,
   );
   const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
+  const [currentProfileId, setCurrentProfileId] = useState<string | null>(null);
   const [actorRoleVerified, setActorRoleVerified] = useState(false);
 
   const [shopId, setShopId] = useTabState<string | null>(
@@ -339,6 +350,7 @@ export default function MobileWorkOrderClient({
     const waitForSession = async () => {
       setActorReady(false);
       setActorRoleVerified(false);
+      setCurrentProfileId(null);
       setLoading(true);
       setLoadFailure(null);
       try {
@@ -403,6 +415,7 @@ export default function MobileWorkOrderClient({
             }
 
             setCurrentUserRole(prof?.role ?? null);
+            setCurrentProfileId(prof?.id ?? null);
             setActorRoleVerified(Boolean(prof));
             setShopId((prof?.shop_id as string | null) ?? null);
             if (prof?.shop_id) {
@@ -417,6 +430,7 @@ export default function MobileWorkOrderClient({
         setCurrentUserId(null);
         setUserId(null);
         setCurrentUserRole(null);
+        setCurrentProfileId(null);
         setActorRoleVerified(false);
         setShopId(null);
         setLoadFailure(
@@ -438,6 +452,7 @@ export default function MobileWorkOrderClient({
         setCurrentUserId(null);
         setUserId(null);
         setCurrentUserRole(null);
+        setCurrentProfileId(null);
         setActorRoleVerified(false);
         setShopId(null);
         setLoading(false);
@@ -1000,6 +1015,30 @@ export default function MobileWorkOrderClient({
 
   const canAssign = false; // assignments handled in focused view / desktop
   const currentActor = getActorCapabilities({ role: currentUserRole });
+  const canRunInspectionForLine = useCallback(
+    (line: WorkOrderLine): boolean =>
+      canRunWorkOrderLineInspection({
+        canRunInspections,
+        requiresAssignedTechnician: currentActor.canonicalRole === "mechanic",
+        actorTechnicianIds: [currentProfileId, currentUserId],
+        assignedTechnicianIds: [
+          line.assigned_tech_id,
+          line.assigned_to,
+          ...(lineContext.technicianIdsByLine[line.id] ?? []),
+        ],
+      }),
+    [
+      canRunInspections,
+      currentActor.canonicalRole,
+      currentProfileId,
+      currentUserId,
+      lineContext.technicianIdsByLine,
+    ],
+  );
+  const inspectionAccessError =
+    canRunInspections && currentActor.canonicalRole === "mechanic"
+      ? "Inspection access requires this job assignment."
+      : "You do not have permission to run inspections.";
   const canApprove = currentUserRole
     ? APPROVAL_ROLES.has(currentUserRole)
     : false;
@@ -1275,6 +1314,11 @@ export default function MobileWorkOrderClient({
     (ln: WorkOrderLine) => {
       if (!ln?.id || !wo?.id) return;
 
+      if (!canRunInspectionForLine(ln)) {
+        toast.error(inspectionAccessError);
+        return;
+      }
+
       const anyLine = ln as WorkOrderLineWithInspectionMeta;
       const templateId = extractInspectionTemplateId(anyLine);
 
@@ -1293,12 +1337,16 @@ export default function MobileWorkOrderClient({
 
       router.push(`/mobile/inspections/${ln.id}?${sp.toString()}`);
     },
-    [router, wo?.id],
+    [canRunInspectionForLine, inspectionAccessError, router, wo?.id],
   );
 
   const attachAndOpenInspection = useCallback(
     async (ln: WorkOrderLine) => {
       if (!inspectionTemplateId || !ln.id || !wo?.id) return;
+      if (!canRunInspectionForLine(ln)) {
+        toast.error(inspectionAccessError);
+        return;
+      }
       if (!navigator.onLine) {
         toast.error("Connect to attach an inspection template to this job.");
         return;
@@ -1357,7 +1405,13 @@ export default function MobileWorkOrderClient({
         setAttachingTemplateLineId(null);
       }
     },
-    [inspectionTemplateId, router, wo?.id],
+    [
+      canRunInspectionForLine,
+      inspectionAccessError,
+      inspectionTemplateId,
+      router,
+      wo?.id,
+    ],
   );
 
   /* ----------------------- ✅ focus param handling ----------------------- */
@@ -1923,6 +1977,7 @@ export default function MobileWorkOrderClient({
                   const activeTechnicianNames = activeTechnicianIds
                     .map((id) => techNamesById[id])
                     .filter((name): name is string => Boolean(name));
+                  const canRunLineInspection = canRunInspectionForLine(ln);
 
                   return (
                     <div
@@ -1954,7 +2009,12 @@ export default function MobileWorkOrderClient({
                         onOpenInspection={
                           inspectionTemplateId
                             ? undefined
-                            : () => openInspection(ln)
+                            : canOpenWorkOrderInspectionModule({
+                                  inspectionTemplateId: attachedTemplateId,
+                                  canRunInspections: canRunLineInspection,
+                                })
+                              ? () => openInspection(ln)
+                              : undefined
                         }
                         onAddPart={undefined}
                         compact
@@ -1962,7 +2022,11 @@ export default function MobileWorkOrderClient({
                       />
                       {inspectionTemplateId ? (
                         <div className="mt-2 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3">
-                          {lineLocked ? (
+                          {!canRunLineInspection ? (
+                            <p className="text-xs text-[color:var(--theme-text-secondary)]">
+                              {inspectionAccessError}
+                            </p>
+                          ) : lineLocked ? (
                             <p className="text-xs text-[color:var(--theme-text-secondary)]">
                               Inactive or completed job lines cannot receive a
                               new inspection template.

@@ -49,6 +49,17 @@ function isMissingCanonicalWriter(error: RpcError | null): boolean {
   );
 }
 
+function isInspectionAuthorizationError(
+  error: RpcError,
+  message: string,
+): boolean {
+  return (
+    error.code === "42501" ||
+    message.toLowerCase().includes("inspection capability is required") ||
+    message.toLowerCase().includes("limited to the assigned technician")
+  );
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -164,11 +175,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const status = isInspectionRevisionConflict(message)
-      ? 409
-      : lower.includes("work-order line not found")
-        ? 404
-        : 400;
+    const status = isInspectionAuthorizationError(error, message)
+      ? 403
+      : isInspectionRevisionConflict(message)
+        ? 409
+        : lower.includes("work-order line not found")
+          ? 404
+          : 400;
     if (status === 409) {
       const { data: canonical } = await supabase
         .from("inspections")

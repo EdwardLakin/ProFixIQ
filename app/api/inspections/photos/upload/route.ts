@@ -9,7 +9,7 @@ import {
   createAdminSupabase,
   createServerSupabaseRoute,
 } from "@/features/shared/lib/supabase/server";
-import { authorizeWorkOrderEvidence } from "@/features/work-orders/server/authorizeWorkOrderEvidence";
+import { authorizeInspectionMutation } from "@/features/inspections/server/authorizeInspectionMutation";
 import { inspectionPhotoStorageObject } from "@/features/inspections/server/reconcileInspectionPhotoEvidence";
 import { buildInspectionMediaCapturedEvent } from "@/features/integrations/shopreel/server/buildProFixIQStoryEvents";
 import { postStoryEventToShopReel } from "@/features/integrations/shopreel/server/postStoryEventToShopReel";
@@ -30,6 +30,11 @@ type InspectionPhotoRow = {
   item_name: string | null;
 };
 
+type WorkOrderInspectionPhotoSaveResult = {
+  photo: InspectionPhotoRow;
+  inserted: boolean;
+};
+
 function asString(value: FormDataEntryValue | null): string | null {
   if (typeof value !== "string") return null;
   const normalized = value.trim();
@@ -42,6 +47,46 @@ function extensionForMime(mime: string): "jpg" | "png" {
 
 function mutationId(operationKey: string): string {
   return `ip-${crypto.createHash("sha256").update(operationKey).digest("hex").slice(0, 40)}`;
+}
+
+function isStorageAuthorizationError(error: {
+  message?: string;
+  statusCode?: string | number;
+}): boolean {
+  return (
+    String(error.statusCode ?? "") === "403" ||
+    /row-level security|not authorized|permission denied/i.test(
+      error.message ?? "",
+    )
+  );
+}
+
+function asWorkOrderInspectionPhotoSaveResult(
+  value: unknown,
+): WorkOrderInspectionPhotoSaveResult | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const candidate = value as {
+    photo?: Partial<InspectionPhotoRow>;
+    inserted?: unknown;
+  };
+  if (
+    !candidate.photo ||
+    typeof candidate.photo.id !== "string" ||
+    typeof candidate.photo.image_url !== "string"
+  ) {
+    return null;
+  }
+  return {
+    photo: {
+      id: candidate.photo.id,
+      image_url: candidate.photo.image_url,
+      item_name:
+        typeof candidate.photo.item_name === "string"
+          ? candidate.photo.item_name
+          : null,
+    },
+    inserted: candidate.inserted === true,
+  };
 }
 
 async function resolveActorShop(
@@ -281,8 +326,23 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Service-role writes begin only after authentication, canonical inspection
-  // resolution and exact tenant/work-order validation above.
+  const authorization = await authorizeInspectionMutation({
+    sessionClient: supabase,
+    shopId,
+    workOrderId,
+    workOrderLineId,
+  });
+  if (!authorization.ok) {
+    return NextResponse.json(
+      { error: authorization.error },
+      { status: authorization.status },
+    );
+  }
+
+  // Keep service access for stable receipt lookups, standalone legacy uploads,
+  // and signed previews. Work Order evidence itself is written through the
+  // authenticated client so Storage RLS and the atomic receipt RPC revalidate
+  // capability and exact-line assignment at each durable boundary.
   const admin = createAdminSupabase();
 
   const bytes = Buffer.from(await file.arrayBuffer());
@@ -297,29 +357,6 @@ export async function POST(request: NextRequest) {
   let idempotent = false;
 
   if (workOrderId && workOrderLineId) {
-    const actor = await authorizeWorkOrderEvidence(supabase, workOrderId);
-    if (
-      !actor ||
-      actor.kind !== "staff" ||
-      !actor.canEdit ||
-      actor.shopId !== shopId
-    ) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-    const { data: line } = await admin
-      .from("work_order_lines")
-      .select("id")
-      .eq("id", workOrderLineId)
-      .eq("shop_id", shopId)
-      .eq("work_order_id", workOrderId)
-      .maybeSingle<{ id: string }>();
-    if (!line?.id) {
-      return NextResponse.json(
-        { error: "Inspection job line was not found." },
-        { status: 403 },
-      );
-    }
-
     bucket = "job-photos";
     path = `wo/${workOrderId}/lines/${workOrderLineId}/${clientMutationId}_${contentHash.slice(0, 32)}.${extension}`;
 
@@ -372,11 +409,22 @@ export async function POST(request: NextRequest) {
   }
 
   if (!idempotent) {
-    const { error: uploadError } = await admin.storage
+    const uploadStorage =
+      bucket === "job-photos" ? supabase.storage : admin.storage;
+    const { error: uploadError } = await uploadStorage
       .from(bucket)
       .upload(path, bytes, { contentType, upsert: false });
     if (uploadError) {
       if (bucket === "job-photos") {
+        if (isStorageAuthorizationError(uploadError)) {
+          return NextResponse.json(
+            {
+              error:
+                "Inspection photo access changed before the upload completed.",
+            },
+            { status: 403 },
+          );
+        }
         const { data: raced } = await admin
           .from("work_order_media")
           .select("id,storage_path")
@@ -418,16 +466,72 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const saved = await ensureInspectionPhotoRow({
-    supabase: admin,
-    inspectionId: inspection.id,
-    bucket,
-    path,
-    signedUrl: signed.signedUrl,
-    itemName,
-    notes,
-    userId: user.id,
-  });
+  let saved: {
+    row: InspectionPhotoRow | null;
+    inserted: boolean;
+    error?: string;
+  };
+  if (bucket === "job-photos" && workOrderId && workOrderLineId) {
+    const { data: savedData, error: savedError } = await supabase.rpc(
+      "save_work_order_inspection_photo_evidence_atomic",
+      {
+        p_inspection_id: inspection.id,
+        p_shop_id: shopId,
+        p_work_order_id: workOrderId,
+        p_work_order_line_id: workOrderLineId,
+        p_storage_bucket: "job-photos",
+        p_storage_path: path,
+        p_item_name: itemName ?? "",
+        p_notes: notes ?? "",
+      },
+    );
+    if (savedError) {
+      console.error(
+        "[inspections/photos/upload] atomic Work Order photo link failed",
+        savedError,
+      );
+      if (savedError.code === "42501") {
+        return NextResponse.json(
+          {
+            error:
+              "Inspection photo access changed before the evidence was attached.",
+          },
+          { status: 403 },
+        );
+      }
+      if (savedError.code === "40001") {
+        return NextResponse.json(
+          {
+            error: "Inspection photo scope changed; retry the upload.",
+            retryable: true,
+          },
+          { status: 409 },
+        );
+      }
+    }
+    const atomicResult = asWorkOrderInspectionPhotoSaveResult(savedData);
+    saved = atomicResult
+      ? {
+          row: { ...atomicResult.photo, image_url: signed.signedUrl },
+          inserted: atomicResult.inserted,
+        }
+      : {
+          row: null,
+          inserted: false,
+          error: savedError?.message ?? "Invalid atomic photo receipt.",
+        };
+  } else {
+    saved = await ensureInspectionPhotoRow({
+      supabase: admin,
+      inspectionId: inspection.id,
+      bucket,
+      path,
+      signedUrl: signed.signedUrl,
+      itemName,
+      notes,
+      userId: user.id,
+    });
+  }
   if (!saved.row) {
     console.error(
       "[inspections/photos/upload] inspection photo link failed",

@@ -44,6 +44,8 @@ import {
   STALE_CREATE_WORK_ORDER_MESSAGE,
 } from "@/features/work-orders/lib/client/validateMutableWorkOrder";
 import { createCustomerAccount } from "@/features/customers/lib/customerAccountCommands";
+import { WORKSPACE_CAPABILITIES } from "@/features/workspace/authorization/capabilities";
+import { useWorkspaceCapabilities } from "@/features/workspace/authorization/useWorkspaceCapabilities";
 
 // 👇 inspection modal, client-only
 const InspectionModal = dynamic(
@@ -407,6 +409,10 @@ export default function CreateWorkOrderPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = useMemo(() => createBrowserSupabase(), []);
+  const { can: canWorkspace } = useWorkspaceCapabilities();
+  const canRunWorkOrderInspections = canWorkspace(
+    WORKSPACE_CAPABILITIES.runWorkOrderInspections,
+  );
   const queryCustomerId =
     searchParams.get("customerId")?.trim() ||
     searchParams.get("customer_id")?.trim() ||
@@ -1971,6 +1977,10 @@ export default function CreateWorkOrderPage() {
   const openInspectionForLine = useCallback(
     async (ln: WorkOrderLine) => {
       if (!ln?.id || !wo?.id) return;
+      if (!canRunWorkOrderInspections) {
+        toast.error("You do not have permission to run inspections.");
+        return;
+      }
 
       try {
         await requireMutableWorkOrder({
@@ -2055,7 +2065,7 @@ export default function CreateWorkOrderPage() {
       setInspectionOpen(true);
       toast.success("Inspection opened");
     },
-    [fetchLines, supabase, wo?.id, wo?.shop_id],
+    [canRunWorkOrderInspections, fetchLines, supabase, wo?.id, wo?.shop_id],
   );
 
   async function linkBookingToWorkOrder(
@@ -2925,20 +2935,23 @@ export default function CreateWorkOrderPage() {
                             </div>
 
                             <div className="flex gap-2">
-                              {ln.job_type === "inspection" && (
-                                <button
-                                  type="button"
-                                  onClick={() => void openInspectionForLine(ln)}
-                                  disabled={!hasValidatedWorkOrder}
-                                  className="
+                              {ln.job_type === "inspection" &&
+                                canRunWorkOrderInspections && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      void openInspectionForLine(ln)
+                                    }
+                                    disabled={!hasValidatedWorkOrder}
+                                    className="
                               rounded-full border px-3 py-2 text-sm font-semibold
                               border-[color:var(--copper)]/70 bg-[color:var(--copper)]/10 text-[color:var(--copper)]
                               hover:bg-[color:var(--copper)]/15
                             "
-                                >
-                                  Open inspection
-                                </button>
-                              )}
+                                  >
+                                    Open inspection
+                                  </button>
+                                )}
 
                               <button
                                 type="button"

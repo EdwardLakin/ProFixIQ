@@ -5,6 +5,8 @@ import { z } from "zod";
 import { listTechnicianWorkCandidates } from "@/features/copilot/technician/server/assignedWork";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { ShopAssistantHttpError } from "@/features/shop-assistant/server/requireShopAssistantActor";
+import { WORKSPACE_CAPABILITIES } from "@/features/workspace/authorization/capabilities";
+import { resolveCurrentWorkspaceCapabilities } from "@/features/workspace/authorization/server/resolveWorkspaceCapabilities";
 import { defineShopAssistantTool, runShopAssistantCommandRpc } from "../types";
 
 const InspectionSchema = z.object({
@@ -179,6 +181,24 @@ export const reopenInspectionTool = defineShopAssistantTool({
     reason: z.string().trim().min(3).max(1000),
   }),
   outputSchema: ReopenInspectionResultSchema,
+  async authorize(_input, context) {
+    const access = await resolveCurrentWorkspaceCapabilities({
+      supabase: context.actor.supabase,
+      profileId: context.actor.profileId,
+      shopId: context.actor.shopId,
+      capabilityKeys: [WORKSPACE_CAPABILITIES.runWorkOrderInspections],
+    });
+    if (
+      access.error ||
+      !access.capabilities[WORKSPACE_CAPABILITIES.runWorkOrderInspections]
+        .granted
+    ) {
+      throw new ShopAssistantHttpError(
+        403,
+        "Inspection capability is required to reopen inspections.",
+      );
+    }
+  },
   async preview(input, context) {
     const { data, error } = await createAdminSupabase()
       .from("inspections")

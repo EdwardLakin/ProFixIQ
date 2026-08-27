@@ -54,17 +54,42 @@ describe("inspection photo preview and markup contract", () => {
     expect(upload).toContain('bucket = "job-photos"');
     expect(upload).toContain('request.headers.get("Idempotency-Key")');
     expect(upload).toContain('crypto.createHash("sha256").update(bytes)');
-    expect(upload).toContain("authorizeWorkOrderEvidence");
+    expect(upload).toContain("authorizeInspectionMutation");
+    expect(upload.indexOf("authorizeInspectionMutation({")).toBeLessThan(
+      upload.indexOf("file.arrayBuffer()"),
+    );
     expect(upload).toContain("existingMedia.storage_path !== path");
+    expect(upload).toMatch(
+      /bucket === "job-photos" \? supabase\.storage : admin\.storage/,
+    );
+    expect(upload).toContain(
+      '"save_work_order_inspection_photo_evidence_atomic"',
+    );
+    expect(upload).toContain('p_storage_bucket: "job-photos"');
+    expect(upload).toContain(
+      "row: { ...atomicResult.photo, image_url: signed.signedUrl }",
+    );
+    expect(upload).toContain('savedError.code === "42501"');
+    expect(upload).toContain("saved = await ensureInspectionPhotoRow({");
   });
 
   it("reuses the deployed evidence schema without adding SQL", () => {
     const load = source("app/api/inspections/load/route.ts");
+    const reconciliation = source(
+      "features/inspections/server/reconcileInspectionPhotoEvidence.ts",
+    );
     const gallery = source(
       "features/inspections/components/inspection/InspectionPhotoGallery.tsx",
     );
 
     expect(load).toContain("reconcileInspectionPhotoEvidence");
+    expect(load).toContain("sessionClient: supabase");
+    expect(load).not.toContain("authorizeWorkOrderEvidence");
+    expect(reconciliation).toContain("authorizeInspectionMutation");
+    expect(
+      reconciliation.indexOf("authorizeInspectionMutation({"),
+    ).toBeLessThan(reconciliation.indexOf("createAdminSupabase()"));
+    expect(reconciliation).toContain("if (!authorization.ok)");
     expect(gallery).toContain("/media?scope=line&lineId=");
     expect(gallery).toContain("ImageMarkupEditor");
   });

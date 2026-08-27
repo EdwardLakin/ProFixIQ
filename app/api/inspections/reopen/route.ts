@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import { authorizeInspectionMutation } from "@/features/inspections/server/authorizeInspectionMutation";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -55,17 +56,38 @@ export async function POST(req: NextRequest) {
 
   const canonical = await supabase
     .from("inspections")
-    .select("id")
+    .select("id,shop_id,work_order_id,work_order_line_id")
     .eq("id", inspectionId)
     .eq("is_canonical", true)
-    .maybeSingle<{ id: string }>();
+    .maybeSingle<{
+      id: string;
+      shop_id: string;
+      work_order_id: string | null;
+      work_order_line_id: string | null;
+    }>();
   if (canonical.error) {
-    return NextResponse.json({ error: canonical.error.message }, { status: 400 });
+    return NextResponse.json(
+      { error: canonical.error.message },
+      { status: 400 },
+    );
   }
   if (!canonical.data) {
     return NextResponse.json(
       { error: "Canonical inspection was not found." },
       { status: 404 },
+    );
+  }
+
+  const authorization = await authorizeInspectionMutation({
+    sessionClient: supabase,
+    shopId: canonical.data.shop_id,
+    workOrderId: canonical.data.work_order_id,
+    workOrderLineId: canonical.data.work_order_line_id,
+  });
+  if (!authorization.ok) {
+    return NextResponse.json(
+      { error: authorization.error },
+      { status: authorization.status },
     );
   }
 
@@ -79,13 +101,16 @@ export async function POST(req: NextRequest) {
 
   if (error) {
     const lower = error.message.toLowerCase();
-    const status = lower.includes("only an admin")
-      ? 403
-      : lower.includes("does not belong")
+    const status =
+      lower.includes("capability") || lower.includes("assigned technician")
         ? 403
-        : lower.includes("not found")
-          ? 404
-          : 409;
+        : lower.includes("only an admin")
+          ? 403
+          : lower.includes("does not belong")
+            ? 403
+            : lower.includes("not found")
+              ? 404
+              : 409;
     return NextResponse.json({ error: error.message }, { status });
   }
 

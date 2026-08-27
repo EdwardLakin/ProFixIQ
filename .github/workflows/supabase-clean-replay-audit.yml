@@ -536,6 +536,38 @@ jobs:
             -f tests/security/technician-copilot-runtime-integrity.runtime.sql \
             2>&1 | tee technician-copilot-runtime-integrity.log
 
+      - name: Execute inspection write authorization integration
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+            -f tests/security/inspection-write-authorization.runtime.sql \
+            2>&1 | tee inspection-write-authorization-runtime.log
+
+      - name: Execute inspection write authorization concurrency regression
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          bash tests/security/inspection-write-authorization-concurrency.runtime.sh "$DB_URL" \
+            2>&1 | tee inspection-write-authorization-concurrency.log
+
+      - name: Execute inspection photo upload authorization concurrency regression
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          bash tests/security/inspection-photo-upload-authorization-concurrency.runtime.sh "$DB_URL" \
+            2>&1 | tee inspection-photo-upload-authorization-concurrency.log
+
       - name: Verify bootstrap and existing-database baseline paths
         shell: bash
         env:
@@ -640,6 +672,9 @@ jobs:
             agent-human-approval-proof-runtime.log
             p0-008-schema-reconciliation-runtime.log
             technician-copilot-runtime-integrity.log
+            inspection-write-authorization-runtime.log
+            inspection-write-authorization-concurrency.log
+            inspection-photo-upload-authorization-concurrency.log
             owner-onboarding-authorization-runtime.log
             work-order-child-parent-tenant-runtime.log
             work-order-child-parent-tenant-locking-runtime.log

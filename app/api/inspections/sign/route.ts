@@ -7,8 +7,12 @@ import { createAdminClient } from "@/features/integrations/shopreel/server/creat
 import { publishInspectionPdf } from "@/features/inspections/server/publishInspectionPdf";
 import type { InspectionSession } from "@/features/inspections/lib/inspection/types";
 import { insertPrioritizedJobsFromInspection } from "@/features/work-orders/lib/work-orders/insertPrioritizedJobsFromInspection";
+import {
+  authorizeInspectionMutation,
+  type InspectionSignatureRole,
+} from "@/features/inspections/server/authorizeInspectionMutation";
 
-type Role = "technician" | "customer" | "advisor";
+type Role = InspectionSignatureRole;
 
 type SignInspectionArgs = {
   p_inspection_id: string;
@@ -355,27 +359,63 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  if (bodyUnknown.role === "technician") {
-    const { data: inspectionContext, error: inspectionContextError } =
-      await supabase
-        .from("inspections")
-        .select("work_order_id, vehicle_id")
-        .eq("id", resolved.inspectionId)
-        .eq("shop_id", profile.shop_id)
-        .eq("is_canonical", true)
-        .maybeSingle<{
-          work_order_id: string | null;
-          vehicle_id: string | null;
-        }>();
+  const { data: inspectionContext, error: inspectionContextError } =
+    await supabase
+      .from("inspections")
+      .select("work_order_id, work_order_line_id, vehicle_id")
+      .eq("id", resolved.inspectionId)
+      .eq("shop_id", profile.shop_id)
+      .eq("is_canonical", true)
+      .maybeSingle<{
+        work_order_id: string | null;
+        work_order_line_id: string | null;
+        vehicle_id: string | null;
+      }>();
 
-    if (inspectionContextError || !inspectionContext?.work_order_id) {
+  if (inspectionContextError || !inspectionContext) {
+    return NextResponse.json(
+      {
+        error:
+          inspectionContextError?.message ??
+          "Inspection context could not be verified.",
+      },
+      { status: inspectionContextError ? 400 : 404 },
+    );
+  }
+
+  // Signature role describes the immutable evidence being recorded. Every
+  // request still represents an authenticated staff mutation and must satisfy
+  // the same capability and exact repair-line assignment contract.
+  const authorization = await authorizeInspectionMutation({
+    sessionClient: supabase,
+    shopId: profile.shop_id,
+    workOrderId: inspectionContext.work_order_id,
+    workOrderLineId: inspectionContext.work_order_line_id,
+    committedSignatureReplay: {
+      inspectionId: resolved.inspectionId,
+      role: bodyUnknown.role,
+      expectedSyncRevision: bodyUnknown.expectedSyncRevision,
+      signedName: effectiveSignedName,
+    },
+  });
+  if (!authorization.ok) {
+    return NextResponse.json(
+      { error: authorization.error },
+      { status: authorization.status },
+    );
+  }
+
+  if (
+    bodyUnknown.role === "technician" &&
+    authorization.replay.kind !== "signature"
+  ) {
+    if (!inspectionContext.work_order_id) {
       return NextResponse.json(
         {
           error:
-            inspectionContextError?.message ??
             "Inspection is not attached to a work order; findings cannot be submitted.",
         },
-        { status: inspectionContextError ? 400 : 409 },
+        { status: 409 },
       );
     }
 
@@ -405,17 +445,20 @@ export async function POST(req: NextRequest) {
   if (error) {
     const lower = error.message.toLowerCase();
     const status =
-      lower.includes("not found") ||
-      lower.includes("no saved") ||
-      lower.includes("no valid saved") ||
-      lower.includes("does not belong") ||
-      lower.includes("changed on another device") ||
-      lower.includes("finalized") ||
-      lower.includes("locked") ||
-      lower.includes("already signed") ||
-      lower.includes("saved inspection revision")
-        ? 409
-        : 400;
+      lower.includes("inspection capability") ||
+      lower.includes("assigned technician")
+        ? 403
+        : lower.includes("not found") ||
+            lower.includes("no saved") ||
+            lower.includes("no valid saved") ||
+            lower.includes("does not belong") ||
+            lower.includes("changed on another device") ||
+            lower.includes("finalized") ||
+            lower.includes("locked") ||
+            lower.includes("already signed") ||
+            lower.includes("saved inspection revision")
+          ? 409
+          : 400;
     return NextResponse.json({ error: error.message }, { status });
   }
 
@@ -459,10 +502,7 @@ export async function POST(req: NextRequest) {
 
   let reportUrl = `/api/inspections/${inspection.id}/report/pdf`;
   if (!inspection.pdf_storage_path) {
-    const syncRevision = Math.max(
-      0,
-      Math.trunc(inspection.sync_revision ?? 0),
-    );
+    const syncRevision = Math.max(0, Math.trunc(inspection.sync_revision ?? 0));
     try {
       const published = await publishInspectionPdf({
         admin,

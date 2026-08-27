@@ -1,5 +1,9 @@
 import "server-only";
 
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+import type { Database } from "@shared/types/types/supabase";
+import { authorizeInspectionMutation } from "@/features/inspections/server/authorizeInspectionMutation";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 export type InspectionPhotoEvidenceRow = {
@@ -93,12 +97,23 @@ export function inspectionPhotoBelongsToScope(args: {
 }
 
 export async function reconcileInspectionPhotoEvidence(args: {
+  sessionClient: SupabaseClient<Database>;
   shopId: string;
   workOrderId: string;
   workOrderLineId: string;
   inspectionIds: string[];
   photos: InspectionPhotoEvidenceRow[];
 }): Promise<{ linked: number; skipped: number }> {
+  const authorization = await authorizeInspectionMutation({
+    sessionClient: args.sessionClient,
+    shopId: args.shopId,
+    workOrderId: args.workOrderId,
+    workOrderLineId: args.workOrderLineId,
+  });
+  if (!authorization.ok) {
+    return { linked: 0, skipped: args.photos.length };
+  }
+
   const admin = createAdminSupabase();
   const inspectionIds = new Set(args.inspectionIds);
   let linked = 0;

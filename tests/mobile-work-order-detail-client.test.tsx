@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   saveOfflineSnapshot: vi.fn(async () => undefined),
   search: "",
   updateActiveTab: vi.fn(),
+  workspaceCan: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -43,6 +44,17 @@ vi.mock("@/features/shared/hooks/useTabState", async () => {
 vi.mock("@/features/shared/components/tabs/TabsProvider", () => ({
   useTabs: () => ({ updateActiveTab: mocks.updateActiveTab }),
 }));
+
+vi.mock(
+  "@/features/workspace/authorization/useWorkspaceCapabilities",
+  () => ({
+    useWorkspaceCapabilities: () => ({
+      capabilities: {},
+      can: mocks.workspaceCan,
+      loading: false,
+    }),
+  }),
+);
 
 vi.mock("@/features/shared/lib/supabase/client", () => {
   const profileQuery: Record<string, ReturnType<typeof vi.fn>> = {};
@@ -132,9 +144,10 @@ vi.mock("@/features/work-orders/mobile/MobileFocusedJob", () => ({
 }));
 vi.mock("@/features/work-orders/components/JobCard", () => ({
   JobCard: (props: {
-    line: { description?: string | null };
+    line: { id?: string; description?: string | null };
     isPunchedIn?: boolean;
     displayNumber?: number | string;
+    onOpenInspection?: () => void;
   }) => {
     mocks.jobCardProps(props);
     return (
@@ -252,6 +265,7 @@ describe("mobile work-order detail client", () => {
       error: null,
     });
     mocks.loadProjectedWorkOrderSnapshot.mockResolvedValue(null);
+    mocks.workspaceCan.mockReturnValue(true);
     mocks.fetch.mockResolvedValue(response(detailSnapshot()));
     vi.stubGlobal("fetch", mocks.fetch);
     setOnline(true);
@@ -375,6 +389,79 @@ describe("mobile work-order detail client", () => {
     ]);
     expect(prioritized).toHaveAttribute("data-display-number", "2");
     expect(inspection).toHaveAttribute("data-display-number", "1");
+  });
+
+  it("presents inspection only for the assigned mechanic", async () => {
+    const inspectionLine = {
+      id: "line-inspection",
+      work_order_id: WORK_ORDER_ID,
+      shop_id: "shop-1",
+      description: "Assigned inspection",
+      status: "in_progress",
+      approval_state: "approved",
+      job_type: "inspection",
+      inspection_template_id: "template-1",
+      assigned_tech_id: "other-profile",
+    };
+    mocks.profileLookup.mockResolvedValue({
+      data: {
+        id: "mechanic-profile",
+        role: "mechanic",
+        shop_id: "shop-1",
+      },
+      error: null,
+    });
+    mocks.fetch.mockResolvedValue(
+      response(detailSnapshot("WO-INSPECTION", [inspectionLine])),
+    );
+
+    const rendered = render(<MobileWorkOrderClient routeId={WORK_ORDER_ID} />);
+    await screen.findByText("Assigned inspection");
+
+    const unassignedProps = mocks.jobCardProps.mock.calls
+      .map(([props]) => props)
+      .find((props) => props.line.id === "line-inspection");
+    expect(unassignedProps?.onOpenInspection).toBeUndefined();
+
+    rendered.unmount();
+    vi.clearAllMocks();
+    mocks.workspaceCan.mockReturnValue(true);
+    mocks.getSession.mockResolvedValue({
+      data: {
+        session: {
+          user: { id: "user-1", user_metadata: { role: "mechanic" } },
+        },
+      },
+    });
+    mocks.getUser.mockResolvedValue({ data: { user: { id: "user-1" } } });
+    mocks.getOfflineMutationScope.mockReturnValue({
+      userId: "user-1",
+      shopId: "shop-1",
+    });
+    mocks.profileLookup.mockResolvedValue({
+      data: {
+        id: "mechanic-profile",
+        role: "mechanic",
+        shop_id: "shop-1",
+      },
+      error: null,
+    });
+    mocks.loadProjectedWorkOrderSnapshot.mockResolvedValue(null);
+    mocks.fetch.mockResolvedValue(
+      response(
+        detailSnapshot("WO-INSPECTION", [
+          { ...inspectionLine, assigned_tech_id: "mechanic-profile" },
+        ]),
+      ),
+    );
+
+    render(<MobileWorkOrderClient routeId={WORK_ORDER_ID} />);
+    await screen.findByText("Assigned inspection");
+
+    const assignedProps = mocks.jobCardProps.mock.calls
+      .map(([props]) => props)
+      .find((props) => props.line.id === "line-inspection");
+    expect(assignedProps?.onOpenInspection).toEqual(expect.any(Function));
   });
 
   it("keeps one canonical display number across hidden history and approval views", async () => {

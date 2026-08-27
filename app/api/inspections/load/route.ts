@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import type { Json } from "@shared/types/types/supabase";
 import type { InspectionSession } from "@/features/inspections/lib/inspection/types";
-import { authorizeWorkOrderEvidence } from "@/features/work-orders/server/authorizeWorkOrderEvidence";
 import {
   reconcileInspectionPhotoEvidence,
   type InspectionPhotoEvidenceRow,
@@ -357,27 +356,18 @@ export async function GET(req: NextRequest) {
     resolvedWorkOrderLineId &&
     canonicalPhotos.length > 0
   ) {
-    const actor = await authorizeWorkOrderEvidence(
-      supabase,
-      canonicalWorkOrderId,
-    );
-    if (
-      actor?.kind === "staff" &&
-      actor.canEdit &&
-      actor.shopId === shopId
-    ) {
-      try {
-        await reconcileInspectionPhotoEvidence({
-          shopId,
-          workOrderId: canonicalWorkOrderId,
-          workOrderLineId: resolvedWorkOrderLineId,
-          inspectionIds: photoInspectionIds,
-          photos: canonicalPhotos as InspectionPhotoEvidenceRow[],
-        });
-      } catch (error) {
-        // Historical evidence linking must not block the inspection snapshot.
-        console.error("[inspections/load] evidence reconciliation failed", error);
-      }
+    try {
+      await reconcileInspectionPhotoEvidence({
+        sessionClient: supabase,
+        shopId,
+        workOrderId: canonicalWorkOrderId,
+        workOrderLineId: resolvedWorkOrderLineId,
+        inspectionIds: photoInspectionIds,
+        photos: canonicalPhotos as InspectionPhotoEvidenceRow[],
+      });
+    } catch (error) {
+      // Historical evidence linking must not block the inspection snapshot.
+      console.error("[inspections/load] evidence reconciliation failed", error);
     }
   }
 

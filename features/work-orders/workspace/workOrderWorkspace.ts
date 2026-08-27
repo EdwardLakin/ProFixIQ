@@ -196,6 +196,28 @@ export function canOpenWorkOrderInspectionModule(input: {
   );
 }
 
+export function canRunWorkOrderLineInspection(input: {
+  canRunInspections: boolean;
+  requiresAssignedTechnician: boolean;
+  actorTechnicianIds: ReadonlyArray<string | null | undefined>;
+  assignedTechnicianIds: ReadonlyArray<string | null | undefined>;
+}): boolean {
+  if (!input.canRunInspections) return false;
+  if (!input.requiresAssignedTechnician) return true;
+
+  const actorIds = new Set(
+    input.actorTechnicianIds
+      .map((id) => id?.trim() ?? "")
+      .filter(Boolean),
+  );
+  if (actorIds.size === 0) return false;
+
+  return input.assignedTechnicianIds.some((id) => {
+    const normalized = id?.trim() ?? "";
+    return Boolean(normalized && actorIds.has(normalized));
+  });
+}
+
 export function workOrderPartsRefreshEventName(
   workOrderLineId: string,
 ): string {

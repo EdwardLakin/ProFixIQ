@@ -78,6 +78,7 @@ import {
 } from "@/features/work-orders/workspace/WorkOrderWorkspaceFrame";
 import {
   canOpenWorkOrderInspectionModule,
+  canRunWorkOrderLineInspection,
   createWorkOrderWorkspaceResource,
   isWorkOrderExecutionComplete,
   isWorkOrderExecutionInProgress,
@@ -259,11 +260,15 @@ export default function WorkOrderIdClient(): JSX.Element {
   const [viewError, setViewError] = useState<string | null>(null);
 
   const [currentUserId, setCurrentUserId] = useTabState<string | null>("wo:id:uid", null);
+  const [currentAuthUserId, setCurrentAuthUserId] = useState<string | null>(null);
   const [, setUserId] = useTabState<string | null>("wo:id:effectiveUid", null);
   const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
   const { can: canWorkspace } = useWorkspaceCapabilities();
   const canAssign = canWorkspace(
     WORKSPACE_CAPABILITIES.manageWorkOrderAssignments,
+  );
+  const canRunInspections = canWorkspace(
+    WORKSPACE_CAPABILITIES.runWorkOrderInspections,
   );
 
   // ✅ prevents “logged out” banner flashing / sticking
@@ -473,6 +478,7 @@ export default function WorkOrderIdClient(): JSX.Element {
       if (!mounted) return;
 
       const uid = user?.id ?? null;
+      setCurrentAuthUserId(uid);
       setCurrentUserId(uid);
       setUserId(uid);
       setAuthChecked(true);
@@ -498,6 +504,7 @@ export default function WorkOrderIdClient(): JSX.Element {
     const { data: sub } = supabase.auth.onAuthStateChange((_evt, s) => {
       if (s?.user) void waitForSession();
       else {
+        setCurrentAuthUserId(null);
         setCurrentUserId(null);
         setUserId(null);
         setAuthChecked(true);
@@ -1153,6 +1160,17 @@ export default function WorkOrderIdClient(): JSX.Element {
     : "—";
 
   const currentActor = getActorCapabilities({ role: currentUserRole });
+  const canRunInspectionForLine = (line: WorkOrderLine): boolean =>
+    canRunWorkOrderLineInspection({
+      canRunInspections,
+      requiresAssignedTechnician: currentActor.canonicalRole === "mechanic",
+      actorTechnicianIds: [currentUserId, currentAuthUserId],
+      assignedTechnicianIds: [
+        line.assigned_tech_id,
+        line.assigned_to,
+        ...(assignedTechsByLine[line.id] ?? []),
+      ],
+    });
   const canApprove = currentActor.canAuthorizeQuotes;
   // Mechanics can only load work orders assigned to them through the existing
   // reader boundary. The server command repeats that assignment check before
@@ -2286,7 +2304,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                         onOpenInspection={
                           canOpenWorkOrderInspectionModule({
                             inspectionTemplateId: navigatorInspectionTemplateId,
-                            canRunInspections: currentActor.canRunInspections,
+                            canRunInspections: canRunInspectionForLine(ln),
                           })
                             ? () => void openInspectionForLine(ln)
                             : undefined
@@ -2465,7 +2483,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                     panelLine &&
                     canOpenWorkOrderInspectionModule({
                       inspectionTemplateId: panelInspectionTemplateId,
-                      canRunInspections: currentActor.canRunInspections,
+                      canRunInspections: canRunInspectionForLine(panelLine),
                     })
                       ? () => openInspectionForLine(panelLine)
                       : undefined

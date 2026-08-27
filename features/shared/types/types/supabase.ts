@@ -30081,6 +30081,19 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      save_work_order_inspection_photo_evidence_atomic: {
+        Args: {
+          p_inspection_id: string
+          p_item_name: string
+          p_notes: string
+          p_shop_id: string
+          p_storage_bucket: string
+          p_storage_path: string
+          p_work_order_id: string
+          p_work_order_line_id: string
+        }
+        Returns: Json
+      }
       save_work_order_media_annotation_atomic: {
         Args: {
           p_client_mutation_id: string
@@ -31469,4 +31482,3 @@ export const Constants = {
     },
   },
 } as const
-

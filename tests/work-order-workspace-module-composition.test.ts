@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   canOpenWorkOrderInspectionModule,
+  canRunWorkOrderLineInspection,
   getWorkOrderJobWorkspaceTabs,
   WORK_ORDER_WORKSPACE_MODULES,
   workOrderPartsRefreshEventName,
@@ -74,6 +75,41 @@ describe("Work Order Workspace Inspection and Parts composition", () => {
     expect(workOrderClient).not.toContain(
       'ln.job_type === "inspection"\n                            ? () => void openInspectionForLine(ln)',
     );
+  });
+
+  it("requires mechanic assignment while preserving shop-wide inspection roles", () => {
+    expect(
+      canRunWorkOrderLineInspection({
+        canRunInspections: true,
+        requiresAssignedTechnician: true,
+        actorTechnicianIds: ["profile-1", "auth-1"],
+        assignedTechnicianIds: ["profile-1"],
+      }),
+    ).toBe(true);
+    expect(
+      canRunWorkOrderLineInspection({
+        canRunInspections: true,
+        requiresAssignedTechnician: true,
+        actorTechnicianIds: ["profile-1", "auth-1"],
+        assignedTechnicianIds: ["profile-2"],
+      }),
+    ).toBe(false);
+    expect(
+      canRunWorkOrderLineInspection({
+        canRunInspections: true,
+        requiresAssignedTechnician: false,
+        actorTechnicianIds: [],
+        assignedTechnicianIds: [],
+      }),
+    ).toBe(true);
+    expect(
+      canRunWorkOrderLineInspection({
+        canRunInspections: false,
+        requiresAssignedTechnician: false,
+        actorTechnicianIds: [],
+        assignedTechnicianIds: [],
+      }),
+    ).toBe(false);
   });
 
   it("keeps Inspection and Parts on distinct canonical module boundaries", () => {

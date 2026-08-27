@@ -9,6 +9,7 @@ import { createAdminClient } from "@/features/integrations/shopreel/server/creat
 import type { Database } from "@shared/types/types/supabase";
 import type { InspectionSession } from "@/features/inspections/lib/inspection/types";
 import { publishInspectionPdf } from "@/features/inspections/server/publishInspectionPdf";
+import { authorizeInspectionMutation } from "@/features/inspections/server/authorizeInspectionMutation";
 
 type DB = Database;
 
@@ -97,7 +98,6 @@ export async function POST(req: NextRequest) {
     }>();
 
   if (lineErr) {
-    // eslint-disable-next-line no-console
     console.error("[inspections/finalize/pdf] line lookup failed", lineErr);
     return NextResponse.json(
       { error: "Failed to look up work order line" },
@@ -121,16 +121,16 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { data: profile, error: profileErr } = await supabase
-    .from("profiles")
-    .select("shop_id")
-    .eq("id", user.id)
-    .maybeSingle<{ shop_id: string | null }>();
-
-  if (profileErr || profile?.shop_id !== shopId) {
+  const authorization = await authorizeInspectionMutation({
+    sessionClient: supabase,
+    shopId,
+    workOrderId,
+    workOrderLineId,
+  });
+  if (!authorization.ok) {
     return NextResponse.json(
-      { error: profileErr?.message ?? "Forbidden" },
-      { status: 403 },
+      { error: authorization.error },
+      { status: authorization.status },
     );
   }
 
@@ -161,12 +161,10 @@ export async function POST(req: NextRequest) {
         | "locked"
         | "completed"
         | "is_draft"
-      >
-      & { sync_revision: number | null }
+      > & { sync_revision: number | null }
     >();
 
   if (inspErr) {
-    // eslint-disable-next-line no-console
     console.error(
       "[inspections/finalize/pdf] inspections lookup failed",
       inspErr,
@@ -232,10 +230,7 @@ export async function POST(req: NextRequest) {
       workOrderLineId,
       inspectionId,
     });
-    return NextResponse.json(
-      { error: message },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 
   // Publish the immutable object only if the persisted summary revision is
@@ -246,7 +241,7 @@ export async function POST(req: NextRequest) {
     {
       p_inspection_id: inspectionId,
       p_work_order_line_id: workOrderLineId,
-      p_actor_user_id: user.id,
+      p_actor_user_id: authorization.actor.profileId,
       p_expected_sync_revision: expectedSyncRevision,
       p_pdf_storage_path: published.path,
       p_pdf_sha256: published.sha256,
@@ -255,7 +250,6 @@ export async function POST(req: NextRequest) {
   );
 
   if (finalizeErr) {
-    // eslint-disable-next-line no-console
     console.error(
       "[inspections/finalize/pdf] atomic finalization failed",
       finalizeErr,
