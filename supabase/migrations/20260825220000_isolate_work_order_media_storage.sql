@@ -9,6 +9,119 @@ set public = false
 where id = 'job-photos'
   and public is distinct from false;
 
+-- Quote promotion must change the canonical path-backed media row that Storage
+-- authorizes, rather than creating only a second URL-only customer row.
+create or replace function private.job_photo_path_from_locator(p_url text)
+returns text
+language plpgsql
+immutable
+strict
+set search_path = ''
+as $$
+declare
+  v_match text[];
+  v_value text := btrim(p_url);
+begin
+  if v_value ~ '^wo/' then
+    return split_part(v_value, '?', 1);
+  end if;
+  v_match := regexp_match(
+    v_value,
+    '/storage/v1/object/(sign|public|authenticated)/job-photos/(wo/[^?]+)'
+  );
+  return case when v_match is null then null else v_match[2] end;
+end;
+$$;
+
+revoke all on function private.job_photo_path_from_locator(text)
+  from public, anon, authenticated, service_role;
+
+update public.work_order_media canonical
+set visibility = 'customer',
+    updated_at = now()
+from public.work_order_media promoted
+where canonical.shop_id = promoted.shop_id
+  and canonical.work_order_id = promoted.work_order_id
+  and canonical.storage_bucket = 'job-photos'
+  and canonical.storage_path = private.job_photo_path_from_locator(promoted.url)
+  and promoted.visibility = 'customer'
+  and canonical.visibility is distinct from 'customer';
+
+create or replace function public.sync_quote_line_media_evidence()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_url text;
+  v_storage_path text;
+begin
+  if new.shop_id is null or new.work_order_id is null then
+    return new;
+  end if;
+
+  for v_url in
+    select distinct btrim(value)
+    from jsonb_array_elements_text(
+      case
+        when jsonb_typeof(coalesce(new.metadata, '{}'::jsonb) -> 'photo_urls') = 'array'
+          then coalesce(new.metadata, '{}'::jsonb) -> 'photo_urls'
+        else '[]'::jsonb
+      end
+    ) value
+    where btrim(value) <> ''
+  loop
+    v_storage_path := private.job_photo_path_from_locator(v_url);
+    if v_storage_path is not null then
+      update public.work_order_media media
+      set visibility = 'customer',
+          updated_at = now()
+      where media.shop_id = new.shop_id
+        and media.work_order_id = new.work_order_id
+        and media.storage_bucket = 'job-photos'
+        and media.storage_path = v_storage_path;
+      if found then
+        continue;
+      end if;
+    end if;
+
+    insert into public.work_order_media (
+      shop_id, work_order_id, work_order_line_id, quote_line_id, user_id,
+      kind, url, source, visibility
+    ) values (
+      new.shop_id, new.work_order_id, new.work_order_line_id, new.id,
+      new.suggested_by, 'photo', v_url, 'inspection_finding', 'customer'
+    )
+    on conflict (shop_id, quote_line_id, url)
+      where quote_line_id is not null
+    do update set
+      work_order_line_id = coalesce(
+        excluded.work_order_line_id,
+        public.work_order_media.work_order_line_id
+      ),
+      source = 'inspection_finding',
+      visibility = 'customer',
+      updated_at = now();
+  end loop;
+
+  if new.work_order_line_id is not null then
+    update public.work_order_media
+    set work_order_line_id = new.work_order_line_id,
+        updated_at = now()
+    where shop_id = new.shop_id
+      and work_order_id = new.work_order_id
+      and quote_line_id = new.id
+      and work_order_line_id is distinct from new.work_order_line_id;
+  end if;
+
+  return new;
+end;
+$$;
+
+revoke all on function public.sync_quote_line_media_evidence()
+  from public, anon, authenticated, service_role;
+
 -- Parent/line scope validation must see the canonical rows even when the
 -- authenticated writer is represented by an imported profile whose id differs
 -- from auth.uid().  The trigger still derives every accepted relationship from

@@ -24,7 +24,15 @@ export async function GET() {
   }
 
   return NextResponse.json(
-    { capabilities: result.capabilities },
+    {
+      actor: {
+        userId: access.authUserId,
+        profileId: access.profile.id,
+        shopId: access.profile.shop_id,
+        role: access.profile.role,
+      },
+      capabilities: result.capabilities,
+    },
     { headers: { "Cache-Control": "private, no-store" } },
   );
 }

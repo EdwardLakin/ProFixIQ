@@ -13,12 +13,19 @@ describe("inspection report delivery contracts", () => {
   });
 
   it("anchors evidence signing to canonical job-photo rows", () => {
-    const access = source(
-      "features/inspections/server/inspectionReportAccess.ts",
+    const signer = source(
+      "features/inspections/server/signCanonicalWorkOrderPhotoUrls.ts",
     );
-    expect(access).toContain('.from("work_order_media")');
-    expect(access).toContain('.eq("storage_bucket", "job-photos")');
-    expect(access).toContain("canonicalObjects.has");
+    expect(signer).toContain('.from("work_order_media")');
+    expect(signer).toContain('.eq("storage_bucket", "job-photos")');
+    expect(signer).toContain("canonicalPaths.has");
+    expect(signer).toContain('.eq("visibility", "customer")');
+    expect(
+      source("features/inspections/server/inspectionReportAccess.ts"),
+    ).toContain('customerVisibleOnly: actorKind === "portal"');
+    expect(
+      source("features/inspections/server/publishInspectionPdf.ts"),
+    ).toContain("signCanonicalWorkOrderPhotoUrls");
   });
 
   it("keeps dispatchers inside fleet authorization", () => {

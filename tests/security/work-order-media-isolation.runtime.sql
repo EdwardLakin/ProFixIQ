@@ -143,6 +143,40 @@ values
     '{"mimetype":"image/jpeg","size":12,"fixture":"internal-b"}'::jsonb
   );
 
+insert into public.work_order_quote_lines (
+  id, shop_id, work_order_id, work_order_line_id, description, status, stage,
+  created_by, metadata
+) values (
+  '57800000-0000-4000-8000-000000000001',
+  '57300000-0000-4000-8000-000000000001',
+  '57500000-0000-4000-8000-000000000001',
+  '57600000-0000-4000-8000-000000000001',
+  'Customer-visible inspection finding',
+  'draft',
+  'advisor_pending',
+  '57100000-0000-4000-8000-000000000001',
+  jsonb_build_object(
+    'photo_urls',
+    jsonb_build_array(
+      '/storage/v1/object/public/job-photos/wo/57500000-0000-4000-8000-000000000001/lines/57600000-0000-4000-8000-000000000001/57700000-0000-4000-8000-000000000011_internal.jpg'
+    )
+  )
+);
+
+do $canonical_quote_media_promotion$
+begin
+  if not exists (
+    select 1
+    from public.work_order_media media
+    where media.storage_bucket = 'job-photos'
+      and media.storage_path = 'wo/57500000-0000-4000-8000-000000000001/lines/57600000-0000-4000-8000-000000000001/57700000-0000-4000-8000-000000000011_internal.jpg'
+      and media.visibility = 'customer'
+  ) then
+    raise exception 'Quote evidence did not promote its canonical storage row.';
+  end if;
+end;
+$canonical_quote_media_promotion$;
+
 update public.work_order_media
 set visibility = 'customer'
 where storage_path = 'wo/57500000-0000-4000-8000-000000000001/lines/57600000-0000-4000-8000-000000000001/57700000-0000-4000-8000-000000000012_customer.jpg';

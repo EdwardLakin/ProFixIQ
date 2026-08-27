@@ -19,6 +19,13 @@ const mediaRoute = readFileSync(
   "app/api/work-orders/[id]/media/route.ts",
   "utf8",
 );
+const photoUploadRoute = source("app/api/inspections/photos/upload/route.ts");
+const quoteReview = source(
+  "features/work-orders/quote-review/QuoteReviewView.tsx",
+);
+const quoteEvidenceSigner = source(
+  "app/api/work-orders/[id]/quote-evidence/sign/route.ts",
+);
 
 describe("Work Order evidence and job-photo isolation", () => {
   it("removes the drifted broad media reader and resolves both staff identity shapes", () => {
@@ -135,6 +142,39 @@ describe("Work Order evidence and job-photo isolation", () => {
     );
   });
 
+  it("promotes the canonical path-backed row before portal signing", () => {
+    expect(migration).toContain(
+      "create or replace function private.job_photo_path_from_locator",
+    );
+    expect(migration).toContain(
+      "canonical.storage_path = private.job_photo_path_from_locator(promoted.url)",
+    );
+    expect(migration).toContain(
+      "v_storage_path := private.job_photo_path_from_locator(v_url)",
+    );
+    expect(migration).toContain("set visibility = 'customer'");
+  });
+
+  it("compensates an uploaded object when atomic attachment loses authority", () => {
+    expect(photoUploadRoute).toContain(
+      "async function compensateWorkOrderPhotoUpload",
+    );
+    expect(photoUploadRoute).toContain('.from("job-photos")');
+    expect(photoUploadRoute).toContain(".remove([args.path])");
+    expect(photoUploadRoute).toContain('.from("work_order_media")');
+    expect(photoUploadRoute).toContain("uploadedThisRequest");
+    expect(photoUploadRoute).toMatch(
+      /savedError\.code === "42501"[\s\S]*?compensateWorkOrderPhotoUpload/,
+    );
+  });
+
+  it("re-signs staff Quote Review evidence through an authorized route", () => {
+    expect(quoteReview).toContain("signQuoteEvidence");
+    expect(quoteReview).toContain("/quote-evidence/sign");
+    expect(quoteEvidenceSigner).toContain("requireShopScopedApiAccess");
+    expect(quoteEvidenceSigner).toContain("signInspectionPhotoRows");
+  });
+
   it("binds every customer evidence read path to active portal access", () => {
     const mediaPolicy = migration.slice(
       migration.indexOf("create policy work_order_media_shop_select"),
@@ -187,7 +227,9 @@ describe("Work Order evidence and job-photo isolation", () => {
     expect(writer).toContain("private.work_order_media_write_access(");
     expect(writer).toContain("v_existing.created_by <> v_actor_user_id");
     expect(writer).toContain("v_actor_user_id,");
-    expect(writer.indexOf("private.work_order_media_write_access(")).toBeLessThan(
+    expect(
+      writer.indexOf("private.work_order_media_write_access("),
+    ).toBeLessThan(
       writer.indexOf("client_mutation_id = btrim(p_client_mutation_id)"),
     );
     expect(runtime).toContain(
