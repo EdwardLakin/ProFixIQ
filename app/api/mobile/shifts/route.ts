@@ -366,8 +366,10 @@ async function maybeResumeJobAfterBreak(params: {
 
   const result = await startTechnicianJobLabor({
     supabase: params.admin,
+    shopId: params.shopId,
     lineId: ctx.work_order_line_id,
     technicianId: params.userId,
+    actorUserId: params.userId,
     startedAtIso: params.now,
     source: params.pauseReason === "break" ? "break_resume" : "lunch_resume",
   });

@@ -270,6 +270,9 @@ export default function WorkOrderIdClient(): JSX.Element {
   const canRunInspections = canWorkspace(
     WORKSPACE_CAPABILITIES.runWorkOrderInspections,
   );
+  const canExecuteJobs = canWorkspace(
+    WORKSPACE_CAPABILITIES.executeAssignedWorkOrderJobs,
+  );
 
   // ✅ prevents “logged out” banner flashing / sticking
   const [authChecked, setAuthChecked] = useState<boolean>(false);
@@ -2475,6 +2478,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                     assignedTechsByLine[panelLineId] ?? []
                   }
                   isPunchedInSnapshot={panelLineIsPunchedIn}
+                  canExecuteJob={canExecuteJobs}
                   canAssignTechnician={canAssign}
                   canAddJob={canAddJobs}
                   technicianOptions={assignables}
@@ -2536,6 +2540,7 @@ export default function WorkOrderIdClient(): JSX.Element {
           isOpen={focusedOpen}
           onClose={() => setFocusedOpen(false)}
           workOrderLineId={focusedJobId}
+          canExecuteJob={canExecuteJobs}
           canAddJob={canAddJobs}
           onChanged={fetchAll}
           mode="tech"

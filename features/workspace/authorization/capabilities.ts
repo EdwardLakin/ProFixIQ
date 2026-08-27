@@ -2,6 +2,7 @@ export const WORKSPACE_CAPABILITIES = {
   manageTeamPermissions: "team.permissions.manage",
   manageWorkOrderAssignments: "work_order.assignment.manage",
   runWorkOrderInspections: "work_order.inspection.run",
+  executeAssignedWorkOrderJobs: "work_order.job.execute",
   viewWorkOrderSellPricing: "work_order.financial.sell.view",
   viewWorkOrderCost: "work_order.financial.cost.view",
   viewWorkOrderGrossProfit: "work_order.financial.gp.view",
@@ -61,6 +62,10 @@ export function createDeniedWorkspaceCapabilities(): EffectiveWorkspaceCapabilit
     ),
     [WORKSPACE_CAPABILITIES.runWorkOrderInspections]: deniedDecision(
       WORKSPACE_CAPABILITIES.runWorkOrderInspections,
+      "manage",
+    ),
+    [WORKSPACE_CAPABILITIES.executeAssignedWorkOrderJobs]: deniedDecision(
+      WORKSPACE_CAPABILITIES.executeAssignedWorkOrderJobs,
       "manage",
     ),
     [WORKSPACE_CAPABILITIES.viewWorkOrderSellPricing]: deniedDecision(

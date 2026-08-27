@@ -322,6 +322,20 @@ jobs:
             -f tests/security/technician-assignment-contract.runtime.sql \
             2>&1 | tee technician-assignment-contract-runtime.log
 
+      - name: Execute job-punch authorization integration
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+            -f tests/security/job-punch-authorization.runtime.sql \
+            2>&1 | tee job-punch-authorization-runtime.log
+
       - name: Execute Mobile handoff assignment compatibility integration
         shell: bash
         env:
@@ -672,6 +686,7 @@ jobs:
             vehicle-workspace-tenant-runtime.log
             workspace-authorization-runtime.log
             technician-assignment-contract-runtime.log
+            job-punch-authorization-runtime.log
             mobile-handoff-assignment-compatibility-runtime.log
             p0-005-ai-route-governance-runtime.log
             p0-006-stripe-identity-runtime.log

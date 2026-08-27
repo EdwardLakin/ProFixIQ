@@ -23,6 +23,7 @@ describe("canonical work-order line completion", () => {
     const client = {} as never;
     const result = await completeWorkOrderLine({
       supabase: client,
+      shopId: "shop-1",
       lineId: "line-1",
       technicianId: "profile-tech",
       actorUserId: "auth-tech",
@@ -33,9 +34,11 @@ describe("canonical work-order line completion", () => {
 
     expect(mocks.applyJobPunchTransition).toHaveBeenCalledWith({
       supabase: client,
+      shopId: "shop-1",
       lineId: "line-1",
       action: "finish",
       technicianId: "profile-tech",
+      actorUserId: "auth-tech",
       options: {
         operationKey: "finish-key",
         finish: {
@@ -59,6 +62,7 @@ describe("canonical work-order line completion", () => {
 
     const result = await completeWorkOrderLine({
       supabase: {} as never,
+      shopId: "shop-1",
       lineId: "line-1",
       technicianId: "profile-tech",
       actorUserId: "auth-tech",

@@ -131,6 +131,7 @@ function renderStandalone() {
       isOpen
       onClose={vi.fn()}
       workOrderLineId={LINE_ID}
+      canExecuteJob
       mode="tech"
       variant="panel"
     />,

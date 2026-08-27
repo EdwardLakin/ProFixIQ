@@ -7,11 +7,17 @@ import type { Database } from "@shared/types/types/supabase";
 import JobQueueCard from "@shared/components/JobQueueCard";
 import { toast } from "sonner";
 import { runJobPunchTransition } from "@/features/work-orders/lib/jobPunchTransitionsClient";
+import { WORKSPACE_CAPABILITIES } from "@/features/workspace/authorization/capabilities";
+import { useWorkspaceCapabilities } from "@/features/workspace/authorization/useWorkspaceCapabilities";
 
 type JobLine = Database["public"]["Tables"]["work_order_lines"]["Row"];
 
 export default function TechJobScreen() {
   const supabase = createBrowserSupabase();
+  const { can } = useWorkspaceCapabilities();
+  const canExecuteJob = can(
+    WORKSPACE_CAPABILITIES.executeAssignedWorkOrderJobs,
+  );
   const [jobs, setJobs] = useState<JobLine[]>([]);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -70,7 +76,7 @@ export default function TechJobScreen() {
   }, [fetchJobs, supabase]);
 
   const handlePunchIn = async (job: JobLine) => {
-    if (!job.id) return;
+    if (!job.id || !canExecuteJob) return;
     try {
       setActiveJobId(job.id);
       await runJobPunchTransition(job.id, "start");
@@ -83,7 +89,7 @@ export default function TechJobScreen() {
   };
 
   const handlePunchOut = async (job: JobLine) => {
-    if (!job.id) return;
+    if (!job.id || !canExecuteJob) return;
     setActiveJobId(null);
     try {
       await runJobPunchTransition(job.id, "pause");
@@ -100,8 +106,8 @@ export default function TechJobScreen() {
       key={job.id as string}
       job={job}
       isActive={activeJobId === job.id}
-      onPunchIn={handlePunchIn}
-      onPunchOut={handlePunchOut}
+      onPunchIn={canExecuteJob ? handlePunchIn : undefined}
+      onPunchOut={canExecuteJob ? handlePunchOut : undefined}
     />
   );
 

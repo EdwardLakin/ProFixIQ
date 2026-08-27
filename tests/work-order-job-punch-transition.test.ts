@@ -7,34 +7,14 @@ type RpcCall = {
 };
 
 class FakeSupabase {
-  line: { id: string; shop_id: string | null } | null = {
-    id: "line-1",
-    shop_id: "shop-1",
-  };
-  lineError: { message: string } | null = null;
   rpcData: unknown = { ok: true };
-  rpcError: { message: string; details?: string | null; hint?: string | null } | null =
-    null;
+  rpcError: {
+    message: string;
+    details?: string | null;
+    hint?: string | null;
+    code?: string | null;
+  } | null = null;
   rpcCalls: RpcCall[] = [];
-
-  from(table: string) {
-    if (table !== "work_order_lines") {
-      throw new Error(`Unexpected table read: ${table}`);
-    }
-    const line = this.line;
-    const lineError = this.lineError;
-    return {
-      select() {
-        return this;
-      },
-      eq() {
-        return this;
-      },
-      maybeSingle() {
-        return Promise.resolve({ data: line, error: lineError });
-      },
-    };
-  }
 
   async rpc(name: string, args: Record<string, unknown>) {
     this.rpcCalls.push({ name, args });
@@ -48,9 +28,11 @@ describe("applyJobPunchTransition atomic boundary", () => {
 
     const result = await applyJobPunchTransition({
       supabase: db as never,
+      shopId: "shop-1",
       lineId: "line-1",
       action: "pause",
       technicianId: "tech-1",
+      actorUserId: "tech-auth-1",
       options: { pause: { holdReason: "Waiting for parts" } },
     });
 
@@ -67,9 +49,11 @@ describe("applyJobPunchTransition atomic boundary", () => {
 
     const result = await applyJobPunchTransition({
       supabase: db as never,
+      shopId: "shop-1",
       lineId: "line-1",
       action: "pause",
       technicianId: "tech-1",
+      actorUserId: "tech-auth-1",
       options: {
         operationKey: "pause-1",
         nowIso: "2026-07-10T17:30:00.000Z",
@@ -91,6 +75,7 @@ describe("applyJobPunchTransition atomic boundary", () => {
           p_work_order_line_id: "line-1",
           p_action: "pause",
           p_technician_id: "tech-1",
+          p_actor_user_id: "tech-auth-1",
           p_operation_key: "shop-1:job-punch:pause-1",
           p_at: "2026-07-10T17:30:00.000Z",
           p_hold_reason: "Waiting for parts",
@@ -108,9 +93,11 @@ describe("applyJobPunchTransition atomic boundary", () => {
 
     const released = await applyJobPunchTransition({
       supabase: db as never,
+      shopId: "shop-1",
       lineId: "line-1",
       action: "resume",
       technicianId: "manager-1",
+      actorUserId: "manager-auth-1",
       options: {
         operationKey: "resume-1",
         resume: { toAwaiting: true },
@@ -129,9 +116,11 @@ describe("applyJobPunchTransition atomic boundary", () => {
     db.rpcError = { message: "FINANCIALLY_LOCKED: invoice issued" };
     const locked = await applyJobPunchTransition({
       supabase: db as never,
+      shopId: "shop-1",
       lineId: "line-1",
       action: "start",
       technicianId: "tech-1",
+      actorUserId: "tech-auth-1",
       options: { operationKey: "start-1" },
     });
 
@@ -151,9 +140,11 @@ describe("applyJobPunchTransition atomic boundary", () => {
 
     const result = await applyJobPunchTransition({
       supabase: db as never,
+      shopId: "shop-1",
       lineId: "line-1",
       action: "finish",
       technicianId: "tech-1",
+      actorUserId: "tech-auth-1",
       options: { operationKey: "finish-1" },
     });
 
@@ -161,5 +152,25 @@ describe("applyJobPunchTransition atomic boundary", () => {
       ok: false,
       status: 409,
     });
+  });
+
+  it("maps canonical capability and assignment denials to forbidden", async () => {
+    const db = new FakeSupabase();
+    db.rpcError = {
+      code: "42501",
+      message: "An assigned technician is required for this job action.",
+    };
+
+    const result = await applyJobPunchTransition({
+      supabase: db as never,
+      shopId: "shop-1",
+      lineId: "line-1",
+      action: "start",
+      technicianId: "tech-1",
+      actorUserId: "tech-auth-1",
+      options: { operationKey: "start-denied" },
+    });
+
+    expect(result).toMatchObject({ ok: false, status: 403 });
   });
 });

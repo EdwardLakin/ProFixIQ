@@ -15,12 +15,28 @@ describe("Phase 4 technician labor route contract", () => {
       const source = read(path);
       expect(source.toLowerCase()).toContain("idempotency-key");
       expect(source.toLowerCase()).toMatch(/stable idempotency-key is required/);
+      expect(source).toContain("requireAssignedJobPunchAccess");
     }
+  });
+
+  it("enforces effective execution capability and assignment before every route transition", () => {
+    const authorization = read(
+      "features/work-orders/server/authorizeJobPunchTransition.ts",
+    );
+    expect(authorization).toContain(
+      "WORKSPACE_CAPABILITIES.executeAssignedWorkOrderJobs",
+    );
+    expect(authorization).toContain('.from("work_order_lines")');
+    expect(authorization).toContain('.from("work_order_line_technicians")');
+    expect(authorization).toContain("assigned_tech_id");
+    expect(authorization).toContain("assigned_to");
+    expect(authorization).toContain("An assigned technician is required");
   });
 
   it("routes every job transition through the shared atomic command", () => {
     const helper = read("features/work-orders/server/applyJobPunchTransition.ts");
     expect(helper).toMatch(/\.rpc\(\s*"apply_job_punch_transition_atomic"/);
+    expect(helper).not.toContain('.from("work_order_lines")');
     expect(helper).not.toContain('.from("work_order_line_labor_segments").insert');
     expect(helper).not.toContain('.from("work_order_lines").update');
   });

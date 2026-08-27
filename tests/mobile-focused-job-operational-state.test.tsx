@@ -222,12 +222,13 @@ function setOnline(value: boolean) {
   });
 }
 
-function renderFocusedJob() {
+function renderFocusedJob(canExecuteJob = true) {
   return render(
     <MobileFocusedJob
       workOrderLineId={LINE_ID}
       onBack={vi.fn()}
       mode="tech"
+      canExecuteJob={canExecuteJob}
     />,
   );
 }
@@ -259,6 +260,21 @@ describe("mobile focused-job operational state", () => {
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Start Job" })).toBeEnabled(),
     );
+  });
+
+  it("hides job-punch controls when the effective capability is denied", async () => {
+    renderFocusedJob(false);
+
+    expect(await screen.findByText(/Brake inspection/)).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Start Job" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Finish Job" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Put on Hold" }),
+    ).not.toBeInTheDocument();
   });
 
   it("shows Active and Finish Job from canonical-only live evidence", async () => {

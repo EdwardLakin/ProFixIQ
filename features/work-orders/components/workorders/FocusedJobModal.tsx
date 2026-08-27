@@ -196,6 +196,7 @@ export default function FocusedJobModal(props: {
   primaryTechSnapshot?: TechnicianOption | null;
   assignedTechnicianIds?: readonly string[];
   isPunchedInSnapshot?: boolean;
+  canExecuteJob: boolean;
   canAssignTechnician?: boolean;
   canAddJob?: boolean;
   technicianOptions?: readonly TechnicianOption[];
@@ -218,6 +219,7 @@ export default function FocusedJobModal(props: {
     primaryTechSnapshot,
     assignedTechnicianIds = EMPTY_TECHNICIAN_IDS,
     isPunchedInSnapshot,
+    canExecuteJob,
     canAssignTechnician = false,
     canAddJob = false,
     technicianOptions = EMPTY_TECHNICIAN_OPTIONS,
@@ -602,6 +604,7 @@ export default function FocusedJobModal(props: {
       const detail = e.detail || {};
       if (!detail.workOrderLineId) return;
       if (detail.workOrderLineId !== workOrderLineId) return;
+      if (!canExecuteJob) return;
 
       closeAllSubModals();
       setPrefillCause(detail.cause ?? "");
@@ -611,10 +614,10 @@ export default function FocusedJobModal(props: {
 
     window.addEventListener("inspection:completed", onInspectionDone);
     return () => window.removeEventListener("inspection:completed", onInspectionDone);
-  }, [workOrderLineId, closeAllSubModals]);
+  }, [workOrderLineId, canExecuteJob, closeAllSubModals]);
 
   const applyHold = async (reason: string, notes?: string) => {
-    if (busy || !line) return;
+    if (busy || !line || !canExecuteJob) return;
 
     setBusy(true);
     try {
@@ -635,7 +638,7 @@ export default function FocusedJobModal(props: {
   };
 
   const releaseHold = async () => {
-    if (busy) return;
+    if (busy || !canExecuteJob) return;
     setBusy(true);
     try {
       await ensureShopContext((workOrder?.shop_id as string | null) ?? null);
@@ -726,6 +729,7 @@ export default function FocusedJobModal(props: {
   const createdFinish = finishAt ? format(new Date(finishAt), "PPpp") : "—";
 
   const completionBlocked =
+    !canExecuteJob ||
     busy ||
     line?.status === "awaiting_approval" ||
     line?.status === "declined" ||
@@ -875,7 +879,7 @@ export default function FocusedJobModal(props: {
               className="space-y-3"
             >
               <div className="space-y-3">
-              {mode === "tech" ? (
+              {canExecuteJob ? (
                 <SectionCard title="Operational actions">
                   {line.status !== "completed" ? (
                     <JobPunchButton
@@ -1672,7 +1676,7 @@ export default function FocusedJobModal(props: {
 
         {line ? (
           <div className="space-y-4 px-4 py-4">
-            {mode === "tech" ? (
+            {canExecuteJob ? (
               <section>
                 <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
                   Next action
@@ -1905,7 +1909,11 @@ export default function FocusedJobModal(props: {
           lineLabel={lineLabel}
           initialCause={prefillCause}
           initialCorrection={prefillCorrection}
+          canCompleteJob={canExecuteJob}
           onSubmit={async (cause: string, correction: string) => {
+            if (!canExecuteJob) {
+              throw new Error("Job execution capability is required.");
+            }
             await ensureShopContext((workOrder?.shop_id as string | null) ?? null);
 
             try {

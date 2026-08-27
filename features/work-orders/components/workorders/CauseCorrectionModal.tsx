@@ -16,6 +16,7 @@ interface CauseCorrectionModalProps {
   lineLabel: string;
 
   onSubmit: (cause: string, correction: string) => Promise<void>;
+  canCompleteJob?: boolean;
 
   /** ✅ Draft save (cause/correction can be partial) */
   onSaveDraft?: (cause: string, correction: string) => Promise<void>;
@@ -31,6 +32,7 @@ export default function CauseCorrectionModal({
   jobId,
   lineLabel,
   onSubmit,
+  canCompleteJob = true,
   onSaveDraft,
   onDraftChange,
   initialCause = "",
@@ -67,7 +69,9 @@ export default function CauseCorrectionModal({
   const trimmedCause = useMemo(() => cause.trim(), [cause]);
   const trimmedCorrection = useMemo(() => correction.trim(), [correction]);
 
-  const canComplete = trimmedCause.length > 0 && trimmedCorrection.length > 0;
+  const hasCompleteStory =
+    trimmedCause.length > 0 && trimmedCorrection.length > 0;
+  const canComplete = canCompleteJob && hasCompleteStory;
 
   // ✅ allow draft save if user typed anything at all
   const canSaveDraft =
@@ -78,7 +82,13 @@ export default function CauseCorrectionModal({
     if (submitting || savingDraft) return;
 
     // hard gate: must have both
-    if (!canComplete) {
+    if (!canCompleteJob) {
+      setError("Job execution capability is required.");
+      setOk(null);
+      return;
+    }
+
+    if (!hasCompleteStory) {
       setError("Cause and correction are required to complete this job.");
       setOk(null);
       return;
@@ -309,14 +319,20 @@ export default function CauseCorrectionModal({
           </div>
         )}
 
-        {!canComplete && (
+        {!canCompleteJob ? (
+          <div className="rounded-lg border border-amber-500/35 bg-[color:var(--theme-surface-inset)] px-3 py-2 text-[0.75rem] text-amber-200">
+            Job execution capability is required to complete this job. You can
+            still save the cause and correction as a draft when draft saving is
+            available.
+          </div>
+        ) : !hasCompleteStory ? (
           <div className="rounded-lg border border-amber-500/35 bg-[color:var(--theme-surface-inset)] px-3 py-2 text-[0.75rem] text-amber-200">
             <span className="font-semibold">Required:</span> enter both a{" "}
             <span className="font-semibold">cause</span> and{" "}
             <span className="font-semibold">correction</span> to complete the
             job.
           </div>
-        )}
+        ) : null}
 
         <div className="space-y-1">
           <label className="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
@@ -425,7 +441,9 @@ export default function CauseCorrectionModal({
               title={
                 canComplete
                   ? "Complete job"
-                  : "Cause and correction are required to complete this job"
+                  : !canCompleteJob
+                    ? "Job execution capability is required"
+                    : "Cause and correction are required to complete this job"
               }
             >
               {submitting ? "Completing…" : "Complete job"}

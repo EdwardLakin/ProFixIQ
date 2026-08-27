@@ -1,7 +1,7 @@
 export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import { requireAssignedJobPunchAccess } from "@/features/work-orders/server/authorizeJobPunchTransition";
 import { applyJobPunchTransition } from "@/features/work-orders/server/applyJobPunchTransition";
 
 function getId(req: NextRequest) {
@@ -15,12 +15,9 @@ export async function POST(req: NextRequest) {
   const id = getId(req);
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
 
-  const supabase = createServerSupabaseRoute();
-  const { data: auth, error: authErr } = await supabase.auth.getUser();
-  if (authErr)
-    return NextResponse.json({ error: authErr.message }, { status: 500 });
-  if (!auth?.user)
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const authorization = await requireAssignedJobPunchAccess(id);
+  if (!authorization.ok) return authorization.response;
+  const { access, line } = authorization;
 
   const body = (await req.json().catch(() => null)) as
     | {
@@ -43,10 +40,12 @@ export async function POST(req: NextRequest) {
   }
 
   const result = await applyJobPunchTransition({
-    supabase,
+    supabase: access.supabase,
+    shopId: line.shop_id,
     lineId: id,
     action: "resume",
-    technicianId: auth.user.id,
+    technicianId: access.profile.id,
+    actorUserId: access.authUserId,
     options: {
       operationKey,
       allowConcurrentJobPunches: body?.allowConcurrentJobPunches === true,

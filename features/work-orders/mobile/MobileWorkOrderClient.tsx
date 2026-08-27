@@ -254,6 +254,9 @@ export default function MobileWorkOrderClient({
   const canRunInspections = canWorkspace(
     WORKSPACE_CAPABILITIES.runWorkOrderInspections,
   );
+  const canExecuteJobs = canWorkspace(
+    WORKSPACE_CAPABILITIES.executeAssignedWorkOrderJobs,
+  );
 
   // ✅ handle ?focus=<workOrderLineId>
   const focusParam = searchParams?.get("focus") ?? null;
@@ -1440,6 +1443,7 @@ export default function MobileWorkOrderClient({
     return (
       <MobileFocusedJob
         workOrderLineId={focusedJobId}
+        canExecuteJob={canExecuteJobs}
         onBack={() => setFocusedOpen(false)}
         onChanged={fetchAll}
         mode="tech"

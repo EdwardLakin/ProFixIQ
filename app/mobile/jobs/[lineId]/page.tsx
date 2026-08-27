@@ -12,6 +12,8 @@ import { postOfflineServerMutation } from "@/features/shared/lib/offline/server-
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import { runJobPunchTransition } from "@/features/work-orders/lib/jobPunchTransitionsClient";
 import MobileFocusedJob from "@/features/work-orders/mobile/MobileFocusedJob";
+import { WORKSPACE_CAPABILITIES } from "@/features/workspace/authorization/capabilities";
+import { useWorkspaceCapabilities } from "@/features/workspace/authorization/useWorkspaceCapabilities";
 
 type StoryLine = {
   id: string;
@@ -37,6 +39,10 @@ export default function MobileJobPage() {
   const params = useParams<{ lineId: string }>();
   const lineId = params.lineId;
   const supabase = useMemo(() => createBrowserSupabase(), []);
+  const { can: canWorkspace } = useWorkspaceCapabilities();
+  const canExecuteJob = canWorkspace(
+    WORKSPACE_CAPABILITIES.executeAssignedWorkOrderJobs,
+  );
 
   const [storyOpen, setStoryOpen] = useState(false);
   const [line, setLine] = useState<StoryLine | null>(null);
@@ -184,6 +190,9 @@ export default function MobileJobPage() {
 
   const completeJob = useCallback(
     async (cause: string, correction: string) => {
+      if (!canExecuteJob) {
+        throw new Error("Job execution capability is required.");
+      }
       const conflict = await checkStoryConflict("finish");
       if (conflict) throw new Error(conflict);
 
@@ -198,7 +207,7 @@ export default function MobileJobPage() {
         }),
       );
     },
-    [checkStoryConflict, lineId, loadStory, router],
+    [canExecuteJob, checkStoryConflict, lineId, loadStory, router],
   );
 
   const openStory = () => {
@@ -220,6 +229,7 @@ export default function MobileJobPage() {
     <div className="mobile-focused-job-route pb-20">
       <MobileFocusedJob
         workOrderLineId={lineId}
+        canExecuteJob={canExecuteJob}
         canAddJob={canAddJob}
         onChanged={loadStory}
         onBack={() =>
@@ -251,6 +261,7 @@ export default function MobileJobPage() {
           lineLabel={lineLabel}
           initialCause={line.cause ?? ""}
           initialCorrection={line.correction ?? ""}
+          canCompleteJob={canExecuteJob}
           onSaveDraft={saveStory}
           onDraftChange={(cause, correction) => {
             setLine((current) =>

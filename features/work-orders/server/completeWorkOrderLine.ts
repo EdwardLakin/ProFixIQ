@@ -7,6 +7,7 @@ type DB = Database;
 
 type CompletionInput = {
   supabase: SupabaseClient<DB>;
+  shopId: string;
   lineId: string;
   technicianId: string;
   actorUserId: string;
@@ -18,9 +19,11 @@ type CompletionInput = {
 export async function completeWorkOrderLine(input: CompletionInput) {
   const result = await applyJobPunchTransition({
     supabase: input.supabase,
+    shopId: input.shopId,
     lineId: input.lineId,
     action: "finish",
     technicianId: input.technicianId,
+    actorUserId: input.actorUserId,
     options: {
       operationKey: input.operationKey,
       finish: {

@@ -34,9 +34,11 @@ type TransitionOptions = {
 
 type ApplyJobPunchTransitionParams = {
   supabase: SupabaseClient<DB>;
+  shopId: string;
   lineId: string;
   action: JobPunchAction;
   technicianId: string;
+  actorUserId: string;
   options?: TransitionOptions;
 };
 
@@ -44,7 +46,12 @@ type TransitionResult =
   | { ok: true; payload?: unknown }
   | { ok: false; status: number; error: string };
 
-type RpcError = { message: string; details?: string | null; hint?: string | null };
+type RpcError = {
+  message: string;
+  details?: string | null;
+  hint?: string | null;
+  code?: string | null;
+};
 type RpcClient = {
   rpc: (
     name: string,
@@ -58,8 +65,16 @@ function cleanString(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-function errorStatus(message: string): number {
+function errorStatus(error: RpcError, message: string): number {
   const normalized = message.toLowerCase();
+  if (
+    error.code === "42501" ||
+    normalized.includes("job execution capability is required") ||
+    normalized.includes("assigned technician is required") ||
+    normalized.includes("authenticated actor cannot execute")
+  ) {
+    return 403;
+  }
   if (normalized.includes("not found")) return 404;
   if (normalized.includes("inspection_completion_required")) return 409;
   if (
@@ -77,9 +92,11 @@ function errorStatus(message: string): number {
 
 export async function applyJobPunchTransition({
   supabase,
+  shopId,
   lineId,
   action,
   technicianId,
+  actorUserId,
   options,
 }: ApplyJobPunchTransitionParams): Promise<TransitionResult> {
   const operationKey = cleanString(options?.operationKey);
@@ -91,26 +108,19 @@ export async function applyJobPunchTransition({
     };
   }
 
-  const { data: line, error: lineError } = await supabase
-    .from("work_order_lines")
-    .select("id, shop_id")
-    .eq("id", lineId)
-    .maybeSingle<{ id: string; shop_id: string | null }>();
-
-  if (lineError) return { ok: false, status: 400, error: lineError.message };
-  if (!line?.shop_id) {
+  if (!cleanString(shopId)) {
     return { ok: false, status: 404, error: "Work-order line not found for shop." };
   }
 
   const details = (options?.pause?.details ?? {}) as Json;
   const rpc = supabase as unknown as RpcClient;
   const { data, error } = await rpc.rpc("apply_job_punch_transition_atomic", {
-    p_shop_id: line.shop_id,
+    p_shop_id: shopId,
     p_work_order_line_id: lineId,
     p_action: action,
     p_technician_id: technicianId,
-    p_actor_user_id: technicianId,
-    p_operation_key: `${line.shop_id}:job-punch:${operationKey}`,
+    p_actor_user_id: actorUserId,
+    p_operation_key: `${shopId}:job-punch:${operationKey}`,
     p_allow_concurrent: options?.allowConcurrentJobPunches === true,
     p_at: options?.nowIso ?? new Date().toISOString(),
     p_start_source: cleanString(options?.startSource),
@@ -129,7 +139,7 @@ export async function applyJobPunchTransition({
     const message = [error.message, error.details, error.hint]
       .filter(Boolean)
       .join(" — ");
-    return { ok: false, status: errorStatus(message), error: message };
+    return { ok: false, status: errorStatus(error, message), error: message };
   }
 
   return { ok: true, payload: data };

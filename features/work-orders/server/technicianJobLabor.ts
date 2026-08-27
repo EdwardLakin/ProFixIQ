@@ -30,8 +30,10 @@ function internalOperationKey(parts: Array<string | null | undefined>): string {
 
 export async function startTechnicianJobLabor(params: {
   supabase: SupabaseClient<DB>;
+  shopId: string;
   lineId: string;
   technicianId: string;
+  actorUserId: string;
   operationKey?: string;
   sourceEventId?: string | null;
   startedAtIso?: string;
@@ -50,9 +52,11 @@ export async function startTechnicianJobLabor(params: {
     ]);
   return applyJobPunchTransition({
     supabase: params.supabase,
+    shopId: params.shopId,
     lineId: params.lineId,
     action: "start",
     technicianId: params.technicianId,
+    actorUserId: params.actorUserId,
     options: {
       operationKey,
       allowConcurrentJobPunches: params.allowConcurrentJobPunches === true,
@@ -69,8 +73,10 @@ export async function startTechnicianJobLabor(params: {
 
 export async function stopTechnicianJobLabor(params: {
   supabase: SupabaseClient<DB>;
+  shopId: string;
   lineId: string;
   technicianId: string;
+  actorUserId: string;
   operationKey?: string;
   sourceEventId?: string | null;
   endedAtIso?: string;
@@ -91,9 +97,11 @@ export async function stopTechnicianJobLabor(params: {
     ]);
   return applyJobPunchTransition({
     supabase: params.supabase,
+    shopId: params.shopId,
     lineId: params.lineId,
     action: "pause",
     technicianId: params.technicianId,
+    actorUserId: params.actorUserId,
     options: {
       operationKey,
       nowIso: params.endedAtIso,

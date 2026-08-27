@@ -156,6 +156,7 @@ export default function MobileFocusedJob(props: {
   onChanged?: () => void | Promise<void>;
   mode?: Mode;
   canAddJob?: boolean;
+  canExecuteJob: boolean;
 }): JSX.Element {
   const {
     workOrderLineId,
@@ -163,6 +164,7 @@ export default function MobileFocusedJob(props: {
     onChanged,
     mode = "tech",
     canAddJob = false,
+    canExecuteJob,
   } = props;
 
   const supabase = useMemo(() => createBrowserSupabase(), []);
@@ -655,6 +657,7 @@ export default function MobileFocusedJob(props: {
       const detail = e.detail || {};
       if (!detail.workOrderLineId) return;
       if (detail.workOrderLineId !== workOrderLineId) return;
+      if (!canExecuteJob) return;
 
       closeAllSubModals();
       setPrefillCause(detail.cause ?? "");
@@ -665,10 +668,10 @@ export default function MobileFocusedJob(props: {
     window.addEventListener("inspection:completed", onInspectionDone);
     return () =>
       window.removeEventListener("inspection:completed", onInspectionDone);
-  }, [workOrderLineId]);
+  }, [workOrderLineId, canExecuteJob]);
 
   const applyHold = async (reason: string, notes?: string) => {
-    if (busy) return;
+    if (busy || !canExecuteJob) return;
     if (!line) return;
 
     setBusy(true);
@@ -688,7 +691,7 @@ export default function MobileFocusedJob(props: {
   };
 
   const releaseHold = async () => {
-    if (busy) return;
+    if (busy || !canExecuteJob) return;
     setBusy(true);
     try {
       await runJobPunchTransition(workOrderLineId, "resume", {
@@ -878,8 +881,11 @@ export default function MobileFocusedJob(props: {
   const isActive = operationalState === "in_progress";
   const isAwaiting =
     operationalState !== null && !isActive && !isOnHold && !isCompleted;
-  const canStartOrResume = !!line && canPunch(line) && !isCompleted;
-  const canPrimaryAction = isOnHold || (canStartOrResume && (isActive || isAwaiting));
+  const canStartOrResume =
+    canExecuteJob && !!line && canPunch(line) && !isCompleted;
+  const canPrimaryAction =
+    canExecuteJob &&
+    (isOnHold || (canStartOrResume && (isActive || isAwaiting)));
   const needsApprovalGate =
     line?.status === "awaiting_approval" ||
     (line?.approval_state != null && line.approval_state !== "approved") ||
@@ -1010,7 +1016,7 @@ export default function MobileFocusedJob(props: {
             ) : (
               <>
                 {/* dominant next action */}
-                {mode === "tech" && line && (
+                {canExecuteJob && line && (
                   <div className={`${panel} px-4 py-3`}>
                     <div className="mb-2 flex items-center justify-between gap-2">
                       <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
@@ -1050,7 +1056,7 @@ export default function MobileFocusedJob(props: {
                         type="button"
                         disabled={busy || !canPrimaryAction}
                         onClick={() => {
-                          if (!line || busy) return;
+                          if (!line || busy || !canExecuteJob) return;
                           if (isOnHold) {
                             closeAllSubModals();
                             setOpenHold(true);
@@ -1504,6 +1510,7 @@ export default function MobileFocusedJob(props: {
           lineLabel={lineLabel}
           initialCause={prefillCause}
           initialCorrection={prefillCorrection}
+          canCompleteJob={canExecuteJob}
           onDraftChange={(cause, correction) => {
             const scope = getOfflineMutationScope();
             if (!scope) return;
@@ -1524,6 +1531,9 @@ export default function MobileFocusedJob(props: {
             );
           }}
           onSubmit={async (cause: string, correction: string) => {
+            if (!canExecuteJob) {
+              throw new Error("Job execution capability is required.");
+            }
             try {
               const conflict = navigator.onLine
                 ? await getLineConflict(line.id, "finish")
