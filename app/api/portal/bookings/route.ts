@@ -5,7 +5,7 @@ import {
   createServerSupabaseRoute,
 } from "@/features/shared/lib/supabase/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
-import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
+import { SHOP_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
 import type { Database } from "@shared/types/types/supabase";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import {
@@ -148,7 +148,7 @@ export async function GET(req: Request): Promise<Response> {
   }
 
   const access = await requireShopScopedApiAccess({
-    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
+    requiredProductCapabilities: SHOP_PRODUCT_CAPABILITIES,
   });
   if (!access.ok) return access.response;
 

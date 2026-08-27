@@ -2,6 +2,7 @@ import "server-only";
 
 import type { DispatchBoardSnapshot } from "@/features/dispatch/lib/contracts";
 import type { ShopAccess } from "@/features/mobile/service/server/access";
+import { getMobileFieldServiceAccess } from "@/features/mobile/service/server/access";
 import {
   FIELD_PRODUCT_CAPABILITIES,
   resolveShopProductAccess,
@@ -29,7 +30,10 @@ export async function resolveDispatchProductScope(
   ]);
 
   if (shopProduct.entitled) return "shop";
-  if (fieldProduct.entitled) return "field";
+  if (fieldProduct.entitled) {
+    const fieldAccess = await getMobileFieldServiceAccess(access);
+    if (fieldAccess.canAccessFieldService) return "field";
+  }
   throw new Error(
     shopProduct.error ?? fieldProduct.error ?? "Product access required",
   );

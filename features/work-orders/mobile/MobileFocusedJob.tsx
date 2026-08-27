@@ -37,9 +37,7 @@ import AIAssistantModal from "@/features/work-orders/components/workorders/AiAss
 import NewChatModal from "@/features/ai/components/chat/NewChatModal";
 import SuggestedQuickAdd from "@/features/work-orders/components/SuggestedQuickAdd";
 import { runJobPunchTransition } from "@/features/work-orders/lib/jobPunchTransitionsClient";
-import {
-  getWorkOrderJobChatContext,
-} from "@/features/work-orders/workspace/workOrderWorkspace";
+import { getWorkOrderJobChatContext } from "@/features/work-orders/workspace/workOrderWorkspace";
 import {
   filterAllocationsNotBackedByCanonicalParts,
   getCanonicalPartDescription,
@@ -58,6 +56,7 @@ import {
   saveTechnicianJobEditorDraft,
 } from "@/features/work-orders/mobile/technicianOfflineExecution";
 import { deriveMobileDetailLineState } from "@/features/work-orders/mobile/detailOperationalState";
+import { readWorkspaceAuthorizationSnapshot } from "@/features/workspace/authorization/offlineWorkspaceAuthorization";
 
 import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
@@ -88,15 +87,19 @@ const panel = "mobile-tech-panel";
 
 const card = "mobile-tech-subpanel";
 
-const fieldLabel = "text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]";
+const fieldLabel =
+  "text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]";
 
-const btnBase = "rounded-xl border px-3 py-2 text-left text-sm font-medium transition-colors";
+const btnBase =
+  "rounded-xl border px-3 py-2 text-left text-sm font-medium transition-colors";
 const btnNeutral = `${btnBase} mobile-tech-btn-secondary`;
 const btnWarn = `${btnBase} mobile-tech-btn-danger`;
 const btnInfo = `${btnBase} mobile-tech-btn-utility`;
 
 type DB = Database;
-type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"] & { technician_notes?: string | null };
+type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"] & {
+  technician_notes?: string | null;
+};
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
 type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
 type Customer = DB["public"]["Tables"]["customers"]["Row"];
@@ -113,7 +116,11 @@ type RequiredPartRow = DB["public"]["Tables"]["work_order_parts"]["Row"] & {
   unit_sell_price_snapshot?: number | null;
   lifecycle_status?: string | null;
   source_parts_request_item_id?: string | null;
-  parts?: { name: string | null; part_number?: string | null; manufacturer?: string | null } | null;
+  parts?: {
+    name: string | null;
+    part_number?: string | null;
+    manufacturer?: string | null;
+  } | null;
 };
 
 type SyncSummary = ReturnType<typeof getOfflineSyncSummary>;
@@ -157,6 +164,7 @@ export default function MobileFocusedJob(props: {
   mode?: Mode;
   canAddJob?: boolean;
   canExecuteJob: boolean;
+  actorAssignedToLine?: boolean;
 }): JSX.Element {
   const {
     workOrderLineId,
@@ -164,7 +172,8 @@ export default function MobileFocusedJob(props: {
     onChanged,
     mode = "tech",
     canAddJob = false,
-    canExecuteJob,
+    canExecuteJob: hasExecutionCapability,
+    actorAssignedToLine,
   } = props;
 
   const supabase = useMemo(() => createBrowserSupabase(), []);
@@ -172,9 +181,12 @@ export default function MobileFocusedJob(props: {
   const [busy, setBusy] = useState(false);
   const [line, setLine] = useState<WorkOrderLine | null>(null);
   const [activeTechnicianIds, setActiveTechnicianIds] = useState<string[]>([]);
+  const [serverActorAssigned, setServerActorAssigned] = useState(false);
   const [workOrder, setWorkOrder] = useState<WorkOrder | null>(null);
   const [vehicle, setVehicle] = useState<Vehicle | null>(null);
   const [customer, setCustomer] = useState<Customer | null>(null);
+  const canExecuteJob =
+    hasExecutionCapability && (actorAssignedToLine ?? serverActorAssigned);
 
   const [techNotes, setTechNotes] = useState("");
   const [savingNotes, setSavingNotes] = useState(false);
@@ -226,41 +238,45 @@ export default function MobileFocusedJob(props: {
       const summary = getOfflineSyncSummary(scope);
       setSyncSummary(summary);
       setPendingWrites(
-        summary.queued +
-          summary.syncing +
-          summary.failed +
-          summary.conflicted,
+        summary.queued + summary.syncing + summary.failed + summary.conflicted,
       );
     });
   }, []);
 
   const getLineConflict = useCallback(
-    async (targetLineId: string, mode: "notes" | "finish" | "story"): Promise<string | null> => {
+    async (
+      targetLineId: string,
+      mode: "notes" | "finish" | "story",
+    ): Promise<string | null> => {
       const response = await fetch(
         `/api/work-order-lines/operational?lineId=${encodeURIComponent(
           targetLineId,
         )}&limit=1`,
         { cache: "no-store" },
       );
-      const body = (await response.json().catch(() => null)) as
-        | {
-            lines?: Array<{
-              id: string;
-              status: string | null;
-              approval_state: string | null;
-            }>;
-          }
-        | null;
+      const body = (await response.json().catch(() => null)) as {
+        lines?: Array<{
+          id: string;
+          status: string | null;
+          approval_state: string | null;
+        }>;
+      } | null;
       if (!response.ok) throw new Error("Job line could not be loaded.");
       const data = body?.lines?.[0] ?? null;
       if (!data?.id) return "Job line no longer exists.";
 
-      if (mode === "finish" && data.status === "completed") return "Job line is already completed.";
-      if (mode === "finish" && data.status === "declined") return "Job line is declined and cannot be finished.";
+      if (mode === "finish" && data.status === "completed")
+        return "Job line is already completed.";
+      if (mode === "finish" && data.status === "declined")
+        return "Job line is declined and cannot be finished.";
       if (mode === "story" && data.status === "completed") {
         return "Job line is already completed. Story edits require advisor review.";
       }
-      if (mode === "notes" && data.approval_state === "approved" && data.status === "completed") {
+      if (
+        mode === "notes" &&
+        data.approval_state === "approved" &&
+        data.status === "completed"
+      ) {
         return "Job line is completed and approved. Notes update blocked.";
       }
       return null;
@@ -305,7 +321,10 @@ export default function MobileFocusedJob(props: {
         { cache: "no-store" },
       );
       const snapshot = (await response.json().catch(() => null)) as
-        | (RoleShapedWorkOrderDetail & { selectedLineId?: string })
+        | (RoleShapedWorkOrderDetail & {
+            selectedLineId?: string;
+            actorAssignedToSelectedLine?: boolean;
+          })
         | { error?: string }
         | null;
       if (!response.ok || !snapshot || !("workOrder" in snapshot)) {
@@ -319,6 +338,7 @@ export default function MobileFocusedJob(props: {
       const nextLine =
         snapshot.lines.find((candidate) => candidate.id === id) ?? null;
       setLine(nextLine);
+      setServerActorAssigned(snapshot.actorAssignedToSelectedLine === true);
       setActiveTechnicianIds(
         snapshot.lineContext.activeTechnicianIdsByLine[id] ?? [],
       );
@@ -329,7 +349,8 @@ export default function MobileFocusedJob(props: {
         (snapshot.lineContext.allocationsByLine[id] ?? []) as AllocationRow[],
       );
       setRequiredParts(
-        (snapshot.lineContext.canonicalPartsByLine[id] ?? []) as RequiredPartRow[],
+        (snapshot.lineContext.canonicalPartsByLine[id] ??
+          []) as RequiredPartRow[],
       );
       if (!notesDirty) {
         setTechNotes(nextLine?.technician_notes ?? "");
@@ -346,6 +367,22 @@ export default function MobileFocusedJob(props: {
       if (!cached) return false;
 
       setLine(cached.line);
+      const authorization = readWorkspaceAuthorizationSnapshot({
+        userId: scope.userId,
+        shopId: scope.shopId,
+      });
+      const actorIds = new Set(
+        [scope.userId, authorization?.actor.profileId].filter(
+          (value): value is string => Boolean(value),
+        ),
+      );
+      setServerActorAssigned(
+        [
+          cached.line.assigned_tech_id,
+          cached.line.assigned_to,
+          ...(cached.snapshot.lineContext?.technicianIdsByLine[id] ?? []),
+        ].some((value) => Boolean(value) && actorIds.has(value as string)),
+      );
       setActiveTechnicianIds(
         cached.snapshot.lineContext?.activeTechnicianIdsByLine[id] ?? [],
       );
@@ -353,10 +390,12 @@ export default function MobileFocusedJob(props: {
       setVehicle(cached.snapshot.vehicle);
       setCustomer(cached.snapshot.customer);
       setAllocs(
-        (cached.snapshot.lineContext?.allocationsByLine[id] ?? []) as AllocationRow[],
+        (cached.snapshot.lineContext?.allocationsByLine[id] ??
+          []) as AllocationRow[],
       );
       setRequiredParts(
-        (cached.snapshot.lineContext?.canonicalPartsByLine[id] ?? []) as RequiredPartRow[],
+        (cached.snapshot.lineContext?.canonicalPartsByLine[id] ??
+          []) as RequiredPartRow[],
       );
       const editorDraft = await getTechnicianJobEditorDraft({
         scope,
@@ -405,10 +444,12 @@ export default function MobileFocusedJob(props: {
         ? await findProjectedTechnicianJob({ scope, lineId: workOrderLineId })
         : null;
       setAllocs(
-        (cached?.snapshot.lineContext?.allocationsByLine[workOrderLineId] ?? []) as AllocationRow[],
+        (cached?.snapshot.lineContext?.allocationsByLine[workOrderLineId] ??
+          []) as AllocationRow[],
       );
       setRequiredParts(
-        (cached?.snapshot.lineContext?.canonicalPartsByLine[workOrderLineId] ?? []) as RequiredPartRow[],
+        (cached?.snapshot.lineContext?.canonicalPartsByLine[workOrderLineId] ??
+          []) as RequiredPartRow[],
       );
       return;
     }
@@ -460,20 +501,28 @@ export default function MobileFocusedJob(props: {
     refreshSyncState();
     setStagedPhotos((prev) =>
       prev.filter((photo) => {
-        const mutation = listOfflineMutations().find((item) => item.clientMutationId === photo.clientMutationId);
+        const mutation = listOfflineMutations().find(
+          (item) => item.clientMutationId === photo.clientMutationId,
+        );
         return mutation?.status !== "synced";
       }),
     );
 
     if (result.replayed > 0) {
-      toast.success(`Synced ${result.replayed} pending update${result.replayed === 1 ? "" : "s"}.`);
+      toast.success(
+        `Synced ${result.replayed} pending update${result.replayed === 1 ? "" : "s"}.`,
+      );
       await refresh();
     }
     if (result.failed > 0) {
-      toast.error(`${result.failed} offline update${result.failed === 1 ? "" : "s"} failed and need retry.`);
+      toast.error(
+        `${result.failed} offline update${result.failed === 1 ? "" : "s"} failed and need retry.`,
+      );
     }
     if (result.conflicted > 0) {
-      toast.warning(`${result.conflicted} update${result.conflicted === 1 ? "" : "s"} need manual resolution.`);
+      toast.warning(
+        `${result.conflicted} update${result.conflicted === 1 ? "" : "s"} need manual resolution.`,
+      );
     }
   }, [refreshSyncState, refresh]);
 
@@ -711,12 +760,17 @@ export default function MobileFocusedJob(props: {
     if (!workOrderLineId || !workOrder?.id) return;
 
     const clientMutationId = uuidv4();
-    const isVideo = file.type.startsWith("video/") || /\.(mov|m4v|mp4|webm)$/i.test(file.name);
+    const isVideo =
+      file.type.startsWith("video/") ||
+      /\.(mov|m4v|mp4|webm)$/i.test(file.name);
     const contentType = file.type || (isVideo ? "video/mp4" : "image/jpeg");
     const path = `wo/${workOrder.id}/lines/${workOrderLineId}/${clientMutationId}_${file.name}`;
     const previewUrl = URL.createObjectURL(file);
     const scope = getOfflineMutationScope();
-    if (!scope) throw new Error("Offline shop scope is unavailable. Reconnect and try again.");
+    if (!scope)
+      throw new Error(
+        "Offline shop scope is unavailable. Reconnect and try again.",
+      );
     await saveOfflineBlob({
       id: clientMutationId,
       userId: scope.userId,
@@ -741,10 +795,12 @@ export default function MobileFocusedJob(props: {
         },
         orderKey: `${workOrderLineId}:media:${clientMutationId}`,
         runner: async () => {
-          const { error } = await supabase.storage.from("job-photos").upload(path, file, {
-            contentType,
-            upsert: true,
-          });
+          const { error } = await supabase.storage
+            .from("job-photos")
+            .upload(path, file, {
+              contentType,
+              upsert: true,
+            });
           if (error) throw error;
           await postOfflineServerMutation({
             actionType: "upload_job_photo",
@@ -771,7 +827,9 @@ export default function MobileFocusedJob(props: {
         ...prev,
         { clientMutationId, file, previewUrl, fileName: file.name, isVideo },
       ]);
-      toast.warning(`${isVideo ? "Video" : "Photo"} queued. Retry when connection is restored.`);
+      toast.warning(
+        `${isVideo ? "Video" : "Photo"} queued. Retry when connection is restored.`,
+      );
       return;
     }
 
@@ -815,7 +873,9 @@ export default function MobileFocusedJob(props: {
 
       refreshSyncState();
       if (result.conflicted) {
-        toast.error("Notes changed on server. Resolve conflict before retrying.");
+        toast.error(
+          "Notes changed on server. Resolve conflict before retrying.",
+        );
         return;
       }
       if (result.queued) {
@@ -965,7 +1025,9 @@ export default function MobileFocusedJob(props: {
         <div className="px-3 pt-2">
           <div className="mobile-tech-subpanel px-3 py-2 text-xs">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-[color:var(--theme-text-primary)]">Sync status</span>
+              <span className="text-[color:var(--theme-text-primary)]">
+                Sync status
+              </span>
               <span
                 className={
                   syncSummary.conflicted > 0 || syncSummary.failed > 0
@@ -987,9 +1049,12 @@ export default function MobileFocusedJob(props: {
               </span>
             </div>
             <div className="mt-1 text-[11px] text-[color:var(--theme-text-secondary)]">
-              Pending: {pendingWrites} • Failed: {syncSummary.failed} • Conflicted: {syncSummary.conflicted}
+              Pending: {pendingWrites} • Failed: {syncSummary.failed} •
+              Conflicted: {syncSummary.conflicted}
             </div>
-            {(pendingWrites > 0 || syncSummary.failed > 0 || syncSummary.conflicted > 0) && (
+            {(pendingWrites > 0 ||
+              syncSummary.failed > 0 ||
+              syncSummary.conflicted > 0) && (
               <button
                 type="button"
                 onClick={() => void replayOfflineMutations()}
@@ -1010,7 +1075,9 @@ export default function MobileFocusedJob(props: {
                 <div className="h-24 animate-pulse rounded-2xl bg-[color:var(--theme-surface-subtle)]" />
               </div>
             ) : !line ? (
-              <div className={`${panel} px-4 py-4 text-sm text-[color:var(--theme-text-secondary)]`}>
+              <div
+                className={`${panel} px-4 py-4 text-sm text-[color:var(--theme-text-secondary)]`}
+              >
                 No job found.
               </div>
             ) : (
@@ -1036,17 +1103,27 @@ export default function MobileFocusedJob(props: {
                       {line.punched_in_at ? (
                         <div>
                           Started {format(new Date(line.punched_in_at), "PPp")}
-                          {elapsedText ? <span className="text-[color:var(--theme-text-secondary)]"> • Elapsed {elapsedText}</span> : null}
+                          {elapsedText ? (
+                            <span className="text-[color:var(--theme-text-secondary)]">
+                              {" "}
+                              • Elapsed {elapsedText}
+                            </span>
+                          ) : null}
                         </div>
                       ) : (
-                        <div className="text-[color:var(--theme-text-secondary)]">Not started yet.</div>
+                        <div className="text-[color:var(--theme-text-secondary)]">
+                          Not started yet.
+                        </div>
                       )}
                       {(isOnHold || line.hold_reason) && line.hold_reason ? (
-                        <div className="mt-1 text-amber-200">Hold reason: {line.hold_reason}</div>
+                        <div className="mt-1 text-amber-200">
+                          Hold reason: {line.hold_reason}
+                        </div>
                       ) : null}
                       {isCompleted && line.punched_out_at ? (
                         <div className="mt-1 text-[color:var(--theme-text-secondary)]">
-                          Finished {format(new Date(line.punched_out_at), "PPp")}
+                          Finished{" "}
+                          {format(new Date(line.punched_out_at), "PPp")}
                         </div>
                       ) : null}
                     </div>
@@ -1073,11 +1150,17 @@ export default function MobileFocusedJob(props: {
                             void (async () => {
                               setBusy(true);
                               try {
-                                await runJobPunchTransition(workOrderLineId, "start");
+                                await runJobPunchTransition(
+                                  workOrderLineId,
+                                  "start",
+                                );
                                 toast.success("Job started");
                                 await refresh();
                               } catch (error) {
-                                showErr("Start job failed", error as { message?: string });
+                                showErr(
+                                  "Start job failed",
+                                  error as { message?: string },
+                                );
                               } finally {
                                 setBusy(false);
                               }
@@ -1104,19 +1187,6 @@ export default function MobileFocusedJob(props: {
                           Put on Hold
                         </button>
                       ) : null}
-                      {!isCompleted ? (
-                        <button
-                          type="button"
-                          className={btnNeutral}
-                          onClick={() => {
-                            closeAllSubModals();
-                            setOpenParts(true);
-                          }}
-                          disabled={busy}
-                        >
-                          Request Parts
-                        </button>
-                      ) : null}
                     </div>
                     {needsApprovalGate && (
                       <div className="mt-2 text-[11px] text-amber-300">
@@ -1134,17 +1204,23 @@ export default function MobileFocusedJob(props: {
                   <div className="mt-2 grid gap-2 text-sm md:grid-cols-3">
                     <div>
                       <div className={fieldLabel}>Status</div>
-                      <div className={`mt-1 font-semibold ${chip(line.status ?? null)}`}>
+                      <div
+                        className={`mt-1 font-semibold ${chip(line.status ?? null)}`}
+                      >
                         {String(line.status || "awaiting").replaceAll("_", " ")}
                       </div>
                     </div>
                     <div>
                       <div className={fieldLabel}>Start</div>
-                      <div className="mt-1 text-[color:var(--theme-text-primary)]">{createdStart}</div>
+                      <div className="mt-1 text-[color:var(--theme-text-primary)]">
+                        {createdStart}
+                      </div>
                     </div>
                     <div>
                       <div className={fieldLabel}>Finish</div>
-                      <div className="mt-1 text-[color:var(--theme-text-primary)]">{createdFinish}</div>
+                      <div className="mt-1 text-[color:var(--theme-text-primary)]">
+                        {createdFinish}
+                      </div>
                     </div>
                   </div>
                 </details>
@@ -1162,7 +1238,8 @@ export default function MobileFocusedJob(props: {
                           : "—"}
                       </div>
                       <div className="mt-0.5 text-[11px] text-[color:var(--theme-text-secondary)]">
-                        VIN: {vehicle?.vin ?? "—"} • Plate: {vehicle?.license_plate ?? "—"}
+                        VIN: {vehicle?.vin ?? "—"} • Plate:{" "}
+                        {vehicle?.license_plate ?? "—"}
                       </div>
                     </div>
 
@@ -1170,13 +1247,17 @@ export default function MobileFocusedJob(props: {
                       <div className={fieldLabel}>Customer</div>
                       <div className="mt-1 truncate text-[color:var(--theme-text-primary)]">
                         {customer
-                          ? [customer.first_name ?? "", customer.last_name ?? ""]
+                          ? [
+                              customer.first_name ?? "",
+                              customer.last_name ?? "",
+                            ]
                               .filter(Boolean)
                               .join(" ") || "—"
                           : "—"}
                       </div>
                       <div className="mt-0.5 text-[11px] text-[color:var(--theme-text-secondary)]">
-                        {customer?.phone ?? "—"} {customer?.email ? `• ${customer.email}` : ""}
+                        {customer?.phone ?? "—"}{" "}
+                        {customer?.email ? `• ${customer.email}` : ""}
                       </div>
                     </div>
                   </div>
@@ -1184,100 +1265,119 @@ export default function MobileFocusedJob(props: {
 
                 {/* controls */}
                 <div className={`${panel} px-4 py-4`}>
-                  <div className="mb-2 text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">Operational actions</div>
+                  <div className="mb-2 text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
+                    Operational actions
+                  </div>
                   <div className="grid gap-2 md:grid-cols-3">
-                  {mode === "tech" ? (
-                    <>
-                      <button
-                        type="button"
-                        className={btnNeutral}
-                        onClick={() => {
-                          closeAllSubModals();
-                          setOpenPhoto(true);
-                        }}
-                        disabled={busy}
-                      >
-                        Add Photo
-                      </button>
+                    {mode === "tech" ? (
+                      <>
+                        {!isCompleted ? (
+                          <button
+                            type="button"
+                            className={btnNeutral}
+                            onClick={() => {
+                              closeAllSubModals();
+                              setOpenParts(true);
+                            }}
+                            disabled={busy}
+                          >
+                            Request Parts
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          className={btnNeutral}
+                          onClick={() => {
+                            closeAllSubModals();
+                            setOpenPhoto(true);
+                          }}
+                          disabled={busy}
+                        >
+                          Add Photo
+                        </button>
 
-                      <button
-                        type="button"
-                        className={btnNeutral}
-                        onClick={() => {
-                          closeAllSubModals();
-                          setOpenChat(true);
-                        }}
-                      >
-                        Chat
-                      </button>
+                        <button
+                          type="button"
+                          className={btnNeutral}
+                          onClick={() => {
+                            closeAllSubModals();
+                            setOpenChat(true);
+                          }}
+                        >
+                          Chat
+                        </button>
 
-                      <button
-                        type="button"
-                        className={btnInfo}
-                        onClick={() => {
-                          closeAllSubModals();
-                          setOpenAi(true);
-                        }}
-                      >
-                        AI Assist
-                      </button>
+                        <button
+                          type="button"
+                          className={btnInfo}
+                          onClick={() => {
+                            closeAllSubModals();
+                            setOpenAi(true);
+                          }}
+                        >
+                          AI Assist
+                        </button>
 
-                      {/* ✅ Vehicle History */}
-                      <button
-                        type="button"
-                        className={btnNeutral}
-                        onClick={() => {
-                          if (!vehicle?.id) {
-                            toast.error("No vehicle linked to this work order yet.");
-                            return;
-                          }
-                          setOpenVehicleHistory(true);
-                        }}
-                        disabled={busy || !vehicle?.id}
-                      >
-                        Vehicle History
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <button
-                        type="button"
-                        className={btnNeutral}
-                        onClick={() => {
-                          closeAllSubModals();
-                          setOpenChat(true);
-                        }}
-                      >
-                        Chat
-                      </button>
-                      <button
-                        type="button"
-                        className={btnInfo}
-                        onClick={() => {
-                          closeAllSubModals();
-                          setOpenAi(true);
-                        }}
-                      >
-                        AI Assist
-                      </button>
+                        {/* ✅ Vehicle History */}
+                        <button
+                          type="button"
+                          className={btnNeutral}
+                          onClick={() => {
+                            if (!vehicle?.id) {
+                              toast.error(
+                                "No vehicle linked to this work order yet.",
+                              );
+                              return;
+                            }
+                            setOpenVehicleHistory(true);
+                          }}
+                          disabled={busy || !vehicle?.id}
+                        >
+                          Vehicle History
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          className={btnNeutral}
+                          onClick={() => {
+                            closeAllSubModals();
+                            setOpenChat(true);
+                          }}
+                        >
+                          Chat
+                        </button>
+                        <button
+                          type="button"
+                          className={btnInfo}
+                          onClick={() => {
+                            closeAllSubModals();
+                            setOpenAi(true);
+                          }}
+                        >
+                          AI Assist
+                        </button>
 
-                      {/* ✅ Vehicle History */}
-                      <button
-                        type="button"
-                        className={btnNeutral}
-                        onClick={() => {
-                          if (!vehicle?.id) {
-                            toast.error("No vehicle linked to this work order yet.");
-                            return;
-                          }
-                          setOpenVehicleHistory(true);
-                        }}
-                        disabled={busy || !vehicle?.id}
-                      >
-                        Vehicle History
-                      </button>
-                    </>
-                  )}
+                        {/* ✅ Vehicle History */}
+                        <button
+                          type="button"
+                          className={btnNeutral}
+                          onClick={() => {
+                            if (!vehicle?.id) {
+                              toast.error(
+                                "No vehicle linked to this work order yet.",
+                              );
+                              return;
+                            }
+                            setOpenVehicleHistory(true);
+                          }}
+                          disabled={busy || !vehicle?.id}
+                        >
+                          Vehicle History
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
 
@@ -1294,20 +1394,35 @@ export default function MobileFocusedJob(props: {
                 {/* offline sync queue */}
                 {(stagedPhotos.length > 0 || offlineMutations.length > 0) && (
                   <div className={`${panel} px-4 py-4`}>
-                    <div className="mb-2 text-sm font-medium text-[color:var(--theme-text-primary)]">Offline sync queue</div>
+                    <div className="mb-2 text-sm font-medium text-[color:var(--theme-text-primary)]">
+                      Offline sync queue
+                    </div>
                     {stagedPhotos.map((photo) => (
                       <div
                         key={photo.clientMutationId}
                         className="mb-2 flex items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-2"
                       >
                         {photo.isVideo ? (
-                          <video src={photo.previewUrl} className="h-10 w-10 rounded-md object-cover" muted preload="metadata" />
+                          <video
+                            src={photo.previewUrl}
+                            className="h-10 w-10 rounded-md object-cover"
+                            muted
+                            preload="metadata"
+                          />
                         ) : (
-                          <img src={photo.previewUrl} alt={photo.fileName} className="h-10 w-10 rounded-md object-cover" />
+                          <img
+                            src={photo.previewUrl}
+                            alt={photo.fileName}
+                            className="h-10 w-10 rounded-md object-cover"
+                          />
                         )}
                         <div className="min-w-0 flex-1">
-                          <div className="truncate text-xs text-amber-100">{photo.fileName}</div>
-                          <div className="text-[11px] text-amber-200">Staged locally • waiting for upload</div>
+                          <div className="truncate text-xs text-amber-100">
+                            {photo.fileName}
+                          </div>
+                          <div className="text-[11px] text-amber-200">
+                            Staged locally • waiting for upload
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -1318,7 +1433,9 @@ export default function MobileFocusedJob(props: {
                           className="mobile-tech-subpanel rounded-lg px-2 py-2"
                         >
                           <div className="flex items-center justify-between gap-2">
-                            <span className="truncate text-[color:var(--theme-text-primary)]">{mutation.actionType.replaceAll("_", " ")}</span>
+                            <span className="truncate text-[color:var(--theme-text-primary)]">
+                              {mutation.actionType.replaceAll("_", " ")}
+                            </span>
                             <span
                               className={
                                 mutation.status === "conflicted"
@@ -1333,9 +1450,15 @@ export default function MobileFocusedJob(props: {
                               {mutation.status}
                             </span>
                           </div>
-                          {mutation.lastError ? <div className="mt-1 text-[11px] text-amber-200">{mutation.lastError}</div> : null}
+                          {mutation.lastError ? (
+                            <div className="mt-1 text-[11px] text-amber-200">
+                              {mutation.lastError}
+                            </div>
+                          ) : null}
                           {mutation.conflictReason ? (
-                            <div className="mt-1 text-[11px] text-red-200">{mutation.conflictReason}</div>
+                            <div className="mt-1 text-[11px] text-red-200">
+                              {mutation.conflictReason}
+                            </div>
                           ) : null}
                         </li>
                       ))}
@@ -1350,9 +1473,14 @@ export default function MobileFocusedJob(props: {
                   </div>
 
                   {allocsLoading ? (
-                    <div className="text-sm text-[color:var(--theme-text-secondary)]">Loading…</div>
-                  ) : (displayOnlyAllocations.length + requiredParts.length) === 0 ? (
-                    <div className="text-sm text-[color:var(--theme-text-secondary)]">No parts used yet.</div>
+                    <div className="text-sm text-[color:var(--theme-text-secondary)]">
+                      Loading…
+                    </div>
+                  ) : displayOnlyAllocations.length + requiredParts.length ===
+                    0 ? (
+                    <div className="text-sm text-[color:var(--theme-text-secondary)]">
+                      No parts used yet.
+                    </div>
                   ) : (
                     <div className="mobile-tech-subpanel overflow-hidden">
                       <div className="grid grid-cols-12 bg-[color:var(--theme-surface-subtle)] px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
@@ -1362,7 +1490,10 @@ export default function MobileFocusedJob(props: {
                       </div>
                       <ul className="max-h-56 overflow-auto divide-y divide-[color:var(--theme-border-soft)]">
                         {requiredParts.map((p) => {
-                          const allocation = summarizeCanonicalPartAllocations(p, allocs);
+                          const allocation = summarizeCanonicalPartAllocations(
+                            p,
+                            allocs,
+                          );
                           const requested = getCanonicalPartQuantity(p);
                           return (
                             <li
@@ -1372,12 +1503,23 @@ export default function MobileFocusedJob(props: {
                               <div className="col-span-7 truncate text-[color:var(--theme-text-primary)]">
                                 {getCanonicalPartDescription(p) ?? "—"}
                                 <div className="text-[11px] text-[color:var(--theme-text-secondary)]">
-                                  {[getCanonicalPartNumber(p), getCanonicalPartManufacturer(p), p.lifecycle_status ?? "requested"].filter(Boolean).join(" • ")}
+                                  {[
+                                    getCanonicalPartNumber(p),
+                                    getCanonicalPartManufacturer(p),
+                                    p.lifecycle_status ?? "requested",
+                                  ]
+                                    .filter(Boolean)
+                                    .join(" • ")}
                                 </div>
                               </div>
                               <div className="col-span-3 truncate text-[color:var(--theme-text-secondary)]">
                                 {allocation.locations.length > 0
-                                  ? allocation.locations.map((location) => `loc ${location.slice(0, 6)}…`).join(", ")
+                                  ? allocation.locations
+                                      .map(
+                                        (location) =>
+                                          `loc ${location.slice(0, 6)}…`,
+                                      )
+                                      .join(", ")
                                   : "—"}
                               </div>
                               <div className="col-span-2 text-right font-semibold text-[color:var(--theme-text-primary)]">
@@ -1430,7 +1572,9 @@ export default function MobileFocusedJob(props: {
                         if (!transcript) return;
                         setTechNotes((current) => {
                           const existing = current.trim();
-                          return existing ? `${existing} ${transcript}` : transcript;
+                          return existing
+                            ? `${existing} ${transcript}`
+                            : transcript;
                         });
                         setNotesDirty(true);
                       }}
@@ -1483,7 +1627,9 @@ export default function MobileFocusedJob(props: {
                     ? ` • Labor: ${line.labor_time.toFixed(1)}h`
                     : ""}
                   {line.hold_reason ? ` • Hold: ${line.hold_reason}` : ""}
-                  {line.approval_state ? ` • Approval: ${line.approval_state}` : ""}
+                  {line.approval_state
+                    ? ` • Approval: ${line.approval_state}`
+                    : ""}
                 </div>
               </>
             )}
@@ -1554,7 +1700,10 @@ export default function MobileFocusedJob(props: {
                   fields: ["cause", "correction"],
                 });
             } catch (error) {
-              return showErr("Complete job failed", error as { message?: string });
+              return showErr(
+                "Complete job failed",
+                error as { message?: string },
+              );
             }
 
             toast.success("Job completed");
@@ -1593,7 +1742,9 @@ export default function MobileFocusedJob(props: {
 
             refreshSyncState();
             if (result.conflicted) {
-              toast.error("Story conflict detected. Review latest line status.");
+              toast.error(
+                "Story conflict detected. Review latest line status.",
+              );
               return;
             }
             if (result.queued) {

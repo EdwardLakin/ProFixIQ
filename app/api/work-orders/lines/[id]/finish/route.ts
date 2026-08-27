@@ -1,7 +1,7 @@
 export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
-import { requireAssignedJobPunchAccess } from "@/features/work-orders/server/authorizeJobPunchTransition";
+import { requireJobPunchActorAccess } from "@/features/work-orders/server/authorizeJobPunchTransition";
 import { completeWorkOrderLine } from "@/features/work-orders/server/completeWorkOrderLine";
 
 type Body = {
@@ -24,10 +24,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Missing id" }, { status: 400 });
   }
 
-  const authorization = await requireAssignedJobPunchAccess(id);
-  if (!authorization.ok) return authorization.response;
-  const { access, line } = authorization;
-
   const body = (await req.json().catch(() => ({}))) as Body;
   const operationKey =
     req.headers.get("Idempotency-Key")?.trim() ||
@@ -41,6 +37,14 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const authorization = await requireJobPunchActorAccess({
+    lineId: id,
+    action: "finish",
+    operationKey,
+  });
+  if (!authorization.ok) return authorization.response;
+  const { access, line } = authorization;
+
   const result = await completeWorkOrderLine({
     supabase: access.supabase,
     shopId: line.shop_id,
@@ -53,7 +57,10 @@ export async function POST(req: NextRequest) {
   });
 
   if (!result.ok) {
-    return NextResponse.json({ error: result.error }, { status: result.status });
+    return NextResponse.json(
+      { error: result.error },
+      { status: result.status },
+    );
   }
 
   const payload =

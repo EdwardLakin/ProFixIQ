@@ -1789,6 +1789,7 @@ end
 $inspection_import_and_sign_replay$;
 
 reset role;
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
 update public.work_order_lines
 set assigned_tech_id = '76100000-0000-4000-8000-000000000004',
     assigned_to = null

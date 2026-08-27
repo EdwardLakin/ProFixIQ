@@ -56,6 +56,10 @@ export async function cacheTechnicianOfflineBundle(
   await reconcileMobileProductScope({
     scope: bundle.scope,
     productScope: bundle.productScope,
+    authorizedWorkOrderIds:
+      bundle.productScope === "field"
+        ? bundle.workOrders.map((item) => item.workOrder.id)
+        : null,
   });
   const [existingBundle, existingDetails] = await Promise.all([
     getOfflineSnapshot<Partial<TechnicianOfflineBundle>>({

@@ -12,7 +12,6 @@ import {
 } from "@/features/shared/lib/product-access";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
-import { resolveTechnicianAssignmentContract } from "@/features/work-orders/lib/technicianAssignmentContract";
 import {
   projectWorkOrderFinancialFields,
   projectWorkOrderLineFinancialFields,
@@ -85,33 +84,29 @@ export async function GET(request: Request) {
   }
 
   const candidateLines = (candidateData ?? []) as WorkOrderLine[];
+  const candidateIds = candidateLines.map((line) => line.id);
+  const actorIds = [...new Set([access.profile.id, access.authUserId])];
+  const { data: bridges, error: bridgeError } = candidateIds.length
+    ? await admin
+        .from("work_order_line_technicians")
+        .select("work_order_line_id, technician_id")
+        .in("work_order_line_id", candidateIds)
+        .in("technician_id", actorIds)
+    : { data: [], error: null };
+  if (bridgeError) {
+    return NextResponse.json({ error: bridgeError.message }, { status: 500 });
+  }
+  const bridgeIds = new Set(
+    (bridges ?? []).map((row) => row.work_order_line_id),
+  );
+  const actorAssigned = (line: WorkOrderLine) =>
+    actorIds.includes(line.assigned_tech_id ?? "") ||
+    actorIds.includes(line.assigned_to ?? "") ||
+    bridgeIds.has(line.id);
   let lines = candidateLines;
   const actor = getActorCapabilities({ role: access.profile.role });
   if (actor.canonicalRole === "mechanic") {
-    const candidateIds = candidateLines.map((line) => line.id);
-    const { data: bridges, error: bridgeError } = candidateIds.length
-      ? await admin
-          .from("work_order_line_technicians")
-          .select("work_order_line_id, technician_id")
-          .in("work_order_line_id", candidateIds)
-          .eq("technician_id", access.profile.id)
-      : { data: [], error: null };
-    if (bridgeError) {
-      return NextResponse.json({ error: bridgeError.message }, { status: 500 });
-    }
-
-    const bridgeIds = new Set(
-      (bridges ?? []).map((row) => row.work_order_line_id),
-    );
-    lines = candidateLines.filter((line) =>
-      resolveTechnicianAssignmentContract({
-        primaryTechnicianId: line.assigned_tech_id,
-        legacyAssignedTo: line.assigned_to,
-        canonicalTechnicianIds: bridgeIds.has(line.id)
-          ? [access.profile.id]
-          : [],
-      }).technicianIds.includes(access.profile.id),
-    );
+    lines = candidateLines.filter(actorAssigned);
   }
 
   if (requestedLineId && lines.length === 0) {
@@ -162,6 +157,7 @@ export async function GET(request: Request) {
       lines: lines.map((line) =>
         projectWorkOrderLineFinancialFields(line, denied),
       ),
+      executableLineIds: lines.filter(actorAssigned).map((line) => line.id),
       workOrders: workOrders.map((workOrder) =>
         projectWorkOrderFinancialFields(workOrder, denied),
       ),

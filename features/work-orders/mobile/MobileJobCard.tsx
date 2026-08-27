@@ -348,12 +348,12 @@ export function JobCard({
                 </button>
               )}
 
-              {line.job_type === "inspection" && (
+              {line.job_type === "inspection" && onOpenInspection && (
                 <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    onOpenInspection?.();
+                    onOpenInspection();
                   }}
                   className={`rounded-xl border bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-[11px] font-medium ${
                     isCompletedLike()

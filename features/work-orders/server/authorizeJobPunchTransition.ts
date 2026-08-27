@@ -2,10 +2,8 @@ import "server-only";
 
 import { NextResponse } from "next/server";
 import { resolveWorkOrderProductAuthority } from "@/features/mobile/service/server/access";
-import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
-import { WORKSPACE_CAPABILITIES } from "@/features/workspace/authorization/capabilities";
 
 type JobPunchLine = {
   id: string;
@@ -18,7 +16,11 @@ type JobPunchLine = {
 
 type JobPunchAccess = Awaited<ReturnType<typeof requireShopScopedApiAccess>>;
 
-export async function requireAssignedJobPunchAccess(lineId: string): Promise<
+export async function requireJobPunchActorAccess(input: {
+  lineId: string;
+  action: "start" | "pause" | "resume" | "finish";
+  operationKey: string;
+}): Promise<
   | {
       ok: true;
       access: Extract<JobPunchAccess, { ok: true }>;
@@ -26,32 +28,18 @@ export async function requireAssignedJobPunchAccess(lineId: string): Promise<
     }
   | { ok: false; response: NextResponse }
 > {
-  const access = await requireShopScopedApiAccess({
-    requiredWorkspaceCapability:
-      WORKSPACE_CAPABILITIES.executeAssignedWorkOrderJobs,
-    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
-  });
+  const access = await requireShopScopedApiAccess();
   if (!access.ok) return access;
 
   const admin = createAdminSupabase();
-  const actorIds = [...new Set([access.profile.id, access.authUserId])];
-  const [lineResult, assignmentResult] = await Promise.all([
-    admin
-      .from("work_order_lines")
-      .select("id,shop_id,work_order_id,line_type,assigned_tech_id,assigned_to")
-      .eq("id", lineId)
-      .eq("shop_id", access.profile.shop_id)
-      .maybeSingle<JobPunchLine>(),
-    admin
-      .from("work_order_line_technicians")
-      .select("id")
-      .eq("work_order_line_id", lineId)
-      .in("technician_id", actorIds)
-      .limit(1)
-      .maybeSingle<{ id: string }>(),
-  ]);
+  const lineResult = await admin
+    .from("work_order_lines")
+    .select("id,shop_id,work_order_id,line_type,assigned_tech_id,assigned_to")
+    .eq("id", input.lineId)
+    .eq("shop_id", access.profile.shop_id)
+    .maybeSingle<JobPunchLine>();
 
-  if (lineResult.error || assignmentResult.error) {
+  if (lineResult.error) {
     return {
       ok: false,
       response: NextResponse.json(
@@ -81,18 +69,30 @@ export async function requireAssignedJobPunchAccess(lineId: string): Promise<
     };
   }
 
-  const assigned =
-    actorIds.includes(line.assigned_tech_id ?? "") ||
-    actorIds.includes(line.assigned_to ?? "") ||
-    Boolean(assignmentResult.data?.id);
-  if (!assigned) {
+  const receipt = await admin
+    .from("workforce_operation_keys")
+    .select("actor_user_id,work_order_line_id")
+    .eq("shop_id", line.shop_id)
+    .eq("operation_name", `job_punch:${input.action}`)
+    .eq("operation_key", input.operationKey)
+    .maybeSingle<{
+      actor_user_id: string | null;
+      work_order_line_id: string | null;
+    }>();
+  if (receipt.error) {
     return {
       ok: false,
       response: NextResponse.json(
-        { error: "An assigned technician is required for this job action." },
-        { status: 403 },
+        { error: "Unable to authorize this job transition." },
+        { status: 500 },
       ),
     };
+  }
+  if (
+    receipt.data?.actor_user_id === access.authUserId &&
+    receipt.data.work_order_line_id === line.id
+  ) {
+    return { ok: true, access, line };
   }
 
   try {
@@ -116,5 +116,7 @@ export async function requireAssignedJobPunchAccess(lineId: string): Promise<
     };
   }
 
+  // Capability and assignment remain inside the locked atomic transition so a
+  // committed receipt can replay after either live authorization changes.
   return { ok: true, access, line };
 }

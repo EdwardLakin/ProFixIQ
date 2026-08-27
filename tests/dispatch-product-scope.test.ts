@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   resolveShopProductAccess: vi.fn(),
+  getMobileFieldServiceAccess: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -10,6 +11,12 @@ vi.mock("@/features/shared/lib/product-access", async (importOriginal) => ({
     typeof import("@/features/shared/lib/product-access")
   >()),
   resolveShopProductAccess: mocks.resolveShopProductAccess,
+}));
+vi.mock("@/features/mobile/service/server/access", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@/features/mobile/service/server/access")
+  >()),
+  getMobileFieldServiceAccess: mocks.getMobileFieldServiceAccess,
 }));
 
 function access(role: string, visitFound = true) {
@@ -43,7 +50,12 @@ function access(role: string, visitFound = true) {
 }
 
 describe("dispatch product scope", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.getMobileFieldServiceAccess.mockResolvedValue({
+      canAccessFieldService: true,
+    });
+  });
 
   it("prefers Shop authority and falls back to Field without conflating them", async () => {
     mocks.resolveShopProductAccess.mockImplementation(
@@ -68,6 +80,25 @@ describe("dispatch product scope", () => {
     await expect(
       resolveDispatchProductScope(access("manager").value as never),
     ).resolves.toBe("field");
+    expect(mocks.getMobileFieldServiceAccess).toHaveBeenCalled();
+  });
+
+  it("denies Field dispatch to a staff profile without operator authority", async () => {
+    mocks.resolveShopProductAccess.mockImplementation(
+      async ({ capabilities }: { capabilities: readonly string[] }) => ({
+        entitled: capabilities.includes("field_service"),
+        error: null,
+      }),
+    );
+    mocks.getMobileFieldServiceAccess.mockResolvedValue({
+      canAccessFieldService: false,
+    });
+    const { resolveDispatchProductScope } =
+      await import("@/features/dispatch/server/productScope");
+
+    await expect(
+      resolveDispatchProductScope(access("manager").value as never),
+    ).rejects.toThrow("Product access required");
   });
 
   it("filters Shop-mode visits and creation from Field dispatch", async () => {

@@ -32,11 +32,6 @@ export async function GET(_request: Request, context: RouteContext) {
   if (!routeId) return detailError("Work order not found.", 404);
 
   try {
-    const authority = await resolveWorkOrderProductAuthority(access, routeId);
-    if (!authority.authorized) {
-      return detailError("Work order not found.", 404);
-    }
-
     const snapshot = await loadMobileWorkOrderDetail({
       supabase: access.supabase,
       dataSupabase: createAdminSupabase(),
@@ -45,6 +40,14 @@ export async function GET(_request: Request, context: RouteContext) {
       routeId,
     });
     if (!snapshot) return detailError("Work order not found.", 404);
+
+    const authority = await resolveWorkOrderProductAuthority(
+      access,
+      snapshot.workOrder.id,
+    );
+    if (!authority.authorized) {
+      return detailError("Work order not found.", 404);
+    }
 
     return NextResponse.json(
       { ...snapshot, productScope: authority.product },

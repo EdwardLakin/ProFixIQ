@@ -63,7 +63,9 @@ function isSharedShopFieldRoute(pathname: string): boolean {
     pathname === "/mobile/inspections" ||
     pathname.startsWith("/mobile/inspections/") ||
     pathname === "/mobile/parts" ||
-    pathname.startsWith("/mobile/parts/")
+    pathname.startsWith("/mobile/parts/") ||
+    pathname === "/mobile/jobs" ||
+    pathname.startsWith("/mobile/jobs/")
   ) {
     return true;
   }

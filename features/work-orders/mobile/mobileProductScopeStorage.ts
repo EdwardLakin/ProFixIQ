@@ -20,12 +20,13 @@ type MobileProductAuthority = {
   userId: string;
   shopId: string;
   productScope: MobileProductScope;
+  authorizedWorkOrderIds?: string[] | null;
 };
 
 function parseAuthority(
   value: unknown,
   scope: { userId: string; shopId: string },
-): MobileProductScope | null {
+): MobileProductAuthority | null {
   if (!value || typeof value !== "object") return null;
   const authority = value as Partial<MobileProductAuthority>;
   if (
@@ -35,7 +36,35 @@ function parseAuthority(
   ) {
     return null;
   }
-  return authority.productScope;
+  if (
+    authority.authorizedWorkOrderIds !== undefined &&
+    authority.authorizedWorkOrderIds !== null &&
+    (!Array.isArray(authority.authorizedWorkOrderIds) ||
+      authority.authorizedWorkOrderIds.some((id) => typeof id !== "string"))
+  ) {
+    return null;
+  }
+  return authority as MobileProductAuthority;
+}
+
+function normalizedIds(ids: readonly string[] | null): string[] | null {
+  return ids === null
+    ? null
+    : [...new Set(ids.map((id) => id.trim()).filter(Boolean))].sort();
+}
+
+function sameIds(
+  left: readonly string[] | null | undefined,
+  right: readonly string[] | null | undefined,
+): boolean {
+  if (left === undefined || right === undefined) return left === right;
+  if (left === null || right === null) return left === right;
+  const normalizedLeft = normalizedIds(left) ?? [];
+  const normalizedRight = normalizedIds(right) ?? [];
+  return (
+    normalizedLeft.length === normalizedRight.length &&
+    normalizedLeft.every((id, index) => id === normalizedRight[index])
+  );
 }
 
 async function removeAuthority(scope: {
@@ -86,8 +115,8 @@ export async function getCachedMobileProductScope(scope: {
     entityId: AUTHORITY_ID,
   });
   if (!stored) return null;
-  const productScope = parseAuthority(stored.data, scope);
-  if (productScope) return productScope;
+  const authority = parseAuthority(stored.data, scope);
+  if (authority) return authority.productScope;
   await removeAuthority(scope);
   return null;
 }
@@ -101,9 +130,23 @@ export async function getCachedMobileProductScope(scope: {
 export async function reconcileMobileProductScope(args: {
   scope: { userId: string; shopId: string };
   productScope: MobileProductScope;
+  authorizedWorkOrderIds?: readonly string[] | null;
 }): Promise<void> {
-  const current = await getCachedMobileProductScope(args.scope);
-  if (current !== args.productScope) {
+  const stored = await getOfflineSnapshot<MobileProductAuthority>({
+    scope: args.scope,
+    kind: AUTHORITY_KIND,
+    entityId: AUTHORITY_ID,
+  });
+  const current = stored ? parseAuthority(stored.data, args.scope) : null;
+  const nextAuthorizedIds =
+    args.authorizedWorkOrderIds === undefined
+      ? current?.authorizedWorkOrderIds
+      : normalizedIds(args.authorizedWorkOrderIds);
+  const authorityChanged =
+    current?.productScope !== args.productScope ||
+    (args.authorizedWorkOrderIds !== undefined &&
+      !sameIds(current?.authorizedWorkOrderIds, nextAuthorizedIds));
+  if (authorityChanged) {
     // Removing the authority first keeps interrupted transitions fail closed.
     await removeAuthority(args.scope);
     await removeMobileProductScopedSnapshots(args.scope);
@@ -117,6 +160,7 @@ export async function reconcileMobileProductScope(args: {
       userId: args.scope.userId,
       shopId: args.scope.shopId,
       productScope: args.productScope,
+      authorizedWorkOrderIds: nextAuthorizedIds,
     } satisfies MobileProductAuthority,
   });
 }
