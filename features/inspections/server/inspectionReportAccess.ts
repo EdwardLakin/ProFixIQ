@@ -1,5 +1,7 @@
 import "server-only";
 
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@shared/types/types/supabase";
 import type { InspectionSession } from "@/features/inspections/lib/inspection/types";
 import {
   assembleInspectionReport,
@@ -8,6 +10,8 @@ import {
 import { createAdminClient } from "@/features/integrations/shopreel/server/createAdminClient";
 import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
 import { canonicalizeRole } from "@/features/shared/lib/rbac";
+
+type DB = Database;
 
 export type InspectionReportRecord = {
   inspectionId: string;
@@ -34,6 +38,7 @@ type RawInspection = {
 };
 
 async function actorCanRead(args: {
+  sessionClient: SupabaseClient<DB>;
   actorUserId: string;
   shopId: string;
   customerId: string | null;
@@ -50,26 +55,20 @@ async function actorCanRead(args: {
   const role = canonicalizeRole(profile?.role);
   if (
     profile?.shop_id === args.shopId &&
-    ![
-      "customer",
-      "fleet_manager",
-      "dispatcher",
-      "driver",
-      "unknown",
-    ].includes(role)
+    !["customer", "fleet_manager", "dispatcher", "driver", "unknown"].includes(
+      role,
+    )
   ) {
     return true;
   }
 
   if (args.customerId) {
-    const { data: customer } = await admin
-      .from("customers")
-      .select("id")
-      .eq("id", args.customerId)
-      .eq("shop_id", args.shopId)
-      .eq("user_id", args.actorUserId)
-      .maybeSingle<{ id: string }>();
-    if (customer?.id) return true;
+    const { data: portalAccess, error: portalAccessError } =
+      await args.sessionClient.rpc("profixiq_is_portal_customer_for", {
+        p_customer_id: args.customerId,
+        p_shop_id: args.shopId,
+      });
+    if (!portalAccessError && portalAccess === true) return true;
   }
 
   if (!args.vehicleId) return false;
@@ -174,6 +173,7 @@ async function refreshEvidence(
 
 async function hydrate(
   inspection: RawInspection,
+  sessionClient: SupabaseClient<DB>,
   actorUserId: string,
   includeEvidencePhotos: boolean,
 ): Promise<InspectionReportRecord | null> {
@@ -201,6 +201,7 @@ async function hydrate(
   if (
     !workOrder ||
     !(await actorCanRead({
+      sessionClient,
       actorUserId,
       shopId: inspection.shop_id,
       customerId: workOrder.customer_id,
@@ -243,6 +244,7 @@ async function hydrate(
 }
 
 export async function getInspectionReportForActor(args: {
+  sessionClient: SupabaseClient<DB>;
   actorUserId: string;
   inspectionId: string;
   includeEvidencePhotos?: boolean;
@@ -258,11 +260,17 @@ export async function getInspectionReportForActor(args: {
     .not("pdf_storage_path", "is", null)
     .maybeSingle<RawInspection>();
   return data
-    ? hydrate(data, args.actorUserId, args.includeEvidencePhotos ?? true)
+    ? hydrate(
+        data,
+        args.sessionClient,
+        args.actorUserId,
+        args.includeEvidencePhotos ?? true,
+      )
     : null;
 }
 
 export async function listInspectionReportsForActor(args: {
+  sessionClient: SupabaseClient<DB>;
   actorUserId: string;
   workOrderId?: string | null;
   vehicleId?: string | null;
@@ -291,10 +299,8 @@ export async function listInspectionReportsForActor(args: {
   if (error) throw new Error(error.message);
   const records = await Promise.all(
     ((data ?? []) as RawInspection[]).map((inspection) =>
-      hydrate(inspection, args.actorUserId, false),
+      hydrate(inspection, args.sessionClient, args.actorUserId, false),
     ),
   );
-  return records.filter(
-    (record): record is InspectionReportRecord => !!record,
-  );
+  return records.filter((record): record is InspectionReportRecord => !!record);
 }

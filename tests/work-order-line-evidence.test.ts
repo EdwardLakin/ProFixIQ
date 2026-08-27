@@ -103,7 +103,13 @@ import {
   sanitizeEvidenceFallbackUrl,
 } from "@/features/work-orders/server/workOrderEvidenceUrls";
 
-function sessionClient(userId: string | null): SupabaseClient<Database> {
+function sessionClient(
+  userId: string | null,
+  portalAccess: { data: boolean | null; error: unknown } = {
+    data: false,
+    error: null,
+  },
+): SupabaseClient<Database> {
   return {
     auth: {
       getUser: vi.fn(async () => ({
@@ -111,6 +117,7 @@ function sessionClient(userId: string | null): SupabaseClient<Database> {
         error: null,
       })),
     },
+    rpc: vi.fn(async () => portalAccess),
   } as unknown as SupabaseClient<Database>;
 }
 
@@ -148,7 +155,7 @@ describe("work-order line evidence authorization", () => {
     ];
 
     const actor = await authorizeWorkOrderEvidence(
-      sessionClient("portal-user"),
+      sessionClient("portal-user", { data: true, error: null }),
       "work-order-a",
     );
 
@@ -157,6 +164,54 @@ describe("work-order line evidence authorization", () => {
       shopId: "shop-a",
       canEdit: false,
     });
+  });
+
+  it("denies a customer row after canonical portal access is revoked", async () => {
+    mocks.rows.profiles = [
+      { id: "portal-user", shop_id: "shop-a", role: "customer" },
+    ];
+    mocks.rows.customers = [
+      {
+        id: "customer-a",
+        user_id: "portal-user",
+        shop_id: "shop-a",
+      },
+    ];
+    const session = sessionClient("portal-user", {
+      data: false,
+      error: null,
+    });
+
+    const actor = await authorizeWorkOrderEvidence(session, "work-order-a");
+
+    expect(actor).toBeNull();
+    expect(session.rpc).toHaveBeenCalledWith(
+      "profixiq_is_portal_customer_for",
+      {
+        p_customer_id: "customer-a",
+        p_shop_id: "shop-a",
+      },
+    );
+  });
+
+  it("fails closed when canonical portal access cannot be checked", async () => {
+    mocks.rows.customers = [
+      {
+        id: "customer-a",
+        user_id: "portal-user",
+        shop_id: "shop-a",
+      },
+    ];
+
+    const actor = await authorizeWorkOrderEvidence(
+      sessionClient("portal-user", {
+        data: null,
+        error: { message: "portal access unavailable" },
+      }),
+      "work-order-a",
+    );
+
+    expect(actor).toBeNull();
   });
 
   it("allows a same-shop technician to edit evidence", async () => {
@@ -173,6 +228,35 @@ describe("work-order line evidence authorization", () => {
       kind: "staff",
       shopId: "shop-a",
       canEdit: true,
+    });
+  });
+
+  it("resolves imported staff through the linked auth user id", async () => {
+    mocks.rows.profiles = [
+      {
+        id: "canonical-tech-profile",
+        user_id: "imported-tech-auth-user",
+        shop_id: "shop-a",
+        role: "mechanic",
+      },
+    ];
+
+    const actor = await authorizeWorkOrderEvidence(
+      sessionClient("imported-tech-auth-user"),
+      "work-order-a",
+    );
+
+    expect(actor).toMatchObject({
+      userId: "imported-tech-auth-user",
+      kind: "staff",
+      shopId: "shop-a",
+      canEdit: true,
+    });
+    expect(mocks.filters).toContainEqual({
+      table: "profiles",
+      operation: "eq",
+      column: "user_id",
+      value: "imported-tech-auth-user",
     });
   });
 
@@ -227,6 +311,42 @@ describe("work-order line evidence authorization", () => {
       operation: "eq",
       column: "shop_id",
       value: "shop-a",
+    });
+  });
+
+  it("preserves Fleet evidence access through its independent membership", async () => {
+    mocks.rows.profiles = [
+      {
+        id: "fleet-user",
+        shop_id: "shop-b",
+        role: "fleet_manager",
+      },
+    ];
+    mocks.rows.fleet_members = [
+      {
+        user_id: "fleet-user",
+        fleet_id: "fleet-a",
+        shop_id: "shop-a",
+      },
+    ];
+    mocks.rows.fleet_vehicles = [
+      {
+        id: "fleet-vehicle-a",
+        fleet_id: "fleet-a",
+        vehicle_id: "vehicle-a",
+        shop_id: "shop-a",
+      },
+    ];
+
+    const actor = await authorizeWorkOrderEvidence(
+      sessionClient("fleet-user"),
+      "work-order-a",
+    );
+
+    expect(actor).toMatchObject({
+      kind: "fleet",
+      shopId: "shop-a",
+      canEdit: false,
     });
   });
 });

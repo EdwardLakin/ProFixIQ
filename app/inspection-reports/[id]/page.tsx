@@ -15,8 +15,12 @@ export default async function InspectionReportPage({
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) redirect(`/sign-in?redirect=${encodeURIComponent(`/inspection-reports/${id}`)}`);
+  if (!user)
+    redirect(
+      `/sign-in?redirect=${encodeURIComponent(`/inspection-reports/${id}`)}`,
+    );
   const record = await getInspectionReportForActor({
+    sessionClient: supabase,
     actorUserId: user.id,
     inspectionId: id,
     includeEvidencePhotos: true,

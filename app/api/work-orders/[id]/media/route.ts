@@ -200,7 +200,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     if (error) {
       return NextResponse.json(
         { error: "Unable to save evidence markup" },
-        { status: 400 },
+        { status: error.code === "42501" ? 403 : 400 },
       );
     }
     return NextResponse.json({ ok: true, annotation: data });
@@ -237,17 +237,25 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: "No media changes supplied" }, { status: 400 });
     }
 
-    const { error } = await admin
+    // Use the authenticated client so the exact-line media policy remains the
+    // final authority. An admin update here would bypass reassignment changes
+    // observed after the route's initial Work Order authorization.
+    const { data: updatedMedia, error } = await session
       .from("work_order_media")
       .update(update)
       .eq("id", mediaId)
       .eq("shop_id", actor.shopId)
-      .eq("work_order_id", actor.workOrderId);
+      .eq("work_order_id", actor.workOrderId)
+      .select("id")
+      .maybeSingle();
     if (error) {
       return NextResponse.json(
         { error: "Unable to update evidence" },
-        { status: 400 },
+        { status: error.code === "42501" ? 403 : 400 },
       );
+    }
+    if (!updatedMedia?.id) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
     return NextResponse.json({ ok: true });
   }

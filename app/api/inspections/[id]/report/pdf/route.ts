@@ -37,6 +37,7 @@ export async function GET(
   }
 
   const record = await getInspectionReportForActor({
+    sessionClient: supabase,
     actorUserId: user.id,
     inspectionId: id,
     includeEvidencePhotos: false,
