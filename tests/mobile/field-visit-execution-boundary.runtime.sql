@@ -340,6 +340,7 @@ select set_config(
 do $assigned_operator_execution$
 declare
   v_history jsonb;
+  v_result jsonb;
 begin
   if not public.dispatch_can_execute(
     'fb250000-0000-4000-8000-000000000001',
@@ -366,23 +367,255 @@ begin
     raise exception 'Assigned Field operator could not read canonical history';
   end if;
 
-  perform public.dispatch_transition_service_visit_atomic(
+  v_result := public.dispatch_transition_service_visit_atomic(
     'fb250000-0000-4000-8000-000000000001',
     'fd250000-0000-4000-8000-000000000001',
     'dispatched', null, null, 1,
     'fa250000-0000-4000-8000-000000000002',
     'field-execution:assigned:dispatched'
   );
+  if coalesce((v_result ->> 'idempotent')::boolean, true) then
+    raise exception 'Fresh assigned transition was incorrectly marked idempotent';
+  end if;
+end;
+$assigned_operator_execution$;
 
-  perform public.mobile_replay_service_visit_transition_atomic(
+-- Simulate the exact production ambiguity: the transition committed, its
+-- response was lost, and assignment plus Field access changed before retry.
+reset role;
+update public.mobile_field_operators
+set enabled = false
+where shop_id = 'fb250000-0000-4000-8000-000000000001'
+  and profile_id = 'fa250000-0000-4000-8000-000000000002';
+update public.service_visits
+set assigned_user_id = 'fa250000-0000-4000-8000-000000000003'
+where id = 'fd250000-0000-4000-8000-000000000001';
+
+select set_config(
+  'request.jwt.claim.sub',
+  'fa250000-0000-4000-8000-000000000002',
+  true
+);
+select set_config(
+  'request.jwt.claims',
+  '{"role":"authenticated","sub":"fa250000-0000-4000-8000-000000000002"}',
+  true
+);
+set local role authenticated;
+
+do $committed_direct_retry_after_revocation$
+declare
+  v_result jsonb;
+  v_denied boolean;
+begin
+  v_result := public.dispatch_transition_service_visit_atomic(
+    'fb250000-0000-4000-8000-000000000001',
+    'fd250000-0000-4000-8000-000000000001',
+    'dispatched', null, null, 1,
+    'fa250000-0000-4000-8000-000000000002',
+    'field-execution:assigned:dispatched'
+  );
+  if not coalesce((v_result ->> 'idempotent')::boolean, false)
+     or v_result #>> '{visit,status}' <> 'dispatched'
+     or (v_result #>> '{visit,version}')::integer <> 2 then
+    raise exception 'Committed direct retry did not return the original receipt';
+  end if;
+
+  v_denied := false;
+  begin
+    perform public.dispatch_transition_service_visit_atomic(
+      'fb250000-0000-4000-8000-000000000001',
+      'fd250000-0000-4000-8000-000000000001',
+      'en_route', null, null, 2,
+      'fa250000-0000-4000-8000-000000000002',
+      'field-execution:assigned:dispatched'
+    );
+  exception when sqlstate '22023' then
+    v_denied := true;
+  end;
+  if not v_denied then
+    raise exception 'Changed direct payload reused a committed operation key';
+  end if;
+
+  v_denied := false;
+  begin
+    perform public.dispatch_transition_service_visit_atomic(
+      'fb250000-0000-4000-8000-000000000001',
+      'fd250000-0000-4000-8000-000000000001',
+      'en_route', null, null, 2,
+      'fa250000-0000-4000-8000-000000000002',
+      'field-execution:revoked:fresh-direct'
+    );
+  exception when sqlstate '42501' then
+    v_denied := true;
+  end;
+  if not v_denied then
+    raise exception 'Revoked Field operator created a fresh direct transition';
+  end if;
+end;
+$committed_direct_retry_after_revocation$;
+
+-- Restore current authorization only long enough to commit one offline replay.
+reset role;
+update public.mobile_field_operators
+set enabled = true
+where shop_id = 'fb250000-0000-4000-8000-000000000001'
+  and profile_id = 'fa250000-0000-4000-8000-000000000002';
+update public.service_visits
+set assigned_user_id = 'fa250000-0000-4000-8000-000000000002'
+where id = 'fd250000-0000-4000-8000-000000000001';
+
+select set_config(
+  'request.jwt.claim.sub',
+  'fa250000-0000-4000-8000-000000000002',
+  true
+);
+select set_config(
+  'request.jwt.claims',
+  '{"role":"authenticated","sub":"fa250000-0000-4000-8000-000000000002"}',
+  true
+);
+set local role authenticated;
+
+do $assigned_operator_mobile_execution$
+declare
+  v_result jsonb;
+begin
+  v_result := public.mobile_replay_service_visit_transition_atomic(
     'fb250000-0000-4000-8000-000000000001',
     'fd250000-0000-4000-8000-000000000001',
     'dispatched', 'en_route', 2,
     'fa250000-0000-4000-8000-000000000002',
     'field-execution:assigned:en-route'
   );
+  if coalesce((v_result ->> 'idempotent')::boolean, true) then
+    raise exception 'Fresh assigned mobile transition was incorrectly marked idempotent';
+  end if;
 end;
-$assigned_operator_execution$;
+$assigned_operator_mobile_execution$;
+
+reset role;
+update public.mobile_field_operators
+set enabled = false
+where shop_id = 'fb250000-0000-4000-8000-000000000001'
+  and profile_id = 'fa250000-0000-4000-8000-000000000002';
+update public.service_visits
+set assigned_user_id = 'fa250000-0000-4000-8000-000000000003'
+where id = 'fd250000-0000-4000-8000-000000000001';
+
+select set_config(
+  'request.jwt.claim.sub',
+  'fa250000-0000-4000-8000-000000000002',
+  true
+);
+select set_config(
+  'request.jwt.claims',
+  '{"role":"authenticated","sub":"fa250000-0000-4000-8000-000000000002"}',
+  true
+);
+set local role authenticated;
+
+do $committed_mobile_retry_after_revocation$
+declare
+  v_result jsonb;
+  v_denied boolean;
+begin
+  v_result := public.mobile_replay_service_visit_transition_atomic(
+    'fb250000-0000-4000-8000-000000000001',
+    'fd250000-0000-4000-8000-000000000001',
+    'dispatched', 'en_route', 2,
+    'fa250000-0000-4000-8000-000000000002',
+    'field-execution:assigned:en-route'
+  );
+  if not coalesce((v_result ->> 'idempotent')::boolean, false)
+     or v_result #>> '{visit,status}' <> 'en_route'
+     or (v_result #>> '{visit,version}')::integer <> 3 then
+    raise exception 'Committed mobile retry did not return the original receipt';
+  end if;
+
+  v_denied := false;
+  begin
+    perform public.mobile_replay_service_visit_transition_atomic(
+      'fb250000-0000-4000-8000-000000000001',
+      'fd250000-0000-4000-8000-000000000001',
+      'scheduled', 'en_route', 2,
+      'fa250000-0000-4000-8000-000000000002',
+      'field-execution:assigned:en-route'
+    );
+  exception when sqlstate '22023' then
+    v_denied := true;
+  end;
+  if not v_denied then
+    raise exception 'Changed mobile payload reused a committed operation key';
+  end if;
+
+  v_denied := false;
+  begin
+    perform public.mobile_replay_service_visit_transition_atomic(
+      'fb250000-0000-4000-8000-000000000001',
+      'fd250000-0000-4000-8000-000000000001',
+      'en_route', 'arrived', 3,
+      'fa250000-0000-4000-8000-000000000002',
+      'field-execution:revoked:fresh-mobile'
+    );
+  exception when sqlstate '42501' then
+    v_denied := true;
+  end;
+  if not v_denied then
+    raise exception 'Revoked Field operator created a fresh mobile transition';
+  end if;
+end;
+$committed_mobile_retry_after_revocation$;
+
+-- A different authenticated tenant must not recover the original shop's
+-- receipt, even when it knows the operation key and exact public payload.
+select set_config(
+  'request.jwt.claim.sub',
+  'fa250000-0000-4000-8000-000000000004',
+  true
+);
+select set_config(
+  'request.jwt.claims',
+  '{"role":"authenticated","sub":"fa250000-0000-4000-8000-000000000004"}',
+  true
+);
+
+do $cross_shop_receipt_isolation$
+declare
+  v_denied boolean := false;
+begin
+  begin
+    perform public.dispatch_transition_service_visit_atomic(
+      'fb250000-0000-4000-8000-000000000001',
+      'fd250000-0000-4000-8000-000000000001',
+      'dispatched', null, null, 1,
+      'fa250000-0000-4000-8000-000000000004',
+      'field-execution:assigned:dispatched'
+    );
+  exception when sqlstate '42501' then
+    v_denied := true;
+  end;
+  if not v_denied then
+    raise exception 'Cross-shop actor recovered another tenant receipt';
+  end if;
+
+  v_denied := false;
+  begin
+    perform public.dispatch_transition_service_visit_atomic(
+      'fb250000-0000-4000-8000-000000000002',
+      'fd250000-0000-4000-8000-000000000001',
+      'dispatched', null, null, 1,
+      'fa250000-0000-4000-8000-000000000004',
+      'field-execution:assigned:dispatched'
+    );
+  exception when sqlstate '42501' then
+    v_denied := true;
+  end;
+  if not v_denied then
+    raise exception 'Cross-shop operation-key collision escaped tenant scope';
+  end if;
+end;
+$cross_shop_receipt_isolation$;
 
 select set_config(
   'request.jwt.claim.sub',
@@ -454,10 +687,56 @@ begin
     where operation.shop_id = 'fb250000-0000-4000-8000-000000000001'
       and operation.operation_key in (
         'field-execution:unassigned:transition',
-        'field-execution:unassigned:replay'
+        'field-execution:unassigned:replay',
+        'field-execution:revoked:fresh-direct',
+        'field-execution:revoked:fresh-mobile'
       )
   ) then
     raise exception 'Denied Field execution created an idempotency receipt';
+  end if;
+
+  if (
+    select count(*)
+    from public.service_visit_events event
+    where event.service_visit_id = 'fd250000-0000-4000-8000-000000000001'
+      and event.event_type = 'transitioned'
+  ) <> 3 then
+    raise exception 'Committed retries duplicated Service Visit transition events';
+  end if;
+
+  if (
+    select count(*)
+    from public.scheduler_operation_keys operation
+    where operation.shop_id = 'fb250000-0000-4000-8000-000000000001'
+      and operation.operation_name = 'dispatch_visit_transition'
+  ) <> 3 then
+    raise exception 'Committed retries created duplicate transition receipts';
+  end if;
+
+  if not exists (
+    select 1
+    from public.scheduler_operation_keys operation
+    where operation.shop_id = 'fb250000-0000-4000-8000-000000000001'
+      and operation.operation_name = 'dispatch_visit_transition'
+      and operation.operation_key = 'field-execution:assigned:dispatched'
+      and operation.actor_user_id = 'fa250000-0000-4000-8000-000000000002'
+      and operation.result ->> '_request_hash_version' = '1'
+      and length(operation.result ->> '_request_hash') = 64
+  ) then
+    raise exception 'Direct transition receipt is not actor- and payload-bound';
+  end if;
+
+  if not exists (
+    select 1
+    from public.scheduler_operation_keys operation
+    where operation.shop_id = 'fb250000-0000-4000-8000-000000000001'
+      and operation.operation_name = 'dispatch_visit_transition'
+      and operation.operation_key = 'field-execution:assigned:en-route'
+      and operation.actor_user_id = 'fa250000-0000-4000-8000-000000000002'
+      and length(operation.result ->> '_request_hash') = 64
+      and length(operation.result ->> '_mobile_request_hash') = 64
+  ) then
+    raise exception 'Mobile transition receipt is not actor- and payload-bound';
   end if;
 end;
 $field_execution_final_assertions$;
