@@ -11,7 +11,6 @@ type ImportBody = {
   workOrderId?: string;
   inspectionId?: string;
   vehicleId?: string | null;
-  autoGenerateParts?: boolean;
   operationKey?: string;
   idempotencyKey?: string;
   expectedSyncRevision?: number;
@@ -258,7 +257,6 @@ export async function POST(req: Request) {
       workOrderId,
       vehicleId: requestedVehicleId,
       userId: user.id,
-      autoGenerateParts: body?.autoGenerateParts ?? true,
       operationKey,
       findingSelection: findingSelection ?? undefined,
     });

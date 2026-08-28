@@ -13,7 +13,7 @@ describe("inspection early finding submission", () => {
     expect(screen).toContain("await flushAutosaveToServer()");
     expect(screen).toContain("expectedSyncRevision");
     expect(screen).toContain("findingSelection: selection");
-    expect(screen).toContain("autoGenerateParts: false");
+    expect(screen).not.toContain("autoGenerateParts");
     expect(route).toContain("findingSelection");
     expect(route).toContain("inspection.sync_revision");
     expect(route).toContain("insertPrioritizedJobsFromInspection({");
@@ -39,7 +39,8 @@ describe("inspection early finding submission", () => {
     expect(importer).toContain(
       "id: safeString(item.estimateQuoteLineId) || null",
     );
-    expect(importer).toContain("item.noPartsRequired !== true");
+    expect(importer).not.toContain("estimateLabor(");
+    expect(importer).not.toContain("Auto-generated from inspection");
     expect(importer).toContain('rpc("import_inspection_quote_package_atomic"');
   });
 

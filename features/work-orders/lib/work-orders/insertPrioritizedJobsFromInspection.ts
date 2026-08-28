@@ -3,8 +3,6 @@ import "server-only";
 import crypto from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@shared/types/types/supabase";
-import { estimateLabor } from "@ai/lib/ai/estimateLabor";
-import { normalizeLaborHoursInput } from "@/features/work-orders/lib/pricing/resolveWorkOrderLinePricing";
 import {
   classifyEligibleInspectionFinding,
   isExplicitInspectionRecommendation,
@@ -93,7 +91,6 @@ export type ImportFromInspectionArgs = {
   workOrderId: string;
   vehicleId?: string | null;
   userId: string;
-  autoGenerateParts?: boolean;
   operationKey?: string;
   findingSelection?: Array<{
     sectionIndex: number;
@@ -232,7 +229,6 @@ export async function insertPrioritizedJobsFromInspection(
     workOrderId,
     vehicleId = null,
     userId,
-    autoGenerateParts = true,
     findingSelection,
   } = args;
 
@@ -263,8 +259,6 @@ export async function insertPrioritizedJobsFromInspection(
   }
 
   const quoteItems: CanonicalQuoteItem[] = [];
-  const autoPartKeywords = ["brake", "pads", "rotor", "fluid", "coolant", "filter", "belt"];
-
   for (const [sectionIndex, section] of rawResult.sections.entries()) {
     const sectionTitle =
       safeString(section.title) || safeString(section.name) || `Section ${sectionIndex + 1}`;
@@ -318,27 +312,8 @@ export async function insertPrioritizedJobsFromInspection(
 
       const explicitLabor =
         finiteNumber(item.laborHours) ?? finiteNumber(item.labor_hours);
-      const laborHours =
-        explicitLabor ??
-        normalizeLaborHoursInput(await estimateLabor(title, jobType), true);
+      const laborHours = Math.max(0, explicitLabor ?? 0);
       const parts = itemParts(item);
-      if (
-        autoGenerateParts &&
-        item.noPartsRequired !== true &&
-        parts.length === 0 &&
-        autoPartKeywords.some((keyword) =>
-          description.toLowerCase().includes(keyword),
-        )
-      ) {
-        parts.push({
-          description: title,
-          qty: 1,
-          cost: null,
-          unitCost: null,
-          unitPrice: null,
-          notes: "Auto-generated from inspection",
-        });
-      }
 
       const partsTotal = parts.reduce(
         (sum, part) =>
