@@ -41,12 +41,14 @@ type InspectionItem = {
   }>;
   laborHours?: number | null;
   labor_hours?: number | null;
+  noPartsRequired?: boolean;
   photoUrls?: string[];
   photo_urls?: string[];
   severity?: string | null;
   recommendation?: string | null;
   recommendationType?: string | null;
   priority?: string | number | null;
+  estimateQuoteLineId?: string | null;
 };
 
 type InspectionResult = {
@@ -93,6 +95,10 @@ export type ImportFromInspectionArgs = {
   userId: string;
   autoGenerateParts?: boolean;
   operationKey?: string;
+  findingSelection?: Array<{
+    sectionIndex: number;
+    itemIndex: number;
+  }>;
 };
 
 export type ImportFromInspectionResult =
@@ -227,7 +233,16 @@ export async function insertPrioritizedJobsFromInspection(
     vehicleId = null,
     userId,
     autoGenerateParts = true,
+    findingSelection,
   } = args;
+
+  const selectedFindingKeys = findingSelection?.length
+    ? new Set(
+        findingSelection.map(
+          ({ sectionIndex, itemIndex }) => `${sectionIndex}:${itemIndex}`,
+        ),
+      )
+    : null;
 
   const { data: inspection, error: inspectionError } = await supabase
     .from("inspections")
@@ -260,6 +275,13 @@ export async function insertPrioritizedJobsFromInspection(
       `section-${sectionIndex}`;
 
     for (const [itemIndex, item] of (section.items ?? []).entries()) {
+      if (
+        selectedFindingKeys &&
+        !selectedFindingKeys.has(`${sectionIndex}:${itemIndex}`)
+      ) {
+        continue;
+      }
+
       const title = itemTitle(item);
       if (!title || !isExplicitInspectionRecommendation(item)) continue;
 
@@ -302,6 +324,7 @@ export async function insertPrioritizedJobsFromInspection(
       const parts = itemParts(item);
       if (
         autoGenerateParts &&
+        item.noPartsRequired !== true &&
         parts.length === 0 &&
         autoPartKeywords.some((keyword) =>
           description.toLowerCase().includes(keyword),
@@ -353,6 +376,7 @@ export async function insertPrioritizedJobsFromInspection(
       };
 
       quoteItems.push({
+        id: safeString(item.estimateQuoteLineId) || null,
         description,
         title,
         source: "inspection",

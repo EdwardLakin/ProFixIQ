@@ -147,7 +147,9 @@ function isSubmittedItem(item: ItemExtended): boolean {
 }
 
 function hasGridFindingEvidence(item: ItemExtended): boolean {
-  const status = String(item.status ?? "").trim().toLowerCase();
+  const status = String(item.status ?? "")
+    .trim()
+    .toLowerCase();
   const photoUrls = Array.isArray(item.photoUrls) ? item.photoUrls : [];
 
   return (
@@ -202,6 +204,9 @@ export default function SectionDisplay(props: SectionDisplayProps) {
     onUpdateStatus,
     onUpdateNote,
     onUpdatePhotos,
+    requireNoteForAI = false,
+    onSubmitAI,
+    isSubmittingAI,
     smartMatchByKey,
     smartMatchLoadingByKey,
     onAcceptSmartMatch,
@@ -249,7 +254,9 @@ export default function SectionDisplay(props: SectionDisplayProps) {
   const stats = { total, ...counts };
 
   const markAll = (status: InspectionItemStatus) => {
-    items.forEach((_item, idx) => onUpdateStatus(sectionIndex, idx, status));
+    items.forEach((item, idx) => {
+      if (!isSubmittedItem(item)) onUpdateStatus(sectionIndex, idx, status);
+    });
   };
 
   const showBulkButtons = !gridSection;
@@ -259,11 +266,10 @@ export default function SectionDisplay(props: SectionDisplayProps) {
     typeof onUpdateLaborHours === "function" ||
     typeof onUpdateNoPartsRequired === "function";
 
-  // ✅ per-item UI state: collapse + edit
+  // ✅ per-item UI state: collapse
   const [partsOpenByKey, setPartsOpenByKey] = useState<Record<string, boolean>>(
     {},
   );
-  const [editByKey, setEditByKey] = useState<Record<string, boolean>>({});
 
   // ✅ Qty filler state (string) so it can be blank until typed
   const [qtyDraftByKey, setQtyDraftByKey] = useState<Record<string, string>>(
@@ -272,8 +278,6 @@ export default function SectionDisplay(props: SectionDisplayProps) {
 
   const setPartsOpen = (k: string, v: boolean) =>
     setPartsOpenByKey((p) => ({ ...p, [k]: v }));
-  const setEditing = (k: string, v: boolean) =>
-    setEditByKey((p) => ({ ...p, [k]: v }));
 
   const setQtyDraft = (k: string, v: string) =>
     setQtyDraftByKey((p) => ({ ...p, [k]: v }));
@@ -314,7 +318,8 @@ export default function SectionDisplay(props: SectionDisplayProps) {
               </div>
               {showGridFindings ? (
                 <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
-                  Notes, photos, parts and labor for items marked Fail or Recommend above.
+                  Notes, photos, parts and labor for items marked Fail or
+                  Recommend above.
                 </p>
               ) : null}
             </div>
@@ -414,10 +419,14 @@ export default function SectionDisplay(props: SectionDisplayProps) {
               <div className="hidden border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-2.5 lg:block">
                 <div className="grid grid-cols-2 gap-3">
                   <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-                    {showGridFindings ? "Item · Evidence" : "Item · Status · Notes"}
+                    {showGridFindings
+                      ? "Item · Evidence"
+                      : "Item · Status · Notes"}
                   </div>
                   <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-                    {showGridFindings ? "Item · Evidence" : "Item · Status · Notes"}
+                    {showGridFindings
+                      ? "Item · Evidence"
+                      : "Item · Status · Notes"}
                   </div>
                 </div>
               </div>
@@ -456,12 +465,10 @@ export default function SectionDisplay(props: SectionDisplayProps) {
 
                   const submitted = isSubmittedItem(item);
                   const k = `${sectionIndex}:${itemIndex}`;
-                  const isEditing = Boolean(editByKey[k]);
-
-                  const partsOpen =
-                    isEditing || (partsOpenByKey[k] ?? !submitted);
-
-                  const lockInputs = submitted && !isEditing;
+                  const partsOpen = partsOpenByKey[k] ?? !submitted;
+                  const lockInputs = submitted;
+                  const submitting =
+                    isSubmittingAI?.(sectionIndex, itemIndex) === true;
 
                   const smartMatch = props.smartMatchByKey?.[k] ?? null;
                   const smartMatchLoading =
@@ -491,7 +498,9 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                         }}
                         sectionIndex={sectionIndex}
                         itemIndex={itemIndex}
-                        showNotes={showNotes && (isFailOrRec || showGridFindings)}
+                        showNotes={
+                          showNotes && (isFailOrRec || showGridFindings)
+                        }
                         showPhotos={showPhotos}
                         inspectionId={inspectionId}
                         workOrderId={workOrderId}
@@ -501,7 +510,8 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                         onUpdateNote={onUpdateNote}
                         onUpdatePhotos={onUpdatePhotos}
                         variant="row"
-                        showStatusControls={!showGridFindings}
+                        readOnly={submitted}
+                        showStatusControls={!submitted && !showGridFindings}
                         showEvidenceFields={showGridFindings}
                       />
 
@@ -616,7 +626,8 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                           if (
                             parts.some(
                               (part) =>
-                                part.description.trim().length > 0 || part.qty > 0,
+                                part.description.trim().length > 0 ||
+                                part.qty > 0,
                             )
                           ) {
                             onUpdateNoPartsRequired?.(
@@ -627,7 +638,9 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                           }
                         };
 
-                        const handleNoPartsRequiredChange = (checked: boolean) => {
+                        const handleNoPartsRequiredChange = (
+                          checked: boolean,
+                        ) => {
                           if (checked) {
                             clearQtyDraftPrefix(`${k}:part:`);
                             onUpdateParts?.(sectionIndex, itemIndex, []);
@@ -695,41 +708,13 @@ export default function SectionDisplay(props: SectionDisplayProps) {
 
                               <div className="flex items-center gap-2">
                                 {submitted && (
-                                  <>
-                                    <button
-                                      type="button"
-                                      className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)]"
-                                      onClick={() =>
-                                        setPartsOpen(k, !partsOpen)
-                                      }
-                                    >
-                                      {partsOpen ? "Collapse" : "Expand"}
-                                    </button>
-
-                                    {!isEditing ? (
-                                      <button
-                                        type="button"
-                                        className="text-[10px] uppercase tracking-[0.16em] text-emerald-200 hover:text-emerald-100"
-                                        onClick={() => {
-                                          setEditing(k, true);
-                                          setPartsOpen(k, true);
-                                        }}
-                                      >
-                                        Edit
-                                      </button>
-                                    ) : (
-                                      <button
-                                        type="button"
-                                        className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)]"
-                                        onClick={() => {
-                                          setEditing(k, false);
-                                          setPartsOpen(k, false);
-                                        }}
-                                      >
-                                        Done
-                                      </button>
-                                    )}
-                                  </>
+                                  <button
+                                    type="button"
+                                    className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)]"
+                                    onClick={() => setPartsOpen(k, !partsOpen)}
+                                  >
+                                    {partsOpen ? "Collapse" : "Expand"}
+                                  </button>
                                 )}
                               </div>
                             </div>
@@ -913,6 +898,43 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                         );
                       })()}
 
+                      {isFailOrRec && onSubmitAI ? (
+                        <div className="mt-3 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                            <p className="text-[11px] text-[color:var(--theme-text-secondary)]">
+                              {submitted
+                                ? "This finding is in Quote Review. The inspection remains open."
+                                : "Send this finding to Quote Review now without completing the inspection."}
+                            </p>
+                            <Button
+                              type="button"
+                              className="min-h-11 shrink-0 px-5 text-xs font-semibold uppercase tracking-[0.14em]"
+                              disabled={
+                                submitted ||
+                                submitting ||
+                                (requireNoteForAI && note.length === 0)
+                              }
+                              onClick={() =>
+                                onSubmitAI(sectionIndex, itemIndex)
+                              }
+                            >
+                              {submitted
+                                ? "Submitted to Quote Review"
+                                : submitting
+                                  ? "Submitting…"
+                                  : "Submit item"}
+                            </Button>
+                          </div>
+                          {!submitted &&
+                          requireNoteForAI &&
+                          note.length === 0 ? (
+                            <p className="mt-2 text-[11px] text-amber-700 dark:text-amber-200">
+                              Add the complaint note before submitting.
+                            </p>
+                          ) : null}
+                        </div>
+                      ) : null}
+
                       {(smartMatchLoading || smartMatch) &&
                       isFailOrRec &&
                       note.length > 0 ? (
@@ -1011,7 +1033,6 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                           ) : null}
                         </div>
                       ) : null}
-
                     </div>
                   );
                 })}

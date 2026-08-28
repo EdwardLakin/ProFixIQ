@@ -48,6 +48,8 @@ interface InspectionItemCardProps {
   showStatusControls?: boolean;
   /** Keep existing evidence visible even when the current status later changes. */
   showEvidenceFields?: boolean;
+  /** Freeze a finding after it has been submitted to Quote Review. */
+  readOnly?: boolean;
 }
 
 type ImportedFormItem = InspectionItem & {
@@ -97,6 +99,7 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
     variant = "card",
     showStatusControls = true,
     showEvidenceFields = false,
+    readOnly = false,
   } = props;
   const formContext = useContext(InspectionFormCtx);
 
@@ -118,6 +121,7 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
   const canPersistImportedMeasurement =
     !isImportedMeasurement || Boolean(onUpdateValue || formContext?.updateItem);
   const updateMeasurementValue = (value: string) => {
+    if (readOnly) return;
     if (onUpdateValue) {
       onUpdateValue(sectionIndex, itemIndex, value);
       return;
@@ -222,7 +226,7 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
                   type="number"
                   inputMode="decimal"
                   value={measurementValue}
-                  disabled={!canPersistImportedMeasurement}
+                  disabled={readOnly || !canPersistImportedMeasurement}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                     updateMeasurementValue(e.target.value)
                   }
@@ -232,7 +236,9 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
                 <input
                   type="text"
                   value={item.unit ?? ""}
-                  readOnly={isImportedMeasurement && !onUpdateUnit}
+                  readOnly={
+                    readOnly || (isImportedMeasurement && !onUpdateUnit)
+                  }
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                     onUpdateUnit?.(sectionIndex, itemIndex, e.target.value)
                   }
@@ -290,6 +296,7 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
               className="h-9 w-full resize-y rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 py-2 text-[12px] text-[color:var(--theme-text-primary)] outline-none placeholder:text-[color:var(--theme-text-muted)] focus:border-accent focus:ring-2 focus:ring-accent/60"
               placeholder="Notes…"
               value={getNotesValue(item)}
+              readOnly={readOnly}
               onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
                 onUpdateNote(sectionIndex, itemIndex, e.target.value)
               }
@@ -317,6 +324,7 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
                     itemIndex={itemIndex}
                     itemName={label || null}
                     photoUrls={item.photoUrls ?? []}
+                    readOnly={readOnly}
                     onChange={(urls: string[]) =>
                       onUpdatePhotos(sectionIndex, itemIndex, urls)
                     }
@@ -345,7 +353,7 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
               type="number"
               inputMode="decimal"
               value={measurementValue}
-              disabled={!canPersistImportedMeasurement}
+              disabled={readOnly || !canPersistImportedMeasurement}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                 updateMeasurementValue(e.target.value)
               }
@@ -355,7 +363,7 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
             <input
               type="text"
               value={item.unit ?? ""}
-              readOnly={isImportedMeasurement && !onUpdateUnit}
+              readOnly={readOnly || (isImportedMeasurement && !onUpdateUnit)}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                 onUpdateUnit?.(sectionIndex, itemIndex, e.target.value)
               }
@@ -391,6 +399,7 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
             className="h-[44px] w-full resize-y rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 py-2 text-[12px] text-[color:var(--theme-text-primary)] outline-none placeholder:text-[color:var(--theme-text-muted)] focus:border-accent focus:ring-2 focus:ring-accent/60"
             placeholder="Enter notes..."
             value={getNotesValue(item)}
+            readOnly={readOnly}
             onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
               onUpdateNote(sectionIndex, itemIndex, e.target.value)
             }
@@ -417,6 +426,7 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
                   itemIndex={itemIndex}
                   itemName={label || null}
                   photoUrls={item.photoUrls ?? []}
+                  readOnly={readOnly}
                   onChange={(urls: string[]) =>
                     onUpdatePhotos(sectionIndex, itemIndex, urls)
                   }

@@ -39,7 +39,7 @@ function roleLabel(role: SignatureRole): string {
 
 function roleSubtext(role: SignatureRole): string {
   if (role === "technician")
-    return "Signing submits failed and recommended findings to Quote Review, then locks this inspection.";
+    return "Signing submits any remaining failed and recommended findings to Quote Review, then locks this inspection.";
   if (role === "advisor")
     return "Sign to approve/confirm this inspection snapshot.";
   return "A staff user records the customer's typed acknowledgement; no drawn customer signature is captured.";
@@ -260,7 +260,7 @@ const InspectionSignaturePanel: React.FC<InspectionSignaturePanelProps> = ({
 
       toast.success(
         role === "technician"
-          ? "Inspection signed and findings submitted to Quote Review."
+          ? "Inspection signed, remaining findings submitted, and inspection locked."
           : `${roleLabel(role)} signature captured.`,
       );
       onSigned?.();
