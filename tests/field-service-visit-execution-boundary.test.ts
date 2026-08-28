@@ -97,6 +97,12 @@ describe("Field Service Visit execution boundary", () => {
     expect(committedRetryRepair).toContain(
       "SERVICE_VISIT_OPERATION_KEY_CONFLICT",
     );
+    expect(committedRetryRepair).toContain(
+      "from public.service_visit_events event",
+    );
+    expect(committedRetryRepair).toContain(
+      "event.metadata ->> 'operation_key' = p_operation_key",
+    );
 
     const receiptLookup = committedRetryRepair.indexOf(
       "from public.scheduler_operation_keys operation",
@@ -133,6 +139,18 @@ describe("Field Service Visit execution boundary", () => {
     );
     expect(runtime).toContain(
       "Committed retries created duplicate transition receipts",
+    );
+    expect(runtime).toContain(
+      "Legacy direct receipt was not recovered after revocation",
+    );
+    expect(runtime).toContain(
+      "Legacy mobile receipt was not recovered after revocation",
+    );
+    expect(runtime).toContain(
+      "Legacy direct receipt was not upgraded to exact hashing",
+    );
+    expect(runtime).toContain(
+      "Legacy mobile receipt was not upgraded to exact hashing",
     );
   });
 });

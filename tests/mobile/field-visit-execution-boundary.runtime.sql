@@ -184,6 +184,22 @@ values
     'shop', 'scheduled',
     'fa250000-0000-4000-8000-000000000002', 1,
     'fa250000-0000-4000-8000-000000000001'
+  ),
+  (
+    'fd250000-0000-4000-8000-000000000003',
+    'fb250000-0000-4000-8000-000000000001',
+    null,
+    'mobile', 'dispatched',
+    'fa250000-0000-4000-8000-000000000002', 2,
+    'fa250000-0000-4000-8000-000000000001'
+  ),
+  (
+    'fd250000-0000-4000-8000-000000000004',
+    'fb250000-0000-4000-8000-000000000001',
+    null,
+    'mobile', 'en_route',
+    'fa250000-0000-4000-8000-000000000002', 3,
+    'fa250000-0000-4000-8000-000000000001'
   )
 on conflict (id) do update
 set shop_id = excluded.shop_id,
@@ -204,6 +220,73 @@ values (
   '{"fixture":true}'::jsonb
 )
 on conflict (id) do nothing;
+
+-- Model two receipts committed by the pre-repair function. They contain the
+-- durable result and transition event but no request hashes.
+insert into public.service_visit_events (
+  id, shop_id, service_visit_id, event_type, from_status, to_status,
+  actor_user_id, assigned_user_id, metadata
+)
+values
+  (
+    'fe250000-0000-4000-8000-000000000003',
+    'fb250000-0000-4000-8000-000000000001',
+    'fd250000-0000-4000-8000-000000000003',
+    'transitioned', 'scheduled', 'dispatched',
+    'fa250000-0000-4000-8000-000000000002',
+    'fa250000-0000-4000-8000-000000000002',
+    '{"operation_key":"field-execution:legacy:direct"}'::jsonb
+  ),
+  (
+    'fe250000-0000-4000-8000-000000000004',
+    'fb250000-0000-4000-8000-000000000001',
+    'fd250000-0000-4000-8000-000000000004',
+    'transitioned', 'dispatched', 'en_route',
+    'fa250000-0000-4000-8000-000000000002',
+    'fa250000-0000-4000-8000-000000000002',
+    '{"operation_key":"field-execution:legacy:mobile"}'::jsonb
+  )
+on conflict (id) do nothing;
+
+insert into public.scheduler_operation_keys (
+  shop_id, operation_name, operation_key, actor_user_id, result
+)
+values
+  (
+    'fb250000-0000-4000-8000-000000000001',
+    'dispatch_visit_transition',
+    'field-execution:legacy:direct',
+    'fa250000-0000-4000-8000-000000000002',
+    jsonb_build_object(
+      'ok', true,
+      'visit', jsonb_build_object(
+        'id', 'fd250000-0000-4000-8000-000000000003',
+        'shopId', 'fb250000-0000-4000-8000-000000000001',
+        'status', 'dispatched',
+        'version', 2
+      ),
+      'idempotent', false
+    )
+  ),
+  (
+    'fb250000-0000-4000-8000-000000000001',
+    'dispatch_visit_transition',
+    'field-execution:legacy:mobile',
+    'fa250000-0000-4000-8000-000000000002',
+    jsonb_build_object(
+      'ok', true,
+      'visit', jsonb_build_object(
+        'id', 'fd250000-0000-4000-8000-000000000004',
+        'shopId', 'fb250000-0000-4000-8000-000000000001',
+        'status', 'en_route',
+        'version', 3
+      ),
+      'idempotent', false
+    )
+  )
+on conflict (shop_id, operation_name, operation_key) do update
+set actor_user_id = excluded.actor_user_id,
+    result = excluded.result;
 
 select set_config('request.jwt.claim.role', 'authenticated', true);
 select set_config(
@@ -421,6 +504,35 @@ begin
     raise exception 'Committed direct retry did not return the original receipt';
   end if;
 
+  v_result := public.dispatch_transition_service_visit_atomic(
+    'fb250000-0000-4000-8000-000000000001',
+    'fd250000-0000-4000-8000-000000000003',
+    'dispatched', null, null, 1,
+    'fa250000-0000-4000-8000-000000000002',
+    'field-execution:legacy:direct'
+  );
+  if not coalesce((v_result ->> 'idempotent')::boolean, false)
+     or v_result #>> '{visit,status}' <> 'dispatched'
+     or (v_result #>> '{visit,version}')::integer <> 2 then
+    raise exception 'Legacy direct receipt was not recovered after revocation';
+  end if;
+
+  v_denied := false;
+  begin
+    perform public.dispatch_transition_service_visit_atomic(
+      'fb250000-0000-4000-8000-000000000001',
+      'fd250000-0000-4000-8000-000000000003',
+      'en_route', null, null, 2,
+      'fa250000-0000-4000-8000-000000000002',
+      'field-execution:legacy:direct'
+    );
+  exception when sqlstate '22023' then
+    v_denied := true;
+  end;
+  if not v_denied then
+    raise exception 'Changed payload reused an upgraded legacy direct receipt';
+  end if;
+
   v_denied := false;
   begin
     perform public.dispatch_transition_service_visit_atomic(
@@ -531,6 +643,35 @@ begin
      or v_result #>> '{visit,status}' <> 'en_route'
      or (v_result #>> '{visit,version}')::integer <> 3 then
     raise exception 'Committed mobile retry did not return the original receipt';
+  end if;
+
+  v_result := public.mobile_replay_service_visit_transition_atomic(
+    'fb250000-0000-4000-8000-000000000001',
+    'fd250000-0000-4000-8000-000000000004',
+    'dispatched', 'en_route', 2,
+    'fa250000-0000-4000-8000-000000000002',
+    'field-execution:legacy:mobile'
+  );
+  if not coalesce((v_result ->> 'idempotent')::boolean, false)
+     or v_result #>> '{visit,status}' <> 'en_route'
+     or (v_result #>> '{visit,version}')::integer <> 3 then
+    raise exception 'Legacy mobile receipt was not recovered after revocation';
+  end if;
+
+  v_denied := false;
+  begin
+    perform public.mobile_replay_service_visit_transition_atomic(
+      'fb250000-0000-4000-8000-000000000001',
+      'fd250000-0000-4000-8000-000000000004',
+      'scheduled', 'en_route', 2,
+      'fa250000-0000-4000-8000-000000000002',
+      'field-execution:legacy:mobile'
+    );
+  exception when sqlstate '22023' then
+    v_denied := true;
+  end;
+  if not v_denied then
+    raise exception 'Changed from-state reused an upgraded legacy mobile receipt';
   end if;
 
   v_denied := false;
@@ -709,8 +850,20 @@ begin
     from public.scheduler_operation_keys operation
     where operation.shop_id = 'fb250000-0000-4000-8000-000000000001'
       and operation.operation_name = 'dispatch_visit_transition'
-  ) <> 3 then
+  ) <> 5 then
     raise exception 'Committed retries created duplicate transition receipts';
+  end if;
+
+  if (
+    select count(*)
+    from public.service_visit_events event
+    where event.service_visit_id in (
+      'fd250000-0000-4000-8000-000000000003',
+      'fd250000-0000-4000-8000-000000000004'
+    )
+      and event.event_type = 'transitioned'
+  ) <> 2 then
+    raise exception 'Legacy receipt recovery duplicated transition events';
   end if;
 
   if not exists (
@@ -737,6 +890,33 @@ begin
       and length(operation.result ->> '_mobile_request_hash') = 64
   ) then
     raise exception 'Mobile transition receipt is not actor- and payload-bound';
+  end if;
+
+  if not exists (
+    select 1
+    from public.scheduler_operation_keys operation
+    where operation.shop_id = 'fb250000-0000-4000-8000-000000000001'
+      and operation.operation_name = 'dispatch_visit_transition'
+      and operation.operation_key = 'field-execution:legacy:direct'
+      and operation.actor_user_id = 'fa250000-0000-4000-8000-000000000002'
+      and operation.result ->> '_request_hash_version' = '1'
+      and length(operation.result ->> '_request_hash') = 64
+  ) then
+    raise exception 'Legacy direct receipt was not upgraded to exact hashing';
+  end if;
+
+  if not exists (
+    select 1
+    from public.scheduler_operation_keys operation
+    where operation.shop_id = 'fb250000-0000-4000-8000-000000000001'
+      and operation.operation_name = 'dispatch_visit_transition'
+      and operation.operation_key = 'field-execution:legacy:mobile'
+      and operation.actor_user_id = 'fa250000-0000-4000-8000-000000000002'
+      and operation.result ->> '_request_hash_version' = '1'
+      and length(operation.result ->> '_request_hash') = 64
+      and length(operation.result ->> '_mobile_request_hash') = 64
+  ) then
+    raise exception 'Legacy mobile receipt was not upgraded to exact hashing';
   end if;
 end;
 $field_execution_final_assertions$;

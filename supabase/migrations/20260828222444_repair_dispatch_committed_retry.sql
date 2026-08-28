@@ -91,7 +91,53 @@ begin
         errcode = '42501',
         message = 'Service visit transition receipt denied.';
     end if;
-    if coalesce(v_operation.result ->> '_request_hash_version', '') <> '1'
+    if coalesce(v_operation.result ->> '_request_hash_version', '') = '' then
+      -- Receipts committed before this migration did not retain their request
+      -- hash. Recover only when the immutable transition event and stored
+      -- snapshot bind the same actor, tenant, visit, operation key, target
+      -- state and optimistic version. Then upgrade the receipt in place so
+      -- every subsequent retry uses the exact versioned request hash.
+      if not exists (
+        select 1
+        from public.service_visit_events event
+        where event.shop_id = p_shop_id
+          and event.service_visit_id = p_visit_id
+          and event.event_type = 'transitioned'
+          and event.actor_user_id = v_actor_profile_id
+          and event.metadata ->> 'operation_key' = p_operation_key
+          and lower(coalesce(event.to_status, '')) = v_to
+      )
+      or coalesce(v_operation.result #>> '{visit,id}', '') <> p_visit_id::text
+      or coalesce(v_operation.result #>> '{visit,shopId}', '') <> p_shop_id::text
+      or lower(coalesce(v_operation.result #>> '{visit,status}', '')) <> v_to
+      or (
+        p_expected_version is not null
+        and coalesce(v_operation.result #>> '{visit,version}', '')
+          <> (p_expected_version + 1)::text
+      )
+      or (
+        p_actual_travel_minutes is not null
+        and nullif(v_operation.result #>> '{visit,actualTravelMinutes}', '')::integer
+          is distinct from p_actual_travel_minutes
+      )
+      or (
+        p_actual_distance_km is not null
+        and nullif(v_operation.result #>> '{visit,actualDistanceKm}', '')::numeric
+          is distinct from p_actual_distance_km
+      ) then
+        raise exception using
+          errcode = '22023',
+          message = 'SERVICE_VISIT_OPERATION_KEY_CONFLICT';
+      end if;
+
+      update public.scheduler_operation_keys operation
+      set result = operation.result || jsonb_build_object(
+        '_request_hash_version', 1,
+        '_request_hash', v_request_hash
+      )
+      where operation.id = v_operation.id
+      returning operation.* into v_operation;
+    elsif coalesce(v_operation.result ->> '_request_hash_version', '') <> '1'
        or coalesce(v_operation.result ->> '_request_hash', '') <> v_request_hash then
       raise exception using
         errcode = '22023',
@@ -294,9 +340,70 @@ begin
         errcode = '42501',
         message = 'Service visit transition receipt denied.';
     end if;
-    if coalesce(v_operation.result ->> '_request_hash_version', '') <> '1'
-       or coalesce(v_operation.result ->> '_request_hash', '') <> v_transition_request_hash
-       or coalesce(v_operation.result ->> '_mobile_request_hash', '') <> v_replay_request_hash then
+    if coalesce(v_operation.result ->> '_request_hash_version', '') = '' then
+      if not exists (
+        select 1
+        from public.service_visit_events event
+        where event.shop_id = p_shop_id
+          and event.service_visit_id = p_visit_id
+          and event.event_type = 'transitioned'
+          and event.actor_user_id = v_actor_profile_id
+          and event.metadata ->> 'operation_key' = p_operation_key
+          and lower(coalesce(event.from_status, '')) = v_from
+          and lower(coalesce(event.to_status, '')) = v_to
+      )
+      or coalesce(v_operation.result #>> '{visit,id}', '') <> p_visit_id::text
+      or coalesce(v_operation.result #>> '{visit,shopId}', '') <> p_shop_id::text
+      or lower(coalesce(v_operation.result #>> '{visit,status}', '')) <> v_to
+      or coalesce(v_operation.result #>> '{visit,version}', '')
+        <> (p_expected_version + 1)::text then
+        raise exception using
+          errcode = '22023',
+          message = 'SERVICE_VISIT_OPERATION_KEY_CONFLICT';
+      end if;
+
+      update public.scheduler_operation_keys operation
+      set result = operation.result || jsonb_build_object(
+        '_request_hash_version', 1,
+        '_request_hash', v_transition_request_hash,
+        '_mobile_request_hash', v_replay_request_hash
+      )
+      where operation.id = v_operation.id
+      returning operation.* into v_operation;
+    elsif coalesce(v_operation.result ->> '_request_hash_version', '') <> '1'
+       or coalesce(v_operation.result ->> '_request_hash', '') <> v_transition_request_hash then
+      raise exception using
+        errcode = '22023',
+        message = 'SERVICE_VISIT_OPERATION_KEY_CONFLICT';
+    end if;
+    if coalesce(v_operation.result ->> '_mobile_request_hash', '') = '' then
+      -- A legacy receipt may have first been recovered through the canonical
+      -- direct RPC. Bind the mobile from-state only after checking the same
+      -- immutable transition event.
+      if not exists (
+        select 1
+        from public.service_visit_events event
+        where event.shop_id = p_shop_id
+          and event.service_visit_id = p_visit_id
+          and event.event_type = 'transitioned'
+          and event.actor_user_id = v_actor_profile_id
+          and event.metadata ->> 'operation_key' = p_operation_key
+          and lower(coalesce(event.from_status, '')) = v_from
+          and lower(coalesce(event.to_status, '')) = v_to
+      ) then
+        raise exception using
+          errcode = '22023',
+          message = 'SERVICE_VISIT_OPERATION_KEY_CONFLICT';
+      end if;
+
+      update public.scheduler_operation_keys operation
+      set result = operation.result || jsonb_build_object(
+        '_mobile_request_hash', v_replay_request_hash
+      )
+      where operation.id = v_operation.id
+      returning operation.* into v_operation;
+    elsif coalesce(v_operation.result ->> '_mobile_request_hash', '')
+      <> v_replay_request_hash then
       raise exception using
         errcode = '22023',
         message = 'SERVICE_VISIT_OPERATION_KEY_CONFLICT';
