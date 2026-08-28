@@ -163,6 +163,8 @@ type FindingSubmissionResponse = {
   quoteLineIds?: string[];
   insertedCount?: number;
   skippedDuplicates?: number;
+  session?: InspectionSession;
+  syncRevision?: number;
 };
 
 function findingIsSubmitted(item: unknown): boolean {
@@ -913,6 +915,8 @@ type SmartMatchRow = {
     resumeSession: resumeInspectionSession,
     pauseSession: pauseInspectionSession,
   } = useInspectionSession(initialSession);
+  const submittingFindingKeysRef = useRef<Record<string, boolean>>({});
+  const pendingPhotoKeysRef = useRef<Record<string, boolean>>({});
 
   // Realtime finalization can arrive while this screen is open. Keep every
   // mutation entry point read-only as soon as the canonical row is locked.
@@ -924,6 +928,10 @@ type SmartMatchRow = {
   const updateItem = (...args: Parameters<typeof updateSessionItem>) => {
     if (isLockedRef.current) return;
     const [sectionIndex, itemIndex] = args;
+    if (submittingFindingKeysRef.current[`${sectionIndex}:${itemIndex}`]) {
+      toast.error("This finding is being submitted and cannot be changed.");
+      return;
+    }
     const currentItem = session.sections?.[sectionIndex]?.items?.[itemIndex];
     if (findingIsSubmitted(currentItem)) {
       toast.error(
@@ -2004,6 +2012,18 @@ type SmartMatchRow = {
     Record<string, boolean>
   >({});
 
+  const handlePhotoPendingChange = (
+    sectionIndex: number,
+    itemIndex: number,
+    pending: boolean,
+  ): void => {
+    const key = `${sectionIndex}:${itemIndex}`;
+    const next = { ...pendingPhotoKeysRef.current };
+    if (pending) next[key] = true;
+    else delete next[key];
+    pendingPhotoKeysRef.current = next;
+  };
+
   const isSubmittingFinding = (
     sectionIndex: number,
     itemIndex: number,
@@ -2056,9 +2076,24 @@ type SmartMatchRow = {
       return;
     }
 
+    const pendingPhoto = selection.some(
+      ({ sectionIndex, itemIndex }) =>
+        pendingPhotoKeysRef.current[`${sectionIndex}:${itemIndex}`] === true,
+    );
+    if (pendingPhoto) {
+      toast.error(
+        "Wait for every selected finding photo to finish uploading before submitting.",
+      );
+      return;
+    }
+
     const keys = selection.map(
       ({ sectionIndex, itemIndex }) => `${sectionIndex}:${itemIndex}`,
     );
+    submittingFindingKeysRef.current = {
+      ...submittingFindingKeysRef.current,
+      ...Object.fromEntries(keys.map((key) => [key, true])),
+    };
     setSubmittingFindingKeys((current) => {
       const next = { ...current };
       for (const key of keys) next[key] = true;
@@ -2124,45 +2159,16 @@ type SmartMatchRow = {
         );
       }
 
-      const submittedAt = new Date().toISOString();
-      const sections = durableSession.sections.map((section) => ({
-        ...section,
-        items: [...(section.items ?? [])],
-      }));
-      selection.forEach(({ sectionIndex, itemIndex }, index) => {
-        const item = sections[sectionIndex]?.items?.[itemIndex];
-        if (!item) return;
-        const parts = Array.isArray(
-          (item as unknown as { parts?: unknown }).parts,
-        )
-          ? ((item as unknown as { parts: unknown[] }).parts ?? [])
-          : [];
-        sections[sectionIndex].items[itemIndex] = {
-          ...item,
-          estimateSubmitted: true,
-          estimateSubmittedAt:
-            (item as unknown as { estimateSubmittedAt?: string | null })
-              .estimateSubmittedAt ?? submittedAt,
-          estimateLastUpdatedAt: submittedAt,
-          estimateQuoteLineId: quoteLineIds[index],
-          noPartsRequired: parts.length === 0,
-        } as InspectionSection["items"][number];
-      });
-
-      const nextSession: InspectionSession = {
-        ...durableSession,
-        sections,
-      };
-      replaceSession(nextSession);
-
-      try {
-        await flushAutosaveToServer(nextSession);
-      } catch {
-        toast.warning(
-          "Findings reached Quote Review, but their submitted labels are still syncing. Do not submit them again until autosave recovers.",
+      if (
+        !json.session ||
+        !Number.isSafeInteger(json.syncRevision) ||
+        json.session.syncRevision !== json.syncRevision
+      ) {
+        throw new Error(
+          "The server did not return the durable inspection snapshot. Reload before submitting again.",
         );
-        return;
       }
+      replaceSession(json.session);
 
       const created = Number(json.insertedCount ?? 0);
       const duplicates = Number(json.skippedDuplicates ?? 0);
@@ -2185,6 +2191,9 @@ type SmartMatchRow = {
         for (const key of keys) delete next[key];
         return next;
       });
+      const nextRef = { ...submittingFindingKeysRef.current };
+      for (const key of keys) delete nextRef[key];
+      submittingFindingKeysRef.current = nextRef;
     }
   };
 
@@ -2305,10 +2314,11 @@ type SmartMatchRow = {
     const section = session.sections[sectionIndex];
     if (!section) return;
 
-    const nextItems = (section.items ?? []).map((it) => ({
-      ...it,
-      status,
-    }));
+    const nextItems = (section.items ?? []).map((it, itemIndex) =>
+      findingIsSubmitted(it) || isSubmittingFinding(sectionIndex, itemIndex)
+        ? it
+        : { ...it, status },
+    );
 
     updateSection(sectionIndex, { ...section, items: nextItems });
     updateInspection({
@@ -2995,6 +3005,7 @@ type SmartMatchRow = {
                             workOrderId={workOrderId}
                             workOrderLineId={workOrderLineId || null}
                             draftKey={draftKey}
+                            onPhotoPendingChange={handlePhotoPendingChange}
                             onUpdateStatus={(
                               secIdx: number,
                               itemIdx: number,
@@ -3075,6 +3086,7 @@ type SmartMatchRow = {
                             workOrderId={workOrderId}
                             workOrderLineId={workOrderLineId || null}
                             draftKey={draftKey}
+                            onPhotoPendingChange={handlePhotoPendingChange}
                             onUpdateStatus={(
                               secIdx: number,
                               itemIdx: number,

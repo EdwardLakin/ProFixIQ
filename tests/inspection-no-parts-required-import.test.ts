@@ -116,4 +116,27 @@ describe("inspection technician-authored quote import", () => {
       status: "pending_parts",
     });
   });
+
+  it("does not turn a zero-quantity draft row into a requested part", async () => {
+    const { item } = await importFinding({
+      item: "Front brake pads",
+      status: "fail",
+      notes: "Inspect before quoting.",
+      parts: [{ description: "Front brake pad set", qty: 0 }],
+    });
+
+    expect(item).toMatchObject({ parts: [], status: "advisor_pending" });
+  });
+
+  it("honors no parts required even when a stale part row remains", async () => {
+    const { item } = await importFinding({
+      item: "Brake pedal travel",
+      status: "fail",
+      notes: "Adjustment only.",
+      noPartsRequired: true,
+      parts: [{ description: "Stale suggested part", qty: 2 }],
+    });
+
+    expect(item).toMatchObject({ parts: [], status: "advisor_pending" });
+  });
 });

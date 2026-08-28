@@ -27,6 +27,7 @@ type PhotoUploadButtonProps = {
   sectionIndex?: number;
   itemIndex?: number;
   readOnly?: boolean;
+  onPendingChange?: (pending: boolean) => void;
 };
 
 type StagedPreview = StagedInspectionPhoto & { previewUrl: string };
@@ -51,12 +52,15 @@ export default function PhotoUploadButton({
   sectionIndex,
   itemIndex,
   readOnly = false,
+  onPendingChange,
 }: PhotoUploadButtonProps) {
   const [urls, setUrls] = useState<string[]>(photoUrls ?? []);
   const [staged, setStaged] = useState<StagedPreview[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [loadingStaged, setLoadingStaged] = useState(false);
   const urlsRef = useRef(urls);
   const onChangeRef = useRef(onChange);
+  const onPendingChangeRef = useRef(onPendingChange);
 
   useEffect(() => {
     const next = uniqueEvidenceUrls(photoUrls ?? []);
@@ -67,6 +71,17 @@ export default function PhotoUploadButton({
   useEffect(() => {
     onChangeRef.current = onChange;
   }, [onChange]);
+
+  useEffect(() => {
+    onPendingChangeRef.current = onPendingChange;
+  }, [onPendingChange]);
+
+  useEffect(() => {
+    onPendingChangeRef.current?.(
+      uploading || loadingStaged || staged.length > 0,
+    );
+    return () => onPendingChangeRef.current?.(false);
+  }, [loadingStaged, uploading, staged.length]);
 
   const canUpload = !readOnly && Boolean(getString(inspectionId));
   const canStage = Boolean(
@@ -85,11 +100,13 @@ export default function PhotoUploadButton({
       typeof itemIndex !== "number"
     ) {
       setStaged([]);
+      setLoadingStaged(false);
       return;
     }
     let cancelled = false;
     let previews: StagedPreview[] = [];
     const refresh = async () => {
+      setLoadingStaged(true);
       const records = await listStagedInspectionPhotos({
         draftKey,
         sectionIndex,
@@ -103,6 +120,7 @@ export default function PhotoUploadButton({
       previews.forEach((preview) => URL.revokeObjectURL(preview.previewUrl));
       previews = next;
       setStaged(next);
+      setLoadingStaged(false);
     };
     const unsubscribe = subscribeOfflineMutations(() => void refresh());
     const onSynced = (event: Event) => {
@@ -185,6 +203,7 @@ export default function PhotoUploadButton({
       return;
     }
 
+    onPendingChangeRef.current?.(true);
     setUploading(true);
     let queued = 0;
     const uploaded: string[] = [];

@@ -30628,6 +30628,21 @@ export type Database = {
         }
         Returns: Json
       }
+      submit_inspection_findings_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_at?: string
+          p_expected_sync_revision: number
+          p_inspection_id: string
+          p_items: Json
+          p_operation_key: string
+          p_requested_vehicle_id: string
+          p_selection: Json
+          p_shop_id: string
+          p_work_order_id: string
+        }
+        Returns: Json
+      }
       submit_staff_time_off_request: {
         Args: {
           p_actor_profile_id: string
@@ -31469,4 +31484,3 @@ export const Constants = {
     },
   },
 } as const
-

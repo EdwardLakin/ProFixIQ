@@ -59,7 +59,11 @@ type InspectionResult = {
   }>;
 };
 
-type RpcError = { message: string; details?: string | null; hint?: string | null };
+type RpcError = {
+  message: string;
+  details?: string | null;
+  hint?: string | null;
+};
 type RpcClient = {
   rpc: (
     name: string,
@@ -83,6 +87,8 @@ type AtomicImportResult = {
   createdPartRequestItemCount?: number;
   skippedPartRequestItemCount?: number;
   idempotent?: boolean;
+  session?: Json;
+  syncRevision?: number;
 };
 
 export type ImportFromInspectionArgs = {
@@ -96,6 +102,7 @@ export type ImportFromInspectionArgs = {
     sectionIndex: number;
     itemIndex: number;
   }>;
+  expectedSyncRevision?: number;
 };
 
 export type ImportFromInspectionResult =
@@ -113,6 +120,8 @@ export type ImportFromInspectionResult =
       insertedJobIds: null;
       workOrderLineIds: null;
       idempotent?: boolean;
+      session?: Json;
+      syncRevision?: number;
     }
   | { ok: false; error: string };
 
@@ -146,22 +155,30 @@ function itemPhotoUrls(item: InspectionItem): string[] {
   const raw = Array.isArray(item.photoUrls) ? item.photoUrls : item.photo_urls;
   return Array.isArray(raw)
     ? raw.filter(
-        (url): url is string => typeof url === "string" && url.trim().length > 0,
+        (url): url is string =>
+          typeof url === "string" && url.trim().length > 0,
       )
     : [];
 }
 
 function itemParts(item: InspectionItem): CanonicalQuotePart[] {
-  return (Array.isArray(item.parts) ? item.parts : [])
-    .map((part) => ({
-      description: safeString(part.description) || safeString(part.name),
-      qty: Math.max(1, Number(part.qty ?? part.quantity) || 1),
-      cost: finiteNumber(part.cost),
-      unitCost: finiteNumber(part.unitCost),
-      unitPrice: finiteNumber(part.unitPrice),
-      notes: safeString(part.notes) || null,
-    }))
-    .filter((part) => Boolean(part.description));
+  if (item.noPartsRequired === true) return [];
+
+  return (Array.isArray(item.parts) ? item.parts : []).flatMap((part) => {
+    const description = safeString(part.description) || safeString(part.name);
+    const qty = Number(part.qty ?? part.quantity);
+    if (!description || !Number.isFinite(qty) || qty <= 0) return [];
+    return [
+      {
+        description,
+        qty,
+        cost: finiteNumber(part.cost),
+        unitCost: finiteNumber(part.unitCost),
+        unitPrice: finiteNumber(part.unitPrice),
+        notes: safeString(part.notes) || null,
+      },
+    ];
+  });
 }
 
 function sourceKey(input: {
@@ -192,13 +209,9 @@ function findingIdentity(input: {
   title: string;
   description: string;
 }): string {
-  return [
-    input.inspectionId,
-    input.sectionKey,
-    input.sourceItemKey,
-    normalize(input.title) || normalize(input.description),
-    normalize(input.description),
-  ]
+  // Notes and measurements are technician-editable. They must never change
+  // the durable identity used to deduplicate a finding submission.
+  return [input.inspectionId, input.sectionKey, input.sourceItemKey]
     .filter(Boolean)
     .join(":");
 }
@@ -247,13 +260,18 @@ export async function insertPrioritizedJobsFromInspection(
     .eq("is_canonical", true)
     .maybeSingle<InspectionRow>();
   if (inspectionError) {
-    return { ok: false, error: `Failed to fetch inspection: ${inspectionError.message}` };
+    return {
+      ok: false,
+      error: `Failed to fetch inspection: ${inspectionError.message}`,
+    };
   }
   if (!inspection?.shop_id) {
     return { ok: false, error: "Inspection not found or missing shop scope." };
   }
 
-  const rawResult = inspection.summary as unknown as InspectionResult | undefined;
+  const rawResult = inspection.summary as unknown as
+    | InspectionResult
+    | undefined;
   if (!rawResult?.sections || !Array.isArray(rawResult.sections)) {
     return { ok: false, error: "Invalid inspection format: missing sections." };
   }
@@ -261,7 +279,9 @@ export async function insertPrioritizedJobsFromInspection(
   const quoteItems: CanonicalQuoteItem[] = [];
   for (const [sectionIndex, section] of rawResult.sections.entries()) {
     const sectionTitle =
-      safeString(section.title) || safeString(section.name) || `Section ${sectionIndex + 1}`;
+      safeString(section.title) ||
+      safeString(section.name) ||
+      `Section ${sectionIndex + 1}`;
     const sectionKey =
       safeString(section.key) ||
       safeString(section.id) ||
@@ -340,7 +360,8 @@ export async function insertPrioritizedJobsFromInspection(
         technician_notes: notes || undefined,
         measurement: measurement || undefined,
         inspection_status: safeString(item.status) || undefined,
-        recommend: typeof item.recommend === "boolean" ? item.recommend : undefined,
+        recommend:
+          typeof item.recommend === "boolean" ? item.recommend : undefined,
         recommendation_metadata: {
           severity: item.severity ?? null,
           recommendation: item.recommendation ?? null,
@@ -397,7 +418,8 @@ export async function insertPrioritizedJobsFromInspection(
       partsRequestsCount: 0,
       createdPartRequestIds: [],
       skippedPartsRequestsCount: 0,
-      message: "No failed or recommended inspection findings were eligible for Quote Review.",
+      message:
+        "No failed or recommended inspection findings were eligible for Quote Review.",
       insertedJobIds: null,
       workOrderLineIds: null,
     };
@@ -407,7 +429,8 @@ export async function insertPrioritizedJobsFromInspection(
     args.operationKey?.trim() ||
     stableImportKey({ inspectionId, workOrderId, items: quoteItems });
   const rpc = supabase as unknown as RpcClient;
-  const { data, error } = await rpc.rpc("import_inspection_quote_package_atomic", {
+  const earlySubmission = Boolean(selectedFindingKeys);
+  const rpcArgs = {
     p_shop_id: inspection.shop_id,
     p_work_order_id: workOrderId,
     p_inspection_id: inspectionId,
@@ -415,8 +438,17 @@ export async function insertPrioritizedJobsFromInspection(
     p_actor_user_id: userId,
     p_operation_key: `${inspection.shop_id}:inspection-import:${operationKey}`,
     p_items: quoteItems,
+    ...(earlySubmission
+      ? {
+          p_expected_sync_revision: args.expectedSyncRevision,
+          p_selection: findingSelection,
+        }
+      : {}),
     p_at: new Date().toISOString(),
-  });
+  };
+  const { data, error } = earlySubmission
+    ? await rpc.rpc("submit_inspection_findings_atomic", rpcArgs)
+    : await rpc.rpc("import_inspection_quote_package_atomic", rpcArgs);
 
   if (error) {
     return {
@@ -427,7 +459,8 @@ export async function insertPrioritizedJobsFromInspection(
     };
   }
 
-  const result = data && typeof data === "object" ? (data as AtomicImportResult) : {};
+  const result =
+    data && typeof data === "object" ? (data as AtomicImportResult) : {};
   const items = Array.isArray(result.items) ? result.items : [];
   const createdQuoteLines = items
     .filter((item) => item.created === true && typeof item.id === "string")
@@ -456,13 +489,15 @@ export async function insertPrioritizedJobsFromInspection(
     skippedCount: Number(result.skippedDuplicateCount ?? 0),
     partsRequestsCount: createdPartRequestIds.length,
     createdPartRequestIds,
-    skippedPartsRequestsCount: Number(
-      result.skippedPartRequestItemCount ?? 0,
-    ),
+    skippedPartsRequestsCount: Number(result.skippedPartRequestItemCount ?? 0),
     message:
       "Imported findings to Quote Review. No work order lines were created before customer approval.",
     insertedJobIds: null,
     workOrderLineIds: null,
     idempotent: result.idempotent === true,
+    session: result.session,
+    syncRevision: Number.isSafeInteger(result.syncRevision)
+      ? result.syncRevision
+      : undefined,
   };
 }

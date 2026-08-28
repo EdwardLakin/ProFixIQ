@@ -50,6 +50,11 @@ interface InspectionItemCardProps {
   showEvidenceFields?: boolean;
   /** Freeze a finding after it has been submitted to Quote Review. */
   readOnly?: boolean;
+  onPhotoPendingChange?: (
+    sectionIndex: number,
+    itemIndex: number,
+    pending: boolean,
+  ) => void;
 }
 
 type ImportedFormItem = InspectionItem & {
@@ -100,6 +105,7 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
     showStatusControls = true,
     showEvidenceFields = false,
     readOnly = false,
+    onPhotoPendingChange,
   } = props;
   const formContext = useContext(InspectionFormCtx);
 
@@ -325,6 +331,9 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
                     itemName={label || null}
                     photoUrls={item.photoUrls ?? []}
                     readOnly={readOnly}
+                    onPendingChange={(pending) =>
+                      onPhotoPendingChange?.(sectionIndex, itemIndex, pending)
+                    }
                     onChange={(urls: string[]) =>
                       onUpdatePhotos(sectionIndex, itemIndex, urls)
                     }
@@ -427,6 +436,9 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
                   itemName={label || null}
                   photoUrls={item.photoUrls ?? []}
                   readOnly={readOnly}
+                  onPendingChange={(pending) =>
+                    onPhotoPendingChange?.(sectionIndex, itemIndex, pending)
+                  }
                   onChange={(urls: string[]) =>
                     onUpdatePhotos(sectionIndex, itemIndex, urls)
                   }
