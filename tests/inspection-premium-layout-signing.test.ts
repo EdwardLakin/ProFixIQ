@@ -34,7 +34,10 @@ describe("premium inspection layout and signing repair", () => {
   it("keeps corner-grid findings contextual without duplicate status inputs", () => {
     expect(sectionDisplay).toContain("hasGridFindingEvidence");
     expect(sectionDisplay).toContain("Finding details");
-    expect(sectionDisplay).toContain("showStatusControls={!showGridFindings}");
+    expect(sectionDisplay).toContain(
+      "showStatusControls={!submitted && !showGridFindings}",
+    );
+    expect(sectionDisplay).toContain("readOnly={submitted}");
     expect(sectionDisplay).not.toContain("Findings & evidence");
   });
 

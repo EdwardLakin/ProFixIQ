@@ -154,6 +154,41 @@ type NormalizedItem = {
   estimateQuoteLineId?: string | null;
 };
 
+type FindingSelection = {
+  sectionIndex: number;
+  itemIndex: number;
+};
+
+type FindingSubmissionResponse = {
+  ok?: boolean;
+  error?: string;
+  quoteLineIds?: string[];
+  insertedCount?: number;
+  skippedDuplicates?: number;
+};
+
+function findingIsSubmitted(item: unknown): boolean {
+  return Boolean(
+    item &&
+    typeof item === "object" &&
+    (item as { estimateSubmitted?: unknown }).estimateSubmitted === true,
+  );
+}
+
+function findingStatus(item: unknown): string {
+  return item && typeof item === "object"
+    ? String((item as { status?: unknown }).status ?? "")
+        .trim()
+        .toLowerCase()
+    : "";
+}
+
+function findingNote(item: unknown): string {
+  if (!item || typeof item !== "object") return "";
+  const candidate = item as { notes?: unknown; note?: unknown };
+  return String(candidate.notes ?? candidate.note ?? "").trim();
+}
+
 function normalizeSections(input: unknown): InspectionSection[] {
   try {
     const arr = Array.isArray(input) ? input : [];
@@ -891,7 +926,16 @@ type SmartMatchRow = {
     if (!isLockedRef.current) updateSessionInspection(...args);
   };
   const updateItem = (...args: Parameters<typeof updateSessionItem>) => {
-    if (!isLockedRef.current) updateSessionItem(...args);
+    if (isLockedRef.current) return;
+    const [sectionIndex, itemIndex] = args;
+    const currentItem = session.sections?.[sectionIndex]?.items?.[itemIndex];
+    if (findingIsSubmitted(currentItem)) {
+      toast.error(
+        "This finding is already in Quote Review and can no longer be changed.",
+      );
+      return;
+    }
+    updateSessionItem(...args);
   };
   const updateSection = (...args: Parameters<typeof updateSessionSection>) => {
     if (!isLockedRef.current) updateSessionSection(...args);
@@ -2285,6 +2329,195 @@ type SmartMatchRow = {
   }
 };
 
+  const [submittingFindingKeys, setSubmittingFindingKeys] = useState<
+    Record<string, boolean>
+  >({});
+
+  const isSubmittingFinding = (
+    sectionIndex: number,
+    itemIndex: number,
+  ): boolean => Boolean(submittingFindingKeys[`${sectionIndex}:${itemIndex}`]);
+
+  const findingSubmissionSummary = useMemo(() => {
+    const outstanding: FindingSelection[] = [];
+    let submitted = 0;
+
+    for (const [sectionIndex, section] of (session?.sections ?? []).entries()) {
+      for (const [itemIndex, item] of (section.items ?? []).entries()) {
+        const status = findingStatus(item);
+        if (status !== "fail" && status !== "recommend") continue;
+        if (findingIsSubmitted(item)) submitted += 1;
+        else outstanding.push({ sectionIndex, itemIndex });
+      }
+    }
+
+    return { outstanding, submitted };
+  }, [session]);
+
+  const submitFindings = async (
+    requestedSelection: FindingSelection[],
+  ): Promise<void> => {
+    if (!session || requestedSelection.length === 0 || guardLocked()) return;
+
+    const selection = requestedSelection.filter(({ sectionIndex, itemIndex }) => {
+      const item = session.sections?.[sectionIndex]?.items?.[itemIndex];
+      const status = findingStatus(item);
+      return (
+        Boolean(item) &&
+        (status === "fail" || status === "recommend") &&
+        !findingIsSubmitted(item)
+      );
+    });
+    if (selection.length === 0) {
+      toast.message("These findings are already in Quote Review.");
+      return;
+    }
+
+    const missingNote = selection.find(({ sectionIndex, itemIndex }) =>
+      !findingNote(session.sections?.[sectionIndex]?.items?.[itemIndex]),
+    );
+    if (missingNote) {
+      const item = session.sections?.[missingNote.sectionIndex]?.items?.[
+        missingNote.itemIndex
+      ];
+      const label = String(item?.item ?? item?.name ?? "this finding").trim();
+      toast.error(`Add a note for ${label || "this finding"} before submitting.`);
+      return;
+    }
+
+    const keys = selection.map(
+      ({ sectionIndex, itemIndex }) => `${sectionIndex}:${itemIndex}`,
+    );
+    setSubmittingFindingKeys((current) => {
+      const next = { ...current };
+      for (const key of keys) next[key] = true;
+      return next;
+    });
+
+    try {
+      const durableSession = await flushAutosaveToServer();
+      const canonicalInspectionId = String(
+        durableSession?.id || inspectionId || "",
+      ).trim();
+      const canonicalWorkOrderId = String(
+        durableSession?.workOrderId || workOrderId || "",
+      ).trim();
+      const expectedSyncRevision = durableSession?.syncRevision;
+
+      if (
+        !durableSession ||
+        !canonicalInspectionId ||
+        !canonicalWorkOrderId ||
+        !Number.isSafeInteger(expectedSyncRevision) ||
+        Number(expectedSyncRevision) < 1
+      ) {
+        throw new Error(
+          "Inspection did not finish saving. Wait for autosave and submit again.",
+        );
+      }
+
+      const operationKey = [
+        "early-findings",
+        canonicalInspectionId,
+        expectedSyncRevision,
+        ...keys,
+      ].join(":");
+      const response = await fetch("/api/work-orders/import-from-inspection", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": operationKey,
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          workOrderId: canonicalWorkOrderId,
+          inspectionId: canonicalInspectionId,
+          vehicleId: durableSession.vehicleId || null,
+          autoGenerateParts: false,
+          expectedSyncRevision,
+          findingSelection: selection,
+        }),
+      });
+      const json = (await response.json().catch(() => null)) as
+        | FindingSubmissionResponse
+        | null;
+      if (!response.ok || !json?.ok) {
+        throw new Error(json?.error || "Unable to submit inspection findings.");
+      }
+
+      const quoteLineIds = Array.isArray(json.quoteLineIds)
+        ? json.quoteLineIds
+        : [];
+      if (quoteLineIds.length !== selection.length) {
+        throw new Error(
+          "The server did not confirm every selected finding. Nothing was marked submitted locally.",
+        );
+      }
+
+      const submittedAt = new Date().toISOString();
+      const sections = durableSession.sections.map((section) => ({
+        ...section,
+        items: [...(section.items ?? [])],
+      }));
+      selection.forEach(({ sectionIndex, itemIndex }, index) => {
+        const item = sections[sectionIndex]?.items?.[itemIndex];
+        if (!item) return;
+        const parts = Array.isArray(
+          (item as unknown as { parts?: unknown }).parts,
+        )
+          ? ((item as unknown as { parts: unknown[] }).parts ?? [])
+          : [];
+        sections[sectionIndex].items[itemIndex] = {
+          ...item,
+          estimateSubmitted: true,
+          estimateSubmittedAt:
+            (item as unknown as { estimateSubmittedAt?: string | null })
+              .estimateSubmittedAt ?? submittedAt,
+          estimateLastUpdatedAt: submittedAt,
+          estimateQuoteLineId: quoteLineIds[index],
+          noPartsRequired: parts.length === 0,
+        } as InspectionSection["items"][number];
+      });
+
+      const nextSession: InspectionSession = {
+        ...durableSession,
+        sections,
+      };
+      replaceSession(nextSession);
+
+      try {
+        await flushAutosaveToServer(nextSession);
+      } catch {
+        toast.warning(
+          "Findings reached Quote Review, but their submitted labels are still syncing. Do not submit them again until autosave recovers.",
+        );
+        return;
+      }
+
+      const created = Number(json.insertedCount ?? 0);
+      const duplicates = Number(json.skippedDuplicates ?? 0);
+      toast.success(
+        selection.length === 1
+          ? duplicates > 0 && created === 0
+            ? "Finding was already in Quote Review."
+            : "Finding submitted to Quote Review."
+          : `${selection.length} findings submitted to Quote Review.`,
+      );
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Unable to submit inspection findings.",
+      );
+    } finally {
+      setSubmittingFindingKeys((current) => {
+        const next = { ...current };
+        for (const key of keys) delete next[key];
+        return next;
+      });
+    }
+  };
+
   useEffect(() => {
     if (!isEmbed) return;
 
@@ -3147,9 +3380,11 @@ type SmartMatchRow = {
                             }}
                             requireNoteForAI
                             onSubmitAI={(secIdx: number, itemIdx: number) => {
-                              void submitAIForItem(secIdx, itemIdx);
+                              void submitFindings([
+                                { sectionIndex: secIdx, itemIndex: itemIdx },
+                              ]);
                             }}
-                            isSubmittingAI={isSubmittingAI}
+                            isSubmittingAI={isSubmittingFinding}
                             smartMatchByKey={smartMatchByKey}
                             smartMatchLoadingByKey={smartMatchLoadingByKey}
                             onAcceptSmartMatch={(secIdx: number, itemIdx: number) => {
@@ -3225,9 +3460,11 @@ type SmartMatchRow = {
                             }}
                             requireNoteForAI
                             onSubmitAI={(secIdx: number, itemIdx: number) => {
-                              void submitAIForItem(secIdx, itemIdx);
+                              void submitFindings([
+                                { sectionIndex: secIdx, itemIndex: itemIdx },
+                              ]);
                             }}
-                            isSubmittingAI={isSubmittingAI}
+                            isSubmittingAI={isSubmittingFinding}
                             smartMatchByKey={smartMatchByKey}
                             smartMatchLoadingByKey={smartMatchLoadingByKey}
                             onAcceptSmartMatch={(secIdx: number, itemIdx: number) => {
@@ -3297,6 +3534,52 @@ type SmartMatchRow = {
             );
           })}
         </InspectionFormCtx.Provider>
+
+        {findingSubmissionSummary.outstanding.length > 0 ||
+        findingSubmissionSummary.submitted > 0 ? (
+          <div className="mt-4 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel-strong)] p-4 shadow-sm">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                  Submit findings before signing
+                </h3>
+                <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+                  Send all outstanding failed and recommended items to Quote
+                  Review now. The inspection stays open until it is signed.
+                </p>
+                {findingSubmissionSummary.submitted > 0 ? (
+                  <p className="mt-1 text-[11px] text-emerald-700 dark:text-emerald-200">
+                    {findingSubmissionSummary.submitted} already submitted
+                  </p>
+                ) : null}
+              </div>
+              <Button
+                type="button"
+                className="min-h-11 shrink-0 px-5 text-xs font-semibold uppercase tracking-[0.14em]"
+                disabled={
+                  isLocked ||
+                  findingSubmissionSummary.outstanding.length === 0 ||
+                  findingSubmissionSummary.outstanding.some(
+                    ({ sectionIndex, itemIndex }) =>
+                      isSubmittingFinding(sectionIndex, itemIndex),
+                  )
+                }
+                onClick={() =>
+                  void submitFindings(findingSubmissionSummary.outstanding)
+                }
+              >
+                {findingSubmissionSummary.outstanding.some(
+                  ({ sectionIndex, itemIndex }) =>
+                    isSubmittingFinding(sectionIndex, itemIndex),
+                )
+                  ? "Submitting…"
+                  : findingSubmissionSummary.outstanding.length === 0
+                    ? "All findings submitted"
+                    : `Submit all failed / recommended (${findingSubmissionSummary.outstanding.length})`}
+              </Button>
+            </div>
+          </div>
+        ) : null}
 
         <div className="mt-2">
           <InspectionSignaturePanel

@@ -83,7 +83,7 @@ describe("Phase 5 route and helper contract", () => {
     );
     expect(importer).not.toContain("createCanonicalQuoteLines({");
     expect(importRoute).toContain(
-      '.select("id, shop_id, work_order_id, work_order_line_id")',
+      "id, shop_id, work_order_id, work_order_line_id, sync_revision, summary",
     );
     expect(importRoute).toContain(
       "Inspection is not anchored to a work order",

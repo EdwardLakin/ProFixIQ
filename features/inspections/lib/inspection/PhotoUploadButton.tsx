@@ -26,6 +26,7 @@ type PhotoUploadButtonProps = {
   draftKey?: string;
   sectionIndex?: number;
   itemIndex?: number;
+  readOnly?: boolean;
 };
 
 type StagedPreview = StagedInspectionPhoto & { previewUrl: string };
@@ -49,6 +50,7 @@ export default function PhotoUploadButton({
   draftKey,
   sectionIndex,
   itemIndex,
+  readOnly = false,
 }: PhotoUploadButtonProps) {
   const [urls, setUrls] = useState<string[]>(photoUrls ?? []);
   const [staged, setStaged] = useState<StagedPreview[]>([]);
@@ -66,7 +68,7 @@ export default function PhotoUploadButton({
     onChangeRef.current = onChange;
   }, [onChange]);
 
-  const canUpload = Boolean(getString(inspectionId));
+  const canUpload = !readOnly && Boolean(getString(inspectionId));
   const canStage = Boolean(
     canUpload &&
     getString(draftKey) &&
@@ -265,7 +267,7 @@ export default function PhotoUploadButton({
   return (
     <div className="mt-2">
       <label className="mb-1 block text-xs font-bold text-[color:var(--theme-text-primary)]">
-        Add photos
+        {readOnly ? "Photos" : "Add photos"}
       </label>
 
       <InspectionPhotoGallery
@@ -278,7 +280,7 @@ export default function PhotoUploadButton({
             label: itemName
               ? `${itemName} evidence ${index + 1}`
               : `Inspection evidence ${index + 1}`,
-            onRemove: () => handleRemove(index),
+            onRemove: readOnly ? undefined : () => handleRemove(index),
           })),
           ...staged.map((preview) => ({
             id: preview.clientMutationId,
@@ -290,26 +292,28 @@ export default function PhotoUploadButton({
                 : preview.status === "failed"
                   ? "Waiting to retry"
                   : "Queued on device",
-            onRemove: () => void removeStaged(preview),
+            onRemove: readOnly ? undefined : () => void removeStaged(preview),
           })),
         ]}
       />
 
-      <input
-        type="file"
-        multiple
-        accept="image/*"
-        onChange={handleFileChange}
-        disabled={uploading || !canUpload}
-        className="mt-2 block text-sm text-[color:var(--theme-text-secondary)] file:rounded-full file:border-0 file:bg-orange-700 file:text-sm file:font-semibold file:text-[color:var(--theme-text-primary)] hover:file:bg-orange-600 disabled:opacity-60"
-      />
+      {!readOnly ? (
+        <input
+          type="file"
+          multiple
+          accept="image/*"
+          onChange={handleFileChange}
+          disabled={uploading || !canUpload}
+          className="mt-2 block text-sm text-[color:var(--theme-text-secondary)] file:rounded-full file:border-0 file:bg-orange-700 file:text-sm file:font-semibold file:text-[color:var(--theme-text-primary)] hover:file:bg-orange-600 disabled:opacity-60"
+        />
+      ) : null}
 
       {canStage && (
         <div className="mt-1 text-[11px] text-[color:var(--theme-text-secondary)]">
           Photos are kept on this device until upload completes.
         </div>
       )}
-      {!canUpload && (
+      {!readOnly && !canUpload && (
         <div className="mt-1 text-[11px] text-amber-200/80">
           Photo upload disabled (missing inspectionId).
         </div>

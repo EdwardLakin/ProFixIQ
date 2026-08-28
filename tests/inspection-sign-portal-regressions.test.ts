@@ -20,7 +20,7 @@ describe("inspection sign and portal approval regressions", () => {
     );
   });
 
-  it("removes the redundant findings review and per-card submission paths", () => {
+  it("supports early finding submission without restoring the legacy review screen", () => {
     const screen = read(
       "features/inspections/screens/GenericInspectionScreen.tsx",
     );
@@ -34,7 +34,10 @@ describe("inspection sign and portal approval regressions", () => {
 
     expect(screen).not.toContain("Open findings list");
     expect(screen).not.toContain("<FinishInspectionButton");
-    expect(section).not.toContain("Submit for estimate");
+    expect(screen).toContain("Submit all failed / recommended");
+    expect(screen).toContain('"early-findings"');
+    expect(section).toContain("Submit item");
+    expect(section).toContain("Submitted to Quote Review");
     expect(section).not.toContain("Update estimate");
     expect(tire).not.toContain("Submit for estimate");
     expect(legacyPage).toContain('redirect("/inspections")');
