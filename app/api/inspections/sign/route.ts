@@ -121,11 +121,11 @@ async function callSignInspectionRpc(
 }
 
 async function callAttachSignedPdfRpc(
+  client: Supabase,
   args: AttachSignedPdfArgs,
 ): Promise<RpcReturn> {
-  const admin = createAdminClient();
   return (
-    admin as unknown as {
+    client as unknown as {
       rpc: (
         fn: "attach_signed_inspection_pdf_atomic",
         values: AttachSignedPdfArgs,
@@ -473,7 +473,7 @@ export async function POST(req: NextRequest) {
         summary: inspection.summary as InspectionSession,
         syncRevision,
       });
-      const attached = await callAttachSignedPdfRpc({
+      const attached = await callAttachSignedPdfRpc(supabase, {
         p_inspection_id: inspection.id,
         p_work_order_line_id: inspection.work_order_line_id,
         p_actor_user_id: user.id,

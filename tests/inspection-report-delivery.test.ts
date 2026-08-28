@@ -44,6 +44,23 @@ describe("inspection report delivery contracts", () => {
     );
   });
 
+  it("attaches the signed report with the authenticated signing actor", () => {
+    const route = source("app/api/inspections/sign/route.ts");
+    const helperStart = route.indexOf(
+      "async function callAttachSignedPdfRpc",
+    );
+    const helperEnd = route.indexOf(
+      "async function resolveInspectionForSigning",
+    );
+    const helper = route.slice(helperStart, helperEnd);
+
+    expect(helperStart).toBeGreaterThan(-1);
+    expect(helperEnd).toBeGreaterThan(helperStart);
+    expect(helper).toContain("client: Supabase");
+    expect(helper).not.toContain("createAdminClient()");
+    expect(route).toContain("callAttachSignedPdfRpc(supabase, {");
+  });
+
   it("uses the authenticated identity for invoice document ownership", () => {
     expect(source("app/api/invoices/send/route.ts")).toContain(
       "actorUserId: access.authUserId",
