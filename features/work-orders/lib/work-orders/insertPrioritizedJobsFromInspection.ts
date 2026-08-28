@@ -438,16 +438,14 @@ export async function insertPrioritizedJobsFromInspection(
     p_actor_user_id: userId,
     p_operation_key: `${inspection.shop_id}:inspection-import:${operationKey}`,
     p_items: quoteItems,
-    ...(earlySubmission
-      ? {
-          p_expected_sync_revision: args.expectedSyncRevision,
-          p_selection: findingSelection,
-        }
-      : {}),
     p_at: new Date().toISOString(),
   };
   const { data, error } = earlySubmission
-    ? await rpc.rpc("submit_inspection_findings_atomic", rpcArgs)
+    ? await rpc.rpc("submit_inspection_findings_atomic", {
+        ...rpcArgs,
+        p_expected_sync_revision: args.expectedSyncRevision,
+        p_selection: findingSelection,
+      })
     : await rpc.rpc("import_inspection_quote_package_atomic", rpcArgs);
 
   if (error) {
