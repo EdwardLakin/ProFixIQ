@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import type { ServiceVisitStatus } from "@/features/scheduling/lib/service-visit-contract";
 import { requireMobileServiceOperatorApiAccess } from "@/features/mobile/service/server/access";
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
 const STATUSES = new Set<ServiceVisitStatus>([
   "scheduled",
@@ -35,8 +36,8 @@ export async function POST(
   request: Request,
   context: { params: Promise<{ id: string }> },
 ) {
-  const access = await requireMobileServiceOperatorApiAccess();
-  if (!access.ok) return access.response;
+  const authenticatedAccess = await requireShopScopedApiAccess();
+  if (!authenticatedAccess.ok) return authenticatedAccess.response;
   const { id } = await context.params;
   const body = (await request.json().catch(() => null)) as Body | null;
   const fromStatus = body?.fromStatus;
@@ -66,16 +67,45 @@ export async function POST(
     );
   }
 
-  const rpc = access.supabase.rpc.bind(access.supabase) as unknown as UntypedRpc;
+  const receiptLookupRpc = authenticatedAccess.supabase.rpc.bind(
+    authenticatedAccess.supabase,
+  ) as unknown as UntypedRpc;
+  const { data: hasCommittedReceipt, error: receiptLookupError } =
+    await receiptLookupRpc(
+      "mobile_service_visit_transition_receipt_exists",
+      {
+        p_shop_id: authenticatedAccess.profile.shop_id,
+        p_actor_user_id: authenticatedAccess.authUserId,
+        p_operation_key: operationKey,
+      },
+    );
+
+  if (receiptLookupError) {
+    return NextResponse.json(
+      { error: receiptLookupError.message },
+      { status: receiptLookupError.code === "42501" ? 403 : 400 },
+    );
+  }
+
+  let transitionAccess = authenticatedAccess;
+  if (hasCommittedReceipt !== true) {
+    const fieldAccess = await requireMobileServiceOperatorApiAccess();
+    if (!fieldAccess.ok) return fieldAccess.response;
+    transitionAccess = fieldAccess;
+  }
+
+  const rpc = transitionAccess.supabase.rpc.bind(
+    transitionAccess.supabase,
+  ) as unknown as UntypedRpc;
   const { data, error } = await rpc(
     "mobile_replay_service_visit_transition_atomic",
     {
-      p_shop_id: access.profile.shop_id,
+      p_shop_id: transitionAccess.profile.shop_id,
       p_visit_id: id,
       p_from_status: fromStatus,
       p_to_status: toStatus,
       p_expected_version: expectedVersion,
-      p_actor_user_id: access.authUserId,
+      p_actor_user_id: transitionAccess.authUserId,
       p_operation_key: operationKey,
     },
   );

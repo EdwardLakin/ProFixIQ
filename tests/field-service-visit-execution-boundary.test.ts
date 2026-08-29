@@ -9,8 +9,12 @@ const regressedBoundary = read(
 const repairedBoundary = read(
   "supabase/migrations/20260825190000_restore_field_visit_execution_assignment.sql",
 );
-const runtime = read(
-  "tests/mobile/field-visit-execution-boundary.runtime.sql",
+const committedRetryRepair = read(
+  "supabase/migrations/20260828222444_repair_dispatch_committed_retry.sql",
+);
+const runtime = read("tests/mobile/field-visit-execution-boundary.runtime.sql");
+const mobileTransitionRoute = read(
+  "app/api/mobile/service-visits/[id]/transition/route.ts",
 );
 const lockingRuntime = read(
   "tests/mobile/field-visit-execution-locking.runtime.sh",
@@ -28,9 +32,7 @@ describe("Field Service Visit execution boundary", () => {
     expect(repairedBoundary).toContain(
       "assigned_profile.id = p_assigned_user_id",
     );
-    expect(repairedBoundary).toContain(
-      "assigned_profile.shop_id = p_shop_id",
-    );
+    expect(repairedBoundary).toContain("assigned_profile.shop_id = p_shop_id");
     expect(repairedBoundary).toContain("p_visit_mode <> 'mobile'");
     expect(repairedBoundary).toContain("set search_path = ''");
     expect(repairedBoundary).toContain(
@@ -56,17 +58,25 @@ describe("Field Service Visit execution boundary", () => {
       expect(runtime).toContain(rpc);
     }
 
-    expect(runtime).toContain("Unassigned Field operator read another visit history");
+    expect(runtime).toContain(
+      "Unassigned Field operator read another visit history",
+    );
     expect(runtime).toContain("Cross-shop Field operator read visit history");
-    expect(runtime).toContain("Assigned Field operator failed the execution predicate");
-    expect(runtime).toContain("Field dispatch manager failed the execution predicate");
+    expect(runtime).toContain(
+      "Assigned Field operator failed the execution predicate",
+    );
+    expect(runtime).toContain(
+      "Field dispatch manager failed the execution predicate",
+    );
     expect(runtime).toContain(
       "Assigned Shop technician lost established execution access",
     );
     expect(runtime).toContain(
       "Shop dispatch manager lost established execution access",
     );
-    expect(runtime).toContain("Denied Field execution created an idempotency receipt");
+    expect(runtime).toContain(
+      "Denied Field execution created an idempotency receipt",
+    );
   });
 
   it("serializes transition authorization with concurrent reassignment", () => {
@@ -78,6 +88,102 @@ describe("Field Service Visit execution boundary", () => {
     );
     expect(lockingRuntime).toContain(
       "fa250000-0000-4000-8000-000000000012|scheduled|1",
+    );
+  });
+
+  it("recovers only exact actor-bound committed retries before mutable authorization", () => {
+    expect(committedRetryRepair).toContain("v_actor_profile_id");
+    expect(committedRetryRepair).toContain("_request_hash_version");
+    expect(committedRetryRepair).toContain("_request_hash");
+    expect(committedRetryRepair).toContain("_mobile_request_hash");
+    expect(committedRetryRepair).toContain("pg_advisory_xact_lock");
+    expect(committedRetryRepair).toContain(
+      "SERVICE_VISIT_OPERATION_KEY_CONFLICT",
+    );
+    expect(committedRetryRepair).toContain(
+      "mobile_service_visit_transition_receipt_exists",
+    );
+    expect(committedRetryRepair).toContain(
+      "p_expected_version is null",
+    );
+    expect(committedRetryRepair).toContain(
+      "p_actual_travel_minutes is null",
+    );
+    expect(committedRetryRepair).toContain(
+      "p_actual_distance_km is null",
+    );
+
+    const routeReceiptLookup = mobileTransitionRoute.indexOf(
+      "\"mobile_service_visit_transition_receipt_exists\"",
+    );
+    const routeMutableFieldGate = mobileTransitionRoute.indexOf(
+      "requireMobileServiceOperatorApiAccess()",
+    );
+    expect(routeReceiptLookup).toBeGreaterThan(-1);
+    expect(routeMutableFieldGate).toBeGreaterThan(routeReceiptLookup);
+    expect(committedRetryRepair).toContain(
+      "from public.service_visit_events event",
+    );
+    expect(committedRetryRepair).toContain(
+      "event.metadata ->> 'operation_key' = p_operation_key",
+    );
+
+    const receiptLookup = committedRetryRepair.indexOf(
+      "from public.scheduler_operation_keys operation",
+    );
+    const mutableAuthorization = committedRetryRepair.indexOf(
+      "from private.dispatch_lock_service_visit_for_execution",
+    );
+    expect(receiptLookup).toBeGreaterThan(-1);
+    expect(mutableAuthorization).toBeGreaterThan(receiptLookup);
+
+    expect(runtime).toContain(
+      "Committed direct retry did not return the original receipt",
+    );
+    expect(runtime).toContain(
+      "Committed mobile retry did not return the original receipt",
+    );
+    expect(runtime).toContain(
+      "Changed direct payload reused a committed operation key",
+    );
+    expect(runtime).toContain(
+      "Changed mobile payload reused a committed operation key",
+    );
+    expect(runtime).toContain(
+      "Revoked Field operator created a fresh direct transition",
+    );
+    expect(runtime).toContain(
+      "Revoked Field operator created a fresh mobile transition",
+    );
+    expect(runtime).toContain(
+      "Cross-shop actor recovered another tenant receipt",
+    );
+    expect(runtime).toContain(
+      "Committed retries duplicated Service Visit transition events",
+    );
+    expect(runtime).toContain(
+      "Committed retries created duplicate transition receipts",
+    );
+    expect(runtime).toContain(
+      "Legacy direct receipt was not recovered after revocation",
+    );
+    expect(runtime).toContain(
+      "Legacy mobile receipt was not recovered after revocation",
+    );
+    expect(runtime).toContain(
+      "Legacy direct receipt was not upgraded to exact hashing",
+    );
+    expect(runtime).toContain(
+      "Legacy mobile receipt was not upgraded to exact hashing",
+    );
+    expect(runtime).toContain(
+      "Legacy direct receipt accepted an unverifiable null expected version",
+    );
+    expect(runtime).toContain(
+      "Legacy direct receipt accepted unverifiable null travel minutes",
+    );
+    expect(runtime).toContain(
+      "Legacy direct receipt accepted unverifiable null travel distance",
     );
   });
 });
