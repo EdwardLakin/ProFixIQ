@@ -36,7 +36,7 @@ insert into public.profiles (id, user_id, role, full_name, email, shop_id)
 values (
   'a8290000-0000-4000-8000-000000000001',
   'a8290000-0000-4000-8000-000000000001',
-  'technician',
+  'mechanic',
   'Inspection Finding Technician',
   'inspection-finding-tech@example.test',
   null
