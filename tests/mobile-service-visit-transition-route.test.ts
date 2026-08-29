@@ -13,7 +13,7 @@ vi.mock("@/features/mobile/service/server/access", () => ({
     mocks.requireMobileServiceOperatorApiAccess,
 }));
 
-import { POST } from "@/app/api/mobile/service-visits/[id]/transition/route";
+import { POST } from "../app/api/mobile/service-visits/[id]/transition/route";
 
 const request = () =>
   new Request("http://localhost/api/mobile/service-visits/visit-1/transition", {

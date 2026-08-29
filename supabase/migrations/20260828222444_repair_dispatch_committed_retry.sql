@@ -21,7 +21,7 @@ language plpgsql
 security definer
 stable
 set search_path = public, pg_temp
-as $
+as $mobile_receipt_exists$
 declare
   v_actor_profile_id uuid;
 begin
@@ -50,7 +50,7 @@ begin
       and operation.actor_user_id = v_actor_profile_id
   );
 end;
-$;
+$mobile_receipt_exists$;
 
 comment on function public.mobile_service_visit_transition_receipt_exists(
   uuid, uuid, text
