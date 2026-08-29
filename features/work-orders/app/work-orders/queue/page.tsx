@@ -145,6 +145,7 @@ export default function QueuePage() {
         .select("*")
         .eq("shop_id", profile.shop_id)
         .neq("status", "awaiting_approval")
+        .neq("status", "cancelled")
         .gte("created_at", since.toISOString())
         .order("created_at", { ascending: false });
 
