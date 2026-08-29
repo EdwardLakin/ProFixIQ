@@ -10,6 +10,7 @@ import {
   type OpenPartsRequest,
 } from "@/features/parts/lib/open-parts-obligations";
 import { normalizeWorkOrderOperationalStage } from "@/features/work-orders/lib/operational-stage";
+import { normalizeWorkOrderStatus } from "@/features/work-orders/lib/work-order-status";
 
 type ViewName =
   | "v_work_order_board_cards_shop"
@@ -73,7 +74,7 @@ export function useWorkOrderBoard(
     const boardWorkOrderIds = boardRows.map((row) => row.work_order_id);
     const workOrderStateResult = await supabase
       .from("work_orders")
-      .select("id,payment_status")
+      .select("id,payment_status,status")
       .in("id", boardWorkOrderIds);
 
     if (workOrderStateResult.error) {
@@ -83,13 +84,17 @@ export function useWorkOrderBoard(
       return;
     }
 
-    const paidWorkOrderIds = new Set(
+    const inactiveWorkOrderIds = new Set(
       (workOrderStateResult.data ?? [])
-        .filter((workOrder) => workOrder.payment_status === "paid")
+        .filter(
+          (workOrder) =>
+            workOrder.payment_status === "paid" ||
+            normalizeWorkOrderStatus(workOrder.status) === "cancelled",
+        )
         .map((workOrder) => workOrder.id),
     );
     const activeBoardRows = boardRows.filter(
-      (row) => !paidWorkOrderIds.has(row.work_order_id),
+      (row) => !inactiveWorkOrderIds.has(row.work_order_id),
     );
     const workOrderIds = activeBoardRows.map((row) => row.work_order_id);
 
