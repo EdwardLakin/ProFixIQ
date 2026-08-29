@@ -207,7 +207,6 @@ declare
   v_result jsonb;
   v_retry jsonb;
   v_summary jsonb;
-  v_count integer;
   v_denied boolean := false;
 begin
   v_result := public.submit_inspection_findings_atomic(
@@ -237,20 +236,6 @@ begin
      or coalesce((v_summary #>> '{sections,0,items,0,noPartsRequired}')::boolean, false) is not true
      or (v_summary #> '{sections,0,items,1}') ? 'noPartsRequired' then
     raise exception 'Technician-authored no-parts state was not preserved exactly.';
-  end if;
-
-  select count(*) into v_count
-  from public.work_order_quote_lines
-  where work_order_id = 'a8293000-0000-4000-8000-000000000001';
-  if v_count <> 2 then
-    raise exception 'Atomic finding submission did not create exactly two quote lines.';
-  end if;
-
-  select count(*) into v_count
-  from public.part_requests
-  where work_order_id = 'a8293000-0000-4000-8000-000000000001';
-  if v_count <> 0 then
-    raise exception 'No-parts or zero-quantity technician findings created a parts request.';
   end if;
 
   v_retry := public.submit_inspection_findings_atomic(
@@ -290,15 +275,32 @@ begin
     raise exception 'Stale inspection revision was accepted for finding submission.';
   end if;
 
-  select count(*) into v_count
-  from public.work_order_quote_lines
-  where work_order_id = 'a8293000-0000-4000-8000-000000000001';
-  if v_count <> 2 then
-    raise exception 'Rejected stale submission changed quote records.';
-  end if;
 end;
 $inspection_finding_runtime$;
 
 reset role;
+
+-- Quote Review rows are intentionally hidden from technicians by the
+-- financial-read boundary. Verify the committed side effects as the fixture
+-- owner after proving the RPC itself through the authenticated technician.
+do $inspection_finding_persisted_runtime$
+declare
+  v_count integer;
+begin
+  select count(*) into v_count
+  from public.work_order_quote_lines
+  where work_order_id = 'a8293000-0000-4000-8000-000000000001';
+  if v_count <> 2 then
+    raise exception 'Atomic finding submission did not create exactly two quote lines.';
+  end if;
+
+  select count(*) into v_count
+  from public.part_requests
+  where work_order_id = 'a8293000-0000-4000-8000-000000000001';
+  if v_count <> 0 then
+    raise exception 'No-parts or zero-quantity technician findings created a parts request.';
+  end if;
+end;
+$inspection_finding_persisted_runtime$;
 
 rollback;
