@@ -15,7 +15,6 @@ import { useInspectionAutosave } from "@inspections/hooks/useInspectionAutosave"
 
 import { handleTranscriptFn } from "@inspections/lib/inspection/handleTranscript";
 import { interpretCommand } from "@inspections/components/inspection/interpretCommand";
-import { requestQuoteSuggestion } from "@inspections/lib/inspection/aiQuote";
 import { addWorkOrderLineFromSuggestion } from "@inspections/lib/inspection/addWorkOrderLine";
 import { useRealtimeVoice } from "@inspections/lib/inspection/useRealtimeVoice";
 import { buildVoiceBrainFeedback } from "@inspections/lib/inspection/voice/voiceBrain";
@@ -30,7 +29,6 @@ import type {
   InspectionSession,
   SessionCustomer,
   SessionVehicle,
-  QuoteLineItem,
   VoiceMeta,
   VoiceTraceEvent,
   VoiceCommandApplyResult,
@@ -165,6 +163,8 @@ type FindingSubmissionResponse = {
   quoteLineIds?: string[];
   insertedCount?: number;
   skippedDuplicates?: number;
+  session?: InspectionSession;
+  syncRevision?: number;
 };
 
 function findingIsSubmitted(item: unknown): boolean {
@@ -914,9 +914,9 @@ type SmartMatchRow = {
     finishSession: finishInspectionSession,
     resumeSession: resumeInspectionSession,
     pauseSession: pauseInspectionSession,
-    addQuoteLine: addSessionQuoteLine,
-    updateQuoteLine: updateSessionQuoteLine,
   } = useInspectionSession(initialSession);
+  const submittingFindingKeysRef = useRef<Record<string, boolean>>({});
+  const pendingPhotoKeysRef = useRef<Record<string, boolean>>({});
 
   // Realtime finalization can arrive while this screen is open. Keep every
   // mutation entry point read-only as soon as the canonical row is locked.
@@ -928,6 +928,10 @@ type SmartMatchRow = {
   const updateItem = (...args: Parameters<typeof updateSessionItem>) => {
     if (isLockedRef.current) return;
     const [sectionIndex, itemIndex] = args;
+    if (submittingFindingKeysRef.current[`${sectionIndex}:${itemIndex}`]) {
+      toast.error("This finding is being submitted and cannot be changed.");
+      return;
+    }
     const currentItem = session.sections?.[sectionIndex]?.items?.[itemIndex];
     if (findingIsSubmitted(currentItem)) {
       toast.error(
@@ -939,14 +943,6 @@ type SmartMatchRow = {
   };
   const updateSection = (...args: Parameters<typeof updateSessionSection>) => {
     if (!isLockedRef.current) updateSessionSection(...args);
-  };
-  const addQuoteLine = (...args: Parameters<typeof addSessionQuoteLine>) => {
-    if (!isLockedRef.current) addSessionQuoteLine(...args);
-  };
-  const updateQuoteLine = (
-    ...args: Parameters<typeof updateSessionQuoteLine>
-  ) => {
-    if (!isLockedRef.current) updateSessionQuoteLine(...args);
   };
   const resumeSession = (
     ...args: Parameters<typeof resumeInspectionSession>
@@ -2012,326 +2008,21 @@ type SmartMatchRow = {
     setVoiceHeld(false);
   };
 
-  const inFlightRef = useRef<Set<string>>(new Set());
-  const isSubmittingAI = (secIdx: number, itemIdx: number): boolean =>
-    inFlightRef.current.has(`${secIdx}:${itemIdx}`);
-
-  const submitAIForItem = async (
-    secIdx: number,
-    itemIdx: number,
-  ): Promise<void> => {
-    if (!session) return;
-
-    if (guardLocked()) return;
-
-    const key = `${secIdx}:${itemIdx}`;
-    if (inFlightRef.current.has(key)) return;
-
-    const it = session.sections[secIdx]?.items?.[itemIdx];
-    if (!it) return;
-
-    const status = String(it.status ?? "").toLowerCase();
-    const note = String(it.notes ?? "").trim();
-
-    if (!(status === "fail" || status === "recommend")) return;
-
-    if (note.length === 0) {
-      toast.error("Add a note before submitting.");
-      return;
-    }
-
-    const itExt = it as unknown as {
-      parts?: { description: string; qty: number }[];
-      laborHours?: number | null;
-      noPartsRequired?: boolean;
-      name?: string | null;
-
-      // ✅ estimate state (persisted on the item)
-      estimateSubmitted?: boolean;
-      estimateSubmittedAt?: string | null;
-      estimateLastUpdatedAt?: string | null;
-
-      // ✅ links so we UPDATE instead of creating new
-      estimateWorkOrderLineId?: string | null;
-      estimateQuoteLineId?: string | null;
-    };
-
-    const manualParts: { description: string; qty: number }[] = Array.isArray(
-      itExt.parts,
-    )
-      ? itExt.parts
-      : [];
-
-    const manualLaborHours =
-      typeof itExt.laborHours === "number" ? itExt.laborHours : null;
-    const noPartsRequired = itExt.noPartsRequired === true;
-
-    inFlightRef.current.add(key);
-
-    let toastId: string | number | undefined;
-
-    try {
-      const desc = String(it.item ?? itExt.name ?? "Item");
-
-      const existingLineId =
-        typeof itExt.estimateWorkOrderLineId === "string" &&
-        itExt.estimateWorkOrderLineId
-          ? itExt.estimateWorkOrderLineId
-          : null;
-
-      const nowIso = new Date().toISOString();
-
-      // ✅ reuse quote line if already submitted (avoid duplicates)
-      const existingQuoteId =
-        typeof itExt.estimateQuoteLineId === "string" && itExt.estimateQuoteLineId
-          ? itExt.estimateQuoteLineId
-          : null;
-
-      const quoteId = existingQuoteId ?? uuidv4();
-
-      if (!existingQuoteId) {
-        const placeholder: QuoteLineItem = {
-          id: quoteId,
-          description: desc,
-          item: desc,
-          name: desc,
-          status: status as "fail" | "recommend",
-          notes: String(it.notes ?? ""),
-          price: 0,
-          laborTime: 0.5,
-          laborRate: 0,
-          editable: true,
-          source: "inspection",
-          value: (it as unknown as { value?: unknown }).value as
-            | string
-            | number
-            | null
-            | undefined,
-          photoUrls: (it as unknown as { photoUrls?: unknown }).photoUrls as
-            | string[]
-            | undefined,
-          aiState: "loading",
-        };
-        addQuoteLine(placeholder);
-      } else {
-        updateQuoteLine(quoteId, { aiState: "loading" });
-      }
-
-      toastId = toast.loading("Building estimate from inspection item…");
-
-      const suggestion = await requestQuoteSuggestion({
-        item: desc,
-        notes: String(it.notes ?? ""),
-        section: String(session.sections[secIdx]?.title ?? ""),
-        status,
-        vehicle: session.vehicle ?? undefined,
-      });
-
-      // Finalization can arrive over Realtime while AI or network work is in
-      // flight. Do not continue into local or work-order mutations afterward.
-      if (guardLocked()) return;
-
-      if (!suggestion) {
-        updateQuoteLine(quoteId, { aiState: "error" });
-        toast.error("No AI suggestion available", { id: toastId });
-        return;
-      }
-
-      const mergedParts: Array<{ name: string; qty: number; cost?: number }> =
-        noPartsRequired
-          ? []
-          : manualParts
-              .map((part) => ({
-                name: String(part.description ?? "").trim(),
-                qty: Number(part.qty ?? 0),
-              }))
-              .filter((part) => part.name.length > 0 && part.qty > 0);
-
-      const laborTime =
-        manualLaborHours != null && !Number.isNaN(manualLaborHours)
-          ? manualLaborHours
-          : (suggestion.laborHours ?? 0.5);
-
-      const laborRate = suggestion.laborRate ?? 0;
-
-      const partsTotal =
-        mergedParts.reduce(
-          (sum, p) => sum + (typeof p.cost === "number" ? p.cost : 0),
-          0,
-        ) ?? 0;
-
-      const price = Math.max(0, partsTotal + laborRate * laborTime);
-
-      updateQuoteLine(quoteId, {
-        price,
-        laborTime,
-        laborRate,
-        ai: {
-          summary: suggestion.summary,
-          confidence: suggestion.confidence,
-          parts: mergedParts,
-        },
-        aiState: "done",
-      });
-
-      if (workOrderId) {
-        const cleanParts = noPartsRequired
-          ? []
-          : manualParts
-              .map((p) => ({
-                description: String(p.description ?? "").trim(),
-                qty: Number(p.qty ?? 0),
-              }))
-              .filter((p) => p.description.length > 0 && p.qty > 0);
-
-        let createdJobId: string | null = null;
-        let createdQuoteLineId: string | null = existingQuoteId;
-
-        if (existingLineId) {
-          if (guardLocked()) return;
-          const updateRes = await fetch(
-            "/api/work-orders/lines/update-from-inspection",
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                workOrderId,
-                workOrderLineId: existingLineId,
-                laborHours: laborTime,
-                complaint: String(it.notes ?? "").trim() || null,
-                notes: String(it.notes ?? "").trim() || null,
-                aiSummary: suggestion.summary ?? null,
-              }),
-            },
-          );
-
-          if (guardLocked()) return;
-
-          if (!updateRes.ok) {
-            const body = (await updateRes.json().catch(() => null)) as unknown;
-            // eslint-disable-next-line no-console
-            console.error("Update WO line error", body);
-            toast.error("Could not update existing estimate line", { id: toastId });
-            return;
-          }
-
-          createdJobId = existingLineId;
-
-          if (cleanParts.length > 0) {
-            if (guardLocked()) return;
-            const res = await fetch("/api/parts/requests/create", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                workOrderId,
-                jobId: existingLineId,
-                notes: String(it.notes ?? "") || null,
-                items: cleanParts,
-              }),
-            });
-
-            if (guardLocked()) return;
-
-            if (!res.ok) {
-              const body = (await res.json().catch(() => null)) as unknown;
-              // eslint-disable-next-line no-console
-              console.error("Parts request error", body);
-              toast.error("Estimate updated, but parts request failed", {
-                id: toastId,
-              });
-              return;
-            }
-          }
-
-          toast.success("Estimate updated", { id: toastId });
-        } else {
-          const complaint = String(it.notes ?? "").trim() || null;
-
-          if (guardLocked()) return;
-          const created = await addWorkOrderLineFromSuggestion({
-            workOrderId,
-            description: desc,
-            section: String(session.sections[secIdx]?.title ?? ""),
-            status: "awaiting",
-            complaint,
-            suggestion: {
-              ...suggestion,
-              parts: noPartsRequired
-                ? []
-                : cleanParts.map((part) => ({
-                    name: part.description,
-                    qty: part.qty,
-                  })),
-              laborHours: laborTime,
-              price: Math.max(0, laborRate * laborTime),
-              notes: complaint ?? undefined,
-            },
-            source: "inspection",
-            jobType: "repair",
-          });
-
-          if (guardLocked()) return;
-
-          const createdId = (created as unknown as { id?: unknown })?.id;
-          createdQuoteLineId = createdId ? String(createdId) : null;
-
-          if (!createdQuoteLineId) {
-            throw new Error("Quote line created without an id");
-          }
-
-          updateInspection({
-            voiceMeta: {
-              linesAddedToWorkOrder:
-                (session.voiceMeta?.linesAddedToWorkOrder ?? 0) + 1,
-            } satisfies VoiceMeta,
-          });
-
-          toast.success(
-            cleanParts.length > 0 && !noPartsRequired
-              ? "Added to Quote Review with parts request"
-              : "Added to Quote Review — no parts required",
-            { id: toastId },
-          );
-        }
-
-        if (createdJobId || createdQuoteLineId) {
-          updateItem(secIdx, itemIdx, {
-            estimateSubmitted: true,
-            estimateSubmittedAt: itExt.estimateSubmittedAt ?? nowIso,
-            estimateLastUpdatedAt: nowIso,
-            estimateWorkOrderLineId: createdJobId,
-            estimateQuoteLineId: createdQuoteLineId ?? quoteId,
-            noPartsRequired: noPartsRequired || cleanParts.length === 0,
-          } as ItemPatch);
-        }
-      } else {
-        toast.error("Missing work order id — saved locally only", { id: toastId });
-      }
-
-      } catch (e: unknown) {
-    // eslint-disable-next-line no-console
-    console.error("Submit AI failed:", e);
-
-    // ✅ replace the loading toast if it exists
-    const msg = e instanceof Error ? e.message : "Couldn't add to work order";
-    if (toastId !== undefined) {
-      toast.error(msg, { id: toastId });
-    } else {
-      toast.error(msg);
-    }
-  } finally {
-    inFlightRef.current.delete(key);
-
-    // ✅ ALWAYS dismiss the loading toast so it can never get stuck
-    if (toastId !== undefined) {
-      toast.dismiss(toastId);
-    }
-  }
-};
-
   const [submittingFindingKeys, setSubmittingFindingKeys] = useState<
     Record<string, boolean>
   >({});
+
+  const handlePhotoPendingChange = (
+    sectionIndex: number,
+    itemIndex: number,
+    pending: boolean,
+  ): void => {
+    const key = `${sectionIndex}:${itemIndex}`;
+    const next = { ...pendingPhotoKeysRef.current };
+    if (pending) next[key] = true;
+    else delete next[key];
+    pendingPhotoKeysRef.current = next;
+  };
 
   const isSubmittingFinding = (
     sectionIndex: number,
@@ -2385,9 +2076,24 @@ type SmartMatchRow = {
       return;
     }
 
+    const pendingPhoto = selection.some(
+      ({ sectionIndex, itemIndex }) =>
+        pendingPhotoKeysRef.current[`${sectionIndex}:${itemIndex}`] === true,
+    );
+    if (pendingPhoto) {
+      toast.error(
+        "Wait for every selected finding photo to finish uploading before submitting.",
+      );
+      return;
+    }
+
     const keys = selection.map(
       ({ sectionIndex, itemIndex }) => `${sectionIndex}:${itemIndex}`,
     );
+    submittingFindingKeysRef.current = {
+      ...submittingFindingKeysRef.current,
+      ...Object.fromEntries(keys.map((key) => [key, true])),
+    };
     setSubmittingFindingKeys((current) => {
       const next = { ...current };
       for (const key of keys) next[key] = true;
@@ -2433,7 +2139,6 @@ type SmartMatchRow = {
           workOrderId: canonicalWorkOrderId,
           inspectionId: canonicalInspectionId,
           vehicleId: durableSession.vehicleId || null,
-          autoGenerateParts: false,
           expectedSyncRevision,
           findingSelection: selection,
         }),
@@ -2454,45 +2159,16 @@ type SmartMatchRow = {
         );
       }
 
-      const submittedAt = new Date().toISOString();
-      const sections = durableSession.sections.map((section) => ({
-        ...section,
-        items: [...(section.items ?? [])],
-      }));
-      selection.forEach(({ sectionIndex, itemIndex }, index) => {
-        const item = sections[sectionIndex]?.items?.[itemIndex];
-        if (!item) return;
-        const parts = Array.isArray(
-          (item as unknown as { parts?: unknown }).parts,
-        )
-          ? ((item as unknown as { parts: unknown[] }).parts ?? [])
-          : [];
-        sections[sectionIndex].items[itemIndex] = {
-          ...item,
-          estimateSubmitted: true,
-          estimateSubmittedAt:
-            (item as unknown as { estimateSubmittedAt?: string | null })
-              .estimateSubmittedAt ?? submittedAt,
-          estimateLastUpdatedAt: submittedAt,
-          estimateQuoteLineId: quoteLineIds[index],
-          noPartsRequired: parts.length === 0,
-        } as InspectionSection["items"][number];
-      });
-
-      const nextSession: InspectionSession = {
-        ...durableSession,
-        sections,
-      };
-      replaceSession(nextSession);
-
-      try {
-        await flushAutosaveToServer(nextSession);
-      } catch {
-        toast.warning(
-          "Findings reached Quote Review, but their submitted labels are still syncing. Do not submit them again until autosave recovers.",
+      if (
+        !json.session ||
+        !Number.isSafeInteger(json.syncRevision) ||
+        json.session.syncRevision !== json.syncRevision
+      ) {
+        throw new Error(
+          "The server did not return the durable inspection snapshot. Reload before submitting again.",
         );
-        return;
       }
+      replaceSession(json.session);
 
       const created = Number(json.insertedCount ?? 0);
       const duplicates = Number(json.skippedDuplicates ?? 0);
@@ -2515,6 +2191,9 @@ type SmartMatchRow = {
         for (const key of keys) delete next[key];
         return next;
       });
+      const nextRef = { ...submittingFindingKeysRef.current };
+      for (const key of keys) delete nextRef[key];
+      submittingFindingKeysRef.current = nextRef;
     }
   };
 
@@ -2635,10 +2314,11 @@ type SmartMatchRow = {
     const section = session.sections[sectionIndex];
     if (!section) return;
 
-    const nextItems = (section.items ?? []).map((it) => ({
-      ...it,
-      status,
-    }));
+    const nextItems = (section.items ?? []).map((it, itemIndex) =>
+      findingIsSubmitted(it) || isSubmittingFinding(sectionIndex, itemIndex)
+        ? it
+        : { ...it, status },
+    );
 
     updateSection(sectionIndex, { ...section, items: nextItems });
     updateInspection({
@@ -3243,11 +2923,11 @@ type SmartMatchRow = {
                               unitHint={(label: string) => unitHintGeneric(label, unit)}
                               requireNoteForAI
                               onSubmitAI={(secIdx: number, itemIdx: number) => {
-                                void submitAIForItem(secIdx, itemIdx);
+                                void submitFindings([
+                                  { sectionIndex: secIdx, itemIndex: itemIdx },
+                                ]);
                               }}
-                              isSubmittingAI={(secIdx: number, itemIdx: number) =>
-                                isSubmittingAI(secIdx, itemIdx)
-                              }
+                              isSubmittingAI={isSubmittingFinding}
                               onUpdateParts={(secIdx, itemIdx, parts) => {
                                 if (guardLocked()) return;
                                 updateItem(secIdx, itemIdx, { parts } as ItemPatch);
@@ -3276,11 +2956,11 @@ type SmartMatchRow = {
                               }
                               requireNoteForAI
                               onSubmitAI={(secIdx: number, itemIdx: number) => {
-                                void submitAIForItem(secIdx, itemIdx);
+                                void submitFindings([
+                                  { sectionIndex: secIdx, itemIndex: itemIdx },
+                                ]);
                               }}
-                              isSubmittingAI={(secIdx: number, itemIdx: number) =>
-                                isSubmittingAI(secIdx, itemIdx)
-                              }
+                              isSubmittingAI={isSubmittingFinding}
                               smartMatchByKey={smartMatchByKey}
                               smartMatchLoadingByKey={smartMatchLoadingByKey}
                               onAcceptSmartMatch={(secIdx: number, itemIdx: number) => {
@@ -3325,6 +3005,7 @@ type SmartMatchRow = {
                             workOrderId={workOrderId}
                             workOrderLineId={workOrderLineId || null}
                             draftKey={draftKey}
+                            onPhotoPendingChange={handlePhotoPendingChange}
                             onUpdateStatus={(
                               secIdx: number,
                               itemIdx: number,
@@ -3405,6 +3086,7 @@ type SmartMatchRow = {
                             workOrderId={workOrderId}
                             workOrderLineId={workOrderLineId || null}
                             draftKey={draftKey}
+                            onPhotoPendingChange={handlePhotoPendingChange}
                             onUpdateStatus={(
                               secIdx: number,
                               itemIdx: number,

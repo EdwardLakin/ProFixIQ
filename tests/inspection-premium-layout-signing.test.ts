@@ -35,9 +35,12 @@ describe("premium inspection layout and signing repair", () => {
     expect(sectionDisplay).toContain("hasGridFindingEvidence");
     expect(sectionDisplay).toContain("Finding details");
     expect(sectionDisplay).toContain(
-      "showStatusControls={!submitted && !showGridFindings}",
+      "showStatusControls={!lockInputs && !showGridFindings}",
     );
-    expect(sectionDisplay).toContain("readOnly={submitted}");
+    expect(sectionDisplay).toContain("readOnly={lockInputs}");
+    expect(sectionDisplay).toContain(
+      "const lockInputs = submitted || submitting",
+    );
     expect(sectionDisplay).not.toContain("Findings & evidence");
   });
 

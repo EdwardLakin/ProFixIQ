@@ -22,6 +22,14 @@ const genericScreen = readFileSync(
   "features/inspections/screens/GenericInspectionScreen.tsx",
   "utf8",
 );
+const canonicalImporter = readFileSync(
+  "features/work-orders/lib/work-orders/insertPrioritizedJobsFromInspection.ts",
+  "utf8",
+);
+const atomicFindingSubmission = readFileSync(
+  "supabase/migrations/20260828213203_submit_inspection_findings_atomically.sql",
+  "utf8",
+);
 const quoteHelper = readFileSync(
   "features/inspections/lib/inspection/addWorkOrderLine.ts",
   "utf8",
@@ -53,24 +61,26 @@ describe("active work and inspection parts regressions", () => {
   });
 
   it("starts Parts only from technician-entered valid parts", () => {
-    expect(genericScreen).toContain(
-      "parts: noPartsRequired\n                ? []\n                : cleanParts.map",
-    );
+    expect(canonicalImporter).toContain("const parts = itemParts(item)");
+    expect(canonicalImporter).not.toContain("Auto-generated from inspection");
+    expect(canonicalImporter).not.toContain("estimateLabor(");
     expect(quoteHelper).toContain(
       'status: hasParts ? "pending_parts" : "advisor_pending"',
     );
     expect(quoteHelper).toContain("no_parts_required: !hasParts");
     expect(
       genericScreen.match(/\/api\/parts\/requests\/create/g) ?? [],
-    ).toHaveLength(1);
+    ).toHaveLength(0);
   });
 
   it("stores the canonical quote-line identity for new findings", () => {
-    expect(genericScreen).toContain(
-      "createdQuoteLineId = createdId ? String(createdId) : null",
+    expect(genericScreen).toContain("replaceSession(json.session)");
+    expect(atomicFindingSubmission).toContain(
+      "'estimateQuoteLineId', v_quote_id",
     );
-    expect(genericScreen).toContain(
-      "estimateQuoteLineId: createdQuoteLineId ?? quoteId",
+    expect(atomicFindingSubmission).toContain("'session', v_summary");
+    expect(canonicalImporter).toContain(
+      "id: safeString(item.estimateQuoteLineId) || null",
     );
     expect(autosaveHook).toContain(
       "Saved to shop • syncs across devices",
