@@ -29,7 +29,7 @@ export async function POST(
 
   const { data: workOrder, error: workOrderError } = await access.supabase
     .from("work_orders")
-    .select("id,shop_id,status,record_type")
+    .select("id,shop_id,status,record_type,source_fleet_service_request_id")
     .eq("id", id)
     .eq("shop_id", access.profile.shop_id)
     .maybeSingle();
@@ -83,6 +83,17 @@ export async function POST(
     );
   }
 
+  if (workOrder.source_fleet_service_request_id) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          "This work order is linked to a Fleet service request. Close or cancel it from the Fleet workflow so the fleet request stays in sync.",
+      },
+      { status: 409 },
+    );
+  }
+
   const { data: activeLabor, error: activeLaborError } = await access.supabase
     .from("work_order_line_labor_segments")
     .select("id")
@@ -120,8 +131,11 @@ export async function POST(
     .maybeSingle();
 
   if (archiveError) {
+    const message = archiveError.message.includes("WORK_ORDER_FINANCIALLY_LOCKED")
+      ? "This work order is financially locked. Keep it in invoice/customer history or use the audited correction flow instead of archiving it."
+      : archiveError.message;
     return NextResponse.json(
-      { ok: false, error: archiveError.message },
+      { ok: false, error: message },
       { status: 409 },
     );
   }
