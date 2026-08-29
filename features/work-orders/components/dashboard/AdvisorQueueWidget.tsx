@@ -207,6 +207,7 @@ export default function AdvisorQueueWidget({ embedded = false }: { embedded?: bo
       .select("id, custom_id, status, created_at, shop_id, advisor_id")
       .eq("shop_id", sid)
       .eq("advisor_id", pid)
+      .neq("status", "cancelled")
       .gte("created_at", since.toISOString())
       .order("created_at", { ascending: false })
       .limit(120);
