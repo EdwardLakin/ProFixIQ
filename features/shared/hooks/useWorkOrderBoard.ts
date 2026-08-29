@@ -10,7 +10,6 @@ import {
   type OpenPartsRequest,
 } from "@/features/parts/lib/open-parts-obligations";
 import { normalizeWorkOrderOperationalStage } from "@/features/work-orders/lib/operational-stage";
-import { normalizeWorkOrderStatus } from "@/features/work-orders/lib/work-order-status";
 
 type ViewName =
   | "v_work_order_board_cards_shop"
@@ -20,7 +19,6 @@ type ViewName =
 type WorkOrderVisibilityState = {
   id: string;
   payment_status: string | null;
-  status: string | null;
   archived_at?: string | null;
 };
 
@@ -83,7 +81,7 @@ export function useWorkOrderBoard(
     const boardWorkOrderIds = boardRows.map((row) => row.work_order_id);
     const workOrderStateResult = await supabase
       .from("work_orders")
-      .select("id,payment_status,status,archived_at")
+      .select("id,payment_status,archived_at")
       .in("id", boardWorkOrderIds);
 
     if (workOrderStateResult.error) {
@@ -94,18 +92,20 @@ export function useWorkOrderBoard(
     }
 
     const visibilityRows = (workOrderStateResult.data ?? []) as unknown as WorkOrderVisibilityState[];
-    const inactiveWorkOrderIds = new Set(
+    const paidWorkOrderIds = new Set(
       visibilityRows
-        .filter(
-          (workOrder) =>
-            Boolean(workOrder.archived_at) ||
-            workOrder.payment_status === "paid" ||
-            normalizeWorkOrderStatus(workOrder.status) === "cancelled",
-        )
+        .filter((workOrder) => workOrder.payment_status === "paid")
+        .map((workOrder) => workOrder.id),
+    );
+    const archivedWorkOrderIds = new Set(
+      visibilityRows
+        .filter((workOrder) => Boolean(workOrder.archived_at))
         .map((workOrder) => workOrder.id),
     );
     const unboundedActiveBoardRows = boardRows.filter(
-      (row) => !inactiveWorkOrderIds.has(row.work_order_id),
+      (row) =>
+        !paidWorkOrderIds.has(row.work_order_id) &&
+        !archivedWorkOrderIds.has(row.work_order_id),
     );
     const activeBoardRows = opts?.limit
       ? unboundedActiveBoardRows.slice(0, opts.limit)
