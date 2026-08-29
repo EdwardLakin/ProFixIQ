@@ -13,6 +13,9 @@ const committedRetryRepair = read(
   "supabase/migrations/20260828222444_repair_dispatch_committed_retry.sql",
 );
 const runtime = read("tests/mobile/field-visit-execution-boundary.runtime.sql");
+const mobileTransitionRoute = read(
+  "app/api/mobile/service-visits/[id]/transition/route.ts",
+);
 const lockingRuntime = read(
   "tests/mobile/field-visit-execution-locking.runtime.sh",
 );
@@ -98,6 +101,27 @@ describe("Field Service Visit execution boundary", () => {
       "SERVICE_VISIT_OPERATION_KEY_CONFLICT",
     );
     expect(committedRetryRepair).toContain(
+      "mobile_service_visit_transition_receipt_exists",
+    );
+    expect(committedRetryRepair).toContain(
+      "p_expected_version is null",
+    );
+    expect(committedRetryRepair).toContain(
+      "p_actual_travel_minutes is null",
+    );
+    expect(committedRetryRepair).toContain(
+      "p_actual_distance_km is null",
+    );
+
+    const routeReceiptLookup = mobileTransitionRoute.indexOf(
+      "\"mobile_service_visit_transition_receipt_exists\"",
+    );
+    const routeMutableFieldGate = mobileTransitionRoute.indexOf(
+      "requireMobileServiceOperatorApiAccess()",
+    );
+    expect(routeReceiptLookup).toBeGreaterThan(-1);
+    expect(routeMutableFieldGate).toBeGreaterThan(routeReceiptLookup);
+    expect(committedRetryRepair).toContain(
       "from public.service_visit_events event",
     );
     expect(committedRetryRepair).toContain(
@@ -151,6 +175,15 @@ describe("Field Service Visit execution boundary", () => {
     );
     expect(runtime).toContain(
       "Legacy mobile receipt was not upgraded to exact hashing",
+    );
+    expect(runtime).toContain(
+      "Legacy direct receipt accepted an unverifiable null expected version",
+    );
+    expect(runtime).toContain(
+      "Legacy direct receipt accepted unverifiable null travel minutes",
+    );
+    expect(runtime).toContain(
+      "Legacy direct receipt accepted unverifiable null travel distance",
     );
   });
 });

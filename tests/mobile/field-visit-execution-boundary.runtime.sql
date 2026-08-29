@@ -275,7 +275,9 @@ values
         'id', 'fd250000-0000-4000-8000-000000000003',
         'shopId', 'fb250000-0000-4000-8000-000000000001',
         'status', 'dispatched',
-        'version', 2
+        'version', 2,
+        'actualTravelMinutes', 18,
+        'actualDistanceKm', 4.2
       ),
       'idempotent', false
     )
@@ -516,10 +518,66 @@ begin
     raise exception 'Committed direct retry did not return the original receipt';
   end if;
 
+  if not public.mobile_service_visit_transition_receipt_exists(
+    'fb250000-0000-4000-8000-000000000001',
+    'fa250000-0000-4000-8000-000000000002',
+    'field-execution:legacy:direct'
+  ) then
+    raise exception 'Mobile route preflight did not recognize the actor-owned receipt';
+  end if;
+
+  v_denied := false;
+  begin
+    perform public.dispatch_transition_service_visit_atomic(
+      'fb250000-0000-4000-8000-000000000001',
+      'fd250000-0000-4000-8000-000000000003',
+      'dispatched', 18, 4.2, null,
+      'fa250000-0000-4000-8000-000000000002',
+      'field-execution:legacy:direct'
+    );
+  exception when sqlstate '22023' then
+    v_denied := true;
+  end;
+  if not v_denied then
+    raise exception 'Legacy direct receipt accepted an unverifiable null expected version';
+  end if;
+
+  v_denied := false;
+  begin
+    perform public.dispatch_transition_service_visit_atomic(
+      'fb250000-0000-4000-8000-000000000001',
+      'fd250000-0000-4000-8000-000000000003',
+      'dispatched', null, 4.2, 1,
+      'fa250000-0000-4000-8000-000000000002',
+      'field-execution:legacy:direct'
+    );
+  exception when sqlstate '22023' then
+    v_denied := true;
+  end;
+  if not v_denied then
+    raise exception 'Legacy direct receipt accepted unverifiable null travel minutes';
+  end if;
+
+  v_denied := false;
+  begin
+    perform public.dispatch_transition_service_visit_atomic(
+      'fb250000-0000-4000-8000-000000000001',
+      'fd250000-0000-4000-8000-000000000003',
+      'dispatched', 18, null, 1,
+      'fa250000-0000-4000-8000-000000000002',
+      'field-execution:legacy:direct'
+    );
+  exception when sqlstate '22023' then
+    v_denied := true;
+  end;
+  if not v_denied then
+    raise exception 'Legacy direct receipt accepted unverifiable null travel distance';
+  end if;
+
   v_result := public.dispatch_transition_service_visit_atomic(
     'fb250000-0000-4000-8000-000000000001',
     'fd250000-0000-4000-8000-000000000003',
-    'dispatched', null, null, 1,
+    'dispatched', 18, 4.2, 1,
     'fa250000-0000-4000-8000-000000000002',
     'field-execution:legacy:direct'
   );

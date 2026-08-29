@@ -40,6 +40,11 @@ interface SectionDisplayProps {
     itemIndex: number,
     photoUrls: string[],
   ) => void;
+  onPhotoPendingChange?: (
+    sectionIndex: number,
+    itemIndex: number,
+    pending: boolean,
+  ) => void;
 
   requireNoteForAI?: boolean;
   onSubmitAI?: (sectionIndex: number, itemIndex: number) => void;
@@ -204,6 +209,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
     onUpdateStatus,
     onUpdateNote,
     onUpdatePhotos,
+    onPhotoPendingChange,
     requireNoteForAI = false,
     onSubmitAI,
     isSubmittingAI,
@@ -255,7 +261,12 @@ export default function SectionDisplay(props: SectionDisplayProps) {
 
   const markAll = (status: InspectionItemStatus) => {
     items.forEach((item, idx) => {
-      if (!isSubmittedItem(item)) onUpdateStatus(sectionIndex, idx, status);
+      if (
+        !isSubmittedItem(item) &&
+        isSubmittingAI?.(sectionIndex, idx) !== true
+      ) {
+        onUpdateStatus(sectionIndex, idx, status);
+      }
     });
   };
 
@@ -466,9 +477,9 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                   const submitted = isSubmittedItem(item);
                   const k = `${sectionIndex}:${itemIndex}`;
                   const partsOpen = partsOpenByKey[k] ?? !submitted;
-                  const lockInputs = submitted;
                   const submitting =
                     isSubmittingAI?.(sectionIndex, itemIndex) === true;
+                  const lockInputs = submitted || submitting;
 
                   const smartMatch = props.smartMatchByKey?.[k] ?? null;
                   const smartMatchLoading =
@@ -510,9 +521,10 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                         onUpdateNote={onUpdateNote}
                         onUpdatePhotos={onUpdatePhotos}
                         variant="row"
-                        readOnly={submitted}
-                        showStatusControls={!submitted && !showGridFindings}
+                        readOnly={lockInputs}
+                        showStatusControls={!lockInputs && !showGridFindings}
                         showEvidenceFields={showGridFindings}
+                        onPhotoPendingChange={onPhotoPendingChange}
                       />
 
                       {(() => {
@@ -578,26 +590,29 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                               <div className="flex items-center gap-2">
                                 <button
                                   type="button"
+                                  disabled={lockInputs}
                                   className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]"
-                                  onClick={() =>
+                                  onClick={() => {
+                                    if (lockInputs) return;
                                     onDismissSmartMatch?.(
                                       sectionIndex,
                                       itemIndex,
-                                    )
-                                  }
+                                    );
+                                  }}
                                 >
                                   Dismiss
                                 </button>
                                 <button
                                   type="button"
-                                  disabled={!canApplyRepair}
+                                  disabled={!canApplyRepair || lockInputs}
                                   className={[
                                     "rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]",
-                                    canApplyRepair
+                                    canApplyRepair && !lockInputs
                                       ? "border border-emerald-500/40 bg-emerald-950/30 text-emerald-200 hover:bg-emerald-900/30"
                                       : "cursor-not-allowed border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] text-[color:var(--theme-text-secondary)]",
                                   ].join(" ")}
                                   onClick={() => {
+                                    if (lockInputs) return;
                                     onAcceptSmartMatch?.(
                                       sectionIndex,
                                       itemIndex,

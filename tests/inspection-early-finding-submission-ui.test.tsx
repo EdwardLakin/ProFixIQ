@@ -91,4 +91,29 @@ describe("inspection early finding submission UI", () => {
       "readonly",
     );
   });
+
+  it("freezes a finding while its submission is in flight", () => {
+    render(
+      <SectionDisplay
+        {...baseProps}
+        section={{
+          title: "Brakes",
+          items: [
+            {
+              item: "Brake pedal travel",
+              unit: null,
+              status: "fail",
+              notes: "Brake pedal is soft.",
+            },
+          ],
+        }}
+        requireNoteForAI
+        onSubmitAI={vi.fn()}
+        isSubmittingAI={() => true}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Submitting…" })).toBeDisabled();
+    expect(screen.getByPlaceholderText("Notes…")).toHaveAttribute("readonly");
+  });
 });

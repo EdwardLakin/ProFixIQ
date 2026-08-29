@@ -8,6 +8,55 @@ set local check_function_bodies = false;
 -- authorization decision. Bind it to the authenticated actor and exact
 -- request so the original caller can recover a lost response after assignment
 -- or Field access changes without authorizing a fresh transition.
+-- The mobile HTTP boundary uses this stable identity-only preflight to decide
+-- whether an exact retry may reach committed-receipt recovery before the
+-- revocable Field operator gate. Payload equivalence remains authoritative in
+-- mobile_replay_service_visit_transition_atomic.
+create or replace function public.mobile_service_visit_transition_receipt_exists(
+  p_shop_id uuid,
+  p_actor_user_id uuid,
+  p_operation_key text
+) returns boolean
+language plpgsql
+security definer
+stable
+set search_path = public, pg_temp
+as $
+declare
+  v_actor_profile_id uuid;
+begin
+  if not public.scheduler_actor_matches(p_actor_user_id) then
+    raise exception using errcode = '42501', message = 'Authenticated actor mismatch.';
+  end if;
+  if p_shop_id is null
+     or nullif(trim(coalesce(p_operation_key, '')), '') is null then
+    return false;
+  end if;
+
+  v_actor_profile_id := public.dispatch_actor_profile_id(
+    p_shop_id,
+    p_actor_user_id
+  );
+  if v_actor_profile_id is null then
+    return false;
+  end if;
+
+  return exists (
+    select 1
+    from public.scheduler_operation_keys operation
+    where operation.shop_id = p_shop_id
+      and operation.operation_name = 'dispatch_visit_transition'
+      and operation.operation_key = p_operation_key
+      and operation.actor_user_id = v_actor_profile_id
+  );
+end;
+$;
+
+comment on function public.mobile_service_visit_transition_receipt_exists(
+  uuid, uuid, text
+) is
+  'Returns whether the authenticated shop actor owns a committed Service Visit transition receipt for this operation key; it does not authorize fresh work.';
+
 create or replace function public.dispatch_transition_service_visit_atomic(
   p_shop_id uuid,
   p_visit_id uuid,
@@ -110,21 +159,18 @@ begin
       or coalesce(v_operation.result #>> '{visit,id}', '') <> p_visit_id::text
       or coalesce(v_operation.result #>> '{visit,shopId}', '') <> p_shop_id::text
       or lower(coalesce(v_operation.result #>> '{visit,status}', '')) <> v_to
-      or (
-        p_expected_version is not null
-        and coalesce(v_operation.result #>> '{visit,version}', '')
-          <> (p_expected_version + 1)::text
-      )
-      or (
-        p_actual_travel_minutes is not null
-        and nullif(v_operation.result #>> '{visit,actualTravelMinutes}', '')::integer
-          is distinct from p_actual_travel_minutes
-      )
-      or (
-        p_actual_distance_km is not null
-        and nullif(v_operation.result #>> '{visit,actualDistanceKm}', '')::numeric
-          is distinct from p_actual_distance_km
-      ) then
+      -- A pre-hash direct receipt can be upgraded only when every optional
+      -- request field is present and independently provable from the stored
+      -- result. Null means "unknown", not "equivalent".
+      or p_expected_version is null
+      or p_actual_travel_minutes is null
+      or p_actual_distance_km is null
+      or coalesce(v_operation.result #>> '{visit,version}', '')
+        <> (p_expected_version + 1)::text
+      or nullif(v_operation.result #>> '{visit,actualTravelMinutes}', '')::integer
+        is distinct from p_actual_travel_minutes
+      or nullif(v_operation.result #>> '{visit,actualDistanceKm}', '')::numeric
+        is distinct from p_actual_distance_km then
         raise exception using
           errcode = '22023',
           message = 'SERVICE_VISIT_OPERATION_KEY_CONFLICT';
@@ -462,6 +508,13 @@ comment on function public.mobile_replay_service_visit_transition_atomic(
 ) is
   'Replays an offline Service Visit transition. Exact actor- and payload-bound committed receipts survive later assignment/access changes; fresh replay requires current execution authorization and state/version.';
 
+revoke all on function public.mobile_service_visit_transition_receipt_exists(
+  uuid, uuid, text
+) from public, anon, authenticated, service_role;
+grant execute on function public.mobile_service_visit_transition_receipt_exists(
+  uuid, uuid, text
+) to authenticated, service_role;
+
 revoke all on function public.dispatch_transition_service_visit_atomic(
   uuid, uuid, text, integer, numeric, integer, uuid, text
 ) from public, anon, authenticated, service_role;
@@ -503,6 +556,24 @@ begin
         >= pg_catalog.strpos(v_replay_definition, 'private.dispatch_lock_service_visit_for_execution')
      or pg_catalog.strpos(v_replay_definition, '_mobile_request_hash') = 0 then
     raise exception 'Mobile committed-retry ordering or payload binding is incomplete';
+  end if;
+
+  if has_function_privilege(
+    'anon',
+    'public.mobile_service_visit_transition_receipt_exists(uuid,uuid,text)',
+    'EXECUTE'
+  )
+  or not has_function_privilege(
+    'authenticated',
+    'public.mobile_service_visit_transition_receipt_exists(uuid,uuid,text)',
+    'EXECUTE'
+  )
+  or not has_function_privilege(
+    'service_role',
+    'public.mobile_service_visit_transition_receipt_exists(uuid,uuid,text)',
+    'EXECUTE'
+  ) then
+    raise exception 'Mobile committed-receipt preflight ACL is unsafe';
   end if;
 
   if has_function_privilege(

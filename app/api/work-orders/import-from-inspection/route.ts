@@ -11,7 +11,6 @@ type ImportBody = {
   workOrderId?: string;
   inspectionId?: string;
   vehicleId?: string | null;
-  autoGenerateParts?: boolean;
   operationKey?: string;
   idempotencyKey?: string;
   expectedSyncRevision?: number;
@@ -258,16 +257,19 @@ export async function POST(req: Request) {
       workOrderId,
       vehicleId: requestedVehicleId,
       userId: user.id,
-      autoGenerateParts: body?.autoGenerateParts ?? true,
       operationKey,
       findingSelection: findingSelection ?? undefined,
+      expectedSyncRevision: findingSelection
+        ? Number(expectedSyncRevision)
+        : undefined,
     });
 
     if (!result.ok) {
       const status =
         result.error.includes("MISMATCH") ||
         result.error.includes("UNANCHORED") ||
-        result.error.includes("FINANCIALLY_LOCKED")
+        result.error.includes("FINANCIALLY_LOCKED") ||
+        result.error.includes("REVISION_CONFLICT")
           ? 409
           : 400;
       return NextResponse.json({ error: result.error }, { status });
@@ -299,6 +301,8 @@ export async function POST(req: Request) {
       insertedJobIds: result.insertedJobIds,
       workOrderLineIds: result.workOrderLineIds,
       idempotent: result.idempotent === true,
+      session: result.session,
+      syncRevision: result.syncRevision,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
