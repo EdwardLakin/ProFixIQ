@@ -70,7 +70,8 @@ type StatusKey =
   | "planned"
   | "completed"
   | "ready_to_invoice"
-  | "invoiced";
+  | "invoiced"
+  | "cancelled";
 
 type TechRollup = "awaiting" | "in_progress" | "on_hold" | "completed";
 
@@ -107,7 +108,8 @@ function isStatusKey(x: string): x is StatusKey {
     x === "planned" ||
     x === "completed" ||
     x === "ready_to_invoice" ||
-    x === "invoiced"
+    x === "invoiced" ||
+    x === "cancelled"
   );
 }
 
@@ -736,6 +738,62 @@ export default function WorkOrdersView(): JSX.Element {
     };
   }, [supabase, load]);
 
+  const handleArchive = useCallback(
+    async (id: string) => {
+      if (
+        !confirm(
+          "Archive this work order? It will be removed from active work-order lists and kept in the customer's service history. Invoices, payments, approvals, labor, parts, and inspections are preserved.",
+        )
+      ) {
+        return;
+      }
+
+      const prev = rows;
+      setRows((current) => current.filter((row) => row.id !== id));
+
+      const response = await fetch(`/api/work-orders/${id}/archive`, {
+        method: "POST",
+      });
+      const result = (await response.json().catch(() => null)) as {
+        error?: string;
+      } | null;
+
+      if (!response.ok) {
+        toast.error(result?.error ?? "Failed to archive the work order.");
+        setRows(prev);
+        return;
+      }
+
+      toast.success("Work order archived to customer history.");
+      setReviewByWo((current) => {
+        const next = { ...current };
+        delete next[id];
+        return next;
+      });
+      setTechRollupByWo((current) => {
+        const next = { ...current };
+        delete next[id];
+        return next;
+      });
+      setAssignedByWo((current) => {
+        const next = { ...current };
+        delete next[id];
+        return next;
+      });
+      setHasLinesByWo((current) => {
+        const next = { ...current };
+        delete next[id];
+        return next;
+      });
+      setOperationalStageByWo((current) => {
+        const next = { ...current };
+        delete next[id];
+        return next;
+      });
+    },
+    [rows],
+  );
+
   const handleDelete = useCallback(
     async (id: string) => {
       if (!confirm("Delete this work order? This cannot be undone.")) return;
@@ -753,7 +811,7 @@ export default function WorkOrdersView(): JSX.Element {
       if (!response.ok) {
         const rawError = result?.error ?? "Failed to delete the work order.";
         const message = rawError.includes("WORK_ORDER_DELETE_")
-          ? "This work order has financial, approval, labor, parts, or inspection history and cannot be deleted."
+          ? "This work order has financial, approval, labor, parts, or inspection history and cannot be deleted. Archive it instead."
           : rawError;
         toast.error(message);
         setRows(prev);
@@ -1004,6 +1062,7 @@ export default function WorkOrdersView(): JSX.Element {
               <option value="completed">Completed (review)</option>
               <option value="ready_to_invoice">Ready to invoice</option>
               <option value="invoiced">Invoiced</option>
+              <option value="cancelled">Archived / cancelled</option>
             </select>
 
             <button
@@ -1342,13 +1401,34 @@ export default function WorkOrdersView(): JSX.Element {
                         </button>
                       ) : null}
 
+                      {canonicalStatus !== "cancelled" &&
+                      canonicalStatus !== "invoiced" ? (
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void handleArchive(row.id);
+                          }}
+                          className="ml-auto rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-700 transition hover:bg-amber-500/15 dark:text-amber-100"
+                          title="Remove from active work orders and keep it in customer history"
+                        >
+                          Archive
+                        </button>
+                      ) : null}
+
                       <button
                         type="button"
                         onClick={(event) => {
                           event.stopPropagation();
                           void handleDelete(row.id);
                         }}
-                        className="ml-auto rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-1.5 text-xs font-semibold text-red-700 transition hover:bg-red-500/15 dark:text-red-100"
+                        className={`${
+                          canonicalStatus === "cancelled" ||
+                          canonicalStatus === "invoiced"
+                            ? "ml-auto "
+                            : ""
+                        }rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-1.5 text-xs font-semibold text-red-700 transition hover:bg-red-500/15 dark:text-red-100`}
+                        title="Delete empty work orders only"
                       >
                         Delete
                       </button>
