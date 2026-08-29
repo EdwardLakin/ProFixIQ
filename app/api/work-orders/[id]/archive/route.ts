@@ -10,6 +10,87 @@ function isUuid(value: unknown): value is string {
   );
 }
 
+type RpcError = { message: string };
+type ArchiveRpcResult = {
+  ok?: boolean;
+  idempotent?: boolean;
+  archived?: boolean;
+  work_order_id?: string;
+  customer_id?: string | null;
+  archived_at?: string;
+};
+
+type RpcClient = {
+  rpc: (
+    fn: string,
+    args: Record<string, unknown>,
+  ) => Promise<{ data: unknown; error: RpcError | null }>;
+};
+
+function archiveErrorResponse(message: string): NextResponse {
+  const normalized = message.toUpperCase();
+  if (normalized.includes("WORK_ORDER_NOT_FOUND")) {
+    return NextResponse.json(
+      { ok: false, error: "Work order not found for this shop." },
+      { status: 404 },
+    );
+  }
+  if (normalized.includes("ARCHIVE_FORBIDDEN")) {
+    return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
+  }
+  if (normalized.includes("ARCHIVE_ESTIMATE")) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "Estimates cannot be archived through the work-order action.",
+      },
+      { status: 409 },
+    );
+  }
+  if (normalized.includes("ARCHIVE_FLEET_LINKED")) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          "This work order is linked to a Fleet service request. Close or cancel it from the Fleet workflow so the fleet request stays in sync.",
+      },
+      { status: 409 },
+    );
+  }
+  if (normalized.includes("ARCHIVE_ACTIVE_SERVICE_VISIT")) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          "This work order has an active Service Visit. Close or cancel the visit before archiving it.",
+      },
+      { status: 409 },
+    );
+  }
+  if (normalized.includes("ARCHIVE_ACTIVE_LABOR")) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          "A technician is still clocked into this work order. End active labor before archiving it.",
+      },
+      { status: 409 },
+    );
+  }
+  if (normalized.includes("ARCHIVE_FINANCIALLY_LOCKED")) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          "This work order is financially locked. Keep it in invoice/customer history or use the audited correction flow instead of archiving it.",
+      },
+      { status: 409 },
+    );
+  }
+
+  return NextResponse.json({ ok: false, error: message }, { status: 409 });
+}
+
 export async function POST(
   _request: Request,
   context: { params: Promise<{ id: string }> },
@@ -27,134 +108,29 @@ export async function POST(
   });
   if (!access.ok) return access.response;
 
-  const { data: workOrder, error: workOrderError } = await access.supabase
-    .from("work_orders")
-    .select("id,shop_id,status,record_type,source_fleet_service_request_id")
-    .eq("id", id)
-    .eq("shop_id", access.profile.shop_id)
-    .maybeSingle();
+  const rpcClient = access.supabase as unknown as RpcClient;
+  const { data, error } = await rpcClient.rpc("archive_work_order_atomic", {
+    p_shop_id: access.profile.shop_id,
+    p_work_order_id: id,
+    p_actor_user_id: access.authUserId,
+  });
 
-  if (workOrderError) {
+  if (error) return archiveErrorResponse(error.message);
+
+  const result = (data ?? {}) as ArchiveRpcResult;
+  if (!result.ok || !result.archived || !result.work_order_id) {
     return NextResponse.json(
-      { ok: false, error: workOrderError.message },
-      { status: 409 },
-    );
-  }
-
-  if (!workOrder) {
-    return NextResponse.json(
-      { ok: false, error: "Work order not found for this shop." },
-      { status: 404 },
-    );
-  }
-
-  if (workOrder.record_type === "estimate") {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "Estimates cannot be archived through the work-order action.",
-      },
-      { status: 409 },
-    );
-  }
-
-  const currentStatus = String(workOrder.status ?? "")
-    .trim()
-    .toLowerCase()
-    .replaceAll(" ", "_");
-
-  if (currentStatus === "cancelled" || currentStatus === "canceled") {
-    return NextResponse.json({
-      ok: true,
-      idempotent: true,
-      workOrderId: id,
-      archived: true,
-    });
-  }
-
-  if (currentStatus === "invoiced") {
-    return NextResponse.json(
-      {
-        ok: false,
-        error:
-          "Invoiced work orders are already retained in financial and customer history and cannot be archived as cancelled.",
-      },
-      { status: 409 },
-    );
-  }
-
-  if (workOrder.source_fleet_service_request_id) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error:
-          "This work order is linked to a Fleet service request. Close or cancel it from the Fleet workflow so the fleet request stays in sync.",
-      },
-      { status: 409 },
-    );
-  }
-
-  const { data: activeLabor, error: activeLaborError } = await access.supabase
-    .from("work_order_line_labor_segments")
-    .select("id")
-    .eq("work_order_id", id)
-    .is("ended_at", null)
-    .limit(1)
-    .maybeSingle();
-
-  if (activeLaborError) {
-    return NextResponse.json(
-      { ok: false, error: activeLaborError.message },
-      { status: 409 },
-    );
-  }
-
-  if (activeLabor) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error:
-          "A technician is still clocked into this work order. End active labor before archiving it.",
-      },
-      { status: 409 },
-    );
-  }
-
-  const archivedAt = new Date().toISOString();
-  const { data: archived, error: archiveError } = await access.supabase
-    .from("work_orders")
-    .update({ status: "cancelled", updated_at: archivedAt })
-    .eq("id", id)
-    .eq("shop_id", access.profile.shop_id)
-    .eq("status", workOrder.status)
-    .select("id,status,customer_id")
-    .maybeSingle();
-
-  if (archiveError) {
-    const message = archiveError.message.includes("WORK_ORDER_FINANCIALLY_LOCKED")
-      ? "This work order is financially locked. Keep it in invoice/customer history or use the audited correction flow instead of archiving it."
-      : archiveError.message;
-    return NextResponse.json(
-      { ok: false, error: message },
-      { status: 409 },
-    );
-  }
-
-  if (!archived) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "The work order changed while it was being archived. Refresh and try again.",
-      },
+      { ok: false, error: "Archive operation returned an invalid result." },
       { status: 409 },
     );
   }
 
   return NextResponse.json({
     ok: true,
-    idempotent: false,
-    workOrderId: archived.id,
-    customerId: archived.customer_id,
+    idempotent: Boolean(result.idempotent),
+    workOrderId: result.work_order_id,
+    customerId: result.customer_id ?? null,
+    archivedAt: result.archived_at ?? null,
     archived: true,
   });
 }
