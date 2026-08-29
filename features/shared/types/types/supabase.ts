@@ -29212,6 +29212,14 @@ export type Database = {
         }
         Returns: Json
       }
+      mobile_service_visit_transition_receipt_exists: {
+        Args: {
+          p_actor_user_id: string
+          p_operation_key: string
+          p_shop_id: string
+        }
+        Returns: boolean
+      }
       mobile_update_service_followup_status_atomic: {
         Args: {
           p_actor_user_id: string
