@@ -17,6 +17,13 @@ type ViewName =
   | "v_work_order_board_cards_fleet"
   | "v_work_order_board_cards_portal";
 
+type WorkOrderVisibilityState = {
+  id: string;
+  payment_status: string | null;
+  status: string | null;
+  archived_at?: string | null;
+};
+
 function viewForVariant(variant: WorkOrderBoardVariant): ViewName {
   if (variant === "fleet") return "v_work_order_board_cards_fleet";
   if (variant === "portal") return "v_work_order_board_cards_portal";
@@ -48,7 +55,9 @@ export function useWorkOrderBoard(
       query = query.eq("fleet_id", opts.fleetId);
     }
 
-    if (opts?.limit) {
+    // Shop cards need archive/paid filtering from work_orders. Do not consume a
+    // compact 5/10-row limit with rows that will immediately be filtered out.
+    if (opts?.limit && variant !== "shop") {
       query = query.limit(opts.limit);
     }
 
@@ -74,7 +83,7 @@ export function useWorkOrderBoard(
     const boardWorkOrderIds = boardRows.map((row) => row.work_order_id);
     const workOrderStateResult = await supabase
       .from("work_orders")
-      .select("id,payment_status,status")
+      .select("id,payment_status,status,archived_at")
       .in("id", boardWorkOrderIds);
 
     if (workOrderStateResult.error) {
@@ -84,18 +93,23 @@ export function useWorkOrderBoard(
       return;
     }
 
+    const visibilityRows = (workOrderStateResult.data ?? []) as unknown as WorkOrderVisibilityState[];
     const inactiveWorkOrderIds = new Set(
-      (workOrderStateResult.data ?? [])
+      visibilityRows
         .filter(
           (workOrder) =>
+            Boolean(workOrder.archived_at) ||
             workOrder.payment_status === "paid" ||
             normalizeWorkOrderStatus(workOrder.status) === "cancelled",
         )
         .map((workOrder) => workOrder.id),
     );
-    const activeBoardRows = boardRows.filter(
+    const unboundedActiveBoardRows = boardRows.filter(
       (row) => !inactiveWorkOrderIds.has(row.work_order_id),
     );
+    const activeBoardRows = opts?.limit
+      ? unboundedActiveBoardRows.slice(0, opts.limit)
+      : unboundedActiveBoardRows;
     const workOrderIds = activeBoardRows.map((row) => row.work_order_id);
 
     if (workOrderIds.length === 0) {
