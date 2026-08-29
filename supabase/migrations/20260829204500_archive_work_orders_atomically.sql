@@ -181,7 +181,7 @@ declare
   v_shift public.tech_shifts%rowtype;
   v_status text;
   v_approval text;
-  v_action text := lower(trim(coalesce(p_action, ''));
+  v_action text := lower(trim(coalesce(p_action, '')));
   v_now timestamptz := coalesce(p_at, now());
   v_existing jsonb;
   v_result jsonb;
