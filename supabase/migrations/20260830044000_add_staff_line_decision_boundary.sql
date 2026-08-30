@@ -25,6 +25,7 @@ declare
   v_now timestamptz := coalesce(p_at, now());
   v_profile_id uuid;
   v_actor_auth_user_id uuid;
+  v_locked_actor_auth_user_id uuid;
   v_role text;
   v_line public.work_order_lines%rowtype;
   v_existing_result jsonb;
@@ -162,6 +163,27 @@ begin
         and seg.work_order_id = p_work_order_id
       order by seg.id
       for update nowait;
+
+      -- Include the actor profile in the same atomic boundary. A concurrent
+      -- role/user-link change either completes before this lock and is
+      -- revalidated below, or waits until this decision commits.
+      select coalesce(profile.user_id, profile.id),
+             lower(trim(coalesce(profile.role, '')))
+        into v_locked_actor_auth_user_id, v_role
+      from public.profiles profile
+      where profile.id = v_profile_id
+        and profile.shop_id = p_shop_id
+      for share nowait;
+      if not found
+         or v_locked_actor_auth_user_id is distinct from v_actor_auth_user_id
+         or v_role not in (
+           'owner', 'admin', 'manager', 'advisor', 'service', 'foreman'
+         )
+      then
+        raise exception using
+          errcode = '42501',
+          message = 'STAFF_LINE_DECISION_FORBIDDEN: actor capability changed before the decision.';
+      end if;
 
       exit;
     exception
@@ -439,6 +461,7 @@ declare
   v_now timestamptz := coalesce(p_at, now());
   v_profile_id uuid;
   v_actor_auth_user_id uuid;
+  v_locked_actor_auth_user_id uuid;
   v_role text;
   v_line public.work_order_lines%rowtype;
   v_existing_result jsonb;
@@ -524,6 +547,24 @@ begin
       order by segment.id
       for update nowait;
 
+      select coalesce(profile.user_id, profile.id),
+             lower(trim(coalesce(profile.role, '')))
+        into v_locked_actor_auth_user_id, v_role
+      from public.profiles profile
+      where profile.id = v_profile_id
+        and profile.shop_id = p_shop_id
+      for share nowait;
+      if not found
+         or v_locked_actor_auth_user_id is distinct from v_actor_auth_user_id
+         or v_role not in (
+           'owner', 'admin', 'manager', 'advisor', 'service', 'lead_hand', 'foreman'
+         )
+      then
+        raise exception using
+          errcode = '42501',
+          message = 'PARTS_QUOTE_HOLD_FORBIDDEN: actor capability changed before the hold.';
+      end if;
+
       exit;
     exception
       when lock_not_available then
@@ -561,6 +602,16 @@ begin
       and segment.work_order_line_id = p_work_order_line_id
   ) then
     raise exception using errcode = 'P0001', message = 'A line with recorded labor cannot be sent to parts as pre-labor work.';
+  end if;
+  if v_line.voided_at is not null
+     or lower(coalesce(v_line.status::text, '')) in (
+       'completed', 'ready_to_invoice', 'invoiced',
+       'voided', 'cancelled', 'canceled'
+     )
+  then
+    raise exception using
+      errcode = 'P0001',
+      message = 'A voided or terminal line cannot be sent to parts.';
   end if;
   if lower(coalesce(v_line.approval_state::text, '')) <> 'pending'
      and lower(coalesce(v_line.status::text, '')) not in ('awaiting_approval', 'waiting_for_approval') then

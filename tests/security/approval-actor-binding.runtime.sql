@@ -316,6 +316,18 @@ values
     'ab250000-0000-4000-8000-000000000001',
     'aa250000-0000-4000-8000-000000000001',
     'medium'
+  ),
+  (
+    'af250000-0000-4000-8000-000000000011',
+    'ae250000-0000-4000-8000-000000000001',
+    'Terminal parts hold rejection target',
+    'completed',
+    'pending',
+    'pending',
+    'repair',
+    'ab250000-0000-4000-8000-000000000001',
+    'aa250000-0000-4000-8000-000000000001',
+    'medium'
   );
 
 insert into public.work_order_quote_lines (
@@ -557,6 +569,26 @@ begin
   end if;
 end;
 $authorized_atomic_parts_hold$;
+
+do $terminal_atomic_parts_hold_denial$
+declare
+  v_denied boolean := false;
+begin
+  begin
+    perform public.apply_pre_labor_parts_quote_hold_atomic(
+      'ab250000-0000-4000-8000-000000000001',
+      'af250000-0000-4000-8000-000000000011',
+      'aa250000-0000-4000-8000-000000000001',
+      'ab250000-0000-4000-8000-000000000001:job-punch:approval-binding:terminal-parts-hold'
+    );
+  exception when others then
+    v_denied := sqlerrm = 'A voided or terminal line cannot be sent to parts.';
+  end;
+  if not v_denied then
+    raise exception 'Atomic parts hold reopened a terminal line';
+  end if;
+end;
+$terminal_atomic_parts_hold_denial$;
 
 select set_config(
   'request.jwt.claim.sub',

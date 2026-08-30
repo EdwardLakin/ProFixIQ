@@ -300,7 +300,10 @@ describe("applyJobPunchTransition atomic boundary", () => {
       lineId: "line-1",
       action: "pause",
       technicianId: "tech-1",
-      options: { operationKey: "pause-concurrent-retry" },
+      options: {
+        operationKey: "pause-concurrent-retry",
+        enforceAssignedWork: true,
+      },
     });
 
     expect(result).toEqual({
@@ -381,6 +384,7 @@ describe("applyJobPunchTransition atomic boundary", () => {
       technicianId: "tech-1",
       options: {
         operationKey: "ordinary-pause-without-segment",
+        enforceAssignedWork: true,
         pause: { holdReason: "Awaiting parts quote" },
       },
     });
@@ -438,7 +442,10 @@ describe("applyJobPunchTransition atomic boundary", () => {
       lineId: "line-1",
       action: "start",
       technicianId: "tech-1",
-      options: { operationKey: "legacy-only-assignment" },
+      options: {
+        operationKey: "legacy-only-assignment",
+        enforceAssignedWork: true,
+      },
     });
 
     expect(result).toEqual({ ok: true, payload: { ok: true } });
@@ -462,7 +469,10 @@ describe("applyJobPunchTransition atomic boundary", () => {
       lineId: "line-1",
       action: "start",
       technicianId: "tech-1",
-      options: { operationKey: "ambiguous-legacy-assignment" },
+      options: {
+        operationKey: "ambiguous-legacy-assignment",
+        enforceAssignedWork: true,
+      },
     });
 
     expect(result).toEqual({
@@ -471,6 +481,30 @@ describe("applyJobPunchTransition atomic boundary", () => {
       error: "Technician is not assigned to this work-order line.",
     });
     expect(db.rpcCalls).toHaveLength(0);
+  });
+
+  it("preserves shared caller compatibility unless assigned-work guards are opted in", async () => {
+    const db = new FakeSupabase();
+    db.line = {
+      id: "line-1",
+      shop_id: "shop-1",
+      assigned_tech_id: null,
+      assigned_to: "tech-1",
+      status: "awaiting_approval",
+      approval_state: "pending",
+    };
+    db.anyCanonicalAssignment = { id: "assignment-for-another-technician" };
+
+    const result = await applyJobPunchTransition({
+      supabase: db as never,
+      lineId: "line-1",
+      action: "start",
+      technicianId: "tech-1",
+      options: { operationKey: "shared-caller-compatibility" },
+    });
+
+    expect(result).toEqual({ ok: true, payload: { ok: true } });
+    expect(db.rpcCalls).toHaveLength(1);
   });
 
   it("maps unsigned inspection completion to a retryable conflict", async () => {

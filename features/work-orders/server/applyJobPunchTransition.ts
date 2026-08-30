@@ -34,6 +34,8 @@ type TrustedActorContext = {
 
 type TransitionOptions = {
   operationKey?: string;
+  /** Opt-in authorization contract for public assigned-technician routes. */
+  enforceAssignedWork?: boolean;
   allowConcurrentJobPunches?: boolean;
   nowIso?: string;
   startSource?: string;
@@ -175,7 +177,8 @@ export async function applyJobPunchTransition({
     if (
       partsQuoteHoldRequested
         ? !capabilities.canManageWorkOrders
-        : !capabilities.canPerformAssignedWork
+        : options?.enforceAssignedWork === true &&
+          !capabilities.canPerformAssignedWork
     ) {
       return {
         ok: false,
@@ -256,7 +259,7 @@ export async function applyJobPunchTransition({
     return { ok: false, status: 404, error: "Work-order line not found for shop." };
   }
 
-  if (!partsQuoteHoldRequested) {
+  if (!partsQuoteHoldRequested && options?.enforceAssignedWork === true) {
     const { data: additionalAssignment, error: assignmentError } = await admin
       .from("work_order_line_technicians")
       .select("id")
@@ -357,7 +360,7 @@ export async function applyJobPunchTransition({
             "A line with recorded labor cannot be sent to parts as pre-labor work.",
         };
       }
-    } else {
+    } else if (options?.enforceAssignedWork === true) {
       const { data: activeSegment, error: segmentError } = await admin
         .from("work_order_line_labor_segments")
         .select("id")

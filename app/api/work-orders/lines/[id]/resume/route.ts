@@ -49,6 +49,7 @@ export async function POST(req: NextRequest) {
     technicianId: auth.user.id,
     options: {
       operationKey,
+      enforceAssignedWork: true,
       allowConcurrentJobPunches: body?.allowConcurrentJobPunches === true,
       resume: {
         toAwaiting: body?.toAwaiting === true,

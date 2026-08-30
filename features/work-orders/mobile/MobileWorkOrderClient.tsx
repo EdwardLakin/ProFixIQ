@@ -84,6 +84,15 @@ type WorkOrderQuoteLine =
 type WorkOrderQuoteLineWithLineId = WorkOrderQuoteLine & {
   work_order_line_id?: string | null;
 };
+
+function isCanonicalPartsQuoteHold(line: WorkOrderLine): boolean {
+  const status = (line.status ?? "").trim().toLowerCase();
+  const holdReason = (line.hold_reason ?? "").trim().toLowerCase();
+  return (
+    status === "on_hold" &&
+    (holdReason.includes("part") || holdReason.includes("quote"))
+  );
+}
 // 🔹 Extra metadata shape for inspection template ids (mirrors desktop logic)
 type WorkOrderLineWithInspectionMeta = WorkOrderLine & {
   inspection_template_id?: string | null;
@@ -955,6 +964,11 @@ export default function MobileWorkOrderClient({
     [mobileOperationalState.visibleLines, visibleLineState],
   );
 
+  const partsQuoteEligiblePending = useMemo(
+    () => approvalPending.filter((line) => !isCanonicalPartsQuoteHold(line)),
+    [approvalPending],
+  );
+
   useEffect(() => {
     const workOrderId = wo?.id;
     if (!workOrderId || lineDecisionPendingRef.current.size === 0) return;
@@ -982,10 +996,13 @@ export default function MobileWorkOrderClient({
   useEffect(() => {
     if (partsHoldPendingRef.current.size === 0) return;
 
-    const refreshedPendingIds = new Set(approvalPending.map((line) => line.id));
+    const refreshedPending = new Map(
+      approvalPending.map((line) => [line.id, line] as const),
+    );
     let changed = false;
     for (const lineId of partsHoldPendingRef.current) {
-      if (refreshedPendingIds.has(lineId)) continue;
+      const refreshedLine = refreshedPending.get(lineId);
+      if (refreshedLine && !isCanonicalPartsQuoteHold(refreshedLine)) continue;
       partsHoldPendingRef.current.delete(lineId);
       partsHoldInFlightRef.current.delete(lineId);
       partsHoldOperationKeysRef.current.delete(lineId);
@@ -1431,8 +1448,10 @@ export default function MobileWorkOrderClient({
   );
 
   const sendAllPendingToParts = useCallback(async () => {
-    if (!approvalPending.length) return;
-    const ids = approvalPending.map((l) => l.id).filter(Boolean) as string[];
+    if (!partsQuoteEligiblePending.length) return;
+    const ids = partsQuoteEligiblePending
+      .map((line) => line.id)
+      .filter(Boolean) as string[];
     try {
       for (const lineId of ids) {
         await queueLineForParts(lineId);
@@ -1445,7 +1464,7 @@ export default function MobileWorkOrderClient({
           : "Failed to queue pending lines for parts",
       );
     }
-  }, [approvalPending, queueLineForParts]);
+  }, [partsQuoteEligiblePending, queueLineForParts]);
 
   const authorizeQuote = useCallback(
     async (quoteId: string) => {
@@ -1866,7 +1885,7 @@ export default function MobileWorkOrderClient({
                 <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)] sm:text-base">
                   Awaiting customer approval
                 </h2>
-                {approvalPending.length > 1 && canSendToParts && (
+                {partsQuoteEligiblePending.length > 1 && canSendToParts && (
                   <button
                     type="button"
                     disabled={pendingPartsHoldLineIds.size > 0}
@@ -1894,12 +1913,7 @@ export default function MobileWorkOrderClient({
                       const partsHoldPending = pendingPartsHoldLineIds.has(ln.id);
                       const partsHoldInFlight =
                         partsHoldLineIdsInFlight.has(ln.id);
-                      const isAwaitingPartsBase =
-                        (ln.status === "on_hold" &&
-                          (ln.hold_reason ?? "")
-                            .toLowerCase()
-                            .includes("part")) ||
-                        (ln.hold_reason ?? "").toLowerCase().includes("quote");
+                      const isAwaitingPartsBase = isCanonicalPartsQuoteHold(ln);
 
                       const hasQuotedParts =
                         (activeQuotesByLine[ln.id] ?? []).length > 0;

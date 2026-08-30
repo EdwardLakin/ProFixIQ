@@ -14,6 +14,10 @@ const technicianLabor = read(
   "features/work-orders/server/technicianJobLabor.ts",
 );
 const pauseRoute = read("app/api/work-orders/lines/[id]/pause/route.ts");
+const resumeRoute = read("app/api/work-orders/lines/[id]/resume/route.ts");
+const completeWorkOrderLine = read(
+  "features/work-orders/server/completeWorkOrderLine.ts",
+);
 const punchClient = read(
   "features/work-orders/lib/jobPunchTransitionsClient.ts",
 );
@@ -385,7 +389,9 @@ describe("assigned technician punch shop resolution", () => {
     expect(punchTransition).toContain(
       "partsQuoteHoldRequested\n        ? !capabilities.canManageWorkOrders",
     );
-    expect(punchTransition).toContain("if (!partsQuoteHoldRequested)");
+    expect(punchTransition).toContain(
+      "!partsQuoteHoldRequested && options?.enforceAssignedWork === true",
+    );
     expect(mobileWorkOrder).toContain(
       "const canSendToParts = currentActor.canManageWorkOrders",
     );
@@ -398,9 +404,25 @@ describe("assigned technician punch shop resolution", () => {
     expect(mobileWorkOrder).toContain(
       "partsHoldOperationKeysRef.current.delete(lineId)",
     );
+    expect(mobileWorkOrder).toContain("partsQuoteEligiblePending");
+    expect(mobileWorkOrder).toContain("!isCanonicalPartsQuoteHold(line)");
     expect(staffDecisionMigration).toContain(
       "PARTS_QUOTE_HOLD_BUSY: line state is changing; retry the hold.",
     );
+    expect(staffDecisionMigration).toContain(
+      "A voided or terminal line cannot be sent to parts.",
+    );
+    expect(staffDecisionMigration).toContain("for share nowait");
+    expect(staffDecisionMigration).toContain(
+      "actor capability changed before the hold",
+    );
+  });
+
+  it("isolates assigned-work hardening from the shared completion contract", () => {
+    expect(punchTransition).toContain("enforceAssignedWork?: boolean");
+    expect(technicianLabor.match(/enforceAssignedWork: true/g)).toHaveLength(2);
+    expect(resumeRoute).toContain("enforceAssignedWork: true");
+    expect(completeWorkOrderLine).not.toContain("enforceAssignedWork");
   });
 
   it("binds ordinary punch requests to the authenticated technician", () => {

@@ -109,6 +109,7 @@ export async function startTechnicianJobLabor(params: {
     technicianId: params.technicianId,
     options: {
       operationKey,
+      enforceAssignedWork: true,
       allowConcurrentJobPunches: params.allowConcurrentJobPunches === true,
       nowIso: params.startedAtIso,
       startSource:
@@ -152,6 +153,7 @@ export async function stopTechnicianJobLabor(params: {
     technicianId: params.technicianId,
     options: {
       operationKey,
+      enforceAssignedWork: true,
       nowIso: params.endedAtIso,
       pause: {
         holdReason: params.reason,
