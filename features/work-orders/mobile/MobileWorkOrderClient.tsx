@@ -29,14 +29,12 @@ import MobileFocusedJob from "@/features/work-orders/mobile/MobileFocusedJob";
 import { registerMobileWorkflowDock } from "@/features/copilot/technician/client/mobileWorkflowDock";
 import AskAssistantEntry from "@/features/assistant/components/AskAssistantEntry";
 import {
-  createJobPunchOperationKey,
   runJobPunchTransition,
 } from "@/features/work-orders/lib/jobPunchTransitionsClient";
 import {
-  getQueuedPartsQuoteHoldIdentity,
+  createPreLaborPartsQuoteHoldOperationKey,
   hasActivePartsWaitingSignal,
   isCanonicalPreLaborPartsQuoteHold as isCanonicalPartsQuoteHold,
-  type OfflineMutationIdentitySource,
 } from "@/features/work-orders/lib/preLaborPartsQuoteHold";
 import { isReviewableQuoteLine } from "@/features/work-orders/lib/quotes/reviewableQuoteLines";
 import { resolveWorkOrderLinePricing } from "@/features/work-orders/lib/pricing/resolveWorkOrderLinePricing";
@@ -344,45 +342,6 @@ export default function MobileWorkOrderClient({
     getOfflineSyncSummary(),
   );
 
-  const hydrateQueuedPartsHoldIdentity = useCallback(
-    (mutations: readonly OfflineMutationIdentitySource[] = []) => {
-    if (!currentUserId || !shopId || lines.length === 0) return;
-
-    const currentLineIds = new Set(lines.map((line) => line.id));
-    let changed = false;
-    for (const mutation of mutations) {
-      const identity = getQueuedPartsQuoteHoldIdentity(mutation);
-      if (
-        !identity ||
-        mutation.userId !== currentUserId ||
-        mutation.shopId !== shopId ||
-        !currentLineIds.has(identity.lineId)
-      )
-        continue;
-
-      if (
-        partsHoldOperationKeysRef.current.get(identity.lineId) !==
-        identity.operationKey
-      ) {
-        partsHoldOperationKeysRef.current.set(
-          identity.lineId,
-          identity.operationKey,
-        );
-        changed = true;
-      }
-      if (!partsHoldPendingRef.current.has(identity.lineId)) {
-        partsHoldPendingRef.current.add(identity.lineId);
-        changed = true;
-      }
-    }
-
-    if (changed) {
-      setPendingPartsHoldLineIds(new Set(partsHoldPendingRef.current));
-    }
-    },
-    [currentUserId, lines, shopId],
-  );
-
   // mobile focused job view
   const [focusedJobId, setFocusedJobId] = useState<string | null>(null);
   const [focusedOpen, setFocusedOpen] = useState(false);
@@ -509,20 +468,9 @@ export default function MobileWorkOrderClient({
   }, [routeId, setCurrentUserId, setUserId, setShopId]);
 
   useEffect(() => {
-    let mounted = true;
-    const refresh = (
-      pendingMutations: readonly OfflineMutationIdentitySource[] = [],
-    ) => {
-      if (!mounted) return;
-      setOfflineSummary(getOfflineSyncSummary());
-      hydrateQueuedPartsHoldIdentity(pendingMutations);
-    };
-    const unsubscribe = subscribeOfflineMutations(refresh);
-    return () => {
-      mounted = false;
-      unsubscribe();
-    };
-  }, [hydrateQueuedPartsHoldIdentity]);
+    const refresh = () => setOfflineSummary(getOfflineSyncSummary());
+    return subscribeOfflineMutations(refresh);
+  }, []);
 
   /* ---------------------- FETCH ---------------------- */
   const fetchAll = useCallback(
@@ -1452,9 +1400,16 @@ export default function MobileWorkOrderClient({
     async (lineId: string): Promise<boolean> => {
       if (!lineId || partsHoldPendingRef.current.has(lineId)) return false;
 
+      const lineState = approvalPending.find((line) => line.id === lineId);
       const operationKey =
         partsHoldOperationKeysRef.current.get(lineId) ??
-        createJobPunchOperationKey(lineId, "pause");
+        (lineState
+          ? createPreLaborPartsQuoteHoldOperationKey(lineState)
+          : null);
+      if (!operationKey) {
+        toast.error("Refresh this line before sending it to parts.");
+        return false;
+      }
       partsHoldOperationKeysRef.current.set(lineId, operationKey);
       partsHoldPendingRef.current.add(lineId);
       partsHoldInFlightRef.current.add(lineId);
@@ -1490,7 +1445,7 @@ export default function MobileWorkOrderClient({
         setPartsHoldLineIdsInFlight(new Set(partsHoldInFlightRef.current));
       }
     },
-    [fetchAll],
+    [approvalPending, fetchAll],
   );
 
   const sendToParts = useCallback(

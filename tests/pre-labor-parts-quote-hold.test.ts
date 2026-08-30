@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
-  getQueuedPartsQuoteHoldIdentity,
+  createPreLaborPartsQuoteHoldOperationKey,
   hasActivePartsWaitingSignal,
   isCanonicalPreLaborPartsQuoteHold,
 } from "@/features/work-orders/lib/preLaborPartsQuoteHold";
@@ -42,48 +42,40 @@ describe("pre-labor parts quote hold identity", () => {
     ).toBe(true);
   });
 
-  it("recovers the original operation key only from the matching durable queue entry", () => {
-    const payload = {
-      lineId: "line-1",
-      action: "pause",
-      operationKey: "parts-key-1",
-      body: {
-        transitionIntent: "parts_quote_hold",
-        operationKey: "parts-key-1",
-      },
+  it("derives one operation key per durable line-state version", () => {
+    const line = {
+      id: "line-1",
+      created_at: "2026-08-30T10:00:00.000Z",
+      updated_at: "2026-08-30T11:00:00.000Z",
     };
 
+    expect(createPreLaborPartsQuoteHoldOperationKey(line)).toBe(
+      createPreLaborPartsQuoteHoldOperationKey({ ...line }),
+    );
     expect(
-      getQueuedPartsQuoteHoldIdentity({
-        actionType: "job:punch-transition",
-        clientMutationId: "pre_labor_parts_quote_hold:parts-key-1",
-        payload,
+      createPreLaborPartsQuoteHoldOperationKey({
+        ...line,
+        updated_at: "2026-08-30T12:00:00.000Z",
       }),
-    ).toEqual({ lineId: "line-1", operationKey: "parts-key-1" });
+    ).not.toBe(createPreLaborPartsQuoteHoldOperationKey(line));
     expect(
-      getQueuedPartsQuoteHoldIdentity({
-        actionType: "job:punch-transition",
-        clientMutationId: "job_punch:pause:parts-key-1",
-        payload,
-      }),
+      createPreLaborPartsQuoteHoldOperationKey({ id: "line-1" }),
     ).toBeNull();
   });
 
-  it("hydrates the component refs from the scoped pending queue after remount", () => {
+  it("reuses the durable line-state key after remount", () => {
     const mobileClient = readFileSync(
       "features/work-orders/mobile/MobileWorkOrderClient.tsx",
       "utf8",
     );
 
-    expect(mobileClient).toContain("subscribeOfflineMutations(refresh)");
     expect(mobileClient).toContain(
-      "hydrateQueuedPartsHoldIdentity(pendingMutations)",
+      "createPreLaborPartsQuoteHoldOperationKey(lineState)",
     );
-    expect(mobileClient).toContain("getQueuedPartsQuoteHoldIdentity(mutation)");
     expect(mobileClient).toContain(
       "partsHoldOperationKeysRef.current.set(",
     );
-    expect(mobileClient).toContain("partsHoldPendingRef.current.add(");
+    expect(mobileClient).toContain("[approvalPending, fetchAll]");
   });
 
   it("rejects legacy punch mirrors and labor statuses at both SQL boundaries", () => {
@@ -105,5 +97,9 @@ describe("pre-labor parts quote hold identity", () => {
       expect(boundary).toContain("v_line.punched_out_at is not null");
       expect(boundary).toMatch(/'active', 'in_progress'/);
     }
+    expect(partsBoundary).toContain(
+      "coalesce(v_line.line_type::text, 'job') = 'info'",
+    );
+    expect(partsBoundary).toContain("Info lines are non-actionable.");
   });
 });

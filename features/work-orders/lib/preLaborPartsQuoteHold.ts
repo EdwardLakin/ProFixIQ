@@ -6,57 +6,24 @@ type PartsWaitingLineState = {
   status?: unknown;
 };
 
-export type OfflineMutationIdentitySource = {
-  actionType: unknown;
-  clientMutationId: unknown;
-  payload: unknown;
-  shopId?: unknown;
-  userId?: unknown;
-};
-
-export type QueuedPartsQuoteHoldIdentity = {
-  lineId: string;
-  operationKey: string;
+type PartsQuoteHoldVersionSource = {
+  created_at?: unknown;
+  id?: unknown;
+  updated_at?: unknown;
 };
 
 function normalize(value: unknown): string {
   return String(value ?? "").trim().toLowerCase();
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
+export function createPreLaborPartsQuoteHoldOperationKey(
+  line: PartsQuoteHoldVersionSource,
+): string | null {
+  const lineId = String(line.id ?? "").trim();
+  const stateVersion = String(line.updated_at ?? line.created_at ?? "").trim();
+  if (!lineId || !stateVersion) return null;
 
-export function getQueuedPartsQuoteHoldIdentity(
-  mutation: OfflineMutationIdentitySource,
-): QueuedPartsQuoteHoldIdentity | null {
-  if (mutation.actionType !== "job:punch-transition") return null;
-  if (!isRecord(mutation.payload)) return null;
-
-  const lineId =
-    typeof mutation.payload.lineId === "string"
-      ? mutation.payload.lineId.trim()
-      : "";
-  const operationKey =
-    typeof mutation.payload.operationKey === "string"
-      ? mutation.payload.operationKey.trim()
-      : "";
-  const action = mutation.payload.action;
-  const body = mutation.payload.body;
-
-  if (
-    !lineId ||
-    !operationKey ||
-    action !== "pause" ||
-    !isRecord(body) ||
-    body.transitionIntent !== "parts_quote_hold" ||
-    mutation.clientMutationId !==
-      `pre_labor_parts_quote_hold:${operationKey}`
-  ) {
-    return null;
-  }
-
-  return { lineId, operationKey };
+  return `pre-labor-parts-quote-hold:${lineId}:${encodeURIComponent(stateVersion)}`;
 }
 
 /**

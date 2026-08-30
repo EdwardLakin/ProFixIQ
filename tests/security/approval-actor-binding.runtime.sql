@@ -428,6 +428,18 @@ values
     'ab250000-0000-4000-8000-000000000001',
     'aa250000-0000-4000-8000-000000000001',
     'medium'
+  ),
+  (
+    'af250000-0000-4000-8000-000000000019',
+    'ae250000-0000-4000-8000-000000000001',
+    'Informational parts hold rejection target',
+    'awaiting_approval',
+    'pending',
+    'pending',
+    'repair',
+    'ab250000-0000-4000-8000-000000000001',
+    'aa250000-0000-4000-8000-000000000001',
+    'medium'
   );
 
 update public.work_order_lines
@@ -437,6 +449,10 @@ where id in (
   'af250000-0000-4000-8000-000000000014',
   'af250000-0000-4000-8000-000000000015'
 );
+
+update public.work_order_lines
+set line_type = 'info'
+where id = 'af250000-0000-4000-8000-000000000019';
 
 insert into public.work_order_quote_lines (
   id, shop_id, work_order_id, work_order_line_id, description,
@@ -887,6 +903,26 @@ begin
   end if;
 end;
 $legacy_punch_mirror_pre_labor_denials$;
+
+do $informational_atomic_parts_hold_denial$
+declare
+  v_denied boolean := false;
+begin
+  begin
+    perform public.apply_pre_labor_parts_quote_hold_atomic(
+      'ab250000-0000-4000-8000-000000000001',
+      'af250000-0000-4000-8000-000000000019',
+      'aa250000-0000-4000-8000-000000000001',
+      'approval-binding:parts-hold:informational-line'
+    );
+  exception when others then
+    v_denied := sqlerrm = 'Info lines are non-actionable.';
+  end;
+  if not v_denied then
+    raise exception 'Atomic parts hold accepted an informational line';
+  end if;
+end;
+$informational_atomic_parts_hold_denial$;
 
 do $terminal_atomic_parts_hold_denial$
 declare

@@ -958,6 +958,9 @@ begin
 
   -- The line lock serializes against start/resume, and the segment lock set
   -- makes durable labor evidence part of this same eligibility decision.
+  if coalesce(v_line.line_type::text, 'job') = 'info' then
+    raise exception using errcode = 'P0001', message = 'Info lines are non-actionable.';
+  end if;
   if exists (
     select 1 from public.work_order_line_labor_segments segment
     where segment.shop_id = p_shop_id
