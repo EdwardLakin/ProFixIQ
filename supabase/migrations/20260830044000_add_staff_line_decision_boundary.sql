@@ -359,7 +359,11 @@ begin
         line_status = 'declined',
         approval_at = v_now,
         approval_by = v_profile_id,
-        hold_reason = coalesce(nullif(trim(hold_reason), ''), 'Customer declined'),
+        hold_reason = case
+          when lower(trim(coalesce(hold_reason, ''))) = 'awaiting parts quote'
+            then 'Customer declined'
+          else coalesce(nullif(trim(hold_reason), ''), 'Customer declined')
+        end,
         updated_at = v_now
     where id = p_line_id
       and shop_id = p_shop_id

@@ -633,6 +633,7 @@ declare
   v_audit_action text;
   v_audit_at timestamptz;
   v_parts_receipt_count integer;
+  v_decline_result jsonb;
 begin
   -- A browser may reuse the same stable key for an ordinary pause and the
   -- explicit pre-labor parts intent. The parts adapter must not replay the
@@ -694,6 +695,24 @@ begin
     raise exception 'Atomic pre-labor parts hold failed: %, %, %, %, %, %, %',
       v_result, v_status, v_hold_reason, v_updated_at, v_audit_action, v_audit_at,
       v_parts_receipt_count;
+  end if;
+
+  v_decline_result := public.apply_staff_line_decision_atomic(
+    'ab250000-0000-4000-8000-000000000001',
+    'ae250000-0000-4000-8000-000000000001',
+    'af250000-0000-4000-8000-000000000010',
+    'aa250000-0000-4000-8000-000000000001',
+    'decline',
+    'approval-binding:staff-adapter:parts-hold-decline'
+  );
+  select hold_reason into v_hold_reason
+  from public.work_order_lines
+  where id = 'af250000-0000-4000-8000-000000000010';
+
+  if (v_decline_result ->> 'ok')::boolean is distinct from true
+     or v_hold_reason is distinct from 'Customer declined' then
+    raise exception 'Staff decline preserved stale parts state: %, %',
+      v_decline_result, v_hold_reason;
   end if;
 end;
 $authorized_atomic_parts_hold$;
@@ -1151,7 +1170,7 @@ begin
     where operation.shop_id = 'ab250000-0000-4000-8000-000000000001'
       and operation.operation_name = 'approval_compatibility_bundle'
       and operation.operation_key like 'approval-binding:%'
-  ) <> 5 then
+  ) <> 6 then
     raise exception 'Compatibility approval denial changed durable receipt history';
   end if;
 

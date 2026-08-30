@@ -353,6 +353,12 @@ describe("assigned technician punch shop resolution", () => {
       mobileWorkOrder.match(/transitionIntent: "parts_quote_hold"/g),
     ).toHaveLength(1);
     expect(punchClient).toContain('transitionIntent?: "parts_quote_hold"');
+    expect(punchClient).toContain(
+      'const clientMutationId = `${offlineMutationNamespace}:${operationKey}`',
+    );
+    expect(punchClient).toContain(
+      'body?.transitionIntent === "parts_quote_hold"\n      ? "pre_labor_parts_quote_hold"',
+    );
     expect(pauseRoute).toContain("transitionIntent: body?.transitionIntent");
     expect(technicianLabor).toContain(
       "transitionIntent: params.transitionIntent",
@@ -459,6 +465,9 @@ describe("assigned technician punch shop resolution", () => {
       "v_now timestamptz := clock_timestamp()",
     );
     expect(staffDecisionMigration).toContain("'parts_quote_hold',");
+    expect(staffDecisionMigration).toContain(
+      "when lower(trim(coalesce(hold_reason, ''))) = 'awaiting parts quote'\n            then 'Customer declined'",
+    );
     expect(punchTransition).not.toContain(
       "p_at: options?.nowIso ?? new Date().toISOString(),\n        p_hold_reason",
     );

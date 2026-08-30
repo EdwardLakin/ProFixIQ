@@ -4,9 +4,22 @@ import {
   runJobPunchTransition,
 } from "@/features/work-orders/lib/jobPunchTransitionsClient";
 
+const offlineMocks = vi.hoisted(() => ({
+  getSessionMatchedOfflineScope: vi.fn(),
+  runMutationWithOfflineQueue: vi.fn(),
+}));
+
+vi.mock("@/features/shared/lib/offline/mutations", () => ({
+  getSessionMatchedOfflineScope: offlineMocks.getSessionMatchedOfflineScope,
+  runMutationWithOfflineQueue: offlineMocks.runMutationWithOfflineQueue,
+}));
+
 describe("Phase 6 job punch client", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    offlineMocks.getSessionMatchedOfflineScope.mockReset();
+    offlineMocks.getSessionMatchedOfflineScope.mockResolvedValue(null);
+    offlineMocks.runMutationWithOfflineQueue.mockReset();
   });
 
   it("sends one stable operation key in the header and body", async () => {
@@ -41,6 +54,53 @@ describe("Phase 6 job punch client", () => {
     expect(first).toContain("job-punch:line-1:start:");
     expect(second).toContain("job-punch:line-1:start:");
     expect(first).not.toBe(second);
+  });
+
+  it("namespaces offline identities by transition intent without changing the server key", async () => {
+    offlineMocks.getSessionMatchedOfflineScope.mockResolvedValue({
+      userId: "tech-1",
+      shopId: "shop-1",
+    });
+    offlineMocks.runMutationWithOfflineQueue.mockResolvedValue({
+      queued: true,
+      conflicted: false,
+    });
+
+    await runJobPunchTransition(
+      "line-1",
+      "pause",
+      { holdReason: "Waiting for parts" },
+      { operationKey: "reused-pause-key" },
+    );
+    await runJobPunchTransition(
+      "line-1",
+      "pause",
+      {
+        holdReason: "Awaiting parts quote",
+        transitionIntent: "parts_quote_hold",
+      },
+      { operationKey: "reused-pause-key" },
+    );
+
+    expect(offlineMocks.runMutationWithOfflineQueue).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        clientMutationId: "job_punch:pause:reused-pause-key",
+        payload: expect.objectContaining({
+          operationKey: "reused-pause-key",
+        }),
+      }),
+    );
+    expect(offlineMocks.runMutationWithOfflineQueue).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        clientMutationId:
+          "pre_labor_parts_quote_hold:reused-pause-key",
+        payload: expect.objectContaining({
+          operationKey: "reused-pause-key",
+        }),
+      }),
+    );
   });
 
   it("surfaces the server error instead of hiding a permanent rejection", async () => {
