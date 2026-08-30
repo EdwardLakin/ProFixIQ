@@ -1,6 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@shared/types/types/supabase";
+import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import { resolveAuthenticatedStaffProfile } from "@/features/shared/lib/server/admin-access";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 type DB = Database;
 
@@ -23,6 +25,12 @@ type ResumeOptions = {
   toAwaiting?: boolean;
 };
 
+type TrustedActorContext = {
+  authUserId: string;
+  profileId: string;
+  shopId: string;
+};
+
 type TransitionOptions = {
   operationKey?: string;
   allowConcurrentJobPunches?: boolean;
@@ -31,6 +39,13 @@ type TransitionOptions = {
   pause?: PauseOptions;
   resume?: ResumeOptions;
   finish?: FinishOptions;
+  /**
+   * For already-authorized server workflows that intentionally use a
+   * service-role Supabase client (for example break/lunch auto-resume). The
+   * caller must provide the actor identity it already established at its API
+   * boundary. Ordinary browser/API punch routes never set this.
+   */
+  trustedActor?: TrustedActorContext;
 };
 
 type ApplyJobPunchTransitionParams = {
@@ -62,7 +77,12 @@ function cleanString(value: unknown): string | null {
 function errorStatus(message: string): number {
   const normalized = message.toLowerCase();
   if (normalized.includes("not found")) return 404;
-  if (normalized.includes("actor") || normalized.includes("technician is not available")) {
+  if (
+    normalized.includes("actor") ||
+    normalized.includes("technician is not available") ||
+    normalized.includes("not assigned") ||
+    normalized.includes("not permitted")
+  ) {
     return 403;
   }
   if (normalized.includes("inspection_completion_required")) return 409;
@@ -95,35 +115,62 @@ export async function applyJobPunchTransition({
     };
   }
 
-  // Do not discover the line's shop through the caller's RLS-scoped
-  // work_order_lines SELECT. Mechanics and Lead Hands are intentionally denied
-  // the financial-capability read policy on that base table, so that pre-read
-  // 404'd before the canonical punch RPC could apply its own authorization.
-  // Resolve the authenticated staff profile instead and let the atomic RPC
-  // validate the line against that shop under its existing row locks.
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
-  if (authError || !user) {
-    return { ok: false, status: 401, error: authError?.message ?? "Unauthorized" };
+  let shopId: string;
+  let actorUserId: string;
+  let actorProfileId: string;
+
+  if (options?.trustedActor) {
+    shopId = options.trustedActor.shopId;
+    actorUserId = options.trustedActor.authUserId;
+    actorProfileId = options.trustedActor.profileId;
+  } else {
+    // Do not discover the line's shop through the caller's RLS-scoped
+    // work_order_lines SELECT. Mechanics and Lead Hands are intentionally denied
+    // the financial-capability read policy on that base table, so that pre-read
+    // 404'd before the canonical punch RPC could apply its own authorization.
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return {
+        ok: false,
+        status: 401,
+        error: authError?.message ?? "Unauthorized",
+      };
+    }
+
+    const { profile, error: profileError } = await resolveAuthenticatedStaffProfile(
+      supabase,
+      user.id,
+    );
+    if (profileError) return { ok: false, status: 403, error: profileError };
+    if (!profile?.shop_id) {
+      return {
+        ok: false,
+        status: 403,
+        error: "Staff profile is not linked to a shop.",
+      };
+    }
+
+    const capabilities = getActorCapabilities({ role: profile.role });
+    if (!capabilities.canPerformAssignedWork) {
+      return {
+        ok: false,
+        status: 403,
+        error: "This staff role is not permitted to perform assigned work.",
+      };
+    }
+
+    shopId = profile.shop_id;
+    actorUserId = user.id;
+    actorProfileId = profile.id;
   }
 
-  const { profile, error: profileError } = await resolveAuthenticatedStaffProfile(
-    supabase,
-    user.id,
-  );
-  if (profileError) return { ok: false, status: 403, error: profileError };
-  if (!profile?.shop_id) {
-    return { ok: false, status: 403, error: "Staff profile is not linked to a shop." };
-  }
-
-  // API callers pass the authenticated auth-user id. Keep profile.id accepted
-  // for internal callers because the canonical RPC itself resolves either
-  // profile or auth identity inside the same shop.
-  const technicianMatchesSession =
-    technicianId === user.id || technicianId === profile.id;
-  if (!technicianMatchesSession) {
+  if (
+    technicianId !== actorUserId &&
+    technicianId !== actorProfileId
+  ) {
     return {
       ok: false,
       status: 403,
@@ -131,15 +178,77 @@ export async function applyJobPunchTransition({
     };
   }
 
+  // Resource ownership is checked with the trusted server client so technician
+  // access is not coupled to financial SELECT capability. The canonical RPC
+  // remains responsible for mutation locking and state transitions.
+  const admin = createAdminSupabase();
+  const { data: line, error: lineError } = await admin
+    .from("work_order_lines")
+    .select("id,shop_id,assigned_tech_id")
+    .eq("id", lineId)
+    .eq("shop_id", shopId)
+    .maybeSingle<{
+      id: string;
+      shop_id: string | null;
+      assigned_tech_id: string | null;
+    }>();
+  if (lineError) return { ok: false, status: 400, error: lineError.message };
+  if (!line) {
+    return { ok: false, status: 404, error: "Work-order line not found for shop." };
+  }
+
+  const { data: additionalAssignment, error: assignmentError } = await admin
+    .from("work_order_line_technicians")
+    .select("id")
+    .eq("work_order_line_id", lineId)
+    .eq("technician_id", actorProfileId)
+    .limit(1)
+    .maybeSingle<{ id: string }>();
+  if (assignmentError) {
+    return { ok: false, status: 400, error: assignmentError.message };
+  }
+
+  const isAssigned =
+    line.assigned_tech_id === actorProfileId || Boolean(additionalAssignment);
+  if (!isAssigned) {
+    return {
+      ok: false,
+      status: 403,
+      error: "Technician is not assigned to this work-order line.",
+    };
+  }
+
+  if (action === "pause") {
+    const { data: activeSegment, error: segmentError } = await admin
+      .from("work_order_line_labor_segments")
+      .select("id")
+      .eq("shop_id", shopId)
+      .eq("work_order_line_id", lineId)
+      .eq("technician_id", actorProfileId)
+      .is("ended_at", null)
+      .limit(1)
+      .maybeSingle<{ id: string }>();
+    if (segmentError) {
+      return { ok: false, status: 400, error: segmentError.message };
+    }
+    if (!activeSegment) {
+      return {
+        ok: false,
+        status: 409,
+        error: "Technician has no active labor segment on this line to pause.",
+      };
+    }
+  }
+
   const details = (options?.pause?.details ?? {}) as Json;
   const rpc = supabase as unknown as RpcClient;
   const { data, error } = await rpc.rpc("apply_job_punch_transition_atomic", {
-    p_shop_id: profile.shop_id,
+    p_shop_id: shopId,
     p_work_order_line_id: lineId,
     p_action: action,
     p_technician_id: technicianId,
-    p_actor_user_id: user.id,
-    p_operation_key: `${profile.shop_id}:job-punch:${operationKey}`,
+    p_actor_user_id: actorUserId,
+    p_operation_key: `${shopId}:job-punch:${operationKey}`,
     p_allow_concurrent: options?.allowConcurrentJobPunches === true,
     p_at: options?.nowIso ?? new Date().toISOString(),
     p_start_source: cleanString(options?.startSource),
