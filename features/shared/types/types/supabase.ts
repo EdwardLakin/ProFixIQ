@@ -27601,6 +27601,20 @@ export type Database = {
         }
         Returns: Json
       }
+      apply_pre_labor_parts_quote_hold_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_at?: string
+          p_details?: Json
+          p_event?: string
+          p_hold_reason?: string
+          p_notes?: string
+          p_operation_key: string
+          p_shop_id: string
+          p_work_order_line_id: string
+        }
+        Returns: Json
+      }
       apply_punch_correction: {
         Args: {
           p_actor_profile_id: string
@@ -31520,4 +31534,3 @@ export const Constants = {
     },
   },
 } as const
-

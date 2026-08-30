@@ -161,7 +161,7 @@ describe("staff approval decision routing", () => {
       'rpc.rpc("apply_staff_line_decision_atomic"',
     );
     expect(approvalRoute).toContain("p_line_id: lineId");
-    expect(approvalRoute).toContain("p_actor_user_id: actor.profileId");
+    expect(approvalRoute).toContain("p_actor_user_id: actor.userId");
     expect(approvalRoute).toContain(
       'p_operation_key: `${actor.shopId}:staff-line-decision:${key}`',
     );
@@ -289,6 +289,12 @@ describe("staff approval decision routing", () => {
     expect(staffDecisionMigration).not.toContain(
       "public.apply_approval_compatibility_bundle_atomic(",
     );
+    expect(staffDecisionMigration).toContain(
+      "quote_line.metadata #> '{parts_quote,pricing_sanitization,customer_pricing_quarantined}'",
+    );
+    expect(staffDecisionMigration).toContain(
+      "v_existing_actor_user_id is distinct from v_actor_auth_user_id",
+    );
   });
 
   it("keeps pure portal customers on the portal decision contract", () => {
@@ -335,6 +341,38 @@ describe("assigned technician punch shop resolution", () => {
     );
     expect(punchTransition).toContain(
       "A line with recorded labor cannot be sent to parts as pre-labor work.",
+    );
+    expect(punchTransition).toContain(
+      'rpc.rpc("apply_pre_labor_parts_quote_hold_atomic"',
+    );
+    expect(staffDecisionMigration).toContain(
+      "create or replace function public.apply_pre_labor_parts_quote_hold_atomic",
+    );
+    const partsHoldBoundary = staffDecisionMigration.indexOf(
+      "create or replace function public.apply_pre_labor_parts_quote_hold_atomic",
+    );
+    const partsHoldLineLock = staffDecisionMigration.indexOf(
+      "from public.work_order_lines line",
+      partsHoldBoundary,
+    );
+    const partsHoldSegmentLock = staffDecisionMigration.indexOf(
+      "from public.work_order_line_labor_segments segment",
+      partsHoldLineLock,
+    );
+    const partsHoldLaborAssertion = staffDecisionMigration.indexOf(
+      "A line with recorded labor cannot be sent to parts as pre-labor work.",
+      partsHoldSegmentLock,
+    );
+    const partsHoldMutation = staffDecisionMigration.indexOf(
+      "update public.work_order_lines",
+      partsHoldLaborAssertion,
+    );
+    expect(partsHoldLineLock).toBeGreaterThan(partsHoldBoundary);
+    expect(partsHoldSegmentLock).toBeGreaterThan(partsHoldLineLock);
+    expect(partsHoldLaborAssertion).toBeGreaterThan(partsHoldSegmentLock);
+    expect(partsHoldMutation).toBeGreaterThan(partsHoldLaborAssertion);
+    expect(generatedTypes).toContain(
+      "apply_pre_labor_parts_quote_hold_atomic: {",
     );
     expect(punchTransition).toContain(
       "partsQuoteHoldRequested\n        ? !capabilities.canManageWorkOrders",

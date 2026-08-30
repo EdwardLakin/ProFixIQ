@@ -280,7 +280,64 @@ values
     'ab250000-0000-4000-8000-000000000001',
     'aa250000-0000-4000-8000-000000000007',
     'medium'
+  ),
+  (
+    'af250000-0000-4000-8000-000000000008',
+    'ae250000-0000-4000-8000-000000000001',
+    'Quarantined staff adapter target',
+    'awaiting_approval',
+    'pending',
+    'pending',
+    'repair',
+    'ab250000-0000-4000-8000-000000000001',
+    'aa250000-0000-4000-8000-000000000001',
+    'medium'
+  ),
+  (
+    'af250000-0000-4000-8000-000000000009',
+    'ae250000-0000-4000-8000-000000000001',
+    'Imported identity split staff adapter target',
+    'awaiting_approval',
+    'pending',
+    'pending',
+    'repair',
+    'ab250000-0000-4000-8000-000000000001',
+    'aa250000-0000-4000-8000-000000000005',
+    'medium'
+  ),
+  (
+    'af250000-0000-4000-8000-000000000010',
+    'ae250000-0000-4000-8000-000000000001',
+    'Atomic pre-labor parts hold target',
+    'awaiting_approval',
+    'pending',
+    'pending',
+    'repair',
+    'ab250000-0000-4000-8000-000000000001',
+    'aa250000-0000-4000-8000-000000000001',
+    'medium'
   );
+
+insert into public.work_order_quote_lines (
+  id, shop_id, work_order_id, work_order_line_id, description,
+  job_type, status, stage, metadata
+) values (
+  'b1250000-0000-4000-8000-000000000001',
+  'ab250000-0000-4000-8000-000000000001',
+  'ae250000-0000-4000-8000-000000000001',
+  'af250000-0000-4000-8000-000000000008',
+  'Protected customer pricing',
+  'repair',
+  'sent',
+  'sent',
+  jsonb_build_object(
+    'parts_quote', jsonb_build_object(
+      'pricing_sanitization', jsonb_build_object(
+        'customer_pricing_quarantined', true
+      )
+    )
+  )
+);
 
 insert into public.work_order_line_labor_segments (
   id,
@@ -391,6 +448,61 @@ begin
 end;
 $authorized_imported_staff_decision$;
 
+do $imported_staff_adapter_identity_split$
+declare
+  v_result jsonb;
+  v_line_approver uuid;
+  v_receipt_actor uuid;
+begin
+  v_result := public.apply_staff_line_decision_atomic(
+    'ab250000-0000-4000-8000-000000000001',
+    'ae250000-0000-4000-8000-000000000001',
+    'af250000-0000-4000-8000-000000000009',
+    'aa250000-0000-4000-8000-000000000004',
+    'approve',
+    'approval-binding:staff-adapter:imported-identity'
+  );
+
+  select approval_by into v_line_approver
+  from public.work_order_lines
+  where id = 'af250000-0000-4000-8000-000000000009';
+  select actor_user_id into v_receipt_actor
+  from public.quote_lifecycle_operation_keys
+  where shop_id = 'ab250000-0000-4000-8000-000000000001'
+    and operation_name = 'approval_compatibility_bundle'
+    and operation_key = 'approval-binding:staff-adapter:imported-identity';
+
+  if (v_result ->> 'ok')::boolean is distinct from true
+     or v_line_approver is distinct from 'aa250000-0000-4000-8000-000000000005'::uuid
+     or v_receipt_actor is distinct from 'aa250000-0000-4000-8000-000000000004'::uuid then
+    raise exception 'Imported staff auth/profile attribution was not split: %, %, %',
+      v_result, v_line_approver, v_receipt_actor;
+  end if;
+end;
+$imported_staff_adapter_identity_split$;
+
+do $quarantined_staff_adapter_denial$
+declare
+  v_denied boolean := false;
+begin
+  begin
+    perform public.apply_staff_line_decision_atomic(
+      'ab250000-0000-4000-8000-000000000001',
+      'ae250000-0000-4000-8000-000000000001',
+      'af250000-0000-4000-8000-000000000008',
+      'aa250000-0000-4000-8000-000000000004',
+      'approve',
+      'approval-binding:staff-adapter:quarantined'
+    );
+  exception when others then
+    v_denied := sqlerrm like 'QUOTE_PRICING_QUARANTINED:%';
+  end;
+  if not v_denied then
+    raise exception 'Direct staff RPC approved a quarantined quote line';
+  end if;
+end;
+$quarantined_staff_adapter_denial$;
+
 select set_config(
   'request.jwt.claim.sub',
   'aa250000-0000-4000-8000-000000000001',
@@ -420,6 +532,31 @@ begin
   end if;
 end;
 $authorized_staff_adapter_decision$;
+
+do $authorized_atomic_parts_hold$
+declare
+  v_result jsonb;
+  v_status text;
+  v_hold_reason text;
+begin
+  v_result := public.apply_pre_labor_parts_quote_hold_atomic(
+    'ab250000-0000-4000-8000-000000000001',
+    'af250000-0000-4000-8000-000000000010',
+    'aa250000-0000-4000-8000-000000000001',
+    'ab250000-0000-4000-8000-000000000001:job-punch:approval-binding:parts-hold'
+  );
+  select status, hold_reason into v_status, v_hold_reason
+  from public.work_order_lines
+  where id = 'af250000-0000-4000-8000-000000000010';
+
+  if (v_result ->> 'ok')::boolean is distinct from true
+     or v_status is distinct from 'on_hold'
+     or v_hold_reason is distinct from 'Awaiting parts quote' then
+    raise exception 'Atomic pre-labor parts hold failed: %, %, %',
+      v_result, v_status, v_hold_reason;
+  end if;
+end;
+$authorized_atomic_parts_hold$;
 
 select set_config(
   'request.jwt.claim.sub',

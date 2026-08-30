@@ -25,7 +25,7 @@ type Body = {
 type StaffDecisionActor = {
   kind: "staff";
   shopId: string;
-  profileId: string;
+  userId: string;
 };
 
 type PortalDecisionActor = {
@@ -139,7 +139,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       actor = {
         kind: "staff",
         shopId: profile.shop_id,
-        profileId: profile.id,
+        userId: user.id,
       };
     } else {
       const portalActor = await requirePortalCustomerActor(supabase);
@@ -256,7 +256,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
             p_shop_id: actor.shopId,
             p_work_order_id: workOrderId,
             p_line_id: lineId,
-            p_actor_user_id: actor.profileId,
+            p_actor_user_id: actor.userId,
             p_decision: decision,
             p_operation_key: `${actor.shopId}:staff-line-decision:${key}`,
             p_at: new Date().toISOString(),

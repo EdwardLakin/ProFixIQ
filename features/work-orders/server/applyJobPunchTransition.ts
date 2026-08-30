@@ -387,26 +387,38 @@ export async function applyJobPunchTransition({
 
   const details = (options?.pause?.details ?? {}) as Json;
   const rpc = supabase as unknown as RpcClient;
-  const { data, error } = await rpc.rpc("apply_job_punch_transition_atomic", {
-    p_shop_id: shopId,
-    p_work_order_line_id: lineId,
-    p_action: action,
-    p_technician_id: technicianId,
-    p_actor_user_id: actorUserId,
-    p_operation_key: rpcOperationKey,
-    p_allow_concurrent: options?.allowConcurrentJobPunches === true,
-    p_at: options?.nowIso ?? new Date().toISOString(),
-    p_start_source: cleanString(options?.startSource),
-    p_hold_reason: cleanString(options?.pause?.holdReason),
-    p_notes: options?.pause?.notes ?? null,
-    p_preserve_line_status: options?.pause?.preserveLineStatus === true,
-    p_release_to_awaiting:
-      action === "resume" && options?.resume?.toAwaiting === true,
-    p_cause: cleanString(options?.finish?.cause),
-    p_correction: cleanString(options?.finish?.correction),
-    p_event: cleanString(options?.pause?.event),
-    p_details: details,
-  });
+  const { data, error } = partsQuoteHoldRequested
+    ? await rpc.rpc("apply_pre_labor_parts_quote_hold_atomic", {
+        p_shop_id: shopId,
+        p_work_order_line_id: lineId,
+        p_actor_user_id: actorUserId,
+        p_operation_key: rpcOperationKey,
+        p_at: options?.nowIso ?? new Date().toISOString(),
+        p_hold_reason: cleanString(options?.pause?.holdReason),
+        p_notes: options?.pause?.notes ?? null,
+        p_event: cleanString(options?.pause?.event),
+        p_details: details,
+      })
+    : await rpc.rpc("apply_job_punch_transition_atomic", {
+        p_shop_id: shopId,
+        p_work_order_line_id: lineId,
+        p_action: action,
+        p_technician_id: technicianId,
+        p_actor_user_id: actorUserId,
+        p_operation_key: rpcOperationKey,
+        p_allow_concurrent: options?.allowConcurrentJobPunches === true,
+        p_at: options?.nowIso ?? new Date().toISOString(),
+        p_start_source: cleanString(options?.startSource),
+        p_hold_reason: cleanString(options?.pause?.holdReason),
+        p_notes: options?.pause?.notes ?? null,
+        p_preserve_line_status: options?.pause?.preserveLineStatus === true,
+        p_release_to_awaiting:
+          action === "resume" && options?.resume?.toAwaiting === true,
+        p_cause: cleanString(options?.finish?.cause),
+        p_correction: cleanString(options?.finish?.correction),
+        p_event: cleanString(options?.pause?.event),
+        p_details: details,
+      });
 
   if (error) {
     const message = [error.message, error.details, error.hint]

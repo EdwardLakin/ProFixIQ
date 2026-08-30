@@ -332,9 +332,12 @@ describe("applyJobPunchTransition atomic boundary", () => {
 
     expect(result).toEqual({ ok: true, payload: { ok: true } });
     expect(db.rpcCalls).toHaveLength(1);
+    expect(db.rpcCalls[0]?.name).toBe(
+      "apply_pre_labor_parts_quote_hold_atomic",
+    );
     expect(db.rpcCalls[0]?.args).toEqual(
       expect.objectContaining({
-        p_action: "pause",
+        p_actor_user_id: "advisor-1",
         p_hold_reason: "Awaiting parts quote",
       }),
     );
