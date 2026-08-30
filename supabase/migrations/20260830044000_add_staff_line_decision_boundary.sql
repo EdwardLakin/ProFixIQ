@@ -1032,29 +1032,127 @@ begin
 end;
 $function$;
 
-create or replace function private.normalize_declined_parts_quote_hold_reason()
-returns trigger
+create or replace function public.apply_portal_parts_hold_line_decline_atomic(
+  p_shop_id uuid,
+  p_customer_id uuid,
+  p_work_order_id uuid,
+  p_line_id uuid,
+  p_actor_user_id uuid,
+  p_operation_key text,
+  p_at timestamptz default now()
+) returns jsonb
 language plpgsql
-set search_path = pg_catalog
+security definer
+set search_path = public
 as $function$
+declare
+  v_customer_user_id uuid;
+  v_receipt_actor_user_id uuid;
+  v_receipt_customer_id uuid;
+  v_receipt_shop_id uuid;
+  v_result jsonb;
 begin
-  if lower(coalesce(new.approval_state::text, '')) = 'declined'
-     and lower(trim(coalesce(new.hold_reason, ''))) = 'awaiting parts quote'
+  if coalesce(auth.role(), '') <> 'service_role'
+     and not public.scheduler_actor_matches(p_actor_user_id)
   then
-    new.hold_reason := 'Customer declined';
+    raise exception using
+      errcode = '42501',
+      message = 'PORTAL_LINE_DECISION_FORBIDDEN: authenticated actor mismatch.';
   end if;
-  return new;
+
+  select customer.user_id into v_customer_user_id
+  from public.customers customer
+  where customer.id = p_customer_id
+    and customer.shop_id = p_shop_id
+  for update;
+  if not found or v_customer_user_id is distinct from p_actor_user_id then
+    raise exception using
+      errcode = '42501',
+      message = 'PORTAL_LINE_DECISION_FORBIDDEN: portal customer actor mismatch.';
+  end if;
+
+  perform 1
+  from public.work_orders work_order
+  where work_order.id = p_work_order_id
+    and work_order.shop_id = p_shop_id
+    and work_order.customer_id = p_customer_id
+  for update;
+  if not found then
+    raise exception using
+      errcode = '42501',
+      message = 'PORTAL_LINE_DECISION_FORBIDDEN: work order is not owned by this portal customer.';
+  end if;
+
+  perform 1
+  from public.work_order_lines line
+  where line.id = p_line_id
+    and line.work_order_id = p_work_order_id
+    and line.shop_id = p_shop_id
+  for update;
+  if not found then
+    raise exception using
+      errcode = 'P0001',
+      message = 'PORTAL_LINE_DECISION_NOT_FOUND: work-order line not found.';
+  end if;
+
+  v_result := public.apply_portal_line_decision_atomic(
+    p_shop_id,
+    p_customer_id,
+    p_work_order_id,
+    p_line_id,
+    p_actor_user_id,
+    'decline',
+    p_operation_key,
+    p_at
+  );
+
+  if v_result ->> 'lineId' is distinct from p_line_id::text
+     or v_result ->> 'workOrderId' is distinct from p_work_order_id::text
+     or v_result ->> 'decision' is distinct from 'decline'
+  then
+    raise exception using
+      errcode = '23505',
+      message = 'PORTAL_LINE_DECISION_OPERATION_CONFLICT';
+  end if;
+
+  select operation.actor_user_id, operation.customer_id, operation.shop_id
+    into v_receipt_actor_user_id, v_receipt_customer_id, v_receipt_shop_id
+  from public.portal_lifecycle_operation_keys operation
+  where operation.operation_name = 'portal_line_decision'
+    and operation.operation_key = p_operation_key;
+  if not found
+     or v_receipt_actor_user_id is distinct from p_actor_user_id
+     or v_receipt_customer_id is distinct from p_customer_id
+     or v_receipt_shop_id is distinct from p_shop_id
+  then
+    raise exception using
+      errcode = '23505',
+      message = 'PORTAL_LINE_DECISION_OPERATION_CONFLICT';
+  end if;
+
+  update public.work_order_lines
+  set hold_reason = 'Customer declined'
+  where id = p_line_id
+    and work_order_id = p_work_order_id
+    and shop_id = p_shop_id
+    and lower(coalesce(approval_state::text, '')) = 'declined'
+    and lower(trim(coalesce(hold_reason, ''))) = 'awaiting parts quote';
+
+  return v_result;
 end;
 $function$;
 
-revoke all on function private.normalize_declined_parts_quote_hold_reason()
-from public, anon, authenticated, service_role;
+revoke all on function public.apply_portal_parts_hold_line_decline_atomic(
+  uuid, uuid, uuid, uuid, uuid, text, timestamptz
+) from public, anon;
+grant execute on function public.apply_portal_parts_hold_line_decline_atomic(
+  uuid, uuid, uuid, uuid, uuid, text, timestamptz
+) to authenticated, service_role;
 
-create trigger normalize_declined_parts_quote_hold_reason
-before update of approval_state, hold_reason on public.work_order_lines
-for each row
-when (new.hold_reason is not null)
-execute function private.normalize_declined_parts_quote_hold_reason();
+comment on function public.apply_portal_parts_hold_line_decline_atomic(
+  uuid, uuid, uuid, uuid, uuid, text, timestamptz
+) is
+  'Delegates a portal decline to the unchanged canonical line decision while terminating this feature''s canonical parts-quote hold.';
 
 revoke all on function public.apply_staff_line_decision_atomic(
   uuid, uuid, uuid, uuid, text, text, timestamptz

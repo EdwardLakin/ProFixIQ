@@ -468,14 +468,26 @@ describe("assigned technician punch shop resolution", () => {
     expect(staffDecisionMigration).toContain(
       "when lower(trim(coalesce(hold_reason, ''))) = 'awaiting parts quote'\n            then 'Customer declined'",
     );
-    expect(staffDecisionMigration).toContain(
+    expect(staffDecisionMigration).not.toContain(
       "create trigger normalize_declined_parts_quote_hold_reason",
     );
     expect(staffDecisionMigration).toContain(
-      "and lower(trim(coalesce(new.hold_reason, ''))) = 'awaiting parts quote'",
+      "create or replace function public.apply_portal_parts_hold_line_decline_atomic",
+    );
+    expect(approvalRoute).toContain(
+      'decision !== "decline"\n          ? await rpc.rpc("apply_portal_line_decision_atomic"',
+    );
+    expect(approvalRoute).toContain(
+      '"apply_portal_parts_hold_line_decline_atomic"',
     );
     expect(staffDecisionMigration).toContain(
-      "new.hold_reason := 'Customer declined'",
+      "v_result := public.apply_portal_line_decision_atomic(",
+    );
+    expect(staffDecisionMigration).toContain(
+      "and not public.scheduler_actor_matches(p_actor_user_id)",
+    );
+    expect(staffDecisionMigration).toContain(
+      "PORTAL_LINE_DECISION_OPERATION_CONFLICT",
     );
     expect(punchTransition).not.toContain(
       "p_at: options?.nowIso ?? new Date().toISOString(),\n        p_hold_reason",

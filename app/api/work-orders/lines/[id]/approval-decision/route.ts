@@ -37,6 +37,20 @@ type PortalDecisionActor = {
 
 type DecisionActor = StaffDecisionActor | PortalDecisionActor;
 
+type PortalPartsDecisionRpcClient = {
+  rpc: (
+    name: "apply_portal_parts_hold_line_decline_atomic",
+    args: Record<string, unknown>,
+  ) => PromiseLike<{
+    data: unknown;
+    error: {
+      message: string;
+      details?: string | null;
+      hint?: string | null;
+    } | null;
+  }>;
+};
+
 function safeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -260,16 +274,29 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
             p_decision: decision,
             p_operation_key: `${actor.shopId}:staff-line-decision:${key}`,
           })
-        : await rpc.rpc("apply_portal_line_decision_atomic", {
-            p_shop_id: actor.shopId,
-            p_customer_id: actor.customerId,
-            p_work_order_id: workOrderId,
-            p_line_id: lineId,
-            p_actor_user_id: actor.userId,
-            p_decision: decision,
-            p_operation_key: `${actor.shopId}:portal-line-decision:${key}`,
-            p_at: new Date().toISOString(),
-          });
+        : decision !== "decline"
+          ? await rpc.rpc("apply_portal_line_decision_atomic", {
+              p_shop_id: actor.shopId,
+              p_customer_id: actor.customerId,
+              p_work_order_id: workOrderId,
+              p_line_id: lineId,
+              p_actor_user_id: actor.userId,
+              p_decision: decision,
+              p_operation_key: `${actor.shopId}:portal-line-decision:${key}`,
+              p_at: new Date().toISOString(),
+            })
+          : await (rpc as unknown as PortalPartsDecisionRpcClient).rpc(
+              "apply_portal_parts_hold_line_decline_atomic",
+              {
+                p_shop_id: actor.shopId,
+                p_customer_id: actor.customerId,
+                p_work_order_id: workOrderId,
+                p_line_id: lineId,
+                p_actor_user_id: actor.userId,
+                p_operation_key: `${actor.shopId}:portal-line-decision:${key}`,
+                p_at: new Date().toISOString(),
+              },
+            );
 
     if (rpcResult.error) {
       const message = [

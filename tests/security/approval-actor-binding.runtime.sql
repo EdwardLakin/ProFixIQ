@@ -795,14 +795,15 @@ declare
   v_result jsonb;
   v_approval_state text;
   v_hold_reason text;
+  v_conflict boolean := false;
+  v_actor_denied boolean := false;
 begin
-  v_result := public.apply_portal_line_decision_atomic(
+  v_result := public.apply_portal_parts_hold_line_decline_atomic(
     'ab250000-0000-4000-8000-000000000001',
     'ac250000-0000-4000-8000-000000000001',
     'ae250000-0000-4000-8000-000000000001',
     'af250000-0000-4000-8000-000000000013',
     'aa250000-0000-4000-8000-000000000002',
-    'decline',
     'approval-binding:portal:parts-hold-decline'
   );
   select approval_state, hold_reason into v_approval_state, v_hold_reason
@@ -814,6 +815,38 @@ begin
      or v_hold_reason is distinct from 'Customer declined' then
     raise exception 'Portal decline preserved stale parts state: %, %, %',
       v_result, v_approval_state, v_hold_reason;
+  end if;
+
+  begin
+    perform public.apply_portal_parts_hold_line_decline_atomic(
+      'ab250000-0000-4000-8000-000000000001',
+      'ac250000-0000-4000-8000-000000000001',
+      'ae250000-0000-4000-8000-000000000001',
+      'af250000-0000-4000-8000-000000000011',
+      'aa250000-0000-4000-8000-000000000002',
+      'approval-binding:portal:parts-hold-decline'
+    );
+  exception when sqlstate '23505' then
+    v_conflict := sqlerrm = 'PORTAL_LINE_DECISION_OPERATION_CONFLICT';
+  end;
+  if not v_conflict then
+    raise exception 'Portal decline adapter replayed a receipt for another line';
+  end if;
+
+  begin
+    perform public.apply_portal_parts_hold_line_decline_atomic(
+      'ab250000-0000-4000-8000-000000000001',
+      'ac250000-0000-4000-8000-000000000001',
+      'ae250000-0000-4000-8000-000000000001',
+      'af250000-0000-4000-8000-000000000013',
+      'aa250000-0000-4000-8000-000000000001',
+      'approval-binding:portal:forged-parts-hold-decline'
+    );
+  exception when sqlstate '42501' then
+    v_actor_denied := true;
+  end;
+  if not v_actor_denied then
+    raise exception 'Portal decline adapter accepted a forged actor';
   end if;
 end;
 $portal_decline_clears_parts_hold$;
