@@ -81,19 +81,25 @@ the abandoned draft stack.
    `actorCanRead()` (`features/inspections/server/inspectionReportAccess.ts:36-87`)
    both key off `customers.user_id` + `shop_id` with no reference to
    `customer_portal_invites.accepted_at` / `revoked_at`, so an already-issued
-   revoked session keeps messaging and inspection-report/PDF access. The invoice
-   detail page (`app/portal/invoices/[id]/page.tsx:54`) and Work Order detail page
-   (`app/portal/work-orders/view/[id]/page.tsx:212`) also call PR #1570's weaker
-   `requirePortalCustomer()` helper, which resolves the customer server-side by
-   verified `userId` but does not require accepted, non-revoked invite evidence.
+   revoked session keeps messaging and inspection-report/PDF access.
+   `authorizeWorkOrderEvidence()`
+   (`features/work-orders/server/authorizeWorkOrderEvidence.ts:41-83`) likewise
+   accepts the service-role `customers.user_id` match without invite evidence;
+   `GET /api/work-orders/[id]/media` then returns customer-visible evidence and
+   resolved display URLs through an admin client.
 
    Sign-in and the canonical `requirePortalCustomerAccess()` /
    `requirePortalCustomerActor()` path now enforce accepted, non-revoked invite
    evidence across the dashboard, payments, approvals, bookings, requests, and
-   other guarded portal routes. The remaining repair should converge only the
-   confirmed bypasses above on that invite-aware primitive (or an equivalent
-   durable revocation boundary). No migration currently clears
-   `customers.user_id` on revocation.
+   other guarded portal routes. PR #1570's weaker `requirePortalCustomer()` does
+   not itself check the invite, but its current invoice and Work Order detail-page
+   callers immediately perform a session-client Work Order ownership read whose
+   RLS requires an accepted, non-revoked invite; those pages are therefore not
+   confirmed bypasses. The remaining repair should converge the confirmed
+   messaging, inspection-report, and Work Order evidence paths on the invite-aware
+   primitive (or an equivalent durable revocation boundary), and harden shared
+   customer helpers so future consumers cannot omit that check. No migration
+   currently clears `customers.user_id` on revocation.
 
 3. **Job punch has no assignment or capability check.**
    `apply_job_punch_transition_atomic`
