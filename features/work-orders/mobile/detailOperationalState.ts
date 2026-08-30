@@ -1,4 +1,5 @@
 import { normalizeWorkOrderLineStatus } from "@/features/work-orders/lib/line-status";
+import { hasActivePartsWaitingSignal } from "@/features/work-orders/lib/preLaborPartsQuoteHold";
 
 type DetailLine = {
   id?: string | null;
@@ -76,9 +77,7 @@ export function isMobileDetailVisibleLine(line: DetailLine): boolean {
 }
 
 export function isPartsWaitingAdvisory(line: DetailLine): boolean {
-  const status = normalizeWorkOrderLineStatus(line.status);
-  const holdReason = normalizeRaw(line.hold_reason);
-  return status === "waiting_parts" || holdReason.includes("part") || holdReason.includes("quote");
+  return hasActivePartsWaitingSignal(line);
 }
 
 function isLineInProgress(

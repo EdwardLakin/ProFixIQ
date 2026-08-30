@@ -58,6 +58,7 @@ import {
   type WorkOrderPartRequestRow as PartRequestRow,
 } from "@/features/work-orders/lib/data/loadCanonicalWorkOrderLineContext";
 import { isReviewableQuoteLine } from "@/features/work-orders/lib/quotes/reviewableQuoteLines";
+import { hasActivePartsWaitingSignal } from "@/features/work-orders/lib/preLaborPartsQuoteHold";
 import {
   assignWorkOrderLineTechnician,
   createAssignTechnicianOperationKey,
@@ -2130,9 +2131,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                         const pendingDecision = pendingLineDecisions.get(ln.id);
                         const decisionInFlight = lineDecisionsInFlight.has(ln.id);
                         const isAwaitingPartsBase =
-                          (ln.status === "on_hold" &&
-                            (ln.hold_reason ?? "").toLowerCase().includes("part")) ||
-                          (ln.hold_reason ?? "").toLowerCase().includes("quote");
+                          hasActivePartsWaitingSignal(ln);
 
                         const hasQuotedParts = (activeQuotesByLine[ln.id] ?? []).length > 0;
                         const partsLabel = hasQuotedParts

@@ -21,6 +21,21 @@ type JobPunchTransitionOptions = {
 
 type ApiError = { error?: string };
 
+type OfflineMutationLike = {
+  actionType: unknown;
+  clientMutationId: unknown;
+  payload: unknown;
+};
+
+export type QueuedPartsQuoteHoldIdentity = {
+  lineId: string;
+  operationKey: string;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
 function buildTransitionPath(lineId: string, action: JobPunchAction): string {
   return `/api/work-orders/lines/${lineId}/${action}`;
 }
@@ -34,6 +49,38 @@ export function createJobPunchOperationKey(
       ? globalThis.crypto.randomUUID()
       : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   return `job-punch:${lineId}:${action}:${randomId}`;
+}
+
+export function getQueuedPartsQuoteHoldIdentity(
+  mutation: OfflineMutationLike,
+): QueuedPartsQuoteHoldIdentity | null {
+  if (mutation.actionType !== "job:punch-transition") return null;
+  if (!isRecord(mutation.payload)) return null;
+
+  const lineId =
+    typeof mutation.payload.lineId === "string"
+      ? mutation.payload.lineId.trim()
+      : "";
+  const operationKey =
+    typeof mutation.payload.operationKey === "string"
+      ? mutation.payload.operationKey.trim()
+      : "";
+  const action = mutation.payload.action;
+  const body = mutation.payload.body;
+
+  if (
+    !lineId ||
+    !operationKey ||
+    action !== "pause" ||
+    !isRecord(body) ||
+    body.transitionIntent !== "parts_quote_hold" ||
+    mutation.clientMutationId !==
+      `pre_labor_parts_quote_hold:${operationKey}`
+  ) {
+    return null;
+  }
+
+  return { lineId, operationKey };
 }
 
 export async function runJobPunchTransition(

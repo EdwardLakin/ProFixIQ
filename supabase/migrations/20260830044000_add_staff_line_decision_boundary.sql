@@ -306,8 +306,10 @@ begin
   end if;
 
   if v_line.voided_at is not null
+     or v_line.punched_in_at is not null
+     or v_line.punched_out_at is not null
      or lower(coalesce(v_line.status::text, '')) in (
-       'in_progress', 'completed', 'ready_to_invoice', 'invoiced',
+       'active', 'in_progress', 'completed', 'ready_to_invoice', 'invoiced',
        'voided', 'cancelled', 'canceled'
      )
   then
@@ -961,6 +963,12 @@ begin
     where segment.shop_id = p_shop_id
       and segment.work_order_line_id = p_work_order_line_id
   ) then
+    raise exception using errcode = 'P0001', message = 'A line with recorded labor cannot be sent to parts as pre-labor work.';
+  end if;
+  if v_line.punched_in_at is not null
+     or v_line.punched_out_at is not null
+     or lower(coalesce(v_line.status::text, '')) in ('active', 'in_progress')
+  then
     raise exception using errcode = 'P0001', message = 'A line with recorded labor cannot be sent to parts as pre-labor work.';
   end if;
   if v_line.voided_at is not null

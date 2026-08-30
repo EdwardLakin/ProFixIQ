@@ -2,6 +2,7 @@ import type { Database, Json } from "@shared/types/types/supabase";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAiEvidenceSnapshot, type AiActorContext, type AiEvidenceSnapshotRecord } from "@/features/ai/server";
 import type { WorkOrderPartsDelayEvidence } from "./types";
+import { hasActivePartsWaitingSignal } from "@/features/work-orders/lib/preLaborPartsQuoteHold";
 
 const PARTS_DELAY_RULE_VERSION = "wo_parts_delay_v1";
 const PARTS_REQUEST_STALE_HOURS = 48;
@@ -50,7 +51,12 @@ function hasLinePartSignal(line: WorkOrderLineRow): boolean {
     ? partsRequired.length > 0
     : !!(partsRequired && typeof partsRequired === "object" && Object.keys(partsRequired as Record<string, unknown>).length > 0);
 
-  return partsText.length > 0 || hasPartsNeeded || hasPartsRequired || normalizeStatus(line.hold_reason).includes("part");
+  return (
+    partsText.length > 0 ||
+    hasPartsNeeded ||
+    hasPartsRequired ||
+    hasActivePartsWaitingSignal(line)
+  );
 }
 
 function computePartsDelayConfidence(missingData: string[]): number {

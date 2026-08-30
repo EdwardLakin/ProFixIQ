@@ -28,6 +28,7 @@ import {
   type VehicleWorkspaceSnapshot,
 } from "@/features/vehicles/lib/vehicleWorkspace";
 import { vehicleWorkspacePermissionsForRole } from "@/features/vehicles/server/vehicleWorkspacePermissions";
+import { hasActivePartsWaitingSignal } from "@/features/work-orders/lib/preLaborPartsQuoteHold";
 
 type DB = Database;
 type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
@@ -682,7 +683,7 @@ function buildAttentionItems(input: {
     const isWaitingParts =
       !isDeferred &&
       (states.some((state) => WAITING_PARTS_LINE_STATES.has(state)) ||
-        Boolean(text(line.hold_reason)));
+        hasActivePartsWaitingSignal(line));
     const isConcern =
       !isDeferred &&
       !isWaitingParts &&

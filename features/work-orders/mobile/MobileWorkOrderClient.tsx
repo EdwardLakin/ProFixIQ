@@ -30,8 +30,13 @@ import { registerMobileWorkflowDock } from "@/features/copilot/technician/client
 import AskAssistantEntry from "@/features/assistant/components/AskAssistantEntry";
 import {
   createJobPunchOperationKey,
+  getQueuedPartsQuoteHoldIdentity,
   runJobPunchTransition,
 } from "@/features/work-orders/lib/jobPunchTransitionsClient";
+import {
+  hasActivePartsWaitingSignal,
+  isCanonicalPreLaborPartsQuoteHold as isCanonicalPartsQuoteHold,
+} from "@/features/work-orders/lib/preLaborPartsQuoteHold";
 import { isReviewableQuoteLine } from "@/features/work-orders/lib/quotes/reviewableQuoteLines";
 import { resolveWorkOrderLinePricing } from "@/features/work-orders/lib/pricing/resolveWorkOrderLinePricing";
 import { filterAllocationsNotBackedByCanonicalParts } from "@/features/work-orders/lib/display/workOrderParts";
@@ -48,6 +53,8 @@ import {
 import {
   getOfflineMutationScope,
   getOfflineSyncSummary,
+  hydrateOfflineMutationQueue,
+  listPendingMutations,
   setOfflineMutationScope,
   subscribeOfflineMutations,
 } from "@/features/shared/lib/offline/mutations";
@@ -85,14 +92,6 @@ type WorkOrderQuoteLineWithLineId = WorkOrderQuoteLine & {
   work_order_line_id?: string | null;
 };
 
-function isCanonicalPartsQuoteHold(line: WorkOrderLine): boolean {
-  const status = (line.status ?? "").trim().toLowerCase();
-  const holdReason = (line.hold_reason ?? "").trim().toLowerCase();
-  return (
-    status === "on_hold" &&
-    (holdReason.includes("part") || holdReason.includes("quote"))
-  );
-}
 // 🔹 Extra metadata shape for inspection template ids (mirrors desktop logic)
 type WorkOrderLineWithInspectionMeta = WorkOrderLine & {
   inspection_template_id?: string | null;
@@ -346,6 +345,39 @@ export default function MobileWorkOrderClient({
     getOfflineSyncSummary(),
   );
 
+  const hydrateQueuedPartsHoldIdentity = useCallback(() => {
+    if (!currentUserId || !shopId || lines.length === 0) return;
+
+    const currentLineIds = new Set(lines.map((line) => line.id));
+    let changed = false;
+    for (const mutation of listPendingMutations({
+      userId: currentUserId,
+      shopId,
+    })) {
+      const identity = getQueuedPartsQuoteHoldIdentity(mutation);
+      if (!identity || !currentLineIds.has(identity.lineId)) continue;
+
+      if (
+        partsHoldOperationKeysRef.current.get(identity.lineId) !==
+        identity.operationKey
+      ) {
+        partsHoldOperationKeysRef.current.set(
+          identity.lineId,
+          identity.operationKey,
+        );
+        changed = true;
+      }
+      if (!partsHoldPendingRef.current.has(identity.lineId)) {
+        partsHoldPendingRef.current.add(identity.lineId);
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      setPendingPartsHoldLineIds(new Set(partsHoldPendingRef.current));
+    }
+  }, [currentUserId, lines, shopId]);
+
   // mobile focused job view
   const [focusedJobId, setFocusedJobId] = useState<string | null>(null);
   const [focusedOpen, setFocusedOpen] = useState(false);
@@ -472,9 +504,19 @@ export default function MobileWorkOrderClient({
   }, [routeId, setCurrentUserId, setUserId, setShopId]);
 
   useEffect(() => {
-    const refresh = () => setOfflineSummary(getOfflineSyncSummary());
-    return subscribeOfflineMutations(refresh);
-  }, []);
+    let mounted = true;
+    const refresh = () => {
+      if (!mounted) return;
+      setOfflineSummary(getOfflineSyncSummary());
+      hydrateQueuedPartsHoldIdentity();
+    };
+    const unsubscribe = subscribeOfflineMutations(refresh);
+    void hydrateOfflineMutationQueue().then(refresh);
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
+  }, [hydrateQueuedPartsHoldIdentity]);
 
   /* ---------------------- FETCH ---------------------- */
   const fetchAll = useCallback(
@@ -965,7 +1007,10 @@ export default function MobileWorkOrderClient({
   );
 
   const partsQuoteEligiblePending = useMemo(
-    () => approvalPending.filter((line) => !isCanonicalPartsQuoteHold(line)),
+    () =>
+      approvalPending.filter(
+        (line) => !isCanonicalPartsQuoteHold(line),
+      ),
     [approvalPending],
   );
 
@@ -1002,7 +1047,11 @@ export default function MobileWorkOrderClient({
     let changed = false;
     for (const lineId of partsHoldPendingRef.current) {
       const refreshedLine = refreshedPending.get(lineId);
-      if (refreshedLine && !isCanonicalPartsQuoteHold(refreshedLine)) continue;
+      if (
+        refreshedLine &&
+        !isCanonicalPartsQuoteHold(refreshedLine)
+      )
+        continue;
       partsHoldPendingRef.current.delete(lineId);
       partsHoldInFlightRef.current.delete(lineId);
       partsHoldOperationKeysRef.current.delete(lineId);
@@ -1145,7 +1194,7 @@ export default function MobileWorkOrderClient({
     mobileOperationalState.visibleLines.find(
       (line) =>
         visibleLineState(line) === "waiting_parts" ||
-        Boolean(line.hold_reason?.toLowerCase().includes("part")),
+        hasActivePartsWaitingSignal(line),
     )?.id ?? null;
   const firstUnassignedLineId =
     mobileOperationalState.visibleLines.find(
@@ -1915,7 +1964,8 @@ export default function MobileWorkOrderClient({
                       const partsHoldPending = pendingPartsHoldLineIds.has(ln.id);
                       const partsHoldInFlight =
                         partsHoldLineIdsInFlight.has(ln.id);
-                      const isAwaitingPartsBase = isCanonicalPartsQuoteHold(ln);
+                      const isAwaitingPartsBase =
+                        isCanonicalPartsQuoteHold(ln);
 
                       const hasQuotedParts =
                         (activeQuotesByLine[ln.id] ?? []).length > 0;

@@ -368,7 +368,75 @@ values
     'ab250000-0000-4000-8000-000000000001',
     'aa250000-0000-4000-8000-000000000001',
     'medium'
+  ),
+  (
+    'af250000-0000-4000-8000-000000000014',
+    'ae250000-0000-4000-8000-000000000001',
+    'Legacy punch mirror staff decision rejection target',
+    'awaiting_approval',
+    'pending',
+    'pending',
+    'repair',
+    'ab250000-0000-4000-8000-000000000001',
+    'aa250000-0000-4000-8000-000000000001',
+    'medium'
+  ),
+  (
+    'af250000-0000-4000-8000-000000000015',
+    'ae250000-0000-4000-8000-000000000001',
+    'Legacy punch mirror parts hold rejection target',
+    'awaiting_approval',
+    'pending',
+    'pending',
+    'repair',
+    'ab250000-0000-4000-8000-000000000001',
+    'aa250000-0000-4000-8000-000000000001',
+    'medium'
+  ),
+  (
+    'af250000-0000-4000-8000-000000000016',
+    'ae250000-0000-4000-8000-000000000001',
+    'Portal adapter decline after atomic parts hold',
+    'awaiting_approval',
+    'pending',
+    'pending',
+    'repair',
+    'ab250000-0000-4000-8000-000000000001',
+    'aa250000-0000-4000-8000-000000000001',
+    'medium'
+  ),
+  (
+    'af250000-0000-4000-8000-000000000017',
+    'ae250000-0000-4000-8000-000000000001',
+    'Legacy active status staff decision rejection target',
+    'active',
+    'pending',
+    'pending',
+    'repair',
+    'ab250000-0000-4000-8000-000000000001',
+    'aa250000-0000-4000-8000-000000000001',
+    'medium'
+  ),
+  (
+    'af250000-0000-4000-8000-000000000018',
+    'ae250000-0000-4000-8000-000000000001',
+    'Legacy active status parts hold rejection target',
+    'active',
+    'pending',
+    'pending',
+    'repair',
+    'ab250000-0000-4000-8000-000000000001',
+    'aa250000-0000-4000-8000-000000000001',
+    'medium'
   );
+
+update public.work_order_lines
+set punched_in_at = now() - interval '20 minutes',
+    punched_out_at = now() - interval '10 minutes'
+where id in (
+  'af250000-0000-4000-8000-000000000014',
+  'af250000-0000-4000-8000-000000000015'
+);
 
 insert into public.work_order_quote_lines (
   id, shop_id, work_order_id, work_order_line_id, description,
@@ -736,8 +804,89 @@ begin
   if (v_result ->> 'ok')::boolean is distinct from true then
     raise exception 'Portal parts-hold fixture failed: %', v_result;
   end if;
+
+  v_result := public.apply_pre_labor_parts_quote_hold_atomic(
+    'ab250000-0000-4000-8000-000000000001',
+    'af250000-0000-4000-8000-000000000016',
+    'aa250000-0000-4000-8000-000000000001',
+    'ab250000-0000-4000-8000-000000000001:job-punch:approval-binding:portal-adapter-parts-hold'
+  );
+  if (v_result ->> 'ok')::boolean is distinct from true then
+    raise exception 'Portal adapter parts-hold fixture failed: %', v_result;
+  end if;
 end;
 $authorized_atomic_parts_hold$;
+
+do $legacy_punch_mirror_pre_labor_denials$
+declare
+  v_staff_denied boolean := false;
+  v_parts_denied boolean := false;
+  v_staff_status_denied boolean := false;
+  v_parts_status_denied boolean := false;
+begin
+  begin
+    perform public.apply_staff_line_decision_atomic(
+      'ab250000-0000-4000-8000-000000000001',
+      'ae250000-0000-4000-8000-000000000001',
+      'af250000-0000-4000-8000-000000000014',
+      'aa250000-0000-4000-8000-000000000001',
+      'approve',
+      'approval-binding:staff-adapter:legacy-punch-mirror'
+    );
+  exception when others then
+    v_staff_denied := sqlerrm =
+      'STAFF_LINE_DECISION_INELIGIBLE: line has already entered labor or a terminal state.';
+  end;
+
+  begin
+    perform public.apply_pre_labor_parts_quote_hold_atomic(
+      'ab250000-0000-4000-8000-000000000001',
+      'af250000-0000-4000-8000-000000000015',
+      'aa250000-0000-4000-8000-000000000001',
+      'approval-binding:parts-hold:legacy-punch-mirror'
+    );
+  exception when others then
+    v_parts_denied := sqlerrm =
+      'A line with recorded labor cannot be sent to parts as pre-labor work.';
+  end;
+
+  begin
+    perform public.apply_staff_line_decision_atomic(
+      'ab250000-0000-4000-8000-000000000001',
+      'ae250000-0000-4000-8000-000000000001',
+      'af250000-0000-4000-8000-000000000017',
+      'aa250000-0000-4000-8000-000000000001',
+      'approve',
+      'approval-binding:staff-adapter:legacy-active-status'
+    );
+  exception when others then
+    v_staff_status_denied := sqlerrm =
+      'STAFF_LINE_DECISION_INELIGIBLE: line has already entered labor or a terminal state.';
+  end;
+
+  begin
+    perform public.apply_pre_labor_parts_quote_hold_atomic(
+      'ab250000-0000-4000-8000-000000000001',
+      'af250000-0000-4000-8000-000000000018',
+      'aa250000-0000-4000-8000-000000000001',
+      'approval-binding:parts-hold:legacy-active-status'
+    );
+  exception when others then
+    v_parts_status_denied := sqlerrm =
+      'A line with recorded labor cannot be sent to parts as pre-labor work.';
+  end;
+
+  if not v_staff_denied
+     or not v_parts_denied
+     or not v_staff_status_denied
+     or not v_parts_status_denied
+  then
+    raise exception 'Legacy labor evidence bypassed pre-labor guards: staff mirror %, parts mirror %, staff status %, parts status %',
+      v_staff_denied, v_parts_denied, v_staff_status_denied,
+      v_parts_status_denied;
+  end if;
+end;
+$legacy_punch_mirror_pre_labor_denials$;
 
 do $terminal_atomic_parts_hold_denial$
 declare
@@ -798,17 +947,40 @@ declare
   v_conflict boolean := false;
   v_actor_denied boolean := false;
 begin
-  v_result := public.apply_portal_parts_hold_line_decline_atomic(
+  -- The pre-existing canonical RPC is intentionally still executable. Its
+  -- direct decline must end the task-owned hold through approval_state even
+  -- though that legacy contract preserves a nonempty hold_reason.
+  v_result := public.apply_portal_line_decision_atomic(
     'ab250000-0000-4000-8000-000000000001',
     'ac250000-0000-4000-8000-000000000001',
     'ae250000-0000-4000-8000-000000000001',
     'af250000-0000-4000-8000-000000000013',
     'aa250000-0000-4000-8000-000000000002',
-    'approval-binding:portal:parts-hold-decline'
+    'decline',
+    'approval-binding:portal:direct-parts-hold-decline'
   );
   select approval_state, hold_reason into v_approval_state, v_hold_reason
   from public.work_order_lines
   where id = 'af250000-0000-4000-8000-000000000013';
+
+  if (v_result ->> 'ok')::boolean is distinct from true
+     or v_approval_state is distinct from 'declined'
+     or v_hold_reason is distinct from 'Awaiting parts quote' then
+    raise exception 'Direct canonical portal decline did not terminate approval-pending parts state: %, %, %',
+      v_result, v_approval_state, v_hold_reason;
+  end if;
+
+  v_result := public.apply_portal_parts_hold_line_decline_atomic(
+    'ab250000-0000-4000-8000-000000000001',
+    'ac250000-0000-4000-8000-000000000001',
+    'ae250000-0000-4000-8000-000000000001',
+    'af250000-0000-4000-8000-000000000016',
+    'aa250000-0000-4000-8000-000000000002',
+    'approval-binding:portal:parts-hold-decline'
+  );
+  select approval_state, hold_reason into v_approval_state, v_hold_reason
+  from public.work_order_lines
+  where id = 'af250000-0000-4000-8000-000000000016';
 
   if (v_result ->> 'ok')::boolean is distinct from true
      or v_approval_state is distinct from 'declined'
@@ -838,7 +1010,7 @@ begin
       'ab250000-0000-4000-8000-000000000001',
       'ac250000-0000-4000-8000-000000000001',
       'ae250000-0000-4000-8000-000000000001',
-      'af250000-0000-4000-8000-000000000013',
+      'af250000-0000-4000-8000-000000000016',
       'aa250000-0000-4000-8000-000000000001',
       'approval-binding:portal:forged-parts-hold-decline'
     );
