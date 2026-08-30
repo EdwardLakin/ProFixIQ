@@ -55,6 +55,7 @@ function errorStatus(message: string): number {
   if (
     lower.includes("locked") ||
     lower.includes("busy") ||
+    lower.includes("conflict") ||
     lower.includes("no longer eligible") ||
     lower.includes("active_labor") ||
     lower.includes("ineligible")

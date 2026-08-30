@@ -31,19 +31,27 @@ class FakeSupabase {
     id: string;
     shop_id: string | null;
     assigned_tech_id: string | null;
+    assigned_to: string | null;
   } | null = {
     id: "line-1",
     shop_id: "shop-1",
     assigned_tech_id: "tech-1",
+    assigned_to: null,
   };
   lineError: { message: string } | null = null;
   additionalAssignment: { id: string } | null = null;
+  anyCanonicalAssignment: { id: string } | null = null;
   activeSegment: { id: string } | null = { id: "segment-1" };
   existingOperation: {
     actor_user_id: string | null;
     work_order_line_id: string | null;
     result: Record<string, unknown>;
   } | null = null;
+  existingOperationSequence: Array<{
+    actor_user_id: string | null;
+    work_order_line_id: string | null;
+    result: Record<string, unknown>;
+  } | null> | null = null;
   rpcData: unknown = { ok: true };
   rpcError: { message: string; details?: string | null; hint?: string | null } | null =
     null;
@@ -78,11 +86,13 @@ class FakeSupabase {
   }
 
   from(table: string) {
+    const filters = new Map<string, unknown>();
     const query = {
       select() {
         return query;
       },
-      eq() {
+      eq(column: string, value: unknown) {
+        filters.set(column, value);
         return query;
       },
       or() {
@@ -102,13 +112,21 @@ class FakeSupabase {
           return Promise.resolve({ data: this.line, error: this.lineError });
         }
         if (table === "work_order_line_technicians") {
-          return Promise.resolve({ data: this.additionalAssignment, error: null });
+          return Promise.resolve({
+            data: filters.has("technician_id")
+              ? this.additionalAssignment
+              : this.anyCanonicalAssignment,
+            error: null,
+          });
         }
         if (table === "work_order_line_labor_segments") {
           return Promise.resolve({ data: this.activeSegment, error: null });
         }
         if (table === "workforce_operation_keys") {
-          return Promise.resolve({ data: this.existingOperation, error: null });
+          const data = this.existingOperationSequence
+            ? (this.existingOperationSequence.shift() ?? null)
+            : this.existingOperation;
+          return Promise.resolve({ data, error: null });
         }
         throw new Error(`Unexpected table read: ${table}`);
       },
@@ -250,6 +268,80 @@ describe("applyJobPunchTransition atomic boundary", () => {
     expect(result).toEqual({
       ok: true,
       payload: { ok: true, action: "pause", idempotent: true },
+    });
+    expect(db.rpcCalls).toHaveLength(0);
+  });
+
+  it("rechecks a pause receipt after a concurrent request ends the segment", async () => {
+    const db = new FakeSupabase();
+    db.activeSegment = null;
+    db.existingOperationSequence = [
+      null,
+      {
+        actor_user_id: "tech-1",
+        work_order_line_id: "line-1",
+        result: { ok: true, action: "pause", idempotent: false },
+      },
+    ];
+
+    const result = await applyJobPunchTransition({
+      supabase: db as never,
+      lineId: "line-1",
+      action: "pause",
+      technicianId: "tech-1",
+      options: { operationKey: "pause-concurrent-retry" },
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      payload: { ok: true, action: "pause", idempotent: true },
+    });
+    expect(db.rpcCalls).toHaveLength(0);
+  });
+
+  it("honors a legacy-only assigned_to value when canonical sources are empty", async () => {
+    const db = new FakeSupabase();
+    db.line = {
+      id: "line-1",
+      shop_id: "shop-1",
+      assigned_tech_id: null,
+      assigned_to: "tech-1",
+    };
+
+    const result = await applyJobPunchTransition({
+      supabase: db as never,
+      lineId: "line-1",
+      action: "start",
+      technicianId: "tech-1",
+      options: { operationKey: "legacy-only-assignment" },
+    });
+
+    expect(result).toEqual({ ok: true, payload: { ok: true } });
+    expect(db.rpcCalls).toHaveLength(1);
+  });
+
+  it("does not let assigned_to override a different canonical assignment", async () => {
+    const db = new FakeSupabase();
+    db.line = {
+      id: "line-1",
+      shop_id: "shop-1",
+      assigned_tech_id: null,
+      assigned_to: "tech-1",
+    };
+    db.anyCanonicalAssignment = { id: "assignment-for-another-technician" };
+
+    const result = await applyJobPunchTransition({
+      supabase: db as never,
+      lineId: "line-1",
+      action: "start",
+      technicianId: "tech-1",
+      options: { operationKey: "ambiguous-legacy-assignment" },
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      status: 403,
+      error: "Technician is not assigned to this work-order line.",
     });
     expect(db.rpcCalls).toHaveLength(0);
   });

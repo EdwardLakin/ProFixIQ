@@ -190,21 +190,22 @@ export async function applyJobPunchTransition({
   // remains responsible for mutation locking and state transitions.
   const admin = createAdminSupabase();
   const rpcOperationKey = `${shopId}:job-punch:${operationKey}`;
-  const { data: existingOperation, error: operationError } = await admin
-    .from("workforce_operation_keys")
-    .select("actor_user_id,work_order_line_id,result")
-    .eq("shop_id", shopId)
-    .eq("operation_name", `job_punch:${action}`)
-    .eq("operation_key", rpcOperationKey)
-    .maybeSingle<{
-      actor_user_id: string | null;
-      work_order_line_id: string | null;
-      result: Json;
-    }>();
-  if (operationError) {
-    return { ok: false, status: 400, error: operationError.message };
-  }
-  if (existingOperation) {
+  const replayExistingOperation = async (): Promise<TransitionResult | null> => {
+    const { data: existingOperation, error: operationError } = await admin
+      .from("workforce_operation_keys")
+      .select("actor_user_id,work_order_line_id,result")
+      .eq("shop_id", shopId)
+      .eq("operation_name", `job_punch:${action}`)
+      .eq("operation_key", rpcOperationKey)
+      .maybeSingle<{
+        actor_user_id: string | null;
+        work_order_line_id: string | null;
+        result: Json;
+      }>();
+    if (operationError) {
+      return { ok: false, status: 400, error: operationError.message };
+    }
+    if (!existingOperation) return null;
     if (
       existingOperation.actor_user_id !== actorUserId ||
       existingOperation.work_order_line_id !== lineId
@@ -215,17 +216,21 @@ export async function applyJobPunchTransition({
       ok: true,
       payload: withIdempotentFlag(existingOperation.result),
     };
-  }
+  };
+
+  const existingOperationResult = await replayExistingOperation();
+  if (existingOperationResult) return existingOperationResult;
 
   const { data: line, error: lineError } = await admin
     .from("work_order_lines")
-    .select("id,shop_id,assigned_tech_id")
+    .select("id,shop_id,assigned_tech_id,assigned_to")
     .eq("id", lineId)
     .eq("shop_id", shopId)
     .maybeSingle<{
       id: string;
       shop_id: string | null;
       assigned_tech_id: string | null;
+      assigned_to: string | null;
     }>();
   if (lineError) return { ok: false, status: 400, error: lineError.message };
   if (!line) {
@@ -243,8 +248,36 @@ export async function applyJobPunchTransition({
     return { ok: false, status: 400, error: assignmentError.message };
   }
 
+  let isLegacyOnlyAssignment = false;
+  if (
+    line.assigned_tech_id === null &&
+    !additionalAssignment &&
+    line.assigned_to === actorProfileId
+  ) {
+    // PFX-004 deliberately preserves ambiguous historical rows. `assigned_to`
+    // is a read fallback only when both canonical sources are empty; never let
+    // it override an explicit primary or canonical supporting assignment.
+    const { data: anyCanonicalAssignment, error: canonicalAssignmentError } =
+      await admin
+        .from("work_order_line_technicians")
+        .select("id")
+        .eq("work_order_line_id", lineId)
+        .limit(1)
+        .maybeSingle<{ id: string }>();
+    if (canonicalAssignmentError) {
+      return {
+        ok: false,
+        status: 400,
+        error: canonicalAssignmentError.message,
+      };
+    }
+    isLegacyOnlyAssignment = !anyCanonicalAssignment;
+  }
+
   const isAssigned =
-    line.assigned_tech_id === actorProfileId || Boolean(additionalAssignment);
+    line.assigned_tech_id === actorProfileId ||
+    Boolean(additionalAssignment) ||
+    isLegacyOnlyAssignment;
   if (!isAssigned) {
     return {
       ok: false,
@@ -267,6 +300,11 @@ export async function applyJobPunchTransition({
       return { ok: false, status: 400, error: segmentError.message };
     }
     if (!activeSegment) {
+      // A concurrent identical pause may have committed after the first receipt
+      // read and before this unlocked ownership check. Re-read the durable
+      // receipt before reporting a missing active segment.
+      const concurrentOperationResult = await replayExistingOperation();
+      if (concurrentOperationResult) return concurrentOperationResult;
       return {
         ok: false,
         status: 409,

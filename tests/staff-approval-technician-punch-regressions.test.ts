@@ -56,9 +56,14 @@ describe("staff approval decision routing", () => {
     expect(mobileWorkOrder).toContain('actorSurface: "staff"');
   });
 
-  it("reuses stable operation keys for failed or lost staff responses", () => {
-    for (const client of [desktopWorkOrder, mobileWorkOrder]) {
+  it("retains stable operation keys and disables both decisions until refresh", () => {
+    for (const [client, declineBoundary] of [
+      [desktopWorkOrder, "const approveQuoteLine"],
+      [mobileWorkOrder, "const sendToParts"],
+    ] as const) {
       expect(client).toContain("lineDecisionOperationKeysRef");
+      expect(client).toContain("lineDecisionPendingRef");
+      expect(client).toContain("lineDecisionPendingRef.current.has(lineId)");
       expect(client).toContain(
         "lineDecisionOperationKeysRef.current.get(actionIdentity)",
       );
@@ -67,10 +72,36 @@ describe("staff approval decision routing", () => {
       );
       expect(client).toContain('"Idempotency-Key": operationKey');
       expect(client).toContain("idempotencyKey: operationKey");
+      expect(client).toContain("disabled={pendingDecision !== undefined}");
       expect(client).toContain(
-        "lineDecisionOperationKeysRef.current.delete(actionIdentity)",
+        "const refreshedPendingIds = new Set(approvalPending.map((line) => line.id))",
       );
+      expect(client).toContain(
+        "`${workOrderId}:${lineId}:approve`",
+      );
+      expect(client).toContain("`${workOrderId}:${lineId}:decline`");
+
+      const approveBlock = client.slice(
+        client.indexOf("const approveLine"),
+        client.indexOf("const declineLine"),
+      );
+      const declineBlock = client.slice(
+        client.indexOf("const declineLine"),
+        client.indexOf(declineBoundary),
+      );
+      expect(approveBlock).toContain("await fetchAll()");
+      expect(declineBlock).toContain("await fetchAll()");
+      expect(
+        approveBlock.slice(approveBlock.indexOf('toast.success("Line approved")')),
+      ).not.toContain("lineDecisionOperationKeysRef.current.delete(actionIdentity)");
+      expect(
+        declineBlock.slice(declineBlock.indexOf('toast.success("Line declined")')),
+      ).not.toContain("lineDecisionOperationKeysRef.current.delete(actionIdentity)");
     }
+  });
+
+  it("maps durable decision-key conflicts to HTTP 409", () => {
+    expect(approvalRoute).toContain('lower.includes("conflict")');
   });
 
   it("uses the guarded staff-specific atomic adapter for staff decisions", () => {
@@ -158,6 +189,12 @@ describe("assigned technician punch shop resolution", () => {
     expect(punchTransition).toContain("capabilities.canPerformAssignedWork");
     expect(punchTransition).toContain("isAssigned");
     expect(punchTransition).toContain(
+      '.select("id,shop_id,assigned_tech_id,assigned_to")',
+    );
+    expect(punchTransition).toContain("line.assigned_to === actorProfileId");
+    expect(punchTransition).toContain("isLegacyOnlyAssignment");
+    expect(punchTransition).toContain("anyCanonicalAssignment");
+    expect(punchTransition).toContain(
       "Technician is not assigned to this work-order line.",
     );
   });
@@ -171,6 +208,8 @@ describe("assigned technician punch shop resolution", () => {
     expect(punchTransition.indexOf('.from("workforce_operation_keys")')).toBeLessThan(
       punchTransition.indexOf('.from("work_order_line_labor_segments")'),
     );
+    expect(punchTransition).toContain("const replayExistingOperation");
+    expect(punchTransition.match(/await replayExistingOperation\(\)/g)).toHaveLength(2);
   });
 
   it("preserves the trusted break and lunch auto-resume path", () => {

@@ -254,6 +254,12 @@ export default function MobileWorkOrderClient({
   const handledFocusRef = useRef<string | null>(null);
   const loadGenerationRef = useRef(0);
   const lineDecisionOperationKeysRef = useRef(new Map<string, string>());
+  const lineDecisionPendingRef = useRef(
+    new Map<string, "approve" | "decline">(),
+  );
+  const [pendingLineDecisions, setPendingLineDecisions] = useState(
+    () => new Map<string, "approve" | "decline">(),
+  );
 
   // 🔥 IMPORTANT: scope tab-state keys by routeId so different work orders don’t bleed state
   const keyBase = useMemo(() => `m:wo:${routeId}`, [routeId]);
@@ -944,6 +950,28 @@ export default function MobileWorkOrderClient({
     [mobileOperationalState.visibleLines, visibleLineState],
   );
 
+  useEffect(() => {
+    const workOrderId = wo?.id;
+    if (!workOrderId || lineDecisionPendingRef.current.size === 0) return;
+
+    const refreshedPendingIds = new Set(approvalPending.map((line) => line.id));
+    let changed = false;
+    for (const lineId of lineDecisionPendingRef.current.keys()) {
+      if (refreshedPendingIds.has(lineId)) continue;
+      lineDecisionPendingRef.current.delete(lineId);
+      lineDecisionOperationKeysRef.current.delete(
+        `${workOrderId}:${lineId}:approve`,
+      );
+      lineDecisionOperationKeysRef.current.delete(
+        `${workOrderId}:${lineId}:decline`,
+      );
+      changed = true;
+    }
+    if (changed) {
+      setPendingLineDecisions(new Map(lineDecisionPendingRef.current));
+    }
+  }, [approvalPending, wo?.id]);
+
   const quotePending = useMemo(
     () => quoteLines.filter((q) => isReviewableQuoteLine(q)),
     [quoteLines],
@@ -1145,36 +1173,48 @@ export default function MobileWorkOrderClient({
     async (lineId: string) => {
       const workOrderId = wo?.id;
       if (!lineId || !workOrderId) return;
+      if (lineDecisionPendingRef.current.has(lineId)) return;
+      lineDecisionPendingRef.current.set(lineId, "approve");
+      setPendingLineDecisions(new Map(lineDecisionPendingRef.current));
       const actionIdentity = `${workOrderId}:${lineId}:approve`;
       const operationKey =
         lineDecisionOperationKeysRef.current.get(actionIdentity) ??
         crypto.randomUUID();
       lineDecisionOperationKeysRef.current.set(actionIdentity, operationKey);
-      const res = await fetch(
-        `/api/work-orders/lines/${lineId}/approval-decision`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Idempotency-Key": operationKey,
+      try {
+        const res = await fetch(
+          `/api/work-orders/lines/${lineId}/approval-decision`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Idempotency-Key": operationKey,
+            },
+            body: JSON.stringify({
+              decision: "approve",
+              actorSurface: "staff",
+              workOrderId,
+              idempotencyKey: operationKey,
+            }),
           },
-          body: JSON.stringify({
-            decision: "approve",
-            actorSurface: "staff",
-            workOrderId,
-            idempotencyKey: operationKey,
-          }),
-        },
-      );
-      const json = (await res.json().catch(() => null)) as {
-        ok?: boolean;
-        error?: string;
-      } | null;
-      if (!res.ok || !json?.ok)
-        return toast.error(json?.error ?? "Failed to approve line");
-      lineDecisionOperationKeysRef.current.delete(actionIdentity);
-      toast.success("Line approved");
-      void fetchAll();
+        );
+        const json = (await res.json().catch(() => null)) as {
+          ok?: boolean;
+          error?: string;
+        } | null;
+        if (!res.ok || !json?.ok) {
+          lineDecisionPendingRef.current.delete(lineId);
+          lineDecisionOperationKeysRef.current.delete(actionIdentity);
+          setPendingLineDecisions(new Map(lineDecisionPendingRef.current));
+          toast.error(json?.error ?? "Failed to approve line");
+          return;
+        }
+        toast.success("Line approved");
+        await fetchAll();
+      } catch {
+        toast.error("Approval response was interrupted; refreshing line status.");
+        await fetchAll();
+      }
     },
     [fetchAll, wo?.id],
   );
@@ -1183,36 +1223,48 @@ export default function MobileWorkOrderClient({
     async (lineId: string) => {
       const workOrderId = wo?.id;
       if (!lineId || !workOrderId) return;
+      if (lineDecisionPendingRef.current.has(lineId)) return;
+      lineDecisionPendingRef.current.set(lineId, "decline");
+      setPendingLineDecisions(new Map(lineDecisionPendingRef.current));
       const actionIdentity = `${workOrderId}:${lineId}:decline`;
       const operationKey =
         lineDecisionOperationKeysRef.current.get(actionIdentity) ??
         crypto.randomUUID();
       lineDecisionOperationKeysRef.current.set(actionIdentity, operationKey);
-      const res = await fetch(
-        `/api/work-orders/lines/${lineId}/approval-decision`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Idempotency-Key": operationKey,
+      try {
+        const res = await fetch(
+          `/api/work-orders/lines/${lineId}/approval-decision`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Idempotency-Key": operationKey,
+            },
+            body: JSON.stringify({
+              decision: "decline",
+              actorSurface: "staff",
+              workOrderId,
+              idempotencyKey: operationKey,
+            }),
           },
-          body: JSON.stringify({
-            decision: "decline",
-            actorSurface: "staff",
-            workOrderId,
-            idempotencyKey: operationKey,
-          }),
-        },
-      );
-      const json = (await res.json().catch(() => null)) as {
-        ok?: boolean;
-        error?: string;
-      } | null;
-      if (!res.ok || !json?.ok)
-        return toast.error(json?.error ?? "Failed to decline line");
-      lineDecisionOperationKeysRef.current.delete(actionIdentity);
-      toast.success("Line declined");
-      void fetchAll();
+        );
+        const json = (await res.json().catch(() => null)) as {
+          ok?: boolean;
+          error?: string;
+        } | null;
+        if (!res.ok || !json?.ok) {
+          lineDecisionPendingRef.current.delete(lineId);
+          lineDecisionOperationKeysRef.current.delete(actionIdentity);
+          setPendingLineDecisions(new Map(lineDecisionPendingRef.current));
+          toast.error(json?.error ?? "Failed to decline line");
+          return;
+        }
+        toast.success("Line declined");
+        await fetchAll();
+      } catch {
+        toast.error("Decline response was interrupted; refreshing line status.");
+        await fetchAll();
+      }
     },
     [fetchAll, wo?.id],
   );
@@ -1689,6 +1741,7 @@ export default function MobileWorkOrderClient({
                       Jobs awaiting approval
                     </div>
                     {approvalPending.map((ln, idx) => {
+                      const pendingDecision = pendingLineDecisions.get(ln.id);
                       const isAwaitingPartsBase =
                         (ln.status === "on_hold" &&
                           (ln.hold_reason ?? "")
@@ -1752,17 +1805,19 @@ export default function MobileWorkOrderClient({
                                 <>
                                   <button
                                     type="button"
-                                    className="rounded-md border border-emerald-400/80 px-2.5 py-1 text-[11px] font-medium text-emerald-100 hover:bg-emerald-500/10"
+                                    disabled={pendingDecision !== undefined}
+                                    className="rounded-md border border-emerald-400/80 px-2.5 py-1 text-[11px] font-medium text-emerald-100 hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-50"
                                     onClick={() => approveLine(ln.id)}
                                   >
-                                    Approve
+                                    {pendingDecision === "approve" ? "Approving…" : "Approve"}
                                   </button>
                                   <button
                                     type="button"
-                                    className="rounded-md border border-red-400/80 px-2.5 py-1 text-[11px] font-medium text-red-100 hover:bg-red-500/10"
+                                    disabled={pendingDecision !== undefined}
+                                    className="rounded-md border border-red-400/80 px-2.5 py-1 text-[11px] font-medium text-red-100 hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-50"
                                     onClick={() => declineLine(ln.id)}
                                   >
-                                    Decline
+                                    {pendingDecision === "decline" ? "Declining…" : "Decline"}
                                   </button>
                                 </>
                               )}
