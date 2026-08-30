@@ -3,12 +3,29 @@ import { describe, expect, it } from "vitest";
 
 const read = (path: string) => readFileSync(path, "utf8");
 
+const signInRoute = read("app/api/auth/sign-in/route.ts");
 const approvalRoute = read(
   "app/api/work-orders/lines/[id]/approval-decision/route.ts",
 );
 const punchTransition = read(
   "features/work-orders/server/applyJobPunchTransition.ts",
 );
+
+describe("customer portal sign-in bootstrap", () => {
+  it("resolves the customer and invite with the server-side client", () => {
+    const customerBlock = signInRoute.slice(
+      signInRoute.indexOf('if (surface === "customer")'),
+      signInRoute.indexOf('if (surface === "fleet")'),
+    );
+    expect(customerBlock).toContain("const admin = createAdminSupabase()");
+    expect(customerBlock).toContain('await admin\n      .from("customers")');
+    expect(customerBlock).toContain('await admin\n      .from("customer_portal_invites")');
+    expect(customerBlock).not.toContain('await supabase\n      .from("customers")');
+    expect(customerBlock).toContain('.eq("user_id", signedInUser.id)');
+    expect(customerBlock).toContain('.eq("accepted_by_user_id", signedInUser.id)');
+    expect(customerBlock).toContain('.is("revoked_at", null)');
+  });
+});
 
 describe("staff approval decision routing", () => {
   it("resolves a canonical staff profile before falling back to portal authorization", () => {
