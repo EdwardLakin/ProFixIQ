@@ -494,6 +494,7 @@ declare
   v_line public.work_order_lines%rowtype;
   v_replay boolean := false;
   v_has_active_segment boolean := false;
+  v_has_any_active_segment boolean := false;
   v_lock_attempt integer;
 begin
   if v_action not in ('start', 'resume', 'pause', 'finish') then
@@ -635,16 +636,39 @@ begin
         raise exception using errcode = 'P0001', message = 'Parent work order not found for shop.';
       end if;
 
-      if v_action in ('pause', 'finish') then
-        perform 1
+      -- Pre-lock the canonical RPC's complete segment set: every segment on
+      -- this line plus any other active segment owned by the actor. This keeps
+      -- supporting-technician and coordinated shift workflows inside the same
+      -- bounded deadlock-avoidance boundary for every action.
+      perform 1
+      from public.work_order_line_labor_segments segment
+      where segment.shop_id = p_shop_id
+        and (
+          segment.work_order_line_id = p_work_order_line_id
+          or (
+            segment.technician_id = v_profile_id
+            and segment.ended_at is null
+          )
+        )
+      order by segment.id
+      for update nowait;
+
+      select exists (
+        select 1
         from public.work_order_line_labor_segments segment
         where segment.shop_id = p_shop_id
           and segment.work_order_line_id = p_work_order_line_id
           and segment.technician_id = v_profile_id
           and segment.ended_at is null
-        for update nowait;
-        v_has_active_segment := found;
-      end if;
+      ) into v_has_active_segment;
+
+      select exists (
+        select 1
+        from public.work_order_line_labor_segments segment
+        where segment.shop_id = p_shop_id
+          and segment.work_order_line_id = p_work_order_line_id
+          and segment.ended_at is null
+      ) into v_has_any_active_segment;
 
       exit;
     exception
@@ -712,7 +736,19 @@ begin
       message = 'Technician is not assigned to this work-order line.';
   end if;
 
-  if v_action in ('pause', 'finish') and not v_has_active_segment then
+  if v_action = 'pause' and not v_has_active_segment then
+    raise exception using
+      errcode = 'P0001',
+      message = 'Technician has no active labor segment on this line to pause or finish.';
+  end if;
+
+  -- Standalone completion historically supports an assigned, inactive line.
+  -- If any active labor does exist, however, the actor must own an active
+  -- segment so action-specific authorization cannot race outside this lock set.
+  if v_action = 'finish'
+     and v_has_any_active_segment
+     and not v_has_active_segment
+  then
     raise exception using
       errcode = 'P0001',
       message = 'Technician has no active labor segment on this line to pause or finish.';

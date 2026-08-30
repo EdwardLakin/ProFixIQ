@@ -521,6 +521,17 @@ describe("assigned technician punch shop resolution", () => {
     expect(
       staffDecisionMigration.slice(assignedSegmentLock, assignedAssertion),
     ).toContain("for update nowait");
+    const assignedSegmentLockBlock = staffDecisionMigration.slice(
+      assignedSegmentLock,
+      assignedAssertion,
+    );
+    expect(assignedSegmentLockBlock).toContain(
+      "segment.work_order_line_id = p_work_order_line_id",
+    );
+    expect(assignedSegmentLockBlock).toContain(
+      "segment.technician_id = v_profile_id",
+    );
+    expect(assignedSegmentLockBlock).toContain("order by segment.id");
     expect(staffDecisionMigration).toContain(
       "ASSIGNED_JOB_PUNCH_BUSY: assignment state is changing; retry the punch.",
     );
@@ -535,6 +546,12 @@ describe("assigned technician punch shop resolution", () => {
     expect(
       staffDecisionMigration.slice(assignedAssertion, segmentOwnership),
     ).toContain("not v_has_active_segment");
+    expect(staffDecisionMigration).toContain(
+      "v_action = 'finish'\n     and v_has_any_active_segment\n     and not v_has_active_segment",
+    );
+    expect(staffDecisionMigration).not.toContain(
+      "v_action in ('pause', 'finish') and not v_has_active_segment",
+    );
     expect(canonicalDelegation).toBeGreaterThan(segmentOwnership);
     expect(generatedTypes).toContain(
       "apply_assigned_job_punch_transition_atomic: {",
