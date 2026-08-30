@@ -118,10 +118,11 @@ export async function applyJobPunchTransition({
     return { ok: false, status: 403, error: "Staff profile is not linked to a shop." };
   }
 
+  // API callers pass the authenticated auth-user id. Keep profile.id accepted
+  // for internal callers because the canonical RPC itself resolves either
+  // profile or auth identity inside the same shop.
   const technicianMatchesSession =
-    technicianId === user.id ||
-    technicianId === profile.id ||
-    technicianId === profile.user_id;
+    technicianId === user.id || technicianId === profile.id;
   if (!technicianMatchesSession) {
     return {
       ok: false,
