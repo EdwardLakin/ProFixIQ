@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@shared/types/types/supabase";
+import { resolveAuthenticatedStaffProfile } from "@/features/shared/lib/server/admin-access";
 
 type DB = Database;
 
@@ -61,6 +62,9 @@ function cleanString(value: unknown): string | null {
 function errorStatus(message: string): number {
   const normalized = message.toLowerCase();
   if (normalized.includes("not found")) return 404;
+  if (normalized.includes("actor") || normalized.includes("technician is not available")) {
+    return 403;
+  }
   if (normalized.includes("inspection_completion_required")) return 409;
   if (
     normalized.includes("financially_locked") ||
@@ -91,26 +95,50 @@ export async function applyJobPunchTransition({
     };
   }
 
-  const { data: line, error: lineError } = await supabase
-    .from("work_order_lines")
-    .select("id, shop_id")
-    .eq("id", lineId)
-    .maybeSingle<{ id: string; shop_id: string | null }>();
+  // Do not discover the line's shop through the caller's RLS-scoped
+  // work_order_lines SELECT. Mechanics and Lead Hands are intentionally denied
+  // the financial-capability read policy on that base table, so that pre-read
+  // 404'd before the canonical punch RPC could apply its own authorization.
+  // Resolve the authenticated staff profile instead and let the atomic RPC
+  // validate the line against that shop under its existing row locks.
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return { ok: false, status: 401, error: authError?.message ?? "Unauthorized" };
+  }
 
-  if (lineError) return { ok: false, status: 400, error: lineError.message };
-  if (!line?.shop_id) {
-    return { ok: false, status: 404, error: "Work-order line not found for shop." };
+  const { profile, error: profileError } = await resolveAuthenticatedStaffProfile(
+    supabase,
+    user.id,
+  );
+  if (profileError) return { ok: false, status: 403, error: profileError };
+  if (!profile?.shop_id) {
+    return { ok: false, status: 403, error: "Staff profile is not linked to a shop." };
+  }
+
+  const technicianMatchesSession =
+    technicianId === user.id ||
+    technicianId === profile.id ||
+    technicianId === profile.user_id;
+  if (!technicianMatchesSession) {
+    return {
+      ok: false,
+      status: 403,
+      error: "Authenticated actor cannot punch labor for another technician.",
+    };
   }
 
   const details = (options?.pause?.details ?? {}) as Json;
   const rpc = supabase as unknown as RpcClient;
   const { data, error } = await rpc.rpc("apply_job_punch_transition_atomic", {
-    p_shop_id: line.shop_id,
+    p_shop_id: profile.shop_id,
     p_work_order_line_id: lineId,
     p_action: action,
     p_technician_id: technicianId,
-    p_actor_user_id: technicianId,
-    p_operation_key: `${line.shop_id}:job-punch:${operationKey}`,
+    p_actor_user_id: user.id,
+    p_operation_key: `${profile.shop_id}:job-punch:${operationKey}`,
     p_allow_concurrent: options?.allowConcurrentJobPunches === true,
     p_at: options?.nowIso ?? new Date().toISOString(),
     p_start_source: cleanString(options?.startSource),
