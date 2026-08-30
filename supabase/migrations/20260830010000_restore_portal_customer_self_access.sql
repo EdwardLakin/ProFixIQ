@@ -21,6 +21,27 @@ begin;
 -- authenticated user that row already identifies, and add no cross-customer,
 -- cross-shop, or staff-visible surface.
 
+-- CONTRACT CHANGE, APPROVED. Under AGENTS.md this is not an isolated addition:
+-- it adds RLS policies to the pre-existing `customers` and
+-- `customer_portal_invites` tables and replaces `authenticated`/`anon`
+-- privileges on the latter. The repository owner gave explicit, task-specific
+-- approval for this migration as written, having been shown the alternatives
+-- (resolving portal reads server-side with the service-role client and no
+-- migration, or a customer-safe projection).
+--
+-- ACCEPTED RISK: combined with the table-wide `authenticated` SELECT privilege,
+-- the policy below lets a linked portal account read every column of its own
+-- `customers` row, including staff-facing fields such as `notes`,
+-- `import_notes`, `archive_reason`, `merge_reason`, and `external_id`. Column
+-- privileges cannot narrow this, because staff and portal customers are both
+-- the `authenticated` role and column grants are role-wide rather than
+-- per-policy. A `security_invoker` view would not close it either, since the
+-- base-table policy is still evaluated. The rows are the customer's own, and
+-- the owner accepted this rather than block the portal sign-in and payment
+-- checkout repair. Moving the portal browser reads server-side, and narrowing
+-- the `select("*")` calls in app/portal/vehicles and app/portal/settings, are
+-- the tracked follow-ups.
+
 -- A customer may read their own record. Staff visibility keeps flowing through
 -- the existing shop-scoped policies, which this does not touch.
 drop policy if exists customers_portal_self_select on public.customers;
