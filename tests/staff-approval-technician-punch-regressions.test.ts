@@ -483,6 +483,10 @@ describe("assigned technician punch shop resolution", () => {
       "from public.work_order_lines line",
       assignedBoundary,
     );
+    const assignedProfileLock = staffDecisionMigration.indexOf(
+      "from public.profiles profile",
+      assignedLineLock,
+    );
     const assignedAssertion = staffDecisionMigration.indexOf(
       "Technician is not assigned to this work-order line.",
       assignedLineLock,
@@ -492,11 +496,21 @@ describe("assigned technician punch shop resolution", () => {
       assignedAssertion,
     );
     expect(assignedLineLock).toBeGreaterThan(assignedBoundary);
-    expect(assignedAssertion).toBeGreaterThan(assignedLineLock);
+    expect(assignedProfileLock).toBeGreaterThan(assignedLineLock);
+    expect(assignedAssertion).toBeGreaterThan(assignedProfileLock);
     expect(canonicalDelegation).toBeGreaterThan(assignedAssertion);
     expect(
-      staffDecisionMigration.slice(assignedLineLock, assignedAssertion),
-    ).toContain("for update");
+      staffDecisionMigration.slice(assignedLineLock, assignedProfileLock),
+    ).toContain("for update nowait");
+    expect(
+      staffDecisionMigration.slice(assignedProfileLock, assignedAssertion),
+    ).toContain("for update nowait");
+    expect(staffDecisionMigration).toContain(
+      "ASSIGNED_JOB_PUNCH_BUSY: assignment state is changing; retry the punch.",
+    );
+    expect(punchTransition).toContain(
+      'normalized.includes("assigned_job_punch_busy")',
+    );
     const segmentOwnership = staffDecisionMigration.indexOf(
       "Technician has no active labor segment on this line to pause or finish.",
       assignedAssertion,

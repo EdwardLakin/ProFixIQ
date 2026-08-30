@@ -559,6 +559,30 @@ describe("applyJobPunchTransition atomic boundary", () => {
       status: 503,
       error: "PARTS_QUOTE_HOLD_BUSY: line state is changing; retry the hold.",
     });
+
+    const assignedDb = new FakeSupabase();
+    assignedDb.rpcError = {
+      message:
+        "ASSIGNED_JOB_PUNCH_BUSY: assignment state is changing; retry the punch.",
+    };
+
+    const assignedResult = await applyJobPunchTransition({
+      supabase: assignedDb as never,
+      lineId: "line-1",
+      action: "start",
+      technicianId: "tech-1",
+      options: {
+        operationKey: "assigned-punch-busy",
+        enforceAssignedWork: true,
+      },
+    });
+
+    expect(assignedResult).toEqual({
+      ok: false,
+      status: 503,
+      error:
+        "ASSIGNED_JOB_PUNCH_BUSY: assignment state is changing; retry the punch.",
+    });
   });
 
   it("preserves trusted break auto-resume for a currently capable technician", async () => {

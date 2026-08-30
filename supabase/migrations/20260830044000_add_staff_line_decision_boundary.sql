@@ -489,7 +489,11 @@ declare
   v_profile_id uuid;
   v_auth_user_id uuid;
   v_role text;
+  v_locked_auth_user_id uuid;
+  v_locked_role text;
   v_line public.work_order_lines%rowtype;
+  v_replay boolean := false;
+  v_lock_attempt integer;
 begin
   if v_action not in ('start', 'resume', 'pause', 'finish') then
     raise exception using errcode = '22023', message = 'Unsupported job punch action.';
@@ -506,8 +510,7 @@ begin
   where profile.shop_id = p_shop_id
     and (profile.id = p_technician_id or profile.user_id = p_technician_id)
   order by case when profile.id = p_technician_id then 0 else 1 end
-  limit 1
-  for update;
+  limit 1;
   if not found
      or v_role not in (
        'owner', 'admin', 'manager', 'mechanic', 'tech', 'technician',
@@ -525,7 +528,118 @@ begin
   end if;
 
   -- Preserve canonical replay semantics even if assignment changed after the
-  -- original command committed.
+  -- original command committed. A replay locks only the profile before
+  -- delegating; the canonical receipt path returns without requesting the line,
+  -- so it cannot invert the assignment function's line -> profile order.
+  select exists (
+    select 1
+    from public.workforce_operation_keys operation
+    where operation.shop_id = p_shop_id
+      and operation.operation_name = 'job_punch:' || v_action
+      and operation.operation_key = p_operation_key
+  ) into v_replay;
+
+  if v_replay then
+    select coalesce(profile.user_id, profile.id),
+           lower(trim(coalesce(profile.role, '')))
+      into v_locked_auth_user_id, v_locked_role
+    from public.profiles profile
+    where profile.id = v_profile_id
+      and profile.shop_id = p_shop_id
+    for update;
+    if not found
+       or v_locked_auth_user_id is distinct from v_auth_user_id
+       or v_locked_role not in (
+         'owner', 'admin', 'manager', 'mechanic', 'tech', 'technician',
+         'lead_hand', 'lead hand', 'leadhand', 'foreman'
+       )
+       or p_actor_user_id not in (v_profile_id, v_locked_auth_user_id)
+       or (
+         coalesce(auth.role(), '') <> 'service_role'
+         and not public.scheduler_actor_matches(v_locked_auth_user_id)
+       )
+    then
+      raise exception using
+        errcode = '42501',
+        message = 'ASSIGNED_JOB_PUNCH_FORBIDDEN: actor capability changed before replay.';
+    end if;
+
+    return public.apply_job_punch_transition_atomic(
+      p_shop_id => p_shop_id,
+      p_work_order_line_id => p_work_order_line_id,
+      p_action => p_action,
+      p_technician_id => p_technician_id,
+      p_actor_user_id => p_actor_user_id,
+      p_operation_key => p_operation_key,
+      p_allow_concurrent => p_allow_concurrent,
+      p_at => p_at,
+      p_start_source => p_start_source,
+      p_hold_reason => p_hold_reason,
+      p_notes => p_notes,
+      p_preserve_line_status => p_preserve_line_status,
+      p_release_to_awaiting => p_release_to_awaiting,
+      p_cause => p_cause,
+      p_correction => p_correction,
+      p_event => p_event,
+      p_details => p_details
+    );
+  end if;
+
+  -- Assignment commands lock line -> technician profile. Use that same order,
+  -- but never wait for the profile while retaining the line: a NOWAIT miss
+  -- rolls back this inner subtransaction and both locks before a bounded retry.
+  -- This also avoids an inversion against compatibility callers that still
+  -- enter the canonical punch RPC through its pre-existing profile-first path.
+  for v_lock_attempt in 1..100 loop
+    begin
+      select * into v_line
+      from public.work_order_lines line
+      where line.id = p_work_order_line_id
+        and line.shop_id = p_shop_id
+      for update nowait;
+      if not found then
+        raise exception using errcode = 'P0001', message = 'Work-order line not found for shop.';
+      end if;
+
+      select coalesce(profile.user_id, profile.id),
+             lower(trim(coalesce(profile.role, '')))
+        into v_locked_auth_user_id, v_locked_role
+      from public.profiles profile
+      where profile.id = v_profile_id
+        and profile.shop_id = p_shop_id
+      for update nowait;
+      if not found
+         or v_locked_auth_user_id is distinct from v_auth_user_id
+         or v_locked_role not in (
+           'owner', 'admin', 'manager', 'mechanic', 'tech', 'technician',
+           'lead_hand', 'lead hand', 'leadhand', 'foreman'
+         )
+         or p_actor_user_id not in (v_profile_id, v_locked_auth_user_id)
+         or (
+           coalesce(auth.role(), '') <> 'service_role'
+           and not public.scheduler_actor_matches(v_locked_auth_user_id)
+         )
+      then
+        raise exception using
+          errcode = '42501',
+          message = 'ASSIGNED_JOB_PUNCH_FORBIDDEN: actor capability changed before the punch.';
+      end if;
+
+      exit;
+    exception
+      when lock_not_available then
+        if v_lock_attempt = 100 then
+          raise exception using
+            errcode = '55P03',
+            message = 'ASSIGNED_JOB_PUNCH_BUSY: assignment state is changing; retry the punch.';
+        end if;
+    end;
+
+    perform pg_sleep(0.02);
+  end loop;
+
+  -- A matching command may have committed while this transaction backed off.
+  -- Replay it under the line/profile locks before rechecking assignment state.
   if exists (
     select 1
     from public.workforce_operation_keys operation
@@ -552,18 +666,6 @@ begin
       p_event => p_event,
       p_details => p_details
     );
-  end if;
-
-  -- Assignment commands acquire this same row lock before changing either the
-  -- primary field or supporting bridge, so revocation and punch authorization
-  -- cannot pass one another between this assertion and the canonical mutation.
-  select * into v_line
-  from public.work_order_lines line
-  where line.id = p_work_order_line_id
-    and line.shop_id = p_shop_id
-  for update;
-  if not found then
-    raise exception using errcode = 'P0001', message = 'Work-order line not found for shop.';
   end if;
 
   if not (

@@ -89,7 +89,8 @@ function errorStatus(message: string): number {
   if (normalized.includes("not found")) return 404;
   if (
     normalized.includes("parts_quote_hold_busy") ||
-    normalized.includes("staff_line_decision_busy")
+    normalized.includes("staff_line_decision_busy") ||
+    normalized.includes("assigned_job_punch_busy")
   ) {
     return 503;
   }
