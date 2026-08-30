@@ -28,6 +28,16 @@ values
     'aa250000-0000-4000-8000-000000000005',
     'approval-binding-imported-profile@example.com',
     '{"full_name":"Approval Binding Imported Advisor Profile"}'::jsonb
+  ),
+  (
+    'aa250000-0000-4000-8000-000000000006',
+    'approval-binding-service@example.com',
+    '{"full_name":"Approval Binding Service"}'::jsonb
+  ),
+  (
+    'aa250000-0000-4000-8000-000000000007',
+    'approval-binding-foreman@example.com',
+    '{"full_name":"Approval Binding Foreman"}'::jsonb
   )
 on conflict (id) do nothing;
 
@@ -47,6 +57,22 @@ values
     'advisor',
     'Approval Binding Imported Advisor',
     'approval-binding-imported@example.com',
+    null
+  ),
+  (
+    'aa250000-0000-4000-8000-000000000006',
+    'aa250000-0000-4000-8000-000000000006',
+    'service',
+    'Approval Binding Service',
+    'approval-binding-service@example.com',
+    null
+  ),
+  (
+    'aa250000-0000-4000-8000-000000000007',
+    'aa250000-0000-4000-8000-000000000007',
+    'foreman',
+    'Approval Binding Foreman',
+    'approval-binding-foreman@example.com',
     null
   )
 on conflict (id) do update
@@ -92,7 +118,9 @@ set user_id = case
     shop_id = 'ab250000-0000-4000-8000-000000000001'
 where id in (
   'aa250000-0000-4000-8000-000000000001',
-  'aa250000-0000-4000-8000-000000000005'
+  'aa250000-0000-4000-8000-000000000005',
+  'aa250000-0000-4000-8000-000000000006',
+  'aa250000-0000-4000-8000-000000000007'
 );
 
 insert into public.customers (id, shop_id, user_id, name, email)
@@ -227,6 +255,30 @@ values
     'repair',
     'ab250000-0000-4000-8000-000000000001',
     'aa250000-0000-4000-8000-000000000001',
+    'medium'
+  ),
+  (
+    'af250000-0000-4000-8000-000000000006',
+    'ae250000-0000-4000-8000-000000000001',
+    'Service quote-authorizer staff decision',
+    'awaiting_approval',
+    'pending',
+    'pending',
+    'repair',
+    'ab250000-0000-4000-8000-000000000001',
+    'aa250000-0000-4000-8000-000000000006',
+    'medium'
+  ),
+  (
+    'af250000-0000-4000-8000-000000000007',
+    'ae250000-0000-4000-8000-000000000001',
+    'Foreman quote-authorizer staff decision',
+    'awaiting_approval',
+    'pending',
+    'pending',
+    'repair',
+    'ab250000-0000-4000-8000-000000000001',
+    'aa250000-0000-4000-8000-000000000007',
     'medium'
   );
 
@@ -369,6 +421,66 @@ begin
 end;
 $authorized_staff_adapter_decision$;
 
+select set_config(
+  'request.jwt.claim.sub',
+  'aa250000-0000-4000-8000-000000000006',
+  true
+);
+select set_config(
+  'request.jwt.claims',
+  '{"role":"authenticated","sub":"aa250000-0000-4000-8000-000000000006"}',
+  true
+);
+
+do $service_staff_adapter_decision$
+declare
+  v_result jsonb;
+begin
+  v_result := public.apply_staff_line_decision_atomic(
+    'ab250000-0000-4000-8000-000000000001',
+    'ae250000-0000-4000-8000-000000000001',
+    'af250000-0000-4000-8000-000000000006',
+    'aa250000-0000-4000-8000-000000000006',
+    'approve',
+    'approval-binding:staff-adapter:service'
+  );
+  if (v_result ->> 'ok')::boolean is distinct from true
+     or (v_result ->> 'idempotent')::boolean is distinct from false then
+    raise exception 'Service staff adapter approval failed: %', v_result;
+  end if;
+end;
+$service_staff_adapter_decision$;
+
+select set_config(
+  'request.jwt.claim.sub',
+  'aa250000-0000-4000-8000-000000000007',
+  true
+);
+select set_config(
+  'request.jwt.claims',
+  '{"role":"authenticated","sub":"aa250000-0000-4000-8000-000000000007"}',
+  true
+);
+
+do $foreman_staff_adapter_decision$
+declare
+  v_result jsonb;
+begin
+  v_result := public.apply_staff_line_decision_atomic(
+    'ab250000-0000-4000-8000-000000000001',
+    'ae250000-0000-4000-8000-000000000001',
+    'af250000-0000-4000-8000-000000000007',
+    'aa250000-0000-4000-8000-000000000007',
+    'decline',
+    'approval-binding:staff-adapter:foreman'
+  );
+  if (v_result ->> 'ok')::boolean is distinct from true
+     or (v_result ->> 'idempotent')::boolean is distinct from false then
+    raise exception 'Foreman staff adapter decline failed: %', v_result;
+  end if;
+end;
+$foreman_staff_adapter_decision$;
+
 reset role;
 
 insert into public.work_order_line_labor_segments (
@@ -394,6 +506,17 @@ values (
   now() - interval '4 minutes',
   now() - interval '1 minute',
   'manual_pause'
+);
+
+select set_config(
+  'request.jwt.claim.sub',
+  'aa250000-0000-4000-8000-000000000001',
+  true
+);
+select set_config(
+  'request.jwt.claims',
+  '{"role":"authenticated","sub":"aa250000-0000-4000-8000-000000000001"}',
+  true
 );
 
 set local role authenticated;
@@ -676,6 +799,26 @@ begin
     raise exception 'Linked imported staff approval did not preserve the canonical profile actor';
   end if;
 
+  if not exists (
+    select 1
+    from public.work_order_lines line
+    where line.id = 'af250000-0000-4000-8000-000000000006'
+      and line.approval_state = 'approved'
+      and line.approval_by = 'aa250000-0000-4000-8000-000000000006'::uuid
+  ) then
+    raise exception 'Service quote-authorizer approval was not preserved';
+  end if;
+
+  if not exists (
+    select 1
+    from public.work_order_lines line
+    where line.id = 'af250000-0000-4000-8000-000000000007'
+      and line.approval_state = 'declined'
+      and line.approval_by = 'aa250000-0000-4000-8000-000000000007'::uuid
+  ) then
+    raise exception 'Foreman quote-authorizer decline was not preserved';
+  end if;
+
   if (
     select count(*)
     from public.portal_lifecycle_operation_keys operation
@@ -691,7 +834,7 @@ begin
     where operation.shop_id = 'ab250000-0000-4000-8000-000000000001'
       and operation.operation_name = 'approval_compatibility_bundle'
       and operation.operation_key like 'approval-binding:%'
-  ) <> 3 then
+  ) <> 5 then
     raise exception 'Compatibility approval denial changed durable receipt history';
   end if;
 

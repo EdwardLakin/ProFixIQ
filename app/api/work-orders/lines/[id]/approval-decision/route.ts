@@ -1,5 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import {
+  createAdminSupabase,
+  createServerSupabaseRoute,
+} from "@/features/shared/lib/supabase/server";
 import { resolveAuthenticatedStaffProfile } from "@/features/shared/lib/server/admin-access";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import { requirePortalCustomerActor } from "@/features/portal/server/requirePortalActor";
@@ -154,8 +157,36 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       };
     }
 
+    // Staff authorization is complete before privilege escalation. Financial
+    // workspace RLS can intentionally hide both quote and work-order lines
+    // from an otherwise authorized quote decision actor, so use a trusted
+    // projection scoped to the already-derived shop, work order, and line.
+    // Portal callers retain their end-user projection and ownership RLS.
+    const decisionReadClient =
+      actor.kind === "staff" ? createAdminSupabase() : supabase;
+    const { data: targetLine, error: targetLineError } = await decisionReadClient
+      .from("work_order_lines")
+      .select("id")
+      .eq("id", lineId)
+      .eq("work_order_id", workOrderId)
+      .eq("shop_id", actor.shopId)
+      .maybeSingle<{ id: string }>();
+
+    if (targetLineError) {
+      return NextResponse.json(
+        { ok: false, error: "Unable to verify the approval target." },
+        { status: 500 },
+      );
+    }
+    if (!targetLine) {
+      return NextResponse.json(
+        { ok: false, error: "Line item not found" },
+        { status: 404 },
+      );
+    }
+
     const quarantineCheck = await checkQuotePricingQuarantine({
-      supabase,
+      supabase: decisionReadClient,
       shopId: actor.shopId,
       workOrderId,
       workOrderLineIds: [lineId],
@@ -185,16 +216,17 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       safeString(body?.idempotencyKey);
 
     if (!key) {
-      const { data: currentLine, error: currentLineError } = await supabase
-        .from("work_order_lines")
-        .select("approval_state,updated_at")
-        .eq("id", lineId)
-        .eq("work_order_id", workOrderId)
-        .eq("shop_id", actor.shopId)
-        .maybeSingle<{
-          approval_state: string | null;
-          updated_at: string | null;
-        }>();
+      const { data: currentLine, error: currentLineError } =
+        await decisionReadClient
+          .from("work_order_lines")
+          .select("approval_state,updated_at")
+          .eq("id", lineId)
+          .eq("work_order_id", workOrderId)
+          .eq("shop_id", actor.shopId)
+          .maybeSingle<{
+            approval_state: string | null;
+            updated_at: string | null;
+          }>();
 
       if (currentLineError) {
         return NextResponse.json(

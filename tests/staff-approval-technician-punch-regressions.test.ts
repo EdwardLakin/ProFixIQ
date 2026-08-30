@@ -183,6 +183,40 @@ describe("staff approval decision routing", () => {
     expect(approvalRoute).not.toContain("supabase as unknown as RpcClient");
   });
 
+  it("checks the target and pricing quarantine through a scoped trusted projection", () => {
+    const capabilityCheck = approvalRoute.indexOf(
+      "capabilities.canAuthorizeQuotes",
+    );
+    const projection = approvalRoute.indexOf(
+      'actor.kind === "staff" ? createAdminSupabase() : supabase',
+    );
+    const targetLookup = approvalRoute.indexOf(
+      '.from("work_order_lines")',
+      projection,
+    );
+    const quarantineCheck = approvalRoute.indexOf(
+      "await checkQuotePricingQuarantine({",
+      targetLookup,
+    );
+    const staffRpc = approvalRoute.indexOf(
+      'rpc.rpc("apply_staff_line_decision_atomic"',
+      quarantineCheck,
+    );
+
+    expect(capabilityCheck).toBeGreaterThan(-1);
+    expect(projection).toBeGreaterThan(capabilityCheck);
+    expect(targetLookup).toBeGreaterThan(projection);
+    expect(quarantineCheck).toBeGreaterThan(targetLookup);
+    expect(staffRpc).toBeGreaterThan(quarantineCheck);
+    const scopedProjection = approvalRoute.slice(targetLookup, quarantineCheck);
+    expect(scopedProjection).toContain('.eq("id", lineId)');
+    expect(scopedProjection).toContain('.eq("work_order_id", workOrderId)');
+    expect(scopedProjection).toContain('.eq("shop_id", actor.shopId)');
+    expect(scopedProjection).toContain("if (!targetLine)");
+    expect(approvalRoute).toContain("supabase: decisionReadClient");
+    expect(approvalRoute).toContain("const rpc = supabase");
+  });
+
   it("returns exact receipts before state checks and uses canonical lock ordering", () => {
     const receiptLookup = staffDecisionMigration.indexOf(
       "from public.quote_lifecycle_operation_keys operation",
@@ -193,9 +227,13 @@ describe("staff approval decision routing", () => {
     const siblingLocks = staffDecisionMigration.indexOf(
       "from public.work_order_lines sibling",
     );
+    const quoteLineLocks = staffDecisionMigration.indexOf(
+      "from public.work_order_quote_lines quote_line",
+      siblingLocks,
+    );
     const segmentNowaitLocks = staffDecisionMigration.indexOf(
       "from public.work_order_line_labor_segments seg",
-      siblingLocks,
+      quoteLineLocks,
     );
     const serializedReceiptLookup = staffDecisionMigration.indexOf(
       "select operation.result, operation.actor_user_id, operation.work_order_id",
@@ -209,7 +247,8 @@ describe("staff approval decision routing", () => {
     expect(receiptLookup).toBeGreaterThan(-1);
     expect(workOrderLock).toBeGreaterThan(receiptLookup);
     expect(siblingLocks).toBeGreaterThan(workOrderLock);
-    expect(segmentNowaitLocks).toBeGreaterThan(siblingLocks);
+    expect(quoteLineLocks).toBeGreaterThan(siblingLocks);
+    expect(segmentNowaitLocks).toBeGreaterThan(quoteLineLocks);
     expect(serializedReceiptLookup).toBeGreaterThan(segmentNowaitLocks);
     expect(laborCheck).toBeGreaterThan(serializedReceiptLookup);
     expect(
@@ -228,15 +267,28 @@ describe("staff approval decision routing", () => {
       "STAFF_LINE_DECISION_OPERATION_CONFLICT",
     );
 
-    const delegatedCall = staffDecisionMigration.indexOf(
-      "v_result := public.apply_approval_compatibility_bundle_atomic(",
+    const compatibilityMutation = staffDecisionMigration.indexOf(
+      "v_rollup := public.reconcile_work_order_approval_state_atomic(",
     );
-    const delegatedReceiptValidation = staffDecisionMigration.indexOf(
+    const compatibilityReceipt = staffDecisionMigration.indexOf(
+      "insert into public.quote_lifecycle_operation_keys(",
+      compatibilityMutation,
+    );
+    const compatibilityAudit = staffDecisionMigration.indexOf(
+      "insert into public.activity_logs",
+      compatibilityReceipt,
+    );
+    const receiptValidation = staffDecisionMigration.indexOf(
       "select operation.result, operation.actor_user_id, operation.work_order_id",
-      delegatedCall,
+      compatibilityAudit,
     );
-    expect(delegatedCall).toBeGreaterThan(laborCheck);
-    expect(delegatedReceiptValidation).toBeGreaterThan(delegatedCall);
+    expect(compatibilityMutation).toBeGreaterThan(laborCheck);
+    expect(compatibilityReceipt).toBeGreaterThan(compatibilityMutation);
+    expect(compatibilityAudit).toBeGreaterThan(compatibilityReceipt);
+    expect(receiptValidation).toBeGreaterThan(compatibilityAudit);
+    expect(staffDecisionMigration).not.toContain(
+      "public.apply_approval_compatibility_bundle_atomic(",
+    );
   });
 
   it("keeps pure portal customers on the portal decision contract", () => {

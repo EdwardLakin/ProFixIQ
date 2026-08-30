@@ -22,6 +22,7 @@ set search_path = public, pg_temp
 as $function$
 declare
   v_decision text := lower(trim(coalesce(p_decision, '')));
+  v_now timestamptz := coalesce(p_at, now());
   v_profile_id uuid;
   v_role text;
   v_line public.work_order_lines%rowtype;
@@ -29,6 +30,7 @@ declare
   v_existing_actor_user_id uuid;
   v_existing_work_order_id uuid;
   v_lock_attempt integer;
+  v_rollup text;
   v_result jsonb;
 begin
   if v_decision not in ('approve', 'decline') then
@@ -135,6 +137,15 @@ begin
       order by sibling.id
       for update nowait;
 
+      -- Preserve the compatibility engine's work order -> line -> quote-line
+      -- lock order before taking the labor-segment guard below.
+      perform 1
+      from public.work_order_quote_lines quote_line
+      where quote_line.shop_id = p_shop_id
+        and quote_line.work_order_id = p_work_order_id
+      order by quote_line.id
+      for update nowait;
+
       -- pause_all_active_technician_labor_atomic acquires labor segments before
       -- delegating to the line-locking punch RPC. Acquire the same segment set
       -- inside this NOWAIT subtransaction so a miss releases the work-order and
@@ -162,7 +173,7 @@ begin
   -- A competing decision may have committed while this call was backing off.
   -- Re-read under the canonical resource locks before applying current-state
   -- checks. Because every compatibility mutation needs these same locks, a
-  -- missing receipt at this point remains missing until this adapter delegates.
+  -- missing receipt at this point remains missing until this adapter writes it.
   select operation.result, operation.actor_user_id, operation.work_order_id
     into v_existing_result, v_existing_actor_user_id, v_existing_work_order_id
   from public.quote_lifecycle_operation_keys operation
@@ -213,6 +224,12 @@ begin
       message = 'STAFF_LINE_DECISION_NOT_FOUND: work-order line not found for shop.';
   end if;
 
+  if public.work_order_is_financially_locked(p_shop_id, p_work_order_id) then
+    raise exception using
+      errcode = 'P0001',
+      message = 'FINANCIALLY_LOCKED: approval decisions cannot change this work order.';
+  end if;
+
   if v_line.voided_at is not null
      or lower(coalesce(v_line.status::text, '')) in (
        'in_progress', 'completed', 'ready_to_invoice', 'invoiced',
@@ -243,24 +260,91 @@ begin
       message = 'STAFF_LINE_DECISION_INELIGIBLE: technician labor has already been recorded for this line.';
   end if;
 
-  v_result := public.apply_approval_compatibility_bundle_atomic(
+  -- The established compatibility core predates the canonical quote-authorizer
+  -- capability and rejects service/foreman internally. Keep that shared core
+  -- unchanged: this task-owned adapter applies only its line-decision subset
+  -- while preserving the same durable receipt, rollup, attribution, and audit
+  -- contract for every canonical quote-authorizer.
+  if v_decision = 'approve' then
+    update public.work_order_lines
+    set approval_state = 'approved',
+        status = 'awaiting',
+        line_status = 'authorized',
+        approval_at = coalesce(approval_at, v_now),
+        approval_by = v_profile_id,
+        hold_reason = null,
+        updated_at = v_now
+    where id = p_line_id
+      and shop_id = p_shop_id
+      and work_order_id = p_work_order_id;
+  else
+    update public.work_order_lines
+    set approval_state = 'declined',
+        status = 'on_hold',
+        line_status = 'declined',
+        approval_at = v_now,
+        approval_by = v_profile_id,
+        hold_reason = coalesce(nullif(trim(hold_reason), ''), 'Customer declined'),
+        updated_at = v_now
+    where id = p_line_id
+      and shop_id = p_shop_id
+      and work_order_id = p_work_order_id;
+  end if;
+
+  v_rollup := public.reconcile_work_order_approval_state_atomic(
     p_shop_id,
     p_work_order_id,
-    null,
     v_profile_id,
-    case when v_decision = 'approve' then array[p_line_id]::uuid[] else array[]::uuid[] end,
-    case when v_decision = 'decline' then array[p_line_id]::uuid[] else array[]::uuid[] end,
-    array[]::uuid[],
-    array[]::uuid[],
-    null,
-    p_operation_key,
-    coalesce(p_at, now())
+    v_now
   );
 
-  -- Bind the delegated output to the durable receipt as a final defense. The
-  -- legacy bundle can return a pre-existing receipt without validating its
-  -- arrays, so this adapter never reports success for mismatched intent even if
-  -- another legacy caller path or a future implementation bypasses its locks.
+  v_result := jsonb_build_object(
+    'ok', true,
+    'idempotent', false,
+    'workOrderId', p_work_order_id,
+    'approvalState', v_rollup,
+    'approvedLineIds', case
+      when v_decision = 'approve' then jsonb_build_array(p_line_id)
+      else '[]'::jsonb
+    end,
+    'declinedLineIds', case
+      when v_decision = 'decline' then jsonb_build_array(p_line_id)
+      else '[]'::jsonb
+    end,
+    'approvedQuoteLineIds', '[]'::jsonb,
+    'declinedQuoteLineIds', '[]'::jsonb,
+    'quoteApproveResult', '{}'::jsonb,
+    'quoteDeclineResult', '{}'::jsonb
+  );
+
+  insert into public.quote_lifecycle_operation_keys(
+    shop_id, operation_name, operation_key, actor_user_id, work_order_id, result
+  ) values (
+    p_shop_id,
+    'approval_compatibility_bundle',
+    p_operation_key,
+    v_profile_id,
+    p_work_order_id,
+    v_result
+  );
+
+  insert into public.activity_logs(user_id, action, target_table, target_id, context)
+  values (
+    v_profile_id,
+    'approval_compatibility_bundle',
+    'work_orders',
+    p_work_order_id,
+    jsonb_build_object(
+      'shop_id', p_shop_id,
+      'customer_id', null,
+      'operation_key', p_operation_key,
+      'approval_state', v_rollup
+    )
+  );
+
+  -- Bind the output to the durable receipt as a final defense so this adapter
+  -- never reports success for mismatched intent even if another compatibility
+  -- caller path or a future implementation bypasses its locks.
   select operation.result, operation.actor_user_id, operation.work_order_id
     into v_existing_result, v_existing_actor_user_id, v_existing_work_order_id
   from public.quote_lifecycle_operation_keys operation
@@ -309,7 +393,7 @@ grant execute on function public.apply_staff_line_decision_atomic(
 comment on function public.apply_staff_line_decision_atomic(
   uuid, uuid, uuid, uuid, text, text, timestamptz
 ) is
-  'Applies a canonical quote-authorizer line approval or decline only before labor begins, then delegates to the established approval compatibility bundle.';
+  'Applies a canonical quote-authorizer line approval or decline only before labor begins while preserving the established compatibility receipt, rollup, attribution, and audit contract.';
 
 notify pgrst, 'reload schema';
 
