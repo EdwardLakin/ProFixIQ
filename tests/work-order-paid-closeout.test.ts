@@ -58,7 +58,13 @@ describe("work-order paid closeout boundary", () => {
 
   it("removes paid work from the active board and routes the portal to history", () => {
     expect(boardHook).toContain('workOrder.payment_status === "paid"');
-    expect(boardHook).toContain("!paidWorkOrderIds.has(row.work_order_id)");
+    // Paid rows are now excluded through the combined visibility set, which also
+    // carries archived rows. Assert the paid predicate still feeds that set and
+    // that the set is what filters the board.
+    expect(boardHook).toContain("hiddenWorkOrderIds");
+    expect(boardHook).toContain(
+      "!hiddenWorkOrderIds.has(row.work_order_id)",
+    );
     expect(portalLoader).toContain('href: "/portal/history"');
     expect(portalLoader).toContain("paymentStatus: workOrder.payment_status");
     expect(portalLoader).toContain("paidAt: workOrder.paid_at");

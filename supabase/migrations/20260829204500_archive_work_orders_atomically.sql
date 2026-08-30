@@ -11,8 +11,7 @@ create index if not exists work_orders_shop_archived_at_idx
 create or replace function public.archive_work_order_atomic(
   p_shop_id uuid,
   p_work_order_id uuid,
-  p_actor_user_id uuid,
-  p_at timestamptz default now()
+  p_actor_user_id uuid
 )
 returns jsonb
 language plpgsql
@@ -24,7 +23,7 @@ declare
   v_actor_profile_id uuid;
   v_actor_role text;
   v_actor_auth_user_id uuid;
-  v_now timestamptz := coalesce(p_at, now());
+  v_now timestamptz := now();
 begin
   select p.id,
          lower(trim(coalesce(p.role, ''))),
@@ -112,12 +111,16 @@ begin
     raise exception using errcode = 'P0001', message = 'ARCHIVE_ACTIVE_LABOR: end active labor before archiving this work order.';
   end if;
 
+  perform set_config('app.work_order_archiving', '1', true);
+
   update public.work_orders
   set archived_at = v_now,
       archived_by_user_id = v_actor_auth_user_id,
       updated_at = v_now
   where id = p_work_order_id
     and shop_id = p_shop_id;
+
+  perform set_config('app.work_order_archiving', '0', true);
 
   insert into public.activity_logs(action, user_id, timestamp, target_table, target_id, context)
   values (
@@ -146,10 +149,10 @@ begin
 end;
 $function$;
 
-revoke all on function public.archive_work_order_atomic(uuid, uuid, uuid, timestamptz) from public;
-revoke all on function public.archive_work_order_atomic(uuid, uuid, uuid, timestamptz) from anon;
-grant execute on function public.archive_work_order_atomic(uuid, uuid, uuid, timestamptz) to authenticated;
-grant execute on function public.archive_work_order_atomic(uuid, uuid, uuid, timestamptz) to service_role;
+revoke all on function public.archive_work_order_atomic(uuid, uuid, uuid) from public;
+revoke all on function public.archive_work_order_atomic(uuid, uuid, uuid) from anon;
+grant execute on function public.archive_work_order_atomic(uuid, uuid, uuid) to authenticated;
+grant execute on function public.archive_work_order_atomic(uuid, uuid, uuid) to service_role;
 
 create or replace function public.apply_job_punch_transition_atomic(
   p_shop_id uuid,
@@ -526,5 +529,147 @@ begin
   return v_result;
 end;
 $function$;
+
+-- Archive columns are transition state, not ordinary row data. `work_orders`
+-- keeps a broad role UPDATE policy and table-level UPDATE for `authenticated`,
+-- so without this guard any such client could set `archived_at` directly and
+-- bypass every Fleet, financial-lock, dispatch, and open-labor check in
+-- `public.archive_work_order_atomic`. The guarded RPC sets a transaction-local
+-- flag; nothing else may move these columns.
+create or replace function public.enforce_work_order_archive_write_boundary()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $function$
+begin
+  if new.archived_at is distinct from old.archived_at
+     or new.archived_by_user_id is distinct from old.archived_by_user_id
+  then
+    if coalesce(current_setting('app.work_order_archiving', true), '0') <> '1' then
+      raise exception using
+        errcode = '42501',
+        message = 'WORK_ORDER_ARCHIVE_DIRECT_WRITE: archive state changes only through archive_work_order_atomic.';
+    end if;
+  end if;
+
+  return new;
+end;
+$function$;
+
+drop trigger if exists work_orders_enforce_archive_write_boundary on public.work_orders;
+create trigger work_orders_enforce_archive_write_boundary
+  before update on public.work_orders
+  for each row
+  execute function public.enforce_work_order_archive_write_boundary();
+
+-- Archive verifies at commit time that no invoice exists, but canonical
+-- finalization locks the same parent row and could otherwise issue an invoice
+-- for an archived work order immediately afterwards. Enforcing the invariant on
+-- the version table covers finalize_invoice_version and every other write path.
+create or replace function public.reject_invoice_version_for_archived_work_order()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $function$
+declare
+  v_archived_at timestamptz;
+begin
+  if new.work_order_id is null then
+    return new;
+  end if;
+
+  -- `for share` is load-bearing: a plain read would not block against an
+  -- in-flight archive holding `for update`, so a concurrent writer could commit
+  -- against a parent that is archived moments later. Sharing the lock makes the
+  -- two transactions serialize on the same row and re-read the archived state.
+  select wo.archived_at
+    into v_archived_at
+  from public.work_orders wo
+  where wo.id = new.work_order_id
+  for share;
+
+  if v_archived_at is not null then
+    raise exception using
+      errcode = 'P0001',
+      message = 'WORK_ORDER_ARCHIVED: archived work orders cannot receive a new invoice version.';
+  end if;
+
+  return new;
+end;
+$function$;
+
+drop trigger if exists invoice_versions_reject_archived_work_order on public.invoice_versions;
+create trigger invoice_versions_reject_archived_work_order
+  before insert on public.invoice_versions
+  for each row
+  execute function public.reject_invoice_version_for_archived_work_order();
+
+-- Same reasoning for dispatch: the archive guard is a point-in-time scan, while
+-- dispatch_create_service_visit_atomic only checks that the parent work order
+-- exists. A stale or lock-queued request could otherwise schedule an active
+-- Service Visit against a work order that has just been archived.
+create or replace function public.reject_service_visit_for_archived_work_order()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $function$
+declare
+  v_archived_at timestamptz;
+begin
+  if new.work_order_id is null then
+    return new;
+  end if;
+
+  if coalesce(lower(trim(new.status)), '') in ('completed', 'cancelled', 'canceled')
+     or new.completed_at is not null
+     or new.cancelled_at is not null
+  then
+    return new;
+  end if;
+
+  -- Lock ordering matters: archive_work_order_atomic locks work_orders first and
+  -- service_visits second, while an UPDATE here already holds the visit row. Only
+  -- re-check the parent when the visit actually becomes active or is repointed,
+  -- so an ordinary reschedule of an already-active visit cannot deadlock against
+  -- an archive. Skipping that case is safe because archive refuses a work order
+  -- that still has an active Service Visit, so an active visit's parent cannot
+  -- already be archived.
+  if tg_op = 'UPDATE'
+     and new.work_order_id is not distinct from old.work_order_id
+     and coalesce(lower(trim(old.status)), '') not in ('completed', 'cancelled', 'canceled')
+     and old.completed_at is null
+     and old.cancelled_at is null
+  then
+    return new;
+  end if;
+
+  -- `for share` is load-bearing: a plain read would not block against an
+  -- in-flight archive holding `for update`, so a concurrent writer could commit
+  -- against a parent that is archived moments later. Sharing the lock makes the
+  -- two transactions serialize on the same row and re-read the archived state.
+  select wo.archived_at
+    into v_archived_at
+  from public.work_orders wo
+  where wo.id = new.work_order_id
+  for share;
+
+  if v_archived_at is not null then
+    raise exception using
+      errcode = 'P0001',
+      message = 'WORK_ORDER_ARCHIVED: archived work orders cannot hold an active Service Visit.';
+  end if;
+
+  return new;
+end;
+$function$;
+
+drop trigger if exists service_visits_reject_archived_work_order on public.service_visits;
+create trigger service_visits_reject_archived_work_order
+  before insert or update on public.service_visits
+  for each row
+  execute function public.reject_service_visit_for_archived_work_order();
 
 commit;

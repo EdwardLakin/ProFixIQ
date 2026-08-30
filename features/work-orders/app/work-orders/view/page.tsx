@@ -29,6 +29,8 @@ import {
   toggleWorkOrderSummaryFilter,
   type WorkOrderSummaryFilter,
 } from "@/features/work-orders/lib/workOrderListFilters";
+import { resolveCanonicalStaffProfile } from "@/features/shared/lib/authenticated-profile";
+import { canMutateWorkOrders } from "@/features/shared/lib/rbac";
 import { WORKSPACE_CAPABILITIES } from "@/features/workspace/authorization/capabilities";
 import { useWorkspaceCapabilities } from "@/features/workspace/authorization/useWorkspaceCapabilities";
 
@@ -72,6 +74,12 @@ type StatusKey =
   | "ready_to_invoice"
   | "invoiced"
   | "cancelled";
+
+// Archive is a visibility state (`work_orders.archived_at`), deliberately kept
+// separate from the canonical `cancelled` lifecycle status so an archived
+// in-progress work order stays in progress and a genuinely cancelled work
+// order is never relabelled as archived.
+const ARCHIVED_FILTER = "archived";
 
 type TechRollup = "awaiting" | "in_progress" | "on_hold" | "completed";
 
@@ -255,6 +263,10 @@ export default function WorkOrdersView(): JSX.Element {
   const canAssign = canWorkspace(
     WORKSPACE_CAPABILITIES.manageWorkOrderAssignments,
   );
+  // Mirror the server decision (`requireShopScopedApiAccess` with
+  // `canManageWorkOrders`) so the action is only offered to actors the archive
+  // endpoint will actually accept.
+  const [canArchive, setCanArchive] = useState(false);
 
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
@@ -294,6 +306,25 @@ export default function WorkOrdersView(): JSX.Element {
     [searchParams],
   );
 
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      const { data } = await supabase.auth.getUser();
+      const user = data.user;
+      if (!user) return;
+
+      const { profile } = await resolveCanonicalStaffProfile(supabase, user.id);
+      if (cancelled) return;
+
+      setCanArchive(canMutateWorkOrders(profile?.role ?? null));
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase]);
+
   const load = useCallback(async () => {
     setLoading(true);
     setErr(null);
@@ -309,13 +340,15 @@ export default function WorkOrdersView(): JSX.Element {
       .order("created_at", { ascending: false })
       .limit(100);
 
-    if (status === "") {
+    if (status === ARCHIVED_FILTER) {
+      query = query.not("archived_at", "is", null);
+    } else if (status === "") {
       const defaultStatuses = isSeededShop
         ? SEEDED_DEFAULT_STATUSES
         : ACTIVE_WORK_ORDER_STATUSES;
-      query = query.in("status", [...defaultStatuses]);
+      query = query.in("status", [...defaultStatuses]).is("archived_at", null);
     } else {
-      query = query.eq("status", status);
+      query = query.eq("status", status).is("archived_at", null);
     }
 
     let data: Row[] | null = null;
@@ -751,9 +784,23 @@ export default function WorkOrdersView(): JSX.Element {
       const prev = rows;
       setRows((current) => current.filter((row) => row.id !== id));
 
-      const response = await fetch(`/api/work-orders/${id}/archive`, {
-        method: "POST",
-      });
+      let response: Response;
+      try {
+        response = await fetch(`/api/work-orders/${id}/archive`, {
+          method: "POST",
+        });
+      } catch {
+        // The row was removed optimistically, but an offline or dropped
+        // connection means the archive never reached the server. Restore it
+        // rather than leaving the list showing a state the database does not
+        // have.
+        setRows(prev);
+        toast.error(
+          "Could not reach the server. The work order was not archived.",
+        );
+        return;
+      }
+
       const result = (await response.json().catch(() => null)) as {
         error?: string;
       } | null;
@@ -1062,7 +1109,8 @@ export default function WorkOrdersView(): JSX.Element {
               <option value="completed">Completed (review)</option>
               <option value="ready_to_invoice">Ready to invoice</option>
               <option value="invoiced">Invoiced</option>
-              <option value="cancelled">Archived / cancelled</option>
+              <option value="cancelled">Cancelled</option>
+              <option value={ARCHIVED_FILTER}>Archived</option>
             </select>
 
             <button
@@ -1401,7 +1449,9 @@ export default function WorkOrdersView(): JSX.Element {
                         </button>
                       ) : null}
 
-                      {canonicalStatus !== "cancelled" &&
+                      {canArchive &&
+                      !row.archived_at &&
+                      canonicalStatus !== "cancelled" &&
                       canonicalStatus !== "invoiced" ? (
                         <button
                           type="button"
@@ -1423,10 +1473,12 @@ export default function WorkOrdersView(): JSX.Element {
                           void handleDelete(row.id);
                         }}
                         className={`${
-                          canonicalStatus === "cancelled" ||
-                          canonicalStatus === "invoiced"
-                            ? "ml-auto "
-                            : ""
+                          canArchive &&
+                          !row.archived_at &&
+                          canonicalStatus !== "cancelled" &&
+                          canonicalStatus !== "invoiced"
+                            ? ""
+                            : "ml-auto "
                         }rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-1.5 text-xs font-semibold text-red-700 transition hover:bg-red-500/15 dark:text-red-100`}
                         title="Delete empty work orders only"
                       >

@@ -25681,6 +25681,8 @@ export type Database = {
         Row: {
           advisor_id: string | null
           approval_state: string | null
+          archived_at: string | null
+          archived_by_user_id: string | null
           assigned_tech: string | null
           created_at: string | null
           created_by: string | null
@@ -25770,6 +25772,8 @@ export type Database = {
         Insert: {
           advisor_id?: string | null
           approval_state?: string | null
+          archived_at?: string | null
+          archived_by_user_id?: string | null
           assigned_tech?: string | null
           created_at?: string | null
           created_by?: string | null
@@ -25859,6 +25863,8 @@ export type Database = {
         Update: {
           advisor_id?: string | null
           approval_state?: string | null
+          archived_at?: string | null
+          archived_by_user_id?: string | null
           assigned_tech?: string | null
           created_at?: string | null
           created_by?: string | null
@@ -27713,6 +27719,14 @@ export type Database = {
           p_operation_key: string
           p_reason: string
           p_shop_id: string
+        }
+        Returns: Json
+      }
+      archive_work_order_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_shop_id: string
+          p_work_order_id: string
         }
         Returns: Json
       }

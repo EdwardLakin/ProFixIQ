@@ -307,6 +307,10 @@ export default function MobileWorkOrderQueue({
           )
           .eq("shop_id", me.shop_id)
           .eq("record_type", "work_order")
+          // Archive preserves the lifecycle status, so an archived record would
+          // otherwise still match ACTIVE_WORK_ORDER_STATUSES and show up under
+          // Active with a Start that the server rejects.
+          .is("archived_at", null)
           .order("created_at", { ascending: false })
           .limit(100);
 
