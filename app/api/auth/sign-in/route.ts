@@ -181,7 +181,13 @@ export async function POST(req: Request) {
   }
 
   if (surface === "customer") {
-    const { data: customer } = await supabase
+    // Customer bootstrap must not depend on a browser/JWT SELECT policy on the
+    // staff-facing customers table. The password flow above has already
+    // authenticated the user; resolve the exact linked customer and accepted,
+    // non-revoked invite with the service-role client, pinned to that verified
+    // auth subject.
+    const admin = createAdminSupabase();
+    const { data: customer } = await admin
       .from("customers")
       .select("id")
       .eq("user_id", signedInUser.id)
@@ -189,7 +195,6 @@ export async function POST(req: Request) {
       .maybeSingle();
     if (!customer?.id) return deny();
 
-    const admin = createAdminSupabase();
     const { data: invite } = await admin
       .from("customer_portal_invites")
       .select("id")
