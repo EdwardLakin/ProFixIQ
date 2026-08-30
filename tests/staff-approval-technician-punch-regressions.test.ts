@@ -487,6 +487,14 @@ describe("assigned technician punch shop resolution", () => {
       "from public.profiles profile",
       assignedLineLock,
     );
+    const assignedWorkOrderLock = staffDecisionMigration.indexOf(
+      "from public.work_orders work_order",
+      assignedProfileLock,
+    );
+    const assignedSegmentLock = staffDecisionMigration.indexOf(
+      "from public.work_order_line_labor_segments segment",
+      assignedWorkOrderLock,
+    );
     const assignedAssertion = staffDecisionMigration.indexOf(
       "Technician is not assigned to this work-order line.",
       assignedLineLock,
@@ -497,13 +505,21 @@ describe("assigned technician punch shop resolution", () => {
     );
     expect(assignedLineLock).toBeGreaterThan(assignedBoundary);
     expect(assignedProfileLock).toBeGreaterThan(assignedLineLock);
-    expect(assignedAssertion).toBeGreaterThan(assignedProfileLock);
+    expect(assignedWorkOrderLock).toBeGreaterThan(assignedProfileLock);
+    expect(assignedSegmentLock).toBeGreaterThan(assignedWorkOrderLock);
+    expect(assignedAssertion).toBeGreaterThan(assignedSegmentLock);
     expect(canonicalDelegation).toBeGreaterThan(assignedAssertion);
     expect(
       staffDecisionMigration.slice(assignedLineLock, assignedProfileLock),
     ).toContain("for update nowait");
     expect(
-      staffDecisionMigration.slice(assignedProfileLock, assignedAssertion),
+      staffDecisionMigration.slice(assignedProfileLock, assignedWorkOrderLock),
+    ).toContain("for update nowait");
+    expect(
+      staffDecisionMigration.slice(assignedWorkOrderLock, assignedSegmentLock),
+    ).toContain("for update nowait");
+    expect(
+      staffDecisionMigration.slice(assignedSegmentLock, assignedAssertion),
     ).toContain("for update nowait");
     expect(staffDecisionMigration).toContain(
       "ASSIGNED_JOB_PUNCH_BUSY: assignment state is changing; retry the punch.",
@@ -518,7 +534,7 @@ describe("assigned technician punch shop resolution", () => {
     expect(segmentOwnership).toBeGreaterThan(assignedAssertion);
     expect(
       staffDecisionMigration.slice(assignedAssertion, segmentOwnership),
-    ).toContain("segment.ended_at is null");
+    ).toContain("not v_has_active_segment");
     expect(canonicalDelegation).toBeGreaterThan(segmentOwnership);
     expect(generatedTypes).toContain(
       "apply_assigned_job_punch_transition_atomic: {",

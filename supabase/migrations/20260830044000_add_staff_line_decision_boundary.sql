@@ -493,6 +493,7 @@ declare
   v_locked_role text;
   v_line public.work_order_lines%rowtype;
   v_replay boolean := false;
+  v_has_active_segment boolean := false;
   v_lock_attempt integer;
 begin
   if v_action not in ('start', 'resume', 'pause', 'finish') then
@@ -586,10 +587,10 @@ begin
   end if;
 
   -- Assignment commands lock line -> technician profile. Use that same order,
-  -- but never wait for the profile while retaining the line: a NOWAIT miss
-  -- rolls back this inner subtransaction and both locks before a bounded retry.
-  -- This also avoids an inversion against compatibility callers that still
-  -- enter the canonical punch RPC through its pre-existing profile-first path.
+  -- then acquire the parent and active-segment evidence inside the same bounded
+  -- NOWAIT subtransaction. A miss rolls back every lock before retrying, which
+  -- avoids inversions with profile-first compatibility punches, parent-first
+  -- portal decisions, and segment-first coordinated labor workflows.
   for v_lock_attempt in 1..100 loop
     begin
       select * into v_line
@@ -623,6 +624,26 @@ begin
         raise exception using
           errcode = '42501',
           message = 'ASSIGNED_JOB_PUNCH_FORBIDDEN: actor capability changed before the punch.';
+      end if;
+
+      perform 1
+      from public.work_orders work_order
+      where work_order.id = v_line.work_order_id
+        and work_order.shop_id = p_shop_id
+      for update nowait;
+      if not found then
+        raise exception using errcode = 'P0001', message = 'Parent work order not found for shop.';
+      end if;
+
+      if v_action in ('pause', 'finish') then
+        perform 1
+        from public.work_order_line_labor_segments segment
+        where segment.shop_id = p_shop_id
+          and segment.work_order_line_id = p_work_order_line_id
+          and segment.technician_id = v_profile_id
+          and segment.ended_at is null
+        for update nowait;
+        v_has_active_segment := found;
       end if;
 
       exit;
@@ -691,31 +712,10 @@ begin
       message = 'Technician is not assigned to this work-order line.';
   end if;
 
-  if v_action in ('pause', 'finish') then
-    -- Keep the canonical line -> work order -> segment order. Assignment
-    -- changes and labor transitions now serialize before this ownership check,
-    -- and the delegated canonical RPC reuses these transaction-owned locks.
-    perform 1
-    from public.work_orders work_order
-    where work_order.id = v_line.work_order_id
-      and work_order.shop_id = p_shop_id
-    for update;
-    if not found then
-      raise exception using errcode = 'P0001', message = 'Parent work order not found for shop.';
-    end if;
-
-    perform 1
-    from public.work_order_line_labor_segments segment
-    where segment.shop_id = p_shop_id
-      and segment.work_order_line_id = p_work_order_line_id
-      and segment.technician_id = v_profile_id
-      and segment.ended_at is null
-    for update;
-    if not found then
-      raise exception using
-        errcode = 'P0001',
-        message = 'Technician has no active labor segment on this line to pause or finish.';
-    end if;
+  if v_action in ('pause', 'finish') and not v_has_active_segment then
+    raise exception using
+      errcode = 'P0001',
+      message = 'Technician has no active labor segment on this line to pause or finish.';
   end if;
 
   return public.apply_job_punch_transition_atomic(
