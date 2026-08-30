@@ -395,11 +395,27 @@ describe("assigned technician punch shop resolution", () => {
       "update public.work_order_lines",
       partsHoldLaborAssertion,
     );
+    const partsHoldBoundaryEnd = staffDecisionMigration.indexOf(
+      "revoke all on function public.apply_staff_line_decision_atomic",
+      partsHoldBoundary,
+    );
+    const partsHoldSql = staffDecisionMigration.slice(
+      partsHoldBoundary,
+      partsHoldBoundaryEnd,
+    );
     expect(partsHoldWorkOrderLock).toBeGreaterThan(partsHoldBoundary);
     expect(partsHoldLineLock).toBeGreaterThan(partsHoldWorkOrderLock);
     expect(partsHoldSegmentLock).toBeGreaterThan(partsHoldLineLock);
     expect(partsHoldLaborAssertion).toBeGreaterThan(partsHoldSegmentLock);
     expect(partsHoldMutation).toBeGreaterThan(partsHoldLaborAssertion);
+    expect(partsHoldBoundaryEnd).toBeGreaterThan(partsHoldMutation);
+    expect(
+      partsHoldSql.match(/'pre_labor_parts_quote_hold'/g),
+    ).toHaveLength(3);
+    expect(partsHoldSql).not.toContain("'job_punch:pause'");
+    expect(punchTransition).toContain(
+      '? "pre_labor_parts_quote_hold"\n    : `job_punch:${action}`',
+    );
     expect(
       staffDecisionMigration.slice(partsHoldWorkOrderLock, partsHoldLaborAssertion),
     ).toContain("for update nowait");

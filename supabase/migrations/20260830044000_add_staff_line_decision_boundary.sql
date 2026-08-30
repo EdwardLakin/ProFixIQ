@@ -853,7 +853,7 @@ begin
     into v_existing_result, v_existing_actor_user_id, v_existing_line_id
   from public.workforce_operation_keys operation
   where operation.shop_id = p_shop_id
-    and operation.operation_name = 'job_punch:pause'
+    and operation.operation_name = 'pre_labor_parts_quote_hold'
     and operation.operation_key = p_operation_key;
   if found then
     if v_existing_actor_user_id is distinct from v_actor_auth_user_id
@@ -940,7 +940,7 @@ begin
     into v_existing_result, v_existing_actor_user_id, v_existing_line_id
   from public.workforce_operation_keys operation
   where operation.shop_id = p_shop_id
-    and operation.operation_name = 'job_punch:pause'
+    and operation.operation_name = 'pre_labor_parts_quote_hold'
     and operation.operation_key = p_operation_key;
   if found then
     if v_existing_actor_user_id is distinct from v_actor_auth_user_id
@@ -1020,7 +1020,7 @@ begin
     shop_id, operation_name, operation_key, actor_user_id,
     work_order_id, work_order_line_id, result
   ) values (
-    p_shop_id, 'job_punch:pause', p_operation_key, v_actor_auth_user_id,
+    p_shop_id, 'pre_labor_parts_quote_hold', p_operation_key, v_actor_auth_user_id,
     v_line.work_order_id, p_work_order_line_id, v_result
   );
 

@@ -218,12 +218,15 @@ export async function applyJobPunchTransition({
   // remains responsible for mutation locking and state transitions.
   const admin = createAdminSupabase();
   const rpcOperationKey = `${shopId}:job-punch:${operationKey}`;
+  const receiptOperationName = partsQuoteHoldRequested
+    ? "pre_labor_parts_quote_hold"
+    : `job_punch:${action}`;
   const replayExistingOperation = async (): Promise<TransitionResult | null> => {
     const { data: existingOperation, error: operationError } = await admin
       .from("workforce_operation_keys")
       .select("actor_user_id,work_order_line_id,result")
       .eq("shop_id", shopId)
-      .eq("operation_name", `job_punch:${action}`)
+      .eq("operation_name", receiptOperationName)
       .eq("operation_key", rpcOperationKey)
       .maybeSingle<{
         actor_user_id: string | null;

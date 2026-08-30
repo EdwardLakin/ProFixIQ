@@ -632,7 +632,26 @@ declare
   v_updated_at timestamptz;
   v_audit_action text;
   v_audit_at timestamptz;
+  v_parts_receipt_count integer;
 begin
+  -- A browser may reuse the same stable key for an ordinary pause and the
+  -- explicit pre-labor parts intent. The parts adapter must not replay the
+  -- ordinary labor receipt merely because actor and line also match.
+  insert into public.workforce_operation_keys(
+    shop_id, operation_name, operation_key, actor_user_id,
+    work_order_id, work_order_line_id, result
+  )
+  select
+    line.shop_id,
+    'job_punch:pause',
+    'ab250000-0000-4000-8000-000000000001:job-punch:approval-binding:parts-hold',
+    'aa250000-0000-4000-8000-000000000001',
+    line.work_order_id,
+    line.id,
+    jsonb_build_object('ok', true, 'action', 'pause', 'receipt_kind', 'ordinary')
+  from public.work_order_lines line
+  where line.id = 'af250000-0000-4000-8000-000000000010';
+
   v_result := public.apply_pre_labor_parts_quote_hold_atomic(
     'ab250000-0000-4000-8000-000000000001',
     'af250000-0000-4000-8000-000000000010',
@@ -654,15 +673,27 @@ begin
       'ab250000-0000-4000-8000-000000000001:job-punch:approval-binding:parts-hold'
   order by timestamp desc
   limit 1;
+  select count(*) into v_parts_receipt_count
+  from public.workforce_operation_keys operation
+  where operation.shop_id = 'ab250000-0000-4000-8000-000000000001'
+    and operation.operation_key =
+      'ab250000-0000-4000-8000-000000000001:job-punch:approval-binding:parts-hold'
+    and operation.operation_name in (
+      'job_punch:pause',
+      'pre_labor_parts_quote_hold'
+    );
 
   if (v_result ->> 'ok')::boolean is distinct from true
+     or v_result ->> 'receipt_kind' is not null
      or v_status is distinct from 'on_hold'
      or v_hold_reason is distinct from 'Awaiting parts quote'
      or v_updated_at < now() - interval '1 minute'
      or v_audit_action is distinct from 'parts_quote_hold'
-     or v_audit_at < now() - interval '1 minute' then
-    raise exception 'Atomic pre-labor parts hold failed: %, %, %, %, %, %',
-      v_result, v_status, v_hold_reason, v_updated_at, v_audit_action, v_audit_at;
+     or v_audit_at < now() - interval '1 minute'
+     or v_parts_receipt_count is distinct from 2 then
+    raise exception 'Atomic pre-labor parts hold failed: %, %, %, %, %, %, %',
+      v_result, v_status, v_hold_reason, v_updated_at, v_audit_action, v_audit_at,
+      v_parts_receipt_count;
   end if;
 end;
 $authorized_atomic_parts_hold$;

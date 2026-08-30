@@ -61,6 +61,7 @@ class FakeSupabase {
   rpcError: { message: string; details?: string | null; hint?: string | null } | null =
     null;
   rpcCalls: RpcCall[] = [];
+  workforceOperationNames: string[] = [];
 
   constructor() {
     mocks.admin = this;
@@ -96,8 +97,15 @@ class FakeSupabase {
       select() {
         return query;
       },
-      eq(column: string, value: unknown) {
+      eq: (column: string, value: unknown) => {
         filters.set(column, value);
+        if (
+          table === "workforce_operation_keys" &&
+          column === "operation_name" &&
+          typeof value === "string"
+        ) {
+          this.workforceOperationNames.push(value);
+        }
         return query;
       },
       or() {
@@ -216,6 +224,7 @@ describe("applyJobPunchTransition atomic boundary", () => {
         }),
       },
     ]);
+    expect(db.workforceOperationNames).toEqual(["job_punch:pause"]);
   });
 
   it("maps release-to-awaiting and financial-lock conflicts without local writes", async () => {
@@ -241,7 +250,6 @@ describe("applyJobPunchTransition atomic boundary", () => {
         p_operation_key: "shop-1:job-punch:resume-1",
       }),
     );
-
     db.setActor("tech-1", "mechanic");
     db.rpcError = { message: "FINANCIALLY_LOCKED: invoice issued" };
     const locked = await applyJobPunchTransition({
@@ -344,6 +352,9 @@ describe("applyJobPunchTransition atomic boundary", () => {
         p_hold_reason: "Awaiting parts quote",
       }),
     );
+    expect(db.workforceOperationNames).toEqual([
+      "pre_labor_parts_quote_hold",
+    ]);
   });
 
   it("rejects a pre-labor parts hold without work-order management capability", async () => {
