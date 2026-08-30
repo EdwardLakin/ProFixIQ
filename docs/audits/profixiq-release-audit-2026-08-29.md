@@ -45,8 +45,8 @@ exact-head required CI is green.
 
 Two findings were added on 2026-08-30 during the portal repair; see the
 addendum at the end of this document. PR #1570 partially repaired item 6, but
-the clean-replay sign-in bootstrap remains open until its customer lookup is
-policy-independent.
+the clean-replay sign-in bootstrap and remaining browser-only portal pages stay
+open until their customer/invite lookups are policy-independent.
 
 The important correction to #1535 is that the fixes which did land came from
 standalone migrations dated 2026-08-25 that are already on `main`, independent of
@@ -86,7 +86,11 @@ the abandoned draft stack.
    (`features/work-orders/server/authorizeWorkOrderEvidence.ts:41-83`) likewise
    accepts the service-role `customers.user_id` match without invite evidence;
    `GET /api/work-orders/[id]/media` then returns customer-visible evidence and
-   resolved display URLs through an admin client.
+   resolved display URLs through an admin client. `/portal/settings` is another
+   confirmed bypass: its browser client reads `customers.select("*")` after
+   `auth.getUser()` but never checks accepted, non-revoked invite evidence. Under
+   production-only `customer_select_own`, a revoked session can therefore still
+   fetch the complete customer row, including staff-facing columns.
 
    Sign-in and the canonical `requirePortalCustomerAccess()` /
    `requirePortalCustomerActor()` path now enforce accepted, non-revoked invite
@@ -96,10 +100,11 @@ the abandoned draft stack.
    callers immediately perform a session-client Work Order ownership read whose
    RLS requires an accepted, non-revoked invite; those pages are therefore not
    confirmed bypasses. The remaining repair should converge the confirmed
-   messaging, inspection-report, and Work Order evidence paths on the invite-aware
-   primitive (or an equivalent durable revocation boundary), and harden shared
-   customer helpers so future consumers cannot omit that check. No migration
-   currently clears `customers.user_id` on revocation.
+   messaging, inspection-report, Work Order evidence, and settings paths on the
+   invite-aware primitive (or an equivalent durable revocation boundary), audit
+   the other portal browser callers that resolve `customers` directly, and
+   harden shared customer helpers so future consumers cannot omit that check. No
+   migration currently clears `customers.user_id` on revocation.
 
 3. **Job punch has no assignment or capability check.**
    `apply_job_punch_transition_atomic`
@@ -128,7 +133,8 @@ the abandoned draft stack.
 
 These are not hardening items; they break daily operation on current `main`.
 
-6. **Customer Portal sign-in still depends on production-only customer RLS.**
+6. **Customer Portal bootstrap and browser-only pages still depend on
+   production-only customer RLS.**
    PR #1570 correctly moved post-login customer and invite authorization behind
    server-side, invite-aware guards, without adding a customer-browser RLS
    policy. However, the `surface === "customer"` branch of
@@ -138,11 +144,23 @@ These are not hardening items; they break daily operation on current `main`.
    and removing production-only `customer_select_own` under item 17 would expose
    the same dependency in production, so the route denies the new session.
 
+   Fixing that one lookup is necessary but not sufficient. Several downstream
+   portal pages still resolve the customer through the browser client. For
+   example, `/portal/request/when` repeats the end-user `customers` lookup before
+   loading vehicles and shop hours, so a pure portal customer admitted by a
+   policy-independent sign-in still cannot request service on clean replay.
+   `/portal/settings`, `/portal/vehicles`, `/portal/profile`, and
+   `/portal/customer-appointments` contain the same direct-read pattern, and the
+   remaining portal callers must be inventoried rather than treating sign-in as
+   the entire repair boundary.
+
    PR #1570 is therefore a partial repair: its protected portal helpers and
-   payment checkout no longer depend on customer-table RLS, but bootstrap is not
-   yet policy-independent. The intended repair is a server-side customer lookup
-   pinned to the verified password-authentication subject, followed by the same
-   accepted, non-revoked invite check. It is **not** another customer RLS policy.
+   payment checkout no longer depend on customer-table RLS, but the complete
+   portal surface is not yet policy-independent. The intended repair is to
+   converge sign-in and the remaining browser-only customer/invite lookups on a
+   server-side authorization
+   path pinned to the verified auth subject and requiring accepted, non-revoked
+   invite evidence. It is **not** another customer RLS policy.
 
 7. **Staff cannot approve or decline repair lines.**
    Desktop (`app/work-orders/[id]/Client.tsx:1304,1332`) and Shop Mobile
@@ -219,8 +237,9 @@ These are not hardening items; they break daily operation on current `main`.
 
 ## Recommended order
 
-1. **Item 6** — make Customer Portal sign-in policy-independent while retaining
-   the accepted, non-revoked invite requirement.
+1. **Item 6** — make Customer Portal sign-in and remaining browser-only pages
+   policy-independent while retaining the accepted, non-revoked invite
+   requirement.
 2. **Items 7 and 8** — restore staff approval and assigned-technician punch-in.
 3. **Items 16 and 17** — reconcile production authorization drift and remove the
    unrestricted-column customer self-read before treating Clean Replay as
@@ -294,8 +313,10 @@ already issue `select("*")` against `customers`
 (`app/portal/settings/page.tsx:107`, `app/portal/vehicles/page.tsx:123`), so no
 crafted query is required to reach the data once a session can load those pages.
 
-PR #1570 neither widens nor fixes this. It removes the portal's dependence on
-the policy by resolving identity server-side, but the policy itself remains.
+PR #1570 neither widens nor fixes this. It removes the canonical portal actor
+path's dependence on the policy by resolving identity server-side, but the
+browser-only callers above still depend on the policy and the policy itself
+remains.
 
 Closing it is constrained in a way worth recording, because the obvious remedies
 do not work here:
@@ -315,10 +336,11 @@ contract change on a pre-existing object and needs explicit approval.
 
 ### Revised priority
 
-Item 6 remains first until the sign-in customer lookup is policy-independent;
-PR #1570 repaired the downstream invite-aware authorization but not that
-clean-replay bootstrap dependency. Items 7 and 8 follow as the two broken daily
-staff workflows. Findings 16 and 17 come next because they determine whether
-Clean Replay is authoritative evidence for the deployed authorization surface;
+Item 6 remains first until sign-in and the remaining browser-only portal pages
+use policy-independent, invite-aware customer resolution. PR #1570 repaired the
+canonical downstream authorization path but not every clean-replay dependency.
+Items 7 and 8 follow as the two broken daily staff workflows. Findings 16 and 17
+come next because they determine whether Clean Replay is authoritative evidence
+for the deployed authorization surface;
 then the remaining authorization, workflow, onboarding, and client-isolation
 items follow the Recommended order above.
