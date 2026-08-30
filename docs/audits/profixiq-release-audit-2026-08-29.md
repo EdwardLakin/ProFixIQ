@@ -97,15 +97,30 @@ the abandoned draft stack.
    direct customer reads. They belong in the same revocation audit even where a
    later request happens to fail closed.
 
-   The booking mutation boundary is also a confirmed bypass.
-   `scheduler_apply_booking_command_atomic` and its compatibility adapter
-   `apply_portal_booking_command_atomic`
-   (`20260810031500_universal_scheduler_cutover.sql:782-867,1057-1127`) are
-   `SECURITY DEFINER` functions granted directly to `authenticated`. Customer
-   mode compares `customers.user_id` only with caller-supplied
-   `p_actor_user_id`; neither function binds that value to `auth.uid()` or
-   requires accepted, non-revoked invite evidence. A retained session can invoke
-   the RPC directly and bypass the invite-aware API actor guard.
+   Portal notifications form a separate disclosure path. Every `PortalShell`
+   mounts `PortalNotificationsBell`, which reads `portal_notifications`
+   directly. The final `portal_notifications_user_select` and
+   `portal_notifications_user_update` policies
+   (`20260806030520_tune_actor_messaging_advisors.sql:96-108`) require only
+   `user_id = auth.uid()`, and the directly granted mark-read RPCs are security
+   invoker functions over that same policy. Notification bodies can contain up
+   to 240 characters of message content
+   (`20260806030134_actor_scoped_messaging_notifications.sql:332-365`), so invite
+   revocation does not stop the retained session from reading or updating them.
+
+   The booking compatibility boundary is also a confirmed bypass. The later
+   scheduler hardening correctly binds the canonical
+   `scheduler_apply_booking_command_atomic` actor through
+   `scheduler_actor_matches(p_actor_user_id)`
+   (`20260810033000_universal_scheduler_security_and_rebalance.sql:257-259`),
+   and `20260810033500_universal_scheduler_explicit_assignment.sql:10-15`
+   revokes authenticated execution of that low-level function. However,
+   `apply_portal_booking_command_atomic` remains a `SECURITY DEFINER`
+   compatibility adapter granted directly to `authenticated`. Its delegated
+   customer check binds the actor to `auth.uid()` and the customer row, but it
+   never requires accepted, non-revoked invite evidence. A revoked retained
+   session can therefore invoke the adapter directly and bypass the
+   invite-aware API actor guard.
 
    Sign-in and the canonical `requirePortalCustomerAccess()` /
    `requirePortalCustomerActor()` path now enforce accepted, non-revoked invite
@@ -117,11 +132,12 @@ the abandoned draft stack.
    Work Order ownership read whose
    RLS requires an accepted, non-revoked invite; those pages are therefore not
    confirmed bypasses. The remaining repair should converge the confirmed
-   messaging, inspection-report, Work Order evidence, settings, and booking RPC
-   paths on the invite-aware primitive (or an equivalent durable revocation
-   boundary), bind every directly callable booking actor to `auth.uid()`, audit
-   the other portal browser callers that resolve customer data directly, and
-   harden shared customer helpers so future consumers cannot omit that check.
+   messaging, inspection-report, Work Order evidence, settings, notification,
+   and booking-adapter paths on the invite-aware primitive (or an equivalent
+   durable revocation boundary), audit the other portal browser callers that
+   resolve customer data directly, and harden shared customer helpers so future
+   consumers cannot omit that check. The booking actor-binding and low-level
+   grant fixes have already landed; its remaining defect is invite revocation.
    No migration currently clears `customers.user_id` on revocation.
 
 3. **Job punch has no assignment or capability check.**
@@ -173,6 +189,12 @@ These are not hardening items; they break daily operation on current `main`.
    also perform browser mutations that the committed write policies do not admit
    for a pure portal customer.
 
+   The standalone `/portal/booking` entry point has the same policy dependency.
+   `BookingPageClient.tsx:82-108` queries all online `shops` through the browser
+   client, but the committed `shops` SELECT policy admits a staff profile's shop,
+   not an anonymous or pure portal customer. Its empty shop list prevents shop
+   selection, portal-link requests, and booking submission on clean replay.
+
    The inventory cannot stop at those first lookups. `/portal/request/when`
    continues through quote-line and shop-hours reads; `/portal/request/build`
    reads customer, Work Order, booking, vehicle, line, quote-line, and menu data;
@@ -184,11 +206,11 @@ These are not hardening items; they break daily operation on current `main`.
    payment checkout no longer depend on customer-table RLS, but the complete
    portal surface is not yet policy-independent. The intended repair is to
    inventory the complete browser data contract and move sign-in plus every
-   required customer, invite, shop, vehicle, settings, and profile read or
-   mutation behind server-authorized paths pinned to the verified auth subject
-   and requiring accepted, non-revoked invite evidence. Item 6 must remain open
-   until the named workflows function on clean replay. The repair is **not**
-   another broad customer RLS policy.
+   required customer, invite, shop, vehicle, settings, profile, and standalone
+   booking read or mutation behind server-authorized paths pinned to the
+   verified auth subject and requiring accepted, non-revoked invite evidence.
+   Item 6 must remain open until the named workflows function on clean replay.
+   The repair is **not** another broad customer RLS policy.
 
 7. **Staff cannot approve or decline repair lines.**
    Desktop (`app/work-orders/[id]/Client.tsx:1304,1332`) and Shop Mobile
