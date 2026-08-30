@@ -495,6 +495,10 @@ describe("assigned technician punch shop resolution", () => {
       "from public.work_order_line_labor_segments segment",
       assignedWorkOrderLock,
     );
+    const assignedInspectionLock = staffDecisionMigration.indexOf(
+      "from public.inspections inspection",
+      assignedSegmentLock,
+    );
     const assignedAssertion = staffDecisionMigration.indexOf(
       "Technician is not assigned to this work-order line.",
       assignedLineLock,
@@ -507,7 +511,8 @@ describe("assigned technician punch shop resolution", () => {
     expect(assignedProfileLock).toBeGreaterThan(assignedLineLock);
     expect(assignedWorkOrderLock).toBeGreaterThan(assignedProfileLock);
     expect(assignedSegmentLock).toBeGreaterThan(assignedWorkOrderLock);
-    expect(assignedAssertion).toBeGreaterThan(assignedSegmentLock);
+    expect(assignedInspectionLock).toBeGreaterThan(assignedSegmentLock);
+    expect(assignedAssertion).toBeGreaterThan(assignedInspectionLock);
     expect(canonicalDelegation).toBeGreaterThan(assignedAssertion);
     expect(
       staffDecisionMigration.slice(assignedLineLock, assignedProfileLock),
@@ -519,11 +524,14 @@ describe("assigned technician punch shop resolution", () => {
       staffDecisionMigration.slice(assignedWorkOrderLock, assignedSegmentLock),
     ).toContain("for update nowait");
     expect(
-      staffDecisionMigration.slice(assignedSegmentLock, assignedAssertion),
+      staffDecisionMigration.slice(assignedSegmentLock, assignedInspectionLock),
+    ).toContain("for update nowait");
+    expect(
+      staffDecisionMigration.slice(assignedInspectionLock, assignedAssertion),
     ).toContain("for update nowait");
     const assignedSegmentLockBlock = staffDecisionMigration.slice(
       assignedSegmentLock,
-      assignedAssertion,
+      assignedInspectionLock,
     );
     expect(assignedSegmentLockBlock).toContain(
       "segment.work_order_line_id = p_work_order_line_id",

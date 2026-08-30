@@ -670,6 +670,19 @@ begin
           and segment.ended_at is null
       ) into v_has_any_active_segment;
 
+      -- Inspection finding submission can enter inspection -> parent -> line,
+      -- while canonical finish enters line -> parent -> inspection. Include the
+      -- canonical inspection row in this NOWAIT attempt so either order backs
+      -- off without retaining the inverse side.
+      if v_action = 'finish' then
+        perform 1
+        from public.inspections inspection
+        where inspection.work_order_line_id = p_work_order_line_id
+          and inspection.is_canonical
+        order by inspection.id
+        for update nowait;
+      end if;
+
       exit;
     exception
       when lock_not_available then
