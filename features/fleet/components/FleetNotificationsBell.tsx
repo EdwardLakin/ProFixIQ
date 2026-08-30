@@ -116,7 +116,7 @@ export default function FleetNotificationsBell({
       </button>
 
       {open ? (
-        <div className="absolute right-0 z-40 mt-2 w-80 overflow-hidden rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] shadow-xl">
+        <div className="fixed inset-x-3 top-[4.5rem] z-40 overflow-hidden rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] shadow-xl sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-80">
           <div className="border-b border-[color:var(--theme-border-soft)] px-4 py-3">
             <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-300">
               Fleet alerts

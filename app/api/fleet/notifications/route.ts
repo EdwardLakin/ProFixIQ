@@ -4,7 +4,11 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
+import {
+  canManageFleetForActor,
+  manageableFleetIdsForActor,
+  resolveFleetActorContext,
+} from "@/features/fleet/lib/resolveFleetActorContext";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { supabaseAdmin } from "@/features/shared/lib/supabase/admin";
 
@@ -74,9 +78,17 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  if (!actor.shopId) {
+    return NextResponse.json({ notifications: [] });
+  }
+
   // Fleet alerts are manager/dispatch decisions. Drivers report defects; they
-  // do not review the fleet-wide queue.
-  if (!actor.capabilities.canSeeFleetWideUnits || !actor.shopId) {
+  // do not review the fleet-wide queue. `canSeeFleetWideUnits` is derived from
+  // a single membership, so it decides only whether this actor reviews alerts
+  // anywhere — never which fleets they may review. That is resolved
+  // per-membership below, because one account can manage Fleet A while holding
+  // only driver access to Fleet B in the same shop.
+  if (!actor.capabilities.canSeeFleetWideUnits) {
     return NextResponse.json({ notifications: [] });
   }
 
@@ -91,12 +103,16 @@ export async function POST(req: Request) {
     .order("last_seen_at", { ascending: false })
     .limit(50);
 
-  // An external Fleet actor may only ever see their own entitled fleets.
-  // Internal shop staff already passed the shop Fleet product entitlement check.
+  // An external Fleet actor may only see fleets they actually manage, resolved
+  // membership by membership. Internal shop staff already passed the shop Fleet
+  // product entitlement check.
   if (!actor.isInternal) {
-    const allowedFleetIds = parsed.data.fleetId
-      ? actor.fleetIds.filter((id) => id === parsed.data.fleetId)
-      : actor.fleetIds;
+    const requestedFleetId = parsed.data.fleetId;
+    const allowedFleetIds = requestedFleetId
+      ? canManageFleetForActor(actor, requestedFleetId)
+        ? [requestedFleetId]
+        : []
+      : manageableFleetIdsForActor(actor);
     if (allowedFleetIds.length === 0) {
       return NextResponse.json({ notifications: [] });
     }

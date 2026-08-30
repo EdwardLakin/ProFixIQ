@@ -10,9 +10,17 @@ vi.mock("@/features/shared/lib/supabase/server", () => ({
   createServerSupabaseRoute: vi.fn(() => ({})),
 }));
 
-vi.mock("@/features/fleet/lib/resolveFleetActorContext", () => ({
-  resolveFleetActorContext: vi.fn(async () => state.actor),
-}));
+// Only the actor resolution is stubbed. The scoping helpers keep their real
+// role-tier logic, because that is precisely what these tests exercise.
+vi.mock("@/features/fleet/lib/resolveFleetActorContext", async (importActual) => {
+  const actual = await importActual<
+    typeof import("@/features/fleet/lib/resolveFleetActorContext")
+  >();
+  return {
+    ...actual,
+    resolveFleetActorContext: vi.fn(async () => state.actor),
+  };
+});
 
 vi.mock("@/features/shared/lib/supabase/admin", () => ({
   supabaseAdmin: {
@@ -48,14 +56,26 @@ function request(body: Record<string, unknown> = {}): Request {
 const FLEET_A = "30000000-0000-4000-8000-00000000000a";
 const FLEET_B = "30000000-0000-4000-8000-00000000000b";
 
-function externalManager(fleetIds: string[]) {
+function externalActor(
+  memberships: Array<{ fleetId: string; role: string }>,
+) {
   return {
     userId: "user-1",
     shopId: "shop-1",
     isInternal: false,
-    fleetIds,
+    canonicalRole: "customer",
+    fleetIds: memberships.map((m) => m.fleetId),
+    fleetMemberships: memberships.map((m) => ({
+      fleetId: m.fleetId,
+      shopId: "shop-1",
+      role: m.role,
+    })),
     capabilities: { canSeeFleetWideUnits: true },
   };
+}
+
+function externalManager(fleetIds: string[]) {
+  return externalActor(fleetIds.map((fleetId) => ({ fleetId, role: "manager" })));
 }
 
 describe("Fleet alert feed scope", () => {
@@ -73,10 +93,7 @@ describe("Fleet alert feed scope", () => {
 
   it("returns nothing for a driver, who reports defects rather than reviewing them", async () => {
     state.actor = {
-      userId: "user-1",
-      shopId: "shop-1",
-      isInternal: false,
-      fleetIds: [FLEET_A],
+      ...externalActor([{ fleetId: FLEET_A, role: "viewer" }]),
       capabilities: { canSeeFleetWideUnits: false },
     };
     const response = await POST(request());
@@ -129,10 +146,44 @@ describe("Fleet alert feed scope", () => {
       userId: "user-1",
       shopId: "shop-1",
       isInternal: true,
+      canonicalRole: "owner",
       fleetIds: [],
+      fleetMemberships: [],
       capabilities: { canSeeFleetWideUnits: true },
     };
     await POST(request());
+    expect(
+      state.filters.some((filter) => filter.column === "metadata->>fleet_id"),
+    ).toBe(false);
+  });
+
+  it("never exposes a fleet the actor only drives for, even when they manage another", async () => {
+    // canSeeFleetWideUnits is derived from one membership; it must not grant
+    // manager visibility across every fleet the account belongs to.
+    state.actor = externalActor([
+      { fleetId: FLEET_A, role: "manager" },
+      { fleetId: FLEET_B, role: "viewer" },
+    ]);
+
+    await POST(request());
+
+    const fleetFilter = state.filters.find(
+      (filter) => filter.column === "metadata->>fleet_id",
+    );
+    expect(fleetFilter?.value).toEqual([FLEET_A]);
+  });
+
+  it("refuses a requested fleet the actor only drives for", async () => {
+    state.actor = externalActor([
+      { fleetId: FLEET_A, role: "manager" },
+      { fleetId: FLEET_B, role: "viewer" },
+    ]);
+
+    const body = (await (await POST(request({ fleetId: FLEET_B }))).json()) as {
+      notifications: unknown[];
+    };
+
+    expect(body.notifications).toEqual([]);
     expect(
       state.filters.some((filter) => filter.column === "metadata->>fleet_id"),
     ).toBe(false);
