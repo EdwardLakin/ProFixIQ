@@ -523,6 +523,38 @@ export async function pruneOfflineDatabase(
   });
 }
 
+/**
+ * Count durable mutations that have not yet reached the server. This reads the
+ * database rather than the in-memory queue so a sign-out decision is correct
+ * even when the queue has not hydrated in this tab.
+ */
+export async function countUnsyncedOfflineMutations(): Promise<number> {
+  const db = getDatabase();
+  if (!db) return 0;
+  return db.mutations.where("status").notEqual("synced").count();
+}
+
+/**
+ * Clear session-scoped offline state while retaining work that has not reached
+ * the server. Read-through snapshots and already-synced mutations are removed;
+ * unsynced mutations and their attachment blobs are preserved so signing out
+ * never destroys unsent work.
+ */
+export async function clearOfflineDatabasePreservingUnsyncedWork(
+  lock?: OfflineDatabaseWriteLock,
+): Promise<void> {
+  const db = getDatabase();
+  if (!db) return;
+  await runOfflineDatabaseWrite(lock, () =>
+    db.transaction("rw", [db.mutations, db.snapshots], async () => {
+      await Promise.all([
+        db.mutations.where("status").equals("synced").delete(),
+        db.snapshots.clear(),
+      ]);
+    }),
+  );
+}
+
 export async function clearOfflineDatabase(
   lock?: OfflineDatabaseWriteLock,
 ): Promise<void> {

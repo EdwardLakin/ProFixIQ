@@ -4,6 +4,8 @@ import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import {
   claimStoredMutationForReplay,
   clearOfflineDatabase,
+  clearOfflineDatabasePreservingUnsyncedWork,
+  countUnsyncedOfflineMutations,
   deleteStoredMutations,
   deleteSyncedStoredMutations,
   getOfflineBlob,
@@ -1682,8 +1684,15 @@ export async function runMutationWithOfflineQueue<T>(args: {
   );
 }
 
-export async function clearOfflineState(): Promise<void> {
+export async function clearOfflineState(
+  options: { preserveUnsyncedWork?: boolean } = {},
+): Promise<{ retainedUnsyncedWork: boolean }> {
   const formerScope = getOfflineMutationScope();
+  // Decide before mutating any state, and read the database rather than the
+  // in-memory queue so the decision holds even if this tab never hydrated.
+  const retainUnsyncedWork =
+    options.preserveUnsyncedWork === true &&
+    (await countUnsyncedOfflineMutations()) > 0;
   // Advance before waiting for the scope lock. Any enqueue already queued
   // behind a replay claim will observe the new epoch and abort; an enqueue
   // already inside the lock commits before this clear and is then removed.
@@ -1693,9 +1702,13 @@ export async function clearOfflineState(): Promise<void> {
   hydrationPromise = null;
   setOfflineMutationScope(null);
   for (const key of LEGACY_KEYS) localStorage.removeItem(key);
-  localStorage.removeItem(PERSISTENCE_MARKER_KEY);
+  // Retain the persistence marker when unsent work survives, so the retained
+  // work stays discoverable after the session ends.
+  if (!retainUnsyncedWork) localStorage.removeItem(PERSISTENCE_MARKER_KEY);
   const clearDatabase = (lock: OfflineDatabaseWriteLock) =>
-    clearOfflineDatabase(lock);
+    retainUnsyncedWork
+      ? clearOfflineDatabasePreservingUnsyncedWork(lock)
+      : clearOfflineDatabase(lock);
   const lockManager = getOfflineReplayLockManager();
   await withOfflineStateLock(async (lock) => {
     if (formerScope && lockManager) {
@@ -1712,4 +1725,6 @@ export async function clearOfflineState(): Promise<void> {
     queueCache = [];
     emitQueueUpdate({ crossTab: true });
   });
+
+  return { retainedUnsyncedWork: retainUnsyncedWork };
 }
