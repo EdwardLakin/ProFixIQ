@@ -444,6 +444,7 @@ declare
   v_existing_result jsonb;
   v_existing_actor_user_id uuid;
   v_existing_line_id uuid;
+  v_lock_attempt integer;
   v_result jsonb;
 begin
   if nullif(trim(coalesce(p_operation_key, '')), '') is null then
@@ -486,30 +487,55 @@ begin
     return v_existing_result || jsonb_build_object('idempotent', true);
   end if;
 
-  select * into v_line
-  from public.work_order_lines line
-  where line.id = p_work_order_line_id
-    and line.shop_id = p_shop_id
-  for update;
-  if not found then
-    raise exception using errcode = 'P0001', message = 'Work-order line not found for shop.';
-  end if;
+  -- Portal decisions lock work order -> line, while canonical punches lock
+  -- line -> work order. Use the approval order with bounded NOWAIT retries so
+  -- a punch already holding the line can acquire its parent instead of forming
+  -- the opposite wait cycle. A failed inner attempt releases every lock it
+  -- acquired before the next retry.
+  for v_lock_attempt in 1..100 loop
+    begin
+      perform 1
+      from public.work_orders work_order
+      where work_order.id = (
+        select candidate.work_order_id
+        from public.work_order_lines candidate
+        where candidate.id = p_work_order_line_id
+          and candidate.shop_id = p_shop_id
+      )
+        and work_order.shop_id = p_shop_id
+      for update nowait;
+      if not found then
+        raise exception using errcode = 'P0001', message = 'Parent work order not found for shop.';
+      end if;
 
-  perform 1
-  from public.work_orders work_order
-  where work_order.id = v_line.work_order_id
-    and work_order.shop_id = p_shop_id
-  for update;
-  if not found then
-    raise exception using errcode = 'P0001', message = 'Parent work order not found for shop.';
-  end if;
+      select * into v_line
+      from public.work_order_lines line
+      where line.id = p_work_order_line_id
+        and line.shop_id = p_shop_id
+      for update nowait;
+      if not found then
+        raise exception using errcode = 'P0001', message = 'Work-order line not found for shop.';
+      end if;
 
-  perform 1
-  from public.work_order_line_labor_segments segment
-  where segment.shop_id = p_shop_id
-    and segment.work_order_line_id = p_work_order_line_id
-  order by segment.id
-  for update;
+      perform 1
+      from public.work_order_line_labor_segments segment
+      where segment.shop_id = p_shop_id
+        and segment.work_order_line_id = p_work_order_line_id
+      order by segment.id
+      for update nowait;
+
+      exit;
+    exception
+      when lock_not_available then
+        if v_lock_attempt = 100 then
+          raise exception using
+            errcode = '55P03',
+            message = 'PARTS_QUOTE_HOLD_BUSY: line state is changing; retry the hold.';
+        end if;
+    end;
+
+    perform pg_sleep(0.02);
+  end loop;
 
   -- A matching call may have committed while this transaction waited for the
   -- resource locks. Re-read its receipt before evaluating the new line state.

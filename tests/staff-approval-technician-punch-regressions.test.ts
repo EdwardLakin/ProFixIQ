@@ -327,7 +327,7 @@ describe("assigned technician punch shop resolution", () => {
   it("keeps send-to-parts as a narrowly identified pre-labor transition", () => {
     expect(
       mobileWorkOrder.match(/transitionIntent: "parts_quote_hold"/g),
-    ).toHaveLength(2);
+    ).toHaveLength(1);
     expect(punchClient).toContain('transitionIntent?: "parts_quote_hold"');
     expect(pauseRoute).toContain("transitionIntent: body?.transitionIntent");
     expect(technicianLabor).toContain(
@@ -351,6 +351,10 @@ describe("assigned technician punch shop resolution", () => {
     const partsHoldBoundary = staffDecisionMigration.indexOf(
       "create or replace function public.apply_pre_labor_parts_quote_hold_atomic",
     );
+    const partsHoldWorkOrderLock = staffDecisionMigration.indexOf(
+      "from public.work_orders work_order",
+      partsHoldBoundary,
+    );
     const partsHoldLineLock = staffDecisionMigration.indexOf(
       "from public.work_order_lines line",
       partsHoldBoundary,
@@ -367,10 +371,14 @@ describe("assigned technician punch shop resolution", () => {
       "update public.work_order_lines",
       partsHoldLaborAssertion,
     );
-    expect(partsHoldLineLock).toBeGreaterThan(partsHoldBoundary);
+    expect(partsHoldWorkOrderLock).toBeGreaterThan(partsHoldBoundary);
+    expect(partsHoldLineLock).toBeGreaterThan(partsHoldWorkOrderLock);
     expect(partsHoldSegmentLock).toBeGreaterThan(partsHoldLineLock);
     expect(partsHoldLaborAssertion).toBeGreaterThan(partsHoldSegmentLock);
     expect(partsHoldMutation).toBeGreaterThan(partsHoldLaborAssertion);
+    expect(
+      staffDecisionMigration.slice(partsHoldWorkOrderLock, partsHoldLaborAssertion),
+    ).toContain("for update nowait");
     expect(generatedTypes).toContain(
       "apply_pre_labor_parts_quote_hold_atomic: {",
     );
@@ -380,6 +388,18 @@ describe("assigned technician punch shop resolution", () => {
     expect(punchTransition).toContain("if (!partsQuoteHoldRequested)");
     expect(mobileWorkOrder).toContain(
       "const canSendToParts = currentActor.canManageWorkOrders",
+    );
+    expect(mobileWorkOrder).toContain("partsHoldOperationKeysRef");
+    expect(mobileWorkOrder).toContain("partsHoldPendingRef");
+    expect(mobileWorkOrder).toContain("partsHoldInFlightRef");
+    expect(mobileWorkOrder).toContain("{ operationKey }");
+    expect(mobileWorkOrder).toContain("disabled={partsHoldPending}");
+    expect(mobileWorkOrder).toContain('"Queued for parts"');
+    expect(mobileWorkOrder).toContain(
+      "partsHoldOperationKeysRef.current.delete(lineId)",
+    );
+    expect(staffDecisionMigration).toContain(
+      "PARTS_QUOTE_HOLD_BUSY: line state is changing; retry the hold.",
     );
   });
 
