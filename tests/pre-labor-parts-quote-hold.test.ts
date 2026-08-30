@@ -45,7 +45,6 @@ describe("pre-labor parts quote hold identity", () => {
   it("derives one operation key per durable line-state version", () => {
     const line = {
       id: "line-1",
-      created_at: "2026-08-30T10:00:00.000Z",
       updated_at: "2026-08-30T11:00:00.000Z",
     };
 
@@ -61,6 +60,12 @@ describe("pre-labor parts quote hold identity", () => {
     expect(
       createPreLaborPartsQuoteHoldOperationKey({ id: "line-1" }),
     ).toBeNull();
+    expect(
+      createPreLaborPartsQuoteHoldOperationKey({
+        id: "line-1",
+        created_at: "2026-08-30T10:00:00.000Z",
+      }),
+    ).toBeNull();
   });
 
   it("reuses the durable line-state key after remount", () => {
@@ -74,6 +79,12 @@ describe("pre-labor parts quote hold identity", () => {
     );
     expect(mobileClient).toContain(
       "partsHoldOperationKeysRef.current.set(",
+    );
+    expect(mobileClient).toContain(
+      "expectedLineUpdatedAt: identity.expectedLineUpdatedAt",
+    );
+    expect(mobileClient).toContain(
+      "existingIdentity?.expectedLineUpdatedAt === expectedLineUpdatedAt",
     );
     expect(mobileClient).toContain("[approvalPending, fetchAll]");
   });
@@ -118,6 +129,10 @@ describe("pre-labor parts quote hold identity", () => {
     );
     expect(partsBoundary).toContain("'idempotent', true");
     expect(partsBoundary).toContain(
+      "v_line.updated_at is distinct from p_expected_line_updated_at",
+    );
+    expect(partsBoundary).toContain("PARTS_QUOTE_HOLD_STALE");
+    expect(partsBoundary).toContain(
       "Fence that key with a no-op receipt so a lost",
     );
     const replayReceipt = partsBoundary.indexOf(
@@ -126,5 +141,8 @@ describe("pre-labor parts quote hold identity", () => {
     );
     expect(replayReceipt).toBeGreaterThan(canonicalReplay);
     expect(replayReceipt).toBeLessThan(activityMutation);
+    expect(migration).toContain(
+      "PARTS_QUOTE_HOLD_PENDING: approval-pending parts work cannot be punched.",
+    );
   });
 });

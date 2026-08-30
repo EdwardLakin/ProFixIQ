@@ -7,6 +7,7 @@ export type JobPunchAction = "start" | "pause" | "resume" | "finish";
 
 type TransitionBody = {
   allowConcurrentJobPunches?: boolean;
+  expectedLineUpdatedAt?: string;
   holdReason?: string;
   notes?: string | null;
   transitionIntent?: "parts_quote_hold";

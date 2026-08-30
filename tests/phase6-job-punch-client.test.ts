@@ -76,6 +76,7 @@ describe("Phase 6 job punch client", () => {
       "line-1",
       "pause",
       {
+        expectedLineUpdatedAt: "2026-08-30T11:00:00.000Z",
         holdReason: "Awaiting parts quote",
         transitionIntent: "parts_quote_hold",
       },
@@ -98,6 +99,9 @@ describe("Phase 6 job punch client", () => {
           "pre_labor_parts_quote_hold:reused-pause-key",
         payload: expect.objectContaining({
           operationKey: "reused-pause-key",
+          body: expect.objectContaining({
+            expectedLineUpdatedAt: "2026-08-30T11:00:00.000Z",
+          }),
         }),
       }),
     );

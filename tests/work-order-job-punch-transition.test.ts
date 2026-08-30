@@ -335,6 +335,7 @@ describe("applyJobPunchTransition atomic boundary", () => {
       options: {
         operationKey: "parts-quote-hold",
         pause: {
+          expectedLineUpdatedAt: "2026-08-30T11:00:00.000Z",
           holdReason: "Awaiting parts quote",
           transitionIntent: "parts_quote_hold",
         },
@@ -370,6 +371,7 @@ describe("applyJobPunchTransition atomic boundary", () => {
       options: {
         operationKey: "parts-role-quote-hold",
         pause: {
+          expectedLineUpdatedAt: "2026-08-30T11:00:00.000Z",
           holdReason: "Awaiting parts quote",
           transitionIntent: "parts_quote_hold",
         },
@@ -423,6 +425,7 @@ describe("applyJobPunchTransition atomic boundary", () => {
       options: {
         operationKey: "parts-quote-after-labor",
         pause: {
+          expectedLineUpdatedAt: "2026-08-30T11:00:00.000Z",
           holdReason: "Awaiting parts quote",
           transitionIntent: "parts_quote_hold",
         },
@@ -559,6 +562,7 @@ describe("applyJobPunchTransition atomic boundary", () => {
       options: {
         operationKey: "parts-hold-busy",
         pause: {
+          expectedLineUpdatedAt: "2026-08-30T11:00:00.000Z",
           holdReason: "Awaiting parts quote",
           transitionIntent: "parts_quote_hold",
         },

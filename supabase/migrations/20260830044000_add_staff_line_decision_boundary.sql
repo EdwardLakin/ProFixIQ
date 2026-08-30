@@ -755,6 +755,21 @@ begin
       message = 'Technician is not assigned to this work-order line.';
   end if;
 
+  -- The canonical punch predicate only recognizes awaiting-approval statuses.
+  -- This task-owned hold intentionally uses on_hold, so fence every action
+  -- that could begin or complete labor while the approval/parts intent is
+  -- still pending. The line is already locked with assignment and segment
+  -- evidence, and exact punch receipts were replayed above.
+  if v_action in ('start', 'resume', 'finish')
+     and lower(coalesce(v_line.approval_state::text, '')) = 'pending'
+     and lower(coalesce(v_line.status::text, '')) = 'on_hold'
+     and lower(trim(coalesce(v_line.hold_reason, ''))) = 'awaiting parts quote'
+  then
+    raise exception using
+      errcode = 'P0001',
+      message = 'PARTS_QUOTE_HOLD_PENDING: approval-pending parts work cannot be punched.';
+  end if;
+
   if v_action = 'pause' and not v_has_active_segment then
     raise exception using
       errcode = 'P0001',
@@ -807,7 +822,8 @@ create or replace function public.apply_pre_labor_parts_quote_hold_atomic(
   p_hold_reason text default 'Awaiting parts quote',
   p_notes text default null,
   p_event text default null,
-  p_details jsonb default '{}'::jsonb
+  p_details jsonb default '{}'::jsonb,
+  p_expected_line_updated_at timestamptz default null
 ) returns jsonb
 language plpgsql
 security definer
@@ -1016,6 +1032,16 @@ begin
     );
 
     return v_result;
+  end if;
+  if p_expected_line_updated_at is null then
+    raise exception using
+      errcode = '22023',
+      message = 'A parts-quote hold requires the observed line version.';
+  end if;
+  if v_line.updated_at is distinct from p_expected_line_updated_at then
+    raise exception using
+      errcode = 'P0001',
+      message = 'PARTS_QUOTE_HOLD_STALE: line state changed; refresh before retrying the hold.';
   end if;
   if lower(coalesce(v_line.approval_state::text, '')) <> 'pending'
      and lower(coalesce(v_line.status::text, '')) not in ('awaiting_approval', 'waiting_for_approval') then
@@ -1230,14 +1256,14 @@ comment on function public.apply_staff_line_decision_atomic(
   'Applies a canonical quote-authorizer line approval or decline only before labor begins while preserving the established compatibility receipt, rollup, attribution, and audit contract.';
 
 revoke all on function public.apply_pre_labor_parts_quote_hold_atomic(
-  uuid, uuid, uuid, text, timestamptz, text, text, text, jsonb
+  uuid, uuid, uuid, text, timestamptz, text, text, text, jsonb, timestamptz
 ) from public, anon;
 grant execute on function public.apply_pre_labor_parts_quote_hold_atomic(
-  uuid, uuid, uuid, text, timestamptz, text, text, text, jsonb
+  uuid, uuid, uuid, text, timestamptz, text, text, text, jsonb, timestamptz
 ) to authenticated, service_role;
 
 comment on function public.apply_pre_labor_parts_quote_hold_atomic(
-  uuid, uuid, uuid, text, timestamptz, text, text, text, jsonb
+  uuid, uuid, uuid, text, timestamptz, text, text, text, jsonb, timestamptz
 ) is
   'Atomically places an approval-pending, never-worked line on the canonical parts-quote hold for an authorized work-order manager.';
 

@@ -12,6 +12,7 @@ import {
   QUOTE_PRICING_QUARANTINED_CODE,
 } from "@/features/work-orders/lib/quotes/quotePricingQuarantine";
 import { checkQuotePricingQuarantine } from "@/features/work-orders/server/quotePricingQuarantine";
+import type { Json } from "@shared/types/types/supabase";
 
 type RouteContext = { params: Promise<{ id: string }> };
 type Decision = "approve" | "decline" | "defer";
@@ -39,6 +40,31 @@ type DecisionActor = StaffDecisionActor | PortalDecisionActor;
 
 function safeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function hasExactDecisionLines(
+  result: Json,
+  lineId: string,
+  decision: Decision,
+): boolean {
+  if (!result || typeof result !== "object" || Array.isArray(result)) {
+    return false;
+  }
+  const approved = result.approvedLineIds;
+  const declined = result.declinedLineIds;
+  if (!Array.isArray(approved) || !Array.isArray(declined)) return false;
+  return decision === "approve"
+    ? approved.length === 1 && approved[0] === lineId && declined.length === 0
+    : decision === "decline"
+      ? declined.length === 1 && declined[0] === lineId && approved.length === 0
+      : false;
+}
+
+function withIdempotentFlag(result: Json): Json {
+  if (result && typeof result === "object" && !Array.isArray(result)) {
+    return { ...result, idempotent: true };
+  }
+  return result;
 }
 
 function errorStatus(message: string): number {
@@ -164,6 +190,49 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     // Portal callers retain their end-user projection and ownership RLS.
     const decisionReadClient =
       actor.kind === "staff" ? createAdminSupabase() : supabase;
+    let key =
+      req.headers.get("Idempotency-Key")?.trim() ||
+      safeString(body?.idempotencyKey);
+    const replayStaffDecisionReceipt = async () => {
+      if (actor.kind !== "staff" || !key) return null;
+      const operationKey = `${actor.shopId}:staff-line-decision:${key}`;
+      const { data: receipt, error: receiptError } = await decisionReadClient
+        .from("quote_lifecycle_operation_keys")
+        .select("actor_user_id,work_order_id,result")
+        .eq("shop_id", actor.shopId)
+        .eq("operation_name", "approval_compatibility_bundle")
+        .eq("operation_key", operationKey)
+        .maybeSingle<{
+          actor_user_id: string | null;
+          work_order_id: string | null;
+          result: Json;
+        }>();
+      if (receiptError) {
+        return NextResponse.json(
+          { ok: false, error: "Unable to replay the staff decision." },
+          { status: 500 },
+        );
+      }
+      if (!receipt) return null;
+      if (
+        receipt.actor_user_id !== actor.userId ||
+        receipt.work_order_id !== workOrderId ||
+        !hasExactDecisionLines(receipt.result, lineId, decision)
+      ) {
+        return NextResponse.json(
+          { ok: false, error: "STAFF_LINE_DECISION_OPERATION_CONFLICT" },
+          { status: 409 },
+        );
+      }
+      return NextResponse.json(withIdempotentFlag(receipt.result));
+    };
+
+    // The task-owned RPC is receipt-first. Preserve that contract at the HTTP
+    // boundary too: mutable target/pricing preflights must not replace an
+    // already-committed result on an exact retry.
+    const existingStaffDecision = await replayStaffDecisionReceipt();
+    if (existingStaffDecision) return existingStaffDecision;
+
     const { data: targetLine, error: targetLineError } = await decisionReadClient
       .from("work_order_lines")
       .select("id")
@@ -192,6 +261,10 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       workOrderLineIds: [lineId],
     });
     if (!quarantineCheck.ok) {
+      // Close the narrow race where the original request commits after the
+      // first receipt read but before this mutable quarantine projection.
+      const concurrentStaffDecision = await replayStaffDecisionReceipt();
+      if (concurrentStaffDecision) return concurrentStaffDecision;
       return NextResponse.json(
         {
           ok: false,
@@ -210,10 +283,6 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
         },
       );
     }
-
-    let key =
-      req.headers.get("Idempotency-Key")?.trim() ||
-      safeString(body?.idempotencyKey);
 
     if (!key) {
       const { data: currentLine, error: currentLineError } =

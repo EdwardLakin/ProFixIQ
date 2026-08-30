@@ -27642,6 +27642,7 @@ export type Database = {
           p_at?: string
           p_details?: Json
           p_event?: string
+          p_expected_line_updated_at?: string
           p_hold_reason?: string
           p_notes?: string
           p_operation_key: string

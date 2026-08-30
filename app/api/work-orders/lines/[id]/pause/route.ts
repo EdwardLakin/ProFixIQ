@@ -24,6 +24,7 @@ export async function POST(req: NextRequest) {
 
   const body = (await req.json().catch(() => null)) as {
     holdReason?: string;
+    expectedLineUpdatedAt?: string;
     notes?: string | null;
     operationKey?: string;
     idempotencyKey?: string;
@@ -47,6 +48,7 @@ export async function POST(req: NextRequest) {
     technicianId: auth.user.id,
     operationKey,
     reason: body?.holdReason,
+    expectedLineUpdatedAt: body?.expectedLineUpdatedAt,
     transitionIntent: body?.transitionIntent,
   });
 

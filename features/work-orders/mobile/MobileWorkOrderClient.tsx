@@ -255,7 +255,12 @@ export default function MobileWorkOrderClient({
     new Map<string, "approve" | "decline">(),
   );
   const lineDecisionInFlightRef = useRef(new Set<string>());
-  const partsHoldOperationKeysRef = useRef(new Map<string, string>());
+  const partsHoldOperationKeysRef = useRef(
+    new Map<
+      string,
+      { operationKey: string; expectedLineUpdatedAt: string }
+    >(),
+  );
   const partsHoldPendingRef = useRef(new Set<string>());
   const partsHoldInFlightRef = useRef(new Set<string>());
   const [pendingLineDecisions, setPendingLineDecisions] = useState(
@@ -1401,16 +1406,27 @@ export default function MobileWorkOrderClient({
       if (!lineId || partsHoldPendingRef.current.has(lineId)) return false;
 
       const lineState = approvalPending.find((line) => line.id === lineId);
-      const operationKey =
-        partsHoldOperationKeysRef.current.get(lineId) ??
-        (lineState
-          ? createPreLaborPartsQuoteHoldOperationKey(lineState)
-          : null);
-      if (!operationKey) {
+      const existingIdentity = partsHoldOperationKeysRef.current.get(lineId);
+      const expectedLineUpdatedAt = String(
+        lineState?.updated_at ?? "",
+      ).trim();
+      const derivedOperationKey = lineState
+        ? createPreLaborPartsQuoteHoldOperationKey(lineState)
+        : null;
+      const identity =
+        existingIdentity?.expectedLineUpdatedAt === expectedLineUpdatedAt
+          ? existingIdentity
+          : derivedOperationKey && expectedLineUpdatedAt
+            ? {
+                operationKey: derivedOperationKey,
+                expectedLineUpdatedAt,
+              }
+            : null;
+      if (!identity) {
         toast.error("Refresh this line before sending it to parts.");
         return false;
       }
-      partsHoldOperationKeysRef.current.set(lineId, operationKey);
+      partsHoldOperationKeysRef.current.set(lineId, identity);
       partsHoldPendingRef.current.add(lineId);
       partsHoldInFlightRef.current.add(lineId);
       setPendingPartsHoldLineIds(new Set(partsHoldPendingRef.current));
@@ -1423,8 +1439,9 @@ export default function MobileWorkOrderClient({
           {
             holdReason: "Awaiting parts quote",
             transitionIntent: "parts_quote_hold",
+            expectedLineUpdatedAt: identity.expectedLineUpdatedAt,
           },
-          { operationKey },
+          { operationKey: identity.operationKey },
         );
         await fetchAll().catch(() => undefined);
         return true;

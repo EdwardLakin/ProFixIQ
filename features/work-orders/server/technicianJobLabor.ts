@@ -130,6 +130,7 @@ export async function stopTechnicianJobLabor(params: {
   operationKey?: string;
   sourceEventId?: string | null;
   endedAtIso?: string;
+  expectedLineUpdatedAt?: string;
   reason?: string;
   transitionIntent?: "parts_quote_hold";
   preserveLineStatus?: boolean;
@@ -157,6 +158,7 @@ export async function stopTechnicianJobLabor(params: {
       nowIso: params.endedAtIso,
       pause: {
         holdReason: params.reason,
+        expectedLineUpdatedAt: params.expectedLineUpdatedAt,
         transitionIntent: params.transitionIntent,
         preserveLineStatus: params.preserveLineStatus === true,
         event: params.event,

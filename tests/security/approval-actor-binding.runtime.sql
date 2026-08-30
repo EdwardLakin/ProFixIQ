@@ -744,6 +744,8 @@ declare
   v_task_receipt_count integer;
   v_activity_count integer;
   v_decline_result jsonb;
+  v_observed_updated_at timestamptz;
+  v_punch_denied boolean := false;
 begin
   -- A browser may reuse the same stable key for an ordinary pause and the
   -- explicit pre-labor parts intent. The parts adapter must not replay the
@@ -763,6 +765,10 @@ begin
   from public.work_order_lines line
   where line.id = 'af250000-0000-4000-8000-000000000010';
 
+  select updated_at into v_observed_updated_at
+  from public.work_order_lines
+  where id = 'af250000-0000-4000-8000-000000000010';
+
   v_result := public.apply_pre_labor_parts_quote_hold_atomic(
     'ab250000-0000-4000-8000-000000000001',
     'af250000-0000-4000-8000-000000000010',
@@ -771,7 +777,9 @@ begin
     '2000-01-01T00:00:00Z',
     'Awaiting parts quote',
     null,
-    'forged_parts_event'
+    'forged_parts_event',
+    '{}'::jsonb,
+    v_observed_updated_at
   );
   select status, hold_reason, updated_at into v_status, v_hold_reason, v_updated_at
   from public.work_order_lines
@@ -863,7 +871,11 @@ begin
     'ab250000-0000-4000-8000-000000000001',
     'af250000-0000-4000-8000-000000000013',
     'aa250000-0000-4000-8000-000000000001',
-    'ab250000-0000-4000-8000-000000000001:job-punch:approval-binding:portal-parts-hold'
+    'ab250000-0000-4000-8000-000000000001:job-punch:approval-binding:portal-parts-hold',
+    p_expected_line_updated_at => (
+      select updated_at from public.work_order_lines
+      where id = 'af250000-0000-4000-8000-000000000013'
+    )
   );
   if (v_result ->> 'ok')::boolean is distinct from true then
     raise exception 'Portal parts-hold fixture failed: %', v_result;
@@ -873,7 +885,11 @@ begin
     'ab250000-0000-4000-8000-000000000001',
     'af250000-0000-4000-8000-000000000016',
     'aa250000-0000-4000-8000-000000000001',
-    'ab250000-0000-4000-8000-000000000001:job-punch:approval-binding:portal-adapter-parts-hold'
+    'ab250000-0000-4000-8000-000000000001:job-punch:approval-binding:portal-adapter-parts-hold',
+    p_expected_line_updated_at => (
+      select updated_at from public.work_order_lines
+      where id = 'af250000-0000-4000-8000-000000000016'
+    )
   );
   if (v_result ->> 'ok')::boolean is distinct from true then
     raise exception 'Portal adapter parts-hold fixture failed: %', v_result;
@@ -883,7 +899,11 @@ begin
     'ab250000-0000-4000-8000-000000000001',
     'af250000-0000-4000-8000-000000000020',
     'aa250000-0000-4000-8000-000000000001',
-    'approval-binding:parts-hold:portal-defer-fixture'
+    'approval-binding:parts-hold:portal-defer-fixture',
+    p_expected_line_updated_at => (
+      select updated_at from public.work_order_lines
+      where id = 'af250000-0000-4000-8000-000000000020'
+    )
   );
   if (v_result ->> 'ok')::boolean is distinct from true then
     raise exception 'Portal defer parts-hold fixture failed: %', v_result;
@@ -898,6 +918,23 @@ begin
   if (v_result ->> 'ok')::boolean is distinct from true
      or (v_result ->> 'idempotent')::boolean is distinct from true then
     raise exception 'Portal defer replay fence was not recorded: %', v_result;
+  end if;
+
+  begin
+    perform public.apply_assigned_job_punch_transition_atomic(
+      'ab250000-0000-4000-8000-000000000001',
+      'af250000-0000-4000-8000-000000000020',
+      'start',
+      'aa250000-0000-4000-8000-000000000001',
+      'aa250000-0000-4000-8000-000000000001',
+      'approval-binding:assigned-punch:parts-hold-pending'
+    );
+  exception when others then
+    v_punch_denied := sqlerrm =
+      'PARTS_QUOTE_HOLD_PENDING: approval-pending parts work cannot be punched.';
+  end;
+  if not v_punch_denied then
+    raise exception 'Assigned punch entered an approval-pending parts hold';
   end if;
 end;
 $authorized_atomic_parts_hold$;
@@ -1050,8 +1087,10 @@ declare
   v_approval_state text;
   v_status text;
   v_hold_reason text;
+  v_pre_defer_updated_at timestamptz;
   v_conflict boolean := false;
   v_actor_denied boolean := false;
+  v_stale_hold_denied boolean := false;
 begin
   -- The pre-existing canonical RPC is intentionally still executable. Its
   -- direct decline must end the task-owned hold through approval_state even
@@ -1075,6 +1114,10 @@ begin
     raise exception 'Direct canonical portal decline did not terminate approval-pending parts state: %, %, %',
       v_result, v_approval_state, v_hold_reason;
   end if;
+
+  select updated_at into v_pre_defer_updated_at
+  from public.work_order_lines
+  where id = 'af250000-0000-4000-8000-000000000020';
 
   v_result := public.apply_portal_parts_hold_line_decision_atomic(
     'ab250000-0000-4000-8000-000000000001',
@@ -1146,6 +1189,30 @@ begin
      or v_hold_reason is not null then
     raise exception 'Older parts hold replay overrode portal defer: %, %, %, %',
       v_result, v_approval_state, v_status, v_hold_reason;
+  end if;
+
+  begin
+    perform public.apply_pre_labor_parts_quote_hold_atomic(
+      'ab250000-0000-4000-8000-000000000001',
+      'af250000-0000-4000-8000-000000000020',
+      'aa250000-0000-4000-8000-000000000001',
+      'approval-binding:parts-hold:never-delivered-before-defer',
+      p_expected_line_updated_at => v_pre_defer_updated_at
+    );
+  exception when others then
+    v_stale_hold_denied := sqlerrm =
+      'PARTS_QUOTE_HOLD_STALE: line state changed; refresh before retrying the hold.';
+  end;
+  select approval_state, status, hold_reason
+    into v_approval_state, v_status, v_hold_reason
+  from public.work_order_lines
+  where id = 'af250000-0000-4000-8000-000000000020';
+  if not v_stale_hold_denied
+     or v_approval_state is distinct from 'pending'
+     or v_status is distinct from 'awaiting_approval'
+     or v_hold_reason is not null then
+    raise exception 'Never-delivered stale hold overrode portal defer: %, %, %, %',
+      v_stale_hold_denied, v_approval_state, v_status, v_hold_reason;
   end if;
   perform set_config(
     'request.jwt.claim.sub',

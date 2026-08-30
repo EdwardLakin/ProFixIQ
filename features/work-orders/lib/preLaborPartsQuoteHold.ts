@@ -20,7 +20,7 @@ export function createPreLaborPartsQuoteHoldOperationKey(
   line: PartsQuoteHoldVersionSource,
 ): string | null {
   const lineId = String(line.id ?? "").trim();
-  const stateVersion = String(line.updated_at ?? line.created_at ?? "").trim();
+  const stateVersion = String(line.updated_at ?? "").trim();
   if (!lineId || !stateVersion) return null;
 
   return `pre-labor-parts-quote-hold:${lineId}:${encodeURIComponent(stateVersion)}`;

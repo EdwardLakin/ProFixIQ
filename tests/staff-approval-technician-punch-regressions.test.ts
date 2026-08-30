@@ -155,6 +155,23 @@ describe("staff approval decision routing", () => {
     expect(approvalRoute).toContain('lower.includes("conflict")');
   });
 
+  it("replays committed staff decisions before mutable route preflights", () => {
+    const receiptRead = approvalRoute.indexOf(
+      '.from("quote_lifecycle_operation_keys")',
+    );
+    const targetRead = approvalRoute.indexOf('.from("work_order_lines")');
+    const quarantineRead = approvalRoute.indexOf(
+      "checkQuotePricingQuarantine({",
+    );
+    expect(receiptRead).toBeGreaterThan(-1);
+    expect(receiptRead).toBeLessThan(targetRead);
+    expect(receiptRead).toBeLessThan(quarantineRead);
+    expect(approvalRoute).toContain("hasExactDecisionLines");
+    expect(approvalRoute.match(/replayStaffDecisionReceipt\(\)/g)).toHaveLength(
+      2,
+    );
+  });
+
   it("uses the guarded staff-specific atomic adapter for staff decisions", () => {
     expect(approvalRoute).toContain("getActorCapabilities");
     expect(approvalRoute).toContain("capabilities.canAuthorizeQuotes");
@@ -353,6 +370,7 @@ describe("assigned technician punch shop resolution", () => {
       mobileWorkOrder.match(/transitionIntent: "parts_quote_hold"/g),
     ).toHaveLength(1);
     expect(punchClient).toContain('transitionIntent?: "parts_quote_hold"');
+    expect(punchClient).toContain("expectedLineUpdatedAt?: string");
     expect(punchClient).toContain(
       'const clientMutationId = `${offlineMutationNamespace}:${operationKey}`',
     );
@@ -360,8 +378,14 @@ describe("assigned technician punch shop resolution", () => {
       'body?.transitionIntent === "parts_quote_hold"\n      ? "pre_labor_parts_quote_hold"',
     );
     expect(pauseRoute).toContain("transitionIntent: body?.transitionIntent");
+    expect(pauseRoute).toContain(
+      "expectedLineUpdatedAt: body?.expectedLineUpdatedAt",
+    );
     expect(technicianLabor).toContain(
       "transitionIntent: params.transitionIntent",
+    );
+    expect(technicianLabor).toContain(
+      "expectedLineUpdatedAt: params.expectedLineUpdatedAt",
     );
     expect(punchTransition).toContain(
       'options?.pause?.transitionIntent === "parts_quote_hold"',
@@ -428,6 +452,9 @@ describe("assigned technician punch shop resolution", () => {
     expect(generatedTypes).toContain(
       "apply_pre_labor_parts_quote_hold_atomic: {",
     );
+    expect(generatedTypes).toContain(
+      "p_expected_line_updated_at?: string",
+    );
     expect(punchTransition).toContain(
       "partsQuoteHoldRequested\n        ? !capabilities.canManageWorkOrders",
     );
@@ -440,7 +467,9 @@ describe("assigned technician punch shop resolution", () => {
     expect(mobileWorkOrder).toContain("partsHoldOperationKeysRef");
     expect(mobileWorkOrder).toContain("partsHoldPendingRef");
     expect(mobileWorkOrder).toContain("partsHoldInFlightRef");
-    expect(mobileWorkOrder).toContain("{ operationKey }");
+    expect(mobileWorkOrder).toContain(
+      "{ operationKey: identity.operationKey }",
+    );
     expect(mobileWorkOrder).toContain("disabled={partsHoldPending}");
     expect(mobileWorkOrder).toContain('"Queued for parts"');
     expect(mobileWorkOrder).toContain(
@@ -460,6 +489,10 @@ describe("assigned technician punch shop resolution", () => {
     );
     expect(staffDecisionMigration).toContain(
       "WORK_ORDER_ARCHIVED: archived work orders cannot be sent to parts.",
+    );
+    expect(staffDecisionMigration).toContain("PARTS_QUOTE_HOLD_STALE");
+    expect(staffDecisionMigration).toContain(
+      "PARTS_QUOTE_HOLD_PENDING: approval-pending parts work cannot be punched.",
     );
     expect(staffDecisionMigration).toContain(
       "v_now timestamptz := clock_timestamp()",

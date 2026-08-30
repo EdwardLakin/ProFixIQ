@@ -14,6 +14,7 @@ type FinishOptions = {
 };
 
 type PauseOptions = {
+  expectedLineUpdatedAt?: string | null;
   holdReason?: string | null;
   notes?: string | null;
   transitionIntent?: "parts_quote_hold";
@@ -128,11 +129,21 @@ export async function applyJobPunchTransition({
   const partsQuoteHoldRequested =
     action === "pause" &&
     options?.pause?.transitionIntent === "parts_quote_hold";
+  const expectedLineUpdatedAt = cleanString(
+    options?.pause?.expectedLineUpdatedAt,
+  );
   if (!operationKey) {
     return {
       ok: false,
       status: 400,
       error: "A stable operation key is required for job punch transitions.",
+    };
+  }
+  if (partsQuoteHoldRequested && !expectedLineUpdatedAt) {
+    return {
+      ok: false,
+      status: 400,
+      error: "A parts-quote hold requires the observed line version.",
     };
   }
 
@@ -408,6 +419,7 @@ export async function applyJobPunchTransition({
         p_work_order_line_id: lineId,
         p_actor_user_id: actorUserId,
         p_operation_key: rpcOperationKey,
+        p_expected_line_updated_at: expectedLineUpdatedAt,
         p_hold_reason: cleanString(options?.pause?.holdReason),
         p_notes: options?.pause?.notes ?? null,
         p_details: details,
