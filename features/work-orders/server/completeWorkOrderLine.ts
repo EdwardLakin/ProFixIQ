@@ -18,6 +18,11 @@ type CompletionInput = {
 };
 
 export async function completeWorkOrderLine(input: CompletionInput) {
+  const assignedWorkOptions =
+    input.enforceAssignedWork === true
+      ? { enforceAssignedWork: input.enforceAssignedWork === true }
+      : {};
+
   const result = await applyJobPunchTransition({
     supabase: input.supabase,
     lineId: input.lineId,
@@ -25,7 +30,7 @@ export async function completeWorkOrderLine(input: CompletionInput) {
     technicianId: input.technicianId,
     options: {
       operationKey: input.operationKey,
-      enforceAssignedWork: input.enforceAssignedWork === true,
+      ...assignedWorkOptions,
       finish: {
         cause: input.cause,
         correction: input.correction,
