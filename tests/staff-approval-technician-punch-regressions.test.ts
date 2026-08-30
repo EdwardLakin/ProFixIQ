@@ -43,15 +43,34 @@ describe("customer portal sign-in bootstrap", () => {
 });
 
 describe("staff approval decision routing", () => {
-  it("binds explicit portal intent before considering a shop-linked profile", () => {
+  it("requires explicit staff intent and defaults omitted surfaces to portal", () => {
     expect(approvalRoute).toContain("resolveAuthenticatedStaffProfile");
-    expect(approvalRoute).toContain('actorSurface === "portal"');
-    expect(approvalRoute).toContain('actorSurface !== "portal" && profile?.shop_id');
+    expect(approvalRoute).toContain('actorSurface === "staff"');
+    expect(approvalRoute).not.toContain(
+      'actorSurface !== "portal" && profile?.shop_id',
+    );
     expect(approvalRoute).toContain("requirePortalCustomerActor(supabase)");
     expect(portalApprovalActions).toContain('actorSurface: "portal"');
     expect(portalApprovalsPage).toContain('actorSurface: "portal"');
     expect(desktopWorkOrder).toContain('actorSurface: "staff"');
     expect(mobileWorkOrder).toContain('actorSurface: "staff"');
+  });
+
+  it("reuses stable operation keys for failed or lost staff responses", () => {
+    for (const client of [desktopWorkOrder, mobileWorkOrder]) {
+      expect(client).toContain("lineDecisionOperationKeysRef");
+      expect(client).toContain(
+        "lineDecisionOperationKeysRef.current.get(actionIdentity)",
+      );
+      expect(client).toContain(
+        "lineDecisionOperationKeysRef.current.set(actionIdentity, operationKey)",
+      );
+      expect(client).toContain('"Idempotency-Key": operationKey');
+      expect(client).toContain("idempotencyKey: operationKey");
+      expect(client).toContain(
+        "lineDecisionOperationKeysRef.current.delete(actionIdentity)",
+      );
+    }
   });
 
   it("uses the guarded staff-specific atomic adapter for staff decisions", () => {

@@ -316,6 +316,7 @@ export default function WorkOrderIdClient(): JSX.Element {
   const assignmentOperationsRef = useRef<
     Map<string, { technicianId: string; operationKey: string }>
   >(new Map());
+  const lineDecisionOperationKeysRef = useRef(new Map<string, string>());
 
   const [activeTechsByLine, setActiveTechsByLine] = useState<Record<string, string[]>>({});
   const [assignedTechsByLine, setAssignedTechsByLine] = useState<
@@ -1299,15 +1300,25 @@ export default function WorkOrderIdClient(): JSX.Element {
 
   const approveLine = useCallback(
     async (lineId: string) => {
-      if (!lineId) return;
+      const workOrderId = wo?.id;
+      if (!lineId || !workOrderId) return;
+      const actionIdentity = `${workOrderId}:${lineId}:approve`;
+      const operationKey =
+        lineDecisionOperationKeysRef.current.get(actionIdentity) ??
+        crypto.randomUUID();
+      lineDecisionOperationKeysRef.current.set(actionIdentity, operationKey);
 
       const res = await fetch(`/api/work-orders/lines/${lineId}/approval-decision`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": operationKey,
+        },
         body: JSON.stringify({
           decision: "approve",
           actorSurface: "staff",
-          workOrderId: wo?.id ?? null,
+          workOrderId,
+          idempotencyKey: operationKey,
           resetPunchClock: true,
         }),
       });
@@ -1321,6 +1332,7 @@ export default function WorkOrderIdClient(): JSX.Element {
         return;
       }
 
+      lineDecisionOperationKeysRef.current.delete(actionIdentity);
       toast.success("Line approved");
       void fetchAll();
     },
@@ -1329,20 +1341,31 @@ export default function WorkOrderIdClient(): JSX.Element {
 
   const declineLine = useCallback(
     async (lineId: string) => {
-      if (!lineId) return;
+      const workOrderId = wo?.id;
+      if (!lineId || !workOrderId) return;
+      const actionIdentity = `${workOrderId}:${lineId}:decline`;
+      const operationKey =
+        lineDecisionOperationKeysRef.current.get(actionIdentity) ??
+        crypto.randomUUID();
+      lineDecisionOperationKeysRef.current.set(actionIdentity, operationKey);
       const res = await fetch(`/api/work-orders/lines/${lineId}/approval-decision`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": operationKey,
+        },
         body: JSON.stringify({
           decision: "decline",
           actorSurface: "staff",
-          workOrderId: wo?.id ?? null,
+          workOrderId,
+          idempotencyKey: operationKey,
         }),
       });
       const json = (await res.json().catch(() => null)) as
         | { ok?: boolean; error?: string }
         | null;
       if (!res.ok || !json?.ok) return toast.error(json?.error ?? "Failed to decline line");
+      lineDecisionOperationKeysRef.current.delete(actionIdentity);
       toast.success("Line declined");
       void fetchAll();
     },

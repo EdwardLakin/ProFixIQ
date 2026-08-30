@@ -98,15 +98,15 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       );
     }
 
-    // The same endpoint serves Shop and Customer Portal UIs. Explicit portal
-    // intent must be authorized as the customer even when that auth subject
-    // also retains a shop-linked profile; the mere presence of a profile cannot
-    // change ownership checks or actor attribution. Calls without an explicit
-    // surface keep the established compatibility fallback.
+    // This was a portal-only contract before Shop approval was added. Preserve
+    // existing callers (including cached clients during a rolling deployment)
+    // by treating an omitted surface as portal intent. Shop callers must opt in
+    // explicitly; the mere presence of a staff profile cannot change ownership
+    // checks or actor attribution.
     const staffResolution =
-      actorSurface === "portal"
-        ? null
-        : await resolveAuthenticatedStaffProfile(supabase, user.id);
+      actorSurface === "staff"
+        ? await resolveAuthenticatedStaffProfile(supabase, user.id)
+        : null;
     const profile = staffResolution?.profile ?? null;
     const profileError = staffResolution?.error ?? null;
     if (profileError) {
@@ -120,7 +120,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     }
 
     let actor: DecisionActor;
-    if (actorSurface !== "portal" && profile?.shop_id) {
+    if (actorSurface === "staff" && profile?.shop_id) {
       const canonicalRole = canonicalizeRole(profile.role);
       if (!STAFF_APPROVAL_ROLES.has(canonicalRole)) {
         return NextResponse.json(
