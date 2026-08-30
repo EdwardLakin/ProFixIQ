@@ -117,5 +117,14 @@ describe("pre-labor parts quote hold identity", () => {
       "lower(trim(coalesce(v_line.hold_reason, ''))) = 'awaiting parts quote'",
     );
     expect(partsBoundary).toContain("'idempotent', true");
+    expect(partsBoundary).toContain(
+      "Fence that key with a no-op receipt so a lost",
+    );
+    const replayReceipt = partsBoundary.indexOf(
+      "insert into public.workforce_operation_keys(",
+      canonicalReplay,
+    );
+    expect(replayReceipt).toBeGreaterThan(canonicalReplay);
+    expect(replayReceipt).toBeLessThan(activityMutation);
   });
 });

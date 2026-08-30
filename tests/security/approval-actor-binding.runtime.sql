@@ -809,7 +809,8 @@ begin
 
   -- A general line update can advance updated_at while an offline copy still
   -- carries the original hold command. A new key for the same canonical hold
-  -- must be a semantic replay with no second receipt or activity entry.
+  -- must persist only a semantic-replay fence, with no second activity entry
+  -- or line mutation.
   update public.work_order_lines
   set notes = 'Unrelated line edit after parts hold',
       updated_at = clock_timestamp()
@@ -834,9 +835,9 @@ begin
 
   if (v_result ->> 'ok')::boolean is distinct from true
      or (v_result ->> 'idempotent')::boolean is distinct from true
-     or v_task_receipt_count is distinct from 1
+     or v_task_receipt_count is distinct from 2
      or v_activity_count is distinct from 1 then
-    raise exception 'Canonical parts hold was duplicated by a refreshed key: %, %, %',
+    raise exception 'Canonical parts hold replay was not durably fenced: %, %, %',
       v_result, v_task_receipt_count, v_activity_count;
   end if;
 
@@ -886,6 +887,17 @@ begin
   );
   if (v_result ->> 'ok')::boolean is distinct from true then
     raise exception 'Portal defer parts-hold fixture failed: %', v_result;
+  end if;
+
+  v_result := public.apply_pre_labor_parts_quote_hold_atomic(
+    'ab250000-0000-4000-8000-000000000001',
+    'af250000-0000-4000-8000-000000000020',
+    'aa250000-0000-4000-8000-000000000001',
+    'approval-binding:parts-hold:portal-defer-replay-fence'
+  );
+  if (v_result ->> 'ok')::boolean is distinct from true
+     or (v_result ->> 'idempotent')::boolean is distinct from true then
+    raise exception 'Portal defer replay fence was not recorded: %', v_result;
   end if;
 end;
 $authorized_atomic_parts_hold$;
@@ -1105,6 +1117,46 @@ begin
     raise exception 'Portal defer preserved stale parts state: %, %, %, %',
       v_result, v_approval_state, v_status, v_hold_reason;
   end if;
+
+  -- Simulate the older offline hold retry after the newer portal decision. Its
+  -- semantic-replay receipt must win before current-state eligibility checks.
+  perform set_config(
+    'request.jwt.claim.sub',
+    'aa250000-0000-4000-8000-000000000001',
+    true
+  );
+  perform set_config(
+    'request.jwt.claims',
+    '{"role":"authenticated","sub":"aa250000-0000-4000-8000-000000000001"}',
+    true
+  );
+  v_result := public.apply_pre_labor_parts_quote_hold_atomic(
+    'ab250000-0000-4000-8000-000000000001',
+    'af250000-0000-4000-8000-000000000020',
+    'aa250000-0000-4000-8000-000000000001',
+    'approval-binding:parts-hold:portal-defer-replay-fence'
+  );
+  select approval_state, status, hold_reason
+    into v_approval_state, v_status, v_hold_reason
+  from public.work_order_lines
+  where id = 'af250000-0000-4000-8000-000000000020';
+  if (v_result ->> 'idempotent')::boolean is distinct from true
+     or v_approval_state is distinct from 'pending'
+     or v_status is distinct from 'awaiting_approval'
+     or v_hold_reason is not null then
+    raise exception 'Older parts hold replay overrode portal defer: %, %, %, %',
+      v_result, v_approval_state, v_status, v_hold_reason;
+  end if;
+  perform set_config(
+    'request.jwt.claim.sub',
+    'aa250000-0000-4000-8000-000000000002',
+    true
+  );
+  perform set_config(
+    'request.jwt.claims',
+    '{"role":"authenticated","sub":"aa250000-0000-4000-8000-000000000002"}',
+    true
+  );
 
   begin
     perform public.apply_portal_parts_hold_line_decision_atomic(

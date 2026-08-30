@@ -986,13 +986,14 @@ begin
   end if;
   -- A refreshed client can legitimately carry a different operation key after
   -- an unrelated line edit. Once this exact task-owned hold is canonical, any
-  -- key is a semantic replay: return current state without another receipt,
-  -- activity entry, timestamp change, or line mutation.
+  -- key is a semantic replay. Fence that key with a no-op receipt so a lost
+  -- response cannot later reapply the hold after approval state advances; do
+  -- not emit another activity, timestamp change, or line mutation.
   if lower(coalesce(v_line.approval_state::text, '')) = 'pending'
      and lower(coalesce(v_line.status::text, '')) = 'on_hold'
      and lower(trim(coalesce(v_line.hold_reason, ''))) = 'awaiting parts quote'
   then
-    return jsonb_build_object(
+    v_result := jsonb_build_object(
       'ok', true,
       'idempotent', true,
       'action', 'pause',
@@ -1005,6 +1006,16 @@ begin
       'closed_segment_count', 0,
       'line', to_jsonb(v_line)
     );
+
+    insert into public.workforce_operation_keys(
+      shop_id, operation_name, operation_key, actor_user_id,
+      work_order_id, work_order_line_id, result
+    ) values (
+      p_shop_id, 'pre_labor_parts_quote_hold', p_operation_key,
+      v_actor_auth_user_id, v_line.work_order_id, p_work_order_line_id, v_result
+    );
+
+    return v_result;
   end if;
   if lower(coalesce(v_line.approval_state::text, '')) <> 'pending'
      and lower(coalesce(v_line.status::text, '')) not in ('awaiting_approval', 'waiting_for_approval') then

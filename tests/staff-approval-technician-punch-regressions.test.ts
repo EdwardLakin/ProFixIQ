@@ -417,7 +417,7 @@ describe("assigned technician punch shop resolution", () => {
     expect(partsHoldBoundaryEnd).toBeGreaterThan(partsHoldMutation);
     expect(
       partsHoldSql.match(/'pre_labor_parts_quote_hold'/g),
-    ).toHaveLength(3);
+    ).toHaveLength(4);
     expect(partsHoldSql).not.toContain("'job_punch:pause'");
     expect(punchTransition).toContain(
       '? "pre_labor_parts_quote_hold"\n    : `job_punch:${action}`',
