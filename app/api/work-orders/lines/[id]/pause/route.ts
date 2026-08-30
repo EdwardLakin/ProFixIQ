@@ -27,6 +27,7 @@ export async function POST(req: NextRequest) {
     notes?: string | null;
     operationKey?: string;
     idempotencyKey?: string;
+    transitionIntent?: "parts_quote_hold";
   } | null;
   const operationKey =
     req.headers.get("Idempotency-Key")?.trim() ||
@@ -46,6 +47,7 @@ export async function POST(req: NextRequest) {
     technicianId: auth.user.id,
     operationKey,
     reason: body?.holdReason,
+    transitionIntent: body?.transitionIntent,
   });
 
   if (!result.ok) {

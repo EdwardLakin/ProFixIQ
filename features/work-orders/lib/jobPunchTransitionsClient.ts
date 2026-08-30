@@ -9,6 +9,7 @@ type TransitionBody = {
   allowConcurrentJobPunches?: boolean;
   holdReason?: string;
   notes?: string | null;
+  transitionIntent?: "parts_quote_hold";
   toAwaiting?: boolean;
   cause?: string | null;
   correction?: string | null;

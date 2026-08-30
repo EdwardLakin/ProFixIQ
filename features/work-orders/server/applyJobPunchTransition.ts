@@ -16,6 +16,7 @@ type FinishOptions = {
 type PauseOptions = {
   holdReason?: string | null;
   notes?: string | null;
+  transitionIntent?: "parts_quote_hold";
   preserveLineStatus?: boolean;
   event?: string;
   details?: DB["public"]["Tables"]["activity_logs"]["Insert"]["context"];
@@ -223,7 +224,7 @@ export async function applyJobPunchTransition({
 
   const { data: line, error: lineError } = await admin
     .from("work_order_lines")
-    .select("id,shop_id,assigned_tech_id,assigned_to")
+    .select("id,shop_id,assigned_tech_id,assigned_to,status,approval_state")
     .eq("id", lineId)
     .eq("shop_id", shopId)
     .maybeSingle<{
@@ -231,6 +232,8 @@ export async function applyJobPunchTransition({
       shop_id: string | null;
       assigned_tech_id: string | null;
       assigned_to: string | null;
+      status: string | null;
+      approval_state: string | null;
     }>();
   if (lineError) return { ok: false, status: 400, error: lineError.message };
   if (!line) {
@@ -287,29 +290,82 @@ export async function applyJobPunchTransition({
   }
 
   if (action === "pause") {
-    const { data: activeSegment, error: segmentError } = await admin
-      .from("work_order_line_labor_segments")
-      .select("id")
-      .eq("shop_id", shopId)
-      .eq("work_order_line_id", lineId)
-      .eq("technician_id", actorProfileId)
-      .is("ended_at", null)
-      .limit(1)
-      .maybeSingle<{ id: string }>();
-    if (segmentError) {
-      return { ok: false, status: 400, error: segmentError.message };
-    }
-    if (!activeSegment) {
-      // A concurrent identical pause may have committed after the first receipt
-      // read and before this unlocked ownership check. Re-read the durable
-      // receipt before reporting a missing active segment.
-      const concurrentOperationResult = await replayExistingOperation();
-      if (concurrentOperationResult) return concurrentOperationResult;
+    const partsQuoteHoldRequested =
+      options?.pause?.transitionIntent === "parts_quote_hold";
+    const normalizedHoldReason = cleanString(
+      options?.pause?.holdReason,
+    )?.toLowerCase();
+    if (
+      partsQuoteHoldRequested &&
+      normalizedHoldReason !== "awaiting parts quote"
+    ) {
       return {
         ok: false,
-        status: 409,
-        error: "Technician has no active labor segment on this line to pause.",
+        status: 400,
+        error: "A parts-quote hold requires the canonical hold reason.",
       };
+    }
+
+    if (partsQuoteHoldRequested) {
+      const normalizedApprovalState = cleanString(
+        line.approval_state,
+      )?.toLowerCase();
+      const normalizedLineStatus = cleanString(line.status)?.toLowerCase();
+      const isApprovalPending =
+        normalizedApprovalState === "pending" ||
+        normalizedLineStatus === "awaiting_approval" ||
+        normalizedLineStatus === "waiting_for_approval";
+      if (!isApprovalPending) {
+        return {
+          ok: false,
+          status: 409,
+          error: "Only a pre-labor approval-pending line can be sent to parts.",
+        };
+      }
+
+      const { data: recordedSegment, error: recordedSegmentError } = await admin
+        .from("work_order_line_labor_segments")
+        .select("id")
+        .eq("shop_id", shopId)
+        .eq("work_order_line_id", lineId)
+        .limit(1)
+        .maybeSingle<{ id: string }>();
+      if (recordedSegmentError) {
+        return { ok: false, status: 400, error: recordedSegmentError.message };
+      }
+      if (recordedSegment) {
+        return {
+          ok: false,
+          status: 409,
+          error:
+            "A line with recorded labor cannot be sent to parts as pre-labor work.",
+        };
+      }
+    } else {
+      const { data: activeSegment, error: segmentError } = await admin
+        .from("work_order_line_labor_segments")
+        .select("id")
+        .eq("shop_id", shopId)
+        .eq("work_order_line_id", lineId)
+        .eq("technician_id", actorProfileId)
+        .is("ended_at", null)
+        .limit(1)
+        .maybeSingle<{ id: string }>();
+      if (segmentError) {
+        return { ok: false, status: 400, error: segmentError.message };
+      }
+      if (!activeSegment) {
+        // A concurrent identical pause may have committed after the first receipt
+        // read and before this unlocked ownership check. Re-read the durable
+        // receipt before reporting a missing active segment.
+        const concurrentOperationResult = await replayExistingOperation();
+        if (concurrentOperationResult) return concurrentOperationResult;
+        return {
+          ok: false,
+          status: 409,
+          error: "Technician has no active labor segment on this line to pause.",
+        };
+      }
     }
   }
 

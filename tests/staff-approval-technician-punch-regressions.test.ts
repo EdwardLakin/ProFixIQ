@@ -13,6 +13,10 @@ const punchTransition = read(
 const technicianLabor = read(
   "features/work-orders/server/technicianJobLabor.ts",
 );
+const pauseRoute = read("app/api/work-orders/lines/[id]/pause/route.ts");
+const punchClient = read(
+  "features/work-orders/lib/jobPunchTransitionsClient.ts",
+);
 const staffDecisionMigration = read(
   "supabase/migrations/20260830044000_add_staff_line_decision_boundary.sql",
 );
@@ -56,14 +60,17 @@ describe("staff approval decision routing", () => {
     expect(mobileWorkOrder).toContain('actorSurface: "staff"');
   });
 
-  it("retains stable operation keys and disables both decisions until refresh", () => {
+  it("retains stable keys while allowing only the same decision to retry", () => {
     for (const [client, declineBoundary] of [
       [desktopWorkOrder, "const approveQuoteLine"],
       [mobileWorkOrder, "const sendToParts"],
     ] as const) {
       expect(client).toContain("lineDecisionOperationKeysRef");
       expect(client).toContain("lineDecisionPendingRef");
-      expect(client).toContain("lineDecisionPendingRef.current.has(lineId)");
+      expect(client).toContain("lineDecisionInFlightRef");
+      expect(client).toContain(
+        "pendingDecision !== undefined && pendingDecision !== decision",
+      );
       expect(client).toContain(
         "lineDecisionOperationKeysRef.current.get(actionIdentity)",
       );
@@ -72,7 +79,10 @@ describe("staff approval decision routing", () => {
       );
       expect(client).toContain('"Idempotency-Key": operationKey');
       expect(client).toContain("idempotencyKey: operationKey");
-      expect(client).toContain("disabled={pendingDecision !== undefined}");
+      expect(client).toContain('pendingDecision !== "approve"');
+      expect(client).toContain('pendingDecision !== "decline"');
+      expect(client).toContain('"Retry approve"');
+      expect(client).toContain('"Retry decline"');
       expect(client).toContain(
         "const refreshedPendingIds = new Set(approvalPending.map((line) => line.id))",
       );
@@ -89,8 +99,27 @@ describe("staff approval decision routing", () => {
         client.indexOf("const declineLine"),
         client.indexOf(declineBoundary),
       );
-      expect(approveBlock).toContain("await fetchAll()");
-      expect(declineBlock).toContain("await fetchAll()");
+      for (const decisionBlock of [approveBlock, declineBlock]) {
+        expect(decisionBlock).toContain("responseBodyReadable");
+        expect(decisionBlock).toContain("json?.ok !== true");
+        expect(decisionBlock).toContain(
+          "await fetchAll().catch(() => undefined)",
+        );
+        expect(decisionBlock).toContain("releaseLineDecisionInFlight(lineId)");
+        expect(decisionBlock).not.toContain("res.json().catch(() => null)");
+
+        const ambiguousResponse = decisionBlock.slice(
+          decisionBlock.indexOf("if (!responseBodyReadable"),
+          decisionBlock.indexOf("toast.success"),
+        );
+        expect(ambiguousResponse).not.toContain("clearLineDecision(");
+        const finallyBoundary = decisionBlock.indexOf("} finally {");
+        const interruptedRequest = decisionBlock.slice(
+          decisionBlock.lastIndexOf("} catch {", finallyBoundary),
+          finallyBoundary,
+        );
+        expect(interruptedRequest).not.toContain("clearLineDecision(");
+      }
       expect(
         approveBlock.slice(approveBlock.indexOf('toast.success("Line approved")')),
       ).not.toContain("lineDecisionOperationKeysRef.current.delete(actionIdentity)");
@@ -138,19 +167,31 @@ describe("staff approval decision routing", () => {
     const siblingLocks = staffDecisionMigration.indexOf(
       "from public.work_order_lines sibling",
     );
+    const segmentNowaitLocks = staffDecisionMigration.indexOf(
+      "from public.work_order_line_labor_segments seg",
+      siblingLocks,
+    );
     const serializedReceiptLookup = staffDecisionMigration.indexOf(
       "select operation.result, operation.actor_user_id, operation.work_order_id",
-      siblingLocks,
+      segmentNowaitLocks,
     );
     const laborCheck = staffDecisionMigration.indexOf(
       "from public.work_order_line_labor_segments seg",
+      serializedReceiptLookup,
     );
 
     expect(receiptLookup).toBeGreaterThan(-1);
     expect(workOrderLock).toBeGreaterThan(receiptLookup);
     expect(siblingLocks).toBeGreaterThan(workOrderLock);
-    expect(serializedReceiptLookup).toBeGreaterThan(siblingLocks);
+    expect(segmentNowaitLocks).toBeGreaterThan(siblingLocks);
+    expect(serializedReceiptLookup).toBeGreaterThan(segmentNowaitLocks);
     expect(laborCheck).toBeGreaterThan(serializedReceiptLookup);
+    expect(
+      staffDecisionMigration.slice(
+        segmentNowaitLocks,
+        staffDecisionMigration.indexOf("exit;", segmentNowaitLocks),
+      ),
+    ).toContain("for update nowait");
     expect(staffDecisionMigration).toContain("for update nowait");
     expect(staffDecisionMigration).toContain("when lock_not_available then");
     expect(staffDecisionMigration).toContain("perform pg_sleep(0.02)");
@@ -189,13 +230,33 @@ describe("assigned technician punch shop resolution", () => {
     expect(punchTransition).toContain("capabilities.canPerformAssignedWork");
     expect(punchTransition).toContain("isAssigned");
     expect(punchTransition).toContain(
-      '.select("id,shop_id,assigned_tech_id,assigned_to")',
+      '.select("id,shop_id,assigned_tech_id,assigned_to,status,approval_state")',
     );
     expect(punchTransition).toContain("line.assigned_to === actorProfileId");
     expect(punchTransition).toContain("isLegacyOnlyAssignment");
     expect(punchTransition).toContain("anyCanonicalAssignment");
     expect(punchTransition).toContain(
       "Technician is not assigned to this work-order line.",
+    );
+  });
+
+  it("keeps send-to-parts as a narrowly identified pre-labor transition", () => {
+    expect(
+      mobileWorkOrder.match(/transitionIntent: "parts_quote_hold"/g),
+    ).toHaveLength(2);
+    expect(punchClient).toContain('transitionIntent?: "parts_quote_hold"');
+    expect(pauseRoute).toContain("transitionIntent: body?.transitionIntent");
+    expect(technicianLabor).toContain(
+      "transitionIntent: params.transitionIntent",
+    );
+    expect(punchTransition).toContain(
+      'options?.pause?.transitionIntent === "parts_quote_hold"',
+    );
+    expect(punchTransition).toContain(
+      'normalizedHoldReason !== "awaiting parts quote"',
+    );
+    expect(punchTransition).toContain(
+      "A line with recorded labor cannot be sent to parts as pre-labor work.",
     );
   });
 

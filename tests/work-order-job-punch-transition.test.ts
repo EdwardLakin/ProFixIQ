@@ -32,16 +32,21 @@ class FakeSupabase {
     shop_id: string | null;
     assigned_tech_id: string | null;
     assigned_to: string | null;
+    status: string | null;
+    approval_state: string | null;
   } | null = {
     id: "line-1",
     shop_id: "shop-1",
     assigned_tech_id: "tech-1",
     assigned_to: null,
+    status: "awaiting_approval",
+    approval_state: "pending",
   };
   lineError: { message: string } | null = null;
   additionalAssignment: { id: string } | null = null;
   anyCanonicalAssignment: { id: string } | null = null;
   activeSegment: { id: string } | null = { id: "segment-1" };
+  recordedSegment: { id: string } | null = null;
   existingOperation: {
     actor_user_id: string | null;
     work_order_line_id: string | null;
@@ -98,7 +103,8 @@ class FakeSupabase {
       or() {
         return query;
       },
-      is() {
+      is(column: string, value: unknown) {
+        filters.set(column, value);
         return query;
       },
       limit() {
@@ -120,7 +126,12 @@ class FakeSupabase {
           });
         }
         if (table === "work_order_line_labor_segments") {
-          return Promise.resolve({ data: this.activeSegment, error: null });
+          return Promise.resolve({
+            data: filters.has("ended_at")
+              ? this.activeSegment
+              : this.recordedSegment,
+            error: null,
+          });
         }
         if (table === "workforce_operation_keys") {
           const data = this.existingOperationSequence
@@ -299,6 +310,82 @@ describe("applyJobPunchTransition atomic boundary", () => {
     expect(db.rpcCalls).toHaveLength(0);
   });
 
+  it("preserves the explicit pre-labor parts-quote hold without an active segment", async () => {
+    const db = new FakeSupabase();
+    db.activeSegment = null;
+
+    const result = await applyJobPunchTransition({
+      supabase: db as never,
+      lineId: "line-1",
+      action: "pause",
+      technicianId: "tech-1",
+      options: {
+        operationKey: "parts-quote-hold",
+        pause: {
+          holdReason: "Awaiting parts quote",
+          transitionIntent: "parts_quote_hold",
+        },
+      },
+    });
+
+    expect(result).toEqual({ ok: true, payload: { ok: true } });
+    expect(db.rpcCalls).toHaveLength(1);
+    expect(db.rpcCalls[0]?.args).toEqual(
+      expect.objectContaining({
+        p_action: "pause",
+        p_hold_reason: "Awaiting parts quote",
+      }),
+    );
+  });
+
+  it("keeps ordinary pauses and post-labor lines outside the pre-labor hold exception", async () => {
+    const ordinaryPause = new FakeSupabase();
+    ordinaryPause.activeSegment = null;
+
+    const missingActiveSegment = await applyJobPunchTransition({
+      supabase: ordinaryPause as never,
+      lineId: "line-1",
+      action: "pause",
+      technicianId: "tech-1",
+      options: {
+        operationKey: "ordinary-pause-without-segment",
+        pause: { holdReason: "Awaiting parts quote" },
+      },
+    });
+
+    expect(missingActiveSegment).toMatchObject({
+      ok: false,
+      status: 409,
+      error: expect.stringContaining("no active labor segment"),
+    });
+    expect(ordinaryPause.rpcCalls).toHaveLength(0);
+
+    const postLaborHold = new FakeSupabase();
+    postLaborHold.activeSegment = null;
+    postLaborHold.recordedSegment = { id: "ended-segment" };
+
+    const recordedLabor = await applyJobPunchTransition({
+      supabase: postLaborHold as never,
+      lineId: "line-1",
+      action: "pause",
+      technicianId: "tech-1",
+      options: {
+        operationKey: "parts-quote-after-labor",
+        pause: {
+          holdReason: "Awaiting parts quote",
+          transitionIntent: "parts_quote_hold",
+        },
+      },
+    });
+
+    expect(recordedLabor).toMatchObject({
+      ok: false,
+      status: 409,
+      error: expect.stringContaining("recorded labor"),
+    });
+    expect(postLaborHold.rpcCalls).toHaveLength(0);
+  });
+
   it("honors a legacy-only assigned_to value when canonical sources are empty", async () => {
     const db = new FakeSupabase();
     db.line = {
@@ -306,6 +393,8 @@ describe("applyJobPunchTransition atomic boundary", () => {
       shop_id: "shop-1",
       assigned_tech_id: null,
       assigned_to: "tech-1",
+      status: "awaiting_approval",
+      approval_state: "pending",
     };
 
     const result = await applyJobPunchTransition({
@@ -327,6 +416,8 @@ describe("applyJobPunchTransition atomic boundary", () => {
       shop_id: "shop-1",
       assigned_tech_id: null,
       assigned_to: "tech-1",
+      status: "awaiting_approval",
+      approval_state: "pending",
     };
     db.anyCanonicalAssignment = { id: "assignment-for-another-technician" };
 

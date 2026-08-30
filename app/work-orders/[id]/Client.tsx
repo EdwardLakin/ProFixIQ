@@ -320,8 +320,12 @@ export default function WorkOrderIdClient(): JSX.Element {
   const lineDecisionPendingRef = useRef(
     new Map<string, "approve" | "decline">(),
   );
+  const lineDecisionInFlightRef = useRef(new Set<string>());
   const [pendingLineDecisions, setPendingLineDecisions] = useState(
     () => new Map<string, "approve" | "decline">(),
+  );
+  const [lineDecisionsInFlight, setLineDecisionsInFlight] = useState(
+    () => new Set<string>(),
   );
 
   const [activeTechsByLine, setActiveTechsByLine] = useState<Record<string, string[]>>({});
@@ -1043,10 +1047,12 @@ export default function WorkOrderIdClient(): JSX.Element {
       lineDecisionOperationKeysRef.current.delete(
         `${workOrderId}:${lineId}:decline`,
       );
+      lineDecisionInFlightRef.current.delete(lineId);
       changed = true;
     }
     if (changed) {
       setPendingLineDecisions(new Map(lineDecisionPendingRef.current));
+      setLineDecisionsInFlight(new Set(lineDecisionInFlightRef.current));
     }
   }, [approvalPending, wo?.id]);
 
@@ -1326,13 +1332,46 @@ export default function WorkOrderIdClient(): JSX.Element {
 
   /* ----------------------- line actions ----------------------- */
 
+  const beginLineDecision = useCallback(
+    (lineId: string, decision: "approve" | "decline") => {
+      const pendingDecision = lineDecisionPendingRef.current.get(lineId);
+      if (
+        lineDecisionInFlightRef.current.has(lineId) ||
+        (pendingDecision !== undefined && pendingDecision !== decision)
+      ) {
+        return false;
+      }
+
+      lineDecisionPendingRef.current.set(lineId, decision);
+      lineDecisionInFlightRef.current.add(lineId);
+      setPendingLineDecisions(new Map(lineDecisionPendingRef.current));
+      setLineDecisionsInFlight(new Set(lineDecisionInFlightRef.current));
+      return true;
+    },
+    [],
+  );
+
+  const clearLineDecision = useCallback(
+    (lineId: string, actionIdentity: string) => {
+      lineDecisionPendingRef.current.delete(lineId);
+      lineDecisionInFlightRef.current.delete(lineId);
+      lineDecisionOperationKeysRef.current.delete(actionIdentity);
+      setPendingLineDecisions(new Map(lineDecisionPendingRef.current));
+      setLineDecisionsInFlight(new Set(lineDecisionInFlightRef.current));
+    },
+    [],
+  );
+
+  const releaseLineDecisionInFlight = useCallback((lineId: string) => {
+    lineDecisionInFlightRef.current.delete(lineId);
+    setLineDecisionsInFlight(new Set(lineDecisionInFlightRef.current));
+  }, []);
+
   const approveLine = useCallback(
     async (lineId: string) => {
       const workOrderId = wo?.id;
       if (!lineId || !workOrderId) return;
-      if (lineDecisionPendingRef.current.has(lineId)) return;
-      lineDecisionPendingRef.current.set(lineId, "approve");
-      setPendingLineDecisions(new Map(lineDecisionPendingRef.current));
+      if (!beginLineDecision(lineId, "approve")) return;
       const actionIdentity = `${workOrderId}:${lineId}:approve`;
       const operationKey =
         lineDecisionOperationKeysRef.current.get(actionIdentity) ??
@@ -1355,35 +1394,60 @@ export default function WorkOrderIdClient(): JSX.Element {
           }),
         });
 
-        const json = (await res.json().catch(() => null)) as
-          | { ok?: boolean; error?: string; workOrderId?: string | null }
-          | null;
+        let json: {
+          ok?: boolean;
+          error?: string;
+          workOrderId?: string | null;
+        } | null = null;
+        let responseBodyReadable = true;
+        try {
+          json = (await res.json()) as {
+            ok?: boolean;
+            error?: string;
+            workOrderId?: string | null;
+          };
+        } catch {
+          responseBodyReadable = false;
+        }
 
-        if (!res.ok || !json?.ok) {
-          lineDecisionPendingRef.current.delete(lineId);
-          lineDecisionOperationKeysRef.current.delete(actionIdentity);
-          setPendingLineDecisions(new Map(lineDecisionPendingRef.current));
+        if (!res.ok) {
+          clearLineDecision(lineId, actionIdentity);
           toast.error(json?.error ?? "Failed to approve line");
+          return;
+        }
+        if (!responseBodyReadable || json?.ok !== true) {
+          toast.error(
+            "Approval response was interrupted; refreshing before retry.",
+          );
+          await fetchAll().catch(() => undefined);
           return;
         }
 
         toast.success("Line approved");
-        await fetchAll();
+        await fetchAll().catch(() => undefined);
       } catch {
-        toast.error("Approval response was interrupted; refreshing line status.");
-        await fetchAll();
+        toast.error(
+          "Approval request was interrupted; retry will use the same key.",
+        );
+        await fetchAll().catch(() => undefined);
+      } finally {
+        releaseLineDecisionInFlight(lineId);
       }
     },
-    [fetchAll, wo?.id],
+    [
+      beginLineDecision,
+      clearLineDecision,
+      fetchAll,
+      releaseLineDecisionInFlight,
+      wo?.id,
+    ],
   );
 
   const declineLine = useCallback(
     async (lineId: string) => {
       const workOrderId = wo?.id;
       if (!lineId || !workOrderId) return;
-      if (lineDecisionPendingRef.current.has(lineId)) return;
-      lineDecisionPendingRef.current.set(lineId, "decline");
-      setPendingLineDecisions(new Map(lineDecisionPendingRef.current));
+      if (!beginLineDecision(lineId, "decline")) return;
       const actionIdentity = `${workOrderId}:${lineId}:decline`;
       const operationKey =
         lineDecisionOperationKeysRef.current.get(actionIdentity) ??
@@ -1403,24 +1467,43 @@ export default function WorkOrderIdClient(): JSX.Element {
             idempotencyKey: operationKey,
           }),
         });
-        const json = (await res.json().catch(() => null)) as
-          | { ok?: boolean; error?: string }
-          | null;
-        if (!res.ok || !json?.ok) {
-          lineDecisionPendingRef.current.delete(lineId);
-          lineDecisionOperationKeysRef.current.delete(actionIdentity);
-          setPendingLineDecisions(new Map(lineDecisionPendingRef.current));
+        let json: { ok?: boolean; error?: string } | null = null;
+        let responseBodyReadable = true;
+        try {
+          json = (await res.json()) as { ok?: boolean; error?: string };
+        } catch {
+          responseBodyReadable = false;
+        }
+        if (!res.ok) {
+          clearLineDecision(lineId, actionIdentity);
           toast.error(json?.error ?? "Failed to decline line");
           return;
         }
+        if (!responseBodyReadable || json?.ok !== true) {
+          toast.error(
+            "Decline response was interrupted; refreshing before retry.",
+          );
+          await fetchAll().catch(() => undefined);
+          return;
+        }
         toast.success("Line declined");
-        await fetchAll();
+        await fetchAll().catch(() => undefined);
       } catch {
-        toast.error("Decline response was interrupted; refreshing line status.");
-        await fetchAll();
+        toast.error(
+          "Decline request was interrupted; retry will use the same key.",
+        );
+        await fetchAll().catch(() => undefined);
+      } finally {
+        releaseLineDecisionInFlight(lineId);
       }
     },
-    [fetchAll, wo?.id],
+    [
+      beginLineDecision,
+      clearLineDecision,
+      fetchAll,
+      releaseLineDecisionInFlight,
+      wo?.id,
+    ],
   );
 
   const approveQuoteLine = useCallback(
@@ -2029,6 +2112,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                     <div className="space-y-2">
                       {recentApprovalPending.map((ln, idx) => {
                         const pendingDecision = pendingLineDecisions.get(ln.id);
+                        const decisionInFlight = lineDecisionsInFlight.has(ln.id);
                         const isAwaitingPartsBase =
                           (ln.status === "on_hold" &&
                             (ln.hold_reason ?? "").toLowerCase().includes("part")) ||
@@ -2075,25 +2159,41 @@ export default function WorkOrderIdClient(): JSX.Element {
                                 <div className="flex shrink-0 flex-wrap items-center gap-2">
                                   <button
                                     type="button"
-                                    disabled={pendingDecision !== undefined}
+                                    disabled={
+                                      decisionInFlight ||
+                                      (pendingDecision !== undefined &&
+                                        pendingDecision !== "approve")
+                                    }
                                     className="rounded-md border border-green-700/60 px-2 py-1 text-[11px] font-medium text-green-200 hover:bg-green-900/25 disabled:cursor-not-allowed disabled:opacity-50"
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       void approveLine(ln.id);
                                     }}
                                   >
-                                    {pendingDecision === "approve" ? "Approving…" : "Approve"}
+                                    {pendingDecision === "approve"
+                                      ? decisionInFlight
+                                        ? "Approving…"
+                                        : "Retry approve"
+                                      : "Approve"}
                                   </button>
                                   <button
                                     type="button"
-                                    disabled={pendingDecision !== undefined}
+                                    disabled={
+                                      decisionInFlight ||
+                                      (pendingDecision !== undefined &&
+                                        pendingDecision !== "decline")
+                                    }
                                     className="rounded-md border border-red-700/60 px-2 py-1 text-[11px] font-medium text-red-200 hover:bg-red-900/30 disabled:cursor-not-allowed disabled:opacity-50"
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       void declineLine(ln.id);
                                     }}
                                   >
-                                    {pendingDecision === "decline" ? "Declining…" : "Decline"}
+                                    {pendingDecision === "decline"
+                                      ? decisionInFlight
+                                        ? "Declining…"
+                                        : "Retry decline"
+                                      : "Decline"}
                                   </button>
                                 </div>
                               )}

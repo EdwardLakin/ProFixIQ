@@ -132,6 +132,17 @@ begin
       order by sibling.id
       for update nowait;
 
+      -- pause_all_active_technician_labor_atomic acquires labor segments before
+      -- delegating to the line-locking punch RPC. Acquire the same segment set
+      -- inside this NOWAIT subtransaction so a miss releases the work-order and
+      -- line locks before retrying instead of completing the inverse wait cycle.
+      perform 1
+      from public.work_order_line_labor_segments seg
+      where seg.shop_id = p_shop_id
+        and seg.work_order_id = p_work_order_id
+      order by seg.id
+      for update nowait;
+
       exit;
     exception
       when lock_not_available then
@@ -213,6 +224,9 @@ begin
   -- Any recorded segment is durable evidence that technician labor began.
   -- An ended segment (including a manual pause) is just as ineligible as an
   -- active one; decisions must never rewrite state after work was recorded.
+  -- The work order's segment set was already locked in the bounded NOWAIT
+  -- section above, so this eligibility check cannot wait while retaining line
+  -- locks even when pause-all is running concurrently.
   perform 1
   from public.work_order_line_labor_segments seg
   where seg.shop_id = p_shop_id
