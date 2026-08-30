@@ -189,11 +189,17 @@ These are not hardening items; they break daily operation on current `main`.
    also perform browser mutations that the committed write policies do not admit
    for a pure portal customer.
 
-   The standalone `/portal/booking` entry point has the same policy dependency.
-   `BookingPageClient.tsx:82-108` queries all online `shops` through the browser
-   client, but the committed `shops` SELECT policy admits a staff profile's shop,
-   not an anonymous or pure portal customer. Its empty shop list prevents shop
-   selection, portal-link requests, and booking submission on clean replay.
+   The standalone `/portal/booking` entry point has a distinct pre-invite policy
+   dependency. `BookingPageClient.tsx:82-108` queries all online `shops` through
+   the browser client, but the committed `shops` SELECT policy admits a staff
+   profile's shop, not an anonymous or pure portal customer. Shop discovery and
+   the "Send portal link" enrollment request occur before an auth subject or
+   accepted invite exists, so they need a narrowly scoped public/server contract,
+   not the post-login invite guard. The enrollment contract is independently
+   broken: `BookingPageClient.tsx:267-291` sends `shopSlug`, while
+   `/api/portal/qr/setup` accepts only `campaignSlug` (`route.ts:9-16`) and
+   therefore returns its generic no-op response without issuing the intended
+   link.
 
    The inventory cannot stop at those first lookups. `/portal/request/when`
    continues through quote-line and shop-hours reads; `/portal/request/build`
@@ -206,11 +212,14 @@ These are not hardening items; they break daily operation on current `main`.
    payment checkout no longer depend on customer-table RLS, but the complete
    portal surface is not yet policy-independent. The intended repair is to
    inventory the complete browser data contract and move sign-in plus every
-   required customer, invite, shop, vehicle, settings, profile, and standalone
-   booking read or mutation behind server-authorized paths pinned to the
-   verified auth subject and requiring accepted, non-revoked invite evidence.
-   Item 6 must remain open until the named workflows function on clean replay.
-   The repair is **not** another broad customer RLS policy.
+   authenticated customer, invite, shop, vehicle, settings, and profile read or
+   mutation behind server-authorized paths pinned to the verified auth subject
+   and requiring accepted, non-revoked invite evidence. Separately, standalone
+   booking needs a minimal public discovery/enrollment contract that exposes
+   only booking-safe Shop data and aligns the client and API identifier before
+   the invite exists; later booking mutations remain invite-aware. Item 6 must
+   remain open until the named workflows function on clean replay. The repair is
+   **not** another broad customer RLS policy.
 
 7. **Staff cannot approve or decline repair lines.**
    Desktop (`app/work-orders/[id]/Client.tsx:1304,1332`) and Shop Mobile
@@ -287,9 +296,9 @@ These are not hardening items; they break daily operation on current `main`.
 
 ## Recommended order
 
-1. **Item 6** — make Customer Portal sign-in and complete browser-only workflows
-   policy-independent while retaining the accepted, non-revoked invite
-   requirement for every read and mutation.
+1. **Item 6** — make authenticated Customer Portal workflows policy-independent
+   and invite-aware, while preserving a narrowly scoped public discovery and
+   enrollment path for the pre-invite standalone booking flow.
 2. **Items 7 and 8** — restore staff approval and assigned-technician punch-in.
 3. **Items 16 and 17** — reconcile production authorization drift and remove the
    unrestricted-column customer self-read before treating Clean Replay as
@@ -386,9 +395,10 @@ contract change on a pre-existing object and needs explicit approval.
 
 ### Revised priority
 
-Item 6 remains first until sign-in and the remaining browser-only portal
-workflows use policy-independent, invite-aware server paths for all required
-reads and mutations. PR #1570 repaired the canonical actor path but not every
+Item 6 remains first until sign-in and authenticated browser-only portal
+workflows use policy-independent, invite-aware server paths, and standalone
+booking has a separate working public discovery/enrollment contract for the
+pre-invite stage. PR #1570 repaired the canonical actor path but not every
 clean-replay dependency.
 Items 7 and 8 follow as the two broken daily staff workflows. Findings 16 and 17
 come next because they determine whether Clean Replay is authoritative evidence
