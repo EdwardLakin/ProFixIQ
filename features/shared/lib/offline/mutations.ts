@@ -986,13 +986,23 @@ export function getOfflineSyncSummary(
   return summary;
 }
 
-export function subscribeOfflineMutations(listener: () => void): () => void {
+export function subscribeOfflineMutations(
+  listener: (pending?: readonly PendingMutation[]) => void,
+): () => void {
   if (typeof window === "undefined") return () => undefined;
+  let active = true;
+  const notify = () => {
+    if (active) listener(listPendingMutations());
+  };
   installCrossTabQueueListeners();
-  void hydrateOfflineMutationQueue();
-  window.addEventListener(EVENT_NAME, listener);
+  // Existing subscribers may ignore the optional snapshot. A post-hydration
+  // notification also gives late subscribers the durable cache even when the
+  // queue was restored before their component mounted.
+  void hydrateOfflineMutationQueue().then(notify);
+  window.addEventListener(EVENT_NAME, notify);
   return () => {
-    window.removeEventListener(EVENT_NAME, listener);
+    active = false;
+    window.removeEventListener(EVENT_NAME, notify);
   };
 }
 

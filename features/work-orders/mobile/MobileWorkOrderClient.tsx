@@ -30,12 +30,13 @@ import { registerMobileWorkflowDock } from "@/features/copilot/technician/client
 import AskAssistantEntry from "@/features/assistant/components/AskAssistantEntry";
 import {
   createJobPunchOperationKey,
-  getQueuedPartsQuoteHoldIdentity,
   runJobPunchTransition,
 } from "@/features/work-orders/lib/jobPunchTransitionsClient";
 import {
+  getQueuedPartsQuoteHoldIdentity,
   hasActivePartsWaitingSignal,
   isCanonicalPreLaborPartsQuoteHold as isCanonicalPartsQuoteHold,
+  type OfflineMutationIdentitySource,
 } from "@/features/work-orders/lib/preLaborPartsQuoteHold";
 import { isReviewableQuoteLine } from "@/features/work-orders/lib/quotes/reviewableQuoteLines";
 import { resolveWorkOrderLinePricing } from "@/features/work-orders/lib/pricing/resolveWorkOrderLinePricing";
@@ -53,8 +54,6 @@ import {
 import {
   getOfflineMutationScope,
   getOfflineSyncSummary,
-  hydrateOfflineMutationQueue,
-  listPendingMutations,
   setOfflineMutationScope,
   subscribeOfflineMutations,
 } from "@/features/shared/lib/offline/mutations";
@@ -345,17 +344,21 @@ export default function MobileWorkOrderClient({
     getOfflineSyncSummary(),
   );
 
-  const hydrateQueuedPartsHoldIdentity = useCallback(() => {
+  const hydrateQueuedPartsHoldIdentity = useCallback(
+    (mutations: readonly OfflineMutationIdentitySource[] = []) => {
     if (!currentUserId || !shopId || lines.length === 0) return;
 
     const currentLineIds = new Set(lines.map((line) => line.id));
     let changed = false;
-    for (const mutation of listPendingMutations({
-      userId: currentUserId,
-      shopId,
-    })) {
+    for (const mutation of mutations) {
       const identity = getQueuedPartsQuoteHoldIdentity(mutation);
-      if (!identity || !currentLineIds.has(identity.lineId)) continue;
+      if (
+        !identity ||
+        mutation.userId !== currentUserId ||
+        mutation.shopId !== shopId ||
+        !currentLineIds.has(identity.lineId)
+      )
+        continue;
 
       if (
         partsHoldOperationKeysRef.current.get(identity.lineId) !==
@@ -376,7 +379,9 @@ export default function MobileWorkOrderClient({
     if (changed) {
       setPendingPartsHoldLineIds(new Set(partsHoldPendingRef.current));
     }
-  }, [currentUserId, lines, shopId]);
+    },
+    [currentUserId, lines, shopId],
+  );
 
   // mobile focused job view
   const [focusedJobId, setFocusedJobId] = useState<string | null>(null);
@@ -505,13 +510,14 @@ export default function MobileWorkOrderClient({
 
   useEffect(() => {
     let mounted = true;
-    const refresh = () => {
+    const refresh = (
+      pendingMutations: readonly OfflineMutationIdentitySource[] = [],
+    ) => {
       if (!mounted) return;
       setOfflineSummary(getOfflineSyncSummary());
-      hydrateQueuedPartsHoldIdentity();
+      hydrateQueuedPartsHoldIdentity(pendingMutations);
     };
     const unsubscribe = subscribeOfflineMutations(refresh);
-    void hydrateOfflineMutationQueue().then(refresh);
     return () => {
       mounted = false;
       unsubscribe();

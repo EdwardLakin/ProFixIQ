@@ -1,13 +1,7 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it, vi } from "vitest";
-
-vi.mock("@/features/shared/lib/offline/mutations", () => ({
-  getSessionMatchedOfflineScope: vi.fn(),
-  runMutationWithOfflineQueue: vi.fn(),
-}));
-
-import { getQueuedPartsQuoteHoldIdentity } from "@/features/work-orders/lib/jobPunchTransitionsClient";
+import { describe, expect, it } from "vitest";
 import {
+  getQueuedPartsQuoteHoldIdentity,
   hasActivePartsWaitingSignal,
   isCanonicalPreLaborPartsQuoteHold,
 } from "@/features/work-orders/lib/preLaborPartsQuoteHold";
@@ -81,8 +75,10 @@ describe("pre-labor parts quote hold identity", () => {
       "utf8",
     );
 
-    expect(mobileClient).toContain("hydrateOfflineMutationQueue().then(refresh)");
-    expect(mobileClient).toContain("listPendingMutations({");
+    expect(mobileClient).toContain("subscribeOfflineMutations(refresh)");
+    expect(mobileClient).toContain(
+      "hydrateQueuedPartsHoldIdentity(pendingMutations)",
+    );
     expect(mobileClient).toContain("getQueuedPartsQuoteHoldIdentity(mutation)");
     expect(mobileClient).toContain(
       "partsHoldOperationKeysRef.current.set(",
