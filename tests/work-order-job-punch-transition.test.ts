@@ -39,6 +39,11 @@ class FakeSupabase {
   lineError: { message: string } | null = null;
   additionalAssignment: { id: string } | null = null;
   activeSegment: { id: string } | null = { id: "segment-1" };
+  existingOperation: {
+    actor_user_id: string | null;
+    work_order_line_id: string | null;
+    result: Record<string, unknown>;
+  } | null = null;
   rpcData: unknown = { ok: true };
   rpcError: { message: string; details?: string | null; hint?: string | null } | null =
     null;
@@ -101,6 +106,9 @@ class FakeSupabase {
         }
         if (table === "work_order_line_labor_segments") {
           return Promise.resolve({ data: this.activeSegment, error: null });
+        }
+        if (table === "workforce_operation_keys") {
+          return Promise.resolve({ data: this.existingOperation, error: null });
         }
         throw new Error(`Unexpected table read: ${table}`);
       },
@@ -220,6 +228,30 @@ describe("applyJobPunchTransition atomic boundary", () => {
       status: 409,
       error: "FINANCIALLY_LOCKED: invoice issued",
     });
+  });
+
+  it("returns a stored pause receipt before requiring a current active segment", async () => {
+    const db = new FakeSupabase();
+    db.activeSegment = null;
+    db.existingOperation = {
+      actor_user_id: "tech-1",
+      work_order_line_id: "line-1",
+      result: { ok: true, action: "pause", idempotent: false },
+    };
+
+    const result = await applyJobPunchTransition({
+      supabase: db as never,
+      lineId: "line-1",
+      action: "pause",
+      technicianId: "tech-1",
+      options: { operationKey: "pause-retry" },
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      payload: { ok: true, action: "pause", idempotent: true },
+    });
+    expect(db.rpcCalls).toHaveLength(0);
   });
 
   it("maps unsigned inspection completion to a retryable conflict", async () => {

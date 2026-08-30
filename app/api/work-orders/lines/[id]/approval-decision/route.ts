@@ -16,6 +16,7 @@ type Body = {
   decision?: Decision;
   workOrderId?: string | null;
   idempotencyKey?: string | null;
+  actorSurface?: string | null;
 };
 
 type StaffDecisionActor = {
@@ -53,6 +54,7 @@ function errorStatus(message: string): number {
   }
   if (
     lower.includes("locked") ||
+    lower.includes("busy") ||
     lower.includes("no longer eligible") ||
     lower.includes("active_labor") ||
     lower.includes("ineligible")
@@ -82,11 +84,13 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     const body = (await req.json().catch(() => null)) as Body | null;
     const workOrderId = safeString(body?.workOrderId);
     const decision = body?.decision;
+    const actorSurface = safeString(body?.actorSurface);
 
     if (
       !lineId ||
       !workOrderId ||
-      (decision !== "approve" && decision !== "decline" && decision !== "defer")
+      (decision !== "approve" && decision !== "decline" && decision !== "defer") ||
+      (actorSurface !== "" && actorSurface !== "portal" && actorSurface !== "staff")
     ) {
       return NextResponse.json(
         { ok: false, error: "Missing lineId, workOrderId, or decision" },
@@ -94,22 +98,29 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       );
     }
 
-    // The same UI action is used by Shop staff and by the Customer Portal. The
-    // old route always forced the caller through requirePortalCustomerActor,
-    // which made legitimate owner/admin/manager/advisor actions fail unless the
-    // staff account also happened to be a portal customer. Resolve canonical
-    // staff identity first; only a caller with no staff profile uses the portal
-    // authorization path.
-    const { profile, error: profileError } = await resolveAuthenticatedStaffProfile(
-      supabase,
-      user.id,
-    );
+    // The same endpoint serves Shop and Customer Portal UIs. Explicit portal
+    // intent must be authorized as the customer even when that auth subject
+    // also retains a shop-linked profile; the mere presence of a profile cannot
+    // change ownership checks or actor attribution. Calls without an explicit
+    // surface keep the established compatibility fallback.
+    const staffResolution =
+      actorSurface === "portal"
+        ? null
+        : await resolveAuthenticatedStaffProfile(supabase, user.id);
+    const profile = staffResolution?.profile ?? null;
+    const profileError = staffResolution?.error ?? null;
     if (profileError) {
       return NextResponse.json({ ok: false, error: profileError }, { status: 403 });
     }
+    if (actorSurface === "staff" && !profile?.shop_id) {
+      return NextResponse.json(
+        { ok: false, error: "A shop-linked staff profile is required." },
+        { status: 403 },
+      );
+    }
 
     let actor: DecisionActor;
-    if (profile?.shop_id) {
+    if (actorSurface !== "portal" && profile?.shop_id) {
       const canonicalRole = canonicalizeRole(profile.role);
       if (!STAFF_APPROVAL_ROLES.has(canonicalRole)) {
         return NextResponse.json(

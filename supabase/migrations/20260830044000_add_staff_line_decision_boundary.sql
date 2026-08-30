@@ -28,6 +28,7 @@ declare
   v_existing_result jsonb;
   v_existing_actor_user_id uuid;
   v_existing_work_order_id uuid;
+  v_lock_attempt integer;
   v_result jsonb;
 begin
   if v_decision not in ('approve', 'decline') then
@@ -104,17 +105,86 @@ begin
     return v_existing_result || jsonb_build_object('idempotent', true);
   end if;
 
-  -- The delegated compatibility engine locks the work order and then every
-  -- sibling line. Punch transitions lock their target line before the work
-  -- order. Acquire the complete canonical line set in deterministic order
-  -- before the work-order lock so concurrent sibling decisions and punches
-  -- cannot form a line/work-order lock inversion.
-  perform 1
-  from public.work_order_lines sibling
-  where sibling.shop_id = p_shop_id
-    and sibling.work_order_id = p_work_order_id
-  order by sibling.id
-  for update;
+  -- Portal and compatibility decisions lock work order -> lines, while punch
+  -- transitions lock line -> work order. Match the approval order, but never
+  -- wait for either side while retaining the other: a NOWAIT miss rolls back
+  -- this inner subtransaction (and its locks) before a bounded retry. That
+  -- keeps approval paths consistent without creating the opposite inversion
+  -- against a punch already holding a line.
+  for v_lock_attempt in 1..100 loop
+    begin
+      perform 1
+      from public.work_orders wo
+      where wo.id = p_work_order_id
+        and wo.shop_id = p_shop_id
+      for update nowait;
+
+      if not found then
+        raise exception using
+          errcode = 'P0001',
+          message = 'STAFF_LINE_DECISION_NOT_FOUND: work order not found for shop.';
+      end if;
+
+      perform 1
+      from public.work_order_lines sibling
+      where sibling.shop_id = p_shop_id
+        and sibling.work_order_id = p_work_order_id
+      order by sibling.id
+      for update nowait;
+
+      exit;
+    exception
+      when lock_not_available then
+        if v_lock_attempt = 100 then
+          raise exception using
+            errcode = '55P03',
+            message = 'STAFF_LINE_DECISION_BUSY: approval state is changing; retry the decision.';
+        end if;
+    end;
+
+    perform pg_sleep(0.02);
+  end loop;
+
+  -- A competing decision may have committed while this call was backing off.
+  -- Re-read under the canonical resource locks before applying current-state
+  -- checks. Because every compatibility mutation needs these same locks, a
+  -- missing receipt at this point remains missing until this adapter delegates.
+  select operation.result, operation.actor_user_id, operation.work_order_id
+    into v_existing_result, v_existing_actor_user_id, v_existing_work_order_id
+  from public.quote_lifecycle_operation_keys operation
+  where operation.shop_id = p_shop_id
+    and operation.operation_name = 'approval_compatibility_bundle'
+    and operation.operation_key = p_operation_key;
+
+  if found then
+    if v_existing_actor_user_id is distinct from v_profile_id
+       or v_existing_work_order_id is distinct from p_work_order_id
+       or (
+         v_decision = 'approve'
+         and (
+           coalesce(v_existing_result -> 'approvedLineIds', '[]'::jsonb)
+             <> jsonb_build_array(p_line_id)
+           or coalesce(v_existing_result -> 'declinedLineIds', '[]'::jsonb)
+             <> '[]'::jsonb
+         )
+       )
+       or (
+         v_decision = 'decline'
+         and (
+           coalesce(v_existing_result -> 'declinedLineIds', '[]'::jsonb)
+             <> jsonb_build_array(p_line_id)
+           or coalesce(v_existing_result -> 'approvedLineIds', '[]'::jsonb)
+             <> '[]'::jsonb
+         )
+       )
+    then
+      raise exception using
+        errcode = '23505',
+        message = 'STAFF_LINE_DECISION_OPERATION_CONFLICT';
+    end if;
+
+    return v_existing_result || jsonb_build_object('idempotent', true);
+  end if;
 
   select *
     into v_line
@@ -127,18 +197,6 @@ begin
     raise exception using
       errcode = 'P0001',
       message = 'STAFF_LINE_DECISION_NOT_FOUND: work-order line not found for shop.';
-  end if;
-
-  perform 1
-  from public.work_orders wo
-  where wo.id = p_work_order_id
-    and wo.shop_id = p_shop_id
-  for update;
-
-  if not found then
-    raise exception using
-      errcode = 'P0001',
-      message = 'STAFF_LINE_DECISION_NOT_FOUND: work order not found for shop.';
   end if;
 
   if v_line.voided_at is not null
@@ -181,6 +239,44 @@ begin
     p_operation_key,
     coalesce(p_at, now())
   );
+
+  -- Bind the delegated output to the durable receipt as a final defense. The
+  -- legacy bundle can return a pre-existing receipt without validating its
+  -- arrays, so this adapter never reports success for mismatched intent even if
+  -- another legacy caller path or a future implementation bypasses its locks.
+  select operation.result, operation.actor_user_id, operation.work_order_id
+    into v_existing_result, v_existing_actor_user_id, v_existing_work_order_id
+  from public.quote_lifecycle_operation_keys operation
+  where operation.shop_id = p_shop_id
+    and operation.operation_name = 'approval_compatibility_bundle'
+    and operation.operation_key = p_operation_key;
+
+  if not found
+     or v_existing_actor_user_id is distinct from v_profile_id
+     or v_existing_work_order_id is distinct from p_work_order_id
+     or (
+       v_decision = 'approve'
+       and (
+         coalesce(v_existing_result -> 'approvedLineIds', '[]'::jsonb)
+           <> jsonb_build_array(p_line_id)
+         or coalesce(v_existing_result -> 'declinedLineIds', '[]'::jsonb)
+           <> '[]'::jsonb
+       )
+     )
+     or (
+       v_decision = 'decline'
+       and (
+         coalesce(v_existing_result -> 'declinedLineIds', '[]'::jsonb)
+           <> jsonb_build_array(p_line_id)
+         or coalesce(v_existing_result -> 'approvedLineIds', '[]'::jsonb)
+           <> '[]'::jsonb
+       )
+     )
+  then
+    raise exception using
+      errcode = '23505',
+      message = 'STAFF_LINE_DECISION_OPERATION_CONFLICT';
+  end if;
 
   return v_result;
 end;

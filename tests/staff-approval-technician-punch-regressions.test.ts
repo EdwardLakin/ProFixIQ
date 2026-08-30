@@ -17,6 +17,14 @@ const staffDecisionMigration = read(
   "supabase/migrations/20260830044000_add_staff_line_decision_boundary.sql",
 );
 const generatedTypes = read("features/shared/types/types/supabase.ts");
+const portalApprovalActions = read(
+  "features/portal/components/QuoteApprovalActions.tsx",
+);
+const portalApprovalsPage = read("app/portal/approvals/page.tsx");
+const desktopWorkOrder = read("app/work-orders/[id]/Client.tsx");
+const mobileWorkOrder = read(
+  "features/work-orders/mobile/MobileWorkOrderClient.tsx",
+);
 
 describe("customer portal sign-in bootstrap", () => {
   it("resolves the customer and invite with the server-side client", () => {
@@ -35,10 +43,15 @@ describe("customer portal sign-in bootstrap", () => {
 });
 
 describe("staff approval decision routing", () => {
-  it("resolves a canonical staff profile before falling back to portal authorization", () => {
+  it("binds explicit portal intent before considering a shop-linked profile", () => {
     expect(approvalRoute).toContain("resolveAuthenticatedStaffProfile");
-    expect(approvalRoute).toContain("if (profile?.shop_id)");
+    expect(approvalRoute).toContain('actorSurface === "portal"');
+    expect(approvalRoute).toContain('actorSurface !== "portal" && profile?.shop_id');
     expect(approvalRoute).toContain("requirePortalCustomerActor(supabase)");
+    expect(portalApprovalActions).toContain('actorSurface: "portal"');
+    expect(portalApprovalsPage).toContain('actorSurface: "portal"');
+    expect(desktopWorkOrder).toContain('actorSurface: "staff"');
+    expect(mobileWorkOrder).toContain('actorSurface: "staff"');
   });
 
   it("uses the guarded staff-specific atomic adapter for staff decisions", () => {
@@ -69,26 +82,44 @@ describe("staff approval decision routing", () => {
     const receiptLookup = staffDecisionMigration.indexOf(
       "from public.quote_lifecycle_operation_keys operation",
     );
+    const workOrderLock = staffDecisionMigration.indexOf(
+      "from public.work_orders wo",
+    );
     const siblingLocks = staffDecisionMigration.indexOf(
       "from public.work_order_lines sibling",
     );
-    const workOrderLock = staffDecisionMigration.indexOf(
-      "from public.work_orders wo",
+    const serializedReceiptLookup = staffDecisionMigration.indexOf(
+      "select operation.result, operation.actor_user_id, operation.work_order_id",
+      siblingLocks,
     );
     const laborCheck = staffDecisionMigration.indexOf(
       "from public.work_order_line_labor_segments seg",
     );
 
     expect(receiptLookup).toBeGreaterThan(-1);
-    expect(siblingLocks).toBeGreaterThan(receiptLookup);
-    expect(workOrderLock).toBeGreaterThan(siblingLocks);
-    expect(laborCheck).toBeGreaterThan(workOrderLock);
+    expect(workOrderLock).toBeGreaterThan(receiptLookup);
+    expect(siblingLocks).toBeGreaterThan(workOrderLock);
+    expect(serializedReceiptLookup).toBeGreaterThan(siblingLocks);
+    expect(laborCheck).toBeGreaterThan(serializedReceiptLookup);
+    expect(staffDecisionMigration).toContain("for update nowait");
+    expect(staffDecisionMigration).toContain("when lock_not_available then");
+    expect(staffDecisionMigration).toContain("perform pg_sleep(0.02)");
     expect(staffDecisionMigration).toContain(
       "return v_existing_result || jsonb_build_object('idempotent', true)",
     );
     expect(staffDecisionMigration).toContain(
       "STAFF_LINE_DECISION_OPERATION_CONFLICT",
     );
+
+    const delegatedCall = staffDecisionMigration.indexOf(
+      "v_result := public.apply_approval_compatibility_bundle_atomic(",
+    );
+    const delegatedReceiptValidation = staffDecisionMigration.indexOf(
+      "select operation.result, operation.actor_user_id, operation.work_order_id",
+      delegatedCall,
+    );
+    expect(delegatedCall).toBeGreaterThan(laborCheck);
+    expect(delegatedReceiptValidation).toBeGreaterThan(delegatedCall);
   });
 
   it("keeps pure portal customers on the portal decision contract", () => {
@@ -117,6 +148,10 @@ describe("assigned technician punch shop resolution", () => {
     expect(punchTransition).toContain("technicianId !== actorUserId");
     expect(punchTransition).toContain("technicianId !== actorProfileId");
     expect(punchTransition).toContain("p_actor_user_id: actorUserId");
+    expect(punchTransition).toContain('.from("workforce_operation_keys")');
+    expect(punchTransition.indexOf('.from("workforce_operation_keys")')).toBeLessThan(
+      punchTransition.indexOf('.from("work_order_line_labor_segments")'),
+    );
   });
 
   it("preserves the trusted break and lunch auto-resume path", () => {

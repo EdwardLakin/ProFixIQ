@@ -74,6 +74,13 @@ function cleanString(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+function withIdempotentFlag(result: Json): Json {
+  if (result !== null && typeof result === "object" && !Array.isArray(result)) {
+    return { ...result, idempotent: true };
+  }
+  return result;
+}
+
 function errorStatus(message: string): number {
   const normalized = message.toLowerCase();
   if (normalized.includes("not found")) return 404;
@@ -182,6 +189,34 @@ export async function applyJobPunchTransition({
   // access is not coupled to financial SELECT capability. The canonical RPC
   // remains responsible for mutation locking and state transitions.
   const admin = createAdminSupabase();
+  const rpcOperationKey = `${shopId}:job-punch:${operationKey}`;
+  const { data: existingOperation, error: operationError } = await admin
+    .from("workforce_operation_keys")
+    .select("actor_user_id,work_order_line_id,result")
+    .eq("shop_id", shopId)
+    .eq("operation_name", `job_punch:${action}`)
+    .eq("operation_key", rpcOperationKey)
+    .maybeSingle<{
+      actor_user_id: string | null;
+      work_order_line_id: string | null;
+      result: Json;
+    }>();
+  if (operationError) {
+    return { ok: false, status: 400, error: operationError.message };
+  }
+  if (existingOperation) {
+    if (
+      existingOperation.actor_user_id !== actorUserId ||
+      existingOperation.work_order_line_id !== lineId
+    ) {
+      return { ok: false, status: 409, error: "JOB_PUNCH_OPERATION_CONFLICT" };
+    }
+    return {
+      ok: true,
+      payload: withIdempotentFlag(existingOperation.result),
+    };
+  }
+
   const { data: line, error: lineError } = await admin
     .from("work_order_lines")
     .select("id,shop_id,assigned_tech_id")
@@ -248,7 +283,7 @@ export async function applyJobPunchTransition({
     p_action: action,
     p_technician_id: technicianId,
     p_actor_user_id: actorUserId,
-    p_operation_key: `${shopId}:job-punch:${operationKey}`,
+    p_operation_key: rpcOperationKey,
     p_allow_concurrent: options?.allowConcurrentJobPunches === true,
     p_at: options?.nowIso ?? new Date().toISOString(),
     p_start_source: cleanString(options?.startSource),

@@ -1150,6 +1150,7 @@ export default function MobileWorkOrderClient({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             decision: "approve",
+            actorSurface: "staff",
             workOrderId: wo?.id ?? null,
           }),
         },
@@ -1176,6 +1177,7 @@ export default function MobileWorkOrderClient({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             decision: "decline",
+            actorSurface: "staff",
             workOrderId: wo?.id ?? null,
           }),
         },

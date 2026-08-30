@@ -1306,6 +1306,7 @@ export default function WorkOrderIdClient(): JSX.Element {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           decision: "approve",
+          actorSurface: "staff",
           workOrderId: wo?.id ?? null,
           resetPunchClock: true,
         }),
@@ -1334,6 +1335,7 @@ export default function WorkOrderIdClient(): JSX.Element {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           decision: "decline",
+          actorSurface: "staff",
           workOrderId: wo?.id ?? null,
         }),
       });
