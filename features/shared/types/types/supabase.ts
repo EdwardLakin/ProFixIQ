@@ -27513,6 +27513,28 @@ export type Database = {
         }
         Returns: Json
       }
+      apply_assigned_job_punch_transition_atomic: {
+        Args: {
+          p_action: string
+          p_actor_user_id: string
+          p_allow_concurrent?: boolean
+          p_at?: string
+          p_cause?: string
+          p_correction?: string
+          p_details?: Json
+          p_event?: string
+          p_hold_reason?: string
+          p_notes?: string
+          p_operation_key: string
+          p_preserve_line_status?: boolean
+          p_release_to_awaiting?: boolean
+          p_shop_id: string
+          p_start_source?: string
+          p_technician_id: string
+          p_work_order_line_id: string
+        }
+        Returns: Json
+      }
       apply_job_punch_transition_atomic: {
         Args: {
           p_action: string

@@ -1452,17 +1452,19 @@ export default function MobileWorkOrderClient({
     const ids = partsQuoteEligiblePending
       .map((line) => line.id)
       .filter(Boolean) as string[];
-    try {
-      for (const lineId of ids) {
-        await queueLineForParts(lineId);
-      }
+    const results = [];
+    for (const lineId of ids) {
+      results.push(await queueLineForParts(lineId));
+    }
+    const acceptedCount = results.filter(Boolean).length;
+    if (acceptedCount === ids.length) {
       toast.success("Queued all pending lines for parts quoting");
-    } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to queue pending lines for parts",
+    } else if (acceptedCount > 0) {
+      toast.warning(
+        `Queued ${acceptedCount} of ${ids.length} pending lines for parts quoting`,
       );
+    } else {
+      toast.error("No pending lines were queued for parts quoting");
     }
   }, [partsQuoteEligiblePending, queueLineForParts]);
 

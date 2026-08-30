@@ -439,6 +439,159 @@ begin
 end;
 $function$;
 
+-- Public technician punches must make assignment authorization and the
+-- canonical mutation one transaction. The established punch function remains
+-- unchanged for compatibility callers; this adapter is an explicit opt-in.
+create or replace function public.apply_assigned_job_punch_transition_atomic(
+  p_shop_id uuid,
+  p_work_order_line_id uuid,
+  p_action text,
+  p_technician_id uuid,
+  p_actor_user_id uuid,
+  p_operation_key text,
+  p_allow_concurrent boolean default false,
+  p_at timestamptz default now(),
+  p_start_source text default null,
+  p_hold_reason text default null,
+  p_notes text default null,
+  p_preserve_line_status boolean default false,
+  p_release_to_awaiting boolean default false,
+  p_cause text default null,
+  p_correction text default null,
+  p_event text default null,
+  p_details jsonb default '{}'::jsonb
+) returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $function$
+declare
+  v_action text := lower(trim(coalesce(p_action, '')));
+  v_profile_id uuid;
+  v_auth_user_id uuid;
+  v_role text;
+  v_line public.work_order_lines%rowtype;
+begin
+  if v_action not in ('start', 'resume', 'pause', 'finish') then
+    raise exception using errcode = '22023', message = 'Unsupported job punch action.';
+  end if;
+  if nullif(trim(coalesce(p_operation_key, '')), '') is null then
+    raise exception using errcode = '22023', message = 'A stable operation key is required.';
+  end if;
+
+  select profile.id,
+         coalesce(profile.user_id, profile.id),
+         lower(trim(coalesce(profile.role, '')))
+    into v_profile_id, v_auth_user_id, v_role
+  from public.profiles profile
+  where profile.shop_id = p_shop_id
+    and (profile.id = p_technician_id or profile.user_id = p_technician_id)
+  order by case when profile.id = p_technician_id then 0 else 1 end
+  limit 1
+  for update;
+  if not found
+     or v_role not in (
+       'owner', 'admin', 'manager', 'mechanic', 'tech', 'technician',
+       'lead_hand', 'lead hand', 'leadhand', 'foreman'
+     )
+     or p_actor_user_id not in (v_profile_id, v_auth_user_id)
+     or (
+       coalesce(auth.role(), '') <> 'service_role'
+       and not public.scheduler_actor_matches(v_auth_user_id)
+     )
+  then
+    raise exception using
+      errcode = '42501',
+      message = 'ASSIGNED_JOB_PUNCH_FORBIDDEN: actor cannot perform assigned work.';
+  end if;
+
+  -- Preserve canonical replay semantics even if assignment changed after the
+  -- original command committed.
+  if exists (
+    select 1
+    from public.workforce_operation_keys operation
+    where operation.shop_id = p_shop_id
+      and operation.operation_name = 'job_punch:' || v_action
+      and operation.operation_key = p_operation_key
+  ) then
+    return public.apply_job_punch_transition_atomic(
+      p_shop_id => p_shop_id,
+      p_work_order_line_id => p_work_order_line_id,
+      p_action => p_action,
+      p_technician_id => p_technician_id,
+      p_actor_user_id => p_actor_user_id,
+      p_operation_key => p_operation_key,
+      p_allow_concurrent => p_allow_concurrent,
+      p_at => p_at,
+      p_start_source => p_start_source,
+      p_hold_reason => p_hold_reason,
+      p_notes => p_notes,
+      p_preserve_line_status => p_preserve_line_status,
+      p_release_to_awaiting => p_release_to_awaiting,
+      p_cause => p_cause,
+      p_correction => p_correction,
+      p_event => p_event,
+      p_details => p_details
+    );
+  end if;
+
+  -- Assignment commands acquire this same row lock before changing either the
+  -- primary field or supporting bridge, so revocation and punch authorization
+  -- cannot pass one another between this assertion and the canonical mutation.
+  select * into v_line
+  from public.work_order_lines line
+  where line.id = p_work_order_line_id
+    and line.shop_id = p_shop_id
+  for update;
+  if not found then
+    raise exception using errcode = 'P0001', message = 'Work-order line not found for shop.';
+  end if;
+
+  if not (
+    v_line.assigned_tech_id = v_profile_id
+    or exists (
+      select 1
+      from public.work_order_line_technicians assignment
+      where assignment.work_order_line_id = p_work_order_line_id
+        and assignment.technician_id = v_profile_id
+    )
+    or (
+      v_line.assigned_tech_id is null
+      and v_line.assigned_to = v_profile_id
+      and not exists (
+        select 1
+        from public.work_order_line_technicians assignment
+        where assignment.work_order_line_id = p_work_order_line_id
+      )
+    )
+  ) then
+    raise exception using
+      errcode = '42501',
+      message = 'Technician is not assigned to this work-order line.';
+  end if;
+
+  return public.apply_job_punch_transition_atomic(
+    p_shop_id => p_shop_id,
+    p_work_order_line_id => p_work_order_line_id,
+    p_action => p_action,
+    p_technician_id => p_technician_id,
+    p_actor_user_id => p_actor_user_id,
+    p_operation_key => p_operation_key,
+    p_allow_concurrent => p_allow_concurrent,
+    p_at => p_at,
+    p_start_source => p_start_source,
+    p_hold_reason => p_hold_reason,
+    p_notes => p_notes,
+    p_preserve_line_status => p_preserve_line_status,
+    p_release_to_awaiting => p_release_to_awaiting,
+    p_cause => p_cause,
+    p_correction => p_correction,
+    p_event => p_event,
+    p_details => p_details
+  );
+end;
+$function$;
+
 -- Sending an approval-pending line to parts is a manager workflow, not a
 -- technician labor pause. Keep it out of the canonical punch function while
 -- making the pre-labor assertion and hold mutation one locked transaction.
@@ -458,12 +611,15 @@ security definer
 set search_path = public, pg_temp
 as $function$
 declare
-  v_now timestamptz := coalesce(p_at, now());
+  -- This timestamp is durable audit evidence. Keep the legacy-shaped argument
+  -- for client compatibility, but never trust a caller-supplied occurrence time.
+  v_now timestamptz := clock_timestamp();
   v_profile_id uuid;
   v_actor_auth_user_id uuid;
   v_locked_actor_auth_user_id uuid;
   v_role text;
   v_line public.work_order_lines%rowtype;
+  v_work_order public.work_orders%rowtype;
   v_existing_result jsonb;
   v_existing_actor_user_id uuid;
   v_existing_line_id uuid;
@@ -517,7 +673,7 @@ begin
   -- acquired before the next retry.
   for v_lock_attempt in 1..100 loop
     begin
-      perform 1
+      select work_order.* into v_work_order
       from public.work_orders work_order
       where work_order.id = (
         select candidate.work_order_id
@@ -529,6 +685,9 @@ begin
       for update nowait;
       if not found then
         raise exception using errcode = 'P0001', message = 'Parent work order not found for shop.';
+      end if;
+      if v_work_order.archived_at is not null then
+        raise exception using errcode = 'P0001', message = 'WORK_ORDER_ARCHIVED: archived work orders cannot be sent to parts.';
       end if;
 
       select * into v_line
@@ -645,7 +804,7 @@ begin
 
   insert into public.activity_logs(action, user_id, timestamp, target_table, target_id, context)
   values (
-    coalesce(nullif(trim(p_event), ''), 'pause'),
+    'parts_quote_hold',
     v_actor_auth_user_id,
     v_now,
     'work_order_line',
@@ -695,6 +854,21 @@ comment on function public.apply_pre_labor_parts_quote_hold_atomic(
   uuid, uuid, uuid, text, timestamptz, text, text, text, jsonb
 ) is
   'Atomically places an approval-pending, never-worked line on the canonical parts-quote hold for an authorized work-order manager.';
+
+revoke all on function public.apply_assigned_job_punch_transition_atomic(
+  uuid, uuid, text, uuid, uuid, text, boolean, timestamptz, text,
+  text, text, boolean, boolean, text, text, text, jsonb
+) from public, anon;
+grant execute on function public.apply_assigned_job_punch_transition_atomic(
+  uuid, uuid, text, uuid, uuid, text, boolean, timestamptz, text,
+  text, text, boolean, boolean, text, text, text, jsonb
+) to authenticated, service_role;
+
+comment on function public.apply_assigned_job_punch_transition_atomic(
+  uuid, uuid, text, uuid, uuid, text, boolean, timestamptz, text,
+  text, text, boolean, boolean, text, text, text, jsonb
+) is
+  'Serializes assigned-work authorization on the line before delegating to the unchanged canonical job-punch transition.';
 
 notify pgrst, 'reload schema';
 

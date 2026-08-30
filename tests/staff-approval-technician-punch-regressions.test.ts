@@ -416,6 +416,25 @@ describe("assigned technician punch shop resolution", () => {
     expect(staffDecisionMigration).toContain(
       "actor capability changed before the hold",
     );
+    expect(staffDecisionMigration).toContain(
+      "WORK_ORDER_ARCHIVED: archived work orders cannot be sent to parts.",
+    );
+    expect(staffDecisionMigration).toContain(
+      "v_now timestamptz := clock_timestamp()",
+    );
+    expect(staffDecisionMigration).toContain("'parts_quote_hold',");
+    expect(punchTransition).not.toContain(
+      "p_at: options?.nowIso ?? new Date().toISOString(),\n        p_hold_reason",
+    );
+    expect(punchTransition).not.toContain(
+      "p_event: cleanString(options?.pause?.event),\n        p_details: details,\n      })",
+    );
+    expect(mobileWorkOrder).toContain(
+      "const acceptedCount = results.filter(Boolean).length",
+    );
+    expect(mobileWorkOrder).toContain(
+      "Queued ${acceptedCount} of ${ids.length} pending lines",
+    );
   });
 
   it("isolates assigned-work hardening from the shared completion contract", () => {
@@ -423,6 +442,36 @@ describe("assigned technician punch shop resolution", () => {
     expect(technicianLabor.match(/enforceAssignedWork: true/g)).toHaveLength(2);
     expect(resumeRoute).toContain("enforceAssignedWork: true");
     expect(completeWorkOrderLine).not.toContain("enforceAssignedWork");
+    expect(punchTransition).toContain(
+      '"apply_assigned_job_punch_transition_atomic"',
+    );
+    expect(staffDecisionMigration).toContain(
+      "create or replace function public.apply_assigned_job_punch_transition_atomic",
+    );
+    const assignedBoundary = staffDecisionMigration.indexOf(
+      "create or replace function public.apply_assigned_job_punch_transition_atomic",
+    );
+    const assignedLineLock = staffDecisionMigration.indexOf(
+      "from public.work_order_lines line",
+      assignedBoundary,
+    );
+    const assignedAssertion = staffDecisionMigration.indexOf(
+      "Technician is not assigned to this work-order line.",
+      assignedLineLock,
+    );
+    const canonicalDelegation = staffDecisionMigration.indexOf(
+      "return public.apply_job_punch_transition_atomic(",
+      assignedAssertion,
+    );
+    expect(assignedLineLock).toBeGreaterThan(assignedBoundary);
+    expect(assignedAssertion).toBeGreaterThan(assignedLineLock);
+    expect(canonicalDelegation).toBeGreaterThan(assignedAssertion);
+    expect(
+      staffDecisionMigration.slice(assignedLineLock, assignedAssertion),
+    ).toContain("for update");
+    expect(generatedTypes).toContain(
+      "apply_assigned_job_punch_transition_atomic: {",
+    );
   });
 
   it("binds ordinary punch requests to the authenticated technician", () => {

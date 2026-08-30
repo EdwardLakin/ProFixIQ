@@ -184,6 +184,22 @@ set shop_id = excluded.shop_id,
     status = excluded.status,
     approval_state = excluded.approval_state;
 
+insert into public.work_orders (
+  id, shop_id, customer_id, custom_id, status, approval_state,
+  archived_at, archived_by_user_id
+)
+values (
+  'ae250000-0000-4000-8000-000000000002',
+  'ab250000-0000-4000-8000-000000000001',
+  'ac250000-0000-4000-8000-000000000001',
+  'APPROVAL-BINDING-ARCHIVED',
+  'in_progress',
+  'pending',
+  now(),
+  'aa250000-0000-4000-8000-000000000001'
+)
+on conflict (id) do nothing;
+
 insert into public.work_order_lines (
   id,
   work_order_id,
@@ -322,6 +338,18 @@ values
     'ae250000-0000-4000-8000-000000000001',
     'Terminal parts hold rejection target',
     'completed',
+    'pending',
+    'pending',
+    'repair',
+    'ab250000-0000-4000-8000-000000000001',
+    'aa250000-0000-4000-8000-000000000001',
+    'medium'
+  ),
+  (
+    'af250000-0000-4000-8000-000000000012',
+    'ae250000-0000-4000-8000-000000000002',
+    'Archived parent parts hold rejection target',
+    'awaiting_approval',
     'pending',
     'pending',
     'repair',
@@ -550,22 +578,40 @@ declare
   v_result jsonb;
   v_status text;
   v_hold_reason text;
+  v_updated_at timestamptz;
+  v_audit_action text;
+  v_audit_at timestamptz;
 begin
   v_result := public.apply_pre_labor_parts_quote_hold_atomic(
     'ab250000-0000-4000-8000-000000000001',
     'af250000-0000-4000-8000-000000000010',
     'aa250000-0000-4000-8000-000000000001',
-    'ab250000-0000-4000-8000-000000000001:job-punch:approval-binding:parts-hold'
+    'ab250000-0000-4000-8000-000000000001:job-punch:approval-binding:parts-hold',
+    '2000-01-01T00:00:00Z',
+    'Awaiting parts quote',
+    null,
+    'forged_parts_event'
   );
-  select status, hold_reason into v_status, v_hold_reason
+  select status, hold_reason, updated_at into v_status, v_hold_reason, v_updated_at
   from public.work_order_lines
   where id = 'af250000-0000-4000-8000-000000000010';
+  select action, timestamp into v_audit_action, v_audit_at
+  from public.activity_logs
+  where target_table = 'work_order_line'
+    and target_id = 'af250000-0000-4000-8000-000000000010'
+    and context ->> 'operation_key' =
+      'ab250000-0000-4000-8000-000000000001:job-punch:approval-binding:parts-hold'
+  order by timestamp desc
+  limit 1;
 
   if (v_result ->> 'ok')::boolean is distinct from true
      or v_status is distinct from 'on_hold'
-     or v_hold_reason is distinct from 'Awaiting parts quote' then
-    raise exception 'Atomic pre-labor parts hold failed: %, %, %',
-      v_result, v_status, v_hold_reason;
+     or v_hold_reason is distinct from 'Awaiting parts quote'
+     or v_updated_at < now() - interval '1 minute'
+     or v_audit_action is distinct from 'parts_quote_hold'
+     or v_audit_at < now() - interval '1 minute' then
+    raise exception 'Atomic pre-labor parts hold failed: %, %, %, %, %, %',
+      v_result, v_status, v_hold_reason, v_updated_at, v_audit_action, v_audit_at;
   end if;
 end;
 $authorized_atomic_parts_hold$;
@@ -589,6 +635,26 @@ begin
   end if;
 end;
 $terminal_atomic_parts_hold_denial$;
+
+do $archived_parent_atomic_parts_hold_denial$
+declare
+  v_denied boolean := false;
+begin
+  begin
+    perform public.apply_pre_labor_parts_quote_hold_atomic(
+      'ab250000-0000-4000-8000-000000000001',
+      'af250000-0000-4000-8000-000000000012',
+      'aa250000-0000-4000-8000-000000000001',
+      'ab250000-0000-4000-8000-000000000001:job-punch:approval-binding:archived-parts-hold'
+    );
+  exception when others then
+    v_denied := sqlerrm = 'WORK_ORDER_ARCHIVED: archived work orders cannot be sent to parts.';
+  end;
+  if not v_denied then
+    raise exception 'Atomic parts hold mutated an archived work order';
+  end if;
+end;
+$archived_parent_atomic_parts_hold_denial$;
 
 select set_config(
   'request.jwt.claim.sub',

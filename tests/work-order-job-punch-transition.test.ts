@@ -450,6 +450,9 @@ describe("applyJobPunchTransition atomic boundary", () => {
 
     expect(result).toEqual({ ok: true, payload: { ok: true } });
     expect(db.rpcCalls).toHaveLength(1);
+    expect(db.rpcCalls[0]?.name).toBe(
+      "apply_assigned_job_punch_transition_atomic",
+    );
   });
 
   it("does not let assigned_to override a different canonical assignment", async () => {
