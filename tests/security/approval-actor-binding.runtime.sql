@@ -557,6 +557,7 @@ select set_config(
 do $authorized_staff_adapter_decision$
 declare
   v_result jsonb;
+  v_approval_at timestamptz;
 begin
   v_result := public.apply_staff_line_decision_atomic(
     'ab250000-0000-4000-8000-000000000001',
@@ -564,14 +565,64 @@ begin
     'af250000-0000-4000-8000-000000000004',
     'aa250000-0000-4000-8000-000000000001',
     'approve',
-    'approval-binding:staff-adapter:replay'
+    'approval-binding:staff-adapter:replay',
+    '2000-01-01T00:00:00Z'
   );
+  select approval_at into v_approval_at
+  from public.work_order_lines
+  where id = 'af250000-0000-4000-8000-000000000004';
   if (v_result ->> 'ok')::boolean is distinct from true
-     or (v_result ->> 'idempotent')::boolean is distinct from false then
-    raise exception 'Authorized staff adapter approval failed: %', v_result;
+     or (v_result ->> 'idempotent')::boolean is distinct from false
+     or v_approval_at < now() - interval '1 minute' then
+    raise exception 'Authorized staff adapter approval failed: %, %',
+      v_result, v_approval_at;
   end if;
 end;
 $authorized_staff_adapter_decision$;
+
+do $opposite_staff_decision_denial$
+declare
+  v_denied boolean := false;
+begin
+  begin
+    perform public.apply_staff_line_decision_atomic(
+      'ab250000-0000-4000-8000-000000000001',
+      'ae250000-0000-4000-8000-000000000001',
+      'af250000-0000-4000-8000-000000000004',
+      'aa250000-0000-4000-8000-000000000001',
+      'decline',
+      'approval-binding:staff-adapter:opposite-decision'
+    );
+  exception when others then
+    v_denied := sqlerrm = 'STAFF_LINE_DECISION_INELIGIBLE: line is no longer approval-pending.';
+  end;
+  if not v_denied then
+    raise exception 'A second staff operation overwrote a completed decision';
+  end if;
+end;
+$opposite_staff_decision_denial$;
+
+do $archived_parent_staff_decision_denial$
+declare
+  v_denied boolean := false;
+begin
+  begin
+    perform public.apply_staff_line_decision_atomic(
+      'ab250000-0000-4000-8000-000000000001',
+      'ae250000-0000-4000-8000-000000000002',
+      'af250000-0000-4000-8000-000000000012',
+      'aa250000-0000-4000-8000-000000000001',
+      'approve',
+      'approval-binding:staff-adapter:archived-parent'
+    );
+  exception when others then
+    v_denied := sqlerrm = 'WORK_ORDER_ARCHIVED: archived work orders cannot receive staff approval decisions.';
+  end;
+  if not v_denied then
+    raise exception 'Staff decision mutated an archived work order';
+  end if;
+end;
+$archived_parent_staff_decision_denial$;
 
 do $authorized_atomic_parts_hold$
 declare

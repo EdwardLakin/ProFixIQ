@@ -259,7 +259,6 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
             p_actor_user_id: actor.userId,
             p_decision: decision,
             p_operation_key: `${actor.shopId}:staff-line-decision:${key}`,
-            p_at: new Date().toISOString(),
           })
         : await rpc.rpc("apply_portal_line_decision_atomic", {
             p_shop_id: actor.shopId,

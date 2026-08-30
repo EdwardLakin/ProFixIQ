@@ -22,12 +22,15 @@ set search_path = public, pg_temp
 as $function$
 declare
   v_decision text := lower(trim(coalesce(p_decision, '')));
-  v_now timestamptz := coalesce(p_at, now());
+  -- Keep the provisional argument shape for compatibility, but approval and
+  -- rollup timestamps are durable audit evidence and must be server-derived.
+  v_now timestamptz := clock_timestamp();
   v_profile_id uuid;
   v_actor_auth_user_id uuid;
   v_locked_actor_auth_user_id uuid;
   v_role text;
   v_line public.work_order_lines%rowtype;
+  v_work_order public.work_orders%rowtype;
   v_existing_result jsonb;
   v_existing_actor_user_id uuid;
   v_existing_work_order_id uuid;
@@ -125,7 +128,7 @@ begin
   -- against a punch already holding a line.
   for v_lock_attempt in 1..100 loop
     begin
-      perform 1
+      select wo.* into v_work_order
       from public.work_orders wo
       where wo.id = p_work_order_id
         and wo.shop_id = p_shop_id
@@ -239,6 +242,12 @@ begin
     return v_existing_result || jsonb_build_object('idempotent', true);
   end if;
 
+  if v_work_order.archived_at is not null then
+    raise exception using
+      errcode = 'P0001',
+      message = 'WORK_ORDER_ARCHIVED: archived work orders cannot receive staff approval decisions.';
+  end if;
+
   select *
     into v_line
   from public.work_order_lines wol
@@ -256,6 +265,16 @@ begin
     raise exception using
       errcode = 'P0001',
       message = 'FINANCIALLY_LOCKED: approval decisions cannot change this work order.';
+  end if;
+
+  if lower(coalesce(v_line.approval_state::text, '')) <> 'pending'
+     and lower(coalesce(v_line.status::text, '')) not in (
+       'awaiting_approval', 'waiting_for_approval'
+     )
+  then
+    raise exception using
+      errcode = 'P0001',
+      message = 'STAFF_LINE_DECISION_INELIGIBLE: line is no longer approval-pending.';
   end if;
 
   -- The route performs the same check for an early, friendly response, but

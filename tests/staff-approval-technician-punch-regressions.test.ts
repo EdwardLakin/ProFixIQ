@@ -169,6 +169,16 @@ describe("staff approval decision routing", () => {
     expect(approvalRoute).toContain(
       'p_operation_key: `${actor.shopId}:staff-line-decision:${key}`',
     );
+    const staffRpcStart = approvalRoute.indexOf(
+      'rpc.rpc("apply_staff_line_decision_atomic"',
+    );
+    const portalRpcStart = approvalRoute.indexOf(
+      'rpc.rpc("apply_portal_line_decision_atomic"',
+      staffRpcStart,
+    );
+    expect(approvalRoute.slice(staffRpcStart, portalRpcStart)).not.toContain(
+      "p_at:",
+    );
     expect(staffDecisionMigration).toContain(
       "create or replace function public.apply_staff_line_decision_atomic",
     );
@@ -181,6 +191,15 @@ describe("staff approval decision routing", () => {
     );
     expect(staffDecisionMigration).toContain(
       "technician labor has already been recorded for this line",
+    );
+    expect(staffDecisionMigration).toContain(
+      "v_now timestamptz := clock_timestamp()",
+    );
+    expect(staffDecisionMigration).toContain(
+      "WORK_ORDER_ARCHIVED: archived work orders cannot receive staff approval decisions.",
+    );
+    expect(staffDecisionMigration).toContain(
+      "STAFF_LINE_DECISION_INELIGIBLE: line is no longer approval-pending.",
     );
     expect(staffDecisionMigration).not.toContain("and seg.ended_at is null");
     expect(generatedTypes).toContain("apply_staff_line_decision_atomic: {");
