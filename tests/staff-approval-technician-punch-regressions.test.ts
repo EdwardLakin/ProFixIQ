@@ -472,16 +472,23 @@ describe("assigned technician punch shop resolution", () => {
       "create trigger normalize_declined_parts_quote_hold_reason",
     );
     expect(staffDecisionMigration).toContain(
-      "create or replace function public.apply_portal_parts_hold_line_decline_atomic",
+      "create or replace function public.apply_portal_parts_hold_line_decision_atomic",
     );
     expect(approvalRoute).toContain(
-      'decision !== "decline"\n          ? await rpc.rpc("apply_portal_line_decision_atomic"',
+      'decision === "approve"\n          ? await rpc.rpc("apply_portal_line_decision_atomic"',
     );
     expect(approvalRoute).toContain(
-      '"apply_portal_parts_hold_line_decline_atomic"',
+      '"apply_portal_parts_hold_line_decision_atomic"',
     );
+    expect(approvalRoute).toContain("p_decision: decision");
     expect(staffDecisionMigration).toContain(
       "v_result := public.apply_portal_line_decision_atomic(",
+    );
+    expect(staffDecisionMigration).toContain(
+      "v_decision not in ('decline', 'defer')",
+    );
+    expect(staffDecisionMigration).toContain(
+      "when v_decision = 'decline' then 'Customer declined'\n    else null",
     );
     expect(staffDecisionMigration).toContain(
       "and not public.scheduler_actor_matches(p_actor_user_id)",
@@ -490,7 +497,7 @@ describe("assigned technician punch shop resolution", () => {
       "PORTAL_LINE_DECISION_OPERATION_CONFLICT",
     );
     expect(generatedTypes).toContain(
-      "apply_portal_parts_hold_line_decline_atomic: {",
+      "apply_portal_parts_hold_line_decision_atomic: {",
     );
     expect(punchTransition).not.toContain(
       "p_at: options?.nowIso ?? new Date().toISOString(),\n        p_hold_reason",

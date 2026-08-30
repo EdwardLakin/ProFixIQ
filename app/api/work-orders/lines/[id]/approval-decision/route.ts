@@ -260,7 +260,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
             p_decision: decision,
             p_operation_key: `${actor.shopId}:staff-line-decision:${key}`,
           })
-        : decision !== "decline"
+        : decision === "approve"
           ? await rpc.rpc("apply_portal_line_decision_atomic", {
               p_shop_id: actor.shopId,
               p_customer_id: actor.customerId,
@@ -272,13 +272,14 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
               p_at: new Date().toISOString(),
             })
           : await rpc.rpc(
-              "apply_portal_parts_hold_line_decline_atomic",
+              "apply_portal_parts_hold_line_decision_atomic",
               {
                 p_shop_id: actor.shopId,
                 p_customer_id: actor.customerId,
                 p_work_order_id: workOrderId,
                 p_line_id: lineId,
                 p_actor_user_id: actor.userId,
+                p_decision: decision,
                 p_operation_key: `${actor.shopId}:portal-line-decision:${key}`,
                 p_at: new Date().toISOString(),
               },

@@ -984,6 +984,28 @@ begin
       errcode = 'P0001',
       message = 'A voided or terminal line cannot be sent to parts.';
   end if;
+  -- A refreshed client can legitimately carry a different operation key after
+  -- an unrelated line edit. Once this exact task-owned hold is canonical, any
+  -- key is a semantic replay: return current state without another receipt,
+  -- activity entry, timestamp change, or line mutation.
+  if lower(coalesce(v_line.approval_state::text, '')) = 'pending'
+     and lower(coalesce(v_line.status::text, '')) = 'on_hold'
+     and lower(trim(coalesce(v_line.hold_reason, ''))) = 'awaiting parts quote'
+  then
+    return jsonb_build_object(
+      'ok', true,
+      'idempotent', true,
+      'action', 'pause',
+      'shop_id', p_shop_id,
+      'work_order_id', v_line.work_order_id,
+      'work_order_line_id', p_work_order_line_id,
+      'technician_id', v_profile_id,
+      'shift_id', null,
+      'labor_segment_id', null,
+      'closed_segment_count', 0,
+      'line', to_jsonb(v_line)
+    );
+  end if;
   if lower(coalesce(v_line.approval_state::text, '')) <> 'pending'
      and lower(coalesce(v_line.status::text, '')) not in ('awaiting_approval', 'waiting_for_approval') then
     raise exception using errcode = 'P0001', message = 'Only a pre-labor approval-pending line can be sent to parts.';
@@ -1043,12 +1065,13 @@ begin
 end;
 $function$;
 
-create or replace function public.apply_portal_parts_hold_line_decline_atomic(
+create or replace function public.apply_portal_parts_hold_line_decision_atomic(
   p_shop_id uuid,
   p_customer_id uuid,
   p_work_order_id uuid,
   p_line_id uuid,
   p_actor_user_id uuid,
+  p_decision text,
   p_operation_key text,
   p_at timestamptz default now()
 ) returns jsonb
@@ -1061,8 +1084,14 @@ declare
   v_receipt_actor_user_id uuid;
   v_receipt_customer_id uuid;
   v_receipt_shop_id uuid;
+  v_decision text := lower(trim(coalesce(p_decision, '')));
   v_result jsonb;
 begin
+  if v_decision not in ('decline', 'defer') then
+    raise exception using
+      errcode = '22023',
+      message = 'Portal parts-hold decisions support decline or defer only.';
+  end if;
   if coalesce(auth.role(), '') <> 'service_role'
      and not public.scheduler_actor_matches(p_actor_user_id)
   then
@@ -1112,14 +1141,14 @@ begin
     p_work_order_id,
     p_line_id,
     p_actor_user_id,
-    'decline',
+    v_decision,
     p_operation_key,
     p_at
   );
 
   if v_result ->> 'lineId' is distinct from p_line_id::text
      or v_result ->> 'workOrderId' is distinct from p_work_order_id::text
-     or v_result ->> 'decision' is distinct from 'decline'
+     or v_result ->> 'decision' is distinct from v_decision
   then
     raise exception using
       errcode = '23505',
@@ -1142,28 +1171,40 @@ begin
   end if;
 
   update public.work_order_lines
-  set hold_reason = 'Customer declined'
+  set hold_reason = case
+    when v_decision = 'decline' then 'Customer declined'
+    else null
+  end
   where id = p_line_id
     and work_order_id = p_work_order_id
     and shop_id = p_shop_id
-    and lower(coalesce(approval_state::text, '')) = 'declined'
-    and lower(trim(coalesce(hold_reason, ''))) = 'awaiting parts quote';
+    and lower(trim(coalesce(hold_reason, ''))) = 'awaiting parts quote'
+    and (
+      (v_decision = 'decline'
+       and lower(coalesce(approval_state::text, '')) = 'declined')
+      or
+      (v_decision = 'defer'
+       and lower(coalesce(approval_state::text, '')) = 'pending'
+       and lower(coalesce(status::text, '')) in (
+         'awaiting_approval', 'waiting_for_approval'
+       ))
+    );
 
   return v_result;
 end;
 $function$;
 
-revoke all on function public.apply_portal_parts_hold_line_decline_atomic(
-  uuid, uuid, uuid, uuid, uuid, text, timestamptz
+revoke all on function public.apply_portal_parts_hold_line_decision_atomic(
+  uuid, uuid, uuid, uuid, uuid, text, text, timestamptz
 ) from public, anon;
-grant execute on function public.apply_portal_parts_hold_line_decline_atomic(
-  uuid, uuid, uuid, uuid, uuid, text, timestamptz
+grant execute on function public.apply_portal_parts_hold_line_decision_atomic(
+  uuid, uuid, uuid, uuid, uuid, text, text, timestamptz
 ) to authenticated, service_role;
 
-comment on function public.apply_portal_parts_hold_line_decline_atomic(
-  uuid, uuid, uuid, uuid, uuid, text, timestamptz
+comment on function public.apply_portal_parts_hold_line_decision_atomic(
+  uuid, uuid, uuid, uuid, uuid, text, text, timestamptz
 ) is
-  'Delegates a portal decline to the unchanged canonical line decision while terminating this feature''s canonical parts-quote hold.';
+  'Delegates a portal decline or defer to the unchanged canonical line decision while terminating this feature''s canonical parts-quote hold.';
 
 revoke all on function public.apply_staff_line_decision_atomic(
   uuid, uuid, uuid, uuid, text, text, timestamptz

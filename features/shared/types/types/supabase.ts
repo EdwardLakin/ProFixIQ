@@ -27611,11 +27611,12 @@ export type Database = {
         }
         Returns: Json
       }
-      apply_portal_parts_hold_line_decline_atomic: {
+      apply_portal_parts_hold_line_decision_atomic: {
         Args: {
           p_actor_user_id: string
           p_at?: string
           p_customer_id: string
+          p_decision: string
           p_line_id: string
           p_operation_key: string
           p_shop_id: string

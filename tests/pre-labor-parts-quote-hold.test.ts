@@ -101,5 +101,21 @@ describe("pre-labor parts quote hold identity", () => {
       "coalesce(v_line.line_type::text, 'job') = 'info'",
     );
     expect(partsBoundary).toContain("Info lines are non-actionable.");
+    const canonicalReplay = partsBoundary.indexOf(
+      "A refreshed client can legitimately carry a different operation key",
+    );
+    const lineMutation = partsBoundary.indexOf(
+      "update public.work_order_lines\n  set status = 'on_hold'",
+    );
+    const activityMutation = partsBoundary.indexOf(
+      "insert into public.activity_logs",
+    );
+    expect(canonicalReplay).toBeGreaterThan(-1);
+    expect(canonicalReplay).toBeLessThan(lineMutation);
+    expect(canonicalReplay).toBeLessThan(activityMutation);
+    expect(partsBoundary).toContain(
+      "lower(trim(coalesce(v_line.hold_reason, ''))) = 'awaiting parts quote'",
+    );
+    expect(partsBoundary).toContain("'idempotent', true");
   });
 });

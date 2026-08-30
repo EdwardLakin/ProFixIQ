@@ -440,6 +440,18 @@ values
     'ab250000-0000-4000-8000-000000000001',
     'aa250000-0000-4000-8000-000000000001',
     'medium'
+  ),
+  (
+    'af250000-0000-4000-8000-000000000020',
+    'ae250000-0000-4000-8000-000000000001',
+    'Portal defer after atomic parts hold',
+    'awaiting_approval',
+    'pending',
+    'pending',
+    'repair',
+    'ab250000-0000-4000-8000-000000000001',
+    'aa250000-0000-4000-8000-000000000001',
+    'medium'
   );
 
 update public.work_order_lines
@@ -729,6 +741,8 @@ declare
   v_audit_action text;
   v_audit_at timestamptz;
   v_parts_receipt_count integer;
+  v_task_receipt_count integer;
+  v_activity_count integer;
   v_decline_result jsonb;
 begin
   -- A browser may reuse the same stable key for an ordinary pause and the
@@ -793,6 +807,39 @@ begin
       v_parts_receipt_count;
   end if;
 
+  -- A general line update can advance updated_at while an offline copy still
+  -- carries the original hold command. A new key for the same canonical hold
+  -- must be a semantic replay with no second receipt or activity entry.
+  update public.work_order_lines
+  set notes = 'Unrelated line edit after parts hold',
+      updated_at = clock_timestamp()
+  where id = 'af250000-0000-4000-8000-000000000010';
+
+  v_result := public.apply_pre_labor_parts_quote_hold_atomic(
+    'ab250000-0000-4000-8000-000000000001',
+    'af250000-0000-4000-8000-000000000010',
+    'aa250000-0000-4000-8000-000000000001',
+    'approval-binding:parts-hold:refreshed-client-key'
+  );
+  select count(*) into v_task_receipt_count
+  from public.workforce_operation_keys operation
+  where operation.shop_id = 'ab250000-0000-4000-8000-000000000001'
+    and operation.operation_name = 'pre_labor_parts_quote_hold'
+    and operation.work_order_line_id = 'af250000-0000-4000-8000-000000000010';
+  select count(*) into v_activity_count
+  from public.activity_logs activity
+  where activity.action = 'parts_quote_hold'
+    and activity.target_table = 'work_order_line'
+    and activity.target_id = 'af250000-0000-4000-8000-000000000010';
+
+  if (v_result ->> 'ok')::boolean is distinct from true
+     or (v_result ->> 'idempotent')::boolean is distinct from true
+     or v_task_receipt_count is distinct from 1
+     or v_activity_count is distinct from 1 then
+    raise exception 'Canonical parts hold was duplicated by a refreshed key: %, %, %',
+      v_result, v_task_receipt_count, v_activity_count;
+  end if;
+
   v_decline_result := public.apply_staff_line_decision_atomic(
     'ab250000-0000-4000-8000-000000000001',
     'ae250000-0000-4000-8000-000000000001',
@@ -829,6 +876,16 @@ begin
   );
   if (v_result ->> 'ok')::boolean is distinct from true then
     raise exception 'Portal adapter parts-hold fixture failed: %', v_result;
+  end if;
+
+  v_result := public.apply_pre_labor_parts_quote_hold_atomic(
+    'ab250000-0000-4000-8000-000000000001',
+    'af250000-0000-4000-8000-000000000020',
+    'aa250000-0000-4000-8000-000000000001',
+    'approval-binding:parts-hold:portal-defer-fixture'
+  );
+  if (v_result ->> 'ok')::boolean is distinct from true then
+    raise exception 'Portal defer parts-hold fixture failed: %', v_result;
   end if;
 end;
 $authorized_atomic_parts_hold$;
@@ -975,10 +1032,11 @@ select set_config(
   true
 );
 
-do $portal_decline_clears_parts_hold$
+do $portal_decisions_clear_parts_hold$
 declare
   v_result jsonb;
   v_approval_state text;
+  v_status text;
   v_hold_reason text;
   v_conflict boolean := false;
   v_actor_denied boolean := false;
@@ -1006,12 +1064,13 @@ begin
       v_result, v_approval_state, v_hold_reason;
   end if;
 
-  v_result := public.apply_portal_parts_hold_line_decline_atomic(
+  v_result := public.apply_portal_parts_hold_line_decision_atomic(
     'ab250000-0000-4000-8000-000000000001',
     'ac250000-0000-4000-8000-000000000001',
     'ae250000-0000-4000-8000-000000000001',
     'af250000-0000-4000-8000-000000000016',
     'aa250000-0000-4000-8000-000000000002',
+    'decline',
     'approval-binding:portal:parts-hold-decline'
   );
   select approval_state, hold_reason into v_approval_state, v_hold_reason
@@ -1025,13 +1084,36 @@ begin
       v_result, v_approval_state, v_hold_reason;
   end if;
 
+  v_result := public.apply_portal_parts_hold_line_decision_atomic(
+    'ab250000-0000-4000-8000-000000000001',
+    'ac250000-0000-4000-8000-000000000001',
+    'ae250000-0000-4000-8000-000000000001',
+    'af250000-0000-4000-8000-000000000020',
+    'aa250000-0000-4000-8000-000000000002',
+    'defer',
+    'approval-binding:portal:parts-hold-defer'
+  );
+  select approval_state, status, hold_reason
+    into v_approval_state, v_status, v_hold_reason
+  from public.work_order_lines
+  where id = 'af250000-0000-4000-8000-000000000020';
+
+  if (v_result ->> 'ok')::boolean is distinct from true
+     or v_approval_state is distinct from 'pending'
+     or v_status is distinct from 'awaiting_approval'
+     or v_hold_reason is not null then
+    raise exception 'Portal defer preserved stale parts state: %, %, %, %',
+      v_result, v_approval_state, v_status, v_hold_reason;
+  end if;
+
   begin
-    perform public.apply_portal_parts_hold_line_decline_atomic(
+    perform public.apply_portal_parts_hold_line_decision_atomic(
       'ab250000-0000-4000-8000-000000000001',
       'ac250000-0000-4000-8000-000000000001',
       'ae250000-0000-4000-8000-000000000001',
       'af250000-0000-4000-8000-000000000011',
       'aa250000-0000-4000-8000-000000000002',
+      'decline',
       'approval-binding:portal:parts-hold-decline'
     );
   exception when sqlstate '23505' then
@@ -1042,12 +1124,13 @@ begin
   end if;
 
   begin
-    perform public.apply_portal_parts_hold_line_decline_atomic(
+    perform public.apply_portal_parts_hold_line_decision_atomic(
       'ab250000-0000-4000-8000-000000000001',
       'ac250000-0000-4000-8000-000000000001',
       'ae250000-0000-4000-8000-000000000001',
       'af250000-0000-4000-8000-000000000016',
       'aa250000-0000-4000-8000-000000000001',
+      'decline',
       'approval-binding:portal:forged-parts-hold-decline'
     );
   exception when sqlstate '42501' then
@@ -1057,7 +1140,7 @@ begin
     raise exception 'Portal decline adapter accepted a forged actor';
   end if;
 end;
-$portal_decline_clears_parts_hold$;
+$portal_decisions_clear_parts_hold$;
 
 select set_config(
   'request.jwt.claim.sub',
