@@ -209,7 +209,7 @@ export default async function PortalWorkOrderViewerPage({
 
   try {
     const { id: userId } = await requireAuthedUser(supabase);
-    const portalCustomer = await requirePortalCustomer(supabase, userId);
+    const portalCustomer = await requirePortalCustomer(userId);
     await requireWorkOrderOwnedByCustomer(supabase, workOrderId, portalCustomer.id);
     const admin = createAdminSupabase();
 
