@@ -16,6 +16,7 @@ const technicianLabor = read(
 const staffDecisionMigration = read(
   "supabase/migrations/20260830044000_add_staff_line_decision_boundary.sql",
 );
+const generatedTypes = read("features/shared/types/types/supabase.ts");
 
 describe("customer portal sign-in bootstrap", () => {
   it("resolves the customer and invite with the server-side client", () => {
@@ -57,7 +58,36 @@ describe("staff approval decision routing", () => {
       "from public.work_order_line_labor_segments seg",
     );
     expect(staffDecisionMigration).toContain(
-      "STAFF_LINE_DECISION_ACTIVE_LABOR",
+      "technician labor has already been recorded for this line",
+    );
+    expect(staffDecisionMigration).not.toContain("and seg.ended_at is null");
+    expect(generatedTypes).toContain("apply_staff_line_decision_atomic: {");
+    expect(approvalRoute).not.toContain("supabase as unknown as RpcClient");
+  });
+
+  it("returns exact receipts before state checks and uses canonical lock ordering", () => {
+    const receiptLookup = staffDecisionMigration.indexOf(
+      "from public.quote_lifecycle_operation_keys operation",
+    );
+    const siblingLocks = staffDecisionMigration.indexOf(
+      "from public.work_order_lines sibling",
+    );
+    const workOrderLock = staffDecisionMigration.indexOf(
+      "from public.work_orders wo",
+    );
+    const laborCheck = staffDecisionMigration.indexOf(
+      "from public.work_order_line_labor_segments seg",
+    );
+
+    expect(receiptLookup).toBeGreaterThan(-1);
+    expect(siblingLocks).toBeGreaterThan(receiptLookup);
+    expect(workOrderLock).toBeGreaterThan(siblingLocks);
+    expect(laborCheck).toBeGreaterThan(workOrderLock);
+    expect(staffDecisionMigration).toContain(
+      "return v_existing_result || jsonb_build_object('idempotent', true)",
+    );
+    expect(staffDecisionMigration).toContain(
+      "STAFF_LINE_DECISION_OPERATION_CONFLICT",
     );
   });
 
@@ -94,5 +124,7 @@ describe("assigned technician punch shop resolution", () => {
     expect(technicianLabor).toContain('params.source !== "lunch_resume"');
     expect(technicianLabor).toContain("resolveInternalResumeActor");
     expect(technicianLabor).toContain("trustedActor");
+    expect(technicianLabor).toContain('select("id,user_id,shop_id,role")');
+    expect(technicianLabor).toContain("capabilities.canPerformAssignedWork");
   });
 });

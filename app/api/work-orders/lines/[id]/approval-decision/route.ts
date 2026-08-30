@@ -17,13 +17,6 @@ type Body = {
   workOrderId?: string | null;
   idempotencyKey?: string | null;
 };
-type RpcError = { message: string; details?: string | null; hint?: string | null };
-type RpcClient = {
-  rpc: (
-    name: string,
-    args: Record<string, unknown>,
-  ) => PromiseLike<{ data: unknown; error: RpcError | null }>;
-};
 
 type StaffDecisionActor = {
   kind: "staff";
@@ -214,7 +207,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       key = `derived:${lineId}:${stateVersion}`;
     }
 
-    const rpc = supabase as unknown as RpcClient;
+    const rpc = supabase;
     const rpcResult =
       actor.kind === "staff"
         ? await rpc.rpc("apply_staff_line_decision_atomic", {

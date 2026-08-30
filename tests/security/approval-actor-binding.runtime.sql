@@ -204,7 +204,56 @@ values
     'ab250000-0000-4000-8000-000000000001',
     'aa250000-0000-4000-8000-000000000005',
     'medium'
+  ),
+  (
+    'af250000-0000-4000-8000-000000000004',
+    'ae250000-0000-4000-8000-000000000001',
+    'Staff adapter replay after labor begins',
+    'awaiting_approval',
+    'pending',
+    'pending',
+    'repair',
+    'ab250000-0000-4000-8000-000000000001',
+    'aa250000-0000-4000-8000-000000000001',
+    'medium'
+  ),
+  (
+    'af250000-0000-4000-8000-000000000005',
+    'ae250000-0000-4000-8000-000000000001',
+    'Staff adapter rejects ended labor',
+    'on_hold',
+    'pending',
+    'pending',
+    'repair',
+    'ab250000-0000-4000-8000-000000000001',
+    'aa250000-0000-4000-8000-000000000001',
+    'medium'
   );
+
+insert into public.work_order_line_labor_segments (
+  id,
+  shop_id,
+  work_order_id,
+  work_order_line_id,
+  technician_id,
+  created_by,
+  source,
+  started_at,
+  ended_at,
+  pause_reason
+)
+values (
+  'b0250000-0000-4000-8000-000000000001',
+  'ab250000-0000-4000-8000-000000000001',
+  'ae250000-0000-4000-8000-000000000001',
+  'af250000-0000-4000-8000-000000000005',
+  'aa250000-0000-4000-8000-000000000001',
+  'aa250000-0000-4000-8000-000000000001',
+  'approval_binding_runtime',
+  now() - interval '10 minutes',
+  now() - interval '5 minutes',
+  'manual_pause'
+);
 
 select set_config('request.jwt.claim.role', 'authenticated', true);
 select set_config(
@@ -289,6 +338,137 @@ begin
   end if;
 end;
 $authorized_imported_staff_decision$;
+
+select set_config(
+  'request.jwt.claim.sub',
+  'aa250000-0000-4000-8000-000000000001',
+  true
+);
+select set_config(
+  'request.jwt.claims',
+  '{"role":"authenticated","sub":"aa250000-0000-4000-8000-000000000001"}',
+  true
+);
+
+do $authorized_staff_adapter_decision$
+declare
+  v_result jsonb;
+begin
+  v_result := public.apply_staff_line_decision_atomic(
+    'ab250000-0000-4000-8000-000000000001',
+    'ae250000-0000-4000-8000-000000000001',
+    'af250000-0000-4000-8000-000000000004',
+    'aa250000-0000-4000-8000-000000000001',
+    'approve',
+    'approval-binding:staff-adapter:replay'
+  );
+  if (v_result ->> 'ok')::boolean is distinct from true
+     or (v_result ->> 'idempotent')::boolean is distinct from false then
+    raise exception 'Authorized staff adapter approval failed: %', v_result;
+  end if;
+end;
+$authorized_staff_adapter_decision$;
+
+reset role;
+
+insert into public.work_order_line_labor_segments (
+  id,
+  shop_id,
+  work_order_id,
+  work_order_line_id,
+  technician_id,
+  created_by,
+  source,
+  started_at,
+  ended_at,
+  pause_reason
+)
+values (
+  'b0250000-0000-4000-8000-000000000002',
+  'ab250000-0000-4000-8000-000000000001',
+  'ae250000-0000-4000-8000-000000000001',
+  'af250000-0000-4000-8000-000000000004',
+  'aa250000-0000-4000-8000-000000000001',
+  'aa250000-0000-4000-8000-000000000001',
+  'approval_binding_runtime',
+  now() - interval '4 minutes',
+  now() - interval '1 minute',
+  'manual_pause'
+);
+
+set local role authenticated;
+
+do $staff_adapter_replay_and_labor_guards$
+declare
+  v_result jsonb;
+  v_denied boolean;
+begin
+  v_result := public.apply_staff_line_decision_atomic(
+    'ab250000-0000-4000-8000-000000000001',
+    'ae250000-0000-4000-8000-000000000001',
+    'af250000-0000-4000-8000-000000000004',
+    'aa250000-0000-4000-8000-000000000001',
+    'approve',
+    'approval-binding:staff-adapter:replay'
+  );
+  if (v_result ->> 'idempotent')::boolean is distinct from true then
+    raise exception 'Staff adapter did not return its receipt after labor began: %', v_result;
+  end if;
+
+  v_denied := false;
+  begin
+    perform public.apply_staff_line_decision_atomic(
+      'ab250000-0000-4000-8000-000000000001',
+      'ae250000-0000-4000-8000-000000000001',
+      'af250000-0000-4000-8000-000000000004',
+      'aa250000-0000-4000-8000-000000000001',
+      'decline',
+      'approval-binding:staff-adapter:new-after-labor'
+    );
+  exception when others then
+    v_denied := sqlstate = 'P0001'
+      and sqlerrm like 'STAFF_LINE_DECISION_INELIGIBLE:%labor%recorded%';
+  end;
+  if not v_denied then
+    raise exception 'Staff adapter accepted a new decision after labor began';
+  end if;
+
+  v_denied := false;
+  begin
+    perform public.apply_staff_line_decision_atomic(
+      'ab250000-0000-4000-8000-000000000001',
+      'ae250000-0000-4000-8000-000000000001',
+      'af250000-0000-4000-8000-000000000005',
+      'aa250000-0000-4000-8000-000000000001',
+      'approve',
+      'approval-binding:staff-adapter:ended-labor'
+    );
+  exception when others then
+    v_denied := sqlstate = 'P0001'
+      and sqlerrm like 'STAFF_LINE_DECISION_INELIGIBLE:%labor%recorded%';
+  end;
+  if not v_denied then
+    raise exception 'Staff adapter accepted a decision after ended labor';
+  end if;
+
+  v_denied := false;
+  begin
+    perform public.apply_staff_line_decision_atomic(
+      'ab250000-0000-4000-8000-000000000001',
+      'ae250000-0000-4000-8000-000000000001',
+      'af250000-0000-4000-8000-000000000004',
+      'aa250000-0000-4000-8000-000000000001',
+      'decline',
+      'approval-binding:staff-adapter:replay'
+    );
+  exception when unique_violation then
+    v_denied := sqlerrm = 'STAFF_LINE_DECISION_OPERATION_CONFLICT';
+  end;
+  if not v_denied then
+    raise exception 'Staff adapter replayed one operation key with a different decision';
+  end if;
+end;
+$staff_adapter_replay_and_labor_guards$;
 
 select set_config(
   'request.jwt.claim.sub',
@@ -405,6 +585,23 @@ begin
   if not v_denied then
     raise exception 'Forged imported staff actor replayed another profile receipt';
   end if;
+
+  v_denied := false;
+  begin
+    perform public.apply_staff_line_decision_atomic(
+      'ab250000-0000-4000-8000-000000000001',
+      'ae250000-0000-4000-8000-000000000001',
+      'af250000-0000-4000-8000-000000000004',
+      'aa250000-0000-4000-8000-000000000001',
+      'approve',
+      'approval-binding:staff-adapter:replay'
+    );
+  exception when sqlstate '42501' then
+    v_denied := true;
+  end;
+  if not v_denied then
+    raise exception 'Forged staff adapter actor replayed another profile receipt';
+  end if;
 end;
 $forged_actor_denials$;
 
@@ -494,7 +691,7 @@ begin
     where operation.shop_id = 'ab250000-0000-4000-8000-000000000001'
       and operation.operation_name = 'approval_compatibility_bundle'
       and operation.operation_key like 'approval-binding:%'
-  ) <> 2 then
+  ) <> 3 then
     raise exception 'Compatibility approval denial changed durable receipt history';
   end if;
 

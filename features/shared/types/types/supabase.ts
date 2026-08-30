@@ -27656,6 +27656,18 @@ export type Database = {
         }
         Returns: Json
       }
+      apply_staff_line_decision_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_at?: string
+          p_decision: string
+          p_line_id: string
+          p_operation_key: string
+          p_shop_id: string
+          p_work_order_id: string
+        }
+        Returns: Json
+      }
       apply_stock_move:
         | {
             Args: {

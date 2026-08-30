@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@shared/types/types/supabase";
+import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import { applyJobPunchTransition } from "@/features/work-orders/server/applyJobPunchTransition";
 
 type DB = Database;
@@ -52,10 +53,17 @@ async function resolveInternalResumeActor(params: {
   // may derive trusted actor context from the canonical profile.
   const { data: profiles, error } = await params.supabase
     .from("profiles")
-    .select("id,user_id,shop_id")
+    .select("id,user_id,shop_id,role")
     .or(`id.eq.${params.technicianId},user_id.eq.${params.technicianId}`)
     .limit(2)
-    .returns<Array<{ id: string; user_id: string | null; shop_id: string | null }>>();
+    .returns<
+      Array<{
+        id: string;
+        user_id: string | null;
+        shop_id: string | null;
+        role: string | null;
+      }>
+    >();
   if (error || !profiles || profiles.length !== 1 || !profiles[0]?.shop_id) {
     return undefined;
   }
@@ -63,6 +71,8 @@ async function resolveInternalResumeActor(params: {
   const profile = profiles[0];
   const shopId = profile.shop_id;
   if (!shopId) return undefined;
+  const capabilities = getActorCapabilities({ role: profile.role });
+  if (!capabilities.canPerformAssignedWork) return undefined;
   return {
     authUserId: profile.user_id ?? profile.id,
     profileId: profile.id,

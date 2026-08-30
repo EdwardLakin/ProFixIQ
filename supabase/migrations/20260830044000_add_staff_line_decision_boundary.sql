@@ -25,6 +25,9 @@ declare
   v_profile_id uuid;
   v_role text;
   v_line public.work_order_lines%rowtype;
+  v_existing_result jsonb;
+  v_existing_actor_user_id uuid;
+  v_existing_work_order_id uuid;
   v_result jsonb;
 begin
   if v_decision not in ('approve', 'decline') then
@@ -60,15 +63,65 @@ begin
       message = 'STAFF_LINE_DECISION_FORBIDDEN: actor cannot record staff approval decisions.';
   end if;
 
-  -- Punch transitions lock line -> work order -> labor state. Match that order
-  -- so a decision racing a technician start serializes rather than deadlocks.
+  -- Exact retries must return the durable compatibility receipt before current
+  -- line or labor state is considered. Validate the stored intent so a reused
+  -- operation key cannot disclose or replay a different actor, work order,
+  -- line, or decision.
+  select operation.result, operation.actor_user_id, operation.work_order_id
+    into v_existing_result, v_existing_actor_user_id, v_existing_work_order_id
+  from public.quote_lifecycle_operation_keys operation
+  where operation.shop_id = p_shop_id
+    and operation.operation_name = 'approval_compatibility_bundle'
+    and operation.operation_key = p_operation_key;
+
+  if found then
+    if v_existing_actor_user_id is distinct from v_profile_id
+       or v_existing_work_order_id is distinct from p_work_order_id
+       or (
+         v_decision = 'approve'
+         and (
+           coalesce(v_existing_result -> 'approvedLineIds', '[]'::jsonb)
+             <> jsonb_build_array(p_line_id)
+           or coalesce(v_existing_result -> 'declinedLineIds', '[]'::jsonb)
+             <> '[]'::jsonb
+         )
+       )
+       or (
+         v_decision = 'decline'
+         and (
+           coalesce(v_existing_result -> 'declinedLineIds', '[]'::jsonb)
+             <> jsonb_build_array(p_line_id)
+           or coalesce(v_existing_result -> 'approvedLineIds', '[]'::jsonb)
+             <> '[]'::jsonb
+         )
+       )
+    then
+      raise exception using
+        errcode = '23505',
+        message = 'STAFF_LINE_DECISION_OPERATION_CONFLICT';
+    end if;
+
+    return v_existing_result || jsonb_build_object('idempotent', true);
+  end if;
+
+  -- The delegated compatibility engine locks the work order and then every
+  -- sibling line. Punch transitions lock their target line before the work
+  -- order. Acquire the complete canonical line set in deterministic order
+  -- before the work-order lock so concurrent sibling decisions and punches
+  -- cannot form a line/work-order lock inversion.
+  perform 1
+  from public.work_order_lines sibling
+  where sibling.shop_id = p_shop_id
+    and sibling.work_order_id = p_work_order_id
+  order by sibling.id
+  for update;
+
   select *
     into v_line
   from public.work_order_lines wol
   where wol.id = p_line_id
     and wol.shop_id = p_shop_id
-    and wol.work_order_id = p_work_order_id
-  for update;
+    and wol.work_order_id = p_work_order_id;
 
   if not found then
     raise exception using
@@ -99,17 +152,20 @@ begin
       message = 'STAFF_LINE_DECISION_INELIGIBLE: line has already entered labor or a terminal state.';
   end if;
 
+  -- Any recorded segment is durable evidence that technician labor began.
+  -- An ended segment (including a manual pause) is just as ineligible as an
+  -- active one; decisions must never rewrite state after work was recorded.
   perform 1
   from public.work_order_line_labor_segments seg
   where seg.shop_id = p_shop_id
     and seg.work_order_line_id = p_line_id
-    and seg.ended_at is null
+  order by seg.id
   for update;
 
   if found then
     raise exception using
       errcode = 'P0001',
-      message = 'STAFF_LINE_DECISION_ACTIVE_LABOR: end active labor before changing the line decision.';
+      message = 'STAFF_LINE_DECISION_INELIGIBLE: technician labor has already been recorded for this line.';
   end if;
 
   v_result := public.apply_approval_compatibility_bundle_atomic(
