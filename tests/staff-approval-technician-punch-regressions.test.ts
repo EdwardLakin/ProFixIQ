@@ -10,6 +10,12 @@ const approvalRoute = read(
 const punchTransition = read(
   "features/work-orders/server/applyJobPunchTransition.ts",
 );
+const technicianLabor = read(
+  "features/work-orders/server/technicianJobLabor.ts",
+);
+const staffDecisionMigration = read(
+  "supabase/migrations/20260830044000_add_staff_line_decision_boundary.sql",
+);
 
 describe("customer portal sign-in bootstrap", () => {
   it("resolves the customer and invite with the server-side client", () => {
@@ -34,14 +40,24 @@ describe("staff approval decision routing", () => {
     expect(approvalRoute).toContain("requirePortalCustomerActor(supabase)");
   });
 
-  it("uses the established staff-compatible atomic approval bundle for staff decisions", () => {
+  it("uses the guarded staff-specific atomic adapter for staff decisions", () => {
     expect(approvalRoute).toContain(
-      'rpc.rpc("apply_approval_compatibility_bundle_atomic"',
+      'rpc.rpc("apply_staff_line_decision_atomic"',
     );
-    expect(approvalRoute).toContain("p_customer_id: null");
+    expect(approvalRoute).toContain("p_line_id: lineId");
     expect(approvalRoute).toContain("p_actor_user_id: actor.profileId");
     expect(approvalRoute).toContain(
       'p_operation_key: `${actor.shopId}:staff-line-decision:${key}`',
+    );
+    expect(staffDecisionMigration).toContain(
+      "create or replace function public.apply_staff_line_decision_atomic",
+    );
+    expect(staffDecisionMigration).toContain("'in_progress'");
+    expect(staffDecisionMigration).toContain(
+      "from public.work_order_line_labor_segments seg",
+    );
+    expect(staffDecisionMigration).toContain(
+      "STAFF_LINE_DECISION_ACTIVE_LABOR",
     );
   });
 
@@ -55,15 +71,28 @@ describe("staff approval decision routing", () => {
 });
 
 describe("assigned technician punch shop resolution", () => {
-  it("does not pre-read work_order_lines through financial RLS", () => {
-    expect(punchTransition).not.toContain('.from("work_order_lines")');
+  it("resolves shop and assignment server-side instead of through financial RLS", () => {
     expect(punchTransition).toContain("resolveAuthenticatedStaffProfile");
-    expect(punchTransition).toContain("p_shop_id: profile.shop_id");
+    expect(punchTransition).toContain("createAdminSupabase");
+    expect(punchTransition).toContain('admin\n    .from("work_order_lines")');
+    expect(punchTransition).toContain("capabilities.canPerformAssignedWork");
+    expect(punchTransition).toContain("isAssigned");
+    expect(punchTransition).toContain(
+      "Technician is not assigned to this work-order line.",
+    );
   });
 
-  it("binds the punch actor to the authenticated session", () => {
+  it("binds ordinary punch requests to the authenticated technician", () => {
     expect(punchTransition).toContain("await supabase.auth.getUser()");
-    expect(punchTransition).toContain("technicianMatchesSession");
-    expect(punchTransition).toContain("p_actor_user_id: user.id");
+    expect(punchTransition).toContain("technicianId !== actorUserId");
+    expect(punchTransition).toContain("technicianId !== actorProfileId");
+    expect(punchTransition).toContain("p_actor_user_id: actorUserId");
+  });
+
+  it("preserves the trusted break and lunch auto-resume path", () => {
+    expect(technicianLabor).toContain('params.source !== "break_resume"');
+    expect(technicianLabor).toContain('params.source !== "lunch_resume"');
+    expect(technicianLabor).toContain("resolveInternalResumeActor");
+    expect(technicianLabor).toContain("trustedActor");
   });
 });
