@@ -61,10 +61,12 @@ async function resolveInternalResumeActor(params: {
   }
 
   const profile = profiles[0];
+  const shopId = profile.shop_id;
+  if (!shopId) return undefined;
   return {
     authUserId: profile.user_id ?? profile.id,
     profileId: profile.id,
-    shopId: profile.shop_id,
+    shopId,
   };
 }
 
