@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 
 import ThemeToggleButton from "@/features/shared/components/ThemeToggleButton";
+import FleetNotificationsBell from "@/features/fleet/components/FleetNotificationsBell";
 import ForcePasswordChangeModal from "@/features/auth/components/ForcePasswordChangeModal";
 import {
   toFleetInternalPath,
@@ -672,6 +673,7 @@ export default function FleetProductShell({
                 <div className="text-xs font-medium">{actorLabel}</div>
               </div>
             </div>
+            <FleetNotificationsBell routePrefix={productHost ? "/fleet" : "/portal/fleet"} />
             <ThemeToggleButton />
           </div>
         </header>
