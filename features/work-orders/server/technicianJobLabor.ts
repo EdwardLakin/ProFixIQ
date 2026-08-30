@@ -24,6 +24,12 @@ type JobLaborResult =
   | { ok: true; payload?: unknown }
   | { ok: false; status: number; error: string };
 
+type TrustedActorContext = {
+  authUserId: string;
+  profileId: string;
+  shopId: string;
+};
+
 function internalOperationKey(parts: Array<string | null | undefined>): string {
   return parts.map((part) => String(part ?? "").trim()).filter(Boolean).join(":");
 }
@@ -37,6 +43,7 @@ export async function startTechnicianJobLabor(params: {
   startedAtIso?: string;
   source?: "manual" | "break_resume" | "lunch_resume";
   allowConcurrentJobPunches?: boolean;
+  trustedActor?: TrustedActorContext;
 }): Promise<JobLaborResult> {
   const operationKey =
     params.operationKey?.trim() ||
@@ -63,6 +70,7 @@ export async function startTechnicianJobLabor(params: {
           : params.source === "lunch_resume"
             ? "job_resumed_after_lunch"
             : undefined,
+      trustedActor: params.trustedActor,
     },
   });
 }
