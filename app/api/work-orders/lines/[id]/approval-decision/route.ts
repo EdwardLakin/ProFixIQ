@@ -58,7 +58,14 @@ function errorStatus(message: string): number {
   ) {
     return 403;
   }
-  if (lower.includes("locked") || lower.includes("no longer eligible")) return 409;
+  if (
+    lower.includes("locked") ||
+    lower.includes("no longer eligible") ||
+    lower.includes("active_labor") ||
+    lower.includes("ineligible")
+  ) {
+    return 409;
+  }
   return 400;
 }
 
@@ -210,16 +217,12 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     const rpc = supabase as unknown as RpcClient;
     const rpcResult =
       actor.kind === "staff"
-        ? await rpc.rpc("apply_approval_compatibility_bundle_atomic", {
+        ? await rpc.rpc("apply_staff_line_decision_atomic", {
             p_shop_id: actor.shopId,
             p_work_order_id: workOrderId,
-            p_customer_id: null,
+            p_line_id: lineId,
             p_actor_user_id: actor.profileId,
-            p_approved_line_ids: decision === "approve" ? [lineId] : [],
-            p_declined_line_ids: decision === "decline" ? [lineId] : [],
-            p_approved_quote_line_ids: [],
-            p_declined_quote_line_ids: [],
-            p_signature_url: null,
+            p_decision: decision,
             p_operation_key: `${actor.shopId}:staff-line-decision:${key}`,
             p_at: new Date().toISOString(),
           })
