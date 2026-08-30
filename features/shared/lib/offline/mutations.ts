@@ -5,7 +5,7 @@ import {
   claimStoredMutationForReplay,
   clearOfflineDatabase,
   clearOfflineDatabasePreservingUnsyncedWork,
-  countUnsyncedOfflineMutations,
+  countUnsyncedOfflineWork,
   deleteStoredMutations,
   deleteSyncedStoredMutations,
   getOfflineBlob,
@@ -1688,27 +1688,33 @@ export async function clearOfflineState(
   options: { preserveUnsyncedWork?: boolean } = {},
 ): Promise<{ retainedUnsyncedWork: boolean }> {
   const formerScope = getOfflineMutationScope();
-  // Decide before mutating any state, and read the database rather than the
-  // in-memory queue so the decision holds even if this tab never hydrated.
-  const retainUnsyncedWork =
-    options.preserveUnsyncedWork === true &&
-    (await countUnsyncedOfflineMutations()) > 0;
-  // Advance before waiting for the scope lock. Any enqueue already queued
-  // behind a replay claim will observe the new epoch and abort; an enqueue
-  // already inside the lock commits before this clear and is then removed.
+  // Fence writers synchronously, before any await. A writer in another tab
+  // could otherwise enqueue after a durable count observed zero but before the
+  // epoch advanced, and the clear would then delete that newly committed work.
+  // Advancing first means such a writer is either already durable (and counted
+  // below) or invalidated by the new epoch.
   advanceQueueWriteEpoch();
   storageRefreshAppliedGeneration = ++storageRefreshRequestGeneration;
   queueCache = [];
   hydrationPromise = null;
   setOfflineMutationScope(null);
   for (const key of LEGACY_KEYS) localStorage.removeItem(key);
-  // Retain the persistence marker when unsent work survives, so the retained
-  // work stays discoverable after the session ends.
-  if (!retainUnsyncedWork) localStorage.removeItem(PERSISTENCE_MARKER_KEY);
-  const clearDatabase = (lock: OfflineDatabaseWriteLock) =>
-    retainUnsyncedWork
-      ? clearOfflineDatabasePreservingUnsyncedWork(lock)
-      : clearOfflineDatabase(lock);
+
+  // The durable decision and the clear both happen under the state lock below,
+  // so nothing can land between them.
+  let retainUnsyncedWork = false;
+  const clearDatabase = async (lock: OfflineDatabaseWriteLock) => {
+    retainUnsyncedWork =
+      options.preserveUnsyncedWork === true &&
+      (await countUnsyncedOfflineWork()) > 0;
+    if (retainUnsyncedWork) {
+      await clearOfflineDatabasePreservingUnsyncedWork(lock);
+      return;
+    }
+    await clearOfflineDatabase(lock);
+    // Only drop the discovery marker once nothing survived.
+    localStorage.removeItem(PERSISTENCE_MARKER_KEY);
+  };
   const lockManager = getOfflineReplayLockManager();
   await withOfflineStateLock(async (lock) => {
     if (formerScope && lockManager) {

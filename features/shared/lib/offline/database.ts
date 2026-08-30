@@ -535,10 +535,41 @@ export async function countUnsyncedOfflineMutations(): Promise<number> {
 }
 
 /**
+ * Snapshot kinds that hold unsent user work rather than a read-through cache.
+ * These are editable drafts written before any queue row exists, so clearing
+ * them on sign-out destroys work exactly as dropping a pending mutation would.
+ */
+const WRITE_BEARING_SNAPSHOT_KINDS = new Set([
+  "inspection-draft",
+  "parts-request-draft",
+  "message-draft",
+]);
+
+export function isWriteBearingSnapshotKind(kind: string): boolean {
+  return WRITE_BEARING_SNAPSHOT_KINDS.has(kind);
+}
+
+/**
+ * Count durable work that has not reached the server: unsynced mutations plus
+ * write-bearing snapshot drafts, which can exist before any mutation does.
+ */
+export async function countUnsyncedOfflineWork(): Promise<number> {
+  const db = getDatabase();
+  if (!db) return 0;
+  const unsynced = await db.mutations.where("status").notEqual("synced").count();
+  if (unsynced > 0) return unsynced;
+  let drafts = 0;
+  await db.snapshots.each((row) => {
+    if (isWriteBearingSnapshotKind(String(row.kind))) drafts += 1;
+  });
+  return drafts;
+}
+
+/**
  * Clear session-scoped offline state while retaining work that has not reached
- * the server. Read-through snapshots and already-synced mutations are removed;
- * unsynced mutations and their attachment blobs are preserved so signing out
- * never destroys unsent work.
+ * the server: unsynced mutations, the attachment blobs they reference, and
+ * write-bearing snapshot drafts. Disposable read-through snapshots,
+ * already-synced mutations, and orphaned blobs are removed.
  */
 export async function clearOfflineDatabasePreservingUnsyncedWork(
   lock?: OfflineDatabaseWriteLock,
@@ -546,13 +577,56 @@ export async function clearOfflineDatabasePreservingUnsyncedWork(
   const db = getDatabase();
   if (!db) return;
   await runOfflineDatabaseWrite(lock, () =>
-    db.transaction("rw", [db.mutations, db.snapshots], async () => {
-      await Promise.all([
-        db.mutations.where("status").equals("synced").delete(),
-        db.snapshots.clear(),
-      ]);
+    db.transaction("rw", [db.mutations, db.snapshots, db.blobs], async () => {
+      await db.mutations.where("status").equals("synced").delete();
+
+      // Drop only disposable cache snapshots; keep editable drafts.
+      const disposableKeys: string[] = [];
+      await db.snapshots.each((row) => {
+        if (!isWriteBearingSnapshotKind(String(row.kind))) {
+          disposableKeys.push(row.key);
+        }
+      });
+      if (disposableKeys.length > 0) {
+        await db.snapshots.bulkDelete(disposableKeys);
+      }
+
+      // Retain only blobs a surviving mutation still references. An interrupted
+      // photo save otherwise leaves a former user's media on a shared device.
+      const referenced = new Set<string>();
+      await db.mutations.each((row) => {
+        for (const id of collectBlobIds(row)) referenced.add(id);
+      });
+      const orphans: string[] = [];
+      await db.blobs.each((row) => {
+        if (!referenced.has(row.id)) orphans.push(row.id);
+      });
+      if (orphans.length > 0) await db.blobs.bulkDelete(orphans);
     }),
   );
+}
+
+/** Blob ids live inside mutation payloads rather than a typed column. */
+function collectBlobIds(row: unknown): string[] {
+  const found: string[] = [];
+  const visit = (value: unknown, depth: number) => {
+    if (depth > 6 || value == null) return;
+    if (typeof value === "string") {
+      found.push(value);
+      return;
+    }
+    if (Array.isArray(value)) {
+      for (const entry of value) visit(entry, depth + 1);
+      return;
+    }
+    if (typeof value === "object") {
+      for (const entry of Object.values(value as Record<string, unknown>)) {
+        visit(entry, depth + 1);
+      }
+    }
+  };
+  visit(row, 0);
+  return found;
 }
 
 export async function clearOfflineDatabase(
