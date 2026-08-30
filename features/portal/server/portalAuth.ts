@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 export type DB = Database;
 
@@ -70,11 +71,23 @@ export async function requireAuthedUser(
 }
 
 export async function requirePortalCustomerAccess(
-  supabase: SupabaseClient<DB>,
   userId: string,
   userEmail: string,
 ): Promise<PortalCustomerAccess> {
-  const { data, error } = await supabase
+  // A pure portal customer has no `profiles` row, and every `customers` SELECT
+  // policy requires a staff identity, so the caller's own client reads nothing
+  // here. `customer_portal_invites` likewise has RLS enabled with no policy at
+  // all. Resolving portal identity therefore has to happen server-side.
+  //
+  // `userId` and `userEmail` are not caller-supplied: `requireAuthedUser` has
+  // already verified them against the session. Both reads below are pinned to
+  // that verified identity, which is the explicit authorization the service
+  // role requires. Granting the customer's own JWT row access to `customers`
+  // instead would expose every column of that row, including staff-facing
+  // fields such as `notes`, `import_notes`, and `merge_reason`.
+  const admin = createAdminSupabase();
+
+  const { data, error } = await admin
     .from("customers")
     .select("id,user_id,shop_id,first_name,last_name,email,phone")
     .eq("user_id", userId)
@@ -83,7 +96,7 @@ export async function requirePortalCustomerAccess(
   if (error) throw new Error(error.message);
   if (!data) throw new PortalAccessError("Customer profile not found for this user", 403);
 
-  const { data: invites, error: invitesErr } = await supabase
+  const { data: invites, error: invitesErr } = await admin
     .from("customer_portal_invites")
     .select("id,customer_id,email,accepted_at,accepted_by_user_id,revoked_at")
     .eq("customer_id", data.id)
@@ -116,10 +129,13 @@ export async function requirePortalCustomerAccess(
 }
 
 export async function requirePortalCustomer(
-  supabase: SupabaseClient<DB>,
   userId: string,
 ): Promise<PortalCustomer> {
-  const { data, error } = await supabase
+  // Same reasoning as requirePortalCustomerAccess: resolved server-side against
+  // the verified `userId`, never through the customer's own client.
+  const admin = createAdminSupabase();
+
+  const { data, error } = await admin
     .from("customers")
     .select("id,user_id,shop_id,first_name,last_name,email,phone")
     .eq("user_id", userId)

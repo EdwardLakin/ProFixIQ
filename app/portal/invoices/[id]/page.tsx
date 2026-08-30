@@ -51,7 +51,7 @@ export default async function PortalInvoicePage({
 
   try {
     const { id: userId } = await requireAuthedUser(supabase);
-    const customer = await requirePortalCustomer(supabase, userId);
+    const customer = await requirePortalCustomer(userId);
     const workOrder = await requireWorkOrderOwnedByCustomer(
       supabase,
       workOrderId,

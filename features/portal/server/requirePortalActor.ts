@@ -19,7 +19,7 @@ export async function requirePortalCustomerActor(
   supabase: SupabaseClient<DB>,
 ): Promise<PortalActor> {
   const user = await requireAuthedUser(supabase);
-  const access = await requirePortalCustomerAccess(supabase, user.id, user.email);
+  const access = await requirePortalCustomerAccess(user.id, user.email);
   return {
     userId: access.user.id,
     customer: access.customer,
