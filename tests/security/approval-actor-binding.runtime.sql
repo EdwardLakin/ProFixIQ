@@ -356,6 +356,18 @@ values
     'ab250000-0000-4000-8000-000000000001',
     'aa250000-0000-4000-8000-000000000001',
     'medium'
+  ),
+  (
+    'af250000-0000-4000-8000-000000000013',
+    'ae250000-0000-4000-8000-000000000001',
+    'Portal decline after atomic parts hold',
+    'awaiting_approval',
+    'pending',
+    'pending',
+    'repair',
+    'ab250000-0000-4000-8000-000000000001',
+    'aa250000-0000-4000-8000-000000000001',
+    'medium'
   );
 
 insert into public.work_order_quote_lines (
@@ -714,6 +726,16 @@ begin
     raise exception 'Staff decline preserved stale parts state: %, %',
       v_decline_result, v_hold_reason;
   end if;
+
+  v_result := public.apply_pre_labor_parts_quote_hold_atomic(
+    'ab250000-0000-4000-8000-000000000001',
+    'af250000-0000-4000-8000-000000000013',
+    'aa250000-0000-4000-8000-000000000001',
+    'ab250000-0000-4000-8000-000000000001:job-punch:approval-binding:portal-parts-hold'
+  );
+  if (v_result ->> 'ok')::boolean is distinct from true then
+    raise exception 'Portal parts-hold fixture failed: %', v_result;
+  end if;
 end;
 $authorized_atomic_parts_hold$;
 
@@ -756,6 +778,45 @@ begin
   end if;
 end;
 $archived_parent_atomic_parts_hold_denial$;
+
+select set_config(
+  'request.jwt.claim.sub',
+  'aa250000-0000-4000-8000-000000000002',
+  true
+);
+select set_config(
+  'request.jwt.claims',
+  '{"role":"authenticated","sub":"aa250000-0000-4000-8000-000000000002"}',
+  true
+);
+
+do $portal_decline_clears_parts_hold$
+declare
+  v_result jsonb;
+  v_approval_state text;
+  v_hold_reason text;
+begin
+  v_result := public.apply_portal_line_decision_atomic(
+    'ab250000-0000-4000-8000-000000000001',
+    'ac250000-0000-4000-8000-000000000001',
+    'ae250000-0000-4000-8000-000000000001',
+    'af250000-0000-4000-8000-000000000013',
+    'aa250000-0000-4000-8000-000000000002',
+    'decline',
+    'approval-binding:portal:parts-hold-decline'
+  );
+  select approval_state, hold_reason into v_approval_state, v_hold_reason
+  from public.work_order_lines
+  where id = 'af250000-0000-4000-8000-000000000013';
+
+  if (v_result ->> 'ok')::boolean is distinct from true
+     or v_approval_state is distinct from 'declined'
+     or v_hold_reason is distinct from 'Customer declined' then
+    raise exception 'Portal decline preserved stale parts state: %, %, %',
+      v_result, v_approval_state, v_hold_reason;
+  end if;
+end;
+$portal_decline_clears_parts_hold$;
 
 select set_config(
   'request.jwt.claim.sub',
@@ -1160,7 +1221,7 @@ begin
     from public.portal_lifecycle_operation_keys operation
     where operation.operation_name = 'portal_line_decision'
       and operation.operation_key like 'approval-binding:%'
-  ) <> 1 then
+  ) <> 2 then
     raise exception 'Portal approval denial changed durable receipt history';
   end if;
 

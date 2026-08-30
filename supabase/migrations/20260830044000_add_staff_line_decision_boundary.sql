@@ -1032,6 +1032,30 @@ begin
 end;
 $function$;
 
+create or replace function private.normalize_declined_parts_quote_hold_reason()
+returns trigger
+language plpgsql
+set search_path = pg_catalog
+as $function$
+begin
+  if lower(coalesce(new.approval_state::text, '')) = 'declined'
+     and lower(trim(coalesce(new.hold_reason, ''))) = 'awaiting parts quote'
+  then
+    new.hold_reason := 'Customer declined';
+  end if;
+  return new;
+end;
+$function$;
+
+revoke all on function private.normalize_declined_parts_quote_hold_reason()
+from public, anon, authenticated, service_role;
+
+create trigger normalize_declined_parts_quote_hold_reason
+before update of approval_state, hold_reason on public.work_order_lines
+for each row
+when (new.hold_reason is not null)
+execute function private.normalize_declined_parts_quote_hold_reason();
+
 revoke all on function public.apply_staff_line_decision_atomic(
   uuid, uuid, uuid, uuid, text, text, timestamptz
 ) from public, anon;

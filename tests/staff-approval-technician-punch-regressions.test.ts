@@ -468,6 +468,15 @@ describe("assigned technician punch shop resolution", () => {
     expect(staffDecisionMigration).toContain(
       "when lower(trim(coalesce(hold_reason, ''))) = 'awaiting parts quote'\n            then 'Customer declined'",
     );
+    expect(staffDecisionMigration).toContain(
+      "create trigger normalize_declined_parts_quote_hold_reason",
+    );
+    expect(staffDecisionMigration).toContain(
+      "and lower(trim(coalesce(new.hold_reason, ''))) = 'awaiting parts quote'",
+    );
+    expect(staffDecisionMigration).toContain(
+      "new.hold_reason := 'Customer declined'",
+    );
     expect(punchTransition).not.toContain(
       "p_at: options?.nowIso ?? new Date().toISOString(),\n        p_hold_reason",
     );
