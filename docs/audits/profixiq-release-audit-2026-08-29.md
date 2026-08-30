@@ -8,6 +8,10 @@ Every finding below was verified by reading the code at the audited commit. No
 finding is carried forward on the authority of an earlier document or of GitHub
 issue #1535; where this audit disagrees with #1535, the code is the authority.
 
+This is now a living release ledger. Status changes after the original audit are
+recorded in place only after the corresponding repair is merged and its
+exact-head required CI is green.
+
 ## Audited baseline
 
 | Item | Value |
@@ -35,12 +39,12 @@ issue #1535; where this audit disagrees with #1535, the code is the authority.
 
 | Status | Count |
 | --- | --- |
-| Fixed | 6 |
-| Still open | 15 |
+| Fixed | 7 |
+| Still open | 14 |
 | Partial or indeterminate | 2 |
 
 Two findings were added on 2026-08-30 during the portal repair; see the
-addendum at the end of this document. One of them corrects item 6 below.
+addendum at the end of this document. Item 6 is now fixed by PR #1570.
 
 The important correction to #1535 is that the fixes which did land came from
 standalone migrations dated 2026-08-25 that are already on `main`, independent of
@@ -56,6 +60,7 @@ the abandoned draft stack.
 | Service-worker caching of authenticated HTML | `app/sw.ts:38-65` gates every navigation cache behind `isSafePrivateNavigationShell()`; no server route sets the required `x-profixiq-offline-shell` header, so nothing is cached, and caches are swept on `SIGNED_OUT`. |
 | Cross-tab offline mutation loss | `features/shared/lib/offline/database.ts` uses per-row transactional writes keyed by `clientMutationId`, with `BroadcastChannel` invalidation and a schema-version rollout fence. |
 | Offline history eviction of pending work | `features/shared/lib/offline/mutations.ts:547-575` retains every non-`synced` row unconditionally; the 300-item cap only trims already-synced history. |
+| Portal identity/bootstrap and payment checkout (item 6) | PR #1570 resolves the customer record and accepted, non-revoked invite evidence server-side against the authenticated session identity. It does not add a customer-browser RLS policy or widen the customer's JWT access to staff-facing columns. |
 
 ## Open — authorization and tenant isolation
 
@@ -77,7 +82,11 @@ the abandoned draft stack.
    `customer_portal_invites.accepted_at` / `revoked_at`. Revocation is enforced
    only at `app/api/auth/sign-in/route.ts:193-202`, so an already-issued session
    keeps messaging and inspection-report/PDF access. No migration clears
-   `customers.user_id` on revocation.
+   `customers.user_id` on revocation. In addition, PR #1570's
+   `requirePortalCustomer()` helper resolves a customer server-side by verified
+   `userId` but does not itself require accepted, non-revoked invite evidence;
+   protected portal surfaces should converge on the invite-aware actor/access
+   primitive rather than relying on that weaker helper.
 
 3. **Job punch has no assignment or capability check.**
    `apply_job_punch_transition_atomic`
@@ -102,30 +111,24 @@ the abandoned draft stack.
    `createSignedUrl`, but the bucket's own RLS is not tracked here and must be
    confirmed directly against the Supabase project.
 
+## Closed after the original audit
+
+6. **FIXED — legitimate portal customers could not use the portal.**
+   PR #1570 replaced the failed end-user-client identity lookup with server-side
+   resolution pinned to the authenticated `userId` and email. The canonical
+   invite-aware guard still requires accepted, non-revoked invite evidence and
+   preserves the email match. The discarded RLS-policy approach was removed,
+   so no customer-browser authorization contract was widened.
+
+   > **Environment correction retained for history.** On clean replay, both the
+   > `customers` and `customer_portal_invites` end-user reads were blocked. In
+   > production, untracked policy drift means `customers` succeeds through
+   > `customer_select_own` while the invite read still fails through
+   > `cpi_staff_rw`. PR #1570 is intentionally independent of either policy set.
+
 ## Open — core staff workflows currently broken
 
 These are not hardening items; they break daily operation on current `main`.
-
-6. **Legitimate portal customers cannot use the portal.**
-   The sign-in guard reads the invite with the service-role client
-   (`app/api/auth/sign-in/route.ts:192-202`), so sign-in succeeds, while
-   `requirePortalCustomerAccess` (`features/portal/server/portalAuth.ts:71-108`)
-   re-queries with the end-user client and gets nothing. This breaks portal
-   entry **and** `app/api/portal/payments/checkout/route.ts:44`, so customer
-   payment checkout is blocked. Highest-value fix in this document.
-
-   > **Corrected 2026-08-30.** This entry originally stated that both the
-   > `customers` and `customer_portal_invites` reads return zero rows because
-   > neither table has a policy admitting a pure customer. That is true of a
-   > clean-replay database built from `supabase/migrations`, and was verified
-   > against PostgreSQL, but it is **not** true of production, which carries
-   > policies absent from the migration chain (finding 16). In production the
-   > `customers` read succeeds via `customer_select_own`, and only the invite
-   > read fails, because `cpi_staff_rw` requires shop membership through
-   > `is_shop_member_v2`. The outcome is identical — the guard throws
-   > `Portal invite required` — but the blocking layer differs by environment.
-   > PR #1570 repairs this by resolving identity server-side, which does not
-   > depend on either table's RLS.
 
 7. **Staff cannot approve or decline repair lines.**
    Desktop (`app/work-orders/[id]/Client.tsx:1304,1332`) and Shop Mobile
@@ -202,19 +205,21 @@ These are not hardening items; they break daily operation on current `main`.
 
 ## Recommended order
 
-1. **Item 6** — one missing RLS policy restores portal entry and customer
-   payment checkout.
-2. **Items 7 and 8** — staff approval and technician punch-in are the two core
-   daily workflows that currently fail.
-3. **Items 1, 2, 3, 4** — the live authorization and billing boundaries.
+1. **Items 7 and 8** — staff approval and assigned-technician punch-in are the
+   two highest-value daily workflow failures now that item 6 is fixed.
+2. **Items 16 and 17** — reconcile production authorization drift and remove the
+   unrestricted-column customer self-read before treating Clean Replay as
+   authoritative evidence for the production RLS surface.
+3. **Items 1, 2, 3, 4** — the remaining live authorization and billing
+   boundaries.
 4. **Item 5** — confirm the `job-photos` bucket against the live project and
    bring its policy into the migration chain so it is auditable here.
 5. **Items 9, 10, 11, 12** — workflow correctness and onboarding dead ends.
 6. **Items 13, 14, 15** — shared-device data isolation.
 
-Repository governance remains outstanding and is not verifiable from the
-repository: `main` was reported unprotected with no rulesets, so release-critical
-code can bypass the audited PR and CI loop.
+Repository governance remains outstanding: current `main` is unprotected with
+no required status checks, so release-critical code can bypass the audited PR
+and CI loop.
 
 ## Addendum — 2026-08-30
 
@@ -295,7 +300,8 @@ contract change on a pre-existing object and needs explicit approval.
 
 ### Revised priority
 
-Findings 16 and 17 do not displace the top of the existing order — items 6, 7,
-and 8 still break daily operation. They do change what a green Clean Replay
-means, so they should be resolved before the release evidence is treated as
-authoritative for authorization.
+Item 6 is fixed by PR #1570. Items 7 and 8 are now the highest-value daily
+workflow failures. Findings 16 and 17 come next because they determine whether
+Clean Replay is authoritative evidence for the deployed authorization surface;
+then the remaining authorization, workflow, onboarding, and client-isolation
+items follow the Recommended order above.
