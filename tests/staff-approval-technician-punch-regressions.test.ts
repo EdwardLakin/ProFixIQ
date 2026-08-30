@@ -15,6 +15,7 @@ const technicianLabor = read(
 );
 const pauseRoute = read("app/api/work-orders/lines/[id]/pause/route.ts");
 const resumeRoute = read("app/api/work-orders/lines/[id]/resume/route.ts");
+const finishRoute = read("app/api/work-orders/lines/[id]/finish/route.ts");
 const completeWorkOrderLine = read(
   "features/work-orders/server/completeWorkOrderLine.ts",
 );
@@ -460,12 +461,17 @@ describe("assigned technician punch shop resolution", () => {
     expect(punchTransition).toContain("enforceAssignedWork?: boolean");
     expect(technicianLabor.match(/enforceAssignedWork: true/g)).toHaveLength(2);
     expect(resumeRoute).toContain("enforceAssignedWork: true");
+    expect(finishRoute).toContain("enforceAssignedWork: true");
+    expect(finishRoute).toContain('action: "finish"');
     expect(completeWorkOrderLine).not.toContain("enforceAssignedWork");
     expect(punchTransition).toContain(
       '"apply_assigned_job_punch_transition_atomic"',
     );
     expect(staffDecisionMigration).toContain(
       "create or replace function public.apply_assigned_job_punch_transition_atomic",
+    );
+    expect(punchTransition).toContain(
+      'normalized.includes("parts_quote_hold_busy")',
     );
     const assignedBoundary = staffDecisionMigration.indexOf(
       "create or replace function public.apply_assigned_job_punch_transition_atomic",
@@ -488,6 +494,15 @@ describe("assigned technician punch shop resolution", () => {
     expect(
       staffDecisionMigration.slice(assignedLineLock, assignedAssertion),
     ).toContain("for update");
+    const segmentOwnership = staffDecisionMigration.indexOf(
+      "Technician has no active labor segment on this line to pause or finish.",
+      assignedAssertion,
+    );
+    expect(segmentOwnership).toBeGreaterThan(assignedAssertion);
+    expect(
+      staffDecisionMigration.slice(assignedAssertion, segmentOwnership),
+    ).toContain("segment.ended_at is null");
+    expect(canonicalDelegation).toBeGreaterThan(segmentOwnership);
     expect(generatedTypes).toContain(
       "apply_assigned_job_punch_transition_atomic: {",
     );

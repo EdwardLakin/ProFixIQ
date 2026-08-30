@@ -589,6 +589,33 @@ begin
       message = 'Technician is not assigned to this work-order line.';
   end if;
 
+  if v_action in ('pause', 'finish') then
+    -- Keep the canonical line -> work order -> segment order. Assignment
+    -- changes and labor transitions now serialize before this ownership check,
+    -- and the delegated canonical RPC reuses these transaction-owned locks.
+    perform 1
+    from public.work_orders work_order
+    where work_order.id = v_line.work_order_id
+      and work_order.shop_id = p_shop_id
+    for update;
+    if not found then
+      raise exception using errcode = 'P0001', message = 'Parent work order not found for shop.';
+    end if;
+
+    perform 1
+    from public.work_order_line_labor_segments segment
+    where segment.shop_id = p_shop_id
+      and segment.work_order_line_id = p_work_order_line_id
+      and segment.technician_id = v_profile_id
+      and segment.ended_at is null
+    for update;
+    if not found then
+      raise exception using
+        errcode = 'P0001',
+        message = 'Technician has no active labor segment on this line to pause or finish.';
+    end if;
+  end if;
+
   return public.apply_job_punch_transition_atomic(
     p_shop_id => p_shop_id,
     p_work_order_line_id => p_work_order_line_id,

@@ -88,6 +88,12 @@ function errorStatus(message: string): number {
   const normalized = message.toLowerCase();
   if (normalized.includes("not found")) return 404;
   if (
+    normalized.includes("parts_quote_hold_busy") ||
+    normalized.includes("staff_line_decision_busy")
+  ) {
+    return 503;
+  }
+  if (
     normalized.includes("actor") ||
     normalized.includes("technician is not available") ||
     normalized.includes("not assigned") ||
@@ -100,6 +106,7 @@ function errorStatus(message: string): number {
     normalized.includes("financially_locked") ||
     normalized.includes("shift_shop_mismatch") ||
     normalized.includes("already has") ||
+    normalized.includes("no active labor segment") ||
     normalized.includes("cannot") ||
     normalized.includes("requires") ||
     normalized.includes("need an active shift")

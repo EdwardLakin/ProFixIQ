@@ -531,6 +531,36 @@ describe("applyJobPunchTransition atomic boundary", () => {
     });
   });
 
+  it("maps bounded database lock exhaustion to an offline-retryable response", async () => {
+    const db = new FakeSupabase();
+    db.setActor("advisor-1", "advisor");
+    db.activeSegment = null;
+    db.rpcError = {
+      message:
+        "PARTS_QUOTE_HOLD_BUSY: line state is changing; retry the hold.",
+    };
+
+    const result = await applyJobPunchTransition({
+      supabase: db as never,
+      lineId: "line-1",
+      action: "pause",
+      technicianId: "advisor-1",
+      options: {
+        operationKey: "parts-hold-busy",
+        pause: {
+          holdReason: "Awaiting parts quote",
+          transitionIntent: "parts_quote_hold",
+        },
+      },
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      status: 503,
+      error: "PARTS_QUOTE_HOLD_BUSY: line state is changing; retry the hold.",
+    });
+  });
+
   it("preserves trusted break auto-resume for a currently capable technician", async () => {
     const db = new FakeSupabase();
     db.authUserId = null;
