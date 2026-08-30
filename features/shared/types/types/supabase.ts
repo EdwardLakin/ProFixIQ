@@ -28341,6 +28341,8 @@ export type Database = {
         Returns: {
           advisor_id: string | null
           approval_state: string | null
+          archived_at: string | null
+          archived_by_user_id: string | null
           assigned_tech: string | null
           created_at: string | null
           created_by: string | null
