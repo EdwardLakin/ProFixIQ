@@ -462,8 +462,11 @@ describe("assigned technician punch shop resolution", () => {
     expect(technicianLabor.match(/enforceAssignedWork: true/g)).toHaveLength(2);
     expect(resumeRoute).toContain("enforceAssignedWork: true");
     expect(finishRoute).toContain("enforceAssignedWork: true");
-    expect(finishRoute).toContain('action: "finish"');
-    expect(completeWorkOrderLine).not.toContain("enforceAssignedWork");
+    expect(finishRoute).toContain("await completeWorkOrderLine");
+    expect(completeWorkOrderLine).toContain("enforceAssignedWork?: boolean");
+    expect(completeWorkOrderLine).toContain(
+      "enforceAssignedWork: input.enforceAssignedWork === true",
+    );
     expect(punchTransition).toContain(
       '"apply_assigned_job_punch_transition_atomic"',
     );

@@ -2,7 +2,7 @@ export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
-import { applyJobPunchTransition } from "@/features/work-orders/server/applyJobPunchTransition";
+import { completeWorkOrderLine } from "@/features/work-orders/server/completeWorkOrderLine";
 
 type Body = {
   cause?: string | null;
@@ -50,19 +50,15 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const result = await applyJobPunchTransition({
+  const result = await completeWorkOrderLine({
     supabase,
     lineId: id,
-    action: "finish",
     technicianId: user.id,
-    options: {
-      operationKey,
-      enforceAssignedWork: true,
-      finish: {
-        cause: body.cause,
-        correction: body.correction,
-      },
-    },
+    actorUserId: user.id,
+    operationKey,
+    enforceAssignedWork: true,
+    cause: body.cause,
+    correction: body.correction,
   });
 
   if (!result.ok) {
@@ -75,6 +71,6 @@ export async function POST(req: NextRequest) {
       : { success: true };
   return NextResponse.json({
     ...payload,
-    menuRepairLearning: { ok: false, state: "pending" },
+    menuRepairLearning: result.menuRepairLearning,
   });
 }

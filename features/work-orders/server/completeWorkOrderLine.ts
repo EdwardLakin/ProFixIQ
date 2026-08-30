@@ -11,6 +11,8 @@ type CompletionInput = {
   technicianId: string;
   actorUserId: string;
   operationKey: string;
+  /** Public technician routes opt into the locked assignment/segment guard. */
+  enforceAssignedWork?: boolean;
   cause?: string | null;
   correction?: string | null;
 };
@@ -23,6 +25,7 @@ export async function completeWorkOrderLine(input: CompletionInput) {
     technicianId: input.technicianId,
     options: {
       operationKey: input.operationKey,
+      enforceAssignedWork: input.enforceAssignedWork === true,
       finish: {
         cause: input.cause,
         correction: input.correction,
