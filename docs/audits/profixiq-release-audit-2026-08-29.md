@@ -75,19 +75,25 @@ the abandoned draft stack.
    role only. An account on an expired, unpaid, Field-only, or Fleet-only
    package still reaches Shop.
 
-2. **Revoked Customer Portal access remains authorized.**
+2. **Revoked Customer Portal sessions retain access through specific bypasses.**
    `can_access_conversation`
    (`20260716090050_premier_messaging_foundation.sql:174-210`) and
    `actorCanRead()` (`features/inspections/server/inspectionReportAccess.ts:36-87`)
    both key off `customers.user_id` + `shop_id` with no reference to
-   `customer_portal_invites.accepted_at` / `revoked_at`. Revocation is enforced
-   only at `app/api/auth/sign-in/route.ts:193-202`, so an already-issued session
-   keeps messaging and inspection-report/PDF access. No migration clears
-   `customers.user_id` on revocation. In addition, PR #1570's
-   `requirePortalCustomer()` helper resolves a customer server-side by verified
-   `userId` but does not itself require accepted, non-revoked invite evidence;
-   protected portal surfaces should converge on the invite-aware actor/access
-   primitive rather than relying on that weaker helper.
+   `customer_portal_invites.accepted_at` / `revoked_at`, so an already-issued
+   revoked session keeps messaging and inspection-report/PDF access. The invoice
+   detail page (`app/portal/invoices/[id]/page.tsx:54`) and Work Order detail page
+   (`app/portal/work-orders/view/[id]/page.tsx:212`) also call PR #1570's weaker
+   `requirePortalCustomer()` helper, which resolves the customer server-side by
+   verified `userId` but does not require accepted, non-revoked invite evidence.
+
+   Sign-in and the canonical `requirePortalCustomerAccess()` /
+   `requirePortalCustomerActor()` path now enforce accepted, non-revoked invite
+   evidence across the dashboard, payments, approvals, bookings, requests, and
+   other guarded portal routes. The remaining repair should converge only the
+   confirmed bypasses above on that invite-aware primitive (or an equivalent
+   durable revocation boundary). No migration currently clears
+   `customers.user_id` on revocation.
 
 3. **Job punch has no assignment or capability check.**
    `apply_job_punch_transition_atomic`
