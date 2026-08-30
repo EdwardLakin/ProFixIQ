@@ -34,6 +34,40 @@ function internalOperationKey(parts: Array<string | null | undefined>): string {
   return parts.map((part) => String(part ?? "").trim()).filter(Boolean).join(":");
 }
 
+async function resolveInternalResumeActor(params: {
+  supabase: SupabaseClient<DB>;
+  technicianId: string;
+  source?: "manual" | "break_resume" | "lunch_resume";
+  trustedActor?: TrustedActorContext;
+}): Promise<TrustedActorContext | undefined> {
+  if (params.trustedActor) return params.trustedActor;
+  if (params.source !== "break_resume" && params.source !== "lunch_resume") {
+    return undefined;
+  }
+
+  // Break/lunch auto-resume is an established server-only path that uses the
+  // service-role client after the shift endpoint has already authorized the
+  // actor and revalidated assignment. Preserve that path without weakening
+  // ordinary browser/API calls: only the two explicit internal resume sources
+  // may derive trusted actor context from the canonical profile.
+  const { data: profiles, error } = await params.supabase
+    .from("profiles")
+    .select("id,user_id,shop_id")
+    .or(`id.eq.${params.technicianId},user_id.eq.${params.technicianId}`)
+    .limit(2)
+    .returns<Array<{ id: string; user_id: string | null; shop_id: string | null }>>();
+  if (error || !profiles || profiles.length !== 1 || !profiles[0]?.shop_id) {
+    return undefined;
+  }
+
+  const profile = profiles[0];
+  return {
+    authUserId: profile.user_id ?? profile.id,
+    profileId: profile.id,
+    shopId: profile.shop_id,
+  };
+}
+
 export async function startTechnicianJobLabor(params: {
   supabase: SupabaseClient<DB>;
   lineId: string;
@@ -55,6 +89,7 @@ export async function startTechnicianJobLabor(params: {
       params.startedAtIso,
       params.source,
     ]);
+  const trustedActor = await resolveInternalResumeActor(params);
   return applyJobPunchTransition({
     supabase: params.supabase,
     lineId: params.lineId,
@@ -70,7 +105,7 @@ export async function startTechnicianJobLabor(params: {
           : params.source === "lunch_resume"
             ? "job_resumed_after_lunch"
             : undefined,
-      trustedActor: params.trustedActor,
+      trustedActor,
     },
   });
 }
