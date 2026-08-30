@@ -1,5 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import { resolveAuthenticatedStaffProfile } from "@/features/shared/lib/server/admin-access";
+import { canonicalizeRole } from "@/features/shared/lib/rbac";
 import { requirePortalCustomerActor } from "@/features/portal/server/requirePortalActor";
 import { PortalAccessError } from "@/features/portal/server/portalAuth";
 import {
@@ -23,6 +25,23 @@ type RpcClient = {
   ) => PromiseLike<{ data: unknown; error: RpcError | null }>;
 };
 
+type StaffDecisionActor = {
+  kind: "staff";
+  shopId: string;
+  profileId: string;
+};
+
+type PortalDecisionActor = {
+  kind: "portal";
+  shopId: string;
+  customerId: string;
+  userId: string;
+};
+
+type DecisionActor = StaffDecisionActor | PortalDecisionActor;
+
+const STAFF_APPROVAL_ROLES = new Set(["owner", "admin", "manager", "advisor"]);
+
 function safeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -31,7 +50,14 @@ function errorStatus(message: string): number {
   const lower = message.toLowerCase();
   if (isQuotePricingQuarantineError(message)) return 409;
   if (lower.includes("not found")) return 404;
-  if (lower.includes("not owned") || lower.includes("actor mismatch")) return 403;
+  if (
+    lower.includes("not owned") ||
+    lower.includes("actor mismatch") ||
+    lower.includes("not authorized") ||
+    lower.includes("forbidden")
+  ) {
+    return 403;
+  }
   if (lower.includes("locked") || lower.includes("no longer eligible")) return 409;
   return 400;
 }
@@ -40,7 +66,17 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
   const supabase = createServerSupabaseRoute();
 
   try {
-    const actor = await requirePortalCustomerActor(supabase);
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+    if (userError || !user) {
+      return NextResponse.json(
+        { ok: false, error: userError?.message ?? "Not authenticated" },
+        { status: 401 },
+      );
+    }
+
     const { id } = await ctx.params;
     const lineId = safeString(id);
     const body = (await req.json().catch(() => null)) as Body | null;
@@ -57,16 +93,60 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
         { status: 400 },
       );
     }
-    if (!actor.customer.shop_id) {
-      return NextResponse.json(
-        { ok: false, error: "Customer is not linked to a shop" },
-        { status: 409 },
-      );
+
+    // The same UI action is used by Shop staff and by the Customer Portal. The
+    // old route always forced the caller through requirePortalCustomerActor,
+    // which made legitimate owner/admin/manager/advisor actions fail unless the
+    // staff account also happened to be a portal customer. Resolve canonical
+    // staff identity first; only a caller with no staff profile uses the portal
+    // authorization path.
+    const { profile, error: profileError } = await resolveAuthenticatedStaffProfile(
+      supabase,
+      user.id,
+    );
+    if (profileError) {
+      return NextResponse.json({ ok: false, error: profileError }, { status: 403 });
+    }
+
+    let actor: DecisionActor;
+    if (profile?.shop_id) {
+      const canonicalRole = canonicalizeRole(profile.role);
+      if (!STAFF_APPROVAL_ROLES.has(canonicalRole)) {
+        return NextResponse.json(
+          { ok: false, error: "This staff role cannot record approval decisions." },
+          { status: 403 },
+        );
+      }
+      if (decision === "defer") {
+        return NextResponse.json(
+          { ok: false, error: "Staff line decisions support approve or decline only." },
+          { status: 400 },
+        );
+      }
+      actor = {
+        kind: "staff",
+        shopId: profile.shop_id,
+        profileId: profile.id,
+      };
+    } else {
+      const portalActor = await requirePortalCustomerActor(supabase);
+      if (!portalActor.customer.shop_id) {
+        return NextResponse.json(
+          { ok: false, error: "Customer is not linked to a shop" },
+          { status: 409 },
+        );
+      }
+      actor = {
+        kind: "portal",
+        shopId: portalActor.customer.shop_id,
+        customerId: portalActor.customer.id,
+        userId: portalActor.userId,
+      };
     }
 
     const quarantineCheck = await checkQuotePricingQuarantine({
       supabase,
-      shopId: actor.customer.shop_id,
+      shopId: actor.shopId,
       workOrderId,
       workOrderLineIds: [lineId],
     });
@@ -100,7 +180,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
         .select("approval_state,updated_at")
         .eq("id", lineId)
         .eq("work_order_id", workOrderId)
-        .eq("shop_id", actor.customer.shop_id)
+        .eq("shop_id", actor.shopId)
         .maybeSingle<{
           approval_state: string | null;
           updated_at: string | null;
@@ -128,19 +208,38 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     }
 
     const rpc = supabase as unknown as RpcClient;
-    const { data, error } = await rpc.rpc("apply_portal_line_decision_atomic", {
-      p_shop_id: actor.customer.shop_id,
-      p_customer_id: actor.customer.id,
-      p_work_order_id: workOrderId,
-      p_line_id: lineId,
-      p_actor_user_id: actor.userId,
-      p_decision: decision,
-      p_operation_key: `${actor.customer.shop_id}:portal-line-decision:${key}`,
-      p_at: new Date().toISOString(),
-    });
+    const rpcResult =
+      actor.kind === "staff"
+        ? await rpc.rpc("apply_approval_compatibility_bundle_atomic", {
+            p_shop_id: actor.shopId,
+            p_work_order_id: workOrderId,
+            p_customer_id: null,
+            p_actor_user_id: actor.profileId,
+            p_approved_line_ids: decision === "approve" ? [lineId] : [],
+            p_declined_line_ids: decision === "decline" ? [lineId] : [],
+            p_approved_quote_line_ids: [],
+            p_declined_quote_line_ids: [],
+            p_signature_url: null,
+            p_operation_key: `${actor.shopId}:staff-line-decision:${key}`,
+            p_at: new Date().toISOString(),
+          })
+        : await rpc.rpc("apply_portal_line_decision_atomic", {
+            p_shop_id: actor.shopId,
+            p_customer_id: actor.customerId,
+            p_work_order_id: workOrderId,
+            p_line_id: lineId,
+            p_actor_user_id: actor.userId,
+            p_decision: decision,
+            p_operation_key: `${actor.shopId}:portal-line-decision:${key}`,
+            p_at: new Date().toISOString(),
+          });
 
-    if (error) {
-      const message = [error.message, error.details, error.hint]
+    if (rpcResult.error) {
+      const message = [
+        rpcResult.error.message,
+        rpcResult.error.details,
+        rpcResult.error.hint,
+      ]
         .filter(Boolean)
         .join(" — ");
       return NextResponse.json(
@@ -149,7 +248,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       );
     }
 
-    return NextResponse.json(data ?? { ok: true });
+    return NextResponse.json(rpcResult.data ?? { ok: true });
   } catch (error: unknown) {
     if (error instanceof PortalAccessError) {
       return NextResponse.json(
@@ -157,7 +256,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
         { status: error.status },
       );
     }
-    const message = error instanceof Error ? error.message : "Unexpected portal error";
+    const message = error instanceof Error ? error.message : "Unexpected approval error";
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }
