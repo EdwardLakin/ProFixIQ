@@ -489,6 +489,9 @@ describe("assigned technician punch shop resolution", () => {
     expect(staffDecisionMigration).toContain(
       "PORTAL_LINE_DECISION_OPERATION_CONFLICT",
     );
+    expect(generatedTypes).toContain(
+      "apply_portal_parts_hold_line_decline_atomic: {",
+    );
     expect(punchTransition).not.toContain(
       "p_at: options?.nowIso ?? new Date().toISOString(),\n        p_hold_reason",
     );

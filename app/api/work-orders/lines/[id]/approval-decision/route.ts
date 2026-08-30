@@ -37,20 +37,6 @@ type PortalDecisionActor = {
 
 type DecisionActor = StaffDecisionActor | PortalDecisionActor;
 
-type PortalPartsDecisionRpcClient = {
-  rpc: (
-    name: "apply_portal_parts_hold_line_decline_atomic",
-    args: Record<string, unknown>,
-  ) => PromiseLike<{
-    data: unknown;
-    error: {
-      message: string;
-      details?: string | null;
-      hint?: string | null;
-    } | null;
-  }>;
-};
-
 function safeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -285,7 +271,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
               p_operation_key: `${actor.shopId}:portal-line-decision:${key}`,
               p_at: new Date().toISOString(),
             })
-          : await (rpc as unknown as PortalPartsDecisionRpcClient).rpc(
+          : await rpc.rpc(
               "apply_portal_parts_hold_line_decline_atomic",
               {
                 p_shop_id: actor.shopId,
