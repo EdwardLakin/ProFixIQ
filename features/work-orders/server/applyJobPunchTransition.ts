@@ -115,6 +115,9 @@ export async function applyJobPunchTransition({
   options,
 }: ApplyJobPunchTransitionParams): Promise<TransitionResult> {
   const operationKey = cleanString(options?.operationKey);
+  const partsQuoteHoldRequested =
+    action === "pause" &&
+    options?.pause?.transitionIntent === "parts_quote_hold";
   if (!operationKey) {
     return {
       ok: false,
@@ -128,6 +131,13 @@ export async function applyJobPunchTransition({
   let actorProfileId: string;
 
   if (options?.trustedActor) {
+    if (partsQuoteHoldRequested) {
+      return {
+        ok: false,
+        status: 403,
+        error: "A trusted labor-resume actor cannot send a line to parts.",
+      };
+    }
     shopId = options.trustedActor.shopId;
     actorUserId = options.trustedActor.authUserId;
     actorProfileId = options.trustedActor.profileId;
@@ -162,11 +172,17 @@ export async function applyJobPunchTransition({
     }
 
     const capabilities = getActorCapabilities({ role: profile.role });
-    if (!capabilities.canPerformAssignedWork) {
+    if (
+      partsQuoteHoldRequested
+        ? !capabilities.canManageWorkOrders
+        : !capabilities.canPerformAssignedWork
+    ) {
       return {
         ok: false,
         status: 403,
-        error: "This staff role is not permitted to perform assigned work.",
+        error: partsQuoteHoldRequested
+          ? "This staff role is not permitted to manage work orders."
+          : "This staff role is not permitted to perform assigned work.",
       };
     }
 
@@ -240,58 +256,58 @@ export async function applyJobPunchTransition({
     return { ok: false, status: 404, error: "Work-order line not found for shop." };
   }
 
-  const { data: additionalAssignment, error: assignmentError } = await admin
-    .from("work_order_line_technicians")
-    .select("id")
-    .eq("work_order_line_id", lineId)
-    .eq("technician_id", actorProfileId)
-    .limit(1)
-    .maybeSingle<{ id: string }>();
-  if (assignmentError) {
-    return { ok: false, status: 400, error: assignmentError.message };
-  }
+  if (!partsQuoteHoldRequested) {
+    const { data: additionalAssignment, error: assignmentError } = await admin
+      .from("work_order_line_technicians")
+      .select("id")
+      .eq("work_order_line_id", lineId)
+      .eq("technician_id", actorProfileId)
+      .limit(1)
+      .maybeSingle<{ id: string }>();
+    if (assignmentError) {
+      return { ok: false, status: 400, error: assignmentError.message };
+    }
 
-  let isLegacyOnlyAssignment = false;
-  if (
-    line.assigned_tech_id === null &&
-    !additionalAssignment &&
-    line.assigned_to === actorProfileId
-  ) {
-    // PFX-004 deliberately preserves ambiguous historical rows. `assigned_to`
-    // is a read fallback only when both canonical sources are empty; never let
-    // it override an explicit primary or canonical supporting assignment.
-    const { data: anyCanonicalAssignment, error: canonicalAssignmentError } =
-      await admin
-        .from("work_order_line_technicians")
-        .select("id")
-        .eq("work_order_line_id", lineId)
-        .limit(1)
-        .maybeSingle<{ id: string }>();
-    if (canonicalAssignmentError) {
+    let isLegacyOnlyAssignment = false;
+    if (
+      line.assigned_tech_id === null &&
+      !additionalAssignment &&
+      line.assigned_to === actorProfileId
+    ) {
+      // PFX-004 deliberately preserves ambiguous historical rows. `assigned_to`
+      // is a read fallback only when both canonical sources are empty; never let
+      // it override an explicit primary or canonical supporting assignment.
+      const { data: anyCanonicalAssignment, error: canonicalAssignmentError } =
+        await admin
+          .from("work_order_line_technicians")
+          .select("id")
+          .eq("work_order_line_id", lineId)
+          .limit(1)
+          .maybeSingle<{ id: string }>();
+      if (canonicalAssignmentError) {
+        return {
+          ok: false,
+          status: 400,
+          error: canonicalAssignmentError.message,
+        };
+      }
+      isLegacyOnlyAssignment = !anyCanonicalAssignment;
+    }
+
+    const isAssigned =
+      line.assigned_tech_id === actorProfileId ||
+      Boolean(additionalAssignment) ||
+      isLegacyOnlyAssignment;
+    if (!isAssigned) {
       return {
         ok: false,
-        status: 400,
-        error: canonicalAssignmentError.message,
+        status: 403,
+        error: "Technician is not assigned to this work-order line.",
       };
     }
-    isLegacyOnlyAssignment = !anyCanonicalAssignment;
-  }
-
-  const isAssigned =
-    line.assigned_tech_id === actorProfileId ||
-    Boolean(additionalAssignment) ||
-    isLegacyOnlyAssignment;
-  if (!isAssigned) {
-    return {
-      ok: false,
-      status: 403,
-      error: "Technician is not assigned to this work-order line.",
-    };
   }
 
   if (action === "pause") {
-    const partsQuoteHoldRequested =
-      options?.pause?.transitionIntent === "parts_quote_hold";
     const normalizedHoldReason = cleanString(
       options?.pause?.holdReason,
     )?.toLowerCase();

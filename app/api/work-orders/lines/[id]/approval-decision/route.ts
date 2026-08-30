@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { resolveAuthenticatedStaffProfile } from "@/features/shared/lib/server/admin-access";
-import { canonicalizeRole } from "@/features/shared/lib/rbac";
+import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import { requirePortalCustomerActor } from "@/features/portal/server/requirePortalActor";
 import { PortalAccessError } from "@/features/portal/server/portalAuth";
 import {
@@ -33,8 +33,6 @@ type PortalDecisionActor = {
 };
 
 type DecisionActor = StaffDecisionActor | PortalDecisionActor;
-
-const STAFF_APPROVAL_ROLES = new Set(["owner", "admin", "manager", "advisor"]);
 
 function safeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -122,8 +120,8 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
 
     let actor: DecisionActor;
     if (actorSurface === "staff" && profile?.shop_id) {
-      const canonicalRole = canonicalizeRole(profile.role);
-      if (!STAFF_APPROVAL_ROLES.has(canonicalRole)) {
+      const capabilities = getActorCapabilities({ role: profile.role });
+      if (!capabilities.canAuthorizeQuotes) {
         return NextResponse.json(
           { ok: false, error: "This staff role cannot record approval decisions." },
           { status: 403 },

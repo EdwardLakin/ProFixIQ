@@ -312,13 +312,15 @@ describe("applyJobPunchTransition atomic boundary", () => {
 
   it("preserves the explicit pre-labor parts-quote hold without an active segment", async () => {
     const db = new FakeSupabase();
+    db.setActor("advisor-1", "advisor");
+    if (db.line) db.line.assigned_tech_id = "different-technician";
     db.activeSegment = null;
 
     const result = await applyJobPunchTransition({
       supabase: db as never,
       lineId: "line-1",
       action: "pause",
-      technicianId: "tech-1",
+      technicianId: "advisor-1",
       options: {
         operationKey: "parts-quote-hold",
         pause: {
@@ -336,6 +338,33 @@ describe("applyJobPunchTransition atomic boundary", () => {
         p_hold_reason: "Awaiting parts quote",
       }),
     );
+  });
+
+  it("rejects a pre-labor parts hold without work-order management capability", async () => {
+    const db = new FakeSupabase();
+    db.setActor("parts-1", "parts");
+    db.activeSegment = null;
+
+    const result = await applyJobPunchTransition({
+      supabase: db as never,
+      lineId: "line-1",
+      action: "pause",
+      technicianId: "parts-1",
+      options: {
+        operationKey: "parts-role-quote-hold",
+        pause: {
+          holdReason: "Awaiting parts quote",
+          transitionIntent: "parts_quote_hold",
+        },
+      },
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      status: 403,
+      error: "This staff role is not permitted to manage work orders.",
+    });
+    expect(db.rpcCalls).toHaveLength(0);
   });
 
   it("keeps ordinary pauses and post-labor lines outside the pre-labor hold exception", async () => {
@@ -361,6 +390,10 @@ describe("applyJobPunchTransition atomic boundary", () => {
     expect(ordinaryPause.rpcCalls).toHaveLength(0);
 
     const postLaborHold = new FakeSupabase();
+    postLaborHold.setActor("advisor-1", "advisor");
+    if (postLaborHold.line) {
+      postLaborHold.line.assigned_tech_id = "different-technician";
+    }
     postLaborHold.activeSegment = null;
     postLaborHold.recordedSegment = { id: "ended-segment" };
 
@@ -368,7 +401,7 @@ describe("applyJobPunchTransition atomic boundary", () => {
       supabase: postLaborHold as never,
       lineId: "line-1",
       action: "pause",
-      technicianId: "tech-1",
+      technicianId: "advisor-1",
       options: {
         operationKey: "parts-quote-after-labor",
         pause: {

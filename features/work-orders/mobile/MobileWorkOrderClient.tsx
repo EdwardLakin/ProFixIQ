@@ -209,17 +209,6 @@ const chip = (s: string | null | undefined): string => {
   return `${BASE_BADGE} ${BADGE[key] ?? BADGE.awaiting}`;
 };
 
-// roles allowed to approve / decline
-const APPROVAL_ROLES = new Set([
-  "owner",
-  "admin",
-  "manager",
-  "advisor",
-  "lead_hand",
-  "lead",
-  "leadhand",
-]);
-
 function MobileWorkOrderDetailSkeleton({
   className = "",
 }: {
@@ -1035,9 +1024,8 @@ export default function MobileWorkOrderClient({
 
   const canAssign = false; // assignments handled in focused view / desktop
   const currentActor = getActorCapabilities({ role: currentUserRole });
-  const canApprove = currentUserRole
-    ? APPROVAL_ROLES.has(currentUserRole)
-    : false;
+  const canApprove = currentActor.canAuthorizeQuotes;
+  const canSendToParts = currentActor.canManageWorkOrders;
 
   type WorkOrderWaiterFlags = {
     is_waiter?: boolean | null;
@@ -1245,6 +1233,14 @@ export default function MobileWorkOrderClient({
           responseBodyReadable = false;
         }
         if (!res.ok) {
+          if (res.status >= 500) {
+            toast.error(
+              json?.error ??
+                "Approval response was interrupted; refreshing before retry.",
+            );
+            await fetchAll().catch(() => undefined);
+            return;
+          }
           clearLineDecision(lineId, actionIdentity);
           toast.error(json?.error ?? "Failed to approve line");
           return;
@@ -1311,6 +1307,14 @@ export default function MobileWorkOrderClient({
           responseBodyReadable = false;
         }
         if (!res.ok) {
+          if (res.status >= 500) {
+            toast.error(
+              json?.error ??
+                "Decline response was interrupted; refreshing before retry.",
+            );
+            await fetchAll().catch(() => undefined);
+            return;
+          }
           clearLineDecision(lineId, actionIdentity);
           toast.error(json?.error ?? "Failed to decline line");
           return;
@@ -1796,7 +1800,7 @@ export default function MobileWorkOrderClient({
                 <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)] sm:text-base">
                   Awaiting customer approval
                 </h2>
-                {approvalPending.length > 1 && (
+                {approvalPending.length > 1 && canSendToParts && (
                   <button
                     type="button"
                     className="rounded-full border border-amber-300/65 bg-amber-500/14 px-3 py-1.5 text-[11px] font-semibold text-amber-100 shadow-[0_0_14px_rgba(251,191,36,0.20)] hover:bg-amber-500/18"
@@ -1922,7 +1926,7 @@ export default function MobileWorkOrderClient({
                                 >
                                   Sent to parts
                                 </button>
-                              ) : (
+                              ) : canSendToParts ? (
                                 <button
                                   type="button"
                                   className="rounded-md border border-[var(--accent-copper-soft)]/80 px-2.5 py-1 text-[11px] font-medium text-[var(--accent-copper-light)] hover:bg-[rgba(212,118,49,0.12)]"
@@ -1931,7 +1935,7 @@ export default function MobileWorkOrderClient({
                                 >
                                   Send to parts
                                 </button>
-                              )}
+                              ) : null}
                             </div>
                           </div>
                         </div>

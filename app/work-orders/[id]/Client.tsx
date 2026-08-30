@@ -1411,6 +1411,14 @@ export default function WorkOrderIdClient(): JSX.Element {
         }
 
         if (!res.ok) {
+          if (res.status >= 500) {
+            toast.error(
+              json?.error ??
+                "Approval response was interrupted; refreshing before retry.",
+            );
+            await fetchAll().catch(() => undefined);
+            return;
+          }
           clearLineDecision(lineId, actionIdentity);
           toast.error(json?.error ?? "Failed to approve line");
           return;
@@ -1475,6 +1483,14 @@ export default function WorkOrderIdClient(): JSX.Element {
           responseBodyReadable = false;
         }
         if (!res.ok) {
+          if (res.status >= 500) {
+            toast.error(
+              json?.error ??
+                "Decline response was interrupted; refreshing before retry.",
+            );
+            await fetchAll().catch(() => undefined);
+            return;
+          }
           clearLineDecision(lineId, actionIdentity);
           toast.error(json?.error ?? "Failed to decline line");
           return;

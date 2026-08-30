@@ -58,7 +58,10 @@ begin
   order by case when p.id = p_actor_user_id then 0 else 1 end
   limit 1;
 
-  if not found or v_role not in ('owner', 'admin', 'manager', 'advisor') then
+  -- Mirrors ROLE_GROUPS.quoteAuthorizers at the durable boundary.
+  if not found or v_role not in (
+    'owner', 'admin', 'manager', 'advisor', 'service', 'foreman'
+  ) then
     raise exception using
       errcode = '42501',
       message = 'STAFF_LINE_DECISION_FORBIDDEN: actor cannot record staff approval decisions.';
@@ -306,7 +309,7 @@ grant execute on function public.apply_staff_line_decision_atomic(
 comment on function public.apply_staff_line_decision_atomic(
   uuid, uuid, uuid, uuid, text, text, timestamptz
 ) is
-  'Applies an owner/admin/manager/advisor line approval or decline only before labor begins, then delegates to the established approval compatibility bundle.';
+  'Applies a canonical quote-authorizer line approval or decline only before labor begins, then delegates to the established approval compatibility bundle.';
 
 notify pgrst, 'reload schema';
 

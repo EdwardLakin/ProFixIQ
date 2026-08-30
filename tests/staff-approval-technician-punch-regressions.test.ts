@@ -113,6 +113,23 @@ describe("staff approval decision routing", () => {
           decisionBlock.indexOf("toast.success"),
         );
         expect(ambiguousResponse).not.toContain("clearLineDecision(");
+        const serverErrorStart = decisionBlock.indexOf(
+          "if (res.status >= 500)",
+        );
+        const definitiveRejection = decisionBlock.indexOf(
+          "clearLineDecision(lineId, actionIdentity)",
+        );
+        expect(serverErrorStart).toBeGreaterThan(-1);
+        expect(definitiveRejection).toBeGreaterThan(serverErrorStart);
+        const ambiguousServerError = decisionBlock.slice(
+          serverErrorStart,
+          definitiveRejection,
+        );
+        expect(ambiguousServerError).toContain(
+          "await fetchAll().catch(() => undefined)",
+        );
+        expect(ambiguousServerError).toContain("return;");
+        expect(ambiguousServerError).not.toContain("clearLineDecision(");
         const finallyBoundary = decisionBlock.indexOf("} finally {");
         const interruptedRequest = decisionBlock.slice(
           decisionBlock.lastIndexOf("} catch {", finallyBoundary),
@@ -134,6 +151,12 @@ describe("staff approval decision routing", () => {
   });
 
   it("uses the guarded staff-specific atomic adapter for staff decisions", () => {
+    expect(approvalRoute).toContain("getActorCapabilities");
+    expect(approvalRoute).toContain("capabilities.canAuthorizeQuotes");
+    expect(approvalRoute).not.toContain("STAFF_APPROVAL_ROLES");
+    expect(mobileWorkOrder).toContain(
+      "const canApprove = currentActor.canAuthorizeQuotes",
+    );
     expect(approvalRoute).toContain(
       'rpc.rpc("apply_staff_line_decision_atomic"',
     );
@@ -146,6 +169,9 @@ describe("staff approval decision routing", () => {
       "create or replace function public.apply_staff_line_decision_atomic",
     );
     expect(staffDecisionMigration).toContain("'in_progress'");
+    expect(staffDecisionMigration).toContain(
+      "'owner', 'admin', 'manager', 'advisor', 'service', 'foreman'",
+    );
     expect(staffDecisionMigration).toContain(
       "from public.work_order_line_labor_segments seg",
     );
@@ -257,6 +283,13 @@ describe("assigned technician punch shop resolution", () => {
     );
     expect(punchTransition).toContain(
       "A line with recorded labor cannot be sent to parts as pre-labor work.",
+    );
+    expect(punchTransition).toContain(
+      "partsQuoteHoldRequested\n        ? !capabilities.canManageWorkOrders",
+    );
+    expect(punchTransition).toContain("if (!partsQuoteHoldRequested)");
+    expect(mobileWorkOrder).toContain(
+      "const canSendToParts = currentActor.canManageWorkOrders",
     );
   });
 
