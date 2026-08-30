@@ -46,7 +46,7 @@ vi.mock("@/features/shared/lib/rbac", () => ({
 vi.mock("@/features/shared/lib/supabase/client", () => {
   const chain = (result: Promise<unknown>) => {
     const builder: Record<string, unknown> = {};
-    for (const method of ["eq", "in", "limit", "order", "select"]) {
+    for (const method of ["eq", "in", "is", "limit", "order", "select"]) {
       builder[method] = vi.fn(() => builder);
     }
     builder.maybeSingle = vi.fn(() => result);

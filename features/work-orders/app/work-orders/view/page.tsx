@@ -29,6 +29,8 @@ import {
   toggleWorkOrderSummaryFilter,
   type WorkOrderSummaryFilter,
 } from "@/features/work-orders/lib/workOrderListFilters";
+import { resolveCanonicalStaffProfile } from "@/features/shared/lib/authenticated-profile";
+import { canMutateWorkOrders } from "@/features/shared/lib/rbac";
 import { WORKSPACE_CAPABILITIES } from "@/features/workspace/authorization/capabilities";
 import { useWorkspaceCapabilities } from "@/features/workspace/authorization/useWorkspaceCapabilities";
 
@@ -70,7 +72,14 @@ type StatusKey =
   | "planned"
   | "completed"
   | "ready_to_invoice"
-  | "invoiced";
+  | "invoiced"
+  | "cancelled";
+
+// Archive is a visibility state (`work_orders.archived_at`), deliberately kept
+// separate from the canonical `cancelled` lifecycle status so an archived
+// in-progress work order stays in progress and a genuinely cancelled work
+// order is never relabelled as archived.
+const ARCHIVED_FILTER = "archived";
 
 type TechRollup = "awaiting" | "in_progress" | "on_hold" | "completed";
 
@@ -107,7 +116,8 @@ function isStatusKey(x: string): x is StatusKey {
     x === "planned" ||
     x === "completed" ||
     x === "ready_to_invoice" ||
-    x === "invoiced"
+    x === "invoiced" ||
+    x === "cancelled"
   );
 }
 
@@ -253,6 +263,10 @@ export default function WorkOrdersView(): JSX.Element {
   const canAssign = canWorkspace(
     WORKSPACE_CAPABILITIES.manageWorkOrderAssignments,
   );
+  // Mirror the server decision (`requireShopScopedApiAccess` with
+  // `canManageWorkOrders`) so the action is only offered to actors the archive
+  // endpoint will actually accept.
+  const [canArchive, setCanArchive] = useState(false);
 
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
@@ -292,6 +306,25 @@ export default function WorkOrdersView(): JSX.Element {
     [searchParams],
   );
 
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      const { data } = await supabase.auth.getUser();
+      const user = data.user;
+      if (!user) return;
+
+      const { profile } = await resolveCanonicalStaffProfile(supabase, user.id);
+      if (cancelled) return;
+
+      setCanArchive(canMutateWorkOrders(profile?.role ?? null));
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase]);
+
   const load = useCallback(async () => {
     setLoading(true);
     setErr(null);
@@ -307,13 +340,15 @@ export default function WorkOrdersView(): JSX.Element {
       .order("created_at", { ascending: false })
       .limit(100);
 
-    if (status === "") {
+    if (status === ARCHIVED_FILTER) {
+      query = query.not("archived_at", "is", null);
+    } else if (status === "") {
       const defaultStatuses = isSeededShop
         ? SEEDED_DEFAULT_STATUSES
         : ACTIVE_WORK_ORDER_STATUSES;
-      query = query.in("status", [...defaultStatuses]);
+      query = query.in("status", [...defaultStatuses]).is("archived_at", null);
     } else {
-      query = query.eq("status", status);
+      query = query.eq("status", status).is("archived_at", null);
     }
 
     let data: Row[] | null = null;
@@ -736,6 +771,76 @@ export default function WorkOrdersView(): JSX.Element {
     };
   }, [supabase, load]);
 
+  const handleArchive = useCallback(
+    async (id: string) => {
+      if (
+        !confirm(
+          "Archive this work order? It will be removed from active work-order lists and kept in the customer's service history. Invoices, payments, approvals, labor, parts, and inspections are preserved.",
+        )
+      ) {
+        return;
+      }
+
+      const prev = rows;
+      setRows((current) => current.filter((row) => row.id !== id));
+
+      let response: Response;
+      try {
+        response = await fetch(`/api/work-orders/${id}/archive`, {
+          method: "POST",
+        });
+      } catch {
+        // The row was removed optimistically, but an offline or dropped
+        // connection means the archive never reached the server. Restore it
+        // rather than leaving the list showing a state the database does not
+        // have.
+        setRows(prev);
+        toast.error(
+          "Could not reach the server. The work order was not archived.",
+        );
+        return;
+      }
+
+      const result = (await response.json().catch(() => null)) as {
+        error?: string;
+      } | null;
+
+      if (!response.ok) {
+        toast.error(result?.error ?? "Failed to archive the work order.");
+        setRows(prev);
+        return;
+      }
+
+      toast.success("Work order archived to customer history.");
+      setReviewByWo((current) => {
+        const next = { ...current };
+        delete next[id];
+        return next;
+      });
+      setTechRollupByWo((current) => {
+        const next = { ...current };
+        delete next[id];
+        return next;
+      });
+      setAssignedByWo((current) => {
+        const next = { ...current };
+        delete next[id];
+        return next;
+      });
+      setHasLinesByWo((current) => {
+        const next = { ...current };
+        delete next[id];
+        return next;
+      });
+      setOperationalStageByWo((current) => {
+        const next = { ...current };
+        delete next[id];
+        return next;
+      });
+    },
+    [rows],
+  );
+
   const handleDelete = useCallback(
     async (id: string) => {
       if (!confirm("Delete this work order? This cannot be undone.")) return;
@@ -753,7 +858,7 @@ export default function WorkOrdersView(): JSX.Element {
       if (!response.ok) {
         const rawError = result?.error ?? "Failed to delete the work order.";
         const message = rawError.includes("WORK_ORDER_DELETE_")
-          ? "This work order has financial, approval, labor, parts, or inspection history and cannot be deleted."
+          ? "This work order has financial, approval, labor, parts, or inspection history and cannot be deleted. Archive it instead."
           : rawError;
         toast.error(message);
         setRows(prev);
@@ -1004,6 +1109,8 @@ export default function WorkOrdersView(): JSX.Element {
               <option value="completed">Completed (review)</option>
               <option value="ready_to_invoice">Ready to invoice</option>
               <option value="invoiced">Invoiced</option>
+              <option value="cancelled">Cancelled</option>
+              <option value={ARCHIVED_FILTER}>Archived</option>
             </select>
 
             <button
@@ -1342,13 +1449,38 @@ export default function WorkOrdersView(): JSX.Element {
                         </button>
                       ) : null}
 
+                      {canArchive &&
+                      !row.archived_at &&
+                      canonicalStatus !== "cancelled" &&
+                      canonicalStatus !== "invoiced" ? (
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void handleArchive(row.id);
+                          }}
+                          className="ml-auto rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-700 transition hover:bg-amber-500/15 dark:text-amber-100"
+                          title="Remove from active work orders and keep it in customer history"
+                        >
+                          Archive
+                        </button>
+                      ) : null}
+
                       <button
                         type="button"
                         onClick={(event) => {
                           event.stopPropagation();
                           void handleDelete(row.id);
                         }}
-                        className="ml-auto rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-1.5 text-xs font-semibold text-red-700 transition hover:bg-red-500/15 dark:text-red-100"
+                        className={`${
+                          canArchive &&
+                          !row.archived_at &&
+                          canonicalStatus !== "cancelled" &&
+                          canonicalStatus !== "invoiced"
+                            ? ""
+                            : "ml-auto "
+                        }rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-1.5 text-xs font-semibold text-red-700 transition hover:bg-red-500/15 dark:text-red-100`}
+                        title="Delete empty work orders only"
                       >
                         Delete
                       </button>

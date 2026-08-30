@@ -16,6 +16,12 @@ type ViewName =
   | "v_work_order_board_cards_fleet"
   | "v_work_order_board_cards_portal";
 
+type WorkOrderVisibilityState = {
+  id: string;
+  payment_status: string | null;
+  archived_at?: string | null;
+};
+
 function viewForVariant(variant: WorkOrderBoardVariant): ViewName {
   if (variant === "fleet") return "v_work_order_board_cards_fleet";
   if (variant === "portal") return "v_work_order_board_cards_portal";
@@ -38,59 +44,142 @@ export function useWorkOrderBoard(
     setLoading(true);
     setError(null);
 
-    let query = supabase
-      .from(viewForVariant(variant))
-      .select("*")
-      .order("activity_at", { ascending: false });
+    const requestedLimit = opts?.limit ?? null;
 
-    if (variant === "fleet" && opts?.fleetId) {
-      query = query.eq("fleet_id", opts.fleetId);
-    }
+    const readBoardPage = async (
+      range: { from: number; to: number } | null,
+    ) => {
+      let query = supabase
+        .from(viewForVariant(variant))
+        .select("*")
+        .order("activity_at", { ascending: false });
 
-    if (opts?.limit) {
-      query = query.limit(opts.limit);
-    }
+      if (variant === "fleet" && opts?.fleetId) {
+        query = query.eq("fleet_id", opts.fleetId);
+      }
 
-    const { data, error: queryError } = await query;
-    if (queryError) {
-      setError(queryError.message);
-      setRows([]);
+      if (range) {
+        query = query.range(range.from, range.to);
+      } else if (requestedLimit) {
+        query = query.limit(requestedLimit);
+      }
+
+      const { data, error: queryError } = await query;
+      if (queryError) return { error: queryError.message, rows: [] };
+
+      return {
+        error: null,
+        rows: ((data ?? []) as WorkOrderBoardRow[]).map((row) => ({
+          ...row,
+          overall_stage: normalizeWorkOrderOperationalStage(row.overall_stage),
+        })),
+      };
+    };
+
+    // Shop cards are only visible once `work_orders` confirms they are neither
+    // paid nor archived, and that state does not live on the board view. A plain
+    // `.limit()` would therefore spend a compact 5/10-row budget on rows that are
+    // filtered out immediately afterwards, leaving the widget short or empty.
+    // Page through candidates instead, so the request stays bounded (never the
+    // Data API's 1000-row ceiling) while still filling the requested count.
+    const selectVisibleShopRows = async (candidates: WorkOrderBoardRow[]) => {
+      if (candidates.length === 0) return { error: null, rows: [] };
+
+      const stateResult = await supabase
+        .from("work_orders")
+        .select("id,payment_status,archived_at")
+        .in(
+          "id",
+          candidates.map((row) => row.work_order_id),
+        );
+
+      if (stateResult.error) return { error: stateResult.error.message, rows: [] };
+
+      const visibilityRows = (stateResult.data ??
+        []) as unknown as WorkOrderVisibilityState[];
+      const hiddenWorkOrderIds = new Set(
+        visibilityRows
+          .filter(
+            (workOrder) =>
+              workOrder.payment_status === "paid" || Boolean(workOrder.archived_at),
+          )
+          .map((workOrder) => workOrder.id),
+      );
+
+      return {
+        error: null,
+        rows: candidates.filter(
+          (row) => !hiddenWorkOrderIds.has(row.work_order_id),
+        ),
+      };
+    };
+
+    let activeBoardRows: WorkOrderBoardRow[] = [];
+
+    if (variant !== "shop") {
+      const page = await readBoardPage(null);
+      if (page.error) {
+        setError(page.error);
+        setRows([]);
+        setLoading(false);
+        return;
+      }
+      setRows(page.rows);
       setLoading(false);
       return;
     }
 
-    const boardRows = ((data ?? []) as WorkOrderBoardRow[]).map((row) => ({
-      ...row,
-      overall_stage: normalizeWorkOrderOperationalStage(row.overall_stage),
-    }));
+    if (!requestedLimit) {
+      const page = await readBoardPage(null);
+      if (page.error) {
+        setError(page.error);
+        setRows([]);
+        setLoading(false);
+        return;
+      }
+      const visible = await selectVisibleShopRows(page.rows);
+      if (visible.error) {
+        setError(visible.error);
+        setRows([]);
+        setLoading(false);
+        return;
+      }
+      activeBoardRows = visible.rows;
+    } else {
+      const pageSize = Math.min(Math.max(requestedLimit * 4, 40), 200);
+      const maxPages = 5;
+      const collected: WorkOrderBoardRow[] = [];
 
-    if (variant !== "shop" || boardRows.length === 0) {
-      setRows(boardRows);
-      setLoading(false);
-      return;
+      for (let page = 0; page < maxPages; page += 1) {
+        const from = page * pageSize;
+        const candidatePage = await readBoardPage({
+          from,
+          to: from + pageSize - 1,
+        });
+        if (candidatePage.error) {
+          setError(candidatePage.error);
+          setRows([]);
+          setLoading(false);
+          return;
+        }
+
+        const visible = await selectVisibleShopRows(candidatePage.rows);
+        if (visible.error) {
+          setError(visible.error);
+          setRows([]);
+          setLoading(false);
+          return;
+        }
+
+        collected.push(...visible.rows);
+
+        const exhausted = candidatePage.rows.length < pageSize;
+        if (collected.length >= requestedLimit || exhausted) break;
+      }
+
+      activeBoardRows = collected.slice(0, requestedLimit);
     }
 
-    const boardWorkOrderIds = boardRows.map((row) => row.work_order_id);
-    const workOrderStateResult = await supabase
-      .from("work_orders")
-      .select("id,payment_status")
-      .in("id", boardWorkOrderIds);
-
-    if (workOrderStateResult.error) {
-      setError(workOrderStateResult.error.message);
-      setRows([]);
-      setLoading(false);
-      return;
-    }
-
-    const paidWorkOrderIds = new Set(
-      (workOrderStateResult.data ?? [])
-        .filter((workOrder) => workOrder.payment_status === "paid")
-        .map((workOrder) => workOrder.id),
-    );
-    const activeBoardRows = boardRows.filter(
-      (row) => !paidWorkOrderIds.has(row.work_order_id),
-    );
     const workOrderIds = activeBoardRows.map((row) => row.work_order_id);
 
     if (workOrderIds.length === 0) {

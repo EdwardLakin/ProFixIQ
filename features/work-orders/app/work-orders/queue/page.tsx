@@ -136,7 +136,8 @@ export default function QueuePage() {
       setRole(profile.role ?? null);
       setShopId(profile.shop_id);
 
-      // 3) recent work orders (last 30 days, excluding awaiting_approval)
+      // 3) recent work orders (last 30 days, excluding awaiting_approval
+      //    and archived records, which stay in customer history only)
       const since = new Date();
       since.setDate(since.getDate() - 30);
 
@@ -145,6 +146,7 @@ export default function QueuePage() {
         .select("*")
         .eq("shop_id", profile.shop_id)
         .neq("status", "awaiting_approval")
+        .is("archived_at", null)
         .gte("created_at", since.toISOString())
         .order("created_at", { ascending: false });
 

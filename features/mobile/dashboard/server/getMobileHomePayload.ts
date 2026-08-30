@@ -70,6 +70,7 @@ export async function getMobileHomePayload(): Promise<MobileHomePayload> {
         .select("id", { count: "exact", head: true })
         .eq("shop_id", shopId)
         .eq("record_type", "work_order")
+        .is("archived_at", null)
         .in("status", [...ACTIVE_WORK_ORDER_STATUSES]),
       supabase
         .from("work_orders")
@@ -77,6 +78,7 @@ export async function getMobileHomePayload(): Promise<MobileHomePayload> {
         .eq("shop_id", shopId)
         .eq("record_type", "work_order")
         .eq("is_waiter", true)
+        .is("archived_at", null)
         .in("status", [...ACTIVE_WORK_ORDER_STATUSES]),
     ]);
 
