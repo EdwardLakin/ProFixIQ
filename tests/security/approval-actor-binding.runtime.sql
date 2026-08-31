@@ -773,11 +773,8 @@ declare
   v_status text;
   v_hold_reason text;
   v_updated_at timestamptz;
-  v_audit_action text;
-  v_audit_at timestamptz;
   v_parts_receipt_count integer;
   v_task_receipt_count integer;
-  v_activity_count integer;
   v_decline_result jsonb;
   v_observed_updated_at timestamptz;
   v_punch_denied boolean := false;
@@ -805,14 +802,6 @@ begin
   select status, hold_reason, updated_at into v_status, v_hold_reason, v_updated_at
   from public.work_order_lines
   where id = 'af250000-0000-4000-8000-000000000010';
-  select action, timestamp into v_audit_action, v_audit_at
-  from public.activity_logs
-  where target_table = 'work_order_line'
-    and target_id = 'af250000-0000-4000-8000-000000000010'
-    and context ->> 'operation_key' =
-      'ab250000-0000-4000-8000-000000000001:job-punch:approval-binding:parts-hold'
-  order by timestamp desc
-  limit 1;
   select count(*) into v_parts_receipt_count
   from public.workforce_operation_keys operation
   where operation.shop_id = 'ab250000-0000-4000-8000-000000000001'
@@ -828,12 +817,9 @@ begin
      or v_status is distinct from 'on_hold'
      or v_hold_reason is distinct from 'Awaiting parts quote'
      or v_updated_at < now() - interval '1 minute'
-     or v_audit_action is distinct from 'parts_quote_hold'
-     or v_audit_at < now() - interval '1 minute'
      or v_parts_receipt_count is distinct from 2 then
-    raise exception 'Atomic pre-labor parts hold failed: %, %, %, %, %, %, %',
-      v_result, v_status, v_hold_reason, v_updated_at, v_audit_action, v_audit_at,
-      v_parts_receipt_count;
+    raise exception 'Atomic pre-labor parts hold failed: %, %, %, %, %',
+      v_result, v_status, v_hold_reason, v_updated_at, v_parts_receipt_count;
   end if;
 
   -- A general line update can advance updated_at while an offline copy still
@@ -856,18 +842,12 @@ begin
   where operation.shop_id = 'ab250000-0000-4000-8000-000000000001'
     and operation.operation_name = 'pre_labor_parts_quote_hold'
     and operation.work_order_line_id = 'af250000-0000-4000-8000-000000000010';
-  select count(*) into v_activity_count
-  from public.activity_logs activity
-  where activity.action = 'parts_quote_hold'
-    and activity.target_table = 'work_order_line'
-    and activity.target_id = 'af250000-0000-4000-8000-000000000010';
 
   if (v_result ->> 'ok')::boolean is distinct from true
      or (v_result ->> 'idempotent')::boolean is distinct from true
-     or v_task_receipt_count is distinct from 2
-     or v_activity_count is distinct from 1 then
-    raise exception 'Canonical parts hold replay was not durably fenced: %, %, %',
-      v_result, v_task_receipt_count, v_activity_count;
+     or v_task_receipt_count is distinct from 2 then
+    raise exception 'Canonical parts hold replay was not durably fenced: %, %',
+      v_result, v_task_receipt_count;
   end if;
 
   v_decline_result := public.apply_staff_line_decision_atomic(
@@ -959,6 +939,42 @@ begin
   end if;
 end;
 $authorized_atomic_parts_hold$;
+
+-- activity_logs is internal audit evidence and is not readable through the
+-- authenticated client policy surface. Inspect it as the privileged runtime
+-- harness, then restore the authenticated owner before subsequent RPC checks.
+reset role;
+do $authorized_atomic_parts_hold_audit$
+declare
+  v_audit_action text;
+  v_audit_at timestamptz;
+  v_activity_count integer;
+begin
+  select action, timestamp into v_audit_action, v_audit_at
+  from public.activity_logs
+  where target_table = 'work_order_line'
+    and target_id = 'af250000-0000-4000-8000-000000000010'
+    and context ->> 'operation_key' =
+      'ab250000-0000-4000-8000-000000000001:job-punch:approval-binding:parts-hold'
+  order by timestamp desc
+  limit 1;
+
+  select count(*) into v_activity_count
+  from public.activity_logs activity
+  where activity.action = 'parts_quote_hold'
+    and activity.target_table = 'work_order_line'
+    and activity.target_id = 'af250000-0000-4000-8000-000000000010';
+
+  if v_audit_action is distinct from 'parts_quote_hold'
+     or v_audit_at is null
+     or v_audit_at < now() - interval '1 minute'
+     or v_activity_count is distinct from 1 then
+    raise exception 'Atomic pre-labor parts hold audit evidence failed: %, %, %',
+      v_audit_action, v_audit_at, v_activity_count;
+  end if;
+end;
+$authorized_atomic_parts_hold_audit$;
+set local role authenticated;
 
 do $legacy_punch_mirror_pre_labor_denials$
 declare
