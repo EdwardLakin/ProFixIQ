@@ -1,56 +1,20 @@
 // features/mobile/config/mobile-tiles.ts
 import type { CanonicalRole } from "@/features/shared/lib/rbac";
 
-export type MobileRole = Extract<
-  CanonicalRole,
-  | "owner"
-  | "admin"
-  | "manager"
-  | "advisor"
-  | "service"
-  | "mechanic"
-  | "lead_hand"
-  | "foreman"
-  | "parts"
-  | "driver"
-  | "dispatcher"
-  | "fleet_manager"
->;
+export type MobileRole = Extract<CanonicalRole, "owner" | "admin" | "manager" | "advisor" | "service" | "mechanic" | "lead_hand" | "foreman" | "parts" | "driver" | "dispatcher" | "fleet_manager">;
+export type MobileScope = "dashboard" | "home" | "jobs" | "inspect" | "messages" | "planner" | "settings" | "work_orders" | "appointments" | "inspections" | "fleet" | "all";
+export type MobileTile = { href: string; title: string; subtitle?: string; roles: MobileRole[]; scopes: MobileScope[] };
 
-export type MobileScope =
-  | "dashboard"
-  | "home"
-  | "jobs"
-  | "inspect"
-  | "messages"
-  | "planner"
-  | "settings"
-  | "work_orders"
-  | "appointments"
-  | "inspections"
-  | "fleet"
-  | "all";
-
-export type MobileTile = {
-  href: string;
-  title: string;
-  subtitle?: string;
-  roles: MobileRole[];
-  scopes: MobileScope[];
-};
-
-const ALL_MOBILE_ROLES: MobileRole[] = [
-  "owner", "admin", "manager", "advisor", "service", "mechanic", "lead_hand",
-  "foreman", "parts", "dispatcher", "fleet_manager", "driver",
-];
+const ALL_MOBILE_ROLES: MobileRole[] = ["owner", "admin", "manager", "advisor", "service", "mechanic", "lead_hand", "foreman", "parts", "dispatcher", "fleet_manager", "driver"];
+const SHOP_FIELD_OPERATOR_ROLES: MobileRole[] = ["owner", "admin", "manager", "advisor", "service", "mechanic", "lead_hand", "foreman", "parts"];
 
 export const MOBILE_TILES: MobileTile[] = [
   { href: "/mobile", title: "Shop Overview", subtitle: "Today at a glance", roles: ALL_MOBILE_ROLES, scopes: ["dashboard", "home", "all"] },
   { href: "/mobile/work-orders", title: "Work Order Board", subtitle: "Live work flow", roles: ["owner", "admin", "manager", "advisor", "service", "lead_hand", "foreman"], scopes: ["dashboard", "home", "jobs", "work_orders", "all"] },
   { href: "/mobile/work-orders", title: "My Work Orders", subtitle: "Work assigned to you", roles: ["mechanic"], scopes: ["home", "jobs", "work_orders", "all"] },
-  // Field is a separate product surface. Shop Mobile must not advertise Field-only
-  // inventory/follow-up workflows; eligible users enter Field through this single gate.
-  { href: "/mobile/service", title: "Field Service", subtitle: "Open the Field workspace", roles: ["owner", "admin", "mechanic", "lead_hand", "foreman"], scopes: ["home", "jobs", "work_orders", "all"] },
+  // This is only a candidate tile. MobileBottomNav additionally requires the
+  // server-verified canAccessFieldService response before it is rendered.
+  { href: "/mobile/service", title: "Field Service", subtitle: "Open the Field workspace", roles: SHOP_FIELD_OPERATOR_ROLES, scopes: ["home", "jobs", "work_orders", "all"] },
   { href: "/mobile/workforce/attendance", title: "Attendance & Activity", subtitle: "Live staff and job time", roles: ["owner", "admin", "manager"], scopes: ["dashboard", "home", "work_orders", "all"] },
   { href: "/mobile/dispatch", title: "Dispatch", subtitle: "Technicians, bays and blockers", roles: ["manager", "lead_hand", "foreman", "dispatcher"], scopes: ["dashboard", "home", "jobs", "work_orders", "all"] },
   { href: "/mobile/parts", title: "Parts", subtitle: "Requests, orders and receiving", roles: ["parts", "owner", "admin", "manager"], scopes: ["dashboard", "home", "jobs", "work_orders", "all"] },
