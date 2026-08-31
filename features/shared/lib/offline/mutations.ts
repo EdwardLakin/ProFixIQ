@@ -5,6 +5,7 @@ import {
   claimStoredMutationForReplay,
   clearOfflineDatabase,
   clearOfflineDatabasePreservingUnsyncedWork,
+  collectRequiredOfflineMutationIds,
   deleteStoredMutations,
   deleteSyncedStoredMutations,
   getOfflineBlob,
@@ -545,33 +546,66 @@ export function restoreOfflineMutation(raw: unknown): PendingMutation | null {
   };
 }
 
+function readLegacyOfflineMutations(): PendingMutation[] {
+  if (!browserReady()) return [];
+  const legacy: PendingMutation[] = [];
+  for (const key of LEGACY_KEYS) {
+    try {
+      const raw = JSON.parse(localStorage.getItem(key) ?? "[]") as unknown;
+      if (!Array.isArray(raw)) continue;
+      legacy.push(
+        ...raw
+          .map((item) => restoreOfflineMutation(item))
+          .filter((item): item is PendingMutation => Boolean(item)),
+      );
+    } catch {
+      // Malformed legacy rows are ignored, but the storage key is not removed
+      // until durable migration or an explicit unconditional clear succeeds.
+    }
+  }
+  return legacy;
+}
+
+function removeLegacyOfflineMutationKeys(): void {
+  if (!browserReady()) return;
+  for (const key of LEGACY_KEYS) localStorage.removeItem(key);
+}
+
 export function normalizeOfflineMutationQueue(
   queue: PendingMutation[],
 ): PendingMutation[] {
   const byId = new Map<string, PendingMutation>();
   for (const item of queue) byId.set(item.clientMutationId, item);
+  const deduped = [...byId.values()];
+  const requiredIds = collectRequiredOfflineMutationIds(deduped);
   const now = Date.now();
-  const retained = [...byId.values()].filter((item) => {
+  const retained = deduped.filter((item) => {
+    if (requiredIds.has(item.clientMutationId)) return true;
     if (item.status !== "synced") return true;
     return Boolean(
       item.syncedAt &&
       now - new Date(item.syncedAt).getTime() < TERMINAL_RETENTION_MS,
     );
   });
-  const synced = retained.filter((item) => item.status === "synced");
-  if (synced.length <= MAX_HISTORY) return retained;
-  const retainedSyncedIds = new Set(
-    synced
+  const syncedHistory = retained.filter(
+    (item) =>
+      item.status === "synced" && !requiredIds.has(item.clientMutationId),
+  );
+  if (syncedHistory.length <= MAX_HISTORY) return retained;
+  const retainedSyncedHistoryIds = new Set(
+    syncedHistory
       .sort(
         (a, b) =>
           new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
       )
-      .slice(synced.length - MAX_HISTORY)
+      .slice(syncedHistory.length - MAX_HISTORY)
       .map((item) => item.clientMutationId),
   );
   return retained.filter(
     (item) =>
-      item.status !== "synced" || retainedSyncedIds.has(item.clientMutationId),
+      item.status !== "synced" ||
+      requiredIds.has(item.clientMutationId) ||
+      retainedSyncedHistoryIds.has(item.clientMutationId),
   );
 }
 
@@ -666,23 +700,7 @@ export async function hydrateOfflineMutationQueue(): Promise<void> {
   if (hydrationPromise) return hydrationPromise;
   hydrationPromise = withOfflineStateLock(async (lock) => {
     const stored = restoreStoredQueue(await readStoredMutations());
-    const legacy: PendingMutation[] = [];
-    for (const key of LEGACY_KEYS) {
-      try {
-        const raw = JSON.parse(localStorage.getItem(key) ?? "[]") as unknown;
-        if (Array.isArray(raw)) {
-          legacy.push(
-            ...raw
-              .map((item) => restoreOfflineMutation(item))
-              .filter((item): item is PendingMutation => Boolean(item)),
-          );
-        }
-      } catch {
-        // Invalid legacy data is ignored and removed only after IndexedDB is
-        // confirmed writable, so a storage failure cannot erase recoverable
-        // legacy work.
-      }
-    }
+    const legacy = readLegacyOfflineMutations();
     const storedIds = new Set(stored.map((item) => item.clientMutationId));
     const legacyToPersist = normalizeOfflineMutationQueue(legacy).filter(
       (item) => !storedIds.has(item.clientMutationId),
@@ -701,7 +719,7 @@ export async function hydrateOfflineMutationQueue(): Promise<void> {
     );
     if (persisted) {
       await refreshQueueCacheFromStorage(lock);
-      for (const key of LEGACY_KEYS) localStorage.removeItem(key);
+      removeLegacyOfflineMutationKeys();
     }
     emitQueueUpdate();
   }).catch((error) => {
@@ -1113,6 +1131,18 @@ export async function dismissOfflineMutation(
   );
 }
 
+function removeDisposableSyncedFromQueueCache(
+  scope: OfflineMutationScope | null,
+): void {
+  const requiredIds = collectRequiredOfflineMutationIds(queueCache);
+  queueCache = queueCache.filter(
+    (item) =>
+      item.status !== "synced" ||
+      requiredIds.has(item.clientMutationId) ||
+      !scopeMatches(item, scope),
+  );
+}
+
 export async function clearSyncedOfflineMutations(): Promise<void> {
   await hydrateOfflineMutationQueue();
   await withOfflineStateLock(async (lock) => {
@@ -1128,14 +1158,10 @@ export async function clearSyncedOfflineMutations(): Promise<void> {
       try {
         await refreshQueueCacheFromStorage(lock);
       } catch {
-        queueCache = queueCache.filter(
-          (item) => item.status !== "synced" || !scopeMatches(item, scope),
-        );
+        removeDisposableSyncedFromQueueCache(scope);
       }
     } else {
-      queueCache = queueCache.filter(
-        (item) => item.status !== "synced" || !scopeMatches(item, scope),
-      );
+      removeDisposableSyncedFromQueueCache(scope);
     }
     updatePersistenceMarker(queueCache);
     emitQueueUpdate({ crossTab: true });
@@ -1655,8 +1681,7 @@ export async function runMutationWithOfflineQueue<T>(args: {
         }
         if (args.validateScope && !args.validateScope(scope)) {
           throw new Error(
-            "Authenticated user or shop changed before this update.",
-          );
+            "Authenticated user or shop changed before this update.");
         }
         assertQueueWriteEpoch(expectedEpoch, scope);
         await args.runner();
@@ -1694,11 +1719,34 @@ export async function clearOfflineState(
   queueCache = [];
   hydrationPromise = null;
   setOfflineMutationScope(null);
-  for (const key of LEGACY_KEYS) localStorage.removeItem(key);
 
   let retainUnsyncedWork = false;
   const clearDatabase = async (lock: OfflineDatabaseWriteLock) => {
     if (options.preserveUnsyncedWork === true) {
+      // Legacy queues must become durable before localStorage can be cleared.
+      // This closes the SIGNED_OUT-vs-hydration race and leaves recoverable
+      // legacy rows untouched when IndexedDB is unavailable.
+      const legacy = normalizeOfflineMutationQueue(readLegacyOfflineMutations());
+      if (legacy.length > 0) {
+        const stored = restoreStoredQueue(await readStoredMutations());
+        const storedIds = new Set(stored.map((item) => item.clientMutationId));
+        const legacyToPersist = legacy.filter(
+          (item) => !storedIds.has(item.clientMutationId),
+        );
+        const legacyPersisted = await insertStoredMutationsIfMissing(
+          legacyToPersist,
+          lock,
+        );
+        if (!legacyPersisted) {
+          if (legacy.some((item) => item.status !== "synced")) {
+            retainUnsyncedWork = true;
+            return;
+          }
+        } else {
+          removeLegacyOfflineMutationKeys();
+        }
+      }
+
       // The helper decides whether anything survives and performs the matching
       // cleanup in one IndexedDB transaction. There is no pre-count window for
       // a cross-tab draft writer to fall into when Web Locks are unavailable.
@@ -1710,6 +1758,7 @@ export async function clearOfflineState(
       return;
     }
     await clearOfflineDatabase(lock);
+    removeLegacyOfflineMutationKeys();
     localStorage.removeItem(PERSISTENCE_MARKER_KEY);
   };
   const lockManager = getOfflineReplayLockManager();

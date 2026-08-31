@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  collectRequiredOfflineMutationIds,
   isRetainableWriteBearingSnapshot,
   isWriteBearingSnapshotKind,
 } from "@/features/shared/lib/offline/database";
@@ -68,6 +69,34 @@ describe("offline sign-out draft retention contract", () => {
     ).toBe(false);
   });
 
+  it("retains the complete synced dependency closure of pending work", () => {
+    const retained = collectRequiredOfflineMutationIds([
+      {
+        clientMutationId: "grandparent",
+        status: "synced",
+      },
+      {
+        clientMutationId: "parent",
+        status: "synced",
+        dependsOn: ["grandparent"],
+      },
+      {
+        clientMutationId: "child",
+        status: "failed",
+        dependsOn: ["parent"],
+      },
+      {
+        clientMutationId: "unrelated-history",
+        status: "synced",
+      },
+    ]);
+
+    expect([...retained]).toEqual(
+      expect.arrayContaining(["child", "parent", "grandparent"]),
+    );
+    expect(retained.has("unrelated-history")).toBe(false);
+  });
+
   it("keeps the sign-out decision inside the preserving database transaction", () => {
     const mutationsSource = readFileSync(
       resolve(process.cwd(), "features/shared/lib/offline/mutations.ts"),
@@ -80,6 +109,13 @@ describe("offline sign-out draft retention contract", () => {
     expect(clearStateSource).not.toContain("countUnsyncedOfflineWork");
     expect(clearStateSource).toContain(
       "await clearOfflineDatabasePreservingUnsyncedWork(lock)",
+    );
+    expect(clearStateSource).toContain("readLegacyOfflineMutations()");
+    expect(clearStateSource).toContain("insertStoredMutationsIfMissing(");
+    expect(clearStateSource.indexOf("insertStoredMutationsIfMissing(")).toBeLessThan(
+      clearStateSource.indexOf(
+        "await clearOfflineDatabasePreservingUnsyncedWork(lock)",
+      ),
     );
 
     const databaseSource = readFileSync(
@@ -99,5 +135,6 @@ describe("offline sign-out draft retention contract", () => {
     );
     expect(preservingSource).toContain("retainedUnsyncedWork");
     expect(preservingSource).toContain("isRetainableWriteBearingSnapshot");
+    expect(preservingSource).toContain("collectRequiredOfflineMutationIds");
   });
 });
