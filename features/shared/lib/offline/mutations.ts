@@ -5,7 +5,6 @@ import {
   claimStoredMutationForReplay,
   clearOfflineDatabase,
   clearOfflineDatabasePreservingUnsyncedWork,
-  countUnsyncedOfflineWork,
   deleteStoredMutations,
   deleteSyncedStoredMutations,
   getOfflineBlob,
@@ -1688,11 +1687,8 @@ export async function clearOfflineState(
   options: { preserveUnsyncedWork?: boolean } = {},
 ): Promise<{ retainedUnsyncedWork: boolean }> {
   const formerScope = getOfflineMutationScope();
-  // Fence writers synchronously, before any await. A writer in another tab
-  // could otherwise enqueue after a durable count observed zero but before the
-  // epoch advanced, and the clear would then delete that newly committed work.
-  // Advancing first means such a writer is either already durable (and counted
-  // below) or invalidated by the new epoch.
+  // Fence queue writers synchronously, before any await. Draft writers are
+  // protected independently by the atomic IndexedDB cleanup below.
   advanceQueueWriteEpoch();
   storageRefreshAppliedGeneration = ++storageRefreshRequestGeneration;
   queueCache = [];
@@ -1700,19 +1696,20 @@ export async function clearOfflineState(
   setOfflineMutationScope(null);
   for (const key of LEGACY_KEYS) localStorage.removeItem(key);
 
-  // The durable decision and the clear both happen under the state lock below,
-  // so nothing can land between them.
   let retainUnsyncedWork = false;
   const clearDatabase = async (lock: OfflineDatabaseWriteLock) => {
-    retainUnsyncedWork =
-      options.preserveUnsyncedWork === true &&
-      (await countUnsyncedOfflineWork()) > 0;
-    if (retainUnsyncedWork) {
-      await clearOfflineDatabasePreservingUnsyncedWork(lock);
+    if (options.preserveUnsyncedWork === true) {
+      // The helper decides whether anything survives and performs the matching
+      // cleanup in one IndexedDB transaction. There is no pre-count window for
+      // a cross-tab draft writer to fall into when Web Locks are unavailable.
+      retainUnsyncedWork =
+        await clearOfflineDatabasePreservingUnsyncedWork(lock);
+      if (!retainUnsyncedWork) {
+        localStorage.removeItem(PERSISTENCE_MARKER_KEY);
+      }
       return;
     }
     await clearOfflineDatabase(lock);
-    // Only drop the discovery marker once nothing survived.
     localStorage.removeItem(PERSISTENCE_MARKER_KEY);
   };
   const lockManager = getOfflineReplayLockManager();
