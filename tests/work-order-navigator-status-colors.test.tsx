@@ -1,8 +1,10 @@
 import React from "react";
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { JobCard } from "@/features/work-orders/components/JobCard";
+
+afterEach(() => cleanup());
 
 function line(overrides: Record<string, unknown> = {}) {
   return {
@@ -42,12 +44,12 @@ function renderNavigator(workOrderLine: never) {
   );
   const article = view.container.querySelector("article");
   expect(article).not.toBeNull();
-  return article!;
+  return { article: article!, unmount: view.unmount };
 }
 
 describe("Work Order navigator status colors", () => {
   it("uses the operational hold state for the whole selected card, not the persisted approved status", () => {
-    const article = renderNavigator(
+    const { article } = renderNavigator(
       line({ status: "approved", hold_reason: "waiting for parts" }),
     );
 
@@ -60,10 +62,10 @@ describe("Work Order navigator status colors", () => {
 
   it("keeps waiting-parts and completed lines visually distinct", () => {
     const waiting = renderNavigator(line({ status: "waiting_parts" }));
-    expect(waiting.className).toContain("bg-indigo-50/80");
-    waiting.remove();
+    expect(waiting.article.className).toContain("bg-indigo-50/80");
+    waiting.unmount();
 
     const completed = renderNavigator(line({ status: "completed" }));
-    expect(completed.className).toContain("bg-emerald-50/70");
+    expect(completed.article.className).toContain("bg-emerald-50/70");
   });
 });
