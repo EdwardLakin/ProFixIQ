@@ -94,6 +94,11 @@ type StatusVisual = {
   muted: boolean;
 };
 
+type NavigatorVisual = {
+  surfaceClass: string;
+  chipClass: string;
+};
+
 const METALLIC_CARD_SURFACE = "bg-[var(--theme-gradient-panel)]";
 const btnLikeNavigatorAction =
   "inline-flex min-h-8 items-center justify-center rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-1.5 text-[10px] font-semibold text-[color:var(--theme-text-primary)] transition hover:bg-[color:var(--theme-surface-subtle)] disabled:cursor-not-allowed disabled:opacity-50";
@@ -229,35 +234,70 @@ function resolveStatusVisual(status: string | null | undefined): StatusVisual {
   };
 }
 
-function resolveNavigatorSurface(status: string | null | undefined): string {
-  const normalized = normalizeWorkOrderLineStatus(status);
+function navigatorKey(status: string | null | undefined): string {
+  return norm(status).replaceAll("-", "_").replaceAll(" ", "_");
+}
 
-  if (
-    normalized === "completed" ||
-    normalized === "ready_to_invoice" ||
-    normalized === "invoiced"
-  ) {
-    return "border-emerald-300/80 bg-emerald-50/70";
+function resolveNavigatorVisual(status: string | null | undefined): NavigatorVisual {
+  const key = navigatorKey(status);
+  const textClass = "text-[color:var(--theme-text-primary)]";
+
+  if (["completed", "ready_to_invoice", "invoiced"].includes(key)) {
+    return {
+      surfaceClass:
+        "border-emerald-400/55 bg-[color:color-mix(in_srgb,var(--theme-surface-inset)_88%,#10b981_12%)]",
+      chipClass: `border-emerald-400/55 bg-[color:color-mix(in_srgb,var(--theme-surface-inset)_82%,#10b981_18%)] ${textClass}`,
+    };
   }
-  if (normalized === "on_hold") {
-    return "border-amber-300/80 bg-amber-50/80";
+  if (key === "on_hold") {
+    return {
+      surfaceClass:
+        "border-amber-400/60 bg-[color:color-mix(in_srgb,var(--theme-surface-inset)_88%,#f59e0b_12%)]",
+      chipClass: `border-amber-400/60 bg-[color:color-mix(in_srgb,var(--theme-surface-inset)_82%,#f59e0b_18%)] ${textClass}`,
+    };
   }
-  if (normalized === "waiting_parts") {
-    return "border-indigo-300/80 bg-indigo-50/80";
+  if (key === "waiting_parts") {
+    return {
+      surfaceClass:
+        "border-indigo-400/55 bg-[color:color-mix(in_srgb,var(--theme-surface-inset)_88%,#6366f1_12%)]",
+      chipClass: `border-indigo-400/55 bg-[color:color-mix(in_srgb,var(--theme-surface-inset)_82%,#6366f1_18%)] ${textClass}`,
+    };
   }
-  if (normalized === "awaiting_approval") {
-    return "border-orange-300/80 bg-orange-50/80";
+  if (key === "awaiting_approval") {
+    return {
+      surfaceClass:
+        "border-orange-400/55 bg-[color:color-mix(in_srgb,var(--theme-surface-inset)_88%,#f97316_12%)]",
+      chipClass: `border-orange-400/55 bg-[color:color-mix(in_srgb,var(--theme-surface-inset)_82%,#f97316_18%)] ${textClass}`,
+    };
   }
-  if (normalized === "declined" || normalized === "deferred") {
-    return "border-red-300/80 bg-red-50/70";
+  if (key === "declined" || key === "deferred" || key === "blocked") {
+    return {
+      surfaceClass:
+        "border-red-400/55 bg-[color:color-mix(in_srgb,var(--theme-surface-inset)_88%,#ef4444_12%)]",
+      chipClass: `border-red-400/55 bg-[color:color-mix(in_srgb,var(--theme-surface-inset)_82%,#ef4444_18%)] ${textClass}`,
+    };
   }
-  if (normalized === "in_progress") {
-    return "border-cyan-300/80 bg-cyan-50/70";
+  if (key === "in_progress") {
+    return {
+      surfaceClass:
+        "border-cyan-400/55 bg-[color:color-mix(in_srgb,var(--theme-surface-inset)_88%,#06b6d4_12%)]",
+      chipClass: `border-cyan-400/55 bg-[color:color-mix(in_srgb,var(--theme-surface-inset)_82%,#06b6d4_18%)] ${textClass}`,
+    };
   }
-  if (normalized === "approved") {
-    return "border-sky-300/80 bg-sky-50/70";
+  if (key === "ready_to_start" || key === "ready") {
+    return {
+      surfaceClass:
+        "border-sky-400/55 bg-[color:color-mix(in_srgb,var(--theme-surface-inset)_88%,#0ea5e9_12%)]",
+      chipClass: `border-sky-400/55 bg-[color:color-mix(in_srgb,var(--theme-surface-inset)_82%,#0ea5e9_18%)] ${textClass}`,
+    };
   }
-  return "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]";
+
+  return {
+    surfaceClass:
+      "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]",
+    chipClass:
+      "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-primary)]",
+  };
 }
 
 function computeReviewFlags(args: {
@@ -400,8 +440,8 @@ export function JobCard({
       label: operationalStatusLabel,
     };
   }, [operationalStatusLabel]);
-  const navigatorSurface = useMemo(
-    () => resolveNavigatorSurface(operationalStatusLabel),
+  const navigatorVisual = useMemo(
+    () => resolveNavigatorVisual(operationalStatusLabel),
     [operationalStatusLabel],
   );
 
@@ -508,7 +548,7 @@ export function JobCard({
       <article
         className={cn(
           "mx-2 my-2 overflow-hidden rounded-2xl border shadow-[0_10px_28px_rgba(15,23,42,0.08)] transition",
-          navigatorSurface,
+          navigatorVisual.surfaceClass,
           "hover:-translate-y-px hover:shadow-[0_14px_32px_rgba(15,23,42,0.12)]",
           isSelected &&
             "ring-2 ring-[color:var(--brand-primary)]/35 ring-offset-1 ring-offset-[color:var(--theme-surface-page)]",
@@ -535,14 +575,14 @@ export function JobCard({
                   <span
                     className={cn(
                       "inline-flex rounded-md border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em]",
-                      statusVisual.chipClass,
+                      navigatorVisual.chipClass,
                     )}
                   >
                     {statusVisual.label}
                   </span>
                 ) : null}
                 {liveMarkerLabel ? (
-                  <span className="inline-flex rounded-md border border-cyan-300/50 bg-cyan-400/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-cyan-100">
+                  <span className="inline-flex rounded-md border border-cyan-300/50 bg-cyan-400/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-[color:var(--theme-text-primary)]">
                     {liveMarkerLabel}
                   </span>
                 ) : null}
