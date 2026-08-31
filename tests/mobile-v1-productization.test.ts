@@ -44,11 +44,13 @@ const followupUi = read("features/mobile/service/MobileServiceFollowup.tsx");
 const followupQueue = read(
   "features/mobile/service/MobileServiceFollowupQueue.tsx",
 );
+const fieldShell = read("features/mobile/service/FieldWorkspaceShell.tsx");
+const mobileNav = read("components/layout/MobileBottomNav.tsx");
 const access = read("features/mobile/service/server/access.ts");
 const tiles = read("features/mobile/config/mobile-tiles.ts");
 
 describe("Mobile V1 productization", () => {
-  it("keeps canonical roles intact while making explicit field operators schedulable and dispatchable", () => {
+  it("keeps canonical roles intact while making explicit field operators schedulable and discoverable through verified access", () => {
     expect(migration).toContain(
       "create table if not exists public.mobile_field_operators",
     );
@@ -67,8 +69,13 @@ describe("Mobile V1 productization", () => {
     );
     expect(setupUi).toContain("I perform field work");
     expect(setupUi).toContain("your owner/admin role does not change");
-    expect(tiles).toContain('roles: ["mechanic", "lead_hand", "foreman"]');
-    expect(tiles).toContain('roles: ["owner", "admin"]');
+    expect(tiles).toContain('href: "/mobile/service"');
+    expect(tiles).toContain("roles: ALL_MOBILE_ROLES");
+    expect(tiles.match(/href: "\/mobile\/service"/g)).toHaveLength(1);
+    expect(mobileNav).toContain("canAccessFieldService");
+    expect(mobileNav).toContain(
+      '!tile.href.startsWith("/mobile/service") || canAccessFieldService',
+    );
   });
 
   it("uses rapid intake without unsafe identity, locale, or service-mode inference", () => {
@@ -186,7 +193,7 @@ describe("Mobile V1 productization", () => {
     expect(access).toContain('.eq("assigned_user_id", access.profile.id)');
   });
 
-  it("keeps field recommendations assigned-scoped while service staff can action the canonical follow-up lifecycle", () => {
+  it("keeps field recommendations assigned-scoped while service staff can action the canonical follow-up lifecycle inside Field", () => {
     expect(migration).toContain(
       "create table if not exists public.mobile_service_followups",
     );
@@ -206,7 +213,9 @@ describe("Mobile V1 productization", () => {
     expect(followupQueue).toContain('updateStatus(item, "quoted")');
     expect(followupQueue).toContain('updateStatus(item, "dismissed")');
     expect(followupQueue).toContain("Opportunities captured in the field");
-    expect(tiles).toContain('href: "/mobile/service/followups"');
+    expect(fieldShell).toContain('label: "Follow-ups"');
+    expect(fieldShell).toContain('href: "/mobile/service/followups"');
+    expect(tiles).not.toContain('href: "/mobile/service/followups"');
   });
 
   it("ships every Mobile V1 route used by the field flow", () => {
