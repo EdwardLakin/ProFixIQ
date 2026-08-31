@@ -1135,7 +1135,6 @@ begin
   set assigned_tech_id = 'a1438000-0000-4000-8000-000000000004',
       assigned_to = null,
       approval_state = 'pending',
-      punchable = true,
       status = 'on_hold',
       hold_reason = 'Awaiting parts quote'
   where id = 'a1438000-0000-4000-8000-000000000210';
