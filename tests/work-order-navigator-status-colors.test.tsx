@@ -48,24 +48,44 @@ function renderNavigator(workOrderLine: never) {
 }
 
 describe("Work Order navigator status colors", () => {
-  it("uses the operational hold state for the whole selected card, not the persisted approved status", () => {
+  it("uses the operational hold state for the whole selected card with a theme-aware surface", () => {
     const { article } = renderNavigator(
       line({ status: "approved", hold_reason: "waiting for parts" }),
     );
 
     expect(screen.getByText("On hold")).toBeInTheDocument();
-    expect(article.className).toContain("border-amber-300/80");
-    expect(article.className).toContain("bg-amber-50/80");
+    expect(article.className).toContain("border-amber-400/60");
+    expect(article.className).toContain("color-mix");
+    expect(article.className).toContain("var(--theme-surface-inset)");
+    expect(article.className).toContain("#f59e0b");
     expect(article.className).toContain("ring-[color:var(--brand-primary)]/35");
-    expect(article.className).not.toContain("bg-[color:var(--theme-surface-subtle)]");
+    expect(article.className).not.toContain("bg-amber-50");
   });
 
-  it("keeps waiting-parts and completed lines visually distinct", () => {
+  it("keeps waiting-parts and completed lines visually distinct without fixed light surfaces", () => {
     const waiting = renderNavigator(line({ status: "waiting_parts" }));
-    expect(waiting.article.className).toContain("bg-indigo-50/80");
+    expect(waiting.article.className).toContain("#6366f1");
+    expect(waiting.article.className).not.toContain("bg-indigo-50");
     waiting.unmount();
 
     const completed = renderNavigator(line({ status: "completed" }));
-    expect(completed.article.className).toContain("bg-emerald-50/70");
+    expect(completed.article.className).toContain("#10b981");
+    expect(completed.article.className).not.toContain("bg-emerald-50");
+  });
+
+  it("distinguishes ready-to-start work from awaiting-technician work", () => {
+    const ready = renderNavigator(line({ status: "approved" }));
+    expect(screen.getByText("Ready to start")).toBeInTheDocument();
+    expect(ready.article.className).toContain("#0ea5e9");
+    const readyChip = screen.getByText("Ready to start");
+    expect(readyChip.className).toContain("text-[color:var(--theme-text-primary)]");
+    ready.unmount();
+
+    const unassigned = renderNavigator(
+      line({ status: "approved", assigned_tech_id: null }),
+    );
+    expect(screen.getByText("Awaiting technician")).toBeInTheDocument();
+    expect(unassigned.article.className).not.toContain("#0ea5e9");
+    expect(unassigned.article.className).toContain("var(--theme-surface-inset)");
   });
 });
