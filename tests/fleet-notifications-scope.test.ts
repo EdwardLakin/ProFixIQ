@@ -213,4 +213,32 @@ describe("Fleet alert feed scope", () => {
       level: "critical",
     });
   });
+
+  it("serves an actor whose manageable membership is not the first one", async () => {
+    // Eligibility must come from the memberships, not from a capability derived
+    // from whichever membership happens to be oldest.
+    state.actor = externalActor([
+      { fleetId: FLEET_B, role: "viewer" },
+      { fleetId: FLEET_A, role: "manager" },
+    ]);
+    state.actor.capabilities = { canSeeFleetWideUnits: false };
+
+    await POST(request());
+
+    const fleetFilter = state.filters.find(
+      (filter) => filter.column === "metadata->>fleet_id",
+    );
+    expect(fleetFilter?.value).toEqual([FLEET_A]);
+  });
+
+  it("still returns nothing for an actor who manages no fleet", async () => {
+    state.actor = externalActor([{ fleetId: FLEET_A, role: "viewer" }]);
+
+    const body = (await (await POST(request())).json()) as {
+      notifications: unknown[];
+    };
+
+    expect(body.notifications).toEqual([]);
+    expect(state.filters).toEqual([]);
+  });
 });

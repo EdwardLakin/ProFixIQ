@@ -82,13 +82,19 @@ export async function POST(req: Request) {
     return NextResponse.json({ notifications: [] });
   }
 
-  // Fleet alerts are manager/dispatch decisions. Drivers report defects; they
-  // do not review the fleet-wide queue. `canSeeFleetWideUnits` is derived from
-  // a single membership, so it decides only whether this actor reviews alerts
-  // anywhere — never which fleets they may review. That is resolved
-  // per-membership below, because one account can manage Fleet A while holding
-  // only driver access to Fleet B in the same shop.
-  if (!actor.capabilities.canSeeFleetWideUnits) {
+  // Fleet alerts are manager/dispatch decisions; drivers report defects rather
+  // than reviewing the queue. Eligibility for an external actor is derived from
+  // the memberships themselves, never from `canSeeFleetWideUnits`: that is
+  // resolved from a single membership, so an account whose oldest membership is
+  // a driver one would be denied the alerts it manages elsewhere, just as the
+  // reverse ordering would once have over-exposed them.
+  const manageableFleetIds = actor.isInternal
+    ? []
+    : manageableFleetIdsForActor(actor);
+  const eligible = actor.isInternal
+    ? actor.capabilities.canSeeFleetWideUnits
+    : manageableFleetIds.length > 0;
+  if (!eligible) {
     return NextResponse.json({ notifications: [] });
   }
 
@@ -112,7 +118,7 @@ export async function POST(req: Request) {
       ? canManageFleetForActor(actor, requestedFleetId)
         ? [requestedFleetId]
         : []
-      : manageableFleetIdsForActor(actor);
+      : manageableFleetIds;
     if (allowedFleetIds.length === 0) {
       return NextResponse.json({ notifications: [] });
     }

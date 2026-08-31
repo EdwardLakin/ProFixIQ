@@ -24,6 +24,18 @@ const LEVEL_TONE = {
   info: "text-sky-300",
 } as const;
 
+/**
+ * Carry the notification's own fleet through navigation. The unrequested feed
+ * spans every fleet the actor manages, so a destination that falls back to the
+ * actor's primary fleet would open a queue that cannot contain the alert.
+ */
+function withFleetId(href: string, fleetId?: string): string {
+  if (!fleetId) return href;
+  const [path, hash] = href.split("#");
+  const separator = path.includes("?") ? "&" : "?";
+  return `${path}${separator}fleetId=${encodeURIComponent(fleetId)}${hash ? `#${hash}` : ""}`;
+}
+
 function relativeTime(value: string): string {
   const then = new Date(value).getTime();
   if (Number.isNaN(then)) return "";
@@ -42,6 +54,7 @@ export default function FleetNotificationsBell({
   const [items, setItems] = useState<FleetNotification[]>([]);
   const [open, setOpen] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [failed, setFailed] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   const load = useCallback(async () => {
@@ -52,13 +65,19 @@ export default function FleetNotificationsBell({
         body: JSON.stringify({ fleetId: fleetId ?? null }),
         cache: "no-store",
       });
-      if (!response.ok) return;
+      if (!response.ok) {
+        setFailed(true);
+        return;
+      }
       const body = (await response.json()) as {
         notifications?: FleetNotification[];
       };
       setItems(body.notifications ?? []);
+      setFailed(false);
     } catch {
-      // A transient alert-feed failure must never break the Fleet shell.
+      // A transient alert-feed failure must never break the Fleet shell, but it
+      // must never be mistaken for an absence of alerts either.
+      setFailed(true);
     } finally {
       setLoaded(true);
     }
@@ -91,19 +110,28 @@ export default function FleetNotificationsBell({
     [items],
   );
 
-  if (loaded && items.length === 0) return null;
+  // Only a successful, empty load may hide the bell. A failed load keeps it
+  // visible, because "monitoring is unavailable" and "nothing is wrong" are not
+  // the same message to a fleet manager.
+  if (loaded && !failed && items.length === 0) return null;
 
   return (
     <div ref={containerRef} className="relative">
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        aria-label={`Fleet alerts (${items.length})`}
+        aria-label={
+          failed ? "Fleet alerts unavailable" : `Fleet alerts (${items.length})`
+        }
         aria-expanded={open}
         className="relative inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]"
       >
         <Bell className="h-4 w-4" aria-hidden="true" />
-        {items.length > 0 ? (
+        {failed ? (
+          <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-slate-400 px-1.5 py-0.5 text-[10px] font-bold text-slate-950">
+            !
+          </span>
+        ) : items.length > 0 ? (
           <span
             className={cn(
               "absolute -right-1 -top-1 min-w-5 rounded-full px-1.5 py-0.5 text-[10px] font-bold text-slate-950",
@@ -122,7 +150,9 @@ export default function FleetNotificationsBell({
               Fleet alerts
             </p>
             <p className="mt-0.5 text-xs text-[color:var(--theme-text-secondary)]">
-              Pre-trip defects and missed pre-trips needing review
+              {failed
+                ? "Alerts are unavailable right now. This is not a confirmation that nothing needs attention."
+                : "Pre-trip defects and missed pre-trips needing review"}
             </p>
           </div>
           <ul className="max-h-96 divide-y divide-[color:var(--theme-border-soft)] overflow-y-auto">
@@ -149,11 +179,12 @@ export default function FleetNotificationsBell({
                 <li key={item.id}>
                   {item.href ? (
                     <Link
-                      href={
+                      href={withFleetId(
                         item.href.startsWith("/fleet")
                           ? `${routePrefix}${item.href.slice("/fleet".length) || ""}`
-                          : item.href
-                      }
+                          : item.href,
+                        item.fleetId,
+                      )}
                       onClick={() => setOpen(false)}
                       className="block hover:bg-white/[0.03]"
                     >
