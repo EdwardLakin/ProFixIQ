@@ -122,11 +122,18 @@ export function MobileShell({ children, title }: Props) {
         const body = (await response.json().catch(() => null)) as {
           canAccessFieldService?: boolean;
           standaloneFieldWorkspace?: boolean;
+          canConfigure?: boolean;
         } | null;
         if (!active) return;
 
         const canAccessFieldService = Boolean(
           response.ok && body?.canAccessFieldService,
+        );
+        const standaloneSetupSurface = Boolean(
+          response.ok &&
+            pathname.startsWith("/mobile/service/setup") &&
+            body?.standaloneFieldWorkspace &&
+            body?.canConfigure,
         );
         const preserveStandaloneField = Boolean(
           canAccessFieldService && body?.standaloneFieldWorkspace,
@@ -145,7 +152,7 @@ export function MobileShell({ children, title }: Props) {
           // Session persistence is an optimization; verified route access is authoritative.
         }
 
-        setFieldSurface(canAccessFieldService);
+        setFieldSurface(canAccessFieldService || standaloneSetupSurface);
       })
       .catch(() => {
         if (active) setFieldSurface(false);
