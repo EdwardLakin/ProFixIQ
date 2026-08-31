@@ -600,7 +600,6 @@ do $imported_staff_adapter_identity_split$
 declare
   v_result jsonb;
   v_line_approver uuid;
-  v_receipt_actor uuid;
 begin
   v_result := public.apply_staff_line_decision_atomic(
     'ab250000-0000-4000-8000-000000000001',
@@ -614,20 +613,36 @@ begin
   select approval_by into v_line_approver
   from public.work_order_lines
   where id = 'af250000-0000-4000-8000-000000000009';
+  if (v_result ->> 'ok')::boolean is distinct from true
+     or v_line_approver is distinct from 'aa250000-0000-4000-8000-000000000005'::uuid then
+    raise exception 'Imported staff profile attribution was incorrect: %, %',
+      v_result, v_line_approver;
+  end if;
+end;
+$imported_staff_adapter_identity_split$;
+
+-- The established receipt RLS recognizes profiles.id = auth.uid(). This
+-- fixture intentionally splits profiles.id from profiles.user_id, so inspect
+-- the internal receipt as the privileged runtime harness without weakening
+-- that policy, then restore the authenticated caller for subsequent checks.
+reset role;
+do $imported_staff_adapter_receipt_identity$
+declare
+  v_receipt_actor uuid;
+begin
   select actor_user_id into v_receipt_actor
   from public.quote_lifecycle_operation_keys
   where shop_id = 'ab250000-0000-4000-8000-000000000001'
     and operation_name = 'approval_compatibility_bundle'
     and operation_key = 'approval-binding:staff-adapter:imported-identity';
 
-  if (v_result ->> 'ok')::boolean is distinct from true
-     or v_line_approver is distinct from 'aa250000-0000-4000-8000-000000000005'::uuid
-     or v_receipt_actor is distinct from 'aa250000-0000-4000-8000-000000000004'::uuid then
-    raise exception 'Imported staff auth/profile attribution was not split: %, %, %',
-      v_result, v_line_approver, v_receipt_actor;
+  if v_receipt_actor is distinct from 'aa250000-0000-4000-8000-000000000004'::uuid then
+    raise exception 'Imported staff receipt attribution was incorrect: %',
+      v_receipt_actor;
   end if;
 end;
-$imported_staff_adapter_identity_split$;
+$imported_staff_adapter_receipt_identity$;
+set local role authenticated;
 
 do $quarantined_staff_adapter_denial$
 declare
