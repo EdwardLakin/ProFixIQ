@@ -45,6 +45,32 @@ describe("canonical job-punch authorization boundary", () => {
     expect(migration).toContain("from public.work_order_line_labor_segments segment");
   });
 
+  it("matches assignment lock order with a bounded retry", () => {
+    const lineLock = migration.indexOf("select * into v_line");
+    const profileLock = migration.indexOf(
+      "select coalesce(profile.user_id, profile.id)",
+      lineLock,
+    );
+
+    expect(lineLock).toBeGreaterThan(-1);
+    expect(profileLock).toBeGreaterThan(lineLock);
+    expect(migration).toContain("for v_lock_attempt in 1..100 loop");
+    expect(migration).toContain("for update nowait");
+    expect(migration).toContain("when lock_not_available then");
+    expect(migration).toContain("JOB_PUNCH_BUSY");
+  });
+
+  it("keeps the revoked Technician CoPilot bridge on the private core", () => {
+    expect(migration).toContain("bind_private_technician_copilot_bridge");
+    expect(migration).toContain("v_call_count <> 4");
+    expect(migration).toContain(
+      "private.apply_job_punch_transition_atomic_core(",
+    );
+    expect(migration).toContain(
+      "Technician CoPilot job-action bridge did not bind to the private punch core.",
+    );
+  });
+
   it("preserves the public signature and authenticated grant", () => {
     expect(migration).toContain(
       "to authenticated, service_role",

@@ -53,9 +53,12 @@ declare
   v_profile_id uuid;
   v_auth_user_id uuid;
   v_role text;
+  v_locked_auth_user_id uuid;
+  v_locked_role text;
   v_line public.work_order_lines%rowtype;
   v_has_actor_segment boolean := false;
   v_has_any_segment boolean := false;
+  v_lock_attempt integer;
 begin
   if v_action not in ('start', 'resume', 'pause', 'finish') then
     raise exception using errcode = '22023', message = 'Unsupported job punch action.';
@@ -100,8 +103,7 @@ begin
     where profile.shop_id = p_shop_id
       and (profile.id = p_technician_id or profile.user_id = p_technician_id)
     order by case when profile.id = p_technician_id then 0 else 1 end
-    limit 1
-    for update;
+    limit 1;
 
     if not found
        or v_role is null
@@ -109,36 +111,121 @@ begin
          'owner', 'admin', 'manager', 'mechanic', 'lead_hand', 'foreman'
        )
        or p_actor_user_id not in (v_profile_id, v_auth_user_id)
-       or not public.scheduler_actor_matches(v_auth_user_id)
+       or (
+         coalesce(auth.role(), '') <> 'service_role'
+         and not public.scheduler_actor_matches(v_auth_user_id)
+       )
     then
       raise exception using
         errcode = '42501',
         message = 'JOB_PUNCH_FORBIDDEN: actor cannot perform assigned work.';
     end if;
 
-    select * into v_line
-    from public.work_order_lines line
-    where line.id = p_work_order_line_id
-      and line.shop_id = p_shop_id
-    for update;
-    if not found then
-      raise exception using errcode = 'P0001', message = 'Work-order line not found for shop.';
-    end if;
+    -- Assignment mutations lock line -> technician profile. Acquire the same
+    -- order inside a bounded NOWAIT subtransaction so compatibility callers
+    -- that still hold profile-first locks cannot deadlock this public guard.
+    for v_lock_attempt in 1..100 loop
+      begin
+        select * into v_line
+        from public.work_order_lines line
+        where line.id = p_work_order_line_id
+          and line.shop_id = p_shop_id
+        for update nowait;
+        if not found then
+          raise exception using errcode = 'P0001', message = 'Work-order line not found for shop.';
+        end if;
 
-    perform 1
-    from public.work_orders work_order
-    where work_order.id = v_line.work_order_id
-      and work_order.shop_id = p_shop_id
-    for update;
-    if not found then
-      raise exception using errcode = 'P0001', message = 'Parent work order not found for shop.';
-    end if;
+        select coalesce(profile.user_id, profile.id),
+               public.canonical_shop_membership_role(profile.role::text)
+          into v_locked_auth_user_id, v_locked_role
+        from public.profiles profile
+        where profile.id = v_profile_id
+          and profile.shop_id = p_shop_id
+        for update nowait;
+        if not found
+           or v_locked_auth_user_id is distinct from v_auth_user_id
+           or v_locked_role is null
+           or v_locked_role not in (
+             'owner', 'admin', 'manager', 'mechanic', 'lead_hand', 'foreman'
+           )
+           or p_actor_user_id not in (v_profile_id, v_locked_auth_user_id)
+           or (
+             coalesce(auth.role(), '') <> 'service_role'
+             and not public.scheduler_actor_matches(v_locked_auth_user_id)
+           )
+        then
+          raise exception using
+            errcode = '42501',
+            message = 'JOB_PUNCH_FORBIDDEN: actor capability changed before the punch.';
+        end if;
 
-    perform 1
-    from public.work_order_line_technicians assignment
-    where assignment.work_order_line_id = p_work_order_line_id
-    order by assignment.id
-    for update;
+        perform 1
+        from public.work_orders work_order
+        where work_order.id = v_line.work_order_id
+          and work_order.shop_id = p_shop_id
+        for update nowait;
+        if not found then
+          raise exception using errcode = 'P0001', message = 'Parent work order not found for shop.';
+        end if;
+
+        perform 1
+        from public.work_order_line_technicians assignment
+        where assignment.work_order_line_id = p_work_order_line_id
+        order by assignment.id
+        for update nowait;
+
+        perform 1
+        from public.work_order_line_labor_segments segment
+        where segment.shop_id = p_shop_id
+          and (
+            segment.work_order_line_id = p_work_order_line_id
+            or (
+              segment.technician_id = v_profile_id
+              and segment.ended_at is null
+            )
+          )
+        order by segment.id
+        for update nowait;
+
+        if v_action = 'finish' then
+          perform 1
+          from public.inspections inspection
+          where inspection.work_order_line_id = p_work_order_line_id
+            and inspection.is_canonical
+          order by inspection.id
+          for update nowait;
+        end if;
+
+        exit;
+      exception
+        when lock_not_available then
+          if v_lock_attempt = 100 then
+            raise exception using
+              errcode = '55P03',
+              message = 'JOB_PUNCH_BUSY: assignment state is changing; retry the punch.';
+          end if;
+      end;
+
+      perform pg_sleep(0.02);
+    end loop;
+
+    -- A matching request may have committed while this transaction backed
+    -- off. Preserve the canonical actor-bound replay before rechecking the
+    -- current assignment.
+    if exists (
+      select 1
+      from public.workforce_operation_keys operation
+      where operation.shop_id = p_shop_id
+        and operation.operation_name = 'job_punch:' || v_action
+        and operation.operation_key = p_operation_key
+    ) then
+      return private.apply_job_punch_transition_atomic_core(
+        p_shop_id, p_work_order_line_id, p_action, p_technician_id,
+        p_actor_user_id, p_operation_key, p_allow_concurrent, p_at,
+        p_start_source, p_hold_reason, p_notes, p_preserve_line_status,
+        p_release_to_awaiting, p_cause, p_correction, p_event, p_details
+      );
+    end if;
 
     if not (
       v_line.assigned_tech_id = v_profile_id
@@ -181,22 +268,6 @@ begin
         message = 'LINE_APPROVAL_PENDING: approval-pending work cannot be punched.';
     end if;
 
-    -- Match the canonical mutation's segment lock set before authorizing. This
-    -- makes assignment and active-segment evidence stable until the core
-    -- mutation commits.
-    perform 1
-    from public.work_order_line_labor_segments segment
-    where segment.shop_id = p_shop_id
-      and (
-        segment.work_order_line_id = p_work_order_line_id
-        or (
-          segment.technician_id = v_profile_id
-          and segment.ended_at is null
-        )
-      )
-    order by segment.id
-    for update;
-
     if v_action = 'finish' then
       select exists (
         select 1 from public.work_order_line_labor_segments segment
@@ -229,6 +300,49 @@ begin
   );
 end;
 $function$;
+
+-- Technician CoPilot's job-action bridge is already a private, revoked
+-- SECURITY DEFINER boundary. It binds the auth identity to the repair session,
+-- shop, assigned technician, line, action, and operation key before punching.
+-- Keep that trusted bridge on the preserved core so its split auth/profile
+-- identity support is not mistaken for an untrusted direct public RPC call.
+do $bind_private_technician_copilot_bridge$
+declare
+  v_definition text;
+  v_public_call constant text := 'public.apply_job_punch_transition_atomic(';
+  v_private_call constant text := 'private.apply_job_punch_transition_atomic_core(';
+  v_call_count integer;
+begin
+  select pg_get_functiondef(
+    'copilot.technician_job_action_internal(uuid,uuid,uuid,text,uuid,text,text,text,timestamptz)'::regprocedure
+  ) into v_definition;
+
+  v_call_count := (
+    length(v_definition) - length(replace(v_definition, v_public_call, ''))
+  ) / length(v_public_call);
+
+  if v_definition is null or v_call_count <> 4 then
+    raise exception using
+      errcode = '55000',
+      message = 'Unexpected Technician CoPilot job-action bridge definition.';
+  end if;
+
+  execute replace(v_definition, v_public_call, v_private_call);
+
+  select pg_get_functiondef(
+    'copilot.technician_job_action_internal(uuid,uuid,uuid,text,uuid,text,text,text,timestamptz)'::regprocedure
+  ) into v_definition;
+
+  if v_definition is null
+     or position(v_public_call in v_definition) <> 0
+     or position(v_private_call in v_definition) = 0
+  then
+    raise exception using
+      errcode = '55000',
+      message = 'Technician CoPilot job-action bridge did not bind to the private punch core.';
+  end if;
+end;
+$bind_private_technician_copilot_bridge$;
 
 revoke all on function public.apply_job_punch_transition_atomic(
   uuid, uuid, text, uuid, uuid, text, boolean, timestamptz, text,
