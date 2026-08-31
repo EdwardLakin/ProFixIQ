@@ -459,10 +459,13 @@ revoke all on function public.evaluate_fleet_pm_due_events(uuid, uuid) from publ
 grant execute on function public.evaluate_fleet_pm_due_events(uuid, uuid) to authenticated, service_role;
 
 -- Schedule the sweep beside the existing hourly pre-trip compliance job.
-create extension if not exists pg_cron with schema pg_catalog;
-
-grant usage on schema cron to postgres;
-grant all privileges on all tables in schema cron to postgres;
+--
+-- pg_cron and its schema grants are already established by
+-- 20260803041000_schedule_fleet_pretrip_compliance.sql and must not be
+-- re-issued here. Re-running `create extension if not exists pg_cron` once the
+-- extension carries a dependent job fails on Supabase with SQLSTATE 2BP01
+-- (dependent objects still exist), which rolls back this entire migration.
+-- Only the schedule itself belongs in this file.
 
 do $schedule$
 declare
