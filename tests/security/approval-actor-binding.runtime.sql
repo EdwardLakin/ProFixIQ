@@ -1425,12 +1425,12 @@ begin
       'decline',
       'approval-binding:staff-adapter:new-after-labor'
     );
-  exception when others then
-    v_denied := sqlstate = 'P0001'
-      and sqlerrm like 'STAFF_LINE_DECISION_INELIGIBLE:%labor%recorded%';
+  exception when sqlstate 'P0001' then
+    v_denied := sqlerrm =
+      'STAFF_LINE_DECISION_INELIGIBLE: line is no longer approval-pending.';
   end;
   if not v_denied then
-    raise exception 'Staff adapter accepted a new decision after labor began';
+    raise exception 'Staff adapter accepted a new decision after approval and labor';
   end if;
 
   v_denied := false;
@@ -1443,9 +1443,9 @@ begin
       'approve',
       'approval-binding:staff-adapter:ended-labor'
     );
-  exception when others then
-    v_denied := sqlstate = 'P0001'
-      and sqlerrm like 'STAFF_LINE_DECISION_INELIGIBLE:%labor%recorded%';
+  exception when sqlstate 'P0001' then
+    v_denied := sqlerrm =
+      'STAFF_LINE_DECISION_INELIGIBLE: technician labor has already been recorded for this line.';
   end;
   if not v_denied then
     raise exception 'Staff adapter accepted a decision after ended labor';
