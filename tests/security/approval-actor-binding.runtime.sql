@@ -1680,22 +1680,35 @@ begin
     raise exception 'Foreman quote-authorizer decline was not preserved';
   end if;
 
-  if (
-    select count(*)
+  if coalesce((
+    select array_agg(operation.operation_key order by operation.operation_key)
     from public.portal_lifecycle_operation_keys operation
     where operation.operation_name = 'portal_line_decision'
       and operation.operation_key like 'approval-binding:%'
-  ) <> 2 then
+  ), array[]::text[]) is distinct from array[
+    'approval-binding:portal:direct-parts-hold-decline',
+    'approval-binding:portal:parts-hold-decline',
+    'approval-binding:portal:parts-hold-defer',
+    'approval-binding:portal:victim'
+  ]::text[] then
     raise exception 'Portal approval denial changed durable receipt history';
   end if;
 
-  if (
-    select count(*)
+  if coalesce((
+    select array_agg(operation.operation_key order by operation.operation_key)
     from public.quote_lifecycle_operation_keys operation
     where operation.shop_id = 'ab250000-0000-4000-8000-000000000001'
       and operation.operation_name = 'approval_compatibility_bundle'
       and operation.operation_key like 'approval-binding:%'
-  ) <> 6 then
+  ), array[]::text[]) is distinct from array[
+    'approval-binding:bundle:imported-staff',
+    'approval-binding:bundle:victim',
+    'approval-binding:staff-adapter:foreman',
+    'approval-binding:staff-adapter:imported-identity',
+    'approval-binding:staff-adapter:parts-hold-decline',
+    'approval-binding:staff-adapter:replay',
+    'approval-binding:staff-adapter:service'
+  ]::text[] then
     raise exception 'Compatibility approval denial changed durable receipt history';
   end if;
 
