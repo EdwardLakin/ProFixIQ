@@ -124,10 +124,11 @@ function resolveStatusVisual(status: string | null | undefined): StatusVisual {
   if (normalized === "in_progress" || raw === "active") {
     return {
       label: null,
-      railClass: "bg-cyan-400/90",
-      chipClass: "border-cyan-300/60 bg-cyan-500/12 text-cyan-900",
-      borderClass: "border-cyan-400/45",
-      glowClass: "shadow-[0_0_20px_rgba(34,211,238,0.14)]",
+      railClass: "bg-[color:var(--theme-surface-subtle)]",
+      chipClass:
+        "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-primary)]",
+      borderClass: "border-[color:var(--theme-border-soft)]",
+      glowClass: "",
       muted: false,
     };
   }
@@ -139,9 +140,10 @@ function resolveStatusVisual(status: string | null | undefined): StatusVisual {
   ) {
     return {
       label: statusLabelFromKey(normalized),
-      railClass: "bg-emerald-400/90",
-      chipClass: "border-emerald-300/60 bg-emerald-500/10 text-emerald-900",
-      borderClass: "border-emerald-400/40",
+      railClass: "bg-[color:var(--theme-surface-subtle)]",
+      chipClass:
+        "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-primary)]",
+      borderClass: "border-[color:var(--theme-border-soft)]",
       glowClass: "",
       muted: true,
     };
@@ -151,7 +153,7 @@ function resolveStatusVisual(status: string | null | undefined): StatusVisual {
     return {
       label: "On Hold",
       railClass: "bg-amber-400/90",
-      chipClass: "border-amber-300/60 bg-amber-500/12 text-amber-900",
+      chipClass: "border-amber-300/60 bg-amber-500/12 text-amber-100",
       borderClass: "border-amber-400/45",
       glowClass: "shadow-[0_0_20px_rgba(251,191,36,0.18)]",
       muted: false,
@@ -162,7 +164,7 @@ function resolveStatusVisual(status: string | null | undefined): StatusVisual {
     return {
       label: "Waiting Parts",
       railClass: "bg-indigo-400/90",
-      chipClass: "border-indigo-300/60 bg-indigo-500/14 text-indigo-900",
+      chipClass: "border-indigo-300/60 bg-indigo-500/14 text-indigo-100",
       borderClass: "border-indigo-400/45",
       glowClass: "shadow-[0_0_20px_rgba(129,140,248,0.18)]",
       muted: false,
@@ -172,10 +174,10 @@ function resolveStatusVisual(status: string | null | undefined): StatusVisual {
   if (normalized === "awaiting_approval" || raw === "needs_approval") {
     return {
       label: "Awaiting Approval",
-      railClass: "bg-orange-400/90",
-      chipClass: "border-orange-300/60 bg-orange-500/12 text-orange-900",
-      borderClass: "border-orange-400/45",
-      glowClass: "shadow-[0_0_20px_rgba(249,115,22,0.16)]",
+      railClass: "bg-amber-500/90",
+      chipClass: "border-amber-300/60 bg-amber-500/14 text-amber-100",
+      borderClass: "border-amber-500/45",
+      glowClass: "shadow-[0_0_20px_rgba(245,158,11,0.2)]",
       muted: false,
     };
   }
@@ -194,7 +196,7 @@ function resolveStatusVisual(status: string | null | undefined): StatusVisual {
             ? "Declined"
             : "Blocked",
       railClass: "bg-red-400/90",
-      chipClass: "border-red-300/60 bg-red-500/12 text-red-900",
+      chipClass: "border-red-300/60 bg-red-500/12 text-red-100",
       borderClass: "border-red-400/45",
       glowClass: "shadow-[0_0_22px_rgba(248,113,113,0.2)]",
       muted: false,
@@ -205,7 +207,7 @@ function resolveStatusVisual(status: string | null | undefined): StatusVisual {
     return {
       label: normalized === "approved" ? "Ready" : statusLabelFromKey(raw),
       railClass: "bg-sky-400/90",
-      chipClass: "border-sky-300/60 bg-sky-500/12 text-sky-900",
+      chipClass: "border-sky-300/60 bg-sky-500/12 text-sky-100",
       borderClass: "border-sky-400/45",
       glowClass: "shadow-[0_0_20px_rgba(56,189,248,0.16)]",
       muted: false,
@@ -220,7 +222,7 @@ function resolveStatusVisual(status: string | null | undefined): StatusVisual {
           ? statusLabelFromKey(raw)
           : "Awaiting",
     railClass: "bg-sky-500/80",
-    chipClass: "border-sky-400/55 bg-sky-500/10 text-sky-900",
+    chipClass: "border-sky-400/55 bg-sky-500/10 text-sky-100",
     borderClass: "border-sky-500/40",
     glowClass: "",
     muted: false,
@@ -229,15 +231,32 @@ function resolveStatusVisual(status: string | null | undefined): StatusVisual {
 
 function resolveNavigatorSurface(status: string | null | undefined): string {
   const normalized = normalizeWorkOrderLineStatus(status);
-  if (normalized === "completed" || normalized === "ready_to_invoice" || normalized === "invoiced") {
+
+  if (
+    normalized === "completed" ||
+    normalized === "ready_to_invoice" ||
+    normalized === "invoiced"
+  ) {
     return "border-emerald-300/80 bg-emerald-50/70";
   }
-  if (normalized === "on_hold") return "border-amber-300/80 bg-amber-50/80";
-  if (normalized === "waiting_parts") return "border-indigo-300/80 bg-indigo-50/80";
-  if (normalized === "awaiting_approval") return "border-orange-300/80 bg-orange-50/80";
-  if (normalized === "declined" || normalized === "deferred") return "border-red-300/80 bg-red-50/70";
-  if (normalized === "in_progress") return "border-cyan-300/80 bg-cyan-50/70";
-  if (normalized === "approved") return "border-sky-300/80 bg-sky-50/70";
+  if (normalized === "on_hold") {
+    return "border-amber-300/80 bg-amber-50/80";
+  }
+  if (normalized === "waiting_parts") {
+    return "border-indigo-300/80 bg-indigo-50/80";
+  }
+  if (normalized === "awaiting_approval") {
+    return "border-orange-300/80 bg-orange-50/80";
+  }
+  if (normalized === "declined" || normalized === "deferred") {
+    return "border-red-300/80 bg-red-50/70";
+  }
+  if (normalized === "in_progress") {
+    return "border-cyan-300/80 bg-cyan-50/70";
+  }
+  if (normalized === "approved") {
+    return "border-sky-300/80 bg-sky-50/70";
+  }
   return "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]";
 }
 
@@ -309,9 +328,9 @@ function ReviewPill({
       className={cn(
         "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em]",
         tone === "ok"
-          ? "border-emerald-400/50 bg-emerald-400/10 text-emerald-900"
+          ? "border-emerald-400/50 bg-emerald-400/10 text-emerald-100"
           : tone === "warn"
-            ? "border-amber-400/55 bg-amber-400/10 text-amber-900"
+            ? "border-amber-400/55 bg-amber-400/10 text-amber-100"
             : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-primary)]",
       )}
     >
@@ -376,7 +395,10 @@ export function JobCard({
   );
   const statusVisual = useMemo(() => {
     const visual = resolveStatusVisual(operationalStatusLabel);
-    return { ...visual, label: operationalStatusLabel };
+    return {
+      ...visual,
+      label: operationalStatusLabel,
+    };
   }, [operationalStatusLabel]);
   const navigatorSurface = useMemo(
     () => resolveNavigatorSurface(operationalStatusLabel),
@@ -407,22 +429,33 @@ export function JobCard({
     const techId = line.assigned_tech_id;
     const profile = technicians.find((tech) => tech.id === techId) ?? null;
     if (techId && !profile) {
-      return primaryTechnicianDisplayName ?? "Unavailable technician (current)";
+      return (
+        primaryTechnicianDisplayName ?? "Unavailable technician (current)"
+      );
     }
     const primaryDisplay = resolvePrimaryTechDisplay(
       line,
       profile ? { ...profile, role: "tech" } : null,
     );
-    if (primaryDisplay === "Unassigned" && assignedTechnicianIds.length > 0) {
+    if (
+      primaryDisplay === "Unassigned" &&
+      assignedTechnicianIds.length > 0
+    ) {
       return `Primary not set · ${assignedTechnicianIds.length} assigned`;
     }
     return primaryDisplay;
-  }, [assignedTechnicianIds.length, line, primaryTechnicianDisplayName, technicians]);
+  }, [
+    assignedTechnicianIds.length,
+    line,
+    primaryTechnicianDisplayName,
+    technicians,
+  ]);
   const currentTechnicianOptionLabel = primaryTechnicianDisplayName
     ? `${primaryTechnicianDisplayName} (current)`
     : "Unavailable technician (current)";
   const assignedTechnicianIsSelectable = Boolean(
-    line.assigned_tech_id && technicians.some((technician) => technician.id === line.assigned_tech_id),
+    line.assigned_tech_id &&
+      technicians.some((technician) => technician.id === line.assigned_tech_id),
   );
 
   const effectivePartsCount = Math.max(
@@ -431,26 +464,40 @@ export function JobCard({
     Number(pricing?.partsTotal ?? 0) > 0 ? 1 : 0,
   );
 
-  const reviewFlags = computeReviewFlags({ line, partsCount: effectivePartsCount, reviewIssues });
+  const reviewFlags = computeReviewFlags({
+    line,
+    partsCount: effectivePartsCount,
+    reviewIssues,
+  });
+
   const createdLabel = line.created_at
     ? formatDistanceToNow(new Date(line.created_at), { addSuffix: true })
     : "—";
+
   const updatedLabel = line.updated_at
     ? formatDistanceToNow(new Date(line.updated_at), { addSuffix: true })
     : "—";
-  const lineTotal = pricing?.lineTotal ?? Number(pricing?.laborTotal ?? 0) + Number(pricing?.partsTotal ?? 0);
-  const isBlocked = norm(line.status) === "on_hold" || norm(line.status) === "blocked";
+
+  const lineTotal =
+    pricing?.lineTotal ??
+    Number(pricing?.laborTotal ?? 0) + Number(pricing?.partsTotal ?? 0);
+
+  const isBlocked =
+    norm(line.status) === "on_hold" || norm(line.status) === "blocked";
   const waitingApproval = norm(line.approval_state) === "pending";
+
   const showDeleteAction = canDelete === true && typeof onDelete === "function";
 
   const handleDeleteActionClick = (event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
     onDelete?.();
   };
+
   const handleAddPartClick = (event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
     onAddPart?.();
   };
+
   const handleRequestPartsClick = (event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
     onRequestParts?.();
@@ -463,7 +510,8 @@ export function JobCard({
           "mx-2 my-2 overflow-hidden rounded-2xl border shadow-[0_10px_28px_rgba(15,23,42,0.08)] transition",
           navigatorSurface,
           "hover:-translate-y-px hover:shadow-[0_14px_32px_rgba(15,23,42,0.12)]",
-          isSelected && "ring-2 ring-[color:var(--brand-primary)]/35 ring-offset-1 ring-offset-[color:var(--theme-surface-page)]",
+          isSelected &&
+            "ring-2 ring-[color:var(--brand-primary)]/35 ring-offset-1 ring-offset-[color:var(--theme-surface-page)]",
           statusVisual.muted && "opacity-75",
         )}
       >
@@ -484,12 +532,17 @@ export function JobCard({
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-1.5">
                 {statusVisual.label ? (
-                  <span className={cn("inline-flex rounded-md border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em]", statusVisual.chipClass)}>
+                  <span
+                    className={cn(
+                      "inline-flex rounded-md border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em]",
+                      statusVisual.chipClass,
+                    )}
+                  >
                     {statusVisual.label}
                   </span>
                 ) : null}
                 {liveMarkerLabel ? (
-                  <span className="inline-flex rounded-md border border-cyan-300/50 bg-cyan-400/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-cyan-900">
+                  <span className="inline-flex rounded-md border border-cyan-300/50 bg-cyan-400/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-cyan-100">
                     {liveMarkerLabel}
                   </span>
                 ) : null}
@@ -516,12 +569,18 @@ export function JobCard({
                   onChange={(event) => onAssign(event.target.value)}
                   className="h-8 w-full appearance-none truncate rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] py-1 pl-7 pr-3 text-[10px] font-semibold text-[color:var(--theme-text-primary)]"
                 >
-                  <option value="">Unassigned (clear all)</option>
+                  <option value="">
+                    Unassigned (clear all)
+                  </option>
                   {line.assigned_tech_id && !assignedTechnicianIsSelectable ? (
-                    <option value={line.assigned_tech_id}>{currentTechnicianOptionLabel}</option>
+                    <option value={line.assigned_tech_id}>
+                      {currentTechnicianOptionLabel}
+                    </option>
                   ) : null}
                   {technicians.map((tech) => (
-                    <option key={tech.id} value={tech.id}>{tech.full_name || "Unnamed tech"}</option>
+                    <option key={tech.id} value={tech.id}>
+                      {tech.full_name || "Unnamed tech"}
+                    </option>
                   ))}
                 </select>
               </label>
@@ -533,14 +592,31 @@ export function JobCard({
                 <ChevronDown className="h-3.5 w-3.5 transition group-open:rotate-180" aria-hidden="true" />
               </summary>
               <div className="mt-2 grid grid-cols-2 gap-1.5">
-                {onOpenInspection ? <button type="button" className={btnLikeNavigatorAction} onClick={onOpenInspection}>Inspection</button> : null}
-                {onAddPart ? <button type="button" className={btnLikeNavigatorAction} onClick={onAddPart}>Add part</button> : null}
+                {onOpenInspection ? (
+                  <button type="button" className={btnLikeNavigatorAction} onClick={onOpenInspection}>
+                    Inspection
+                  </button>
+                ) : null}
+                {onAddPart ? (
+                  <button type="button" className={btnLikeNavigatorAction} onClick={onAddPart}>
+                    Add part
+                  </button>
+                ) : null}
                 {onRequestParts ? (
-                  <button type="button" className={btnLikeNavigatorAction} onClick={onRequestParts} disabled={requestPartsBusy}>
+                  <button
+                    type="button"
+                    className={btnLikeNavigatorAction}
+                    onClick={onRequestParts}
+                    disabled={requestPartsBusy}
+                  >
                     {requestPartsBusy ? "Requesting…" : requestPartsLabel}
                   </button>
                 ) : null}
-                {showDeleteAction ? <button type="button" className={btnLikeNavigatorAction} onClick={onDelete}>Delete / Void</button> : null}
+                {showDeleteAction ? (
+                  <button type="button" className={btnLikeNavigatorAction} onClick={onDelete}>
+                    Delete / Void
+                  </button>
+                ) : null}
               </div>
             </details>
           </div>
@@ -573,87 +649,307 @@ export function JobCard({
             : statusVisual.borderClass,
           !isPunchedIn && statusVisual.glowClass,
           isPunchedIn && "[animation:pulse_3.2s_ease-in-out_infinite]",
-          statusVisual.muted && "border-[color:var(--theme-border-soft)] opacity-[0.74] saturate-[0.56] contrast-[0.9]",
+          statusVisual.muted &&
+            "border-[color:var(--theme-border-soft)] opacity-[0.74] saturate-[0.56] contrast-[0.9]",
           "hover:-translate-y-[1px] hover:border-[color:var(--theme-border-soft)]",
           "focus-within:border-[color:var(--theme-border-soft)]",
-          isSelected && !isPunchedIn && "border-[color:var(--theme-border-soft)] shadow-[0_0_0_1px_rgba(148,163,184,0.45)]",
-          isSelected && isPunchedIn && "shadow-[0_0_0_1px_rgba(226,232,240,0.38),0_0_28px_rgba(34,211,238,0.24)]",
+          isSelected &&
+            !isPunchedIn &&
+            "border-[color:var(--theme-border-soft)] shadow-[0_0_0_1px_rgba(148,163,184,0.45)]",
+          isSelected &&
+            isPunchedIn &&
+            "shadow-[0_0_0_1px_rgba(226,232,240,0.38),0_0_28px_rgba(34,211,238,0.24)]",
         )}
       >
-        <div className={cn("absolute inset-y-0 left-0", isPunchedIn ? "w-2 bg-cyan-300" : "w-1.5", !isPunchedIn && statusVisual.railClass, statusVisual.muted && "opacity-75")} />
+        <div
+          className={cn(
+            "absolute inset-y-0 left-0",
+            isPunchedIn ? "w-2 bg-cyan-300" : "w-1.5",
+            !isPunchedIn && statusVisual.railClass,
+            statusVisual.muted && "opacity-75",
+          )}
+        />
 
         <div className={cn("relative pl-5", compact ? "p-3" : "p-4")}>
           <div className={cn("flex flex-col", compact ? "gap-2" : "gap-3")}>
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0 space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 text-xs font-semibold text-[color:var(--theme-text-primary)]">{visibleLineNumber}</span>
-                  <h3 className={cn("truncate font-semibold text-[color:var(--theme-text-primary)]", compact ? "text-sm sm:text-[15px]" : "text-[15px] sm:text-base")}>{jobLabel}</h3>
+                  <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 text-xs font-semibold text-[color:var(--theme-text-primary)]">
+                    {visibleLineNumber}
+                  </span>
+                  <h3
+                    className={cn(
+                      "truncate font-semibold text-[color:var(--theme-text-primary)]",
+                      compact
+                        ? "text-sm sm:text-[15px]"
+                        : "text-[15px] sm:text-base",
+                    )}
+                  >
+                    {jobLabel}
+                  </h3>
                   {statusVisual.label ? (
-                    <span className={cn("inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em]", statusVisual.chipClass, statusVisual.muted && "text-[color:var(--theme-text-secondary)]")}>{statusVisual.label}</span>
+                    <span
+                      className={cn(
+                        "inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em]",
+                        statusVisual.chipClass,
+                        statusVisual.muted &&
+                          "text-[color:var(--theme-text-secondary)]",
+                      )}
+                    >
+                      {statusVisual.label}
+                    </span>
                   ) : null}
                   {liveMarkerLabel ? (
-                    <span className="inline-flex items-center rounded-full border border-cyan-200/70 bg-cyan-400/15 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-cyan-900 shadow-[0_0_18px_rgba(103,232,249,0.28)]" title="Active labor session">{liveMarkerLabel}</span>
+                    <span
+                      className="inline-flex items-center rounded-full border border-cyan-200/70 bg-cyan-400/15 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-cyan-50 shadow-[0_0_18px_rgba(103,232,249,0.28)]"
+                      title="Active labor session"
+                    >
+                      {liveMarkerLabel}
+                    </span>
                   ) : null}
                 </div>
-                <p className="text-xs uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">Created {createdLabel}</p>
+
+                <p className="text-xs uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
+                  Created {createdLabel}
+                </p>
               </div>
 
-              <div className={cn("flex max-w-full flex-wrap items-center justify-end", compact ? "gap-1" : "gap-1.5", statusVisual.muted && "opacity-80")}>
+              <div
+                className={cn(
+                  "flex max-w-full flex-wrap items-center justify-end",
+                  compact ? "gap-1" : "gap-1.5",
+                  statusVisual.muted && "opacity-80",
+                )}
+              >
                 {canAssign && onAssign ? (
-                  <label className="relative inline-flex items-center" onClick={(event) => event.stopPropagation()}>
+                  <label
+                    className="relative inline-flex items-center"
+                    onClick={(event) => event.stopPropagation()}
+                  >
                     <UserRound className="pointer-events-none absolute left-2 h-3.5 w-3.5 text-[color:var(--theme-text-muted)]" />
                     <span className="sr-only">Primary technician</span>
-                    <select aria-label="Primary technician" value={line.assigned_tech_id ?? ""} onChange={(event) => onAssign(event.target.value)} className="h-8 max-w-44 appearance-none truncate rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] py-1 pl-7 pr-3 text-[10px] font-semibold text-[color:var(--theme-text-primary)]">
-                      <option value="">Unassigned (clear all)</option>
-                      {line.assigned_tech_id && !assignedTechnicianIsSelectable ? <option value={line.assigned_tech_id}>{currentTechnicianOptionLabel}</option> : null}
-                      {technicians.map((tech) => <option key={tech.id} value={tech.id}>{tech.full_name || "Unnamed tech"}</option>)}
+                    <select
+                      aria-label="Primary technician"
+                      value={line.assigned_tech_id ?? ""}
+                      onChange={(event) => onAssign(event.target.value)}
+                      className="h-8 max-w-44 appearance-none truncate rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] py-1 pl-7 pr-3 text-[10px] font-semibold text-[color:var(--theme-text-primary)]"
+                    >
+                      <option value="">
+                        Unassigned (clear all)
+                      </option>
+                      {line.assigned_tech_id && !assignedTechnicianIsSelectable ? (
+                        <option value={line.assigned_tech_id}>
+                          {currentTechnicianOptionLabel}
+                        </option>
+                      ) : null}
+                      {technicians.map((tech) => (
+                        <option key={tech.id} value={tech.id}>
+                          {tech.full_name || "Unnamed tech"}
+                        </option>
+                      ))}
                     </select>
                   </label>
                 ) : (
-                  <span className="inline-flex max-w-44 items-center gap-1 truncate rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 py-1 text-[10px] font-semibold text-[color:var(--theme-text-primary)]"><UserRound className="h-3.5 w-3.5 shrink-0" />{assignedTech}</span>
+                  <span className="inline-flex max-w-44 items-center gap-1 truncate rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 py-1 text-[10px] font-semibold text-[color:var(--theme-text-primary)]">
+                    <UserRound className="h-3.5 w-3.5 shrink-0" />
+                    {assignedTech}
+                  </span>
                 )}
 
-                {onOpenInspection ? <Button type="button" variant="secondary" size="sm" onClick={onOpenInspection}>Inspection</Button> : null}
-                {onAddPart ? <Button type="button" variant="secondary" size="sm" onClick={handleAddPartClick}>Add Part</Button> : null}
-                {onRequestParts ? (
-                  <Button type="button" variant="secondary" size="sm" onClick={handleRequestPartsClick} disabled={requestPartsBusy} className="border-sky-400/45 bg-sky-500/10 text-sky-900 hover:bg-sky-500/20">
-                    <PackagePlus className="mr-1 h-4 w-4" />{requestPartsBusy ? "Requesting…" : requestPartsLabel}
+                {onOpenInspection ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={onOpenInspection}
+                  >
+                    Inspection
                   </Button>
                 ) : null}
-                {showDeleteAction ? <Button type="button" variant="secondary" size="sm" onClick={handleDeleteActionClick}>Delete / Void</Button> : null}
-                <Button type="button" variant="ghost" size="sm" onClick={() => setCollapsed((v) => !v)} className={cn("border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]", compact && "px-2")}>
-                  {collapsed ? <>Expand <ChevronDown className="ml-1 h-4 w-4" /></> : <>Collapse <ChevronUp className="ml-1 h-4 w-4" /></>}
+
+                {onAddPart ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleAddPartClick}
+                  >
+                    Add Part
+                  </Button>
+                ) : null}
+
+                {onRequestParts ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleRequestPartsClick}
+                    disabled={requestPartsBusy}
+                    className="border-sky-400/45 bg-sky-500/10 text-sky-100 hover:bg-sky-500/20"
+                  >
+                    <PackagePlus className="mr-1 h-4 w-4" />
+                    {requestPartsBusy ? "Requesting…" : requestPartsLabel}
+                  </Button>
+                ) : null}
+
+                {showDeleteAction ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleDeleteActionClick}
+                  >
+                    Delete / Void
+                  </Button>
+                ) : null}
+
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setCollapsed((v) => !v)}
+                  className={cn(
+                    "border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]",
+                    compact && "px-2",
+                  )}
+                >
+                  {collapsed ? (
+                    <>
+                      Expand <ChevronDown className="ml-1 h-4 w-4" />
+                    </>
+                  ) : (
+                    <>
+                      Collapse <ChevronUp className="ml-1 h-4 w-4" />
+                    </>
+                  )}
                 </Button>
               </div>
             </div>
 
-            <div className={cn("flex flex-wrap", compact ? "gap-1" : "gap-1.5", statusVisual.muted && "opacity-85")}>
-              {!hideExecutionStageCompletenessPills && reviewFlags.missingCause ? <ReviewPill tone="warn" label="Cause Missing" title="Cause completeness" /> : null}
-              {!hideExecutionStageCompletenessPills && reviewFlags.missingCorrection ? <ReviewPill tone="warn" label="Correction Missing" title="Correction completeness" /> : null}
-              {!hideExecutionStageCompletenessPills && reviewFlags.noParts ? <ReviewPill tone="warn" label="No Parts" title="Parts completeness" /> : null}
-              {isBlocked ? <ReviewPill tone="warn" label="Blocked" title="Line currently blocked or on hold" /> : null}
-              {waitingApproval ? <ReviewPill tone="info" label="Awaiting Approval" title="Waiting for approval decision" /> : null}
-              {reviewFlags.missingComplaint ? <ReviewPill tone="info" label="Complaint Missing" title="Complaint / description completeness" /> : null}
-              {reviewFlags.otherIssues > 0 ? <ReviewPill tone="info" label={`${reviewFlags.otherIssues} Other`} title="Additional review issues" /> : null}
-              {reviewOk ? <ReviewPill tone="ok" label="Review Ready" title="Review checks are clear" /> : null}
+            <div
+              className={cn(
+                "flex flex-wrap",
+                compact ? "gap-1" : "gap-1.5",
+                statusVisual.muted && "opacity-85",
+              )}
+            >
+              {!hideExecutionStageCompletenessPills &&
+              reviewFlags.missingCause ? (
+                <ReviewPill
+                  tone="warn"
+                  label="Cause Missing"
+                  title="Cause completeness"
+                />
+              ) : null}
+              {!hideExecutionStageCompletenessPills &&
+              reviewFlags.missingCorrection ? (
+                <ReviewPill
+                  tone="warn"
+                  label="Correction Missing"
+                  title="Correction completeness"
+                />
+              ) : null}
+              {!hideExecutionStageCompletenessPills && reviewFlags.noParts ? (
+                <ReviewPill
+                  tone="warn"
+                  label="No Parts"
+                  title="Parts completeness"
+                />
+              ) : null}
+              {isBlocked ? (
+                <ReviewPill
+                  tone="warn"
+                  label="Blocked"
+                  title="Line currently blocked or on hold"
+                />
+              ) : null}
+              {waitingApproval ? (
+                <ReviewPill
+                  tone="info"
+                  label="Awaiting Approval"
+                  title="Waiting for approval decision"
+                />
+              ) : null}
+              {reviewFlags.missingComplaint ? (
+                <ReviewPill
+                  tone="info"
+                  label="Complaint Missing"
+                  title="Complaint / description completeness"
+                />
+              ) : null}
+              {reviewFlags.otherIssues > 0 ? (
+                <ReviewPill
+                  tone="info"
+                  label={`${reviewFlags.otherIssues} Other`}
+                  title="Additional review issues"
+                />
+              ) : null}
+              {reviewOk ? (
+                <ReviewPill
+                  tone="ok"
+                  label="Review Ready"
+                  title="Review checks are clear"
+                />
+              ) : null}
             </div>
 
             {!collapsed ? (
               <>
                 <div className="grid gap-2.5 sm:grid-cols-3">
-                  <MetaTile label="Labor" value={formatLaborSummary(Number.isFinite(Number(pricing?.laborHours)) ? Number(pricing?.laborHours) : line.labor_time, Number(pricing?.laborTotal ?? 0))} />
-                  <MetaTile label="Parts" value={[formatPartsSummary({ partsCount: effectivePartsCount, partsTotal: Number(pricing?.partsTotal ?? 0) }), partsStatusLabel].filter(Boolean).join(" · ")} />
-                  <MetaTile label="Line Total" value={lineTotal > 0 ? formatCurrency(lineTotal) : "Estimate pending"} />
+                  <MetaTile
+                    label="Labor"
+                    value={formatLaborSummary(
+                      Number.isFinite(Number(pricing?.laborHours))
+                        ? Number(pricing?.laborHours)
+                        : line.labor_time,
+                      Number(pricing?.laborTotal ?? 0),
+                    )}
+                  />
+                  <MetaTile
+                    label="Parts"
+                    value={[
+                      formatPartsSummary({
+                        partsCount: effectivePartsCount,
+                        partsTotal: Number(pricing?.partsTotal ?? 0),
+                      }),
+                      partsStatusLabel,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  />
+                  <MetaTile
+                    label="Line Total"
+                    value={
+                      lineTotal > 0
+                        ? formatCurrency(lineTotal)
+                        : "Estimate pending"
+                    }
+                  />
                 </div>
-                {evidence.length > 0 ? <JobEvidenceStrip evidence={evidence} /> : null}
-                {line.complaint || line.cause || line.correction || line.hold_reason ? (
+
+                {evidence.length > 0 ? (
+                  <JobEvidenceStrip evidence={evidence} />
+                ) : null}
+
+                {line.complaint ||
+                line.cause ||
+                line.correction ||
+                line.hold_reason ? (
                   <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-xs text-[color:var(--theme-text-secondary)]">
-                    {line.complaint ? <div>Complaint: {line.complaint}</div> : null}
+                    {line.complaint ? (
+                      <div>Complaint: {line.complaint}</div>
+                    ) : null}
                     {line.cause ? <div>Cause: {line.cause}</div> : null}
-                    {line.correction ? <div>Correction: {line.correction}</div> : null}
-                    {line.hold_reason ? <div>Blocker: {line.hold_reason}</div> : null}
-                    <div className="mt-2 text-[11px] text-[color:var(--theme-text-muted)]">Updated {updatedLabel}</div>
+                    {line.correction ? (
+                      <div>Correction: {line.correction}</div>
+                    ) : null}
+                    {line.hold_reason ? (
+                      <div>Blocker: {line.hold_reason}</div>
+                    ) : null}
+                    <div className="mt-2 text-[11px] text-[color:var(--theme-text-muted)]">
+                      Updated {updatedLabel}
+                    </div>
                   </div>
                 ) : null}
               </>
