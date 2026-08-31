@@ -1033,6 +1033,7 @@ $technician_copilot_job_actions$;
 do $technician_copilot_split_identity_completion$
 declare
   v_session_id uuid;
+  v_parts_session_id uuid;
   v_line_updated_at timestamptz;
 begin
   v_session_id := (
@@ -1132,16 +1133,52 @@ begin
 
   update public.work_order_lines
   set assigned_tech_id = 'a1438000-0000-4000-8000-000000000004',
-      assigned_to = null
+      assigned_to = null,
+      approval_state = 'pending',
+      punchable = true,
+      status = 'on_hold',
+      hold_reason = 'Awaiting parts quote'
   where id = 'a1438000-0000-4000-8000-000000000210';
 
-  perform copilot.technician_session_start_internal(
-    'a1438000-0000-4000-8000-000000000003',
-    'a1438000-0000-4000-8000-000000000104',
-    'a1438000-0000-4000-8000-000000000210',
-    'shop',
-    'a1438000-0000-5000-a000-000000000424'
-  );
+  v_parts_session_id := (
+    copilot.technician_session_start_internal(
+      'a1438000-0000-4000-8000-000000000003',
+      'a1438000-0000-4000-8000-000000000104',
+      'a1438000-0000-4000-8000-000000000210',
+      'shop',
+      'a1438000-0000-5000-a000-000000000424'
+    ) ->> 'sessionId'
+  )::uuid;
+
+  begin
+    perform copilot.technician_job_action_internal(
+      'a1438000-0000-4000-8000-000000000003',
+      v_parts_session_id,
+      'a1438000-0000-4000-8000-000000000210',
+      'job.start',
+      'a1438000-0000-5000-a000-000000000426'
+    );
+    raise exception 'CoPilot parts-hold assertion failed: protected work started';
+  exception when sqlstate 'P0001' then
+    if position('PARTS_QUOTE_HOLD_PENDING' in sqlerrm) = 0 then
+      raise;
+    end if;
+  end;
+
+  if exists (
+    select 1
+    from public.work_order_line_labor_segments segment
+    where segment.work_order_line_id = 'a1438000-0000-4000-8000-000000000210'
+      and segment.ended_at is null
+  ) or not exists (
+    select 1
+    from public.work_order_lines line
+    where line.id = 'a1438000-0000-4000-8000-000000000210'
+      and lower(line.status::text) = 'on_hold'
+      and line.hold_reason = 'Awaiting parts quote'
+  ) then
+    raise exception 'CoPilot parts-hold assertion failed: rejected start changed labor state';
+  end if;
 
   update public.work_order_lines
   set assigned_tech_id = null,

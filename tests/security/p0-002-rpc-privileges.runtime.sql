@@ -113,9 +113,24 @@ begin
     'service_role',
     'private.apply_job_punch_transition_atomic_core(uuid,uuid,text,uuid,uuid,text,boolean,timestamptz,text,text,text,boolean,boolean,text,text,text,jsonb)',
     'EXECUTE'
+  )
+  or has_function_privilege(
+    'anon',
+    'private.apply_technician_copilot_job_punch_transition_atomic(uuid,uuid,text,uuid,uuid,text,boolean,timestamptz,text,text,text,boolean,boolean,text,text,text,jsonb)',
+    'EXECUTE'
+  )
+  or has_function_privilege(
+    'authenticated',
+    'private.apply_technician_copilot_job_punch_transition_atomic(uuid,uuid,text,uuid,uuid,text,boolean,timestamptz,text,text,text,boolean,boolean,text,text,text,jsonb)',
+    'EXECUTE'
+  )
+  or has_function_privilege(
+    'service_role',
+    'private.apply_technician_copilot_job_punch_transition_atomic(uuid,uuid,text,uuid,uuid,text,boolean,timestamptz,text,text,text,boolean,boolean,text,text,text,jsonb)',
+    'EXECUTE'
   ) then
     raise exception
-      'P0-002 runtime assertion failed: private job-punch core is exposed';
+      'P0-002 runtime assertion failed: private job-punch dependency is exposed';
   end if;
 end
 $$;

@@ -301,16 +301,96 @@ begin
 end;
 $function$;
 
+-- The revoked CoPilot bridge performs its own session, tenant, technician-role,
+-- assignment, action, and operation-key checks. Preserve that split-identity
+-- path while retaining the public boundary's approval and parts-hold fences.
+create function private.apply_technician_copilot_job_punch_transition_atomic(
+  p_shop_id uuid,
+  p_work_order_line_id uuid,
+  p_action text,
+  p_technician_id uuid,
+  p_actor_user_id uuid,
+  p_operation_key text,
+  p_allow_concurrent boolean default false,
+  p_at timestamptz default now(),
+  p_start_source text default null,
+  p_hold_reason text default null,
+  p_notes text default null,
+  p_preserve_line_status boolean default false,
+  p_release_to_awaiting boolean default false,
+  p_cause text default null,
+  p_correction text default null,
+  p_event text default null,
+  p_details jsonb default '{}'::jsonb
+) returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_action text := lower(trim(coalesce(p_action, '')));
+  v_protected_labor_action boolean;
+  v_line public.work_order_lines%rowtype;
+begin
+  v_protected_labor_action :=
+    v_action = 'finish'
+    or (
+      v_action in ('start', 'resume')
+      and p_release_to_awaiting is not true
+    );
+
+  if v_protected_labor_action then
+    select * into v_line
+    from public.work_order_lines line
+    where line.id = p_work_order_line_id
+      and line.shop_id = p_shop_id
+    for update;
+    if not found then
+      raise exception using errcode = 'P0001', message = 'Work-order line not found for shop.';
+    end if;
+
+    if lower(coalesce(v_line.approval_state::text, '')) = 'pending'
+       and lower(coalesce(v_line.status::text, '')) = 'on_hold'
+       and lower(trim(coalesce(v_line.hold_reason, ''))) = 'awaiting parts quote'
+    then
+      raise exception using
+        errcode = 'P0001',
+        message = 'PARTS_QUOTE_HOLD_PENDING: approval-pending parts work cannot be punched.';
+    end if;
+
+    if lower(coalesce(v_line.approval_state::text, '')) = 'pending'
+       and not coalesce(v_line.punchable, false)
+    then
+      raise exception using
+        errcode = 'P0001',
+        message = 'LINE_APPROVAL_PENDING: approval-pending work cannot be punched.';
+    end if;
+  end if;
+
+  return private.apply_job_punch_transition_atomic_core(
+    p_shop_id, p_work_order_line_id, p_action, p_technician_id,
+    p_actor_user_id, p_operation_key, p_allow_concurrent, p_at,
+    p_start_source, p_hold_reason, p_notes, p_preserve_line_status,
+    p_release_to_awaiting, p_cause, p_correction, p_event, p_details
+  );
+end;
+$function$;
+
+revoke all on function private.apply_technician_copilot_job_punch_transition_atomic(
+  uuid, uuid, text, uuid, uuid, text, boolean, timestamptz, text,
+  text, text, boolean, boolean, text, text, text, jsonb
+) from public, anon, authenticated, service_role;
+
 -- Technician CoPilot's job-action bridge is already a private, revoked
 -- SECURITY DEFINER boundary. It binds the auth identity to the repair session,
 -- shop, assigned technician, line, action, and operation key before punching.
--- Keep that trusted bridge on the preserved core so its split auth/profile
--- identity support is not mistaken for an untrusted direct public RPC call.
+-- Keep that trusted bridge on the protected private adapter so split
+-- auth/profile identity works without bypassing approval or parts holds.
 do $bind_private_technician_copilot_bridge$
 declare
   v_definition text;
   v_public_call constant text := 'public.apply_job_punch_transition_atomic(';
-  v_private_call constant text := 'private.apply_job_punch_transition_atomic_core(';
+  v_private_call constant text := 'private.apply_technician_copilot_job_punch_transition_atomic(';
   v_call_count integer;
 begin
   select pg_get_functiondef(
@@ -339,7 +419,7 @@ begin
   then
     raise exception using
       errcode = '55000',
-      message = 'Technician CoPilot job-action bridge did not bind to the private punch core.';
+      message = 'Technician CoPilot job-action bridge did not bind to the protected private punch adapter.';
   end if;
 end;
 $bind_private_technician_copilot_bridge$;

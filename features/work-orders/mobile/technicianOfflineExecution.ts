@@ -115,9 +115,14 @@ export function projectTechnicianWorkOrderSnapshot(
   snapshot: MobileWorkOrderSnapshot,
   mutations: PendingMutation[],
 ): MobileWorkOrderSnapshot {
+  const projectableMutations = mutations.filter(
+    (mutation) => mutation.status !== "conflicted",
+  );
   return {
     ...snapshot,
-    lines: snapshot.lines.map((line) => mutations.reduce(projectLine, line)),
+    lines: snapshot.lines.map((line) =>
+      projectableMutations.reduce(projectLine, line),
+    ),
   };
 }
 

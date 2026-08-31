@@ -60,14 +60,16 @@ describe("canonical job-punch authorization boundary", () => {
     expect(migration).toContain("JOB_PUNCH_BUSY");
   });
 
-  it("keeps the revoked Technician CoPilot bridge on the private core", () => {
+  it("keeps the revoked Technician CoPilot bridge on the protected private adapter", () => {
     expect(migration).toContain("bind_private_technician_copilot_bridge");
     expect(migration).toContain("v_call_count <> 4");
     expect(migration).toContain(
-      "private.apply_job_punch_transition_atomic_core(",
+      "private.apply_technician_copilot_job_punch_transition_atomic(",
     );
+    expect(migration).toContain("PARTS_QUOTE_HOLD_PENDING");
+    expect(migration).toContain("LINE_APPROVAL_PENDING");
     expect(migration).toContain(
-      "Technician CoPilot job-action bridge did not bind to the private punch core.",
+      "Technician CoPilot job-action bridge did not bind to the protected private punch adapter.",
     );
   });
 
@@ -78,6 +80,9 @@ describe("canonical job-punch authorization boundary", () => {
     expect(migration).toContain("p_release_to_awaiting boolean default false");
     expect(migration).toContain("p_details jsonb default '{}'::jsonb");
     expect(privilegeRuntime).toContain("canonical job-punch RPC ACL is wrong");
-    expect(privilegeRuntime).toContain("private job-punch core is exposed");
+    expect(privilegeRuntime).toContain("private job-punch dependency is exposed");
+    expect(privilegeRuntime).toContain(
+      "private.apply_technician_copilot_job_punch_transition_atomic",
+    );
   });
 });

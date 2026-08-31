@@ -146,6 +146,54 @@ describe("technician offline execution", () => {
     });
   });
 
+  it("does not re-project a permanently conflicted Hold over newer server state", () => {
+    const snapshot = {
+      workOrder: { id: "wo-1" },
+      lines: [
+        {
+          id: "line-1",
+          status: "deferred",
+          hold_reason: null,
+          punched_in_at: null,
+          punched_out_at: null,
+        },
+      ],
+      quoteLines: [],
+      vehicle: null,
+      customer: null,
+      techNamesById: {},
+    } as never;
+
+    const projected = projectTechnicianWorkOrderSnapshot(snapshot, [
+      {
+        clientMutationId: "conflicted-parts-hold",
+        actionType: "job:punch-transition",
+        createdAt: "2026-08-30T10:00:00.000Z",
+        retryCount: 1,
+        userId: "tech-1",
+        shopId: "shop-1",
+        status: "conflicted",
+        conflictReason: "The line changed on another device.",
+        payload: {
+          lineId: "line-1",
+          action: "pause",
+          occurredAt: "2026-08-30T10:00:00.000Z",
+          body: {
+            transitionIntent: "parts_quote_hold",
+            holdReason: "Awaiting parts quote",
+          },
+        },
+      },
+    ] as never);
+
+    expect(projected.lines[0]).toMatchObject({
+      status: "deferred",
+      hold_reason: null,
+      punched_in_at: null,
+      punched_out_at: null,
+    });
+  });
+
   it("warms and caches work-order and focused-job navigation shells", () => {
     const worker = read("app/sw.ts");
     const download = read(
