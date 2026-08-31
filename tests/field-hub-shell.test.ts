@@ -29,6 +29,17 @@ describe("Field Hub workspace", () => {
     expect(fieldShell).toContain("Switch workspace");
   });
 
+  it("keeps setup-required standalone Field owners inside the Field shell", () => {
+    expect(mobileShell).toContain(
+      'pathname.startsWith("/mobile/service/setup")',
+    );
+    expect(mobileShell).toContain("body?.standaloneFieldWorkspace");
+    expect(mobileShell).toContain("body?.canConfigure");
+    expect(mobileShell).toContain(
+      "setFieldSurface(canAccessFieldService || standaloneSetupSurface)",
+    );
+  });
+
   it("links the Hub to canonical mobile operations instead of duplicating their data flows", () => {
     for (const href of [
       "/mobile/appointments",
