@@ -132,7 +132,7 @@ export async function stopTechnicianJobLabor(params: {
   endedAtIso?: string;
   expectedLineUpdatedAt?: string;
   reason?: string;
-  transitionIntent?: "parts_quote_hold" | "work_order_hold";
+  transitionIntent?: "parts_quote_hold";
   preserveLineStatus?: boolean;
   event?: string;
   details?: Json;
@@ -154,9 +154,9 @@ export async function stopTechnicianJobLabor(params: {
     technicianId: params.technicianId,
     options: {
       operationKey,
-      enforceAssignedWork:
-        params.transitionIntent !== "parts_quote_hold" &&
-        params.transitionIntent !== "work_order_hold",
+      // Preserve the established shared Hold behavior. Assignment is enforced
+      // when labor starts; Hold itself remains on the canonical punch contract.
+      enforceAssignedWork: false,
       nowIso: params.endedAtIso,
       pause: {
         holdReason: params.reason,

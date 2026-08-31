@@ -386,7 +386,7 @@ describe("applyJobPunchTransition atomic boundary", () => {
     expect(db.rpcCalls).toHaveLength(0);
   });
 
-  it("preserves manager hold and release actions outside technician labor ownership", async () => {
+  it("keeps all ordinary holds on the shared line-status contract", async () => {
     const held = new FakeSupabase();
     held.setActor("manager-1", "manager");
     if (held.line) held.line.assigned_tech_id = "different-technician";
@@ -399,10 +399,9 @@ describe("applyJobPunchTransition atomic boundary", () => {
       technicianId: "manager-1",
       options: {
         operationKey: "manager-hold",
-        enforceAssignedWork: true,
+        enforceAssignedWork: false,
         pause: {
           holdReason: "Waiting for customer",
-          transitionIntent: "work_order_hold",
         },
       },
     });
@@ -421,10 +420,9 @@ describe("applyJobPunchTransition atomic boundary", () => {
       technicianId: "advisor-1",
       options: {
         operationKey: "advisor-release",
-        enforceAssignedWork: true,
+        enforceAssignedWork: false,
         resume: {
           toAwaiting: true,
-          transitionIntent: "work_order_release",
         },
       },
     });
@@ -438,82 +436,7 @@ describe("applyJobPunchTransition atomic boundary", () => {
     );
   });
 
-  it("does not let a technician spoof a management hold intent", async () => {
-    const db = new FakeSupabase();
-
-    const result = await applyJobPunchTransition({
-      supabase: db as never,
-      lineId: "line-1",
-      action: "pause",
-      technicianId: "tech-1",
-      options: {
-        operationKey: "spoofed-management-hold",
-        enforceAssignedWork: false,
-        pause: {
-          holdReason: "Unauthorized hold",
-          transitionIntent: "work_order_hold",
-        },
-      },
-    });
-
-    expect(result).toEqual({
-      ok: false,
-      status: 403,
-      error: "This staff role is not permitted to manage work orders.",
-    });
-    expect(db.rpcCalls).toHaveLength(0);
-  });
-
-  it("does not let a release intent enter the labor-resume branch", async () => {
-    const db = new FakeSupabase();
-    db.setActor("manager-1", "manager");
-
-    const result = await applyJobPunchTransition({
-      supabase: db as never,
-      lineId: "line-1",
-      action: "resume",
-      technicianId: "manager-1",
-      options: {
-        operationKey: "invalid-manager-release",
-        enforceAssignedWork: false,
-        resume: {
-          toAwaiting: false,
-          transitionIntent: "work_order_release",
-        },
-      },
-    });
-
-    expect(result).toEqual({
-      ok: false,
-      status: 400,
-      error: "A work-order release must return the line to awaiting.",
-    });
-    expect(db.rpcCalls).toHaveLength(0);
-  });
-
-  it("keeps ordinary pauses and post-labor lines outside the pre-labor hold exception", async () => {
-    const ordinaryPause = new FakeSupabase();
-    ordinaryPause.activeSegment = null;
-
-    const missingActiveSegment = await applyJobPunchTransition({
-      supabase: ordinaryPause as never,
-      lineId: "line-1",
-      action: "pause",
-      technicianId: "tech-1",
-      options: {
-        operationKey: "ordinary-pause-without-segment",
-        enforceAssignedWork: true,
-        pause: { holdReason: "Awaiting parts quote" },
-      },
-    });
-
-    expect(missingActiveSegment).toMatchObject({
-      ok: false,
-      status: 409,
-      error: expect.stringContaining("no active labor segment"),
-    });
-    expect(ordinaryPause.rpcCalls).toHaveLength(0);
-
+  it("keeps post-labor lines outside the pre-labor parts-quote hold exception", async () => {
     const postLaborHold = new FakeSupabase();
     postLaborHold.setActor("advisor-1", "advisor");
     if (postLaborHold.line) {

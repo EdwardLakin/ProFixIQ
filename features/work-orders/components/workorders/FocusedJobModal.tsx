@@ -624,7 +624,6 @@ export default function FocusedJobModal(props: {
       await runJobPunchTransition(workOrderLineId, "pause", {
         holdReason: reason || "On hold",
         notes: notes ?? line.notes ?? null,
-        transitionIntent: "work_order_hold",
       });
 
       toast.success("Hold applied");
@@ -644,7 +643,6 @@ export default function FocusedJobModal(props: {
 
       await runJobPunchTransition(workOrderLineId, "resume", {
         toAwaiting: true,
-        transitionIntent: "work_order_release",
       });
 
       toast.success("Hold removed");

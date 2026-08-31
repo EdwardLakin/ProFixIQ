@@ -17,7 +17,7 @@ type PauseOptions = {
   expectedLineUpdatedAt?: string | null;
   holdReason?: string | null;
   notes?: string | null;
-  transitionIntent?: "parts_quote_hold" | "work_order_hold";
+  transitionIntent?: "parts_quote_hold";
   preserveLineStatus?: boolean;
   event?: string;
   details?: DB["public"]["Tables"]["activity_logs"]["Insert"]["context"];
@@ -25,7 +25,6 @@ type PauseOptions = {
 
 type ResumeOptions = {
   toAwaiting?: boolean;
-  transitionIntent?: "work_order_release";
 };
 
 type TrustedActorContext = {
@@ -130,18 +129,10 @@ export async function applyJobPunchTransition({
   const partsQuoteHoldRequested =
     action === "pause" &&
     options?.pause?.transitionIntent === "parts_quote_hold";
-  const workOrderHoldRequested =
-    action === "pause" &&
-    options?.pause?.transitionIntent === "work_order_hold";
-  const workOrderReleaseRequested =
-    action === "resume" &&
-    options?.resume?.transitionIntent === "work_order_release";
-  // These client intents select preserved non-labor contracts only. The
-  // authenticated profile capability below remains the authorization source.
-  const workOrderManagementRequested =
-    partsQuoteHoldRequested ||
-    workOrderHoldRequested ||
-    workOrderReleaseRequested;
+  // Sending a never-worked, approval-pending line to parts is the one
+  // specialized hold flow. All ordinary holds retain the canonical shared
+  // line-status behavior.
+  const partsQuoteHoldManagementRequested = partsQuoteHoldRequested;
   const expectedLineUpdatedAt = cleanString(
     options?.pause?.expectedLineUpdatedAt,
   );
@@ -159,24 +150,17 @@ export async function applyJobPunchTransition({
       error: "A parts-quote hold requires the observed line version.",
     };
   }
-  if (workOrderReleaseRequested && options?.resume?.toAwaiting !== true) {
-    return {
-      ok: false,
-      status: 400,
-      error: "A work-order release must return the line to awaiting.",
-    };
-  }
 
   let shopId: string;
   let actorUserId: string;
   let actorProfileId: string;
 
   if (options?.trustedActor) {
-    if (workOrderManagementRequested) {
+    if (partsQuoteHoldManagementRequested) {
       return {
         ok: false,
         status: 403,
-        error: "A trusted labor-resume actor cannot manage a work-order hold.",
+        error: "A trusted labor-resume actor cannot manage a parts-quote hold.",
       };
     }
     shopId = options.trustedActor.shopId;
@@ -214,7 +198,7 @@ export async function applyJobPunchTransition({
 
     const capabilities = getActorCapabilities({ role: profile.role });
     if (
-      workOrderManagementRequested
+      partsQuoteHoldManagementRequested
         ? !capabilities.canManageWorkOrders
         : options?.enforceAssignedWork === true &&
           !capabilities.canPerformAssignedWork
@@ -222,7 +206,7 @@ export async function applyJobPunchTransition({
       return {
         ok: false,
         status: 403,
-        error: workOrderManagementRequested
+        error: partsQuoteHoldManagementRequested
           ? "This staff role is not permitted to manage work orders."
           : "This staff role is not permitted to perform assigned work.",
       };
@@ -301,7 +285,7 @@ export async function applyJobPunchTransition({
     return { ok: false, status: 404, error: "Work-order line not found for shop." };
   }
 
-  if (!workOrderManagementRequested && options?.enforceAssignedWork === true) {
+  if (!partsQuoteHoldManagementRequested && options?.enforceAssignedWork === true) {
     const { data: additionalAssignment, error: assignmentError } = await admin
       .from("work_order_line_technicians")
       .select("id")
@@ -403,7 +387,7 @@ export async function applyJobPunchTransition({
         };
       }
     } else if (
-      !workOrderManagementRequested &&
+      !partsQuoteHoldManagementRequested &&
       options?.enforceAssignedWork === true
     ) {
       const { data: activeSegment, error: segmentError } = await admin
@@ -436,7 +420,7 @@ export async function applyJobPunchTransition({
   const details = (options?.pause?.details ?? {}) as Json;
   const rpc = supabase as unknown as RpcClient;
   const assignedWorkBoundary =
-    options?.enforceAssignedWork === true && !workOrderManagementRequested;
+    options?.enforceAssignedWork === true && !partsQuoteHoldManagementRequested;
   const { data, error } = partsQuoteHoldRequested
     ? await rpc.rpc("apply_pre_labor_parts_quote_hold_atomic", {
         p_shop_id: shopId,

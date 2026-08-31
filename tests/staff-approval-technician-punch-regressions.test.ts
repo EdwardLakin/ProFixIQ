@@ -376,8 +376,8 @@ describe("assigned technician punch shop resolution", () => {
       mobileWorkOrder.match(/transitionIntent: "parts_quote_hold"/g),
     ).toHaveLength(1);
     expect(punchClient).toContain('| "parts_quote_hold"');
-    expect(punchClient).toContain('| "work_order_hold"');
-    expect(punchClient).toContain('| "work_order_release"');
+    expect(punchClient).not.toContain('"work_order_hold"');
+    expect(punchClient).not.toContain('"work_order_release"');
     expect(punchClient).toContain("expectedLineUpdatedAt?: string");
     expect(punchClient).toContain(
       'const clientMutationId = `${offlineMutationNamespace}:${operationKey}`',
@@ -464,10 +464,10 @@ describe("assigned technician punch shop resolution", () => {
       "p_expected_line_updated_at?: string",
     );
     expect(punchTransition).toContain(
-      "workOrderManagementRequested\n        ? !capabilities.canManageWorkOrders",
+      "partsQuoteHoldManagementRequested\n        ? !capabilities.canManageWorkOrders",
     );
     expect(punchTransition).toContain(
-      "!workOrderManagementRequested && options?.enforceAssignedWork === true",
+      "!partsQuoteHoldManagementRequested && options?.enforceAssignedWork === true",
     );
     expect(mobileWorkOrder).toContain(
       "const canSendToParts = currentActor.canManageWorkOrders",
@@ -557,12 +557,8 @@ describe("assigned technician punch shop resolution", () => {
   it("isolates assigned-work hardening from the shared completion contract", () => {
     expect(punchTransition).toContain("enforceAssignedWork?: boolean");
     expect(technicianLabor.match(/enforceAssignedWork: true/g)).toHaveLength(1);
-    expect(technicianLabor).toContain(
-      'params.transitionIntent !== "parts_quote_hold" &&\n        params.transitionIntent !== "work_order_hold"',
-    );
-    expect(resumeRoute).toContain(
-      'enforceAssignedWork: body?.transitionIntent !== "work_order_release"',
-    );
+    expect(technicianLabor).toContain("enforceAssignedWork: false");
+    expect(resumeRoute).not.toContain("enforceAssignedWork:");
     expect(finishRoute).toContain("enforceAssignedWork: true");
     expect(finishRoute).toContain("await completeWorkOrderLine");
     expect(completeWorkOrderLine).toContain("enforceAssignedWork?: boolean");
@@ -690,21 +686,16 @@ describe("assigned technician punch shop resolution", () => {
     );
   });
 
-  it("keeps advisor hold and release intents distinct from technician labor", () => {
+  it("keeps Hold and Remove Hold on the shared labor-punch contract", () => {
     for (const focusedJob of [desktopFocusedJob, mobileFocusedJob]) {
-      expect(focusedJob).toContain('transitionIntent: "work_order_hold"');
-      expect(focusedJob).toContain('transitionIntent: "work_order_release"');
+      expect(focusedJob).toContain('runJobPunchTransition(workOrderLineId, "pause"');
+      expect(focusedJob).toContain('runJobPunchTransition(workOrderLineId, "resume"');
+      expect(focusedJob).not.toContain('transitionIntent: "work_order_hold"');
+      expect(focusedJob).not.toContain('transitionIntent: "work_order_release"');
     }
-    expect(pauseRoute).toContain(
-      'transitionIntent?: "parts_quote_hold" | "work_order_hold"',
-    );
-    expect(resumeRoute).toContain(
-      'transitionIntent?: "work_order_release"',
-    );
-    expect(punchTransition).toContain("const workOrderManagementRequested =");
-    expect(punchTransition).toContain(
-      "options?.enforceAssignedWork === true && !workOrderManagementRequested",
-    );
+    expect(pauseRoute).toContain('transitionIntent?: "parts_quote_hold"');
+    expect(resumeRoute).not.toContain("transitionIntent");
+    expect(punchTransition).not.toContain("workOrderManagementRequested");
   });
 
   it("binds ordinary punch requests to the authenticated technician", () => {

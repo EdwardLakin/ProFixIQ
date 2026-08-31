@@ -11,9 +11,7 @@ type TransitionBody = {
   holdReason?: string;
   notes?: string | null;
   transitionIntent?:
-    | "parts_quote_hold"
-    | "work_order_hold"
-    | "work_order_release";
+    | "parts_quote_hold";
   toAwaiting?: boolean;
   cause?: string | null;
   correction?: string | null;

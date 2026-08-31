@@ -74,7 +74,7 @@ describe("technician offline execution", () => {
     });
   });
 
-  it("projects management holds without fabricating labor timestamps", () => {
+  it("projects Hold and Remove Hold through the existing labor-punch contract", () => {
     const line = {
       id: "line-1",
       status: "awaiting_approval",
@@ -99,33 +99,25 @@ describe("technician offline execution", () => {
       actionType: "job:punch-transition",
     };
 
-    for (const transitionIntent of [
-      "parts_quote_hold",
-      "work_order_hold",
-    ] as const) {
-      const projected = projectTechnicianWorkOrderSnapshot(snapshot as never, [
-        {
-          ...base,
-          clientMutationId: transitionIntent,
-          payload: {
-            lineId: "line-1",
-            action: "pause",
-            occurredAt: "2026-08-30T10:00:00.000Z",
-            body: {
-              holdReason: "Awaiting parts quote",
-              transitionIntent,
-            },
-          },
+    const projected = projectTechnicianWorkOrderSnapshot(snapshot as never, [
+      {
+        ...base,
+          clientMutationId: "line-hold",
+        payload: {
+          lineId: "line-1",
+          action: "pause",
+          occurredAt: "2026-08-30T10:00:00.000Z",
+            body: { holdReason: "Awaiting parts quote" },
         },
-      ] as never);
+      },
+    ] as never);
 
-      expect(projected.lines[0]).toMatchObject({
-        status: "on_hold",
-        hold_reason: "Awaiting parts quote",
-        punched_in_at: line.punched_in_at,
-        punched_out_at: line.punched_out_at,
-      });
-    }
+    expect(projected.lines[0]).toMatchObject({
+      status: "on_hold",
+      hold_reason: "Awaiting parts quote",
+      punched_in_at: line.punched_in_at,
+      punched_out_at: "2026-08-30T10:00:00.000Z",
+    });
 
     const released = projectTechnicianWorkOrderSnapshot(
       {
@@ -135,22 +127,22 @@ describe("technician offline execution", () => {
       [
         {
           ...base,
-          clientMutationId: "work-order-release",
+          clientMutationId: "line-hold-release",
           payload: {
             lineId: "line-1",
             action: "resume",
             occurredAt: "2026-08-30T10:30:00.000Z",
-            body: { transitionIntent: "work_order_release" },
+            body: { toAwaiting: true },
           },
         },
       ] as never,
     );
 
     expect(released.lines[0]).toMatchObject({
-      status: "awaiting",
+      status: "in_progress",
       hold_reason: null,
-      punched_in_at: line.punched_in_at,
-      punched_out_at: line.punched_out_at,
+      punched_in_at: "2026-08-30T10:30:00.000Z",
+      punched_out_at: null,
     });
   });
 
