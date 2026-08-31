@@ -10,7 +10,10 @@ type TransitionBody = {
   expectedLineUpdatedAt?: string;
   holdReason?: string;
   notes?: string | null;
-  transitionIntent?: "parts_quote_hold";
+  transitionIntent?:
+    | "parts_quote_hold"
+    | "work_order_hold"
+    | "work_order_release";
   toAwaiting?: boolean;
   cause?: string | null;
   correction?: string | null;

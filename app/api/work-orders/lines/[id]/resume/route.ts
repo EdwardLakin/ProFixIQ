@@ -26,6 +26,7 @@ export async function POST(req: NextRequest) {
     | {
         allowConcurrentJobPunches?: boolean;
         toAwaiting?: boolean;
+        transitionIntent?: "work_order_release";
         operationKey?: string;
         idempotencyKey?: string;
       }
@@ -49,10 +50,11 @@ export async function POST(req: NextRequest) {
     technicianId: auth.user.id,
     options: {
       operationKey,
-      enforceAssignedWork: true,
+      enforceAssignedWork: body?.transitionIntent !== "work_order_release",
       allowConcurrentJobPunches: body?.allowConcurrentJobPunches === true,
       resume: {
         toAwaiting: body?.toAwaiting === true,
+        transitionIntent: body?.transitionIntent,
       },
     },
   });

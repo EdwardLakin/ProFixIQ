@@ -72,8 +72,27 @@ function projectLine(
 
   const action = text(payload.action);
   const body = record(payload.body);
+  const transitionIntent = text(body.transitionIntent);
   const occurredAt =
     text(payload.occurredAt) ?? text(body.occurredAt) ?? mutation.createdAt;
+  if (
+    action === "pause" &&
+    (transitionIntent === "parts_quote_hold" ||
+      transitionIntent === "work_order_hold")
+  ) {
+    return {
+      ...line,
+      status: "on_hold",
+      hold_reason: text(body.holdReason) ?? line.hold_reason,
+    };
+  }
+  if (action === "resume" && transitionIntent === "work_order_release") {
+    return {
+      ...line,
+      status: "awaiting",
+      hold_reason: null,
+    };
+  }
   if (action === "start" || action === "resume") {
     return {
       ...line,

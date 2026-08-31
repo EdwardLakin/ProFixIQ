@@ -166,7 +166,7 @@ export async function buildWorkOrderEvidenceSnapshot(input: BuildInput): Promise
     if (normalize(line.line_type) === "info") informationalLines += 1;
     else actionableLines += 1;
 
-    if (status === "on_hold" || status === "awaiting_parts" || normalize(line.hold_reason).includes("part")) blockedCount += 1;
+    if (status === "awaiting_parts" || hasActivePartsWaitingSignal(line)) blockedCount += 1;
     if (status === "active") activeCount += 1;
     if (status === "completed" || status === "ready_to_invoice" || status === "invoiced") completedCount += 1;
 

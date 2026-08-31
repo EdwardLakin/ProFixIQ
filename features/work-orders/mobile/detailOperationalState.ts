@@ -103,9 +103,10 @@ export function deriveMobileDetailLineState(
   ) {
     return "in_progress";
   }
+  if (status === "waiting_parts") return "waiting_parts";
   if (approval === "pending" || status === "awaiting_approval") return "awaiting_approval";
   if (status === "on_hold") return "on_hold";
-  if (status === "waiting_parts" || isPartsWaitingAdvisory(line)) return "waiting_parts";
+  if (isPartsWaitingAdvisory(line)) return "waiting_parts";
   if (status === "completed" || status === "ready_to_invoice" || status === "invoiced") return "completed";
   if (line.assigned_tech_id || status === "approved") return "assigned";
   return "awaiting";

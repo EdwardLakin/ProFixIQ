@@ -74,6 +74,86 @@ describe("technician offline execution", () => {
     });
   });
 
+  it("projects management holds without fabricating labor timestamps", () => {
+    const line = {
+      id: "line-1",
+      status: "awaiting_approval",
+      hold_reason: null,
+      punched_in_at: "2026-08-30T09:00:00.000Z",
+      punched_out_at: "2026-08-30T09:30:00.000Z",
+    };
+    const snapshot = {
+      workOrder: { id: "wo-1" },
+      lines: [line],
+      quoteLines: [],
+      vehicle: null,
+      customer: null,
+      techNamesById: {},
+    };
+    const base = {
+      createdAt: "2026-08-30T10:00:00.000Z",
+      retryCount: 0,
+      userId: "advisor-1",
+      shopId: "shop-1",
+      status: "queued",
+      actionType: "job:punch-transition",
+    };
+
+    for (const transitionIntent of [
+      "parts_quote_hold",
+      "work_order_hold",
+    ] as const) {
+      const projected = projectTechnicianWorkOrderSnapshot(snapshot as never, [
+        {
+          ...base,
+          clientMutationId: transitionIntent,
+          payload: {
+            lineId: "line-1",
+            action: "pause",
+            occurredAt: "2026-08-30T10:00:00.000Z",
+            body: {
+              holdReason: "Awaiting parts quote",
+              transitionIntent,
+            },
+          },
+        },
+      ] as never);
+
+      expect(projected.lines[0]).toMatchObject({
+        status: "on_hold",
+        hold_reason: "Awaiting parts quote",
+        punched_in_at: line.punched_in_at,
+        punched_out_at: line.punched_out_at,
+      });
+    }
+
+    const released = projectTechnicianWorkOrderSnapshot(
+      {
+        ...snapshot,
+        lines: [{ ...line, status: "on_hold", hold_reason: "Shop hold" }],
+      } as never,
+      [
+        {
+          ...base,
+          clientMutationId: "work-order-release",
+          payload: {
+            lineId: "line-1",
+            action: "resume",
+            occurredAt: "2026-08-30T10:30:00.000Z",
+            body: { transitionIntent: "work_order_release" },
+          },
+        },
+      ] as never,
+    );
+
+    expect(released.lines[0]).toMatchObject({
+      status: "awaiting",
+      hold_reason: null,
+      punched_in_at: line.punched_in_at,
+      punched_out_at: line.punched_out_at,
+    });
+  });
+
   it("warms and caches work-order and focused-job navigation shells", () => {
     const worker = read("app/sw.ts");
     const download = read(

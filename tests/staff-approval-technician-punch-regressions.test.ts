@@ -34,6 +34,12 @@ const desktopWorkOrder = read("app/work-orders/[id]/Client.tsx");
 const mobileWorkOrder = read(
   "features/work-orders/mobile/MobileWorkOrderClient.tsx",
 );
+const desktopFocusedJob = read(
+  "features/work-orders/components/workorders/FocusedJobModal.tsx",
+);
+const mobileFocusedJob = read(
+  "features/work-orders/mobile/MobileFocusedJob.tsx",
+);
 
 describe("customer portal sign-in bootstrap", () => {
   it("resolves the customer and invite with the server-side client", () => {
@@ -369,7 +375,9 @@ describe("assigned technician punch shop resolution", () => {
     expect(
       mobileWorkOrder.match(/transitionIntent: "parts_quote_hold"/g),
     ).toHaveLength(1);
-    expect(punchClient).toContain('transitionIntent?: "parts_quote_hold"');
+    expect(punchClient).toContain('| "parts_quote_hold"');
+    expect(punchClient).toContain('| "work_order_hold"');
+    expect(punchClient).toContain('| "work_order_release"');
     expect(punchClient).toContain("expectedLineUpdatedAt?: string");
     expect(punchClient).toContain(
       'const clientMutationId = `${offlineMutationNamespace}:${operationKey}`',
@@ -456,10 +464,10 @@ describe("assigned technician punch shop resolution", () => {
       "p_expected_line_updated_at?: string",
     );
     expect(punchTransition).toContain(
-      "partsQuoteHoldRequested\n        ? !capabilities.canManageWorkOrders",
+      "workOrderManagementRequested\n        ? !capabilities.canManageWorkOrders",
     );
     expect(punchTransition).toContain(
-      "!partsQuoteHoldRequested && options?.enforceAssignedWork === true",
+      "!workOrderManagementRequested && options?.enforceAssignedWork === true",
     );
     expect(mobileWorkOrder).toContain(
       "const canSendToParts = currentActor.canManageWorkOrders",
@@ -548,8 +556,13 @@ describe("assigned technician punch shop resolution", () => {
 
   it("isolates assigned-work hardening from the shared completion contract", () => {
     expect(punchTransition).toContain("enforceAssignedWork?: boolean");
-    expect(technicianLabor.match(/enforceAssignedWork: true/g)).toHaveLength(2);
-    expect(resumeRoute).toContain("enforceAssignedWork: true");
+    expect(technicianLabor.match(/enforceAssignedWork: true/g)).toHaveLength(1);
+    expect(technicianLabor).toContain(
+      'params.transitionIntent !== "parts_quote_hold" &&\n        params.transitionIntent !== "work_order_hold"',
+    );
+    expect(resumeRoute).toContain(
+      'enforceAssignedWork: body?.transitionIntent !== "work_order_release"',
+    );
     expect(finishRoute).toContain("enforceAssignedWork: true");
     expect(finishRoute).toContain("await completeWorkOrderLine");
     expect(completeWorkOrderLine).toContain("enforceAssignedWork?: boolean");
@@ -652,6 +665,45 @@ describe("assigned technician punch shop resolution", () => {
     expect(canonicalDelegation).toBeGreaterThan(segmentOwnership);
     expect(generatedTypes).toContain(
       "apply_assigned_job_punch_transition_atomic: {",
+    );
+  });
+
+  it("canonicalizes adapter roles with the shared membership contract", () => {
+    expect(
+      staffDecisionMigration.match(
+        /public\.canonical_shop_membership_role\([^)]*role::text\)/g,
+      ),
+    ).toHaveLength(7);
+    const assignedBoundary = staffDecisionMigration.slice(
+      staffDecisionMigration.indexOf(
+        "create or replace function public.apply_assigned_job_punch_transition_atomic",
+      ),
+      staffDecisionMigration.indexOf(
+        "create or replace function public.apply_pre_labor_parts_quote_hold_atomic",
+      ),
+    );
+    expect(assignedBoundary).toContain(
+      "'owner', 'admin', 'manager', 'mechanic', 'lead_hand', 'foreman'",
+    );
+    expect(assignedBoundary).not.toMatch(
+      /'tech'|'technician'|'lead hand'|'leadhand'/,
+    );
+  });
+
+  it("keeps advisor hold and release intents distinct from technician labor", () => {
+    for (const focusedJob of [desktopFocusedJob, mobileFocusedJob]) {
+      expect(focusedJob).toContain('transitionIntent: "work_order_hold"');
+      expect(focusedJob).toContain('transitionIntent: "work_order_release"');
+    }
+    expect(pauseRoute).toContain(
+      'transitionIntent?: "parts_quote_hold" | "work_order_hold"',
+    );
+    expect(resumeRoute).toContain(
+      'transitionIntent?: "work_order_release"',
+    );
+    expect(punchTransition).toContain("const workOrderManagementRequested =");
+    expect(punchTransition).toContain(
+      "options?.enforceAssignedWork === true && !workOrderManagementRequested",
     );
   });
 

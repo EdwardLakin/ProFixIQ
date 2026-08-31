@@ -57,7 +57,9 @@ begin
       message = 'STAFF_LINE_DECISION_FORBIDDEN: authenticated actor mismatch.';
   end if;
 
-  select p.id, coalesce(p.user_id, p.id), lower(trim(coalesce(p.role, '')))
+  select p.id,
+         coalesce(p.user_id, p.id),
+         public.canonical_shop_membership_role(p.role::text)
     into v_profile_id, v_actor_auth_user_id, v_role
   from public.profiles p
   where p.shop_id = p_shop_id
@@ -171,7 +173,7 @@ begin
       -- role/user-link change either completes before this lock and is
       -- revalidated below, or waits until this decision commits.
       select coalesce(profile.user_id, profile.id),
-             lower(trim(coalesce(profile.role, '')))
+             public.canonical_shop_membership_role(profile.role::text)
         into v_locked_actor_auth_user_id, v_role
       from public.profiles profile
       where profile.id = v_profile_id
@@ -512,7 +514,7 @@ begin
 
   select profile.id,
          coalesce(profile.user_id, profile.id),
-         lower(trim(coalesce(profile.role, '')))
+         public.canonical_shop_membership_role(profile.role::text)
     into v_profile_id, v_auth_user_id, v_role
   from public.profiles profile
   where profile.shop_id = p_shop_id
@@ -521,8 +523,7 @@ begin
   limit 1;
   if not found
      or v_role not in (
-       'owner', 'admin', 'manager', 'mechanic', 'tech', 'technician',
-       'lead_hand', 'lead hand', 'leadhand', 'foreman'
+       'owner', 'admin', 'manager', 'mechanic', 'lead_hand', 'foreman'
      )
      or p_actor_user_id not in (v_profile_id, v_auth_user_id)
      or (
@@ -549,7 +550,7 @@ begin
 
   if v_replay then
     select coalesce(profile.user_id, profile.id),
-           lower(trim(coalesce(profile.role, '')))
+           public.canonical_shop_membership_role(profile.role::text)
       into v_locked_auth_user_id, v_locked_role
     from public.profiles profile
     where profile.id = v_profile_id
@@ -558,8 +559,7 @@ begin
     if not found
        or v_locked_auth_user_id is distinct from v_auth_user_id
        or v_locked_role not in (
-         'owner', 'admin', 'manager', 'mechanic', 'tech', 'technician',
-         'lead_hand', 'lead hand', 'leadhand', 'foreman'
+         'owner', 'admin', 'manager', 'mechanic', 'lead_hand', 'foreman'
        )
        or p_actor_user_id not in (v_profile_id, v_locked_auth_user_id)
        or (
@@ -610,7 +610,7 @@ begin
       end if;
 
       select coalesce(profile.user_id, profile.id),
-             lower(trim(coalesce(profile.role, '')))
+             public.canonical_shop_membership_role(profile.role::text)
         into v_locked_auth_user_id, v_locked_role
       from public.profiles profile
       where profile.id = v_profile_id
@@ -619,8 +619,7 @@ begin
       if not found
          or v_locked_auth_user_id is distinct from v_auth_user_id
          or v_locked_role not in (
-           'owner', 'admin', 'manager', 'mechanic', 'tech', 'technician',
-           'lead_hand', 'lead hand', 'leadhand', 'foreman'
+           'owner', 'admin', 'manager', 'mechanic', 'lead_hand', 'foreman'
          )
          or p_actor_user_id not in (v_profile_id, v_locked_auth_user_id)
          or (
@@ -856,7 +855,9 @@ begin
     raise exception using errcode = '42501', message = 'PARTS_QUOTE_HOLD_FORBIDDEN: authenticated actor mismatch.';
   end if;
 
-  select profile.id, coalesce(profile.user_id, profile.id), lower(trim(coalesce(profile.role, '')))
+  select profile.id,
+         coalesce(profile.user_id, profile.id),
+         public.canonical_shop_membership_role(profile.role::text)
     into v_profile_id, v_actor_auth_user_id, v_role
   from public.profiles profile
   where profile.shop_id = p_shop_id
@@ -926,7 +927,7 @@ begin
       for update nowait;
 
       select coalesce(profile.user_id, profile.id),
-             lower(trim(coalesce(profile.role, '')))
+             public.canonical_shop_membership_role(profile.role::text)
         into v_locked_actor_auth_user_id, v_role
       from public.profiles profile
       where profile.id = v_profile_id

@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
     notes?: string | null;
     operationKey?: string;
     idempotencyKey?: string;
-    transitionIntent?: "parts_quote_hold";
+    transitionIntent?: "parts_quote_hold" | "work_order_hold";
   } | null;
   const operationKey =
     req.headers.get("Idempotency-Key")?.trim() ||

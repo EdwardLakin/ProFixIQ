@@ -50,6 +50,20 @@ describe("pre-labor parts quote hold identity", () => {
     ).toBe(true);
   });
 
+  it("uses the active parts predicate for AI blocked evidence", () => {
+    const evidenceBuilder = readFileSync(
+      "features/ai/server/domains/workOrders/buildWorkOrderEvidenceSnapshot.ts",
+      "utf8",
+    );
+
+    expect(evidenceBuilder).toContain(
+      'status === "awaiting_parts" || hasActivePartsWaitingSignal(line)',
+    );
+    expect(evidenceBuilder).not.toContain(
+      'normalize(line.hold_reason).includes("part")',
+    );
+  });
+
   it("derives one operation key per durable line-state version", () => {
     const line = {
       id: "line-1",

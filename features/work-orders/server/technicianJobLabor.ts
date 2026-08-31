@@ -132,7 +132,7 @@ export async function stopTechnicianJobLabor(params: {
   endedAtIso?: string;
   expectedLineUpdatedAt?: string;
   reason?: string;
-  transitionIntent?: "parts_quote_hold";
+  transitionIntent?: "parts_quote_hold" | "work_order_hold";
   preserveLineStatus?: boolean;
   event?: string;
   details?: Json;
@@ -154,7 +154,9 @@ export async function stopTechnicianJobLabor(params: {
     technicianId: params.technicianId,
     options: {
       operationKey,
-      enforceAssignedWork: true,
+      enforceAssignedWork:
+        params.transitionIntent !== "parts_quote_hold" &&
+        params.transitionIntent !== "work_order_hold",
       nowIso: params.endedAtIso,
       pause: {
         holdReason: params.reason,
