@@ -42,6 +42,21 @@ export function isCanonicalPreLaborPartsQuoteHold(
   );
 }
 
+export function shouldRetainPendingPreLaborPartsQuoteHold(
+  line: (PartsWaitingLineState & PartsQuoteHoldVersionSource) | null | undefined,
+  expectedLineUpdatedAt: unknown,
+): boolean {
+  if (!line || isCanonicalPreLaborPartsQuoteHold(line)) return false;
+
+  const refreshedVersion = String(line.updated_at ?? "").trim();
+  const expectedVersion = String(expectedLineUpdatedAt ?? "").trim();
+  return Boolean(
+    refreshedVersion &&
+      expectedVersion &&
+      refreshedVersion === expectedVersion,
+  );
+}
+
 /**
  * Preserve established waiting-parts reasons while preventing a stale exact
  * pre-labor reason from overriding a completed customer decision. Word
@@ -54,13 +69,11 @@ export function hasActivePartsWaitingSignal(
   const status = normalize(line.status);
   const holdReason = normalize(line.hold_reason);
 
+  if (status === "waiting_parts") return true;
+
   if (holdReason === PRE_LABOR_PARTS_QUOTE_HOLD_REASON.toLowerCase()) {
     return isCanonicalPreLaborPartsQuoteHold(line);
   }
 
-  return (
-    status === "waiting_parts" ||
-    /\bparts?\b/.test(holdReason) ||
-    /\bquotes?\b/.test(holdReason)
-  );
+  return /\bparts?\b/.test(holdReason) || /\bquotes?\b/.test(holdReason);
 }

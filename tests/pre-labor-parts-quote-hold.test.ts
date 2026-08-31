@@ -4,6 +4,7 @@ import {
   createPreLaborPartsQuoteHoldOperationKey,
   hasActivePartsWaitingSignal,
   isCanonicalPreLaborPartsQuoteHold,
+  shouldRetainPendingPreLaborPartsQuoteHold,
 } from "@/features/work-orders/lib/preLaborPartsQuoteHold";
 
 describe("pre-labor parts quote hold identity", () => {
@@ -40,6 +41,13 @@ describe("pre-labor parts quote hold identity", () => {
         hold_reason: "Waiting for backordered parts",
       }),
     ).toBe(true);
+    expect(
+      hasActivePartsWaitingSignal({
+        approval_state: "approved",
+        status: "waiting_parts",
+        hold_reason: "Awaiting parts quote",
+      }),
+    ).toBe(true);
   });
 
   it("derives one operation key per durable line-state version", () => {
@@ -68,6 +76,42 @@ describe("pre-labor parts quote hold identity", () => {
     ).toBeNull();
   });
 
+  it("releases a queued UI hold when refreshed state advances", () => {
+    const line = {
+      id: "line-1",
+      approval_state: "pending",
+      status: "awaiting_approval",
+      hold_reason: null,
+      updated_at: "2026-08-30T11:00:00.000Z",
+    };
+
+    expect(
+      shouldRetainPendingPreLaborPartsQuoteHold(
+        line,
+        "2026-08-30T11:00:00.000Z",
+      ),
+    ).toBe(true);
+    expect(
+      shouldRetainPendingPreLaborPartsQuoteHold(
+        { ...line, updated_at: "2026-08-30T12:00:00.000Z" },
+        "2026-08-30T11:00:00.000Z",
+      ),
+    ).toBe(false);
+    expect(
+      shouldRetainPendingPreLaborPartsQuoteHold(
+        {
+          ...line,
+          status: "on_hold",
+          hold_reason: "Awaiting parts quote",
+        },
+        line.updated_at,
+      ),
+    ).toBe(false);
+    expect(
+      shouldRetainPendingPreLaborPartsQuoteHold(undefined, line.updated_at),
+    ).toBe(false);
+  });
+
   it("reuses the durable line-state key after remount", () => {
     const mobileClient = readFileSync(
       "features/work-orders/mobile/MobileWorkOrderClient.tsx",
@@ -85,6 +129,9 @@ describe("pre-labor parts quote hold identity", () => {
     );
     expect(mobileClient).toContain(
       "existingIdentity?.expectedLineUpdatedAt === expectedLineUpdatedAt",
+    );
+    expect(mobileClient).toContain(
+      "shouldRetainPendingPreLaborPartsQuoteHold(",
     );
     expect(mobileClient).toContain("[approvalPending, fetchAll]");
   });

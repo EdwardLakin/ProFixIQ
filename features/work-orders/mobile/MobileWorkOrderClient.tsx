@@ -35,6 +35,7 @@ import {
   createPreLaborPartsQuoteHoldOperationKey,
   hasActivePartsWaitingSignal,
   isCanonicalPreLaborPartsQuoteHold as isCanonicalPartsQuoteHold,
+  shouldRetainPendingPreLaborPartsQuoteHold,
 } from "@/features/work-orders/lib/preLaborPartsQuoteHold";
 import { isReviewableQuoteLine } from "@/features/work-orders/lib/quotes/reviewableQuoteLines";
 import { resolveWorkOrderLinePricing } from "@/features/work-orders/lib/pricing/resolveWorkOrderLinePricing";
@@ -1006,9 +1007,12 @@ export default function MobileWorkOrderClient({
     let changed = false;
     for (const lineId of partsHoldPendingRef.current) {
       const refreshedLine = refreshedPending.get(lineId);
+      const identity = partsHoldOperationKeysRef.current.get(lineId);
       if (
-        refreshedLine &&
-        !isCanonicalPartsQuoteHold(refreshedLine)
+        shouldRetainPendingPreLaborPartsQuoteHold(
+          refreshedLine,
+          identity?.expectedLineUpdatedAt,
+        )
       )
         continue;
       partsHoldPendingRef.current.delete(lineId);
