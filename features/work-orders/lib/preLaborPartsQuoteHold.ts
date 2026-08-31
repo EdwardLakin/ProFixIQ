@@ -16,6 +16,10 @@ function normalize(value: unknown): string {
   return String(value ?? "").trim().toLowerCase();
 }
 
+function normalizeWaitingPartsPhrase(value: unknown): string {
+  return normalize(value).replace(/[_-]+/g, " ").replace(/\s+/g, " ");
+}
+
 export function createPreLaborPartsQuoteHoldOperationKey(
   line: PartsQuoteHoldVersionSource,
 ): string | null {
@@ -68,6 +72,7 @@ export function hasActivePartsWaitingSignal(
 ): boolean {
   const status = normalize(line.status);
   const holdReason = normalize(line.hold_reason);
+  const searchableHoldReason = normalizeWaitingPartsPhrase(line.hold_reason);
 
   if (status === "waiting_parts") return true;
 
@@ -75,5 +80,9 @@ export function hasActivePartsWaitingSignal(
     return isCanonicalPreLaborPartsQuoteHold(line);
   }
 
-  return /\bparts?\b/.test(holdReason) || /\bquotes?\b/.test(holdReason);
+  return (
+    /\b(?:awaiting parts|waiting for parts)\b/.test(searchableHoldReason) ||
+    /\bparts?\b/.test(searchableHoldReason) ||
+    /\bquotes?\b/.test(searchableHoldReason)
+  );
 }

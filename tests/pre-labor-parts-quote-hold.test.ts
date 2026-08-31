@@ -64,6 +64,22 @@ describe("pre-labor parts quote hold identity", () => {
     );
   });
 
+  it("recognizes historical waiting-for-parts hold reasons", () => {
+    for (const holdReason of [
+      "waiting for parts",
+      "waiting_for_parts",
+      "awaiting_parts",
+    ]) {
+      expect(
+        hasActivePartsWaitingSignal({
+          approval_state: "approved",
+          hold_reason: holdReason,
+          status: "on_hold",
+        }),
+      ).toBe(true);
+    }
+  });
+
   it("derives one operation key per durable line-state version", () => {
     const line = {
       id: "line-1",
