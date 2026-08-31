@@ -747,6 +747,26 @@ begin
 end;
 $archived_parent_staff_decision_denial$;
 
+-- Synthetic receipt setup is test-harness work. The production table has no
+-- authenticated insert policy, so create the namespace-collision fixture as
+-- the privileged harness and restore the owner actor before exercising RPCs.
+reset role;
+insert into public.workforce_operation_keys(
+  shop_id, operation_name, operation_key, actor_user_id,
+  work_order_id, work_order_line_id, result
+)
+select
+  line.shop_id,
+  'job_punch:pause',
+  'ab250000-0000-4000-8000-000000000001:job-punch:approval-binding:parts-hold',
+  'aa250000-0000-4000-8000-000000000001',
+  line.work_order_id,
+  line.id,
+  jsonb_build_object('ok', true, 'action', 'pause', 'receipt_kind', 'ordinary')
+from public.work_order_lines line
+where line.id = 'af250000-0000-4000-8000-000000000010';
+set local role authenticated;
+
 do $authorized_atomic_parts_hold$
 declare
   v_result jsonb;
@@ -765,20 +785,6 @@ begin
   -- A browser may reuse the same stable key for an ordinary pause and the
   -- explicit pre-labor parts intent. The parts adapter must not replay the
   -- ordinary labor receipt merely because actor and line also match.
-  insert into public.workforce_operation_keys(
-    shop_id, operation_name, operation_key, actor_user_id,
-    work_order_id, work_order_line_id, result
-  )
-  select
-    line.shop_id,
-    'job_punch:pause',
-    'ab250000-0000-4000-8000-000000000001:job-punch:approval-binding:parts-hold',
-    'aa250000-0000-4000-8000-000000000001',
-    line.work_order_id,
-    line.id,
-    jsonb_build_object('ok', true, 'action', 'pause', 'receipt_kind', 'ordinary')
-  from public.work_order_lines line
-  where line.id = 'af250000-0000-4000-8000-000000000010';
 
   select updated_at into v_observed_updated_at
   from public.work_order_lines
