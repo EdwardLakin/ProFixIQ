@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 
 import { TechnicianCopilotShell } from "@/features/copilot/technician/components/TechnicianCopilotShell";
 import { resolveMobileHref } from "@/features/mobile/navigation/mobile-route-continuity";
-import FieldWorkspaceShell from "@/features/mobile/service/FieldWorkspaceShell";
+import FieldWorkspaceShell, { FIELD_SURFACE_SESSION_KEY } from "@/features/mobile/service/FieldWorkspaceShell";
 import { MobileBottomNav } from "./MobileBottomNav";
 
 type Props = { children: ReactNode; title?: string };
@@ -50,8 +50,7 @@ function isImmersiveRoute(pathname: string): boolean {
 function shouldIgnoreAnchor(anchor: HTMLAnchorElement, event: MouseEvent): boolean {
   if (event.defaultPrevented || event.button !== 0) return true;
   if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return true;
-  if (anchor.hasAttribute("download")) return true;
-  if (anchor.dataset.mobileRouteBypass === "true") return true;
+  if (anchor.hasAttribute("download") || anchor.dataset.mobileRouteBypass === "true") return true;
   const target = anchor.getAttribute("target");
   return Boolean(target && target !== "_self");
 }
@@ -64,7 +63,34 @@ export function MobileShell({ children, title }: Props) {
   const pathname = usePathname();
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [fieldSurface, setFieldSurface] = useState(pathname.startsWith("/mobile/service"));
   const resolvedTitle = title ?? getTitleFromPath(pathname);
+
+  useEffect(() => {
+    let active = true;
+    if (pathname === "/mobile" || pathname === "/mobile/sign-in" || pathname.startsWith("/mobile/sign-in/")) {
+      window.sessionStorage.removeItem(FIELD_SURFACE_SESSION_KEY);
+      setFieldSurface(false);
+      return () => { active = false; };
+    }
+    if (pathname.startsWith("/mobile/service")) {
+      void fetch("/api/mobile/field-service/access", { credentials: "include", cache: "no-store" })
+        .then(async (response) => {
+          const body = (await response.json().catch(() => null)) as { canAccessFieldService?: boolean; standaloneFieldWorkspace?: boolean } | null;
+          if (!active) return;
+          const preserve = Boolean(response.ok && body?.canAccessFieldService && body?.standaloneFieldWorkspace);
+          if (preserve) window.sessionStorage.setItem(FIELD_SURFACE_SESSION_KEY, "standalone");
+          else window.sessionStorage.removeItem(FIELD_SURFACE_SESSION_KEY);
+          setFieldSurface(Boolean(response.ok && body?.canAccessFieldService));
+        })
+        .catch(() => {
+          if (active) setFieldSurface(false);
+        });
+      return () => { active = false; };
+    }
+    setFieldSurface(window.sessionStorage.getItem(FIELD_SURFACE_SESSION_KEY) === "standalone");
+    return () => { active = false; };
+  }, [pathname]);
 
   useEffect(() => {
     const openMenu = () => setMenuOpen(true);
@@ -82,14 +108,12 @@ export function MobileShell({ children, title }: Props) {
       const mobileHref = resolveMobileHref(requestedHref);
       if (mobileHref) {
         if (mobileHref === requestedHref) return;
-        event.preventDefault();
-        event.stopPropagation();
+        event.preventDefault(); event.stopPropagation();
         if (mobileHref !== currentHref) router.push(mobileHref);
         return;
       }
       if (isSharedDestination(anchor.pathname)) return;
-      event.preventDefault();
-      event.stopPropagation();
+      event.preventDefault(); event.stopPropagation();
       if (currentHref !== "/mobile") router.push("/mobile");
     };
     document.addEventListener("click", keepNavigationMobile, true);
@@ -101,24 +125,11 @@ export function MobileShell({ children, title }: Props) {
   let mobileSurface: ReactNode;
   if (isImmersiveRoute(pathname)) {
     mobileSurface = <div className="profixiq-mobile-command min-h-screen overflow-x-hidden pt-[env(safe-area-inset-top,0px)]"><main className="mobile-command-main min-w-0 overflow-x-hidden">{children}</main></div>;
-  } else if (pathname.startsWith("/mobile/service")) {
-    // Field chrome follows Field routes only. Shared Shop Mobile routes always
-    // return to Shop Mobile chrome instead of inheriting a sticky Field session.
+  } else if (fieldSurface) {
     mobileSurface = <FieldWorkspaceShell>{children}</FieldWorkspaceShell>;
   } else {
-    mobileSurface = (
-      <div className="profixiq-mobile-command min-h-screen overflow-x-hidden">
-        <header className="mobile-command-header"><div className="mobile-command-header__inner">
-          <button type="button" onClick={() => setMenuOpen(true)} aria-label="Open navigation menu" aria-expanded={menuOpen} className="mobile-command-header__menu"><Menu aria-hidden className="h-5 w-5" strokeWidth={2.2} /></button>
-          <div className="mobile-command-header__title">{resolvedTitle}</div>
-          <button type="button" onClick={() => router.push("/mobile")} aria-label="Go to mobile home" className="mobile-command-header__mark">PFIQ</button>
-        </div></header>
-        <main className="mobile-command-main">{children}</main>
-        <MobileBottomNav open={menuOpen} onClose={() => setMenuOpen(false)} />
-      </div>
-    );
+    mobileSurface = <div className="profixiq-mobile-command min-h-screen overflow-x-hidden"><header className="mobile-command-header"><div className="mobile-command-header__inner"><button type="button" onClick={() => setMenuOpen(true)} aria-label="Open navigation menu" aria-expanded={menuOpen} className="mobile-command-header__menu"><Menu aria-hidden className="h-5 w-5" strokeWidth={2.2} /></button><div className="mobile-command-header__title">{resolvedTitle}</div><button type="button" onClick={() => router.push("/mobile")} aria-label="Go to mobile home" className="mobile-command-header__mark">PFIQ</button></div></header><main className="mobile-command-main">{children}</main><MobileBottomNav open={menuOpen} onClose={() => setMenuOpen(false)} /></div>;
   }
-
   return <>{mobileSurface}<TechnicianCopilotShell shouldCheck surface="mobile" /></>;
 }
 
