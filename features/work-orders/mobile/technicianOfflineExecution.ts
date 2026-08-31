@@ -72,8 +72,16 @@ function projectLine(
 
   const action = text(payload.action);
   const body = record(payload.body);
+  const transitionIntent = text(body.transitionIntent);
   const occurredAt =
     text(payload.occurredAt) ?? text(body.occurredAt) ?? mutation.createdAt;
+  if (action === "pause" && transitionIntent === "parts_quote_hold") {
+    return {
+      ...line,
+      status: "on_hold",
+      hold_reason: text(body.holdReason) ?? line.hold_reason,
+    };
+  }
   if (action === "start" || action === "resume") {
     return {
       ...line,
@@ -107,9 +115,14 @@ export function projectTechnicianWorkOrderSnapshot(
   snapshot: MobileWorkOrderSnapshot,
   mutations: PendingMutation[],
 ): MobileWorkOrderSnapshot {
+  const projectableMutations = mutations.filter(
+    (mutation) => mutation.status !== "conflicted",
+  );
   return {
     ...snapshot,
-    lines: snapshot.lines.map((line) => mutations.reduce(projectLine, line)),
+    lines: snapshot.lines.map((line) =>
+      projectableMutations.reduce(projectLine, line),
+    ),
   };
 }
 

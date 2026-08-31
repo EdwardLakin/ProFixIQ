@@ -75,6 +75,66 @@ begin
 end
 $$;
 
+-- The canonical labor-punch API remains available to authenticated clients,
+-- but its implementation core cannot be invoked around the authorization
+-- boundary, including by a directly authenticated caller.
+do $$
+begin
+  if has_function_privilege(
+    'anon',
+    'public.apply_job_punch_transition_atomic(uuid,uuid,text,uuid,uuid,text,boolean,timestamptz,text,text,text,boolean,boolean,text,text,text,jsonb)',
+    'EXECUTE'
+  )
+  or not has_function_privilege(
+    'authenticated',
+    'public.apply_job_punch_transition_atomic(uuid,uuid,text,uuid,uuid,text,boolean,timestamptz,text,text,text,boolean,boolean,text,text,text,jsonb)',
+    'EXECUTE'
+  )
+  or not has_function_privilege(
+    'service_role',
+    'public.apply_job_punch_transition_atomic(uuid,uuid,text,uuid,uuid,text,boolean,timestamptz,text,text,text,boolean,boolean,text,text,text,jsonb)',
+    'EXECUTE'
+  ) then
+    raise exception
+      'P0-002 runtime assertion failed: canonical job-punch RPC ACL is wrong';
+  end if;
+
+  if has_function_privilege(
+    'anon',
+    'private.apply_job_punch_transition_atomic_core(uuid,uuid,text,uuid,uuid,text,boolean,timestamptz,text,text,text,boolean,boolean,text,text,text,jsonb)',
+    'EXECUTE'
+  )
+  or has_function_privilege(
+    'authenticated',
+    'private.apply_job_punch_transition_atomic_core(uuid,uuid,text,uuid,uuid,text,boolean,timestamptz,text,text,text,boolean,boolean,text,text,text,jsonb)',
+    'EXECUTE'
+  )
+  or has_function_privilege(
+    'service_role',
+    'private.apply_job_punch_transition_atomic_core(uuid,uuid,text,uuid,uuid,text,boolean,timestamptz,text,text,text,boolean,boolean,text,text,text,jsonb)',
+    'EXECUTE'
+  )
+  or has_function_privilege(
+    'anon',
+    'private.apply_technician_copilot_job_punch_transition_atomic(uuid,uuid,text,uuid,uuid,text,boolean,timestamptz,text,text,text,boolean,boolean,text,text,text,jsonb)',
+    'EXECUTE'
+  )
+  or has_function_privilege(
+    'authenticated',
+    'private.apply_technician_copilot_job_punch_transition_atomic(uuid,uuid,text,uuid,uuid,text,boolean,timestamptz,text,text,text,boolean,boolean,text,text,text,jsonb)',
+    'EXECUTE'
+  )
+  or has_function_privilege(
+    'service_role',
+    'private.apply_technician_copilot_job_punch_transition_atomic(uuid,uuid,text,uuid,uuid,text,boolean,timestamptz,text,text,text,boolean,boolean,text,text,text,jsonb)',
+    'EXECUTE'
+  ) then
+    raise exception
+      'P0-002 runtime assertion failed: private job-punch dependency is exposed';
+  end if;
+end
+$$;
+
 insert into auth.users (id, email, raw_user_meta_data)
 values
   (

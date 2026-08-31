@@ -20,7 +20,8 @@ describe("Phase 4 technician labor route contract", () => {
 
   it("routes every job transition through the shared atomic command", () => {
     const helper = read("features/work-orders/server/applyJobPunchTransition.ts");
-    expect(helper).toMatch(/\.rpc\(\s*"apply_job_punch_transition_atomic"/);
+    expect(helper).toContain('"apply_job_punch_transition_atomic"');
+    expect(helper).toContain('"apply_assigned_job_punch_transition_atomic"');
     expect(helper).not.toContain('.from("work_order_line_labor_segments").insert');
     expect(helper).not.toContain('.from("work_order_lines").update');
   });

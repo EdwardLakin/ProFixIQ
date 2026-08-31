@@ -74,6 +74,126 @@ describe("technician offline execution", () => {
     });
   });
 
+  it("projects Hold and Remove Hold through the existing labor-punch contract", () => {
+    const line = {
+      id: "line-1",
+      status: "awaiting_approval",
+      hold_reason: null,
+      punched_in_at: "2026-08-30T09:00:00.000Z",
+      punched_out_at: "2026-08-30T09:30:00.000Z",
+    };
+    const snapshot = {
+      workOrder: { id: "wo-1" },
+      lines: [line],
+      quoteLines: [],
+      vehicle: null,
+      customer: null,
+      techNamesById: {},
+    };
+    const base = {
+      createdAt: "2026-08-30T10:00:00.000Z",
+      retryCount: 0,
+      userId: "advisor-1",
+      shopId: "shop-1",
+      status: "queued",
+      actionType: "job:punch-transition",
+    };
+
+    const projected = projectTechnicianWorkOrderSnapshot(snapshot as never, [
+      {
+        ...base,
+          clientMutationId: "line-hold",
+        payload: {
+          lineId: "line-1",
+          action: "pause",
+          occurredAt: "2026-08-30T10:00:00.000Z",
+            body: { holdReason: "Awaiting parts quote" },
+        },
+      },
+    ] as never);
+
+    expect(projected.lines[0]).toMatchObject({
+      status: "on_hold",
+      hold_reason: "Awaiting parts quote",
+      punched_in_at: line.punched_in_at,
+      punched_out_at: "2026-08-30T10:00:00.000Z",
+    });
+
+    const released = projectTechnicianWorkOrderSnapshot(
+      {
+        ...snapshot,
+        lines: [{ ...line, status: "on_hold", hold_reason: "Shop hold" }],
+      } as never,
+      [
+        {
+          ...base,
+          clientMutationId: "line-hold-release",
+          payload: {
+            lineId: "line-1",
+            action: "resume",
+            occurredAt: "2026-08-30T10:30:00.000Z",
+            body: { toAwaiting: true },
+          },
+        },
+      ] as never,
+    );
+
+    expect(released.lines[0]).toMatchObject({
+      status: "in_progress",
+      hold_reason: null,
+      punched_in_at: "2026-08-30T10:30:00.000Z",
+      punched_out_at: null,
+    });
+  });
+
+  it("does not re-project a permanently conflicted Hold over newer server state", () => {
+    const snapshot = {
+      workOrder: { id: "wo-1" },
+      lines: [
+        {
+          id: "line-1",
+          status: "deferred",
+          hold_reason: null,
+          punched_in_at: null,
+          punched_out_at: null,
+        },
+      ],
+      quoteLines: [],
+      vehicle: null,
+      customer: null,
+      techNamesById: {},
+    } as never;
+
+    const projected = projectTechnicianWorkOrderSnapshot(snapshot, [
+      {
+        clientMutationId: "conflicted-parts-hold",
+        actionType: "job:punch-transition",
+        createdAt: "2026-08-30T10:00:00.000Z",
+        retryCount: 1,
+        userId: "tech-1",
+        shopId: "shop-1",
+        status: "conflicted",
+        conflictReason: "The line changed on another device.",
+        payload: {
+          lineId: "line-1",
+          action: "pause",
+          occurredAt: "2026-08-30T10:00:00.000Z",
+          body: {
+            transitionIntent: "parts_quote_hold",
+            holdReason: "Awaiting parts quote",
+          },
+        },
+      },
+    ] as never);
+
+    expect(projected.lines[0]).toMatchObject({
+      status: "deferred",
+      hold_reason: null,
+      punched_in_at: null,
+      punched_out_at: null,
+    });
+  });
+
   it("warms and caches work-order and focused-job navigation shells", () => {
     const worker = read("app/sw.ts");
     const download = read(

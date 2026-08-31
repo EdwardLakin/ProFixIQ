@@ -1,5 +1,14 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { applyJobPunchTransition } from "@/features/work-orders/server/applyJobPunchTransition";
+import { startTechnicianJobLabor } from "@/features/work-orders/server/technicianJobLabor";
+
+const mocks = vi.hoisted(() => ({
+  admin: null as unknown,
+}));
+
+vi.mock("@/features/shared/lib/supabase/server", () => ({
+  createAdminSupabase: () => mocks.admin,
+}));
 
 type RpcCall = {
   name: string;
@@ -7,33 +16,147 @@ type RpcCall = {
 };
 
 class FakeSupabase {
-  line: { id: string; shop_id: string | null } | null = {
+  authUserId: string | null = "tech-1";
+  profile = {
+    id: "tech-1",
+    user_id: "tech-1" as string | null,
+    role: "mechanic" as string | null,
+    shop_id: "shop-1" as string | null,
+    completed_onboarding: true,
+    must_change_password: false,
+    email: "tech-1@example.com",
+    full_name: "Test Technician",
+  };
+  line: {
+    id: string;
+    shop_id: string | null;
+    assigned_tech_id: string | null;
+    assigned_to: string | null;
+    status: string | null;
+    approval_state: string | null;
+  } | null = {
     id: "line-1",
     shop_id: "shop-1",
+    assigned_tech_id: "tech-1",
+    assigned_to: null,
+    status: "awaiting_approval",
+    approval_state: "pending",
   };
   lineError: { message: string } | null = null;
+  additionalAssignment: { id: string } | null = null;
+  anyCanonicalAssignment: { id: string } | null = null;
+  activeSegment: { id: string } | null = { id: "segment-1" };
+  recordedSegment: { id: string } | null = null;
+  existingOperation: {
+    actor_user_id: string | null;
+    work_order_line_id: string | null;
+    result: Record<string, unknown>;
+  } | null = null;
+  existingOperationSequence: Array<{
+    actor_user_id: string | null;
+    work_order_line_id: string | null;
+    result: Record<string, unknown>;
+  } | null> | null = null;
   rpcData: unknown = { ok: true };
   rpcError: { message: string; details?: string | null; hint?: string | null } | null =
     null;
   rpcCalls: RpcCall[] = [];
+  workforceOperationNames: string[] = [];
+
+  constructor() {
+    mocks.admin = this;
+  }
+
+  get auth() {
+    return {
+      getUser: async () => ({
+        data: {
+          user: this.authUserId ? { id: this.authUserId } : null,
+        },
+        error: null,
+      }),
+    };
+  }
+
+  setActor(id: string, role: string) {
+    this.authUserId = id;
+    this.profile = {
+      ...this.profile,
+      id,
+      user_id: id,
+      role,
+      email: `${id}@example.com`,
+      full_name: id,
+    };
+    if (this.line) this.line.assigned_tech_id = id;
+  }
 
   from(table: string) {
-    if (table !== "work_order_lines") {
-      throw new Error(`Unexpected table read: ${table}`);
-    }
-    const line = this.line;
-    const lineError = this.lineError;
-    return {
+    const filters = new Map<string, unknown>();
+    const query = {
       select() {
-        return this;
+        return query;
       },
-      eq() {
-        return this;
+      eq: (column: string, value: unknown) => {
+        filters.set(column, value);
+        if (
+          table === "workforce_operation_keys" &&
+          column === "operation_name" &&
+          typeof value === "string"
+        ) {
+          this.workforceOperationNames.push(value);
+        }
+        return query;
       },
-      maybeSingle() {
-        return Promise.resolve({ data: line, error: lineError });
+      or() {
+        return query;
+      },
+      is(column: string, value: unknown) {
+        filters.set(column, value);
+        return query;
+      },
+      limit() {
+        return query;
+      },
+      maybeSingle: () => {
+        if (table === "profiles") {
+          return Promise.resolve({ data: this.profile, error: null });
+        }
+        if (table === "work_order_lines") {
+          return Promise.resolve({ data: this.line, error: this.lineError });
+        }
+        if (table === "work_order_line_technicians") {
+          return Promise.resolve({
+            data: filters.has("technician_id")
+              ? this.additionalAssignment
+              : this.anyCanonicalAssignment,
+            error: null,
+          });
+        }
+        if (table === "work_order_line_labor_segments") {
+          return Promise.resolve({
+            data: filters.has("ended_at")
+              ? this.activeSegment
+              : this.recordedSegment,
+            error: null,
+          });
+        }
+        if (table === "workforce_operation_keys") {
+          const data = this.existingOperationSequence
+            ? (this.existingOperationSequence.shift() ?? null)
+            : this.existingOperation;
+          return Promise.resolve({ data, error: null });
+        }
+        throw new Error(`Unexpected table read: ${table}`);
+      },
+      returns: () => {
+        if (table !== "profiles") {
+          throw new Error(`Unexpected multi-row read: ${table}`);
+        }
+        return Promise.resolve({ data: [this.profile], error: null });
       },
     };
+    return query;
   }
 
   async rpc(name: string, args: Record<string, unknown>) {
@@ -101,10 +224,12 @@ describe("applyJobPunchTransition atomic boundary", () => {
         }),
       },
     ]);
+    expect(db.workforceOperationNames).toEqual(["job_punch:pause"]);
   });
 
   it("maps release-to-awaiting and financial-lock conflicts without local writes", async () => {
     const db = new FakeSupabase();
+    db.setActor("manager-1", "manager");
 
     const released = await applyJobPunchTransition({
       supabase: db as never,
@@ -125,7 +250,7 @@ describe("applyJobPunchTransition atomic boundary", () => {
         p_operation_key: "shop-1:job-punch:resume-1",
       }),
     );
-
+    db.setActor("tech-1", "mechanic");
     db.rpcError = { message: "FINANCIALLY_LOCKED: invoice issued" };
     const locked = await applyJobPunchTransition({
       supabase: db as never,
@@ -140,6 +265,291 @@ describe("applyJobPunchTransition atomic boundary", () => {
       status: 409,
       error: "FINANCIALLY_LOCKED: invoice issued",
     });
+  });
+
+  it("returns a stored pause receipt before requiring a current active segment", async () => {
+    const db = new FakeSupabase();
+    db.activeSegment = null;
+    db.existingOperation = {
+      actor_user_id: "tech-1",
+      work_order_line_id: "line-1",
+      result: { ok: true, action: "pause", idempotent: false },
+    };
+
+    const result = await applyJobPunchTransition({
+      supabase: db as never,
+      lineId: "line-1",
+      action: "pause",
+      technicianId: "tech-1",
+      options: { operationKey: "pause-retry" },
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      payload: { ok: true, action: "pause", idempotent: true },
+    });
+    expect(db.rpcCalls).toHaveLength(0);
+  });
+
+  it("rechecks a pause receipt after a concurrent request ends the segment", async () => {
+    const db = new FakeSupabase();
+    db.activeSegment = null;
+    db.existingOperationSequence = [
+      null,
+      {
+        actor_user_id: "tech-1",
+        work_order_line_id: "line-1",
+        result: { ok: true, action: "pause", idempotent: false },
+      },
+    ];
+
+    const result = await applyJobPunchTransition({
+      supabase: db as never,
+      lineId: "line-1",
+      action: "pause",
+      technicianId: "tech-1",
+      options: {
+        operationKey: "pause-concurrent-retry",
+        enforceAssignedWork: true,
+      },
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      payload: { ok: true, action: "pause", idempotent: true },
+    });
+    expect(db.rpcCalls).toHaveLength(0);
+  });
+
+  it("preserves the explicit pre-labor parts-quote hold without an active segment", async () => {
+    const db = new FakeSupabase();
+    db.setActor("advisor-1", "advisor");
+    if (db.line) db.line.assigned_tech_id = "different-technician";
+    db.activeSegment = null;
+
+    const result = await applyJobPunchTransition({
+      supabase: db as never,
+      lineId: "line-1",
+      action: "pause",
+      technicianId: "advisor-1",
+      options: {
+        operationKey: "parts-quote-hold",
+        pause: {
+          expectedLineUpdatedAt: "2026-08-30T11:00:00.000Z",
+          holdReason: "Awaiting parts quote",
+          transitionIntent: "parts_quote_hold",
+        },
+      },
+    });
+
+    expect(result).toEqual({ ok: true, payload: { ok: true } });
+    expect(db.rpcCalls).toHaveLength(1);
+    expect(db.rpcCalls[0]?.name).toBe(
+      "apply_pre_labor_parts_quote_hold_atomic",
+    );
+    expect(db.rpcCalls[0]?.args).toEqual(
+      expect.objectContaining({
+        p_actor_user_id: "advisor-1",
+        p_hold_reason: "Awaiting parts quote",
+      }),
+    );
+    expect(db.workforceOperationNames).toEqual([
+      "pre_labor_parts_quote_hold",
+    ]);
+  });
+
+  it("rejects a pre-labor parts hold without work-order management capability", async () => {
+    const db = new FakeSupabase();
+    db.setActor("parts-1", "parts");
+    db.activeSegment = null;
+
+    const result = await applyJobPunchTransition({
+      supabase: db as never,
+      lineId: "line-1",
+      action: "pause",
+      technicianId: "parts-1",
+      options: {
+        operationKey: "parts-role-quote-hold",
+        pause: {
+          expectedLineUpdatedAt: "2026-08-30T11:00:00.000Z",
+          holdReason: "Awaiting parts quote",
+          transitionIntent: "parts_quote_hold",
+        },
+      },
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      status: 403,
+      error: "This staff role is not permitted to manage work orders.",
+    });
+    expect(db.rpcCalls).toHaveLength(0);
+  });
+
+  it("keeps all ordinary holds on the shared line-status contract", async () => {
+    const held = new FakeSupabase();
+    held.setActor("manager-1", "manager");
+    if (held.line) held.line.assigned_tech_id = "different-technician";
+    held.activeSegment = null;
+
+    const holdResult = await applyJobPunchTransition({
+      supabase: held as never,
+      lineId: "line-1",
+      action: "pause",
+      technicianId: "manager-1",
+      options: {
+        operationKey: "manager-hold",
+        enforceAssignedWork: false,
+        pause: {
+          holdReason: "Waiting for customer",
+        },
+      },
+    });
+
+    expect(holdResult).toEqual({ ok: true, payload: { ok: true } });
+    expect(held.rpcCalls[0]?.name).toBe("apply_job_punch_transition_atomic");
+
+    const released = new FakeSupabase();
+    released.setActor("advisor-1", "advisor");
+    if (released.line) released.line.assigned_tech_id = "different-technician";
+
+    const releaseResult = await applyJobPunchTransition({
+      supabase: released as never,
+      lineId: "line-1",
+      action: "resume",
+      technicianId: "advisor-1",
+      options: {
+        operationKey: "advisor-release",
+        enforceAssignedWork: false,
+        resume: {
+          toAwaiting: true,
+        },
+      },
+    });
+
+    expect(releaseResult).toEqual({ ok: true, payload: { ok: true } });
+    expect(released.rpcCalls[0]?.name).toBe(
+      "apply_job_punch_transition_atomic",
+    );
+    expect(released.rpcCalls[0]?.args).toEqual(
+      expect.objectContaining({ p_release_to_awaiting: true }),
+    );
+  });
+
+  it("keeps post-labor lines outside the pre-labor parts-quote hold exception", async () => {
+    const postLaborHold = new FakeSupabase();
+    postLaborHold.setActor("advisor-1", "advisor");
+    if (postLaborHold.line) {
+      postLaborHold.line.assigned_tech_id = "different-technician";
+    }
+    postLaborHold.activeSegment = null;
+    postLaborHold.recordedSegment = { id: "ended-segment" };
+
+    const recordedLabor = await applyJobPunchTransition({
+      supabase: postLaborHold as never,
+      lineId: "line-1",
+      action: "pause",
+      technicianId: "advisor-1",
+      options: {
+        operationKey: "parts-quote-after-labor",
+        pause: {
+          expectedLineUpdatedAt: "2026-08-30T11:00:00.000Z",
+          holdReason: "Awaiting parts quote",
+          transitionIntent: "parts_quote_hold",
+        },
+      },
+    });
+
+    expect(recordedLabor).toMatchObject({
+      ok: false,
+      status: 409,
+      error: expect.stringContaining("recorded labor"),
+    });
+    expect(postLaborHold.rpcCalls).toHaveLength(0);
+  });
+
+  it("honors a legacy-only assigned_to value when canonical sources are empty", async () => {
+    const db = new FakeSupabase();
+    db.line = {
+      id: "line-1",
+      shop_id: "shop-1",
+      assigned_tech_id: null,
+      assigned_to: "tech-1",
+      status: "awaiting_approval",
+      approval_state: "pending",
+    };
+
+    const result = await applyJobPunchTransition({
+      supabase: db as never,
+      lineId: "line-1",
+      action: "start",
+      technicianId: "tech-1",
+      options: {
+        operationKey: "legacy-only-assignment",
+        enforceAssignedWork: true,
+      },
+    });
+
+    expect(result).toEqual({ ok: true, payload: { ok: true } });
+    expect(db.rpcCalls).toHaveLength(1);
+    expect(db.rpcCalls[0]?.name).toBe(
+      "apply_assigned_job_punch_transition_atomic",
+    );
+  });
+
+  it("does not let assigned_to override a different canonical assignment", async () => {
+    const db = new FakeSupabase();
+    db.line = {
+      id: "line-1",
+      shop_id: "shop-1",
+      assigned_tech_id: null,
+      assigned_to: "tech-1",
+      status: "awaiting_approval",
+      approval_state: "pending",
+    };
+    db.anyCanonicalAssignment = { id: "assignment-for-another-technician" };
+
+    const result = await applyJobPunchTransition({
+      supabase: db as never,
+      lineId: "line-1",
+      action: "start",
+      technicianId: "tech-1",
+      options: {
+        operationKey: "ambiguous-legacy-assignment",
+        enforceAssignedWork: true,
+      },
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      status: 403,
+      error: "Technician is not assigned to this work-order line.",
+    });
+    expect(db.rpcCalls).toHaveLength(0);
+  });
+
+  it("preserves shared caller compatibility unless assigned-work guards are opted in", async () => {
+    const db = new FakeSupabase();
+    db.line = {
+      id: "line-1",
+      shop_id: "shop-1",
+      assigned_tech_id: null,
+      assigned_to: "tech-1",
+      status: "awaiting_approval",
+      approval_state: "pending",
+    };
+    db.anyCanonicalAssignment = { id: "assignment-for-another-technician" };
+
+    const result = await applyJobPunchTransition({
+      supabase: db as never,
+      lineId: "line-1",
+      action: "start",
+      technicianId: "tech-1",
+      options: { operationKey: "shared-caller-compatibility" },
+    });
+
+    expect(result).toEqual({ ok: true, payload: { ok: true } });
+    expect(db.rpcCalls).toHaveLength(1);
   });
 
   it("maps unsigned inspection completion to a retryable conflict", async () => {
@@ -161,5 +571,104 @@ describe("applyJobPunchTransition atomic boundary", () => {
       ok: false,
       status: 409,
     });
+  });
+
+  it("maps bounded database lock exhaustion to an offline-retryable response", async () => {
+    const db = new FakeSupabase();
+    db.setActor("advisor-1", "advisor");
+    db.activeSegment = null;
+    db.rpcError = {
+      message:
+        "PARTS_QUOTE_HOLD_BUSY: line state is changing; retry the hold.",
+    };
+
+    const result = await applyJobPunchTransition({
+      supabase: db as never,
+      lineId: "line-1",
+      action: "pause",
+      technicianId: "advisor-1",
+      options: {
+        operationKey: "parts-hold-busy",
+        pause: {
+          expectedLineUpdatedAt: "2026-08-30T11:00:00.000Z",
+          holdReason: "Awaiting parts quote",
+          transitionIntent: "parts_quote_hold",
+        },
+      },
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      status: 503,
+      error: "PARTS_QUOTE_HOLD_BUSY: line state is changing; retry the hold.",
+    });
+
+    const assignedDb = new FakeSupabase();
+    assignedDb.rpcError = {
+      message:
+        "ASSIGNED_JOB_PUNCH_BUSY: assignment state is changing; retry the punch.",
+    };
+
+    const assignedResult = await applyJobPunchTransition({
+      supabase: assignedDb as never,
+      lineId: "line-1",
+      action: "start",
+      technicianId: "tech-1",
+      options: {
+        operationKey: "assigned-punch-busy",
+        enforceAssignedWork: true,
+      },
+    });
+
+    expect(assignedResult).toEqual({
+      ok: false,
+      status: 503,
+      error:
+        "ASSIGNED_JOB_PUNCH_BUSY: assignment state is changing; retry the punch.",
+    });
+  });
+
+  it("preserves trusted break auto-resume for a currently capable technician", async () => {
+    const db = new FakeSupabase();
+    db.authUserId = null;
+
+    const result = await startTechnicianJobLabor({
+      supabase: db as never,
+      lineId: "line-1",
+      technicianId: "tech-1",
+      operationKey: "break-resume-1",
+      source: "break_resume",
+    });
+
+    expect(result).toEqual({ ok: true, payload: { ok: true } });
+    expect(db.rpcCalls).toHaveLength(1);
+    expect(db.rpcCalls[0]?.args).toEqual(
+      expect.objectContaining({
+        p_actor_user_id: "tech-1",
+        p_technician_id: "tech-1",
+        p_start_source: "job_resumed_after_break",
+      }),
+    );
+  });
+
+  it("does not auto-resume labor after the technician capability is revoked", async () => {
+    const db = new FakeSupabase();
+    db.setActor("tech-1", "parts");
+    db.authUserId = null;
+
+    const result = await startTechnicianJobLabor({
+      supabase: db as never,
+      lineId: "line-1",
+      technicianId: "tech-1",
+      operationKey: "break-resume-revoked",
+      source: "break_resume",
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      status: 401,
+      error: "Unauthorized",
+    });
+    expect(db.rpcCalls).toHaveLength(0);
   });
 });

@@ -27452,6 +27452,28 @@ export type Database = {
         }
         Returns: Json
       }
+      apply_assigned_job_punch_transition_atomic: {
+        Args: {
+          p_action: string
+          p_actor_user_id: string
+          p_allow_concurrent?: boolean
+          p_at?: string
+          p_cause?: string
+          p_correction?: string
+          p_details?: Json
+          p_event?: string
+          p_hold_reason?: string
+          p_notes?: string
+          p_operation_key: string
+          p_preserve_line_status?: boolean
+          p_release_to_awaiting?: boolean
+          p_shop_id: string
+          p_start_source?: string
+          p_technician_id: string
+          p_work_order_line_id: string
+        }
+        Returns: Json
+      }
       apply_canonical_offline_shift_punch_atomic: {
         Args: {
           p_actor_auth_user_id: string
@@ -27589,6 +27611,19 @@ export type Database = {
         }
         Returns: Json
       }
+      apply_portal_parts_hold_line_decision_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_at?: string
+          p_customer_id: string
+          p_decision: string
+          p_line_id: string
+          p_operation_key: string
+          p_shop_id: string
+          p_work_order_id: string
+        }
+        Returns: Json
+      }
       apply_portal_quote_decision_atomic: {
         Args: {
           p_at?: string
@@ -27598,6 +27633,21 @@ export type Database = {
           p_quote_line_ids: string[]
           p_shop_id: string
           p_work_order_id: string
+        }
+        Returns: Json
+      }
+      apply_pre_labor_parts_quote_hold_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_at?: string
+          p_details?: Json
+          p_event?: string
+          p_expected_line_updated_at?: string
+          p_hold_reason?: string
+          p_notes?: string
+          p_operation_key: string
+          p_shop_id: string
+          p_work_order_line_id: string
         }
         Returns: Json
       }
@@ -27651,6 +27701,18 @@ export type Database = {
           p_note: string
           p_operation_key: string
           p_quote_line_ids: string[]
+          p_shop_id: string
+          p_work_order_id: string
+        }
+        Returns: Json
+      }
+      apply_staff_line_decision_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_at?: string
+          p_decision: string
+          p_line_id: string
+          p_operation_key: string
           p_shop_id: string
           p_work_order_id: string
         }

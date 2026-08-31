@@ -28,7 +28,15 @@ import { JobCard } from "@/features/work-orders/components/JobCard";
 import MobileFocusedJob from "@/features/work-orders/mobile/MobileFocusedJob";
 import { registerMobileWorkflowDock } from "@/features/copilot/technician/client/mobileWorkflowDock";
 import AskAssistantEntry from "@/features/assistant/components/AskAssistantEntry";
-import { runJobPunchTransition } from "@/features/work-orders/lib/jobPunchTransitionsClient";
+import {
+  runJobPunchTransition,
+} from "@/features/work-orders/lib/jobPunchTransitionsClient";
+import {
+  createPreLaborPartsQuoteHoldOperationKey,
+  hasActivePartsWaitingSignal,
+  isCanonicalPreLaborPartsQuoteHold as isCanonicalPartsQuoteHold,
+  shouldRetainPendingPreLaborPartsQuoteHold,
+} from "@/features/work-orders/lib/preLaborPartsQuoteHold";
 import { isReviewableQuoteLine } from "@/features/work-orders/lib/quotes/reviewableQuoteLines";
 import { resolveWorkOrderLinePricing } from "@/features/work-orders/lib/pricing/resolveWorkOrderLinePricing";
 import { filterAllocationsNotBackedByCanonicalParts } from "@/features/work-orders/lib/display/workOrderParts";
@@ -81,6 +89,7 @@ type WorkOrderQuoteLine =
 type WorkOrderQuoteLineWithLineId = WorkOrderQuoteLine & {
   work_order_line_id?: string | null;
 };
+
 // 🔹 Extra metadata shape for inspection template ids (mirrors desktop logic)
 type WorkOrderLineWithInspectionMeta = WorkOrderLine & {
   inspection_template_id?: string | null;
@@ -209,17 +218,6 @@ const chip = (s: string | null | undefined): string => {
   return `${BASE_BADGE} ${BADGE[key] ?? BADGE.awaiting}`;
 };
 
-// roles allowed to approve / decline
-const APPROVAL_ROLES = new Set([
-  "owner",
-  "admin",
-  "manager",
-  "advisor",
-  "lead_hand",
-  "lead",
-  "leadhand",
-]);
-
 function MobileWorkOrderDetailSkeleton({
   className = "",
 }: {
@@ -253,6 +251,31 @@ export default function MobileWorkOrderClient({
   );
   const handledFocusRef = useRef<string | null>(null);
   const loadGenerationRef = useRef(0);
+  const lineDecisionOperationKeysRef = useRef(new Map<string, string>());
+  const lineDecisionPendingRef = useRef(
+    new Map<string, "approve" | "decline">(),
+  );
+  const lineDecisionInFlightRef = useRef(new Set<string>());
+  const partsHoldOperationKeysRef = useRef(
+    new Map<
+      string,
+      { operationKey: string; expectedLineUpdatedAt: string }
+    >(),
+  );
+  const partsHoldPendingRef = useRef(new Set<string>());
+  const partsHoldInFlightRef = useRef(new Set<string>());
+  const [pendingLineDecisions, setPendingLineDecisions] = useState(
+    () => new Map<string, "approve" | "decline">(),
+  );
+  const [lineDecisionsInFlight, setLineDecisionsInFlight] = useState(
+    () => new Set<string>(),
+  );
+  const [pendingPartsHoldLineIds, setPendingPartsHoldLineIds] = useState(
+    () => new Set<string>(),
+  );
+  const [partsHoldLineIdsInFlight, setPartsHoldLineIdsInFlight] = useState(
+    () => new Set<string>(),
+  );
 
   // 🔥 IMPORTANT: scope tab-state keys by routeId so different work orders don’t bleed state
   const keyBase = useMemo(() => `m:wo:${routeId}`, [routeId]);
@@ -943,6 +966,66 @@ export default function MobileWorkOrderClient({
     [mobileOperationalState.visibleLines, visibleLineState],
   );
 
+  const partsQuoteEligiblePending = useMemo(
+    () =>
+      approvalPending.filter(
+        (line) => !isCanonicalPartsQuoteHold(line),
+      ),
+    [approvalPending],
+  );
+
+  useEffect(() => {
+    const workOrderId = wo?.id;
+    if (!workOrderId || lineDecisionPendingRef.current.size === 0) return;
+
+    const refreshedPendingIds = new Set(approvalPending.map((line) => line.id));
+    let changed = false;
+    for (const lineId of lineDecisionPendingRef.current.keys()) {
+      if (refreshedPendingIds.has(lineId)) continue;
+      lineDecisionPendingRef.current.delete(lineId);
+      lineDecisionOperationKeysRef.current.delete(
+        `${workOrderId}:${lineId}:approve`,
+      );
+      lineDecisionOperationKeysRef.current.delete(
+        `${workOrderId}:${lineId}:decline`,
+      );
+      lineDecisionInFlightRef.current.delete(lineId);
+      changed = true;
+    }
+    if (changed) {
+      setPendingLineDecisions(new Map(lineDecisionPendingRef.current));
+      setLineDecisionsInFlight(new Set(lineDecisionInFlightRef.current));
+    }
+  }, [approvalPending, wo?.id]);
+
+  useEffect(() => {
+    if (partsHoldPendingRef.current.size === 0) return;
+
+    const refreshedPending = new Map(
+      approvalPending.map((line) => [line.id, line] as const),
+    );
+    let changed = false;
+    for (const lineId of partsHoldPendingRef.current) {
+      const refreshedLine = refreshedPending.get(lineId);
+      const identity = partsHoldOperationKeysRef.current.get(lineId);
+      if (
+        shouldRetainPendingPreLaborPartsQuoteHold(
+          refreshedLine,
+          identity?.expectedLineUpdatedAt,
+        )
+      )
+        continue;
+      partsHoldPendingRef.current.delete(lineId);
+      partsHoldInFlightRef.current.delete(lineId);
+      partsHoldOperationKeysRef.current.delete(lineId);
+      changed = true;
+    }
+    if (changed) {
+      setPendingPartsHoldLineIds(new Set(partsHoldPendingRef.current));
+      setPartsHoldLineIdsInFlight(new Set(partsHoldInFlightRef.current));
+    }
+  }, [approvalPending]);
+
   const quotePending = useMemo(
     () => quoteLines.filter((q) => isReviewableQuoteLine(q)),
     [quoteLines],
@@ -1000,9 +1083,8 @@ export default function MobileWorkOrderClient({
 
   const canAssign = false; // assignments handled in focused view / desktop
   const currentActor = getActorCapabilities({ role: currentUserRole });
-  const canApprove = currentUserRole
-    ? APPROVAL_ROLES.has(currentUserRole)
-    : false;
+  const canApprove = currentActor.canAuthorizeQuotes;
+  const canSendToParts = currentActor.canManageWorkOrders;
 
   type WorkOrderWaiterFlags = {
     is_waiter?: boolean | null;
@@ -1075,7 +1157,7 @@ export default function MobileWorkOrderClient({
     mobileOperationalState.visibleLines.find(
       (line) =>
         visibleLineState(line) === "waiting_parts" ||
-        Boolean(line.hold_reason?.toLowerCase().includes("part")),
+        hasActivePartsWaitingSignal(line),
     )?.id ?? null;
   const firstUnassignedLineId =
     mobileOperationalState.visibleLines.find(
@@ -1140,90 +1222,282 @@ export default function MobileWorkOrderClient({
 
   /* ----------------------- line & quote actions ----------------------- */
 
+  const beginLineDecision = useCallback(
+    (lineId: string, decision: "approve" | "decline") => {
+      const pendingDecision = lineDecisionPendingRef.current.get(lineId);
+      if (
+        lineDecisionInFlightRef.current.has(lineId) ||
+        (pendingDecision !== undefined && pendingDecision !== decision)
+      ) {
+        return false;
+      }
+
+      lineDecisionPendingRef.current.set(lineId, decision);
+      lineDecisionInFlightRef.current.add(lineId);
+      setPendingLineDecisions(new Map(lineDecisionPendingRef.current));
+      setLineDecisionsInFlight(new Set(lineDecisionInFlightRef.current));
+      return true;
+    },
+    [],
+  );
+
+  const clearLineDecision = useCallback(
+    (lineId: string, actionIdentity: string) => {
+      lineDecisionPendingRef.current.delete(lineId);
+      lineDecisionInFlightRef.current.delete(lineId);
+      lineDecisionOperationKeysRef.current.delete(actionIdentity);
+      setPendingLineDecisions(new Map(lineDecisionPendingRef.current));
+      setLineDecisionsInFlight(new Set(lineDecisionInFlightRef.current));
+    },
+    [],
+  );
+
+  const releaseLineDecisionInFlight = useCallback((lineId: string) => {
+    lineDecisionInFlightRef.current.delete(lineId);
+    setLineDecisionsInFlight(new Set(lineDecisionInFlightRef.current));
+  }, []);
+
   const approveLine = useCallback(
     async (lineId: string) => {
-      if (!lineId) return;
-      const res = await fetch(
-        `/api/work-orders/lines/${lineId}/approval-decision`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            decision: "approve",
-            workOrderId: wo?.id ?? null,
-          }),
-        },
-      );
-      const json = (await res.json().catch(() => null)) as {
-        ok?: boolean;
-        error?: string;
-      } | null;
-      if (!res.ok || !json?.ok)
-        return toast.error(json?.error ?? "Failed to approve line");
-      toast.success("Line approved");
-      void fetchAll();
+      const workOrderId = wo?.id;
+      if (!lineId || !workOrderId) return;
+      if (!beginLineDecision(lineId, "approve")) return;
+      const actionIdentity = `${workOrderId}:${lineId}:approve`;
+      const operationKey =
+        lineDecisionOperationKeysRef.current.get(actionIdentity) ??
+        crypto.randomUUID();
+      lineDecisionOperationKeysRef.current.set(actionIdentity, operationKey);
+      try {
+        const res = await fetch(
+          `/api/work-orders/lines/${lineId}/approval-decision`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Idempotency-Key": operationKey,
+            },
+            body: JSON.stringify({
+              decision: "approve",
+              actorSurface: "staff",
+              workOrderId,
+              idempotencyKey: operationKey,
+            }),
+          },
+        );
+        let json: { ok?: boolean; error?: string } | null = null;
+        let responseBodyReadable = true;
+        try {
+          json = (await res.json()) as { ok?: boolean; error?: string };
+        } catch {
+          responseBodyReadable = false;
+        }
+        if (!res.ok) {
+          if (res.status >= 500) {
+            toast.error(
+              json?.error ??
+                "Approval response was interrupted; refreshing before retry.",
+            );
+            await fetchAll().catch(() => undefined);
+            return;
+          }
+          clearLineDecision(lineId, actionIdentity);
+          toast.error(json?.error ?? "Failed to approve line");
+          return;
+        }
+        if (!responseBodyReadable || json?.ok !== true) {
+          toast.error(
+            "Approval response was interrupted; refreshing before retry.",
+          );
+          await fetchAll().catch(() => undefined);
+          return;
+        }
+        toast.success("Line approved");
+        await fetchAll().catch(() => undefined);
+      } catch {
+        toast.error(
+          "Approval request was interrupted; retry will use the same key.",
+        );
+        await fetchAll().catch(() => undefined);
+      } finally {
+        releaseLineDecisionInFlight(lineId);
+      }
     },
-    [fetchAll, wo?.id],
+    [
+      beginLineDecision,
+      clearLineDecision,
+      fetchAll,
+      releaseLineDecisionInFlight,
+      wo?.id,
+    ],
   );
 
   const declineLine = useCallback(
     async (lineId: string) => {
-      if (!lineId) return;
-      const res = await fetch(
-        `/api/work-orders/lines/${lineId}/approval-decision`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            decision: "decline",
-            workOrderId: wo?.id ?? null,
-          }),
-        },
-      );
-      const json = (await res.json().catch(() => null)) as {
-        ok?: boolean;
-        error?: string;
-      } | null;
-      if (!res.ok || !json?.ok)
-        return toast.error(json?.error ?? "Failed to decline line");
-      toast.success("Line declined");
-      void fetchAll();
+      const workOrderId = wo?.id;
+      if (!lineId || !workOrderId) return;
+      if (!beginLineDecision(lineId, "decline")) return;
+      const actionIdentity = `${workOrderId}:${lineId}:decline`;
+      const operationKey =
+        lineDecisionOperationKeysRef.current.get(actionIdentity) ??
+        crypto.randomUUID();
+      lineDecisionOperationKeysRef.current.set(actionIdentity, operationKey);
+      try {
+        const res = await fetch(
+          `/api/work-orders/lines/${lineId}/approval-decision`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Idempotency-Key": operationKey,
+            },
+            body: JSON.stringify({
+              decision: "decline",
+              actorSurface: "staff",
+              workOrderId,
+              idempotencyKey: operationKey,
+            }),
+          },
+        );
+        let json: { ok?: boolean; error?: string } | null = null;
+        let responseBodyReadable = true;
+        try {
+          json = (await res.json()) as { ok?: boolean; error?: string };
+        } catch {
+          responseBodyReadable = false;
+        }
+        if (!res.ok) {
+          if (res.status >= 500) {
+            toast.error(
+              json?.error ??
+                "Decline response was interrupted; refreshing before retry.",
+            );
+            await fetchAll().catch(() => undefined);
+            return;
+          }
+          clearLineDecision(lineId, actionIdentity);
+          toast.error(json?.error ?? "Failed to decline line");
+          return;
+        }
+        if (!responseBodyReadable || json?.ok !== true) {
+          toast.error(
+            "Decline response was interrupted; refreshing before retry.",
+          );
+          await fetchAll().catch(() => undefined);
+          return;
+        }
+        toast.success("Line declined");
+        await fetchAll().catch(() => undefined);
+      } catch {
+        toast.error(
+          "Decline request was interrupted; retry will use the same key.",
+        );
+        await fetchAll().catch(() => undefined);
+      } finally {
+        releaseLineDecisionInFlight(lineId);
+      }
     },
-    [fetchAll, wo?.id],
+    [
+      beginLineDecision,
+      clearLineDecision,
+      fetchAll,
+      releaseLineDecisionInFlight,
+      wo?.id,
+    ],
   );
 
-  const sendToParts = useCallback(async (lineId: string) => {
-    if (!lineId) return;
-    try {
-      await runJobPunchTransition(lineId, "pause", {
-        holdReason: "Awaiting parts quote",
-      });
-      toast.success("Sent to parts for quoting");
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Failed to send line to parts",
-      );
-    }
-  }, []);
+  const queueLineForParts = useCallback(
+    async (lineId: string): Promise<boolean> => {
+      if (!lineId || partsHoldPendingRef.current.has(lineId)) return false;
+
+      const lineState = approvalPending.find((line) => line.id === lineId);
+      const existingIdentity = partsHoldOperationKeysRef.current.get(lineId);
+      const expectedLineUpdatedAt = String(
+        lineState?.updated_at ?? "",
+      ).trim();
+      const derivedOperationKey = lineState
+        ? createPreLaborPartsQuoteHoldOperationKey(lineState)
+        : null;
+      const identity =
+        existingIdentity?.expectedLineUpdatedAt === expectedLineUpdatedAt
+          ? existingIdentity
+          : derivedOperationKey && expectedLineUpdatedAt
+            ? {
+                operationKey: derivedOperationKey,
+                expectedLineUpdatedAt,
+              }
+            : null;
+      if (!identity) {
+        toast.error("Refresh this line before sending it to parts.");
+        return false;
+      }
+      partsHoldOperationKeysRef.current.set(lineId, identity);
+      partsHoldPendingRef.current.add(lineId);
+      partsHoldInFlightRef.current.add(lineId);
+      setPendingPartsHoldLineIds(new Set(partsHoldPendingRef.current));
+      setPartsHoldLineIdsInFlight(new Set(partsHoldInFlightRef.current));
+
+      try {
+        await runJobPunchTransition(
+          lineId,
+          "pause",
+          {
+            holdReason: "Awaiting parts quote",
+            transitionIntent: "parts_quote_hold",
+            expectedLineUpdatedAt: identity.expectedLineUpdatedAt,
+          },
+          { operationKey: identity.operationKey },
+        );
+        await fetchAll().catch(() => undefined);
+        return true;
+      } catch (error) {
+        // The same operation key survives every retry. A definitive or
+        // interrupted failure may be retried, but an accepted offline command
+        // remains disabled until canonical state refreshes.
+        partsHoldPendingRef.current.delete(lineId);
+        setPendingPartsHoldLineIds(new Set(partsHoldPendingRef.current));
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "Failed to send line to parts",
+        );
+        return false;
+      } finally {
+        partsHoldInFlightRef.current.delete(lineId);
+        setPartsHoldLineIdsInFlight(new Set(partsHoldInFlightRef.current));
+      }
+    },
+    [approvalPending, fetchAll],
+  );
+
+  const sendToParts = useCallback(
+    async (lineId: string) => {
+      if (await queueLineForParts(lineId)) {
+        toast.success("Sent to parts for quoting");
+      }
+    },
+    [queueLineForParts],
+  );
 
   const sendAllPendingToParts = useCallback(async () => {
-    if (!approvalPending.length) return;
-    const ids = approvalPending.map((l) => l.id).filter(Boolean) as string[];
-    try {
-      for (const lineId of ids) {
-        await runJobPunchTransition(lineId, "pause", {
-          holdReason: "Awaiting parts quote",
-        });
-      }
-      toast.success("Queued all pending lines for parts quoting");
-    } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to queue pending lines for parts",
-      );
+    if (!partsQuoteEligiblePending.length) return;
+    const ids = partsQuoteEligiblePending
+      .map((line) => line.id)
+      .filter(Boolean) as string[];
+    const results = [];
+    for (const lineId of ids) {
+      results.push(await queueLineForParts(lineId));
     }
-  }, [approvalPending]);
+    const acceptedCount = results.filter(Boolean).length;
+    if (acceptedCount === ids.length) {
+      toast.success("Queued all pending lines for parts quoting");
+    } else if (acceptedCount > 0) {
+      toast.warning(
+        `Queued ${acceptedCount} of ${ids.length} pending lines for parts quoting`,
+      );
+    } else {
+      toast.error("No pending lines were queued for parts quoting");
+    }
+  }, [partsQuoteEligiblePending, queueLineForParts]);
 
   const authorizeQuote = useCallback(
     async (quoteId: string) => {
@@ -1644,14 +1918,17 @@ export default function MobileWorkOrderClient({
                 <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)] sm:text-base">
                   Awaiting customer approval
                 </h2>
-                {approvalPending.length > 1 && (
+                {partsQuoteEligiblePending.length > 1 && canSendToParts && (
                   <button
                     type="button"
-                    className="rounded-full border border-amber-300/65 bg-amber-500/14 px-3 py-1.5 text-[11px] font-semibold text-amber-100 shadow-[0_0_14px_rgba(251,191,36,0.20)] hover:bg-amber-500/18"
+                    disabled={pendingPartsHoldLineIds.size > 0}
+                    className="rounded-full border border-amber-300/65 bg-amber-500/14 px-3 py-1.5 text-[11px] font-semibold text-amber-100 shadow-[0_0_14px_rgba(251,191,36,0.20)] hover:bg-amber-500/18 disabled:cursor-not-allowed disabled:opacity-50"
                     onClick={sendAllPendingToParts}
                     title="Queue all lines for parts quoting"
                   >
-                    Quote all pending lines
+                    {pendingPartsHoldLineIds.size > 0
+                      ? "Parts request queued"
+                      : "Quote all pending lines"}
                   </button>
                 )}
               </div>
@@ -1664,12 +1941,13 @@ export default function MobileWorkOrderClient({
                       Jobs awaiting approval
                     </div>
                     {approvalPending.map((ln, idx) => {
+                      const pendingDecision = pendingLineDecisions.get(ln.id);
+                      const decisionInFlight = lineDecisionsInFlight.has(ln.id);
+                      const partsHoldPending = pendingPartsHoldLineIds.has(ln.id);
+                      const partsHoldInFlight =
+                        partsHoldLineIdsInFlight.has(ln.id);
                       const isAwaitingPartsBase =
-                        (ln.status === "on_hold" &&
-                          (ln.hold_reason ?? "")
-                            .toLowerCase()
-                            .includes("part")) ||
-                        (ln.hold_reason ?? "").toLowerCase().includes("quote");
+                        isCanonicalPartsQuoteHold(ln);
 
                       const hasQuotedParts =
                         (activeQuotesByLine[ln.id] ?? []).length > 0;
@@ -1727,17 +2005,35 @@ export default function MobileWorkOrderClient({
                                 <>
                                   <button
                                     type="button"
-                                    className="rounded-md border border-emerald-400/80 px-2.5 py-1 text-[11px] font-medium text-emerald-100 hover:bg-emerald-500/10"
+                                    disabled={
+                                      decisionInFlight ||
+                                      (pendingDecision !== undefined &&
+                                        pendingDecision !== "approve")
+                                    }
+                                    className="rounded-md border border-emerald-400/80 px-2.5 py-1 text-[11px] font-medium text-emerald-100 hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-50"
                                     onClick={() => approveLine(ln.id)}
                                   >
-                                    Approve
+                                    {pendingDecision === "approve"
+                                      ? decisionInFlight
+                                        ? "Approving…"
+                                        : "Retry approve"
+                                      : "Approve"}
                                   </button>
                                   <button
                                     type="button"
-                                    className="rounded-md border border-red-400/80 px-2.5 py-1 text-[11px] font-medium text-red-100 hover:bg-red-500/10"
+                                    disabled={
+                                      decisionInFlight ||
+                                      (pendingDecision !== undefined &&
+                                        pendingDecision !== "decline")
+                                    }
+                                    className="rounded-md border border-red-400/80 px-2.5 py-1 text-[11px] font-medium text-red-100 hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-50"
                                     onClick={() => declineLine(ln.id)}
                                   >
-                                    Decline
+                                    {pendingDecision === "decline"
+                                      ? decisionInFlight
+                                        ? "Declining…"
+                                        : "Retry decline"
+                                      : "Decline"}
                                   </button>
                                 </>
                               )}
@@ -1750,16 +2046,21 @@ export default function MobileWorkOrderClient({
                                 >
                                   Sent to parts
                                 </button>
-                              ) : (
+                              ) : canSendToParts ? (
                                 <button
                                   type="button"
-                                  className="rounded-md border border-[var(--accent-copper-soft)]/80 px-2.5 py-1 text-[11px] font-medium text-[var(--accent-copper-light)] hover:bg-[rgba(212,118,49,0.12)]"
+                                  disabled={partsHoldPending}
+                                  className="rounded-md border border-[var(--accent-copper-soft)]/80 px-2.5 py-1 text-[11px] font-medium text-[var(--accent-copper-light)] hover:bg-[rgba(212,118,49,0.12)] disabled:cursor-not-allowed disabled:opacity-50"
                                   onClick={() => sendToParts(ln.id)}
                                   title="Send to parts for quoting"
                                 >
-                                  Send to parts
+                                  {partsHoldPending
+                                    ? partsHoldInFlight
+                                      ? "Sending to parts…"
+                                      : "Queued for parts"
+                                    : "Send to parts"}
                                 </button>
-                              )}
+                              ) : null}
                             </div>
                           </div>
                         </div>

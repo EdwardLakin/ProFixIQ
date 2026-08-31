@@ -7,8 +7,11 @@ export type JobPunchAction = "start" | "pause" | "resume" | "finish";
 
 type TransitionBody = {
   allowConcurrentJobPunches?: boolean;
+  expectedLineUpdatedAt?: string;
   holdReason?: string;
   notes?: string | null;
+  transitionIntent?:
+    | "parts_quote_hold";
   toAwaiting?: boolean;
   cause?: string | null;
   correction?: string | null;
@@ -44,6 +47,11 @@ export async function runJobPunchTransition(
   const suppliedKey = options?.operationKey?.trim();
   const operationKey =
     suppliedKey || createJobPunchOperationKey(lineId, action);
+  const offlineMutationNamespace =
+    body?.transitionIntent === "parts_quote_hold"
+      ? "pre_labor_parts_quote_hold"
+      : `job_punch:${action}`;
+  const clientMutationId = `${offlineMutationNamespace}:${operationKey}`;
   const occurredAt = new Date().toISOString();
   const payload = {
     ...(body ?? {}),
@@ -80,7 +88,7 @@ export async function runJobPunchTransition(
     return;
   }
   await runMutationWithOfflineQueue({
-    clientMutationId: operationKey,
+    clientMutationId,
     actionType: "job:punch-transition",
     payload: { lineId, action, body: payload, operationKey, occurredAt },
     orderKey: `${lineId}:job-punch:${operationKey}`,

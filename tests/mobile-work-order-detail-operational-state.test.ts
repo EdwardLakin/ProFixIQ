@@ -113,6 +113,22 @@ describe("mobile work-order detail operational state", () => {
     expect(state.headerStatus).toBe("on_hold");
   });
 
+  it("classifies canonical waiting-parts state before stale pending approval", () => {
+    const waitingLine = line({
+      status: "waiting_parts",
+      approval_state: "pending",
+      hold_reason: null,
+    });
+    const state = deriveMobileDetailOperationalState(wo("waiting_parts"), [
+      waitingLine,
+    ]);
+
+    expect(deriveMobileDetailLineState(waitingLine)).toBe("waiting_parts");
+    expect(state.counters.waiting_parts).toBe(1);
+    expect(state.counters.awaiting_approval).toBe(0);
+    expect(state.headerStatus).toBe("waiting_parts");
+  });
+
   it("cannot render an on-hold visible job while reporting on-hold zero for the same input", () => {
     const heldLine = line({ status: "on_hold" });
     const state = deriveMobileDetailOperationalState(wo("on_hold"), [heldLine]);

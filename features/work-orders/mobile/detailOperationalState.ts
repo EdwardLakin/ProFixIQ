@@ -1,4 +1,5 @@
 import { normalizeWorkOrderLineStatus } from "@/features/work-orders/lib/line-status";
+import { hasActivePartsWaitingSignal } from "@/features/work-orders/lib/preLaborPartsQuoteHold";
 
 type DetailLine = {
   id?: string | null;
@@ -76,9 +77,7 @@ export function isMobileDetailVisibleLine(line: DetailLine): boolean {
 }
 
 export function isPartsWaitingAdvisory(line: DetailLine): boolean {
-  const status = normalizeWorkOrderLineStatus(line.status);
-  const holdReason = normalizeRaw(line.hold_reason);
-  return status === "waiting_parts" || holdReason.includes("part") || holdReason.includes("quote");
+  return hasActivePartsWaitingSignal(line);
 }
 
 function isLineInProgress(
@@ -104,9 +103,10 @@ export function deriveMobileDetailLineState(
   ) {
     return "in_progress";
   }
+  if (status === "waiting_parts") return "waiting_parts";
   if (approval === "pending" || status === "awaiting_approval") return "awaiting_approval";
   if (status === "on_hold") return "on_hold";
-  if (status === "waiting_parts" || isPartsWaitingAdvisory(line)) return "waiting_parts";
+  if (isPartsWaitingAdvisory(line)) return "waiting_parts";
   if (status === "completed" || status === "ready_to_invoice" || status === "invoiced") return "completed";
   if (line.assigned_tech_id || status === "approved") return "assigned";
   return "awaiting";
