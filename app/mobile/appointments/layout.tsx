@@ -1,4 +1,5 @@
 import MobileCommandRoute from "@/features/mobile/layout/MobileCommandRoute";
+import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
 import { requireShopPageAccess } from "@/features/shared/lib/server/admin-access";
 
 export default async function MobileAppointmentsLayout({
@@ -6,6 +7,9 @@ export default async function MobileAppointmentsLayout({
 }: {
   children: React.ReactNode;
 }) {
-  await requireShopPageAccess({ requiredCapability: "canManageScheduling" });
+  await requireShopPageAccess({
+    requiredCapability: "canManageScheduling",
+    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
+  });
   return <MobileCommandRoute surface="appointments">{children}</MobileCommandRoute>;
 }

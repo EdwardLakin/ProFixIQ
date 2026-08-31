@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { ROLE_GROUPS } from "@/features/shared/lib/rbac";
+import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import {
   createPortalBooking,
@@ -12,7 +13,10 @@ function bad(msg: string, code = 400) {
   return NextResponse.json({ error: msg }, { status: code });
 }
 
-function legacyStaffOperationKey(userId: string, body: CreatePortalBookingInput): string {
+function legacyStaffOperationKey(
+  userId: string,
+  body: CreatePortalBookingInput,
+): string {
   return [
     "legacy-staff-booking",
     userId,
@@ -30,12 +34,15 @@ export async function POST(req: Request) {
   try {
     const access = await requireShopScopedApiAccess({
       allowRoles: ROLE_GROUPS.schedulerBookingWriters,
+      requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
     });
     if (!access.ok) return access.response;
 
     const { authUserId: userId, supabase } = access;
 
-    const body = (await req.json().catch(() => null)) as CreatePortalBookingInput | null;
+    const body = (await req
+      .json()
+      .catch(() => null)) as CreatePortalBookingInput | null;
     if (!body) return bad("Invalid JSON body", 400);
 
     const operationKey =

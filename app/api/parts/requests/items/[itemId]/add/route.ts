@@ -1,8 +1,13 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
-type RpcError = { message: string; details?: string | null; hint?: string | null };
+type RpcError = {
+  message: string;
+  details?: string | null;
+  hint?: string | null;
+};
 type RpcClient = {
   rpc: (
     name: string,
@@ -12,7 +17,7 @@ type RpcClient = {
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
+    ? (value as Record<string, unknown>)
     : {};
 }
 
@@ -41,11 +46,15 @@ export async function POST(
 ) {
   const { itemId } = await context.params;
   if (!z.string().uuid().safeParse(itemId).success) {
-    return NextResponse.json({ ok: false, error: "Invalid itemId." }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "Invalid itemId." },
+      { status: 400 },
+    );
   }
 
   const access = await requireShopScopedApiAccess({
     requiredCapability: "canManageParts",
+    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
   });
   if (!access.ok) return access.response;
 
@@ -53,7 +62,11 @@ export async function POST(
   const parsed = Payload.safeParse(json);
   if (!parsed.success) {
     return NextResponse.json(
-      { ok: false, error: "Invalid request body.", issues: parsed.error.flatten() },
+      {
+        ok: false,
+        error: "Invalid request body.",
+        issues: parsed.error.flatten(),
+      },
       { status: 400 },
     );
   }
@@ -61,7 +74,10 @@ export async function POST(
   const body: Payload = parsed.data;
   if (body.createAllocation && !body.locationId) {
     return NextResponse.json(
-      { ok: false, error: "A stock location is required when creating an allocation." },
+      {
+        ok: false,
+        error: "A stock location is required when creating an allocation.",
+      },
       { status: 400 },
     );
   }
@@ -83,27 +99,32 @@ export async function POST(
 
   const operationKey = `${access.profile.shop_id}:item-attach:${rawKey}`;
   const rpc = access.supabase as unknown as RpcClient;
-  const { data, error } = await rpc.rpc("parts_update_attach_allocate_item_atomic", {
-    p_shop_id: access.profile.shop_id,
-    p_request_item_id: itemId,
-    p_part_id: body.partId,
-    p_description: body.description,
-    p_qty: body.qty,
-    p_unit_sell_price: body.quotedPrice,
-    p_requested_part_number: body.requestedPartNumber ?? null,
-    p_requested_manufacturer: body.requestedManufacturer ?? null,
-    p_work_order_line_id: body.workOrderLineId,
-    p_po_id: body.poId ?? null,
-    p_location_id: body.locationId ?? null,
-    p_create_allocation: body.createAllocation,
-    p_warning_accepted: body.warningAccepted,
-    p_warning_reason: body.warningReason ?? null,
-    p_operation_key: operationKey,
-    p_actor_user_id: access.profile.id,
-  });
+  const { data, error } = await rpc.rpc(
+    "parts_update_attach_allocate_item_atomic",
+    {
+      p_shop_id: access.profile.shop_id,
+      p_request_item_id: itemId,
+      p_part_id: body.partId,
+      p_description: body.description,
+      p_qty: body.qty,
+      p_unit_sell_price: body.quotedPrice,
+      p_requested_part_number: body.requestedPartNumber ?? null,
+      p_requested_manufacturer: body.requestedManufacturer ?? null,
+      p_work_order_line_id: body.workOrderLineId,
+      p_po_id: body.poId ?? null,
+      p_location_id: body.locationId ?? null,
+      p_create_allocation: body.createAllocation,
+      p_warning_accepted: body.warningAccepted,
+      p_warning_reason: body.warningReason ?? null,
+      p_operation_key: operationKey,
+      p_actor_user_id: access.profile.id,
+    },
+  );
 
   if (error) {
-    const message = [error.message, error.details, error.hint].filter(Boolean).join(" — ");
+    const message = [error.message, error.details, error.hint]
+      .filter(Boolean)
+      .join(" — ");
     const status = error.message.includes("FINANCIALLY_LOCKED") ? 409 : 400;
     return NextResponse.json({ ok: false, error: message }, { status });
   }
@@ -118,7 +139,9 @@ export async function POST(
     return NextResponse.json(
       {
         ok: false,
-        error: itemError?.message || "Part was saved, but the refreshed request item could not be loaded.",
+        error:
+          itemError?.message ||
+          "Part was saved, but the refreshed request item could not be loaded.",
       },
       { status: 500 },
     );

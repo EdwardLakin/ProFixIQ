@@ -1,7 +1,7 @@
 export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import { requireJobPunchActorAccess } from "@/features/work-orders/server/authorizeJobPunchTransition";
 import { completeWorkOrderLine } from "@/features/work-orders/server/completeWorkOrderLine";
 
 type Body = {
@@ -24,19 +24,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Missing id" }, { status: 400 });
   }
 
-  const supabase = createServerSupabaseRoute();
-  const {
-    data: { user },
-    error: userErr,
-  } = await supabase.auth.getUser();
-
-  if (userErr) {
-    return NextResponse.json({ error: userErr.message }, { status: 500 });
-  }
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   const body = (await req.json().catch(() => ({}))) as Body;
   const operationKey =
     req.headers.get("Idempotency-Key")?.trim() ||
@@ -50,11 +37,18 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const result = await completeWorkOrderLine({
-    supabase,
+  const authorization = await requireJobPunchActorAccess({
     lineId: id,
-    technicianId: user.id,
-    actorUserId: user.id,
+    action: "finish",
+    operationKey,
+  });
+  if (!authorization.ok) return authorization.response;
+
+  const result = await completeWorkOrderLine({
+    supabase: authorization.access.supabase,
+    lineId: id,
+    technicianId: authorization.access.authUserId,
+    actorUserId: authorization.access.authUserId,
     operationKey,
     cause: body.cause,
     correction: body.correction,

@@ -47,6 +47,7 @@ describe("shop-scoped API Workspace capability enforcement", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     createServerSupabaseRouteMock.mockReturnValue({
+      rpc: vi.fn().mockResolvedValue({ data: true, error: null }),
       auth: {
         getUser: vi.fn().mockResolvedValue({
           data: { user: { id: AUTH_USER_ID } },

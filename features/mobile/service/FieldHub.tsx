@@ -10,7 +10,6 @@ import {
   ClipboardCheck,
   CreditCard,
   EyeOff,
-  FilePlus2,
   PackagePlus,
   Plus,
   RadioTower,
@@ -73,12 +72,6 @@ const FIELD_PRIMARY_ACTIONS: FieldAction[] = [
     title: "New service call",
     href: "/mobile/service/new",
     icon: Plus,
-  },
-  {
-    title: "New work order",
-    href: "/mobile/work-orders/create",
-    icon: FilePlus2,
-    requiredCapability: "canManageOperations",
   },
   {
     title: "Scan or create part",

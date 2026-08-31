@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
 type RpcError = {
@@ -38,6 +39,7 @@ export async function POST(
 
   const access = await requireShopScopedApiAccess({
     allowRoles: ["owner", "admin", "manager", "parts"],
+    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
   });
   if (!access.ok) return access.response;
 

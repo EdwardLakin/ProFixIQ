@@ -1,6 +1,7 @@
 import { PackagePlus } from "lucide-react";
 
 import MobilePurchaseOrders from "@/features/parts/mobile/MobilePurchaseOrders";
+import { FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
 import { requireShopPageAccess } from "@/features/shared/lib/server/admin-access";
 
 export const dynamic = "force-dynamic";
@@ -8,6 +9,7 @@ export const dynamic = "force-dynamic";
 export default async function FieldPurchaseOrdersPage() {
   const { profile } = await requireShopPageAccess({
     requiredCapability: "canManageParts",
+    requiredProductCapabilities: FIELD_PRODUCT_CAPABILITIES,
     redirectTo: "/mobile/service",
   });
 

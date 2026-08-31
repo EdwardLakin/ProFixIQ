@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { normalizeVendorName } from "@/features/parts/lib/vendorWorkspace";
+import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
 type DB = Database;
@@ -83,7 +84,10 @@ function parseVendorBody(body: VendorBody):
 }
 
 async function requireVendorAccess() {
-  return requireShopScopedApiAccess({ requiredCapability: "canManageParts" });
+  return requireShopScopedApiAccess({
+    requiredCapability: "canManageParts",
+    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
+  });
 }
 
 async function findNormalizedDuplicate(args: {

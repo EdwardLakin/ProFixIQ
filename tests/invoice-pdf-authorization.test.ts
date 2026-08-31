@@ -73,7 +73,7 @@ describe("invoice PDF authorization", () => {
       access: { canViewInvoice: true },
       error: null,
     });
-    const client = sessionClient();
+    const client = sessionClient({ data: true, error: null });
 
     await expect(
       canAccessInvoicePdf({
@@ -90,14 +90,17 @@ describe("invoice PDF authorization", () => {
       profileId: "profile-1",
       shopId: "shop-a",
     });
-    expect(client.rpc).not.toHaveBeenCalled();
+    expect(client.rpc).toHaveBeenCalledWith(
+      "profixiq_shop_has_product_access",
+      { p_capability: "shop", p_shop_id: "shop-a" },
+    );
   });
 
   it("denies same-shop staff when effective invoice-view is denied", async () => {
     mocks.resolveAuthenticatedStaffProfile.mockResolvedValue(
       staffProfile("mechanic", "shop-a"),
     );
-    const client = sessionClient();
+    const client = sessionClient({ data: true, error: null });
 
     await expect(
       canAccessInvoicePdf({
@@ -109,7 +112,10 @@ describe("invoice PDF authorization", () => {
       }),
     ).resolves.toBe(false);
 
-    expect(client.rpc).not.toHaveBeenCalled();
+    expect(client.rpc).toHaveBeenCalledWith(
+      "profixiq_shop_has_product_access",
+      { p_capability: "shop", p_shop_id: "shop-a" },
+    );
   });
 
   it("denies a billing operator from a different shop", async () => {

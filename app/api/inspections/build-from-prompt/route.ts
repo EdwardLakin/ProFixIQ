@@ -3,6 +3,7 @@ import "server-only";
 import { NextResponse } from "next/server";
 import { getOpenAIClient } from "@/features/shared/lib/server/openai";
 import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
+import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { ROLE_GROUPS } from "@/features/shared/lib/rbac";
 import {
@@ -370,6 +371,7 @@ function extractOutputJson(resp: unknown): unknown | null {
 export async function POST(req: Request) {
   const access = await requireShopScopedApiAccess({
     allowRoles: ROLE_GROUPS.billingOperators,
+    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
   });
   if (!access.ok) return access.response;
 

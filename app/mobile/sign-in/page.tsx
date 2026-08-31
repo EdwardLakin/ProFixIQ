@@ -7,9 +7,11 @@ import { useEffect, useMemo, useState } from "react";
 
 import AuthShell from "@/features/auth/components/AuthShell";
 import AuthStatus from "@/features/auth/components/AuthStatus";
+import { resolvePostAuthDestination } from "@/features/auth/lib/postAuthRouting";
 import { safeInternalRedirect } from "@/features/auth/lib/safeRedirect";
 import { signInWithIdentifier } from "@/features/auth/lib/signInClient";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import { ACCOUNT_BILLING_RECOVERY_HREF } from "@/features/shared/lib/product-access";
 
 const inputClass =
   "w-full rounded-xl border border-[color:var(--theme-input-border)] bg-[color:var(--theme-input-bg)] px-3.5 py-3 text-base text-[color:var(--theme-input-text)] outline-none transition placeholder:text-[color:var(--theme-text-muted)] focus:border-[var(--accent-copper)] focus:ring-4 focus:ring-[color:color-mix(in_srgb,var(--accent-copper)_16%,transparent)]";
@@ -18,8 +20,12 @@ export default function MobileSignInPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = useMemo(() => createBrowserSupabase(), []);
-  const fieldServiceDestination = searchParams.get("redirect")?.startsWith("/mobile/service");
-  const productLabel = fieldServiceDestination ? "Field Service" : "Shop Mobile";
+  const fieldServiceDestination = searchParams
+    .get("redirect")
+    ?.startsWith("/mobile/service");
+  const productLabel = fieldServiceDestination
+    ? "Field Service"
+    : "Shop Mobile";
   const heroTitle = fieldServiceDestination
     ? "Your field work, in your pocket."
     : "The shop floor, in your pocket.";
@@ -29,19 +35,40 @@ export default function MobileSignInPage() {
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(() =>
+    searchParams.get("access") === "unavailable"
+      ? "We couldn't verify Shop access right now. Try again shortly."
+      : searchParams.get("access") === "shop_required"
+        ? "This account does not currently include ProFixIQ Shop access."
+        : "",
+  );
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       const { data } = await supabase.auth.getUser();
-      if (!cancelled && data.user) router.replace("/mobile");
+      if (cancelled || !data.user) return;
+      const destination = await resolvePostAuthDestination({
+        supabase,
+        searchParams,
+        isMobileMode: true,
+      });
+      if (cancelled) return;
+      if (destination.startsWith("/mobile/sign-in?access=")) {
+        setError(
+          destination.includes("access=unavailable")
+            ? "We couldn't verify Shop access right now. Try again shortly."
+            : "This account does not currently include ProFixIQ Shop access.",
+        );
+        return;
+      }
+      router.replace(destination);
     })();
     return () => {
       cancelled = true;
     };
-  }, [router, supabase]);
+  }, [router, searchParams, supabase]);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -58,11 +85,15 @@ export default function MobileSignInPage() {
         setError(result.error);
         return;
       }
-      const destination = safeInternalRedirect(
-        searchParams.get("redirect"),
-        result.destination,
-        ["/mobile"],
-      );
+      const destination =
+        result.destination === ACCOUNT_BILLING_RECOVERY_HREF ||
+        result.destination.startsWith("/auth/set-password")
+          ? result.destination
+          : safeInternalRedirect(
+              searchParams.get("redirect"),
+              result.destination,
+              ["/mobile"],
+            );
       router.replace(destination);
       router.refresh();
     } finally {
@@ -85,7 +116,9 @@ export default function MobileSignInPage() {
           {productLabel}
         </div>
         <h1 className="mt-2 text-3xl font-semibold tracking-[-0.035em] text-[color:var(--theme-text-primary)]">
-          {fieldServiceDestination ? "Sign in for Field Service" : "Sign in for Shop Mobile"}
+          {fieldServiceDestination
+            ? "Sign in for Field Service"
+            : "Sign in for Shop Mobile"}
         </h1>
         <p className="mt-2 text-sm leading-6 text-[color:var(--theme-text-secondary)]">
           {fieldServiceDestination
@@ -176,7 +209,8 @@ export default function MobileSignInPage() {
       </div>
 
       <p className="mt-5 text-center text-xs leading-5 text-[color:var(--theme-text-muted)]">
-        Signing in here always returns you to the role-specific workspace you selected.
+        Signing in here always returns you to the role-specific workspace you
+        selected.
       </p>
     </AuthShell>
   );

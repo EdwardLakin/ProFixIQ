@@ -86,6 +86,7 @@ describe("purchase-order place route", () => {
     });
     expect(mocks.requireShopScopedApiAccess).toHaveBeenCalledWith({
       requiredCapability: "canManageParts",
+      requiredProductCapabilities: ["shop", "field_service"],
     });
     expect(supabase.rpc).toHaveBeenCalledWith("parts_place_purchase_order", {
       p_po_id: PO_ID,

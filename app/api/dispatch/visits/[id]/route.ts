@@ -9,7 +9,12 @@ import {
 import { dispatchErrorResponse } from "@/features/dispatch/server/http";
 import { assertServiceVisitSchedule } from "@/features/scheduling/lib/service-visit-contract";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import {
+  canAccessDispatchVisit,
+  resolveDispatchProductScope,
+} from "@/features/dispatch/server/productScope";
 
 const CommonSchema = z.object({
   expectedVersion: z.number().int().positive().nullable().optional(),
@@ -21,7 +26,13 @@ const UpdateSchema = CommonSchema.extend({
   workOrderId: z.string().uuid().nullable().optional(),
   serviceAddressId: z.string().uuid().nullable().optional(),
   dispatchNotes: z.string().max(4000).nullable().optional(),
-  estimatedTravelMinutes: z.number().int().min(0).max(24 * 60).nullable().optional(),
+  estimatedTravelMinutes: z
+    .number()
+    .int()
+    .min(0)
+    .max(24 * 60)
+    .nullable()
+    .optional(),
   estimatedDistanceKm: z.number().min(0).max(100_000).nullable().optional(),
 });
 
@@ -49,7 +60,13 @@ const TransitionSchema = CommonSchema.extend({
     "completed",
     "cancelled",
   ]),
-  actualTravelMinutes: z.number().int().min(0).max(24 * 60).nullable().optional(),
+  actualTravelMinutes: z
+    .number()
+    .int()
+    .min(0)
+    .max(24 * 60)
+    .nullable()
+    .optional(),
   actualDistanceKm: z.number().min(0).max(100_000).nullable().optional(),
 });
 
@@ -68,12 +85,17 @@ export async function PATCH(
   request: Request,
   context: { params: Promise<{ id: string }> },
 ) {
-  const access = await requireShopScopedApiAccess();
+  const access = await requireShopScopedApiAccess({
+    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
+  });
   if (!access.ok) return access.response;
 
   const { id } = await context.params;
   if (!z.string().uuid().safeParse(id).success) {
-    return NextResponse.json({ error: "Invalid service visit id." }, { status: 400 });
+    return NextResponse.json(
+      { error: "Invalid service visit id." },
+      { status: 400 },
+    );
   }
 
   const parsed = BodySchema.safeParse(await request.json().catch(() => null));
@@ -93,8 +115,27 @@ export async function PATCH(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  try {
+    const productScope = await resolveDispatchProductScope(access);
+    if (
+      !(await canAccessDispatchVisit({
+        access,
+        scope: productScope,
+        visitId: id,
+      }))
+    ) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+  } catch {
+    return NextResponse.json(
+      { error: "Unable to authorize this dispatch operation." },
+      { status: 503 },
+    );
+  }
+
   const operationKey =
-    request.headers.get("Idempotency-Key")?.trim() || input.operationKey?.trim();
+    request.headers.get("Idempotency-Key")?.trim() ||
+    input.operationKey?.trim();
   if (!operationKey || operationKey.length < 8) {
     return NextResponse.json(
       { error: "A stable Idempotency-Key is required." },
@@ -160,7 +201,10 @@ export async function PATCH(
       .maybeSingle();
     if (currentError) throw new Error(currentError.message);
     if (!current) {
-      return NextResponse.json({ error: "Service visit not found." }, { status: 404 });
+      return NextResponse.json(
+        { error: "Service visit not found." },
+        { status: 404 },
+      );
     }
 
     const result = await updateServiceVisit({
@@ -170,7 +214,9 @@ export async function PATCH(
       actorUserId: access.profile.id,
       operationKey,
       expectedVersion: input.expectedVersion,
-      workOrderId: hasOwn(input, "workOrderId") ? input.workOrderId : current.work_order_id,
+      workOrderId: hasOwn(input, "workOrderId")
+        ? input.workOrderId
+        : current.work_order_id,
       serviceAddressId: hasOwn(input, "serviceAddressId")
         ? input.serviceAddressId
         : current.service_address_id,

@@ -15,6 +15,7 @@ import {
 } from "@/features/auth/lib/accessSurfaceRouting";
 import { safeInternalRedirect } from "@/features/auth/lib/safeRedirect";
 import { claimStripeAcquisitionAfterAuth } from "@/features/stripe/lib/client/claim-acquisition";
+import { acquisitionSurfaceProductCapabilities } from "@/features/shared/lib/product-access";
 
 const OTP_TYPES = new Set<EmailOtpType>([
   "signup",
@@ -118,6 +119,12 @@ export default function AuthCallbackPage() {
         supabase,
         searchParams: sp,
         isMobileMode,
+        ...(claim.surface
+          ? {
+              requiredProductCapabilities:
+                acquisitionSurfaceProductCapabilities(claim.surface),
+            }
+          : {}),
         ...(claim.surface
           ? {
               defaultDashboardHref: acquisitionHomeHref(claim.surface),

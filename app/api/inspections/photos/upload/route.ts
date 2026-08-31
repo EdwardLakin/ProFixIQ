@@ -13,6 +13,7 @@ import { authorizeWorkOrderEvidence } from "@/features/work-orders/server/author
 import { inspectionPhotoStorageObject } from "@/features/inspections/server/reconcileInspectionPhotoEvidence";
 import { buildInspectionMediaCapturedEvent } from "@/features/integrations/shopreel/server/buildProFixIQStoryEvents";
 import { postStoryEventToShopReel } from "@/features/integrations/shopreel/server/postStoryEventToShopReel";
+import { canExecuteInspectionForProduct } from "@/features/inspections/server/inspectionExecutionProductAccess";
 
 const MAX_PHOTO_BYTES = 15 * 1024 * 1024;
 const SIGNED_URL_TTL_SECONDS = 60 * 60 * 24 * 30;
@@ -279,6 +280,16 @@ export async function POST(request: NextRequest) {
       { error: "Inspection work-order scope does not match." },
       { status: 403 },
     );
+  }
+
+  if (
+    !(await canExecuteInspectionForProduct({
+      supabase,
+      shopId,
+      workOrderId,
+    }))
+  ) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   // Service-role writes begin only after authentication, canonical inspection

@@ -8,6 +8,7 @@ import {
   type InspectionPhotoEvidenceRow,
 } from "@/features/inspections/server/reconcileInspectionPhotoEvidence";
 import { uniqueEvidenceUrls } from "@/features/work-orders/lib/evidence/workOrderEvidence";
+import { canExecuteInspectionForProduct } from "@/features/inspections/server/inspectionExecutionProductAccess";
 
 type InspectionRow = {
   id: string;
@@ -214,6 +215,17 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
     inspectionRow = data;
+  }
+
+  if (
+    inspectionRow &&
+    !(await canExecuteInspectionForProduct({
+      supabase,
+      shopId,
+      workOrderId: inspectionRow.work_order_id,
+    }))
+  ) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const resolvedWorkOrderLineId =

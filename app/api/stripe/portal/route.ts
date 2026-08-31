@@ -81,6 +81,7 @@ export async function POST(req: Request) {
     const access = await requireShopScopedApiAccess({
       requiredCapability: "canManageBilling",
       allowRoles: ["owner", "admin"],
+      requiredProductCapabilities: [],
       requireOwnerPin: true,
       ownerPinRequest: req,
       ownerPinAllowedPurposes: [OWNER_PIN_PURPOSES.BILLING, OWNER_PIN_PURPOSES.PRIVILEGED],
@@ -128,7 +129,7 @@ export async function POST(req: Request) {
       shop,
       access.profile.id,
     );
-    const returnUrl = `${getSiteUrl()}/dashboard/owner/settings#billing`;
+    const returnUrl = `${getSiteUrl()}/account/billing`;
 
     const session = await stripe.billingPortal.sessions.create({
       customer: customerId,

@@ -22,6 +22,13 @@ import {
   resolveLegacyFleetRedirect,
 } from "@/features/fleet/lib/fleetProductRouting";
 import { resolveCanonicalStaffProfile } from "@/features/shared/lib/authenticated-profile";
+import { resolveApiProductBoundary } from "@/features/shared/lib/api-product-boundary";
+import {
+  ACCOUNT_BILLING_RECOVERY_HREF,
+  FIELD_PRODUCT_CAPABILITIES,
+  resolveShopProductAccess,
+  SHOP_PRODUCT_CAPABILITIES,
+} from "@/features/shared/lib/product-access";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import {
   hasSupabasePublicEnv,
@@ -47,6 +54,25 @@ function isMobileDeviceRequest(req: NextRequest): boolean {
 
   const userAgent = req.headers.get("user-agent") ?? "";
   return /android|iphone|ipad|ipod|mobile|windows phone/i.test(userAgent);
+}
+
+function isSharedShopFieldRoute(pathname: string): boolean {
+  if (
+    pathname === "/mobile/appointments" ||
+    pathname.startsWith("/mobile/appointments/") ||
+    pathname === "/mobile/inspections" ||
+    pathname.startsWith("/mobile/inspections/") ||
+    pathname === "/mobile/parts" ||
+    pathname.startsWith("/mobile/parts/")
+  ) {
+    return true;
+  }
+
+  return (
+    pathname === "/mobile/work-orders" ||
+    (pathname !== "/mobile/work-orders/create" &&
+      /^\/mobile\/work-orders\/[^/]+$/.test(pathname))
+  );
 }
 
 function safeRedirectPath(v: string | null): string | null {
@@ -108,6 +134,21 @@ type PortalAccess = {
 type MiddlewareResponseState = {
   current: NextResponse;
 };
+
+function apiBoundaryResponse(
+  responseState: MiddlewareResponseState,
+  body: { error: string },
+  status: number,
+): NextResponse {
+  const response = NextResponse.json(body, {
+    status,
+    headers: { "Cache-Control": "private, no-store" },
+  });
+  responseState.current.cookies
+    .getAll()
+    .forEach((cookie) => response.cookies.set(cookie));
+  return response;
+}
 
 function createMiddlewareSupabase(
   req: NextRequest,
@@ -258,6 +299,9 @@ export async function middleware(req: NextRequest) {
       : null;
 
   const pathname = opsInternalPath ?? fleetInternalPath ?? requestPathname;
+  const sharedShopFieldRouteRequest = isSharedShopFieldRoute(pathname);
+  const fieldProductBoundaryRequest =
+    sharedShopFieldRouteRequest || pathname === "/field/sign-in";
   const isGuidedOnboardingPath =
     pathname === "/dashboard/onboarding-v2" ||
     pathname.startsWith("/dashboard/onboarding-v2/");
@@ -317,7 +361,68 @@ export async function middleware(req: NextRequest) {
       responseState,
       rebuildResponse,
     );
-    await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const boundary = resolveApiProductBoundary(pathname);
+    if (
+      !user ||
+      boundary.kind === "route_owned" ||
+      boundary.kind === "account_recovery"
+    ) {
+      return responseState.current;
+    }
+
+    try {
+      const { profile, error: profileError } =
+        await resolveCanonicalStaffProfile(supabase, user.id);
+      if (profileError) {
+        return apiBoundaryResponse(
+          responseState,
+          { error: "Authorization service unavailable" },
+          503,
+        );
+      }
+      const actor = getActorCapabilities({ role: profile?.role });
+      if (
+        !profile?.shop_id ||
+        !actor.isKnownRole ||
+        actor.canonicalRole === "customer" ||
+        user.app_metadata?.profixiq_portal_only === true
+      ) {
+        return apiBoundaryResponse(
+          responseState,
+          { error: "Product access required" },
+          403,
+        );
+      }
+
+      const productAccess = await resolveShopProductAccess({
+        supabase,
+        shopId: profile.shop_id,
+        capabilities: boundary.capabilities,
+      });
+      if (productAccess.error) {
+        return apiBoundaryResponse(
+          responseState,
+          { error: "Authorization service unavailable" },
+          503,
+        );
+      }
+      if (!productAccess.entitled) {
+        return apiBoundaryResponse(
+          responseState,
+          { error: "Product access required" },
+          403,
+        );
+      }
+    } catch {
+      return apiBoundaryResponse(
+        responseState,
+        { error: "Authorization service unavailable" },
+        503,
+      );
+    }
     return responseState.current;
   }
 
@@ -397,6 +502,11 @@ export async function middleware(req: NextRequest) {
 
   let completed = false;
   let canUseMobile = false;
+  let canManageBillingRecovery = false;
+  let shopProductEntitled = false;
+  let shopProductAccessResolved = false;
+  let fieldProductEntitled = false;
+  let fieldProductAccessResolved = false;
   const isPortalOnlyAccount = user?.app_metadata?.profixiq_portal_only === true;
 
   if (user && !isPortal) {
@@ -416,9 +526,37 @@ export async function middleware(req: NextRequest) {
       const capabilities = getActorCapabilities({ role: profile?.role });
       canUseMobile =
         capabilities.isKnownRole && capabilities.canonicalRole !== "customer";
+      canManageBillingRecovery =
+        capabilities.canManageBilling &&
+        (capabilities.canonicalRole === "owner" ||
+          capabilities.canonicalRole === "admin");
+      if (profile?.shop_id && capabilities.isKnownRole) {
+        const [shopProductAccess, fieldProductAccess] = await Promise.all([
+          resolveShopProductAccess({
+            supabase,
+            shopId: profile.shop_id,
+            capabilities: SHOP_PRODUCT_CAPABILITIES,
+          }),
+          fieldProductBoundaryRequest
+            ? resolveShopProductAccess({
+                supabase,
+                shopId: profile.shop_id,
+                capabilities: FIELD_PRODUCT_CAPABILITIES,
+              })
+            : Promise.resolve(null),
+        ]);
+        shopProductEntitled = shopProductAccess.entitled;
+        shopProductAccessResolved = shopProductAccess.error === null;
+        fieldProductEntitled = fieldProductAccess?.entitled ?? false;
+        fieldProductAccessResolved = fieldProductAccess?.error === null;
+      }
     } catch {
       completed = false;
       canUseMobile = false;
+      shopProductEntitled = false;
+      shopProductAccessResolved = false;
+      fieldProductEntitled = false;
+      fieldProductAccessResolved = false;
     }
   }
 
@@ -446,6 +584,30 @@ export async function middleware(req: NextRequest) {
           const target = productRequestUrl(
             req,
             "/onboarding",
+            fleetProductRequest,
+          );
+          return redirectWithResponseHeaders(target, responseState.current);
+        }
+        if (
+          fieldProductAccessResolved &&
+          !fieldProductEntitled &&
+          canManageBillingRecovery
+        ) {
+          const target = productRequestUrl(
+            req,
+            ACCOUNT_BILLING_RECOVERY_HREF,
+            fleetProductRequest,
+          );
+          return redirectWithResponseHeaders(target, responseState.current);
+        }
+        return responseState.current;
+      }
+
+      if (completed && (!shopProductAccessResolved || !shopProductEntitled)) {
+        if (canManageBillingRecovery) {
+          const target = productRequestUrl(
+            req,
+            ACCOUNT_BILLING_RECOVERY_HREF,
             fleetProductRequest,
           );
           return redirectWithResponseHeaders(target, responseState.current);
@@ -583,6 +745,56 @@ export async function middleware(req: NextRequest) {
     return redirectWithResponseHeaders(target, responseState.current);
   }
 
+  const isFieldRoute =
+    pathname === "/mobile/service" || pathname.startsWith("/mobile/service/");
+  const isSharedFieldRoute = sharedShopFieldRouteRequest;
+  const isAccountRecoveryRoute = pathname === ACCOUNT_BILLING_RECOVERY_HREF;
+  const isFleetRelationshipSetup =
+    pathname === "/dashboard/owner/fleet-access" ||
+    pathname.startsWith("/dashboard/owner/fleet-access/");
+  const isShopProductRoute =
+    !isPortal &&
+    !fleetProductRequest &&
+    !opsProductRequest &&
+    !isFieldRoute &&
+    !isSharedFieldRoute &&
+    !isAccountRecoveryRoute &&
+    !isFleetRelationshipSetup &&
+    !pathname.startsWith("/onboarding");
+
+  const sharedProductEntitled = shopProductEntitled || fieldProductEntitled;
+  const sharedProductAccessResolved =
+    sharedProductEntitled ||
+    (shopProductAccessResolved && fieldProductAccessResolved);
+  if (
+    isSharedFieldRoute &&
+    completed &&
+    (!sharedProductAccessResolved || !sharedProductEntitled)
+  ) {
+    const target = productRequestUrl(req, "/field/sign-in", fleetProductRequest);
+    target.searchParams.set(
+      "access",
+      sharedProductAccessResolved ? "field_required" : "unavailable",
+    );
+    return redirectWithResponseHeaders(target, responseState.current);
+  }
+
+  if (
+    isShopProductRoute &&
+    completed &&
+    (!shopProductAccessResolved || !shopProductEntitled)
+  ) {
+    const signInPath = pathname.startsWith("/mobile")
+      ? "/mobile/sign-in"
+      : "/shop/sign-in";
+    const target = productRequestUrl(req, signInPath, fleetProductRequest);
+    target.searchParams.set(
+      "access",
+      shopProductAccessResolved ? "shop_required" : "unavailable",
+    );
+    return redirectWithResponseHeaders(target, responseState.current);
+  }
+
   if (
     mobileDeviceRequest &&
     completed &&
@@ -637,7 +849,12 @@ export async function middleware(req: NextRequest) {
     }
   }
 
-  if (!isPortal && !completed && !pathname.startsWith("/onboarding")) {
+  if (
+    !isPortal &&
+    !completed &&
+    !isAccountRecoveryRoute &&
+    !pathname.startsWith("/onboarding")
+  ) {
     const target = productRequestUrl(req, "/onboarding", fleetProductRequest);
     return redirectWithResponseHeaders(target, responseState.current);
   }
@@ -693,6 +910,7 @@ export const config = {
     "/ops/:path*",
     "/dashboard/:path*",
     "/agent/:path*",
+    "/account/:path*",
     "/ai/assistant",
     "/assistant/:path*",
     "/billing/:path*",

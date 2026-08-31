@@ -28,6 +28,7 @@ function snapshot(
   overrides: Record<string, unknown> = {},
 ): Record<string, unknown> {
   return {
+    productScope: "shop",
     workOrder: {
       id: WORK_ORDER_ID,
       shop_id: SHOP_ID,

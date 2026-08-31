@@ -52,6 +52,7 @@ describe("parts request inventory route authorization", () => {
     expect(response.status).toBe(403);
     expect(mocks.requireShopScopedApiAccess).toHaveBeenCalledWith({
       requiredCapability: "canManageParts",
+      requiredProductCapabilities: ["shop", "field_service"],
     });
   });
 
@@ -73,6 +74,8 @@ describe("parts request inventory route authorization", () => {
     expect(routeSource).toContain("cost?: number | string | null");
     expect(routeSource).toContain("p_cost: cost.value");
     expect(routeSource).toContain("p_supplier: clean(body.supplier)");
-    expect(routeSource).toContain('rpc("parts_create_and_attach_inventory_atomic"');
+    expect(routeSource).toMatch(
+      /rpc\(\s*"parts_create_and_attach_inventory_atomic"/,
+    );
   });
 });

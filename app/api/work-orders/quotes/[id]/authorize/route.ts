@@ -1,8 +1,9 @@
 // app/api/work-orders/quotes/[id]/authorize/route.ts
 import "server-only";
 import { NextResponse, type NextRequest } from "next/server";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
-import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import { resolveWorkOrderProductAuthority } from "@/features/mobile/service/server/access";
+import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { applyWorkOrderQuoteLineDecision } from "@/features/work-orders/server/workOrderQuoteLineApproval";
 import type {
   QuoteApprovalDecision,
@@ -24,34 +25,13 @@ const CONTACT_METHODS = new Set<QuoteDecisionContactMethod>([
 ]);
 
 export async function POST(req: NextRequest) {
-  const supabase = createServerSupabaseRoute();
-
   try {
-    const {
-      data: { user },
-      error: authErr,
-    } = await supabase.auth.getUser();
-    if (authErr || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const { data: profile, error: profileErr } = await supabase
-      .from("profiles")
-      .select("shop_id, role")
-      .eq("id", user.id)
-      .single();
-
-    if (profileErr || !profile?.shop_id) {
-      return NextResponse.json(
-        { error: "Unable to resolve actor profile" },
-        { status: 403 },
-      );
-    }
-
-    const actor = getActorCapabilities({ role: profile.role });
-    if (!actor.isKnownRole || !actor.canAuthorizeQuotes) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    const access = await requireShopScopedApiAccess({
+      requiredCapability: "canAuthorizeQuotes",
+      requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
+    });
+    if (!access.ok) return access.response;
+    const supabase = access.supabase;
 
     // Extract `[id]` from the pathname .../quotes/<id>/authorize
     const segments = req.nextUrl.pathname.split("/").filter(Boolean);
@@ -114,7 +94,15 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       );
     }
-    if (q.shop_id !== profile.shop_id) {
+    if (q.shop_id !== access.profile.shop_id) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const authority = await resolveWorkOrderProductAuthority(
+      access,
+      q.work_order_id,
+    );
+    if (!authority.authorized) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -124,7 +112,7 @@ export async function POST(req: NextRequest) {
       workOrderId: q.work_order_id,
       shopId: q.shop_id,
       customerId: null,
-      actorUserId: user.id,
+      actorUserId: access.authUserId,
       decision,
       decisionSource: "shop",
       contactMethod,

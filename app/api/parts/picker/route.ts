@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
@@ -28,8 +29,14 @@ export async function GET(request: Request) {
   const pickerContext = url.searchParams.get("context");
   const access = await requireShopScopedApiAccess(
     pickerContext === "menu-editor"
-      ? { allowRoles: MENU_EDITOR_ROLES }
-      : { requiredCapability: "canManageParts" },
+      ? {
+          allowRoles: MENU_EDITOR_ROLES,
+          requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
+        }
+      : {
+          requiredCapability: "canManageParts",
+          requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
+        },
   );
   if (!access.ok) return access.response;
 
@@ -38,9 +45,7 @@ export async function GET(request: Request) {
 
   let partsQuery = admin
     .from("parts")
-    .select(
-      "id,shop_id,name,sku,part_number,category,default_cost,cost,price",
-    )
+    .select("id,shop_id,name,sku,part_number,category,default_cost,cost,price")
     .eq("shop_id", access.profile.shop_id)
     .order("name")
     .limit(50);
@@ -83,9 +88,7 @@ export async function GET(request: Request) {
   const stockResult = partIds.length
     ? await admin
         .from("v_part_stock")
-        .select(
-          "part_id,location_id,qty_available,qty_on_hand,qty_reserved",
-        )
+        .select("part_id,location_id,qty_available,qty_on_hand,qty_reserved")
         .in("part_id", partIds)
     : { data: [], error: null };
 

@@ -76,6 +76,7 @@ describe("dismiss empty parts request route", () => {
     });
     expect(mocks.requireShopScopedApiAccess).toHaveBeenCalledWith({
       allowRoles: ["owner", "admin", "manager", "advisor", "parts"],
+      requiredProductCapabilities: ["shop", "field_service"],
     });
     expect(db.rpc).toHaveBeenCalledWith("parts_dismiss_empty_request_atomic", {
       p_shop_id: "shop-1",

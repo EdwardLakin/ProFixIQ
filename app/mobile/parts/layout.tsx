@@ -1,7 +1,13 @@
 import type { ReactNode } from "react";
 
 import MobileCommandRoute from "@/features/mobile/layout/MobileCommandRoute";
+import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
+import { requireShopPageAccess } from "@/features/shared/lib/server/admin-access";
 
-export default function MobilePartsLayout({ children }: { children: ReactNode }) {
+export default async function MobilePartsLayout({ children }: { children: ReactNode }) {
+  await requireShopPageAccess({
+    requiredCapability: "canManageParts",
+    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
+  });
   return <MobileCommandRoute surface="parts">{children}</MobileCommandRoute>;
 }

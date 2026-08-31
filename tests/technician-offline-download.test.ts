@@ -45,8 +45,9 @@ describe("technician assigned-work offline download", () => {
   });
 
   it("writes the bundle and every detail alias under one tenant scope", () => {
-    expect(download).toContain("result.scope.userId !== args.scope.userId");
-    expect(download).toContain("result.scope.shopId !== args.scope.shopId");
+    expect(download).toContain("isTechnicianOfflineBundle(result, args.scope)");
+    expect(download).toContain("reconcileMobileProductScope");
+    expect(download).toContain("bundle.productScope");
     expect(download).toContain('BUNDLE_KIND = "technician-assigned-work"');
     expect(download).toContain('kind: "mobile-work-order-detail"');
     expect(download).toContain("item.workOrder.custom_id");

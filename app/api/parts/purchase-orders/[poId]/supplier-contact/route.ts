@@ -4,6 +4,7 @@ import {
   buildPurchaseOrderContactDraft,
   purchaseOrderContactHref,
 } from "@/features/parts/lib/purchaseOrderContact";
+import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { toSafeDatabaseError } from "@/features/shared/lib/server/safeDatabaseError";
 
@@ -56,7 +57,10 @@ export async function POST(
     !requestKey
   ) {
     return NextResponse.json(
-      { ok: false, error: "A valid purchase order and contact method are required." },
+      {
+        ok: false,
+        error: "A valid purchase order and contact method are required.",
+      },
       { status: 400 },
     );
   }
@@ -64,18 +68,20 @@ export async function POST(
   const access = await requireShopScopedApiAccess({
     requiredCapability: "canManageParts",
     allowRoles: ["owner", "admin", "manager", "parts", "lead_hand", "foreman"],
+    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
   });
   if (!access.ok) return access.response;
 
   const shopId = access.profile.shop_id;
-  const { data: purchaseOrder, error: purchaseOrderError } = await access.supabase
-    .from("purchase_orders")
-    .select(
-      "id,shop_id,supplier_id,work_order_id,supplier_quote_request_id,po_number,status",
-    )
-    .eq("id", poId)
-    .eq("shop_id", shopId)
-    .maybeSingle();
+  const { data: purchaseOrder, error: purchaseOrderError } =
+    await access.supabase
+      .from("purchase_orders")
+      .select(
+        "id,shop_id,supplier_id,work_order_id,supplier_quote_request_id,po_number,status",
+      )
+      .eq("id", poId)
+      .eq("shop_id", shopId)
+      .maybeSingle();
 
   if (purchaseOrderError) {
     const safeError = toSafeDatabaseError(purchaseOrderError, {
@@ -83,7 +89,11 @@ export async function POST(
       fallback: "The purchase order could not be loaded.",
     });
     return NextResponse.json(
-      { ok: false, error: safeError.message, correlationId: safeError.correlationId },
+      {
+        ok: false,
+        error: safeError.message,
+        correlationId: safeError.correlationId,
+      },
       { status: 500 },
     );
   }
@@ -95,7 +105,8 @@ export async function POST(
     return NextResponse.json(
       {
         ok: false,
-        error: "This purchase order is not anchored to a supplier quote and work order.",
+        error:
+          "This purchase order is not anchored to a supplier quote and work order.",
       },
       { status: 409 },
     );
@@ -129,7 +140,11 @@ export async function POST(
       fallback: "The supplier order details could not be loaded.",
     });
     return NextResponse.json(
-      { ok: false, error: safeError.message, correlationId: safeError.correlationId },
+      {
+        ok: false,
+        error: safeError.message,
+        correlationId: safeError.correlationId,
+      },
       { status: 500 },
     );
   }
@@ -139,13 +154,20 @@ export async function POST(
   const lines = linesResult.data ?? [];
   if (!supplier || supplier.is_active === false) {
     return NextResponse.json(
-      { ok: false, error: "Purchase order supplier is not active in this shop." },
+      {
+        ok: false,
+        error: "Purchase order supplier is not active in this shop.",
+      },
       { status: 404 },
     );
   }
   if (!workOrderNumber) {
     return NextResponse.json(
-      { ok: false, error: "The purchase order work order is missing its user-facing number." },
+      {
+        ok: false,
+        error:
+          "The purchase order work order is missing its user-facing number.",
+      },
       { status: 409 },
     );
   }
@@ -157,13 +179,19 @@ export async function POST(
   }
   if (channel === "email" && !clean(supplier.email)) {
     return NextResponse.json(
-      { ok: false, error: "The selected supplier does not have an email address." },
+      {
+        ok: false,
+        error: "The selected supplier does not have an email address.",
+      },
       { status: 409 },
     );
   }
   if (channel === "phone" && !clean(supplier.phone)) {
     return NextResponse.json(
-      { ok: false, error: "The selected supplier does not have a phone number." },
+      {
+        ok: false,
+        error: "The selected supplier does not have a phone number.",
+      },
       { status: 409 },
     );
   }
@@ -204,7 +232,11 @@ export async function POST(
       ],
     });
     return NextResponse.json(
-      { ok: false, error: safeError.message, correlationId: safeError.correlationId },
+      {
+        ok: false,
+        error: safeError.message,
+        correlationId: safeError.correlationId,
+      },
       { status: safeError.isPublicMessage ? 409 : 500 },
     );
   }

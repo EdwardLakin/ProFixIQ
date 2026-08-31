@@ -2,8 +2,18 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
+import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
+import { resolveCanonicalStaffProfile } from "@/features/shared/lib/authenticated-profile";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import {
+  canFieldOperatorAccessWorkOrder,
+  type ShopAccess,
+} from "@/features/mobile/service/server/access";
+import {
+  resolveShopProductAccess,
+  SHOP_PRODUCT_CAPABILITIES,
+} from "@/features/shared/lib/product-access";
 
 type DB = Database;
 
@@ -33,46 +43,63 @@ export async function authorizeWorkOrderEvidence(
     .maybeSingle();
   if (!workOrder?.id || !workOrder.shop_id) return null;
 
-  const profilePromise = admin
-    .from("profiles")
-    .select("id,shop_id,role")
-    .eq("id", user.id)
-    .maybeSingle();
-  const customerPromise = workOrder.customer_id
-    ? admin
-        .from("customers")
-        .select("id")
-        .eq("user_id", user.id)
-        .eq("id", workOrder.customer_id)
-        .eq("shop_id", workOrder.shop_id)
-        .maybeSingle()
-    : Promise.resolve({ data: null });
-  const [{ data: profile }, { data: customer }] = await Promise.all([
-    profilePromise,
-    customerPromise,
-  ]);
+  const profilePromise = resolveCanonicalStaffProfile(admin, user.id);
+  const portalAccessPromise = workOrder.customer_id
+    ? sessionClient.rpc("profixiq_is_portal_customer_for", {
+        p_customer_id: workOrder.customer_id,
+        p_shop_id: workOrder.shop_id,
+      })
+    : Promise.resolve({ data: false, error: null });
+  const [{ profile }, { data: portalAccess, error: portalAccessError }] =
+    await Promise.all([profilePromise, portalAccessPromise]);
 
   const capabilities = getActorCapabilities({ role: profile?.role });
-  const isShopStaff =
+  const isStaffIdentity =
     profile?.shop_id === workOrder.shop_id &&
     capabilities.isKnownRole &&
     capabilities.canonicalRole !== "customer" &&
     !capabilities.canViewFleetOnlyData;
 
-  if (isShopStaff) {
-    return {
-      userId: user.id,
-      kind: "staff",
-      shopId: workOrder.shop_id,
-      workOrderId: workOrder.id,
-      vehicleId: workOrder.vehicle_id,
-      canEdit:
-        capabilities.canManageWorkOrders ||
-        capabilities.canRunInspections,
-    };
+  if (isStaffIdentity && profile?.shop_id) {
+    const shopProduct = await resolveShopProductAccess({
+      supabase: sessionClient,
+      shopId: profile.shop_id,
+      capabilities: SHOP_PRODUCT_CAPABILITIES,
+    });
+    let fieldRelationship = false;
+    if (!shopProduct.entitled) {
+      try {
+        const fieldAccess: ShopAccess = {
+          ok: true,
+          profile: { ...profile, shop_id: profile.shop_id },
+          canonicalRole: capabilities.canonicalRole,
+          authUserId: user.id,
+          supabase: sessionClient as ShopAccess["supabase"],
+        };
+        fieldRelationship = await canFieldOperatorAccessWorkOrder(
+          fieldAccess,
+          workOrder.id,
+        );
+      } catch {
+        // Field is one independent relationship path. A failed Field lookup
+        // must not suppress a separately verifiable Fleet relationship below.
+        fieldRelationship = false;
+      }
+    }
+    if (shopProduct.entitled || fieldRelationship) {
+      return {
+        userId: user.id,
+        kind: "staff",
+        shopId: workOrder.shop_id,
+        workOrderId: workOrder.id,
+        vehicleId: workOrder.vehicle_id,
+        canEdit:
+          capabilities.canManageWorkOrders || capabilities.canRunInspections,
+      };
+    }
   }
 
-  if (customer?.id && customer.id === workOrder.customer_id) {
+  if (!portalAccessError && portalAccess === true) {
     return {
       userId: user.id,
       kind: "customer",
@@ -85,12 +112,20 @@ export async function authorizeWorkOrderEvidence(
 
   if (!workOrder.vehicle_id) return null;
 
-  const { data: membership } = await admin
-    .from("fleet_members")
-    .select("fleet_id")
-    .eq("user_id", user.id)
-    .eq("shop_id", workOrder.shop_id);
-  const fleetIds = (membership ?? []).map((row) => row.fleet_id);
+  let fleetActor;
+  try {
+    fleetActor = await resolveFleetActorContext(sessionClient, {
+      userId: user.id,
+      profileId: profile?.id,
+    });
+  } catch {
+    return null;
+  }
+  if (!fleetActor.capabilities.canAccessPortalFleetWrappers) return null;
+
+  const fleetIds = fleetActor.fleetMemberships
+    .filter((membership) => membership.shopId === workOrder.shop_id)
+    .map((membership) => membership.fleetId);
   if (fleetIds.length === 0) return null;
 
   const { data: fleetVehicle } = await admin

@@ -19,6 +19,7 @@ export type TechnicianOfflineWorkOrder = {
 
 export type TechnicianOfflineBundle = {
   scope: { userId: string; shopId: string };
+  productScope: "shop" | "field";
   downloadedAt: string;
   workOrders: TechnicianOfflineWorkOrder[];
 };

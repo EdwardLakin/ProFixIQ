@@ -27,7 +27,8 @@ describe("acquisition auth handoff", () => {
     expect(route).toContain(
       'surface === "shop" && /^cs_[A-Za-z0-9_]+$/.test(acquisitionSessionId)',
     );
-    expect(route).toContain("!hasAcquisitionContext");
+    expect(route).toContain("verifyStripeAcquisitionCheckout");
+    expect(route).toContain("verified.email !== authenticatedEmail");
     expect(signIn).toContain(
       'searchParams.get("flow")?.trim() === "acquisition"',
     );
@@ -81,10 +82,8 @@ describe("acquisition auth handoff", () => {
     expect(signIn).toContain("setIdentifier(email)");
     expect(signIn).toContain("setAcquisitionSurface(surface)");
     expect(signIn).toContain('acquisitionContextStatus === "ready"');
-    expect(contextRoute).toContain("readStripeAcquisitionMetadata");
-    expect(contextRoute).toContain("isCompletedStripeAcquisitionSession");
-    expect(contextRoute).toContain("isStripeSubscriptionAccessBearing");
-    expect(contextRoute).toContain("surface: metadata.surface");
+    expect(contextRoute).toContain("verifyStripeAcquisitionCheckout");
+    expect(contextRoute).toContain("surface: verified.metadata.surface");
     expect(contextRoute).toContain('"Cache-Control": "no-store"');
   });
 

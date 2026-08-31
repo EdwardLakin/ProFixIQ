@@ -105,6 +105,13 @@ import {
 
 function sessionClient(userId: string | null): SupabaseClient<Database> {
   return {
+    rpc: vi.fn(async (name: string) => ({
+      data:
+        name === "profixiq_is_portal_customer_for"
+          ? userId === "portal-user"
+          : true,
+      error: null,
+    })),
     auth: {
       getUser: vi.fn(async () => ({
         data: { user: userId ? { id: userId } : null },
@@ -222,12 +229,6 @@ describe("work-order line evidence authorization", () => {
     );
 
     expect(actor).toBeNull();
-    expect(mocks.filters).toContainEqual({
-      table: "fleet_members",
-      operation: "eq",
-      column: "shop_id",
-      value: "shop-a",
-    });
   });
 });
 

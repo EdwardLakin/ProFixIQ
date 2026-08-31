@@ -2,21 +2,18 @@ import { cookies as nextCookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { Database } from "@shared/types/types/supabase";
+import type { OwnerPinPurpose } from "@/features/shared/lib/owner-pin-purpose";
+
+export {
+  OWNER_PIN_PURPOSES,
+  type OwnerPinPurpose,
+} from "@/features/shared/lib/owner-pin-purpose";
 
 type DB = Database;
 
 export const OWNER_PIN_COOKIE_NAME = "pfq_owner_pin_shop";
 export const OWNER_PIN_TTL_SECONDS = 60 * 30;
 export const OWNER_PIN_TOKEN_SECRET_ENV = "OWNER_PIN_TOKEN_SECRET";
-
-export const OWNER_PIN_PURPOSES = {
-  PRIVILEGED: "owner_pin:privileged",
-  SETTINGS: "owner_pin:settings",
-  BILLING: "owner_pin:billing",
-  BRANDING: "owner_pin:branding",
-} as const;
-
-export type OwnerPinPurpose = (typeof OWNER_PIN_PURPOSES)[keyof typeof OWNER_PIN_PURPOSES];
 
 type OwnerPinTokenClaims = {
   sub: string;
@@ -34,7 +31,10 @@ type SupabaseLike = {
   from: (table: keyof DB["public"]["Tables"] | string) => {
     select: (columns: string) => {
       eq: (column: string, value: string) => {
-        single: () => Promise<{ data: any; error: any }>;
+        single: () => Promise<{
+          data: { id: string } | null;
+          error: unknown;
+        }>;
       };
     };
   };

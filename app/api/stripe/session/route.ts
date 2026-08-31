@@ -28,6 +28,7 @@ export async function GET(req: Request) {
     const access = await requireShopScopedApiAccess({
       requiredCapability: "canManageBilling",
       allowRoles: ["owner", "admin"],
+      requiredProductCapabilities: [],
       requireOwnerPin: true,
       ownerPinRequest: req,
       ownerPinAllowedPurposes: [OWNER_PIN_PURPOSES.BILLING, OWNER_PIN_PURPOSES.PRIVILEGED],

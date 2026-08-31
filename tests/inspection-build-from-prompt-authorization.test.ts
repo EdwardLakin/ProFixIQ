@@ -115,6 +115,7 @@ describe("inspection prompt-builder authorization", () => {
       expect(response.status).toBe(status);
       expect(mocks.requireShopScopedApiAccess).toHaveBeenCalledWith({
         allowRoles: ROLE_GROUPS.billingOperators,
+        requiredProductCapabilities: ["shop", "field_service"],
       });
       expect(mocks.getOpenAIModelForPurpose).not.toHaveBeenCalled();
       expect(mocks.getOpenAIClient).not.toHaveBeenCalled();

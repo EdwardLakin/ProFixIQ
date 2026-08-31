@@ -110,6 +110,7 @@ export function resolveAcquisitionSignupHref(
 const FIELD_HOME = "/mobile/service";
 const FIELD_SETUP = "/mobile/service/setup";
 const PASSWORD_CHANGE = "/auth/set-password";
+const BILLING_RECOVERY = "/account/billing";
 
 export type FieldExistingSessionAccess = {
   decision?: FieldServiceAccessDecision;
@@ -135,6 +136,8 @@ export function resolveFieldPostSignInHref(
   ) {
     return destination;
   }
+
+  if (destination === BILLING_RECOVERY) return BILLING_RECOVERY;
 
   if (destination === FIELD_SETUP) return FIELD_SETUP;
   if (destination !== FIELD_HOME) return FIELD_HOME;
@@ -176,7 +179,7 @@ export function resolveFieldExistingSessionHref(
   }
 
   const apiEquivalentDestination = access.mustChangePassword
-    ? `${PASSWORD_CHANGE}?redirect=${encodeURIComponent(fieldDestination)}`
+    ? `${PASSWORD_CHANGE}?surface=field&redirect=${encodeURIComponent(fieldDestination)}`
     : fieldDestination;
 
   return resolveFieldPostSignInHref(

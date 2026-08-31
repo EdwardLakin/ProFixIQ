@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { logOperationalEvent } from "@/features/work-orders/server/logOperationalEvent";
 
@@ -65,6 +66,7 @@ export async function POST(
 
   const access = await requireShopScopedApiAccess({
     allowRoles: ["owner", "admin", "manager", "advisor", "parts"],
+    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
   });
   if (!access.ok) return access.response;
 

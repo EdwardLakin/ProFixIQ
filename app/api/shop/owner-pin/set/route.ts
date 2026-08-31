@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import {
   OWNER_PIN_PURPOSES,
+  type OwnerPinPurpose,
   setOwnerPinVerifiedCookie,
 } from "@/features/shared/lib/server/owner-pin";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
@@ -12,7 +13,12 @@ import { resolveAuthenticatedStaffProfile } from "@/features/shared/lib/server/a
 type Body = {
   shopId?: string;
   pin?: string;
+  purpose?: string;
 };
+
+const OWNER_PIN_PURPOSE_VALUES = new Set<OwnerPinPurpose>(
+  Object.values(OWNER_PIN_PURPOSES),
+);
 
 export async function POST(req: Request) {
   try {
@@ -30,6 +36,19 @@ export async function POST(req: Request) {
     const body = (await req.json().catch(() => ({}))) as Body;
     const shopId = body.shopId?.trim() ?? "";
     const pin = normalizeOwnerPin(body.pin ?? "");
+    const requestedPurpose = body.purpose?.trim() ?? "";
+    if (
+      requestedPurpose &&
+      !OWNER_PIN_PURPOSE_VALUES.has(requestedPurpose as OwnerPinPurpose)
+    ) {
+      return NextResponse.json(
+        { error: "Invalid owner PIN purpose" },
+        { status: 400 },
+      );
+    }
+    const purpose = requestedPurpose
+      ? (requestedPurpose as OwnerPinPurpose)
+      : OWNER_PIN_PURPOSES.PRIVILEGED;
 
     if (!shopId || !pin) {
       return NextResponse.json({ error: "shopId and pin are required" }, { status: 400 });
@@ -48,8 +67,26 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Profile not found" }, { status: 400 });
     }
 
+    const { data: completion } = await supabase
+      .from("profiles")
+      .select("completed_onboarding")
+      .eq("id", profile.id)
+      .maybeSingle<{ completed_onboarding: boolean | null }>();
+    const completedOnboarding =
+      completion?.completed_onboarding ?? profile.completed_onboarding;
+
     if (profile.shop_id !== shopId) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    if (
+      !completedOnboarding &&
+      purpose !== OWNER_PIN_PURPOSES.BILLING
+    ) {
+      return NextResponse.json(
+        { error: "Complete profile setup before setting an owner PIN" },
+        { status: 409 },
+      );
     }
 
     const actor = getActorCapabilities({ role: profile.role });
@@ -76,7 +113,7 @@ export async function POST(req: Request) {
     return setOwnerPinVerifiedCookie(res, {
       userId: user.id,
       shopId,
-      purpose: OWNER_PIN_PURPOSES.PRIVILEGED,
+      purpose,
     });
   } catch (err) {
     console.error("owner-pin.set error", err);

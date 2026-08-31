@@ -98,11 +98,11 @@ describe("technician-first mobile UX", () => {
       "Tap a job to review its work order, then open the focused job or inspection.",
     );
     expect(queue).toContain("Download assigned work");
-    expect(queue).toContain("fetchAssignedTechnicianWork");
+    expect(queue).toContain("downloadAssignedTechnicianWork");
     expect(queue).toContain('status === "on_hold"');
     expect(queue).not.toContain('.eq("assigned_tech_id", user.id)');
     expect(technicianOfflineDownload).toContain(
-      "export async function fetchAssignedTechnicianWork",
+      "export async function refreshAssignedTechnicianWork",
     );
     expect(technicianFeed).toContain('.eq("assigned_tech_id", technicianId)');
     expect(technicianFeed).toContain('.eq("assigned_to", technicianId)');

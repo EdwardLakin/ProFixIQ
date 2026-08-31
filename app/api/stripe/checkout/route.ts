@@ -382,6 +382,7 @@ export async function POST(req: Request) {
     const access = await requireShopScopedApiAccess({
       requiredCapability: "canManageBilling",
       allowRoles: ["owner", "admin"],
+      requiredProductCapabilities: [],
       requireOwnerPin: true,
       ownerPinRequest: req,
       ownerPinAllowedPurposes: [
@@ -426,8 +427,8 @@ export async function POST(req: Request) {
       buildCheckoutParams({
         customerId,
         priceId,
-        successUrl: `${baseUrl}/dashboard/owner/settings#billing-stripe`,
-        cancelUrl: `${baseUrl}/dashboard/owner/settings#billing-stripe`,
+        successUrl: `${baseUrl}/account/billing`,
+        cancelUrl: `${baseUrl}/account/billing`,
         trialDays: enableTrial ? trialDays : 0,
         metadata,
         identifierPrefix: "profixiq_owner",

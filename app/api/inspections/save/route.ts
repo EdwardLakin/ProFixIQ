@@ -6,6 +6,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import type { Json } from "@shared/types/types/supabase";
 import type { InspectionSession } from "@/features/inspections/lib/inspection/types";
+import { canExecuteInspectionForProduct } from "@/features/inspections/server/inspectionExecutionProductAccess";
 
 type RpcError = {
   message: string;
@@ -112,6 +113,26 @@ export async function POST(req: NextRequest) {
       { error: "Unable to resolve actor shop." },
       { status: 403 },
     );
+  }
+
+  const { data: line, error: lineError } = await supabase
+    .from("work_order_lines")
+    .select("work_order_id")
+    .eq("id", workOrderLineId)
+    .eq("shop_id", profile.shop_id)
+    .maybeSingle<{ work_order_id: string | null }>();
+  if (lineError) {
+    return NextResponse.json({ error: lineError.message }, { status: 500 });
+  }
+  if (
+    !line?.work_order_id ||
+    !(await canExecuteInspectionForProduct({
+      supabase,
+      shopId: profile.shop_id,
+      workOrderId: line.work_order_id,
+    }))
+  ) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const rpc = supabase as unknown as RpcClient;

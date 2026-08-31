@@ -27,6 +27,8 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/features/shared/lib/offline/database", () => ({
   getOfflineSnapshot: vi.fn(async () => null),
+  listOfflineSnapshots: vi.fn(async () => []),
+  removeOfflineSnapshots: vi.fn(async () => undefined),
   saveOfflineSnapshot: vi.fn(async () => undefined),
 }));
 
@@ -140,6 +142,12 @@ describe("MobileWorkOrderQueue recovery", () => {
       data: [workOrder("WO-INITIAL")],
       error: null,
     };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({ scope: "shop", workOrderIds: null }),
+      ),
+    );
     Object.defineProperty(window.navigator, "onLine", {
       configurable: true,
       value: true,

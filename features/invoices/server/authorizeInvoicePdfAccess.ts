@@ -3,6 +3,10 @@ import "server-only";
 import { resolveAuthenticatedStaffProfile } from "@/features/shared/lib/server/admin-access";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { resolveWorkOrderFinancialAccess } from "@/features/work-orders/workspace/server/workOrderFinancialAuthorization";
+import {
+  resolveShopProductAccess,
+  SHOP_PRODUCT_CAPABILITIES,
+} from "@/features/shared/lib/product-access";
 
 type SessionClient = ReturnType<typeof createServerSupabaseRoute>;
 
@@ -19,6 +23,13 @@ export async function canAccessInvoicePdf(input: {
   );
 
   if (profile?.shop_id === input.shopId) {
+    const productAccess = await resolveShopProductAccess({
+      supabase: input.supabase,
+      shopId: input.shopId,
+      capabilities: SHOP_PRODUCT_CAPABILITIES,
+    });
+    if (productAccess.error || !productAccess.entitled) return false;
+
     const financial = await resolveWorkOrderFinancialAccess({
       supabase: input.supabase,
       profileId: profile.id,

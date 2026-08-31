@@ -1,6 +1,8 @@
 // app/api/inspections/build/route.ts
 import "server-only";
 import { NextResponse } from "next/server";
+import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
 // --------- Types ---------
 type SectionItem = { item: string; unit?: string | null };
@@ -18,13 +20,15 @@ function unitHint(label: string): string | null {
   if (/(tread|pad|lining|rotor|drum|push ?rod)/.test(l)) return "mm";
   if (/(pressure|psi|kpa|leak rate|warning)/.test(l))
     return l.includes("kpa") ? "kPa" : "psi";
-  if (/(torque|ft·lb|ft-lb|nm|n·m)/.test(l)) return l.includes("n") ? "N·m" : "ft·lb";
+  if (/(torque|ft·lb|ft-lb|nm|n·m)/.test(l))
+    return l.includes("n") ? "N·m" : "ft·lb";
   return null;
 }
 
 function sanitizeSections(input: unknown): SectionOut[] {
   const sectionsIn: unknown[] =
-    isRecord(input) && Array.isArray((input as Record<string, unknown>).sections)
+    isRecord(input) &&
+    Array.isArray((input as Record<string, unknown>).sections)
       ? ((input as Record<string, unknown>).sections as unknown[])
       : [];
 
@@ -35,19 +39,22 @@ function sanitizeSections(input: unknown): SectionOut[] {
     const title = asString(sec.title)?.trim() ?? "";
     if (!title) continue;
 
-    const rawItems: unknown[] = Array.isArray(sec.items) ? (sec.items as unknown[]) : [];
+    const rawItems: unknown[] = Array.isArray(sec.items)
+      ? (sec.items as unknown[])
+      : [];
     const items: SectionItem[] = [];
 
     for (const ri of rawItems) {
       if (!isRecord(ri)) continue;
       const label =
-        asString(ri.item)?.trim() ??
-        asString(ri.name)?.trim() ??
-        "";
+        asString(ri.item)?.trim() ?? asString(ri.name)?.trim() ?? "";
       if (!label) continue;
 
       const providedUnit = asString(ri.unit)?.trim();
-      const unit = providedUnit && providedUnit.length > 0 ? providedUnit : unitHint(label);
+      const unit =
+        providedUnit && providedUnit.length > 0
+          ? providedUnit
+          : unitHint(label);
 
       items.push({ item: label, unit: unit ?? null });
     }
@@ -73,9 +80,15 @@ function sanitizeSections(input: unknown): SectionOut[] {
   return clean;
 }
 
-export const runtime = "edge";
+export const runtime = "nodejs";
 
 export async function POST(req: Request) {
+  const access = await requireShopScopedApiAccess({
+    requiredCapability: "canRunInspections",
+    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
+  });
+  if (!access.ok) return access.response;
+
   try {
     const body: unknown = await req.json();
     if (!isRecord(body)) {

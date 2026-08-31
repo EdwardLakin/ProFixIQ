@@ -4,6 +4,7 @@ export const dynamic = "force-dynamic";
 import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { FLEET_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
 import { supabaseAdmin } from "@/features/shared/lib/supabase/admin";
 import { sendPortalInviteEmail } from "@/features/email/server";
 import { getActiveBrandForRender } from "@/features/branding/server/getActiveBrandForRender";
@@ -22,6 +23,7 @@ const UUID_PATTERN =
 export async function GET(req: Request) {
   const access = await requireShopScopedApiAccess({
     requiredCapability: "canInviteFleetMembers",
+    requiredProductCapabilities: FLEET_PRODUCT_CAPABILITIES,
   });
   if (!access.ok) return access.response;
   const [fleetsResult, invitesResult] = await Promise.all([
@@ -83,6 +85,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const access = await requireShopScopedApiAccess({
     requiredCapability: "canInviteFleetMembers",
+    requiredProductCapabilities: FLEET_PRODUCT_CAPABILITIES,
   });
   if (!access.ok) return access.response;
   const body = (await req.json().catch(() => null)) as {

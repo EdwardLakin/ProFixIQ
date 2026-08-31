@@ -9,6 +9,11 @@ import {
 } from "@/features/shared/lib/offline/database";
 import type { TechnicianOfflineBundle } from "@/features/work-orders/mobile/technicianOfflineTypes";
 import {
+  getCachedMobileProductScope,
+  reconcileMobileProductScope,
+  removeMobileProductScopedSnapshots,
+} from "@/features/work-orders/mobile/mobileProductScopeStorage";
+import {
   isSafePrivateNavigationShell,
   PRIVATE_NAVIGATION_CACHE_NAMES,
 } from "@/features/shared/lib/pwa/privateNavigationCache";
@@ -48,10 +53,24 @@ async function cacheTechnicianRouteShells(
 export async function cacheTechnicianOfflineBundle(
   bundle: TechnicianOfflineBundle,
 ): Promise<void> {
-  const existingDetails = await listOfflineSnapshots({
+  await reconcileMobileProductScope({
     scope: bundle.scope,
-    kind: "mobile-work-order-detail",
+    productScope: bundle.productScope,
   });
+  const [existingBundle, existingDetails] = await Promise.all([
+    getOfflineSnapshot<Partial<TechnicianOfflineBundle>>({
+      scope: bundle.scope,
+      kind: BUNDLE_KIND,
+      entityId: BUNDLE_ID,
+    }),
+    listOfflineSnapshots({
+      scope: bundle.scope,
+      kind: "mobile-work-order-detail",
+    }),
+  ]);
+  const authorityChanged = Boolean(
+    existingBundle && existingBundle.data.productScope !== bundle.productScope,
+  );
   const currentAliases = new Set(
     bundle.workOrders.flatMap((item) =>
       [item.workOrder.id, item.workOrder.custom_id].filter((id): id is string =>
@@ -60,38 +79,57 @@ export async function cacheTechnicianOfflineBundle(
     ),
   );
   const staleAliases = existingDetails
-    .map((snapshot) => snapshot.entityId)
-    .filter((entityId) => !currentAliases.has(entityId));
-  const detailWrites = bundle.workOrders.flatMap((item) => {
+    .filter((snapshot) => {
+      const detailScope = (snapshot.data as { productScope?: unknown } | null)
+        ?.productScope;
+      return (
+        authorityChanged ||
+        detailScope !== bundle.productScope ||
+        !currentAliases.has(snapshot.entityId)
+      );
+    })
+    .map((snapshot) => snapshot.entityId);
+  const detailSnapshots = bundle.workOrders.flatMap((item) => {
     const ids = new Set(
       [item.workOrder.id, item.workOrder.custom_id].filter(Boolean),
     );
-    return [...ids].map((entityId) =>
-      saveOfflineSnapshot({
-        scope: bundle.scope,
-        kind: "mobile-work-order-detail",
-        entityId: entityId as string,
-        data: {
-          workOrder: item.workOrder,
-          lines: item.lines,
-          quoteLines: item.quoteLines,
-          vehicle: item.vehicle,
-          customer: item.customer,
-          techNamesById: item.techNamesById,
-          lineContext: item.lineContext,
-          shopLaborRate: item.shopLaborRate,
-        },
-      }),
-    );
+    return [...ids].map((entityId) => ({
+      scope: bundle.scope,
+      kind: "mobile-work-order-detail",
+      entityId: entityId as string,
+      data: {
+        workOrder: item.workOrder,
+        lines: item.lines,
+        quoteLines: item.quoteLines,
+        vehicle: item.vehicle,
+        customer: item.customer,
+        techNamesById: item.techNamesById,
+        lineContext: item.lineContext,
+        shopLaborRate: item.shopLaborRate,
+        financialAccess: item.financialAccess,
+        latestInvoiceReview: null,
+        productScope: bundle.productScope,
+      },
+    }));
   });
 
+  // Remove the old authority envelope before writing the replacement. If a
+  // browser/storage failure interrupts the refresh, offline access fails
+  // closed instead of retaining a superseded Shop bundle.
   await Promise.all([
-    ...detailWrites,
     removeOfflineSnapshots({
       scope: bundle.scope,
       kind: "mobile-work-order-detail",
       entityIds: staleAliases,
     }),
+    removeOfflineSnapshots({
+      scope: bundle.scope,
+      kind: BUNDLE_KIND,
+      entityIds: [BUNDLE_ID],
+    }),
+  ]);
+  await Promise.all([
+    ...detailSnapshots.map((snapshot) => saveOfflineSnapshot(snapshot)),
     saveOfflineSnapshot({
       scope: bundle.scope,
       kind: BUNDLE_KIND,
@@ -99,6 +137,20 @@ export async function cacheTechnicianOfflineBundle(
       data: bundle,
     }),
   ]);
+}
+
+function isTechnicianOfflineBundle(
+  value: unknown,
+  scope: { userId: string; shopId: string },
+): value is TechnicianOfflineBundle {
+  if (!value || typeof value !== "object") return false;
+  const bundle = value as Partial<TechnicianOfflineBundle>;
+  return (
+    (bundle.productScope === "shop" || bundle.productScope === "field") &&
+    bundle.scope?.userId === scope.userId &&
+    bundle.scope?.shopId === scope.shopId &&
+    Array.isArray(bundle.workOrders)
+  );
 }
 
 export async function fetchAssignedTechnicianWork(args: {
@@ -118,20 +170,24 @@ export async function fetchAssignedTechnicianWork(args: {
         "Assigned work could not be downloaded.",
     );
   }
-  if (
-    result.scope.userId !== args.scope.userId ||
-    result.scope.shopId !== args.scope.shopId
-  ) {
+  if (!isTechnicianOfflineBundle(result, args.scope)) {
     throw new Error("Downloaded work does not match the active user and shop.");
   }
+  return result;
+}
+
+export async function refreshAssignedTechnicianWork(args: {
+  scope: { userId: string; shopId: string };
+}): Promise<TechnicianOfflineBundle> {
+  const result = await fetchAssignedTechnicianWork(args);
+  await cacheTechnicianOfflineBundle(result);
   return result;
 }
 
 export async function downloadAssignedTechnicianWork(args: {
   scope: { userId: string; shopId: string };
 }): Promise<TechnicianOfflineBundle> {
-  const result = await fetchAssignedTechnicianWork(args);
-  await cacheTechnicianOfflineBundle(result);
+  const result = await refreshAssignedTechnicianWork(args);
   await cacheTechnicianRouteShells(result);
   return result;
 }
@@ -139,9 +195,23 @@ export async function downloadAssignedTechnicianWork(args: {
 export async function getCachedTechnicianWork(args: {
   scope: { userId: string; shopId: string };
 }): Promise<OfflineSnapshot<TechnicianOfflineBundle> | null> {
-  return getOfflineSnapshot<TechnicianOfflineBundle>({
-    scope: args.scope,
-    kind: BUNDLE_KIND,
-    entityId: BUNDLE_ID,
-  });
+  const [cached, productScope] = await Promise.all([
+    getOfflineSnapshot<TechnicianOfflineBundle>({
+      scope: args.scope,
+      kind: BUNDLE_KIND,
+      entityId: BUNDLE_ID,
+    }),
+    getCachedMobileProductScope(args.scope),
+  ]);
+  if (
+    !cached ||
+    (productScope &&
+      isTechnicianOfflineBundle(cached.data, args.scope) &&
+      cached.data.productScope === productScope)
+  ) {
+    return cached;
+  }
+
+  await removeMobileProductScopedSnapshots(args.scope);
+  return null;
 }

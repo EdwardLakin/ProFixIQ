@@ -9,6 +9,7 @@ import {
   INSPECTION_FORM_IMPORT_BATCH_SIZE,
   processInspectionFormImportJobBatch,
 } from "@/features/inspections/server/inspection-form-import-job";
+import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
@@ -20,6 +21,7 @@ type Context = { params: Promise<{ jobId: string }> };
 async function loadJob(jobId: string) {
   const access = await requireShopScopedApiAccess({
     allowRoles: ["owner", "admin", "manager", "advisor", "service"],
+    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
   });
   if (!access.ok) return { access, job: null } as const;
 
@@ -40,7 +42,10 @@ export async function GET(_req: Request, context: Context) {
   const loaded = await loadJob(jobId);
   if (!loaded.access.ok) return loaded.access.response;
   if (!loaded.job) {
-    return NextResponse.json({ error: "Form import not found." }, { status: 404 });
+    return NextResponse.json(
+      { error: "Form import not found." },
+      { status: 404 },
+    );
   }
 
   const { job } = loaded;
@@ -95,7 +100,10 @@ export async function PATCH(req: Request, context: Context) {
   const loaded = await loadJob(jobId);
   if (!loaded.access.ok) return loaded.access.response;
   if (!loaded.job) {
-    return NextResponse.json({ error: "Form import not found." }, { status: 404 });
+    return NextResponse.json(
+      { error: "Form import not found." },
+      { status: 404 },
+    );
   }
   if (loaded.job.status !== "completed" || loaded.job.result_record_id) {
     return NextResponse.json(
@@ -104,10 +112,12 @@ export async function PATCH(req: Request, context: Context) {
     );
   }
 
-  const body = (await req.json().catch(() => null)) as
-    | { title?: unknown; sections?: unknown }
-    | null;
-  const title = typeof body?.title === "string" ? body.title.trim().slice(0, 160) : "";
+  const body = (await req.json().catch(() => null)) as {
+    title?: unknown;
+    sections?: unknown;
+  } | null;
+  const title =
+    typeof body?.title === "string" ? body.title.trim().slice(0, 160) : "";
   const sections = normalizeInspectionFormSections(body?.sections);
   if (!title || !sections.length) {
     return NextResponse.json(
@@ -127,7 +137,10 @@ export async function PATCH(req: Request, context: Context) {
     .eq("status", "completed")
     .is("result_record_id", null);
   if (error) {
-    return NextResponse.json({ error: "Unable to save the review." }, { status: 500 });
+    return NextResponse.json(
+      { error: "Unable to save the review." },
+      { status: 500 },
+    );
   }
 
   return NextResponse.json({ ok: true, title, sections });

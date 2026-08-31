@@ -9,6 +9,7 @@ import { createAdminClient } from "@/features/integrations/shopreel/server/creat
 import type { Database } from "@shared/types/types/supabase";
 import type { InspectionSession } from "@/features/inspections/lib/inspection/types";
 import { publishInspectionPdf } from "@/features/inspections/server/publishInspectionPdf";
+import { canExecuteInspectionForProduct } from "@/features/inspections/server/inspectionExecutionProductAccess";
 
 type DB = Database;
 
@@ -97,7 +98,6 @@ export async function POST(req: NextRequest) {
     }>();
 
   if (lineErr) {
-    // eslint-disable-next-line no-console
     console.error("[inspections/finalize/pdf] line lookup failed", lineErr);
     return NextResponse.json(
       { error: "Failed to look up work order line" },
@@ -134,6 +134,16 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  if (
+    !(await canExecuteInspectionForProduct({
+      supabase,
+      shopId,
+      workOrderId,
+    }))
+  ) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   // Storage requests run in a separate transaction, so a transaction-local
   // shop GUC cannot authorize them. Scope is verified above; the admin client
   // is used only for this exact tenant-derived object path.
@@ -166,7 +176,6 @@ export async function POST(req: NextRequest) {
     >();
 
   if (inspErr) {
-    // eslint-disable-next-line no-console
     console.error(
       "[inspections/finalize/pdf] inspections lookup failed",
       inspErr,
@@ -255,7 +264,6 @@ export async function POST(req: NextRequest) {
   );
 
   if (finalizeErr) {
-    // eslint-disable-next-line no-console
     console.error(
       "[inspections/finalize/pdf] atomic finalization failed",
       finalizeErr,

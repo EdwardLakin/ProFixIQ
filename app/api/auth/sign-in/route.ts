@@ -6,6 +6,13 @@ import { NextResponse } from "next/server";
 import { enforceAuthRateLimit } from "@/features/auth/server/authRateLimit";
 import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
 import { getMobileFieldServiceAccess } from "@/features/mobile/service/server/access";
+import { createStripeClient } from "@/features/stripe/lib/stripe/client";
+import { verifyStripeAcquisitionCheckout } from "@/features/stripe/lib/server/stripe-acquisition-intent";
+import {
+  ACCOUNT_BILLING_RECOVERY_HREF,
+  resolveShopProductAccess,
+  SHOP_PRODUCT_CAPABILITIES,
+} from "@/features/shared/lib/product-access";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import { resolveAuthenticatedStaffProfile } from "@/features/shared/lib/server/admin-access";
 import {
@@ -29,6 +36,22 @@ type Body = {
 type RateLimitResult = ReturnType<typeof enforceAuthRateLimit>;
 
 const GENERIC_ERROR = "We couldn't sign you in with those details.";
+
+function billingRecoveryDestination(input: {
+  canManageBilling: boolean;
+  canonicalRole: string;
+  mustChangePassword: boolean;
+}): string | null {
+  if (
+    !input.canManageBilling ||
+    (input.canonicalRole !== "owner" && input.canonicalRole !== "admin")
+  ) {
+    return null;
+  }
+  return input.mustChangePassword
+    ? `/auth/set-password?surface=billing&redirect=${encodeURIComponent(ACCOUNT_BILLING_RECOVERY_HREF)}`
+    : ACCOUNT_BILLING_RECOVERY_HREF;
+}
 
 function uniqueAuthEmails(values: string[]): string[] {
   return Array.from(new Set(values.filter(Boolean)));
@@ -110,7 +133,7 @@ export async function POST(req: Request) {
       ? body.surface
       : "shop";
   const acquisitionSessionId = String(body?.acquisitionSessionId ?? "").trim();
-  const hasAcquisitionContext =
+  const hasAcquisitionSession =
     surface === "shop" && /^cs_[A-Za-z0-9_]+$/.test(acquisitionSessionId);
 
   if (!identifier || !password) {
@@ -172,10 +195,29 @@ export async function POST(req: Request) {
     );
   };
 
+  if (hasAcquisitionSession) {
+    try {
+      const secretKey = String(process.env.STRIPE_SECRET_KEY ?? "").trim();
+      if (!secretKey) throw new Error("Stripe is not configured");
+      const verified = await verifyStripeAcquisitionCheckout(
+        createStripeClient(secretKey),
+        acquisitionSessionId,
+      );
+      const authenticatedEmail = signedInUser.email?.trim().toLowerCase();
+      if (!verified || verified.email !== authenticatedEmail) return deny();
+      return NextResponse.json({ ok: true, destination: "/onboarding" });
+    } catch {
+      await supabase.auth.signOut({ scope: rejectedSessionScope });
+      return NextResponse.json(
+        { ok: false, error: "Unable to verify checkout right now." },
+        { status: 503 },
+      );
+    }
+  }
+
   if (
     (surface === "shop" || surface === "mobile" || surface === "field") &&
-    signedInUser.app_metadata?.profixiq_portal_only === true &&
-    !hasAcquisitionContext
+    signedInUser.app_metadata?.profixiq_portal_only === true
   ) {
     return deny();
   }
@@ -212,8 +254,31 @@ export async function POST(req: Request) {
     const actor = await resolveFleetActorContext(supabase, {
       userId: signedInUser.id,
     });
-    if (!actor.capabilities.canAccessPortalFleetWrappers) return deny();
-    return NextResponse.json({ ok: true, destination: "/portal/fleet" });
+    if (actor.capabilities.canAccessPortalFleetWrappers) {
+      return NextResponse.json({ ok: true, destination: "/portal/fleet" });
+    }
+
+    const { profile, error: profileError } =
+      await resolveAuthenticatedStaffProfile(supabase, signedInUser.id);
+    if (profileError) {
+      await supabase.auth.signOut({ scope: rejectedSessionScope });
+      return NextResponse.json(
+        { ok: false, error: "Unable to verify billing access right now." },
+        { status: 503 },
+      );
+    }
+    const capabilities = getActorCapabilities({ role: profile?.role });
+    const recovery = profile?.shop_id
+      ? billingRecoveryDestination({
+          canManageBilling: capabilities.canManageBilling,
+          canonicalRole: capabilities.canonicalRole,
+          mustChangePassword: Boolean(profile.must_change_password),
+        })
+      : null;
+    if (recovery) {
+      return NextResponse.json({ ok: true, destination: recovery });
+    }
+    return deny();
   }
 
   const { profile, error: profileError } =
@@ -229,10 +294,34 @@ export async function POST(req: Request) {
   }
 
   const capabilities = getActorCapabilities({ role: profile.role });
-  if (surface === "mobile" || surface === "field") {
-    const canUseMobile =
-      capabilities.isKnownRole && capabilities.canonicalRole !== "customer";
-    if (!canUseMobile) return deny();
+  const canUseStaffSurface =
+    capabilities.isKnownRole && capabilities.canonicalRole !== "customer";
+  if (!canUseStaffSurface) return deny();
+
+  if (surface === "shop" || surface === "mobile") {
+    const productAccess = await resolveShopProductAccess({
+      supabase,
+      shopId: profile.shop_id,
+      capabilities: SHOP_PRODUCT_CAPABILITIES,
+    });
+    if (productAccess.error) {
+      await supabase.auth.signOut({ scope: rejectedSessionScope });
+      return NextResponse.json(
+        { ok: false, error: "Unable to verify Shop access right now." },
+        { status: 503 },
+      );
+    }
+    if (!productAccess.entitled) {
+      const recovery = billingRecoveryDestination({
+        canManageBilling: capabilities.canManageBilling,
+        canonicalRole: capabilities.canonicalRole,
+        mustChangePassword: Boolean(profile.must_change_password),
+      });
+      if (recovery) {
+        return NextResponse.json({ ok: true, destination: recovery });
+      }
+      return deny();
+    }
   }
 
   let fieldDestination: string | null = null;
@@ -272,12 +361,22 @@ export async function POST(req: Request) {
       );
     }
 
-    if (!fieldDestination) return deny();
+    if (!fieldDestination) {
+      const recovery = billingRecoveryDestination({
+        canManageBilling: capabilities.canManageBilling,
+        canonicalRole: capabilities.canonicalRole,
+        mustChangePassword: Boolean(profile.must_change_password),
+      });
+      if (recovery) {
+        return NextResponse.json({ ok: true, destination: recovery });
+      }
+      return deny();
+    }
   }
 
   const destination = profile.must_change_password
     ? surface === "field"
-      ? `/auth/set-password?redirect=${encodeURIComponent(fieldDestination!)}`
+      ? `/auth/set-password?surface=field&redirect=${encodeURIComponent(fieldDestination!)}`
       : surface === "mobile"
         ? "/auth/set-password?redirect=%2Fmobile"
         : "/auth/set-password"

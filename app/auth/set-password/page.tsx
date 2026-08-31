@@ -8,6 +8,10 @@ import {
   acquisitionOnboardingHref,
 } from "@/features/auth/lib/acquisitionSurfaceRouting";
 import { resolvePostAuthDestination } from "@/features/auth/lib/postAuthRouting";
+import {
+  acquisitionSurfaceProductCapabilities,
+  FIELD_PRODUCT_CAPABILITIES,
+} from "@/features/shared/lib/product-access";
 import { activatePasswordProfile } from "@/features/auth/lib/passwordActivation";
 import { claimStripeAcquisitionAfterAuth } from "@/features/stripe/lib/client/claim-acquisition";
 import { Button } from "@shared/components/ui/Button";
@@ -116,6 +120,13 @@ export default function SetPasswordPage() {
     const redirect = await resolvePostAuthDestination({
       supabase,
       searchParams,
+      requiredProductCapabilities: claim.surface
+        ? acquisitionSurfaceProductCapabilities(claim.surface)
+        : searchParams.get("surface") === "field"
+          ? FIELD_PRODUCT_CAPABILITIES
+          : searchParams.get("surface") === "billing"
+            ? []
+            : undefined,
       defaultDashboardHref: claim.surface
         ? acquisitionHomeHref(claim.surface)
         : getReturnPath(role),

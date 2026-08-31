@@ -6,6 +6,7 @@ import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server
 import { createAdminClient } from "@/features/integrations/shopreel/server/createAdminClient";
 import { publishInspectionPdf } from "@/features/inspections/server/publishInspectionPdf";
 import type { InspectionSession } from "@/features/inspections/lib/inspection/types";
+import { canExecuteInspectionForProduct } from "@/features/inspections/server/inspectionExecutionProductAccess";
 import { insertPrioritizedJobsFromInspection } from "@/features/work-orders/lib/work-orders/insertPrioritizedJobsFromInspection";
 
 type Role = "technician" | "customer" | "advisor";
@@ -377,6 +378,16 @@ export async function POST(req: NextRequest) {
         },
         { status: inspectionContextError ? 400 : 409 },
       );
+    }
+
+    if (
+      !(await canExecuteInspectionForProduct({
+        supabase,
+        shopId: profile.shop_id,
+        workOrderId: inspectionContext.work_order_id,
+      }))
+    ) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const imported = await insertPrioritizedJobsFromInspection({

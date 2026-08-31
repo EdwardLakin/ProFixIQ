@@ -30,7 +30,7 @@ describe("Mobile Service shell", () => {
 
   it("keeps repair execution in the existing mobile work-order surface", () => {
     expect(shell).toContain("/mobile/work-orders/${visit.workOrderId}");
-    expect(shell).toContain('href="/mobile/work-orders/create"');
+    expect(shell).not.toContain('href="/mobile/work-orders/create"');
     expect(shell).not.toContain("work_order_lines");
   });
 

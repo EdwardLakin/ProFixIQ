@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { getOpenAIRealtimeTranscriptionModel } from "@/features/shared/lib/openai-realtime-models";
 import { getAIPolicy } from "@/features/shared/lib/server/ai-policy";
@@ -41,7 +42,6 @@ type OpenAIRealtimeSessionConfig = {
   };
 };
 
-
 /* --------------------------- Helpers ---------------------------- */
 
 function extractToken(
@@ -57,11 +57,7 @@ function extractToken(
     return { token: d.value, expiresAt: d.expires_at };
   }
 
-  if (
-    typeof data === "object" &&
-    data !== null &&
-    "client_secret" in data
-  ) {
+  if (typeof data === "object" && data !== null && "client_secret" in data) {
     const cs = (data as { client_secret?: unknown }).client_secret;
     if (
       typeof cs === "object" &&
@@ -82,7 +78,9 @@ function extractToken(
 export async function GET() {
   const startedAt = Date.now();
   const policy = getAIPolicy("openai_realtime_token");
-  const access = await requireShopScopedApiAccess();
+  const access = await requireShopScopedApiAccess({
+    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
+  });
   if (!access.ok) {
     return access.response;
   }
@@ -93,7 +91,10 @@ export async function GET() {
   });
   if (!enforcement.allowed) {
     return NextResponse.json(
-      { error: "AI token issuance temporarily limited", code: enforcement.code },
+      {
+        error: "AI token issuance temporarily limited",
+        code: enforcement.code,
+      },
       { status: 429 },
     );
   }
@@ -150,7 +151,10 @@ export async function GET() {
         body: JSON.stringify(sessionConfig),
       }),
       new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("AI request timed out")), policy.timeoutMs),
+        setTimeout(
+          () => reject(new Error("AI request timed out")),
+          policy.timeoutMs,
+        ),
       ),
     ]);
 
@@ -190,10 +194,7 @@ export async function GET() {
     const extracted = extractToken(parsed);
 
     if (!extracted) {
-      console.error(
-        "[realtime-token] Unexpected response shape",
-        parsed,
-      );
+      console.error("[realtime-token] Unexpected response shape", parsed);
       return NextResponse.json(
         {
           error: "Voice service returned an invalid response",
@@ -241,7 +242,8 @@ export async function GET() {
       },
     );
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Unhandled realtime token error";
+    const message =
+      err instanceof Error ? err.message : "Unhandled realtime token error";
     recordAITelemetry({
       feature: "openai_realtime_token",
       endpoint: "/api/openai/realtime-token",

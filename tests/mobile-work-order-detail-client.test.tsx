@@ -161,6 +161,7 @@ function detailSnapshot(
   activeTechnicianIdsByLine: Record<string, string[]> = {},
 ) {
   return {
+    productScope: "shop",
     workOrder: {
       id: WORK_ORDER_ID,
       shop_id: "shop-1",

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { Database } from "@shared/types/types/supabase";
 import { syncQuoteLinePartsStatus } from "@/features/parts/server/syncQuoteLinePartsStatus";
 import { isPartsRequestItemPriced } from "@/features/parts/lib/status-display";
+import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { ESTIMATE_PARTS_ROLES } from "@/features/estimates/lib/access";
 
@@ -73,6 +74,7 @@ export async function POST(
   const access = await requireShopScopedApiAccess({
     allowRoles: ["owner", "admin", "manager", "parts", "lead_hand", "foreman"],
     requiredCapability: "canManageParts",
+    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
   });
   if (!access.ok) return access.response;
 

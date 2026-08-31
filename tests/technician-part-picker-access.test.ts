@@ -38,7 +38,10 @@ describe("parts-role part picker access", () => {
     expect(picker).toContain('accessContext?: "inventory" | "menu-editor"');
     expect(picker).toContain('params.set("context", accessContext)');
     expect(pickerRoute).toContain('pickerContext === "menu-editor"');
-    expect(pickerRoute).toContain("{ allowRoles: MENU_EDITOR_ROLES }");
+    expect(pickerRoute).toContain("allowRoles: MENU_EDITOR_ROLES");
+    expect(pickerRoute).toContain(
+      "requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES",
+    );
     expect(menuBuilder).toContain('accessContext="menu-editor"');
     expect(menuItemEditor).toContain('accessContext="menu-editor"');
   });

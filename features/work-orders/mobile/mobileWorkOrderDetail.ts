@@ -16,7 +16,23 @@ export type MobileWorkOrderSnapshot = {
   shopLaborRate?: number | null;
   financialAccess: WorkOrderFinancialAccess;
   latestInvoiceReview: WorkOrderInvoiceReviewSummary | null;
+  /**
+   * The product relationship that authorized this snapshot. It is optional on
+   * the database-shaped loader result; API and offline reads must pass through
+   * the parser below, which requires it.
+   */
+  productScope?: "shop" | "field";
 };
+
+export type AuthorizedMobileWorkOrderSnapshot = MobileWorkOrderSnapshot & {
+  productScope: "shop" | "field";
+};
+
+export function canOpenMobileCustomerProfile(
+  productScope: MobileWorkOrderSnapshot["productScope"] | null,
+): boolean {
+  return productScope === "shop";
+}
 
 const LINE_CONTEXT_KEYS = [
   "allocationsByLine",
@@ -52,7 +68,7 @@ function invalidSnapshot(message: string): never {
  */
 export function parseMobileWorkOrderSnapshot(
   value: unknown,
-): MobileWorkOrderSnapshot {
+): AuthorizedMobileWorkOrderSnapshot {
   if (!isRecord(value)) invalidSnapshot("response is not an object");
 
   const workOrder = value.workOrder;
@@ -146,5 +162,9 @@ export function parseMobileWorkOrderSnapshot(
     invalidSnapshot("financialAccess is invalid");
   }
 
-  return value as unknown as MobileWorkOrderSnapshot;
+  if (value.productScope !== "shop" && value.productScope !== "field") {
+    invalidSnapshot("productScope is invalid");
+  }
+
+  return value as unknown as AuthorizedMobileWorkOrderSnapshot;
 }

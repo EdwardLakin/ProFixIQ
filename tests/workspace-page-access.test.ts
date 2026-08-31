@@ -63,6 +63,7 @@ describe("shop page role-or-Workspace capability enforcement", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     createServerSupabaseRSCMock.mockReturnValue({
+      rpc: vi.fn().mockResolvedValue({ data: true, error: null }),
       auth: {
         getUser: vi.fn().mockResolvedValue({
           data: { user: { id: AUTH_USER_ID } },

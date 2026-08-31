@@ -12,8 +12,8 @@ import {
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import {
   downloadAssignedTechnicianWork,
-  fetchAssignedTechnicianWork,
   getCachedTechnicianWork,
+  refreshAssignedTechnicianWork,
 } from "@/features/work-orders/mobile/technicianOfflineDownload";
 import type { TechnicianOfflineBundle } from "@/features/work-orders/mobile/technicianOfflineTypes";
 import type { Database } from "@shared/types/types/supabase";
@@ -277,7 +277,7 @@ export default function MobileTechnicianQueue() {
       const cached = await getCachedTechnicianWork({ scope: activeScope });
       setOfflineUpdatedAt(cached?.updatedAt ?? null);
 
-      const bundle = await fetchAssignedTechnicianWork({
+      const bundle = await refreshAssignedTechnicianWork({
         scope: activeScope,
       });
       applyOfflineBundle(bundle);

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import { canExecuteInspectionForProduct } from "@/features/inspections/server/inspectionExecutionProductAccess";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -55,10 +56,14 @@ export async function POST(req: NextRequest) {
 
   const canonical = await supabase
     .from("inspections")
-    .select("id")
+    .select("id,shop_id,work_order_id")
     .eq("id", inspectionId)
     .eq("is_canonical", true)
-    .maybeSingle<{ id: string }>();
+    .maybeSingle<{
+      id: string;
+      shop_id: string;
+      work_order_id: string | null;
+    }>();
   if (canonical.error) {
     return NextResponse.json({ error: canonical.error.message }, { status: 400 });
   }
@@ -67,6 +72,16 @@ export async function POST(req: NextRequest) {
       { error: "Canonical inspection was not found." },
       { status: 404 },
     );
+  }
+
+  if (
+    !(await canExecuteInspectionForProduct({
+      supabase,
+      shopId: canonical.data.shop_id,
+      workOrderId: canonical.data.work_order_id,
+    }))
+  ) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const { data, error } = await (supabase as unknown as ReopenRpcClient).rpc(

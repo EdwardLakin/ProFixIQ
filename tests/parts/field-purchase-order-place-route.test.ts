@@ -52,6 +52,7 @@ describe("Field purchase-order placement route", () => {
     expect(response.status).toBe(200);
     expect(mocks.requireShopScopedApiAccess).toHaveBeenCalledWith({
       requiredCapability: "canManageParts",
+      requiredProductCapabilities: ["shop", "field_service"],
     });
     expect(rpc).toHaveBeenCalledWith("parts_place_purchase_order", {
       p_po_id: PO_ID,

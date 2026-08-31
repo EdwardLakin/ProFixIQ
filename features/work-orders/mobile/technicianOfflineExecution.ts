@@ -13,7 +13,14 @@ import {
   type PendingMutation,
 } from "@/features/shared/lib/offline/mutations";
 import type { Database } from "@shared/types/types/supabase";
-import type { MobileWorkOrderSnapshot } from "@/features/work-orders/mobile/mobileWorkOrderDetail";
+import {
+  parseMobileWorkOrderSnapshot,
+  type MobileWorkOrderSnapshot,
+} from "@/features/work-orders/mobile/mobileWorkOrderDetail";
+import {
+  getCachedMobileProductScope,
+  removeMobileProductScopedSnapshots,
+} from "@/features/work-orders/mobile/mobileProductScopeStorage";
 
 export type { MobileWorkOrderSnapshot } from "@/features/work-orders/mobile/mobileWorkOrderDetail";
 
@@ -118,17 +125,32 @@ export async function loadProjectedWorkOrderSnapshot(args: {
   entityId: string;
 }): Promise<MobileWorkOrderSnapshot | null> {
   await hydrateOfflineMutationQueue();
-  const snapshot = await getOfflineSnapshot<MobileWorkOrderSnapshot>({
-    scope: args.scope,
-    kind: DETAIL_KIND,
-    entityId: args.entityId,
-  });
-  return snapshot
-    ? projectTechnicianWorkOrderSnapshot(
-        snapshot.data,
-        listPendingMutations(args.scope),
-      )
-    : null;
+  const [snapshot, productScope] = await Promise.all([
+    getOfflineSnapshot<MobileWorkOrderSnapshot>({
+      scope: args.scope,
+      kind: DETAIL_KIND,
+      entityId: args.entityId,
+    }),
+    getCachedMobileProductScope(args.scope),
+  ]);
+  if (!snapshot) return null;
+  try {
+    const parsed = parseMobileWorkOrderSnapshot(snapshot.data);
+    if (!productScope || parsed.productScope !== productScope) {
+      throw new Error("The saved work order has superseded product authority.");
+    }
+    return projectTechnicianWorkOrderSnapshot(
+      parsed,
+      listPendingMutations(args.scope),
+    );
+  } catch {
+    await removeOfflineSnapshots({
+      scope: args.scope,
+      kind: DETAIL_KIND,
+      entityIds: [args.entityId],
+    });
+    return null;
+  }
 }
 
 /**
@@ -164,13 +186,34 @@ export async function findProjectedTechnicianJob(args: {
   line: WorkOrderLine;
 } | null> {
   await hydrateOfflineMutationQueue();
+  const productScope = await getCachedMobileProductScope(args.scope);
+  if (!productScope) {
+    await removeMobileProductScopedSnapshots(args.scope);
+    return null;
+  }
   const snapshots = await listOfflineSnapshots<MobileWorkOrderSnapshot>({
     scope: args.scope,
     kind: DETAIL_KIND,
   });
   const pending = listPendingMutations(args.scope);
   for (const stored of snapshots) {
-    const projected = projectTechnicianWorkOrderSnapshot(stored.data, pending);
+    let snapshot: MobileWorkOrderSnapshot;
+    try {
+      snapshot = parseMobileWorkOrderSnapshot(stored.data);
+      if (snapshot.productScope !== productScope) {
+        throw new Error(
+          "The saved technician job has superseded product authority.",
+        );
+      }
+    } catch {
+      await removeOfflineSnapshots({
+        scope: args.scope,
+        kind: DETAIL_KIND,
+        entityIds: [stored.entityId],
+      });
+      continue;
+    }
+    const projected = projectTechnicianWorkOrderSnapshot(snapshot, pending);
     const line = projected.lines.find((item) => item.id === args.lineId);
     if (line) return { snapshot: projected, line };
   }

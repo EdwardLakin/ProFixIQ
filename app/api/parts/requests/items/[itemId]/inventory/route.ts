@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import type { Database } from "@shared/types/types/supabase";
+import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
 type DB = Database;
@@ -36,8 +37,12 @@ function clean(value: unknown): string | null {
 }
 
 function isUuid(value: unknown): value is string {
-  return typeof value === "string" &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.trim());
+  return (
+    typeof value === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value.trim(),
+    )
+  );
 }
 
 function suppliedNumber(
@@ -52,7 +57,10 @@ function suppliedNumber(
   return { supplied: true, value: Number.isFinite(value) ? value : null };
 }
 
-function stableOperationKey(itemId: string, body: Extract<Body, { mode: "create" }>): string {
+function stableOperationKey(
+  itemId: string,
+  body: Extract<Body, { mode: "create" }>,
+): string {
   const normalized = JSON.stringify({
     itemId,
     name: clean(body.name),
@@ -69,18 +77,30 @@ function stableOperationKey(itemId: string, body: Extract<Body, { mode: "create"
   return `request-inventory:${itemId}:${createHash("sha256").update(normalized).digest("hex")}`;
 }
 
-export async function POST(req: Request, ctx: { params: Promise<{ itemId: string }> }) {
+export async function POST(
+  req: Request,
+  ctx: { params: Promise<{ itemId: string }> },
+) {
   const { itemId } = await ctx.params;
   if (!isUuid(itemId)) {
-    return NextResponse.json({ ok: false, error: "Invalid itemId." }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "Invalid itemId." },
+      { status: 400 },
+    );
   }
 
-  const access = await requireShopScopedApiAccess({ requiredCapability: "canManageParts" });
+  const access = await requireShopScopedApiAccess({
+    requiredCapability: "canManageParts",
+    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
+  });
   if (!access.ok) return access.response;
 
   const body = (await req.json().catch(() => null)) as Body | null;
   if (!body) {
-    return NextResponse.json({ ok: false, error: "Invalid JSON body." }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "Invalid JSON body." },
+      { status: 400 },
+    );
   }
 
   const { data: item, error: itemError } = await access.supabase
@@ -90,15 +110,24 @@ export async function POST(req: Request, ctx: { params: Promise<{ itemId: string
     .eq("shop_id", access.profile.shop_id)
     .maybeSingle();
   if (itemError) {
-    return NextResponse.json({ ok: false, error: itemError.message }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: itemError.message },
+      { status: 500 },
+    );
   }
   if (!item) {
-    return NextResponse.json({ ok: false, error: "Request item not found." }, { status: 404 });
+    return NextResponse.json(
+      { ok: false, error: "Request item not found." },
+      { status: 404 },
+    );
   }
 
   if (body.mode === "attach") {
     if (!isUuid(body.partId)) {
-      return NextResponse.json({ ok: false, error: "Invalid partId." }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "Invalid partId." },
+        { status: 400 },
+      );
     }
     const { data: part, error: partError } = await access.supabase
       .from("parts")
@@ -107,10 +136,16 @@ export async function POST(req: Request, ctx: { params: Promise<{ itemId: string
       .eq("shop_id", access.profile.shop_id)
       .maybeSingle();
     if (partError) {
-      return NextResponse.json({ ok: false, error: partError.message }, { status: 500 });
+      return NextResponse.json(
+        { ok: false, error: partError.message },
+        { status: 500 },
+      );
     }
     if (!part) {
-      return NextResponse.json({ ok: false, error: "Inventory part not found." }, { status: 404 });
+      return NextResponse.json(
+        { ok: false, error: "Inventory part not found." },
+        { status: 404 },
+      );
     }
     const rpc = access.supabase as unknown as RpcClient;
     const { data: attachData, error: updateError } = await rpc.rpc(
@@ -145,45 +180,73 @@ export async function POST(req: Request, ctx: { params: Promise<{ itemId: string
 
   const name = clean(body.name);
   if (!name) {
-    return NextResponse.json({ ok: false, error: "Name is required." }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "Name is required." },
+      { status: 400 },
+    );
   }
-  const cost = suppliedNumber(body as unknown as Record<string, unknown>, "cost");
-  const sellPrice = suppliedNumber(body as unknown as Record<string, unknown>, "sellPrice");
-  const initialQty = suppliedNumber(body as unknown as Record<string, unknown>, "initialQty");
+  const cost = suppliedNumber(
+    body as unknown as Record<string, unknown>,
+    "cost",
+  );
+  const sellPrice = suppliedNumber(
+    body as unknown as Record<string, unknown>,
+    "sellPrice",
+  );
+  const initialQty = suppliedNumber(
+    body as unknown as Record<string, unknown>,
+    "initialQty",
+  );
   for (const [label, parsed] of [
     ["Cost", cost],
     ["Sell price", sellPrice],
     ["Initial quantity", initialQty],
   ] as const) {
     if (parsed.supplied && parsed.value == null) {
-      return NextResponse.json({ ok: false, error: `${label} must be a valid number.` }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: `${label} must be a valid number.` },
+        { status: 400 },
+      );
     }
     if ((parsed.value ?? 0) < 0) {
-      return NextResponse.json({ ok: false, error: `${label} must be zero or greater.` }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: `${label} must be zero or greater.` },
+        { status: 400 },
+      );
     }
   }
   const locationId = clean(body.locationId);
   if ((initialQty.value ?? 0) > 0 && !isUuid(locationId)) {
-    return NextResponse.json({ ok: false, error: "Location is required for initial quantity." }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "Location is required for initial quantity." },
+      { status: 400 },
+    );
   }
 
   const rpc = access.supabase as unknown as RpcClient;
-  const { data, error } = await rpc.rpc("parts_create_and_attach_inventory_atomic", {
-    p_item_id: itemId,
-    p_name: name,
-    p_part_number: clean(body.partNumber),
-    p_manufacturer: clean(body.manufacturer) ?? clean(item.requested_manufacturer),
-    p_supplier: clean(body.supplier),
-    p_sku: clean(body.sku) ?? clean(body.partNumber),
-    p_category: clean(body.category),
-    p_cost: cost.value,
-    p_sell_price: sellPrice.value,
-    p_initial_qty: initialQty.value ?? 0,
-    p_location_id: locationId,
-    p_operation_key: stableOperationKey(itemId, body),
-  });
+  const { data, error } = await rpc.rpc(
+    "parts_create_and_attach_inventory_atomic",
+    {
+      p_item_id: itemId,
+      p_name: name,
+      p_part_number: clean(body.partNumber),
+      p_manufacturer:
+        clean(body.manufacturer) ?? clean(item.requested_manufacturer),
+      p_supplier: clean(body.supplier),
+      p_sku: clean(body.sku) ?? clean(body.partNumber),
+      p_category: clean(body.category),
+      p_cost: cost.value,
+      p_sell_price: sellPrice.value,
+      p_initial_qty: initialQty.value ?? 0,
+      p_location_id: locationId,
+      p_operation_key: stableOperationKey(itemId, body),
+    },
+  );
   if (error) {
-    return NextResponse.json({ ok: false, error: error.message }, { status: 409 });
+    return NextResponse.json(
+      { ok: false, error: error.message },
+      { status: 409 },
+    );
   }
 
   const result = (Array.isArray(data) ? data[0] : data) as {
@@ -192,7 +255,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ itemId: string
     part?: PartRow;
   } | null;
   if (!result?.part_id) {
-    return NextResponse.json({ ok: false, error: "Inventory operation returned no part." }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: "Inventory operation returned no part." },
+      { status: 500 },
+    );
   }
   return NextResponse.json({
     ok: true,

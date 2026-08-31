@@ -1,7 +1,9 @@
 export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import { resolveWorkOrderProductAuthority } from "@/features/mobile/service/server/access";
+import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
 type SupportedAction =
   | "update_work_order_line_notes"
@@ -78,23 +80,6 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const supabase = createServerSupabaseRoute();
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-  if (userError || !user) {
-    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-  }
-  const { data: profile, error: profileError } = await supabase
-    .from("profiles")
-    .select("shop_id")
-    .eq("id", user.id)
-    .maybeSingle<{ shop_id: string | null }>();
-  if (profileError || !profile?.shop_id) {
-    return NextResponse.json({ error: "Missing shop" }, { status: 403 });
-  }
-
   const workOrderLineId =
     clean(payload.workOrderLineId) || clean(payload.lineId);
   if (!workOrderLineId) {
@@ -104,7 +89,46 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const rpc = supabase as unknown as RpcClient;
+  const access = await requireShopScopedApiAccess({
+    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
+  });
+  if (!access.ok) return access.response;
+
+  const { data: line, error: lineError } = await access.supabase
+    .from("work_order_lines")
+    .select("work_order_id")
+    .eq("id", workOrderLineId)
+    .eq("shop_id", access.profile.shop_id)
+    .maybeSingle<{ work_order_id: string | null }>();
+  if (lineError) {
+    return NextResponse.json(
+      { error: "Unable to authorize the saved mutation." },
+      { status: 503 },
+    );
+  }
+  if (!line?.work_order_id) {
+    return NextResponse.json(
+      { error: "Work-order line not found." },
+      { status: 404 },
+    );
+  }
+
+  try {
+    const authority = await resolveWorkOrderProductAuthority(
+      access,
+      line.work_order_id,
+    );
+    if (!authority.authorized) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+  } catch {
+    return NextResponse.json(
+      { error: "Unable to authorize the saved mutation." },
+      { status: 503 },
+    );
+  }
+
+  const rpc = access.supabase as unknown as RpcClient;
   const rpcName =
     actionType === "upload_job_photo"
       ? "record_offline_photo_receipt_atomic"
@@ -112,15 +136,15 @@ export async function POST(request: NextRequest) {
   const rpcArgs =
     actionType === "upload_job_photo"
       ? {
-          p_shop_id: profile.shop_id,
-          p_actor_user_id: user.id,
+          p_shop_id: access.profile.shop_id,
+          p_actor_user_id: access.authUserId,
           p_operation_key: operationKey,
           p_work_order_line_id: workOrderLineId,
           p_payload: payload,
         }
       : {
-          p_shop_id: profile.shop_id,
-          p_actor_user_id: user.id,
+          p_shop_id: access.profile.shop_id,
+          p_actor_user_id: access.authUserId,
           p_operation_key: operationKey,
           p_action_type: actionType,
           p_work_order_line_id: workOrderLineId,

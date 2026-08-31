@@ -1,7 +1,7 @@
 export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import { requireJobPunchActorAccess } from "@/features/work-orders/server/authorizeJobPunchTransition";
 import { stopTechnicianJobLabor } from "@/features/work-orders/server/technicianJobLabor";
 
 function getId(req: NextRequest) {
@@ -14,13 +14,6 @@ function getId(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const id = getId(req);
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
-
-  const supabase = createServerSupabaseRoute();
-  const { data: auth, error: authErr } = await supabase.auth.getUser();
-  if (authErr)
-    return NextResponse.json({ error: authErr.message }, { status: 500 });
-  if (!auth?.user)
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = (await req.json().catch(() => null)) as {
     holdReason?: string;
@@ -40,10 +33,17 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const result = await stopTechnicianJobLabor({
-    supabase,
+  const authorization = await requireJobPunchActorAccess({
     lineId: id,
-    technicianId: auth.user.id,
+    action: "pause",
+    operationKey,
+  });
+  if (!authorization.ok) return authorization.response;
+
+  const result = await stopTechnicianJobLabor({
+    supabase: authorization.access.supabase,
+    lineId: id,
+    technicianId: authorization.access.authUserId,
     operationKey,
     reason: body?.holdReason,
   });

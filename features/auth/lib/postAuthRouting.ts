@@ -6,6 +6,12 @@ import {
   parseActivationContextFromSearchParams,
 } from "@/features/integrations/shopBoost/activationContext";
 import { safeInternalRedirect } from "@/features/auth/lib/safeRedirect";
+import {
+  productAccessSignInHref,
+  resolveShopProductAccess,
+  SHOP_PRODUCT_CAPABILITIES,
+} from "@/features/shared/lib/product-access";
+import type { ProductCapability } from "@/features/stripe/lib/stripe/product-packages";
 
 export const PASSTHROUGH_KEYS = [
   "redirect",
@@ -21,6 +27,7 @@ export async function resolvePostAuthDestination(args: {
   isMobileMode?: boolean;
   defaultDashboardHref?: string;
   unassignedAccountHref?: string;
+  requiredProductCapabilities?: readonly ProductCapability[];
 }): Promise<string> {
   const {
     supabase,
@@ -28,6 +35,7 @@ export async function resolvePostAuthDestination(args: {
     isMobileMode = false,
     defaultDashboardHref = "/dashboard",
     unassignedAccountHref,
+    requiredProductCapabilities = SHOP_PRODUCT_CAPABILITIES,
   } = args;
   const activationContext =
     parseActivationContextFromSearchParams(searchParams);
@@ -40,8 +48,8 @@ export async function resolvePostAuthDestination(args: {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("must_change_password, role, shop_id")
-    .eq("id", user.id)
+    .select("id, must_change_password, role, shop_id")
+    .or(`id.eq.${user.id},user_id.eq.${user.id}`)
     .maybeSingle();
 
   if (profile?.must_change_password) {
@@ -50,6 +58,23 @@ export async function resolvePostAuthDestination(args: {
 
   if (profile && !profile.shop_id && !profile.role && unassignedAccountHref) {
     return unassignedAccountHref;
+  }
+
+  if (profile?.shop_id) {
+    const productAccess = await resolveShopProductAccess({
+      supabase,
+      shopId: profile.shop_id,
+      capabilities: requiredProductCapabilities,
+    });
+    if (productAccess.error || !productAccess.entitled) {
+      const href =
+        isMobileMode && requiredProductCapabilities.includes("shop")
+          ? "/mobile/sign-in?access=shop_required"
+          : productAccessSignInHref(requiredProductCapabilities);
+      return productAccess.error
+        ? href.replace(/access=[^&]+/, "access=unavailable")
+        : href;
+    }
   }
 
   if (isMobileMode) return "/mobile";

@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   createAdminSupabase: vi.fn(),
   requireShopScopedApiAccess: vi.fn(),
   loadMobileWorkOrderDetail: vi.fn(),
+  resolveWorkOrderProductAuthority: vi.fn(),
 }));
 
 vi.mock("@/features/shared/lib/server/admin-access", () => ({
@@ -12,6 +13,10 @@ vi.mock("@/features/shared/lib/server/admin-access", () => ({
 
 vi.mock("@/features/shared/lib/supabase/server", () => ({
   createAdminSupabase: mocks.createAdminSupabase,
+}));
+
+vi.mock("@/features/mobile/service/server/access", () => ({
+  resolveWorkOrderProductAuthority: mocks.resolveWorkOrderProductAuthority,
 }));
 
 vi.mock("server-only", () => ({}));
@@ -42,6 +47,10 @@ describe("mobile work-order detail route", () => {
     vi.clearAllMocks();
     mocks.createAdminSupabase.mockReturnValue({ from: vi.fn() });
     mocks.requireShopScopedApiAccess.mockResolvedValue(allowedAccess());
+    mocks.resolveWorkOrderProductAuthority.mockResolvedValue({
+      authorized: true,
+      product: "shop",
+    });
     mocks.loadMobileWorkOrderDetail.mockResolvedValue({
       workOrder: { id: WORK_ORDER_ID, shop_id: "shop-1" },
       lines: [],
@@ -80,6 +89,7 @@ describe("mobile work-order detail route", () => {
     );
     expect(mocks.requireShopScopedApiAccess).toHaveBeenCalledWith({
       allowRoles: MOBILE_WORK_ORDER_DETAIL_ROLES,
+      requiredProductCapabilities: ["shop", "field_service"],
     });
     expect(mocks.loadMobileWorkOrderDetail).toHaveBeenCalledWith(
       expect.objectContaining({ shopId: "shop-1", routeId: WORK_ORDER_ID }),
@@ -114,6 +124,21 @@ describe("mobile work-order detail route", () => {
     await expect(response.json()).resolves.toEqual({
       error: "Work order not found.",
     });
+  });
+
+  it("returns a non-disclosing 404 when the work order belongs to another product", async () => {
+    mocks.resolveWorkOrderProductAuthority.mockResolvedValue({
+      authorized: false,
+      product: null,
+    });
+    const { GET } = await import("../app/api/mobile/work-orders/[id]/route");
+
+    const response = await GET(new Request("https://profixiq.test"), {
+      params: Promise.resolve({ id: WORK_ORDER_ID }),
+    });
+
+    expect(response.status).toBe(404);
+    expect(mocks.loadMobileWorkOrderDetail).not.toHaveBeenCalled();
   });
 
   it("returns a recoverable 500 without exposing the database error", async () => {

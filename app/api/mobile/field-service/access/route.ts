@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
 
 import { getMobileFieldServiceWorkspaceAccess } from "@/features/mobile/service/server/access";
+import { FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
 export async function GET() {
-  const access = await requireShopScopedApiAccess();
+  const access = await requireShopScopedApiAccess({
+    requiredProductCapabilities: FIELD_PRODUCT_CAPABILITIES,
+  });
   if (!access.ok) return access.response;
 
   try {

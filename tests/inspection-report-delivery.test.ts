@@ -71,7 +71,11 @@ describe("inspection report delivery contracts", () => {
     const route = source(
       "app/api/invoices/[id]/documents/[kind]/signed/route.ts",
     );
-    expect(route).toContain("hasAnyRole(profile?.role, ROLE_GROUPS.billingOperators)");
+    expect(route).toContain(
+      "hasAnyRole(profile.role, ROLE_GROUPS.billingOperators)",
+    );
+    expect(route).toContain("resolveWorkOrderProductAuthority");
+    expect(route).toContain("SHOP_PRODUCT_CAPABILITIES");
     expect(route).toContain("isExpectedDocumentStorage");
     expect(route).toContain('args.bucket !== "inspection_pdfs"');
   });
