@@ -72,10 +72,21 @@ describe("Phase 13 Fleet navigation performance contract", () => {
       "app/api/fleet/driver/dashboard/route.ts",
     );
     const driversPage = read("app/portal/fleet/drivers/page.tsx");
-    const drivers = read(
-      "features/fleet/components/FleetDriversWorkspace.tsx",
-    );
+    const drivers = read("features/fleet/components/FleetDriversWorkspace.tsx");
     const enrollmentRoute = read("app/api/fleet/enrollment/route.ts");
+    const enrollmentPage = read("app/portal/fleet/units/new/page.tsx");
+    const enrollment = read(
+      "features/fleet/components/FleetUnitEnrollmentPage.tsx",
+    );
+    const actorGuard = read("app/portal/fleet/_lib/requireFleetPortalActor.ts");
+    const pretripHistoryPage = read(
+      "app/portal/fleet/pretrip-history/page.tsx",
+    );
+    const pretripHistory = read(
+      "features/fleet/components/PretripReportsPage.tsx",
+    );
+    const pretripRoute = read("app/api/fleet/pretrip/route.ts");
+    const settingsPage = read("app/portal/fleet/settings/page.tsx");
     const towerRoute = read("app/api/fleet/tower/route.ts");
     const calendarPage = read("app/portal/fleet/calendar/page.tsx");
     const calendar = read(
@@ -86,9 +97,7 @@ describe("Phase 13 Fleet navigation performance contract", () => {
       "features/fleet/components/FleetServiceRequestsPage.tsx",
     );
     const billingPage = read("app/portal/fleet/billing/page.tsx");
-    const billing = read(
-      "features/fleet/components/FleetBillingWorkspace.tsx",
-    );
+    const billing = read("features/fleet/components/FleetBillingWorkspace.tsx");
     const billingRoute = read("app/api/fleet/billing/route.ts");
     const billingCheckout = read("app/api/fleet/billing/checkout/route.ts");
     const unitDetail = read(
@@ -110,7 +119,9 @@ describe("Phase 13 Fleet navigation performance contract", () => {
     expect(homePage).toContain(
       "<FleetDriverDashboard fleetId={selectedFleetId} />",
     );
-    expect(homePage).toContain("shopId={selectedScope?.shopId ?? actor.shopId}");
+    expect(homePage).toContain(
+      "shopId={selectedScope?.shopId ?? actor.shopId}",
+    );
     expect(driverDashboard).toContain(
       "`?fleetId=${encodeURIComponent(fleetId)}`",
     );
@@ -118,14 +129,36 @@ describe("Phase 13 Fleet navigation performance contract", () => {
       "resolveSelectedFleetRequestScope(actor, {",
     );
     expect(driversPage).toContain("initialFleetId={selectedFleetId}");
-    expect(drivers).toContain("useState(initialFleetId ?? \"all\")");
+    expect(drivers).toContain('useState(initialFleetId ?? "all")');
     expect(drivers).toContain("fleetId: initialFleetId ?? null");
     expect(enrollmentRoute).toContain(
       "resolveSelectedFleetRequestScope(actor, {",
     );
+    expect(enrollmentPage).toContain(
+      "requireFleetPortalActor(fleetId ?? null)",
+    );
+    expect(enrollmentPage).toContain("initialFleetId={actor.primaryFleetId}");
+    expect(enrollment).toContain(
+      'body: JSON.stringify({ action: "context", fleetId: initialFleetId })',
+    );
+    expect(enrollment).toContain("fleetId: fleetId || initialFleetId");
+    expect(actorGuard).toContain("getInternalFleetIdsInActorShop");
+    expect(actorGuard).toContain(
+      "await getInternalFleetIdsInActorShop(actor.shopId)",
+    );
+    expect(pretripHistoryPage).toContain("fleetId={actor.primaryFleetId}");
+    expect(pretripHistory).toContain(
+      "body: JSON.stringify({ shopId: null, fleetId })",
+    );
+    expect(pretripHistory).toContain("href={withFleetId(");
+    expect(pretripRoute).toContain("resolveSelectedFleetRequestScope(actor, {");
+    expect(settingsPage).toContain(
+      "const selectedShopId = selectedScope.shopId",
+    );
+    expect(settingsPage).toContain('.eq("shop_id", selectedShopId)');
     expect(towerRoute).toContain("resolveSelectedFleetRequestScope(actor, {");
     expect(calendarPage).toContain("initialFleetId={selectedFleetId}");
-    expect(calendar).toContain("useState(initialFleetId ?? \"all\")");
+    expect(calendar).toContain('useState(initialFleetId ?? "all")');
     expect(requestsPage).toContain("fleetId={selectedFleetId}");
     expect(requests).toContain(
       "body: JSON.stringify({ fleetId: fleetId ?? null })",

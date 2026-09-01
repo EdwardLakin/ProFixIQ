@@ -12,6 +12,10 @@ export default async function PortalFleetPretripHistoryPage({
   const uiContext = getFleetUiContext(actor);
 
   return (
-    <PretripReportsPage uiContext={uiContext} routePrefix="/portal/fleet" />
+    <PretripReportsPage
+      uiContext={uiContext}
+      routePrefix="/portal/fleet"
+      fleetId={actor.primaryFleetId}
+    />
   );
 }

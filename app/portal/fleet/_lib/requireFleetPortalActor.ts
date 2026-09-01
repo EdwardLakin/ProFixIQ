@@ -53,6 +53,18 @@ const isInternalFleetInActorShop = cache(
   },
 );
 
+const getInternalFleetIdsInActorShop = cache(
+  async (shopId: string): Promise<string[]> => {
+    const supabase = createServerSupabaseRSC();
+    const { data, error } = await supabase
+      .from("fleets")
+      .select("id")
+      .eq("shop_id", shopId);
+    if (error) return [];
+    return (data ?? []).map((fleet) => fleet.id);
+  },
+);
+
 function selectRequestedFleetActor(
   actor: FleetActorContext & { userId: string },
   requestedFleetId: string | null,
@@ -73,7 +85,9 @@ function selectRequestedFleetActor(
   }
 
   const tier = resolveFleetRoleTier(membership.role);
-  const normalizedRole = String(membership.role ?? "").trim().toLowerCase();
+  const normalizedRole = String(membership.role ?? "")
+    .trim()
+    .toLowerCase();
   const actorType =
     tier === "manager"
       ? "fleet_manager"
@@ -137,15 +151,23 @@ export async function requireFleetPortalActor(
   }
 > {
   const actor = await getFleetPortalActorContext(requestedFleetId);
+  const shellFleetIds = Array.from(
+    new Set([
+      ...actor.fleetMemberships.map((membership) => membership.fleetId),
+      ...(actor.isInternal && actor.shopId
+        ? await getInternalFleetIdsInActorShop(actor.shopId)
+        : []),
+    ]),
+  );
 
   return {
     ...getFleetUiContext(actor),
     userId: actor.userId,
     primaryFleetId: actor.primaryFleetId,
     fleetShellContexts: Object.fromEntries(
-      actor.fleetMemberships.map((membership) => [
-        membership.fleetId,
-        getFleetShellContext(actor, membership.fleetId),
+      shellFleetIds.map((fleetId) => [
+        fleetId,
+        getFleetShellContext(actor, fleetId),
       ]),
     ),
   };

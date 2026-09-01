@@ -29,9 +29,11 @@ type PretripReport = {
 export default function PretripReportsPage({
   uiContext,
   routePrefix = "/portal/fleet",
+  fleetId = null,
 }: {
   uiContext: FleetUiContext;
   routePrefix?: "/fleet" | "/portal/fleet";
+  fleetId?: string | null;
 }) {
   const pathname = usePathname() ?? "";
   const productRoutes =
@@ -60,7 +62,7 @@ export default function PretripReportsPage({
         const res = await fetch("/api/fleet/pretrip", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ shopId: null }), // server infers from auth
+          body: JSON.stringify({ shopId: null, fleetId }),
         });
 
         if (!res.ok) {
@@ -90,7 +92,13 @@ export default function PretripReportsPage({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [fleetId]);
+
+  const withFleetId = (href: string) => {
+    if (!fleetId) return href;
+    const separator = href.includes("?") ? "&" : "?";
+    return `${href}${separator}fleetId=${encodeURIComponent(fleetId)}`;
+  };
 
   const filteredReports = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -161,15 +169,15 @@ export default function PretripReportsPage({
                 ? "Start the next inspection from "
                 : "Drivers submit pre-trips from the "}
               <Link
-                href={
+                href={withFleetId(
                   isDriver
                     ? productRoutes
                       ? "/pre-trips/start"
                       : "/portal/fleet/pretrip"
                     : productRoutes
                       ? "/assets"
-                      : "/mobile/fleet/pretrip"
-                }
+                      : "/mobile/fleet/pretrip",
+                )}
                 className="underline decoration-dotted underline-offset-4"
               >
                 {isDriver
