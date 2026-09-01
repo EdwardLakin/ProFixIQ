@@ -1732,7 +1732,6 @@ export type Database = {
         ]
       }
       audit_logs: {
-      audit_logs: {
         Row: {
           action: string
           actor_id: string | null
