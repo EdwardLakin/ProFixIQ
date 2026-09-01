@@ -1,4 +1,6 @@
 
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@shared/types/types/supabase";
 import { canonicalizeRole } from "@/features/shared/lib/rbac";
 import { resolveTechnicianAssignmentContract } from "@/features/work-orders/lib/technicianAssignmentContract";
 import { getServerSupabase } from "./supabase";
@@ -36,6 +38,32 @@ type AssistantNotificationQueryError = {
   code?: string | null;
   message?: string | null;
   details?: string | null;
+};
+
+export type AssistantNotificationReadScope = {
+  shopId: string;
+  fleetIds: string[] | null;
+};
+
+export type AssistantNotificationPageRow = {
+  id: string;
+  level: "info" | "warning" | "critical";
+  code: string;
+  title: string;
+  message: string;
+  href: string | null;
+  entity_type: string | null;
+  entity_id: string | null;
+  status: "active" | "acknowledged" | "resolved";
+  metadata: Record<string, unknown> | null;
+  last_seen_at: string;
+};
+
+export type AssistantNotificationPageResult = {
+  available: boolean;
+  rows: AssistantNotificationPageRow[];
+  total: number;
+  nextOffset: number | null;
 };
 
 const LEGACY_NOTIFICATION_STATUS_ALIASES: Record<string, AssistantNotificationStatus> = {
@@ -91,6 +119,114 @@ function isMissingAssistantNotificationsError(
         signature.includes("could not find") ||
         signature.includes("schema cache")))
   );
+}
+
+function normalizedAssistantNotificationReadScopes(
+  scopes: AssistantNotificationReadScope[],
+): AssistantNotificationReadScope[] {
+  const byShop = new Map<string, Set<string> | null>();
+
+  for (const scope of scopes) {
+    if (!scope.shopId || scope.fleetIds?.length === 0) continue;
+    const existing = byShop.get(scope.shopId);
+    if (existing === null) continue;
+    if (scope.fleetIds === null) {
+      byShop.set(scope.shopId, null);
+      continue;
+    }
+    const fleetIds = existing ?? new Set<string>();
+    for (const fleetId of scope.fleetIds) fleetIds.add(fleetId);
+    byShop.set(scope.shopId, fleetIds);
+  }
+
+  return Array.from(byShop, ([shopId, fleetIds]) => ({
+    shopId,
+    fleetIds: fleetIds === null ? null : Array.from(fleetIds),
+  }));
+}
+
+function compareAssistantNotificationRows(
+  left: AssistantNotificationPageRow,
+  right: AssistantNotificationPageRow,
+): number {
+  const leftSeenAt = Date.parse(left.last_seen_at);
+  const rightSeenAt = Date.parse(right.last_seen_at);
+  if (leftSeenAt !== rightSeenAt) return rightSeenAt - leftSeenAt;
+  return right.id.localeCompare(left.id);
+}
+
+/**
+ * Read the production-backed assistant notification relation through its
+ * established persistence boundary. The relation predates clean replay, so a
+ * missing-table response remains explicit instead of making a Fleet feature
+ * redefine the shared table, grants, policies, or triggers.
+ */
+export async function readAssistantNotificationPage(params: {
+  supabase: SupabaseClient<Database>;
+  scopes: AssistantNotificationReadScope[];
+  source: string;
+  statuses: Array<"active" | "acknowledged" | "resolved">;
+  offset: number;
+  pageSize: number;
+}): Promise<AssistantNotificationPageResult> {
+  const scopes = normalizedAssistantNotificationReadScopes(params.scopes);
+  if (scopes.length === 0) {
+    return { available: true, rows: [], total: 0, nextOffset: null };
+  }
+
+  const rangeEnd = params.offset + params.pageSize - 1;
+  const results = await Promise.all(
+    scopes.map(async (scope) => {
+      let query = params.supabase
+        .from("assistant_notifications")
+        .select(
+          "id, level, code, title, message, href, entity_type, entity_id, status, metadata, last_seen_at",
+          { count: "exact" },
+        )
+        .eq("shop_id", scope.shopId)
+        .eq("source", params.source)
+        .in("status", params.statuses)
+        .order("last_seen_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(0, rangeEnd);
+
+      if (scope.fleetIds !== null) {
+        query = query.in("metadata->>fleet_id", scope.fleetIds);
+      }
+
+      return await query;
+    }),
+  );
+
+  const missingRelation = results.some(({ error }) =>
+    isMissingAssistantNotificationsError(error),
+  );
+  if (missingRelation) {
+    return { available: false, rows: [], total: 0, nextOffset: null };
+  }
+
+  const failed = results.find(({ error }) => error);
+  if (failed?.error) throw new Error(failed.error.message);
+
+  const rowsById = new Map<string, AssistantNotificationPageRow>();
+  let total = 0;
+  for (const result of results) {
+    const rows = (result.data ?? []) as AssistantNotificationPageRow[];
+    total += result.count ?? rows.length;
+    for (const row of rows) rowsById.set(row.id, row);
+  }
+
+  const rows = Array.from(rowsById.values())
+    .sort(compareAssistantNotificationRows)
+    .slice(params.offset, params.offset + params.pageSize);
+  const consumed = params.offset + rows.length;
+
+  return {
+    available: true,
+    rows,
+    total,
+    nextOffset: consumed < total ? consumed : null,
+  };
 }
 
 function buildFingerprint(

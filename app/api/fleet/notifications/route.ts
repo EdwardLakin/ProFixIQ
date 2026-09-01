@@ -8,7 +8,12 @@ import {
   canManageFleetForActor,
   manageableFleetIdsForActor,
   resolveFleetActorContext,
+  type FleetActorContext,
 } from "@/features/fleet/lib/resolveFleetActorContext";
+import {
+  readAssistantNotificationPage,
+  type AssistantNotificationReadScope,
+} from "@/features/agent/server/syncAssistantNotifications";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { supabaseAdmin } from "@/features/shared/lib/supabase/admin";
 
@@ -53,6 +58,50 @@ type NotificationRow = {
   last_seen_at: string;
 };
 
+function fleetNotificationReadScopes(
+  actor: FleetActorContext,
+  requestedFleetId?: string | null,
+): AssistantNotificationReadScope[] {
+  if (actor.isInternal) {
+    return actor.shopId
+      ? [
+          {
+            shopId: actor.shopId,
+            fleetIds: requestedFleetId ? [requestedFleetId] : null,
+          },
+        ]
+      : [];
+  }
+
+  const manageableFleetIds = new Set(manageableFleetIdsForActor(actor));
+  if (
+    requestedFleetId &&
+    (!manageableFleetIds.has(requestedFleetId) ||
+      !canManageFleetForActor(actor, requestedFleetId))
+  ) {
+    return [];
+  }
+
+  const byShop = new Map<string, Set<string>>();
+  for (const membership of actor.fleetMemberships) {
+    if (
+      !membership.shopId ||
+      !manageableFleetIds.has(membership.fleetId) ||
+      (requestedFleetId && membership.fleetId !== requestedFleetId)
+    ) {
+      continue;
+    }
+    const fleetIds = byShop.get(membership.shopId) ?? new Set<string>();
+    fleetIds.add(membership.fleetId);
+    byShop.set(membership.shopId, fleetIds);
+  }
+
+  return Array.from(byShop, ([shopId, fleetIds]) => ({
+    shopId,
+    fleetIds: Array.from(fleetIds),
+  }));
+}
+
 function emptyPage(): FleetNotificationPage {
   return { notifications: [], total: 0, nextOffset: null };
 }
@@ -86,51 +135,29 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  if (!actor.shopId) {
-    return NextResponse.json(emptyPage());
-  }
-
-  const manageableFleetIds = actor.isInternal
-    ? []
-    : manageableFleetIdsForActor(actor);
-  const eligible = actor.isInternal
-    ? actor.capabilities.canSeeFleetWideUnits
-    : manageableFleetIds.length > 0;
-  if (!eligible) {
+  const scopes = fleetNotificationReadScopes(
+    actor,
+    parsed.data.fleetId ?? null,
+  );
+  if (
+    scopes.length === 0 ||
+    (actor.isInternal && !actor.capabilities.canSeeFleetWideUnits)
+  ) {
     return NextResponse.json(emptyPage());
   }
 
   const offset = parsed.data.offset ?? 0;
-  let query = supabaseAdmin
-    .from("assistant_notifications")
-    .select(
-      "id, level, code, title, message, href, entity_type, entity_id, status, metadata, last_seen_at",
-      { count: "exact" },
-    )
-    .eq("shop_id", actor.shopId)
-    .eq("source", "fleet")
-    .in("status", ["active", "acknowledged"])
-    .order("last_seen_at", { ascending: false })
-    .range(offset, offset + PAGE_SIZE - 1);
-
-  if (!actor.isInternal) {
-    const requestedFleetId = parsed.data.fleetId;
-    const allowedFleetIds = requestedFleetId
-      ? canManageFleetForActor(actor, requestedFleetId)
-        ? [requestedFleetId]
-        : []
-      : manageableFleetIds;
-    if (allowedFleetIds.length === 0) {
-      return NextResponse.json(emptyPage());
-    }
-    query = query.in("metadata->>fleet_id", allowedFleetIds);
-  } else if (parsed.data.fleetId) {
-    query = query.eq("metadata->>fleet_id", parsed.data.fleetId);
-  }
-
-  const { data, error, count } = await query;
-
-  if (error) {
+  let page;
+  try {
+    page = await readAssistantNotificationPage({
+      supabase: supabaseAdmin,
+      scopes,
+      source: "fleet",
+      statuses: ["active", "acknowledged"],
+      offset,
+      pageSize: PAGE_SIZE,
+    });
+  } catch (error) {
     console.error("[fleet/notifications] query error", error);
     return NextResponse.json(
       { error: "Fleet alerts could not be loaded." },
@@ -138,9 +165,14 @@ export async function POST(req: Request) {
     );
   }
 
-  const rows = (data ?? []) as NotificationRow[];
-  const total = count ?? offset + rows.length;
-  const consumed = offset + rows.length;
+  if (!page.available) {
+    return NextResponse.json(
+      { error: "Fleet alerts are not available in this environment." },
+      { status: 503 },
+    );
+  }
+
+  const rows = page.rows as NotificationRow[];
 
   return NextResponse.json({
     notifications: rows.map((row) => ({
@@ -156,7 +188,7 @@ export async function POST(req: Request) {
       createdAt: row.last_seen_at,
       status: row.status,
     })) satisfies FleetNotification[],
-    total,
-    nextOffset: consumed < total ? consumed : null,
+    total: page.total,
+    nextOffset: page.nextOffset,
   } satisfies FleetNotificationPage);
 }

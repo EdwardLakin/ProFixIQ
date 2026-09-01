@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   useEffect,
   useMemo,
@@ -39,6 +39,7 @@ import {
 import { FLEET_PERFORMANCE_EVENT } from "@/features/fleet/lib/fleetPerformance";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { cn } from "@/features/shared/utils/cn";
+import type { FleetShellContext } from "@/features/fleet/lib/fleetUiCapabilities";
 
 type FleetExperience =
   | "internal_ops"
@@ -332,6 +333,7 @@ export default function FleetProductShell({
   actorLabel,
   experience,
   canAccessManagerWorkspaces,
+  fleetContexts,
   userId,
   productHost,
   children,
@@ -341,11 +343,21 @@ export default function FleetProductShell({
   actorLabel: string;
   experience: FleetExperience;
   canAccessManagerWorkspaces: boolean;
+  fleetContexts?: Record<string, FleetShellContext & { subtitle: string }>;
   userId: string | null;
   productHost: boolean;
   children: React.ReactNode;
 }) {
   const pathname = usePathname() ?? "/portal/fleet";
+  const searchParams = useSearchParams();
+  const selectedFleetContext =
+    fleetContexts?.[searchParams.get("fleetId") ?? ""];
+  const shellSubtitle = selectedFleetContext?.subtitle ?? subtitle;
+  const shellActorLabel = selectedFleetContext?.actorLabel ?? actorLabel;
+  const shellExperience = selectedFleetContext?.experience ?? experience;
+  const shellCanAccessManagerWorkspaces =
+    selectedFleetContext?.canAccessManagerWorkspaces ??
+    canAccessManagerWorkspaces;
   const internalPathname = toFleetInternalPath(pathname) ?? pathname;
   const router = useRouter();
   const supabase = useMemo(() => createBrowserSupabase(), []);
@@ -383,20 +395,20 @@ export default function FleetProductShell({
 
   const groups = useMemo(() => {
     const sourceGroups =
-      experience === "external_driver"
+      shellExperience === "external_driver"
         ? DRIVER_NAV_GROUPS
-        : experience === "external_dispatcher"
+        : shellExperience === "external_dispatcher"
           ? DISPATCHER_NAV_GROUPS
           : NAV_GROUPS;
     return sourceGroups
       .map((group) => ({
         ...group,
         items: group.items.filter(
-          (item) => canAccessManagerWorkspaces || !item.managerOnly,
+          (item) => shellCanAccessManagerWorkspaces || !item.managerOnly,
         ),
       }))
       .filter((group) => group.items.length > 0);
-  }, [canAccessManagerWorkspaces, experience]);
+  }, [shellCanAccessManagerWorkspaces, shellExperience]);
 
   const activeItem = useMemo(
     () =>
@@ -656,12 +668,12 @@ export default function FleetProductShell({
             <div className="min-w-0 flex-1">
               <div className="truncate text-sm font-semibold">{title}</div>
               <div className="truncate text-[11px] text-[color:var(--theme-text-muted)]">
-                {subtitle}
+                {shellSubtitle}
               </div>
             </div>
 
             <div className="hidden items-center gap-2 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 sm:flex">
-              {experience === "external_driver" ? (
+              {shellExperience === "external_driver" ? (
                 <UserRound className="h-4 w-4 text-sky-400" />
               ) : (
                 <ShieldCheck className="h-4 w-4 text-sky-400" />
@@ -670,10 +682,12 @@ export default function FleetProductShell({
                 <div className="text-[10px] uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">
                   Workspace role
                 </div>
-                <div className="text-xs font-medium">{actorLabel}</div>
+                <div className="text-xs font-medium">{shellActorLabel}</div>
               </div>
             </div>
-            <FleetNotificationsBell routePrefix={productHost ? "/fleet" : "/portal/fleet"} />
+            <FleetNotificationsBell
+              routePrefix={productHost ? "/fleet" : "/portal/fleet"}
+            />
             <ThemeToggleButton />
           </div>
         </header>
@@ -682,14 +696,14 @@ export default function FleetProductShell({
           aria-busy={navigationTarget ? true : undefined}
           className={cn(
             "relative mx-auto w-full max-w-[1680px] px-3 py-4 sm:px-5 sm:py-6 lg:px-7",
-            experience === "external_driver" && "pb-24 lg:pb-7",
+            shellExperience === "external_driver" && "pb-24 lg:pb-7",
           )}
         >
           {children}
         </main>
       </div>
 
-      {experience === "external_driver" ? (
+      {shellExperience === "external_driver" ? (
         <nav
           aria-label="Driver shortcuts"
           className="fixed inset-x-2 bottom-[max(0.5rem,env(safe-area-inset-bottom))] z-40 grid grid-cols-5 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-sidebar-bg)]/96 p-1.5 shadow-2xl backdrop-blur-xl lg:hidden"

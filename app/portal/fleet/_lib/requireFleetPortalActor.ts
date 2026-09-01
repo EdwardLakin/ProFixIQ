@@ -6,7 +6,9 @@ import {
   type FleetActorContext,
 } from "@/features/fleet/lib/resolveFleetActorContext";
 import {
+  getFleetShellContext,
   getFleetUiContext,
+  type FleetShellContext,
   type FleetUiContext,
 } from "@/features/fleet/lib/fleetUiCapabilities";
 
@@ -35,7 +37,11 @@ export const getFleetPortalActorContext = cache(
 );
 
 export async function requireFleetPortalActor(): Promise<
-  FleetUiContext & { userId: string; primaryFleetId: string | null }
+  FleetUiContext & {
+    userId: string;
+    primaryFleetId: string | null;
+    fleetShellContexts: Record<string, FleetShellContext>;
+  }
 > {
   const actor = await getFleetPortalActorContext();
 
@@ -43,5 +49,11 @@ export async function requireFleetPortalActor(): Promise<
     ...getFleetUiContext(actor),
     userId: actor.userId,
     primaryFleetId: actor.primaryFleetId,
+    fleetShellContexts: Object.fromEntries(
+      actor.fleetMemberships.map((membership) => [
+        membership.fleetId,
+        getFleetShellContext(actor, membership.fleetId),
+      ]),
+    ),
   };
 }
