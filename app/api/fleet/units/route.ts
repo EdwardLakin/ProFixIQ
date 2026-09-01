@@ -5,8 +5,8 @@ import {
 } from "@/features/shared/lib/supabase/server";
 import {
   resolveFleetActorContext,
-  resolveFleetActorScope,
 } from "@/features/fleet/lib/resolveFleetActorContext";
+import { resolveSelectedFleetRequestScope } from "@/features/fleet/lib/resolveSelectedFleetRequestScope";
 
 export type FleetUnitListItem = {
   id: string;
@@ -61,7 +61,7 @@ export async function POST(request: Request) {
     const actor = await resolveFleetActorContext(supabase, {
       requestedFleetId,
     });
-    const scope = resolveFleetActorScope(actor, {
+    const scope = resolveSelectedFleetRequestScope(actor, {
       explicitFleetId: requestedFleetId,
       preferMembershipFleet: !actor.isInternal,
     });

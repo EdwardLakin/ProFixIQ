@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import FleetNotificationsBell from "@/features/fleet/components/FleetNotificationsBell";
@@ -23,9 +23,18 @@ function notification(id: string, level: "warning" | "critical") {
 describe("Fleet notifications bell", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
-  it("keeps severity neutral until all paginated alerts are represented", async () => {
+  it("keeps loaded pages and severity state while polling the first page", async () => {
+    let poll: TimerHandler | null = null;
+    vi.stubGlobal(
+      "setInterval",
+      vi.fn((handler: TimerHandler, timeout?: number) => {
+        if (timeout === 120000) poll = handler;
+        return 1 as never;
+      }),
+    );
     const nextCursor = {
       lastSeenAt: "2026-09-01T00:00:00.000Z",
       id: "00000000-0000-4000-8000-000000000050",
@@ -51,6 +60,16 @@ describe("Fleet notifications bell", () => {
           }),
           { status: 200 },
         ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            notifications: [notification("warning", "warning")],
+            total: 51,
+            nextCursor,
+          }),
+          { status: 200 },
+        ),
       );
     vi.stubGlobal("fetch", fetchMock);
 
@@ -70,5 +89,12 @@ describe("Fleet notifications bell", () => {
     expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toMatchObject({
       cursor: nextCursor,
     });
+
+    await act(async () => {
+      expect(poll).not.toBeNull();
+      if (typeof poll === "function") poll();
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(badge).toHaveClass("bg-red-400");
   });
 });

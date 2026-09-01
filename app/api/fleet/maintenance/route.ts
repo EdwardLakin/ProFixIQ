@@ -8,8 +8,8 @@ import {
   canManageFleetForActor,
   manageableFleetIdsForActor,
   resolveFleetActorContext,
-  resolveFleetActorScope,
 } from "@/features/fleet/lib/resolveFleetActorContext";
+import { resolveSelectedFleetRequestScope } from "@/features/fleet/lib/resolveSelectedFleetRequestScope";
 
 export const dynamic = "force-dynamic";
 
@@ -97,7 +97,7 @@ async function listWorkspace(
   actor: Awaited<ReturnType<typeof resolveFleetActorContext>>,
   explicitFleetId?: string | null,
 ) {
-  const scope = resolveFleetActorScope(actor, {
+  const scope = resolveSelectedFleetRequestScope(actor, {
     explicitFleetId: explicitFleetId ?? null,
   });
   if (!scope?.shopId) throw new Error("Fleet scope is unavailable");
@@ -390,13 +390,17 @@ export async function POST(request: Request) {
   try {
     const supabase = createServerSupabaseRoute();
     const body = (await request.json().catch(() => ({}))) as Body;
+    const requestedFleetId = clean(body.fleetId);
     const actor = await resolveFleetActorContext(supabase, {
-      requestedFleetId: clean(body.fleetId),
+      requestedFleetId,
+    });
+    const requestScope = resolveSelectedFleetRequestScope(actor, {
+      explicitFleetId: requestedFleetId,
     });
     if (!actor.userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    if (actor.actorType === "none" || !actor.shopId) {
+    if (actor.actorType === "none" || !requestScope?.shopId) {
       return NextResponse.json(
         { error: "Fleet access required" },
         { status: 403 },
@@ -417,7 +421,6 @@ export async function POST(request: Request) {
     const admin = createAdminSupabase();
 
     if (action === "evaluate") {
-      const requestedFleetId = clean(body.fleetId);
       let targetFleetIds: string[];
       if (requestedFleetId) {
         if (!canManage(actor, requestedFleetId)) {
@@ -430,7 +433,7 @@ export async function POST(request: Request) {
           .from("fleets")
           .select("id")
           .eq("id", requestedFleetId)
-          .eq("shop_id", actor.shopId)
+          .eq("shop_id", requestScope.shopId)
           .maybeSingle();
         if (fleetError) throw new Error(fleetError.message);
         if (!fleet) {
@@ -441,7 +444,7 @@ export async function POST(request: Request) {
         const { data: fleets, error: fleetError } = await admin
           .from("fleets")
           .select("id")
-          .eq("shop_id", actor.shopId);
+          .eq("shop_id", requestScope.shopId);
         if (fleetError) throw new Error(fleetError.message);
         targetFleetIds = (fleets ?? []).map((fleet) => fleet.id);
       } else {
@@ -490,7 +493,7 @@ export async function POST(request: Request) {
         .from("fleets")
         .select("id")
         .eq("id", fleetId)
-        .eq("shop_id", actor.shopId)
+        .eq("shop_id", requestScope.shopId)
         .maybeSingle();
       if (fleetError) throw new Error(fleetError.message);
       if (!fleet) {

@@ -4,6 +4,7 @@ import {
   resolveFleetActorContext,
   resolveFleetActorScope,
 } from "@/features/fleet/lib/resolveFleetActorContext";
+import { resolveSelectedFleetRequestScope } from "@/features/fleet/lib/resolveSelectedFleetRequestScope";
 
 const USER_ID = "10000000-0000-4000-8000-000000000001";
 const PROFILE_ID = "10000000-0000-4000-8000-000000000002";
@@ -63,12 +64,21 @@ describe("selected Fleet membership scope", () => {
     expect(
       resolveFleetActorScope(actor, { explicitFleetId: FLEET_B }),
     ).toEqual({
+      shopId: SHOP_A,
+      fleetId: FLEET_B,
+      fleetIds: [FLEET_B],
+    });
+    expect(
+      resolveSelectedFleetRequestScope(actor, {
+        explicitFleetId: FLEET_B,
+      }),
+    ).toEqual({
       shopId: SHOP_B,
       fleetId: FLEET_B,
       fleetIds: [FLEET_B],
     });
     expect(
-      resolveFleetActorScope(actor, {
+      resolveSelectedFleetRequestScope(actor, {
         explicitFleetId: FLEET_B,
         explicitShopId: SHOP_A,
       }),

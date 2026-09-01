@@ -21,7 +21,8 @@ describe("Phase 13 Fleet navigation performance contract", () => {
     const home = read("app/portal/fleet/page.tsx");
     const assets = read("app/portal/fleet/units/page.tsx");
 
-    expect(actorGuard).toContain("getFleetPortalActorContext = cache(");
+    expect(actorGuard).toContain("getFleetPortalBaseActorContext = cache(");
+    expect(actorGuard).toContain("await getFleetPortalBaseActorContext()");
     expect(actorGuard).toContain("request-scoped");
     expect(actorGuard).toContain("canAccessPortalFleetWrappers");
     expect(layout).toContain("requireFleetPortalActor()");
@@ -61,9 +62,21 @@ describe("Phase 13 Fleet navigation performance contract", () => {
     const unitsPage = read("app/portal/fleet/units/page.tsx");
     const unitDetailPage = read("app/portal/fleet/units/[unitId]/page.tsx");
     const unitsRoute = read("app/api/fleet/units/route.ts");
+    const calendarPage = read("app/portal/fleet/calendar/page.tsx");
+    const calendar = read(
+      "features/fleet/components/FleetMaintenanceCalendar.tsx",
+    );
+    const requestsPage = read("app/portal/fleet/service-requests/page.tsx");
+    const requests = read(
+      "features/fleet/components/FleetServiceRequestsPage.tsx",
+    );
+    const unitDetail = read(
+      "features/fleet/components/FleetUnitDetailWorkspace.tsx",
+    );
+    const requestLayout = read("app/portal/fleet/request/layout.tsx");
     expect(maintenancePage).toContain("initialFleetId={selectedFleetId}");
     expect(maintenanceRoute).toContain(
-      "requestedFleetId: clean(body.fleetId)",
+      "requestedFleetId = clean(body.fleetId)",
     );
     expect(unitsPage).toContain("fleetId={selectedFleetId}");
     expect(unitDetailPage).toContain(
@@ -72,6 +85,15 @@ describe("Phase 13 Fleet navigation performance contract", () => {
     expect(unitDetailPage).toContain("fleetId={selectedFleetId}");
     expect(unitsRoute).toContain("requestedFleetId,");
     expect(unitsRoute).toContain("explicitFleetId: requestedFleetId");
+    expect(calendarPage).toContain("initialFleetId={selectedFleetId}");
+    expect(calendar).toContain("useState(initialFleetId ?? \"all\")");
+    expect(requestsPage).toContain("fleetId={selectedFleetId}");
+    expect(requests).toContain(
+      "body: JSON.stringify({ fleetId: fleetId ?? null })",
+    );
+    expect(unitDetail).toContain("withFleetId(");
+    expect(unitDetail).toContain('"/portal/fleet/request/build"');
+    expect(requestLayout).toContain("canManageFleetForActor(actor, fleetId)");
   });
 
   it("starts independent Control Tower reads together and never caches mutable data", () => {

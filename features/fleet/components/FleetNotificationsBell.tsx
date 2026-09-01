@@ -29,6 +29,15 @@ const LEVEL_TONE = {
   info: "text-sky-300",
 } as const;
 
+type NotificationLoadMode = "replace" | "append" | "refresh";
+
+function sortNotifications(items: FleetNotification[]) {
+  return items.sort((left, right) => {
+    const seen = right.createdAt.localeCompare(left.createdAt);
+    return seen || right.id.localeCompare(left.id);
+  });
+}
+
 function relativeTime(value: string): string {
   const then = new Date(value).getTime();
   if (Number.isNaN(then)) return "";
@@ -57,8 +66,9 @@ export default function FleetNotificationsBell({
   const load = useCallback(
     async (
       cursor: FleetNotificationCursor | null = null,
-      append = false,
+      mode: NotificationLoadMode = "replace",
     ) => {
+      const append = mode === "append";
       if (append) setLoadingMore(true);
       try {
         const response = await fetch("/api/fleet/notifications", {
@@ -73,15 +83,15 @@ export default function FleetNotificationsBell({
         }
         const body = (await response.json()) as FleetNotificationPage;
         setItems((current) => {
-          if (!append) return body.notifications ?? [];
+          if (mode === "replace") return body.notifications ?? [];
           const byId = new Map(current.map((item) => [item.id, item]));
           for (const item of body.notifications ?? []) byId.set(item.id, item);
-          return Array.from(byId.values());
+          return sortNotifications(Array.from(byId.values()));
         });
         if (body.total !== null) {
           setTotal(body.total);
         }
-        setNextCursor(body.nextCursor ?? null);
+        if (mode !== "refresh") setNextCursor(body.nextCursor ?? null);
         setFailed(false);
       } catch {
         setFailed(true);
@@ -95,7 +105,7 @@ export default function FleetNotificationsBell({
 
   useEffect(() => {
     void load();
-    const timer = setInterval(() => void load(), 120000);
+    const timer = setInterval(() => void load(null, "refresh"), 120000);
     return () => clearInterval(timer);
   }, [load]);
 
@@ -216,7 +226,7 @@ export default function FleetNotificationsBell({
               <button
                 type="button"
                 disabled={loadingMore}
-                onClick={() => void load(nextCursor, true)}
+                onClick={() => void load(nextCursor, "append")}
                 className="w-full rounded-xl px-3 py-2 text-xs font-semibold text-[color:var(--theme-text-secondary)] hover:bg-white/[0.04] disabled:opacity-60"
               >
                 {loadingMore ? "Loading…" : `Load more alerts (${items.length} of ${total})`}

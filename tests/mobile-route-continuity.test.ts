@@ -156,7 +156,7 @@ describe("mobile route continuity", () => {
   it("uses the canonical fleet actor scope for mobile service requests", () => {
     const route = read("app/api/fleet/service-requests/route.ts");
     expect(route).toContain("resolveFleetActorContext");
-    expect(route).toContain("resolveFleetActorScope");
+    expect(route).toContain("resolveSelectedFleetRequestScope");
     expect(route).toContain("scope.fleetIds");
     expect(route).toContain('.eq("shop_id", scope.shopId)');
     expect(route).toContain(

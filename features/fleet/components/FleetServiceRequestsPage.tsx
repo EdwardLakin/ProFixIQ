@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   CalendarClock,
@@ -49,8 +49,10 @@ function statusTone(status: string) {
 
 export default function FleetServiceRequestsPage({
   uiContext,
+  fleetId,
 }: {
   uiContext: FleetUiContext;
+  fleetId?: string | null;
 }) {
   const pathname = usePathname() ?? "";
   const productRoutes = !pathname.startsWith("/portal/fleet");
@@ -62,14 +64,14 @@ export default function FleetServiceRequestsPage({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  async function load(signal?: AbortSignal) {
+  const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
     setError(null);
     try {
       const response = await fetch("/api/fleet/service-requests", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ fleetId: fleetId ?? null }),
         cache: "no-store",
         signal,
       });
@@ -88,13 +90,13 @@ export default function FleetServiceRequestsPage({
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
-  }
+  }, [fleetId]);
 
   useEffect(() => {
     const controller = new AbortController();
     void load(controller.signal);
     return () => controller.abort();
-  }, []);
+  }, [load]);
 
   const visible = useMemo(() => {
     const requests = payload?.requests ?? [];
@@ -125,15 +127,16 @@ export default function FleetServiceRequestsPage({
     [payload?.requests],
   );
 
-  const buildHref = productRoutes
+  const buildPath = productRoutes
     ? "/requests/new"
     : "/portal/fleet/request/build";
+  const buildHref = `${buildPath}${fleetId ? `?fleetId=${encodeURIComponent(fleetId)}` : ""}`;
   const assetHref = (vehicleId: string) =>
-    productRoutes
+    `${productRoutes
       ? `/assets/${encodeURIComponent(vehicleId)}`
-      : `/portal/fleet/units/${encodeURIComponent(vehicleId)}`;
+      : `/portal/fleet/units/${encodeURIComponent(vehicleId)}`}${fleetId ? `?fleetId=${encodeURIComponent(fleetId)}` : ""}`;
   const billingHref = (workOrderId: string) =>
-    `${productRoutes ? "/history" : "/portal/fleet/billing"}?workOrderId=${encodeURIComponent(workOrderId)}`;
+    `${productRoutes ? "/history" : "/portal/fleet/billing"}?workOrderId=${encodeURIComponent(workOrderId)}${fleetId ? `&fleetId=${encodeURIComponent(fleetId)}` : ""}`;
 
   return (
     <main className="mx-auto w-full max-w-6xl space-y-5 px-4 py-6 text-[color:var(--theme-text-primary)]">

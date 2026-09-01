@@ -9,6 +9,8 @@ export default async function FleetCalendarPage({ searchParams }: Props) {
   const { fleetId } = await searchParams;
   const actor = await requireFleetPortalActor(fleetId ?? null);
   if (!actor.capabilities.canManageUnits) redirect("/portal/fleet");
+  const selectedFleetId =
+    fleetId && fleetId === actor.primaryFleetId ? fleetId : null;
 
-  return <FleetMaintenanceCalendar />;
+  return <FleetMaintenanceCalendar initialFleetId={selectedFleetId} />;
 }

@@ -125,7 +125,7 @@ describe("premier fleet workspaces", () => {
     const route = source("app/api/fleet/units/route.ts");
     const units = source("features/fleet/components/FleetUnitsPage.tsx");
 
-    expect(route).toContain("resolveFleetActorScope(actor, {");
+    expect(route).toContain("resolveSelectedFleetRequestScope(actor, {");
     expect(route).toContain("preferMembershipFleet: !actor.isInternal");
     expect(route).not.toContain("explicitShopId");
     expect(units).not.toContain("shopId");
@@ -228,7 +228,7 @@ describe("premier fleet workspaces", () => {
     expect(detail).toContain('"/pre-trips/start"');
     expect(detail).toContain('"/requests/new"');
     expect(economics).toContain("`/assets/${encodeURIComponent(unit.unitId)}`");
-    expect(requests).toContain("const buildHref = productRoutes");
+    expect(requests).toContain("const buildPath = productRoutes");
     expect(requests).toContain('? "/requests/new"');
     expect(requests).toContain('productRoutes ? "/history"');
     expect(pretrips).toContain('"/pre-trips/start"');

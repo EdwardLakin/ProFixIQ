@@ -353,31 +353,19 @@ export function resolveFleetActorScope(
     };
   }
 
-  if (!explicitFleetId) {
-    if (explicitShopId && explicitShopId !== actor.shopId) return null;
-    if (actor.fleetIds.length === 0) return null;
+  if (explicitShopId && explicitShopId !== actor.shopId) return null;
 
-    return {
-      shopId: actor.shopId,
-      fleetId: actor.fleetIds[0] ?? null,
-      fleetIds: actor.fleetIds,
-    };
-  }
+  const scopedFleetIds = explicitFleetId
+    ? actor.fleetIds.includes(explicitFleetId)
+      ? [explicitFleetId]
+      : null
+    : actor.fleetIds;
 
-  const explicitMembership =
-    actor.fleetMemberships.find(
-      (membership) => membership.fleetId === explicitFleetId,
-    ) ?? null;
-  if (!explicitMembership) return null;
-
-  const scopedShopId = explicitMembership?.shopId ?? actor.shopId;
-  if (!scopedShopId || (explicitShopId && explicitShopId !== scopedShopId)) {
-    return null;
-  }
+  if (!scopedFleetIds || scopedFleetIds.length === 0) return null;
 
   return {
-    shopId: scopedShopId,
-    fleetId: explicitFleetId,
-    fleetIds: [explicitFleetId],
+    shopId: actor.shopId,
+    fleetId: scopedFleetIds[0] ?? null,
+    fleetIds: scopedFleetIds,
   };
 }

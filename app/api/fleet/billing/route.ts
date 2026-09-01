@@ -9,6 +9,7 @@ import {
   resolveFleetActorContext,
   resolveFleetActorScope,
 } from "@/features/fleet/lib/resolveFleetActorContext";
+import { resolveSelectedFleetRequestScope } from "@/features/fleet/lib/resolveSelectedFleetRequestScope";
 import { applyWorkOrderQuoteLineDecision } from "@/features/work-orders/server/workOrderQuoteLineApproval";
 
 export const dynamic = "force-dynamic";
@@ -71,7 +72,9 @@ async function accessibleVehicleContext(
   options?: { financialOnly?: boolean; fleetId?: string | null },
 ) {
   const fleetId = clean(options?.fleetId);
-  const scope = resolveFleetActorScope(actor, { explicitFleetId: fleetId });
+  const scope = fleetId
+    ? resolveSelectedFleetRequestScope(actor, { explicitFleetId: fleetId })
+    : resolveFleetActorScope(actor);
   if (!scope?.shopId) throw new Error("Fleet scope is unavailable");
   if (fleetId && !canApprove(actor, fleetId)) {
     throw new Error("Fleet billing access required");

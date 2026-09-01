@@ -11,6 +11,13 @@ export default async function PortalFleetServiceRequestsPage({
   const { fleetId } = await searchParams;
   const uiContext = await requireFleetPortalActor(fleetId ?? null);
   if (!uiContext.capabilities.canViewServiceRequests) redirect("/portal/fleet");
+  const selectedFleetId =
+    fleetId && fleetId === uiContext.primaryFleetId ? fleetId : null;
 
-  return <FleetServiceRequestsPage uiContext={uiContext} />;
+  return (
+    <FleetServiceRequestsPage
+      uiContext={uiContext}
+      fleetId={selectedFleetId}
+    />
+  );
 }

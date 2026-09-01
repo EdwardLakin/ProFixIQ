@@ -47,6 +47,11 @@ function priorityClass(priority: FleetPriority) {
   return "border-sky-400/40 bg-sky-400/10";
 }
 
+function withFleetId(href: string, fleetId?: string | null) {
+  if (!fleetId) return href;
+  return `${href}${href.includes("?") ? "&" : "?"}fleetId=${encodeURIComponent(fleetId)}`;
+}
+
 export default function FleetUnitDetailWorkspace({
   unitId,
   fleetId,
@@ -61,11 +66,16 @@ export default function FleetUnitDetailWorkspace({
   const pathname = usePathname() ?? "";
   const productRoutes =
     routePrefix === "/portal/fleet" && !pathname.startsWith("/portal/fleet");
-  const unitsHref = productRoutes ? "/assets" : `${routePrefix}/units`;
-  const maintenanceHref = productRoutes
-    ? "/maintenance"
-    : `${routePrefix}/maintenance`;
-  const billingHref = productRoutes ? "/history" : `${routePrefix}/billing`;
+  const unitsHref = withFleetId(
+    productRoutes ? "/assets" : `${routePrefix}/units`,
+    fleetId,
+  );
+  const maintenanceHref = withFleetId(
+    productRoutes ? "/maintenance" : `${routePrefix}/maintenance`,
+    fleetId,
+  );
+  const billingPath = productRoutes ? "/history" : `${routePrefix}/billing`;
+  const billingHref = withFleetId(billingPath, fleetId);
   const [data, setData] = useState<FleetUnitWorkspacePayload | null>(null);
   const [tab, setTab] = useState<Tab>("overview");
   const [loading, setLoading] = useState(true);
@@ -177,8 +187,14 @@ export default function FleetUnitDetailWorkspace({
               <Link
                 href={
                   routePrefix === "/portal/fleet"
-                    ? `${productRoutes ? "/requests/new" : "/portal/fleet/request/build"}?unitId=${encodeURIComponent(unitId)}`
-                    : `/fleet/service-requests/new?unitId=${encodeURIComponent(unitId)}`
+                    ? withFleetId(
+                        `${productRoutes ? "/requests/new" : "/portal/fleet/request/build"}?unitId=${encodeURIComponent(unitId)}`,
+                        fleetId,
+                      )
+                    : withFleetId(
+                        `/fleet/service-requests/new?unitId=${encodeURIComponent(unitId)}`,
+                        fleetId,
+                      )
                 }
                 className="rounded-xl bg-sky-300 px-4 py-2 text-xs font-semibold text-slate-950"
               >
@@ -515,7 +531,7 @@ export default function FleetUnitDetailWorkspace({
           </div>
           {pendingQuotes.length > 0 ? (
             <Link
-              href={`${billingHref}?filter=approvals`}
+              href={withFleetId(`${billingPath}?filter=approvals`, fleetId)}
               className="mt-4 inline-flex items-center gap-2 rounded-xl bg-amber-400 px-4 py-2 text-xs font-semibold text-slate-950"
             >
               <AlertTriangle className="h-4 w-4" /> Review{" "}
