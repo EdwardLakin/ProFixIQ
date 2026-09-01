@@ -11,6 +11,13 @@ export default async function FleetDriversPage({ searchParams }: Props) {
   const actor = await getFleetPortalActorContext(fleetId ?? null);
   const uiContext = getFleetUiContext(actor);
   if (!uiContext.capabilities.canManageUnits) redirect("/portal/fleet");
+  const selectedFleetId =
+    fleetId && fleetId === actor.primaryFleetId ? fleetId : null;
 
-  return <FleetDriversWorkspace actorLabel={uiContext.actorLabel} />;
+  return (
+    <FleetDriversWorkspace
+      actorLabel={uiContext.actorLabel}
+      initialFleetId={selectedFleetId}
+    />
+  );
 }

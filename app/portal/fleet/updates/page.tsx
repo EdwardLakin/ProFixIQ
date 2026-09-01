@@ -8,5 +8,7 @@ export default async function FleetDriverUpdatesPage({ searchParams }: Props) {
   const { fleetId } = await searchParams;
   const actor = await requireFleetPortalActor(fleetId ?? null);
   if (actor.actorType !== "fleet_driver") redirect("/portal/fleet");
-  return <FleetDriverDashboard view="updates" />;
+  const selectedFleetId =
+    fleetId && fleetId === actor.primaryFleetId ? fleetId : null;
+  return <FleetDriverDashboard view="updates" fleetId={selectedFleetId} />;
 }

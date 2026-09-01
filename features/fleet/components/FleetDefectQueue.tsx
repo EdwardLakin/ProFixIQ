@@ -243,7 +243,7 @@ export default function FleetDefectQueue({
 
       {(payload?.missed.length ?? 0) > 0 ? (
         <div className="mt-4 grid gap-2 md:grid-cols-2">
-          {payload?.missed.slice(0, 6).map((item) => (
+          {payload?.missed.map((item) => (
             <div
               key={item.id}
               className="rounded-xl border border-red-500/25 bg-red-500/10 p-3 text-xs"

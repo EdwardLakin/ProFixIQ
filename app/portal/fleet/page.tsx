@@ -3,6 +3,7 @@ import FleetDefectQueue from "@/features/fleet/components/FleetDefectQueue";
 import FleetDispatcherDashboard from "@/features/fleet/components/FleetDispatcherDashboard";
 import FleetDriverDashboard from "@/features/fleet/components/FleetDriverDashboard";
 import { getFleetUiContext } from "@/features/fleet/lib/fleetUiCapabilities";
+import { resolveSelectedFleetRequestScope } from "@/features/fleet/lib/resolveSelectedFleetRequestScope";
 import { getFleetPortalActorContext } from "./_lib/requireFleetPortalActor";
 
 type PortalFleetPageProps = {
@@ -17,9 +18,12 @@ export default async function PortalFleetPage({
 
   const uiContext = getFleetUiContext(actor);
   const selectedFleetId = actor.primaryFleetId;
+  const selectedScope = resolveSelectedFleetRequestScope(actor, {
+    explicitFleetId: selectedFleetId,
+  });
 
   if (actor.actorType === "fleet_driver") {
-    return <FleetDriverDashboard />;
+    return <FleetDriverDashboard fleetId={selectedFleetId} />;
   }
 
   if (focus === "defects" && actor.capabilities.canSeeFleetWideUnits) {
@@ -47,7 +51,7 @@ export default async function PortalFleetPage({
   return (
     <FleetControlTower
       shopName="ProFixIQ Fleet"
-      shopId={actor.shopId}
+      shopId={selectedScope?.shopId ?? actor.shopId}
       fleetId={selectedFleetId}
       uiContext={uiContext}
       routePrefix="/portal/fleet"

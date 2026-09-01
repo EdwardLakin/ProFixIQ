@@ -40,6 +40,19 @@ const getFleetPortalBaseActorContext = cache(
   },
 );
 
+const isInternalFleetInActorShop = cache(
+  async (shopId: string, fleetId: string): Promise<boolean> => {
+    const supabase = createServerSupabaseRSC();
+    const { data, error } = await supabase
+      .from("fleets")
+      .select("id")
+      .eq("id", fleetId)
+      .eq("shop_id", shopId)
+      .maybeSingle();
+    return !error && Boolean(data);
+  },
+);
+
 function selectRequestedFleetActor(
   actor: FleetActorContext & { userId: string },
   requestedFleetId: string | null,
@@ -98,10 +111,20 @@ function selectRequestedFleetActor(
 export async function getFleetPortalActorContext(
   requestedFleetId: string | null = null,
 ): Promise<FleetActorContext & { userId: string }> {
-  return selectRequestedFleetActor(
-    await getFleetPortalBaseActorContext(),
-    requestedFleetId,
-  );
+  const actor = await getFleetPortalBaseActorContext();
+  if (
+    requestedFleetId &&
+    actor.isInternal &&
+    actor.shopId &&
+    requestedFleetId !== actor.primaryFleetId &&
+    !actor.fleetMemberships.some(
+      (membership) => membership.fleetId === requestedFleetId,
+    ) &&
+    (await isInternalFleetInActorShop(actor.shopId, requestedFleetId))
+  ) {
+    return { ...actor, primaryFleetId: requestedFleetId };
+  }
+  return selectRequestedFleetActor(actor, requestedFleetId);
 }
 
 export async function requireFleetPortalActor(

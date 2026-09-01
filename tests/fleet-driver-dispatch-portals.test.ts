@@ -18,7 +18,9 @@ describe("Fleet driver and dispatcher portals", () => {
     expect(actor).toContain('"fleet_driver"');
     expect(actor).toContain('["dispatcher", "approver"]');
     expect(portal).toContain('actor.actorType === "fleet_driver"');
-    expect(portal).toContain("<FleetDriverDashboard />");
+    expect(portal).toContain(
+      "<FleetDriverDashboard fleetId={selectedFleetId} />",
+    );
     expect(portal).toContain('actor.actorType === "fleet_dispatcher"');
     expect(portal).toContain("<FleetDispatcherDashboard");
     expect(portal).toContain("<FleetControlTower");
@@ -57,6 +59,8 @@ describe("Fleet driver and dispatcher portals", () => {
     const defectsApi = read("app/api/fleet/defects/route.ts");
 
     expect(queue).toContain("Nothing reaches the Shop until");
+    expect(queue).toContain("payload?.missed.map");
+    expect(queue).not.toContain("missed.slice(0, 6)");
     expect(queue).toContain('act("request_info")');
     expect(queue).toContain('act("monitor")');
     expect(queue).toContain('act("schedule")');

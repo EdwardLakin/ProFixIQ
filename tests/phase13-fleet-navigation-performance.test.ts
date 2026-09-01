@@ -23,6 +23,8 @@ describe("Phase 13 Fleet navigation performance contract", () => {
 
     expect(actorGuard).toContain("getFleetPortalBaseActorContext = cache(");
     expect(actorGuard).toContain("await getFleetPortalBaseActorContext()");
+    expect(actorGuard).toContain("isInternalFleetInActorShop = cache(");
+    expect(actorGuard).toContain('.eq("shop_id", shopId)');
     expect(actorGuard).toContain("request-scoped");
     expect(actorGuard).toContain("canAccessPortalFleetWrappers");
     expect(layout).toContain("requireFleetPortalActor()");
@@ -62,6 +64,19 @@ describe("Phase 13 Fleet navigation performance contract", () => {
     const unitsPage = read("app/portal/fleet/units/page.tsx");
     const unitDetailPage = read("app/portal/fleet/units/[unitId]/page.tsx");
     const unitsRoute = read("app/api/fleet/units/route.ts");
+    const homePage = read("app/portal/fleet/page.tsx");
+    const driverDashboard = read(
+      "features/fleet/components/FleetDriverDashboard.tsx",
+    );
+    const driverDashboardRoute = read(
+      "app/api/fleet/driver/dashboard/route.ts",
+    );
+    const driversPage = read("app/portal/fleet/drivers/page.tsx");
+    const drivers = read(
+      "features/fleet/components/FleetDriversWorkspace.tsx",
+    );
+    const enrollmentRoute = read("app/api/fleet/enrollment/route.ts");
+    const towerRoute = read("app/api/fleet/tower/route.ts");
     const calendarPage = read("app/portal/fleet/calendar/page.tsx");
     const calendar = read(
       "features/fleet/components/FleetMaintenanceCalendar.tsx",
@@ -92,6 +107,23 @@ describe("Phase 13 Fleet navigation performance contract", () => {
     expect(unitDetailPage).toContain("fleetId={selectedFleetId}");
     expect(unitsRoute).toContain("requestedFleetId,");
     expect(unitsRoute).toContain("explicitFleetId: requestedFleetId");
+    expect(homePage).toContain(
+      "<FleetDriverDashboard fleetId={selectedFleetId} />",
+    );
+    expect(homePage).toContain("shopId={selectedScope?.shopId ?? actor.shopId}");
+    expect(driverDashboard).toContain(
+      "`?fleetId=${encodeURIComponent(fleetId)}`",
+    );
+    expect(driverDashboardRoute).toContain(
+      "resolveSelectedFleetRequestScope(actor, {",
+    );
+    expect(driversPage).toContain("initialFleetId={selectedFleetId}");
+    expect(drivers).toContain("useState(initialFleetId ?? \"all\")");
+    expect(drivers).toContain("fleetId: initialFleetId ?? null");
+    expect(enrollmentRoute).toContain(
+      "resolveSelectedFleetRequestScope(actor, {",
+    );
+    expect(towerRoute).toContain("resolveSelectedFleetRequestScope(actor, {");
     expect(calendarPage).toContain("initialFleetId={selectedFleetId}");
     expect(calendar).toContain("useState(initialFleetId ?? \"all\")");
     expect(requestsPage).toContain("fleetId={selectedFleetId}");

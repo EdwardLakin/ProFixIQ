@@ -11,8 +11,8 @@ import type {
 } from "@/features/fleet/components/FleetControlTower";
 import {
   resolveFleetActorContext,
-  resolveFleetActorScope,
 } from "@/features/fleet/lib/resolveFleetActorContext";
+import { resolveSelectedFleetRequestScope } from "@/features/fleet/lib/resolveSelectedFleetRequestScope";
 
 type DB = Database;
 
@@ -129,7 +129,7 @@ export async function POST(req: NextRequest) {
     ) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    const scope = resolveFleetActorScope(actor, {
+    const scope = resolveSelectedFleetRequestScope(actor, {
       explicitFleetId: body.fleetId ?? null,
       explicitShopId: body.shopId ?? null,
       preferMembershipFleet: true,
