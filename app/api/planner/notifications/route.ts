@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { canAccessShopAssistant } from "@/features/shared/lib/rbac";
+import { canAccessAssistantNotifications } from "@/features/shared/lib/rbac";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 
 import { syncAssistantNotifications } from "@/features/agent/server/syncAssistantNotifications";
@@ -59,7 +59,7 @@ export async function GET() {
     );
   }
 
-  if (!canAccessShopAssistant(profile.role)) {
+  if (!canAccessAssistantNotifications(profile.role)) {
     return NextResponse.json(
       { error: "A shop workforce role is required" },
       { status: 403 },

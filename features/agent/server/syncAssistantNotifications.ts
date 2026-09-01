@@ -1,6 +1,6 @@
 
 import {
-  canAccessShopAssistant,
+  canAccessAssistantNotifications,
   canonicalizeRole,
 } from "@/features/shared/lib/rbac";
 import { resolveTechnicianAssignmentContract } from "@/features/work-orders/lib/technicianAssignmentContract";
@@ -398,7 +398,7 @@ export async function syncAssistantNotifications(params: {
   role?: string | null;
 }): Promise<PersistedAssistantNotification[]> {
   const { shopId, userId = null, role = null } = params;
-  if (!canAccessShopAssistant(role)) {
+  if (!canAccessAssistantNotifications(role)) {
     throw new Error("A shop workforce role is required for notifications");
   }
 

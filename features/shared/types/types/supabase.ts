@@ -1632,6 +1632,7 @@ export type Database = {
           contract: string
           deployment_id: string | null
           deployment_sha: string
+          finalized_at: string | null
           first_observed_at: string
           last_observed_at: string
         }
@@ -1639,6 +1640,7 @@ export type Database = {
           contract: string
           deployment_id?: string | null
           deployment_sha: string
+          finalized_at?: string | null
           first_observed_at?: string
           last_observed_at?: string
         }
@@ -1646,6 +1648,7 @@ export type Database = {
           contract?: string
           deployment_id?: string | null
           deployment_sha?: string
+          finalized_at?: string | null
           first_observed_at?: string
           last_observed_at?: string
         }

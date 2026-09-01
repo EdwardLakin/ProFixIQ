@@ -70,6 +70,7 @@ create table if not exists public.assistant_notification_rollout_markers (
   deployment_id text,
   first_observed_at timestamptz not null default now(),
   last_observed_at timestamptz not null default now(),
+  finalized_at timestamptz,
   constraint assistant_notification_rollout_marker_contract_chk
     check (coalesce(trim(contract), '') <> ''),
   constraint assistant_notification_rollout_marker_sha_chk
@@ -101,13 +102,15 @@ begin
     deployment_sha,
     deployment_id,
     first_observed_at,
-    last_observed_at
+    last_observed_at,
+    finalized_at
   ) values (
     'assistant_notifications_trusted_writer_v1',
     trim(p_deployment_sha),
     nullif(trim(p_deployment_id), ''),
     now(),
-    now()
+    now(),
+    null
   )
   on conflict (contract) do update
   set deployment_sha = excluded.deployment_sha,
@@ -118,12 +121,19 @@ begin
           then public.assistant_notification_rollout_markers.first_observed_at
         else excluded.first_observed_at
       end,
-      last_observed_at = excluded.last_observed_at;
+      last_observed_at = excluded.last_observed_at,
+      finalized_at = case
+        when public.assistant_notification_rollout_markers.deployment_sha =
+          excluded.deployment_sha
+          then public.assistant_notification_rollout_markers.finalized_at
+        else null
+      end;
 
   if exists (
     select 1
     from public.assistant_notification_rollout_markers
     where contract = 'assistant_notifications_trusted_writer_v1'
+      and finalized_at is null
       and first_observed_at <= now() - interval '10 minutes'
       and last_observed_at >= first_observed_at
   ) then
@@ -137,6 +147,13 @@ begin
       || 'to authenticated';
     execute 'grant update (status, acknowledged_at, acknowledged_by, updated_at) '
       || 'on table public.assistant_notifications to authenticated';
+
+    update public.assistant_notification_rollout_markers
+    set finalized_at = now(),
+        last_observed_at = now()
+    where contract = 'assistant_notifications_trusted_writer_v1'
+      and deployment_sha = trim(p_deployment_sha)
+      and finalized_at is null;
   end if;
 end;
 $function$;
@@ -160,8 +177,7 @@ as $function$
     select 1
     from public.assistant_notification_rollout_markers
     where contract = 'assistant_notifications_trusted_writer_v1'
-      and first_observed_at <= now() - interval '10 minutes'
-      and last_observed_at >= first_observed_at
+      and finalized_at is not null
   );
 $function$;
 
