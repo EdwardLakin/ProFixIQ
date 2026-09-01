@@ -4,14 +4,14 @@ const state = vi.hoisted(() => ({
   actor: {} as Record<string, unknown>,
   filters: [] as Array<{ method: string; column: string; value: unknown }>,
   rows: [] as Array<Record<string, unknown>>,
+  count: 0,
+  ranges: [] as Array<{ from: number; to: number }>,
 }));
 
 vi.mock("@/features/shared/lib/supabase/server", () => ({
   createServerSupabaseRoute: vi.fn(() => ({})),
 }));
 
-// Only the actor resolution is stubbed. The scoping helpers keep their real
-// role-tier logic, because that is precisely what these tests exercise.
 vi.mock("@/features/fleet/lib/resolveFleetActorContext", async (importActual) => {
   const actual = await importActual<
     typeof import("@/features/fleet/lib/resolveFleetActorContext")
@@ -35,9 +35,14 @@ vi.mock("@/features/shared/lib/supabase/admin", () => ({
       builder.eq = record("eq");
       builder.in = record("in");
       builder.order = () => builder;
-      builder.limit = () => builder;
+      builder.range = (from: number, to: number) => {
+        state.ranges.push({ from, to });
+        return builder;
+      };
       builder.then = (resolve: (value: unknown) => unknown) =>
-        Promise.resolve({ data: state.rows, error: null }).then(resolve);
+        Promise.resolve({ data: state.rows, error: null, count: state.count }).then(
+          resolve,
+        );
       return builder;
     }),
   },
@@ -82,6 +87,8 @@ describe("Fleet alert feed scope", () => {
   beforeEach(() => {
     state.filters = [];
     state.rows = [];
+    state.count = 0;
+    state.ranges = [];
     state.actor = externalManager([FLEET_A]);
   });
 
@@ -105,40 +112,21 @@ describe("Fleet alert feed scope", () => {
 
   it("reads only fleet-sourced alerts for the caller's own shop", async () => {
     await POST(request());
-    expect(state.filters).toContainEqual({
-      method: "eq",
-      column: "shop_id",
-      value: "shop-1",
-    });
-    expect(state.filters).toContainEqual({
-      method: "eq",
-      column: "source",
-      value: "fleet",
-    });
+    expect(state.filters).toContainEqual({ method: "eq", column: "shop_id", value: "shop-1" });
+    expect(state.filters).toContainEqual({ method: "eq", column: "source", value: "fleet" });
   });
 
   it("pins an external Fleet actor to their entitled fleets", async () => {
     state.actor = externalManager([FLEET_A]);
     await POST(request());
-    expect(state.filters).toContainEqual({
-      method: "in",
-      column: "metadata->>fleet_id",
-      value: [FLEET_A],
-    });
+    expect(state.filters).toContainEqual({ method: "in", column: "metadata->>fleet_id", value: [FLEET_A] });
   });
 
   it("never widens to a fleet the caller is not entitled to", async () => {
     state.actor = externalManager([FLEET_A]);
-    await POST(request({ fleetId: FLEET_B }));
-    const body = (await (await POST(request({ fleetId: FLEET_B }))).json()) as {
-      notifications: unknown[];
-    };
+    const body = (await (await POST(request({ fleetId: FLEET_B }))).json()) as { notifications: unknown[] };
     expect(body.notifications).toEqual([]);
-    expect(
-      state.filters.some((filter) =>
-        JSON.stringify(filter.value).includes(FLEET_B),
-      ),
-    ).toBe(false);
+    expect(state.filters.some((filter) => JSON.stringify(filter.value).includes(FLEET_B))).toBe(false);
   });
 
   it("does not fleet-filter internal shop staff, who are shop-scoped already", async () => {
@@ -152,24 +140,16 @@ describe("Fleet alert feed scope", () => {
       capabilities: { canSeeFleetWideUnits: true },
     };
     await POST(request());
-    expect(
-      state.filters.some((filter) => filter.column === "metadata->>fleet_id"),
-    ).toBe(false);
+    expect(state.filters.some((filter) => filter.column === "metadata->>fleet_id")).toBe(false);
   });
 
   it("never exposes a fleet the actor only drives for, even when they manage another", async () => {
-    // canSeeFleetWideUnits is derived from one membership; it must not grant
-    // manager visibility across every fleet the account belongs to.
     state.actor = externalActor([
       { fleetId: FLEET_A, role: "manager" },
       { fleetId: FLEET_B, role: "viewer" },
     ]);
-
     await POST(request());
-
-    const fleetFilter = state.filters.find(
-      (filter) => filter.column === "metadata->>fleet_id",
-    );
+    const fleetFilter = state.filters.find((filter) => filter.column === "metadata->>fleet_id");
     expect(fleetFilter?.value).toEqual([FLEET_A]);
   });
 
@@ -178,67 +158,73 @@ describe("Fleet alert feed scope", () => {
       { fleetId: FLEET_A, role: "manager" },
       { fleetId: FLEET_B, role: "viewer" },
     ]);
-
-    const body = (await (await POST(request({ fleetId: FLEET_B }))).json()) as {
-      notifications: unknown[];
-    };
-
+    const body = (await (await POST(request({ fleetId: FLEET_B }))).json()) as { notifications: unknown[] };
     expect(body.notifications).toEqual([]);
-    expect(
-      state.filters.some((filter) => filter.column === "metadata->>fleet_id"),
-    ).toBe(false);
+    expect(state.filters.some((filter) => filter.column === "metadata->>fleet_id")).toBe(false);
   });
 
   it("maps the fleet id out of notification metadata", async () => {
-    state.rows = [
-      {
-        id: "n1",
-        level: "critical",
-        code: "fleet_pretrip_defect",
-        title: "1 pre-trip defect needs review",
-        message: "Unit 42 was submitted with defects.",
-        href: "/fleet?focus=defects",
-        entity_type: "fleet_pretrip_report",
-        entity_id: "r1",
-        status: "active",
-        metadata: { fleet_id: FLEET_A },
-        last_seen_at: "2026-08-30T00:00:00.000Z",
-      },
-    ];
-    const body = (await (await POST(request())).json()) as {
-      notifications: Array<{ fleetId?: string; level: string }>;
-    };
-    expect(body.notifications[0]).toMatchObject({
-      fleetId: FLEET_A,
+    state.rows = [{
+      id: "n1",
       level: "critical",
-    });
+      code: "fleet_pretrip_defect",
+      title: "1 pre-trip defect needs review",
+      message: "Unit 42 was submitted with defects.",
+      href: "/fleet?focus=defects",
+      entity_type: "fleet_pretrip_report",
+      entity_id: "r1",
+      status: "active",
+      metadata: { fleet_id: FLEET_A },
+      last_seen_at: "2026-08-30T00:00:00.000Z",
+    }];
+    state.count = 1;
+    const body = (await (await POST(request())).json()) as { notifications: Array<{ fleetId?: string; level: string }> };
+    expect(body.notifications[0]).toMatchObject({ fleetId: FLEET_A, level: "critical" });
   });
 
   it("serves an actor whose manageable membership is not the first one", async () => {
-    // Eligibility must come from the memberships, not from a capability derived
-    // from whichever membership happens to be oldest.
     state.actor = externalActor([
       { fleetId: FLEET_B, role: "viewer" },
       { fleetId: FLEET_A, role: "manager" },
     ]);
     state.actor.capabilities = { canSeeFleetWideUnits: false };
-
     await POST(request());
-
-    const fleetFilter = state.filters.find(
-      (filter) => filter.column === "metadata->>fleet_id",
-    );
+    const fleetFilter = state.filters.find((filter) => filter.column === "metadata->>fleet_id");
     expect(fleetFilter?.value).toEqual([FLEET_A]);
   });
 
   it("still returns nothing for an actor who manages no fleet", async () => {
     state.actor = externalActor([{ fleetId: FLEET_A, role: "viewer" }]);
-
-    const body = (await (await POST(request())).json()) as {
-      notifications: unknown[];
-    };
-
+    const body = (await (await POST(request())).json()) as { notifications: unknown[] };
     expect(body.notifications).toEqual([]);
     expect(state.filters).toEqual([]);
+  });
+
+  it("paginates instead of silently dropping alerts after the first 50", async () => {
+    state.count = 53;
+    state.rows = Array.from({ length: 3 }, (_, index) => ({
+      id: `n-${index + 51}`,
+      level: "warning",
+      code: "fleet_pretrip_missing",
+      title: "Missed pre-trip",
+      message: "Needs review",
+      href: "/fleet?focus=defects",
+      entity_type: "fleet_pretrip_report",
+      entity_id: `00000000-0000-4000-8000-${String(index + 51).padStart(12, "0")}`,
+      status: "active",
+      metadata: { fleet_id: FLEET_A },
+      last_seen_at: "2026-08-30T00:00:00.000Z",
+    }));
+
+    const body = (await (await POST(request({ offset: 50 }))).json()) as {
+      notifications: unknown[];
+      total: number;
+      nextOffset: number | null;
+    };
+
+    expect(state.ranges).toEqual([{ from: 50, to: 99 }]);
+    expect(body.notifications).toHaveLength(3);
+    expect(body.total).toBe(53);
+    expect(body.nextOffset).toBeNull();
   });
 });

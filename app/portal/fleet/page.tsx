@@ -1,30 +1,50 @@
 import FleetControlTower from "@/features/fleet/components/FleetControlTower";
+import FleetDefectQueue from "@/features/fleet/components/FleetDefectQueue";
 import FleetDispatcherDashboard from "@/features/fleet/components/FleetDispatcherDashboard";
 import FleetDriverDashboard from "@/features/fleet/components/FleetDriverDashboard";
 import { getFleetUiContext } from "@/features/fleet/lib/fleetUiCapabilities";
+import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
+import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
 import { getFleetPortalActorContext } from "./_lib/requireFleetPortalActor";
 
 type PortalFleetPageProps = {
-  searchParams: Promise<{ fleetId?: string }>;
+  searchParams: Promise<{ fleetId?: string; focus?: string }>;
 };
 
 export default async function PortalFleetPage({
   searchParams,
 }: PortalFleetPageProps) {
-  const actor = await getFleetPortalActorContext();
-  const uiContext = getFleetUiContext(actor);
-  const { fleetId: requestedFleetId } = await searchParams;
+  const initialActor = await getFleetPortalActorContext();
+  const { fleetId: requestedFleetId, focus } = await searchParams;
 
-  // An alert carries the fleet it belongs to, because the alert feed spans every
-  // fleet this actor manages. Honour it only when the actor holds an entitled
-  // membership for it; otherwise fall back to their primary fleet.
-  const selectedFleetId =
-    requestedFleetId && actor.fleetIds.includes(requestedFleetId)
-      ? requestedFleetId
-      : actor.primaryFleetId;
+  let actor = initialActor;
+  if (
+    requestedFleetId &&
+    requestedFleetId !== initialActor.primaryFleetId &&
+    initialActor.fleetIds.includes(requestedFleetId)
+  ) {
+    actor = await resolveFleetActorContext(createServerSupabaseRSC(), {
+      userId: initialActor.userId,
+      requestedFleetId,
+    });
+  }
+
+  const uiContext = getFleetUiContext(actor);
+  const selectedFleetId = actor.primaryFleetId;
 
   if (actor.actorType === "fleet_driver") {
     return <FleetDriverDashboard />;
+  }
+
+  if (focus === "defects" && actor.capabilities.canSeeFleetWideUnits) {
+    return (
+      <main className="mx-auto w-full max-w-7xl px-3 py-4 sm:px-6 sm:py-6">
+        <FleetDefectQueue
+          fleetId={selectedFleetId}
+          mode={actor.actorType === "fleet_dispatcher" ? "dispatcher" : "manager"}
+        />
+      </main>
+    );
   }
 
   if (actor.actorType === "fleet_dispatcher") {

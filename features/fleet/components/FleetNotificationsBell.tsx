@@ -4,7 +4,11 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Bell, Info, ShieldAlert } from "lucide-react";
 
-import type { FleetNotification } from "app/api/fleet/notifications/route";
+import type {
+  FleetNotification,
+  FleetNotificationPage,
+} from "app/api/fleet/notifications/route";
+import { buildFleetNotificationHref } from "@/features/fleet/lib/fleetNotificationRouting";
 import { cn } from "@/features/shared/utils/cn";
 
 type Props = {
@@ -24,18 +28,6 @@ const LEVEL_TONE = {
   info: "text-sky-300",
 } as const;
 
-/**
- * Carry the notification's own fleet through navigation. The unrequested feed
- * spans every fleet the actor manages, so a destination that falls back to the
- * actor's primary fleet would open a queue that cannot contain the alert.
- */
-function withFleetId(href: string, fleetId?: string): string {
-  if (!fleetId) return href;
-  const [path, hash] = href.split("#");
-  const separator = path.includes("?") ? "&" : "?";
-  return `${path}${separator}fleetId=${encodeURIComponent(fleetId)}${hash ? `#${hash}` : ""}`;
-}
-
 function relativeTime(value: string): string {
   const then = new Date(value).getTime();
   if (Number.isNaN(then)) return "";
@@ -52,36 +44,47 @@ export default function FleetNotificationsBell({
   routePrefix = "/portal/fleet",
 }: Props) {
   const [items, setItems] = useState<FleetNotification[]>([]);
+  const [total, setTotal] = useState(0);
+  const [nextOffset, setNextOffset] = useState<number | null>(null);
   const [open, setOpen] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
-  const load = useCallback(async () => {
-    try {
-      const response = await fetch("/api/fleet/notifications", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fleetId: fleetId ?? null }),
-        cache: "no-store",
-      });
-      if (!response.ok) {
+  const load = useCallback(
+    async (offset = 0, append = false) => {
+      if (append) setLoadingMore(true);
+      try {
+        const response = await fetch("/api/fleet/notifications", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fleetId: fleetId ?? null, offset }),
+          cache: "no-store",
+        });
+        if (!response.ok) {
+          setFailed(true);
+          return;
+        }
+        const body = (await response.json()) as FleetNotificationPage;
+        setItems((current) => {
+          if (!append) return body.notifications ?? [];
+          const byId = new Map(current.map((item) => [item.id, item]));
+          for (const item of body.notifications ?? []) byId.set(item.id, item);
+          return Array.from(byId.values());
+        });
+        setTotal(body.total ?? body.notifications?.length ?? 0);
+        setNextOffset(body.nextOffset ?? null);
+        setFailed(false);
+      } catch {
         setFailed(true);
-        return;
+      } finally {
+        setLoaded(true);
+        if (append) setLoadingMore(false);
       }
-      const body = (await response.json()) as {
-        notifications?: FleetNotification[];
-      };
-      setItems(body.notifications ?? []);
-      setFailed(false);
-    } catch {
-      // A transient alert-feed failure must never break the Fleet shell, but it
-      // must never be mistaken for an absence of alerts either.
-      setFailed(true);
-    } finally {
-      setLoaded(true);
-    }
-  }, [fleetId]);
+    },
+    [fleetId],
+  );
 
   useEffect(() => {
     void load();
@@ -110,10 +113,9 @@ export default function FleetNotificationsBell({
     [items],
   );
 
-  // Only a successful, empty load may hide the bell. A failed load keeps it
-  // visible, because "monitoring is unavailable" and "nothing is wrong" are not
-  // the same message to a fleet manager.
-  if (loaded && !failed && items.length === 0) return null;
+  if (loaded && !failed && total === 0) return null;
+
+  const visibleCount = total || items.length;
 
   return (
     <div ref={containerRef} className="relative">
@@ -121,7 +123,7 @@ export default function FleetNotificationsBell({
         type="button"
         onClick={() => setOpen((value) => !value)}
         aria-label={
-          failed ? "Fleet alerts unavailable" : `Fleet alerts (${items.length})`
+          failed ? "Fleet alerts unavailable" : `Fleet alerts (${visibleCount})`
         }
         aria-expanded={open}
         className="relative inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]"
@@ -131,14 +133,14 @@ export default function FleetNotificationsBell({
           <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-slate-400 px-1.5 py-0.5 text-[10px] font-bold text-slate-950">
             !
           </span>
-        ) : items.length > 0 ? (
+        ) : visibleCount > 0 ? (
           <span
             className={cn(
               "absolute -right-1 -top-1 min-w-5 rounded-full px-1.5 py-0.5 text-[10px] font-bold text-slate-950",
               criticalCount > 0 ? "bg-red-400" : "bg-amber-300",
             )}
           >
-            {items.length}
+            {visibleCount > 99 ? "99+" : visibleCount}
           </span>
         ) : null}
       </button>
@@ -179,12 +181,11 @@ export default function FleetNotificationsBell({
                 <li key={item.id}>
                   {item.href ? (
                     <Link
-                      href={withFleetId(
-                        item.href.startsWith("/fleet")
-                          ? `${routePrefix}${item.href.slice("/fleet".length) || ""}`
-                          : item.href,
-                        item.fleetId,
-                      )}
+                      href={buildFleetNotificationHref({
+                        href: item.href,
+                        fleetId: item.fleetId,
+                        routePrefix,
+                      })}
                       onClick={() => setOpen(false)}
                       className="block hover:bg-white/[0.03]"
                     >
@@ -197,6 +198,18 @@ export default function FleetNotificationsBell({
               );
             })}
           </ul>
+          {nextOffset !== null && !failed ? (
+            <div className="border-t border-[color:var(--theme-border-soft)] p-2">
+              <button
+                type="button"
+                disabled={loadingMore}
+                onClick={() => void load(nextOffset, true)}
+                className="w-full rounded-xl px-3 py-2 text-xs font-semibold text-[color:var(--theme-text-secondary)] hover:bg-white/[0.04] disabled:opacity-60"
+              >
+                {loadingMore ? "Loading…" : `Load more alerts (${items.length} of ${total})`}
+              </button>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>
