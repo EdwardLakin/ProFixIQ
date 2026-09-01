@@ -70,6 +70,7 @@ export async function GET() {
     const notifications = await syncAssistantNotifications({
       shopId: profile.shopId,
       userId: profile.profileId,
+      assignmentUserIds: [profile.profileId, user.id],
       role: profile.role,
     });
 

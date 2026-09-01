@@ -17,6 +17,10 @@ const acknowledgementRoute = readFileSync(
   "app/api/planner/notifications/[id]/ack/route.ts",
   "utf8",
 );
+const dailySummarySource = readFileSync(
+  "features/agent/server/getRoleDailySummary.ts",
+  "utf8",
+);
 
 describe("assistant notification shared persistence contract", () => {
   it("creates the missing relation and keeps opaque entity identifiers", () => {
@@ -54,6 +58,10 @@ describe("assistant notification shared persistence contract", () => {
       "create policy assistant_notifications_update_rollout_compat",
     );
     expect(migration).toContain("source in ('ops', 'ops_user')");
+    expect(migration.match(/source = 'ops_user'/g)).toHaveLength(3);
+    expect(
+      migration.match(/profixiq_current_role\(\)\) = 'mechanic'/g),
+    ).toHaveLength(3);
     expect(migration).toContain(
       "assistant_notification_trusted_writer_rollout_complete()",
     );
@@ -95,6 +103,16 @@ describe("assistant notification shared persistence contract", () => {
     expect(syncSource).toContain(
       "markAssistantNotificationTrustedWriterRollout(notificationWriter)",
     );
+    const terminalGuard = migration.indexOf(
+      "Finalization is a terminal contract state",
+    );
+    const markerInsert = migration.indexOf(
+      "insert into public.assistant_notification_rollout_markers",
+    );
+    expect(terminalGuard).toBeGreaterThan(-1);
+    expect(terminalGuard).toBeLessThan(markerInsert);
+    expect(migration).toContain("and finalized_at is not null");
+    expect(migration).toContain("then\n    return;");
   });
 
   it("recreates UUID-backed Parts writers with text entity predicates", () => {
@@ -112,12 +130,19 @@ describe("assistant notification shared persistence contract", () => {
   });
 
   it("keeps generation on a trusted writer and scopes resolution defensively", () => {
-    expect(syncSource).toContain(
-      "if (!canAccessAssistantNotifications(role))",
-    );
+    expect(syncSource).toContain("if (!canAccessAssistantNotifications(role))");
     expect(syncSource).toContain("getAssistantNotificationWriter()");
     expect(syncSource).toContain('.eq("shop_id", shopId)');
     expect(syncSource).toContain('.eq("source", source)');
+  });
+
+  it("keeps Fleet-only daily summaries off the Shop notification writer", () => {
+    expect(dailySummarySource).toContain(
+      "canAccessAssistantNotifications(role)",
+    );
+    expect(dailySummarySource).toMatch(
+      /canAccessAssistantNotifications\(role\)[\s\S]*syncAssistantNotifications/,
+    );
   });
 
   it("rejects non-workforce callers before the privileged sync boundary", () => {
@@ -151,6 +176,14 @@ describe("assistant notification shared persistence contract", () => {
       );
     }
     expect(plannerRoute).toContain("userId: profile.profileId");
+    expect(plannerRoute).toContain(
+      "assignmentUserIds: [profile.profileId, user.id]",
+    );
+    expect(syncSource).toContain("assignmentUserIds = userId ? [userId] : []");
+    expect(syncSource).toContain("userIds: assignmentUserIds");
+    expect(syncSource).toContain('.in("assigned_tech_id", userIds)');
+    expect(syncSource).toContain('.in("assigned_to", userIds)');
+    expect(syncSource).toContain('.in("technician_id", userIds)');
     expect(acknowledgementRoute).toContain(
       "acknowledged_by: profile.profileId",
     );

@@ -97,6 +97,17 @@ begin
     raise exception 'A deployment SHA is required for the trusted-writer marker.';
   end if;
 
+  -- Finalization is a terminal contract state. Later application deployments
+  -- must not reopen the drain window or repeat catalog-locking DDL.
+  if exists (
+    select 1
+    from public.assistant_notification_rollout_markers
+    where contract = 'assistant_notifications_trusted_writer_v1'
+      and finalized_at is not null
+  ) then
+    return;
+  end if;
+
   insert into public.assistant_notification_rollout_markers (
     contract,
     deployment_sha,
@@ -396,7 +407,11 @@ with check (
   )
   and source in ('ops', 'ops_user')
   and (
-    user_id = (select public.profixiq_workforce_profile_id())
+    (
+      source = 'ops_user'
+      and user_id = (select public.profixiq_workforce_profile_id())
+      and (select public.profixiq_current_role()) = 'mechanic'
+    )
     or (
       source = 'ops'
       and user_id is null
@@ -421,7 +436,11 @@ using (
   )
   and source in ('ops', 'ops_user')
   and (
-    user_id = (select public.profixiq_workforce_profile_id())
+    (
+      source = 'ops_user'
+      and user_id = (select public.profixiq_workforce_profile_id())
+      and (select public.profixiq_current_role()) = 'mechanic'
+    )
     or (
       source = 'ops'
       and user_id is null
@@ -439,7 +458,11 @@ with check (
   )
   and source in ('ops', 'ops_user')
   and (
-    user_id = (select public.profixiq_workforce_profile_id())
+    (
+      source = 'ops_user'
+      and user_id = (select public.profixiq_workforce_profile_id())
+      and (select public.profixiq_current_role()) = 'mechanic'
+    )
     or (
       source = 'ops'
       and user_id is null

@@ -125,10 +125,14 @@ function isUserScopedRole(role: string | null | undefined): boolean {
 
 async function filterComputedNotificationsForUser(params: {
   shopId: string;
-  userId: string;
+  userIds: string[];
   computed: OpsNotification[];
 }): Promise<OpsNotification[]> {
   const supabase = getServerSupabase();
+  const userIds = Array.from(
+    new Set(params.userIds.map((value) => value.trim()).filter(Boolean)),
+  );
+  if (userIds.length === 0) return [];
 
   const activeStatuses = ["awaiting", "awaiting_approval", "queued", "in_progress", "on_hold"];
 
@@ -143,26 +147,26 @@ async function filterComputedNotificationsForUser(params: {
         .from("work_order_lines")
         .select("id")
         .eq("shop_id", params.shopId)
-        .eq("assigned_tech_id", params.userId)
+        .in("assigned_tech_id", userIds)
         .in("status", activeStatuses)
         .limit(200),
       supabase
         .from("work_order_lines")
         .select("id")
         .eq("shop_id", params.shopId)
-        .eq("assigned_to", params.userId)
+        .in("assigned_to", userIds)
         .in("status", activeStatuses)
         .limit(200),
       supabase
         .from("work_order_line_technicians")
         .select("work_order_line_id")
-        .eq("technician_id", params.userId)
+        .in("technician_id", userIds)
         .limit(200),
       supabase
         .from("work_order_line_labor_segments")
         .select("work_order_line_id")
         .eq("shop_id", params.shopId)
-        .eq("technician_id", params.userId)
+        .in("technician_id", userIds)
         .is("ended_at", null)
         .limit(50),
     ]);
@@ -223,11 +227,14 @@ async function filterComputedNotificationsForUser(params: {
     }
 
     for (const row of activeLineRows ?? []) {
-      const isAssigned = resolveTechnicianAssignmentContract({
+      const assignment = resolveTechnicianAssignmentContract({
         primaryTechnicianId: row.assigned_tech_id,
         legacyAssignedTo: row.assigned_to,
         canonicalTechnicianIds: technicianIdsByLine.get(row.id),
-      }).technicianIds.includes(params.userId);
+      });
+      const isAssigned = userIds.some((userId) =>
+        assignment.technicianIds.includes(userId),
+      );
       if (!isAssigned && !activeLaborLineIds.has(row.id)) continue;
       if (row.id) lineIds.add(row.id);
       if (row.work_order_id) workOrderIds.add(row.work_order_id);
@@ -395,9 +402,15 @@ async function getDurablePartsPickNotifications(params: {
 export async function syncAssistantNotifications(params: {
   shopId: string;
   userId?: string | null;
+  assignmentUserIds?: string[];
   role?: string | null;
 }): Promise<PersistedAssistantNotification[]> {
-  const { shopId, userId = null, role = null } = params;
+  const {
+    shopId,
+    userId = null,
+    assignmentUserIds = userId ? [userId] : [],
+    role = null,
+  } = params;
   if (!canAccessAssistantNotifications(role)) {
     throw new Error("A shop workforce role is required for notifications");
   }
@@ -433,7 +446,7 @@ export async function syncAssistantNotifications(params: {
   if (userScoped && userId) {
     computed = await filterComputedNotificationsForUser({
       shopId,
-      userId,
+      userIds: assignmentUserIds,
       computed,
     });
   }

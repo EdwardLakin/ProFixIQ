@@ -1,7 +1,10 @@
 // features/agent/server/getRoleDailySummary.ts
 
 import { createToolContext, type ToolContext } from "../lib/toolTypes";
-import { canonicalizeRole } from "@/features/shared/lib/rbac";
+import {
+  canAccessAssistantNotifications,
+  canonicalizeRole,
+} from "@/features/shared/lib/rbac";
 import { syncAssistantNotifications } from "./syncAssistantNotifications";
 import { runGetBookings } from "../tools/getBookings";
 import { runGetShopCurrentStatus } from "../tools/getShopCurrentStatus";
@@ -561,11 +564,13 @@ export async function getRoleDailySummary(params: {
     signal: params.signal,
   });
 
-  const persistedNotifications = await syncAssistantNotifications({
-    shopId: params.shopId,
-    userId: params.userId,
-    role,
-  });
+  const persistedNotifications = canAccessAssistantNotifications(role)
+    ? await syncAssistantNotifications({
+        shopId: params.shopId,
+        userId: params.userId,
+        role,
+      })
+    : [];
   params.signal?.throwIfAborted();
 
   const rawNotifications: DailySummaryNotification[] =
