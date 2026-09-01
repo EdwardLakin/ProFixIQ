@@ -112,9 +112,17 @@ describe("assistant notification shared persistence contract", () => {
   });
 
   it("keeps generation on a trusted writer and scopes resolution defensively", () => {
+    expect(syncSource).toContain("if (!canAccessShopAssistant(role))");
     expect(syncSource).toContain("getAssistantNotificationWriter()");
     expect(syncSource).toContain('.eq("shop_id", shopId)');
     expect(syncSource).toContain('.eq("source", source)');
+  });
+
+  it("rejects non-workforce callers before the privileged sync boundary", () => {
+    expect(plannerRoute).toContain(
+      "if (!canAccessShopAssistant(profile.role))",
+    );
+    expect(plannerRoute).toContain("{ status: 403 }");
   });
 
   it("replays the production consistency trigger", () => {

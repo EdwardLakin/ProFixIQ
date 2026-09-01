@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { canAccessShopAssistant } from "@/features/shared/lib/rbac";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 
 import { syncAssistantNotifications } from "@/features/agent/server/syncAssistantNotifications";
@@ -55,6 +56,13 @@ export async function GET() {
     return NextResponse.json(
       { error: "No shop found for user" },
       { status: 400 },
+    );
+  }
+
+  if (!canAccessShopAssistant(profile.role)) {
+    return NextResponse.json(
+      { error: "A shop workforce role is required" },
+      { status: 403 },
     );
   }
 
