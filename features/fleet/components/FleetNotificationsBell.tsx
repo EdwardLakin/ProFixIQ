@@ -62,6 +62,7 @@ export default function FleetNotificationsBell({
   const [failed, setFailed] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const loadedItemCountRef = useRef(0);
 
   const load = useCallback(
     async (
@@ -71,27 +72,71 @@ export default function FleetNotificationsBell({
       const append = mode === "append";
       if (append) setLoadingMore(true);
       try {
-        const response = await fetch("/api/fleet/notifications", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ fleetId: fleetId ?? null, cursor }),
-          cache: "no-store",
-        });
-        if (!response.ok) {
-          setFailed(true);
+        const requestPage = async (
+          pageCursor: FleetNotificationCursor | null,
+        ) => {
+          const response = await fetch("/api/fleet/notifications", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              fleetId: fleetId ?? null,
+              cursor: pageCursor,
+            }),
+            cache: "no-store",
+          });
+          if (!response.ok) throw new Error("Fleet alerts unavailable");
+          return (await response.json()) as FleetNotificationPage;
+        };
+
+        if (mode === "refresh") {
+          const targetCount = loadedItemCountRef.current;
+          const refreshedById = new Map<string, FleetNotification>();
+          let refreshedTotal: number | null = null;
+          let refreshCursor: FleetNotificationCursor | null = null;
+          let refreshedNextCursor: FleetNotificationCursor | null = null;
+
+          do {
+            const page = await requestPage(refreshCursor);
+            if (page.total !== null) refreshedTotal = page.total;
+            for (const item of page.notifications ?? []) {
+              refreshedById.set(item.id, item);
+            }
+            refreshedNextCursor = page.nextCursor ?? null;
+            refreshCursor = refreshedNextCursor;
+          } while (refreshCursor && refreshedById.size < targetCount);
+
+          const refreshedItems = sortNotifications(
+            Array.from(refreshedById.values()),
+          );
+          loadedItemCountRef.current = refreshedItems.length;
+          setItems(refreshedItems);
+          if (refreshedTotal !== null) setTotal(refreshedTotal);
+          setNextCursor(refreshedNextCursor);
+          setFailed(false);
           return;
         }
-        const body = (await response.json()) as FleetNotificationPage;
+
+        const body = await requestPage(cursor);
         setItems((current) => {
-          if (mode === "replace") return body.notifications ?? [];
-          const byId = new Map(current.map((item) => [item.id, item]));
-          for (const item of body.notifications ?? []) byId.set(item.id, item);
-          return sortNotifications(Array.from(byId.values()));
+          const nextItems =
+            mode === "replace"
+              ? (body.notifications ?? [])
+              : (() => {
+                  const byId = new Map(
+                    current.map((item) => [item.id, item]),
+                  );
+                  for (const item of body.notifications ?? []) {
+                    byId.set(item.id, item);
+                  }
+                  return sortNotifications(Array.from(byId.values()));
+                })();
+          loadedItemCountRef.current = nextItems.length;
+          return nextItems;
         });
         if (body.total !== null) {
           setTotal(body.total);
         }
-        if (mode !== "refresh") setNextCursor(body.nextCursor ?? null);
+        setNextCursor(body.nextCursor ?? null);
         setFailed(false);
       } catch {
         setFailed(true);

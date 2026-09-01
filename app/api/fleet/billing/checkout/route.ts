@@ -7,10 +7,12 @@ import {
   createServerSupabaseRoute,
 } from "@/features/shared/lib/supabase/server";
 import {
+  canManageFleetForActor,
   manageableFleetIdsForActor,
   resolveFleetActorContext,
   resolveFleetActorScope,
 } from "@/features/fleet/lib/resolveFleetActorContext";
+import { resolveSelectedFleetRequestScope } from "@/features/fleet/lib/resolveSelectedFleetRequestScope";
 
 const stripe = createStripeClient(process.env.STRIPE_SECRET_KEY ?? "");
 
@@ -37,25 +39,37 @@ export async function POST(request: Request) {
     }
 
     const supabase = createServerSupabaseRoute();
-    const actor = await resolveFleetActorContext(supabase);
-    const scope = resolveFleetActorScope(actor);
+    const body = (await request.json().catch(() => ({}))) as {
+      fleetId?: string | null;
+      workOrderId?: string;
+      routePrefix?: string;
+    };
+    const requestedFleetId = body.fleetId?.trim() || null;
+    const actor = await resolveFleetActorContext(supabase, {
+      requestedFleetId,
+    });
+    const scope = requestedFleetId
+      ? resolveSelectedFleetRequestScope(actor, {
+          explicitFleetId: requestedFleetId,
+        })
+      : resolveFleetActorScope(actor);
     if (!actor.userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     if (!scope?.shopId || actor.actorType === "none") {
       return NextResponse.json({ error: "Fleet billing access required" }, { status: 403 });
     }
-    const billableFleetIds = actor.isInternal
-      ? null
-      : manageableFleetIdsForActor(actor);
+    const billableFleetIds = requestedFleetId
+      ? canManageFleetForActor(actor, requestedFleetId)
+        ? [requestedFleetId]
+        : []
+      : actor.isInternal
+        ? null
+        : manageableFleetIdsForActor(actor);
     if (!actor.isInternal && (billableFleetIds?.length ?? 0) === 0) {
       return NextResponse.json({ error: "Fleet billing access required" }, { status: 403 });
     }
 
-    const body = (await request.json().catch(() => ({}))) as {
-      workOrderId?: string;
-      routePrefix?: string;
-    };
     const workOrderId = body.workOrderId?.trim();
     if (!workOrderId) {
       return NextResponse.json({ error: "workOrderId is required" }, { status: 400 });
@@ -103,7 +117,9 @@ export async function POST(request: Request) {
     } = await supabase.auth.getUser();
     const routePrefix =
       body.routePrefix === "/fleet" ? "/fleet" : "/portal/fleet";
-    const returnPath = `${routePrefix}/billing?workOrderId=${encodeURIComponent(workOrderId)}`;
+    const returnQuery = new URLSearchParams({ workOrderId });
+    if (requestedFleetId) returnQuery.set("fleetId", requestedFleetId);
+    const returnPath = `${routePrefix}/billing?${returnQuery.toString()}`;
     const session = await createConnectedAccountInvoiceCheckout({
       stripe,
       supabase: admin,

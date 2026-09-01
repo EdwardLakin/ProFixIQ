@@ -360,10 +360,11 @@ export default function FleetRequestBuilderPage() {
       }
 
       toast.success("Fleet service request sent to the shop.");
+      const requestsPath = pathname.startsWith("/portal/fleet")
+        ? "/portal/fleet/service-requests"
+        : "/requests";
       router.replace(
-        pathname.startsWith("/portal/fleet")
-          ? "/portal/fleet/service-requests"
-          : "/requests",
+        `${requestsPath}?fleetId=${encodeURIComponent(context.fleetId)}`,
       );
     } catch (error) {
       toast.error(

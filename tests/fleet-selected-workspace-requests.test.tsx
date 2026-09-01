@@ -3,6 +3,7 @@ import { render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import FleetMaintenanceCalendar from "@/features/fleet/components/FleetMaintenanceCalendar";
+import FleetBillingWorkspace from "@/features/fleet/components/FleetBillingWorkspace";
 import FleetServiceRequestsPage from "@/features/fleet/components/FleetServiceRequestsPage";
 import type { FleetUiContext } from "@/features/fleet/lib/fleetUiCapabilities";
 
@@ -77,6 +78,39 @@ describe("selected Fleet workspace requests", () => {
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      fleetId: FLEET_B,
+    });
+  });
+
+  it("loads billing for the server-validated Fleet", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          canApprove: true,
+          canPay: true,
+          decisionMode: "fleet_self_service",
+          summary: {
+            approvals: 0,
+            invoices: 0,
+            byCurrency: {
+              CAD: { outstanding: 0, paid: 0 },
+              USD: { outstanding: 0, paid: 0 },
+            },
+          },
+          items: [],
+        }),
+        { status: 200 },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <FleetBillingWorkspace routePrefix="/portal/fleet" fleetId={FLEET_B} />,
+    );
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      action: "list",
       fleetId: FLEET_B,
     });
   });

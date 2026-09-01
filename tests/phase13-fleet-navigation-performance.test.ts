@@ -70,10 +70,17 @@ describe("Phase 13 Fleet navigation performance contract", () => {
     const requests = read(
       "features/fleet/components/FleetServiceRequestsPage.tsx",
     );
+    const billingPage = read("app/portal/fleet/billing/page.tsx");
+    const billing = read(
+      "features/fleet/components/FleetBillingWorkspace.tsx",
+    );
+    const billingRoute = read("app/api/fleet/billing/route.ts");
+    const billingCheckout = read("app/api/fleet/billing/checkout/route.ts");
     const unitDetail = read(
       "features/fleet/components/FleetUnitDetailWorkspace.tsx",
     );
     const requestLayout = read("app/portal/fleet/request/layout.tsx");
+    const requestBuilder = read("app/portal/fleet/request/build/page.tsx");
     expect(maintenancePage).toContain("initialFleetId={selectedFleetId}");
     expect(maintenanceRoute).toContain(
       "requestedFleetId = clean(body.fleetId)",
@@ -91,9 +98,24 @@ describe("Phase 13 Fleet navigation performance contract", () => {
     expect(requests).toContain(
       "body: JSON.stringify({ fleetId: fleetId ?? null })",
     );
+    expect(billingPage).toContain("fleetId={selectedFleetId}");
+    expect(billing).toContain(
+      'body: JSON.stringify({ action: "list", fleetId: fleetId ?? null })',
+    );
+    expect(billing).toContain("fleetId: fleetId ?? null");
+    expect(billingRoute).toContain("fleetId: requestedFleetId");
+    expect(billingCheckout).toContain(
+      "resolveSelectedFleetRequestScope(actor, {",
+    );
+    expect(billingCheckout).toContain(
+      'returnQuery.set("fleetId", requestedFleetId)',
+    );
     expect(unitDetail).toContain("withFleetId(");
     expect(unitDetail).toContain('"/portal/fleet/request/build"');
     expect(requestLayout).toContain("canManageFleetForActor(actor, fleetId)");
+    expect(requestBuilder).toContain(
+      "`${requestsPath}?fleetId=${encodeURIComponent(context.fleetId)}`",
+    );
   });
 
   it("starts independent Control Tower reads together and never caches mutable data", () => {
