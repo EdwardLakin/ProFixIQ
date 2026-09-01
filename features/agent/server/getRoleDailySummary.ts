@@ -553,10 +553,21 @@ function buildFleetSummary(params: {
 export async function getRoleDailySummary(params: {
   shopId: string;
   userId: string;
+  profileId?: string;
   role: string | null;
   signal?: AbortSignal;
 }): Promise<DailySummaryResult> {
-  const role = normalizeRole(params.role);
+  const canSyncNotifications = canAccessAssistantNotifications(params.role);
+  const role = canSyncNotifications
+    ? normalizeRole(params.role)
+    : canonicalizeRole(params.role);
+  const notificationUserIds = Array.from(
+    new Set(
+      [params.userId, params.profileId].filter(
+        (value): value is string => typeof value === "string" && value.length > 0,
+      ),
+    ),
+  );
   const ctx: ToolContext = createToolContext({
     shopId: params.shopId,
     userId: params.userId,
@@ -564,10 +575,11 @@ export async function getRoleDailySummary(params: {
     signal: params.signal,
   });
 
-  const persistedNotifications = canAccessAssistantNotifications(role)
+  const persistedNotifications = canSyncNotifications
     ? await syncAssistantNotifications({
         shopId: params.shopId,
-        userId: params.userId,
+        userId: params.profileId ?? params.userId,
+        assignmentUserIds: notificationUserIds,
         role,
       })
     : [];

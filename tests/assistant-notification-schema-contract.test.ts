@@ -21,6 +21,14 @@ const dailySummarySource = readFileSync(
   "features/agent/server/getRoleDailySummary.ts",
   "utf8",
 );
+const suggestedActionsRoute = readFileSync(
+  "app/api/assistant/suggested-actions/route.ts",
+  "utf8",
+);
+const plannerDailySummaryRoute = readFileSync(
+  "app/api/planner/daily-summary/route.ts",
+  "utf8",
+);
 
 describe("assistant notification shared persistence contract", () => {
   it("creates the missing relation and keeps opaque entity identifiers", () => {
@@ -138,10 +146,13 @@ describe("assistant notification shared persistence contract", () => {
 
   it("keeps Fleet-only daily summaries off the Shop notification writer", () => {
     expect(dailySummarySource).toContain(
-      "canAccessAssistantNotifications(role)",
+      "canAccessAssistantNotifications(params.role)",
     );
     expect(dailySummarySource).toMatch(
-      /canAccessAssistantNotifications\(role\)[\s\S]*syncAssistantNotifications/,
+      /canAccessAssistantNotifications\(params\.role\)[\s\S]*syncAssistantNotifications/,
+    );
+    expect(dailySummarySource).toContain(
+      "canSyncNotifications\n    ? normalizeRole(params.role)\n    : canonicalizeRole(params.role)",
     );
   });
 
@@ -184,6 +195,22 @@ describe("assistant notification shared persistence contract", () => {
     expect(syncSource).toContain('.in("assigned_tech_id", userIds)');
     expect(syncSource).toContain('.in("assigned_to", userIds)');
     expect(syncSource).toContain('.in("technician_id", userIds)');
+    expect(dailySummarySource).toContain(
+      "userId: params.profileId ?? params.userId",
+    );
+    expect(dailySummarySource).toContain(
+      "[params.userId, params.profileId].filter(",
+    );
+    expect(dailySummarySource).toContain(
+      "assignmentUserIds: notificationUserIds",
+    );
+    expect(suggestedActionsRoute.match(/profileId: actor\.profileId/g)).toHaveLength(
+      2,
+    );
+    expect(plannerDailySummaryRoute).toContain("user_id.eq.${userId}");
+    expect(plannerDailySummaryRoute).toContain(
+      "profileId: profile.profileId as string",
+    );
     expect(acknowledgementRoute).toContain(
       "acknowledged_by: profile.profileId",
     );
