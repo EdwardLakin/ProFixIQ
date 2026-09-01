@@ -1,12 +1,24 @@
 import { describe, expect, it, vi } from "vitest";
 
-const { getServerSupabaseMock, getOpsNotificationsMock } = vi.hoisted(() => ({
+const {
+  getAssistantNotificationWriterMock,
+  getServerSupabaseMock,
+  getOpsNotificationsMock,
+  markAssistantNotificationTrustedWriterRolloutMock,
+} = vi.hoisted(() => ({
+  getAssistantNotificationWriterMock: vi.fn(),
   getServerSupabaseMock: vi.fn(),
   getOpsNotificationsMock: vi.fn(),
+  markAssistantNotificationTrustedWriterRolloutMock: vi
+    .fn()
+    .mockResolvedValue(undefined),
 }));
 
 vi.mock("@/features/agent/server/supabase", () => ({
+  getAssistantNotificationWriter: getAssistantNotificationWriterMock,
   getServerSupabase: getServerSupabaseMock,
+  markAssistantNotificationTrustedWriterRollout:
+    markAssistantNotificationTrustedWriterRolloutMock,
 }));
 
 vi.mock("@/features/agent/server/getOpsNotifications", () => ({
@@ -49,6 +61,13 @@ describe("assistant notification acknowledgement persistence", () => {
       },
     ]);
 
+    getAssistantNotificationWriterMock.mockReturnValue({
+      from: vi.fn((table: string) => {
+        expect(table).toBe("assistant_notifications");
+        return { upsert: upsertMock };
+      }),
+    });
+
     getServerSupabaseMock.mockReturnValue({
       from: vi.fn((table: string) => {
         if (table === "part_requests") return queryResult([]);
@@ -70,14 +89,12 @@ describe("assistant notification acknowledgement persistence", () => {
         }
 
         if (assistantNotificationsAccessCount === 2) {
-          return { upsert: upsertMock };
-        }
-
-        if (assistantNotificationsAccessCount === 3) {
           return queryResult([]);
         }
 
-        throw new Error(`Unexpected assistant_notifications access #${assistantNotificationsAccessCount}`);
+        throw new Error(
+          `Unexpected assistant_notifications access #${assistantNotificationsAccessCount}`,
+        );
       }),
     });
 
@@ -87,7 +104,9 @@ describe("assistant notification acknowledgement persistence", () => {
     });
 
     expect(upsertMock).toHaveBeenCalledTimes(1);
-    const upsertRows = upsertMock.mock.calls[0]?.[0] as Array<Record<string, unknown>>;
+    const upsertRows = upsertMock.mock.calls[0]?.[0] as Array<
+      Record<string, unknown>
+    >;
     expect(upsertRows).toHaveLength(1);
     expect(upsertRows[0]).toMatchObject({
       fingerprint: "shop::parts_waiting_too_long::na::na::na",

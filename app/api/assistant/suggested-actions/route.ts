@@ -34,6 +34,7 @@ export async function POST(req: Request) {
     const result = await getSuggestedActions({
       shopId: actor.shopId,
       userId: actor.userId,
+      profileId: actor.profileId,
       role: actor.role,
       context: body.context,
     });
@@ -73,6 +74,7 @@ export async function GET() {
     const result = await getSuggestedActions({
       shopId: actor.shopId,
       userId: actor.userId,
+      profileId: actor.profileId,
       role: actor.role,
     });
 
