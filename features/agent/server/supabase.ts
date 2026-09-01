@@ -1,12 +1,21 @@
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import {
+  createAdminSupabase,
+  createServerSupabaseRoute,
+} from "@/features/shared/lib/supabase/server";
 
 export function getServerSupabase() {
   return createServerSupabaseRoute();
 }
 
+export function getAssistantNotificationWriter() {
+  return createAdminSupabase();
+}
+
 export async function getUserAndShopId() {
   const supabase = getServerSupabase();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) throw new Error("Not signed in");
   const { data: profile, error } = await supabase
     .from("profiles")

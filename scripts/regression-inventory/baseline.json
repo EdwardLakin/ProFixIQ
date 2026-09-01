@@ -993,16 +993,6 @@
       "expiresOn": "2026-09-06"
     },
     {
-      "fingerprint": "8139f45281e65ca100a5",
-      "rule": "missing-relation",
-      "severity": "error",
-      "domain": "messaging",
-      "file": "app/api/planner/notifications/[id]/ack/route.ts",
-      "subject": "assistant_notifications",
-      "message": ".from(\"assistant_notifications\") references a relation missing from the schema contract",
-      "expiresOn": "2026-09-06"
-    },
-    {
       "fingerprint": "dbaef55051c578e93ce7",
       "rule": "missing-relation",
       "severity": "error",
@@ -1010,16 +1000,6 @@
       "file": "features/admin/components/AdminQuickPanel.tsx",
       "subject": "certifications",
       "message": ".from(\"certifications\") references a relation missing from the schema contract",
-      "expiresOn": "2026-09-06"
-    },
-    {
-      "fingerprint": "58186a04ed54440d0fce",
-      "rule": "missing-relation",
-      "severity": "error",
-      "domain": "messaging",
-      "file": "features/agent/server/syncAssistantNotifications.ts",
-      "subject": "assistant_notifications",
-      "message": ".from(\"assistant_notifications\") references a relation missing from the schema contract",
       "expiresOn": "2026-09-06"
     },
     {
@@ -1040,16 +1020,6 @@
       "file": "features/dashboard/components/ShareBookingLink.tsx",
       "subject": "shop",
       "message": ".from(\"shop\") references a relation missing from the schema contract",
-      "expiresOn": "2026-09-06"
-    },
-    {
-      "fingerprint": "0458b319c8d6cf0c6a32",
-      "rule": "missing-relation",
-      "severity": "error",
-      "domain": "core",
-      "file": "features/operations/server/syncOperationalObservabilityAlerts.ts",
-      "subject": "assistant_notifications",
-      "message": ".from(\"assistant_notifications\") references a relation missing from the schema contract",
       "expiresOn": "2026-09-06"
     },
     {

@@ -1,7 +1,7 @@
 
 import { canonicalizeRole } from "@/features/shared/lib/rbac";
 import { resolveTechnicianAssignmentContract } from "@/features/work-orders/lib/technicianAssignmentContract";
-import { getServerSupabase } from "./supabase";
+import { getAssistantNotificationWriter, getServerSupabase } from "./supabase";
 import { getOpsNotifications, type OpsNotification } from "./getOpsNotifications";
 
 export type PersistedAssistantNotification = {
@@ -392,6 +392,7 @@ export async function syncAssistantNotifications(params: {
 }): Promise<PersistedAssistantNotification[]> {
   const { shopId, userId = null, role = null } = params;
   const supabase = getServerSupabase();
+  const notificationWriter = getAssistantNotificationWriter();
   const now = new Date().toISOString();
 
   const userScoped = !!userId && isUserScopedRole(role);
@@ -526,7 +527,7 @@ export async function syncAssistantNotifications(params: {
   });
 
   if (assistantNotificationsAvailable && upsertRows.length > 0) {
-    const { error: upsertError } = await supabase
+    const { error: upsertError } = await notificationWriter
       .from("assistant_notifications")
       .upsert(upsertRows, {
         onConflict: "shop_id,fingerprint",
@@ -545,14 +546,22 @@ export async function syncAssistantNotifications(params: {
     .map((row) => row.id);
 
   if (assistantNotificationsAvailable && toResolve.length > 0) {
-    const { error: resolveError } = await supabase
+    let resolveQuery = notificationWriter
       .from("assistant_notifications")
       .update({
         status: "resolved",
         resolved_at: now,
         updated_at: now,
       })
+      .eq("shop_id", shopId)
+      .eq("source", source)
       .in("id", toResolve);
+
+    if (userScoped) {
+      resolveQuery = resolveQuery.eq("user_id", userId);
+    }
+
+    const { error: resolveError } = await resolveQuery;
 
     if (resolveError) {
       throw new Error(resolveError.message);

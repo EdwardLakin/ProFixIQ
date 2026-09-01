@@ -1627,6 +1627,111 @@ export type Database = {
           },
         ]
       }
+      assistant_notifications: {
+        Row: {
+          acknowledged_at: string | null
+          acknowledged_by: string | null
+          code: string
+          created_at: string
+          entity_id: string | null
+          entity_type: string | null
+          fingerprint: string
+          first_seen_at: string
+          href: string | null
+          id: string
+          last_seen_at: string
+          level: string
+          message: string
+          metadata: Json
+          resolved_at: string | null
+          role: string | null
+          shop_id: string
+          source: string
+          status: string
+          title: string
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
+          code: string
+          created_at?: string
+          entity_id?: string | null
+          entity_type?: string | null
+          fingerprint: string
+          first_seen_at?: string
+          href?: string | null
+          id?: string
+          last_seen_at?: string
+          level: string
+          message: string
+          metadata?: Json
+          resolved_at?: string | null
+          role?: string | null
+          shop_id: string
+          source?: string
+          status?: string
+          title: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
+          code?: string
+          created_at?: string
+          entity_id?: string | null
+          entity_type?: string | null
+          fingerprint?: string
+          first_seen_at?: string
+          href?: string | null
+          id?: string
+          last_seen_at?: string
+          level?: string
+          message?: string
+          metadata?: Json
+          resolved_at?: string | null
+          role?: string | null
+          shop_id?: string
+          source?: string
+          status?: string
+          title?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "assistant_notifications_acknowledged_by_fkey"
+            columns: ["acknowledged_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assistant_notifications_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assistant_notifications_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assistant_notifications_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      audit_logs: {
       audit_logs: {
         Row: {
           action: string
