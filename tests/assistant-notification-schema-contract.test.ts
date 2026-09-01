@@ -79,6 +79,7 @@ describe("assistant notification shared persistence contract", () => {
       "'owner', 'admin', 'manager', 'advisor', 'service', 'parts',",
     );
     expect(migration).toContain("'lead_hand', 'foreman'");
+    expect(migration.match(/source <> 'ops'/g)).toHaveLength(2);
     expect(migration).not.toMatch(
       /source = 'ops'\s+or public\.canonical_shop_membership_role/,
     );

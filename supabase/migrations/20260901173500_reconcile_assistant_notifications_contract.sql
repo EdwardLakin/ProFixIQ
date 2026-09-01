@@ -303,8 +303,11 @@ using (
             'lead_hand', 'foreman'
           )
         )
-        or public.canonical_shop_membership_role(role) =
-          (select public.profixiq_current_role())
+        or (
+          source <> 'ops'
+          and public.canonical_shop_membership_role(role) =
+            (select public.profixiq_current_role())
+        )
         or (
           public.canonical_shop_membership_role(role) = 'parts'
           and (select public.profixiq_current_role()) in (
@@ -339,8 +342,11 @@ using (
             'lead_hand', 'foreman'
           )
         )
-        or public.canonical_shop_membership_role(role) =
-          (select public.profixiq_current_role())
+        or (
+          source <> 'ops'
+          and public.canonical_shop_membership_role(role) =
+            (select public.profixiq_current_role())
+        )
         or (
           public.canonical_shop_membership_role(role) = 'parts'
           and (select public.profixiq_current_role()) in (
