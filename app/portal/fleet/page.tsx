@@ -3,7 +3,10 @@ import FleetDefectQueue from "@/features/fleet/components/FleetDefectQueue";
 import FleetDispatcherDashboard from "@/features/fleet/components/FleetDispatcherDashboard";
 import FleetDriverDashboard from "@/features/fleet/components/FleetDriverDashboard";
 import { getFleetUiContext } from "@/features/fleet/lib/fleetUiCapabilities";
-import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
+import {
+  resolveFleetActorContext,
+  type FleetActorContext,
+} from "@/features/fleet/lib/resolveFleetActorContext";
 import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
 import { getFleetPortalActorContext } from "./_lib/requireFleetPortalActor";
 
@@ -17,7 +20,7 @@ export default async function PortalFleetPage({
   const initialActor = await getFleetPortalActorContext();
   const { fleetId: requestedFleetId, focus } = await searchParams;
 
-  let actor = initialActor;
+  let actor: FleetActorContext = initialActor;
   if (
     requestedFleetId &&
     requestedFleetId !== initialActor.primaryFleetId &&
