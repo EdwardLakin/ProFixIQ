@@ -102,13 +102,15 @@ function localDateInput(date = new Date()) {
 export default function FleetMaintenanceWorkspace({
   uiContext,
   routePrefix,
+  initialFleetId,
 }: {
   uiContext: FleetUiContext;
   routePrefix: RoutePrefix;
+  initialFleetId?: string | null;
 }) {
   const [data, setData] = useState<Payload | null>(null);
   const [filter, setFilter] = useState<Filter>("action");
-  const [fleetId, setFleetId] = useState("all");
+  const [fleetId, setFleetId] = useState(initialFleetId ?? "all");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [workingId, setWorkingId] = useState<string | null>(null);
@@ -170,7 +172,11 @@ export default function FleetMaintenanceWorkspace({
       const response = await fetch("/api/fleet/maintenance", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({
+          ...body,
+          fleetId:
+            body.fleetId ?? (fleetId === "all" ? null : fleetId),
+        }),
       });
       const result = (await response.json().catch(() => ({}))) as {
         error?: string;

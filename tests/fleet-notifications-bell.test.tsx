@@ -26,6 +26,10 @@ describe("Fleet notifications bell", () => {
   });
 
   it("keeps severity neutral until all paginated alerts are represented", async () => {
+    const nextCursor = {
+      lastSeenAt: "2026-09-01T00:00:00.000Z",
+      id: "00000000-0000-4000-8000-000000000050",
+    };
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(
@@ -33,7 +37,7 @@ describe("Fleet notifications bell", () => {
           JSON.stringify({
             notifications: [notification("warning", "warning")],
             total: 51,
-            nextOffset: 50,
+            nextCursor,
           }),
           { status: 200 },
         ),
@@ -42,8 +46,8 @@ describe("Fleet notifications bell", () => {
         new Response(
           JSON.stringify({
             notifications: [notification("critical", "critical")],
-            total: 51,
-            nextOffset: null,
+            total: null,
+            nextCursor: null,
           }),
           { status: 200 },
         ),
@@ -63,5 +67,8 @@ describe("Fleet notifications bell", () => {
     fireEvent.click(screen.getByRole("button", { name: /Load more alerts/i }));
 
     await waitFor(() => expect(badge).toHaveClass("bg-red-400"));
+    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toMatchObject({
+      cursor: nextCursor,
+    });
   });
 });

@@ -55,6 +55,13 @@ describe("Phase 13 Fleet navigation performance contract", () => {
         /(getFleetPortalActorContext|requireFleetPortalActor)\([^)]*[Ff]leetId/,
       );
     }
+
+    const maintenancePage = read("app/portal/fleet/maintenance/page.tsx");
+    const maintenanceRoute = read("app/api/fleet/maintenance/route.ts");
+    expect(maintenancePage).toContain("initialFleetId={selectedFleetId}");
+    expect(maintenanceRoute).toContain(
+      "requestedFleetId: clean(body.fleetId)",
+    );
   });
 
   it("starts independent Control Tower reads together and never caches mutable data", () => {

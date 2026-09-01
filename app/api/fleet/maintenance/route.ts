@@ -389,7 +389,10 @@ async function listWorkspace(
 export async function POST(request: Request) {
   try {
     const supabase = createServerSupabaseRoute();
-    const actor = await resolveFleetActorContext(supabase);
+    const body = (await request.json().catch(() => ({}))) as Body;
+    const actor = await resolveFleetActorContext(supabase, {
+      requestedFleetId: clean(body.fleetId),
+    });
     if (!actor.userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -406,7 +409,6 @@ export async function POST(request: Request) {
       );
     }
 
-    const body = (await request.json().catch(() => ({}))) as Body;
     const action = body.action ?? "list";
 
     if (action === "list") {

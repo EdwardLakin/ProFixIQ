@@ -6,6 +6,7 @@ import { AlertTriangle, Bell, Info, ShieldAlert } from "lucide-react";
 
 import type {
   FleetNotification,
+  FleetNotificationCursor,
   FleetNotificationPage,
 } from "app/api/fleet/notifications/route";
 import { buildFleetNotificationHref } from "@/features/fleet/lib/fleetNotificationRouting";
@@ -45,7 +46,8 @@ export default function FleetNotificationsBell({
 }: Props) {
   const [items, setItems] = useState<FleetNotification[]>([]);
   const [total, setTotal] = useState(0);
-  const [nextOffset, setNextOffset] = useState<number | null>(null);
+  const [nextCursor, setNextCursor] =
+    useState<FleetNotificationCursor | null>(null);
   const [open, setOpen] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -53,13 +55,16 @@ export default function FleetNotificationsBell({
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   const load = useCallback(
-    async (offset = 0, append = false) => {
+    async (
+      cursor: FleetNotificationCursor | null = null,
+      append = false,
+    ) => {
       if (append) setLoadingMore(true);
       try {
         const response = await fetch("/api/fleet/notifications", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ fleetId: fleetId ?? null, offset }),
+          body: JSON.stringify({ fleetId: fleetId ?? null, cursor }),
           cache: "no-store",
         });
         if (!response.ok) {
@@ -73,8 +78,10 @@ export default function FleetNotificationsBell({
           for (const item of body.notifications ?? []) byId.set(item.id, item);
           return Array.from(byId.values());
         });
-        setTotal(body.total ?? body.notifications?.length ?? 0);
-        setNextOffset(body.nextOffset ?? null);
+        if (body.total !== null) {
+          setTotal(body.total);
+        }
+        setNextCursor(body.nextCursor ?? null);
         setFailed(false);
       } catch {
         setFailed(true);
@@ -115,7 +122,7 @@ export default function FleetNotificationsBell({
   const badgeTone =
     criticalCount > 0
       ? "bg-red-400"
-      : nextOffset === null
+      : nextCursor === null
         ? "bg-amber-300"
         : "bg-slate-300";
 
@@ -204,12 +211,12 @@ export default function FleetNotificationsBell({
               );
             })}
           </ul>
-          {nextOffset !== null && !failed ? (
+          {nextCursor !== null && !failed ? (
             <div className="border-t border-[color:var(--theme-border-soft)] p-2">
               <button
                 type="button"
                 disabled={loadingMore}
-                onClick={() => void load(nextOffset, true)}
+                onClick={() => void load(nextCursor, true)}
                 className="w-full rounded-xl px-3 py-2 text-xs font-semibold text-[color:var(--theme-text-secondary)] hover:bg-white/[0.04] disabled:opacity-60"
               >
                 {loadingMore ? "Loading…" : `Load more alerts (${items.length} of ${total})`}

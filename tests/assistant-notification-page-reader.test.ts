@@ -12,7 +12,8 @@ function createQueryClient(results: QueryResult[]) {
   const queries: Array<{
     filters: Array<{ method: string; column: string; value: unknown }>;
     orders: Array<{ column: string; options: unknown }>;
-    range: { from: number; to: number } | null;
+    limit: number | null;
+    selectOptions: unknown;
   }> = [];
   let resultIndex = 0;
 
@@ -25,12 +26,16 @@ function createQueryClient(results: QueryResult[]) {
           value: unknown;
         }>,
         orders: [] as Array<{ column: string; options: unknown }>,
-        range: null as { from: number; to: number } | null,
+        limit: null as number | null,
+        selectOptions: null as unknown,
       };
       queries.push(tracked);
 
       const builder: Record<string, unknown> = {};
-      builder.select = () => builder;
+      builder.select = (_columns: string, options?: unknown) => {
+        tracked.selectOptions = options ?? null;
+        return builder;
+      };
       builder.eq = (column: string, value: unknown) => {
         tracked.filters.push({ method: "eq", column, value });
         return builder;
@@ -43,8 +48,12 @@ function createQueryClient(results: QueryResult[]) {
         tracked.orders.push({ column, options });
         return builder;
       };
-      builder.range = (from: number, to: number) => {
-        tracked.range = { from, to };
+      builder.limit = (value: number) => {
+        tracked.limit = value;
+        return builder;
+      };
+      builder.or = (value: string) => {
+        tracked.filters.push({ method: "or", column: "", value });
         return builder;
       };
       builder.then = (resolve: (value: QueryResult) => unknown) =>
@@ -72,11 +81,27 @@ function row(id: string) {
   };
 }
 
+function notificationId(value: number) {
+  return `00000000-0000-4000-8000-${String(value).padStart(12, "0")}`;
+}
+
 describe("assistant notification page reader", () => {
-  it("uses a unique tie-breaker and merges disjoint shop scopes deterministically", async () => {
+  it("uses a composite cursor and merges disjoint shop scopes deterministically", async () => {
+    const firstCursor = {
+      lastSeenAt: "2026-09-01T00:00:00.000Z",
+      id: notificationId(2),
+    };
     const { client, queries } = createQueryClient([
-      { data: [row("0003"), row("0001")], error: null, count: 2 },
-      { data: [row("0002"), row("0000")], error: null, count: 2 },
+      {
+        data: [row(notificationId(3)), row(notificationId(1))],
+        error: null,
+        count: 2,
+      },
+      {
+        data: [row(notificationId(2)), row(notificationId(0))],
+        error: null,
+        count: 2,
+      },
     ]);
 
     const page = await readAssistantNotificationPage({
@@ -87,12 +112,19 @@ describe("assistant notification page reader", () => {
       ],
       source: "fleet",
       statuses: ["active", "acknowledged"],
-      offset: 1,
+      cursor: null,
       pageSize: 2,
     });
 
-    expect(page.rows.map((item) => item.id)).toEqual(["0002", "0001"]);
-    expect(page).toMatchObject({ total: 4, nextOffset: 3, available: true });
+    expect(page.rows.map((item) => item.id)).toEqual([
+      notificationId(3),
+      notificationId(2),
+    ]);
+    expect(page).toMatchObject({
+      total: 4,
+      nextCursor: firstCursor,
+      available: true,
+    });
     expect(queries.map((query) => query.orders)).toEqual([
       [
         { column: "last_seen_at", options: { ascending: false } },
@@ -103,10 +135,10 @@ describe("assistant notification page reader", () => {
         { column: "id", options: { ascending: false } },
       ],
     ]);
-    expect(queries.map((query) => query.range)).toEqual([
-      { from: 0, to: 2 },
-      { from: 0, to: 2 },
-    ]);
+    expect(queries[0]?.limit).toBe(3);
+    expect(queries[1]?.limit).toBe(3);
+    expect(queries[0]?.selectOptions).toEqual({ count: "exact" });
+    expect(queries[1]?.selectOptions).toEqual({ count: "exact" });
     expect(queries[0]?.filters).toContainEqual({
       method: "in",
       column: "metadata->>fleet_id",
@@ -116,6 +148,39 @@ describe("assistant notification page reader", () => {
       method: "in",
       column: "metadata->>fleet_id",
       value: ["fleet-b"],
+    });
+
+    const next = createQueryClient([
+      { data: [row(notificationId(1))], error: null, count: null },
+      { data: [row(notificationId(0))], error: null, count: null },
+    ]);
+    const nextPage = await readAssistantNotificationPage({
+      supabase: next.client as never,
+      scopes: [
+        { shopId: "shop-a", fleetIds: ["fleet-a"] },
+        { shopId: "shop-b", fleetIds: ["fleet-b"] },
+      ],
+      source: "fleet",
+      statuses: ["active", "acknowledged"],
+      cursor: firstCursor,
+      pageSize: 2,
+    });
+
+    expect(nextPage.rows.map((item) => item.id)).toEqual([
+      notificationId(1),
+      notificationId(0),
+    ]);
+    expect(nextPage.total).toBeNull();
+    expect(nextPage.nextCursor).toBeNull();
+    expect(next.queries[0]?.filters).toContainEqual({
+      method: "or",
+      column: "",
+      value: `last_seen_at.lt.${firstCursor.lastSeenAt},and(last_seen_at.eq.${firstCursor.lastSeenAt},id.lt.${firstCursor.id})`,
+    });
+    expect(next.queries[1]?.filters).toContainEqual({
+      method: "or",
+      column: "",
+      value: `last_seen_at.lt.${firstCursor.lastSeenAt},and(last_seen_at.eq.${firstCursor.lastSeenAt},id.lt.${firstCursor.id})`,
     });
   });
 
@@ -137,27 +202,27 @@ describe("assistant notification page reader", () => {
         scopes: [{ shopId: "shop-a", fleetIds: ["fleet-a"] }],
         source: "fleet",
         statuses: ["active"],
-        offset: 0,
+        cursor: null,
         pageSize: 50,
       }),
     ).resolves.toEqual({
       available: false,
       rows: [],
       total: 0,
-      nextOffset: null,
+      nextCursor: null,
     });
   });
 
-  it("continues in bounded queries beyond the PostgREST row cap", async () => {
-    const firstChunk = Array.from({ length: 1000 }, (_, index) =>
-      row(String(2000 - index).padStart(4, "0")),
-    );
-    const secondChunk = Array.from({ length: 50 }, (_, index) =>
-      row(String(1000 - index).padStart(4, "0")),
+  it("keeps deep continuation work bounded to one page query per scope", async () => {
+    const cursor = {
+      lastSeenAt: "2026-09-01T00:00:00.000Z",
+      id: notificationId(2000),
+    };
+    const rows = Array.from({ length: 51 }, (_, index) =>
+      row(notificationId(1000 - index)),
     );
     const { client, queries } = createQueryClient([
-      { data: firstChunk, error: null, count: 1051 },
-      { data: secondChunk, error: null, count: 1051 },
+      { data: rows, error: null, count: null },
     ]);
 
     const page = await readAssistantNotificationPage({
@@ -165,15 +230,24 @@ describe("assistant notification page reader", () => {
       scopes: [{ shopId: "shop-a", fleetIds: ["fleet-a"] }],
       source: "fleet",
       statuses: ["active"],
-      offset: 1000,
+      cursor,
       pageSize: 50,
     });
 
-    expect(queries.map((query) => query.range)).toEqual([
-      { from: 0, to: 999 },
-      { from: 1000, to: 1049 },
-    ]);
+    expect(queries).toHaveLength(1);
+    expect(queries[0]?.limit).toBe(51);
+    expect(queries[0]?.filters).toContainEqual({
+      method: "or",
+      column: "",
+      value: `last_seen_at.lt.${cursor.lastSeenAt},and(last_seen_at.eq.${cursor.lastSeenAt},id.lt.${cursor.id})`,
+    });
     expect(page.rows).toHaveLength(50);
-    expect(page).toMatchObject({ total: 1051, nextOffset: 1050 });
+    expect(page).toMatchObject({
+      total: null,
+      nextCursor: {
+        lastSeenAt: "2026-09-01T00:00:00.000Z",
+        id: notificationId(951),
+      },
+    });
   });
 });

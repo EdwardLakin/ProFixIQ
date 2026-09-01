@@ -59,11 +59,16 @@ export type AssistantNotificationPageRow = {
   last_seen_at: string;
 };
 
+export type AssistantNotificationPageCursor = {
+  lastSeenAt: string;
+  id: string;
+};
+
 export type AssistantNotificationPageResult = {
   available: boolean;
   rows: AssistantNotificationPageRow[];
-  total: number;
-  nextOffset: number | null;
+  total: number | null;
+  nextCursor: AssistantNotificationPageCursor | null;
 };
 
 const LEGACY_NOTIFICATION_STATUS_ALIASES: Record<string, AssistantNotificationStatus> = {
@@ -90,7 +95,6 @@ const PARTS_PICK_TERMINAL_ITEM_STATUSES = new Set([
 
 const PARTS_PICK_REQUEST_PAGE_SIZE = 200;
 const PARTS_PICK_ITEM_PAGE_SIZE = 1000;
-const ASSISTANT_NOTIFICATION_QUERY_PAGE_SIZE = 1000;
 
 function normalizeAssistantNotificationStatus(
   value: unknown,
@@ -167,58 +171,39 @@ export async function readAssistantNotificationPage(params: {
   scopes: AssistantNotificationReadScope[];
   source: string;
   statuses: Array<"active" | "acknowledged" | "resolved">;
-  offset: number;
+  cursor: AssistantNotificationPageCursor | null;
   pageSize: number;
 }): Promise<AssistantNotificationPageResult> {
   const scopes = normalizedAssistantNotificationReadScopes(params.scopes);
   if (scopes.length === 0) {
-    return { available: true, rows: [], total: 0, nextOffset: null };
+    return { available: true, rows: [], total: 0, nextCursor: null };
   }
 
-  const rangeEnd = params.offset + params.pageSize - 1;
   const results = await Promise.all(
     scopes.map(async (scope) => {
-      const rows: AssistantNotificationPageRow[] = [];
-      let total: number | null = null;
-
-      for (
-        let rangeStart = 0;
-        rangeStart <= rangeEnd;
-        rangeStart += ASSISTANT_NOTIFICATION_QUERY_PAGE_SIZE
-      ) {
-        const boundedRangeEnd = Math.min(
-          rangeStart + ASSISTANT_NOTIFICATION_QUERY_PAGE_SIZE - 1,
-          rangeEnd,
-        );
-        let query = params.supabase
-          .from("assistant_notifications")
-          .select(
-            "id, level, code, title, message, href, entity_type, entity_id, status, metadata, last_seen_at",
-            { count: "exact" },
-          )
-          .eq("shop_id", scope.shopId)
-          .eq("source", params.source)
-          .in("status", params.statuses)
-          .order("last_seen_at", { ascending: false })
-          .order("id", { ascending: false })
-          .range(rangeStart, boundedRangeEnd);
-
-        if (scope.fleetIds !== null) {
-          query = query.in("metadata->>fleet_id", scope.fleetIds);
-        }
-
-        const result = await query;
-        if (result.error) {
-          return { data: null, error: result.error, count: result.count };
-        }
-
-        const pageRows = (result.data ?? []) as AssistantNotificationPageRow[];
-        rows.push(...pageRows);
-        total ??= result.count ?? pageRows.length;
-        if (pageRows.length < boundedRangeEnd - rangeStart + 1) break;
+      let pageQuery = params.supabase
+        .from("assistant_notifications")
+        .select(
+          "id, level, code, title, message, href, entity_type, entity_id, status, metadata, last_seen_at",
+          params.cursor ? undefined : { count: "exact" },
+        )
+        .eq("shop_id", scope.shopId)
+        .eq("source", params.source)
+        .in("status", params.statuses)
+        .order("last_seen_at", { ascending: false })
+        .order("id", { ascending: false })
+        .limit(params.pageSize + 1);
+      if (scope.fleetIds !== null) {
+        pageQuery = pageQuery.in("metadata->>fleet_id", scope.fleetIds);
       }
 
-      return { data: rows, error: null, count: total };
+      if (params.cursor) {
+        pageQuery = pageQuery.or(
+          `last_seen_at.lt.${params.cursor.lastSeenAt},and(last_seen_at.eq.${params.cursor.lastSeenAt},id.lt.${params.cursor.id})`,
+        );
+      }
+
+      return await pageQuery;
     }),
   );
 
@@ -226,30 +211,34 @@ export async function readAssistantNotificationPage(params: {
     isMissingAssistantNotificationsError(error),
   );
   if (missingRelation) {
-    return { available: false, rows: [], total: 0, nextOffset: null };
+    return { available: false, rows: [], total: 0, nextCursor: null };
   }
 
   const failed = results.find(({ error }) => error);
   if (failed?.error) throw new Error(failed.error.message);
 
   const rowsById = new Map<string, AssistantNotificationPageRow>();
-  let total = 0;
+  let total: number | null = params.cursor ? null : 0;
   for (const result of results) {
     const rows = (result.data ?? []) as AssistantNotificationPageRow[];
-    total += result.count ?? rows.length;
+    if (total !== null) total += result.count ?? rows.length;
     for (const row of rows) rowsById.set(row.id, row);
   }
 
-  const rows = Array.from(rowsById.values())
-    .sort(compareAssistantNotificationRows)
-    .slice(params.offset, params.offset + params.pageSize);
-  const consumed = params.offset + rows.length;
+  const candidates = Array.from(rowsById.values()).sort(
+    compareAssistantNotificationRows,
+  );
+  const rows = candidates.slice(0, params.pageSize);
+  const lastRow = rows.at(-1) ?? null;
 
   return {
     available: true,
     rows,
     total,
-    nextOffset: consumed < total ? consumed : null,
+    nextCursor:
+      candidates.length > params.pageSize && lastRow
+        ? { lastSeenAt: lastRow.last_seen_at, id: lastRow.id }
+        : null,
   };
 }
 

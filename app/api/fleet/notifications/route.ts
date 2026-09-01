@@ -12,6 +12,7 @@ import {
 } from "@/features/fleet/lib/resolveFleetActorContext";
 import {
   readAssistantNotificationPage,
+  type AssistantNotificationPageCursor,
   type AssistantNotificationReadScope,
 } from "@/features/agent/server/syncAssistantNotifications";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
@@ -22,7 +23,13 @@ const INTERNAL_FLEET_ALERT_ROLES = new Set(["owner", "admin", "manager"]);
 
 const BodySchema = z.object({
   fleetId: z.string().uuid().nullable().optional(),
-  offset: z.number().int().min(0).max(100000).optional(),
+  cursor: z
+    .object({
+      lastSeenAt: z.string().datetime(),
+      id: z.string().uuid(),
+    })
+    .nullable()
+    .optional(),
 });
 
 export type FleetNotification = {
@@ -39,10 +46,12 @@ export type FleetNotification = {
   status: "active" | "acknowledged" | "resolved";
 };
 
+export type FleetNotificationCursor = AssistantNotificationPageCursor;
+
 export type FleetNotificationPage = {
   notifications: FleetNotification[];
-  total: number;
-  nextOffset: number | null;
+  total: number | null;
+  nextCursor: FleetNotificationCursor | null;
 };
 
 type NotificationRow = {
@@ -107,7 +116,7 @@ function fleetNotificationReadScopes(
 }
 
 function emptyPage(): FleetNotificationPage {
-  return { notifications: [], total: 0, nextOffset: null };
+  return { notifications: [], total: 0, nextCursor: null };
 }
 
 function metadataFleetId(row: NotificationRow): string | undefined {
@@ -150,7 +159,6 @@ export async function POST(req: Request) {
     return NextResponse.json(emptyPage());
   }
 
-  const offset = parsed.data.offset ?? 0;
   let page;
   try {
     page = await readAssistantNotificationPage({
@@ -158,7 +166,7 @@ export async function POST(req: Request) {
       scopes,
       source: "fleet",
       statuses: ["active", "acknowledged"],
-      offset,
+      cursor: parsed.data.cursor ?? null,
       pageSize: PAGE_SIZE,
     });
   } catch (error) {
@@ -193,6 +201,6 @@ export async function POST(req: Request) {
       status: row.status,
     })) satisfies FleetNotification[],
     total: page.total,
-    nextOffset: page.nextOffset,
+    nextCursor: page.nextCursor,
   } satisfies FleetNotificationPage);
 }

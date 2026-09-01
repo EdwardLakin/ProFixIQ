@@ -6,8 +6,8 @@ const state = vi.hoisted(() => ({
   page: {
     available: true,
     rows: [] as Array<Record<string, unknown>>,
-    total: 0,
-    nextOffset: null as number | null,
+    total: 0 as number | null,
+    nextCursor: null as { lastSeenAt: string; id: string } | null,
   },
 }));
 
@@ -88,7 +88,7 @@ describe("Fleet alert feed scope", () => {
       available: true,
       rows: [],
       total: 0,
-      nextOffset: null,
+      nextCursor: null,
     };
     state.actor = externalManager([FLEET_A]);
   });
@@ -174,7 +174,7 @@ describe("Fleet alert feed scope", () => {
     expect(await response.json()).toEqual({
       notifications: [],
       total: 0,
-      nextOffset: null,
+      nextCursor: null,
     });
     expect(state.reads).toEqual([]);
   });
@@ -206,7 +206,7 @@ describe("Fleet alert feed scope", () => {
     state.page = {
       available: true,
       total: 1,
-      nextOffset: null,
+      nextCursor: null,
       rows: [
         {
           id: "n1",
@@ -267,11 +267,15 @@ describe("Fleet alert feed scope", () => {
     ]);
   });
 
-  it("paginates instead of silently dropping alerts after the first 50", async () => {
+  it("continues from the last stable notification cursor", async () => {
+    const cursor = {
+      lastSeenAt: "2026-08-30T00:00:00.000Z",
+      id: "00000000-0000-4000-8000-000000000050",
+    };
     state.page = {
       available: true,
-      total: 53,
-      nextOffset: null,
+      total: null,
+      nextCursor: null,
       rows: Array.from({ length: 3 }, (_, index) => ({
         id: `n-${index + 51}`,
         level: "warning",
@@ -287,15 +291,15 @@ describe("Fleet alert feed scope", () => {
       })),
     };
 
-    const body = (await (await POST(request({ offset: 50 }))).json()) as {
+    const body = (await (await POST(request({ cursor }))).json()) as {
       notifications: unknown[];
-      total: number;
-      nextOffset: number | null;
+      total: number | null;
+      nextCursor: { lastSeenAt: string; id: string } | null;
     };
 
-    expect(state.reads[0]).toMatchObject({ offset: 50, pageSize: 50 });
+    expect(state.reads[0]).toMatchObject({ cursor, pageSize: 50 });
     expect(body.notifications).toHaveLength(3);
-    expect(body.total).toBe(53);
-    expect(body.nextOffset).toBeNull();
+    expect(body.total).toBeNull();
+    expect(body.nextCursor).toBeNull();
   });
 });
