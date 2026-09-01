@@ -284,11 +284,11 @@ export default function FleetUnitsPage({
                 </Link>
               ) : uiContext.capabilities.canViewUnitMaintenanceRecord ? (
                 <Link
-                  href={
+                  href={`${
                     productRoutes
                       ? `/assets/${encodeURIComponent(unit.id)}`
                       : `${routePrefix}/units/${encodeURIComponent(unit.id)}`
-                  }
+                  }?fleetId=${encodeURIComponent(unit.fleetId)}`}
                   className="text-xs font-semibold text-sky-300"
                 >
                   Open unit →
