@@ -90,6 +90,7 @@ const PARTS_PICK_TERMINAL_ITEM_STATUSES = new Set([
 
 const PARTS_PICK_REQUEST_PAGE_SIZE = 200;
 const PARTS_PICK_ITEM_PAGE_SIZE = 1000;
+const ASSISTANT_NOTIFICATION_QUERY_PAGE_SIZE = 1000;
 
 function normalizeAssistantNotificationStatus(
   value: unknown,
@@ -177,24 +178,47 @@ export async function readAssistantNotificationPage(params: {
   const rangeEnd = params.offset + params.pageSize - 1;
   const results = await Promise.all(
     scopes.map(async (scope) => {
-      let query = params.supabase
-        .from("assistant_notifications")
-        .select(
-          "id, level, code, title, message, href, entity_type, entity_id, status, metadata, last_seen_at",
-          { count: "exact" },
-        )
-        .eq("shop_id", scope.shopId)
-        .eq("source", params.source)
-        .in("status", params.statuses)
-        .order("last_seen_at", { ascending: false })
-        .order("id", { ascending: false })
-        .range(0, rangeEnd);
+      const rows: AssistantNotificationPageRow[] = [];
+      let total: number | null = null;
 
-      if (scope.fleetIds !== null) {
-        query = query.in("metadata->>fleet_id", scope.fleetIds);
+      for (
+        let rangeStart = 0;
+        rangeStart <= rangeEnd;
+        rangeStart += ASSISTANT_NOTIFICATION_QUERY_PAGE_SIZE
+      ) {
+        const boundedRangeEnd = Math.min(
+          rangeStart + ASSISTANT_NOTIFICATION_QUERY_PAGE_SIZE - 1,
+          rangeEnd,
+        );
+        let query = params.supabase
+          .from("assistant_notifications")
+          .select(
+            "id, level, code, title, message, href, entity_type, entity_id, status, metadata, last_seen_at",
+            { count: "exact" },
+          )
+          .eq("shop_id", scope.shopId)
+          .eq("source", params.source)
+          .in("status", params.statuses)
+          .order("last_seen_at", { ascending: false })
+          .order("id", { ascending: false })
+          .range(rangeStart, boundedRangeEnd);
+
+        if (scope.fleetIds !== null) {
+          query = query.in("metadata->>fleet_id", scope.fleetIds);
+        }
+
+        const result = await query;
+        if (result.error) {
+          return { data: null, error: result.error, count: result.count };
+        }
+
+        const pageRows = (result.data ?? []) as AssistantNotificationPageRow[];
+        rows.push(...pageRows);
+        total ??= result.count ?? pageRows.length;
+        if (pageRows.length < boundedRangeEnd - rangeStart + 1) break;
       }
 
-      return await query;
+      return { data: rows, error: null, count: total };
     }),
   );
 

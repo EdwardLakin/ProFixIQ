@@ -147,4 +147,33 @@ describe("assistant notification page reader", () => {
       nextOffset: null,
     });
   });
+
+  it("continues in bounded queries beyond the PostgREST row cap", async () => {
+    const firstChunk = Array.from({ length: 1000 }, (_, index) =>
+      row(String(2000 - index).padStart(4, "0")),
+    );
+    const secondChunk = Array.from({ length: 50 }, (_, index) =>
+      row(String(1000 - index).padStart(4, "0")),
+    );
+    const { client, queries } = createQueryClient([
+      { data: firstChunk, error: null, count: 1051 },
+      { data: secondChunk, error: null, count: 1051 },
+    ]);
+
+    const page = await readAssistantNotificationPage({
+      supabase: client as never,
+      scopes: [{ shopId: "shop-a", fleetIds: ["fleet-a"] }],
+      source: "fleet",
+      statuses: ["active"],
+      offset: 1000,
+      pageSize: 50,
+    });
+
+    expect(queries.map((query) => query.range)).toEqual([
+      { from: 0, to: 999 },
+      { from: 1000, to: 1049 },
+    ]);
+    expect(page.rows).toHaveLength(50);
+    expect(page).toMatchObject({ total: 1051, nextOffset: 1050 });
+  });
 });

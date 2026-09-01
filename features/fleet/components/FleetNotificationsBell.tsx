@@ -112,6 +112,12 @@ export default function FleetNotificationsBell({
     () => items.filter((item) => item.level === "critical").length,
     [items],
   );
+  const badgeTone =
+    criticalCount > 0
+      ? "bg-red-400"
+      : nextOffset === null
+        ? "bg-amber-300"
+        : "bg-slate-300";
 
   if (loaded && !failed && total === 0) return null;
 
@@ -137,7 +143,7 @@ export default function FleetNotificationsBell({
           <span
             className={cn(
               "absolute -right-1 -top-1 min-w-5 rounded-full px-1.5 py-0.5 text-[10px] font-bold text-slate-950",
-              criticalCount > 0 ? "bg-red-400" : "bg-amber-300",
+              badgeTone,
             )}
           >
             {visibleCount > 99 ? "99+" : visibleCount}
