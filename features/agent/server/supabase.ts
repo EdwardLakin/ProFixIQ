@@ -11,6 +11,30 @@ export function getAssistantNotificationWriter() {
   return createAdminSupabase();
 }
 
+export async function markAssistantNotificationTrustedWriterRollout(
+  writer = getAssistantNotificationWriter(),
+) {
+  if (process.env.VERCEL_ENV !== "production") return;
+
+  const deploymentSha = process.env.VERCEL_GIT_COMMIT_SHA?.trim();
+  if (!deploymentSha) return;
+
+  const { error } = await writer.rpc(
+    "mark_assistant_notification_trusted_writer_rollout",
+    {
+      p_deployment_sha: deploymentSha,
+      p_deployment_id: process.env.VERCEL_DEPLOYMENT_ID?.trim() || undefined,
+    },
+  );
+
+  if (error) {
+    console.warn(
+      "Unable to record assistant notification trusted-writer rollout",
+      error,
+    );
+  }
+}
+
 export async function getUserAndShopId() {
   const supabase = getServerSupabase();
   const {

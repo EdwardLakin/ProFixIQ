@@ -61,6 +61,98 @@ create table if not exists public.assistant_notifications (
 alter table public.assistant_notifications
   alter column entity_id type text using entity_id::text;
 
+-- The deployed application records the first production observation of its
+-- trusted notification writer. Rollout compatibility closes automatically only
+-- after one immutable deployment has served traffic for a drain interval.
+create table if not exists public.assistant_notification_rollout_markers (
+  contract text primary key,
+  deployment_sha text not null,
+  deployment_id text,
+  first_observed_at timestamptz not null default now(),
+  last_observed_at timestamptz not null default now(),
+  constraint assistant_notification_rollout_marker_contract_chk
+    check (coalesce(trim(contract), '') <> ''),
+  constraint assistant_notification_rollout_marker_sha_chk
+    check (coalesce(trim(deployment_sha), '') <> '')
+);
+
+alter table public.assistant_notification_rollout_markers
+  enable row level security;
+revoke all on table public.assistant_notification_rollout_markers
+  from anon, authenticated;
+grant all on table public.assistant_notification_rollout_markers
+  to service_role;
+
+create or replace function public.mark_assistant_notification_trusted_writer_rollout(
+  p_deployment_sha text,
+  p_deployment_id text default null
+) returns void
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $function$
+begin
+  if coalesce(trim(p_deployment_sha), '') = '' then
+    raise exception 'A deployment SHA is required for the trusted-writer marker.';
+  end if;
+
+  insert into public.assistant_notification_rollout_markers (
+    contract,
+    deployment_sha,
+    deployment_id,
+    first_observed_at,
+    last_observed_at
+  ) values (
+    'assistant_notifications_trusted_writer_v1',
+    trim(p_deployment_sha),
+    nullif(trim(p_deployment_id), ''),
+    now(),
+    now()
+  )
+  on conflict (contract) do update
+  set deployment_sha = excluded.deployment_sha,
+      deployment_id = excluded.deployment_id,
+      first_observed_at = case
+        when public.assistant_notification_rollout_markers.deployment_sha =
+          excluded.deployment_sha
+          then public.assistant_notification_rollout_markers.first_observed_at
+        else excluded.first_observed_at
+      end,
+      last_observed_at = excluded.last_observed_at;
+end;
+$function$;
+
+revoke all on function
+  public.mark_assistant_notification_trusted_writer_rollout(text, text)
+  from public, anon, authenticated;
+grant execute on function
+  public.mark_assistant_notification_trusted_writer_rollout(text, text)
+  to service_role;
+
+create or replace function
+  public.assistant_notification_trusted_writer_rollout_complete()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $function$
+  select exists (
+    select 1
+    from public.assistant_notification_rollout_markers
+    where contract = 'assistant_notifications_trusted_writer_v1'
+      and first_observed_at <= now() - interval '10 minutes'
+      and last_observed_at >= first_observed_at
+  );
+$function$;
+
+revoke all on function
+  public.assistant_notification_trusted_writer_rollout_complete()
+  from public, anon;
+grant execute on function
+  public.assistant_notification_trusted_writer_rollout_complete()
+  to authenticated, service_role;
+
 -- Parts notification functions were compiled while production still exposed a
 -- UUID entity_id. Recreate the three surviving table-backed definitions with
 -- explicit text comparisons so both clean replay and the forward production
@@ -246,6 +338,9 @@ for insert
 to authenticated
 with check (
   shop_id = (select public.current_shop_id())
+  and not (
+    select public.assistant_notification_trusted_writer_rollout_complete()
+  )
   and source in ('ops', 'ops_user')
   and (
     user_id = (select public.profixiq_workforce_profile_id())
@@ -264,6 +359,9 @@ for update
 to authenticated
 using (
   shop_id = (select public.current_shop_id())
+  and not (
+    select public.assistant_notification_trusted_writer_rollout_complete()
+  )
   and source in ('ops', 'ops_user')
   and (
     user_id = (select public.profixiq_workforce_profile_id())
@@ -272,6 +370,9 @@ using (
 )
 with check (
   shop_id = (select public.current_shop_id())
+  and not (
+    select public.assistant_notification_trusted_writer_rollout_complete()
+  )
   and source in ('ops', 'ops_user')
   and (
     user_id = (select public.profixiq_workforce_profile_id())

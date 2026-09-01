@@ -36,9 +36,7 @@ describe("assistant notification shared persistence contract", () => {
     expect(migration).toContain("public.current_shop_id()");
     expect(migration).toContain("public.profixiq_workforce_profile_id()");
     expect(migration).toContain("public.profixiq_current_role()");
-    expect(migration).toContain(
-      "public.canonical_shop_membership_role(role)",
-    );
+    expect(migration).toContain("public.canonical_shop_membership_role(role)");
     expect(migration).toContain("source = 'ops'");
     expect(migration).not.toContain(
       "create policy assistant_notifications_select_same_shop",
@@ -57,12 +55,28 @@ describe("assistant notification shared persistence contract", () => {
     );
     expect(migration).toContain("source in ('ops', 'ops_user')");
     expect(migration).toContain(
+      "assistant_notification_trusted_writer_rollout_complete()",
+    );
+    expect(migration).toContain("interval '10 minutes'");
+    expect(migration).toContain(
       "grant select, insert, update on table public.assistant_notifications",
     );
     expect(migration).not.toMatch(/grant (?:all|delete)[^;]*authenticated/);
     expect(migration).toContain("status = 'acknowledged'");
     expect(migration).toContain(
       "acknowledged_by = (select public.profixiq_workforce_profile_id())",
+    );
+  });
+
+  it("records an immutable production deployment before closing compatibility", () => {
+    expect(migration).toContain(
+      "create table if not exists public.assistant_notification_rollout_markers",
+    );
+    expect(migration).toContain(
+      "mark_assistant_notification_trusted_writer_rollout",
+    );
+    expect(syncSource).toContain(
+      "markAssistantNotificationTrustedWriterRollout(notificationWriter)",
     );
   });
 

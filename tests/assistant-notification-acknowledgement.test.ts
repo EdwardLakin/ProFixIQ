@@ -4,15 +4,21 @@ const {
   getAssistantNotificationWriterMock,
   getServerSupabaseMock,
   getOpsNotificationsMock,
+  markAssistantNotificationTrustedWriterRolloutMock,
 } = vi.hoisted(() => ({
   getAssistantNotificationWriterMock: vi.fn(),
   getServerSupabaseMock: vi.fn(),
   getOpsNotificationsMock: vi.fn(),
+  markAssistantNotificationTrustedWriterRolloutMock: vi
+    .fn()
+    .mockResolvedValue(undefined),
 }));
 
 vi.mock("@/features/agent/server/supabase", () => ({
   getAssistantNotificationWriter: getAssistantNotificationWriterMock,
   getServerSupabase: getServerSupabaseMock,
+  markAssistantNotificationTrustedWriterRollout:
+    markAssistantNotificationTrustedWriterRolloutMock,
 }));
 
 vi.mock("@/features/agent/server/getOpsNotifications", () => ({

@@ -1,7 +1,11 @@
 
 import { canonicalizeRole } from "@/features/shared/lib/rbac";
 import { resolveTechnicianAssignmentContract } from "@/features/work-orders/lib/technicianAssignmentContract";
-import { getAssistantNotificationWriter, getServerSupabase } from "./supabase";
+import {
+  getAssistantNotificationWriter,
+  getServerSupabase,
+  markAssistantNotificationTrustedWriterRollout,
+} from "./supabase";
 import { getOpsNotifications, type OpsNotification } from "./getOpsNotifications";
 
 export type PersistedAssistantNotification = {
@@ -393,6 +397,7 @@ export async function syncAssistantNotifications(params: {
   const { shopId, userId = null, role = null } = params;
   const supabase = getServerSupabase();
   const notificationWriter = getAssistantNotificationWriter();
+  await markAssistantNotificationTrustedWriterRollout(notificationWriter);
   const now = new Date().toISOString();
 
   const userScoped = !!userId && isUserScopedRole(role);
