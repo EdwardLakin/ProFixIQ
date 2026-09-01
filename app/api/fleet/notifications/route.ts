@@ -25,7 +25,7 @@ const BodySchema = z.object({
   fleetId: z.string().uuid().nullable().optional(),
   cursor: z
     .object({
-      lastSeenAt: z.string().datetime(),
+      lastSeenAt: z.string().datetime({ offset: true }),
       id: z.string().uuid(),
     })
     .nullable()

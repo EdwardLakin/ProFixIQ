@@ -24,6 +24,7 @@ export type FleetUnitListItem = {
   openRequestCount: number;
 };
 
+type Body = { fleetId?: unknown };
 type Row = Record<string, unknown>;
 
 function rows(value: unknown): Row[] {
@@ -52,11 +53,16 @@ function status(requests: Row[], defects: Row[]): FleetUnitListItem["status"] {
   return active.length || defects.length ? "limited" : "in_service";
 }
 
-export async function POST(_request: Request) {
+export async function POST(request: Request) {
   try {
     const supabase = createServerSupabaseRoute();
-    const actor = await resolveFleetActorContext(supabase);
+    const body = (await request.json().catch(() => ({}))) as Body;
+    const requestedFleetId = clean(body.fleetId);
+    const actor = await resolveFleetActorContext(supabase, {
+      requestedFleetId,
+    });
     const scope = resolveFleetActorScope(actor, {
+      explicitFleetId: requestedFleetId,
       preferMembershipFleet: !actor.isInternal,
     });
     if (!actor.userId) {

@@ -47,7 +47,7 @@ function actorClient() {
 }
 
 describe("selected Fleet membership scope", () => {
-  it("uses the selected membership's trusted shop instead of the profile shop", async () => {
+  it("keeps the actor contract stable and scopes an explicit Fleet to its trusted shop", async () => {
     const actor = await resolveFleetActorContext(actorClient() as never, {
       userId: USER_ID,
       requestedFleetId: FLEET_B,
@@ -56,7 +56,7 @@ describe("selected Fleet membership scope", () => {
     expect(actor).toMatchObject({
       actorType: "fleet_manager",
       profileShopId: SHOP_A,
-      shopId: SHOP_B,
+      shopId: SHOP_A,
       primaryFleetId: FLEET_B,
       membershipRole: "manager",
     });
@@ -73,5 +73,20 @@ describe("selected Fleet membership scope", () => {
         explicitShopId: SHOP_A,
       }),
     ).toBeNull();
+
+    const unrequestedActor = await resolveFleetActorContext(
+      actorClient() as never,
+      { userId: USER_ID },
+    );
+    expect(unrequestedActor).toMatchObject({
+      shopId: SHOP_A,
+      primaryFleetId: FLEET_A,
+      membershipRole: "viewer",
+    });
+    expect(resolveFleetActorScope(unrequestedActor)).toEqual({
+      shopId: SHOP_A,
+      fleetId: FLEET_A,
+      fleetIds: [FLEET_A, FLEET_B],
+    });
   });
 });

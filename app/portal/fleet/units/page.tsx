@@ -7,11 +7,14 @@ type Props = { searchParams: Promise<{ fleetId?: string }> };
 export default async function PortalFleetUnitsPage({ searchParams }: Props) {
   const { fleetId } = await searchParams;
   const actor = await getFleetPortalActorContext(fleetId ?? null);
+  const selectedFleetId =
+    fleetId && fleetId === actor.primaryFleetId ? fleetId : null;
 
   return (
     <FleetUnitsPage
       uiContext={getFleetUiContext(actor)}
       routePrefix="/portal/fleet"
+      fleetId={selectedFleetId}
     />
   );
 }

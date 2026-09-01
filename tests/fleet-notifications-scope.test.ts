@@ -269,7 +269,7 @@ describe("Fleet alert feed scope", () => {
 
   it("continues from the last stable notification cursor", async () => {
     const cursor = {
-      lastSeenAt: "2026-08-30T00:00:00.000Z",
+      lastSeenAt: "2026-08-30T00:00:00+00:00",
       id: "00000000-0000-4000-8000-000000000050",
     };
     state.page = {

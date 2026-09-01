@@ -211,9 +211,7 @@ export async function resolveFleetActorContext(
     canonicalRole,
     profileRole,
     profileShopId: typedProfile?.shop_id ?? null,
-    shopId: isInternal
-      ? (typedProfile?.shop_id ?? membershipShopId ?? null)
-      : (membershipShopId ?? typedProfile?.shop_id ?? null),
+    shopId: typedProfile?.shop_id ?? membershipShopId ?? null,
     fleetIds: membershipFleetIds,
     fleetMemberships: entitledMemberships.map((membership) => ({
       fleetId: membership.fleet_id,
@@ -355,34 +353,31 @@ export function resolveFleetActorScope(
     };
   }
 
-  const explicitMembership = explicitFleetId
-    ? (actor.fleetMemberships.find(
-        (membership) => membership.fleetId === explicitFleetId,
-      ) ?? null)
-    : null;
-  if (explicitFleetId && !explicitMembership) return null;
+  if (!explicitFleetId) {
+    if (explicitShopId && explicitShopId !== actor.shopId) return null;
+    if (actor.fleetIds.length === 0) return null;
+
+    return {
+      shopId: actor.shopId,
+      fleetId: actor.fleetIds[0] ?? null,
+      fleetIds: actor.fleetIds,
+    };
+  }
+
+  const explicitMembership =
+    actor.fleetMemberships.find(
+      (membership) => membership.fleetId === explicitFleetId,
+    ) ?? null;
+  if (!explicitMembership) return null;
 
   const scopedShopId = explicitMembership?.shopId ?? actor.shopId;
   if (!scopedShopId || (explicitShopId && explicitShopId !== scopedShopId)) {
     return null;
   }
 
-  const scopedFleetIds = explicitFleetId
-    ? [explicitFleetId]
-    : uniqueStrings(
-        actor.fleetMemberships
-          .filter(
-            (membership) =>
-              !membership.shopId || membership.shopId === scopedShopId,
-          )
-          .map((membership) => membership.fleetId),
-      );
-
-  if (!scopedFleetIds || scopedFleetIds.length === 0) return null;
-
   return {
     shopId: scopedShopId,
-    fleetId: scopedFleetIds[0] ?? null,
-    fleetIds: scopedFleetIds,
+    fleetId: explicitFleetId,
+    fleetIds: [explicitFleetId],
   };
 }
