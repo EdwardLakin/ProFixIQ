@@ -59,7 +59,7 @@ function roleLabel(role: string): string {
 
 export default async function FleetSettingsPage({ searchParams }: PageProps) {
   const params = await searchParams;
-  const actor = await getFleetPortalActorContext();
+  const actor = await getFleetPortalActorContext(params.fleetId ?? null);
   if (!actor.shopId) redirect("/portal/fleet");
 
   const manageableFleetIds = actor.fleetIds.filter((fleetId) =>

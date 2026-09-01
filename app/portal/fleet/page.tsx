@@ -3,11 +3,6 @@ import FleetDefectQueue from "@/features/fleet/components/FleetDefectQueue";
 import FleetDispatcherDashboard from "@/features/fleet/components/FleetDispatcherDashboard";
 import FleetDriverDashboard from "@/features/fleet/components/FleetDriverDashboard";
 import { getFleetUiContext } from "@/features/fleet/lib/fleetUiCapabilities";
-import {
-  resolveFleetActorContext,
-  type FleetActorContext,
-} from "@/features/fleet/lib/resolveFleetActorContext";
-import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
 import { getFleetPortalActorContext } from "./_lib/requireFleetPortalActor";
 
 type PortalFleetPageProps = {
@@ -17,20 +12,8 @@ type PortalFleetPageProps = {
 export default async function PortalFleetPage({
   searchParams,
 }: PortalFleetPageProps) {
-  const initialActor = await getFleetPortalActorContext();
   const { fleetId: requestedFleetId, focus } = await searchParams;
-
-  let actor: FleetActorContext = initialActor;
-  if (
-    requestedFleetId &&
-    requestedFleetId !== initialActor.primaryFleetId &&
-    initialActor.fleetIds.includes(requestedFleetId)
-  ) {
-    actor = await resolveFleetActorContext(createServerSupabaseRSC(), {
-      userId: initialActor.userId,
-      requestedFleetId,
-    });
-  }
+  const actor = await getFleetPortalActorContext(requestedFleetId ?? null);
 
   const uiContext = getFleetUiContext(actor);
   const selectedFleetId = actor.primaryFleetId;
@@ -44,7 +27,9 @@ export default async function PortalFleetPage({
       <main className="mx-auto w-full max-w-7xl px-3 py-4 sm:px-6 sm:py-6">
         <FleetDefectQueue
           fleetId={selectedFleetId}
-          mode={actor.actorType === "fleet_dispatcher" ? "dispatcher" : "manager"}
+          mode={
+            actor.actorType === "fleet_dispatcher" ? "dispatcher" : "manager"
+          }
         />
       </main>
     );

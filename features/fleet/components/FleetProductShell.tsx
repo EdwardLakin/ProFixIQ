@@ -265,8 +265,17 @@ function isPrimaryNavigation(event: ReactMouseEvent<HTMLAnchorElement>) {
   );
 }
 
-function fleetNavigationHref(href: string, productHost: boolean): string {
-  return productHost ? (toFleetPublicPath(href) ?? href) : href;
+function fleetNavigationHref(
+  href: string,
+  productHost: boolean,
+  selectedFleetId?: string | null,
+): string {
+  const destination = productHost ? (toFleetPublicPath(href) ?? href) : href;
+  if (!selectedFleetId) return destination;
+
+  const url = new URL(destination, "https://fleet.profixiq.invalid");
+  url.searchParams.set("fleetId", selectedFleetId);
+  return `${url.pathname}${url.search}${url.hash}`;
 }
 
 function NavItem({
@@ -350,8 +359,19 @@ export default function FleetProductShell({
 }) {
   const pathname = usePathname() ?? "/portal/fleet";
   const searchParams = useSearchParams();
-  const selectedFleetContext =
-    fleetContexts?.[searchParams.get("fleetId") ?? ""];
+  const requestedFleetId = searchParams.get("fleetId");
+  const selectedFleetContext = requestedFleetId
+    ? fleetContexts?.[requestedFleetId]
+    : undefined;
+  const selectedFleetId = selectedFleetContext ? requestedFleetId : null;
+  const suppliedFleetContexts = Object.values(fleetContexts ?? {});
+  const canViewFleetNotifications = suppliedFleetContexts.length
+    ? suppliedFleetContexts.some(
+        (context) =>
+          context.canAccessManagerWorkspaces ||
+          context.experience === "external_dispatcher",
+      )
+    : canAccessManagerWorkspaces || experience === "external_dispatcher";
   const shellSubtitle = selectedFleetContext?.subtitle ?? subtitle;
   const shellActorLabel = selectedFleetContext?.actorLabel ?? actorLabel;
   const shellExperience = selectedFleetContext?.experience ?? experience;
@@ -424,8 +444,10 @@ export default function FleetProductShell({
       groups
         .flatMap((group) => group.items)
         .slice(0, 6)
-        .map((item) => fleetNavigationHref(item.href, productHost)),
-    [groups, productHost],
+        .map((item) =>
+          fleetNavigationHref(item.href, productHost, selectedFleetId),
+        ),
+    [groups, productHost, selectedFleetId],
   );
 
   useEffect(() => {
@@ -528,7 +550,11 @@ export default function FleetProductShell({
             )}
             <div className="space-y-1">
               {group.items.map((item) => {
-                const href = fleetNavigationHref(item.href, productHost);
+                const href = fleetNavigationHref(
+                  item.href,
+                  productHost,
+                  selectedFleetId,
+                );
                 const active = activeItem?.href === item.href;
                 return (
                   <NavItem
@@ -685,9 +711,11 @@ export default function FleetProductShell({
                 <div className="text-xs font-medium">{shellActorLabel}</div>
               </div>
             </div>
-            <FleetNotificationsBell
-              routePrefix={productHost ? "/fleet" : "/portal/fleet"}
-            />
+            {canViewFleetNotifications ? (
+              <FleetNotificationsBell
+                routePrefix={productHost ? "/fleet" : "/portal/fleet"}
+              />
+            ) : null}
             <ThemeToggleButton />
           </div>
         </header>
@@ -714,11 +742,19 @@ export default function FleetProductShell({
             return (
               <Link
                 key={item.href}
-                href={fleetNavigationHref(item.href, productHost)}
+                href={fleetNavigationHref(
+                  item.href,
+                  productHost,
+                  selectedFleetId,
+                )}
                 onClick={(event) => {
                   if (!active && isPrimaryNavigation(event)) {
                     beginNavigation(
-                      fleetNavigationHref(item.href, productHost),
+                      fleetNavigationHref(
+                        item.href,
+                        productHost,
+                        selectedFleetId,
+                      ),
                     );
                   }
                 }}

@@ -17,7 +17,9 @@ import {
  * lookup without carrying role or entitlement state across requests.
  */
 export const getFleetPortalActorContext = cache(
-  async (): Promise<FleetActorContext & { userId: string }> => {
+  async (
+    requestedFleetId: string | null = null,
+  ): Promise<FleetActorContext & { userId: string }> => {
     const supabase = createServerSupabaseRSC();
     const {
       data: { user },
@@ -27,7 +29,10 @@ export const getFleetPortalActorContext = cache(
       redirect("/portal/auth/sign-in?redirect=%2Fportal%2Ffleet");
     }
 
-    const actor = await resolveFleetActorContext(supabase, { userId: user.id });
+    const actor = await resolveFleetActorContext(supabase, {
+      userId: user.id,
+      requestedFleetId,
+    });
     if (!actor.capabilities.canAccessPortalFleetWrappers) {
       redirect("/portal");
     }
@@ -36,14 +41,16 @@ export const getFleetPortalActorContext = cache(
   },
 );
 
-export async function requireFleetPortalActor(): Promise<
+export async function requireFleetPortalActor(
+  requestedFleetId: string | null = null,
+): Promise<
   FleetUiContext & {
     userId: string;
     primaryFleetId: string | null;
     fleetShellContexts: Record<string, FleetShellContext>;
   }
 > {
-  const actor = await getFleetPortalActorContext();
+  const actor = await getFleetPortalActorContext(requestedFleetId);
 
   return {
     ...getFleetUiContext(actor),

@@ -25,8 +25,36 @@ describe("Phase 13 Fleet navigation performance contract", () => {
     expect(actorGuard).toContain("request-scoped");
     expect(actorGuard).toContain("canAccessPortalFleetWrappers");
     expect(layout).toContain("requireFleetPortalActor()");
-    expect(home).toContain("getFleetPortalActorContext()");
-    expect(assets).toContain("getFleetPortalActorContext()");
+    expect(home).toContain(
+      "getFleetPortalActorContext(requestedFleetId ?? null)",
+    );
+    expect(assets).toContain("getFleetPortalActorContext(fleetId ?? null)");
+  });
+
+  it("resolves selected Fleet authority across shell navigation destinations", () => {
+    const destinations = [
+      "app/portal/fleet/units/page.tsx",
+      "app/portal/fleet/drivers/page.tsx",
+      "app/portal/fleet/pretrip-history/page.tsx",
+      "app/portal/fleet/maintenance/page.tsx",
+      "app/portal/fleet/calendar/page.tsx",
+      "app/portal/fleet/inspection-templates/page.tsx",
+      "app/portal/fleet/service-requests/page.tsx",
+      "app/portal/fleet/billing/page.tsx",
+      "app/portal/fleet/reports/page.tsx",
+      "app/portal/fleet/settings/page.tsx",
+      "app/portal/fleet/intake/page.tsx",
+      "app/portal/fleet/pretrip/page.tsx",
+      "app/portal/fleet/updates/page.tsx",
+    ];
+
+    for (const destination of destinations) {
+      const source = read(destination);
+      expect(source, destination).toContain("fleetId");
+      expect(source, destination).toMatch(
+        /(getFleetPortalActorContext|requireFleetPortalActor)\([^)]*[Ff]leetId/,
+      );
+    }
   });
 
   it("starts independent Control Tower reads together and never caches mutable data", () => {

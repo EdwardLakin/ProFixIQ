@@ -156,6 +156,29 @@ describe("Fleet alert feed scope", () => {
     ]);
   });
 
+  it("denies internal advisors the manager-targeted Fleet alert feed", async () => {
+    state.actor = {
+      userId: "user-1",
+      shopId: SHOP_A,
+      isInternal: true,
+      canonicalRole: "advisor",
+      primaryFleetId: FLEET_A,
+      fleetIds: [FLEET_A],
+      fleetMemberships: [{ fleetId: FLEET_A, shopId: SHOP_A, role: "viewer" }],
+      capabilities: { canSeeFleetWideUnits: true },
+    };
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      notifications: [],
+      total: 0,
+      nextOffset: null,
+    });
+    expect(state.reads).toEqual([]);
+  });
+
   it("never exposes a fleet the actor only drives for, even when they manage another", async () => {
     state.actor = externalActor([
       { fleetId: FLEET_A, role: "manager" },

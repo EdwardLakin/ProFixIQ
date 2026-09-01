@@ -18,6 +18,7 @@ import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server
 import { supabaseAdmin } from "@/features/shared/lib/supabase/admin";
 
 const PAGE_SIZE = 50;
+const INTERNAL_FLEET_ALERT_ROLES = new Set(["owner", "admin", "manager"]);
 
 const BodySchema = z.object({
   fleetId: z.string().uuid().nullable().optional(),
@@ -63,6 +64,9 @@ function fleetNotificationReadScopes(
   requestedFleetId?: string | null,
 ): AssistantNotificationReadScope[] {
   if (actor.isInternal) {
+    if (!INTERNAL_FLEET_ALERT_ROLES.has(actor.canonicalRole)) {
+      return [];
+    }
     return actor.shopId
       ? [
           {
