@@ -39,6 +39,7 @@ describe("assistant notification shared persistence contract", () => {
     expect(migration).toContain(
       "public.canonical_shop_membership_role(role)",
     );
+    expect(migration).toContain("source = 'ops'");
     expect(migration).not.toContain(
       "create policy assistant_notifications_select_same_shop",
     );
@@ -47,18 +48,36 @@ describe("assistant notification shared persistence contract", () => {
     );
   });
 
-  it("allows browser acknowledgement columns but no direct notification creation", () => {
+  it("stages recipient-bound rollout compatibility before final revocation", () => {
     expect(migration).toContain(
-      "grant update (status, acknowledged_at, acknowledged_by, updated_at)",
+      "create policy assistant_notifications_insert_rollout_compat",
     );
-    expect(migration).not.toContain(
-      "grant all on table public.assistant_notifications to authenticated",
+    expect(migration).toContain(
+      "create policy assistant_notifications_update_rollout_compat",
     );
-    expect(migration).not.toMatch(/grant insert[^;]*authenticated/);
+    expect(migration).toContain("source in ('ops', 'ops_user')");
+    expect(migration).toContain(
+      "grant select, insert, update on table public.assistant_notifications",
+    );
+    expect(migration).not.toMatch(/grant (?:all|delete)[^;]*authenticated/);
     expect(migration).toContain("status = 'acknowledged'");
     expect(migration).toContain(
       "acknowledged_by = (select public.profixiq_workforce_profile_id())",
     );
+  });
+
+  it("recreates UUID-backed Parts writers with text entity predicates", () => {
+    expect(migration).toContain(
+      "parts_publish_request_notification_with_table(uuid,text)",
+    );
+    expect(migration).toContain(
+      "parts_sync_technician_ready_notification_with_table(uuid)",
+    );
+    expect(migration).toContain(
+      "parts_reconcile_pick_request_notification(uuid)",
+    );
+    expect(migration).toContain("entity_id = p_request_id::text");
+    expect(migration).toContain("notification.entity_id = $2::text");
   });
 
   it("keeps generation on a trusted writer and scopes resolution defensively", () => {

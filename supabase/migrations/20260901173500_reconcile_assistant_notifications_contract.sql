@@ -61,6 +61,58 @@ create table if not exists public.assistant_notifications (
 alter table public.assistant_notifications
   alter column entity_id type text using entity_id::text;
 
+-- Parts notification functions were compiled while production still exposed a
+-- UUID entity_id. Recreate the three surviving table-backed definitions with
+-- explicit text comparisons so both clean replay and the forward production
+-- conversion keep Parts lifecycle mutations executable.
+do $reconcile_parts_notification_writers$
+declare
+  v_definition text;
+begin
+  select pg_get_functiondef(
+    'public.parts_publish_request_notification_with_table(uuid,text)'::regprocedure
+  ) into v_definition;
+  v_definition := replace(
+    v_definition,
+    'and entity_id = p_request_id',
+    'and entity_id = p_request_id::text'
+  );
+  if position('and entity_id = p_request_id::text' in v_definition) = 0 then
+    raise exception
+      'Unable to reconcile parts_publish_request_notification_with_table';
+  end if;
+  execute v_definition;
+
+  select pg_get_functiondef(
+    'public.parts_sync_technician_ready_notification_with_table(uuid)'::regprocedure
+  ) into v_definition;
+  v_definition := replace(
+    v_definition,
+    'and entity_id = p_request_id',
+    'and entity_id = p_request_id::text'
+  );
+  if position('and entity_id = p_request_id::text' in v_definition) = 0 then
+    raise exception
+      'Unable to reconcile parts_sync_technician_ready_notification_with_table';
+  end if;
+  execute v_definition;
+
+  select pg_get_functiondef(
+    'public.parts_reconcile_pick_request_notification(uuid)'::regprocedure
+  ) into v_definition;
+  v_definition := replace(
+    v_definition,
+    'and notification.entity_id = $2',
+    'and notification.entity_id = $2::text'
+  );
+  if position('and notification.entity_id = $2::text' in v_definition) = 0 then
+    raise exception
+      'Unable to reconcile parts_reconcile_pick_request_notification';
+  end if;
+  execute v_definition;
+end
+$reconcile_parts_notification_writers$;
+
 create index if not exists assistant_notifications_role_status_idx
   on public.assistant_notifications (shop_id, role, status, last_seen_at desc);
 create index if not exists assistant_notifications_shop_status_idx
@@ -117,7 +169,9 @@ drop policy if exists assistant_notifications_acknowledge_intended_recipient
   on public.assistant_notifications;
 
 -- Staff can read only a row explicitly addressed to their canonical profile or
--- role. Parts workflow rows preserve the established owner/admin/manager/parts
+-- role. Shared Agent ops rows use shop-scoped fingerprints, so every staff role
+-- in the shop sees the same row instead of alternately overwriting its role.
+-- Parts workflow rows preserve the established owner/admin/manager/parts
 -- audience. Both supported profile/auth identity shapes flow through the
 -- canonical helpers used throughout the application.
 create policy assistant_notifications_select_intended_recipient
@@ -131,7 +185,8 @@ using (
     or (
       user_id is null
       and (
-        public.canonical_shop_membership_role(role) =
+        source = 'ops'
+        or public.canonical_shop_membership_role(role) =
           (select public.profixiq_current_role())
         or (
           public.canonical_shop_membership_role(role) = 'parts'
@@ -160,7 +215,8 @@ using (
     or (
       user_id is null
       and (
-        public.canonical_shop_membership_role(role) =
+        source = 'ops'
+        or public.canonical_shop_membership_role(role) =
           (select public.profixiq_current_role())
         or (
           public.canonical_shop_membership_role(role) = 'parts'
@@ -180,11 +236,53 @@ with check (
   and acknowledged_by = (select public.profixiq_workforce_profile_id())
 );
 
+-- Rollout compatibility: the currently deployed Agent writes ops projections
+-- with its authenticated server client. Keep only that recipient-bound path
+-- until the trusted-writer application change has reached every instance; a
+-- follow-up migration can then remove these policies and broad UPDATE columns.
+create policy assistant_notifications_insert_rollout_compat
+on public.assistant_notifications
+for insert
+to authenticated
+with check (
+  shop_id = (select public.current_shop_id())
+  and source in ('ops', 'ops_user')
+  and (
+    user_id = (select public.profixiq_workforce_profile_id())
+    or (
+      source = 'ops'
+      and user_id is null
+      and public.canonical_shop_membership_role(role) =
+        (select public.profixiq_current_role())
+    )
+  )
+);
+
+create policy assistant_notifications_update_rollout_compat
+on public.assistant_notifications
+for update
+to authenticated
+using (
+  shop_id = (select public.current_shop_id())
+  and source in ('ops', 'ops_user')
+  and (
+    user_id = (select public.profixiq_workforce_profile_id())
+    or (source = 'ops' and user_id is null)
+  )
+)
+with check (
+  shop_id = (select public.current_shop_id())
+  and source in ('ops', 'ops_user')
+  and (
+    user_id = (select public.profixiq_workforce_profile_id())
+    or (source = 'ops' and user_id is null)
+  )
+);
+
 revoke all on table public.assistant_notifications from anon;
 revoke all on table public.assistant_notifications from authenticated;
-grant select on table public.assistant_notifications to authenticated;
-grant update (status, acknowledged_at, acknowledged_by, updated_at)
-  on table public.assistant_notifications to authenticated;
+grant select, insert, update on table public.assistant_notifications
+  to authenticated;
 grant all on table public.assistant_notifications to service_role;
 
 notify pgrst, 'reload schema';
