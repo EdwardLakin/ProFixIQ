@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import {
+  createAdminSupabase,
+  createServerSupabaseRoute,
+} from "@/features/shared/lib/supabase/server";
 
 import { getRoleDailySummary } from "@/features/agent/server/getRoleDailySummary";
 import { createOperationalGrounding } from "@/features/agent/lib/operationalGrounding";
@@ -78,12 +81,19 @@ export async function GET() {
 
     const today = new Date().toISOString().slice(0, 10);
 
-    const { error: upsertError } = await supabase
+    // Imported staff can have an auth subject that differs from profiles.id.
+    // Keep the ordinary session/RLS path for canonical identities, and use the
+    // trusted server writer only after resolving an imported profile through
+    // the authenticated session above.
+    const summaryWriter =
+      profile.profileId === user.id ? supabase : createAdminSupabase();
+
+    const { error: upsertError } = await summaryWriter
       .from("assistant_daily_summaries")
       .upsert(
         {
           shop_id: profile.shopId,
-          user_id: user.id,
+          user_id: profile.profileId,
           role: result.role,
           summary_date: today,
           summary_text: result.summaryText,

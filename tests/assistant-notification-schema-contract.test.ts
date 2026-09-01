@@ -204,13 +204,17 @@ describe("assistant notification shared persistence contract", () => {
     expect(dailySummarySource).toContain(
       "assignmentUserIds: notificationUserIds",
     );
-    expect(suggestedActionsRoute.match(/profileId: actor\.profileId/g)).toHaveLength(
-      2,
-    );
+    expect(
+      suggestedActionsRoute.match(/profileId: actor\.profileId/g),
+    ).toHaveLength(2);
     expect(plannerDailySummaryRoute).toContain("user_id.eq.${userId}");
     expect(plannerDailySummaryRoute).toContain(
       "profileId: profile.profileId as string",
     );
+    expect(plannerDailySummaryRoute).toContain(
+      "profile.profileId === user.id ? supabase : createAdminSupabase()",
+    );
+    expect(plannerDailySummaryRoute).toContain("user_id: profile.profileId");
     expect(acknowledgementRoute).toContain(
       "acknowledged_by: profile.profileId",
     );
