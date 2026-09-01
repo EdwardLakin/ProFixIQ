@@ -564,13 +564,15 @@ export async function getRoleDailySummary(params: {
   const notificationUserIds = Array.from(
     new Set(
       [params.userId, params.profileId].filter(
-        (value): value is string => typeof value === "string" && value.length > 0,
+        (value): value is string =>
+          typeof value === "string" && value.length > 0,
       ),
     ),
   );
   const ctx: ToolContext = createToolContext({
     shopId: params.shopId,
     userId: params.userId,
+    profileId: params.profileId,
     role,
     signal: params.signal,
   });
@@ -621,7 +623,7 @@ export async function getRoleDailySummary(params: {
     ? await runGetShopCurrentStatus({}, ctx)
     : null;
   const techWork = shouldFetchTechWork
-    ? await runGetTechCurrentWork({ techId: params.userId }, ctx)
+    ? await runGetTechCurrentWork({ techIds: notificationUserIds }, ctx)
     : null;
 
   const actionItems = dedupeStrings(

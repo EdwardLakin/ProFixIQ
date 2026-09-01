@@ -21,6 +21,10 @@ const dailySummarySource = readFileSync(
   "features/agent/server/getRoleDailySummary.ts",
   "utf8",
 );
+const techWorkSource = readFileSync(
+  "features/agent/tools/getTechCurrentWork.ts",
+  "utf8",
+);
 const suggestedActionsRoute = readFileSync(
   "app/api/assistant/suggested-actions/route.ts",
   "utf8",
@@ -204,6 +208,11 @@ describe("assistant notification shared persistence contract", () => {
     expect(dailySummarySource).toContain(
       "assignmentUserIds: notificationUserIds",
     );
+    expect(dailySummarySource).toContain("profileId: params.profileId");
+    expect(dailySummarySource).toContain(
+      "runGetTechCurrentWork({ techIds: notificationUserIds }, ctx)",
+    );
+    expect(techWorkSource).toContain('.in("assigned_tech_id", techIds)');
     expect(
       suggestedActionsRoute.match(/profileId: actor\.profileId/g),
     ).toHaveLength(2);
