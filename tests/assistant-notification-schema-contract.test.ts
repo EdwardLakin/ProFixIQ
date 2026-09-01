@@ -59,12 +59,28 @@ describe("assistant notification shared persistence contract", () => {
     );
     expect(migration).toContain("interval '10 minutes'");
     expect(migration).toContain(
+      "execute 'revoke insert, update on table public.assistant_notifications '",
+    );
+    expect(migration).toContain(
+      "execute 'grant update (status, acknowledged_at, acknowledged_by, updated_at) '",
+    );
+    expect(migration).toContain(
       "grant select, insert, update on table public.assistant_notifications",
     );
     expect(migration).not.toMatch(/grant (?:all|delete)[^;]*authenticated/);
     expect(migration).toContain("status = 'acknowledged'");
     expect(migration).toContain(
       "acknowledged_by = (select public.profixiq_workforce_profile_id())",
+    );
+  });
+
+  it("limits shared ops rows to explicit Shop workforce roles", () => {
+    expect(migration).toContain(
+      "'owner', 'admin', 'manager', 'advisor', 'service', 'parts',",
+    );
+    expect(migration).toContain("'lead_hand', 'foreman'");
+    expect(migration).not.toMatch(
+      /source = 'ops'\s+or public\.canonical_shop_membership_role/,
     );
   });
 

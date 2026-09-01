@@ -119,6 +119,25 @@ begin
         else excluded.first_observed_at
       end,
       last_observed_at = excluded.last_observed_at;
+
+  if exists (
+    select 1
+    from public.assistant_notification_rollout_markers
+    where contract = 'assistant_notifications_trusted_writer_v1'
+      and first_observed_at <= now() - interval '10 minutes'
+      and last_observed_at >= first_observed_at
+  ) then
+    execute 'drop policy if exists assistant_notifications_insert_rollout_compat '
+      || 'on public.assistant_notifications';
+    execute 'drop policy if exists assistant_notifications_update_rollout_compat '
+      || 'on public.assistant_notifications';
+    execute 'revoke insert, update on table public.assistant_notifications '
+      || 'from authenticated';
+    execute 'grant select on table public.assistant_notifications '
+      || 'to authenticated';
+    execute 'grant update (status, acknowledged_at, acknowledged_by, updated_at) '
+      || 'on table public.assistant_notifications to authenticated';
+  end if;
 end;
 $function$;
 
@@ -277,7 +296,13 @@ using (
     or (
       user_id is null
       and (
-        source = 'ops'
+        (
+          source = 'ops'
+          and (select public.profixiq_current_role()) in (
+            'owner', 'admin', 'manager', 'advisor', 'service', 'parts',
+            'lead_hand', 'foreman'
+          )
+        )
         or public.canonical_shop_membership_role(role) =
           (select public.profixiq_current_role())
         or (
@@ -307,7 +332,13 @@ using (
     or (
       user_id is null
       and (
-        source = 'ops'
+        (
+          source = 'ops'
+          and (select public.profixiq_current_role()) in (
+            'owner', 'admin', 'manager', 'advisor', 'service', 'parts',
+            'lead_hand', 'foreman'
+          )
+        )
         or public.canonical_shop_membership_role(role) =
           (select public.profixiq_current_role())
         or (
@@ -347,6 +378,10 @@ with check (
     or (
       source = 'ops'
       and user_id is null
+      and (select public.profixiq_current_role()) in (
+        'owner', 'admin', 'manager', 'advisor', 'service', 'parts',
+        'lead_hand', 'foreman'
+      )
       and public.canonical_shop_membership_role(role) =
         (select public.profixiq_current_role())
     )
@@ -365,7 +400,14 @@ using (
   and source in ('ops', 'ops_user')
   and (
     user_id = (select public.profixiq_workforce_profile_id())
-    or (source = 'ops' and user_id is null)
+    or (
+      source = 'ops'
+      and user_id is null
+      and (select public.profixiq_current_role()) in (
+        'owner', 'admin', 'manager', 'advisor', 'service', 'parts',
+        'lead_hand', 'foreman'
+      )
+    )
   )
 )
 with check (
@@ -376,7 +418,14 @@ with check (
   and source in ('ops', 'ops_user')
   and (
     user_id = (select public.profixiq_workforce_profile_id())
-    or (source = 'ops' and user_id is null)
+    or (
+      source = 'ops'
+      and user_id is null
+      and (select public.profixiq_current_role()) in (
+        'owner', 'admin', 'manager', 'advisor', 'service', 'parts',
+        'lead_hand', 'foreman'
+      )
+    )
   )
 );
 
