@@ -16,6 +16,17 @@ const atomicMigration = fs.readFileSync(
   ),
   "utf8",
 );
+const lifecycleMigration = fs.readFileSync(
+  path.join(
+    process.cwd(),
+    "supabase/migrations/20260902034346_fleet_invite_delivery_lifecycle.sql",
+  ),
+  "utf8",
+);
+const sendGridWebhookRoute = fs.readFileSync(
+  path.join(process.cwd(), "app/api/webhooks/sendgrid/events/route.ts"),
+  "utf8",
+);
 
 const fixture = vi.hoisted(() => ({
   insertPayload: null as Record<string, unknown> | null,
@@ -95,6 +106,9 @@ vi.mock("@/features/shared/lib/supabase/admin", () => ({
   supabaseAdmin: {
     rpc: vi.fn(async (name: string, args: Record<string, unknown>) => {
       fixture.rpcCalls.push({ name, args });
+      if (name === "record_fleet_portal_invitation_email_acceptance") {
+        return { data: true, error: null };
+      }
       return fixture.rpcResult;
     }),
     from: vi.fn((table: string) => {
@@ -160,11 +174,12 @@ vi.mock("@/features/shared/lib/supabase/admin", () => ({
 }));
 
 const sendPortalInviteEmail = vi.hoisted(() => vi.fn());
+const getActiveBrandForRender = vi.hoisted(() => vi.fn());
 
 vi.mock("@/features/email/server", () => ({ sendPortalInviteEmail }));
 
 vi.mock("@/features/branding/server/getActiveBrandForRender", () => ({
-  getActiveBrandForRender: vi.fn(async () => null),
+  getActiveBrandForRender,
 }));
 
 import { POST } from "../app/api/portal/fleet/invites/route";
@@ -218,7 +233,13 @@ describe("Fleet relationship creation", () => {
       error: null,
     };
     sendPortalInviteEmail.mockReset();
-    sendPortalInviteEmail.mockResolvedValue({ status: "sent" });
+    sendPortalInviteEmail.mockResolvedValue({
+      status: "accepted",
+      acceptedAt: "2026-09-02T03:40:00.000Z",
+      emailLogId: "55555555-5555-4555-8555-555555555555",
+    });
+    getActiveBrandForRender.mockReset();
+    getActiveBrandForRender.mockResolvedValue(null);
   });
 
   it("uses the authenticated Shop scope and ignores client tenant claims", async () => {
@@ -233,7 +254,10 @@ describe("Fleet relationship creation", () => {
     );
 
     expect(response.status).toBe(201);
-    expect(fixture.rpcCalls).toHaveLength(1);
+    expect(fixture.rpcCalls.map((call) => call.name)).toEqual([
+      "create_fleet_with_owner_invitation_atomic",
+      "record_fleet_portal_invitation_email_acceptance",
+    ]);
     expect(fixture.rpcCalls[0].args).toMatchObject({
       p_shop_id: "shop-1",
       p_name: "Northside Transport",
@@ -323,6 +347,7 @@ describe("Fleet relationship creation", () => {
     );
     const body = (await response.json()) as {
       invitedEmail?: string;
+      invitationAccepted?: boolean;
       invitationDelivered?: boolean;
     };
 
@@ -341,7 +366,8 @@ describe("Fleet relationship creation", () => {
       expect.objectContaining({ createdBy: "profile-1" }),
     );
     expect(body.invitedEmail).toBe("fleet@example.com");
-    expect(body.invitationDelivered).toBe(true);
+    expect(body.invitationAccepted).toBe(true);
+    expect(body.invitationDelivered).toBe(false);
   });
 
   it("never deletes the Fleet to compensate, because the customer side effect cannot be undone", async () => {
@@ -426,6 +452,27 @@ describe("Fleet relationship creation", () => {
     );
   });
 
+  it("persists branding lookup failures as failed delivery attempts", async () => {
+    getActiveBrandForRender.mockRejectedValue(
+      new Error("branding unavailable"),
+    );
+
+    const response = await POST(
+      createRequest({
+        action: "create_fleet",
+        name: "Northside Transport",
+        contactEmail: "fleet@example.com",
+      }),
+    );
+    const body = (await response.json()) as { deliveryIssue?: string };
+
+    expect(response.status).toBe(201);
+    expect(body.deliveryIssue).toBe("failed");
+    expect(fixture.inviteUpdates).toContainEqual(
+      expect.objectContaining({ delivery_status: "failed" }),
+    );
+  });
+
   it("persists a suppressed delivery distinctly from a failure", async () => {
     sendPortalInviteEmail.mockResolvedValue({ status: "suppressed" });
 
@@ -442,7 +489,7 @@ describe("Fleet relationship creation", () => {
     );
   });
 
-  it("records a successful delivery and clears any prior error", async () => {
+  it("records provider acceptance without claiming delivery", async () => {
     await POST(
       createRequest({
         action: "create_fleet",
@@ -451,16 +498,20 @@ describe("Fleet relationship creation", () => {
       }),
     );
 
-    expect(fixture.inviteUpdates).toContainEqual(
+    expect(fixture.inviteUpdates).toEqual([]);
+    expect(fixture.rpcCalls).toContainEqual(
       expect.objectContaining({
-        delivery_status: "delivered",
-        delivery_error: null,
+        name: "record_fleet_portal_invitation_email_acceptance",
+        args: expect.objectContaining({
+          p_email_log_id: "55555555-5555-4555-8555-555555555555",
+        }),
       }),
     );
   });
 
-  it("reports a delivery-state persistence failure while leaving the durable pending row retryable", async () => {
+  it("reports a delivery-state persistence failure while leaving the durable reserved row visible", async () => {
     fixture.inviteUpdateError = { code: "08006" };
+    sendPortalInviteEmail.mockRejectedValue(new Error("smtp down"));
 
     const response = await POST(
       createRequest({
@@ -533,12 +584,15 @@ describe("Fleet relationship creation", () => {
     expect(response.status).toBe(400);
   });
 
-  it("keeps delivery tracking additive and starts new invitations as pending", () => {
+  it("keeps delivery tracking additive and reserves new invitation tokens", () => {
     expect(deliveryMigration).toContain(
       "add column if not exists delivery_status text",
     );
     expect(deliveryMigration).not.toContain("add constraint");
     expect(atomicMigration).toContain("'pending'");
+    expect(lifecycleMigration).toContain("'sending'");
+    expect(lifecycleMigration).toContain("delivery_reserved_until > now()");
+    expect(lifecycleMigration).not.toContain("add constraint");
   });
 
   it("serializes invitation replacement before any resend email is sent", () => {
@@ -546,6 +600,19 @@ describe("Fleet relationship creation", () => {
     expect(atomicMigration).toContain("v_existing.revoked_at is not null");
     expect(atomicMigration).toContain(
       "create or replace function public.replace_fleet_portal_invitation_atomic",
+    );
+  });
+
+  it("correlates signed provider events back to Fleet invitations", () => {
+    expect(lifecycleMigration).toContain(
+      "record_fleet_portal_invitation_email_acceptance",
+    );
+    expect(lifecycleMigration).toContain(
+      "process_fleet_invitation_delivery_event",
+    );
+    expect(lifecycleMigration).toContain("when v_event_type = 'delivered'");
+    expect(sendGridWebhookRoute).toContain(
+      '"process_fleet_invitation_delivery_event"',
     );
   });
 });

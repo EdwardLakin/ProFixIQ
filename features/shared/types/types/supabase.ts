@@ -5503,8 +5503,11 @@ export type Database = {
           created_by: string | null
           delivery_attempted_at: string | null
           delivery_error: string | null
+          delivery_event_at: string | null
+          delivery_reserved_until: string | null
           delivery_status: string | null
           email: string
+          email_log_id: string | null
           expires_at: string
           fleet_id: string
           id: string
@@ -5520,8 +5523,11 @@ export type Database = {
           created_by?: string | null
           delivery_attempted_at?: string | null
           delivery_error?: string | null
+          delivery_event_at?: string | null
+          delivery_reserved_until?: string | null
           delivery_status?: string | null
           email: string
+          email_log_id?: string | null
           expires_at: string
           fleet_id: string
           id?: string
@@ -5537,8 +5543,11 @@ export type Database = {
           created_by?: string | null
           delivery_attempted_at?: string | null
           delivery_error?: string | null
+          delivery_event_at?: string | null
+          delivery_reserved_until?: string | null
           delivery_status?: string | null
           email?: string
+          email_log_id?: string | null
           expires_at?: string
           fleet_id?: string
           id?: string
@@ -29978,6 +29987,15 @@ export type Database = {
         }
         Returns: Json
       }
+      process_fleet_invitation_delivery_event: {
+        Args: {
+          p_email_log_id: string
+          p_error_text: string
+          p_event_at: string
+          p_event_type: string
+        }
+        Returns: boolean
+      }
       process_sendgrid_delivery_event: {
         Args: {
           p_email_log_id: string
@@ -30082,6 +30100,15 @@ export type Database = {
           p_work_order_id: string
         }
         Returns: string
+      }
+      record_fleet_portal_invitation_email_acceptance: {
+        Args: {
+          p_accepted_at: string
+          p_email_log_id: string
+          p_invite_id: string
+          p_shop_id: string
+        }
+        Returns: boolean
       }
       record_offline_photo_receipt_atomic: {
         Args: {

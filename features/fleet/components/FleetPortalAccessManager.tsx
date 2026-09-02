@@ -30,8 +30,16 @@ type Invite = {
   accepted_at: string | null;
   revoked_at: string | null;
   created_at: string;
-  delivery_status?: "pending" | "delivered" | "suppressed" | "failed" | null;
+  delivery_status?:
+    | "pending"
+    | "sending"
+    | "accepted"
+    | "delivered"
+    | "suppressed"
+    | "failed"
+    | null;
   delivery_attempted_at?: string | null;
+  delivery_reserved_until?: string | null;
 };
 
 type InvitePayload = {
@@ -40,6 +48,7 @@ type InvitePayload = {
   invites?: Invite[];
   customerCandidate?: CustomerCandidate | null;
   invitedEmail?: string;
+  invitationAccepted?: boolean;
   invitationDelivered?: boolean;
   deliveryStatePersisted?: boolean;
   deliveryIssue?: "suppressed" | "failed";
@@ -84,6 +93,10 @@ export default function FleetPortalAccessManager() {
       if (payload?.deliveryStatePersisted === false) {
         toast.error(
           `The resend to ${invite.email} was attempted, but its delivery state could not be confirmed. The row remains retryable; reload before trying again.`,
+        );
+      } else if (payload?.invitationAccepted) {
+        toast.success(
+          `Invitation to ${invite.email} was accepted by the email provider and is awaiting delivery confirmation.`,
         );
       } else if (payload?.invitationDelivered === false) {
         toast.error(
@@ -202,7 +215,17 @@ export default function FleetPortalAccessManager() {
         throw new Error(payload?.error || "Invitation could not be sent.");
       }
 
-      toast.success("Fleet portal invitation sent.");
+      if (payload?.deliveryStatePersisted === false) {
+        toast.error(
+          "The invitation was accepted by the email provider, but its delivery state could not be confirmed. Reload Fleet access before retrying.",
+        );
+      } else if (payload?.invitationAccepted) {
+        toast.success(
+          "Fleet portal invitation accepted by the email provider and awaiting delivery confirmation.",
+        );
+      } else {
+        toast.success("Fleet portal invitation sent.");
+      }
       setEmail("");
       await load();
     } catch (value) {
@@ -250,6 +273,10 @@ export default function FleetPortalAccessManager() {
       if (payload.deliveryStatePersisted === false) {
         toast.error(
           `Fleet created and delivery was attempted for ${owner}, but the delivery state could not be confirmed. The manager invitation remains listed as Delivery pending and can be resent.`,
+        );
+      } else if (payload.invitationAccepted) {
+        toast.success(
+          `Fleet relationship created. The manager invitation to ${owner} was accepted by the email provider and is awaiting delivery confirmation.`,
         );
       } else if (payload.invitationDelivered === false) {
         // The Fleet and its invitation exist; only delivery failed. Say so
@@ -503,11 +530,16 @@ export default function FleetPortalAccessManager() {
                 const fleet = fleets.find(
                   (item) => item.id === invite.fleet_id,
                 );
-                const undelivered =
+                const deliveryPending =
                   !invite.accepted_at &&
                   !invite.revoked_at &&
                   (invite.delivery_status === "pending" ||
-                    invite.delivery_status === "suppressed" ||
+                    invite.delivery_status === "sending" ||
+                    invite.delivery_status === "accepted");
+                const undelivered =
+                  !invite.accepted_at &&
+                  !invite.revoked_at &&
+                  (invite.delivery_status === "suppressed" ||
                     invite.delivery_status === "failed");
                 const status = invite.accepted_at
                   ? "Accepted"
@@ -515,14 +547,28 @@ export default function FleetPortalAccessManager() {
                     ? "Revoked"
                     : new Date(invite.expires_at) <= new Date()
                       ? "Expired"
-                      : undelivered
-                        ? invite.delivery_status === "pending"
-                          ? "Delivery pending"
-                          : invite.delivery_status === "suppressed"
+                      : deliveryPending
+                        ? invite.delivery_status === "accepted"
+                          ? "Awaiting delivery"
+                          : invite.delivery_status === "sending"
+                            ? "Sending"
+                            : "Delivery pending"
+                        : undelivered
+                          ? invite.delivery_status === "suppressed"
                             ? "Not delivered · suppressed"
                             : "Not delivered"
-                        : "Pending";
-                const canResend = !invite.accepted_at && !invite.revoked_at;
+                          : "Pending";
+                const reserved =
+                  invite.delivery_reserved_until != null &&
+                  new Date(invite.delivery_reserved_until) > new Date();
+                const canResend =
+                  !invite.accepted_at &&
+                  !invite.revoked_at &&
+                  !(
+                    reserved &&
+                    (invite.delivery_status === "sending" ||
+                      invite.delivery_status === "accepted")
+                  );
 
                 return (
                   <div

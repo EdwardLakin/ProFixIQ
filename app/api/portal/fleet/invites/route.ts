@@ -24,12 +24,18 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 type FleetInviteRole = "manager" | "approver" | "viewer";
 
 type IssueFleetInviteResult =
-  | { ok: true; expiresAt: string }
+  | {
+      ok: true;
+      expiresAt: string;
+      invitationAccepted: true;
+      deliveryStatePersisted: boolean;
+    }
   | { ok: false; status: number; error: string };
 
 type InviteDelivery =
-  | { delivered: true }
-  | { delivered: false; reason: "suppressed" | "failed" };
+  | { status: "accepted"; emailLogId: string; acceptedAt: string }
+  | { status: "suppressed"; emailLogId: string | null }
+  | { status: "failed"; emailLogId: null };
 
 /**
  * Persist the delivery outcome so a failed or suppressed invitation stays
@@ -41,16 +47,30 @@ async function recordInviteDelivery(input: {
   delivery: InviteDelivery;
 }): Promise<boolean> {
   const { inviteId, shopId, delivery } = input;
+  if (delivery.status === "accepted") {
+    const { data, error } = await supabaseAdmin.rpc(
+      "record_fleet_portal_invitation_email_acceptance",
+      {
+        p_shop_id: shopId,
+        p_invite_id: inviteId,
+        p_email_log_id: delivery.emailLogId,
+        p_accepted_at: delivery.acceptedAt,
+      },
+    );
+    return !error && data === true;
+  }
+
   const { error } = await supabaseAdmin
     .from("fleet_portal_invites")
     .update({
-      delivery_status: delivery.delivered ? "delivered" : delivery.reason,
+      delivery_status: delivery.status,
       delivery_attempted_at: new Date().toISOString(),
-      delivery_error: delivery.delivered
-        ? null
-        : delivery.reason === "suppressed"
+      delivery_error:
+        delivery.status === "suppressed"
           ? "Recipient address is suppressed and cannot receive email."
-          : "Invitation email could not be delivered.",
+          : "Invitation email could not be accepted by the provider.",
+      email_log_id: delivery.emailLogId,
+      delivery_reserved_until: null,
     })
     .eq("id", inviteId)
     .eq("shop_id", shopId);
@@ -73,18 +93,18 @@ async function deliverFleetPortalInvite(input: {
   rawToken: string;
 }): Promise<InviteDelivery> {
   const { shopId, createdBy, fleetName, email, role, rawToken } = input;
-  const portalLink = `${siteUrl()}/portal/auth/fleet-invite?token=${encodeURIComponent(rawToken)}`;
-  const [{ data: shop }, brand] = await Promise.all([
-    supabaseAdmin
-      .from("shops")
-      .select("name, shop_name")
-      .eq("id", shopId)
-      .maybeSingle(),
-    getActiveBrandForRender(shopId),
-  ]);
-  const shopName = shop?.shop_name?.trim() || shop?.name?.trim() || "ProFixIQ";
-
   try {
+    const portalLink = `${siteUrl()}/portal/auth/fleet-invite?token=${encodeURIComponent(rawToken)}`;
+    const [{ data: shop }, brand] = await Promise.all([
+      supabaseAdmin
+        .from("shops")
+        .select("name, shop_name")
+        .eq("id", shopId)
+        .maybeSingle(),
+      getActiveBrandForRender(shopId),
+    ]);
+    const shopName =
+      shop?.shop_name?.trim() || shop?.name?.trim() || "ProFixIQ";
     const result = await sendPortalInviteEmail({
       shopId,
       to: email,
@@ -99,12 +119,26 @@ async function deliverFleetPortalInvite(input: {
       fleetRole: role,
     });
     const status = (result as { status?: string } | undefined)?.status;
+    const emailLogId = (result as { emailLogId?: unknown } | undefined)
+      ?.emailLogId;
     if (status === "suppressed") {
-      return { delivered: false, reason: "suppressed" };
+      return {
+        status: "suppressed",
+        emailLogId: typeof emailLogId === "string" ? emailLogId : null,
+      };
     }
-    return { delivered: true };
+    const acceptedAt = (result as { acceptedAt?: unknown } | undefined)
+      ?.acceptedAt;
+    if (
+      status === "accepted" &&
+      typeof emailLogId === "string" &&
+      typeof acceptedAt === "string"
+    ) {
+      return { status: "accepted", emailLogId, acceptedAt };
+    }
+    return { status: "failed", emailLogId: null };
   } catch {
-    return { delivered: false, reason: "failed" };
+    return { status: "failed", emailLogId: null };
   }
 }
 
@@ -161,7 +195,10 @@ async function issueFleetPortalInvite(input: {
       token_hash: tokenHash,
       expires_at: expiresAt,
       created_by: createdByAuthUserId,
-      delivery_status: "pending",
+      delivery_status: "sending",
+      delivery_reserved_until: new Date(
+        Date.now() + 15 * 60 * 1000,
+      ).toISOString(),
     })
     .select("id")
     .single();
@@ -182,9 +219,13 @@ async function issueFleetPortalInvite(input: {
     rawToken,
   });
 
-  await recordInviteDelivery({ inviteId: invite.id, shopId, delivery });
+  const deliveryStatePersisted = await recordInviteDelivery({
+    inviteId: invite.id,
+    shopId,
+    delivery,
+  });
 
-  if (!delivery.delivered) {
+  if (delivery.status !== "accepted") {
     const { error: revokeError } = await supabaseAdmin
       .from("fleet_portal_invites")
       .update({ revoked_at: new Date().toISOString() })
@@ -195,13 +236,18 @@ async function issueFleetPortalInvite(input: {
       status: revokeError ? 500 : 502,
       error: revokeError
         ? "Invitation delivery failed and its recovery state could not be finalized. Reload Fleet access before retrying."
-        : delivery.reason === "suppressed"
+        : delivery.status === "suppressed"
           ? "This address is suppressed and cannot receive email. Use a different fleet contact address."
           : "Invitation email could not be sent. Please try again.",
     };
   }
 
-  return { ok: true, expiresAt };
+  return {
+    ok: true,
+    expiresAt,
+    invitationAccepted: true,
+    deliveryStatePersisted,
+  };
 }
 
 export async function GET(req: Request) {
@@ -218,7 +264,7 @@ export async function GET(req: Request) {
     supabaseAdmin
       .from("fleet_portal_invites")
       .select(
-        "id, fleet_id, email, role, expires_at, accepted_at, revoked_at, created_at, delivery_status, delivery_attempted_at",
+        "id, fleet_id, email, role, expires_at, accepted_at, revoked_at, created_at, delivery_status, delivery_attempted_at, delivery_reserved_until",
       )
       .eq("shop_id", access.profile.shop_id)
       .order("created_at", { ascending: false })
@@ -432,9 +478,12 @@ export async function POST(req: Request) {
         invitedEmail: contactEmail,
         expiresAt,
         inviteId: created.invite_id,
-        invitationDelivered: delivery.delivered,
+        invitationAccepted: delivery.status === "accepted",
+        invitationDelivered: false,
         deliveryStatePersisted,
-        ...(delivery.delivered ? {} : { deliveryIssue: delivery.reason }),
+        ...(delivery.status === "accepted"
+          ? {}
+          : { deliveryIssue: delivery.status }),
       },
       { status: 201 },
     );
@@ -483,13 +532,16 @@ export async function POST(req: Request) {
       : null;
     if (replaceError || !replacement) {
       const notFound = replaceError?.code === "P0002";
+      const inProgress = replaceError?.code === "55P03";
       return NextResponse.json(
         {
           error: notFound
             ? "Invitation not found."
-            : "This invitation has already been accepted or replaced. Reload Fleet access before retrying.",
+            : inProgress
+              ? "Invitation delivery is still in progress. Reload Fleet access before retrying."
+              : "This invitation has already been accepted or replaced. Reload Fleet access before retrying.",
         },
-        { status: notFound ? 404 : 409 },
+        { status: notFound ? 404 : inProgress ? 423 : 409 },
       );
     }
 
@@ -513,9 +565,12 @@ export async function POST(req: Request) {
       expiresAt,
       email: replacement.invite_email,
       role,
-      invitationDelivered: delivery.delivered,
+      invitationAccepted: delivery.status === "accepted",
+      invitationDelivered: false,
       deliveryStatePersisted,
-      ...(delivery.delivered ? {} : { deliveryIssue: delivery.reason }),
+      ...(delivery.status === "accepted"
+        ? {}
+        : { deliveryIssue: delivery.status }),
     });
   }
 
@@ -559,5 +614,11 @@ export async function POST(req: Request) {
     );
   }
 
-  return NextResponse.json({ ok: true, expiresAt: issued.expiresAt });
+  return NextResponse.json({
+    ok: true,
+    expiresAt: issued.expiresAt,
+    invitationAccepted: issued.invitationAccepted,
+    invitationDelivered: false,
+    deliveryStatePersisted: issued.deliveryStatePersisted,
+  });
 }
