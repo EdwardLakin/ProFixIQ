@@ -1838,6 +1838,12 @@ alter function public.materialize_offline_work_order_draft_atomic(
 alter function public.materialize_offline_work_order_draft_product_core(
   uuid, uuid, text, uuid, uuid, jsonb
 ) set schema private;
+-- The legacy implementation resolves pgcrypto helpers without qualification.
+-- Keep its hardened execution path away from the caller-controlled public
+-- schema while retaining access to digest/gen_random_uuid in extensions.
+alter function private.materialize_offline_work_order_draft_product_core(
+  uuid, uuid, text, uuid, uuid, jsonb
+) set search_path = pg_catalog, extensions;
 revoke all on function private.materialize_offline_work_order_draft_product_core(
   uuid, uuid, text, uuid, uuid, jsonb
 ) from public, anon, authenticated, service_role;

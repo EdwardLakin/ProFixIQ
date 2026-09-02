@@ -202,6 +202,9 @@ describe("Shop Work Order product boundary", () => {
     expect(source).toContain(
       "from private.create_work_order_with_custom_id_product_core(",
     );
+    expect(source).toMatch(
+      /alter function private\.materialize_offline_work_order_draft_product_core\([\s\S]+?\) set search_path = pg_catalog, extensions;/,
+    );
     expect(source).toContain(
       "create or replace function private.work_order_has_supplier_history",
     );
