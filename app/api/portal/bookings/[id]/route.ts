@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import type { Database } from "@shared/types/types/supabase";
-import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
-import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { requireCanonicalShopOrFieldApiAccess } from "@/features/mobile/service/server/access";
 import { notifyBookingConfirmation } from "@/features/portal/server/notifyBookingConfirmation";
 
 type DB = Database;
@@ -29,9 +28,8 @@ type PatchBody = {
 };
 
 async function getAuthedContext() {
-  const access = await requireShopScopedApiAccess({
+  const access = await requireCanonicalShopOrFieldApiAccess({
     requiredCapability: "canManageScheduling",
-    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
   });
   if (!access.ok) return { error: access.response };
   return {

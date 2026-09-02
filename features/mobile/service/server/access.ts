@@ -17,6 +17,7 @@ import {
 import {
   FIELD_PRODUCT_CAPABILITIES,
   resolveShopProductAccess,
+  SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
   SHOP_PRODUCT_CAPABILITIES,
 } from "@/features/shared/lib/product-access";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
@@ -33,6 +34,13 @@ export type MobileFieldServiceAccess = FieldServiceAccessContract;
 export type MobileFieldServiceWorkspaceAccess = MobileFieldServiceAccess & {
   workspaceCapabilities: FieldWorkspaceCapabilities;
 };
+
+export type CanonicalShopOrFieldProductScope = "shop" | "field";
+
+type CanonicalShopOrFieldApiAccessOptions = Omit<
+  NonNullable<Parameters<typeof requireShopScopedApiAccess>[0]>,
+  "requiredProductCapabilities"
+>;
 
 export function resolveFieldWorkspaceCapabilities(input: {
   role: string | null | undefined;
@@ -167,6 +175,58 @@ export async function getMobileFieldServiceWorkspaceAccess(
       canSwitchWorkspace: canAccessShop || canAccessFleet,
     }),
   };
+}
+
+/**
+ * Resolve a shared Shop/Field surface without treating tenant-level Field
+ * entitlement as actor authorization. Shop keeps its existing role-shaped
+ * access; the Field branch must also pass the canonical workspace contract.
+ */
+export async function resolveCanonicalShopOrFieldProductScope(
+  access: ShopAccess,
+): Promise<CanonicalShopOrFieldProductScope | null> {
+  const shopAccess = await resolveShopProductAccess({
+    supabase: access.supabase,
+    shopId: access.profile.shop_id,
+    capabilities: SHOP_PRODUCT_CAPABILITIES,
+  });
+  if (shopAccess.entitled) return "shop";
+  if (shopAccess.error) throw new Error(shopAccess.error);
+
+  const fieldAccess = await getMobileFieldServiceAccess(access);
+  return fieldAccess.canAccessFieldService ? "field" : null;
+}
+
+export async function requireCanonicalShopOrFieldApiAccess(
+  options: CanonicalShopOrFieldApiAccessOptions = {},
+) {
+  const access = await requireShopScopedApiAccess({
+    ...options,
+    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
+  });
+  if (!access.ok) return access;
+
+  try {
+    const productScope = await resolveCanonicalShopOrFieldProductScope(access);
+    if (!productScope) {
+      return {
+        ok: false as const,
+        response: NextResponse.json(
+          { error: "Canonical Shop or Field access is required." },
+          { status: 403 },
+        ),
+      };
+    }
+    return { ...access, productScope };
+  } catch {
+    return {
+      ok: false as const,
+      response: NextResponse.json(
+        { error: "Unable to verify product access." },
+        { status: 503 },
+      ),
+    };
+  }
 }
 
 export async function isExplicitMobileFieldOperator(

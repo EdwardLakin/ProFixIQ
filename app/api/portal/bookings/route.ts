@@ -4,8 +4,7 @@ import {
   createAdminSupabase,
   createServerSupabaseRoute,
 } from "@/features/shared/lib/supabase/server";
-import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
-import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
+import { requireCanonicalShopOrFieldApiAccess } from "@/features/mobile/service/server/access";
 import type { Database } from "@shared/types/types/supabase";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import {
@@ -147,9 +146,7 @@ export async function GET(req: Request): Promise<Response> {
     return bad("Missing shop or date range");
   }
 
-  const access = await requireShopScopedApiAccess({
-    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
-  });
+  const access = await requireCanonicalShopOrFieldApiAccess();
   if (!access.ok) return access.response;
 
   const { profile, supabase } = access;

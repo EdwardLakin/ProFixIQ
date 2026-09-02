@@ -33,6 +33,11 @@ export default function SetPasswordPage() {
   const searchParams = useSearchParams();
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const isPortalActivation = searchParams.get("mode") === "portal";
+  const passwordSurface = searchParams.get("surface");
+  const isPortalPasswordFlow =
+    isPortalActivation ||
+    passwordSurface === "customer" ||
+    passwordSurface === "fleet";
 
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -120,13 +125,13 @@ export default function SetPasswordPage() {
     const redirect = await resolvePostAuthDestination({
       supabase,
       searchParams,
-      requiredProductCapabilities: isPortalActivation
+      requiredProductCapabilities: isPortalPasswordFlow
         ? []
         : claim.surface
           ? acquisitionSurfaceProductCapabilities(claim.surface)
-          : searchParams.get("surface") === "field"
+          : passwordSurface === "field"
             ? FIELD_PRODUCT_CAPABILITIES
-            : searchParams.get("surface") === "billing"
+            : passwordSurface === "billing"
               ? []
               : undefined,
       defaultDashboardHref: claim.surface

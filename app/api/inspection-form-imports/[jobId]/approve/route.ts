@@ -1,15 +1,13 @@
 import { NextResponse } from "next/server";
 
 import { normalizeInspectionFormSections } from "@/features/inspections/lib/form-import";
-import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
-import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { requireCanonicalShopOrFieldApiAccess } from "@/features/mobile/service/server/access";
 
 type Context = { params: Promise<{ jobId: string }> };
 
 export async function POST(req: Request, context: Context) {
-  const access = await requireShopScopedApiAccess({
+  const access = await requireCanonicalShopOrFieldApiAccess({
     allowRoles: ["owner", "admin", "manager", "advisor", "service"],
-    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
   });
   if (!access.ok) return access.response;
 

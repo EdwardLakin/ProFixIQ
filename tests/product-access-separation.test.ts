@@ -52,7 +52,7 @@ describe("dedicated product access surfaces", () => {
     expect(accessRoute).toContain("mustChangePassword");
     expect(routeGate).toContain("resolveFieldExistingSessionHref");
     expect(routeGate).toContain('router.replace(destination ?? "/mobile")');
-    expect(route).toContain('surface === "field" ? "local" : "global"');
+    expect(route).toContain('const rejectedSessionScope = "local" as const');
     expect(route).toContain(
       "supabase.auth.signOut({ scope: rejectedSessionScope })",
     );
@@ -67,9 +67,7 @@ describe("dedicated product access surfaces", () => {
         },
         "/mobile/service/work-orders/work-order-1",
       ),
-    ).toBe(
-      "/auth/set-password?surface=field&redirect=%2Fmobile%2Fservice",
-    );
+    ).toBe("/auth/set-password?surface=field&redirect=%2Fmobile%2Fservice");
 
     expect(
       resolveFieldExistingSessionHref(

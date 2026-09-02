@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
-import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { requireCanonicalShopOrFieldApiAccess } from "@/features/mobile/service/server/access";
 import { getOpenAIRealtimeTranscriptionModel } from "@/features/shared/lib/openai-realtime-models";
 import { getAIPolicy } from "@/features/shared/lib/server/ai-policy";
 import { recordAITelemetry } from "@/features/shared/lib/server/ai-telemetry";
@@ -78,9 +77,7 @@ function extractToken(
 export async function GET() {
   const startedAt = Date.now();
   const policy = getAIPolicy("openai_realtime_token");
-  const access = await requireShopScopedApiAccess({
-    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
-  });
+  const access = await requireCanonicalShopOrFieldApiAccess();
   if (!access.ok) {
     return access.response;
   }

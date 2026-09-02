@@ -186,7 +186,10 @@ export async function POST(req: Request) {
     );
   }
 
-  const rejectedSessionScope = surface === "field" ? "local" : "global";
+  // A correct password submitted on the wrong product surface must discard
+  // only this newly-created browser session. Global revocation would terminate
+  // otherwise-valid Field or portal sessions on the actor's other devices.
+  const rejectedSessionScope = "local" as const;
   const deny = async () => {
     await supabase.auth.signOut({ scope: rejectedSessionScope });
     return NextResponse.json(

@@ -1,8 +1,10 @@
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import type { Database } from "@shared/types/types/supabase";
-import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
-import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import {
+  canFieldOperatorAccessWorkOrder,
+  requireCanonicalShopOrFieldApiAccess,
+} from "@/features/mobile/service/server/access";
 
 type DB = Database;
 type PartRow = DB["public"]["Tables"]["parts"]["Row"] & {
@@ -89,9 +91,8 @@ export async function POST(
     );
   }
 
-  const access = await requireShopScopedApiAccess({
+  const access = await requireCanonicalShopOrFieldApiAccess({
     requiredCapability: "canManageParts",
-    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
   });
   if (!access.ok) return access.response;
 
@@ -105,7 +106,7 @@ export async function POST(
 
   const { data: item, error: itemError } = await access.supabase
     .from("part_request_items")
-    .select("id,shop_id,part_id,requested_manufacturer")
+    .select("id,shop_id,work_order_id,part_id,requested_manufacturer")
     .eq("id", itemId)
     .eq("shop_id", access.profile.shop_id)
     .maybeSingle();
@@ -116,6 +117,17 @@ export async function POST(
     );
   }
   if (!item) {
+    return NextResponse.json(
+      { ok: false, error: "Request item not found." },
+      { status: 404 },
+    );
+  }
+
+  if (
+    access.productScope === "field" &&
+    (!item.work_order_id ||
+      !(await canFieldOperatorAccessWorkOrder(access, item.work_order_id)))
+  ) {
     return NextResponse.json(
       { ok: false, error: "Request item not found." },
       { status: 404 },

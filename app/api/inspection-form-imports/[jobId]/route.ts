@@ -9,8 +9,7 @@ import {
   INSPECTION_FORM_IMPORT_BATCH_SIZE,
   processInspectionFormImportJobBatch,
 } from "@/features/inspections/server/inspection-form-import-job";
-import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
-import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { requireCanonicalShopOrFieldApiAccess } from "@/features/mobile/service/server/access";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -19,9 +18,8 @@ export const dynamic = "force-dynamic";
 type Context = { params: Promise<{ jobId: string }> };
 
 async function loadJob(jobId: string) {
-  const access = await requireShopScopedApiAccess({
+  const access = await requireCanonicalShopOrFieldApiAccess({
     allowRoles: ["owner", "admin", "manager", "advisor", "service"],
-    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
   });
   if (!access.ok) return { access, job: null } as const;
 

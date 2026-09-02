@@ -138,9 +138,9 @@ describe("product boundary stabilization", () => {
     expect(routing).toContain(
       "`${PASSWORD_CHANGE}?surface=field&redirect=${encodeURIComponent(fieldDestination)}`",
     );
-    expect(setPassword).toContain('searchParams.get("surface") === "field"');
+    expect(setPassword).toContain('passwordSurface === "field"');
     expect(setPassword).toContain("FIELD_PRODUCT_CAPABILITIES");
-    expect(setPassword).toContain('searchParams.get("surface") === "billing"');
+    expect(setPassword).toContain('passwordSurface === "billing"');
 
     for (const client of [
       read("features/auth/components/SignIn.tsx"),
@@ -263,8 +263,10 @@ describe("product boundary stabilization", () => {
 
     const setPassword = read("app/auth/set-password/page.tsx");
     expect(setPassword).toMatch(
-      /requiredProductCapabilities:\s*isPortalActivation\s*\? \[\]/,
+      /requiredProductCapabilities:\s*isPortalPasswordFlow\s*\? \[\]/,
     );
+    expect(setPassword).toContain('passwordSurface === "customer"');
+    expect(setPassword).toContain('passwordSurface === "fleet"');
 
     const intake = read("app/api/work-orders/[id]/intake/route.ts");
     expect(intake).toContain("resolveIntakeAccess");
@@ -274,11 +276,21 @@ describe("product boundary stabilization", () => {
     expect(intake).toContain("membership.shopId === workOrder.shop_id");
     expect(intake).toContain("SHOP_PRODUCT_CAPABILITIES");
 
-    for (const sharedApi of [
+    for (const canonicalSharedApi of [
       "app/api/openai/realtime-token/route.ts",
       "app/api/portal/bookings/route.ts",
       "app/api/portal/bookings/[id]/route.ts",
       "app/api/inspection-form-imports/route.ts",
+      "app/api/inspection-form-imports/[jobId]/route.ts",
+      "app/api/inspection-form-imports/[jobId]/approve/route.ts",
+      "app/api/parts/requests/items/[itemId]/inventory/route.ts",
+    ]) {
+      expect(read(canonicalSharedApi)).toContain(
+        "requireCanonicalShopOrFieldApiAccess",
+      );
+    }
+
+    for (const sharedApi of [
       "app/api/parts/requests/create/route.ts",
       "app/api/parts/requests/queue/route.ts",
       "app/api/work-orders/quotes/[id]/authorize/route.ts",

@@ -13,6 +13,10 @@ vi.mock("@/features/shared/lib/server/admin-access", () => ({
   requireShopScopedApiAccess: routeMocks.requireApiAccess,
 }));
 
+vi.mock("@/features/mobile/service/server/access", () => ({
+  requireCanonicalShopOrFieldApiAccess: routeMocks.requireApiAccess,
+}));
+
 vi.mock("@/features/shared/lib/supabase/server", () => ({
   createAdminSupabase: routeMocks.createAdminSupabase,
   createServerSupabaseRoute: routeMocks.createServerSupabaseRoute,
@@ -57,9 +61,7 @@ describe("vehicle workspace appointment deep links", () => {
       "if (bookingId && !actor.canManageScheduling)",
     );
     expect(staffBookingsRoute).toContain('.eq("shop_id", shop.id)');
-    expect(staffBookingsRoute).toContain(
-      '.eq("id", bookingId).limit(1)',
-    );
+    expect(staffBookingsRoute).toContain('.eq("id", bookingId).limit(1)');
     expect(staffBookingsRoute).toContain(
       'return bad("Appointment not found", 404)',
     );
@@ -72,9 +74,8 @@ describe("vehicle workspace appointment deep links", () => {
   });
 
   it("bootstraps the shop through the canonical server profile guard", () => {
-    expect(staffBookingsRoute).toContain("requireShopScopedApiAccess({");
     expect(staffBookingsRoute).toContain(
-      "requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES",
+      "requireCanonicalShopOrFieldApiAccess()",
     );
     expect(staffBookingsRoute).toContain('.eq("id", profile.shop_id)');
     expect(appointmentsPage).toContain(
@@ -111,6 +112,7 @@ describe("vehicle workspace appointment deep links", () => {
       },
       canonicalRole: "advisor",
       authUserId: "linked-auth-user-id",
+      productScope: "shop",
       supabase: { from: vi.fn(), rpc: vi.fn() },
     });
 
