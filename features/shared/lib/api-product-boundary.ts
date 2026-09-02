@@ -36,6 +36,7 @@ function isRouteOwnedApi(pathname: string): boolean {
       "/api/diag/log",
       "/api/branding/active",
       "/api/dashboard/layout",
+      "/api/inspections/sign",
       "/api/quotes/approval-webhook",
       "/api/stripe/checkout/acquisition-context",
       "/api/stripe/checkout/link-user",

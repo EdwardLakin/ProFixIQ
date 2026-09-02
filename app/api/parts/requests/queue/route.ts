@@ -1,5 +1,14 @@
 import { NextResponse } from "next/server";
-import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
+import {
+  getMobileFieldServiceAccess,
+  listFieldOperatorAssignedWorkOrderIds,
+  type ShopAccess,
+} from "@/features/mobile/service/server/access";
+import {
+  resolveShopProductAccess,
+  SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
+  SHOP_PRODUCT_CAPABILITIES,
+} from "@/features/shared/lib/product-access";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import {
   loadPartsRequestQueue,
@@ -16,6 +25,38 @@ function isUuid(value: string): boolean {
 
 function requestId(): string {
   return globalThis.crypto.randomUUID();
+}
+
+type PartsQueueScope =
+  | { ok: true; workOrderIds?: string[] }
+  | { ok: false; response: NextResponse };
+
+async function resolvePartsQueueScope(
+  access: ShopAccess,
+): Promise<PartsQueueScope> {
+  const shopAccess = await resolveShopProductAccess({
+    supabase: access.supabase,
+    shopId: access.profile.shop_id,
+    capabilities: SHOP_PRODUCT_CAPABILITIES,
+  });
+  if (shopAccess.error) throw new Error(shopAccess.error);
+  if (shopAccess.entitled) return { ok: true };
+
+  const fieldAccess = await getMobileFieldServiceAccess(access);
+  if (!fieldAccess.canAccessFieldService) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "Field Service access is required." },
+        { status: 403, headers: RESPONSE_HEADERS },
+      ),
+    };
+  }
+
+  return {
+    ok: true,
+    workOrderIds: await listFieldOperatorAssignedWorkOrderIds(access),
+  };
 }
 
 export async function GET(request: Request) {
@@ -35,10 +76,14 @@ export async function GET(request: Request) {
 
   const correlationId = requestId();
   try {
+    const scope = await resolvePartsQueueScope(access);
+    if (!scope.ok) return scope.response;
+
     const snapshot = await loadPartsRequestQueue({
       supabase: access.supabase,
       shopId: access.profile.shop_id,
       requestId: realtimeRequestId,
+      workOrderIds: scope.workOrderIds,
       signal: request.signal,
     });
     return NextResponse.json(

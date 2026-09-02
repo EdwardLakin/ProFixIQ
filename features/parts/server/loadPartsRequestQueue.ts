@@ -49,16 +49,18 @@ export async function loadPartsRequestQueue(input: {
   supabase: SupabaseClient<DB>;
   shopId: string;
   requestId?: string | null;
+  workOrderIds?: readonly string[];
   signal?: AbortSignal;
 }): Promise<PartsRequestQueueSnapshot> {
   const signal = input.signal ?? new AbortController().signal;
-  const requests = await loadAllPages<PartsRequestQueueRequest>((from, to) => {
+  const readRequests = (from: number, to: number, workOrderIds?: string[]) => {
     let query = input.supabase
       .from("part_requests")
       .select("*")
       .eq("shop_id", input.shopId)
       .in("status", PARTS_REQUEST_QUEUE_STATUSES);
     if (input.requestId) query = query.eq("id", input.requestId);
+    if (workOrderIds) query = query.in("work_order_id", workOrderIds);
     return query
       .order("created_at", { ascending: false })
       .order("id", { ascending: true })
@@ -66,7 +68,16 @@ export async function loadPartsRequestQueue(input: {
       .range(from, to) as unknown as PromiseLike<
       PageResult<PartsRequestQueueRequest>
     >;
-  });
+  };
+  const requests = input.workOrderIds
+    ? await loadRowsForIdChunks<PartsRequestQueueRequest>(
+        [...input.workOrderIds],
+        (workOrderIds, from, to) => readRequests(from, to, workOrderIds),
+        { idChunkSize: 200, pageSize: 500 },
+      )
+    : await loadAllPages<PartsRequestQueueRequest>((from, to) =>
+        readRequests(from, to),
+      );
 
   if (requests.length === 0) {
     return {

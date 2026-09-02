@@ -3,10 +3,26 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   requireShopScopedApiAccess: vi.fn(),
   loadPartsRequestQueue: vi.fn(),
+  resolveShopProductAccess: vi.fn(),
+  getMobileFieldServiceAccess: vi.fn(),
+  listFieldOperatorAssignedWorkOrderIds: vi.fn(),
 }));
 
 vi.mock("@/features/shared/lib/server/admin-access", () => ({
   requireShopScopedApiAccess: mocks.requireShopScopedApiAccess,
+}));
+
+vi.mock("@/features/shared/lib/product-access", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@/features/shared/lib/product-access")
+  >()),
+  resolveShopProductAccess: mocks.resolveShopProductAccess,
+}));
+
+vi.mock("@/features/mobile/service/server/access", () => ({
+  getMobileFieldServiceAccess: mocks.getMobileFieldServiceAccess,
+  listFieldOperatorAssignedWorkOrderIds:
+    mocks.listFieldOperatorAssignedWorkOrderIds,
 }));
 
 vi.mock(
@@ -27,10 +43,19 @@ describe("Parts request queue API", () => {
     vi.clearAllMocks();
     mocks.requireShopScopedApiAccess.mockResolvedValue({
       ok: true,
+      authUserId: "user-1",
       canonicalRole: "parts",
       profile: { id: "profile-1", shop_id: SHOP_ID },
       supabase: { from: vi.fn() },
     });
+    mocks.resolveShopProductAccess.mockResolvedValue({
+      entitled: true,
+      error: null,
+    });
+    mocks.getMobileFieldServiceAccess.mockResolvedValue({
+      canAccessFieldService: true,
+    });
+    mocks.listFieldOperatorAssignedWorkOrderIds.mockResolvedValue([]);
     mocks.loadPartsRequestQueue.mockResolvedValue({
       shopId: SHOP_ID,
       requests: [],
@@ -78,6 +103,46 @@ describe("Parts request queue API", () => {
 
     expect(response.status).toBe(403);
     expect(mocks.loadPartsRequestQueue).not.toHaveBeenCalled();
+  });
+
+  it("denies a Field-only tenant when the canonical actor contract denies access", async () => {
+    mocks.resolveShopProductAccess.mockResolvedValue({
+      entitled: false,
+      error: null,
+    });
+    mocks.getMobileFieldServiceAccess.mockResolvedValue({
+      canAccessFieldService: false,
+    });
+    const { GET } = await import("../app/api/parts/requests/queue/route");
+
+    const response = await GET(
+      new Request("https://profixiq.test/api/parts/requests/queue"),
+    );
+
+    expect(response.status).toBe(403);
+    expect(mocks.loadPartsRequestQueue).not.toHaveBeenCalled();
+  });
+
+  it("limits an authorized Field queue to linked mobile work orders", async () => {
+    mocks.resolveShopProductAccess.mockResolvedValue({
+      entitled: false,
+      error: null,
+    });
+    mocks.listFieldOperatorAssignedWorkOrderIds.mockResolvedValue([
+      "33333333-3333-4333-8333-333333333333",
+    ]);
+    const { GET } = await import("../app/api/parts/requests/queue/route");
+
+    const response = await GET(
+      new Request("https://profixiq.test/api/parts/requests/queue"),
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.loadPartsRequestQueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workOrderIds: ["33333333-3333-4333-8333-333333333333"],
+      }),
+    );
   });
 
   it("rejects an invalid realtime request ID", async () => {

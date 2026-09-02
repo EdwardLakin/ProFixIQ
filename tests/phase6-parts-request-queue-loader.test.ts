@@ -154,4 +154,22 @@ describe("loadPartsRequestQueue", () => {
     expect(snapshot.requests).toEqual([]);
     expect(snapshot.items).toEqual([]);
   });
+
+  it("limits a Field queue read to linked mobile work orders", async () => {
+    const { client, filters } = fakeSupabase();
+
+    const snapshot = await loadPartsRequestQueue({
+      supabase: client as never,
+      shopId: SHOP_A,
+      workOrderIds: [WORK_ORDER_A],
+    });
+
+    expect(snapshot.requests.map((row) => row.id)).toEqual([REQUEST_A]);
+    expect(filters).toContainEqual({
+      table: "part_requests",
+      kind: "in",
+      column: "work_order_id",
+      value: [WORK_ORDER_A],
+    });
+  });
 });

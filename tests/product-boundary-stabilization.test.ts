@@ -250,6 +250,13 @@ describe("product boundary stabilization", () => {
     expect(resolveApiProductBoundary("/api/dashboard/layout")).toEqual({
       kind: "route_owned",
     });
+    expect(resolveApiProductBoundary("/api/inspections/sign")).toEqual({
+      kind: "route_owned",
+    });
+
+    const dispatchScope = read("features/dispatch/server/productScope.ts");
+    expect(dispatchScope).toContain("getMobileFieldServiceAccess");
+    expect(dispatchScope).toContain("fieldAccess.canAccessFieldService");
 
     const intake = read("app/api/work-orders/[id]/intake/route.ts");
     expect(intake).toContain("resolveIntakeAccess");
